@@ -161,6 +161,7 @@ function main(): void {
       emitMaps: options.emitMaps,
       compileArduino: options.compileArduino,
       platformContext: options.platformContext,
+      treeShaking: options.treeShaking,
     });
 
     if (options.target === "arduino") {

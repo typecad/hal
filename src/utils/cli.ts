@@ -1,5 +1,5 @@
 import path from "node:path";
-import { CommandLineOptions, EmitMode, PlatformContext, TargetProfile } from "../types";
+import { CommandLineOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types";
 
 const VERSION = "0.1.0";
 
@@ -50,7 +50,22 @@ OPTIONS
                           Arduino board variant override
 
   --arduino-cli-json <path>
-                          Path to arduino-cli.json for platform metadata
+                           Path to arduino-cli.json for platform metadata
+
+TREE-SHAKING OPTIONS
+  --no-tree-shake          Disable tree-shaking (dead code elimination)
+                           Tree-shaking is enabled by default and removes unreachable code
+
+  --keep-unused-enums      Keep all enums even if not referenced
+
+  --keep-unused-classes    Keep all classes even if not instantiated
+
+  --keep-unused-types      Keep all type aliases even if not used
+
+  --no-report-unused       Don't emit diagnostics for removed code
+
+  --entry-point <name>     Add a custom entry point symbol (can be used multiple times)
+                           Default entry points: setup/loop (Arduino), main (generic)
 
   --help, -h              Show this help message
 
@@ -122,6 +137,21 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   const variant = readFlags(argv, ["--arduino-variant", "--variant"]);
   const arduinoCliJson = readFlags(argv, ["--arduino-cli-json"]);
 
+  // Tree-shaking options
+  const noTreeShake = argv.includes("--no-tree-shake");
+  const keepUnusedEnums = argv.includes("--keep-unused-enums");
+  const keepUnusedClasses = argv.includes("--keep-unused-classes");
+  const keepUnusedTypes = argv.includes("--keep-unused-types");
+  const noReportUnused = argv.includes("--no-report-unused");
+
+  // Collect custom entry points (can be specified multiple times)
+  const entryPoints: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--entry-point" && i + 1 < argv.length) {
+      entryPoints.push(argv[i + 1]);
+    }
+  }
+
   const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
   const target: TargetProfile = targetFlag === "arduino" || targetFlag === "generic" ? targetFlag : "generic";
   const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
@@ -139,6 +169,16 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
       variant,
       arduinoCliJsonPath: arduinoCliJson ? path.resolve(process.cwd(), arduinoCliJson) : undefined,
     },
+  };
+
+  // Build tree-shaking options
+  const treeShaking: TreeShakingOptions = {
+    enabled: !noTreeShake,
+    keepUnusedEnums,
+    keepUnusedClasses,
+    keepUnusedTypeAliases: keepUnusedTypes,
+    reportUnused: !noReportUnused,
+    entryPoints: entryPoints.length > 0 ? entryPoints : undefined,
   };
 
   if (command === "map-error") {
@@ -200,5 +240,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
     emitMaps,
     compileArduino,
     platformContext,
+    treeShaking,
   };
 }

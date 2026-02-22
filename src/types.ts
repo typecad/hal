@@ -58,6 +58,21 @@ export interface Diagnostic {
   code?: string;
 }
 
+export interface TreeShakingOptions {
+  /** Enable tree-shaking (default: true) */
+  enabled: boolean;
+  /** Keep enums even if not referenced (default: false) */
+  keepUnusedEnums?: boolean;
+  /** Keep classes even if not instantiated (default: false) */
+  keepUnusedClasses?: boolean;
+  /** Keep type aliases even if not used (default: false) */
+  keepUnusedTypeAliases?: boolean;
+  /** Generate diagnostics for removed code (default: true) */
+  reportUnused?: boolean;
+  /** Additional symbols to treat as entry points */
+  entryPoints?: string[];
+}
+
 export interface TranspileOptions {
   inputFile: string;
   outDir?: string;
@@ -66,6 +81,8 @@ export interface TranspileOptions {
   emitMaps: boolean;
   compileArduino: false | true | "strict";
   platformContext?: PlatformContext;
+  /** Tree-shaking options for dead code elimination */
+  treeShaking?: TreeShakingOptions;
 }
 
 export interface LibraryDefinitionCondition {
@@ -102,6 +119,8 @@ export interface CommandLineOptions {
   cppLine?: number;
   cppColumn?: number;
   message?: string;
+  /** Tree-shaking options */
+  treeShaking?: TreeShakingOptions;
 }
 
 export interface GenerateLibdefOptions {

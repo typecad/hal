@@ -3,11 +3,15 @@ import fs from "node:fs";
 import ts from "typescript";
 import { buildProgramIR } from "./ir/build-ir";
 import { emitCpp } from "./emit/cpp-emitter";
-import { GenerateLibdefOptions, GeneratedOutputs, TranspileOptions } from "./types";
+import { GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types";
 import { readText } from "./utils/fs";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry";
 import { createPolyfillRegistry, PolyfillContext } from "./polyfill";
 import { ProgramIR, StatementIR, ExpressionIR } from "./ir/model";
+import { buildCallGraph } from "./ir/call-graph";
+import { detectEntryPoints } from "./ir/entry-points";
+import { analyzeReachability } from "./ir/reachability";
+import { filterProgramIR } from "./ir/filter";
 
 function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
   if (!fs.existsSync(outDir)) {
@@ -355,6 +359,48 @@ function collectUsedIdentifiers(program: ProgramIR): Set<string> {
   return identifiers;
 }
 
+/**
+ * Apply tree-shaking to program IR if enabled
+ */
+function applyTreeShaking(
+  programIR: ProgramIR,
+  target: TranspileOptions["target"],
+  treeShakingOptions?: TreeShakingOptions
+): ProgramIR {
+  // Default to enabled - tree-shaking removes unreachable code
+  const enabled = treeShakingOptions?.enabled !== false;
+
+  if (!enabled) {
+    return programIR;
+  }
+
+  // Build call graph
+  const callGraph = buildCallGraph(programIR);
+
+  // Detect entry points
+  const entryPoints = detectEntryPoints(programIR, target, {
+    customEntryPoints: treeShakingOptions?.entryPoints ?? [],
+  });
+
+  // Analyze reachability
+  const reachability = analyzeReachability(programIR, callGraph, {
+    target,
+    keepUnusedEnums: treeShakingOptions?.keepUnusedEnums,
+    keepUnusedClasses: treeShakingOptions?.keepUnusedClasses,
+    keepUnusedTypeAliases: treeShakingOptions?.keepUnusedTypeAliases,
+    reportUnused: treeShakingOptions?.reportUnused,
+  });
+
+  // Filter program IR
+  return filterProgramIR(programIR, reachability, {
+    enabled: true,
+    keepUnusedEnums: treeShakingOptions?.keepUnusedEnums,
+    keepUnusedClasses: treeShakingOptions?.keepUnusedClasses,
+    keepUnusedTypeAliases: treeShakingOptions?.keepUnusedTypeAliases,
+    reportUnused: treeShakingOptions?.reportUnused,
+  });
+}
+
 export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   const entryFile = path.resolve(options.inputFile);
   const transpileFiles = collectTranspileGraph(entryFile);
@@ -375,7 +421,11 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
 
   for (const filePath of transpileFiles) {
     const sourceText = readText(filePath);
-    const programIR = buildProgramIR(filePath, sourceText);
+    let programIR = buildProgramIR(filePath, sourceText);
+
+    // Apply tree-shaking if enabled
+    programIR = applyTreeShaking(programIR, options.target, options.treeShaking);
+
     const polyfillContext: PolyfillContext = {
       target: options.target,
       architecture: options.platformContext?.arduino?.architecture,

@@ -149,6 +149,7 @@ Serial.begin(9600);
 
 // Read analog value from pin A0 (0-1023 on AVR)
 const value: number = Board.A0.read();
+const not_used: number = 0;
 
 console.log(value);
 // Output: Raw: 512, Voltage: 2.50V, Resolution: 10-bit
