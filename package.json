@@ -1,0 +1,24 @@
+{
+  "name": "ts2cpp-transpiler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js",
+    "dev": "ts-node src/cli.ts",
+    "transpile": "node dist/cli.js transpile",
+    "gen-libdefs": "node dist/cli.js gen-libdefs",
+    "map-error": "node dist/cli.js map-error",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "typescript": "^5.7.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "ts-node": "^10.9.2",
+    "vitest": "^4.0.18"
+  }
+}

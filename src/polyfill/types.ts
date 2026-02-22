@@ -1,0 +1,177 @@
+import { SourceSpan } from "../types";
+import { ProgramIR } from "../ir/model";
+
+export type PolyfillDomain = "standard" | "arduino" | "embedded";
+export type TargetProfile = "generic" | "arduino";
+
+export interface PolyfillContext {
+  target: TargetProfile;
+  architecture?: string;
+  usedIdentifiers: Set<string>;
+  config?: PolyfillConfig;
+}
+
+export interface PolyfillNeed {
+  id: string;
+  sourceSpan: SourceSpan;
+  details: Record<string, any>;
+}
+
+export interface PolyfillDefinition {
+  id: string;
+  name: string;
+  description: string;
+  domains: PolyfillDomain[];
+  detect: (program: ProgramIR, context: PolyfillContext) => PolyfillNeed[];
+  generate: (needs: PolyfillNeed[], context: PolyfillContext) => RuntimePolyfillIR;
+}
+
+export interface RuntimePolyfillIR {
+  kind: "polyfill";
+  id: string;
+  domain: PolyfillDomain;
+  requiredIncludes: string[];
+  forwardDeclarations: string[];
+  helperStructs: string[];
+  helperFunctions: string[];
+  shimMacros: string[];
+  dependencies: string[];
+}
+
+export interface PolyfillConfig {
+  console?: {
+    enabled: boolean;
+    target: "auto" | "serial" | "cout" | "none";
+    useFlashStrings?: boolean;
+  };
+  async?: {
+    enabled: boolean;
+    mode: "state-machine" | "stub" | "none";
+    scheduler?: boolean;
+  };
+  arrays?: {
+    enabled: boolean;
+    prefer: "auto" | "std_vector" | "static_array" | "micro_vector";
+    staticMaxSize?: number;
+    microMaxSize?: number;
+  };
+  strings?: {
+    enabled: boolean;
+    prefer: "auto" | "std_string" | "static_string";
+    staticMaxLen?: number;
+  };
+  exceptions?: {
+    enabled: boolean | "auto";
+    fallback: "error_code" | "noop";
+  };
+}
+
+export const DEFAULT_POLYFILL_CONFIG: PolyfillConfig = {
+  console: {
+    enabled: true,
+    target: "auto",
+    useFlashStrings: true,
+  },
+  async: {
+    enabled: true,
+    mode: "state-machine",
+    scheduler: false,
+  },
+  arrays: {
+    enabled: true,
+    prefer: "auto",
+    staticMaxSize: 32,
+    microMaxSize: 16,
+  },
+  strings: {
+    enabled: true,
+    prefer: "auto",
+    staticMaxLen: 64,
+  },
+  exceptions: {
+    enabled: "auto",
+    fallback: "error_code",
+  },
+};
+
+// Standard library support by architecture
+export interface StdLibSupport {
+  hasVector: boolean;
+  hasString: boolean;
+  hasIostream: boolean;
+  hasExceptions: boolean;
+  hasRTTI: boolean;
+  recommendedArrayImpl: "std_vector" | "static_array";
+  recommendedStringImpl: "std_string" | "static_string";
+}
+
+export const STDLIB_SUPPORT: Record<string, StdLibSupport> = {
+  avr: {
+    hasVector: false,
+    hasString: false,
+    hasIostream: false,
+    hasExceptions: false,
+    hasRTTI: false,
+    recommendedArrayImpl: "static_array",
+    recommendedStringImpl: "static_string",
+  },
+  esp32: {
+    hasVector: true,
+    hasString: true,
+    hasIostream: true,
+    hasExceptions: true,
+    hasRTTI: true,
+    recommendedArrayImpl: "std_vector",
+    recommendedStringImpl: "std_string",
+  },
+  esp8266: {
+    hasVector: true,
+    hasString: true,
+    hasIostream: true,
+    hasExceptions: true,
+    hasRTTI: true,
+    recommendedArrayImpl: "std_vector",
+    recommendedStringImpl: "std_string",
+  },
+  rp2040: {
+    hasVector: true,
+    hasString: true,
+    hasIostream: true,
+    hasExceptions: true,
+    hasRTTI: true,
+    recommendedArrayImpl: "std_vector",
+    recommendedStringImpl: "std_string",
+  },
+  samd: {
+    hasVector: true,
+    hasString: true,
+    hasIostream: true,
+    hasExceptions: true,
+    hasRTTI: true,
+    recommendedArrayImpl: "std_vector",
+    recommendedStringImpl: "std_string",
+  },
+  megaavr: {
+    hasVector: false,
+    hasString: false,
+    hasIostream: false,
+    hasExceptions: false,
+    hasRTTI: false,
+    recommendedArrayImpl: "static_array",
+    recommendedStringImpl: "static_string",
+  },
+  default: {
+    hasVector: true,
+    hasString: true,
+    hasIostream: true,
+    hasExceptions: true,
+    hasRTTI: true,
+    recommendedArrayImpl: "std_vector",
+    recommendedStringImpl: "std_string",
+  },
+};
+
+export function getStdLibSupport(architecture?: string): StdLibSupport {
+  if (!architecture) return STDLIB_SUPPORT.default;
+  return STDLIB_SUPPORT[architecture.toLowerCase()] ?? STDLIB_SUPPORT.default;
+}
