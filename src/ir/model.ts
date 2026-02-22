@@ -5,6 +5,13 @@ export interface ImportIR {
   namedImports: string[];
 }
 
+export interface ReExportIR {
+  moduleSpecifier: string;
+  /** true for `export * from`, array for `export { a, b } from` */
+  exportAll: boolean;
+  namedExports?: string[];
+}
+
 export interface CallExpressionIR {
   kind: "call";
   sourceSpan: SourceSpan;
@@ -247,6 +254,7 @@ export interface ClassConstructorIR {
 
 export interface ClassIR {
   name: string;
+  extendsClass?: string;
   sourceSpan: SourceSpan;
   leadingComments?: string[];
   trailingComments?: string[];
@@ -266,6 +274,7 @@ export interface TypeAliasIR {
 export interface ProgramIR {
   fileName: string;
   imports: ImportIR[];
+  reExports: ReExportIR[];
   structs: StructDefIR[];
   enums: EnumIR[];
   classes: ClassIR[];

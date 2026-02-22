@@ -2,7 +2,7 @@ import ts from "typescript";
 import { parseSource } from "../ast/parse";
 import { Diagnostic, SourceSpan } from "../types";
 import { withLineColumn } from "../utils/strings";
-import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, ParameterIR, ProgramIR, StatementIR, TypeAliasIR } from "./model";
+import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, ParameterIR, ProgramIR, ReExportIR, StatementIR, TypeAliasIR } from "./model";
 
 function normalizeLegacyArduinoSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __arduino_setup__(");
@@ -51,7 +51,16 @@ function extractNodeComments(node: ts.Node, sourceText: string): { leadingCommen
   };
 }
 
-type CppTypeHint = "int" | "float" | "bool" | "auto" | "void" | "std::string" | `std::vector<${string}>` | `std::function<${string}>`;
+type CppTypeHint =
+  | "int"
+  | "float"
+  | "bool"
+  | "auto"
+  | "void"
+  | "std::string"
+  | `std::vector<${string}>`
+  | `std::function<${string}>`
+  | `${string}*`;
 
 interface FunctionTypeSignature {
   parameterTypes: CppTypeHint[];
@@ -278,6 +287,9 @@ function inferExprCppType(
   }
 
   if (ts.isNewExpression(expr)) {
+    if (ts.isIdentifier(expr.expression)) {
+      return `${expr.expression.text}*`;
+    }
     return "auto";
   }
 
@@ -309,8 +321,11 @@ function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, CppTypeH
       }
 
       if (fn.type) {
-        result.set(fn.name.text, typeNodeToCppType(fn.type));
-        continue;
+        const annotatedType = typeNodeToCppType(fn.type);
+        if (annotatedType !== "auto") {
+          result.set(fn.name.text, annotatedType);
+          continue;
+        }
       }
 
       const returns = collectReturns(fn.body).filter((item) => item.expression);
@@ -332,6 +347,10 @@ function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, CppTypeH
         result.set(fn.name.text, "int");
       } else if (inferredTypes.includes("bool")) {
         result.set(fn.name.text, "bool");
+      } else if (inferredTypes.includes("std::string")) {
+        result.set(fn.name.text, "std::string");
+      } else {
+        result.set(fn.name.text, inferredTypes[0]);
       }
     }
   }
@@ -348,6 +367,10 @@ type PointerTracker = Set<string>;
 
 function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Set()): ExpressionIR {
   const formatExpressionText = (node: ts.Expression): string => {
+    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
+      return formatExpressionText(node.expression);
+    }
+
     if (ts.isParenthesizedExpression(node)) {
       return `(${formatExpressionText(node.expression)})`;
     }
@@ -366,6 +389,9 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
       // Check if the object is a pointer variable (from 'new')
       if (ts.isIdentifier(node.expression) && pointerVars.has(node.expression.text)) {
         return `${node.expression.text}->${node.name.text}`;
+      }
+      if (ts.isIdentifier(node.expression) && node.expression.text === "Math") {
+        return `std::${node.name.text}`;
       }
       const objectText = formatExpressionText(node.expression);
       if (node.name.text === "length") {
@@ -391,7 +417,12 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     }
 
     if (ts.isBinaryExpression(node)) {
-      const operator = ts.tokenToString(node.operatorToken.kind) ?? node.operatorToken.getText();
+      let operator = ts.tokenToString(node.operatorToken.kind) ?? node.operatorToken.getText();
+      if (operator === "===") {
+        operator = "==";
+      } else if (operator === "!==") {
+        operator = "!=";
+      }
       return `${formatExpressionText(node.left)} ${operator} ${formatExpressionText(node.right)}`;
     }
 
@@ -400,6 +431,10 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
 
   if (ts.isNumericLiteral(expr)) {
     return { kind: "number", value: Number(expr.text) };
+  }
+
+  if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) {
+    return expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
   }
 
   if (ts.isAwaitExpression(expr)) {
@@ -431,6 +466,10 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   }
 
   if (ts.isCallExpression(expr)) {
+    if (ts.isIdentifier(expr.expression) && expr.expression.text === "defineBoardManifest" && expr.arguments.length === 1) {
+      return expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
+    }
+
     // Handle method calls like this.method() or obj.method()
     // Use -> for pointer variables (from 'new') and for 'this', . for value types
     let calleeText: string;
@@ -438,6 +477,8 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
       // Check if it's a this.method() call - in C++, this is a pointer so use ->
       if (expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
         calleeText = `this->${expr.expression.name.text}`;
+      } else if (ts.isIdentifier(expr.expression.expression) && expr.expression.expression.text === "Math") {
+        calleeText = `std::${expr.expression.name.text}`;
       } else {
         const objText = renderExprAsText(expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars));
         const accessor = pointerVars.has(expr.expression.expression.getText()) ? "->" : ".";
@@ -451,9 +492,25 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   }
 
   if (ts.isNewExpression(expr)) {
-    return { kind: "raw", value: expr.getText() };
-  }
+    const ctorText = formatExpressionText(expr.expression);
+    const argsText = (expr.arguments ?? [])
+      .map((arg) => {
+        if (ts.isObjectLiteralExpression(arg)) {
+          return "0";
+        }
+        return renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars));
+      })
+      .join(", ");
 
+    if (ctorText === "Error") {
+      const message = expr.arguments && expr.arguments.length > 0
+        ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
+        : '"error"';
+      return { kind: "raw", value: `std::runtime_error(${message})` };
+    }
+
+    return { kind: "raw", value: `new ${ctorText}(${argsText})` };
+  }
   if (ts.isStringLiteral(expr)) {
     return { kind: "string", value: expr.text };
   }
@@ -495,6 +552,9 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     // In C++, 'this' is a pointer, so use -> instead of .
     if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
       return { kind: "raw", value: `this->${expr.name.text}` };
+    }
+    if (ts.isIdentifier(expr.expression) && expr.expression.text === "Math") {
+      return { kind: "raw", value: `std::${expr.name.text}` };
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics);
     if (expr.name.text === "length") {
@@ -621,8 +681,8 @@ function renderExprAsText(expr: ExpressionIR): string {
       const elements = expr.elements.map((e) => renderExprAsText(e)).join(", ");
       return `{ ${elements} }`;
     case "object":
-      const fields = expr.fields.map((f) => `.${f.name} = ${renderExprAsText(f.value)}`).join(", ");
-      return `{ ${fields} }`;
+      const fieldValues = expr.fields.map((f) => `${renderExprAsText(f.value)}`).join(", ");
+      return `{ ${fieldValues} }`;
     default:
       return "/* unsupported_expr */";
   }
@@ -1435,6 +1495,7 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
   const source = parseSource(fileName, normalizedSourceText);
   const diagnostics: Diagnostic[] = [];
   const imports: ImportIR[] = [];
+  const reExports: ReExportIR[] = [];
   const topLevelStatements: StatementIR[] = [];
   const functions: FunctionIR[] = [];
   const enums: EnumIR[] = [];
@@ -1460,6 +1521,22 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
       imports.push({
         moduleSpecifier,
         namedImports: node.importClause.namedBindings.elements.map((e) => e.name.text),
+      });
+      return;
+    }
+
+    // Handle re-exports: export * from "./module" or export { a, b } from "./module"
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const moduleSpecifier = node.moduleSpecifier.text;
+      const exportAll = !node.exportClause || !ts.isNamedExports(node.exportClause);
+      const namedExports = node.exportClause && ts.isNamedExports(node.exportClause)
+        ? node.exportClause.elements.map((e) => e.name.text)
+        : undefined;
+      
+      reExports.push({
+        moduleSpecifier,
+        exportAll,
+        namedExports,
       });
       return;
     }
@@ -1612,6 +1689,10 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
                 resolvedReturnType = "int";
               } else if (returnTypes.includes("bool")) {
                 resolvedReturnType = "bool";
+              } else if (returnTypes.includes("std::string")) {
+                resolvedReturnType = "std::string";
+              } else if (returnTypes.length > 0) {
+                resolvedReturnType = returnTypes[0];
               }
             } else {
               resolvedReturnType = inferExprCppType(fnExpression.body, functionReturnTypes, localVariableTypes);
@@ -1687,6 +1768,11 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
       }
 
       const className = node.name.text;
+      const extendsClass = node.heritageClauses
+        ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+        ?.types[0]
+        ?.expression
+        ?.getText();
       const classComments = extractNodeComments(node, sourceText);
       const fields: ClassFieldIR[] = [];
       const methods: ClassMethodIR[] = [];
@@ -1792,7 +1878,13 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
 
           methods.push({
             name: member.name.text,
-            returnType: (typeNodeToCppType(member.type, typeAliasNodes) === "void" ? "void" : typeNodeToCppType(member.type, typeAliasNodes)) as CppType,
+            returnType: (
+              member.type?.kind === ts.SyntaxKind.ThisType
+                ? `${className}*`
+                : (typeNodeToCppType(member.type, typeAliasNodes) === "void"
+                    ? "void"
+                    : typeNodeToCppType(member.type, typeAliasNodes))
+            ) as CppType,
             parameters: methodParams,
             statements: methodBody,
             visibility,
@@ -1803,6 +1895,7 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
 
       classes.push({
         name: className,
+        extendsClass,
         sourceSpan: makeSourceSpan(node, fileName, sourceText),
         leadingComments: classComments.leadingComments,
         trailingComments: classComments.trailingComments,
@@ -1901,6 +1994,7 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
   return {
     fileName,
     imports,
+    reExports,
     structs: [],
     enums,
     classes,

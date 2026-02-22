@@ -12,6 +12,7 @@ import { buildCallGraph } from "./ir/call-graph";
 import { detectEntryPoints } from "./ir/entry-points";
 import { analyzeReachability } from "./ir/reachability";
 import { filterProgramIR } from "./ir/filter";
+import { flattenGeneratedModulesIntoSketch } from "./platform/arduino-compile";
 
 function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
   if (!fs.existsSync(outDir)) {
@@ -49,7 +50,16 @@ function resolveLocalImport(fromFile: string, moduleSpecifier: string): string |
     return undefined;
   }
 
-  const basePath = path.resolve(path.dirname(fromFile), moduleSpecifier);
+  // Handle .js extensions in imports (TypeScript ESM pattern: import from "./foo.js")
+  // Map .js to .ts source files
+  let normalizedSpecifier = moduleSpecifier;
+  if (normalizedSpecifier.endsWith(".js")) {
+    normalizedSpecifier = normalizedSpecifier.slice(0, -3) + ".ts";
+  } else if (normalizedSpecifier.endsWith(".mjs")) {
+    normalizedSpecifier = normalizedSpecifier.slice(0, -5) + ".ts";
+  }
+
+  const basePath = path.resolve(path.dirname(fromFile), normalizedSpecifier);
   const candidates = [
     basePath,
     `${basePath}.ts`,
@@ -72,10 +82,370 @@ function resolveLocalImport(fromFile: string, moduleSpecifier: string): string |
   return undefined;
 }
 
-function collectTranspileGraph(entryFile: string): string[] {
+/**
+ * Information about a resolved npm package import
+ */
+export interface ResolvedNpmPackage {
+  /** Path to the package directory (e.g., node_modules/typecode-implementation) */
+  packagePath: string;
+  /** Resolved TypeScript source file path */
+  sourcePath: string;
+  /** The subpath being imported (e.g., "board-arduino-uno") */
+  subpath: string;
+  /** The package name (e.g., "typecode-implementation") */
+  packageName: string;
+  /** Module key for header generation (e.g., "board-arduino-uno") */
+  moduleKey: string;
+}
+
+/**
+ * Parses an npm module specifier into package name and subpath.
+ * Handles scoped packages like @scope/package/subpath
+ */
+function parseModuleSpecifier(moduleSpecifier: string): { packageName: string; subpath: string } {
+  const parts = moduleSpecifier.split("/");
+  
+  if (moduleSpecifier.startsWith("@")) {
+    // Scoped package: @scope/package/subpath
+    const scope = parts[0];
+    const packageName = parts.length > 1 ? `${scope}/${parts[1]}` : scope;
+    const subpath = parts.length > 2 ? parts.slice(2).join("/") : "";
+    return { packageName, subpath };
+  } else {
+    // Regular package: package/subpath
+    const packageName = parts[0];
+    const subpath = parts.length > 1 ? parts.slice(1).join("/") : "";
+    return { packageName, subpath };
+  }
+}
+
+/**
+ * Finds the node_modules directory containing the package by walking up the directory tree
+ */
+function findNodeModulesPackage(
+  fromFile: string,
+  packageName: string
+): string | undefined {
+  let currentDir = path.dirname(path.resolve(fromFile));
+  
+  while (currentDir !== path.dirname(currentDir)) {
+    const packageDir = path.join(currentDir, "node_modules", packageName);
+    if (fs.existsSync(packageDir) && fs.statSync(packageDir).isDirectory()) {
+      return packageDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  
+  // Check root level
+  const rootPackageDir = path.join(currentDir, "node_modules", packageName);
+  if (fs.existsSync(rootPackageDir) && fs.statSync(rootPackageDir).isDirectory()) {
+    return rootPackageDir;
+  }
+  
+  return undefined;
+}
+
+/**
+ * Reads and parses package.json, returning null if not found or invalid
+ */
+function readPackageJson(packageDir: string): Record<string, unknown> | null {
+  const packageJsonPath = path.join(packageDir, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    return null;
+  }
+  
+  try {
+    const content = readText(packageJsonPath);
+    return JSON.parse(content) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves a subpath using the package.json exports field
+ */
+function resolvePackageExports(
+  packageDir: string,
+  subpath: string,
+  packageJson: Record<string, unknown>
+): string | undefined {
+  const exports = packageJson["exports"];
+  
+  if (!exports || typeof exports !== "object") {
+    return undefined;
+  }
+  
+  // Try to match the subpath against exports
+  const exportKey = subpath ? `./${subpath}` : ".";
+  const exportsObj = exports as Record<string, unknown>;
+  
+  // Look for direct match
+  let exportTarget = exportsObj[exportKey];
+  
+  // Handle conditional exports (e.g., { "import": "...", "types": "..." })
+  if (exportTarget && typeof exportTarget === "object") {
+    const conditional = exportTarget as Record<string, unknown>;
+    // Prefer types, then import, then default
+    exportTarget = conditional["types"] ?? conditional["import"] ?? conditional["default"];
+  }
+  
+  if (typeof exportTarget !== "string") {
+    return undefined;
+  }
+  
+  // Map dist path to source path
+  return mapDistToSource(packageDir, exportTarget, subpath);
+}
+
+/**
+ * Maps a dist path from package.json to the actual TypeScript source
+ */
+function mapDistToSource(packageDir: string, distPath: string, subpath: string): string | undefined {
+  // Remove ./ prefix if present
+  const relativePath = distPath.startsWith("./") ? distPath.slice(2) : distPath;
+  
+  // Common patterns for mapping dist to source:
+  // 1. dist/package/src/index.js -> packages/package/src/index.ts
+  // 2. dist/src/index.js -> src/index.ts
+  // 3. dist/index.js -> src/index.ts or index.ts
+  
+  let sourcePath: string | undefined;
+  
+  // Pattern: dist/packages/*/src/*.js -> packages/*/src/*.ts
+  const packagesMatch = relativePath.match(/^dist\/(packages\/[^/]+\/src\/.+)\.js$/);
+  if (packagesMatch) {
+    sourcePath = path.join(packageDir, packagesMatch[1] + ".ts");
+    if (fs.existsSync(sourcePath)) {
+      return sourcePath;
+    }
+  }
+  
+  // Pattern: dist/src/*.js -> src/*.ts
+  const distSrcMatch = relativePath.match(/^dist\/(src\/.+)\.js$/);
+  if (distSrcMatch) {
+    sourcePath = path.join(packageDir, distSrcMatch[1] + ".ts");
+    if (fs.existsSync(sourcePath)) {
+      return sourcePath;
+    }
+  }
+  
+  // Pattern: dist/*.js -> src/*.ts
+  const distMatch = relativePath.match(/^dist\/(.+)\.js$/);
+  if (distMatch) {
+    // Try src/ first
+    sourcePath = path.join(packageDir, "src", distMatch[1] + ".ts");
+    if (fs.existsSync(sourcePath)) {
+      return sourcePath;
+    }
+    // Try direct
+    sourcePath = path.join(packageDir, distMatch[1] + ".ts");
+    if (fs.existsSync(sourcePath)) {
+      return sourcePath;
+    }
+  }
+  
+  // Fallback: try common source locations based on subpath
+  const subpathPrefix = subpath ? `${subpath}/` : "";
+  
+  // Try packages/subpath/src/index.ts (monorepo pattern)
+  if (subpath) {
+    sourcePath = path.join(packageDir, "packages", subpath, "src", "index.ts");
+    if (fs.existsSync(sourcePath)) {
+      return sourcePath;
+    }
+  }
+  
+  // Try src/subpath/index.ts
+  sourcePath = path.join(packageDir, "src", subpathPrefix, "index.ts");
+  if (fs.existsSync(sourcePath)) {
+    return sourcePath;
+  }
+  
+  // Try subpath/index.ts
+  sourcePath = path.join(packageDir, subpathPrefix, "index.ts");
+  if (fs.existsSync(sourcePath)) {
+    return sourcePath;
+  }
+  
+  return undefined;
+}
+
+/**
+ * Resolves an npm package import to its TypeScript source file
+ */
+function resolveNpmPackageImport(
+  fromFile: string,
+  moduleSpecifier: string
+): ResolvedNpmPackage | undefined {
+  // Skip relative imports
+  if (moduleSpecifier.startsWith(".")) {
+    return undefined;
+  }
+  
+  const { packageName, subpath } = parseModuleSpecifier(moduleSpecifier);
+  
+  // Find the package in node_modules
+  const packageDir = findNodeModulesPackage(fromFile, packageName);
+  if (!packageDir) {
+    return undefined;
+  }
+  
+  // Read package.json
+  const packageJson = readPackageJson(packageDir);
+  if (!packageJson) {
+    return undefined;
+  }
+  
+  // Try to resolve using exports field
+  let sourcePath: string | undefined;
+  if (packageJson["exports"]) {
+    sourcePath = resolvePackageExports(packageDir, subpath, packageJson);
+  }
+  
+  // Fallback: try common patterns
+  if (!sourcePath) {
+    // Try packages/subpath/src/index.ts (monorepo pattern)
+    if (subpath) {
+      sourcePath = path.join(packageDir, "packages", subpath, "src", "index.ts");
+    }
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      // Try src/index.ts
+      sourcePath = path.join(packageDir, "src", "index.ts");
+    }
+    if (!fs.existsSync(sourcePath)) {
+      // Try index.ts
+      sourcePath = path.join(packageDir, "index.ts");
+    }
+    if (!fs.existsSync(sourcePath)) {
+      sourcePath = undefined;
+    }
+  }
+  
+  if (!sourcePath) {
+    return undefined;
+  }
+  
+  // Generate module key for header naming
+  // Strip .js/.mjs extension if present (TypeScript ESM pattern)
+  let moduleKey = subpath || packageName.split("/").pop() || packageName;
+  if (moduleKey.endsWith(".js")) {
+    moduleKey = moduleKey.slice(0, -3);
+  } else if (moduleKey.endsWith(".mjs")) {
+    moduleKey = moduleKey.slice(0, -4);
+  }
+  
+  return {
+    packagePath: packageDir,
+    sourcePath: path.resolve(sourcePath),
+    subpath,
+    packageName,
+    moduleKey,
+  };
+}
+
+/**
+ * Resolves any import (relative or npm) to a TypeScript source file
+ */
+function resolveImport(
+  fromFile: string,
+  moduleSpecifier: string
+): { sourcePath: string; npmPackage?: ResolvedNpmPackage } | undefined {
+  // Try relative import first
+  const localResolved = resolveLocalImport(fromFile, moduleSpecifier);
+  if (localResolved) {
+    return { sourcePath: localResolved };
+  }
+  
+  // Try npm package import
+  const npmResolved = resolveNpmPackageImport(fromFile, moduleSpecifier);
+  if (npmResolved) {
+    return { sourcePath: npmResolved.sourcePath, npmPackage: npmResolved };
+  }
+  
+  return undefined;
+}
+
+/**
+ * Checks if a file path is within a node_modules directory
+ */
+function isInNodeModules(filePath: string): boolean {
+  const normalized = path.resolve(filePath).replace(/\\/g, "/");
+  return normalized.includes("/node_modules/");
+}
+
+/**
+ * Gets the npm package info for a file that's already been resolved
+ * (used for files within node_modules that were reached via relative imports)
+ */
+function getNpmPackageInfoForFile(
+  filePath: string,
+  moduleSpecifier: string
+): ResolvedNpmPackage | undefined {
+  if (!isInNodeModules(filePath)) {
+    return undefined;
+  }
+  
+  // Parse the module specifier
+  const parts = moduleSpecifier.split("/");
+  let packageName: string;
+  let subpath: string;
+  
+  if (moduleSpecifier.startsWith("@")) {
+    packageName = parts.length > 1 ? `${parts[0]}/${parts[1]}` : parts[0];
+    subpath = parts.length > 2 ? parts.slice(2).join("/") : "";
+  } else {
+    packageName = parts[0];
+    subpath = parts.length > 1 ? parts.slice(1).join("/") : "";
+  }
+  
+  // Extract module key from the file path
+  // For workspace packages like @typecode/core, use "core" as the module key
+  // Strip .js/.mjs extension if present (TypeScript ESM pattern)
+  let moduleKey = subpath || packageName.split("/").pop() || packageName;
+  if (moduleKey.endsWith(".js")) {
+    moduleKey = moduleKey.slice(0, -3);
+  } else if (moduleKey.endsWith(".mjs")) {
+    moduleKey = moduleKey.slice(0, -4);
+  }
+  
+  // Find the package directory by walking up from the file
+  let packageDir = path.dirname(filePath);
+  while (packageDir !== path.dirname(packageDir)) {
+    const packageJsonPath = path.join(packageDir, "package.json");
+    if (fs.existsSync(packageJsonPath)) {
+      break;
+    }
+    packageDir = path.dirname(packageDir);
+  }
+  
+  return {
+    packagePath: packageDir,
+    sourcePath: path.resolve(filePath),
+    subpath,
+    packageName,
+    moduleKey,
+  };
+}
+
+/**
+ * Result of collecting the transpile graph
+ */
+export interface TranspileGraphResult {
+  /** Ordered list of files to transpile */
+  files: string[];
+  /** Map of source file paths to their npm package info (if from npm) */
+  npmPackages: Map<string, ResolvedNpmPackage>;
+}
+
+/**
+ * Collects all files that need to be transpiled, following both relative and npm imports
+ */
+function collectTranspileGraph(entryFile: string): TranspileGraphResult {
   const ordered: string[] = [];
   const pending: string[] = [path.resolve(entryFile)];
   const visited = new Set<string>();
+  const npmPackages = new Map<string, ResolvedNpmPackage>();
 
   while (pending.length > 0) {
     const filePath = pending.shift();
@@ -109,14 +479,25 @@ function collectTranspileGraph(entryFile: string): string[] {
         continue;
       }
 
-      const resolved = resolveLocalImport(filePath, moduleSpecifier);
-      if (resolved && !visited.has(resolved)) {
-        pending.push(resolved);
+      const resolved = resolveImport(filePath, moduleSpecifier);
+      if (resolved && !visited.has(resolved.sourcePath)) {
+        pending.push(resolved.sourcePath);
+        if (resolved.npmPackage) {
+          npmPackages.set(resolved.sourcePath, resolved.npmPackage);
+        } else if (isInNodeModules(resolved.sourcePath)) {
+          // If the file is in node_modules but wasn't resolved as an npm package,
+          // it was reached via relative import from another npm package file.
+          // Create npm package info for it.
+          const npmInfo = getNpmPackageInfoForFile(resolved.sourcePath, moduleSpecifier);
+          if (npmInfo) {
+            npmPackages.set(resolved.sourcePath, npmInfo);
+          }
+        }
       }
     }
   }
 
-  return ordered;
+  return { files: ordered, npmPackages };
 }
 
 function collectExpressionIdentifiers(expr: ExpressionIR, identifiers: Set<string>): void {
@@ -403,11 +784,16 @@ function applyTreeShaking(
 
 export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   const entryFile = path.resolve(options.inputFile);
-  const transpileFiles = collectTranspileGraph(entryFile);
+  const graphResult = collectTranspileGraph(entryFile);
+  const transpileFiles = graphResult.files;
+  const npmPackages = graphResult.npmPackages;
   const sourceDir = path.dirname(entryFile);
+  const sketchBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");
   const outBaseDir = options.outDir ?? sourceDir;
-  const outDir = path.join(outBaseDir, ".build");
-  const currentBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");
+  const outDir = path.join(outBaseDir, options.target === "arduino" ? sketchBaseName : ".build");
+  const currentBaseName = options.target === "arduino"
+    ? path.basename(outDir)
+    : sketchBaseName;
 
   if (options.target === "arduino") {
     cleanStaleArduinoOutputs(outDir, currentBaseName);
@@ -423,8 +809,18 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
     const sourceText = readText(filePath);
     let programIR = buildProgramIR(filePath, sourceText);
 
-    // Apply tree-shaking if enabled
-    programIR = applyTreeShaking(programIR, options.target, options.treeShaking);
+    // Apply tree-shaking for all files.
+    // For non-entry modules, preserve enums to avoid dropping type-level constants
+    // that may be referenced after lowering.
+    if (filePath === entryFile) {
+      programIR = applyTreeShaking(programIR, options.target, options.treeShaking);
+    } else {
+      programIR = applyTreeShaking(programIR, options.target, {
+        enabled: options.treeShaking?.enabled ?? true,
+        ...(options.treeShaking ?? {}),
+        keepUnusedEnums: true,
+      });
+    }
 
     const polyfillContext: PolyfillContext = {
       target: options.target,
@@ -432,6 +828,9 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
       usedIdentifiers: collectUsedIdentifiers(programIR),
     };
     const polyfills = polyfillRegistry.detectAndGenerate(programIR, polyfillContext);
+
+    // Get npm package info for this file (if it's from an npm package)
+    const npmPackage = npmPackages.get(filePath);
 
     const emitted = emitCpp(programIR, {
       outDir,
@@ -441,6 +840,9 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
       emitMaps: options.emitMaps,
       platformContext: options.platformContext,
       polyfills,
+      npmPackage,
+      npmPackages,
+      isEntryFile: filePath === entryFile,
     });
 
     diagnostics.push(...emitted.diagnostics);
@@ -451,6 +853,14 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
 
   if (!entryOutputs) {
     throw new Error(`Unable to transpile entry file '${entryFile}'.`);
+  }
+
+  if (options.target === "arduino") {
+    try {
+      flattenGeneratedModulesIntoSketch(path.dirname(entryOutputs.sourcePath), entryOutputs.sourcePath);
+    } catch {
+      // Best-effort flattening for direct arduino-cli sketch compilation.
+    }
   }
 
   return {

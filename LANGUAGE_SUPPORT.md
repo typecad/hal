@@ -498,7 +498,7 @@ Types are inferred in `build-ir.ts`:
 
 1. Add test case to `example/example.ts` or create new example
 2. Run: `npm run build && npm run transpile -- example/example.ts --target arduino`
-3. Check output in `example/.build/example.ino`
+3. Check output in `example/example/example.ino`
 4. Verify with `--compile-arduino true` if targeting Arduino
 
 ---

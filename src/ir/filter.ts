@@ -76,6 +76,7 @@ export function filterProgramIR(
   return {
     fileName: program.fileName,
     imports: program.imports,
+    reExports: program.reExports,
     structs: program.structs,
     enums: filteredEnums,
     classes: filteredClasses,

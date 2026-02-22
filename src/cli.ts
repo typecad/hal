@@ -114,7 +114,7 @@ function main(): void {
     }
 
     if (options.command === "gen-types") {
-      const outputPath = path.join(options.outDir ?? process.cwd(), ".build", "arduino.d.ts");
+      const outputPath = path.join(options.outDir ?? process.cwd(), "arduino.d.ts");
       
       const arduino = options.platformContext?.arduino;
       const result = generateArduinoTypes({
@@ -166,8 +166,7 @@ function main(): void {
 
     if (options.target === "arduino") {
       const arduino = options.platformContext?.arduino;
-      const transpileBaseDir = options.outDir ?? path.dirname(options.inputFile);
-      const typeDeclPath = path.join(transpileBaseDir, ".build", "arduino.d.ts");
+      const typeDeclPath = path.join(path.dirname(result.sourcePath), "arduino.d.ts");
       const typeResult = generateArduinoTypes({
         fqbn: arduino?.fqbn,
         architecture: arduino?.architecture,

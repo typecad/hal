@@ -8,6 +8,7 @@ import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { resolveArduinoProfile } from "../platform/arduino-profile";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
+import { ResolvedNpmPackage } from "../transpile";
 
 interface EmitterOptions {
   outDir: string;
@@ -17,6 +18,29 @@ interface EmitterOptions {
   emitMaps: boolean;
   platformContext?: PlatformContext;
   polyfills?: RuntimePolyfillIR[];
+  /** Info about the npm package being transpiled (if this file is from an npm package) */
+  npmPackage?: ResolvedNpmPackage;
+  /** Map of all npm packages being transpiled (source path -> package info) */
+  npmPackages?: Map<string, ResolvedNpmPackage>;
+  /** Whether this is the entry file (main .ino for Arduino) */
+  isEntryFile?: boolean;
+}
+
+function normalizeRawExpression(value: string, target: TargetProfile = "generic"): string {
+  let normalized = value
+    .replace(/===/g, "==")
+    .replace(/!==/g, "!=");
+
+  normalized = normalized.replace(/\bPinMode\./g, "PinMode::");
+
+  if (target === "arduino") {
+    normalized = normalized.replace(/\bPinMode::(HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP)\b/g, "PinMode::_$1");
+    normalized = normalized.replace(/\bPinMode::(_?[A-Z_]+)\b/g, "static_cast<int>(PinMode::$1)");
+    normalized = normalized.replace(/\b(Board|Pins)\.(A\d+|D\d+|LED)\./g, "$1.$2->");
+    normalized = normalized.replace(/\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|abs|max|min)\b/g, "$1");
+  }
+
+  return normalized;
 }
 
 function normalizeComment(comment: string): string[] {
@@ -38,7 +62,7 @@ function emitCommentLines(
   }
 }
 
-function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) => string): string {
+function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) => string, target: TargetProfile = "generic"): string {
   switch (expr.kind) {
     case "number":
       return `${expr.value}`;
@@ -51,24 +75,24 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
     case "raw":
       // Apply transformation to raw expressions (for fixing pointer field access)
       if (exprTransformer) {
-        return exprTransformer(expr.value);
+        return normalizeRawExpression(exprTransformer(expr.value), target);
       }
-      return expr.value;
+      return normalizeRawExpression(expr.value, target);
     case "await":
-      return renderExpression(expr.value);
+      return renderExpression(expr.value, exprTransformer, target);
     case "ternary":
-      return `(${renderExpression(expr.condition)} ? ${renderExpression(expr.whenTrue)} : ${renderExpression(expr.whenFalse)})`;
+      return `(${renderExpression(expr.condition, exprTransformer, target)} ? ${renderExpression(expr.whenTrue, exprTransformer, target)} : ${renderExpression(expr.whenFalse, exprTransformer, target)})`;
     case "array":
-      const elements = expr.elements.map((e) => renderExpression(e)).join(", ");
+      const elements = expr.elements.map((e) => renderExpression(e, exprTransformer, target)).join(", ");
       return `{ ${elements} }`;
     case "object":
-      const fields = expr.fields.map((f) => `.${f.name} = ${renderExpression(f.value)}`).join(", ");
+      const fields = expr.fields.map((f) => `${renderExpression(f.value, exprTransformer, target)}`).join(", ");
       return `{ ${fields} }`;
     case "instanceof":
       // C++ doesn't have native instanceof - use dynamic_cast with RTTI
       // Note: This assumes the object is a pointer (from 'new'). For non-pointer objects,
       // the behavior may differ. Full type tracking would be needed for correct handling.
-      return `(dynamic_cast<const ${expr.className}*>(${renderExpression(expr.object)}) != nullptr)`;
+      return `(dynamic_cast<const ${expr.className}*>(${renderExpression(expr.object, exprTransformer, target)}) != nullptr)`;
     case "spread_array":
       // Spread arrays need to be handled in variable declaration context
       // For expression context, emit a comment warning
@@ -95,6 +119,10 @@ function mapReturnType(functionName: string, returnType: string, target: TargetP
 
   if (functionName === "setup" || functionName === "loop") {
     return "void";
+  }
+
+  if (target === "arduino" && returnType === "std::string") {
+    return "const char*";
   }
 
   return returnType;
@@ -140,7 +168,13 @@ function collectDeclaredTypes(program: ProgramIR): string[] {
   return types;
 }
 
-function inferObjectFieldType(value: ExpressionIR, pointerVarTypes?: Map<string, string>): string {
+function inferObjectFieldType(
+  value: ExpressionIR,
+  pointerVarTypes?: Map<string, string>,
+  knownFunctionReturnTypes?: Map<string, string>,
+  knownObjectTypes?: Map<string, string>,
+  knownObjectFieldTypes?: Map<string, Map<string, string>>,
+): string {
   if (value.kind === "number") {
     return Number.isInteger(value.value) ? "int" : "float";
   }
@@ -154,11 +188,53 @@ function inferObjectFieldType(value: ExpressionIR, pointerVarTypes?: Map<string,
   }
 
   if (value.kind === "identifier") {
+    if (knownObjectTypes && knownObjectTypes.has(value.value)) {
+      return knownObjectTypes.get(value.value)!;
+    }
+    if (value.value === "Pins") {
+      return "_Pins_t";
+    }
     // Check if this identifier is a known pointer variable
     if (pointerVarTypes && pointerVarTypes.has(value.value)) {
       return pointerVarTypes.get(value.value)!;
     }
     return "int";
+  }
+
+  if (value.kind === "raw") {
+    const memberAccessMatch = value.value.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (memberAccessMatch && knownObjectFieldTypes) {
+      const objectName = memberAccessMatch[1];
+      const fieldName = memberAccessMatch[2];
+      const fields = knownObjectFieldTypes.get(objectName);
+      if (fields?.has(fieldName)) {
+        return fields.get(fieldName)!;
+      }
+      if (objectName === "Pins") {
+        if (["D3", "D5", "D6", "D9", "D10", "D11"].includes(fieldName)) {
+          return "AVRPWMPin*";
+        }
+        if (/^A\d+$/.test(fieldName)) {
+          return "AVRAnalogPin*";
+        }
+        if (/^D\d+$/.test(fieldName) || fieldName === "LED") {
+          return "AVRDigitalPin*";
+        }
+      }
+    }
+
+    const newMatch = value.value.match(/^new\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+    if (newMatch) {
+      return `${newMatch[1]}*`;
+    }
+
+    const callMatch = value.value.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+    if (callMatch && knownFunctionReturnTypes) {
+      const inferred = knownFunctionReturnTypes.get(callMatch[1]);
+      if (inferred) {
+        return inferred;
+      }
+    }
   }
 
   if (value.kind === "array") {
@@ -235,6 +311,147 @@ function hasArrayInObjectLiteral(program: ProgramIR): boolean {
     }
   }
 
+  return false;
+}
+
+function hasThrowStatements(program: ProgramIR): boolean {
+  const statementHasThrow = (statement: StatementIR): boolean => {
+    if (statement.kind === "throw") {
+      return true;
+    }
+
+    if (statement.kind === "while" || statement.kind === "do_while") {
+      return statement.body.some(statementHasThrow);
+    }
+
+    if (statement.kind === "for" || statement.kind === "for_of" || statement.kind === "for_in") {
+      return statement.body.some(statementHasThrow);
+    }
+
+    if (statement.kind === "if") {
+      return statement.thenBranch.some(statementHasThrow) || (statement.elseBranch?.some(statementHasThrow) ?? false);
+    }
+
+    if (statement.kind === "switch") {
+      return statement.cases.some((caseClause) => caseClause.body.some(statementHasThrow));
+    }
+
+    if (statement.kind === "try") {
+      return statement.tryBlock.some(statementHasThrow) || (statement.catchBlock?.some(statementHasThrow) ?? false);
+    }
+
+    return false;
+  };
+
+  if (program.topLevelStatements.some(statementHasThrow)) {
+    return true;
+  }
+
+  for (const fn of program.functions) {
+    if (fn.statements.some(statementHasThrow)) {
+      return true;
+    }
+  }
+
+  for (const classDef of program.classes) {
+    if (classDef.methods.some((method) => method.statements.some(statementHasThrow))) {
+      return true;
+    }
+    if (classDef.constructor && classDef.constructor.statements.some(statementHasThrow)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasStdMathCalls(program: ProgramIR): boolean {
+  const mathPattern = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|abs|max|min)\b/;
+
+  const expressionHasMath = (expr: ExpressionIR): boolean => {
+    if (expr.kind === "raw") {
+      return mathPattern.test(expr.value);
+    }
+    if (expr.kind === "await") {
+      return expressionHasMath(expr.value);
+    }
+    if (expr.kind === "ternary") {
+      return expressionHasMath(expr.condition) || expressionHasMath(expr.whenTrue) || expressionHasMath(expr.whenFalse);
+    }
+    if (expr.kind === "array") {
+      return expr.elements.some(expressionHasMath);
+    }
+    if (expr.kind === "object") {
+      return expr.fields.some((field) => expressionHasMath(field.value));
+    }
+    if (expr.kind === "instanceof") {
+      return expressionHasMath(expr.object);
+    }
+    if (expr.kind === "spread_array") {
+      return expressionHasMath(expr.spreadExpr) || expr.additionalElements.some(expressionHasMath);
+    }
+    return false;
+  };
+
+  const statementHasMath = (statement: StatementIR): boolean => {
+    if (statement.kind === "call") {
+      return statement.args.some(expressionHasMath);
+    }
+    if (statement.kind === "var_decl") {
+      return statement.initializer ? expressionHasMath(statement.initializer) : false;
+    }
+    if (statement.kind === "assign") {
+      return expressionHasMath(statement.value);
+    }
+    if (statement.kind === "return") {
+      return statement.value ? expressionHasMath(statement.value) : false;
+    }
+    if (statement.kind === "while" || statement.kind === "do_while") {
+      return expressionHasMath(statement.condition) || statement.body.some(statementHasMath);
+    }
+    if (statement.kind === "if") {
+      return expressionHasMath(statement.condition) || statement.thenBranch.some(statementHasMath) || (statement.elseBranch?.some(statementHasMath) ?? false);
+    }
+    if (statement.kind === "for") {
+      return (statement.initializer ? statementHasMath(statement.initializer) : false)
+        || (statement.condition ? expressionHasMath(statement.condition) : false)
+        || (statement.increment ? statementHasMath(statement.increment) : false)
+        || statement.body.some(statementHasMath);
+    }
+    if (statement.kind === "for_of") {
+      return statementHasMath(statement.variable) || expressionHasMath(statement.iterable) || statement.body.some(statementHasMath);
+    }
+    if (statement.kind === "for_in") {
+      return statementHasMath(statement.variable) || expressionHasMath(statement.object) || statement.body.some(statementHasMath);
+    }
+    if (statement.kind === "switch") {
+      return expressionHasMath(statement.expression) || statement.cases.some((caseClause) =>
+        (caseClause.value ? expressionHasMath(caseClause.value) : false) || caseClause.body.some(statementHasMath)
+      );
+    }
+    if (statement.kind === "try") {
+      return statement.tryBlock.some(statementHasMath) || (statement.catchBlock?.some(statementHasMath) ?? false);
+    }
+    if (statement.kind === "throw") {
+      return expressionHasMath(statement.value);
+    }
+    return false;
+  };
+
+  if (program.topLevelStatements.some(statementHasMath)) {
+    return true;
+  }
+  if (program.functions.some((fn) => fn.statements.some(statementHasMath))) {
+    return true;
+  }
+  for (const classDef of program.classes) {
+    if (classDef.methods.some((method) => method.statements.some(statementHasMath))) {
+      return true;
+    }
+    if (classDef.constructor && classDef.constructor.statements.some(statementHasMath)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -400,17 +617,23 @@ function dedupe<T>(items: T[]): T[] {
   return [...new Set(items)];
 }
 
-function renderParameters(parameters: Array<{ name: string; cppType: string; defaultValue?: any }>): string {
+function renderParameters(
+  parameters: Array<{ name: string; cppType: string; defaultValue?: any }>,
+  target: TargetProfile = "generic",
+): string {
   if (parameters.length === 0) {
     return "";
   }
 
   return parameters
     .map((parameter) => {
-      const type = parameter.cppType === "auto" ? "int" : parameter.cppType;
+      let type = parameter.cppType === "auto" ? "int" : parameter.cppType;
+      if (target === "arduino" && type === "std::string") {
+        type = "const char*";
+      }
       let result = `${type} ${parameter.name}`;
       if (parameter.defaultValue) {
-        result += ` = ${renderExpression(parameter.defaultValue)}`;
+        result += ` = ${renderExpression(parameter.defaultValue, undefined, target)}`;
       }
       return result;
     })
@@ -523,24 +746,35 @@ function collectPointerVarTypes(statements: StatementIR[]): Map<string, string> 
   return pointerVarTypes;
 }
 
-function renderStatement(statement: StatementIR, forHeader: boolean = false, target: TargetProfile = "generic", pointerVarTypes?: Map<string, string>, calleeTransformer?: (callee: string) => string): string {
+function renderStatement(
+  statement: StatementIR,
+  forHeader: boolean = false,
+  target: TargetProfile = "generic",
+  pointerVarTypes?: Map<string, string>,
+  calleeTransformer?: (callee: string) => string,
+  knownFunctionReturnTypes?: Map<string, string>,
+): string {
   if (statement.kind === "call") {
     // Handle console.* calls specially
     if (isConsoleCall(statement.callee)) {
       return transformConsoleCall(statement.callee, statement.args, target, forHeader);
     }
     let callee = statement.callee;
+    if (callee.startsWith("this.")) {
+      callee = `this->${callee.slice("this.".length)}`;
+    }
     if (calleeTransformer) {
       callee = calleeTransformer(callee);
     }
-    const renderedArgs = statement.args.map((arg) => renderExpression(arg)).join(", ");
+    callee = normalizeRawExpression(callee, target);
+    const renderedArgs = statement.args.map((arg) => renderExpression(arg, undefined, target)).join(", ");
     return forHeader ? `${callee}(${renderedArgs})` : `${callee}(${renderedArgs});`;
   }
 
   if (statement.kind === "assign") {
     return forHeader 
-      ? `${statement.target} ${statement.operator} ${renderExpression(statement.value)}`
-      : `${statement.target} ${statement.operator} ${renderExpression(statement.value)};`;
+      ? `${statement.target} ${statement.operator} ${renderExpression(statement.value, undefined, target)}`
+      : `${statement.target} ${statement.operator} ${renderExpression(statement.value, undefined, target)};`;
   }
 
   if (statement.kind === "update") {
@@ -550,20 +784,20 @@ function renderStatement(statement: StatementIR, forHeader: boolean = false, tar
   }
 
   if (statement.kind === "return") {
-    return statement.value ? `return ${renderExpression(statement.value)};` : "return;";
+    return statement.value ? `return ${renderExpression(statement.value, undefined, target)};` : "return;";
   }
 
   if (statement.kind === "while") {
-    return `while (${renderExpression(statement.condition)})`;
+    return `while (${renderExpression(statement.condition, undefined, target)})`;
   }
 
   if (statement.kind === "if") {
-    return `if (${renderExpression(statement.condition)})`;
+    return `if (${renderExpression(statement.condition, undefined, target)})`;
   }
 
   if (statement.kind === "for") {
     const init = statement.initializer ? renderStatement(statement.initializer, true) : "";
-    const cond = statement.condition ? renderExpression(statement.condition) : "";
+    const cond = statement.condition ? renderExpression(statement.condition, undefined, target) : "";
     const incr = statement.increment ? renderStatement(statement.increment, true) : "";
     return `for (${init}; ${cond}; ${incr})`;
   }
@@ -573,9 +807,9 @@ function renderStatement(statement: StatementIR, forHeader: boolean = false, tar
     if (varDecl.kind === "var_decl") {
       const prefix = varDecl.storage === "const" ? `const ${varDecl.cppType}` : varDecl.cppType;
       const varName = varDecl.name;
-      return `for (${prefix} ${varName} : ${renderExpression(statement.iterable)})`;
+      return `for (${prefix} ${varName} : ${renderExpression(statement.iterable, undefined, target)})`;
     }
-    return `for (auto item : ${renderExpression(statement.iterable)})`;
+    return `for (auto item : ${renderExpression(statement.iterable, undefined, target)})`;
   }
 
   if (statement.kind === "for_in") {
@@ -587,9 +821,9 @@ function renderStatement(statement: StatementIR, forHeader: boolean = false, tar
       const prefix = varDecl.storage === "const" ? `const ${varDecl.cppType}` : varDecl.cppType;
       const varName = varDecl.name;
       // Use a key iteration pattern - the object should be a map-like structure
-      return `for (${prefix} ${varName} : ${renderExpression(statement.object)})`;
+      return `for (${prefix} ${varName} : ${renderExpression(statement.object, undefined, target)})`;
     }
-    return `for (auto key : ${renderExpression(statement.object)})`;
+    return `for (auto key : ${renderExpression(statement.object, undefined, target)})`;
   }
 
   if (statement.kind === "break") {
@@ -605,7 +839,7 @@ function renderStatement(statement: StatementIR, forHeader: boolean = false, tar
   }
 
   if (statement.kind === "switch") {
-    return `switch (${renderExpression(statement.expression)})`;
+    return `switch (${renderExpression(statement.expression, undefined, target)})`;
   }
 
   if (statement.kind === "try") {
@@ -613,7 +847,10 @@ function renderStatement(statement: StatementIR, forHeader: boolean = false, tar
   }
 
   if (statement.kind === "throw") {
-    return `throw ${renderExpression(statement.value)};`;
+    if (target === "arduino") {
+      return "for (;;) {}";
+    }
+    return `throw ${renderExpression(statement.value, undefined, target)};`;
   }
 
   if (statement.kind !== "var_decl") {
@@ -641,10 +878,15 @@ function renderStatement(statement: StatementIR, forHeader: boolean = false, tar
     if (statement.initializer.kind === "object") {
       const structName = `_${statement.name}_t`;
       const fieldDefs = statement.initializer.fields
-        .map((f) => `${inferObjectFieldType(f.value, pointerVarTypes)} ${f.name};`)
+        .map((f) => `${inferObjectFieldType(f.value, pointerVarTypes, knownFunctionReturnTypes)} ${f.name};`)
         .join(" ");
       const initValues = statement.initializer.fields
-        .map((f) => `${renderExpression(f.value)}`)
+        .map((f) => {
+          if (target === "arduino" && f.value.kind === "object") {
+            return "0";
+          }
+          return `${renderExpression(f.value, calleeTransformer, target)}`;
+        })
         .join(", ");
       return forHeader
         ? `struct ${structName} { ${fieldDefs} } ${statement.name} = { ${initValues} }`
@@ -655,27 +897,114 @@ function renderStatement(statement: StatementIR, forHeader: boolean = false, tar
       // For spread arrays, we need to copy the source array and append additional elements
       // Since C++ doesn't have native spread, we create a larger array with all elements
       const arrayType = statement.initializer.elementType === "auto" ? "int" : statement.initializer.elementType;
-      const spreadName = renderExpression(statement.initializer.spreadExpr);
-      const additionalElements = statement.initializer.additionalElements.map(e => renderExpression(e)).join(", ");
+      const spreadName = renderExpression(statement.initializer.spreadExpr, calleeTransformer, target);
+      const additionalElements = statement.initializer.additionalElements.map(e => renderExpression(e, calleeTransformer, target)).join(", ");
       // Emit a comment indicating the spread behavior - for full support would need runtime helper
       return forHeader
         ? `${arrayType} ${statement.name}[] = { /* spread from ${spreadName} */ ${additionalElements} }`
         : `${arrayType} ${statement.name}[] = { /* spread from ${spreadName} */ ${additionalElements} };`;
     }
     return forHeader 
-      ? `${prefix} ${statement.name} = ${renderExpression(statement.initializer, calleeTransformer)}`
-      : `${prefix} ${statement.name} = ${renderExpression(statement.initializer, calleeTransformer)};`;
+      ? `${prefix} ${statement.name} = ${renderExpression(statement.initializer, calleeTransformer, target)}`
+      : `${prefix} ${statement.name} = ${renderExpression(statement.initializer, calleeTransformer, target)};`;
   }
 
   return forHeader ? `${prefix} ${statement.name}` : `${prefix} ${statement.name};`;
 }
 
+/**
+ * Resolves an import to a local header file if it's from a transpiled npm package
+ */
+function resolveTranspiledModuleInclude(
+  moduleSpecifier: string,
+  npmPackages: Map<string, ResolvedNpmPackage> | undefined,
+  fromFilePath: string
+): { include: string; isTranspiled: boolean } {
+  if (!npmPackages || npmPackages.size === 0) {
+    return { include: "", isTranspiled: false };
+  }
+
+  if (moduleSpecifier.startsWith(".")) {
+    const normalizedSpecifier = moduleSpecifier.endsWith(".js")
+      ? `${moduleSpecifier.slice(0, -3)}.ts`
+      : moduleSpecifier.endsWith(".mjs")
+        ? `${moduleSpecifier.slice(0, -4)}.ts`
+        : moduleSpecifier;
+
+    const basePath = path.resolve(path.dirname(fromFilePath), normalizedSpecifier);
+    const candidates = [
+      basePath,
+      `${basePath}.ts`,
+      `${basePath}.tsx`,
+      path.join(basePath, "index.ts"),
+      path.join(basePath, "index.tsx"),
+    ].map((candidate) => path.resolve(candidate));
+
+    for (const candidate of candidates) {
+      const pkg = npmPackages.get(candidate);
+      if (!pkg) {
+        continue;
+      }
+      const currentPkg = npmPackages.get(path.resolve(fromFilePath));
+      let headerName = `${pkg.moduleKey}.h`;
+      if (currentPkg) {
+        const currentDir = path.posix.dirname(currentPkg.moduleKey.replace(/\\/g, "/"));
+        const targetPath = `${pkg.moduleKey.replace(/\\/g, "/")}.h`;
+        let relativeHeader = path.posix.relative(currentDir, targetPath);
+        if (!relativeHeader.startsWith(".")) {
+          relativeHeader = `./${relativeHeader}`;
+        }
+        headerName = relativeHeader;
+      }
+      return { include: `"${headerName}"`, isTranspiled: true };
+    }
+
+    return { include: "", isTranspiled: false };
+  }
+  
+  // Parse the module specifier to get package name and subpath
+  const parts = moduleSpecifier.split("/");
+  let packageName: string;
+  let subpath: string;
+  
+  if (moduleSpecifier.startsWith("@")) {
+    packageName = parts.length > 1 ? `${parts[0]}/${parts[1]}` : parts[0];
+    subpath = parts.length > 2 ? parts.slice(2).join("/") : "";
+  } else {
+    packageName = parts[0];
+    subpath = parts.length > 1 ? parts.slice(1).join("/") : "";
+  }
+  
+  // Look for a matching npm package in our transpiled modules
+  // The npmPackages map is keyed by source path, so we need to iterate
+  for (const [sourcePath, pkg] of npmPackages) {
+    // Match by package name (e.g., "@typecode/core" or "typecode-implementation")
+    if (pkg.packageName === packageName) {
+      // Use the moduleKey from the package info, which is already computed
+      const headerName = `${pkg.moduleKey}.h`;
+      return { include: `"${headerName}"`, isTranspiled: true };
+    }
+  }
+  
+  return { include: "", isTranspiled: false };
+}
+
 export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedOutputs {
   ensureDir(options.outDir);
 
-  const baseName = path.basename(program.fileName).replace(/\.[^.]+$/, "");
-  const effectiveEmitMode: EmitMode = options.target === "arduino" ? "cpp" : options.emitMode;
-  const sourceExtension = options.target === "arduino" ? "ino" : "cpp";
+  // For npm package files, use the moduleKey as the base name
+  // For entry files, use the original filename
+  const originalBaseName = path.basename(program.fileName).replace(/\.[^.]+$/, "");
+  const outDirBaseName = path.basename(path.resolve(options.outDir));
+  const baseName = options.npmPackage?.moduleKey
+    || (options.target === "arduino" && !options.npmPackage && (options.isEntryFile ?? true) ? outDirBaseName : originalBaseName);
+  
+  // Determine emit mode and extensions
+  // For npm packages, always emit .h/.cpp (not .ino)
+  const isNpmPackage = !!options.npmPackage;
+  const isEntryFile = options.isEntryFile !== false;
+  const effectiveEmitMode: EmitMode = (options.target === "arduino" && !isNpmPackage) ? "cpp" : options.emitMode;
+  const sourceExtension = (options.target === "arduino" && !isNpmPackage && isEntryFile) ? "ino" : "cpp";
   const headerPath = path.join(options.outDir, `${baseName}.h`);
   const sourcePath = path.join(options.outDir, `${baseName}.${sourceExtension}`);
 
@@ -688,7 +1017,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     : undefined;
   const hasAsyncRuntime = (options.polyfills ?? []).some((polyfill) => polyfill.id === "async_arduino");
 
-  if (options.target === "arduino") {
+  if (options.target === "arduino" && !isNpmPackage) {
     const arduinoProfile = resolveArduinoProfile(program, options.platformContext);
     includes.push(...arduinoProfile.forcedIncludes);
     Object.assign(symbolMap, arduinoProfile.symbolAliases);
@@ -697,9 +1026,56 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   for (const imported of program.imports) {
-    const resolved = resolveImport(imported, options.libdefs, options.target, options.platformContext, program.fileName);
-    includes.push(normalizeInclude(resolved.include));
-    Object.assign(symbolMap, resolved.symbolMap);
+    // First check if this import is from a transpiled npm package
+    const transpiledInclude = resolveTranspiledModuleInclude(
+      imported.moduleSpecifier,
+      options.npmPackages,
+      program.fileName
+    );
+    
+    if (transpiledInclude.isTranspiled) {
+      includes.push(transpiledInclude.include);
+      // Keep original symbol names for transpiled modules
+      for (const symbol of imported.namedImports) {
+        symbolMap[symbol] = symbol;
+      }
+    } else {
+      // Fall back to libdef resolution
+      const resolved = resolveImport(imported, options.libdefs, options.target, options.platformContext, program.fileName);
+      includes.push(normalizeInclude(resolved.include));
+      Object.assign(symbolMap, resolved.symbolMap);
+    }
+  }
+
+  // Collect re-export includes for the header file
+  const headerIncludes: string[] = [];
+  for (const reExport of program.reExports) {
+    // First try npm package resolution
+    const transpiledInclude = resolveTranspiledModuleInclude(
+      reExport.moduleSpecifier,
+      options.npmPackages,
+      program.fileName
+    );
+    
+    if (transpiledInclude.isTranspiled) {
+      headerIncludes.push(transpiledInclude.include);
+      continue;
+    }
+    
+    // Handle relative re-exports within npm packages
+    // e.g., export * from "./pins.js" in a package index file
+    if (reExport.moduleSpecifier.startsWith(".")) {
+      // Extract the module name from the relative path
+      // Handle paths like "./pins.js", "./subdir/module.js"
+      let modulePath = reExport.moduleSpecifier;
+      // Remove .js/.mjs extensions
+      modulePath = modulePath.replace(/\.js$/, "").replace(/\.mjs$/, "");
+      // Get the last segment as the base name
+      const segments = modulePath.split("/");
+      const baseName = segments[segments.length - 1] || segments[segments.length - 2];
+      const headerName = `${baseName}.h`;
+      headerIncludes.push(`"${headerName}"`);
+    }
   }
 
   const mappedFunctions = program.functions.map((fn) => ({
@@ -720,6 +1096,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       return stmt;
     }),
   }));
+
+  const knownFunctionReturnTypes = new Map<string, string>();
+  for (const fn of mappedFunctions) {
+    knownFunctionReturnTypes.set(fn.name, fn.returnType);
+  }
+  for (const fn of program.functions) {
+    knownFunctionReturnTypes.set(fn.originalName, mapReturnType(mapFunctionName(fn.originalName, options.target), fn.returnType, options.target));
+  }
 
   const headerLines: string[] = ["#pragma once", ""];
   const sourceLines: string[] = [];
@@ -766,7 +1150,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     emitCommentLines(statement.leadingComments, indent, (line) => appendSourceLine(line));
 
     if (statement.kind === "while") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, options.target, pointerVarTypes)}`, {
+      appendSourceLine(`${indent}${renderStatement(statement, false, options.target, pointerVarTypes, undefined, knownFunctionReturnTypes)}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -780,7 +1164,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "if") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, options.target)}`, {
+      appendSourceLine(`${indent}${renderStatement(statement, false, options.target, undefined, undefined, knownFunctionReturnTypes)}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -802,7 +1186,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "for") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, options.target)}`, {
+      appendSourceLine(`${indent}${renderStatement(statement, false, options.target, undefined, undefined, knownFunctionReturnTypes)}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -816,7 +1200,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "for_of") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, options.target)}`, {
+      appendSourceLine(`${indent}${renderStatement(statement, false, options.target, undefined, undefined, knownFunctionReturnTypes)}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -830,7 +1214,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "for_in") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, options.target)}`, {
+      appendSourceLine(`${indent}${renderStatement(statement, false, options.target, undefined, undefined, knownFunctionReturnTypes)}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -905,7 +1289,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "throw") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, options.target)}`, {
+      appendSourceLine(`${indent}${renderStatement(statement, false, options.target, undefined, undefined, knownFunctionReturnTypes)}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -913,7 +1297,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       return;
     }
 
-    appendSourceLine(`${indent}${renderStatement(statement, false, options.target, pointerVarTypes, fixPointerFieldAccess)}`, {
+    appendSourceLine(`${indent}${renderStatement(statement, false, options.target, pointerVarTypes, fixPointerFieldAccess, knownFunctionReturnTypes)}`, {
       tsSpan: statement.sourceSpan,
       nodeKind: statement.kind,
     });
@@ -922,6 +1306,13 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   if (effectiveEmitMode === "split") {
     appendSourceLine(`#include \"${baseName}.h\"`);
+  }
+
+  if (effectiveEmitMode === "split" && program.classes.length > 0) {
+    for (const classDef of program.classes) {
+      appendHeaderLine(`class ${classDef.name};`);
+    }
+    appendHeaderLine("");
   }
 
   // Add iostream for generic C++ when console calls are used
@@ -935,14 +1326,20 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   if (declaredTypes.some((typeName) => typeName.includes("std::string")) && options.target !== "arduino") {
     includes.push("<string>");
   }
-  if (declaredTypes.some((typeName) => typeName.includes("std::vector<"))) {
+  if (options.target !== "arduino" && declaredTypes.some((typeName) => typeName.includes("std::vector<"))) {
     includes.push("<vector>");
   }
-  if (hasArrayInObjectLiteral(program)) {
+  if (options.target !== "arduino" && hasArrayInObjectLiteral(program)) {
     includes.push("<vector>");
   }
   if (declaredTypes.some((typeName) => typeName.includes("std::function<"))) {
     includes.push("<functional>");
+  }
+  if (hasThrowStatements(program) && options.target !== "arduino") {
+    includes.push("<stdexcept>");
+  }
+  if (hasStdMathCalls(program)) {
+    includes.push(options.target === "arduino" ? "<math.h>" : "<cmath>");
   }
   if (emittedPolyfills) {
     includes.push(...emittedPolyfills.includes.map((include) => normalizeInclude(include)));
@@ -1003,7 +1400,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   // Arduino reserved names that conflict with macros
-  const arduinoReservedNames = new Set(["HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP"]);
+  const arduinoReservedNames = new Set(["HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE"]);
 
   // Separate compile-time declarations from runtime statements
   // Compile-time declarations (literals, simple identifiers, static arrays) can go at global scope
@@ -1042,6 +1439,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     return !entrypointCallNames.has(statement.callee) && !entrypointCallNames.has(mappedCallee);
   });
 
+  const emittedTopLevelStatements = isEntryFile
+    ? filteredTopLevelDeclarations
+    : [
+        ...filteredTopLevelDeclarations,
+        ...filteredTopLevelExecutables.filter((statement) => statement.kind === "var_decl"),
+      ];
+
+  const knownTopLevelObjectTypes = new Map<string, string>();
+  const knownTopLevelObjectFields = new Map<string, Map<string, string>>();
+
   // Collect pointer variable types from all executable statements
   const allExecutableStatements: StatementIR[] = [...filteredTopLevelExecutables];
   for (const fn of mappedFunctions) {
@@ -1055,7 +1462,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (stmt.kind === "var_decl" && stmt.initializer?.kind === "object") {
       const structName = stmt.name;
       for (const field of stmt.initializer.fields) {
-        const fieldType = inferObjectFieldType(field.value, globalPointerVarTypes);
+        const fieldType = inferObjectFieldType(field.value, globalPointerVarTypes, knownFunctionReturnTypes);
         if (fieldType.endsWith("*")) {
           pointerStructFields.add(`${structName}.${field.name}`);
         }
@@ -1078,7 +1485,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // For Arduino: merge top-level executables into setup() function
   // For generic C++: wrap top-level executables in main() function
-  if (filteredTopLevelExecutables.length > 0) {
+  if (isEntryFile && filteredTopLevelExecutables.length > 0) {
     if (options.target === "arduino") {
       // Find setup function and prepend top-level executables
       const setupFn = mappedFunctions.find(fn => fn.name === "setup");
@@ -1118,7 +1525,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   // Arduino requires a loop() function even if empty
-  if (options.target === "arduino" && !mappedFunctions.some((fn) => fn.name === "loop")) {
+  // Only generate for entry files, not for npm package modules
+  if (isEntryFile && options.target === "arduino" && !mappedFunctions.some((fn) => fn.name === "loop")) {
     mappedFunctions.push({
       name: "loop",
       returnType: "void",
@@ -1130,7 +1538,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     });
   }
 
-  if (hasAsyncRuntime && options.target !== "arduino" && !mappedFunctions.some((fn) => fn.name === "main")) {
+  // Only generate main() for entry files, not for npm package modules
+  if (isEntryFile && hasAsyncRuntime && options.target !== "arduino" && !mappedFunctions.some((fn) => fn.name === "main")) {
     mappedFunctions.push({
       name: "main",
       returnType: "int",
@@ -1144,9 +1553,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // Emit enums
   for (const enumDef of program.enums) {
-    emitCommentLines(enumDef.leadingComments, "", (line) => appendSourceLine(line));
+    const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
+    emitCommentLines(enumDef.leadingComments, "", (line) => appendLine(line));
     const enumKeyword = enumDef.isConst ? "enum class" : "enum class";
-    appendSourceLine(`${enumKeyword} ${enumDef.name} {`);
+    appendLine(`${enumKeyword} ${enumDef.name} {`);
     for (let i = 0; i < enumDef.members.length; i++) {
       const member = enumDef.members[i];
       const valueSuffix = member.value !== undefined ? ` = ${member.value}` : "";
@@ -1155,16 +1565,17 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const memberName = (options.target === "arduino" && arduinoReservedNames.has(member.name)) 
         ? `_${member.name}` 
         : member.name;
-      appendSourceLine(`  ${memberName}${valueSuffix}${commaSuffix}`);
+      appendLine(`  ${memberName}${valueSuffix}${commaSuffix}`);
     }
-    appendSourceLine("};");
-    emitCommentLines(enumDef.trailingComments, "", (line) => appendSourceLine(line));
-    appendSourceLine("");
+    appendLine("};");
+    emitCommentLines(enumDef.trailingComments, "", (line) => appendLine(line));
+    appendLine("");
   }
 
   // Emit type aliases
   for (const typeAlias of program.typeAliases) {
-    emitCommentLines(typeAlias.leadingComments, "", (line) => appendSourceLine(line));
+    const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
+    emitCommentLines(typeAlias.leadingComments, "", (line) => appendLine(line));
     // Skip type aliases with 'auto' as it's not valid in C++ type aliases
     // Also skip for Arduino if the type uses std::string (not available on AVR)
     const cppType = typeAlias.cppType;
@@ -1174,15 +1585,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (options.target === "arduino" && cppType.includes("std::string")) {
       continue; // Skip std::string type aliases for Arduino
     }
-    appendSourceLine(`using ${typeAlias.name} = ${cppType};`);
-    emitCommentLines(typeAlias.trailingComments, "", (line) => appendSourceLine(line));
-    appendSourceLine("");
+    appendLine(`using ${typeAlias.name} = ${cppType};`);
+    emitCommentLines(typeAlias.trailingComments, "", (line) => appendLine(line));
+    appendLine("");
   }
 
   // Emit classes
   for (const classDef of program.classes) {
     emitCommentLines(classDef.leadingComments, "", (line) => appendSourceLine(line));
-    appendSourceLine(`class ${classDef.name} {`);
+    const inheritanceClause = classDef.extendsClass ? ` : public ${classDef.extendsClass}` : "";
+    appendSourceLine(`class ${classDef.name}${inheritanceClause} {`);
     
     // Group fields by visibility
     const publicFields = classDef.fields.filter(f => f.visibility === "public");
@@ -1206,9 +1618,18 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
               cppType: p.cppType === "std::string" ? "const char*" : p.cppType
             }))
           : classDef.constructor.parameters;
-        const ctorParams = renderParameters(arduinoParams);
-        appendSourceLine(`  ${classDef.name}(${ctorParams}) {`);
-        for (const stmt of classDef.constructor.statements) {
+        const ctorParams = renderParameters(arduinoParams, options.target);
+        let ctorInitializer = "";
+        let ctorStatements = classDef.constructor.statements;
+        const firstCtorStatement = ctorStatements[0];
+        if (classDef.extendsClass && firstCtorStatement && firstCtorStatement.kind === "call" && firstCtorStatement.callee === "super") {
+          const baseArgs = firstCtorStatement.args.map((arg) => renderExpression(arg, fixPointerFieldAccess)).join(", ");
+          ctorInitializer = ` : ${classDef.extendsClass}(${baseArgs})`;
+          ctorStatements = ctorStatements.slice(1);
+        }
+
+        appendSourceLine(`  ${classDef.name}(${ctorParams})${ctorInitializer} {`);
+        for (const stmt of ctorStatements) {
           appendRenderedStatement(stmt, "    ");
         }
         appendSourceLine("  }");
@@ -1234,7 +1655,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       
       // Public methods
       for (const method of publicMethods) {
-        const methodParams = renderParameters(method.parameters);
+        const methodParams = renderParameters(method.parameters, options.target);
         const staticPrefix = method.isStatic ? "static " : "";
         // Replace 'auto' return type with 'int' for C++ (auto return requires trailing return type or deduction)
         let returnType = method.returnType;
@@ -1271,7 +1692,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine("");
       }
       for (const method of privateMethods) {
-        const methodParams = renderParameters(method.parameters);
+        const methodParams = renderParameters(method.parameters, options.target);
         const staticPrefix = method.isStatic ? "static " : "";
         appendSourceLine(`  ${staticPrefix}${method.returnType} ${method.name}(${methodParams}) {`);
         for (const stmt of method.statements) {
@@ -1293,7 +1714,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine("");
       }
       for (const method of protectedMethods) {
-        const methodParams = renderParameters(method.parameters);
+        const methodParams = renderParameters(method.parameters, options.target);
         const staticPrefix = method.isStatic ? "static " : "";
         appendSourceLine(`  ${staticPrefix}${method.returnType} ${method.name}(${methodParams}) {`);
         for (const stmt of method.statements) {
@@ -1309,15 +1730,60 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("");
   }
 
-  for (const statement of filteredTopLevelDeclarations) {
+  for (const statement of emittedTopLevelStatements) {
+    if (
+      effectiveEmitMode === "split" &&
+      statement.kind === "var_decl" &&
+      statement.initializer?.kind === "object"
+    ) {
+      const structName = `_${statement.name}_t`;
+      const fieldTypeEntries = statement.initializer.fields.map((field) => {
+        const inferred = inferObjectFieldType(
+          field.value,
+          globalPointerVarTypes,
+          knownFunctionReturnTypes,
+          knownTopLevelObjectTypes,
+          knownTopLevelObjectFields,
+        );
+        return [field.name, inferred] as const;
+      });
+      const fieldDefs = fieldTypeEntries
+        .map(([fieldName, inferredType]) => `${inferredType} ${fieldName};`)
+        .join(" ");
+      const initValues = statement.initializer.fields
+        .map((field) => {
+          if (options.target === "arduino" && field.value.kind === "object") {
+            return "0";
+          }
+          return renderExpression(field.value, fixPointerFieldAccess, options.target);
+        })
+        .join(", ");
+
+      knownTopLevelObjectTypes.set(statement.name, structName);
+      knownTopLevelObjectFields.set(statement.name, new Map(fieldTypeEntries));
+
+      emitCommentLines(statement.leadingComments, "", (line) => appendHeaderLine(line));
+      appendHeaderLine(`struct ${structName} { ${fieldDefs} };`);
+      appendHeaderLine(`extern ${structName} ${statement.name};`);
+      emitCommentLines(statement.trailingComments, "", (line) => appendHeaderLine(line));
+
+      emitCommentLines(statement.leadingComments, "", (line) => appendSourceLine(line));
+      appendSourceLine(`${structName} ${statement.name} = { ${initValues} };`, {
+        tsSpan: statement.sourceSpan,
+        nodeKind: statement.kind,
+      });
+      emitCommentLines(statement.trailingComments, "", (line) => appendSourceLine(line));
+      continue;
+    }
+
     appendRenderedStatement(statement, "");
   }
-  if (filteredTopLevelDeclarations.length > 0) {
+  if (emittedTopLevelStatements.length > 0) {
     appendSourceLine("");
   }
 
   for (const fn of mappedFunctions) {
-    const parameterList = renderParameters(fn.parameters);
+    const parameterList = renderParameters(fn.parameters, options.target);
     if (effectiveEmitMode === "split") {
       emitCommentLines(fn.leadingComments, "", (line) => appendHeaderLine(line));
       appendHeaderLine(`${fn.returnType} ${fn.name}(${parameterList});`, {
@@ -1352,7 +1818,18 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   let outputHeaderPath: string | undefined;
   let outputHeaderMapPath: string | undefined;
   if (effectiveEmitMode === "split") {
-    writeText(headerPath, headerLines.join("\n").trimEnd() + "\n");
+    // Add re-export includes to the header
+    const finalHeaderLines = [...headerLines];
+    const headerIncludeLines = dedupe([
+      ...includes,
+      ...headerIncludes,
+    ]);
+    if (headerIncludeLines.length > 0) {
+      // Insert includes after #pragma once
+      const includeLines = headerIncludeLines.map((inc) => `#include ${inc}`);
+      finalHeaderLines.splice(1, 0, ...includeLines, "");
+    }
+    writeText(headerPath, finalHeaderLines.join("\n").trimEnd() + "\n");
     outputHeaderPath = headerPath;
     if (options.emitMaps) {
       outputHeaderMapPath = writeSourceMap(makeGeneratedMap(headerPath, program.fileName, headerMapEntries));

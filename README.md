@@ -44,15 +44,15 @@ npm run transpile -- example/example.ts --emit split --target arduino --arduino-
 ```
 
 Outputs:
-- `example/.build/example.ino`
-- `example/.build/example.ino.tscppmap.json`
-- `example/.build/arduino.d.ts`
+- `example/example/example.ino`
+- `example/example/example.ino.tscppmap.json`
+- `example/example/arduino.d.ts`
 
 ## Editor DX for Arduino examples
 
 To avoid red squiggles in `example/example.ts` for Arduino globals like `A0`, `HIGH`, `pinMode`, or `Wire`:
 
-1. Transpile with Arduino target (this auto-generates `./.build/arduino.d.ts` using the same `gen-types` pipeline):
+1. Transpile with Arduino target (this auto-generates `./example/arduino.d.ts` using the same `gen-types` pipeline):
 
 ```bash
 node dist/cli.js transpile .\example\example.ts --emit split --target arduino --arduino-arch avr --fqbn arduino:avr:uno
@@ -64,7 +64,7 @@ node dist/cli.js transpile .\example\example.ts --emit split --target arduino --
 node dist/cli.js gen-types --arduino-arch avr --outDir example
 ```
 
-3. Keep `example/tsconfig.json` present (it includes `example.ts` + `.build/arduino.d.ts` for VS Code TypeScript IntelliSense).
+3. Keep `example/tsconfig.json` present (it includes `example.ts` + `example/arduino.d.ts` for VS Code TypeScript IntelliSense).
 
 This gives the editor a dedicated TypeScript project for sketches without affecting the transpiler build config.
 
@@ -73,7 +73,7 @@ This gives the editor a dedicated TypeScript project for sketches without affect
 Example:
 
 ```bash
-npm run map-error -- example/.build/example.ino.tscppmap.json -- --line 5 --column 10 --message "error: ..."
+npm run map-error -- example/example/example.ino.tscppmap.json -- --line 5 --column 10 --message "error: ..."
 ```
 
 This prints the mapped TypeScript location and node kind for faster debugging.
