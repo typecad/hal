@@ -21,6 +21,21 @@ AST-based Node/npm tool that transpiles TypeScript input into C++ output.
 - `--arduino-cli-json <path>` (optional normalized Arduino metadata JSON override)
 - `--compile-arduino true|false|strict` (default: `false`, runs `arduino-cli compile` after transpile)
 
+### Tree-shaking options
+
+Tree-shaking (dead code elimination) is enabled by default and removes unreachable code from the output:
+
+- `--no-tree-shake` - Disable tree-shaking entirely
+- `--keep-unused-enums` - Keep all enums even if not referenced
+- `--keep-unused-classes` - Keep all classes even if not instantiated
+- `--keep-unused-types` - Keep all type aliases even if not used
+- `--no-report-unused` - Don't emit diagnostics for removed code
+- `--entry-point <name>` - Add a custom entry point symbol (can be used multiple times)
+
+Default entry points:
+- Arduino target: `setup` and `loop`
+- Generic target: `main`
+
 ## Example
 
 ```bash

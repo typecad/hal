@@ -210,12 +210,10 @@ describe("transpileFile module graph", () => {
 
     const sourceText = fs.readFileSync(result.sourcePath, "utf8");
     expect(sourceText).toContain("#include <vector>");
-    expect(sourceText).toContain("#include <functional>");
     expect(sourceText).toContain("#include <string>");
-    expect(sourceText).toContain("using StringList = std::vector<std::string>;");
-    expect(sourceText).toContain("using BoolList = std::vector<bool>;");
-    expect(sourceText).toContain("using Joiner = std::function<std::string(std::vector<std::string>)>;");
-    expect(sourceText).toContain("using AnyTrue = std::function<bool(std::vector<bool>)>;");
+    // Function type aliases are transpiled as direct function declarations
+    expect(sourceText).toContain("std::string joinItems(std::vector<std::string> items)");
+    expect(sourceText).toContain("bool anyTrue(std::vector<bool> items)");
 
     const warningCodes = result.diagnostics.map((diagnostic) => diagnostic.code);
     expect(warningCodes).not.toContain("TS2CPP_UNMAPPED_TYPE");

@@ -196,10 +196,11 @@ For constrained platforms (AVR), the system generates lightweight alternatives:
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Core IR | ✅ Complete | Functions, classes, enums, control flow |
+| Tree-shaking | ✅ Complete | Dead code elimination via call graph analysis |
 | console.* transforms | ✅ Complete | `console.log` → `std::cout` / `Serial.println` |
 | async/await stubs | ⚠️ Partial | Stub marker only; needs state machine |
-| Array methods | 🔲 Planned | `push`/`pop`/`map`/`filter` |
-| String methods | 🔲 Planned | `split`/`toUpperCase`/`includes` |
+| Array methods | ⚠️ Partial | `push`/`pop`/`length` via polyfills; `map`/`filter` TODO |
+| String methods | ⚠️ Partial | `toUpperCase`/`toLowerCase`/`trim`/`includes` via polyfills |
 | setInterval/setTimeout | 🔲 Planned | Arduino timer abstraction |
 | Promise-like patterns | 🔲 Planned | Cooperative scheduler |
 

@@ -1,5 +1,16 @@
 # Tree-Shaking Feature Plan
 
+> **Status: ✅ IMPLEMENTED** (February 2026)
+>
+> This feature has been fully implemented. The tree-shaking system is enabled by default and includes:
+> - Call graph builder ([`src/ir/call-graph.ts`](../src/ir/call-graph.ts))
+> - Entry point detector ([`src/ir/entry-points.ts`](../src/ir/entry-points.ts))
+> - Reachability analyzer ([`src/ir/reachability.ts`](../src/ir/reachability.ts))
+> - IR filter ([`src/ir/filter.ts`](../src/ir/filter.ts))
+> - Comprehensive test suite ([`tests/tree-shaking.test.ts`](../tests/tree-shaking.test.ts))
+>
+> CLI options are documented in the main README.md.
+
 ## Overview
 
 Add dead code elimination (tree-shaking) to the TypeScript-to-C++ transpiler to reduce output size by only emitting code that is actually reachable from entry points.
