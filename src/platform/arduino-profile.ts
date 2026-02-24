@@ -200,21 +200,31 @@ function collectTopLevelDeclarations(program: ProgramIR): Set<string> {
   return declared;
 }
 
+function toArchitectureFromFqbn(fqbn?: string): string | undefined {
+  if (!fqbn) {
+    return undefined;
+  }
+
+  const parts = fqbn.split(":");
+  return parts.length >= 2 ? parts[1].toLowerCase() : undefined;
+}
+
 function resolveVariant(context?: ArduinoPlatformContext): ArduinoProfileVariant {
-  if (!context?.architecture) {
+  const architecture = toArchitectureFromFqbn(context?.fqbn);
+  if (!architecture) {
     return DEFAULT_PROFILE;
   }
 
-  const architecture = context.architecture.toLowerCase();
   return PROFILE_VARIANTS.find((item) => item.architecture === architecture) ?? DEFAULT_PROFILE;
 }
 
 function resolveCapabilities(context?: ArduinoPlatformContext): ArduinoCapabilities {
-  if (!context?.architecture) {
+  const architecture = toArchitectureFromFqbn(context?.fqbn);
+  if (!architecture) {
     return DEFAULT_CAPABILITIES;
   }
 
-  return CAPABILITY_TABLE.find((item) => item.architecture === context.architecture?.toLowerCase()) ?? DEFAULT_CAPABILITIES;
+  return CAPABILITY_TABLE.find((item) => item.architecture === architecture) ?? DEFAULT_CAPABILITIES;
 }
 
 function mergeCapabilities(base: ArduinoCapabilities, metadata?: ArduinoCliMetadata): ArduinoCapabilities {
@@ -259,13 +269,6 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
   const capabilities = mergeCapabilities(resolveCapabilities(context), metadataResult.metadata);
 
   const diagnostics: Diagnostic[] = [...metadataResult.diagnostics];
-  if (!context?.architecture && !metadataResult.metadata?.architecture) {
-    diagnostics.push({
-      severity: "warning",
-      code: "TS2CPP_ARDUINO_ARCH_UNKNOWN",
-      message: "Arduino architecture not specified. Using default core profile. Pass --arduino-arch for better mappings.",
-    });
-  }
 
   const used = collectUsedIdentifiers(program);
   const calledFunctions = collectCalledFunctions(program);
@@ -338,7 +341,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     diagnostics.push({
       severity: "warning",
       code: "TS2CPP_ARDUINO_SHIM_A0",
-      message: `Injected fallback A0 shim as '${a0Fallback}'. Board-specific analog pin mapping may differ; set --fqbn/--arduino-arch.`,
+      message: `Injected fallback A0 shim as '${a0Fallback}'. Board-specific analog pin mapping may differ; set --fqbn for accurate pin mapping.`,
     });
   }
 

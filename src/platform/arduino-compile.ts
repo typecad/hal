@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import { ArduinoCompileError, ArduinoCompileResult } from "../types";
+import { ArduinoCompileError, ArduinoCompileResult, ArduinoUploadResult } from "../types";
 
 const GCC_STYLE = /^(.*?):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.*)$/i;
 
@@ -148,4 +148,25 @@ export function compileArduinoSketch(sketchFilePath: string, fqbn: string): Ardu
     output,
     errors,
   };
+}
+
+export function uploadArduinoSketch(sketchDir: string, fqbn: string, port: string): ArduinoUploadResult {
+  const cmd = spawnSync("arduino-cli", ["upload", "--fqbn", fqbn, "--port", port, sketchDir], {
+    encoding: "utf8",
+    timeout: 60000,
+  });
+
+  const output = `${cmd.stdout ?? ""}\n${cmd.stderr ?? ""}`.trim();
+
+  return {
+    success: cmd.status === 0,
+    output,
+  };
+}
+
+export function monitorArduinoSketch(port: string, baud: number): void {
+  spawnSync("arduino-cli", ["monitor", "--port", port, "--config", `baudrate=${baud}`], {
+    stdio: "inherit",
+    timeout: 0,
+  });
 }

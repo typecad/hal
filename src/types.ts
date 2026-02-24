@@ -3,10 +3,6 @@ export type TargetProfile = "generic" | "arduino";
 
 export interface ArduinoPlatformContext {
   fqbn?: string;
-  architecture?: "avr" | "esp32" | "samd" | "rp2040" | string;
-  core?: string;
-  variant?: string;
-  arduinoCliJsonPath?: string;
 }
 
 export interface PlatformContext {
@@ -79,7 +75,6 @@ export interface TranspileOptions {
   emitMode: EmitMode;
   target: TargetProfile;
   emitMaps: boolean;
-  compileArduino: false | true | "strict";
   platformContext?: PlatformContext;
   /** Tree-shaking options for dead code elimination */
   treeShaking?: TreeShakingOptions;
@@ -106,13 +101,22 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "transpile" | "gen-libdefs" | "gen-types" | "map-error";
+  command: "default" | "gen-libdefs" | "map-error";
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;
   outDir?: string;
   emitMaps: boolean;
-  compileArduino: false | true | "strict";
+  /** Run arduino-cli compile after transpilation */
+  compile: boolean;
+  /** Run arduino-cli upload after compilation (requires compile) */
+  upload: boolean;
+  /** Run arduino-cli monitor after upload */
+  monitor: boolean;
+  /** Serial port for upload and monitor (e.g. COM4 or /dev/ttyACM0) */
+  port?: string;
+  /** Baud rate for monitor (default: 9600) */
+  baud: number;
   platformContext?: PlatformContext;
   mapFile?: string;
   cppFile?: string;
@@ -148,4 +152,9 @@ export interface ArduinoCompileResult {
   success: boolean;
   output: string;
   errors: ArduinoCompileError[];
+}
+
+export interface ArduinoUploadResult {
+  success: boolean;
+  output: string;
 }

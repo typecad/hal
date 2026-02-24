@@ -439,6 +439,16 @@ export interface TranspileGraphResult {
 }
 
 /**
+ * Checks whether a resolved file path belongs to the typecode SDK
+ * (i.e. lives under a `code/core/` or `code/board-*` directory).
+ * These files are type-level definitions only and must NOT be transpiled to C++.
+ */
+function isTypecodeSDKPath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/");
+  return /\/code\/core\//.test(normalized) || /\/code\/board-/.test(normalized);
+}
+
+/**
  * Collects all files that need to be transpiled, following both relative and npm imports
  */
 function collectTranspileGraph(entryFile: string): TranspileGraphResult {
@@ -454,6 +464,12 @@ function collectTranspileGraph(entryFile: string): TranspileGraphResult {
     }
 
     visited.add(filePath);
+
+    // Skip typecode SDK files — they are type-level definitions only
+    if (isTypecodeSDKPath(filePath)) {
+      continue;
+    }
+
     ordered.push(filePath);
 
     const sourceText = readText(filePath);
@@ -553,6 +569,30 @@ function collectExpressionIdentifiers(expr: ExpressionIR, identifiers: Set<strin
     for (const element of expr.additionalElements) {
       collectExpressionIdentifiers(element, identifiers);
     }
+    return;
+  }
+
+  if (expr.kind === "binary") {
+    collectExpressionIdentifiers(expr.left, identifiers);
+    collectExpressionIdentifiers(expr.right, identifiers);
+    return;
+  }
+
+  if (expr.kind === "unary") {
+    collectExpressionIdentifiers(expr.operand, identifiers);
+    return;
+  }
+
+  if (expr.kind === "property-access") {
+    collectExpressionIdentifiers(expr.object, identifiers);
+    return;
+  }
+
+  if (expr.kind === "typecode-call") {
+    for (const arg of expr.args) {
+      collectExpressionIdentifiers(arg, identifiers);
+    }
+    return;
   }
 }
 
@@ -824,7 +864,6 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
 
     const polyfillContext: PolyfillContext = {
       target: options.target,
-      architecture: options.platformContext?.arduino?.architecture,
       usedIdentifiers: collectUsedIdentifiers(programIR),
     };
     const polyfills = polyfillRegistry.detectAndGenerate(programIR, polyfillContext);

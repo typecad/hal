@@ -5,9 +5,9 @@
 // peripherals, and metadata under one namespace.
 // ---------------------------------------------------------------------------
 
-import { Board } from './code/board-arduino-uno/board';
+import { Board } from '../code/board-arduino-uno/board';
 
-Board.Serial.initialize({ baudRate: 9600 });
+Board.Serial.initialize({ baudRate: 115200 });
 Board.LED.asOutput();
 
 Board.Serial.println("Arduino Uno booted");

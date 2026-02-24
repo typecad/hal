@@ -7,7 +7,6 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts",
-    "transpile": "node dist/cli.js transpile",
     "gen-libdefs": "node dist/cli.js gen-libdefs",
     "map-error": "node dist/cli.js map-error",
     "test": "vitest run",

@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { ProgramIR, ExpressionIR, StatementIR } from "../ir/model";
 import { Diagnostic, EmitMode, GeneratedOutputs, PlatformContext, SourceMapEntry, TargetProfile } from "../types";
 import { ensureDir, writeText } from "../utils/fs";
@@ -9,6 +10,44 @@ import { resolveArduinoProfile } from "../platform/arduino-profile";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
 import { ResolvedNpmPackage } from "../transpile";
+import { renderArduinoBuiltin, tryRenderTypecodeCallStatement, extractPropertyChain, renderBoardDefinitionAccess } from "./typecode-map";
+import type { BoardConstants } from "../ir/board-resolver";
+
+// ---------------------------------------------------------------------------
+// Emit-time context
+// ---------------------------------------------------------------------------
+// Set at the start of each emitCpp call and consulted by renderExpression.
+// Using a module-level variable avoids threading boardConstants through the
+// entire renderStatement / renderExpression call chain.
+let _emitBoardConstants: BoardConstants | undefined;
+
+/**
+ * Checks if a module specifier (relative) resolves to a typecode SDK path.
+ * Typecode SDK files (code/core/*, code/board-*) are type-level only and
+ * should produce no C++ output or #include directives.
+ */
+function isTypecodeSDKImport(moduleSpecifier: string, fromFile: string): boolean {
+  if (!moduleSpecifier.startsWith(".")) {
+    return false;
+  }
+  const basePath = path.resolve(path.dirname(fromFile), moduleSpecifier);
+  const candidates = [
+    basePath,
+    `${basePath}.ts`,
+    `${basePath}.tsx`,
+    path.join(basePath, "index.ts"),
+    path.join(basePath, "index.tsx"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      const normalized = candidate.replace(/\\/g, "/");
+      if (/\/code\/core\//.test(normalized) || /\/code\/board-/.test(normalized)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 interface EmitterOptions {
   outDir: string;
@@ -26,6 +65,8 @@ interface EmitterOptions {
   isEntryFile?: boolean;
 }
 
+
+
 function normalizeRawExpression(value: string, target: TargetProfile = "generic"): string {
   let normalized = value
     .replace(/===/g, "==")
@@ -36,8 +77,11 @@ function normalizeRawExpression(value: string, target: TargetProfile = "generic"
   if (target === "arduino") {
     normalized = normalized.replace(/\bPinMode::(HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP)\b/g, "PinMode::_$1");
     normalized = normalized.replace(/\bPinMode::(_?[A-Z_]+)\b/g, "static_cast<int>(PinMode::$1)");
-    normalized = normalized.replace(/\b(Board|Pins)\.(A\d+|D\d+|LED)\./g, "$1.$2->");
+    normalized = normalized.replace(/(->|\.)capabilities\.interrupt\b/g, "$1capabilities");
     normalized = normalized.replace(/\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|abs|max|min)\b/g, "$1");
+    normalized = normalized.replace(/\bDate\.now\(\)/g, "millis()");
+    normalized = normalized.replace(/\bundefined\b/g, "0");
+    normalized = normalized.replace(/\bnull\b/g, "0");
   }
 
   return normalized;
@@ -71,6 +115,9 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
     case "boolean":
       return expr.value ? "true" : "false";
     case "identifier":
+      if (target === "arduino" && (expr.value === "null" || expr.value === "undefined")) {
+        return "0";
+      }
       return expr.value;
     case "raw":
       // Apply transformation to raw expressions (for fixing pointer field access)
@@ -97,6 +144,35 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       // Spread arrays need to be handled in variable declaration context
       // For expression context, emit a comment warning
       return `/* spread_array: see variable declaration */`;
+    case "binary": {
+      const leftRendered = renderExpression(expr.left, exprTransformer, target);
+      const rightRendered = renderExpression(expr.right, exprTransformer, target);
+      // In Arduino/C++ you cannot use + to concatenate two string literals (const char*).
+      // Wrap a bare string-literal left operand with String() so the Arduino String
+      // class's operator+ takes over and produces a String result.
+      if (target === "arduino" && expr.operator === "+" && expr.left.kind === "string") {
+        return `String(${leftRendered}) + ${rightRendered}`;
+      }
+      return `${leftRendered} ${expr.operator} ${rightRendered}`;
+    }
+    case "unary":
+      return `${expr.operator}${renderExpression(expr.operand, exprTransformer, target)}`;
+    case "property-access": {
+      const chain = extractPropertyChain(expr);
+      if (chain) {
+        const boardDef = renderBoardDefinitionAccess(chain, target, _emitBoardConstants);
+        if (boardDef !== undefined) return boardDef;
+      }
+      const objStr = renderExpression(expr.object, exprTransformer, target);
+      return `${objStr}.${expr.property}`;
+    }
+    case "typecode-call": {
+      const renderA = (e: ExpressionIR) => renderExpression(e, exprTransformer, target);
+      const translated = renderArduinoBuiltin(expr.receiver, expr.receiverKind, expr.method, expr.args, renderA);
+      if (translated !== undefined) return translated;
+      // Fallback: render as plain method call
+      return `${expr.receiver}.${expr.method}(${expr.args.map(renderA).join(", ")})`;
+    }
     default:
       return "/* unsupported_expr */";
   }
@@ -112,6 +188,40 @@ function mapFunctionName(originalName: string, target: TargetProfile): string {
   return originalName;
 }
 
+function normalizeCppTypeForTarget(typeName: string, target: TargetProfile): string {
+  if (typeName === "auto") {
+    return "int";
+  }
+
+  if (target === "arduino" && typeName === "std::string") {
+    return "const char*";
+  }
+
+  if (target === "arduino") {
+    const fnTypeMatch = typeName.match(/^std::function<\s*([^()<>]+)\((.*)\)\s*>$/);
+    if (fnTypeMatch) {
+      const returnType = fnTypeMatch[1].trim();
+      const params = fnTypeMatch[2].trim();
+      return `${returnType} (*)(${params})`;
+    }
+  }
+
+  return typeName;
+}
+
+function renderTypedName(cppType: string, name: string, target: TargetProfile, isConst = false): string {
+  const normalizedType = normalizeCppTypeForTarget(cppType, target);
+  const fnPtrMatch = normalizedType.match(/^(.+?)\s*\(\*\)\((.*)\)$/);
+  if (fnPtrMatch) {
+    const returnType = fnPtrMatch[1].trim();
+    const params = fnPtrMatch[2].trim();
+    const constPrefix = isConst ? "const " : "";
+    return `${constPrefix}${returnType} (*${name})(${params})`;
+  }
+  const constPrefix = isConst ? "const " : "";
+  return `${constPrefix}${normalizedType} ${name}`;
+}
+
 function mapReturnType(functionName: string, returnType: string, target: TargetProfile): string {
   if (target === "arduino" && (functionName === "setup" || functionName === "loop")) {
     return "void";
@@ -121,11 +231,7 @@ function mapReturnType(functionName: string, returnType: string, target: TargetP
     return "void";
   }
 
-  if (target === "arduino" && returnType === "std::string") {
-    return "const char*";
-  }
-
-  return returnType;
+  return normalizeCppTypeForTarget(returnType, target);
 }
 
 function collectDeclaredTypes(program: ProgramIR): string[] {
@@ -211,6 +317,12 @@ function inferObjectFieldType(
         return fields.get(fieldName)!;
       }
       if (objectName === "Pins") {
+        if (fieldName === "D2") {
+          return "AVRInterruptPin*";
+        }
+        if (fieldName === "D3") {
+          return "AVRPWMInterruptPin*";
+        }
         if (["D3", "D5", "D6", "D9", "D10", "D11"].includes(fieldName)) {
           return "AVRPWMPin*";
         }
@@ -627,11 +739,7 @@ function renderParameters(
 
   return parameters
     .map((parameter) => {
-      let type = parameter.cppType === "auto" ? "int" : parameter.cppType;
-      if (target === "arduino" && type === "std::string") {
-        type = "const char*";
-      }
-      let result = `${type} ${parameter.name}`;
+      let result = renderTypedName(parameter.cppType, parameter.name, target);
       if (parameter.defaultValue) {
         result += ` = ${renderExpression(parameter.defaultValue, undefined, target)}`;
       }
@@ -666,7 +774,7 @@ function transformConsoleCall(
   forHeader: boolean
 ): string {
   const method = getConsoleMethod(callee);
-  const renderedArgs = args.map((arg) => renderExpression(arg)).join(", ");
+  const renderedArgs = args.map((arg) => renderExpression(arg, undefined, target)).join(", ");
   
   if (target === "arduino") {
     // Arduino: use Serial
@@ -759,6 +867,14 @@ function renderStatement(
     if (isConsoleCall(statement.callee)) {
       return transformConsoleCall(statement.callee, statement.args, target, forHeader);
     }
+    // Handle typecode SDK calls (pin/serial/i2c/spi)
+    if (target === "arduino") {
+      const renderA = (e: ExpressionIR) => renderExpression(e, undefined, target);
+      const translated = tryRenderTypecodeCallStatement(statement.callee, statement.args, target, renderA);
+      if (translated !== undefined) {
+        return forHeader ? translated : `${translated};`;
+      }
+    }
     let callee = statement.callee;
     if (callee.startsWith("this.")) {
       callee = `this->${callee.slice("this.".length)}`;
@@ -805,9 +921,7 @@ function renderStatement(
   if (statement.kind === "for_of") {
     const varDecl = statement.variable;
     if (varDecl.kind === "var_decl") {
-      const prefix = varDecl.storage === "const" ? `const ${varDecl.cppType}` : varDecl.cppType;
-      const varName = varDecl.name;
-      return `for (${prefix} ${varName} : ${renderExpression(statement.iterable, undefined, target)})`;
+      return `for (${renderTypedName(varDecl.cppType, varDecl.name, target, varDecl.storage === "const")} : ${renderExpression(statement.iterable, undefined, target)})`;
     }
     return `for (auto item : ${renderExpression(statement.iterable, undefined, target)})`;
   }
@@ -818,10 +932,8 @@ function renderStatement(
     // For Arduino/embedded, emit a comment and a simplified iteration pattern
     const varDecl = statement.variable;
     if (varDecl.kind === "var_decl") {
-      const prefix = varDecl.storage === "const" ? `const ${varDecl.cppType}` : varDecl.cppType;
-      const varName = varDecl.name;
       // Use a key iteration pattern - the object should be a map-like structure
-      return `for (${prefix} ${varName} : ${renderExpression(statement.object, undefined, target)})`;
+      return `for (${renderTypedName(varDecl.cppType, varDecl.name, target, varDecl.storage === "const")} : ${renderExpression(statement.object, undefined, target)})`;
     }
     return `for (auto key : ${renderExpression(statement.object, undefined, target)})`;
   }
@@ -857,16 +969,16 @@ function renderStatement(
     return "/* unsupported_statement */";
   }
 
-  const declaredType = statement.cppType;
-  const prefix = statement.storage === "const" ? `const ${declaredType}` : declaredType;
+  const declaredType = normalizeCppTypeForTarget(statement.cppType, target);
+  const declaration = renderTypedName(statement.cppType, statement.name, target, statement.storage === "const");
   if (statement.initializer) {
     // Handle array initializers
     if (statement.initializer.kind === "array") {
-      const elements = statement.initializer.elements.map((e) => renderExpression(e)).join(", ");
+      const elements = statement.initializer.elements.map((e) => renderExpression(e, calleeTransformer, target)).join(", ");
       if (declaredType.startsWith("std::vector<")) {
         return forHeader
-          ? `${prefix} ${statement.name} = { ${elements} }`
-          : `${prefix} ${statement.name} = { ${elements} };`;
+          ? `${declaration} = { ${elements} }`
+          : `${declaration} = { ${elements} };`;
       }
       // Use "int" for "auto" element type since C arrays need explicit types
       const arrayType = statement.initializer.elementType === "auto" ? "int" : statement.initializer.elementType;
@@ -905,11 +1017,11 @@ function renderStatement(
         : `${arrayType} ${statement.name}[] = { /* spread from ${spreadName} */ ${additionalElements} };`;
     }
     return forHeader 
-      ? `${prefix} ${statement.name} = ${renderExpression(statement.initializer, calleeTransformer, target)}`
-      : `${prefix} ${statement.name} = ${renderExpression(statement.initializer, calleeTransformer, target)};`;
+      ? `${declaration} = ${renderExpression(statement.initializer, calleeTransformer, target)}`
+      : `${declaration} = ${renderExpression(statement.initializer, calleeTransformer, target)};`;
   }
 
-  return forHeader ? `${prefix} ${statement.name}` : `${prefix} ${statement.name};`;
+  return forHeader ? declaration : `${declaration};`;
 }
 
 /**
@@ -990,6 +1102,9 @@ function resolveTranspiledModuleInclude(
 }
 
 export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedOutputs {
+  // Make board constants available to the nested renderExpression function.
+  _emitBoardConstants = program.boardConstants;
+
   ensureDir(options.outDir);
 
   // For npm package files, use the moduleKey as the base name
@@ -1026,6 +1141,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   for (const imported of program.imports) {
+    // Skip imports from typecode SDK modules — the symbols they export
+    // (pin names like A0, D13, LED) are already provided by <Arduino.h>.
+    if (isTypecodeSDKImport(imported.moduleSpecifier, program.fileName)) {
+      for (const symbol of imported.namedImports) {
+        symbolMap[symbol] = symbol;
+      }
+      continue;
+    }
+
     // First check if this import is from a transpiled npm package
     const transpiledInclude = resolveTranspiledModuleInclude(
       imported.moduleSpecifier,
@@ -1236,13 +1360,13 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const nested of statement.body) {
         appendRenderedStatement(nested, `${indent}  `);
       }
-      appendSourceLine(`${indent}} while (${renderExpression(statement.condition)});`);
+      appendSourceLine(`${indent}} while (${renderExpression(statement.condition, undefined, options.target)});`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
       return;
     }
 
     if (statement.kind === "switch") {
-      appendSourceLine(`${indent}switch (${renderExpression(statement.expression)})`, {
+      appendSourceLine(`${indent}switch (${renderExpression(statement.expression, undefined, options.target)})`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -1250,7 +1374,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const caseClause of statement.cases) {
         emitCommentLines(caseClause.leadingComments, `${indent}  `, (line) => appendSourceLine(line));
         if (caseClause.value !== undefined) {
-          appendSourceLine(`${indent}  case ${renderExpression(caseClause.value)}:`);
+          appendSourceLine(`${indent}  case ${renderExpression(caseClause.value, undefined, options.target)}:`);
         } else {
           appendSourceLine(`${indent}  default:`);
         }
@@ -1332,7 +1456,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   if (options.target !== "arduino" && hasArrayInObjectLiteral(program)) {
     includes.push("<vector>");
   }
-  if (declaredTypes.some((typeName) => typeName.includes("std::function<"))) {
+  if (declaredTypes
+    .map((typeName) => normalizeCppTypeForTarget(typeName, options.target))
+    .some((typeName) => typeName.includes("std::function<"))) {
     includes.push("<functional>");
   }
   if (hasThrowStatements(program) && options.target !== "arduino") {
@@ -1400,7 +1526,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   // Arduino reserved names that conflict with macros
-  const arduinoReservedNames = new Set(["HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE"]);
+  const arduinoReservedNames = new Set(["HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE", "SDA", "SCL", "SS", "MOSI", "MISO", "SCK"]);
 
   // Separate compile-time declarations from runtime statements
   // Compile-time declarations (literals, simple identifiers, static arrays) can go at global scope
@@ -1578,7 +1704,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     emitCommentLines(typeAlias.leadingComments, "", (line) => appendLine(line));
     // Skip type aliases with 'auto' as it's not valid in C++ type aliases
     // Also skip for Arduino if the type uses std::string (not available on AVR)
-    const cppType = typeAlias.cppType;
+    const cppType = normalizeCppTypeForTarget(typeAlias.cppType, options.target);
     if (cppType === "auto") {
       continue; // Skip invalid 'auto' type aliases
     }
@@ -1612,10 +1738,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       // Constructor
       if (classDef.constructor) {
         // For Arduino, replace std::string with const char* in constructor params
-        const arduinoParams = options.target === "arduino" 
+        const arduinoParams = options.target === "arduino"
           ? classDef.constructor.parameters.map(p => ({
               ...p,
-              cppType: p.cppType === "std::string" ? "const char*" : p.cppType
+              cppType: normalizeCppTypeForTarget(p.cppType, options.target)
             }))
           : classDef.constructor.parameters;
         const ctorParams = renderParameters(arduinoParams, options.target);
@@ -1623,7 +1749,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         let ctorStatements = classDef.constructor.statements;
         const firstCtorStatement = ctorStatements[0];
         if (classDef.extendsClass && firstCtorStatement && firstCtorStatement.kind === "call" && firstCtorStatement.callee === "super") {
-          const baseArgs = firstCtorStatement.args.map((arg) => renderExpression(arg, fixPointerFieldAccess)).join(", ");
+          const baseArgs = firstCtorStatement.args.map((arg) => renderExpression(arg, fixPointerFieldAccess, options.target)).join(", ");
           ctorInitializer = ` : ${classDef.extendsClass}(${baseArgs})`;
           ctorStatements = ctorStatements.slice(1);
         }
@@ -1638,16 +1764,13 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       
       // Public fields
       for (const field of publicFields) {
-        const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer)}` : "";
+        const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, options.target)}` : "";
         // Replace 'auto' with 'int' for class members (auto is not valid for class members in C++)
         // Also replace std::string with const char* for Arduino (no std::string on AVR)
-        let cppType = field.cppType;
-        if (cppType === "auto") {
-          cppType = "int";
-        } else if (options.target === "arduino" && cppType === "std::string") {
-          cppType = "const char*";
-        }
-        appendSourceLine(`  ${cppType} ${field.name}${initSuffix};`);
+        const fieldType = options.target === "arduino" && field.name === "_interruptHandler" && normalizeCppTypeForTarget(field.cppType, options.target) === "int"
+          ? "void (*)(void)"
+          : field.cppType;
+        appendSourceLine(`  ${renderTypedName(fieldType, field.name, options.target)}${initSuffix};`);
       }
       if (publicFields.length > 0) {
         appendSourceLine("");
@@ -1658,12 +1781,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         const methodParams = renderParameters(method.parameters, options.target);
         const staticPrefix = method.isStatic ? "static " : "";
         // Replace 'auto' return type with 'int' for C++ (auto return requires trailing return type or deduction)
-        let returnType = method.returnType;
-        if (returnType === "auto") {
-          returnType = "int";
-        } else if (options.target === "arduino" && returnType === "std::string") {
-          returnType = "const char*";
-        }
+        const returnType = normalizeCppTypeForTarget(method.returnType, options.target);
         appendSourceLine(`  ${staticPrefix}${returnType} ${method.name}(${methodParams}) {`);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ");
@@ -1677,16 +1795,13 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (privateFields.length > 0 || privateMethods.length > 0) {
       appendSourceLine("private:");
       for (const field of privateFields) {
-        const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer)}` : "";
+        const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, options.target)}` : "";
         // Replace 'auto' with 'int' for class members (auto is not valid for class members in C++)
         // Also replace std::string with const char* for Arduino (no std::string on AVR)
-        let cppType = field.cppType;
-        if (cppType === "auto") {
-          cppType = "int";
-        } else if (options.target === "arduino" && cppType === "std::string") {
-          cppType = "const char*";
-        }
-        appendSourceLine(`  ${cppType} ${field.name}${initSuffix};`);
+        const fieldType = options.target === "arduino" && field.name === "_interruptHandler" && normalizeCppTypeForTarget(field.cppType, options.target) === "int"
+          ? "void (*)(void)"
+          : field.cppType;
+        appendSourceLine(`  ${renderTypedName(fieldType, field.name, options.target)}${initSuffix};`);
       }
       if (privateFields.length > 0) {
         appendSourceLine("");
@@ -1694,7 +1809,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const method of privateMethods) {
         const methodParams = renderParameters(method.parameters, options.target);
         const staticPrefix = method.isStatic ? "static " : "";
-        appendSourceLine(`  ${staticPrefix}${method.returnType} ${method.name}(${methodParams}) {`);
+        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, options.target)} ${method.name}(${methodParams}) {`);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ");
         }
@@ -1707,8 +1822,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (protectedFields.length > 0 || protectedMethods.length > 0) {
       appendSourceLine("protected:");
       for (const field of protectedFields) {
-        const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer)}` : "";
-        appendSourceLine(`  ${field.cppType} ${field.name}${initSuffix};`);
+        const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, options.target)}` : "";
+        const fieldType = options.target === "arduino" && field.name === "_interruptHandler" && normalizeCppTypeForTarget(field.cppType, options.target) === "int"
+          ? "void (*)(void)"
+          : field.cppType;
+        appendSourceLine(`  ${renderTypedName(fieldType, field.name, options.target)}${initSuffix};`);
       }
       if (protectedFields.length > 0) {
         appendSourceLine("");
@@ -1716,7 +1834,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const method of protectedMethods) {
         const methodParams = renderParameters(method.parameters, options.target);
         const staticPrefix = method.isStatic ? "static " : "";
-        appendSourceLine(`  ${staticPrefix}${method.returnType} ${method.name}(${methodParams}) {`);
+        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, options.target)} ${method.name}(${methodParams}) {`);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ");
         }
@@ -1786,7 +1904,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     const parameterList = renderParameters(fn.parameters, options.target);
     if (effectiveEmitMode === "split") {
       emitCommentLines(fn.leadingComments, "", (line) => appendHeaderLine(line));
-      appendHeaderLine(`${fn.returnType} ${fn.name}(${parameterList});`, {
+      appendHeaderLine(`${normalizeCppTypeForTarget(fn.returnType, options.target)} ${fn.name}(${parameterList});`, {
         tsSpan: fn.sourceSpan,
         nodeKind: "function_declaration",
         symbolName: fn.name,
@@ -1795,7 +1913,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     emitCommentLines(fn.leadingComments, "", (line) => appendSourceLine(line));
-    appendSourceLine(`${fn.returnType} ${fn.name}(${parameterList})`, {
+    appendSourceLine(`${normalizeCppTypeForTarget(fn.returnType, options.target)} ${fn.name}(${parameterList})`, {
       tsSpan: fn.sourceSpan,
       nodeKind: "function_definition",
       symbolName: fn.name,

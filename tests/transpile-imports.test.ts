@@ -50,7 +50,7 @@ describe("transpileFile module graph", () => {
       emitMode: "split",
       target: "generic",
       emitMaps: true,
-      compileArduino: false,
+
     });
 
     const outDir = path.join(workspaceDir, ".build");
@@ -101,7 +101,7 @@ describe("transpileFile module graph", () => {
       emitMode: "split",
       target: "generic",
       emitMaps: true,
-      compileArduino: false,
+
     });
 
     const entryCppText = fs.readFileSync(result.sourcePath, "utf8");
@@ -163,7 +163,7 @@ describe("transpileFile module graph", () => {
       emitMode: "cpp",
       target: "generic",
       emitMaps: true,
-      compileArduino: false,
+
     });
 
     const warningCodes = result.diagnostics.map((diagnostic) => diagnostic.code);
@@ -205,7 +205,7 @@ describe("transpileFile module graph", () => {
       emitMode: "cpp",
       target: "generic",
       emitMaps: true,
-      compileArduino: false,
+
     });
 
     const sourceText = fs.readFileSync(result.sourcePath, "utf8");
@@ -256,7 +256,7 @@ describe("transpileFile module graph", () => {
       emitMode: "cpp",
       target: "generic",
       emitMaps: true,
-      compileArduino: false,
+
     });
 
     const warningCodes = result.diagnostics.map((diagnostic) => diagnostic.code);

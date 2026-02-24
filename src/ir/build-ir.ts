@@ -1,8 +1,12 @@
+import path from "node:path";
+import fs from "node:fs";
 import ts from "typescript";
 import { parseSource } from "../ast/parse";
 import { Diagnostic, SourceSpan } from "../types";
 import { withLineColumn } from "../utils/strings";
 import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, ParameterIR, ProgramIR, ReExportIR, StatementIR, TypeAliasIR } from "./model";
+import { inferKindByName } from "./typecode-symbols";
+import { resolveBoardConstants, BoardConstants } from "./board-resolver";
 
 function normalizeLegacyArduinoSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __arduino_setup__(");
@@ -461,11 +465,78 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     return { kind: "instanceof", object, className };
   }
 
-  if (ts.isBinaryExpression(expr) || ts.isParenthesizedExpression(expr) || ts.isPrefixUnaryExpression(expr)) {
-    return { kind: "raw", value: formatExpressionText(expr) };
+  // Recurse into binary expressions so nested typecode calls are translated correctly.
+  if (ts.isBinaryExpression(expr)) {
+    let operator = ts.tokenToString(expr.operatorToken.kind) ?? expr.operatorToken.getText();
+    if (operator === "===") operator = "==";
+    else if (operator === "!==") operator = "!=";
+    return {
+      kind: "binary",
+      left: expressionToIR(expr.left, sourceText, diagnostics, pointerVars),
+      operator,
+      right: expressionToIR(expr.right, sourceText, diagnostics, pointerVars),
+    };
+  }
+
+  // Unwrap parenthesized expressions — the emitter re-parenthesizes as needed.
+  if (ts.isParenthesizedExpression(expr)) {
+    return expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
+  }
+
+  // Recurse into prefix unary so nested typecode calls are translated correctly.
+  if (ts.isPrefixUnaryExpression(expr)) {
+    const operator = ts.tokenToString(expr.operator) ?? "";
+    return {
+      kind: "unary",
+      operator,
+      operand: expressionToIR(expr.operand, sourceText, diagnostics, pointerVars),
+    };
   }
 
   if (ts.isCallExpression(expr)) {
+    // ---- Typecode SDK method call detection (expression context) -----------
+    // Detects A0.read(), D13.high(), Serial.println(), Board.A0.read(), etc.
+    // and emits a structured `typecode-call` IR node instead of a raw string.
+    // The emitter translates these to Arduino built-ins without regex.
+    if (ts.isPropertyAccessExpression(expr.expression)) {
+      const method = expr.expression.name.text;
+      const receiverNode = expr.expression.expression;
+
+      // Board.A0.method() or Pins.A0.method()
+      if (
+        ts.isPropertyAccessExpression(receiverNode) &&
+        ts.isIdentifier(receiverNode.expression) &&
+        (receiverNode.expression.text === 'Board' || receiverNode.expression.text === 'Pins')
+      ) {
+        const pinName = receiverNode.name.text;
+        const kind = inferKindByName(pinName);
+        if (kind !== 'unknown') {
+          return {
+            kind: "typecode-call",
+            receiver: pinName,
+            receiverKind: kind,
+            method,
+            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
+        }
+      }
+
+      // symbol.method() — direct typecode symbol (A0.read(), Serial.println(), etc.)
+      if (ts.isIdentifier(receiverNode)) {
+        const kind = inferKindByName(receiverNode.text);
+        if (kind !== 'unknown') {
+          return {
+            kind: "typecode-call",
+            receiver: receiverNode.text,
+            receiverKind: kind,
+            method,
+            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
+        }
+      }
+    }
+    // ---- end typecode detection -----------------------------------------
+
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "defineBoardManifest" && expr.arguments.length === 1) {
       return expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
     }
@@ -556,11 +627,11 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "Math") {
       return { kind: "raw", value: `std::${expr.name.text}` };
     }
-    const object = expressionToIR(expr.expression, sourceText, diagnostics);
+    const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
       return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
     }
-    return { kind: "raw", value: `${renderExprAsText(object)}.${expr.name.text}` };
+    return { kind: "property-access", object, property: expr.name.text };
   }
 
   // Handle element access expressions like arr[index]
@@ -683,6 +754,16 @@ function renderExprAsText(expr: ExpressionIR): string {
     case "object":
       const fieldValues = expr.fields.map((f) => `${renderExprAsText(f.value)}`).join(", ");
       return `{ ${fieldValues} }`;
+    case "binary":
+      return `${renderExprAsText(expr.left)} ${expr.operator} ${renderExprAsText(expr.right)}`;
+    case "unary":
+      return `${expr.operator}${renderExprAsText(expr.operand)}`;
+    case "property-access":
+      return `${renderExprAsText(expr.object)}.${expr.property}`;
+    case "typecode-call":
+      // Fallback text rendering used inside build-ir.ts only.
+      // The real Arduino translation happens in renderExpression (cpp-emitter.ts).
+      return `${expr.receiver}.${expr.method}(${expr.args.map(renderExprAsText).join(', ')})`;
     default:
       return "/* unsupported_expr */";
   }
@@ -1490,6 +1571,45 @@ function collectPointerVars(statements: readonly ts.Statement[]): PointerTracker
   return pointerVars;
 }
 
+/**
+ * Given a source file path and a relative import module specifier, check
+ * whether the import resolves to a typecode board-definition package
+ * (path pattern: /code/board-*\/index.ts).
+ *
+ * Returns the absolute path to the board index.ts on match, otherwise
+ * undefined.
+ */
+function tryResolveBoardDefFile(
+  fromFile: string,
+  moduleSpecifier: string,
+): string | undefined {
+  if (!moduleSpecifier.startsWith(".")) return undefined;
+
+  const dir = path.dirname(fromFile);
+  const base = path.resolve(dir, moduleSpecifier);
+
+  // Candidates: bare path, +.ts, or /index.ts
+  const candidates = [
+    base,
+    `${base}.ts`,
+    path.join(base, "index.ts"),
+  ];
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+    const normalized = candidate.replace(/\\/g, "/");
+    if (/\/code\/board-/.test(normalized)) {
+      // Always redirect to index.ts in the board package root so we parse the
+      // BoardDefinition manifest regardless of which file was actually imported
+      // (e.g. board.ts, pins.ts, etc.).
+      const boardDir = path.dirname(candidate);
+      const indexTs = path.join(boardDir, "index.ts");
+      return fs.existsSync(indexTs) ? indexTs : candidate;
+    }
+  }
+  return undefined;
+}
+
 export function buildProgramIR(fileName: string, sourceText: string): ProgramIR {
   const normalizedSourceText = normalizeLegacyArduinoSyntax(sourceText);
   const source = parseSource(fileName, normalizedSourceText);
@@ -1980,6 +2100,26 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
       return;
     }
 
+    // General fallthrough: lower any remaining statement types (while, for,
+    // if, switch, do-while, etc.) that appear at the top level directly.
+    {
+      const lowered = lowerStatement(
+        node as ts.Statement,
+        fileName,
+        sourceText,
+        diagnostics,
+        functionReturnTypes,
+        topLevelVariableTypes,
+        "<top-level>",
+        typeAliasNodes,
+        topLevelPointerVars,
+      );
+      if (lowered) {
+        topLevelStatements.push(...lowered);
+        return;
+      }
+    }
+
     diagnostics.push(
       makeDiagnostic(
         normalizedSourceText,
@@ -1990,6 +2130,22 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
       ),
     );
   });
+
+  // Resolve board-definition constants from the actual board package file.
+  // This replaces the old hard-coded ARDUINO_BOARD_METADATA table in
+  // typecode-map.ts so that Board.definition.* folds to the real values.
+  let boardConstants: BoardConstants | undefined;
+  for (const imp of imports) {
+    const boardFile = tryResolveBoardDefFile(fileName, imp.moduleSpecifier);
+    if (boardFile) {
+      try {
+        boardConstants = resolveBoardConstants(boardFile);
+      } catch {
+        // Non-fatal: missing or malformed board file — fall back to no-fold.
+      }
+      break;
+    }
+  }
 
   return {
     fileName,
@@ -2003,5 +2159,6 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
     functions,
     boilerplates,
     diagnostics,
+    boardConstants,
   };
 }

@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { ArduinoPlatformContext, Diagnostic } from "../types";
 
@@ -98,11 +96,6 @@ function normalizeMetadata(raw: unknown, context?: ArduinoPlatformContext): Ardu
   };
 }
 
-function loadJsonFromFile(filePath: string): unknown {
-  const text = fs.readFileSync(filePath, "utf8");
-  return JSON.parse(text) as unknown;
-}
-
 function tryArduinoCliProbe(context?: ArduinoPlatformContext): { raw?: unknown; diagnostic?: Diagnostic } {
   if (!context?.fqbn) {
     return {};
@@ -141,33 +134,6 @@ export function loadArduinoCliMetadata(context?: ArduinoPlatformContext): {
   diagnostics: Diagnostic[];
 } {
   const diagnostics: Diagnostic[] = [];
-
-  if (context?.arduinoCliJsonPath) {
-    const fullPath = path.resolve(context.arduinoCliJsonPath);
-    if (!fs.existsSync(fullPath)) {
-      diagnostics.push({
-        severity: "warning",
-        code: "TS2CPP_ARDUINO_CLI_JSON_MISSING",
-        message: `Arduino metadata file not found: ${fullPath}`,
-      });
-      return { diagnostics };
-    }
-
-    try {
-      const raw = loadJsonFromFile(fullPath);
-      return {
-        metadata: normalizeMetadata(raw, context),
-        diagnostics,
-      };
-    } catch {
-      diagnostics.push({
-        severity: "warning",
-        code: "TS2CPP_ARDUINO_CLI_JSON_INVALID",
-        message: `Arduino metadata file is not valid JSON: ${fullPath}`,
-      });
-      return { diagnostics };
-    }
-  }
 
   const probe = tryArduinoCliProbe(context);
   if (probe.diagnostic) {

@@ -2,14 +2,13 @@ import path from "node:path";
 import { parseCommandLine, printHelp } from "./utils/cli";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath } from "./mapping/source-map";
-import { compileArduinoSketch } from "./platform/arduino-compile";
-import { generateArduinoTypes } from "./platform/arduino-types";
+import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from "./platform/arduino-compile";
 
-function assertTypeScriptInput(filePath: string, command: "transpile" | "gen-libdefs" | "gen-types"): void {
+function assertTypeScriptInput(filePath: string): void {
   const extension = path.extname(filePath).toLowerCase();
   if (extension !== ".ts" && extension !== ".tsx") {
     throw new Error(
-      `Invalid input for '${command}': expected a .ts or .tsx file, received '${extension || "<no extension>"}'.`,
+      `Expected a .ts or .tsx file, received '${extension || "<no extension>"}'.`,
     );
   }
 }
@@ -113,27 +112,11 @@ function main(): void {
       return;
     }
 
-    if (options.command === "gen-types") {
-      const outputPath = path.join(options.outDir ?? process.cwd(), "arduino.d.ts");
-      
-      const arduino = options.platformContext?.arduino;
-      const result = generateArduinoTypes({
-        fqbn: arduino?.fqbn,
-        architecture: arduino?.architecture,
-        arduinoCliJsonPath: arduino?.arduinoCliJsonPath,
-        outputPath,
-      });
-
-      printDiagnostics(result.diagnostics);
-      console.log(`Generated type declarations: ${result.outputPath}`);
-      return;
-    }
-
     if (!options.inputFile) {
       throw new Error("Missing input TypeScript file path.");
     }
 
-    assertTypeScriptInput(options.inputFile, options.command);
+    assertTypeScriptInput(options.inputFile);
 
     if (options.command === "gen-libdefs") {
       const outDir = path.dirname(options.inputFile);
@@ -153,30 +136,16 @@ function main(): void {
       return;
     }
 
+    // Default: transpile (always first)
     const result = transpileFile({
       inputFile: options.inputFile,
       emitMode: options.emitMode,
       target: options.target,
       outDir: options.outDir,
       emitMaps: options.emitMaps,
-      compileArduino: options.compileArduino,
       platformContext: options.platformContext,
       treeShaking: options.treeShaking,
     });
-
-    if (options.target === "arduino") {
-      const arduino = options.platformContext?.arduino;
-      const typeDeclPath = path.join(path.dirname(result.sourcePath), "arduino.d.ts");
-      const typeResult = generateArduinoTypes({
-        fqbn: arduino?.fqbn,
-        architecture: arduino?.architecture,
-        arduinoCliJsonPath: arduino?.arduinoCliJsonPath,
-        outputPath: typeDeclPath,
-      });
-
-      printDiagnostics(typeResult.diagnostics);
-      console.log(`Generated type declarations: ${typeResult.outputPath}`);
-    }
 
     printDiagnostics(result.diagnostics);
     if (result.headerPath) {
@@ -190,29 +159,57 @@ function main(): void {
       console.log(`Generated source map: ${result.sourceMapPath}`);
     }
 
-    if (options.compileArduino) {
-      if (options.target !== "arduino") {
-        throw new Error("--compile-arduino requires --target arduino.");
-      }
-
-      const fqbn = options.platformContext?.arduino?.fqbn;
-      if (!fqbn) {
-        throw new Error("--compile-arduino requires --fqbn <package:arch:board>.");
-      }
-
-      const compileResult = compileArduinoSketch(result.sourcePath, fqbn);
-      printMappedCompileErrors(compileResult, result.sourceMapPath);
-
-      if (!compileResult.success) {
-        if (compileResult.output && options.compileArduino !== "strict") {
-          console.error(compileResult.output);
-        }
-        process.exitCode = 1;
-        return;
-      }
-
-      console.log("Arduino compile succeeded.");
+    if (!options.compile) {
+      return;
     }
+
+    // --compile
+    const fqbn = options.platformContext?.arduino?.fqbn;
+    if (!fqbn) {
+      throw new Error("--compile requires --fqbn <package:arch:board>.");
+    }
+
+    console.log(`Compiling for ${fqbn}...`);
+    const compileResult = compileArduinoSketch(result.sourcePath, fqbn);
+    printMappedCompileErrors(compileResult, result.sourceMapPath);
+
+    if (!compileResult.success) {
+      console.error(compileResult.output);
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log("Compile succeeded.");
+
+    if (!options.upload) {
+      return;
+    }
+
+    // --upload
+    const port = options.port!;
+    console.log(`Uploading to ${port}...`);
+
+    const sketchDir = path.dirname(result.sourcePath);
+    const uploadResult = uploadArduinoSketch(sketchDir, fqbn, port);
+
+    if (uploadResult.output) {
+      console.log(uploadResult.output);
+    }
+
+    if (!uploadResult.success) {
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log("Upload succeeded.");
+
+    if (!options.monitor) {
+      return;
+    }
+
+    // --monitor (blocks until Ctrl+C)
+    console.log(`Opening serial monitor on ${port} at ${options.baud} baud. Press Ctrl+C to exit.`);
+    monitorArduinoSketch(port, options.baud);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error(message);

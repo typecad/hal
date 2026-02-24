@@ -85,6 +85,7 @@ export function filterProgramIR(
     functions: filteredFunctions,
     boilerplates: program.boilerplates,
     diagnostics,
+    boardConstants: program.boardConstants,
   };
 }
 

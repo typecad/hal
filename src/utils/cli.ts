@@ -8,13 +8,12 @@ export function printHelp(): void {
 typecode v${VERSION} - TypeScript to C++ transpiler for embedded systems
 
 USAGE
-  typecode <command> [input] [options]
+  typecode <input.ts> [options]
+  typecode gen-libdefs <input.ts>
+  typecode map-error <mapFile> [options]
 
-COMMANDS
-  transpile <input.ts>    Transpile TypeScript to C++ source files
-  gen-libdefs <input.ts>  Generate type definition files for imported libraries
-  gen-types               Generate Arduino platform type declarations
-  map-error <mapFile>     Map C++ compile errors back to TypeScript locations
+Transpilation is always performed first. Use --compile, --upload, and
+--monitor to chain arduino-cli operations after transpilation.
 
 OPTIONS
   --emit <mode>           Emit mode: "cpp" or "split" (default: split)
@@ -23,6 +22,8 @@ OPTIONS
                           Note: Arduino target always emits a single .ino file
 
   --target <platform>     Target platform: "arduino" or "generic" (default: generic)
+                          Automatically set to "arduino" when --compile, --upload,
+                          or --monitor are used.
 
   --outDir, --out-dir <path>
                           Output directory for generated files (default: input file directory)
@@ -30,31 +31,29 @@ OPTIONS
   --emit-maps <bool>      Emit source maps: "true" or "false" (default: true)
                           Source maps enable mapping C++ errors back to TypeScript
 
-  --compile-arduino <mode>
-                          Compile Arduino sketch after transpilation
-                          - true: compile and show errors
-                          - strict: compile and fail on any output
-                          - false: do not compile (default)
+ARDUINO COMMANDS (chain in order: --compile → --upload → --monitor)
+  --compile               Compile the generated Arduino sketch with arduino-cli.
+                          Requires: --fqbn
+
+  --upload                Upload the compiled sketch to the board.
+                          Requires: --compile, --fqbn, --port
+
+  --monitor               Open an interactive serial monitor after upload.
+                          Requires: --port
 
   --fqbn <package:arch:board>
-                          Fully Qualified Board Name for Arduino compilation
-                          Example: arduino:avr:uno, arduino:samd:mkr1000
+                          Fully Qualified Board Name.
+                          Required for --compile and --upload.
+                          Example: arduino:avr:uno, esp32:esp32:esp32dev
 
-  --arduino-arch, --arch <arch>
-                          Arduino architecture override (e.g., avr, samd, esp32)
+  --port <port>           Serial port of the connected board.
+                          Required for --upload and --monitor.
+                          Example: COM4, /dev/ttyACM0
 
-  --arduino-core, --core <core>
-                          Arduino core path override
-
-  --arduino-variant, --variant <variant>
-                          Arduino board variant override
-
-  --arduino-cli-json <path>
-                           Path to arduino-cli.json for platform metadata
+  --baud <rate>           Baud rate for --monitor (default: 9600)
 
 TREE-SHAKING OPTIONS
   --no-tree-shake          Disable tree-shaking (dead code elimination)
-                           Tree-shaking is enabled by default and removes unreachable code
 
   --keep-unused-enums      Keep all enums even if not referenced
 
@@ -64,35 +63,32 @@ TREE-SHAKING OPTIONS
 
   --no-report-unused       Don't emit diagnostics for removed code
 
-  --entry-point <name>     Add a custom entry point symbol (can be used multiple times)
+  --entry-point <name>     Add a custom entry point symbol (repeatable)
                            Default entry points: setup/loop (Arduino), main (generic)
 
   --help, -h              Show this help message
 
 EXAMPLES
   # Transpile to generic C++
-  typecode transpile src/main.ts
+  typecode src/main.ts
 
   # Transpile to Arduino sketch
-  typecode transpile sketch.ts --target arduino --outDir ./build
+  typecode sketch.ts --target arduino --outDir ./build
 
   # Transpile and compile for Arduino Uno
-  typecode transpile sketch.ts --target arduino --fqbn arduino:avr:uno --compile-arduino
+  typecode sketch.ts --compile --fqbn arduino:avr:uno
 
-  # Transpile for ESP32
-  typecode transpile sketch.ts --target arduino --fqbn esp32:esp32:esp32dev
+  # Transpile, compile, and upload
+  typecode sketch.ts --compile --upload --fqbn arduino:avr:uno --port COM4
+
+  # Full chain: transpile → compile → upload → monitor
+  typecode sketch.ts --compile --upload --monitor --fqbn arduino:avr:uno --port COM4 --baud 115200
 
   # Generate library definitions from imports
   typecode gen-libdefs src/sensor.ts
 
-  # Generate Arduino type declarations
-  typecode gen-types --fqbn arduino:avr:uno
-
   # Map a C++ error to TypeScript source
   typecode map-error .build/sketch.cpp.map --line 42 --column 5 --message "undefined reference"
-
-  # Map error with specific C++ file
-  typecode map-error .build/sketch.cpp.map --line 10 --cpp-file .build/sketch.cpp
 `);
 }
 
@@ -115,27 +111,103 @@ function readFlags(args: string[], flags: string[]): string | undefined {
 }
 
 export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
-  // Check for --help, -h, or no command
-  const command = argv[2];
-  if (!command || command === "--help" || command === "-h") {
+  const firstArg = argv[2];
+
+  if (!firstArg || firstArg === "--help" || firstArg === "-h") {
     return "help";
   }
 
-  if (command !== "transpile" && command !== "gen-libdefs" && command !== "gen-types" && command !== "map-error") {
-    console.error(`Unknown command: ${command}\n`);
+  // Named subcommands
+  if (firstArg === "gen-libdefs" || firstArg === "map-error") {
+    const command = firstArg;
+
+    const emitFlag = readFlags(argv, ["--emit"]);
+    const targetFlag = readFlags(argv, ["--target"]);
+    const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
+    const emitMapsFlag = readFlags(argv, ["--emit-maps"]);
+    const fqbn = readFlags(argv, ["--fqbn"]);
+
+    const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
+    const target: TargetProfile = targetFlag === "arduino" || targetFlag === "generic" ? targetFlag : "generic";
+    const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
+    const platformContext: PlatformContext = { arduino: { fqbn } };
+
+    if (command === "map-error") {
+      const mapFile = argv[3];
+      if (!mapFile) {
+        throw new Error("Missing source map path for map-error.");
+      }
+
+      const cppLineRaw = readFlags(argv, ["--line", "--cpp-line"]);
+      if (!cppLineRaw || Number.isNaN(Number(cppLineRaw))) {
+        throw new Error("map-error requires --line <number>.");
+      }
+
+      const cppColumnRaw = readFlags(argv, ["--column", "--cpp-column"]);
+      const cppFile = readFlags(argv, ["--cpp-file"]);
+      const message = readFlags(argv, ["--message"]);
+
+      return {
+        command,
+        emitMode,
+        target,
+        outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+        emitMaps,
+        compile: false,
+        upload: false,
+        monitor: false,
+        baud: 9600,
+        platformContext,
+        mapFile: path.resolve(process.cwd(), mapFile),
+        cppFile: cppFile ? path.resolve(process.cwd(), cppFile) : undefined,
+        cppLine: Number(cppLineRaw),
+        cppColumn: cppColumnRaw ? Number(cppColumnRaw) : 1,
+        message,
+      };
+    }
+
+    // gen-libdefs
+    const inputFile = argv[3];
+    if (!inputFile) {
+      throw new Error("Missing input TypeScript file path.");
+    }
+
+    return {
+      command,
+      inputFile: path.resolve(process.cwd(), inputFile),
+      emitMode,
+      target,
+      outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+      emitMaps,
+      compile: false,
+      upload: false,
+      monitor: false,
+      baud: 9600,
+      platformContext,
+    };
+  }
+
+  // Warn about removed `transpile` subcommand
+  if (firstArg === "transpile") {
+    console.error("Error: the 'transpile' subcommand has been removed. Run: typecode <input.ts> [options]\n");
     return "help";
   }
+
+  // Default: firstArg is the input file
+  const inputFile = firstArg;
 
   const emitFlag = readFlags(argv, ["--emit"]);
   const targetFlag = readFlags(argv, ["--target"]);
   const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
   const emitMapsFlag = readFlags(argv, ["--emit-maps"]);
-  const compileArduinoFlag = readFlags(argv, ["--compile-arduino"]);
   const fqbn = readFlags(argv, ["--fqbn"]);
-  const architecture = readFlags(argv, ["--arduino-arch", "--arch"]);
-  const core = readFlags(argv, ["--arduino-core", "--core"]);
-  const variant = readFlags(argv, ["--arduino-variant", "--variant"]);
-  const arduinoCliJson = readFlags(argv, ["--arduino-cli-json"]);
+  const port = readFlags(argv, ["--port"]);
+  const baudRaw = readFlags(argv, ["--baud"]);
+
+  const compile = argv.includes("--compile");
+  const upload = argv.includes("--upload");
+  const monitor = argv.includes("--monitor");
+  const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
   // Tree-shaking options
   const noTreeShake = argv.includes("--no-tree-shake");
@@ -144,7 +216,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   const keepUnusedTypes = argv.includes("--keep-unused-types");
   const noReportUnused = argv.includes("--no-report-unused");
 
-  // Collect custom entry points (can be specified multiple times)
   const entryPoints: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--entry-point" && i + 1 < argv.length) {
@@ -153,25 +224,29 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   }
 
   const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
-  const target: TargetProfile = targetFlag === "arduino" || targetFlag === "generic" ? targetFlag : "generic";
   const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
-  const compileArduino: false | true | "strict" =
-    compileArduinoFlag === "strict"
-      ? "strict"
-      : compileArduinoFlag === undefined
-        ? false
-        : compileArduinoFlag !== "false";
-  const platformContext: PlatformContext = {
-    arduino: {
-      fqbn,
-      architecture,
-      core,
-      variant,
-      arduinoCliJsonPath: arduinoCliJson ? path.resolve(process.cwd(), arduinoCliJson) : undefined,
-    },
-  };
 
-  // Build tree-shaking options
+  // Auto-select arduino target when using Arduino CLI commands
+  const effectiveTargetFlag = compile || upload || monitor ? "arduino" : targetFlag;
+  const target: TargetProfile =
+    effectiveTargetFlag === "arduino" || effectiveTargetFlag === "generic" ? effectiveTargetFlag : "generic";
+
+  const platformContext: PlatformContext = { arduino: { fqbn } };
+
+  // Validate flag combinations
+  if (compile && !fqbn) {
+    throw new Error("--compile requires --fqbn <package:arch:board>.");
+  }
+  if (upload && !compile) {
+    throw new Error("--upload requires --compile.");
+  }
+  if (upload && !port) {
+    throw new Error("--upload requires --port <port>.");
+  }
+  if (monitor && !port) {
+    throw new Error("--monitor requires --port <port>.");
+  }
+
   const treeShaking: TreeShakingOptions = {
     enabled: !noTreeShake,
     keepUnusedEnums,
@@ -181,64 +256,18 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
     entryPoints: entryPoints.length > 0 ? entryPoints : undefined,
   };
 
-  if (command === "map-error") {
-    const mapFile = argv[3];
-    if (!mapFile) {
-      throw new Error("Missing source map path (or generated .cpp/.h path) for map-error.");
-    }
-
-    const cppLineRaw = readFlags(argv, ["--line", "--cpp-line"]);
-    if (!cppLineRaw || Number.isNaN(Number(cppLineRaw))) {
-      throw new Error("map-error requires --line <number>.");
-    }
-
-    const cppColumnRaw = readFlags(argv, ["--column", "--cpp-column"]);
-    const cppFile = readFlags(argv, ["--cpp-file"]);
-    const message = readFlags(argv, ["--message"]);
-
-    return {
-      command,
-      emitMode,
-      target,
-      outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
-      emitMaps,
-      compileArduino,
-      platformContext,
-      mapFile: path.resolve(process.cwd(), mapFile),
-      cppFile: cppFile ? path.resolve(process.cwd(), cppFile) : undefined,
-      cppLine: Number(cppLineRaw),
-      cppColumn: cppColumnRaw ? Number(cppColumnRaw) : 1,
-      message,
-    };
-  }
-
-  // gen-types doesn't require an input file
-  if (command === "gen-types") {
-    return {
-      command,
-      inputFile: undefined,
-      emitMode,
-      target,
-      outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
-      emitMaps,
-      compileArduino,
-      platformContext,
-    };
-  }
-
-  const inputFile = argv[3];
-  if (!inputFile) {
-    throw new Error("Missing input TypeScript file path.");
-  }
-
   return {
-    command,
+    command: "default",
     inputFile: path.resolve(process.cwd(), inputFile),
     emitMode,
     target,
     outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
     emitMaps,
-    compileArduino,
+    compile,
+    upload,
+    monitor,
+    port,
+    baud,
     platformContext,
     treeShaking,
   };

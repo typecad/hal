@@ -63,18 +63,24 @@ function resolveLocalModuleHeader(moduleSpecifier: string, importerFilePath: str
   return undefined;
 }
 
+function toArchitectureFromFqbn(fqbn?: string): string | undefined {
+  if (!fqbn) {
+    return undefined;
+  }
+
+  const parts = fqbn.split(":");
+  return parts.length >= 2 ? parts[1].toLowerCase() : undefined;
+}
+
 function conditionMatches(condition: LibraryDefinitionCondition, target: TargetProfile, context?: PlatformContext): boolean {
   const arduino = context?.arduino;
+  const architecture = toArchitectureFromFqbn(arduino?.fqbn);
 
   if (condition.target && condition.target !== target) {
     return false;
   }
 
-  if (condition.architecture && arduino?.architecture?.toLowerCase() !== condition.architecture.toLowerCase()) {
-    return false;
-  }
-
-  if (condition.core && arduino?.core?.toLowerCase() !== condition.core.toLowerCase()) {
+  if (condition.architecture && architecture !== condition.architecture.toLowerCase()) {
     return false;
   }
 

@@ -1,4 +1,6 @@
 import { Diagnostic, SourceSpan } from "../types";
+export type { TypecodeReceiverKind } from './typecode-symbols';
+export type { BoardConstants } from './board-resolver';
 
 export interface ImportIR {
   moduleSpecifier: string;
@@ -283,6 +285,8 @@ export interface ProgramIR {
   functions: FunctionIR[];
   boilerplates: Set<string>;
   diagnostics: Diagnostic[];
+  /** Compile-time constants extracted from the imported board-definition file. */
+  boardConstants?: import('./board-resolver').BoardConstants;
 }
 
 export type ExpressionIR =
@@ -296,4 +300,21 @@ export type ExpressionIR =
   | { kind: "array"; elementType: string; elements: ExpressionIR[] }
   | { kind: "object"; fields: { name: string; value: ExpressionIR }[] }
   | { kind: "instanceof"; object: ExpressionIR; className: string }
-  | { kind: "spread_array"; elementType: string; spreadExpr: ExpressionIR; additionalElements: ExpressionIR[] };
+  | { kind: "spread_array"; elementType: string; spreadExpr: ExpressionIR; additionalElements: ExpressionIR[] }
+  /** Binary expression: left OP right (e.g. `val + 100`, `a && b`). */
+  | { kind: "binary"; left: ExpressionIR; operator: string; right: ExpressionIR }
+  /** Prefix unary expression: OP operand (e.g. `!flag`, `-x`, `~n`). */
+  | { kind: "unary"; operator: string; operand: ExpressionIR }
+  /**
+   * Property access: `object.property`.
+   * Produced by `expressionToIR` for all property-read expressions so that
+   * the emitter can recognise and translate typecode metadata paths like
+   * `Board.definition.mcu` without regex post-processing.
+   */
+  | { kind: "property-access"; object: ExpressionIR; property: string }
+  /**
+   * A call to a typecode SDK method that the emitter translates to a
+   * platform-specific built-in (e.g. `A0.read()` → `analogRead(A0)`).
+   * Produced by `expressionToIR` when it detects a typecode receiver.
+   */
+  | { kind: "typecode-call"; receiver: string; receiverKind: import('./typecode-symbols').TypecodeReceiverKind; method: string; args: ExpressionIR[] };
