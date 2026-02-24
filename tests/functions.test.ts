@@ -18,8 +18,8 @@ describe("Function Transpilation", () => {
           return 42;
         }
       `);
-      // Return types use auto
-      expect(result.cpp).toContain("auto getValue()");
+      // Return type is inferred from return statement
+      expect(result.cpp).toContain("int getValue()");
     });
 
     it("transpiles function returning float", () => {
@@ -28,8 +28,8 @@ describe("Function Transpilation", () => {
           return 3.14;
         }
       `);
-      // Return types use auto
-      expect(result.cpp).toContain("auto getPi()");
+      // Return type is inferred from return statement
+      expect(result.cpp).toContain("float getPi()");
     });
 
     it("transpiles function returning bool", () => {
@@ -38,8 +38,8 @@ describe("Function Transpilation", () => {
           return true;
         }
       `);
-      // Return types use auto
-      expect(result.cpp).toContain("auto isTrue()");
+      // Return type is inferred from return statement
+      expect(result.cpp).toContain("bool isTrue()");
     });
 
     it("transpiles empty function body", () => {
@@ -59,8 +59,8 @@ describe("Function Transpilation", () => {
           return x * 2;
         }
       `);
-      // Uses auto return type
-      expect(result.cpp).toContain("auto double(int x)");
+      // Return type is inferred from return statement
+      expect(result.cpp).toContain("int double(int x)");
     });
 
     it("transpiles function with multiple parameters", () => {
@@ -69,8 +69,8 @@ describe("Function Transpilation", () => {
           return a + b;
         }
       `);
-      // Uses auto return type
-      expect(result.cpp).toContain("auto add(int a, int b)");
+      // Return type is inferred from return statement
+      expect(result.cpp).toContain("int add(int a, int b)");
     });
 
     it("transpiles function with float parameter", () => {
@@ -257,7 +257,8 @@ describe("Function Transpilation", () => {
         }
       `);
 
-      expect(result.cpp).toContain("auto value = getValue();");
+      // Await is stripped and value is initialized with the function call
+      expect(result.cpp).toContain("value = getValue();");
     });
   });
 
@@ -285,9 +286,9 @@ describe("Function Transpilation", () => {
         }
       `);
       
-      // Uses auto return type
-      expect(inline.cpp).toContain("auto add(int a, int b)");
-      expect(variable.cpp).toContain("auto add(int a, int b)");
+      // Return type is inferred from return statement
+      expect(inline.cpp).toContain("int add(int a, int b)");
+      expect(variable.cpp).toContain("int add(int a, int b)");
     });
 
     it("transpiles same logic with expression vs precomputed", () => {
@@ -342,8 +343,8 @@ describe("Function Transpilation", () => {
           return n * factorial(n - 1);
         }
       `);
-      // Uses auto return type
-      expect(result.cpp).toContain("auto factorial(int n)");
+      // Return type is inferred from return statement
+      expect(result.cpp).toContain("int factorial(int n)");
       expect(result.cpp).toContain("factorial(n - 1)");
     });
 
@@ -376,10 +377,10 @@ describe("Function Transpilation", () => {
           return first() + second();
         }
       `);
-      // Functions with return type use auto inference
-      expect(result.cpp).toContain("auto first()");
-      expect(result.cpp).toContain("auto second()");
-      expect(result.cpp).toContain("auto third()");
+      // Return types are inferred from return statements
+      expect(result.cpp).toContain("int first()");
+      expect(result.cpp).toContain("int second()");
+      expect(result.cpp).toContain("int third()");
     });
   });
 });

@@ -10,8 +10,8 @@ describe("Target-Specific Transpilation", () => {
         }
       `, { target: "generic" });
       
-      // Uses auto return type when not explicitly annotated
-      expect(result.cpp).toContain("auto add(int a, int b)");
+      // Return type is inferred from return statement
+      expect(result.cpp).toContain("int add(int a, int b)");
       expect(result.cpp).toContain("return a + b");
     });
 
@@ -292,9 +292,9 @@ describe("Target-Specific Transpilation", () => {
         }
       `, { target: "arduino" });
       
-      // Uses auto return type when not explicitly annotated
-      expect(generic.cpp).toContain("auto multiply(int a, int b)");
-      expect(arduino.cpp).toContain("auto multiply(int a, int b)");
+      // Return type is inferred from return statement
+      expect(generic.cpp).toContain("int multiply(int a, int b)");
+      expect(arduino.cpp).toContain("int multiply(int a, int b)");
     });
 
     it("transpiles recursive function consistently", () => {

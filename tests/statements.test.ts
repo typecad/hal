@@ -36,8 +36,8 @@ describe("Statement Transpilation", () => {
           let x: int;
         }
       `);
-      // Without initializer, uses auto type
-      expect(result.cpp).toContain("auto x");
+      // Without initializer, uses explicit type annotation
+      expect(result.cpp).toContain("int x");
     });
 
     it("transpiles declaration with typed initializer", () => {

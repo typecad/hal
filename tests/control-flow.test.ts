@@ -328,8 +328,8 @@ describe("Control Flow Transpilation", () => {
           return sum;
         }
       `);
-      // For-of uses range-based for with auto
-      expect(result.cpp).toContain("for (const auto item : arr)");
+      // For-of uses range-based for with explicit type inferred from array element
+      expect(result.cpp).toContain("for (const int item : arr)");
     });
 
     it("transpiles for-of with let", () => {
@@ -341,8 +341,8 @@ describe("Control Flow Transpilation", () => {
           }
         }
       `);
-      // For-of uses range-based for with auto
-      expect(result.cpp).toContain("for (auto item : arr)");
+      // For-of uses range-based for with explicit type inferred from array element
+      expect(result.cpp).toContain("for (int item : arr)");
     });
 
     it("transpiles nested for-of loops", () => {

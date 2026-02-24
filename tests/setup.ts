@@ -36,6 +36,15 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   const uniqueId = `test_${process.pid}_${testCounter++}_${Date.now()}`;
   const fileName = `${uniqueId}.ts`;
   
+  // For Arduino target, use a unique output directory to avoid filename collisions
+  // since Arduino uses the directory name as the .ino filename
+  const uniqueOutDir = target === "arduino" 
+    ? path.join(testOutDir, uniqueId)
+    : testOutDir;
+  if (target === "arduino" && !fs.existsSync(uniqueOutDir)) {
+    fs.mkdirSync(uniqueOutDir, { recursive: true });
+  }
+  
   const programIR = buildProgramIR(fileName, tsCode);
   const libdefs = new Map();
   const registry = createPolyfillRegistry();
@@ -46,7 +55,7 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   });
   
   const result = emitCpp(programIR, {
-    outDir: testOutDir,
+    outDir: uniqueOutDir,
     emitMode,
     target,
     libdefs,

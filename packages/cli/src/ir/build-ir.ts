@@ -62,6 +62,7 @@ type CppTypeHint =
   | "auto"
   | "void"
   | "std::string"
+  | "unsigned int"
   | `std::vector<${string}>`
   | `std::function<${string}>`
   | `${string}*`;
@@ -153,6 +154,24 @@ function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: Map<stri
 
   if (resolvedNode.kind === ts.SyntaxKind.VoidKeyword) {
     return "void";
+  }
+
+  // Recognize C++ type names as type references (int, float, bool, string, etc.)
+  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName)) {
+    const typeName = resolvedNode.typeName.text;
+    // Known C++ types that can be used directly in type annotations
+    const cppTypes = new Set<string>([
+      "int", "float", "bool", "string", "void",
+      "double", "long", "unsigned",
+      "uint8_t", "uint16_t", "uint32_t",
+      "int8_t", "int16_t", "int32_t",
+      "size_t",
+    ]);
+    if (cppTypes.has(typeName)) {
+      if (typeName === "string") return "std::string";
+      if (typeName === "unsigned") return "unsigned int";
+      return typeName as CppTypeHint;
+    }
   }
 
   return "auto";

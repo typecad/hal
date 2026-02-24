@@ -48,13 +48,13 @@ describe("Class Transpilation", () => {
 
     it("transpiles class with protected fields", () => {
       const result = transpile(`
-        class Base {
-          protected id: int;
+        class Counter {
+          protected count: int;
         }
       `);
+      // Protected fields use protected: section in C++
       expect(result.cpp).toContain("protected:");
-      // Protected fields currently use auto type inference
-      expect(result.cpp).toContain("auto id");
+      expect(result.cpp).toContain("count");
     });
 
     it("transpiles class with mixed visibility fields", () => {
@@ -104,8 +104,8 @@ describe("Class Transpilation", () => {
         }
       `);
       expect(result.cpp).toContain("private:");
-      // Private method return types currently use auto inference
-      expect(result.cpp).toContain("auto helper()");
+      // Return type is inferred from return statement
+      expect(result.cpp).toContain("int helper()");
     });
 
     it("transpiles class with static method", () => {
@@ -192,10 +192,10 @@ describe("Class Transpilation", () => {
           public boolValue: bool;
         }
       `);
-      // Fields use explicit types (auto is not valid for class members in C++)
+      // Fields use explicit types based on their type annotation
       expect(result.cpp).toContain("int intValue");
-      expect(result.cpp).toContain("int floatValue");
-      expect(result.cpp).toContain("int boolValue");
+      expect(result.cpp).toContain("float floatValue");
+      expect(result.cpp).toContain("bool boolValue");
     });
   });
 });

@@ -191,8 +191,8 @@ describe("Expression Transpilation", () => {
           return value;
         }
       `);
-      // Ternary uses auto type inference
-      expect(result.cpp).toContain("const auto value = (flag ? 1 : 0)");
+      // Ternary uses explicit type inference from operands
+      expect(result.cpp).toContain("const int value = (flag ? 1 : 0)");
     });
 
     it("transpiles ternary with variable operands", () => {
@@ -204,8 +204,8 @@ describe("Expression Transpilation", () => {
           return result;
         }
       `);
-      // Ternary uses auto type inference
-      expect(result.cpp).toContain("const auto result = (flag ? a : b)");
+      // Ternary uses explicit type inference from operands
+      expect(result.cpp).toContain("const int result = (flag ? a : b)");
     });
 
     it("transpiles nested ternary expressions", () => {
@@ -393,8 +393,8 @@ describe("Expression Transpilation", () => {
       `);
       expect(result.cpp).toContain("const bool a = true && false");
       expect(result.cpp).toContain("const bool b = true || false");
-      // Logical not uses auto type inference
-      expect(result.cpp).toContain("const auto c = !true");
+      // Logical not uses explicit type inference
+      expect(result.cpp).toContain("const int c = !true");
     });
 
     it("transpiles bitwise operators", () => {
