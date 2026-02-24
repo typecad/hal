@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import path from "node:path";
 import { parseCommandLine, printHelp } from "./utils/cli";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";

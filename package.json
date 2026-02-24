@@ -1,8 +1,11 @@
 {
-  "name": "ts2cpp-transpiler",
+  "name": "typecode",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
+  "bin": {
+    "typecode": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/cli.js",

@@ -1,21 +1,15 @@
 // ---------------------------------------------------------------------------
-// Example 7 — Board Namespace (single import)
+// Example 1 — Blink
 //
-// Demonstrates the convenience `Board` object that aggregates all pins,
-// peripherals, and metadata under one namespace.
+// The classic "Hello World" of embedded: toggle the onboard LED every second.
 // ---------------------------------------------------------------------------
 
-import { Board } from './code/board-arduino-uno/board';
+import { LED }   from './code/board-arduino-uno/pins';
+import { delay } from './code/board-arduino-uno/timing';
 
-Board.Serial.initialize({ baudRate: 9600 });
-Board.LED.asOutput();
-
-Board.Serial.println("Arduino Uno booted");
-Board.Serial.println("MCU: " + Board.definition.mcu);
-Board.Serial.println("Flash: " + Board.definition.memory.flash + " bytes");
+LED.asOutput();
 
 while (true) {
-  const sensor = Board.A0.read();
-  Board.Serial.println(sensor);
-  Board.LED.toggle();
+  LED.toggle();
+  delay(1000);
 }
