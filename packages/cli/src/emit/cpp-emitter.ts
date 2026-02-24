@@ -22,11 +22,17 @@ import type { BoardConstants } from "../ir/board-resolver";
 let _emitBoardConstants: BoardConstants | undefined;
 
 /**
- * Checks if a module specifier (relative) resolves to a typecode SDK path.
- * Typecode SDK files (code/core/*, code/board-*) are type-level only and
- * should produce no C++ output or #include directives.
+ * Checks if a module specifier resolves to a typecode SDK path.
+ * Typecode SDK files (code/core/*, code/board-*, @typecode/* packages) are 
+ * type-level only and should produce no C++ output or #include directives.
  */
 function isTypecodeSDKImport(moduleSpecifier: string, fromFile: string): boolean {
+  // Check for @typecode/* npm package imports
+  if (moduleSpecifier.startsWith("@typecode/")) {
+    return true;
+  }
+  
+  // Check for relative imports to code/core or code/board-* paths
   if (!moduleSpecifier.startsWith(".")) {
     return false;
   }

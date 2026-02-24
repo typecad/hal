@@ -1,0 +1,28 @@
+{
+  "name": "@typecode/core",
+  "version": "0.1.0",
+  "description": "TypeCode core types and interfaces for embedded development",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "default": "./dist/config.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

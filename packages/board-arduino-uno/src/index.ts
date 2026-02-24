@@ -2,7 +2,7 @@
 // @typecode/board-arduino-uno — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '../core';
+import type { BoardDefinition } from '@typecode/core';
 
 // ---------------------------------------------------------------------------
 // Default capability flags for AVR (fields absent on this platform)

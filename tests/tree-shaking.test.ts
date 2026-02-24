@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildProgramIR } from "../src/ir/build-ir";
-import { buildCallGraph, getReachableSymbols } from "../src/ir/call-graph";
-import { detectEntryPoints } from "../src/ir/entry-points";
-import { analyzeReachability, getReachabilityStats } from "../src/ir/reachability";
-import { filterProgramIR } from "../src/ir/filter";
+import { buildProgramIR } from "../packages/cli/src/ir/build-ir";
+import { buildCallGraph, getReachableSymbols } from "../packages/cli/src/ir/call-graph";
+import { detectEntryPoints } from "../packages/cli/src/ir/entry-points";
+import { analyzeReachability, getReachabilityStats } from "../packages/cli/src/ir/reachability";
+import { filterProgramIR } from "../packages/cli/src/ir/filter";
 
 describe("buildCallGraph", () => {
   it("should build a call graph for a simple function", () => {

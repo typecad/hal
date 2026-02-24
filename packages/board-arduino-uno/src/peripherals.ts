@@ -7,11 +7,11 @@
 // architecture-specific C++ (Wire, SPI, Serial libraries).
 // ---------------------------------------------------------------------------
 
-import type { II2CBus, I2CConfig, I2CAddress } from '../core/bus/i2c';
-import { I2CSpeed } from '../core/bus/i2c';
-import type { ISPIBus, SPIConfig, SPITransferOptions } from '../core/bus/spi';
-import { SPIMode, SPIBitOrder } from '../core/bus/spi';
-import type { ISerialPort, UARTConfig, UARTStatus } from '../core/bus/uart';
+import type { II2CBus, I2CConfig, I2CAddress } from '@typecode/core';
+import { I2CSpeed } from '@typecode/core';
+import type { ISPIBus, SPIConfig, SPITransferOptions } from '@typecode/core';
+import { SPIMode, SPIBitOrder } from '@typecode/core';
+import type { ISerialPort, UARTConfig, UARTStatus } from '@typecode/core';
 
 // ---------------------------------------------------------------------------
 // I2C — Wire (bus 0)

@@ -1,25 +1,17 @@
 {
-  "name": "typecode",
-  "version": "0.1.0",
+  "name": "typecode-monorepo",
   "private": true,
-  "type": "commonjs",
-  "bin": {
-    "typecode": "./dist/cli.js"
-  },
+  "workspaces": [
+    "packages/core",
+    "packages/board-arduino-uno",
+    "packages/cli"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/cli.js",
-    "dev": "ts-node src/cli.ts",
-    "gen-libdefs": "node dist/cli.js gen-libdefs",
-    "map-error": "node dist/cli.js map-error",
+    "build": "npm run build --workspaces",
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
-    "typescript": "^5.7.3"
-  },
   "devDependencies": {
-    "@types/node": "^22.10.7",
     "ts-node": "^10.9.2",
     "vitest": "^4.0.18"
   }

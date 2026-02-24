@@ -2,7 +2,7 @@
 // @typecode/board-arduino-uno — Interrupt helpers
 // ---------------------------------------------------------------------------
 
-import type { InterruptHandler, InterruptMode } from '../core';
+import type { InterruptHandler, InterruptMode } from '@typecode/core';
 
 /**
  * Globally disable interrupts.  Maps to Arduino `noInterrupts()` / `cli()`.

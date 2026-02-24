@@ -14,8 +14,8 @@ import type {
   IPWMPin,
   IAnalogInput,
   IInterruptPin,
-} from '../core';
-import { pinNumber } from '../core';
+} from '@typecode/core';
+import { pinNumber } from '@typecode/core';
 
 // ---------------------------------------------------------------------------
 // Internal stub factories (no-op at runtime; consumed by transpiler)

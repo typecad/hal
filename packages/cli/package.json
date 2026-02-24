@@ -1,0 +1,32 @@
+{
+  "name": "typecode",
+  "version": "0.1.0",
+  "description": "TypeCode CLI - TypeScript to C++ transpiler for embedded development",
+  "type": "commonjs",
+  "main": "./dist/transpile.js",
+  "types": "./dist/transpile.d.ts",
+  "bin": {
+    "typecode": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/transpile.d.ts",
+      "default": "./dist/transpile.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "typescript": "^5.7.3",
+    "@typecode/core": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7"
+  },
+  "license": "MIT"
+}

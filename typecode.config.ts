@@ -5,7 +5,7 @@
 // build options to use when converting TypeScript → C++.
 // ---------------------------------------------------------------------------
 
-import type { TypecodeConfig } from './code/core/config';
+import type { TypecodeConfig } from '@typecode/core/config';
 
 const config: TypecodeConfig = {
   // Target architecture

@@ -1,7 +1,7 @@
-import { buildProgramIR } from "../src/ir/build-ir";
-import { emitCpp } from "../src/emit/cpp-emitter";
-import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../src/types";
-import { createPolyfillRegistry } from "../src/polyfill";
+import { buildProgramIR } from "../packages/cli/src/ir/build-ir";
+import { emitCpp } from "../packages/cli/src/emit/cpp-emitter";
+import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/cli/src/types";
+import { createPolyfillRegistry } from "../packages/cli/src/polyfill";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -41,7 +41,7 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   const registry = createPolyfillRegistry();
   const polyfills = registry.detectAndGenerate(programIR, {
     target,
-    architecture: platformContext?.arduino?.architecture,
+    architecture: platformContext?.arduino?.fqbn,
     usedIdentifiers: new Set<string>(),
   });
   
