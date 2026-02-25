@@ -4,11 +4,21 @@
 // The classic "Hello World" of embedded: toggle the onboard LED every second.
 // ---------------------------------------------------------------------------
 
-import { Board, LED, delay } from '@typecode/board-arduino-uno';
+import { Board, delay } from '@typecode/board-arduino-uno';
 
 Board.LED.asOutput();
 
-while (true) {
-  Board.LED.toggle();
-  delay(500);
+async function blinkLed() {
+  while (true) {
+    Board.LED.high();
+    await delay(500);
+    Board.LED.low();
+    await delay(500);
+  }
 }
+
+blinkLed();
+// while (true) {
+//   Board.LED.toggle();
+//   delay(Board.A0.read());
+// }
