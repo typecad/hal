@@ -21,6 +21,48 @@ import type { BoardConstants } from "../ir/board-resolver";
 // entire renderStatement / renderExpression call chain.
 let _emitBoardConstants: BoardConstants | undefined;
 
+// Accumulates enum class names across all files compiled in one transpilation
+// run so that renderExpression can use `::` instead of `.` for enum member
+// access (e.g. I2CSpeed.STANDARD → I2CSpeed::STANDARD) even when the enum
+// type is defined in a different source file (imported from @typecode/core).
+const _emitEnumNames: Set<string> = new Set();
+
+// Enum names whose members have values outside the 16-bit signed int range
+// (i.e. > 32767 or < -32768).  On AVR, `int` is 16-bit, so these enums need
+// an explicit `long` underlying type and their static_cast must use `long`.
+const _largeEnumNames: Set<string> = new Set();
+
+/**
+ * Pre-populate the module-level enum registries from *all* program IRs before
+ * any `emitCpp` call. Call this once in `transpile.ts` after building +
+ * tree-shaking every file so that property-access rendering and struct field
+ * type inference work correctly regardless of processing order.
+ */
+export function registerAllEnumNames(
+  enums: Iterable<{ name: string; members: { name: string; value?: number }[] }>
+): void {
+  for (const e of enums) {
+    _emitEnumNames.add(e.name);
+    if (e.members.some(m => m.value !== undefined && (m.value > 32767 || m.value < -32768))) {
+      _largeEnumNames.add(e.name);
+    }
+  }
+}
+
+// Enum class member names that conflict with Arduino / ESP32 framework macros.
+// When a property-access on a known enum type produces one of these names it
+// is prefixed with `_` to match the renamed enum class member (e.g. the
+// emitted `enum class PinMode { _INPUT, _OUTPUT, … }` uses underscore prefixes).
+const arduinoEnumMemberRenames: ReadonlySet<string> = new Set([
+  "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP",
+  "RISING", "FALLING", "CHANGE",
+  "INPUT_PULLDOWN", "OUTPUT_OPEN_DRAIN", "ANALOG",
+  // Arduino.h analog reference macros (DEFAULT, INTERNAL, EXTERNAL)
+  "DEFAULT", "INTERNAL", "EXTERNAL",
+  // CMSIS / device-header macros (SAMD21 defines RTC as a hardware-register address macro)
+  "RTC",
+]);
+
 /**
  * Checks if a module specifier resolves to a typecode SDK path.
  * Typecode SDK files (code/core/*, code/board-*, @typecode/* packages) are 
@@ -78,7 +120,16 @@ function normalizeRawExpression(value: string, target: TargetProfile = "generic"
     .replace(/===/g, "==")
     .replace(/!==/g, "!=");
 
-  normalized = normalized.replace(/\bPinMode\./g, "PinMode::");
+  // Convert TypeScript-style enum member access (EnumType.MEMBER_NAME) to C++ scoped
+  // enum access (EnumType::MEMBER_NAME).  The pattern matches an identifier followed by
+  // a dot followed by an ALL_CAPS name (2+ uppercase letters at the start), which is the
+  // naming convention for enum class members.  Pin aliases like D0, D1 (single uppercase
+  // letter + digits) are intentionally excluded because they don't start with 2+ uppercase
+  // letters.
+  normalized = normalized.replace(
+    /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Z]{2,}[A-Z0-9_]*)\b/g,
+    "$1::$2"
+  );
 
   if (target === "arduino") {
     normalized = normalized.replace(/\bPinMode::(HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP)\b/g, "PinMode::_$1");
@@ -170,11 +221,28 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
         if (boardDef !== undefined) return boardDef;
       }
       const objStr = renderExpression(expr.object, exprTransformer, target);
+      // Use C++ scope-resolution operator (::) for enum class member access.
+      // Detect enum types via the accumulated _emitEnumNames set (populated by emitCpp
+      // from each file's program.enums as files are processed).
+      if (expr.object.kind === "identifier" && _emitEnumNames.has(expr.object.value)) {
+        // Prefix enum members that were renamed with _ to avoid Arduino macro conflicts.
+        const enumMember = (target === "arduino" && arduinoEnumMemberRenames.has(expr.property))
+          ? `_${expr.property}`
+          : expr.property;
+        const enumAccess = `${objStr}::${enumMember}`;
+        // Wrap in static_cast<> for Arduino target: enum class does not implicitly
+        // convert to int.  Use `long` for enums whose values exceed AVR's 16-bit int.
+        if (target === "arduino") {
+          const castType = _largeEnumNames.has(expr.object.value) ? "long" : "int";
+          return `static_cast<${castType}>(${enumAccess})`;
+        }
+        return enumAccess;
+      }
       return `${objStr}.${expr.property}`;
     }
     case "typecode-call": {
       const renderA = (e: ExpressionIR) => renderExpression(e, exprTransformer, target);
-      const translated = renderArduinoBuiltin(expr.receiver, expr.receiverKind, expr.method, expr.args, renderA);
+      const translated = renderArduinoBuiltin(expr.receiver, expr.receiverKind, expr.method, expr.args, renderA, _emitBoardConstants);
       if (translated !== undefined) return translated;
       // Fallback: render as plain method call
       return `${expr.receiver}.${expr.method}(${expr.args.map(renderA).join(", ")})`;
@@ -311,6 +379,12 @@ function inferObjectFieldType(
       return pointerVarTypes.get(value.value)!;
     }
     return "int";
+  }
+
+  // For enum member access (e.g. I2CSpeed.STANDARD), return `long` if the
+  // enum has values outside AVR's 16-bit int range, otherwise `int`.
+  if (value.kind === "property-access" && value.object.kind === "identifier") {
+    return _largeEnumNames.has(value.object.value) ? "long" : "int";
   }
 
   if (value.kind === "raw") {
@@ -876,7 +950,7 @@ function renderStatement(
     // Handle typecode SDK calls (pin/serial/i2c/spi)
     if (target === "arduino") {
       const renderA = (e: ExpressionIR) => renderExpression(e, undefined, target);
-      const translated = tryRenderTypecodeCallStatement(statement.callee, statement.args, target, renderA);
+      const translated = tryRenderTypecodeCallStatement(statement.callee, statement.args, target, renderA, _emitBoardConstants);
       if (translated !== undefined) {
         return forHeader ? translated : `${translated};`;
       }
@@ -1110,6 +1184,13 @@ function resolveTranspiledModuleInclude(
 export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedOutputs {
   // Make board constants available to the nested renderExpression function.
   _emitBoardConstants = program.boardConstants;
+  // Accumulate enum class names so property-access rendering can use :: for enums.
+  for (const e of program.enums) {
+    _emitEnumNames.add(e.name);
+    if (e.members.some(m => m.value !== undefined && (m.value > 32767 || m.value < -32768))) {
+      _largeEnumNames.add(e.name);
+    }
+  }
 
   ensureDir(options.outDir);
 
@@ -1531,8 +1612,39 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("");
   }
 
-  // Arduino reserved names that conflict with macros
-  const arduinoReservedNames = new Set(["HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE", "SDA", "SCL", "SS", "MOSI", "MISO", "SCK"]);
+  // Arduino reserved names that conflict with macros/globals predefined by the framework.
+  // Names predefined by the Arduino / ESP32 framework as macros, static consts, or globals.
+  // Emitting C++ declarations with these names would cause redeclaration / macro-expansion errors.
+  const arduinoReservedNames = new Set([
+    // Standard Arduino digital/analog pin-mode macros (all platforms)
+    "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE",
+    // ESP32-specific pin-mode macros (esp32-hal-gpio.h)
+    "INPUT_PULLDOWN", "OUTPUT_OPEN_DRAIN", "ANALOG",
+    // Bus pin aliases (all platforms)
+    "SDA", "SCL", "SS", "MOSI", "MISO", "SCK",
+    // UART pin aliases — predefined as static const uint8_t on most platforms
+    "TX", "RX", "TX2", "RX2",
+    // DAC channel aliases — predefined as static const uint8_t on ESP32
+    "DAC1", "DAC2",
+    // ADC channel aliases — predefined on all Arduino platforms
+    "A0", "A1", "A2", "A3", "A4", "A5",
+    // Predefined HardwareSerial globals
+    "Serial", "Serial2",
+    // Arduino.h analog reference macros (defined in hardware/arduino/avr/cores/arduino/Arduino.h)
+    "DEFAULT", "INTERNAL", "EXTERNAL",
+    // CMSIS / device-header macros — SAMD21 defines RTC as a hardware-register pointer macro;
+    // emitting a variable or enum member named RTC causes expansion errors on that target.
+    "RTC",
+  ]);
+
+  // Build set of compile-time (non-runtime) declared top-level variable names.
+  // Used below when emitting struct initializers to zero-initialize forward-referenced
+  // or suppressed runtime variables (like pin constants D0, D1, TX2 etc.).
+  const compiletimeVarNames = new Set<string>(
+    program.topLevelStatements
+      .filter((stmt) => stmt.kind === "var_decl" && !statementRequiresRuntime(stmt))
+      .map((stmt) => (stmt as { name: string }).name)
+  );
 
   // Separate compile-time declarations from runtime statements
   // Compile-time declarations (literals, simple identifiers, static arrays) can go at global scope
@@ -1552,6 +1664,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   const topLevelExecutables = program.topLevelStatements.filter(
     (item) => statementRequiresRuntime(item)
   );
+  // Also suppress runtime var_decl statements whose names clash with
+  // Arduino framework predefined symbols (e.g. A0, Serial).
+  const filteredTopLevelExecutables_presuppress = options.target === "arduino"
+    ? topLevelExecutables.filter((item) => {
+        if (item.kind === "var_decl") {
+          return !arduinoReservedNames.has(item.name);
+        }
+        return true;
+      })
+    : topLevelExecutables;
 
   const entrypointFunctionName = options.target === "arduino" ? "setup" : "main";
   const entrypointCallNames = new Set<string>([entrypointFunctionName]);
@@ -1562,7 +1684,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
-  const filteredTopLevelExecutables = topLevelExecutables.filter((statement) => {
+  const filteredTopLevelExecutables = filteredTopLevelExecutables_presuppress.filter((statement) => {
     if (statement.kind !== "call") {
       return true;
     }
@@ -1683,12 +1805,30 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     });
   }
 
+  // Enum class names that are already declared as C typedefs in the new Arduino API
+  // (arduino:samd, arduino:mbed_*, arduino:nrf52, etc. include api/Common.h which
+  // declares `PinMode` and `PinStatus` as C-style enum typedefs).  Redefining them
+  // as `enum class` causes a "using typedef-name after 'enum'" compiler error.
+  // Guard them so they are only emitted when the new API is NOT present.
+  const arduinoNewApiReservedEnums = new Set(["PinMode", "InterruptMode"]);
+
   // Emit enums
   for (const enumDef of program.enums) {
     const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
     emitCommentLines(enumDef.leadingComments, "", (line) => appendLine(line));
     const enumKeyword = enumDef.isConst ? "enum class" : "enum class";
-    appendLine(`${enumKeyword} ${enumDef.name} {`);
+    // On AVR, `int` is 16-bit (max 32767). Add an explicit `long` underlying
+    // type for enums that contain values outside the 16-bit signed int range.
+    const needsLongUnderlying = options.target === "arduino" &&
+      enumDef.members.some(m => m.value !== undefined && (m.value > 32767 || m.value < -32768));
+    const underlyingType = needsLongUnderlying ? " : long" : "";
+    // For Arduino targets: guard enum classes that conflict with the new Arduino API typedef
+    // declarations (ARDUINO_API_VERSION is defined by api/ArduinoAPI.h on SAMD, nRF52, etc.).
+    const needsApiGuard = options.target === "arduino" && arduinoNewApiReservedEnums.has(enumDef.name);
+    if (needsApiGuard) {
+      appendLine(`#if !defined(ARDUINO_API_VERSION)`);
+    }
+    appendLine(`${enumKeyword} ${enumDef.name}${underlyingType} {`);
     for (let i = 0; i < enumDef.members.length; i++) {
       const member = enumDef.members[i];
       const valueSuffix = member.value !== undefined ? ` = ${member.value}` : "";
@@ -1700,6 +1840,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendLine(`  ${memberName}${valueSuffix}${commaSuffix}`);
     }
     appendLine("};");
+    if (needsApiGuard) {
+      appendLine(`#endif // !defined(ARDUINO_API_VERSION)`);
+    }
     emitCommentLines(enumDef.trailingComments, "", (line) => appendLine(line));
     appendLine("");
   }
@@ -1872,12 +2015,30 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         return [field.name, inferred] as const;
       });
       const fieldDefs = fieldTypeEntries
-        .map(([fieldName, inferredType]) => `${inferredType} ${fieldName};`)
+        .map(([fieldName, inferredType]) => {
+          // Rename struct fields that match Arduino reserved macro/global names to avoid
+          // preprocessor expansion inside struct definitions (e.g. TX2 → (gpio_num_t)25).
+          const safeFieldName =
+            options.target === "arduino" && arduinoReservedNames.has(fieldName)
+              ? `_${fieldName}`
+              : fieldName;
+          return `${inferredType} ${safeFieldName};`;
+        })
         .join(" ");
       const initValues = statement.initializer.fields
         .map((field) => {
           if (options.target === "arduino" && field.value.kind === "object") {
             return "0";
+          }
+          // For Arduino target: zero-initialize identifier references to non-compile-time
+          // variables. These are either runtime-evaluated (declared later in the merged
+          // .ino, so not yet in scope) or suppressed by arduinoReservedNames.
+          // compile-time constants like YES/NO/true/false are kept as-is.
+          if (options.target === "arduino" && field.value.kind === "identifier") {
+            const identName = field.value.value;
+            if (!compiletimeVarNames.has(identName)) {
+              return "0";
+            }
           }
           return renderExpression(field.value, fixPointerFieldAccess, options.target);
         })

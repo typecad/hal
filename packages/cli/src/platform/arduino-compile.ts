@@ -72,9 +72,19 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
       const sanitized = rewritten
         .replace(/^\s*#include\s+<Arduino\.h>\s*$/gm, "")
         .replace(/^\s*#include\s+"Arduino\.h"\s*$/gm, "");
+      // Skip modules whose body is empty after tree-shaking
+      // (only #include directives, blank lines, and comments remain)
+      const stripped = sanitized
+        .replace(/^\s*#include\s+.*$/gm, "")
+        .replace(/^\s*\/\/.*$/gm, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .trim();
+      if (stripped.length === 0) {
+        return "";
+      }
       return `\n// ---- merged from ${relativePath} ----\n${sanitized}\n`;
     })
-    .join("\n");
+    .join("");
 
   const mergedSketch = `${moduleContents}\n// ---- entry sketch ----\n${sanitizedSketch}\n`;
   fs.writeFileSync(normalizedSketchPath, mergedSketch, "utf8");

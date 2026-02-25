@@ -61,6 +61,8 @@ TREE-SHAKING OPTIONS
 
   --keep-unused-types      Keep all type aliases even if not used
 
+  --keep-unused-variables   Keep all top-level variables even if not referenced
+
   --no-report-unused       Don't emit diagnostics for removed code
 
   --entry-point <name>     Add a custom entry point symbol (repeatable)
@@ -214,6 +216,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   const keepUnusedEnums = argv.includes("--keep-unused-enums");
   const keepUnusedClasses = argv.includes("--keep-unused-classes");
   const keepUnusedTypes = argv.includes("--keep-unused-types");
+  const keepUnusedVariables = argv.includes("--keep-unused-variables");
   const noReportUnused = argv.includes("--no-report-unused");
 
   const entryPoints: string[] = [];
@@ -252,6 +255,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
     keepUnusedEnums,
     keepUnusedClasses,
     keepUnusedTypeAliases: keepUnusedTypes,
+    keepUnusedVariables,
     reportUnused: !noReportUnused,
     entryPoints: entryPoints.length > 0 ? entryPoints : undefined,
   };

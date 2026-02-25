@@ -408,11 +408,31 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
     }
   }
 
-  // Process top-level statements as a special node
+  // Process top-level statements.
+  // Named var_decl statements get their own nodes so they can be
+  // individually tree-shaken.  All other (non-var_decl) statements
+  // contribute to the special __top_level__ node.
   const topLevelDependencies = new Set<string>();
   for (const statement of program.topLevelStatements) {
-    for (const id of collectStatementIdentifiers(statement)) {
-      topLevelDependencies.add(id);
+    if (statement.kind === "var_decl") {
+      const varDeps = new Set<string>();
+      if (statement.initializer) {
+        for (const id of collectExpressionIdentifiers(statement.initializer)) {
+          varDeps.add(id);
+        }
+      }
+      nodes.set(statement.name, {
+        name: statement.name,
+        kind: "variable",
+        dependencies: varDeps,
+      });
+      for (const dep of varDeps) {
+        addReference(statement.name, dep);
+      }
+    } else {
+      for (const id of collectStatementIdentifiers(statement)) {
+        topLevelDependencies.add(id);
+      }
     }
   }
 

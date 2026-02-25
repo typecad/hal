@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
 import { buildProgramIR } from "./ir/build-ir";
-import { emitCpp } from "./emit/cpp-emitter";
+import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter";
 import { GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types";
 import { readText } from "./utils/fs";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry";
@@ -809,6 +809,7 @@ function applyTreeShaking(
     keepUnusedEnums: treeShakingOptions?.keepUnusedEnums,
     keepUnusedClasses: treeShakingOptions?.keepUnusedClasses,
     keepUnusedTypeAliases: treeShakingOptions?.keepUnusedTypeAliases,
+    keepUnusedVariables: treeShakingOptions?.keepUnusedVariables,
     reportUnused: treeShakingOptions?.reportUnused,
   });
 
@@ -818,6 +819,7 @@ function applyTreeShaking(
     keepUnusedEnums: treeShakingOptions?.keepUnusedEnums,
     keepUnusedClasses: treeShakingOptions?.keepUnusedClasses,
     keepUnusedTypeAliases: treeShakingOptions?.keepUnusedTypeAliases,
+    keepUnusedVariables: treeShakingOptions?.keepUnusedVariables,
     reportUnused: treeShakingOptions?.reportUnused,
   });
 }
@@ -845,6 +847,20 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   let entryOutputs: GeneratedOutputs | undefined;
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
 
+  // ── Pass 1: build + tree-shake every IR and pre-compute polyfills ─────────
+  // We need to process ALL files before emitting any of them so that
+  // `registerAllEnumNames` can be called with the *complete* set of enum names.
+  // Without this pre-pass, files processed early (e.g. peripherals.ts) would
+  // not yet know about enum types defined in files processed later (e.g.
+  // bus/i2c.ts), causing property-access expressions like `I2CSpeed.STANDARD`
+  // to be emitted with `.` instead of the required C++ `::`.
+  type PreBuiltFile = {
+    programIR: ProgramIR;
+    polyfills: ReturnType<typeof polyfillRegistry.detectAndGenerate>;
+    npmPackage: ReturnType<typeof npmPackages.get>;
+  };
+  const preBuilt = new Map<string, PreBuiltFile>();
+
   for (const filePath of transpileFiles) {
     const sourceText = readText(filePath);
     let programIR = buildProgramIR(filePath, sourceText);
@@ -867,10 +883,25 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
       usedIdentifiers: collectUsedIdentifiers(programIR),
     };
     const polyfills = polyfillRegistry.detectAndGenerate(programIR, polyfillContext);
-
-    // Get npm package info for this file (if it's from an npm package)
     const npmPackage = npmPackages.get(filePath);
 
+    preBuilt.set(filePath, { programIR, polyfills, npmPackage });
+  }
+
+  // Collect ALL enum IRs from ALL files and register them before emitting.
+  // This makes the property-access renderer and struct field type inference
+  // aware of every enum type (including its member values for AVR range checks)
+  // regardless of which file it's defined in or what order files are emitted.
+  const allEnumIRs: { name: string; members: { name: string; value?: number }[] }[] = [];
+  for (const { programIR } of preBuilt.values()) {
+    for (const e of programIR.enums) {
+      allEnumIRs.push(e);
+    }
+  }
+  registerAllEnumNames(allEnumIRs);
+
+  // ── Pass 2: emit ──────────────────────────────────────────────────────────
+  for (const [filePath, { programIR, polyfills, npmPackage }] of preBuilt) {
     const emitted = emitCpp(programIR, {
       outDir,
       emitMode: options.emitMode,

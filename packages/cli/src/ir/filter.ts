@@ -14,6 +14,8 @@ export interface FilterOptions {
   keepUnusedClasses?: boolean;
   /** Keep type aliases even if not used */
   keepUnusedTypeAliases?: boolean;
+  /** Keep top-level variables even if not referenced */
+  keepUnusedVariables?: boolean;
   /** Generate diagnostics for removed code */
   reportUnused?: boolean;
 }
@@ -26,6 +28,7 @@ export const DEFAULT_FILTER_OPTIONS: FilterOptions = {
   keepUnusedEnums: false,
   keepUnusedClasses: false,
   keepUnusedTypeAliases: false,
+  keepUnusedVariables: false,
   reportUnused: true,
 };
 
@@ -64,8 +67,14 @@ export function filterProgramIR(
     reachability.reachableTypeAliases.has(typeAlias.name)
   );
 
-  // Top-level statements are always kept (they're always reachable by definition)
-  const filteredTopLevelStatements = program.topLevelStatements;
+  // Filter top-level var_decl statements based on variable reachability.
+  // Non-var_decl statements (calls, loops, etc.) are always kept.
+  const filteredTopLevelStatements = program.topLevelStatements.filter((stmt) => {
+    if (stmt.kind === "var_decl") {
+      return reachability.reachableVariables.has(stmt.name);
+    }
+    return true;
+  });
 
   // Combine diagnostics
   const diagnostics: Diagnostic[] = [
@@ -158,6 +167,7 @@ export function getFilterSummary(
   classesRemoved: number;
   enumsRemoved: number;
   typeAliasesRemoved: number;
+  variablesRemoved: number;
   totalRemoved: number;
 } {
   const functionsRemoved =
@@ -166,14 +176,18 @@ export function getFilterSummary(
   const enumsRemoved = original.enums.length - filtered.enums.length;
   const typeAliasesRemoved =
     original.typeAliases.length - filtered.typeAliases.length;
+  const variablesRemoved =
+    original.topLevelStatements.filter((s) => s.kind === "var_decl").length -
+    filtered.topLevelStatements.filter((s) => s.kind === "var_decl").length;
   const totalRemoved =
-    functionsRemoved + classesRemoved + enumsRemoved + typeAliasesRemoved;
+    functionsRemoved + classesRemoved + enumsRemoved + typeAliasesRemoved + variablesRemoved;
 
   return {
     functionsRemoved,
     classesRemoved,
     enumsRemoved,
     typeAliasesRemoved,
+    variablesRemoved,
     totalRemoved,
   };
 }

@@ -19,10 +19,18 @@ import { TargetProfile } from '../types';
  * Strip the `D` prefix from digital pin names so they resolve to plain
  * integers that the Arduino framework understands (D13 → 13).
  * A0–A5 are kept as-is because Arduino defines them as macros.
- * LED maps to Arduino's `LED_BUILTIN` constant.
+ * LED resolves to the board's LED pin number (from board constants) when
+ * available, otherwise falls back to `LED_BUILTIN`.
  */
-function pinArg(receiver: string): string {
-  if (receiver === 'LED') return 'LED_BUILTIN';
+function pinArg(receiver: string, boardConstants?: BoardConstants): string {
+  if (receiver === 'LED') {
+    // Look up the board's LED pin name (e.g. "D2") and convert to a raw number.
+    const ledPinName = boardConstants?.get('pins.led');
+    if (typeof ledPinName === 'string' && /^D(\d+)$/.test(ledPinName)) {
+      return ledPinName.slice(1); // "D2" → "2"
+    }
+    return 'LED_BUILTIN';
+  }
   if (/^D\d+$/.test(receiver)) return receiver.slice(1);
   return receiver;
 }
@@ -106,8 +114,9 @@ export function renderArduinoBuiltin(
   method: string,
   args: ReadonlyArray<ExpressionIR>,
   renderArg: (e: ExpressionIR) => string,
+  boardConstants?: BoardConstants,
 ): string | undefined {
-  const pin = pinArg(receiver);
+  const pin = pinArg(receiver, boardConstants);
   const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
   const allArgs = () => args.map(renderArg).join(', ');
 
@@ -279,6 +288,7 @@ export function tryRenderTypecodeCallStatement(
   args: ReadonlyArray<ExpressionIR>,
   target: TargetProfile,
   renderArg: (e: ExpressionIR) => string,
+  boardConstants?: BoardConstants,
 ): string | undefined {
   if (target !== 'arduino') return undefined;
 
@@ -300,5 +310,5 @@ export function tryRenderTypecodeCallStatement(
   const kind = inferKindByName(receiver);
   if (kind === 'unknown') return undefined;
 
-  return renderArduinoBuiltin(receiver, kind, method, args, renderArg);
+  return renderArduinoBuiltin(receiver, kind, method, args, renderArg, boardConstants);
 }

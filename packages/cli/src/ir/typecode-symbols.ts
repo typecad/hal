@@ -20,10 +20,10 @@ export type TypecodeReceiverKind =
 
 /**
  * Static mapping of every known typecode export name to its receiver kind.
- * Covers all Arduino Uno board exports plus common peripheral names.
+ * Covers Arduino Uno board exports, ESP32 DevKit exports, and common peripheral names.
  */
 const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
-  // ---- Digital-only pins ------------------------------------------------
+  // ---- Digital-only pins (Arduino Uno) -----------------------------------
   D0:  'digital',
   D1:  'digital',
   D2:  'digital',
@@ -33,13 +33,29 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   D12: 'digital',
   D13: 'digital',
 
-  // ---- PWM-capable pins ------------------------------------------------
+  // ---- PWM-capable pins (Arduino Uno) ------------------------------------
   D3:  'pwm',
   D5:  'pwm',
   D6:  'pwm',
   D9:  'pwm',
   D10: 'pwm',
   D11: 'pwm',
+
+  // ---- ESP32 DevKit additional PWM-capable pins --------------------------
+  D14: 'pwm',
+  D15: 'pwm',
+  D16: 'pwm',
+  D17: 'pwm',
+  D18: 'pwm',
+  D19: 'pwm',
+  D21: 'pwm',
+  D22: 'pwm',
+  D23: 'pwm',
+  D25: 'pwm',
+  D26: 'pwm',
+  D27: 'pwm',
+  D32: 'pwm',
+  D33: 'pwm',
 
   // ---- Analog input pins -----------------------------------------------
   A0:  'analog-input',
@@ -50,20 +66,30 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   A5:  'analog-input',
 
   // ---- Named aliases ---------------------------------------------------
-  LED:  'digital',        // D13
-  SDA:  'analog-input',   // A4  (also I2C when used as bus pin)
-  SCL:  'analog-input',   // A5
-  MOSI: 'pwm',            // D11
-  MISO: 'digital',        // D12
-  SCK:  'digital',        // D13
-  SS:   'pwm',            // D10
+  LED:  'digital',        // D13 on Uno / D2 on ESP32 DevKit
+  SDA:  'analog-input',   // A4 on Uno (also I2C when used as bus pin)
+  SCL:  'analog-input',   // A5 on Uno
+  MOSI: 'pwm',            // D11 on Uno / D23 on ESP32
+  MISO: 'digital',        // D12 on Uno / D19 on ESP32
+  SCK:  'digital',        // D13 on Uno / D18 on ESP32
+  SS:   'pwm',            // D10 on Uno / D5 on ESP32
   TX:   'digital',        // D1
   RX:   'digital',        // D0
+  // ESP32-specific aliases
+  TX2:  'pwm',            // D17 on ESP32 (UART2 TX)
+  RX2:  'pwm',            // D16 on ESP32 (UART2 RX)
+  DAC1: 'pwm',            // D25 on ESP32 (DAC channel 1)
+  DAC2: 'pwm',            // D26 on ESP32 (DAC channel 2)
+
+  // ---- NANO 33 IoT additional analog pins (A6, A7) ----------------------
+  A6:  'analog-input',
+  A7:  'analog-input',
 
   // ---- Peripheral objects ----------------------------------------------
-  Serial: 'serial',
-  I2C0:   'i2c',
-  SPI0:   'spi',
+  Serial:  'serial',
+  Serial2: 'serial',
+  I2C0:    'i2c',
+  SPI0:    'spi',
 };
 
 /**

@@ -63,6 +63,8 @@ export interface TreeShakingOptions {
   keepUnusedClasses?: boolean;
   /** Keep type aliases even if not used (default: false) */
   keepUnusedTypeAliases?: boolean;
+  /** Keep top-level variables even if not referenced (default: false) */
+  keepUnusedVariables?: boolean;
   /** Generate diagnostics for removed code (default: true) */
   reportUnused?: boolean;
   /** Additional symbols to treat as entry points */

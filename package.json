@@ -4,6 +4,8 @@
   "workspaces": [
     "packages/core",
     "packages/board-arduino-uno",
+    "packages/board-esp32-devkit",
+    "packages/board-arduino-nano33iot",
     "packages/cli"
   ],
   "scripts": {

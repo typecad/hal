@@ -15,6 +15,7 @@ export type ArchitectureIdentifier =
   | 'esp32s3'
   | 'esp32c3'
   | 'rp2040'
+  | 'samd'
   | 'stm32'
   | 'nrf52';
 

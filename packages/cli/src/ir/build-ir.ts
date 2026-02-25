@@ -388,6 +388,14 @@ function resolveFunctionReturnType(name: string, functionReturnTypes: Map<string
 // Track variables that are pointers (from 'new' expressions)
 type PointerTracker = Set<string>;
 
+// Pin factory function names that should be constant-folded to the pin number
+const PIN_FACTORY_FUNCTIONS = new Set([
+  "createDigitalPin",
+  "createPWMPin", 
+  "createAnalogPin",
+  "createInterruptPin",
+]);
+
 function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Set()): ExpressionIR {
   const formatExpressionText = (node: ts.Expression): string => {
     if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
@@ -513,6 +521,15 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   }
 
   if (ts.isCallExpression(expr)) {
+    // ---- Pin factory constant-folding ---------------------------------------
+    // createDigitalPin(pin, gpio), createPWMPin(pin, gpio), etc. are folded to
+    // just the pin number (first argument) at compile time.
+    if (ts.isIdentifier(expr.expression) && PIN_FACTORY_FUNCTIONS.has(expr.expression.text)) {
+      if (expr.arguments.length >= 1 && ts.isNumericLiteral(expr.arguments[0])) {
+        return { kind: "number", value: Number(expr.arguments[0].text) };
+      }
+    }
+
     // ---- Typecode SDK method call detection (expression context) -----------
     // Detects A0.read(), D13.high(), Serial.println(), Board.A0.read(), etc.
     // and emits a structured `typecode-call` IR node instead of a raw string.
@@ -1602,30 +1619,48 @@ function tryResolveBoardDefFile(
   fromFile: string,
   moduleSpecifier: string,
 ): string | undefined {
-  if (!moduleSpecifier.startsWith(".")) return undefined;
+  // Handle relative imports (e.g. "../code/board-arduino-uno/pins")
+  if (moduleSpecifier.startsWith(".")) {
+    const dir = path.dirname(fromFile);
+    const base = path.resolve(dir, moduleSpecifier);
 
-  const dir = path.dirname(fromFile);
-  const base = path.resolve(dir, moduleSpecifier);
+    // Candidates: bare path, +.ts, or /index.ts
+    const candidates = [
+      base,
+      `${base}.ts`,
+      path.join(base, "index.ts"),
+    ];
 
-  // Candidates: bare path, +.ts, or /index.ts
-  const candidates = [
-    base,
-    `${base}.ts`,
-    path.join(base, "index.ts"),
-  ];
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) continue;
+      const normalized = candidate.replace(/\\/g, "/");
+      if (/\/code\/board-/.test(normalized)) {
+        // Always redirect to index.ts in the board package root so we parse the
+        // BoardDefinition manifest regardless of which file was actually imported
+        // (e.g. board.ts, pins.ts, etc.).
+        const boardDir = path.dirname(candidate);
+        const indexTs = path.join(boardDir, "index.ts");
+        return fs.existsSync(indexTs) ? indexTs : candidate;
+      }
+    }
+    return undefined;
+  }
 
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate)) continue;
-    const normalized = candidate.replace(/\\/g, "/");
-    if (/\/code\/board-/.test(normalized)) {
-      // Always redirect to index.ts in the board package root so we parse the
-      // BoardDefinition manifest regardless of which file was actually imported
-      // (e.g. board.ts, pins.ts, etc.).
-      const boardDir = path.dirname(candidate);
-      const indexTs = path.join(boardDir, "index.ts");
-      return fs.existsSync(indexTs) ? indexTs : candidate;
+  // Handle npm-scoped board package imports (e.g. "@typecode/board-esp32-devkit")
+  if (moduleSpecifier.startsWith("@typecode/board-")) {
+    const parts = moduleSpecifier.split("/");
+    const pkgName = parts[1]; // "board-esp32-devkit"
+    // Walk up from the importing file's directory to find node_modules
+    let dir = path.dirname(fromFile);
+    while (true) {
+      const candidate = path.join(dir, "node_modules", "@typecode", pkgName, "src", "index.ts");
+      if (fs.existsSync(candidate)) return candidate;
+      const parent = path.dirname(dir);
+      if (parent === dir) break; // reached filesystem root
+      dir = parent;
     }
   }
+
   return undefined;
 }
 

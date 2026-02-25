@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\examples\\01-blink\\01-blink.ino",
+  "sourceFilePath": "C:\\typecad\\typecode\\examples\\01-blink.ts",
+  "entries": [
+    {
+      "generatedStartLine": 6,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 6,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\examples\\01-blink.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "setup"
+    },
+    {
+      "generatedStartLine": 8,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 8,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\examples\\01-blink.ts",
+        "startOffset": 386,
+        "endOffset": 400,
+        "startLine": 10,
+        "startColumn": 1,
+        "endLine": 10,
+        "endColumn": 15
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 9,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 9,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\examples\\01-blink.ts",
+        "startOffset": 405,
+        "endOffset": 455,
+        "startLine": 12,
+        "startColumn": 1,
+        "endLine": 15,
+        "endColumn": 2
+      },
+      "nodeKind": "while"
+    },
+    {
+      "generatedStartLine": 11,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 11,
+      "generatedEndColumn": 58,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\examples\\01-blink.ts",
+        "startOffset": 423,
+        "endOffset": 435,
+        "startLine": 13,
+        "startColumn": 3,
+        "endLine": 13,
+        "endColumn": 15
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 12,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 12,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\examples\\01-blink.ts",
+        "startOffset": 440,
+        "endOffset": 451,
+        "startLine": 14,
+        "startColumn": 3,
+        "endLine": 14,
+        "endColumn": 14
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 16,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 16,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\examples\\01-blink.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "loop"
+    }
+  ]
+}

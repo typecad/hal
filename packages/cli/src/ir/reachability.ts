@@ -15,6 +15,8 @@ export interface ReachabilityResult {
   reachableEnums: Set<string>;
   /** Type aliases that are reachable from entry points */
   reachableTypeAliases: Set<string>;
+  /** Top-level variable names that are reachable from entry points */
+  reachableVariables: Set<string>;
   /** Indices of reachable top-level statements */
   reachableTopLevelStatements: number[];
   /** Unreachable code items */
@@ -42,6 +44,8 @@ export interface ReachabilityOptions {
   keepUnusedClasses?: boolean;
   /** Keep type aliases even if not used */
   keepUnusedTypeAliases?: boolean;
+  /** Keep top-level variables even if not referenced */
+  keepUnusedVariables?: boolean;
   /** Generate diagnostics for unreachable code */
   reportUnused?: boolean;
 }
@@ -60,6 +64,7 @@ export function analyzeReachability(
     keepUnusedEnums = false,
     keepUnusedClasses = false,
     keepUnusedTypeAliases = false,
+    keepUnusedVariables = false,
     reportUnused = true,
   } = options;
 
@@ -95,6 +100,15 @@ export function analyzeReachability(
   const reachableClasses = new Set<string>();
   const reachableEnums = new Set<string>();
   const reachableTypeAliases = new Set<string>();
+  const reachableVariables = new Set<string>();
+
+  // Collect names of top-level var_decl statements
+  const definedVariables = new Set<string>();
+  for (const stmt of program.topLevelStatements) {
+    if (stmt.kind === "var_decl") {
+      definedVariables.add(stmt.name);
+    }
+  }
 
   // All top-level statements are reachable by definition
   const reachableTopLevelStatements = program.topLevelStatements.map((_, index) => index);
@@ -112,6 +126,9 @@ export function analyzeReachability(
     }
     if (definedTypeAliases.has(symbol)) {
       reachableTypeAliases.add(symbol);
+    }
+    if (definedVariables.has(symbol)) {
+      reachableVariables.add(symbol);
     }
   }
 
@@ -131,6 +148,12 @@ export function analyzeReachability(
   if (keepUnusedTypeAliases) {
     for (const [name] of definedTypeAliases) {
       reachableTypeAliases.add(name);
+    }
+  }
+
+  if (keepUnusedVariables) {
+    for (const name of definedVariables) {
+      reachableVariables.add(name);
     }
   }
 
@@ -223,6 +246,7 @@ export function analyzeReachability(
     reachableClasses,
     reachableEnums,
     reachableTypeAliases,
+    reachableVariables,
     reachableTopLevelStatements,
     unreachable: {
       functions: unreachableFunctions,
@@ -276,7 +300,12 @@ export function getReachabilityStats(
   const totalItems = totalFunctions + totalClasses + totalEnums + totalTypeAliases;
   const reachableItems = reachableFunctions + reachableClasses + reachableEnums + reachableTypeAliases;
 
-  const reductionPercent = totalItems > 0 ? ((totalItems - reachableItems) / totalItems) * 100 : 0;
+  const totalVariables = program.topLevelStatements.filter((s) => s.kind === "var_decl").length;
+  const reachableVariableCount = result.reachableVariables.size;
+
+  const totalAll = totalItems + totalVariables;
+  const reachableAll = reachableItems + reachableVariableCount;
+  const reductionPercent = totalAll > 0 ? ((totalAll - reachableAll) / totalAll) * 100 : 0;
 
   return {
     totalFunctions,
