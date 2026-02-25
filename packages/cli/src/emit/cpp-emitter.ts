@@ -668,9 +668,139 @@ function renderBoilerplate(program: ProgramIR): string {
   return chunks.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Async state-machine helpers
+// ---------------------------------------------------------------------------
+
+function toPascalCaseLocal(str: string): string {
+  return str
+    .split(/[_\s]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join("");
+}
+
 /**
- * Scan program IR for console.* calls
+ * Generates a cooperative state-machine class for an async function.
+ *
+ * Handles two patterns:
+ *   1. Cyclic: single `while(true)` body containing `await delay()` calls.
+ *   2. Linear: sequential statements with `await delay()` calls.
+ *
+ * Each `await delay(ms)` call becomes a timed wait state that polls `millis()`.
  */
+function generateAsyncTaskClass(
+  fnName: string,
+  fnStatements: StatementIR[],
+  target: TargetProfile,
+  knownFunctionReturnTypes: Map<string, string>,
+): { classDef: string; instanceDecl: string } {
+  const className = toPascalCaseLocal(fnName) + "Task";
+  const instanceName = `${fnName}Task`;
+
+  // Detect whether the body is a single while-loop (cyclic) or linear statements
+  let bodyStatements: StatementIR[];
+  let isCyclic = false;
+
+  if (fnStatements.length === 1 && fnStatements[0].kind === "while") {
+    isCyclic = true;
+    bodyStatements = (fnStatements[0] as any).body as StatementIR[];
+  } else {
+    bodyStatements = fnStatements;
+  }
+
+  // Split body into segments at each awaited call
+  interface Segment {
+    preStatements: StatementIR[];
+    awaitedCallee?: string;
+    awaitedArgs: ExpressionIR[];
+  }
+
+  const segments: Segment[] = [];
+  let currentPre: StatementIR[] = [];
+
+  for (const stmt of bodyStatements) {
+    if (stmt.kind === "call" && (stmt as any).isAwaited) {
+      segments.push({ preStatements: currentPre, awaitedCallee: stmt.callee, awaitedArgs: stmt.args });
+      currentPre = [];
+    } else {
+      currentPre.push(stmt);
+    }
+  }
+  // Terminal segment (trailing statements after the last await, or the whole body if no awaits)
+  segments.push({ preStatements: currentPre, awaitedArgs: [] });
+
+  const awaitCount = segments.filter((s) => s.awaitedCallee !== undefined).length;
+  const stateCount = awaitCount + 1; // STATE_0 … STATE_{awaitCount}; cyclic loops back, linear adds STATE_DONE
+
+  const stateNames: string[] = [];
+  for (let i = 0; i < stateCount; i++) stateNames.push(`STATE_${i}`);
+  if (!isCyclic) stateNames.push("STATE_DONE");
+
+  // Helper: render a non-await statement as a single C++ line
+  const renderStmt = (stmt: StatementIR): string =>
+    renderStatement(stmt, false, target, undefined, undefined, knownFunctionReturnTypes);
+
+  const caseLines: string[] = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const stateName = `STATE_${i}`;
+    const isTerminal = seg.awaitedCallee === undefined;
+    const body: string[] = [];
+
+    if (i === 0) {
+      // STATE_0: execute immediately, no millis check
+      for (const stmt of seg.preStatements) body.push(`        ${renderStmt(stmt)}`);
+      if (!isTerminal) {
+        const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], undefined, target) : "0";
+        body.push(`        _waitUntil = millis() + ${ms};`);
+        body.push(`        _state = STATE_${i + 1};`);
+      } else {
+        body.push(`        _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+      }
+    } else {
+      // STATE_i (i >= 1): poll millis, then execute segment
+      body.push(`        if (millis() >= _waitUntil) {`);
+      for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
+      if (!isTerminal) {
+        const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], undefined, target) : "0";
+        body.push(`          _waitUntil = millis() + ${ms};`);
+        body.push(`          _state = STATE_${i + 1};`);
+      } else {
+        body.push(`          _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+      }
+      body.push(`        }`);
+    }
+
+    caseLines.push(`      case ${stateName}:`, ...body, `        break;`);
+  }
+
+  if (!isCyclic) caseLines.push(`      case STATE_DONE:`, `        break;`);
+
+  const stateEnumList = stateNames.join(", ");
+  const isCompleteExpr = isCyclic ? "false" : "_state == STATE_DONE";
+
+  const classDef = [
+    `// Async state machine for ${fnName}`,
+    `class ${className} {`,
+    `public:`,
+    `  enum State { ${stateEnumList} };`,
+    `  ${className}() : _state(STATE_0), _waitUntil(0) {}`,
+    `  void run() {`,
+    `    switch (_state) {`,
+    ...caseLines,
+    `    }`,
+    `  }`,
+    `  bool isComplete() const { return ${isCompleteExpr}; }`,
+    `  void reset() { _state = STATE_0; _waitUntil = 0; }`,
+    `private:`,
+    `  State _state;`,
+    `  unsigned long _waitUntil;`,
+    `};`,
+  ].join("\n");
+
+  return { classDef, instanceDecl: `${className} ${instanceName};` };
+}
 /**
  * Check if an expression requires runtime execution (cannot be evaluated at global scope in C++)
  */
@@ -1218,6 +1348,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     ? emitPolyfillBoilerplate(options.polyfills)
     : undefined;
   const hasAsyncRuntime = (options.polyfills ?? []).some((polyfill) => polyfill.id === "async_arduino");
+  // True only when the Promise/MicrotaskQueue runtime was emitted (requires C++ stdlib).
+  // On AVR this is false; ts2cpp_pump_microtasks() must NOT be called.
+  const hasPromiseRuntime = (options.polyfills ?? []).some(
+    (polyfill) => polyfill.id === "async_arduino" && (polyfill as any).hasPromiseRuntime === true
+  );
 
   if (options.target === "arduino" && !isNpmPackage) {
     const arduinoProfile = resolveArduinoProfile(program, options.platformContext);
@@ -1289,6 +1424,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
+  // Set of original async function names — used to suppress their direct emission
+  // and to filter them out of top-level setup() calls.
+  const asyncFunctionOriginalNames = new Set(
+    program.functions.filter((fn) => fn.isAsync).map((fn) => fn.originalName)
+  );
+  const asyncFunctionMappedNames = new Set(
+    program.functions.filter((fn) => fn.isAsync).map((fn) => mapFunctionName(fn.originalName, options.target))
+  );
+
   const mappedFunctions = program.functions.map((fn) => ({
     name: mapFunctionName(fn.originalName, options.target),
     returnType: mapReturnType(mapFunctionName(fn.originalName, options.target), fn.returnType, options.target),
@@ -1296,6 +1440,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     leadingComments: fn.leadingComments,
     trailingComments: fn.trailingComments,
     parameters: fn.parameters,
+    isAsync: fn.isAsync,
     statements: fn.statements.map((stmt) => {
       if (stmt.kind === "call") {
         return {
@@ -1314,6 +1459,23 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
   for (const fn of program.functions) {
     knownFunctionReturnTypes.set(fn.originalName, mapReturnType(mapFunctionName(fn.originalName, options.target), fn.returnType, options.target));
+  }
+
+  // Pre-build state machine class strings for every async function.
+  // These are emitted into the source file after the polyfill runtime definitions.
+  const asyncTaskClasses: { classDef: string; instanceDecl: string; taskVarName: string }[] = [];
+  if (hasAsyncRuntime) {
+    for (const fn of program.functions) {
+      if (fn.isAsync) {
+        const task = generateAsyncTaskClass(
+          fn.originalName,
+          fn.statements,
+          options.target ?? "generic",
+          knownFunctionReturnTypes,
+        );
+        asyncTaskClasses.push({ ...task, taskVarName: `${fn.originalName}Task` });
+      }
+    }
   }
 
   const headerLines: string[] = ["#pragma once", ""];
@@ -1586,6 +1748,20 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
+  // Emit async state-machine class + instance declarations (one per async function).
+  // These must appear after the polyfill runtime (MicrotaskQueue, Promise) and
+  // before setup()/loop() so that loop() can call taskVar.run().
+  if (asyncTaskClasses.length > 0) {
+    for (const { classDef, instanceDecl } of asyncTaskClasses) {
+      for (const line of classDef.split("\n")) {
+        appendSourceLine(line);
+      }
+      appendSourceLine("");
+      appendSourceLine(instanceDecl);
+      appendSourceLine("");
+    }
+  }
+
   if (options.target !== "arduino" && hasConsoleCalls(program) && usesVectorTypes) {
     appendSourceLine("template <typename T>");
     appendSourceLine("std::ostream& operator<<(std::ostream& os, const std::vector<T>& values)");
@@ -1690,7 +1866,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     const mappedCallee = applySymbolMap(statement.callee, symbolMap);
-    return !entrypointCallNames.has(statement.callee) && !entrypointCallNames.has(mappedCallee);
+    // Filter out calls to entrypoint functions (setup/main) and async functions.
+    // Async function calls are replaced by cooperative task instances driven in loop().
+    if (!entrypointCallNames.has(statement.callee) && !entrypointCallNames.has(mappedCallee)) {
+      return !asyncFunctionOriginalNames.has(statement.callee) && !asyncFunctionMappedNames.has(statement.callee);
+    }
+    return false;
   });
 
   const emittedTopLevelStatements = isEntryFile
@@ -1754,6 +1935,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           leadingComments: ["// Auto-generated setup() for top-level statements"],
           trailingComments: undefined,
           parameters: [],
+          isAsync: false,
           statements: filteredTopLevelExecutables,
         });
       }
@@ -1772,6 +1954,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           leadingComments: ["// Auto-generated main() for top-level statements"],
           trailingComments: undefined,
           parameters: [],
+          isAsync: false,
           statements: [...filteredTopLevelExecutables, { kind: "return", sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number", value: 0 } }],
         });
       }
@@ -1788,6 +1971,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       leadingComments: hasAsyncRuntime ? ["// Auto-generated loop() for async microtask pumping"] : undefined,
       trailingComments: undefined,
       parameters: [],
+      isAsync: false,
       statements: [],
     });
   }
@@ -1801,6 +1985,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       leadingComments: ["// Auto-generated main() for async microtask pumping"],
       trailingComments: undefined,
       parameters: [],
+      isAsync: false,
       statements: [{ kind: "return", sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number", value: 0 } }],
     });
   }
@@ -2086,14 +2271,26 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       symbolName: fn.name,
     });
     appendSourceLine("{");
-    if (hasAsyncRuntime && ((options.target === "arduino" && fn.name === "loop") || (options.target !== "arduino" && fn.name === "main"))) {
+    if (hasPromiseRuntime && ((options.target === "arduino" && fn.name === "loop") || (options.target !== "arduino" && fn.name === "main"))) {
       appendSourceLine("  ts2cpp_pump_microtasks();");
     }
-    for (const statement of fn.statements) {
-      appendRenderedStatement(statement, "  ", globalPointerVarTypes);
+    // Async tasks are driven by their state machine in loop(); don't emit the blocking body.
+    if (fn.isAsync && hasAsyncRuntime) {
+      appendSourceLine(`  // driven as cooperative task in loop()`);
+    } else {
+      for (const statement of fn.statements) {
+        appendRenderedStatement(statement, "  ", globalPointerVarTypes);
+      }
     }
     if (hasAsyncRuntime && options.target === "arduino" && fn.name === "loop") {
-      appendSourceLine("  ts2cpp_pump_microtasks();");
+      // Drive all async state machines
+      for (const { taskVarName } of asyncTaskClasses) {
+        appendSourceLine(`  ${taskVarName}.run();`);
+      }
+      // Pump microtasks only when the Promise runtime is available
+      if (hasPromiseRuntime) {
+        appendSourceLine("  ts2cpp_pump_microtasks();");
+      }
     }
     appendSourceLine("}");
     emitCommentLines(fn.trailingComments, "", (line) => appendSourceLine(line));

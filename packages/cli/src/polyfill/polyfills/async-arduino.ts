@@ -58,37 +58,39 @@ export const arduinoAsyncPolyfill: PolyfillDefinition = {
   },
 
   generate(needs: PolyfillNeed[], context: PolyfillContext): RuntimePolyfillIR {
-    const helperStructs: string[] = [generatePromiseRuntime(context)];
-    const helperFunctions: string[] = [];
-
+    // Only generate the cooperative runtime infrastructure here.
+    // State machine classes for each async function are emitted by cpp-emitter.ts,
+    // which has access to renderStatement and board constants.
+    const asyncTaskVars: string[] = [];
     for (const need of needs) {
       if (need.id === "async_runtime") {
         continue;
       }
-
-      const { functionName, awaitPoints, statements, parameters, returnType } = need.details;
-      const stateMachine = generateStateMachineClass(
-        functionName,
-        statements,
-        awaitPoints,
-        parameters,
-        returnType,
-        context
-      );
-      helperStructs.push(stateMachine.classDef);
-      helperFunctions.push(stateMachine.instanceDecl);
+      const { functionName } = need.details;
+      asyncTaskVars.push(`${functionName}Task`);
     }
+
+    // AVR (and other bare-metal targets without the C++ stdlib) cannot use
+    // <functional>, <vector>, <utility>, or <string>.  For those targets we
+    // emit only the state-machine skeletons (done by cpp-emitter.ts) and skip
+    // the Promise/MicrotaskQueue runtime entirely.
+    const stdlib = getStdLibSupport(context.architecture);
+    const hasPromiseRuntime = stdlib.hasVector && stdlib.hasString;
 
     return {
       kind: "polyfill",
       id: "async_arduino",
       domain: context.target === "arduino" ? "arduino" : "standard",
-      requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
+      requiredIncludes: hasPromiseRuntime
+        ? ["<functional>", "<vector>", "<utility>", "<string>"]
+        : [],
       forwardDeclarations: [],
-      helperStructs,
-      helperFunctions,
+      helperStructs: hasPromiseRuntime ? [generatePromiseRuntime(context)] : [],
+      helperFunctions: [],
       shimMacros: [],
       dependencies: [],
+      asyncTaskVars,
+      hasPromiseRuntime,
     };
   },
 };
@@ -121,6 +123,11 @@ function extractAwaitFromStatement(stmt: StatementIR, statementIndex: number): A
   };
 
   if (stmt.kind === "call") {
+    // If the call was originally `await call()`, it IS the await point itself.
+    if ((stmt as any).isAwaited) {
+      points.push({ sourceSpan: stmt.sourceSpan, statementIndex });
+      return points;
+    }
     for (const arg of stmt.args) {
       addAwaitPointsFromExpression(arg);
     }

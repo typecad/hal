@@ -21,6 +21,8 @@ export interface CallExpressionIR {
   trailingComments?: string[];
   callee: string;
   args: ExpressionIR[];
+  /** True when this call was originally written as `await call()` in the TS source. */
+  isAwaited?: boolean;
 }
 
 export interface VariableDeclarationIR {

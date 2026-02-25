@@ -1005,7 +1005,11 @@ function expressionStatementToIR(
   }
 
   if (ts.isAwaitExpression(expr) && ts.isCallExpression(expr.expression)) {
-    return callToStatement(statement, expr.expression, fileName, sourceText, diagnostics, pointerVars);
+    const callStmt = callToStatement(statement, expr.expression, fileName, sourceText, diagnostics, pointerVars);
+    if (callStmt && callStmt.kind === "call") {
+      return { ...callStmt, isAwaited: true };
+    }
+    return callStmt;
   }
 
   if (ts.isBinaryExpression(expr) && ts.isIdentifier(expr.left)) {

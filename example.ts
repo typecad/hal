@@ -18,7 +18,3 @@ async function blinkLed() {
 }
 
 blinkLed();
-// while (true) {
-//   Board.LED.toggle();
-//   delay(Board.A0.read());
-// }

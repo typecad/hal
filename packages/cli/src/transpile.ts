@@ -880,6 +880,9 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
 
     const polyfillContext: PolyfillContext = {
       target: options.target,
+      // Derive architecture from FQBN (e.g. "arduino:avr:uno" → "avr") so
+      // polyfills can gate stdlib-dependent code correctly.
+      architecture: options.platformContext?.arduino?.fqbn?.split(":")[1]?.toLowerCase(),
       usedIdentifiers: collectUsedIdentifiers(programIR),
     };
     const polyfills = polyfillRegistry.detectAndGenerate(programIR, polyfillContext);

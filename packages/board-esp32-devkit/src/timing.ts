@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 /** Block execution for `ms` milliseconds.  Maps to Arduino `delay()`. */
-export declare function delay(ms: number): void;
+export declare function delay(ms: number): Promise<void>;
 
 /** Returns milliseconds since board reset.  Maps to Arduino `millis()`. */
 export declare function millis(): number;
@@ -15,7 +15,7 @@ export declare function millis(): number;
 export declare function micros(): number;
 
 /** Block execution for `us` microseconds.  Maps to `delayMicroseconds()`. */
-export declare function delayMicroseconds(us: number): void;
+export declare function delayMicroseconds(us: number): Promise<void>;
 
 // ---------------------------------------------------------------------------
 // Map / constrain helpers
