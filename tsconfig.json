@@ -12,6 +12,7 @@
     { "path": "packages/core" },
     { "path": "packages/board-arduino-uno" },
     { "path": "packages/board-esp32-devkit" },
-    { "path": "packages/cli" }
+    { "path": "packages/cli" },
+    { "path": "packages/expect" }
   ]
 }

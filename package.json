@@ -6,12 +6,14 @@
     "packages/board-arduino-uno",
     "packages/board-esp32-devkit",
     "packages/board-arduino-nano33iot",
-    "packages/cli"
+    "packages/cli",
+    "packages/expect"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:hw": "typecode-test"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",

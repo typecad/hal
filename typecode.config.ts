@@ -23,6 +23,14 @@ const config: TypecodeConfig = {
     optimize: 'size',
     outDir: './out',
   },
+
+  // Hardware test runner (@typecode/expect)
+  test: {
+    port: 'COM4',
+    include: ['examples/**/*.test.ts'],
+    baudRate: 115200,
+    timeout: 30000,
+  },
 };
 
 export default config;

@@ -88,4 +88,50 @@ export interface TypecodeConfig {
 
   /** Glob patterns to exclude from transpilation. */
   exclude?: string[];
+
+  /**
+   * Hardware test runner configuration (`@typecode/expect`).
+   * Defines how `typecode-test` discovers files and communicates with the board.
+   */
+  test?: TypecodeTestConfig;
+}
+
+// ---------------------------------------------------------------------------
+// Test configuration (@typecode/expect)
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuration for the `typecode-test` hardware test runner.
+ * Add this section to your `typecode.config.ts` when using `@typecode/expect`.
+ *
+ * @example
+ * ```ts
+ * const config: TypecodeConfig = {
+ *   board: '@typecode/board-arduino-uno',
+ *   fqbn: 'arduino:avr:uno',
+ *   test: {
+ *     port: 'COM4',
+ *     include: ['tests/hardware/**\/*.test.ts'],
+ *   },
+ * };
+ * ```
+ */
+export interface TypecodeTestConfig {
+  /** Glob patterns for hardware test files. Default: `['tests/**\/*.test.ts']`. */
+  include?: string[];
+
+  /** Serial port the board is connected to (e.g. `'COM4'`, `'/dev/ttyACM0'`). */
+  port?: string;
+
+  /** Serial baud rate for the test protocol. Default: `115200`. */
+  baudRate?: number;
+
+  /** Timeout in ms to wait for `[TC:SUITE_END]` from firmware. Default: `30000`. */
+  timeout?: number;
+
+  /** FQBN override — defaults to the root `fqbn` field. */
+  fqbn?: string;
+
+  /** Board package override — defaults to the root `board` field. */
+  board?: string;
 }
