@@ -80,6 +80,12 @@ export interface TranspileOptions {
   platformContext?: PlatformContext;
   /** Tree-shaking options for dead code elimination */
   treeShaking?: TreeShakingOptions;
+  /**
+   * Board package specifier resolved from `typecode.config.ts`.
+   * When present, bare `@typecode` imports are rewritten to this package
+   * (e.g. `'@typecode/board-arduino-uno'`).
+   */
+  boardPackage?: string;
 }
 
 export interface LibraryDefinitionCondition {
@@ -127,6 +133,11 @@ export interface CommandLineOptions {
   message?: string;
   /** Tree-shaking options */
   treeShaking?: TreeShakingOptions;
+  /**
+   * Board package specifier resolved from `typecode.config.ts`.
+   * When present, bare `@typecode` imports are rewritten to this package.
+   */
+  boardPackage?: string;
 }
 
 export interface GenerateLibdefOptions {

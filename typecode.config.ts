@@ -5,14 +5,14 @@
 // build options to use when converting TypeScript → C++.
 // ---------------------------------------------------------------------------
 
-import type { TypecodeConfig } from '@typecode/core/config';
+import type { TypecodeConfig } from '@typecode/core';
 
 const config: TypecodeConfig = {
   // Target architecture
   target: 'avr',
 
-  // Board package (resolves to code/board-arduino-uno)
-  board: './code/board-arduino-uno',
+  // Board package (npm specifier)
+  board: '@typecode/board-arduino-uno',
 
   // Fully-Qualified Board Name for arduino-cli
   fqbn: 'arduino:avr:uno',

@@ -1,128 +1,178 @@
-# TypeScript to C++ Transpiler (MVP)
+# TypeCode — TypeScript to C++ Transpiler
 
-AST-based Node/npm tool that transpiles TypeScript input into C++ output.
+AST-based Node/npm tool that transpiles TypeScript into C++ (or Arduino `.ino`) output.
 
-## Commands
+---
 
-- `npm run build` – compile CLI.
-- `npm run transpile -- <input.ts> [options]` – transpile TypeScript into C++.
-- `npm run gen-libdefs -- <input.ts>` – auto-generate library include/symbol metadata stubs (`*.libdef.json`) in the source folder.
-- `npm run map-error -- <map-file-or-generated-file> --line <n> [--column <n>] [--message <text>]` – map C++ error location back to TS.
+## Quick start
 
-## Transpile options
+### 1. Configure the board
 
-- `--emit cpp|split` (default: `split`)
-- `--out-dir <directory>` (also accepts `--outDir`, treated as output base; artifacts are emitted to `<directory>/.build`)
-- `--target generic|arduino` (default: `generic`)
-- `--emit-maps true|false` (default: `true`, writes `.tscppmap.json` sidecars)
-- `--arduino-arch <avr|esp32|samd|rp2040|...>` (Arduino target profile selection)
-- `--fqbn <package:arch:board>` (optional board/package context)
-- `--arduino-core <core>` and `--arduino-variant <variant>` (optional core-specific context)
-- `--arduino-cli-json <path>` (optional normalized Arduino metadata JSON override)
-- `--compile-arduino true|false|strict` (default: `false`, runs `arduino-cli compile` after transpile)
+Create `typecode.config.ts` in the same directory as your sketch:
 
-### Tree-shaking options
+```typescript
+import type { TypecodeConfig } from '@typecode/core';
 
-Tree-shaking (dead code elimination) is enabled by default and removes unreachable code from the output:
+const config: TypecodeConfig = {
+  target: 'avr',
+  board:  '@typecode/board-arduino-uno',
+  fqbn:   'arduino:avr:uno',
+  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+};
 
-- `--no-tree-shake` - Disable tree-shaking entirely
-- `--keep-unused-enums` - Keep all enums even if not referenced
-- `--keep-unused-classes` - Keep all classes even if not instantiated
-- `--keep-unused-types` - Keep all type aliases even if not used
-- `--no-report-unused` - Don't emit diagnostics for removed code
-- `--entry-point <name>` - Add a custom entry point symbol (can be used multiple times)
+export default config;
+```
 
-Default entry points:
-- Arduino target: `setup` and `loop`
-- Generic target: `main`
+Available board packages:
 
-## Example
+| Package | FQBN | `target` |
+|---|---|---|
+| `@typecode/board-arduino-uno` | `arduino:avr:uno` | `avr` |
+| `@typecode/board-arduino-nano33iot` | `arduino:samd:nano_33_iot` | `samd` |
+| `@typecode/board-esp32-devkit` | `esp32:esp32:esp32doit-devkit-v1` | `esp32` |
+
+### 2. Write your sketch
+
+Import pins, peripherals, and utilities from the virtual `@typecode` specifier — the transpiler resolves it to your configured board package:
+
+```typescript
+import { Board, delay } from '@typecode';
+
+Board.LED.asOutput();
+
+async function blinkLed() {
+  while (true) {
+    Board.LED.high();
+    await delay(500);
+    Board.LED.low();
+    await delay(500);
+  }
+}
+
+blinkLed();
+```
+
+### 3. Transpile
 
 ```bash
 npm run build
-npm run transpile -- example/example.ts --emit split --target arduino --arduino-arch avr --fqbn arduino:avr:uno --compile-arduino true
+
+# Transpile only
+npx typecode sketch.ts
+
+# Transpile + compile (fqbn comes from typecode.config.ts)
+npx typecode sketch.ts --compile
+
+# Transpile + compile + upload
+npx typecode sketch.ts --compile --upload --port COM4
+
+# Full chain: transpile → compile → upload → monitor
+npx typecode sketch.ts --compile --upload --monitor --port COM4 --baud 115200
 ```
 
-Outputs:
-- `example/example/example.ino`
-- `example/example/example.ino.tscppmap.json`
-- `example/example/arduino.d.ts`
+The `fqbn` is read automatically from `typecode.config.ts`. Pass `--fqbn` on the command line only when there is no config file and you need a one-off override.
 
-## Editor DX for Arduino examples
+### 4. Editor type checking
 
-To avoid red squiggles in `example/example.ts` for Arduino globals like `A0`, `HIGH`, `pinMode`, or `Wire`:
+When you run the transpiler for the first time, it auto-generates `typecode-env.d.ts` next to your config file:
 
-1. Transpile with Arduino target (this auto-generates `./example/arduino.d.ts` using the same `gen-types` pipeline):
-
-```bash
-node dist/cli.js transpile .\example\example.ts --emit split --target arduino --arduino-arch avr --fqbn arduino:avr:uno
+```typescript
+// typecode-env.d.ts — auto-generated, do not edit
+declare module '@typecode' {
+  export * from '@typecode/board-arduino-uno';
+}
 ```
 
-2. (Optional/manual) Generate declarations directly with:
+TypeScript's language server discovers this file automatically, resolving the `@typecode` virtual import without any `tsconfig.json` changes. The file is regenerated whenever the transpiler runs, keeping it in sync if you change boards.
 
-```bash
-node dist/cli.js gen-types --arduino-arch avr --outDir example
+---
+
+## Commands
+
+```
+typecode <input.ts> [options]
+typecode gen-libdefs <input.ts>
+typecode map-error <mapFile> [options]
 ```
 
-3. Keep `example/tsconfig.json` present (it includes `example.ts` + `example/arduino.d.ts` for VS Code TypeScript IntelliSense).
+### Transpile options
 
-This gives the editor a dedicated TypeScript project for sketches without affecting the transpiler build config.
+| Flag | Default | Description |
+|---|---|---|
+| `--emit cpp\|split` | `split` | `split`: separate `.cpp`+`.h`; Arduino target always emits a single `.ino` |
+| `--target arduino\|generic` | `generic` | Auto-set to `arduino` when `--compile`, `--upload`, or `--monitor` is used |
+| `--outDir <path>` | input file directory | Output directory for generated files |
+| `--emit-maps true\|false` | `true` | Write `.tscppmap.json` source map sidecars |
+| `--fqbn <package:arch:board>` | *(from config)* | Fully Qualified Board Name; required for `--compile` when no config file is present |
+
+### Arduino chaining (left to right, each requires the previous)
+
+| Flag | Requires | Description |
+|---|---|---|
+| `--compile` | `fqbn` (config or `--fqbn`) | Run `arduino-cli compile` after transpilation |
+| `--upload` | `--compile`, `--port` | Upload compiled sketch to the board |
+| `--monitor` | `--port` | Open serial monitor after upload |
+| `--port <port>` | — | Serial port, e.g. `COM4` or `/dev/ttyACM0` |
+| `--baud <rate>` | — | Baud rate for `--monitor` (default: `9600`) |
+
+### Tree-shaking options
+
+Dead code elimination is enabled by default.
+
+| Flag | Description |
+|---|---|
+| `--no-tree-shake` | Disable tree-shaking entirely |
+| `--keep-unused-enums` | Keep all enums even if not referenced |
+| `--keep-unused-classes` | Keep all classes even if not instantiated |
+| `--keep-unused-types` | Keep all type aliases even if not used |
+| `--keep-unused-variables` | Keep all top-level variables even if not referenced |
+| `--no-report-unused` | Suppress diagnostics for removed code |
+| `--entry-point <name>` | Add a custom entry point (repeatable) |
+
+Default entry points: `setup`/`loop` (Arduino target), `main` (generic target).
+
+---
 
 ## Mapping compiler errors
 
-Example:
-
 ```bash
-npm run map-error -- example/example/example.ino.tscppmap.json -- --line 5 --column 10 --message "error: ..."
+npx typecode map-error out/sketch/sketch.ino.tscppmap.json --line 42 --column 5 --message "undefined reference"
 ```
 
-This prints the mapped TypeScript location and node kind for faster debugging.
+Prints the mapped TypeScript file, line, column, and node kind for the given C++ error location.
+
+---
 
 ## Library definitions
 
-Use `gen-libdefs` to create starter metadata files in the same folder as your source file:
-- `<module>.libdef.json` include + symbol mapping metadata
+Use `gen-libdefs` to create starter metadata stubs for third-party imports:
 
-These are consumed during transpilation to map TS imports to C++ headers (for example, `Wire` -> `<Wire.h>`). Arduino framework typings are generated into `.build/arduino.d.ts` and no longer rely on `export const X: any` source stubs.
+```bash
+npx typecode gen-libdefs src/sensor.ts
+```
 
-`*.libdef.json` also supports optional conditional variants for platform-specific mappings:
+Outputs `<module>.libdef.json` files alongside the source. These map TypeScript imports to C++ `#include` directives. Conditional variants allow architecture-specific overrides:
 
 ```json
 {
-	"module": "wire",
-	"include": "<Wire.h>",
-	"symbols": { "Wire": "Wire" },
-	"variants": [
-		{
-			"when": { "target": "arduino", "architecture": "esp32" },
-			"include": "<Wire.h>",
-			"symbols": { "Wire": "Wire" }
-		}
-	]
+  "module": "wire",
+  "include": "<Wire.h>",
+  "symbols": { "Wire": "Wire" },
+  "variants": [
+    {
+      "when": { "target": "arduino", "architecture": "esp32" },
+      "include": "<Wire.h>",
+      "symbols": { "Wire": "Wire" }
+    }
+  ]
 }
 ```
 
-## Arduino profile behavior
+---
 
-- For `--target arduino`, the emitter injects `#include <Arduino.h>` via profile resolution.
-- For `--target arduino`, source output is emitted as `.ino` (Arduino sketch format).
-- `--emit split` is ignored for Arduino target; a single sketch file is generated to avoid `setup/loop` linkage conflicts.
-- Arduino transpile automatically removes stale generated artifacts in the output folder (`.ino`, `.h`, `.cpp`, and `.tscppmap.json`) except the current sketch output, to prevent duplicate symbol and stale-output compile issues.
-- If architecture is omitted, a warning is emitted and default profile fallback is used.
-- For unresolved built-ins like `HIGH`, `LOW`, `A0`, fallback conditional shims are emitted with warnings.
-- `A0` fallback is architecture-aware and can be refined by `--fqbn` for known board patterns (for example AVR Uno vs Mega).
-- Per-architecture capability tables validate common Arduino built-ins (`pinMode`, `digitalWrite`, `analogRead`, `delay`, `Serial`) and emit warnings for unknown symbols/functions.
-- Metadata precedence for Arduino context: `--arduino-cli-json` > live `arduino-cli board details` probe (if available) > built-in architecture tables > generic fallbacks.
-- With `--compile-arduino true`, compile diagnostics are mapped back to TypeScript using generated source maps and printed as `path(line,column): error ...`.
-- With `--compile-arduino strict`, only mapped TypeScript diagnostics are printed on compile failures (raw compiler dump is suppressed).
+## Arduino target behaviour
 
-Optional normalized metadata file shape:
-
-```json
-{
-	"architecture": "avr",
-	"pins": { "A0": 54 },
-	"builtinFunctions": ["pinMode", "digitalWrite", "analogRead", "delay"],
-	"builtinGlobals": ["HIGH", "LOW", "A0", "OUTPUT", "INPUT", "Serial"]
-}
-```
+- Output is always a single `.ino` sketch file (the `--emit` mode is ignored for Arduino targets).
+- Stale generated artifacts (`.ino`, `.h`, `.cpp`, `.tscppmap.json`) in the output folder are removed automatically before each run to prevent duplicate-symbol errors.
+- `Board.LED` resolves to the correct pin number for the configured board via constants folded from the board package's `BoardDefinition`.
+- `PinMode` and `InterruptMode` enum class definitions are wrapped in `#if !defined(ARDUINO_API_VERSION)` guards automatically to prevent redefinition errors on new-API boards (SAMD, nRF52, RP2040-mbed).

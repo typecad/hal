@@ -4,6 +4,7 @@ import { parseCommandLine, printHelp } from "./utils/cli";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath } from "./mapping/source-map";
 import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from "./platform/arduino-compile";
+import { loadTypecodeConfig, generateVirtualTypeDeclaration } from "./config-loader";
 
 function assertTypeScriptInput(filePath: string): void {
   const extension = path.extname(filePath).toLowerCase();
@@ -138,14 +139,51 @@ function main(): void {
     }
 
     // Default: transpile (always first)
+
+    // ── Load typecode.config.ts (config wins over CLI flags) ──────────
+    const inputDir = path.dirname(path.resolve(options.inputFile));
+    const config = loadTypecodeConfig(inputDir);
+
+    let effectivePlatformContext = options.platformContext;
+    let effectiveTarget = options.target;
+    let effectiveOutDir = options.outDir;
+    let effectiveBoardPackage = options.boardPackage;
+
+    if (config) {
+      // Keep typecode-env.d.ts in sync so the TS language server can resolve
+      // bare '@typecode' imports in editor without a linter error.
+      generateVirtualTypeDeclaration(config);
+
+      // Config is the source of truth — override CLI-provided values.
+      if (config.fqbn) {
+        effectivePlatformContext = {
+          arduino: { fqbn: config.fqbn },
+        };
+      }
+      if (config.target) {
+        // Map config target (architecture id like 'avr') to the transpiler's
+        // TargetProfile.  Presence of an fqbn implies arduino target.
+        if (config.fqbn || config.outputFramework === "arduino") {
+          effectiveTarget = "arduino";
+        }
+      }
+      if (config.outputOutDir && !options.outDir) {
+        effectiveOutDir = path.resolve(inputDir, config.outputOutDir);
+      }
+      if (config.board) {
+        effectiveBoardPackage = config.board;
+      }
+    }
+
     const result = transpileFile({
       inputFile: options.inputFile,
       emitMode: options.emitMode,
-      target: options.target,
-      outDir: options.outDir,
+      target: effectiveTarget,
+      outDir: effectiveOutDir,
       emitMaps: options.emitMaps,
-      platformContext: options.platformContext,
+      platformContext: effectivePlatformContext,
       treeShaking: options.treeShaking,
+      boardPackage: effectiveBoardPackage,
     });
 
     printDiagnostics(result.diagnostics);
@@ -165,9 +203,9 @@ function main(): void {
     }
 
     // --compile
-    const fqbn = options.platformContext?.arduino?.fqbn;
+    const fqbn = effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn;
     if (!fqbn) {
-      throw new Error("--compile requires --fqbn <package:arch:board>.");
+      throw new Error("--compile requires --fqbn <package:arch:board> or a typecode.config.ts with fqbn.");
     }
 
     console.log(`Compiling for ${fqbn}...`);

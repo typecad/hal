@@ -345,20 +345,31 @@ function resolveNpmPackageImport(
 }
 
 /**
- * Resolves any import (relative or npm) to a TypeScript source file
+ * Resolves any import (relative or npm) to a TypeScript source file.
+ *
+ * When `boardPackage` is provided (from typecode.config.ts), a bare
+ * `@typecode` import is rewritten to the concrete board package before
+ * resolution proceeds.
  */
 function resolveImport(
   fromFile: string,
-  moduleSpecifier: string
+  moduleSpecifier: string,
+  boardPackage?: string,
 ): { sourcePath: string; npmPackage?: ResolvedNpmPackage } | undefined {
+  // Rewrite bare "@typecode" virtual import to the concrete board package
+  let effectiveSpecifier = moduleSpecifier;
+  if (moduleSpecifier === "@typecode" && boardPackage) {
+    effectiveSpecifier = boardPackage;
+  }
+
   // Try relative import first
-  const localResolved = resolveLocalImport(fromFile, moduleSpecifier);
+  const localResolved = resolveLocalImport(fromFile, effectiveSpecifier);
   if (localResolved) {
     return { sourcePath: localResolved };
   }
   
   // Try npm package import
-  const npmResolved = resolveNpmPackageImport(fromFile, moduleSpecifier);
+  const npmResolved = resolveNpmPackageImport(fromFile, effectiveSpecifier);
   if (npmResolved) {
     return { sourcePath: npmResolved.sourcePath, npmPackage: npmResolved };
   }
@@ -449,9 +460,12 @@ function isTypecodeSDKPath(filePath: string): boolean {
 }
 
 /**
- * Collects all files that need to be transpiled, following both relative and npm imports
+ * Collects all files that need to be transpiled, following both relative and npm imports.
+ *
+ * @param boardPackage  When provided, bare `@typecode` imports resolve to this
+ *                      board package (e.g. `'@typecode/board-arduino-uno'`).
  */
-function collectTranspileGraph(entryFile: string): TranspileGraphResult {
+function collectTranspileGraph(entryFile: string, boardPackage?: string): TranspileGraphResult {
   const ordered: string[] = [];
   const pending: string[] = [path.resolve(entryFile)];
   const visited = new Set<string>();
@@ -495,7 +509,7 @@ function collectTranspileGraph(entryFile: string): TranspileGraphResult {
         continue;
       }
 
-      const resolved = resolveImport(filePath, moduleSpecifier);
+      const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
       if (resolved && !visited.has(resolved.sourcePath)) {
         pending.push(resolved.sourcePath);
         if (resolved.npmPackage) {
@@ -826,7 +840,7 @@ function applyTreeShaking(
 
 export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   const entryFile = path.resolve(options.inputFile);
-  const graphResult = collectTranspileGraph(entryFile);
+  const graphResult = collectTranspileGraph(entryFile, options.boardPackage);
   const transpileFiles = graphResult.files;
   const npmPackages = graphResult.npmPackages;
   const sourceDir = path.dirname(entryFile);
@@ -863,7 +877,7 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
 
   for (const filePath of transpileFiles) {
     const sourceText = readText(filePath);
-    let programIR = buildProgramIR(filePath, sourceText);
+    let programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
 
     // Apply tree-shaking for all files.
     // For non-entry modules, preserve enums to avoid dropping type-level constants

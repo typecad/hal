@@ -4,7 +4,7 @@
 // The classic "Hello World" of embedded: toggle the onboard LED every second.
 // ---------------------------------------------------------------------------
 
-import { Board, delay } from '@typecode/board-arduino-uno';
+import { Board, delay } from '@typecode';
 
 Board.LED.asOutput();
 

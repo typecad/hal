@@ -73,6 +73,11 @@ function isTypecodeSDKImport(moduleSpecifier: string, fromFile: string): boolean
   if (moduleSpecifier.startsWith("@typecode/")) {
     return true;
   }
+
+  // Check for bare "@typecode" virtual import (resolved via typecode.config.ts)
+  if (moduleSpecifier === "@typecode") {
+    return true;
+  }
   
   // Check for relative imports to code/core or code/board-* paths
   if (!moduleSpecifier.startsWith(".")) {

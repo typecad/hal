@@ -1622,9 +1622,17 @@ function collectPointerVars(statements: readonly ts.Statement[]): PointerTracker
 function tryResolveBoardDefFile(
   fromFile: string,
   moduleSpecifier: string,
+  boardPackage?: string,
 ): string | undefined {
+  // Handle bare "@typecode" virtual import — rewrite to the concrete board
+  // package so the rest of the resolution logic works unchanged.
+  let effectiveSpecifier = moduleSpecifier;
+  if (moduleSpecifier === "@typecode" && boardPackage) {
+    effectiveSpecifier = boardPackage;
+  }
+
   // Handle relative imports (e.g. "../code/board-arduino-uno/pins")
-  if (moduleSpecifier.startsWith(".")) {
+  if (effectiveSpecifier.startsWith(".")) {
     const dir = path.dirname(fromFile);
     const base = path.resolve(dir, moduleSpecifier);
 
@@ -1651,8 +1659,8 @@ function tryResolveBoardDefFile(
   }
 
   // Handle npm-scoped board package imports (e.g. "@typecode/board-esp32-devkit")
-  if (moduleSpecifier.startsWith("@typecode/board-")) {
-    const parts = moduleSpecifier.split("/");
+  if (effectiveSpecifier.startsWith("@typecode/board-")) {
+    const parts = effectiveSpecifier.split("/");
     const pkgName = parts[1]; // "board-esp32-devkit"
     // Walk up from the importing file's directory to find node_modules
     let dir = path.dirname(fromFile);
@@ -1668,7 +1676,7 @@ function tryResolveBoardDefFile(
   return undefined;
 }
 
-export function buildProgramIR(fileName: string, sourceText: string): ProgramIR {
+export function buildProgramIR(fileName: string, sourceText: string, boardPackage?: string): ProgramIR {
   const normalizedSourceText = normalizeLegacyArduinoSyntax(sourceText);
   const source = parseSource(fileName, normalizedSourceText);
   const diagnostics: Diagnostic[] = [];
@@ -2194,7 +2202,7 @@ export function buildProgramIR(fileName: string, sourceText: string): ProgramIR 
   // typecode-map.ts so that Board.definition.* folds to the real values.
   let boardConstants: BoardConstants | undefined;
   for (const imp of imports) {
-    const boardFile = tryResolveBoardDefFile(fileName, imp.moduleSpecifier);
+    const boardFile = tryResolveBoardDefFile(fileName, imp.moduleSpecifier, boardPackage);
     if (boardFile) {
       try {
         boardConstants = resolveBoardConstants(boardFile);

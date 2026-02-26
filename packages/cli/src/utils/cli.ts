@@ -237,9 +237,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   const platformContext: PlatformContext = { arduino: { fqbn } };
 
   // Validate flag combinations
-  if (compile && !fqbn) {
-    throw new Error("--compile requires --fqbn <package:arch:board>.");
-  }
+  // Note: --compile without --fqbn is now allowed when typecode.config.ts provides fqbn
   if (upload && !compile) {
     throw new Error("--upload requires --compile.");
   }
