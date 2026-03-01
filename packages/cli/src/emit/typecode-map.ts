@@ -290,7 +290,7 @@ export function tryRenderTypecodeCallStatement(
   renderArg: (e: ExpressionIR) => string,
   boardConstants?: BoardConstants,
 ): string | undefined {
-  if (target !== 'arduino') return undefined;
+  // Guard removed — caller (ArduinoStrategy) is responsible for gating on target.
 
   // Parse the callee string into parts separated by "."
   const parts = callee.split('.');

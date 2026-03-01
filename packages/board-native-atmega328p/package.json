@@ -1,0 +1,30 @@
+{
+  "name": "@typecode/board-native-atmega328p",
+  "version": "0.1.0",
+  "description": "TypeCode ATmega328P board definition with native AVR register access for digitalRead, digitalWrite, analogRead, and analogWrite",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@typecode/core": "^0.1.0"
+  },
+  "peerDependencies": {
+    "typecode": "^0.1.0"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

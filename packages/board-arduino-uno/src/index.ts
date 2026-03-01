@@ -4,6 +4,9 @@
 
 import type { BoardDefinition } from '@typecode/core';
 
+// Re-export the platform strategy so the CLI can resolve it automatically
+export { BoardStrategy } from './strategy';
+
 // ---------------------------------------------------------------------------
 // Default capability flags for AVR (fields absent on this platform)
 // ---------------------------------------------------------------------------

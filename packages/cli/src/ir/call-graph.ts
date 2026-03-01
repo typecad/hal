@@ -45,6 +45,11 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
   // Helper to collect identifiers from an expression
   const collectExpressionIdentifiers = (expr: ExpressionIR): Set<string> => {
     const identifiers = new Set<string>();
+    
+    // Safety check
+    if (!expr || typeof expr !== 'object' || !expr.kind) {
+      return identifiers;
+    }
 
     switch (expr.kind) {
       case "identifier":
@@ -123,6 +128,11 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
   // Helper to collect identifiers from a statement
   const collectStatementIdentifiers = (statement: StatementIR): Set<string> => {
     const identifiers = new Set<string>();
+    
+    // Safety check
+    if (!statement || typeof statement !== 'object' || !statement.kind) {
+      return identifiers;
+    }
 
     switch (statement.kind) {
       case "call":

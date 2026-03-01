@@ -2,7 +2,7 @@ import { SourceSpan } from "../types";
 import { ProgramIR } from "../ir/model";
 
 export type PolyfillDomain = "standard" | "arduino" | "embedded";
-export type TargetProfile = "generic" | "arduino";
+export type TargetProfile = "generic" | "arduino" | (string & {});
 
 export interface PolyfillContext {
   target: TargetProfile;

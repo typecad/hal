@@ -1,5 +1,5 @@
 export type EmitMode = "cpp" | "split";
-export type TargetProfile = "generic" | "arduino";
+export type TargetProfile = "generic" | "arduino" | (string & {});
 
 export interface ArduinoPlatformContext {
   fqbn?: string;
@@ -7,6 +7,7 @@ export interface ArduinoPlatformContext {
 
 export interface PlatformContext {
   arduino?: ArduinoPlatformContext;
+  [key: string]: unknown;
 }
 
 export interface SourceSpan {

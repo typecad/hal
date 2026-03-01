@@ -14,7 +14,10 @@
     "rootDir": "src",
     "outDir": "dist",
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "typecode/platform": ["../cli/dist/platform/index"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

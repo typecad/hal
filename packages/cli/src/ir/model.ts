@@ -275,6 +275,31 @@ export interface TypeAliasIR {
   cppType: string;  // The underlying C++ type
 }
 
+/**
+ * Tracks which hardware peripherals are used in the program.
+ * This enables compile-time initialization optimization.
+ */
+export interface PeripheralUsageIR {
+  /** ADC is used (analogRead on A0-A5) */
+  adc: boolean;
+  /** PWM is used (analogWrite on D3, D5, D6, D9, D10, D11) */
+  pwm: boolean;
+  /** External interrupts are used (attachInterrupt on D2, D3) */
+  externalInterrupts: boolean;
+  /** Timer0-based timing is used (millis, micros) */
+  timer0: boolean;
+  /** I2C bus is used */
+  i2c: boolean;
+  /** SPI bus is used */
+  spi: boolean;
+  /** UART/Serial is used */
+  uart: boolean;
+  /** Specific PWM pins used (for targeted timer initialization) */
+  pwmPinsUsed: Set<number>;
+  /** Specific ADC channels used */
+  adcChannelsUsed: Set<number>;
+}
+
 export interface ProgramIR {
   fileName: string;
   imports: ImportIR[];
@@ -289,6 +314,8 @@ export interface ProgramIR {
   diagnostics: Diagnostic[];
   /** Compile-time constants extracted from the imported board-definition file. */
   boardConstants?: import('./board-resolver').BoardConstants;
+  /** Tracks which hardware peripherals are used (for optimized initialization) */
+  peripheralUsage?: PeripheralUsageIR;
 }
 
 export type ExpressionIR =

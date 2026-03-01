@@ -12,7 +12,7 @@ const config: TypecodeConfig = {
   target: 'avr',
 
   // Board package (npm specifier)
-  board: '@typecode/board-arduino-uno',
+  board: '@typecode/board-native-atmega328p',
 
   // Fully-Qualified Board Name for arduino-cli
   fqbn: 'arduino:avr:uno',

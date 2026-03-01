@@ -2213,6 +2213,42 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
   }
 
+  // Analyze peripheral usage for optimization
+  let peripheralUsage;
+  try {
+    const { analyzePeripheralUsage } = require('./peripheral-usage');
+    peripheralUsage = analyzePeripheralUsage({
+      fileName,
+      imports,
+      reExports,
+      structs: [],
+      enums,
+      classes,
+      typeAliases,
+      topLevelStatements,
+      functions,
+      boilerplates,
+      diagnostics,
+      boardConstants,
+    });
+  } catch (e) {
+    // If peripheral analysis fails, use empty usage
+    peripheralUsage = {
+      adc: false,
+      pwm: false,
+      externalInterrupts: false,
+      timer0: false,
+      i2c: false,
+      spi: false,
+      uart: false,
+      pwmPinsUsed: new Set(),
+      adcChannelsUsed: new Set(),
+      outputPins: new Set(),
+      inputPullupPins: new Set(),
+      inputPins: new Set(),
+    };
+  }
+
   return {
     fileName,
     imports,
@@ -2226,5 +2262,6 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     boilerplates,
     diagnostics,
     boardConstants,
+    peripheralUsage,
   };
 }

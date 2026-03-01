@@ -282,8 +282,15 @@ function resolveNpmPackageImport(
   if (moduleSpecifier.startsWith(".")) {
     return undefined;
   }
-  
+
   const { packageName, subpath } = parseModuleSpecifier(moduleSpecifier);
+
+  // Never pull the typecode CLI package into the user transpile graph.
+  // It is the transpiler itself, not an SDK library; its source files are
+  // TypeScript that the emitter was never designed to process as user code.
+  if (packageName === "typecode") {
+    return undefined;
+  }
   
   // Find the package in node_modules
   const packageDir = findNodeModulesPackage(fromFile, packageName);
@@ -456,7 +463,13 @@ export interface TranspileGraphResult {
  */
 function isTypecodeSDKPath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/");
-  return /\/code\/core\//.test(normalized) || /\/code\/board-/.test(normalized);
+  // Match @typecode/core and @typecode/board-* in both flat (node_modules)
+  // and monorepo (packages/) layouts.
+  return (
+    /\/code\/core\//.test(normalized) ||
+    /\/code\/board-/.test(normalized) ||
+    /\/packages\/board-/.test(normalized)
+  );
 }
 
 /**
@@ -531,6 +544,11 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
 }
 
 function collectExpressionIdentifiers(expr: ExpressionIR, identifiers: Set<string>): void {
+  // Safety check
+  if (!expr || typeof expr !== 'object' || !expr.kind) {
+    return;
+  }
+  
   if (expr.kind === "identifier") {
     identifiers.add(expr.value);
     return;
@@ -611,6 +629,11 @@ function collectExpressionIdentifiers(expr: ExpressionIR, identifiers: Set<strin
 }
 
 function collectStatementIdentifiers(statement: StatementIR, identifiers: Set<string>): void {
+  // Safety check
+  if (!statement || typeof statement !== 'object' || !statement.kind) {
+    return;
+  }
+  
   if (statement.kind === "call") {
     identifiers.add(statement.callee);
     for (const arg of statement.args) {
@@ -838,8 +861,34 @@ function applyTreeShaking(
   });
 }
 
+import type { PlatformStrategy } from "./platform/platform-strategy";
+
+/**
+ * Try to load a PlatformStrategy from a board package.
+ * Returns undefined if the package doesn't export a BoardStrategy.
+ */
+function loadBoardPackageStrategy(boardPackage: string | undefined): PlatformStrategy | undefined {
+  if (!boardPackage) return undefined;
+  
+  try {
+    const packagePath = require.resolve(boardPackage);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pkg = require(packagePath);
+    if (pkg.BoardStrategy) {
+      return new pkg.BoardStrategy();
+    }
+  } catch {
+    // Board package may not have a strategy or may not be installed
+  }
+  return undefined;
+}
+
 export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   const entryFile = path.resolve(options.inputFile);
+  
+  // Load board package strategy before transpilation
+  const boardStrategy = loadBoardPackageStrategy(options.boardPackage);
+  
   const graphResult = collectTranspileGraph(entryFile, options.boardPackage);
   const transpileFiles = graphResult.files;
   const npmPackages = graphResult.npmPackages;
@@ -930,6 +979,7 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
       npmPackage,
       npmPackages,
       isEntryFile: filePath === entryFile,
+      strategy: boardStrategy,
     });
 
     diagnostics.push(...emitted.diagnostics);

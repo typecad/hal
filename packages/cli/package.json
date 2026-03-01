@@ -12,6 +12,14 @@
     ".": {
       "types": "./dist/transpile.d.ts",
       "default": "./dist/transpile.js"
+    },
+    "./platform": {
+      "types": "./dist/platform/index.d.ts",
+      "default": "./dist/platform/index.js"
+    },
+    "./platform/registry": {
+      "types": "./dist/platform/registry.d.ts",
+      "default": "./dist/platform/registry.js"
     }
   },
   "files": [
