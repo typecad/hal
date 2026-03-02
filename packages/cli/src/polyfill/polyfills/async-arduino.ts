@@ -371,7 +371,7 @@ function generatePromiseRuntime(context: PolyfillContext): string {
   const queueCapacity = context.target === "arduino" ? 32 : 256;
   return `
 // Polyfill: cooperative microtask queue + minimal Promise runtime
-namespace ts2cpp_async {
+namespace typecode_async {
   using Microtask = std::function<void()>;
 
   class MicrotaskQueue {
@@ -496,8 +496,8 @@ namespace ts2cpp_async {
   };
 }
 
-inline void ts2cpp_pump_microtasks() {
-  ts2cpp_async::pumpMicrotasks();
+inline void typecode_pump_microtasks() {
+  typecode_async::pumpMicrotasks();
 }
 `;
 }

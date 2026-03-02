@@ -448,3 +448,248 @@ Ensure the package:
 1. Check `forcedIncludes()` returns required headers
 2. Verify `shimLines()` defines all native functions
 3. Ensure F_CPU is defined before including `<util/delay.h>`
+
+## Transpiler Compatibility Guidelines
+
+Board packages must follow specific patterns to avoid transpiler warnings and ensure correct code generation. This section documents the compile-time constructs that the transpiler recognizes.
+
+### Recognized Compile-Time Types
+
+The transpiler recognizes certain TypeScript types as **compile-time-only** constructs that don't need C++ emission. Using these types prevents `TS2CPP_UNMAPPED_TYPE` warnings:
+
+#### Pin Interface Types
+These define pin capabilities and are erased at compile time:
+
+```typescript
+// All these types are recognized as compile-time-only
+type PinInterfaces =
+  | 'IPin'           // Base pin interface
+  | 'IDigitalPin'    // Digital read/write
+  | 'IDigitalInput'  // Digital input only
+  | 'IDigitalOutput' // Digital output only
+  | 'IPWMPin'        // PWM output
+  | 'IAnalogInput'   // ADC input
+  | 'IAnalogOutput'  // DAC output
+  | 'IInterruptPin'  // Interrupt support
+  | 'ITouchPin'      // Touch sensing (ESP32)
+  | 'IADCPin'        // ADC capability
+  | 'IDACPin';       // DAC capability
+```
+
+#### Value Types
+```typescript
+// Board constant value types
+type ValueTypes =
+  | 'PinNumber'      // Pin number alias
+  | 'DigitalValue'   // HIGH/LOW
+  | 'AnalogValue'    // 0-1023 or 0-4095
+  | 'PinMode'        // INPUT/OUTPUT/INPUT_PULLUP
+  | 'InterruptMode'; // CHANGE/FALLING/RISING
+```
+
+#### Bus/Peripheral Interfaces
+```typescript
+// Peripheral bus interfaces
+type BusInterfaces =
+  | 'II2CBus'        // I2C bus
+  | 'ISPIBus'        // SPI bus
+  | 'ISerialPort'    // Serial port
+  | 'IUART'          // UART interface
+  | 'I2CConfig'      // I2C configuration
+  | 'SPIConfig'      // SPI configuration
+  | 'UARTConfig';    // UART configuration
+```
+
+#### Strategy Types
+```typescript
+// Platform strategy types (compile-time only)
+type StrategyTypes =
+  | 'NativeStrategy'      // Native AVR/ESP implementation
+  | 'ArduinoStrategy'     // Arduino framework wrapper
+  | 'BoardStrategy'       // Strategy union type
+  | 'RuntimePolyfillIR'   // Polyfill IR
+  | 'PeripheralUsage';    // Peripheral usage analysis
+```
+
+### Intersection Types for Multi-Capability Pins
+
+Pins often have multiple capabilities. Use intersection types to express this:
+
+```typescript
+// Pin 2 supports both digital I/O and external interrupts
+export const D2: IDigitalPin & IInterruptPin = createDigitalPin(2, 2);
+
+// Pin 3 supports digital I/O, PWM, and interrupts
+export const D3: IDigitalPin & IPWMPin & IInterruptPin = createPWMPin(3, 3);
+
+// A0 supports analog input and digital I/O
+export const A0: IAnalogInput & IDigitalPin = createAnalogPin(14, 0);
+```
+
+The transpiler recognizes intersection types if all component types are known compile-time types.
+
+### Pin Factory Pattern
+
+Use pin factory functions for constant-folding. The transpiler folds these to simple pin numbers at compile time:
+
+```typescript
+// These functions are constant-folded to just the first argument (pin number)
+createDigitalPin(pinNumber, gpioNumber)  // → pinNumber
+createPWMPin(pinNumber, gpioNumber)      // → pinNumber
+createAnalogPin(pinNumber, adcChannel)   // → pinNumber
+createInterruptPin(pinNumber, irqNumber) // → pinNumber
+pinNumber(expression)                     // → evaluated expression
+```
+
+**Example:**
+```typescript
+// In pins.ts
+export const LED: IDigitalPin = createDigitalPin(13, 5);
+
+// Transpiles to C++ that references pin 13 directly
+// The IDigitalPin type is erased, and createDigitalPin is folded to 13
+```
+
+### Peripheral Stub Pattern
+
+Peripheral definitions (I2C, SPI, Serial) use object literals with type assertions. The transpiler handles these as compile-time constructs:
+
+```typescript
+// In peripherals.ts
+import type { II2CBus, ISPIBus, ISerialPort } from '@typecode/core';
+
+// Object literal with type assertion - recognized as compile-time stub
+export const I2C0: II2CBus = {
+  initialize: (config?: I2CConfig) => { /* stub */ },
+  write: (address: I2CAddress, data: Uint8Array) => { /* stub */ },
+  read: (address: I2CAddress, length: number) => new Uint8Array(0),
+};
+
+// Method stubs in object literals are also handled
+export const SPI0: ISPIBus = {
+  initialize(config?: SPIConfig) { /* stub */ },
+  transfer(data: Uint8Array) { return data; },
+  write(data: Uint8Array) { /* stub */ },
+};
+
+// Serial port with getters/setters
+export const Serial: ISerialPort = {
+  get baudRate() { return 9600; },
+  set baudRate(value: number) { /* stub */ },
+  write(data: string | Uint8Array) { /* stub */ },
+  read() { return ''; },
+};
+```
+
+The transpiler recognizes:
+- Property assignments with function/arrow initializers
+- Method declarations (`methodName() { }`)
+- Getter/setter accessors
+
+### Board Constant Naming Convention
+
+Pin constants should follow these naming patterns for automatic recognition:
+
+```typescript
+// Digital pins: D0, D1, D2, ..., D53
+export const D0 = createDigitalPin(0, 0);
+export const D13 = createDigitalPin(13, 5);  // LED on Arduino Uno
+
+// Analog pins: A0, A1, A2, ..., A15
+export const A0 = createAnalogPin(14, 0);
+export const A5 = createAnalogPin(19, 5);
+
+// Special pins: LED, TX, RX, TX0, RX0, TX1, RX1, etc.
+export const LED = D13;
+export const TX = D1;
+export const RX = D0;
+```
+
+### Type Annotation Best Practices
+
+**DO:**
+```typescript
+// Use recognized interface types
+export const D2: IDigitalPin & IInterruptPin = createDigitalPin(2, 2);
+
+// Use type assertions for peripheral stubs
+export const I2C0: II2CBus = { /* ... */ };
+
+// Use 'auto' for variables that need runtime type inference
+let counter: auto = 0;  // Emits as 'int counter = 0;'
+```
+
+**DON'T:**
+```typescript
+// Don't use unknown interface types without registering them
+export const D2: IMyCustomPinInterface = createDigitalPin(2, 2);  // Warning!
+
+// Don't create peripheral objects without type assertions
+export const I2C0 = { initialize() { } };  // Warning!
+
+// Don't use complex generic types that aren't recognized
+export const pins: Map<string, IDigitalPin> = new Map();  // May warn
+```
+
+### Handling UNMAPPED_TYPE Warnings
+
+If you see `TS2CPP_UNMAPPED_TYPE` warnings:
+
+1. **Check if the type is a known compile-time type** - See the lists above
+2. **Add a type assertion** - Use `as KnownType` to guide the transpiler
+3. **Use 'auto' explicitly** - For variables where C++ type inference is desired
+4. **Register custom types** - For board-specific types, extend the transpiler's type map
+
+### Handling RAW_EXPR Warnings
+
+If you see `TS2CPP_RAW_EXPR` warnings:
+
+1. **Use pin factory functions** - `createDigitalPin()` instead of object literals for pins
+2. **Add type assertions to object literals** - `as II2CBus`, `as ISPIBus`, etc.
+3. **Use method syntax in object literals** - `method() { }` instead of `method: () => { }`
+4. **Check for unsupported expressions** - Some TypeScript expressions have no C++ equivalent
+
+### Example: Complete Pin Definition File
+
+```typescript
+// pins.ts - Complete example
+import type { 
+  IDigitalPin, IDigitalInput, IDigitalOutput,
+  IPWMPin, IAnalogInput, IInterruptPin 
+} from '@typecode/core';
+import { createDigitalPin, createPWMPin, createAnalogPin } from './factory';
+
+// Digital-only pins
+export const D0: IDigitalPin = createDigitalPin(0, 0);
+export const D1: IDigitalPin = createDigitalPin(1, 1);
+export const D2: IDigitalPin & IInterruptPin = createDigitalPin(2, 2);
+
+// PWM-capable pins
+export const D3: IDigitalPin & IPWMPin & IInterruptPin = createPWMPin(3, 3);
+export const D5: IDigitalPin & IPWMPin = createPWMPin(5, 5);
+export const D6: IDigitalPin & IPWMPin = createPWMPin(6, 6);
+export const D9: IDigitalPin & IPWMPin = createPWMPin(9, 9);
+export const D10: IDigitalPin & IPWMPin = createPWMPin(10, 10);
+export const D11: IDigitalPin & IPWMPin = createPWMPin(11, 11);
+
+// Analog input pins (also digital-capable)
+export const A0: IAnalogInput & IDigitalPin = createAnalogPin(14, 0);
+export const A1: IAnalogInput & IDigitalPin = createAnalogPin(15, 1);
+export const A2: IAnalogInput & IDigitalPin = createAnalogPin(16, 2);
+export const A3: IAnalogInput & IDigitalPin = createAnalogPin(17, 3);
+export const A4: IAnalogInput & IDigitalPin = createAnalogPin(18, 4);
+export const A5: IAnalogInput & IDigitalPin = createAnalogPin(19, 5);
+
+// Special pins
+export const LED: IDigitalPin = createDigitalPin(13, 5);
+export const TX: IDigitalPin = createDigitalPin(1, 1);
+export const RX: IDigitalPin = createDigitalPin(0, 0);
+```
+
+### Summary
+
+Following these patterns ensures:
+- Clean transpilation without warnings
+- Correct constant-folding of pin numbers
+- Proper type erasure for compile-time constructs
+- Generated C++ code that compiles without errors

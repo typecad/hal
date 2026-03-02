@@ -29,7 +29,7 @@ export const DEFAULT_FILTER_OPTIONS: FilterOptions = {
   keepUnusedClasses: false,
   keepUnusedTypeAliases: false,
   keepUnusedVariables: false,
-  reportUnused: true,
+  reportUnused: false,
 };
 
 /**

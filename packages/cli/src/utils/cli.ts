@@ -63,8 +63,6 @@ TREE-SHAKING OPTIONS
 
   --keep-unused-variables   Keep all top-level variables even if not referenced
 
-  --no-report-unused       Don't emit diagnostics for removed code
-
   --entry-point <name>     Add a custom entry point symbol (repeatable)
                            Default entry points: setup/loop (Arduino), main (generic)
 
@@ -217,7 +215,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   const keepUnusedClasses = argv.includes("--keep-unused-classes");
   const keepUnusedTypes = argv.includes("--keep-unused-types");
   const keepUnusedVariables = argv.includes("--keep-unused-variables");
-  const noReportUnused = argv.includes("--no-report-unused");
 
   const entryPoints: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -254,7 +251,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
     keepUnusedClasses,
     keepUnusedTypeAliases: keepUnusedTypes,
     keepUnusedVariables,
-    reportUnused: !noReportUnused,
+    reportUnused: false,
     entryPoints: entryPoints.length > 0 ? entryPoints : undefined,
   };
 

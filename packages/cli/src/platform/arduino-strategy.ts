@@ -307,7 +307,7 @@ export class ArduinoStrategy implements PlatformStrategy {
     for (const n of taskVarNames) {
       lines.push(`  ${n}.run();`);
     }
-    if (hasPromiseRuntime) lines.push("  ts2cpp_pump_microtasks();");
+    if (hasPromiseRuntime) lines.push("  typecode_pump_microtasks();");
     return lines;
   }
   asyncDriverFunctionName(): string { return "loop"; }
@@ -320,14 +320,8 @@ export class ArduinoStrategy implements PlatformStrategy {
 
   // ── Diagnostics ─────────────────────────────────────────────────────────
 
-  emitDiagnostics(emitMode: string): Diagnostic[] {
-    if (emitMode === "split") {
-      return [{
-        severity: "info",
-        code: "TS2CPP_ARDUINO_SPLIT_IGNORED",
-        message: "Arduino target emits a single .ino sketch file; split header/source mode was ignored.",
-      }];
-    }
+  emitDiagnostics(_emitMode: string): Diagnostic[] {
+    // Split mode info message removed - Arduino inherently uses .ino format
     return [];
   }
 }

@@ -65,7 +65,7 @@ export function analyzeReachability(
     keepUnusedClasses = false,
     keepUnusedTypeAliases = false,
     keepUnusedVariables = false,
-    reportUnused = true,
+    reportUnused = false,
   } = options;
 
   // Detect entry points

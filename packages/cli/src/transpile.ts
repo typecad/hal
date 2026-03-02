@@ -468,7 +468,9 @@ function isTypecodeSDKPath(filePath: string): boolean {
   return (
     /\/code\/core\//.test(normalized) ||
     /\/code\/board-/.test(normalized) ||
-    /\/packages\/board-/.test(normalized)
+    /\/packages\/board-/.test(normalized) ||
+    /\/node_modules\/@typecode\/board-/.test(normalized) ||
+    /\/node_modules\/@typecode\/core\//.test(normalized)
   );
 }
 

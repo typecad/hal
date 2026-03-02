@@ -188,6 +188,29 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       return renderExpression(expr.value, exprTransformer, strategy);
     case "ternary":
       return `(${renderExpression(expr.condition, exprTransformer, strategy)} ? ${renderExpression(expr.whenTrue, exprTransformer, strategy)} : ${renderExpression(expr.whenFalse, exprTransformer, strategy)})`;
+
+    case "string_concat": {
+      // Build a String concatenation chain
+      const renderedParts = expr.parts.map(part => {
+        const rendered = renderExpression(part, exprTransformer, strategy);
+        // Wrap non-string expressions in String() constructor for concatenation
+        if (part.kind === "string") {
+          return rendered;
+        }
+        // For template_string, wrap in String() to convert to string
+        if (part.kind === "template_string") {
+          return `String(${rendered})`;
+        }
+        // For other types, also wrap in String()
+        return `String(${rendered})`;
+      });
+      return renderedParts.join(" + ");
+    }
+
+    case "template_string": {
+      // Wrap the expression in String() to convert to string
+      return `String(${renderExpression(expr.expression, exprTransformer, strategy)})`;
+    }
     case "array":
       const elements = expr.elements.map((e) => renderExpression(e, exprTransformer, strategy)).join(", ");
       return `{ ${elements} }`;
@@ -1088,6 +1111,16 @@ function renderStatement(
     return strategy.renderThrow(renderExpression(statement.value, undefined, strategy));
   }
 
+  if (statement.kind === "labeled") {
+    // Labeled statements: label: { ... } or label: statement
+    return `${statement.label}:`;
+  }
+
+  if (statement.kind === "block") {
+    // Standalone block: { ... }
+    return `{`;
+  }
+
   if (statement.kind !== "var_decl") {
     return "/* unsupported_statement */";
   }
@@ -1599,6 +1632,33 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
+      emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+      return;
+    }
+
+    if (statement.kind === "labeled") {
+      appendSourceLine(`${indent}${statement.label}:`, {
+        tsSpan: statement.sourceSpan,
+        nodeKind: statement.kind,
+      });
+      appendSourceLine(`${indent}{`);
+      for (const nested of statement.body) {
+        appendRenderedStatement(nested, `${indent}  `);
+      }
+      appendSourceLine(`${indent}}`);
+      emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+      return;
+    }
+
+    if (statement.kind === "block") {
+      appendSourceLine(`${indent}{`, {
+        tsSpan: statement.sourceSpan,
+        nodeKind: statement.kind,
+      });
+      for (const nested of statement.body) {
+        appendRenderedStatement(nested, `${indent}  `);
+      }
+      appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
       return;
     }

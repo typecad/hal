@@ -184,6 +184,23 @@ export interface ThrowIR {
   value: ExpressionIR;
 }
 
+export interface LabeledIR {
+  kind: "labeled";
+  sourceSpan: SourceSpan;
+  leadingComments?: string[];
+  trailingComments?: string[];
+  label: string;
+  body: StatementIR[];
+}
+
+export interface BlockIR {
+  kind: "block";
+  sourceSpan: SourceSpan;
+  leadingComments?: string[];
+  trailingComments?: string[];
+  body: StatementIR[];
+}
+
 export type StatementIR = 
   | CallExpressionIR 
   | VariableDeclarationIR 
@@ -200,7 +217,9 @@ export type StatementIR =
   | ContinueIR
   | SwitchIR
   | TryIR
-  | ThrowIR;
+  | ThrowIR
+  | LabeledIR
+  | BlockIR;
 
 export type CppType = string;
 
@@ -327,6 +346,8 @@ export type ExpressionIR =
   | { kind: "await"; value: ExpressionIR }
   | { kind: "ternary"; condition: ExpressionIR; whenTrue: ExpressionIR; whenFalse: ExpressionIR }
   | { kind: "array"; elementType: string; elements: ExpressionIR[] }
+  | { kind: "string_concat"; parts: ExpressionIR[] }
+  | { kind: "template_string"; expression: ExpressionIR }
   | { kind: "object"; fields: { name: string; value: ExpressionIR }[] }
   | { kind: "instanceof"; object: ExpressionIR; className: string }
   | { kind: "spread_array"; elementType: string; spreadExpr: ExpressionIR; additionalElements: ExpressionIR[] }
