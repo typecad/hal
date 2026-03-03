@@ -94,6 +94,50 @@ export interface TypecodeConfig {
    * Defines how `typecode-test` discovers files and communicates with the board.
    */
   test?: TypecodeTestConfig;
+
+  /**
+   * Toolchain configuration for compile/upload operations.
+   * Controls which backend (arduino-cli or platformio) is used.
+   */
+  toolchain?: TypecodeToolchainConfig;
+}
+
+// ---------------------------------------------------------------------------
+// Toolchain configuration
+// ---------------------------------------------------------------------------
+
+/** Supported toolchain types for compile/upload operations. */
+export type ToolchainType = 'arduino-cli' | 'platformio';
+
+/** Arduino CLI specific configuration options. */
+export interface ArduinoCliOptions {
+  /** Path to arduino-cli executable. Auto-detected if not specified. */
+  path?: string;
+  /** Path to custom arduino-cli.yaml config file. */
+  configFile?: string;
+  /** Enable verbose output during compile/upload. */
+  verbose?: boolean;
+}
+
+/** PlatformIO specific configuration options. */
+export interface PlatformioOptions {
+  /** Path to pio executable. Auto-detected if not specified. */
+  path?: string;
+  /** Target environment name from platformio.ini. */
+  env?: string;
+}
+
+/**
+ * Toolchain configuration for compile and upload operations.
+ * Controls which backend (arduino-cli or platformio) is used.
+ */
+export interface TypecodeToolchainConfig {
+  /** Toolchain type: 'arduino-cli' or 'platformio'. Default: 'arduino-cli' */
+  type?: ToolchainType;
+  /** Arduino CLI specific options. */
+  arduinoCli?: ArduinoCliOptions;
+  /** PlatformIO specific options. */
+  platformio?: PlatformioOptions;
 }
 
 // ---------------------------------------------------------------------------

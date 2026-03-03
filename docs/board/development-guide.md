@@ -142,28 +142,33 @@ registerPlatformStrategy(new MyBoardStrategy());
 
 ## Code Generation Flow
 
-```mermaid
-flowchart TD
-    A[TypeScript Source] --> B[Build IR]
-    B --> C[Load Board Strategy]
-    C --> D[Emit C++]
-    D --> E{Strategy Method Called}
-    
-    E --> F[forcedIncludes]
-    E --> G[shimLines]
-    E --> H[nativePolyfills]
-    E --> I[generateNativePolyfills]
-    E --> J[setupInitCode]
-    E --> K[tryRenderCallStatement]
-    E --> L[transformConsoleCall]
-    
-    F --> M[Generated .ino/.cpp]
-    G --> M
-    H --> M
-    I --> M
-    J --> M
-    K --> M
-    L --> M
+```
+TypeScript Source
+       │
+       ▼
+Build IR
+       │
+       ▼
+Load Board Strategy
+       │
+       ▼
+Emit C++
+       │
+       ▼
+┌─────────────────────────────────┐
+│ Strategy Method Called          │
+├─────────────────────────────────┤
+│ forcedIncludes                  │
+│ shimLines                       │
+│ nativePolyfills                 │
+│ generateNativePolyfills         │
+│ setupInitCode                   │
+│ tryRenderCallStatement          │
+│ transformConsoleCall            │
+└─────────────────────────────────┘
+       │
+       ▼
+Generated .ino/.cpp
 ```
 
 ## Key Strategy Methods
@@ -494,7 +499,7 @@ Key files:
 - [`src/registers.ts`](packages/arch-avr-native/src/registers.ts) - ATmega328P register definitions
 - [`src/index.ts`](packages/arch-avr-native/src/index.ts) - Public exports
 
-See [ARCH_PACKAGE_GUIDE.md](ARCH_PACKAGE_GUIDE.md) for detailed architecture package documentation.
+See [Architecture Development Guide](../architecture/development-guide.md) for detailed architecture package documentation.
 
 ### Board Package: board-arduino-uno
 

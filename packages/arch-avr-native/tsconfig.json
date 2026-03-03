@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2021",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "typecode/platform": ["../cli/dist/platform/index"],
+      "typecode/platform/registry": ["../cli/dist/platform/registry"],
+      "typecode/ir": ["../cli/dist/ir/model"],
+      "typecode/board-resolver": ["../cli/dist/ir/board-resolver"],
+      "typecode/typecode-symbols": ["../cli/dist/ir/typecode-symbols"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

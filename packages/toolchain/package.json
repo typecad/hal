@@ -1,0 +1,60 @@
+{
+  "name": "@typecode/toolchain",
+  "version": "0.1.0",
+  "description": "Toolchain management for TypeCode - compile and upload to microcontrollers",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./registry": {
+      "types": "./dist/registry.d.ts",
+      "default": "./dist/registry.js"
+    },
+    "./arduino-cli": {
+      "types": "./dist/arduino-cli.d.ts",
+      "default": "./dist/arduino-cli.js"
+    },
+    "./platformio": {
+      "types": "./dist/platformio.d.ts",
+      "default": "./dist/platformio.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "typecode",
+    "arduino",
+    "platformio",
+    "embedded",
+    "toolchain",
+    "compile",
+    "upload"
+  ],
+  "author": "TypeCode",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/typecad/typecode.git",
+    "directory": "packages/toolchain"
+  },
+  "bugs": {
+    "url": "https://github.com/typecad/typecode/issues"
+  }
+}

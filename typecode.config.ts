@@ -12,7 +12,8 @@ const config: TypecodeConfig = {
   target: 'avr',
 
   // Board package (npm specifier)
-  board: '@typecode/board-native-atmega328p',
+  // Uses board-arduino-uno which re-exports arch-avr-native for native codegen
+  board: '@typecode/board-arduino-uno',
 
   // Fully-Qualified Board Name for arduino-cli
   fqbn: 'arduino:avr:uno',
@@ -30,6 +31,23 @@ const config: TypecodeConfig = {
     include: ['examples/**/*.test.ts'],
     baudRate: 115200,
     timeout: 30000,
+  },
+
+  // Toolchain configuration (compile/upload backend)
+  // Options: 'arduino-cli' (default) or 'platformio'
+  toolchain: {
+    type: 'arduino-cli',
+    // Arduino CLI specific options
+    arduinoCli: {
+      // path: '/path/to/arduino-cli',  // Optional: custom path
+      // configFile: './arduino-cli.yaml',  // Optional: custom config
+      verbose: false,
+    },
+    // PlatformIO specific options (when type: 'platformio')
+    // platformio: {
+    //   path: '/path/to/pio',  // Optional: custom path
+    //   env: 'uno',  // Optional: environment name from platformio.ini
+    // },
   },
 };
 

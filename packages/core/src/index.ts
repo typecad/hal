@@ -176,4 +176,8 @@ export {
   type OptimizationLevel,
   type TypecodeOutputConfig,
   type TypecodeConfig,
+  type ToolchainType,
+  type ArduinoCliOptions,
+  type PlatformioOptions,
+  type TypecodeToolchainConfig,
 } from './config';

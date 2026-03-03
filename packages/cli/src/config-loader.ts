@@ -36,6 +36,19 @@ export interface ResolvedTypecodeConfig {
   architecture?: string;
   /** Path to the config file that was loaded. */
   configPath: string;
+  /** Toolchain configuration. */
+  toolchain?: {
+    type?: 'arduino-cli' | 'platformio';
+    arduinoCli?: {
+      path?: string;
+      configFile?: string;
+      verbose?: boolean;
+    };
+    platformio?: {
+      path?: string;
+      env?: string;
+    };
+  };
 }
 
 /**
@@ -196,6 +209,55 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
 
   const outputOutDir = flat.get("output.outDir");
   if (typeof outputOutDir === "string") resolved.outputOutDir = outputOutDir;
+
+  // Parse toolchain configuration
+  const toolchainType = flat.get("toolchain.type");
+  const arduinoCliPath = flat.get("toolchain.arduinoCli.path");
+  const arduinoCliConfigFile = flat.get("toolchain.arduinoCli.configFile");
+  const arduinoCliVerbose = flat.get("toolchain.arduinoCli.verbose");
+  const platformioPath = flat.get("toolchain.platformio.path");
+  const platformioEnv = flat.get("toolchain.platformio.env");
+
+  if (
+    typeof toolchainType === "string" ||
+    typeof arduinoCliPath === "string" ||
+    typeof arduinoCliConfigFile === "string" ||
+    typeof platformioPath === "string" ||
+    typeof platformioEnv === "string"
+  ) {
+    resolved.toolchain = {};
+
+    if (toolchainType === "arduino-cli" || toolchainType === "platformio") {
+      resolved.toolchain.type = toolchainType;
+    }
+
+    if (
+      typeof arduinoCliPath === "string" ||
+      typeof arduinoCliConfigFile === "string" ||
+      typeof arduinoCliVerbose === "boolean"
+    ) {
+      resolved.toolchain.arduinoCli = {};
+      if (typeof arduinoCliPath === "string") {
+        resolved.toolchain.arduinoCli.path = arduinoCliPath;
+      }
+      if (typeof arduinoCliConfigFile === "string") {
+        resolved.toolchain.arduinoCli.configFile = arduinoCliConfigFile;
+      }
+      if (typeof arduinoCliVerbose === "boolean") {
+        resolved.toolchain.arduinoCli.verbose = arduinoCliVerbose;
+      }
+    }
+
+    if (typeof platformioPath === "string" || typeof platformioEnv === "string") {
+      resolved.toolchain.platformio = {};
+      if (typeof platformioPath === "string") {
+        resolved.toolchain.platformio.path = platformioPath;
+      }
+      if (typeof platformioEnv === "string") {
+        resolved.toolchain.platformio.env = platformioEnv;
+      }
+    }
+  }
 
   return resolved;
 }
