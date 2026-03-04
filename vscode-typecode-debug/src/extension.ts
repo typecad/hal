@@ -3,11 +3,13 @@
 //
 // Tracks breakpoints in TypeScript files and syncs them to
 // .typecode/breakpoints.json for the TypeCode debug preprocessor.
+// Also auto-generates .d.ts declaration files from C++ sources.
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { exec } from 'node:child_process';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,7 +72,26 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(toggleCmd, clearAllCmd, debugCmd, syncCmd, saveListener, breakpointTracker);
+  // Declaration file generator
+  const declGenerator = new DeclarationGenerator();
+
+  // Register declaration generation command
+  const genDeclCmd = vscode.commands.registerCommand(
+    'typecode-debug.generateDeclaration',
+    () => declGenerator.generateForCurrentFile()
+  );
+
+  // Watch for C++ file saves and auto-generate .d.ts if missing
+  const cppSaveListener = vscode.workspace.onDidSaveTextDocument((doc) => {
+    if (doc.fileName.endsWith('.cpp') && !doc.fileName.includes('node_modules')) {
+      declGenerator.checkAndGenerate(doc.fileName);
+    }
+  });
+
+  context.subscriptions.push(
+    toggleCmd, clearAllCmd, debugCmd, syncCmd, saveListener, breakpointTracker,
+    genDeclCmd, cppSaveListener, declGenerator
+  );
 }
 
 export function deactivate() {}
@@ -287,5 +308,97 @@ class BreakpointTracker implements vscode.Disposable {
   dispose(): void {
     this._onDidChange.dispose();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Declaration Generator
+// ---------------------------------------------------------------------------
+
+class DeclarationGenerator implements vscode.Disposable {
+  /**
+   * Check if a .d.ts file exists for the given C++ file, and generate one if missing.
+   */
+  async checkAndGenerate(cppPath: string): Promise<void> {
+    const declPath = cppPath.replace(/\.cpp$/i, '.d.ts');
+    
+    if (fs.existsSync(declPath)) {
+      return; // Declaration file already exists
+    }
+    
+    const result = await this.generateDeclaration(cppPath, declPath);
+    if (result) {
+      vscode.window.showInformationMessage(
+        `TypeCode: Generated ${path.basename(declPath)} from ${path.basename(cppPath)}. Review and adjust types if needed.`
+      );
+    }
+  }
+
+  /**
+   * Generate declaration for the currently active C++ file.
+   */
+  async generateForCurrentFile(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      vscode.window.showErrorMessage('TypeCode: No active editor');
+      return;
+    }
+
+    const filePath = editor.document.uri.fsPath;
+    
+    if (!filePath.endsWith('.cpp')) {
+      vscode.window.showErrorMessage('TypeCode: Active file must be a .cpp file');
+      return;
+    }
+
+    const declPath = filePath.replace(/\.cpp$/i, '.d.ts');
+    const result = await this.generateDeclaration(filePath, declPath);
+    
+    if (result) {
+      vscode.window.showInformationMessage(
+        `TypeCode: Generated ${path.basename(declPath)}`
+      );
+      // Open the generated file for review
+      const doc = await vscode.workspace.openTextDocument(result);
+      await vscode.window.showTextDocument(doc);
+    } else {
+      vscode.window.showWarningMessage(
+        'TypeCode: No classes or constants found in C++ file'
+      );
+    }
+  }
+
+  /**
+   * Generate a .d.ts file from a C++ file using the typecode CLI.
+   */
+  private async generateDeclaration(cppPath: string, declPath: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      // Use tsx to run the CLI directly for development, fallback to npx typecode
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      const localCliPath = workspaceFolders 
+        ? path.join(workspaceFolders[0].uri.fsPath, 'packages/cli/src/cli.ts')
+        : null;
+      
+      const cmd = localCliPath && fs.existsSync(localCliPath)
+        ? `npx tsx "${localCliPath}" gen-decls "${cppPath}"`
+        : `npx typecode gen-decls "${cppPath}"`;
+      
+      exec(cmd, { cwd: workspaceFolders?.[0]?.uri.fsPath }, (error, stdout, stderr) => {
+        if (error) {
+          console.error('TypeCode: Failed to generate declaration:', error);
+          vscode.window.showErrorMessage(`TypeCode: Failed to generate declaration: ${error.message}`);
+          resolve(null);
+          return;
+        }
+        
+        if (fs.existsSync(declPath)) {
+          resolve(declPath);
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  dispose(): void {}
 }
 

@@ -166,7 +166,8 @@ function collectCalledFunctions(program: ProgramIR): Set<string> {
 
   const collectFromStatement = (statement: StatementIR): void => {
     if (statement.kind === "call") {
-      if (!statement.callee.includes(".")) {
+      // Exclude method calls (both . and -> syntax) from built-in function checking
+      if (!statement.callee.includes(".") && !statement.callee.includes("->")) {
         called.add(statement.callee);
       }
       return;

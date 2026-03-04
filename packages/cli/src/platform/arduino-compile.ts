@@ -105,18 +105,12 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
       }
       return line;
     });
-  // Collect module names and their contents for namespace wrapping
-  const moduleInfos: { namespaceName: string; content: string; relativePath: string }[] = [];
+  // Collect module contents - native C++ modules are NOT wrapped in namespaces
+  // since they're already valid C++ code
+  const moduleContents: string[] = [];
   
   for (const cppPath of cppFiles) {
     const relativePath = path.relative(sketchDir, cppPath).replace(/\\/g, "/");
-    // Generate namespace name from the file name (without extension)
-    // e.g., "bme280.cpp" -> "bme280", "lib/sensor.cpp" -> "lib_sensor"
-    const baseName = path.basename(cppPath, path.extname(cppPath));
-    const dirName = path.dirname(relativePath);
-    const namespaceName = dirName && dirName !== "." 
-      ? `${dirName.replace(/[\/\\]/g, "_")}_${baseName}`
-      : baseName;
     
     const content = fs.readFileSync(cppPath, "utf8");
     const rewritten = content.replace(/^\s*#include\s+"([^"]+)"\s*$/gm, (_line, includePath: string) => {
@@ -145,27 +139,10 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
       continue;
     }
     
-    moduleInfos.push({ namespaceName, content: sanitized, relativePath });
+    moduleContents.push(`\n// ---- merged from ${relativePath} ----\n${sanitized}\n`);
   }
 
-  // Wrap each module's content in a namespace to avoid naming conflicts
-  const moduleContents = moduleInfos.map(({ namespaceName, content, relativePath }) => {
-    // Indent content for namespace wrapping
-    const indentedContent = content
-      .split("\n")
-      .map(line => line.length > 0 ? `  ${line}` : line)
-      .join("\n");
-    return `\n// ---- merged from ${relativePath} ----\nnamespace ${namespaceName} {\n${indentedContent}\n} // namespace ${namespaceName}\n`;
-  }).join("");
-  
-  // Generate using declarations for entry sketch to access module symbols without qualification
-  const usingDeclarations = moduleInfos.map(({ namespaceName }) => `using namespace ${namespaceName};`).join("\n");
-
-  // Add using declarations before entry sketch so symbols are accessible without qualification
-  const usingSection = usingDeclarations.length > 0 
-    ? `\n// Import merged module symbols into global scope\n${usingDeclarations}\n` 
-    : "";
-  const mergedSketch = `${moduleContents}${usingSection}// ---- entry sketch ----\n${sanitizedSketch}\n`;
+  const mergedSketch = `${moduleContents.join("")}// ---- entry sketch ----\n${sanitizedSketch}\n`;
   fs.writeFileSync(normalizedSketchPath, mergedSketch, "utf8");
 
   for (const cppPath of cppFiles) {

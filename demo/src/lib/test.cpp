@@ -1,5 +1,3 @@
-
-// ---- merged from test.cpp ----
  /** BME280 I2C address (default when SDO pin is grounded) */
   const int BME280_ADDRESS = 118;
   /** BME280 register addresses */
@@ -48,20 +46,4 @@
     bool initialized = false;
 
   };
-
-// ---- entry sketch ----
-
-// Auto-generated setup() for top-level statements
-void setup()
-{
-  Serial.begin(9600);
-  // Create test instance
-  const test* sensor = new test(1);
-  // Initialize sensor
-  sensor->begin();
-}
-
-void loop()
-{
-}
 

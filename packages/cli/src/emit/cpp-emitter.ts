@@ -113,6 +113,8 @@ interface EmitterOptions {
   isEntryFile?: boolean;
   /** Override the platform strategy (resolved from target if not provided). */
   strategy?: PlatformStrategy;
+  /** Native C++ modules detected during import resolution (module specifier -> info) */
+  nativeModules?: Map<string, { declPath: string; cppPath: string; moduleKey: string }>;
 }
 
 
@@ -1332,6 +1334,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     // Skip imports from typecode SDK modules — the symbols they export
     // (pin names like A0, D13, LED) are already provided by <Arduino.h>.
     if (isTypecodeSDKImport(imported.moduleSpecifier, program.fileName)) {
+      for (const symbol of imported.namedImports) {
+        symbolMap[symbol] = symbol;
+      }
+      continue;
+    }
+
+    // Skip native C++ modules - they are merged into the output, not included
+    if (options.nativeModules && options.nativeModules.has(imported.moduleSpecifier)) {
+      // Keep original symbol names for native modules
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
       }

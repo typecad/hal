@@ -2,6 +2,7 @@
 import path from "node:path";
 import { parseCommandLine, printHelp } from "./utils/cli";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
+import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
 import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from "./platform/arduino-compile";
 import { loadTypecodeConfig, generateVirtualTypeDeclaration } from "./config-loader";
@@ -128,7 +129,41 @@ function main(): void {
     }
 
     if (!options.inputFile) {
-      throw new Error("Missing input TypeScript file path.");
+      throw new Error("Missing input file path.");
+    }
+
+    if (options.command === "gen-decls") {
+      // Check for --all flag (scan directory)
+      const scanDir = (options as any).scanDir as string | undefined;
+      
+      if (scanDir) {
+        console.log(`Scanning ${scanDir} for C++ files...`);
+        const created = generateDeclsForDirectory(scanDir, true);
+        
+        if (created.length === 0) {
+          console.log("No new declaration files created.");
+        } else {
+          console.log("Created declaration files:");
+          for (const filePath of created) {
+            console.log(`- ${filePath}`);
+          }
+        }
+        return;
+      }
+      
+      // Single file mode - C++ input expected
+      const extension = path.extname(options.inputFile).toLowerCase();
+      if (extension !== ".cpp") {
+        throw new Error(`gen-decls expects a .cpp file, received '${extension || "<no extension>"}'.`);
+      }
+      
+      const created = generateDeclFromCpp(options.inputFile);
+      if (created) {
+        console.log(`Created declaration file: ${created}`);
+      } else {
+        console.log("No declaration file created (no classes or constants found in C++ file).");
+      }
+      return;
     }
 
     assertTypeScriptInput(options.inputFile);
@@ -150,8 +185,6 @@ function main(): void {
       }
       return;
     }
-
-    // Default: transpile (always first)
 
     // ── Load typecode.config.ts (config wins over CLI flags) ──────────
     const inputDir = path.dirname(path.resolve(options.inputFile));
@@ -188,28 +221,44 @@ function main(): void {
       }
     }
 
-    const result = transpileFile({
-      inputFile: options.inputFile,
-      emitMode: options.emitMode,
-      target: effectiveTarget,
-      outDir: effectiveOutDir,
-      emitMaps: options.emitMaps,
-      platformContext: effectivePlatformContext,
-      treeShaking: options.treeShaking,
-      boardPackage: effectiveBoardPackage,
-      debug: options.debug,
-    });
+    let result: { headerPath?: string; sourcePath: string; headerMapPath?: string; sourceMapPath?: string; diagnostics: Array<{ severity: string; message: string; line?: number; column?: number; code?: string }> };
 
-    printDiagnostics(result.diagnostics);
-    if (result.headerPath) {
-      console.log(`Generated header: ${result.headerPath}`);
-    }
-    console.log(`Generated source: ${result.sourcePath}`);
-    if (result.headerMapPath) {
-      console.log(`Generated header map: ${result.headerMapPath}`);
-    }
-    if (result.sourceMapPath) {
-      console.log(`Generated source map: ${result.sourceMapPath}`);
+    if (options.noTranspile) {
+      // Skip transpilation - use existing generated files
+      const inputBasename = path.basename(options.inputFile, path.extname(options.inputFile));
+      const outDirPath = effectiveOutDir || inputDir;
+      result = {
+        sourcePath: path.join(outDirPath, `${inputBasename}.cpp`),
+        headerPath: effectiveTarget === "arduino" ? undefined : path.join(outDirPath, `${inputBasename}.h`),
+        sourceMapPath: path.join(outDirPath, `${inputBasename}.cpp.map`),
+        headerMapPath: effectiveTarget === "arduino" ? undefined : path.join(outDirPath, `${inputBasename}.h.map`),
+        diagnostics: [],
+      };
+    } else {
+      // Default: transpile first
+      result = transpileFile({
+        inputFile: options.inputFile,
+        emitMode: options.emitMode,
+        target: effectiveTarget,
+        outDir: effectiveOutDir,
+        emitMaps: options.emitMaps,
+        platformContext: effectivePlatformContext,
+        treeShaking: options.treeShaking,
+        boardPackage: effectiveBoardPackage,
+        debug: options.debug,
+      });
+
+      printDiagnostics(result.diagnostics);
+      if (result.headerPath) {
+        console.log(`Generated header: ${result.headerPath}`);
+      }
+      console.log(`Generated source: ${result.sourcePath}`);
+      if (result.headerMapPath) {
+        console.log(`Generated header map: ${result.headerMapPath}`);
+      }
+      if (result.sourceMapPath) {
+        console.log(`Generated source map: ${result.sourceMapPath}`);
+      }
     }
 
     if (!options.compile) {

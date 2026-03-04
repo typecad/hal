@@ -14,6 +14,7 @@ import { analyzeReachability } from "./ir/reachability";
 import { filterProgramIR } from "./ir/filter";
 import { flattenGeneratedModulesIntoSketch } from "./platform/arduino-compile";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
+import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
 
 function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
   if (!fs.existsSync(outDir)) {
@@ -448,6 +449,18 @@ function getNpmPackageInfoForFile(
 }
 
 /**
+ * Information about a native C++ module
+ */
+export interface NativeCppModule {
+  /** Path to the .d.ts declaration file */
+  declPath: string;
+  /** Path to the .cpp implementation file */
+  cppPath: string;
+  /** Module key for naming (derived from file name) */
+  moduleKey: string;
+}
+
+/**
  * Result of collecting the transpile graph
  */
 export interface TranspileGraphResult {
@@ -455,6 +468,48 @@ export interface TranspileGraphResult {
   files: string[];
   /** Map of source file paths to their npm package info (if from npm) */
   npmPackages: Map<string, ResolvedNpmPackage>;
+  /** Map of import specifiers to native C++ modules */
+  nativeModules: Map<string, NativeCppModule>;
+}
+
+/**
+ * Detects a native C++ module: a .d.ts declaration file with a corresponding .cpp implementation.
+ * Returns undefined if not a native module.
+ */
+function detectNativeCppModule(
+  fromFile: string,
+  moduleSpecifier: string
+): NativeCppModule | undefined {
+  if (!moduleSpecifier.startsWith(".")) {
+    return undefined;
+  }
+
+  const basePath = path.resolve(path.dirname(fromFile), moduleSpecifier);
+  
+  // Check for .d.ts + .cpp pair
+  const declCandidates = [
+    `${basePath}.d.ts`,
+    path.join(basePath, "index.d.ts"),
+  ];
+  
+  for (const declPath of declCandidates) {
+    if (!fs.existsSync(declPath) || !fs.statSync(declPath).isFile()) {
+      continue;
+    }
+    
+    // Found .d.ts, check for corresponding .cpp
+    const cppPath = declPath.replace(/\.d\.ts$/i, ".cpp");
+    if (fs.existsSync(cppPath) && fs.statSync(cppPath).isFile()) {
+      const moduleKey = path.basename(declPath, ".d.ts");
+      return {
+        declPath: path.resolve(declPath),
+        cppPath: path.resolve(cppPath),
+        moduleKey,
+      };
+    }
+  }
+  
+  return undefined;
 }
 
 /**
@@ -483,6 +538,78 @@ export interface TypeCheckResult {
   success: boolean;
   /** Array of formatted error messages */
   errors: string[];
+  /** Auto-generated declaration files (for user notification) */
+  generatedDecls: string[];
+}
+
+/**
+ * Extracts module path from "Cannot find module" error messages.
+ * Returns the module path if it's a relative import, undefined otherwise.
+ */
+function extractMissingModulePath(errorMessage: string): string | undefined {
+  // Match: Cannot find module './lib/test' or its corresponding type declarations.
+  const match = errorMessage.match(/Cannot find module '(\.[^']+)' or its corresponding type declarations/);
+  return match ? match[1] : undefined;
+}
+
+/**
+ * Attempts to find a .cpp file for a missing module.
+ * Checks both direct path and index patterns.
+ */
+function findCppForModule(fromFile: string, modulePath: string): string | undefined {
+  const basePath = path.resolve(path.dirname(fromFile), modulePath);
+  
+  const candidates = [
+    `${basePath}.cpp`,
+    path.join(basePath, "index.cpp"),
+  ];
+  
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Auto-generates .d.ts files for C++ modules that are missing declarations.
+ * Returns list of generated files.
+ */
+function autoGenerateMissingDecls(
+  files: string[],
+  errors: string[]
+): string[] {
+  const generated: string[] = [];
+  const processedModules = new Set<string>();
+  
+  for (const error of errors) {
+    const modulePath = extractMissingModulePath(error);
+    if (!modulePath || processedModules.has(modulePath)) {
+      continue;
+    }
+    
+    // Find which file has this import
+    for (const file of files) {
+      const cppPath = findCppForModule(file, modulePath);
+      if (cppPath) {
+        processedModules.add(modulePath);
+        
+        // Generate the .d.ts file
+        const result = generateDeclFromCpp(cppPath);
+        if (result) {
+          generated.push(result);
+          console.log(`\n  Auto-generated: ${path.relative(process.cwd(), result)}`);
+          console.log(`  from C++ source: ${path.relative(process.cwd(), cppPath)}`);
+          console.log(`  Review the generated types and adjust if needed.\n`);
+        }
+        break;
+      }
+    }
+  }
+  
+  return generated;
 }
 
 /**
@@ -561,7 +688,7 @@ function typeCheckFiles(
   });
 
   if (errors.length === 0) {
-    return { success: true, errors: [] };
+    return { success: true, errors: [], generatedDecls: [] };
   }
 
   // Format error messages
@@ -577,11 +704,12 @@ function typeCheckFiles(
     }
   }
 
-  return { success: false, errors: formattedErrors };
+  return { success: false, errors: formattedErrors, generatedDecls: [] };
 }
 
 /**
  * Collects all files that need to be transpiled, following both relative and npm imports.
+ * Also detects native C++ modules (.d.ts + .cpp pairs).
  *
  * @param boardPackage  When provided, bare `@typecode` imports resolve to this
  *                      board package (e.g. `'@typecode/board-arduino-uno'`).
@@ -591,6 +719,7 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
   const pending: string[] = [path.resolve(entryFile)];
   const visited = new Set<string>();
   const npmPackages = new Map<string, ResolvedNpmPackage>();
+  const nativeModules = new Map<string, NativeCppModule>();
 
   while (pending.length > 0) {
     const filePath = pending.shift();
@@ -630,6 +759,13 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
         continue;
       }
 
+      // Check for native C++ module (.d.ts + .cpp pair)
+      const nativeModule = detectNativeCppModule(filePath, moduleSpecifier);
+      if (nativeModule) {
+        nativeModules.set(moduleSpecifier, nativeModule);
+        continue; // Don't try to resolve as TypeScript
+      }
+
       const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
       if (resolved && !visited.has(resolved.sourcePath)) {
         pending.push(resolved.sourcePath);
@@ -648,7 +784,7 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
     }
   }
 
-  return { files: ordered, npmPackages };
+  return { files: ordered, npmPackages, nativeModules };
 }
 
 function collectExpressionIdentifiers(expr: ExpressionIR, identifiers: Set<string>): void {
@@ -1003,7 +1139,23 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   // ── Type-check all files before transpiling ────────────────────────────────
   // Skip type-checking if explicitly disabled
   if (options.skipTypeCheck !== true && transpileFiles.length > 0) {
-    const typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
+    let typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
+    
+    // If type-checking failed, try to auto-generate missing .d.ts files from C++ sources
+    if (!typeCheckResult.success) {
+      const generatedDecls = autoGenerateMissingDecls(transpileFiles, typeCheckResult.errors);
+      
+      // If we generated any declaration files, retry type-checking
+      if (generatedDecls.length > 0) {
+        console.log(`\n  Retrying type-checking after auto-generation...`);
+        typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
+        
+        if (typeCheckResult.success) {
+          console.log(`  Type-checking passed after auto-generation.\n`);
+        }
+      }
+    }
+    
     if (!typeCheckResult.success) {
       // Report all type errors and throw to stop transpilation
       const errorMessages = typeCheckResult.errors.map(e => `ERROR: ${e}`).join("\n");
@@ -1062,15 +1214,23 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
     let programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
 
     // Apply tree-shaking for all files.
-    // For non-entry modules, preserve enums and variables to avoid dropping
+    // Keep variables for all files to avoid dropping top-level variable
+    // declarations that are referenced in subsequent statements.
+    // For non-entry modules, also preserve enums to avoid dropping
     // constants that may be referenced in class default parameters or after lowering.
     if (filePath === entryFile) {
-      programIR = applyTreeShaking(programIR, options.target, options.treeShaking);
+      programIR = applyTreeShaking(programIR, options.target, {
+        ...options.treeShaking,
+        keepUnusedVariables: true,
+      });
     } else {
       programIR = applyTreeShaking(programIR, options.target, {
         enabled: options.treeShaking?.enabled ?? true,
-        ...(options.treeShaking ?? {}),
         keepUnusedEnums: true,
+        keepUnusedClasses: options.treeShaking?.keepUnusedClasses,
+        keepUnusedTypeAliases: options.treeShaking?.keepUnusedTypeAliases,
+        reportUnused: options.treeShaking?.reportUnused,
+        entryPoints: options.treeShaking?.entryPoints,
         keepUnusedVariables: true,
       });
     }
@@ -1114,6 +1274,7 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
       npmPackages,
       isEntryFile: filePath === entryFile,
       strategy: boardStrategy,
+      nativeModules: graphResult.nativeModules,
     });
 
     diagnostics.push(...emitted.diagnostics);
@@ -1124,6 +1285,20 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
 
   if (!entryOutputs) {
     throw new Error(`Unable to transpile entry file '${entryFile}'.`);
+  }
+
+  // ── Copy native C++ modules to output ─────────────────────────────────────
+  const nativeModuleOutputs: string[] = [];
+  for (const [moduleSpecifier, nativeModule] of graphResult.nativeModules) {
+    // Read the C++ source
+    const cppContent = readText(nativeModule.cppPath);
+    
+    // Write to output directory
+    const outputCppPath = path.join(outDir, `${nativeModule.moduleKey}.cpp`);
+    fs.writeFileSync(outputCppPath, cppContent, "utf8");
+    nativeModuleOutputs.push(outputCppPath);
+    
+    console.log(`Copied native module: ${outputCppPath}`);
   }
 
   if (options.target === "arduino") {

@@ -10,6 +10,7 @@ typecode v${VERSION} - TypeScript to C++ transpiler for embedded systems
 USAGE
   typecode <input.ts> [options]
   typecode gen-libdefs <input.ts>
+  typecode gen-decls <input.cpp|--all <directory>>
   typecode map-error <mapFile> [options]
 
 Transpilation is always performed first. Use --compile, --upload, and
@@ -118,7 +119,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   }
 
   // Named subcommands
-  if (firstArg === "gen-libdefs" || firstArg === "map-error") {
+  if (firstArg === "gen-libdefs" || firstArg === "gen-decls" || firstArg === "map-error") {
     const command = firstArg;
 
     const emitFlag = readFlags(argv, ["--emit"]);
@@ -153,6 +154,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
         target,
         outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
         emitMaps,
+        noTranspile: false,
         compile: false,
         upload: false,
         monitor: false,
@@ -164,6 +166,36 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
         cppColumn: cppColumnRaw ? Number(cppColumnRaw) : 1,
         message,
       };
+    }
+
+    // gen-decls - generate .d.ts from C++ files
+    if (command === "gen-decls") {
+      const allFlag = argv.includes("--all");
+      const inputPath = argv[3];
+      
+      if (!inputPath && !allFlag) {
+        throw new Error("Missing input C++ file path. Use: gen-decls <file.cpp> or gen-decls --all <directory>");
+      }
+      
+      const scanDir = allFlag ? (inputPath || process.cwd()) : undefined;
+      const inputFile = allFlag ? undefined : inputPath;
+      
+      return {
+        command: "gen-decls",
+        inputFile: inputFile ? path.resolve(process.cwd(), inputFile) : undefined,
+        emitMode,
+        target,
+        outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+        emitMaps,
+        noTranspile: false,
+        compile: false,
+        upload: false,
+        monitor: false,
+        baud: 9600,
+        platformContext,
+        // Custom fields for gen-decls
+        scanDir: scanDir ? path.resolve(process.cwd(), scanDir) : undefined,
+      } as CommandLineOptions;
     }
 
     // gen-libdefs
@@ -179,6 +211,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
       target,
       outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
       emitMaps,
+      noTranspile: false,
       compile: false,
       upload: false,
       monitor: false,
@@ -208,6 +241,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   const upload = argv.includes("--upload");
   const monitor = argv.includes("--monitor");
   const debug = argv.includes("--debug");
+  const noTranspile = argv.includes("--no-transpile");
   const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
   // Tree-shaking options
@@ -263,6 +297,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
     target,
     outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
     emitMaps,
+    noTranspile,
     compile,
     upload,
     monitor,

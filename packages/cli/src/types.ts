@@ -57,7 +57,7 @@ export interface Diagnostic {
 
 export interface TreeShakingOptions {
   /** Enable tree-shaking (default: true) */
-  enabled: boolean;
+  enabled?: boolean;
   /** Keep enums even if not referenced (default: false) */
   keepUnusedEnums?: boolean;
   /** Keep classes even if not instantiated (default: false) */
@@ -114,12 +114,14 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "gen-libdefs" | "map-error";
+  command: "default" | "gen-libdefs" | "gen-decls" | "map-error";
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;
   outDir?: string;
   emitMaps: boolean;
+  /** Skip transpilation (use existing generated files) */
+  noTranspile: boolean;
   /** Run arduino-cli compile after transpilation */
   compile: boolean;
   /** Run arduino-cli upload after compilation (requires compile) */
