@@ -476,6 +476,111 @@ function isTypecodeSDKPath(filePath: string): boolean {
 }
 
 /**
+ * Result of type-checking files
+ */
+export interface TypeCheckResult {
+  /** Whether all files passed type-checking */
+  success: boolean;
+  /** Array of formatted error messages */
+  errors: string[];
+}
+
+/**
+ * Type-checks TypeScript files using the TypeScript compiler.
+ * Returns early if any errors are found.
+ * 
+ * @param files List of TypeScript files to type-check
+ * @param boardPackage Optional board package for resolving @typecode imports
+ * @returns TypeCheckResult with success status and any error messages
+ */
+function typeCheckFiles(
+  files: string[],
+  boardPackage?: string,
+): TypeCheckResult {
+  // Find the nearest tsconfig.json by walking up from the first file
+  let configPath: string | undefined;
+  let currentDir = path.dirname(files[0]);
+  while (currentDir !== path.dirname(currentDir)) {
+    const candidate = path.join(currentDir, "tsconfig.json");
+    if (fs.existsSync(candidate)) {
+      configPath = candidate;
+      break;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+
+  // Read compiler options from tsconfig.json if found
+  let compilerOptions: ts.CompilerOptions = {
+    noEmit: true,
+    strict: true,
+    skipLibCheck: true,
+    esModuleInterop: true,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
+  };
+
+  if (configPath) {
+    const configResult = ts.readConfigFile(configPath, (path) => fs.readFileSync(path, "utf8"));
+    if (!configResult.error) {
+      const parsedConfig = ts.parseJsonConfigFileContent(
+        configResult.config,
+        ts.sys,
+        path.dirname(configPath),
+      );
+      if (!parsedConfig.errors.length) {
+        compilerOptions = { ...parsedConfig.options, noEmit: true };
+      }
+    }
+  }
+
+  // Create a TypeScript program with all files to check
+  const program = ts.createProgram(files, compilerOptions);
+
+  // Collect all diagnostics
+  const allDiagnostics: ts.Diagnostic[] = [
+    ...program.getSyntacticDiagnostics(),
+    ...program.getSemanticDiagnostics(),
+    ...program.getGlobalDiagnostics(),
+  ];
+
+  // Filter to only errors (ignore suggestions and hints)
+  // Also skip errors from files in node_modules or packages directories (not user code)
+  const errors = allDiagnostics.filter(d => {
+    if (d.category !== ts.DiagnosticCategory.Error) {
+      return false;
+    }
+    // Include errors without a file (global errors)
+    if (!d.file) {
+      return true;
+    }
+    const filePath = d.file.fileName.replace(/\\/g, "/");
+    // Skip errors from node_modules and internal packages
+    if (filePath.includes("/node_modules/") || filePath.includes("/packages/")) {
+      return false;
+    }
+    return true;
+  });
+
+  if (errors.length === 0) {
+    return { success: true, errors: [] };
+  }
+
+  // Format error messages
+  const formattedErrors: string[] = [];
+  for (const error of errors) {
+    const message = ts.flattenDiagnosticMessageText(error.messageText, "\n");
+    if (error.file && error.start !== undefined) {
+      const { line, character } = error.file.getLineAndCharacterOfPosition(error.start);
+      const relativePath = path.relative(process.cwd(), error.file.fileName);
+      formattedErrors.push(`${relativePath}(${line + 1}:${character + 1}): ${message}`);
+    } else {
+      formattedErrors.push(message);
+    }
+  }
+
+  return { success: false, errors: formattedErrors };
+}
+
+/**
  * Collects all files that need to be transpiled, following both relative and npm imports.
  *
  * @param boardPackage  When provided, bare `@typecode` imports resolve to this
@@ -894,6 +999,17 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   
   const graphResult = collectTranspileGraph(entryFile, options.boardPackage);
   const transpileFiles = graphResult.files;
+
+  // ── Type-check all files before transpiling ────────────────────────────────
+  // Skip type-checking if explicitly disabled
+  if (options.skipTypeCheck !== true && transpileFiles.length > 0) {
+    const typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
+    if (!typeCheckResult.success) {
+      // Report all type errors and throw to stop transpilation
+      const errorMessages = typeCheckResult.errors.map(e => `ERROR: ${e}`).join("\n");
+      throw new Error(`TypeScript type-checking failed:\n${errorMessages}\n\nTranspilation aborted due to TypeScript errors.`);
+    }
+  }
   const npmPackages = graphResult.npmPackages;
   const sourceDir = path.dirname(entryFile);
   const sketchBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");

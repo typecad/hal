@@ -55,9 +55,33 @@ namespace bme280 {
 
 } // namespace bme280
 
+// ---- merged from test.cpp ----
+namespace test {
+
+  /** BME280 I2C address (default when SDO pin is grounded) */
+  const int BME280_ADDRESS = 118;
+  /** BME280 register addresses */
+  const int REG_CTRL_MEAS = 244;
+  const int REG_CTRL_HUM = 242;
+  const int REG_CONFIG = 245;
+  const int REG_TEMP_MSB = 250;
+  const int REG_CALIB_00 = 136;
+  /** Calibration data storage */
+  int dig_T1;
+  int dig_T2;
+  int dig_T3;
+  int t_fine = 0;
+
+  // Default instance
+  const BME280* bme280 = new BME280();
+
+} // namespace test
+
 // Import merged module symbols into global scope
 using namespace bme280;
+using namespace test;
 // ---- entry sketch ----
+
 
 // Auto-generated setup() for top-level statements
 void setup()

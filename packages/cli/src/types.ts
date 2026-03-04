@@ -89,6 +89,8 @@ export interface TranspileOptions {
   boardPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
   debug?: boolean;
+  /** Skip TypeScript type-checking before transpilation (default: false) */
+  skipTypeCheck?: boolean;
 }
 
 export interface LibraryDefinitionCondition {

@@ -6,9 +6,10 @@
 
 import { LED, delay, Serial } from '@typecode';
 import { BME280 } from './lib/bme280';
-
+import { test } from './lib/test';
 // Create BME280 instance
 const sensor = new BME280();
+const tester = new test();
 
 // Configure LED pin as output
 LED.asOutput();;
