@@ -10,5 +10,4 @@ while (true) {
   counter++;
   LED.toggle();
   delay(500);
-  digitalRead(X0);
 }

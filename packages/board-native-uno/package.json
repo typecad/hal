@@ -1,0 +1,27 @@
+{
+  "name": "@typecode/board-native-uno",
+  "version": "0.1.0",
+  "description": "Arduino Uno board package with native AVR code generation (no Arduino framework)",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc"
+  },
+  "peerDependencies": {
+    "@typecode/core": "^0.1.0",
+    "@typecode/arch-avr-native": "^0.1.0",
+    "@typecode/board-arduino-uno": "^0.1.0"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

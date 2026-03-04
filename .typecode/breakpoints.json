@@ -1,3 +1,8 @@
 {
-  "breakpoints": []
+  "breakpoints": [
+    {
+      "file": "c:\\typecad\\typecode\\example.ts",
+      "line": 11
+    }
+  ]
 }

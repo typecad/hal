@@ -3,12 +3,15 @@
   "private": true,
   "workspaces": [
     "packages/core",
+    "packages/arch-avr-native",
     "packages/board-arduino-uno",
+    "packages/board-native-uno",
     "packages/board-esp32-devkit",
     "packages/board-arduino-nano33iot",
     "packages/board-native-atmega328p",
     "packages/cli",
-    "packages/expect"
+    "packages/expect",
+    "packages/toolchain"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
