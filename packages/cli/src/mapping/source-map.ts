@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { GeneratedSourceMap, MappedDiagnostic, SourceMapEntry } from "../types";
 import { readText, writeText } from "../utils/fs";
 
@@ -92,4 +93,49 @@ export function resolveMapPath(mapFileOrGeneratedFile: string): string {
   }
 
   return toSourceMapPath(path.resolve(process.cwd(), mapFileOrGeneratedFile));
+}
+
+/**
+ * Resolve source map path for a flattened Arduino sketch
+ * When a sketch is flattened, the source map needs to account for merged files
+ */
+export function resolveSourceMapForSketch(
+  sketchPath: string,
+  originalSourceMapPath?: string
+): string | undefined {
+  const sketchDir = path.dirname(sketchPath);
+  const sketchName = path.basename(sketchPath, path.extname(sketchPath));
+  
+  // First try the original source map path
+  if (originalSourceMapPath && fs.existsSync(originalSourceMapPath)) {
+    return originalSourceMapPath;
+  }
+  
+  // Try to find source maps for the sketch directory
+  const possibleMaps = [
+    path.join(sketchDir, `${sketchName}.tscppmap.json`),
+    path.join(sketchDir, `${sketchName}.ino.tscppmap.json`),
+    path.join(sketchDir, "example.tscppmap.json"), // Common case for example sketches
+  ];
+  
+  for (const mapPath of possibleMaps) {
+    if (fs.existsSync(mapPath)) {
+      return mapPath;
+    }
+  }
+  
+  // Look for any .tscppmap.json files in the sketch directory
+  try {
+    const files = fs.readdirSync(sketchDir);
+    const mapFiles = files.filter(f => f.endsWith('.tscppmap.json'));
+    if (mapFiles.length > 0) {
+      // Return the most recent one
+      const latest = mapFiles.sort().pop();
+      return path.join(sketchDir, latest!);
+    }
+  } catch {
+    // Ignore readdir errors
+  }
+  
+  return undefined;
 }

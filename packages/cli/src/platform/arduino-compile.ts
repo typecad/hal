@@ -4,12 +4,30 @@ import { spawnSync } from "node:child_process";
 import { ArduinoCompileError, ArduinoCompileResult, ArduinoUploadResult } from "../types";
 
 const GCC_STYLE = /^(.*?):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.*)$/i;
+const ARDUINO_ERROR = /^(.*?):(\d+):\d+:\s*(error|warning|note):\s*(.*)$/i;
+const CLANG_ERROR = /^(.*?):(\d+):(\d+):\s*(error|warning|note):\s*(.*)$/i;
 
-function parseCompileErrors(output: string): ArduinoCompileError[] {
+function parseCompileErrors(output: string, sketchDir?: string): ArduinoCompileError[] {
   const errors: ArduinoCompileError[] = [];
+  
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.trim();
-    const match = line.match(GCC_STYLE);
+    if (!line) continue;
+
+    let match = line.match(GCC_STYLE);
+    if (!match) {
+      match = line.match(ARDUINO_ERROR);
+      if (match) {
+        // Arduino error format: file:line:column: severity: message
+        // Sometimes column is missing, so we use 1 as default
+        match = [match[0], match[1], match[2], "1", match[3], match[4]];
+      }
+    }
+    
+    if (!match) {
+      match = line.match(CLANG_ERROR);
+    }
+
     if (!match) {
       continue;
     }
@@ -18,8 +36,26 @@ function parseCompileErrors(output: string): ArduinoCompileError[] {
     const severity: "error" | "warning" | "note" =
       severityRaw.includes("error") ? "error" : severityRaw === "warning" ? "warning" : "note";
 
+    let filePath = match[1];
+    
+    // Normalize file paths
+    if (sketchDir) {
+      // Try to resolve relative paths against sketch directory
+      if (!path.isAbsolute(filePath)) {
+        const resolved = path.resolve(sketchDir, filePath);
+        if (fs.existsSync(resolved)) {
+          filePath = resolved;
+        }
+      }
+    }
+    
+    // Handle sketch directory references
+    if (sketchDir && filePath.includes(path.basename(sketchDir))) {
+      filePath = path.resolve(sketchDir, path.basename(sketchDir) + ".ino");
+    }
+
     errors.push({
-      filePath: path.resolve(match[1]),
+      filePath: path.resolve(filePath),
       line: Number(match[2]),
       column: Number(match[3]),
       severity,
@@ -151,7 +187,7 @@ export function compileArduinoSketch(sketchFilePath: string, fqbn: string): Ardu
   });
 
   const output = `${cmd.stdout ?? ""}\n${cmd.stderr ?? ""}`.trim();
-  const errors = parseCompileErrors(output);
+  const errors = parseCompileErrors(output, sketchDir);
 
   return {
     success: cmd.status === 0,

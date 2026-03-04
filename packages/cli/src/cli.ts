@@ -2,7 +2,7 @@
 import path from "node:path";
 import { parseCommandLine, printHelp } from "./utils/cli";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
-import { mapCppLocationToTs, readSourceMap, resolveMapPath } from "./mapping/source-map";
+import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
 import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from "./platform/arduino-compile";
 import { loadTypecodeConfig, generateVirtualTypeDeclaration } from "./config-loader";
 
@@ -31,10 +31,19 @@ function printDiagnostics(diagnostics: Array<{ severity: string; message: string
 
 function printMappedCompileErrors(
   compileResult: ReturnType<typeof compileArduinoSketch>,
-  sourceMapPath?: string,
+  originalSourceMapPath?: string,
+  sketchPath?: string,
 ): void {
   if (compileResult.errors.length === 0) {
     return;
+  }
+
+  // Try to find the appropriate source map for the sketch
+  let sourceMapPath = originalSourceMapPath;
+  
+  if (sketchPath && !sourceMapPath) {
+    // For flattened sketches, try to find the source map in the sketch directory
+    sourceMapPath = resolveSourceMapForSketch(sketchPath, originalSourceMapPath);
   }
 
   const sourceMap = sourceMapPath ? readSourceMap(sourceMapPath) : undefined;
@@ -60,9 +69,13 @@ function printMappedCompileErrors(
       }
     }
 
+    // If mapping failed, provide helpful information about the error
     const fallback = `${error.filePath}(${error.line},${error.column}): ${error.severity}: ${error.message}`;
     if (error.severity === "error") {
       console.error(fallback);
+      if (sourceMapPath) {
+        console.error(`Note: Failed to map C++ error to TypeScript source. Source map: ${sourceMapPath}`);
+      }
     } else {
       console.warn(fallback);
     }
@@ -211,7 +224,7 @@ function main(): void {
 
     console.log(`Compiling for ${fqbn}...`);
     const compileResult = compileArduinoSketch(result.sourcePath, fqbn);
-    printMappedCompileErrors(compileResult, result.sourceMapPath);
+    printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath);
 
     if (!compileResult.success) {
       console.error(compileResult.output);
