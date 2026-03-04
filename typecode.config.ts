@@ -36,18 +36,18 @@ const config: TypecodeConfig = {
   // Toolchain configuration (compile/upload backend)
   // Options: 'arduino-cli' (default) or 'platformio'
   toolchain: {
-    type: 'arduino-cli',
+    type: 'platformio',
     // Arduino CLI specific options
-    arduinoCli: {
-      // path: '/path/to/arduino-cli',  // Optional: custom path
-      // configFile: './arduino-cli.yaml',  // Optional: custom config
-      verbose: false,
-    },
-    // PlatformIO specific options (when type: 'platformio')
-    // platformio: {
-    //   path: '/path/to/pio',  // Optional: custom path
-    //   env: 'uno',  // Optional: environment name from platformio.ini
+    // arduinoCli: {
+    //   path: '/path/to/arduino-cli',  // Optional: custom path
+    //   configFile: './arduino-cli.yaml',  // Optional: custom config
+    //   verbose: false,
     // },
+    // PlatformIO specific options (when type: 'platformio')
+    platformio: {
+      // path: '/path/to/pio',  // Optional: custom path
+      env: 'uno',  // Environment name from platformio.ini
+    },
   },
 };
 

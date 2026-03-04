@@ -207,6 +207,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
   const compile = argv.includes("--compile");
   const upload = argv.includes("--upload");
   const monitor = argv.includes("--monitor");
+  const debug = argv.includes("--debug");
   const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
   // Tree-shaking options
@@ -269,5 +270,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
     baud,
     platformContext,
     treeShaking,
+    debug,
   };
 }

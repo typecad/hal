@@ -12,6 +12,7 @@ TypeCode is a TypeScript to C++ transpiler for embedded development. Write TypeS
 | **Transpiler** | TypeScript to C++ transpilation | [Transpiler](./transpiler/) |
 | **Toolchain** | Compiler and uploader tools | [Toolchain](./toolchain/) |
 | **Expect** | Hardware testing framework | [Expect](./expect/) |
+| **Debug** | Breakpoint-based debugging | [Debug](./debug/) |
 
 ## Quick Start
 
@@ -133,6 +134,14 @@ Hardware testing framework:
 
 - [Writing Tests](./expect/writing-tests.md) - Test syntax and matchers
 - [CLI Reference](./expect/cli-reference.md) - Test runner options
+
+### [Debug](./debug/)
+
+Breakpoint-based debugging for embedded devices:
+
+- Set breakpoints in VS Code
+- Debug on-device via serial output
+- Inspect variables at runtime
 
 ## Examples
 

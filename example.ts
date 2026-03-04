@@ -1,10 +1,13 @@
 // Import board-specific pins from the board package
-import { LED, delay } from '@typecode/board-arduino-uno';
+import { LED, delay } from '@typecode';
+
+const square = (x: number) => x * x;
+
+let counter = 0;
 
 LED.asOutput();
-console.log('native avr!!!');
 while (true) {
+  counter++;
   LED.toggle();
   delay(500);
 }
-

@@ -87,6 +87,8 @@ export interface TranspileOptions {
    * (e.g. `'@typecode/board-arduino-uno'`).
    */
   boardPackage?: string;
+  /** Enable debug mode - inject breakpoint instrumentation */
+  debug?: boolean;
 }
 
 export interface LibraryDefinitionCondition {
@@ -139,6 +141,8 @@ export interface CommandLineOptions {
    * When present, bare `@typecode` imports are rewritten to this package.
    */
   boardPackage?: string;
+  /** Enable debug mode - inject breakpoint instrumentation */
+  debug?: boolean;
 }
 
 export interface GenerateLibdefOptions {

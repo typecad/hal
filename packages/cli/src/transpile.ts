@@ -13,6 +13,7 @@ import { detectEntryPoints } from "./ir/entry-points";
 import { analyzeReachability } from "./ir/reachability";
 import { filterProgramIR } from "./ir/filter";
 import { flattenGeneratedModulesIntoSketch } from "./platform/arduino-compile";
+import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 
 function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
   if (!fs.existsSync(outDir)) {
@@ -926,8 +927,22 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   };
   const preBuilt = new Map<string, PreBuiltFile>();
 
+  // Load breakpoints if debug mode is enabled
+  const breakpoints = options.debug ? loadBreakpoints(sourceDir) : undefined;
+
   for (const filePath of transpileFiles) {
-    const sourceText = readText(filePath);
+    let sourceText = readText(filePath);
+    
+    // Apply debug preprocessing if enabled and breakpoints exist for this file
+    if (options.debug && breakpoints) {
+      const instrumented = debugPreprocess({
+        fileName: filePath,
+        breakpoints,
+        source: sourceText,
+      });
+      sourceText = instrumented;
+    }
+    
     let programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
 
     // Apply tree-shaking for all files.

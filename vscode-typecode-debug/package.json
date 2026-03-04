@@ -1,0 +1,64 @@
+{
+  "name": "vscode-typecode-debug",
+  "displayName": "TypeCode Debug",
+  "description": "Breakpoint debugging for TypeCode embedded projects",
+  "version": "0.1.0",
+  "publisher": "typecode",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers"
+  ],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "workspaceContains:**/typecode.config.ts"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "typecode-debug.toggleBreakpoint",
+        "title": "TypeCode: Toggle Breakpoint"
+      },
+      {
+        "command": "typecode-debug.clearAllBreakpoints",
+        "title": "TypeCode: Clear All Breakpoints"
+      },
+      {
+        "command": "typecode-debug.debugWithBreakpoints",
+        "title": "TypeCode: Debug with Breakpoints"
+      },
+      {
+        "command": "typecode-debug.syncBreakpoints",
+        "title": "TypeCode: Sync Breakpoints from VS Code"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "typecode-debug.toggleBreakpoint",
+        "key": "f9",
+        "when": "editorTextFocus && resourceExtname == .ts"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "typecode-debug.toggleBreakpoint",
+          "group": "debug",
+          "when": "resourceExtname == .ts"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.7.3"
+  }
+}

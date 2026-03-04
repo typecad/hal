@@ -184,6 +184,7 @@ function main(): void {
       platformContext: effectivePlatformContext,
       treeShaking: options.treeShaking,
       boardPackage: effectiveBoardPackage,
+      debug: options.debug,
     });
 
     printDiagnostics(result.diagnostics);

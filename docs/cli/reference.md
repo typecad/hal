@@ -37,6 +37,7 @@ npx typecode sketch.ts [options]
 | `--monitor` | `--port` | Open serial monitor after upload |
 | `--port <port>` | — | Serial port, e.g. `COM4` or `/dev/ttyACM0` |
 | `--baud <rate>` | `9600` | Baud rate for `--monitor` |
+| `--debug` | — | Enable debug mode; injects breakpoint instrumentation from `.typecode/breakpoints.json` |
 
 ### Tree-Shaking Options
 
@@ -87,6 +88,14 @@ npx typecode sketch.ts --compile --upload --port COM4
 ```bash
 npx typecode sketch.ts --compile --upload --monitor --port COM4 --baud 115200
 ```
+
+### Debug with Breakpoints
+
+```bash
+npx typecode sketch.ts --compile --upload --monitor --port COM4 --debug
+```
+
+See [Debug](../debug/) for breakpoint-based debugging documentation.
 
 ### Disable Tree-Shaking
 
