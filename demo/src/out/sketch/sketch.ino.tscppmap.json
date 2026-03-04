@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\sketch.ino",
+  "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+  "entries": [
+    {
+      "generatedStartLine": 5,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 5,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "setup"
+    },
+    {
+      "generatedStartLine": 8,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 8,
+      "generatedEndColumn": 39,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 403,
+        "endOffset": 424,
+        "startLine": 11,
+        "startColumn": 7,
+        "endLine": 11,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 10,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 10,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 458,
+        "endOffset": 472,
+        "startLine": 14,
+        "startColumn": 1,
+        "endLine": 14,
+        "endColumn": 15
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 12,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 12,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 497,
+        "endOffset": 511,
+        "startLine": 17,
+        "startColumn": 1,
+        "endLine": 17,
+        "endColumn": 15
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 14,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 14,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 527,
+        "endOffset": 758,
+        "startLine": 20,
+        "startColumn": 1,
+        "endLine": 32,
+        "endColumn": 2
+      },
+      "nodeKind": "while"
+    },
+    {
+      "generatedStartLine": 17,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 17,
+      "generatedEndColumn": 48,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 572,
+        "endOffset": 603,
+        "startLine": 22,
+        "startColumn": 9,
+        "endLine": 22,
+        "endColumn": 40
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 19,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 19,
+      "generatedEndColumn": 35,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 631,
+        "endOffset": 660,
+        "startLine": 25,
+        "startColumn": 3,
+        "endLine": 25,
+        "endColumn": 32
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 20,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 20,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 664,
+        "endOffset": 682,
+        "startLine": 26,
+        "startColumn": 3,
+        "endLine": 26,
+        "endColumn": 21
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 21,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 21,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 686,
+        "endOffset": 706,
+        "startLine": 27,
+        "startColumn": 3,
+        "endLine": 27,
+        "endColumn": 23
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 23,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 23,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 728,
+        "endOffset": 740,
+        "startLine": 30,
+        "startColumn": 3,
+        "endLine": 30,
+        "endColumn": 15
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 24,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 24,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 744,
+        "endOffset": 755,
+        "startLine": 31,
+        "startColumn": 3,
+        "endLine": 31,
+        "endColumn": 14
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 28,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 28,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "loop"
+    }
+  ]
+}

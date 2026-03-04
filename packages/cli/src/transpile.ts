@@ -946,8 +946,8 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
     let programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
 
     // Apply tree-shaking for all files.
-    // For non-entry modules, preserve enums to avoid dropping type-level constants
-    // that may be referenced after lowering.
+    // For non-entry modules, preserve enums and variables to avoid dropping
+    // constants that may be referenced in class default parameters or after lowering.
     if (filePath === entryFile) {
       programIR = applyTreeShaking(programIR, options.target, options.treeShaking);
     } else {
@@ -955,6 +955,7 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
         enabled: options.treeShaking?.enabled ?? true,
         ...(options.treeShaking ?? {}),
         keepUnusedEnums: true,
+        keepUnusedVariables: true,
       });
     }
 

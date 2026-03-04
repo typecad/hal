@@ -85,44 +85,87 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
     return;
   }
 
+  // Collect header file names that correspond to the merged .cpp files
+  // These includes should be stripped from the entry sketch since the code is merged inline
+  const mergedHeaderNames = new Set<string>();
+  for (const cppPath of cppFiles) {
+    const baseName = path.basename(cppPath, path.extname(cppPath));
+    mergedHeaderNames.add(`${baseName}.h`);
+  }
+
   const originalSketch = fs.readFileSync(normalizedSketchPath, "utf8");
   const sanitizedSketch = originalSketch
     .replace(/^\s*#include\s+<Arduino\.h>\s*$/gm, "")
-    .replace(/^\s*#include\s+"Arduino\.h"\s*$/gm, "");
-  const moduleContents = cppFiles
-    .map((cppPath) => {
-      const relativePath = path.relative(sketchDir, cppPath).replace(/\\/g, "/");
-      const content = fs.readFileSync(cppPath, "utf8");
-      const rewritten = content.replace(/^\s*#include\s+"([^"]+)"\s*$/gm, (_line, includePath: string) => {
-        const resolved = path.resolve(path.dirname(cppPath), includePath);
-        if (!resolved.startsWith(path.resolve(sketchDir))) {
-          return `#include "${includePath}"`;
-        }
-        let relativeToSketch = path.relative(sketchDir, resolved).replace(/\\/g, "/");
-        relativeToSketch = relativeToSketch.replace(/(^|\/)([^\/]+)\/\2(?=\/|$)/g, "$1$2");
-        if (!relativeToSketch.startsWith(".")) {
-          relativeToSketch = `./${relativeToSketch}`;
-        }
-        return `#include "${relativeToSketch}"`;
-      });
-      const sanitized = rewritten
-        .replace(/^\s*#include\s+<Arduino\.h>\s*$/gm, "")
-        .replace(/^\s*#include\s+"Arduino\.h"\s*$/gm, "");
-      // Skip modules whose body is empty after tree-shaking
-      // (only #include directives, blank lines, and comments remain)
-      const stripped = sanitized
-        .replace(/^\s*#include\s+.*$/gm, "")
-        .replace(/^\s*\/\/.*$/gm, "")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .trim();
-      if (stripped.length === 0) {
-        return "";
+    .replace(/^\s*#include\s+"Arduino\.h"\s*$/gm, "")
+    // Strip includes for headers corresponding to merged .cpp modules
+    .replace(/^\s*#include\s+"([^"]+)"\s*$/gm, (line, includePath: string) => {
+      const headerName = path.basename(includePath);
+      if (mergedHeaderNames.has(headerName)) {
+        return ""; // Remove the include since the module is merged inline
       }
-      return `\n// ---- merged from ${relativePath} ----\n${sanitized}\n`;
-    })
-    .join("");
+      return line;
+    });
+  // Collect module names and their contents for namespace wrapping
+  const moduleInfos: { namespaceName: string; content: string; relativePath: string }[] = [];
+  
+  for (const cppPath of cppFiles) {
+    const relativePath = path.relative(sketchDir, cppPath).replace(/\\/g, "/");
+    // Generate namespace name from the file name (without extension)
+    // e.g., "bme280.cpp" -> "bme280", "lib/sensor.cpp" -> "lib_sensor"
+    const baseName = path.basename(cppPath, path.extname(cppPath));
+    const dirName = path.dirname(relativePath);
+    const namespaceName = dirName && dirName !== "." 
+      ? `${dirName.replace(/[\/\\]/g, "_")}_${baseName}`
+      : baseName;
+    
+    const content = fs.readFileSync(cppPath, "utf8");
+    const rewritten = content.replace(/^\s*#include\s+"([^"]+)"\s*$/gm, (_line, includePath: string) => {
+      const resolved = path.resolve(path.dirname(cppPath), includePath);
+      if (!resolved.startsWith(path.resolve(sketchDir))) {
+        return `#include "${includePath}"`;
+      }
+      let relativeToSketch = path.relative(sketchDir, resolved).replace(/\\/g, "/");
+      relativeToSketch = relativeToSketch.replace(/(^|\/)([^\/]+)\/\2(?=\/|$)/g, "$1$2");
+      if (!relativeToSketch.startsWith(".")) {
+        relativeToSketch = `./${relativeToSketch}`;
+      }
+      return `#include "${relativeToSketch}"`;
+    });
+    const sanitized = rewritten
+      .replace(/^\s*#include\s+<Arduino\.h>\s*$/gm, "")
+      .replace(/^\s*#include\s+"Arduino\.h"\s*$/gm, "");
+    
+    // Skip modules whose body is empty after tree-shaking
+    const stripped = sanitized
+      .replace(/^\s*#include\s+.*$/gm, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .trim();
+    if (stripped.length === 0) {
+      continue;
+    }
+    
+    moduleInfos.push({ namespaceName, content: sanitized, relativePath });
+  }
 
-  const mergedSketch = `${moduleContents}\n// ---- entry sketch ----\n${sanitizedSketch}\n`;
+  // Wrap each module's content in a namespace to avoid naming conflicts
+  const moduleContents = moduleInfos.map(({ namespaceName, content, relativePath }) => {
+    // Indent content for namespace wrapping
+    const indentedContent = content
+      .split("\n")
+      .map(line => line.length > 0 ? `  ${line}` : line)
+      .join("\n");
+    return `\n// ---- merged from ${relativePath} ----\nnamespace ${namespaceName} {\n${indentedContent}\n} // namespace ${namespaceName}\n`;
+  }).join("");
+  
+  // Generate using declarations for entry sketch to access module symbols without qualification
+  const usingDeclarations = moduleInfos.map(({ namespaceName }) => `using namespace ${namespaceName};`).join("\n");
+
+  // Add using declarations before entry sketch so symbols are accessible without qualification
+  const usingSection = usingDeclarations.length > 0 
+    ? `\n// Import merged module symbols into global scope\n${usingDeclarations}\n` 
+    : "";
+  const mergedSketch = `${moduleContents}${usingSection}// ---- entry sketch ----\n${sanitizedSketch}\n`;
   fs.writeFileSync(normalizedSketchPath, mergedSketch, "utf8");
 
   for (const cppPath of cppFiles) {

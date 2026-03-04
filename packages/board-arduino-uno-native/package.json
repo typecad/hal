@@ -1,5 +1,5 @@
 {
-  "name": "@typecode/board-native-uno",
+  "name": "@typecode/board-arduino-uno-native",
   "version": "0.1.0",
   "description": "Arduino Uno board package with native AVR code generation (no Arduino framework)",
   "type": "commonjs",

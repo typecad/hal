@@ -12,9 +12,9 @@ const config: TypecodeConfig = {
   target: 'avr',
 
   // Board package (npm specifier)
-  // Use @typecode/board-native-uno for native AVR codegen (no Arduino framework)
+  // Use @typecode/board-arduino-uno-native for native AVR codegen (no Arduino framework)
   // Or use @typecode/board-arduino-uno for Arduino framework codegen
-  board: '@typecode/board-native-uno',
+  board: '@typecode/board-arduino-uno-native',
 
   // Fully-Qualified Board Name for arduino-cli
   fqbn: 'arduino:avr:uno',

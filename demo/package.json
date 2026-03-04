@@ -1,0 +1,12 @@
+{
+  "name": "typecode-demo-arduino-uno",
+  "version": "1.0.0",
+  "description": "TypeCode demo project for Arduino Uno",
+  "private": true,
+  "scripts": {
+    "build": "npx typecode ./src/sketch.ts",
+    "compile": "npx typecode ./src/sketch.ts --compile",
+    "upload": "npx typecode ./src/sketch.ts --compile --upload --port COM4",
+    "debug": "npx typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM4"
+  }
+}

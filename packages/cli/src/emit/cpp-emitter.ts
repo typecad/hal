@@ -1878,10 +1878,21 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   /**
-   * Transform method calls on pointer struct fields from '.' to '->'
+   * Transform method calls on pointer variables and pointer struct fields from '.' to '->'
+   * e.g., "sensor.readTemperature()" -> "sensor->readTemperature()" when sensor is a pointer
    * e.g., "Board.A0.read()" -> "Board.A0->read()" when A0 is a pointer field
    */
   function fixPointerFieldAccess(callee: string): string {
+    // First, handle top-level pointer variables (e.g., sensor.method() -> sensor->method())
+    for (const [varName, varType] of globalPointerVarTypes) {
+      if (varType.endsWith("*")) {
+        // Match patterns like "varName.method" and transform to "varName->method"
+        const pattern = new RegExp(`\\b${varName}\\.`, "g");
+        callee = callee.replace(pattern, `${varName}->`);
+      }
+    }
+    
+    // Then, handle pointer struct fields (e.g., Board.A0.method() -> Board.A0->method())
     for (const pointerField of pointerStructFields) {
       // Match patterns like "Board.A0.method" and transform to "Board.A0->method"
       const pattern = new RegExp(`(^|[^>])${pointerField.replace(".", "\\.")}\\.`, "g");
@@ -2017,6 +2028,29 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendLine("");
   }
 
+  // Emit top-level constant declarations BEFORE classes so that constants
+  // used in class constructor default parameters are defined first.
+  // ONLY emit compile-time declarations here (literals, simple identifiers).
+  // Runtime declarations (new expressions, function calls) must go AFTER classes.
+  for (const statement of emittedTopLevelStatements) {
+    // Skip object literals - they need special handling with structs
+    if (statement.kind === "var_decl" && statement.initializer?.kind === "object") {
+      continue;
+    }
+    // Skip runtime expressions - they must be emitted after classes
+    if (statement.kind === "var_decl" && statement.initializer && isRuntimeExpression(statement.initializer)) {
+      continue;
+    }
+    appendRenderedStatement(statement, "");
+  }
+  if (emittedTopLevelStatements.some(s => 
+    s.kind === "var_decl" && 
+    s.initializer?.kind !== "object" && 
+    !(s.initializer && isRuntimeExpression(s.initializer))
+  )) {
+    appendSourceLine("");
+  }
+
   // Emit classes
   for (const classDef of program.classes) {
     emitCommentLines(classDef.leadingComments, "", (line) => appendSourceLine(line));
@@ -2136,6 +2170,19 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("");
   }
 
+  // Emit runtime variable declarations AFTER classes (for non-entry files)
+  // These are variables that use 'new' or function calls and need the class defined first
+  // For entry files, these go into setup() instead
+  if (!isEntryFile) {
+    for (const statement of emittedTopLevelStatements) {
+      if (statement.kind === "var_decl" && statement.initializer && isRuntimeExpression(statement.initializer)) {
+        appendRenderedStatement(statement, "");
+      }
+    }
+  }
+
+  // Emit object literal struct definitions (after classes so they can reference class types)
+  // These were skipped in the earlier pass, so emit only object literals here
   for (const statement of emittedTopLevelStatements) {
     if (
       effectiveEmitMode === "split" &&
@@ -2188,12 +2235,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         nodeKind: statement.kind,
       });
       emitCommentLines(statement.trailingComments, "", (line) => appendSourceLine(line));
-      continue;
     }
-
-    appendRenderedStatement(statement, "");
   }
-  if (emittedTopLevelStatements.length > 0) {
+  if (emittedTopLevelStatements.some(s => s.kind === "var_decl" && (s as any).initializer?.kind === "object")) {
     appendSourceLine("");
   }
 

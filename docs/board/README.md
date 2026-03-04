@@ -1,17 +1,37 @@
 # Board Package Documentation
 
-Board packages (`@typecode/board-*`) define a specific board's capabilities and pin mappings.
+Board packages (`@typecode/board-<vendor>-<model>[-<hal>]`) define a specific board's capabilities and pin mappings.
 
 ## Documents
 
 - [Board Package Development Guide](./development-guide.md) - How to create new board packages
 - [Board Usage Guide](./usage-guide.md) - Using board packages in your projects
 
+## Naming Convention
+
+Board packages follow the pattern: `@typecode/board-<vendor>-<model>[-<hal>]`
+
+| Component | Description | Examples |
+|-----------|-------------|----------|
+| `<vendor>` | Board manufacturer | `arduino`, `esp`, `stm32` |
+| `<model>` | Board model | `uno`, `nano`, `esp32-devkit` |
+| `<hal>` | Optional HAL override | `native`, `espidf` (defaults to `arduino`) |
+
+### Examples
+
+| Package | Vendor | Model | HAL | Description |
+|---------|--------|-------|-----|-------------|
+| `@typecode/board-arduino-uno` | Arduino | Uno | arduino (default) | Arduino Uno with Arduino framework |
+| `@typecode/board-arduino-uno-native` | Arduino | Uno | native | Arduino Uno with native AVR codegen |
+| `@typecode/board-esp-esp32-devkit` | ESP | ESP32-DevKit | arduino (default) | ESP32 with Arduino framework |
+| `@typecode/board-esp-esp32-devkit-espidf` | ESP | ESP32-DevKit | espidf | ESP32 with ESP-IDF FreeRTOS |
+
 ## Available Board Packages
 
 | Package | FQBN | Target | MCU |
 |---------|------|--------|-----|
 | `@typecode/board-arduino-uno` | `arduino:avr:uno` | `avr` | ATmega328P |
+| `@typecode/board-arduino-uno-native` | `arduino:avr:uno` | `avr` | ATmega328P (native codegen) |
 | `@typecode/board-arduino-nano33iot` | `arduino:samd:nano_33_iot` | `samd` | SAMD21 |
 | `@typecode/board-esp32-devkit` | `esp32:esp32:esp32doit-devkit-v1` | `esp32` | ESP32 |
 

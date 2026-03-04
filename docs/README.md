@@ -4,15 +4,44 @@ TypeCode is a TypeScript to C++ transpiler for embedded development. Write TypeS
 
 ## Package Types
 
-| Package Type | Description | Documentation |
-|--------------|-------------|---------------|
-| **Board** | Hardware abstraction for specific boards | [Board Packages](./board/) |
-| **Architecture** | Low-level native implementations | [Architecture](./architecture/) |
-| **CLI** | Command-line interface | [CLI](./cli/) |
-| **Transpiler** | TypeScript to C++ transpilation | [Transpiler](./transpiler/) |
-| **Toolchain** | Compiler and uploader tools | [Toolchain](./toolchain/) |
-| **Expect** | Hardware testing framework | [Expect](./expect/) |
-| **Debug** | Breakpoint-based debugging | [Debug](./debug/) |
+| Package Type | Pattern | Description | Documentation |
+|--------------|---------|-------------|---------------|
+| **Board** | `board-<vendor>-<model>[-<hal>]` | Hardware abstraction for specific boards | [Board Packages](./board/) |
+| **Architecture** | `arch-<cpu>-<hal>` | CPU-specific code generation with HAL | [Architecture](./architecture/) |
+| **CLI** | - | Command-line interface | [CLI](./cli/) |
+| **Transpiler** | - | TypeScript to C++ transpilation | [Transpiler](./transpiler/) |
+| **Toolchain** | - | Compiler and uploader tools | [Toolchain](./toolchain/) |
+| **Expect** | - | Hardware testing framework | [Expect](./expect/) |
+| **Debug** | - | Breakpoint-based debugging | [Debug](./debug/) |
+
+### Naming Conventions
+
+**Architecture packages:** `@typecode/arch-<cpu>-<hal>`
+
+| Component | Description | Examples |
+|-----------|-------------|----------|
+| `<cpu>` | CPU architecture | `avr`, `esp32`, `arm`, `riscv` |
+| `<hal>` | HAL/framework variant | `native`, `arduino`, `espidf`, `freertos`, `zephyr` |
+
+**Board packages:** `@typecode/board-<vendor>-<model>[-<hal>]`
+
+| Component | Description | Examples |
+|-----------|-------------|----------|
+| `<vendor>` | Board manufacturer | `arduino`, `esp`, `stm32` |
+| `<model>` | Board model | `uno`, `nano`, `esp32-devkit` |
+| `<hal>` | Optional HAL override | `native`, `espidf` (defaults to `arduino`) |
+
+### HAL/Framework Variants
+
+Different HALs provide different runtime services and code generation:
+
+| HAL | Threading | Timing | Use Case |
+|-----|-----------|--------|----------|
+| `native` | Bare metal | `_delay_ms()` | Minimal footprint, direct register access |
+| `arduino` | `loop()` | `delay()`, `millis()` | Arduino ecosystem compatibility |
+| `espidf` | FreeRTOS | `vTaskDelay()` | ESP32 with ESP-IDF |
+| `freertos` | FreeRTOS | `vTaskDelay()` | Generic FreeRTOS |
+| `zephyr` | Zephyr threads | `k_sleep()` | Zephyr RTOS |
 
 ## Quick Start
 

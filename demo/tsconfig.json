@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "baseUrl": "..",
+    "paths": {
+      "@typecode": ["packages/board-arduino-uno/src/index.ts"],
+      "@typecode/core": ["packages/core/src/index.ts"],
+      "@typecode/board-arduino-uno": ["packages/board-arduino-uno/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "typecode.config.ts"]
+}
