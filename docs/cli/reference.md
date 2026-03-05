@@ -6,6 +6,8 @@ Complete command reference for the TypeCode CLI.
 
 ```
 typecode <input.ts> [options]
+typecode gen-decls <input.cpp>
+typecode gen-decls --scan-dir <directory>
 typecode gen-libdefs <input.ts>
 typecode map-error <mapFile> [options]
 ```
@@ -142,6 +144,76 @@ Creates `<module>.libdef.json` files alongside the source:
 | `include` | string | C++ `#include` directive |
 | `symbols` | object | Map of TS names to C++ names |
 | `variants` | array | Architecture-specific overrides |
+
+## gen-decls Command
+
+Generate TypeScript declaration files (`.d.ts`) from C++ source files:
+
+```bash
+# Generate for a single C++ file
+npx typecode gen-decls lib/sensor.cpp
+
+# Scan a directory and generate for all C++ files missing declarations
+npx typecode gen-decls --scan-dir src/lib
+```
+
+### How It Works
+
+The `gen-decls` command parses C++ header-style definitions and generates TypeScript declaration files:
+
+**Input (lib/sensor.cpp):**
+```cpp
+#include <Arduino.h>
+
+#define SENSOR_ADDRESS 0x76
+
+class Sensor {
+public:
+  Sensor(int address = 0x76);
+  bool begin();
+  int readTemperature();
+  int readHumidity();
+};
+```
+
+**Output (lib/sensor.d.ts):**
+```typescript
+export declare const SENSOR_ADDRESS: number;
+
+export declare class Sensor {
+  constructor(address?: number);
+  begin(): boolean;
+  readTemperature(): number;
+  readHumidity(): number;
+}
+```
+
+### Auto-Generation
+
+The CLI automatically generates declaration files when:
+
+1. You import a C++ module in TypeScript
+2. The corresponding `.d.ts` file doesn't exist
+3. The transpiler detects the missing module error
+
+```
+  Auto-generated: lib/sensor.d.ts
+  from C++ source: lib/sensor.cpp
+  Review the generated types and adjust if needed.
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--scan-dir <path>` | Scan directory for C++ files missing `.d.ts` files |
+
+### VSCode Integration
+
+The TypeCode VSCode extension provides:
+
+- **Auto-generation on save**: When you save a `.cpp` file without a corresponding `.d.ts`
+- **Command Palette**: "TypeCode: Generate Declaration" command for manual generation
 
 ## map-error Command
 

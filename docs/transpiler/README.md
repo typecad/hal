@@ -61,6 +61,39 @@ src/
     └── sensor.cpp     # C++ implementation
 ```
 
+### Auto-Generating Declarations
+
+When you import a C++ module that doesn't have a `.d.ts` file, TypeCode automatically generates one for you:
+
+1. Write your C++ implementation file (e.g., `lib/sensor.cpp`)
+2. Import it in TypeScript: `import { Sensor } from './lib/sensor'`
+3. Run transpilation - the CLI detects the missing declaration and auto-generates it
+
+```
+  Auto-generated: lib/sensor.d.ts
+  from C++ source: lib/sensor.cpp
+  Review the generated types and adjust if needed.
+
+  Retrying type-checking after auto-generation...
+  Type-checking passed after auto-generation.
+```
+
+**Manual Generation:**
+
+You can also generate declarations explicitly:
+
+```bash
+# Generate for a single file
+npx typecode gen-decls lib/sensor.cpp
+
+# Scan a directory and generate for all C++ files missing declarations
+npx typecode gen-decls --scan-dir src/lib
+```
+
+**VSCode Extension:**
+
+The TypeCode VSCode extension automatically generates `.d.ts` files when you save a `.cpp` file that doesn't have one. It also provides the **"TypeCode: Generate Declaration"** command in the Command Palette for manual generation.
+
 #### Example: Native C++ Class
 
 **lib/sensor.d.ts** - Type declarations:
