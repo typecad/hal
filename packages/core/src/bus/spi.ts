@@ -55,15 +55,6 @@ export interface SPISettings {
 }
 
 /**
- * Legacy SPI config (for backward compatibility)
- */
-export interface SPIConfig {
-  frequency?: number;
-  mode?: SPIMode;
-  bitOrder?: SPIBitOrder;
-}
-
-/**
  * Transfer options
  */
 export interface SPITransferOptions {
@@ -211,9 +202,8 @@ export function createSPIDevice(
       const result = bus.device(chipSelect).read(count).from(0);
       return result.bytes;
     },
-    writeRegister(register: number, data: number | Uint8Array): Uint8Array {
-      const result = bus.device(chipSelect).write(data).to(register);
-      return new Uint8Array([result.bytesWritten]);
+    writeRegister(register: number, data: number | Uint8Array): void {
+      bus.device(chipSelect).write(data).to(register);
     },
     readRegister(register: number, count: number): Uint8Array {
       const result = bus.device(chipSelect).read(count).from(register);

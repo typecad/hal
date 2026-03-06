@@ -1,20 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { ArduinoPlatformContext, Diagnostic } from "../types";
+import { toArchitectureFromFqbn } from "../utils/toolchain";
 
 export interface ArduinoCliMetadata {
   architecture?: string;
   pins: Record<string, number>;
   builtinFunctions: Set<string>;
   builtinGlobals: Set<string>;
-}
-
-function toArchitectureFromFqbn(fqbn?: string): string | undefined {
-  if (!fqbn) {
-    return undefined;
-  }
-
-  const parts = fqbn.split(":");
-  return parts.length >= 2 ? parts[1].toLowerCase() : undefined;
 }
 
 function parsePinMap(value: unknown): Record<string, number> {

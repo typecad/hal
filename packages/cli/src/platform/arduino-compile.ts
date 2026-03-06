@@ -2,80 +2,11 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { ArduinoCompileError, ArduinoCompileResult, ArduinoUploadResult } from "../types";
+import { parseCompileErrors as parseCompileErrorsBase, collectCppFiles } from "../utils/toolchain";
 
-const GCC_STYLE = /^(.*?):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.*)$/i;
-const ARDUINO_ERROR = /^(.*?):(\d+):\d+:\s*(error|warning|note):\s*(.*)$/i;
-const CLANG_ERROR = /^(.*?):(\d+):(\d+):\s*(error|warning|note):\s*(.*)$/i;
-
+// Re-export with the expected type for backward compatibility
 function parseCompileErrors(output: string, sketchDir?: string): ArduinoCompileError[] {
-  const errors: ArduinoCompileError[] = [];
-  
-  for (const rawLine of output.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-
-    let match = line.match(GCC_STYLE);
-    if (!match) {
-      match = line.match(ARDUINO_ERROR);
-      if (match) {
-        // Arduino error format: file:line:column: severity: message
-        // Sometimes column is missing, so we use 1 as default
-        match = [match[0], match[1], match[2], "1", match[3], match[4]];
-      }
-    }
-    
-    if (!match) {
-      match = line.match(CLANG_ERROR);
-    }
-
-    if (!match) {
-      continue;
-    }
-
-    const severityRaw = match[4].toLowerCase();
-    const severity: "error" | "warning" | "note" =
-      severityRaw.includes("error") ? "error" : severityRaw === "warning" ? "warning" : "note";
-
-    let filePath = match[1];
-    
-    // Normalize file paths
-    if (sketchDir) {
-      // Try to resolve relative paths against sketch directory
-      if (!path.isAbsolute(filePath)) {
-        const resolved = path.resolve(sketchDir, filePath);
-        if (fs.existsSync(resolved)) {
-          filePath = resolved;
-        }
-      }
-    }
-    
-    // Handle sketch directory references
-    if (sketchDir && filePath.includes(path.basename(sketchDir))) {
-      filePath = path.resolve(sketchDir, path.basename(sketchDir) + ".ino");
-    }
-
-    errors.push({
-      filePath: path.resolve(filePath),
-      line: Number(match[2]),
-      column: Number(match[3]),
-      severity,
-      message: match[5],
-    });
-  }
-
-  return errors;
-}
-
-function collectCppFiles(rootDir: string): string[] {
-  const results: string[] = [];
-  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".cpp")) {
-      continue;
-    }
-    results.push(path.join(rootDir, entry.name));
-  }
-  results.sort((a, b) => a.localeCompare(b));
-  return results;
+  return parseCompileErrorsBase(output, sketchDir) as ArduinoCompileError[];
 }
 
 export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath: string): void {

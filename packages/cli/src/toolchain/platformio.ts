@@ -10,34 +10,7 @@ import fs from 'node:fs';
 import { spawnSync, spawn } from 'node:child_process';
 import type { Toolchain, CompileOptions, CompileResult, UploadOptions, UploadResult, MonitorOptions, CompileError } from './types';
 import { registerToolchain } from './registry';
-
-const GCC_STYLE = /^(.*?):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.*)$/i;
-
-/**
- * Parse GCC-style error output into structured errors.
- */
-function parseCompileErrors(output: string): CompileError[] {
-  const errors: CompileError[] = [];
-  for (const rawLine of output.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    const match = line.match(GCC_STYLE);
-    if (!match) continue;
-
-    const severityRaw = match[4].toLowerCase();
-    const severity: 'error' | 'warning' | 'note' =
-      severityRaw.includes('error') ? 'error' : severityRaw === 'warning' ? 'warning' : 'note';
-
-    errors.push({
-      filePath: path.resolve(match[1]),
-      line: Number(match[2]),
-      column: Number(match[3]),
-      severity,
-      message: match[5],
-    });
-  }
-
-  return errors;
-}
+import { parseCompileErrors } from '../utils/toolchain';
 
 /**
  * Map FQBN to PlatformIO board ID.

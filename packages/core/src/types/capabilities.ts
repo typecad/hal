@@ -73,7 +73,7 @@ export function hasAnalogInput(pin: IPin): pin is IAnalogInput {
 
 /** Narrow an IPin to IInterruptPin if it supports interrupts. */
 export function hasInterrupt(pin: IPin): pin is IInterruptPin {
-  return 'attachInterrupt' in pin && 'detachInterrupt' in pin;
+  return 'on' in pin && 'off' in pin && 'hasInterrupt' in pin;
 }
 
 /** Narrow an IPin to ITouchPin if it supports capacitive touch. */

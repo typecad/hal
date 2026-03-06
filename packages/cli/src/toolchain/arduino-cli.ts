@@ -9,47 +9,7 @@ import fs from 'node:fs';
 import { spawnSync, spawn } from 'node:child_process';
 import type { Toolchain, CompileOptions, CompileResult, UploadOptions, UploadResult, MonitorOptions, CompileError } from './types';
 import { registerToolchain } from './registry';
-
-const GCC_STYLE = /^(.*?):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.*)$/i;
-
-/**
- * Parse GCC-style error output into structured errors.
- */
-function parseCompileErrors(output: string): CompileError[] {
-  const errors: CompileError[] = [];
-  for (const rawLine of output.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    const match = line.match(GCC_STYLE);
-    if (!match) continue;
-
-    const severityRaw = match[4].toLowerCase();
-    const severity: 'error' | 'warning' | 'note' =
-      severityRaw.includes('error') ? 'error' : severityRaw === 'warning' ? 'warning' : 'note';
-
-    errors.push({
-      filePath: path.resolve(match[1]),
-      line: Number(match[2]),
-      column: Number(match[3]),
-      severity,
-      message: match[5],
-    });
-  }
-
-  return errors;
-}
-
-/**
- * Collect all .cpp files in a directory.
- */
-function collectCppFiles(rootDir: string): string[] {
-  const results: string[] = [];
-  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.cpp')) continue;
-    results.push(path.join(rootDir, entry.name));
-  }
-  results.sort((a, b) => a.localeCompare(b));
-  return results;
-}
+import { parseCompileErrors, collectCppFiles } from '../utils/toolchain';
 
 /**
  * Flatten generated .cpp modules into a single .ino sketch file.

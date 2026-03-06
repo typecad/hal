@@ -1,6 +1,7 @@
 import { ExpressionIR, ProgramIR, StatementIR } from "../ir/model";
 import { ArduinoPlatformContext, Diagnostic, PlatformContext } from "../types";
 import { ArduinoCliMetadata, loadArduinoCliMetadata } from "./arduino-cli-metadata";
+import { toArchitectureFromFqbn } from "../utils/toolchain";
 
 interface ArduinoProfileVariant {
   architecture: string;
@@ -199,15 +200,6 @@ function collectTopLevelDeclarations(program: ProgramIR): Set<string> {
   }
 
   return declared;
-}
-
-function toArchitectureFromFqbn(fqbn?: string): string | undefined {
-  if (!fqbn) {
-    return undefined;
-  }
-
-  const parts = fqbn.split(":");
-  return parts.length >= 2 ? parts[1].toLowerCase() : undefined;
 }
 
 function resolveVariant(context?: ArduinoPlatformContext): ArduinoProfileVariant {

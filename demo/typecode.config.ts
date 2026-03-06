@@ -9,10 +9,10 @@ const config: TypecodeConfig = {
   target: 'avr',
 
   // Board package - Arduino Uno with Arduino framework
-  board: 'packages/board-arduino-nano',
+  board: './packages/board-arduino-nano6',
 
   // Fully-Qualified Board Name for arduino-cli
-  fqbn: 'arduino:avr:uno',
+  fqbn: 'arduino:avr:nano',
 
   // Output / build options
   output: {

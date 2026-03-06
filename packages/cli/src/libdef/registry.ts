@@ -3,6 +3,7 @@ import path from "node:path";
 import { LibraryDefinition, LibraryDefinitionCondition, PlatformContext, TargetProfile } from "../types";
 import { listFiles, readText } from "../utils/fs";
 import { toModuleKey, toPascalCase } from "../utils/strings";
+import { toArchitectureFromFqbn } from "../utils/toolchain";
 import { ImportIR } from "../ir/model";
 
 export interface ResolvedImport {
@@ -61,15 +62,6 @@ function resolveLocalModuleHeader(moduleSpecifier: string, importerFilePath: str
   }
 
   return undefined;
-}
-
-function toArchitectureFromFqbn(fqbn?: string): string | undefined {
-  if (!fqbn) {
-    return undefined;
-  }
-
-  const parts = fqbn.split(":");
-  return parts.length >= 2 ? parts[1].toLowerCase() : undefined;
 }
 
 function conditionMatches(condition: LibraryDefinitionCondition, target: TargetProfile, context?: PlatformContext): boolean {

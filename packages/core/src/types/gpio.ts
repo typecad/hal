@@ -94,9 +94,7 @@ export interface IPinGroup<T extends IPin> {
   readAll(): DigitalValue[];
 }
 
-import type { IDigitalPin as IDigitalPinType } from './pin';
-
-export interface IParallelPort extends IPinGroup<IDigitalPinType> {
+export interface IParallelPort extends IPinGroup<IDigitalPin> {
   writeByte(value: number): void;
   readByte(): number;
 }

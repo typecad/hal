@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ArchitectureIdentifier } from '@typecode/core';
+import { toPascalCase } from '../utils/strings';
 
 export interface BoardTemplateOptions {
   name: string;              // e.g., 'my-custom-board'
@@ -917,10 +918,3 @@ export default Board;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function toPascalCase(str: string): string {
-  return str
-    .split(/[-_\s]+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join('');
-}

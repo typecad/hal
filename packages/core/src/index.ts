@@ -83,7 +83,6 @@ export {
   SPIMode,
   SPIStatus,
   type SPISettings,
-  type SPIConfig,
   type SPITransferOptions,
   type ISPIWriteResult,
   type ISPIReadResult,
@@ -107,7 +106,6 @@ export {
   UARTStopBits,
   UARTFlowControl,
   UARTStatus,
-  type UARTConfig,
   type UARTStatusInfo,
   UARTError,
   UARTBufferOverflowError,
@@ -213,4 +211,6 @@ export {
   type ArduinoCliOptions,
   type PlatformioOptions,
   type TypecodeToolchainConfig,
+  type TypecodeTestConfig,
+  type TypecodeConsoleConfig,
 } from './config';

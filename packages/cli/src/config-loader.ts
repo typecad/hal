@@ -308,6 +308,59 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypecodeConfig): 
 }
 
 /**
+ * Validate that a board package exists.
+ * 
+ * Checks both relative paths (packages/board-*) and npm packages (@typecode/board-*).
+ * Returns an error message if validation fails, or undefined if valid.
+ */
+export function validateBoardPackage(board: string, configPath: string): string | undefined {
+  const configDir = path.dirname(configPath);
+  
+  // Check if it's a relative path (packages/*, ./packages/*, ../packages/*)
+  if (board.startsWith('.') || board.startsWith('packages/') || board.startsWith('/packages/')) {
+    const resolvedPath = path.resolve(configDir, board);
+    if (!fs.existsSync(resolvedPath)) {
+      return `Board package directory not found: ${board}\n  Resolved to: ${resolvedPath}`;
+    }
+    if (!fs.statSync(resolvedPath).isDirectory()) {
+      return `Board package path is not a directory: ${board}\n  Resolved to: ${resolvedPath}`;
+    }
+    // Check for package.json or src/index.ts
+    const hasPackageJson = fs.existsSync(path.join(resolvedPath, 'package.json'));
+    const hasIndexTs = fs.existsSync(path.join(resolvedPath, 'src', 'index.ts'));
+    if (!hasPackageJson && !hasIndexTs) {
+      return `Board package directory exists but is not a valid board package (missing package.json or src/index.ts): ${board}`;
+    }
+    return undefined; // Valid
+  }
+  
+  // Check if it's an npm package (@typecode/board-* or similar)
+  if (board.startsWith('@')) {
+    try {
+      const resolvedPath = require.resolve(board);
+      // Package resolved successfully
+      return undefined;
+    } catch {
+      return `Board package not found in node_modules: ${board}\n  Run 'npm install' or check the package name.`;
+    }
+  }
+  
+  // For other paths, try to resolve as a local path first, then as npm package
+  const localPath = path.resolve(configDir, board);
+  if (fs.existsSync(localPath) && fs.statSync(localPath).isDirectory()) {
+    return undefined; // Valid local path
+  }
+  
+  // Try npm resolution as fallback
+  try {
+    require.resolve(board);
+    return undefined;
+  } catch {
+    return `Board package not found: ${board}\n  Checked as local path: ${localPath}\n  Also tried npm package resolution.`;
+  }
+}
+
+/**
  * High-level entry point: find and load `typecode.config.ts` starting from
  * the given directory (typically the directory of the input .ts file).
  *

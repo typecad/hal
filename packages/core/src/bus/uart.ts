@@ -48,25 +48,8 @@ export enum UARTStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Configuration
+// Status
 // ---------------------------------------------------------------------------
-
-export interface UARTConfig {
-  baudRate: number;
-  dataBits?: number;
-  parity?: UARTParity;
-  stopBits?: UARTStopBits;
-  flowControl?: UARTFlowControl;
-  txPin?: number;
-  rxPin?: number;
-  rtsPin?: number;
-  ctsPin?: number;
-  rxBufferSize?: number;
-  txBufferSize?: number;
-  uart?: number;
-  inverted?: boolean;
-  defaultTimeout?: number;
-}
 
 export interface UARTStatusInfo {
   available: number;

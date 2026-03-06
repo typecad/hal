@@ -5,7 +5,7 @@ import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
 import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from "./platform/arduino-compile";
-import { loadTypecodeConfig, generateVirtualTypeDeclaration } from "./config-loader";
+import { loadTypecodeConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
 
@@ -268,6 +268,16 @@ async function main(): Promise<void> {
     let effectiveBoardPackage = options.boardPackage;
 
     if (config) {
+      // Validate board package exists before proceeding
+      if (config.board) {
+        const validationError = validateBoardPackage(config.board, config.configPath);
+        if (validationError) {
+          console.error(`ERROR: ${validationError}`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+
       // Keep typecode-env.d.ts in sync so the TS language server can resolve
       // bare '@typecode' imports in editor without a linter error.
       generateVirtualTypeDeclaration(config);
