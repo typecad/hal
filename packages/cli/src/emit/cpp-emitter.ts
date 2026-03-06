@@ -141,6 +141,76 @@ function normalizeRawExpression(value: string, strategy: PlatformStrategy): stri
   return normalized;
 }
 
+/**
+ * Render peripheral stub property access to appropriate C++ values.
+ * TypeScript peripheral stubs (I2C0, SPI0, Serial) have properties like isInitialized,
+ * busNumber, speed that don't exist in C++. We map them to appropriate values.
+ * 
+ * @param chain Property access chain (e.g., ["I2C0", "isInitialized"])
+ * @returns C++ value string or undefined if not a peripheral property
+ */
+function renderPeripheralProperty(chain: string[]): string | undefined {
+  // Must have exactly 2 parts: peripheral name and property
+  if (chain.length !== 2) return undefined;
+  
+  const [peripheral, property] = chain;
+  
+  // Map peripheral names to their C++ equivalents
+  const peripheralMap: Record<string, string> = {
+    I2C0: "Wire",
+    SPI0: "SPI",
+    Serial: "Serial",
+    Serial2: "Serial",
+  };
+  
+  // Check if this is a known peripheral
+  const cppPeripheral = peripheralMap[peripheral];
+  if (!cppPeripheral) return undefined;
+  
+  // Properties that exist on the C++ objects
+  // For these, we can access them directly
+  const directProperties = new Set(["available"]);
+  
+  // Properties that are compile-time stubs in TypeScript but don't exist in C++
+  // These should return true (since the peripheral is initialized in setup())
+  const stubProperties = new Set([
+    "isInitialized", 
+    "isConnected",
+  ]);
+  
+  // Properties that are numeric constants in TypeScript
+  const numericProperties = new Set([
+    "busNumber", 
+    "uartNumber",
+  ]);
+  
+  if (directProperties.has(property)) {
+    // These exist on the C++ object
+    return `${cppPeripheral}.${property}`;
+  }
+  
+  if (stubProperties.has(property)) {
+    // These are runtime state - return true since we initialize in setup()
+    // A more sophisticated solution would track initialization state
+    return "true";
+  }
+  
+  if (numericProperties.has(property)) {
+    // busNumber is always 0 for the main peripheral
+    if (property === "busNumber" || property === "uartNumber") {
+      return "0";
+    }
+  }
+  
+  // For speed, we could return Wire.getClock() or similar, but it's runtime
+  // For now, return a default standard speed
+  if (property === "speed") {
+    return "100000"; // 100kHz standard speed
+  }
+  
+  return undefined;
+}
+
 function normalizeComment(comment: string): string[] {
   return comment
     .split(/\r?\n/)
@@ -238,8 +308,14 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
     case "property-access": {
       const chain = extractPropertyChain(expr);
       if (chain) {
+        // Check for Board.definition.* access first
         const boardDef = strategy.renderBoardDefinitionAccess(chain, _emitBoardConstants);
         if (boardDef !== undefined) return boardDef;
+        
+        // Check for peripheral stub property access (I2C0.isInitialized, SPI0.isInitialized, Serial.isInitialized)
+        // These are TypeScript stubs that don't exist in C++ - return appropriate values
+        const peripheralProperty = renderPeripheralProperty(chain);
+        if (peripheralProperty !== undefined) return peripheralProperty;
       }
       const objStr = renderExpression(expr.object, exprTransformer, strategy);
       // Use C++ scope-resolution operator (::) for enum class member access.
@@ -256,10 +332,15 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
     }
     case "typecode-call": {
       const renderA = (e: ExpressionIR) => renderExpression(e, exprTransformer, strategy);
-      const translated = strategy.tryRenderTypecodeCall(expr.receiver, expr.receiverKind, expr.method, expr.args, renderA, _emitBoardConstants);
+      const translated = strategy.tryRenderTypecodeCall(expr.receiver, expr.receiverKind, expr.method, expr.args, renderA, _emitBoardConstants, expr.interruptMode);
       if (translated !== undefined) return translated;
       // Fallback: render as plain method call
       return `${expr.receiver}.${expr.method}(${expr.args.map(renderA).join(", ")})`;
+    }
+    case "callback": {
+      // Callbacks are rendered by the statement emitter which tracks them globally
+      // Here we just return a marker that gets replaced with the actual function name
+      return `/* callback:${expr.sourceSpan.startLine}:${expr.sourceSpan.startColumn} */`;
     }
     default:
       return "/* unsupported_expr */";
@@ -1874,6 +1955,51 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
   const globalPointerVarTypes = collectPointerVarTypes(allExecutableStatements);
 
+  // Collect callback functions from call arguments (e.g., attachInterrupt handlers)
+  const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[] = [];
+  let callbackCounter = 0;
+  
+  function collectCallbacks(statements: StatementIR[]): void {
+    for (const stmt of statements) {
+      if (stmt.kind === "call") {
+        for (const arg of stmt.args) {
+          if (arg.kind === "callback") {
+            const callbackName = `isr_${callbackCounter++}`;
+            callbackFunctions.push({
+              name: callbackName,
+              params: arg.params,
+              statements: arg.statements,
+              debounceMs: arg.debounceMs,
+            });
+            // Mutate the arg to replace with the callback name
+            (arg as any).kind = "identifier";
+            (arg as any).value = callbackName;
+          }
+        }
+      }
+      // Recurse into nested statements
+      if ("body" in stmt && Array.isArray(stmt.body)) {
+        collectCallbacks(stmt.body);
+      }
+      if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) {
+        collectCallbacks(stmt.thenBranch);
+      }
+      if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) {
+        collectCallbacks(stmt.elseBranch);
+      }
+      if ("cases" in stmt && Array.isArray(stmt.cases)) {
+        for (const c of stmt.cases) {
+          collectCallbacks(c.body);
+        }
+      }
+    }
+  }
+  
+  collectCallbacks(filteredTopLevelExecutables);
+  for (const fn of mappedFunctions) {
+    collectCallbacks(fn.statements);
+  }
+
   // Collect struct field types that are pointers - needed for correct -> access
   const pointerStructFields = new Set<string>();
   for (const stmt of allExecutableStatements) {
@@ -1926,16 +2052,33 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       args: [],
       sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
     }));
+
+    // Collect setup statements from polyfills (e.g., Serial.begin for console)
+    const polyfillSetupLines: string[] = [];
+    for (const polyfill of options.polyfills ?? []) {
+      if (polyfill.setupStatements) {
+        polyfillSetupLines.push(...polyfill.setupStatements);
+      }
+    }
+    const polyfillSetupStmts: StatementIR[] = polyfillSetupLines.map(line => ({
+      kind: "call" as const,
+      callee: `__RAW_STMT__${line}`,
+      args: [],
+      sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+    }));
+
+    // Combine platform setup init + polyfill setup statements
+    const allSetupInitStmts = [...setupInitStmts, ...polyfillSetupStmts];
     
     if (existingEp) {
-      existingEp.statements = [...setupInitStmts, ...filteredTopLevelExecutables, ...existingEp.statements];
+      existingEp.statements = [...allSetupInitStmts, ...filteredTopLevelExecutables, ...existingEp.statements];
     } else {
       // Arduino-style: void setup(); Generic: int main() with return 0
       const isMain = epName === "main";
       const returnType = isMain ? "int" : "void";
       const stmts: StatementIR[] = isMain
-        ? [...setupInitStmts, ...filteredTopLevelExecutables, { kind: "return" as const, sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number" as const, value: 0 } } as StatementIR]
-        : [...setupInitStmts, ...filteredTopLevelExecutables];
+        ? [...allSetupInitStmts, ...filteredTopLevelExecutables, { kind: "return" as const, sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number" as const, value: 0 } } as StatementIR]
+        : [...allSetupInitStmts, ...filteredTopLevelExecutables];
       const insertFn = {
         name: epName,
         returnType,
@@ -2249,6 +2392,32 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
   if (emittedTopLevelStatements.some(s => s.kind === "var_decl" && (s as any).initializer?.kind === "object")) {
+    appendSourceLine("");
+  }
+
+  // Emit callback functions (e.g., interrupt handlers) before regular functions
+  for (const callback of callbackFunctions) {
+    // If debounce is configured, emit debounce wrapper
+    if (callback.debounceMs !== undefined && callback.debounceMs > 0) {
+      // Declare static variables for debounce timing
+      appendSourceLine(`volatile unsigned long ${callback.name}_lastTime = 0;`);
+      appendSourceLine(`const unsigned long ${callback.name}_debounce = ${callback.debounceMs};`);
+      appendSourceLine("");
+    }
+    
+    appendSourceLine(`void ${callback.name}() {`);
+    
+    // Add debounce check if configured
+    if (callback.debounceMs !== undefined && callback.debounceMs > 0) {
+      appendSourceLine(`  volatile unsigned long now = millis();`);
+      appendSourceLine(`  if (now - ${callback.name}_lastTime < ${callback.name}_debounce) return;`);
+      appendSourceLine(`  ${callback.name}_lastTime = now;`);
+    }
+    
+    for (const stmt of callback.statements) {
+      appendRenderedStatement(stmt, "  ", globalPointerVarTypes);
+    }
+    appendSourceLine("}");
     appendSourceLine("");
   }
 

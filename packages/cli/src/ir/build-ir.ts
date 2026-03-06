@@ -724,6 +724,74 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   }
 
   if (ts.isCallExpression(expr)) {
+    // ---- Debounce chain detection -------------------------------------------
+    // Handle D2.on.falling(() => {...}).debounce(50) pattern
+    // The outer call is .debounce(ms), inner call is the interrupt attachment
+    if (ts.isPropertyAccessExpression(expr.expression) && 
+        expr.expression.name.text === "debounce" &&
+        expr.arguments.length === 1 &&
+        ts.isCallExpression(expr.expression.expression)) {
+      
+      const innerCall = expr.expression.expression;
+      const debounceArg = expr.arguments[0];
+      let debounceMs: number | undefined;
+      
+      if (ts.isNumericLiteral(debounceArg)) {
+        debounceMs = Number(debounceArg.text);
+      }
+      
+      // Process the inner call (the interrupt attachment with callback)
+      const innerResult = expressionToIR(innerCall, sourceText, diagnostics, pointerVars);
+      
+      // If the inner result is a typecode-call with a callback argument, attach debounce
+      if (innerResult.kind === "typecode-call") {
+        for (const arg of innerResult.args) {
+          if (arg.kind === "callback" && debounceMs !== undefined) {
+            arg.debounceMs = debounceMs;
+          }
+        }
+      }
+      
+      return innerResult;
+    }
+
+    // ---- Tone().for() chain detection ---------------------------------------
+    // Handle D3.tone(500).for(1000) pattern -> tone(pin, 500, 1000)
+    // Works on all digital output pins (digital, pwm, interrupt)
+    if (ts.isPropertyAccessExpression(expr.expression) && 
+        expr.expression.name.text === "for" &&
+        expr.arguments.length === 1 &&
+        ts.isCallExpression(expr.expression.expression)) {
+      
+      const innerCall = expr.expression.expression;
+      const durationArg = expr.arguments[0];
+      
+      // Check if inner call is a tone() call on any digital-capable pin
+      if (ts.isPropertyAccessExpression(innerCall.expression) &&
+          innerCall.expression.name.text === "tone" &&
+          ts.isIdentifier(innerCall.expression.expression)) {
+        
+        const pinName = innerCall.expression.expression.text;
+        const kind = inferKindByName(pinName);
+        
+        // Allow tone on digital, pwm, and interrupt pins
+        if (kind === 'pwm' || kind === 'digital' || kind === 'interrupt') {
+          // Build a typecode-call with toneFor method that includes duration
+          const frequencyArg = innerCall.arguments[0];
+          return {
+            kind: "typecode-call",
+            receiver: pinName,
+            receiverKind: kind,
+            method: "toneFor",  // Special method that emits tone(pin, freq, duration)
+            args: [
+              expressionToIR(frequencyArg, sourceText, diagnostics, pointerVars),
+              expressionToIR(durationArg, sourceText, diagnostics, pointerVars),
+            ],
+          };
+        }
+      }
+    }
+
     // ---- Pin factory constant-folding ---------------------------------------
     // createDigitalPin(pin, gpio), createPWMPin(pin, gpio), etc. are folded to
     // just the pin number (first argument) at compile time.
@@ -752,6 +820,25 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     if (ts.isPropertyAccessExpression(expr.expression)) {
       const method = expr.expression.name.text;
       const receiverNode = expr.expression.expression;
+
+      // Fluent interrupt API: D2.on.falling(callback) or D2.on.rising(callback)
+      // Pattern: pin.on.<mode>(callback) where mode is falling/rising/change
+      if (ts.isPropertyAccessExpression(receiverNode) && 
+          receiverNode.name.text === "on" &&
+          ts.isIdentifier(receiverNode.expression)) {
+        const pinName = receiverNode.expression.text;
+        const kind = inferKindByName(pinName);
+        if (kind !== 'unknown' && (method === 'falling' || method === 'rising' || method === 'change')) {
+          return {
+            kind: "typecode-call",
+            receiver: pinName,
+            receiverKind: kind,
+            method: `attachInterrupt`,  // Map to attachInterrupt
+            interruptMode: method.toUpperCase() as "FALLING" | "RISING" | "CHANGE",
+            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
+        }
+      }
 
       // Board.A0.method() or Pins.A0.method()
       if (
@@ -990,9 +1077,51 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
 
   // Handle function expressions and arrow functions in compile-time contexts
   // These are stubs in board package files that get replaced by transpiler magic
+  // For interrupt handlers, we need to generate a proper callback function
   if (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) {
-    // Return a stub identifier - the actual implementation is handled by the transpiler
-    return { kind: "raw", value: "/* stub */" };
+    // Check if this is an interrupt handler context (passed to attachInterrupt)
+    // If so, we need to generate a proper callback function
+    const body = expr.body;
+    const statements: StatementIR[] = [];
+    
+    // Collect parameter names (for interrupt handlers, typically empty)
+    const params: string[] = [];
+    for (const param of expr.parameters) {
+      if (ts.isIdentifier(param.name)) {
+        params.push(param.name.text);
+      }
+    }
+    
+    // Convert body to statements
+    if (ts.isBlock(body)) {
+      // It's a block - convert each statement
+      for (const stmt of body.statements) {
+        const lowered = lowerStatement(
+          stmt,
+          "",
+          sourceText,
+          diagnostics,
+          new Map(),
+          new Map(),
+          "<callback>",
+          new Map(),
+          pointerVars,
+        );
+        if (lowered) {
+          statements.push(...lowered);
+        }
+      }
+    } else {
+      // It's an expression body - convert to return statement
+      statements.push({
+        kind: "return",
+        sourceSpan: makeSourceSpan(body, "", sourceText),
+        value: expressionToIR(body, sourceText, diagnostics, pointerVars),
+      });
+    }
+    
+    // Return a callback IR node that the emitter can handle
+    return { kind: "callback", params, statements, sourceSpan: makeSourceSpan(expr, "", sourceText) };
   }
 
   // Handle instanceof expressions
@@ -1082,6 +1211,36 @@ function callToStatement(
   pointerVars: PointerTracker = new Set(),
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
+  
+  // ---- Debounce chain detection at statement level -----------------------
+  // Handle D2.on.falling(() => {...}).debounce(50) pattern
+  if (ts.isPropertyAccessExpression(call.expression) && 
+      call.expression.name.text === "debounce" &&
+      call.arguments.length === 1 &&
+      ts.isCallExpression(call.expression.expression)) {
+    
+    const innerCall = call.expression.expression;
+    const debounceArg = call.arguments[0];
+    let debounceMs: number | undefined;
+    
+    if (ts.isNumericLiteral(debounceArg)) {
+      debounceMs = Number(debounceArg.text);
+    }
+    
+    // Process the inner call recursively
+    const innerStmt = callToStatement(statementNode, innerCall, fileName, sourceText, diagnostics, pointerVars);
+    
+    // If the inner statement is a call with a callback argument, attach debounce
+    if (innerStmt.kind === "call") {
+      for (const arg of innerStmt.args) {
+        if (arg.kind === "callback" && debounceMs !== undefined) {
+          arg.debounceMs = debounceMs;
+        }
+      }
+    }
+    
+    return innerStmt;
+  }
   
   // Format callee, using -> for pointer variables
   let calleeText: string;

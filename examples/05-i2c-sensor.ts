@@ -1,20 +1,47 @@
 // ---------------------------------------------------------------------------
-// Example 5 — I2C Sensor Read
+// Example 5a — I2C Sensor Read (Basic Wire API)
 //
-// Initialize Wire (I2C0), talk to a BME280 at 0x76, and print temperature.
+// Demonstrates basic I2C master mode communication with a BME280 sensor.
+// Shows: begin(), setClock(), beginTransmission(), write(), endTransmission(),
+//        requestFrom(), available(), read()
 // ---------------------------------------------------------------------------
 
-import { I2C0, Serial } from '../code/board-arduino-uno/peripherals';
-import { delay }        from '../code/board-arduino-uno/timing';
+import { I2C0, Serial } from '@typecode/board-arduino-uno';
+import { delay }        from '@typecode/board-arduino-uno';
 
+// Initialize Serial for debug output
 Serial.initialize({ baudRate: 9600 });
-I2C0.initialize();
+
+// Initialize I2C as master with 400kHz fast mode
+I2C0.begin();
+I2C0.setClock(400000);
 
 const BME280_ADDR = 0x76;
 
+// Main loop
 while (true) {
-  const tempRaw = I2C0.readWord(BME280_ADDR, 0xFA);
-  const temperature = tempRaw / 100.0;
-  Serial.println(temperature);
+  // Write register pointer to 0xFA (temperature MSB)
+  I2C0.beginTransmission(BME280_ADDR);
+  I2C0.write(0xFA);
+  const status = I2C0.endTransmission();
+  
+  if (status === 0) {
+    // Request 2 bytes (temperature MSB and LSB)
+    const bytesAvailable = I2C0.requestFrom(BME280_ADDR, 2);
+    
+    if (bytesAvailable > 0) {
+      // Read the two bytes
+      const msb = I2C0.read();
+      const lsb = I2C0.read();
+      
+      // Combine into raw temperature value
+      const tempRaw = (msb << 8) | lsb;
+      const temperature = tempRaw / 100.0;
+      Serial.println(temperature);
+    }
+  } else {
+    Serial.println(`I2C error: ${status}`);
+  }
+  
   delay(1000);
 }

@@ -1,67 +1,44 @@
+#include <Arduino.h>
 
-// ---- merged from test.cpp ----
- /** BME280 I2C address (default when SDO pin is grounded) */
-  const int BME280_ADDRESS = 118;
-  /** BME280 register addresses */
-  const int REG_CTRL_MEAS = 244;
-  const int REG_CTRL_HUM = 242;
-  const int REG_CONFIG = 245;
-  const int REG_TEMP_MSB = 250;
-  const int REG_CALIB_00 = 136;
-  /** Calibration data storage */
-  int dig_T1;
-  int dig_T2;
-  int dig_T3;
-  int t_fine = 0;
-
-  /**
-   * BME280 sensor driver
-   */
-  class test {
-  public:
-    test(int address = BME280_ADDRESS) {
-    }
-
-    bool begin() {
-      Serial.println("hello from cpp class");
-      return true;
-    }
-
-    int readTemperature() {
-      return 24.5;
-    }
-
-    int readHumidity() {
-      // Simplified: returns mock value
-      // Full implementation would read from register 0xFD
-      return 22.4;
-    }
-
-    int readPressure() {
-      // Simplified: returns mock value
-      // Full implementation would read from registers 0xF7-0xF9
-      return 1013.25;
-    }
-
-  private:
-    int address;
-    bool initialized = false;
-
-  };
-
-// ---- entry sketch ----
+const int BME280_ADDR = 118;
 
 // Auto-generated setup() for top-level statements
 void setup()
 {
+  // Initialize Serial for debug output
   Serial.begin(9600);
-  // Create test instance
-  const test* sensor = new test(1);
-  // Initialize sensor
-  sensor->begin();
+  // Initialize I2C as master
+  Wire.begin();
+  Wire.setClock(400000);
+  // 400kHz Fast Mode
+  // Main loop
+  while (true)
+  {
+    // Write register pointer to 0xFA (temperature MSB)
+    Wire.beginTransmission(BME280_ADDR);
+    Wire.write(250);
+    const int status = Wire.endTransmission(true);
+    if (status == 0)
+    {
+      // Request 2 bytes (temperature MSB and LSB)
+      Wire.requestFrom(BME280_ADDR, 2);
+      // Read the two bytes
+      const int msb = Wire.read();
+      const int lsb = Wire.read();
+      // Combine into raw temperature value
+      const int tempRaw = msb << 8 | lsb;
+      const int temperature = tempRaw / 100;
+      Serial.println(temperature);
+    }
+    else {
+      Serial.println("I2C error: " + String(String(status)));
+    }
+    // Blink LED
+    digitalWrite(13, !digitalRead(13));
+    delay(1000);
+  }
 }
 
 void loop()
 {
 }
-

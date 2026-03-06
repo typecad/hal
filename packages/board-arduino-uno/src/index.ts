@@ -173,6 +173,9 @@ export {
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX,
 } from './pins';
 
+// Re-export HIGH/LOW constants from core
+export { HIGH, LOW } from '@typecode/core';
+
 // Peripheral bus instances
 export { I2C0, SPI0, Serial } from './peripherals';
 

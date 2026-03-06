@@ -11,7 +11,8 @@
  */
 export type TypecodeReceiverKind =
   | 'analog-input'  // IAnalogInput  — A0-A5, SDA, SCL
-  | 'digital'       // IDigitalPin   — D0-D13 (non-PWM), LED, TX, RX, MISO, SCK, SS_DIGITAL
+  | 'digital'       // IDigitalPin   — D4, D7, D8, D12, D13, LED, MISO, SCK
+  | 'interrupt'     // IDigitalPin & IInterruptPin — D0, D1, D2 (interrupt-capable digital)
   | 'pwm'           // IPWMPin       — D3, D5, D6, D9, D10, D11 (MOSI, SS are also PWM)
   | 'serial'        // ISerialPort   — Serial
   | 'i2c'           // II2CBus       — I2C0
@@ -23,10 +24,13 @@ export type TypecodeReceiverKind =
  * Covers Arduino Uno board exports, ESP32 DevKit exports, and common peripheral names.
  */
 const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
+  // ---- Interrupt-capable digital pins (Arduino Uno: INT0=D2, INT1=D3) ----
+  // Note: D0, D1 also have interrupt capability on many AVR boards
+  D0:  'interrupt',
+  D1:  'interrupt',
+  D2:  'interrupt',
+
   // ---- Digital-only pins (Arduino Uno) -----------------------------------
-  D0:  'digital',
-  D1:  'digital',
-  D2:  'digital',
   D4:  'digital',
   D7:  'digital',
   D8:  'digital',
@@ -73,8 +77,8 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   MISO: 'digital',        // D12 on Uno / D19 on ESP32
   SCK:  'digital',        // D13 on Uno / D18 on ESP32
   SS:   'pwm',            // D10 on Uno / D5 on ESP32
-  TX:   'digital',        // D1
-  RX:   'digital',        // D0
+  TX:   'interrupt',      // D1 (interrupt-capable)
+  RX:   'interrupt',      // D0 (interrupt-capable)
   // ESP32-specific aliases
   TX2:  'pwm',            // D17 on ESP32 (UART2 TX)
   RX2:  'pwm',            // D16 on ESP32 (UART2 RX)
@@ -89,7 +93,10 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   Serial:  'serial',
   Serial2: 'serial',
   I2C0:    'i2c',
+  I2C1:    'i2c',
+  I2C2:    'i2c',
   SPI0:    'spi',
+  SPI1:    'spi',
 };
 
 /**

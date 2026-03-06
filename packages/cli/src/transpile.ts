@@ -1241,6 +1241,16 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
       // polyfills can gate stdlib-dependent code correctly.
       architecture: options.platformContext?.arduino?.fqbn?.split(":")[1]?.toLowerCase(),
       usedIdentifiers: collectUsedIdentifiers(programIR),
+      // Pass console config for baud rate
+      config: {
+        console: {
+          enabled: true,
+          target: "auto",
+          useFlashStrings: true,
+          baudRate: options.platformContext?.console?.baudRate ?? 9600,
+          autoInjectSerialBegin: true,
+        },
+      },
     };
     const polyfills = polyfillRegistry.detectAndGenerate(programIR, polyfillContext);
     const npmPackage = npmPackages.get(filePath);

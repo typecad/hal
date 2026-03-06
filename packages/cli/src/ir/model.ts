@@ -367,4 +367,11 @@ export type ExpressionIR =
    * platform-specific built-in (e.g. `A0.read()` → `analogRead(A0)`).
    * Produced by `expressionToIR` when it detects a typecode receiver.
    */
-  | { kind: "typecode-call"; receiver: string; receiverKind: import('./typecode-symbols').TypecodeReceiverKind; method: string; args: ExpressionIR[] };
+  | { kind: "typecode-call"; receiver: string; receiverKind: import('./typecode-symbols').TypecodeReceiverKind; method: string; args: ExpressionIR[]; interruptMode?: "FALLING" | "RISING" | "CHANGE" }
+  /**
+   * A callback function (arrow function or function expression) passed as an argument.
+   * Used for interrupt handlers and other callback contexts.
+   * The emitter generates a standalone function and passes its name.
+   * debounceMs: Optional debounce delay in milliseconds (set by .debounce() chain).
+   */
+  | { kind: "callback"; params: string[]; statements: StatementIR[]; sourceSpan: import("../types").SourceSpan; debounceMs?: number };

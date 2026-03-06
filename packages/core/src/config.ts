@@ -100,6 +100,12 @@ export interface TypecodeConfig {
    * Controls which backend (arduino-cli or platformio) is used.
    */
   toolchain?: TypecodeToolchainConfig;
+
+  /**
+   * Console polyfill configuration for Arduino.
+   * Controls Serial.begin() injection and default baud rate.
+   */
+  console?: TypecodeConsoleConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +144,15 @@ export interface TypecodeToolchainConfig {
   arduinoCli?: ArduinoCliOptions;
   /** PlatformIO specific options. */
   platformio?: PlatformioOptions;
+}
+
+/**
+ * Console polyfill configuration for Arduino.
+ * Controls Serial.begin() injection and default baud rate.
+ */
+export interface TypecodeConsoleConfig {
+  /** Default baud rate for Serial.begin() when auto-injected. Default: 9600 */
+  baudRate?: number;
 }
 
 // ---------------------------------------------------------------------------

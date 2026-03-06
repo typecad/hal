@@ -85,6 +85,7 @@ export class GenericStrategy implements PlatformStrategy {
     _args: ReadonlyArray<ExpressionIR>,
     _renderArg: (e: ExpressionIR) => string,
     _boardConstants?: BoardConstants,
+    _interruptMode?: "FALLING" | "RISING" | "CHANGE",
   ): string | undefined {
     return undefined;
   }

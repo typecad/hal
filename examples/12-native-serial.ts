@@ -5,9 +5,7 @@
 // access instead of the Arduino Serial library.
 // ---------------------------------------------------------------------------
 
-import { Serial } from '@typecode/board-native-atmega328p/peripherals';
-import { A0 } from '@typecode/board-native-atmega328p/pins';
-import { delay } from '@typecode/board-native-atmega328p/timing';
+import { Serial, A0, delay } from '@typecode/board-native-atmega328p';
 
 // Initialize Serial at 9600 baud
 Serial.initialize({ baudRate: 9600 });
@@ -17,7 +15,7 @@ Serial.println("Native UART Demo");
 Serial.println("================");
 
 // Configure A0 as analog input
-A0.asInput();
+A0.config.analog();
 
 let counter = 0;
 

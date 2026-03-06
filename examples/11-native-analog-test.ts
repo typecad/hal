@@ -1,9 +1,8 @@
 // Test compile-time peripheral initialization analysis
 // This should generate ADC initialization in setup() and optimized analog reads
-import { A0, D9 } from '@typecode/board-native-atmega328p';
-import { delay, map } from '@typecode/board-native-atmega328p';
+import { A0, D9, delay, map, LOW } from '@typecode/board-native-atmega328p';
 
-D9.asOutput();
+D9.config.output.initial(LOW);
 
 while (true) {
   const sensorValue = A0.read();  // Should NOT include ADC init check

@@ -49,6 +49,10 @@ export interface ResolvedTypecodeConfig {
       env?: string;
     };
   };
+  /** Console polyfill configuration. */
+  console?: {
+    baudRate?: number;
+  };
 }
 
 /**
@@ -257,6 +261,12 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
         resolved.toolchain.platformio.env = platformioEnv;
       }
     }
+  }
+
+  // Parse console configuration
+  const consoleBaudRate = flat.get("console.baudRate");
+  if (typeof consoleBaudRate === "number") {
+    resolved.console = { baudRate: consoleBaudRate };
   }
 
   return resolved;

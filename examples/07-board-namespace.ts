@@ -5,10 +5,10 @@
 // peripherals, and metadata under one namespace.
 // ---------------------------------------------------------------------------
 
-import { Board } from '../code/board-arduino-uno/board';
+import { Board, LOW } from '@typecode';
 
 Board.Serial.initialize({ baudRate: 115200 });
-Board.LED.asOutput();
+Board.LED.config.output.initial(LOW);
 
 Board.Serial.println("Arduino Uno booted");
 Board.Serial.println("MCU: " + Board.definition.mcu);

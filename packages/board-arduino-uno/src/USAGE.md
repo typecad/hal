@@ -216,7 +216,7 @@ D2.attachInterrupt(() => {
 
 ---
 
-### 5. I2C — Read From a Sensor
+### 5. I2C — Read From a Sensor (Wire API)
 
 ```typescript
 // examples/05-i2c-sensor.ts
@@ -225,13 +225,23 @@ import { Serial }  from './code/board-arduino-uno/peripherals';
 import { delay }   from './code/board-arduino-uno/timing';
 
 Serial.initialize({ baudRate: 9600 });
-I2C0.initialize();          // Wire.begin()
+I2C0.begin();               // Wire.begin() - master mode
 
 const BME280_ADDR = 0x76;
 
 while (true) {
-  const tempRaw = I2C0.readWord(BME280_ADDR, 0xFA);
+  // Read temperature using Wire transactional API
+  I2C0.beginTransmission(BME280_ADDR);
+  I2C0.write(0xFA);         // temperature register
+  I2C0.endTransmission();
+  
+  // Request 2 bytes
+  I2C0.requestFrom(BME280_ADDR, 2);
+  const msb = I2C0.read();
+  const lsb = I2C0.read();
+  const tempRaw = (msb << 8) | lsb;
   const temperature = tempRaw / 100.0;
+  
   Serial.println(temperature);
   delay(1000);
 }
@@ -302,19 +312,89 @@ Serial.flush();   // wait for transmit buffer to empty
 
 ### I2C0 (Wire)
 
+The I2C interface supports two API styles:
+
+#### Wire-Compatible API (Recommended)
+
+This API directly maps to Arduino's Wire library and is fully supported by the transpiler:
+
 ```typescript
 import { I2C0 } from './code/board-arduino-uno/peripherals';
-import { I2CSpeed } from './code/core';
+import { I2CStatus } from '@typecode/core';
 
-I2C0.initialize({ speed: I2CSpeed.FAST });  // 400 kHz
+// Initialize as master
+I2C0.begin();
 
-// Scan for devices
-const devices = I2C0.scan();
+// Set clock speed (optional, default 100kHz)
+I2C0.setClock(400000);  // 400 kHz fast mode
 
-// Register-level access
-I2C0.writeByte(0x68, 0x6B, 0x00);           // wake MPU-6050
-const whoAmI = I2C0.readByte(0x68, 0x75);    // read WHO_AM_I
+// Write to a device with error checking
+I2C0.beginTransmission(0x68);  // MPU-6050 address
+I2C0.write(0x6B);              // PWR_MGMT_1 register
+I2C0.write(0x00);              // wake up
+const status = I2C0.endTransmission();
+
+// Check status (I2CStatus enum)
+if (status === I2CStatus.SUCCESS) {
+  // Write succeeded
+} else if (status === I2CStatus.NACK_ON_ADDRESS) {
+  // Device not responding
+}
+
+// Read from a device
+I2C0.beginTransmission(0x68);
+I2C0.write(0x75);              // WHO_AM_I register
+I2C0.endTransmission();
+
+const bytesReceived = I2C0.requestFrom(0x68, 1);
+if (bytesReceived > 0) {
+  const whoAmI = I2C0.read();
+}
+
+// Slave mode (optional)
+I2C0.begin(0x08);  // Initialize as slave at address 0x08
+I2C0.onReceive((howMany) => {
+  while (I2C0.available()) {
+    const data = I2C0.read();
+  }
+});
+I2C0.onRequest(() => {
+  I2C0.write(0x42);  // Send response
+});
 ```
+
+#### Error Codes (I2CStatus)
+
+| Status | Value | Description |
+|--------|-------|-------------|
+| `SUCCESS` | 0 | Operation completed successfully |
+| `DATA_TOO_LONG` | 1 | Transmit buffer overflow |
+| `NACK_ON_ADDRESS` | 2 | NACK received on address (device not found) |
+| `NACK_ON_DATA` | 3 | NACK received on data byte |
+| `OTHER_ERROR` | 4 | Other error |
+| `PARTIAL_READ` | 5 | Fewer bytes read than requested |
+
+#### Fluent API (Experimental)
+
+A fluent chainable API is available for type-checking but requires additional transpiler support:
+
+```typescript
+// Fluent configuration (experimental)
+I2C0.config
+  .speed(400000)
+  .begin();
+
+// Fluent device operations (experimental)
+const result = I2C0.device(0x76)
+  .read(2)
+  .from(0xFA);
+
+if (result.ok) {
+  const temp = result.asUint16('be');
+}
+```
+
+> **Note:** The fluent API is designed and type-safe, but transpiler support for generating Wire calls from fluent chains is in progress. Use the Wire-compatible API for production code.
 
 ### SPI0
 

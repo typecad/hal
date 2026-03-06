@@ -7,6 +7,9 @@ export interface ArduinoPlatformContext {
 
 export interface PlatformContext {
   arduino?: ArduinoPlatformContext;
+  console?: {
+    baudRate?: number;
+  };
   [key: string]: unknown;
 }
 

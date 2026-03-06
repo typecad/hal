@@ -219,6 +219,11 @@ function main(): void {
       if (config.board) {
         effectiveBoardPackage = config.board;
       }
+      // Pass console baud rate to platform context
+      if (config.console?.baudRate) {
+        effectivePlatformContext = effectivePlatformContext || {};
+        (effectivePlatformContext as any).console = { baudRate: config.console.baudRate };
+      }
     }
 
     let result: { headerPath?: string; sourcePath: string; headerMapPath?: string; sourceMapPath?: string; diagnostics: Array<{ severity: string; message: string; line?: number; column?: number; code?: string }> };

@@ -6,19 +6,18 @@
 // Trying this on D4 (IDigitalPin only) would be a compile error.
 // ---------------------------------------------------------------------------
 
-import { D2, LED } from '../code/board-arduino-uno/pins';
-import { InterruptMode } from '../code/core';
+import { D2, LED, LOW } from '@typecode';
 
-LED.asOutput();
-D2.asInputPullUp();
+LED.config.output.initial(LOW);
+D2.config.input.pullup();
 
 let ledState = false;
 
-D2.attachInterrupt(() => {
+D2.on.falling(() => {
   ledState = !ledState;
   if (ledState) {
     LED.high();
   } else {
     LED.low();
   }
-}, InterruptMode.FALLING);
+});

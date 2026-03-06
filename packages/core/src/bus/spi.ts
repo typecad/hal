@@ -1,126 +1,295 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — SPI bus interface
+// @typecode/core - SPI Bus Interfaces
+//
+// Provides TypeScript interfaces for SPI communication.
+// Two API styles:
+//   1. Arduino-compatible (SPI.begin, SPI.transfer, etc.)
+//   2. Fluent chainable (SPI0.config.frequency().mode().begin())
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
+import type { IDigitalPin } from '../types/pin';
 
-export enum SPIClockPolarity {
-  LOW  = 0,
-  HIGH = 1,
+/**
+ * SPI clock polarity (CPOL) options
+ */
+export type SPIClockPolarity = 0 | 1;
+
+/**
+ * SPI clock phase (CPHA) options
+ */
+export type SPIClockPhase = 0 | 1;
+
+/**
+ * SPI mode (combination of CPOL and CPHA)
+ * - Mode 0: CPOL=0, CPHA=0 (most common)
+ * - Mode 1: CPOL=0, CPHA=1
+ * - Mode 2: CPOL=1, CPHA=0
+ * - Mode 3: CPOL=1, CPHA=1
+ */
+export type SPIMode = 0 | 1 | 2 | 3;
+
+/**
+ * Bit transmission order
+ */
+export type SPIBitOrder = 'msb' | 'lsb';
+
+/**
+ * SPI status codes
+ */
+export enum SPIStatus {
+  SUCCESS = 0,
+  NOT_INITIALIZED = 1,
+  TRANSFER_FAILED = 2,
+  INVALID_CONFIG = 3,
+  TIMEOUT = 4,
+  DEVICE_ERROR = 5,
 }
 
-export enum SPIClockPhase {
-  LEADING  = 0,
-  TRAILING = 1,
-}
-
-export enum SPIBitOrder {
-  MSB = 0,
-  LSB = 1,
-}
-
-export enum SPIMode {
-  MODE_0 = 0,  // CPOL=0  CPHA=0
-  MODE_1 = 1,  // CPOL=0  CPHA=1
-  MODE_2 = 2,  // CPOL=1  CPHA=0
-  MODE_3 = 3,  // CPOL=1  CPHA=1
-}
-
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-export interface SPIConfig {
+/**
+ * SPI settings for transaction
+ */
+export interface SPISettings {
   frequency: number;
-  mode?: SPIMode;
-  cpol?: SPIClockPolarity;
-  cpha?: SPIClockPhase;
-  bitOrder?: SPIBitOrder;
-  dataBits?: number;
-  csPin?: number;
-  sckPin?: number;
-  mosiPin?: number;
-  misoPin?: number;
-  bus?: number;
+  mode: SPIMode;
+  bitOrder: SPIBitOrder;
 }
 
-export interface SPITransferOptions {
-  csPin?: number;
+/**
+ * Legacy SPI config (for backward compatibility)
+ */
+export interface SPIConfig {
   frequency?: number;
-  csSetupTime?: number;
-  csHoldTime?: number;
-  keepCsActive?: boolean;
+  mode?: SPIMode;
+  bitOrder?: SPIBitOrder;
+}
+
+/**
+ * Transfer options
+ */
+export interface SPITransferOptions {
+  csPin?: IDigitalPin;
+  csActiveLow?: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// Errors
+// Result Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Result of a SPI write operation
+ */
+export interface ISPIWriteResult {
+  ok: boolean;
+  status: SPIStatus;
+  bytesWritten: number;
+}
+
+/**
+ * Result of a SPI read operation
+ */
+export interface ISPIReadResult {
+  ok: boolean;
+  status: SPIStatus;
+  bytes: Uint8Array;
+  asUint8(): number;
+  asUint16(endian: 'be' | 'le'): number;
+  asInt8(): number;
+  asInt16(endian: 'be' | 'le'): number;
+}
+
+/**
+ * Result of a SPI transfer operation
+ */
+export interface ISPITransferResult {
+  ok: boolean;
+  status: SPIStatus;
+  bytes: Uint8Array;
+  asUint8(): number;
+  asUint16(endian: 'be' | 'le'): number;
+}
+
+// ---------------------------------------------------------------------------
+// Fluent API Interfaces
+// ---------------------------------------------------------------------------
+
+/**
+ * Fluent SPI configuration builder
+ */
+export interface ISPIFluentConfig {
+  frequency(hz: number): this;
+  mode(mode: SPIMode): this;
+  bitOrder(order: SPIBitOrder): this;
+  cpol(level: SPIClockPolarity): this;
+  cpha(level: SPIClockPhase): this;
+  begin(): void;
+}
+
+/**
+ * Fluent write operation builder
+ */
+export interface ISPIFluentWrite {
+  to(register: number): ISPIWriteResult;
+}
+
+/**
+ * Fluent read operation builder
+ */
+export interface ISPIFluentRead {
+  from(register: number): ISPIReadResult;
+}
+
+/**
+ * Fluent transfer operation builder
+ */
+export interface ISPIFluentTransfer {
+  execute(): ISPITransferResult;
+}
+
+/**
+ * Fluent device operations
+ */
+export interface ISPIFluentDevice {
+  write(data: number | Uint8Array): ISPIFluentWrite;
+  read(count: number): ISPIFluentRead;
+  transfer(data: number | Uint8Array): ISPIFluentTransfer;
+}
+
+// ---------------------------------------------------------------------------
+// Arduino-Compatible Interface
+// ---------------------------------------------------------------------------
+
+/**
+ * Arduino-compatible SPI bus interface
+ */
+export interface ISPIBus {
+  readonly isInitialized: boolean;
+  readonly config: ISPIFluentConfig;
+  device(chipSelect: IDigitalPin): ISPIFluentDevice;
+  
+  begin(): void;
+  beginTransaction(settings: SPISettings): void;
+  endTransaction(): void;
+  transfer(data: number): number;
+  transferBuffer(buffer: Uint8Array): Uint8Array;
+  write(data: number): void;
+  write16(data: number): void;
+  setFrequency(hz: number): void;
+  setMode(mode: SPIMode): void;
+  setBitOrder(order: SPIBitOrder): void;
+  end(): void;
+}
+
+// ---------------------------------------------------------------------------
+// Legacy/Extended Interfaces (for backward compatibility)
+// ---------------------------------------------------------------------------
+
+/**
+ * SPI Device abstraction
+ */
+export interface ISPIDevice {
+  readonly bus: ISPIBus;
+  readonly chipSelect: IDigitalPin;
+  transfer(data: number | Uint8Array, options?: SPITransferOptions): Uint8Array;
+  write(data: number | Uint8Array, options?: SPITransferOptions): void;
+  read(count: number, options?: SPITransferOptions): Uint8Array;
+  writeRegister(register: number, data: number | Uint8Array): void;
+  readRegister(register: number, count: number): Uint8Array;
+}
+
+/**
+ * Create an SPI device wrapper
+ */
+export function createSPIDevice(
+  bus: ISPIBus,
+  chipSelect: IDigitalPin
+): ISPIDevice {
+  return {
+    bus,
+    chipSelect,
+    transfer(data: number | Uint8Array, _options?: SPITransferOptions): Uint8Array {
+      if (typeof data === 'number') {
+        const result = bus.transfer(data);
+        return new Uint8Array([result]);
+      }
+      return bus.transferBuffer(data);
+    },
+    write(data: number | Uint8Array, _options?: SPITransferOptions): void {
+      if (typeof data === 'number') {
+        bus.write(data);
+      } else {
+        for (const byte of data) {
+          bus.write(byte);
+        }
+      }
+    },
+    read(count: number, _options?: SPITransferOptions): Uint8Array {
+      const buffer = new Uint8Array(count);
+      for (let i = 0; i < count; i++) {
+        buffer[i] = bus.transfer(0xFF);
+      }
+      return buffer;
+    },
+    writeRegister(register: number, data: number | Uint8Array): void {
+      chipSelect.low();
+      bus.transfer(register);
+      if (typeof data === 'number') {
+        bus.transfer(data);
+      } else {
+        for (const byte of data) {
+          bus.transfer(byte);
+        }
+      }
+      chipSelect.high();
+    },
+    readRegister(register: number, count: number): Uint8Array {
+      chipSelect.low();
+      bus.transfer(register | 0x80);
+      const buffer = new Uint8Array(count);
+      for (let i = 0; i < count; i++) {
+        buffer[i] = bus.transfer(0xFF);
+      }
+      chipSelect.high();
+      return buffer;
+    },
+  };
+}
+
+/**
+ * SPI Error class
+ */
 export class SPIError extends Error {
   constructor(
     message: string,
-    public readonly bus: number,
+    public readonly status: SPIStatus
   ) {
     super(message);
     this.name = 'SPIError';
   }
 }
 
+/**
+ * SPI Timeout Error
+ */
 export class SPITimeoutError extends SPIError {
-  constructor(bus: number) {
-    super(`SPI timeout on bus ${bus}`, bus);
+  constructor(message: string = 'SPI operation timed out') {
+    super(message, SPIStatus.TIMEOUT);
     this.name = 'SPITimeoutError';
   }
 }
 
 // ---------------------------------------------------------------------------
-// Bus interface
+// Utility Functions
 // ---------------------------------------------------------------------------
 
-export interface ISPIBus {
-  readonly busNumber: number;
-  readonly frequency: number;
-  readonly mode: SPIMode;
-  readonly isInitialized: boolean;
-
-  initialize(config?: SPIConfig): void;
-  deinitialize(): void;
-
-  /** Full-duplex transfer: send txData, receive same-length buffer. */
-  transfer(txData: Uint8Array, options?: SPITransferOptions): Uint8Array;
-  write(data: Uint8Array, options?: SPITransferOptions): void;
-  read(length: number, options?: SPITransferOptions): Uint8Array;
-
-  writeRegister(csPin: number, register: number, data: Uint8Array): void;
-  readRegister(csPin: number, register: number, length: number): Uint8Array;
-
-  setFrequency(hz: number): void;
-  setMode(mode: SPIMode): void;
-  setBitOrder(order: SPIBitOrder): void;
+export function spiModeToCpolCpha(mode: SPIMode): { cpol: SPIClockPolarity; cpha: SPIClockPhase } {
+  switch (mode) {
+    case 0: return { cpol: 0, cpha: 0 };
+    case 1: return { cpol: 0, cpha: 1 };
+    case 2: return { cpol: 1, cpha: 0 };
+    case 3: return { cpol: 1, cpha: 1 };
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Device abstraction
-// ---------------------------------------------------------------------------
-
-export interface ISPIDevice {
-  readonly csPin: number;
-  readonly bus: ISPIBus;
-
-  transfer(txData: Uint8Array): Uint8Array;
-  write(data: Uint8Array): void;
-  read(length: number): Uint8Array;
-  readRegister(register: number, length: number): Uint8Array;
-  writeRegister(register: number, data: Uint8Array): void;
-  readByte(register: number): number;
-  writeByte(register: number, value: number): void;
+export function cpolCphaToSpiMode(cpol: SPIClockPolarity, cpha: SPIClockPhase): SPIMode {
+  return (cpol * 2 + cpha) as SPIMode;
 }
-
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-/** Create a device handle bound to a bus and chip-select pin. */
-export declare function createSPIDevice(bus: ISPIBus, csPin: number): ISPIDevice;

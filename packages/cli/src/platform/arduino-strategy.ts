@@ -197,8 +197,9 @@ export class ArduinoStrategy implements PlatformStrategy {
     args: ReadonlyArray<ExpressionIR>,
     renderArg: (e: ExpressionIR) => string,
     boardConstants?: BoardConstants,
+    interruptMode?: "FALLING" | "RISING" | "CHANGE",
   ): string | undefined {
-    return renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants);
+    return renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode);
   }
   renderBoardDefinitionAccess(
     chain: string[],

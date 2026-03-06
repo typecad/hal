@@ -5,11 +5,9 @@
 // brightness on D9.  Demonstrates the map() and constrain() utilities.
 // ---------------------------------------------------------------------------
 
-import { A0, D9 } from '../code/board-arduino-uno/pins';
-import { map, constrain } from '../code/board-arduino-uno/timing';
-import { delay } from '../code/board-arduino-uno/timing';
+import { A0, D9, map, constrain, delay, LOW } from '@typecode';
 
-D9.asOutput();
+D9.config.output.initial(LOW);
 
 while (true) {
   const raw = A0.read();

@@ -4,12 +4,10 @@
 // Drive a 74HC595 shift register over SPI with a rotating bit pattern.
 // ---------------------------------------------------------------------------
 
-import { SPI0 }  from '../code/board-arduino-uno/peripherals';
-import { SS }    from '../code/board-arduino-uno/pins';
-import { delay } from '../code/board-arduino-uno/timing';
+import { SPI0, SS, delay, LOW } from '@typecode';
 
 SPI0.initialize({ frequency: 1_000_000 });
-SS.asOutput();
+SS.config.output.initial(LOW);
 
 let pattern = 0b00000001;
 

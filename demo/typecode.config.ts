@@ -28,6 +28,11 @@ const config: TypecodeConfig = {
       verbose: false,
     },
   },
+
+  // Console polyfill configuration
+  console: {
+    baudRate: 9600,
+  },
 };
 
 export default config;
