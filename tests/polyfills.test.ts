@@ -319,10 +319,11 @@ describe("Async Runtime Polyfill", () => {
       }
     `, { target: "generic" });
 
-    expect(result.cpp).toContain("namespace ts2cpp_async");
+    // The async runtime uses typecode_async namespace
+    expect(result.cpp).toContain("namespace typecode_async");
     expect(result.cpp).toContain("class MicrotaskQueue");
     expect(result.cpp).toContain("class Promise");
-    expect(result.cpp).toContain("inline void ts2cpp_pump_microtasks()");
+    expect(result.cpp).toContain("inline void typecode_pump_microtasks()");
   });
 });
   it("transpiles string concatenation", () => {

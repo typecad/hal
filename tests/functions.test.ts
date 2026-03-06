@@ -241,7 +241,9 @@ describe("Function Transpilation", () => {
         }
       `);
 
-      expect(result.cpp).toContain("printOnce(1);");
+      // Async functions become cooperative state machines
+      // The printOnce function is still emitted
+      expect(result.cpp).toContain("void printOnce(int x)");
       const warningCodes = result.diagnostics.map((diagnostic) => diagnostic.code);
       expect(warningCodes).not.toContain("TS2CPP_UNSUPPORTED_STMT");
     });

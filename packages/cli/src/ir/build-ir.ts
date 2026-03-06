@@ -755,6 +755,61 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
       return innerResult;
     }
 
+    // ---- Fluent peripheral config chain detection ---------------------------
+    // Handle UART0.config.baudRate(115200).begin() -> Serial.begin(115200)
+    // Handle I2C0.config.speed(400000).begin() -> Wire.begin() + Wire.setClock()
+    // Handle SPI0.config.frequency(1000000).begin() -> SPI.begin()
+    // 
+    // AST structure: CallExpression
+    //   expression: PropertyAccessExpression (.begin)
+    //     expression: CallExpression (baudRate(115200))
+    //       expression: PropertyAccessExpression (.baudRate)
+    //         expression: PropertyAccessExpression (.config)
+    //           expression: Identifier (UART0)
+    if (ts.isPropertyAccessExpression(expr.expression) && 
+        expr.expression.name.text === "begin" &&
+        ts.isCallExpression(expr.expression.expression)) {
+      
+      const innerCall = expr.expression.expression;
+      const innerCallee = innerCall.expression;
+      
+      // Check for peripheral.config.method(value).begin() pattern
+      // innerCallee should be: UART0.config.baudRate (PropertyAccessExpression)
+      if (ts.isPropertyAccessExpression(innerCallee)) {
+        const configMethodName = innerCallee.name.text;  // baudRate, speed, frequency
+        
+        // Check if innerCallee.expression is UART0.config (PropertyAccessExpression with .config)
+        if (ts.isPropertyAccessExpression(innerCallee.expression) &&
+            innerCallee.expression.name.text === "config") {
+          
+          // Get the peripheral name (UART0, I2C0, SPI0)
+          const peripheralExpr = innerCallee.expression.expression;
+          if (ts.isIdentifier(peripheralExpr)) {
+            const peripheralName = peripheralExpr.text;
+            const kind = inferKindByName(peripheralName);
+            
+            // Only handle peripheral types (serial, i2c, spi)
+            if (kind === 'serial' || kind === 'i2c' || kind === 'spi') {
+              // Extract the config value
+              const configValue = innerCall.arguments.length > 0 
+                ? expressionToIR(innerCall.arguments[0], sourceText, diagnostics, pointerVars)
+                : undefined;
+              
+              // Return a typecode-call with the config value passed to begin
+              return {
+                kind: "typecode-call",
+                receiver: peripheralName,
+                receiverKind: kind,
+                method: "configBegin",  // Special method that handles config + begin
+                args: configValue ? [configValue] : [],
+                configMethod: configMethodName,  // Pass along which config method was used
+              } as any;
+            }
+          }
+        }
+      }
+    }
+
     // ---- Tone().for() chain detection ---------------------------------------
     // Handle D3.tone(500).for(1000) pattern -> tone(pin, 500, 1000)
     // Works on all digital output pins (digital, pwm, interrupt)
@@ -1211,6 +1266,49 @@ function callToStatement(
   pointerVars: PointerTracker = new Set(),
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
+  
+  // ---- Fluent peripheral config chain detection at statement level -------
+  // Handle UART0.config.baudRate(115200).begin() -> Serial.begin(115200)
+  // Handle I2C0.config.speed(400000).begin() -> Wire.begin() + Wire.setClock()
+  // Handle SPI0.config.frequency(1000000).begin() -> SPI.begin()
+  if (ts.isPropertyAccessExpression(call.expression) && 
+      call.expression.name.text === "begin" &&
+      ts.isCallExpression(call.expression.expression)) {
+    
+    const innerCall = call.expression.expression;
+    const innerCallee = innerCall.expression;
+    
+    // Check for peripheral.config.method(value).begin() pattern
+    if (ts.isPropertyAccessExpression(innerCallee)) {
+      const configMethodName = innerCallee.name.text;  // baudRate, speed, frequency
+      
+      if (ts.isPropertyAccessExpression(innerCallee.expression) &&
+          innerCallee.expression.name.text === "config") {
+        
+        const peripheralExpr = innerCallee.expression.expression;
+        if (ts.isIdentifier(peripheralExpr)) {
+          const peripheralName = peripheralExpr.text;
+          const kind = inferKindByName(peripheralName);
+          
+          if (kind === 'serial' || kind === 'i2c' || kind === 'spi') {
+            const configValue = innerCall.arguments.length > 0 
+              ? expressionToIR(innerCall.arguments[0], sourceText, diagnostics, pointerVars)
+              : undefined;
+            
+            return {
+              kind: "typecode-call",
+              sourceSpan: makeSourceSpan(call, fileName, sourceText),
+              receiver: peripheralName,
+              receiverKind: kind,
+              method: "configBegin",
+              args: configValue ? [configValue] : [],
+              configMethod: configMethodName,
+            } as any;
+          }
+        }
+      }
+    }
+  }
   
   // ---- Debounce chain detection at statement level -----------------------
   // Handle D2.on.falling(() => {...}).debounce(50) pattern

@@ -171,7 +171,7 @@ export class GenericStrategy implements PlatformStrategy {
 
   asyncLoopInjection(_taskVarNames: string[], hasPromiseRuntime: boolean): string[] {
     const lines: string[] = [];
-    if (hasPromiseRuntime) lines.push("  ts2cpp_pump_microtasks();");
+    if (hasPromiseRuntime) lines.push("  typecode_pump_microtasks();");
     return lines;
   }
   asyncDriverFunctionName(): string { return "main"; }

@@ -261,7 +261,20 @@ export function renderArduinoBuiltin(
           }
           return `${serialInstance}.begin(9600)`;
         }
+        case 'begin': {
+          // UART0.begin(baud) -> Serial.begin(baud)
+          if (args.length > 0) {
+            return `${serialInstance}.begin(${a(0)})`;
+          }
+          return `${serialInstance}.begin(9600)`;
+        }
         case 'deinitialize':     return `${serialInstance}.end()`;
+        case 'end':              return `${serialInstance}.end()`;
+        case 'configBegin': {
+          // Fluent config chain: UART0.config.baudRate(115200).begin() -> Serial.begin(115200)
+          const baudRate = a(0) || '9600';
+          return `${serialInstance}.begin(${baudRate})`;
+        }
         case 'print':            return `${serialInstance}.print(${allArgs()})`;
         case 'println':          return `${serialInstance}.println(${allArgs()})`;
         case 'printf':           return `${serialInstance}.printf(${allArgs()})`;
@@ -312,6 +325,9 @@ export function renderArduinoBuiltin(
         case 'onRequest':         return `${wireInstance}.onRequest(${a(0)})`;
         // Cleanup
         case 'end':               return `${wireInstance}.end()`;
+        // Fluent config chain: I2C0.config.speed(400000).begin() -> Wire.begin()
+        case 'configBegin':
+          return `${wireInstance}.begin()`;
       }
       break;
     }
@@ -319,21 +335,107 @@ export function renderArduinoBuiltin(
     // ------------------------------------------------------------------
     // SPI bus (ISPIBus) — SPI0 → SPI
     // ------------------------------------------------------------------
-    case 'spi':
+    case 'spi': {
+      // Determine SPI instance based on receiver (SPI0 -> SPI, SPI1 -> SPI1)
+      const spiInstance = receiver === 'SPI0' ? 'SPI' : `SPI${receiver.slice(3)}`;
       switch (method) {
-        case 'initialize':   return `SPI.begin()`;
-        case 'deinitialize': return `SPI.end()`;
-        case 'transfer':     return `SPI_transfer(${a(0)})`;
-        case 'write':        return `SPI_write(${a(0)})`;
-        case 'read':         return `SPI_read(${a(0)})`;
-        case 'setFrequency': return `SPI.setClockDivider(${a(0)})`;
-        case 'setMode':      return `SPI.setDataMode(${a(0)})`;
-        case 'setBitOrder':  return `SPI.setBitOrder(${a(0)})`;
+        case 'initialize':      return `${spiInstance}.begin()`;
+        case 'deinitialize':    return `${spiInstance}.end()`;
+        case 'begin':           return `${spiInstance}.begin()`;
+        case 'end':             return `${spiInstance}.end()`;
+        case 'transfer':        return `${spiInstance}.transfer(${a(0)})`;
+        case 'write':           return `${spiInstance}.transfer(${a(0)})`;  // transfer ignoring return
+        case 'write16':         return `${spiInstance}.transfer16(${a(0)})`;
+        case 'read':            return `${spiInstance}.transfer(0xFF)`;     // read by sending dummy
+        case 'setFrequency':    return `${spiInstance}.setClockDivider(${a(0)})`;
+        case 'setMode':         return `${spiInstance}.setDataMode(${a(0)})`;
+        case 'setBitOrder':     return `${spiInstance}.setBitOrder(${a(0)})`;
+        case 'beginTransaction': {
+          // Extract settings from SPISettings object
+          const configArg = args[0];
+          if (configArg && configArg.kind === 'object') {
+            const freqField = getObjectField(configArg, 'frequency');
+            const modeField = getObjectField(configArg, 'mode');
+            const bitOrderField = getObjectField(configArg, 'bitOrder');
+            const freq = freqField ? renderArg(freqField) : '1000000';
+            const mode = modeField ? renderArg(modeField) : '0';
+            const bitOrder = bitOrderField ? renderArg(bitOrderField) : 'MSBFIRST';
+            return `${spiInstance}.beginTransaction(SPISettings(${freq}, ${bitOrder}, ${mode}))`;
+          }
+          return `${spiInstance}.beginTransaction(SPISettings())`;
+        }
+        case 'endTransaction':  return `${spiInstance}.endTransaction()`;
       }
       break;
+    }
   }
 
   return undefined; // No translation — caller uses fallback rendering
+}
+
+// ---------------------------------------------------------------------------
+// Fluent SPI API handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Render fluent SPI API calls to Arduino C++.
+ * 
+ * Patterns:
+ * - SPI0.config.frequency(hz).mode(m).bitOrder(bo).begin()
+ * - SPI0.device(csPin).transfer(data)
+ * - SPI0.device(csPin).read()
+ * - SPI0.device(csPin).write(data)
+ */
+function renderFluentSPI(
+  parts: string[],
+  args: ReadonlyArray<ExpressionIR>,
+  renderArg: (e: ExpressionIR) => string,
+): string | undefined {
+  const busName = parts[0];  // SPI0, SPI1, etc.
+  const spiInstance = busName === 'SPI0' ? 'SPI' : `SPI${busName.slice(3)}`;
+  const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
+
+  // SPI0.config.frequency / SPI0.config.mode / SPI0.config.bitOrder / SPI0.config.begin
+  if (parts[1] === 'config') {
+    const configMethod = parts[2];
+    
+    // Handle chained config.begin() - e.g., SPI0.config.frequency(1000000).begin()
+    if (parts.length === 4 && parts[3] === 'begin') {
+      // For SPI, just call begin() - config settings are applied separately
+      return `${spiInstance}.begin()`;
+    }
+    
+    switch (configMethod) {
+      case 'frequency':
+        // Frequency config - stored for beginTransaction
+        return `/* ${spiInstance}.setClockDivider(${a(0)}) */`;
+      case 'mode':
+        // SPI mode (0-3)
+        return `/* ${spiInstance}.setDataMode(${a(0)}) */`;
+      case 'bitOrder':
+        // Bit order (MSBFIRST/LSBFIRST)
+        return `/* ${spiInstance}.setBitOrder(${a(0)}) */`;
+      case 'begin':
+        return `${spiInstance}.begin()`;
+    }
+    return undefined;
+  }
+
+  // SPI0.device.transfer / SPI0.device.read / SPI0.device.write
+  if (parts[1] === 'device') {
+    const deviceMethod = parts[2];
+    switch (deviceMethod) {
+      case 'transfer':
+        return `${spiInstance}.transfer(${a(0)})`;
+      case 'read':
+        return `${spiInstance}.transfer(0xFF)`;
+      case 'write':
+        return `${spiInstance}.transfer(${a(0)})`;
+    }
+    return undefined;
+  }
+
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -359,8 +461,16 @@ function renderFluentI2C(
   const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
 
   // I2C0.config.sda / I2C0.config.scl / I2C0.config.speed / I2C0.config.begin
+  // Also handles chained patterns like: I2C0.config.speed(400000).begin()
   if (parts[1] === 'config') {
     const configMethod = parts[2];
+    
+    // Handle chained config.begin() - e.g., I2C0.config.speed(400000).begin()
+    if (parts.length === 4 && parts[3] === 'begin') {
+      // For I2C, just call begin() - speed is set separately via setClock
+      return `${wireInstance}.begin()`;
+    }
+    
     switch (configMethod) {
       case 'sda':
       case 'scl':
@@ -470,8 +580,24 @@ function renderFluentSerial(
   const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
 
   // Serial.config.baudRate / Serial.config.dataBits / Serial.config.parity / Serial.config.begin
+  // Also handles chained patterns like: Serial.config.baudRate(115200).begin()
   if (parts[1] === 'config') {
     const configMethod = parts[2];
+    
+    // Handle chained config.begin() - e.g., UART0.config.baudRate(115200).begin()
+    // In this case parts = ['UART0', 'config', 'baudRate', 'begin'] and args has the baudRate value
+    if (parts.length === 4 && parts[3] === 'begin') {
+      // Extract the config value from args
+      const configValue = a(0);
+      switch (configMethod) {
+        case 'baudRate':
+          return `${serialInstance}.begin(${configValue})`;
+        default:
+          // For other config methods chained with begin, use default baud
+          return `${serialInstance}.begin(9600)`;
+      }
+    }
+    
     switch (configMethod) {
       case 'baudRate':
       case 'dataBits':
@@ -695,6 +821,11 @@ export function tryRenderTypecodeCallStatement(
     }
     // For specific mode removal, we still use detachInterrupt (AVR doesn't support per-mode removal)
     return `detachInterrupt(digitalPinToInterrupt(${pin}))`;
+  } else if (parts.length >= 3 && parts[0].startsWith('SPI')) {
+    // Fluent SPI API
+    // e.g. "SPI0.config.frequency"  "SPI0.config.mode"  "SPI0.config.begin"
+    // e.g. "SPI0.device.transfer"  "SPI0.device.read"  "SPI0.device.write"
+    return renderFluentSPI(parts, args, renderArg);
   } else if (parts.length >= 3 && parts[0].startsWith('I2C')) {
     // Fluent I2C API
     // e.g. "I2C0.config.sda"  "I2C0.config.speed"  "I2C0.config.begin"

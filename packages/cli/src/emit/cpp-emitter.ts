@@ -1106,6 +1106,27 @@ function renderStatement(
   calleeTransformer?: (callee: string) => string,
   knownFunctionReturnTypes?: Map<string, string>,
 ): string {
+  if (statement.kind === "typecode-call") {
+    // Handle typecode-call statements (from fluent chains like UART0.config.baudRate(115200).begin())
+    const renderA = (e: ExpressionIR) => renderExpression(e, undefined, strategy);
+    const translated = strategy.tryRenderTypecodeCall(
+      statement.receiver, 
+      statement.receiverKind, 
+      statement.method, 
+      statement.args, 
+      renderA, 
+      _emitBoardConstants,
+      (statement as any).interruptMode
+    );
+    if (translated !== undefined) {
+      return forHeader ? translated : `${translated};`;
+    }
+    // Fallback: render as plain method call
+    return forHeader 
+      ? `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")})`
+      : `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")});`;
+  }
+
   if (statement.kind === "call") {
     // Handle raw statements from setupInitCode
     if (statement.callee.startsWith('__RAW_STMT__')) {
@@ -2457,7 +2478,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     // Inject microtask pumping into the async driver function
     const asyncDriverFn = strategy.asyncDriverFunctionName();
     if (hasPromiseRuntime && fn.name === asyncDriverFn) {
-      appendSourceLine("  ts2cpp_pump_microtasks();");
+      appendSourceLine("  typecode_pump_microtasks();");
     }
     // Async tasks are driven by their state machine; don't emit the blocking body.
     if (fn.isAsync && hasAsyncRuntime) {
