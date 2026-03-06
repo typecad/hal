@@ -5,9 +5,10 @@
 // Shows: write(), transferBuffer(), simple data output
 // ---------------------------------------------------------------------------
 
-import { SPI0, Serial, D10, delay } from '@typecode/board-arduino-uno';
+import { SPI0, UART0 } from '@typecode/board-arduino-uno/arduino';
+import { D10, delay } from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.begin(9600);
 
 // Chip select (latch pin on 74HC595)
 const LATCH = D10;
@@ -20,7 +21,7 @@ SPI0.setMode(0);
 SPI0.setBitOrder('msb');
 SPI0.setFrequency(2_000_000);
 
-Serial.println("74HC595 Shift Register Demo");
+UART0.println("74HC595 Shift Register Demo");
 
 // Patterns for 8 LEDs
 const patterns = [

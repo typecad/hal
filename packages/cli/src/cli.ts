@@ -6,6 +6,8 @@ import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
 import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from "./platform/arduino-compile";
 import { loadTypecodeConfig, generateVirtualTypeDeclaration } from "./config-loader";
+import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
+import { runBoardWizard } from "./scaffold/wizard";
 
 function assertTypeScriptInput(filePath: string): void {
   const extension = path.extname(filePath).toLowerCase();
@@ -83,12 +85,82 @@ function printMappedCompileErrors(
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   try {
     const options = parseCommandLine(process.argv);
 
     if (options === "help") {
       printHelp();
+      return;
+    }
+
+    // Handle create-board command
+    if (options.command === "create-board") {
+      const scaffoldOptions = options as import("./types").ScaffoldCommandOptions;
+      
+      try {
+        // Check if we should run the interactive wizard
+        // Run wizard if: no additional options provided, or explicitly requested
+        const hasOptions = scaffoldOptions.architecture || scaffoldOptions.vendor || 
+          scaffoldOptions.mcu || scaffoldOptions.displayName;
+        
+        if (!hasOptions) {
+          // Launch interactive wizard
+          console.log("Launching interactive board creation wizard...\n");
+          const wizardResult = await runBoardWizard();
+          
+          if (!wizardResult) {
+            console.log("Board creation cancelled.");
+            return;
+          }
+          
+          // Scaffold from wizard results with full pin data
+          const createdFiles = scaffoldFromWizard(wizardResult, scaffoldOptions.outDir);
+          
+          console.log("\nCreated board package files:");
+          for (const file of createdFiles) {
+            console.log(`  ${file}`);
+          }
+          
+          const outDir = scaffoldOptions.outDir 
+            ? scaffoldOptions.outDir 
+            : path.resolve(process.cwd(), 'packages', `board-${wizardResult.name}`);
+          
+          printNextSteps(wizardResult.name, outDir);
+        } else {
+          // Non-interactive mode: use CLI flags
+          const createdFiles = scaffoldBoardPackage({
+            name: scaffoldOptions.name,
+            displayName: scaffoldOptions.displayName,
+            vendor: scaffoldOptions.vendor,
+            architecture: scaffoldOptions.architecture,
+            mcu: scaffoldOptions.mcu,
+            clockSpeedMhz: scaffoldOptions.clockSpeedMhz,
+            flashKb: scaffoldOptions.flashKb,
+            sramKb: scaffoldOptions.sramKb,
+            eepromKb: scaffoldOptions.eepromKb,
+            fqbn: scaffoldOptions.fqbn,
+            outDir: scaffoldOptions.outDir,
+            minimal: scaffoldOptions.minimal,
+          });
+
+          console.log("Created board package files:");
+          for (const file of createdFiles) {
+            console.log(`  ${file}`);
+          }
+
+          // Determine output directory for next steps
+          const outDir = scaffoldOptions.outDir 
+            ? scaffoldOptions.outDir 
+            : path.resolve(process.cwd(), 'packages', `board-${scaffoldOptions.name}`);
+          
+          printNextSteps(scaffoldOptions.name, outDir);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        console.error(`Error creating board package: ${message}`);
+        process.exitCode = 1;
+      }
       return;
     }
 

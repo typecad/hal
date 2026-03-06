@@ -9,10 +9,10 @@
 // generating Wire calls. Currently experimental.
 // ---------------------------------------------------------------------------
 
-import { I2C0, Serial } from '@typecode/board-arduino-uno';
+import { I2C0, UART0 } from '@typecode/board-arduino-uno';
 import { delay }        from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.initialize({ baudRate: 9600 });
 
 // Initialize using fluent config
 I2C0.config
@@ -27,10 +27,10 @@ function configureSensor(): boolean {
   const result = I2C0.device(BME280_ADDR).write(0x27).to(0xF4);
   
   if (result.ok) {
-    Serial.println(`Wrote ${result.bytesWritten} bytes`);
+    UART0.println(`Wrote ${result.bytesWritten} bytes`);
     return true;
   } else {
-    Serial.println(`Write failed: ${result.status}`);
+    UART0.println(`Write failed: ${result.status}`);
     return false;
   }
 }
@@ -46,7 +46,7 @@ function writeMultipleBytes(): boolean {
 
 // Configure sensor at startup
 if (configureSensor()) {
-  Serial.println("Sensor configured");
+  UART0.println("Sensor configured");
 }
 
 // Main loop
@@ -55,7 +55,7 @@ while (true) {
   const result = I2C0.device(BME280_ADDR).write(0x00).to(0xF5);
   
   if (!result.ok) {
-    Serial.println("Configuration write failed");
+    UART0.println("Configuration write failed");
   }
   
   delay(5000);

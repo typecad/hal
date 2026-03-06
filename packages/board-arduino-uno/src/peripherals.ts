@@ -1,10 +1,19 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Peripheral instances
+// @typecode/board-arduino-uno — Peripheral instances (Fluent API only)
 //
 // Stub objects representing the Arduino Uno's built-in peripheral buses.
 // These carry full type information at design-time so TypeScript prevents
 // invalid usage.  The transpiler replaces method calls with the
 // architecture-specific C++ (Wire, SPI, Serial libraries).
+//
+// For Arduino-compatible API, import from '@typecode/board-arduino-uno/arduino'
+//
+// NOTE: Arduino Uno only has ONE of each peripheral:
+//   - I2C0 (Wire) on pins A4/A5
+//   - SPI0 (SPI) on pins D11/D12/D13
+//   - UART0 (Serial) on pins D0/D1 + USB
+//
+// Using I2C1, I2C2, SPI1, UART1, etc. will result in a transpile error.
 // ---------------------------------------------------------------------------
 
 import type {
@@ -29,15 +38,11 @@ import type {
   ISPIWriteResult,
   ISPIReadResult,
   ISPITransferResult,
-  SPIConfig,
-  SPITransferOptions,
-  SPISettings,
   IDigitalPin,
 } from '@typecode/core';
 import { SPIMode, SPIBitOrder, SPIStatus } from '@typecode/core';
 import type {
   ISerialPort,
-  UARTConfig,
   UARTStatusInfo,
   IUARTFluentConfig,
   IUARTFluentRead,
@@ -48,7 +53,7 @@ import type {
 import { UARTStatus, UARTParity, UARTStopBits, UARTFlowControl } from '@typecode/core';
 
 // ---------------------------------------------------------------------------
-// I2C — Wire (bus 0)
+// I2C — Wire (bus 0) - Fluent API only
 // ---------------------------------------------------------------------------
 
 // Stub result objects for fluent API
@@ -109,39 +114,15 @@ export const I2C0: II2CBus = {
     } as II2CDeviceAccessor;
   },
 
-  // --- Arduino Wire-compatible API ---
-  // Initialization
-  begin(_address?: I2CAddress) { /* transpiler: Wire.begin(); or Wire.begin(addr); */ },
-  
-  // Transactional write API
-  beginTransmission(_address: I2CAddress) { /* transpiler: Wire.beginTransmission(addr); */ },
-  write(_data: number | Uint8Array | string): number { return 0; },
-  endTransmission(_stop?: boolean): number { return 0; },
-
-  // Read API
-  requestFrom(_address: I2CAddress, _quantity: number, _stop?: boolean): number { return 0; },
-  available(): number { return 0; },
-  read(): number { return -1; },
-
-  // Clock control
-  setClock(_clock: number) { /* transpiler: Wire.setClock(hz); */ },
-
-  // Slave mode callbacks
-  onReceive(_handler: (howMany: number) => void) {},
-  onRequest(_handler: () => void) {},
-
-  // Error handling
+  // --- Error handling ---
   onError(_handler: (status: I2CStatus, address: I2CAddress, operation: 'read' | 'write') => void) {},
 
-  // Bus recovery
+  // --- Bus recovery ---
   recover(): boolean { return true; },
-
-  // Cleanup
-  end() { /* transpiler: Wire.end(); */ },
 } as II2CBus;
 
 // ---------------------------------------------------------------------------
-// SPI — SPI (bus 0)
+// SPI — SPI (bus 0) - Fluent API only
 // ---------------------------------------------------------------------------
 
 // Stub result objects for fluent SPI API
@@ -180,7 +161,7 @@ const spiConfigBuilder: ISPIFluentConfig = {
 };
 
 // Fluent device factory
-function createSPIDeviceAccessor(csPin: IDigitalPin): ISPIFluentDevice {
+function createSPIDeviceAccessor(_csPin: IDigitalPin): ISPIFluentDevice {
   const writeBuilder: ISPIFluentWrite = {
     to(_register: number): ISPIWriteResult {
       // transpiler: digitalWrite(csPin, LOW); SPI.transfer(register); SPI.transfer(data); digitalWrite(csPin, HIGH);
@@ -218,51 +199,10 @@ export const SPI0: ISPIBus = {
   device(chipSelect: IDigitalPin): ISPIFluentDevice {
     return createSPIDeviceAccessor(chipSelect);
   },
-
-  // --- Arduino-Compatible API ---
-  begin() { /* transpiler: SPI.begin(); */ },
-  
-  beginTransaction(_settings: SPISettings) { 
-    /* transpiler: SPI.beginTransaction(SPISettings(freq, bitOrder, mode)); */ 
-  },
-  
-  endTransaction() { /* transpiler: SPI.endTransaction(); */ },
-  
-  transfer(_data: number): number { 
-    /* transpiler: SPI.transfer(data) */
-    return 0; 
-  },
-  
-  transferBuffer(_buffer: Uint8Array): Uint8Array { 
-    /* transpiler: SPI.transfer(buffer, len) */
-    return new Uint8Array(0); 
-  },
-  
-  write(_data: number): void { 
-    /* transpiler: SPI.transfer(data) - ignore return */ 
-  },
-  
-  write16(_data: number): void { 
-    /* transpiler: SPI.transfer16(data) */ 
-  },
-  
-  setFrequency(_hz: number): void { 
-    /* transpiler: SPI.setClockDivider(calcDivider(hz)) */ 
-  },
-  
-  setMode(_mode: SPIMode): void { 
-    /* transpiler: SPI.setDataMode(mode) */ 
-  },
-  
-  setBitOrder(_order: SPIBitOrder): void { 
-    /* transpiler: SPI.setBitOrder(order) */ 
-  },
-  
-  end() { /* transpiler: SPI.end(); */ },
 } as ISPIBus;
 
 // ---------------------------------------------------------------------------
-// Serial — UART 0 (USB / pins D0=RX, D1=TX)
+// Serial — UART 0 (USB / pins D0=RX, D1=TX) - Fluent API only
 // ---------------------------------------------------------------------------
 
 // Stub UART result objects
@@ -392,7 +332,7 @@ const uartFluentWrite: IUARTFluentWrite = Object.assign(
 ) as IUARTFluentWrite;
 
 /** Arduino Uno hardware serial (UART 0, pins D0/RX, D1/TX, + USB). */
-export const Serial: ISerialPort = {
+export const UART0: ISerialPort = {
   uartNumber: 0,
   baudRate: 9600,
   isInitialized: false,
@@ -404,19 +344,7 @@ export const Serial: ISerialPort = {
   read: uartFluentRead,
   write: uartFluentWrite,
 
-  // --- Arduino-Compatible API ---
-  begin(_baudOrConfig: number | UARTConfig) { /* transpiler: Serial.begin(baud); */ },
-  end() { /* transpiler: Serial.end(); */ },
-
-  // Buffer info
-  available(): number { return 0; },
-  availableForWrite(): number { return 0; },
-  peek(): number { return -1; },
-  
-  // Buffer control
-  flush() {},
-
-  // Status
+  // --- Status ---
   getStatus(): UARTStatusInfo {
     return {
       available: 0,
@@ -429,12 +357,12 @@ export const Serial: ISerialPort = {
   },
   clearErrors() {},
 
-  // Callbacks
+  // --- Callbacks ---
   onReceive(_callback: (bytesAvailable: number) => void) {},
   onTransmitComplete(_callback: () => void) {},
   onError(_callback: (error: Error) => void) {},
 
-  // ISerialPort print helpers
+  // ISerialPort print helpers (fluent style)
   print(..._args: unknown[]) {},
   println(..._args: unknown[]) {},
   printf(_format: string, ..._args: unknown[]) {},

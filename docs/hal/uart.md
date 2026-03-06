@@ -2,6 +2,49 @@
 
 TypeCode provides a type-safe UART/Serial API that mirrors Arduino's Serial library while adding compile-time safety, fluent chainable configuration, and result-based operations.
 
+## Multiple UART Ports
+
+TypeCode supports multiple UART ports using numbered identifiers: `UART0`, `UART1`, `UART2`, etc.
+
+| Identifier | Arduino Mapping | Availability |
+|------------|-----------------|--------------|
+| `UART0` | `Serial` | Most boards (USB-CDC) |
+| `UART1` | `Serial1` | ESP32, STM32, Arduino Mega |
+| `UART2` | `Serial2` | ESP32, some STM32 boards |
+
+### Checking Board Capacity
+
+Each board package defines how many UART ports are available:
+
+```typescript
+// Arduino Uno: Only UART0 available (USB-CDC)
+import { UART0 } from '@typecode/board-arduino-uno';
+UART0.config.baudRate(9600).begin();  // ✓ Valid
+
+// ESP32: UART0, UART1, UART2 available
+import { UART0, UART1, UART2 } from '@typecode/board-esp32-devkit';
+UART0.config.baudRate(115200).begin();  // USB-CDC
+UART1.config.baudRate(9600).begin();    // Hardware serial on GPIO pins
+UART2.config.baudRate(9600).begin();    // Another hardware serial
+```
+
+### Compile-Time Validation
+
+Using an unavailable UART port generates a compile-time error:
+
+```typescript
+// On Arduino Uno (only has UART0)
+UART1.begin(9600);  // ✗ Error: UART1 is not available on Arduino Uno. Available: UART0 (Serial)
+```
+
+### Hardware Serial vs USB-CDC
+
+| Port | Arduino Uno | ESP32 | Notes |
+|------|-------------|-------|-------|
+| UART0 | USB-CDC only | USB-CDC + GPIO 1/3 | USB serial |
+| UART1 | N/A | GPIO pins | Hardware serial |
+| UART2 | N/A | GPIO pins | Hardware serial |
+
 ## Overview
 
 The UART (Universal Asynchronous Receiver-Transmitter) is a serial communication protocol for communicating with computers, other microcontrollers, and serial peripherals.
@@ -21,25 +64,25 @@ The UART (Universal Asynchronous Receiver-Transmitter) is a serial communication
 #### Arduino-Compatible Style
 
 ```typescript
-import { Serial } from '@typecode/board-arduino-uno';
+import { UART0 } from '@typecode/board-arduino-uno';
 
 // Simple initialization with baud rate
-Serial.begin(9600);
+UART0.begin(9600);
 
 // Check if initialized
-if (Serial.isInitialized) {
-  Serial.println("Serial ready");
+if (UART0.isInitialized) {
+  UART0.println("Serial ready");
 }
 ```
 
 #### Fluent Configuration Style
 
 ```typescript
-import { Serial } from '@typecode/board-arduino-uno';
+import { UART0 } from '@typecode/board-arduino-uno';
 import { UARTParity, UARTStopBits, UARTFlowControl } from '@typecode/core';
 
 // Full configuration with all options
-Serial.config
+UART0.config
   .baudRate(115200)
   .dataBits(8)
   .parity(UARTParity.NONE)
@@ -49,7 +92,7 @@ Serial.config
   .begin();
 
 // Simple configuration
-Serial.config
+UART0.config
   .baudRate(9600)
   .begin();
 ```
@@ -61,9 +104,9 @@ Serial.config
 Print values without newline.
 
 ```typescript
-Serial.print("Hello");
-Serial.print("Value: ", 42);
-Serial.print(3.14159);
+UART0.print("Hello");
+UART0.print("Value: ", 42);
+UART0.print(3.14159);
 ```
 
 #### println(...args)
@@ -71,8 +114,8 @@ Serial.print(3.14159);
 Print values with newline (CRLF on Arduino).
 
 ```typescript
-Serial.println("Hello World");
-Serial.println("Count: ", 10);
+UART0.println("Hello World");
+UART0.println("Count: ", 10);
 ```
 
 #### printf(format, ...args)
@@ -80,8 +123,8 @@ Serial.println("Count: ", 10);
 Printf-style formatted output.
 
 ```typescript
-Serial.printf("Temperature: %.2f°C\n", 23.5);
-Serial.printf("Hex: 0x%02X, Dec: %d\n", 255, 255);
+UART0.printf("Temperature: %.2f°C\n", 23.5);
+UART0.printf("Hex: 0x%02X, Dec: %d\n", 255, 255);
 ```
 
 #### write(data)
@@ -90,13 +133,13 @@ Write raw data. Returns number of bytes written.
 
 ```typescript
 // Single byte
-Serial.write(0x41);  // 'A'
+UART0.write(0x41);  // 'A'
 
 // Byte array
-Serial.write(new Uint8Array([0x01, 0x02, 0x03]));
+UART0.write(new Uint8Array([0x01, 0x02, 0x03]));
 
 // String
-Serial.write("Hello");
+UART0.write("Hello");
 ```
 
 ### Arduino-Compatible Read Operations
@@ -106,8 +149,8 @@ Serial.write("Hello");
 Returns number of bytes available to read.
 
 ```typescript
-if (Serial.available() > 0) {
-  const data = Serial.read();
+if (UART0.available() > 0) {
+  const data = UART0.read();
 }
 ```
 
@@ -116,7 +159,7 @@ if (Serial.available() > 0) {
 Read a single byte. Returns -1 if no data available.
 
 ```typescript
-const byte = Serial.read();
+const byte = UART0.read();
 if (byte >= 0) {
   // Valid data
 }
@@ -127,7 +170,7 @@ if (byte >= 0) {
 Look at next byte without consuming it.
 
 ```typescript
-const nextByte = Serial.peek();
+const nextByte = UART0.peek();
 ```
 
 #### flush()
@@ -135,7 +178,7 @@ const nextByte = Serial.peek();
 Wait for transmission to complete.
 
 ```typescript
-Serial.flush();
+UART0.flush();
 ```
 
 ### Fluent Write Operations
@@ -147,7 +190,7 @@ The fluent write API provides chainable methods with result checking.
 Write text followed by CRLF (\r\n).
 
 ```typescript
-const result = Serial.write.line("Hello World");
+const result = UART0.write.line("Hello World");
 // Sends: "Hello World\r\n"
 ```
 
@@ -156,7 +199,7 @@ const result = Serial.write.line("Hello World");
 Write text followed by LF only (\n).
 
 ```typescript
-const result = Serial.write.ln("Unix style");
+const result = UART0.write.ln("Unix style");
 // Sends: "Unix style\n"
 ```
 
@@ -165,7 +208,7 @@ const result = Serial.write.ln("Unix style");
 Write raw string without line ending.
 
 ```typescript
-const result = Serial.write.string("No newline");
+const result = UART0.write.string("No newline");
 ```
 
 #### write.char(c)
@@ -173,8 +216,8 @@ const result = Serial.write.string("No newline");
 Write a single character/byte.
 
 ```typescript
-Serial.write.char('A');   // Character
-Serial.write.char(65);    // Same, by ASCII code
+UART0.write.char('A');   // Character
+UART0.write.char(65);    // Same, by ASCII code
 ```
 
 #### write.byte(value)
@@ -182,7 +225,7 @@ Serial.write.char(65);    // Same, by ASCII code
 Write a single byte value (0-255).
 
 ```typescript
-Serial.write.byte(0xFF);
+UART0.write.byte(0xFF);
 ```
 
 #### write.bytes(data)
@@ -190,8 +233,8 @@ Serial.write.byte(0xFF);
 Write raw bytes from array.
 
 ```typescript
-Serial.write.bytes([0x01, 0x02, 0x03]);
-Serial.write.bytes(new Uint8Array([0xFF, 0xFE]));
+UART0.write.bytes([0x01, 0x02, 0x03]);
+UART0.write.bytes(new Uint8Array([0xFF, 0xFE]));
 ```
 
 #### write.format(fmt, ...args)
@@ -199,7 +242,7 @@ Serial.write.bytes(new Uint8Array([0xFF, 0xFE]));
 Printf-style formatting without newline.
 
 ```typescript
-Serial.write.format("Value: %d, Hex: 0x%02X", 42, 255);
+UART0.write.format("Value: %d, Hex: 0x%02X", 42, 255);
 ```
 
 #### write.formatln(fmt, ...args)
@@ -207,7 +250,7 @@ Serial.write.format("Value: %d, Hex: 0x%02X", 42, 255);
 Printf-style formatting with CRLF.
 
 ```typescript
-Serial.write.formatln("Count: %d, Float: %.2f", 10, 3.14);
+UART0.write.formatln("Count: %d, Float: %.2f", 10, 3.14);
 ```
 
 #### write.uint16(value, endian)
@@ -215,8 +258,8 @@ Serial.write.formatln("Count: %d, Float: %.2f", 10, 3.14);
 Write 16-bit unsigned integer.
 
 ```typescript
-Serial.write.uint16(0x1234, 'be');  // Big-endian: 0x12, 0x34
-Serial.write.uint16(0x1234, 'le');  // Little-endian: 0x34, 0x12
+UART0.write.uint16(0x1234, 'be');  // Big-endian: 0x12, 0x34
+UART0.write.uint16(0x1234, 'le');  // Little-endian: 0x34, 0x12
 ```
 
 #### write.int16(value, endian)
@@ -224,7 +267,7 @@ Serial.write.uint16(0x1234, 'le');  // Little-endian: 0x34, 0x12
 Write 16-bit signed integer.
 
 ```typescript
-Serial.write.int16(-100, 'be');
+UART0.write.int16(-100, 'be');
 ```
 
 #### write.uint32(value, endian) / write.int32(value, endian)
@@ -232,8 +275,8 @@ Serial.write.int16(-100, 'be');
 Write 32-bit integers.
 
 ```typescript
-Serial.write.uint32(0x12345678, 'be');
-Serial.write.int32(-1000, 'le');
+UART0.write.uint32(0x12345678, 'be');
+UART0.write.int32(-1000, 'le');
 ```
 
 ### Fluent Read Operations
@@ -245,12 +288,12 @@ The fluent read API provides chainable methods with timeout support and result c
 Read until newline (\n or \r\n).
 
 ```typescript
-const result = Serial.read.line(5000);  // 5 second timeout
+const result = UART0.read.line(5000);  // 5 second timeout
 
 if (result.ok) {
-  Serial.println(result.asStringTrim());
+  UART0.println(result.asStringTrim());
 } else if (result.timedOut) {
-  Serial.println("Timeout!");
+  UART0.println("Timeout!");
 }
 ```
 
@@ -260,13 +303,13 @@ Read until specific character or string.
 
 ```typescript
 // Until character
-const result = Serial.read.until(':', 3000);
+const result = UART0.read.until(':', 3000);
 
 // Until string
-const result = Serial.read.until("OK", 5000);
+const result = UART0.read.until("OK", 5000);
 
 // Until byte value
-const result = Serial.read.until(0x0D, 3000);  // CR
+const result = UART0.read.until(0x0D, 3000);  // CR
 ```
 
 #### read.untilEnter(timeout?)
@@ -274,11 +317,11 @@ const result = Serial.read.until(0x0D, 3000);  // CR
 Read until Enter key (handles \r, \n, or \r\n).
 
 ```typescript
-Serial.print("Enter name: ");
-const result = Serial.read.untilEnter(10000);
+UART0.print("Enter name: ");
+const result = UART0.read.untilEnter(10000);
 if (result.ok) {
-  Serial.print("Hello, ");
-  Serial.println(result.asStringTrim());
+  UART0.print("Hello, ");
+  UART0.println(result.asStringTrim());
 }
 ```
 
@@ -287,7 +330,7 @@ if (result.ok) {
 Read until space character.
 
 ```typescript
-const word = Serial.read.untilSpace(3000);
+const word = UART0.read.untilSpace(3000);
 ```
 
 #### read.untilTab(timeout?)
@@ -295,7 +338,7 @@ const word = Serial.read.untilSpace(3000);
 Read until tab character.
 
 ```typescript
-const field = Serial.read.untilTab(3000);
+const field = UART0.read.untilTab(3000);
 ```
 
 #### read.bytes(count, timeout?)
@@ -303,7 +346,7 @@ const field = Serial.read.untilTab(3000);
 Read exact number of bytes.
 
 ```typescript
-const result = Serial.read.bytes(4, 3000);
+const result = UART0.read.bytes(4, 3000);
 
 if (result.ok) {
   // Parse as different types
@@ -317,9 +360,9 @@ if (result.ok) {
 Read all available bytes.
 
 ```typescript
-if (Serial.available() > 0) {
-  const result = Serial.read.all();
-  Serial.println(result.asString());
+if (UART0.available() > 0) {
+  const result = UART0.read.all();
+  UART0.println(result.asString());
 }
 ```
 
@@ -328,9 +371,9 @@ if (Serial.available() > 0) {
 Read a single byte with result wrapper.
 
 ```typescript
-const result = Serial.read.byte();
+const result = UART0.read.byte();
 if (result.ok) {
-  Serial.println(result.asUint8());
+  UART0.println(result.asUint8());
 }
 ```
 
@@ -339,9 +382,9 @@ if (result.ok) {
 Read a single character as string.
 
 ```typescript
-const result = Serial.read.char();
+const result = UART0.read.char();
 if (result.ok) {
-  Serial.println(result.asString());
+  UART0.println(result.asString());
 }
 ```
 
@@ -405,8 +448,8 @@ enum UARTStatus {
 Register callback for when data is received.
 
 ```typescript
-Serial.onReceive((bytesAvailable: number) => {
-  Serial.println(`${bytesAvailable} bytes received`);
+UART0.onReceive((bytesAvailable: number) => {
+  UART0.println(`${bytesAvailable} bytes received`);
 });
 ```
 
@@ -415,7 +458,7 @@ Serial.onReceive((bytesAvailable: number) => {
 Register callback for when transmission completes.
 
 ```typescript
-Serial.onTransmitComplete(() => {
+UART0.onTransmitComplete(() => {
   // Safe to send more data
 });
 ```
@@ -425,8 +468,8 @@ Serial.onTransmitComplete(() => {
 Register callback for errors.
 
 ```typescript
-Serial.onError((error: UARTError) => {
-  Serial.println(`UART Error: ${error.message}`);
+UART0.onError((error: UARTError) => {
+  UART0.println(`UART Error: ${error.message}`);
 });
 ```
 
@@ -435,25 +478,25 @@ Serial.onError((error: UARTError) => {
 ### Command Parser
 
 ```typescript
-Serial.begin(115200);
-Serial.println("Ready. Commands: temp, led ON, led OFF");
+UART0.begin(115200);
+UART0.println("Ready. Commands: temp, led ON, led OFF");
 
 while (true) {
-  const cmd = Serial.read.untilEnter(10000);
+  const cmd = UART0.read.untilEnter(10000);
   
   if (cmd.ok) {
     const input = cmd.asStringTrim().toLowerCase();
     
     if (input === "temp") {
-      Serial.write.formatln("Temperature: %.2f°C", readTemp());
+      UART0.write.formatln("Temperature: %.2f°C", readTemp());
     } else if (input === "led on") {
       LED.high();
-      Serial.write.line("LED is ON");
+      UART0.write.line("LED is ON");
     } else if (input === "led off") {
       LED.low();
-      Serial.write.line("LED is OFF");
+      UART0.write.line("LED is OFF");
     } else {
-      Serial.write.line("Unknown command");
+      UART0.write.line("Unknown command");
     }
   }
 }
@@ -464,20 +507,20 @@ while (true) {
 ```typescript
 // Send binary frame: [0xAA][0x55][cmd][len][data...][checksum]
 function sendFrame(cmd: number, data: Uint8Array) {
-  Serial.write.byte(0xAA);
-  Serial.write.byte(0x55);
-  Serial.write.byte(cmd);
-  Serial.write.byte(data.length);
-  Serial.write.bytes(data);
+  UART0.write.byte(0xAA);
+  UART0.write.byte(0x55);
+  UART0.write.byte(cmd);
+  UART0.write.byte(data.length);
+  UART0.write.bytes(data);
   
   let checksum = cmd ^ data.length;
   for (const b of data) checksum ^= b;
-  Serial.write.byte(checksum);
+  UART0.write.byte(checksum);
 }
 
 // Read binary frame
 function readFrame(): { cmd: number; data: Uint8Array } | null {
-  const header = Serial.read.bytes(4, 1000);
+  const header = UART0.read.bytes(4, 1000);
   if (!header.ok) return null;
   
   if (header.bytes[0] !== 0xAA || header.bytes[1] !== 0x55) {
@@ -487,7 +530,7 @@ function readFrame(): { cmd: number; data: Uint8Array } | null {
   const cmd = header.bytes[2];
   const len = header.bytes[3];
   
-  const data = Serial.read.bytes(len + 1, 1000);
+  const data = UART0.read.bytes(len + 1, 1000);
   if (!data.ok) return null;
   
   // Verify checksum
@@ -502,11 +545,11 @@ function readFrame(): { cmd: number; data: Uint8Array } | null {
 ### Non-Polling with Callbacks
 
 ```typescript
-Serial.begin(115200);
+UART0.begin(115200);
 
-Serial.onReceive((available) => {
+UART0.onReceive((available) => {
   while (available-- > 0) {
-    const byte = Serial.read();
+    const byte = UART0.read();
     processByte(byte);
   }
 });

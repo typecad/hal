@@ -2912,6 +2912,11 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       diagnostics,
       boardConstants,
     });
+    
+    // Validate peripheral instances against board capacity
+    const { validatePeripherals } = require('./peripheral-validation');
+    const validationDiagnostics = validatePeripherals(peripheralUsage, boardConstants);
+    diagnostics.push(...validationDiagnostics);
   } catch (e) {
     // If peripheral analysis fails, use empty usage
     peripheralUsage = {
@@ -2927,6 +2932,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       outputPins: new Set(),
       inputPullupPins: new Set(),
       inputPins: new Set(),
+      i2cInstancesUsed: new Set(),
+      spiInstancesUsed: new Set(),
+      uartInstancesUsed: new Set(),
     };
   }
 

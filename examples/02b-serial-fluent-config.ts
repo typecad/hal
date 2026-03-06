@@ -5,11 +5,11 @@
 // Shows: Serial.config.baudRate().parity().dataBits().begin()
 // ---------------------------------------------------------------------------
 
-import { Serial } from '@typecode/board-arduino-uno';
+import { UART0 } from '@typecode/board-arduino-uno';
 import { UARTParity, UARTStopBits, UARTFlowControl } from '@typecode/core';
 
 // Fluent configuration with all options
-Serial.config
+UART0.config
   .baudRate(115200)
   .dataBits(8)
   .parity(UARTParity.NONE)
@@ -19,8 +19,8 @@ Serial.config
   .begin();
 
 // Simple configuration (just baud rate)
-Serial.config
+UART0.config
   .baudRate(9600)
   .begin();
 
-Serial.println("Serial Fluent Config Example");
+UART0.println("Serial Fluent Config Example");

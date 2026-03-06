@@ -5,10 +5,10 @@
 // requests. Shows: begin(address), onReceive(), onRequest()
 // ---------------------------------------------------------------------------
 
-import { I2C0, Serial } from '@typecode/board-arduino-uno';
+import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
 import { LED }          from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.begin(9600);
 
 // Slave address (must be unique on bus)
 const SLAVE_ADDR = 0x08;
@@ -25,14 +25,14 @@ I2C0.begin(SLAVE_ADDR);
 
 // Register callbacks for slave mode
 I2C0.onReceive((howMany: number) => {
-  Serial.println(`Received ${howMany} bytes from master`);
+  UART0.println(`Received ${howMany} bytes from master`);
   
   // Read all received bytes
   receivedData = [];
   while (I2C0.available() > 0) {
     const byte = I2C0.read();
     receivedData.push(byte);
-    Serial.println(`  Got: 0x${byte.toString(16)}`);
+    UART0.println(`  Got: 0x${byte.toString(16)}`);
   }
   
   // First byte is typically a command/register
@@ -41,7 +41,7 @@ I2C0.onReceive((howMany: number) => {
     switch (command) {
       case 0x01:  // Set response data
         responseData = new Uint8Array(receivedData.slice(1));
-        Serial.println("Updated response data");
+        UART0.println("Updated response data");
         break;
       case 0x02:  // Toggle LED
         LED.toggle();
@@ -59,8 +59,8 @@ I2C0.onRequest(() => {
   // I2C0.write(responseData);
 });
 
-Serial.println(`I2C Slave ready at address 0x${SLAVE_ADDR.toString(16)}`);
-Serial.println("Waiting for master requests...");
+UART0.println(`I2C Slave ready at address 0x${SLAVE_ADDR.toString(16)}`);
+UART0.println("Waiting for master requests...");
 
 // Main loop - slave callbacks handle I2C communication
 while (true) {

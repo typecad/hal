@@ -35,6 +35,12 @@ export interface PeripheralUsage {
   inputPullupPins: Set<number>;
   /** Pins configured as input (no pullup) */
   inputPins: Set<number>;
+  /** Specific I2C bus instances used (0 for I2C0, 1 for I2C1, etc.) */
+  i2cInstancesUsed: Set<number>;
+  /** Specific SPI bus instances used (0 for SPI0, 1 for SPI1, etc.) */
+  spiInstancesUsed: Set<number>;
+  /** Specific UART instances used (0 for UART0/Serial, 1 for UART1/Serial1, etc.) */
+  uartInstancesUsed: Set<number>;
 }
 
 /**
@@ -54,6 +60,9 @@ export function createEmptyPeripheralUsage(): PeripheralUsage {
     outputPins: new Set(),
     inputPullupPins: new Set(),
     inputPins: new Set(),
+    i2cInstancesUsed: new Set(),
+    spiInstancesUsed: new Set(),
+    uartInstancesUsed: new Set(),
   };
 }
 
@@ -392,9 +401,40 @@ function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; m
     return;
   }
   
-  // Check for Serial/UART usage
-  if (receiver === 'Serial') {
+  // Check for I2C bus usage (I2C0, I2C1, I2C2, etc.)
+  if (receiverKind === 'i2c' || /^I2C\d+$/.test(receiver)) {
+    usage.i2c = true;
+    const match = receiver.match(/^I2C(\d+)$/);
+    if (match) {
+      usage.i2cInstancesUsed.add(parseInt(match[1], 10));
+    }
+    return;
+  }
+  
+  // Check for SPI bus usage (SPI0, SPI1, SPI2, etc.)
+  if (receiverKind === 'spi' || /^SPI\d+$/.test(receiver)) {
+    usage.spi = true;
+    const match = receiver.match(/^SPI(\d+)$/);
+    if (match) {
+      usage.spiInstancesUsed.add(parseInt(match[1], 10));
+    }
+    return;
+  }
+  
+  // Check for Serial/UART usage (Serial, Serial1, Serial2 or UART0, UART1, UART2)
+  if (receiver === 'Serial' || /^Serial\d*$/.test(receiver) || receiverKind === 'serial' || /^UART\d+$/.test(receiver)) {
     usage.uart = true;
+    // Handle Serial, Serial1, Serial2
+    const serialMatch = receiver.match(/^Serial(\d*)$/);
+    if (serialMatch) {
+      const num = serialMatch[1] === '' ? 0 : parseInt(serialMatch[1], 10);
+      usage.uartInstancesUsed.add(num);
+    }
+    // Handle UART0, UART1, UART2
+    const uartMatch = receiver.match(/^UART(\d+)$/);
+    if (uartMatch) {
+      usage.uartInstancesUsed.add(parseInt(uartMatch[1], 10));
+    }
     return;
   }
 }

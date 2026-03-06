@@ -26,7 +26,7 @@ export {
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX,
   
   // Peripheral bus instances
-  I2C0, SPI0, Serial,
+  I2C0, SPI0, UART0,
   
   // Timing / utility functions
   delay, millis, micros, delayMicroseconds, map, constrain,

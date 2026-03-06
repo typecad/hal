@@ -6,11 +6,11 @@
 //        handling partial reads with requestFrom()
 // ---------------------------------------------------------------------------
 
-import { I2C0, Serial } from '@typecode/board-arduino-uno';
-import { I2CStatus }    from '@typecode/core';
+import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
+import { I2CStatus }    from '@typecode/core/arduino';
 import { delay }        from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.begin(9600);
 I2C0.begin();
 I2C0.setClock(100000);  // Standard 100kHz mode
 
@@ -28,16 +28,16 @@ function readSensor(): number | null {
     case I2CStatus.SUCCESS:
       break;  // Continue with read
     case I2CStatus.DATA_TOO_LONG:
-      Serial.println("Error: Transmit buffer overflow");
+      UART0.println("Error: Transmit buffer overflow");
       return null;
     case I2CStatus.NACK_ON_ADDRESS:
-      Serial.println("Error: Device not responding (NACK on address)");
+      UART0.println("Error: Device not responding (NACK on address)");
       return null;
     case I2CStatus.NACK_ON_DATA:
-      Serial.println("Error: Device rejected data (NACK on data)");
+      UART0.println("Error: Device rejected data (NACK on data)");
       return null;
     case I2CStatus.OTHER_ERROR:
-      Serial.println("Error: Unknown I2C error");
+      UART0.println("Error: Unknown I2C error");
       return null;
   }
   
@@ -46,7 +46,7 @@ function readSensor(): number | null {
   
   // Check if we got the expected number of bytes
   if (bytesReceived < 2) {
-    Serial.println(`Warning: Only received ${bytesReceived} bytes (expected 2)`);
+    UART0.println(`Warning: Only received ${bytesReceived} bytes (expected 2)`);
     
     // Read whatever is available
     if (bytesReceived === 0) {
@@ -71,16 +71,16 @@ while (true) {
   if (value !== null) {
     consecutiveErrors = 0;
     const temperature = value / 100.0;
-    Serial.println(`Temperature: ${temperature}°C`);
+    UART0.println(`Temperature: ${temperature}°C`);
   } else {
     consecutiveErrors++;
     if (consecutiveErrors >= MAX_ERRORS) {
-      Serial.println("Max errors reached, attempting bus recovery...");
+      UART0.println("Max errors reached, attempting bus recovery...");
       if (I2C0.recover()) {
-        Serial.println("Bus recovery successful");
+        UART0.println("Bus recovery successful");
         consecutiveErrors = 0;
       } else {
-        Serial.println("Bus recovery failed");
+        UART0.println("Bus recovery failed");
       }
     }
   }

@@ -5,10 +5,11 @@
 // Shows: begin(), transfer(), setMode(), setBitOrder(), setFrequency()
 // ---------------------------------------------------------------------------
 
-import { SPI0, Serial, D10 } from '@typecode/board-arduino-uno';
+import { SPI0, UART0 } from '@typecode/board-arduino-uno/arduino';
+import { D10 } from '@typecode/board-arduino-uno';
 import { delay } from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.begin(9600);
 
 // Initialize SPI with default settings
 SPI0.begin();
@@ -23,7 +24,7 @@ const CS = D10;
 CS.asOutput();
 CS.high();  // Deselect device
 
-Serial.println("SPI Basic Example");
+UART0.println("SPI Basic Example");
 
 while (true) {
   // Select device
@@ -35,7 +36,7 @@ while (true) {
   // Deselect device
   CS.high();
   
-  Serial.println(`Sent: 0xAA, Received: 0x${response.toString(16)}`);
+  UART0.println(`Sent: 0xAA, Received: 0x${response.toString(16)}`);
   
   delay(1000);
   

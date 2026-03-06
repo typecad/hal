@@ -5,10 +5,11 @@
 // Shows: beginTransaction(), endTransaction(), SPISettings
 // ---------------------------------------------------------------------------
 
-import { SPI0, Serial, D10 } from '@typecode/board-arduino-uno';
+import { SPI0, UART0 } from '@typecode/board-arduino-uno/arduino';
+import { D10 } from '@typecode/board-arduino-uno';
 import { delay } from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.begin(9600);
 
 // Chip select pin
 const CS = D10;
@@ -18,7 +19,7 @@ CS.high();
 // Initialize SPI
 SPI0.begin();
 
-Serial.println("SPI Transactions Example");
+UART0.println("SPI Transactions Example");
 
 // Define settings for different devices
 const fastSettings = { frequency: 4_000_000, mode: 0, bitOrder: 'msb' as const };
@@ -34,7 +35,7 @@ while (true) {
   CS.high();
   SPI0.endTransaction();
   
-  Serial.println(`Fast device: 0x${response1.toString(16)}`);
+  UART0.println(`Fast device: 0x${response1.toString(16)}`);
   
   delay(100);
   
@@ -47,7 +48,7 @@ while (true) {
   CS.high();
   SPI0.endTransaction();
   
-  Serial.println(`Slow device: 0x${response2.toString(16)}`);
+  UART0.println(`Slow device: 0x${response2.toString(16)}`);
   
   delay(1000);
 }

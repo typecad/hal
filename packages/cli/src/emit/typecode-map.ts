@@ -234,39 +234,53 @@ export function renderArduinoBuiltin(
       break;
 
     // ------------------------------------------------------------------
-    // Serial port (ISerialPort) — Serial
+    // Serial port (ISerialPort) — UART0 → Serial, UART1 → Serial1, etc.
     // ------------------------------------------------------------------
-    case 'serial':
+    case 'serial': {
+      // Determine Serial instance based on receiver
+      // UART0 -> Serial, UART1 -> Serial1, UART2 -> Serial2
+      // Serial -> Serial, Serial1 -> Serial1, Serial2 -> Serial2
+      let serialInstance: string;
+      if (receiver.startsWith('UART')) {
+        const uartNum = receiver.slice(4);
+        serialInstance = uartNum === '0' ? 'Serial' : `Serial${uartNum}`;
+      } else if (receiver.startsWith('Serial')) {
+        serialInstance = receiver;
+      } else {
+        serialInstance = 'Serial';
+      }
+      
       switch (method) {
         case 'initialize': {
           // Extract baudRate from the config object if passed
           const configArg = args[0];
           if (configArg) {
             const baudField = getObjectField(configArg, 'baudRate');
-            if (baudField) return `Serial.begin(${renderArg(baudField)})`;
-            return `Serial.begin(${renderArg(configArg)})`;
+            if (baudField) return `${serialInstance}.begin(${renderArg(baudField)})`;
+            return `${serialInstance}.begin(${renderArg(configArg)})`;
           }
-          return `Serial.begin(9600)`;
+          return `${serialInstance}.begin(9600)`;
         }
-        case 'deinitialize':     return `Serial.end()`;
-        case 'print':            return `Serial.print(${allArgs()})`;
-        case 'println':          return `Serial.println(${allArgs()})`;
-        case 'printf':           return `Serial.printf(${allArgs()})`;
-        case 'write':            return `Serial.write(${allArgs()})`;
-        case 'read':             return `Serial.read()`;
-        case 'available':        return `Serial.available()`;
-        case 'availableForWrite':return `Serial.availableForWrite()`;
-        case 'flush':            return `Serial.flush()`;
-        case 'peek':             return `Serial.peek()`;
-        case 'writeString':      return `Serial.print(${a(0)})`;
-        case 'writeLine':        return `Serial.println(${a(0)})`;
-        case 'readString':       return `Serial.readString()`;
-        case 'readLine':         return `Serial.readStringUntil('\\n')`;
-        case 'clearRxBuffer':    return `while (Serial.available()) Serial.read()`;
-        case 'isConnected':      return `(bool)Serial`;
-        case 'setBaudRate':      return `Serial.begin(${a(0)})`;
+        case 'deinitialize':     return `${serialInstance}.end()`;
+        case 'print':            return `${serialInstance}.print(${allArgs()})`;
+        case 'println':          return `${serialInstance}.println(${allArgs()})`;
+        case 'printf':           return `${serialInstance}.printf(${allArgs()})`;
+        case 'write':            return `${serialInstance}.write(${allArgs()})`;
+        case 'read':             return `${serialInstance}.read()`;
+        case 'available':        return `${serialInstance}.available()`;
+        case 'availableForWrite':return `${serialInstance}.availableForWrite()`;
+        case 'flush':            return `${serialInstance}.flush()`;
+        case 'peek':             return `${serialInstance}.peek()`;
+        case 'writeString':      return `${serialInstance}.print(${a(0)})`;
+        case 'writeLine':        return `${serialInstance}.println(${a(0)})`;
+        case 'readString':       return `${serialInstance}.readString()`;
+        case 'readLine':         return `${serialInstance}.readStringUntil('\\n')`;
+        case 'clearRxBuffer':    return `while (${serialInstance}.available()) ${serialInstance}.read()`;
+        case 'isConnected':      return `(bool)${serialInstance}`;
+        case 'setBaudRate':      return `${serialInstance}.begin(${a(0)})`;
       }
       break;
+    }
 
     // ------------------------------------------------------------------
     // I2C bus (II2CBus) — I2C0 → Wire, I2C1 → Wire1, etc.
@@ -412,6 +426,170 @@ function renderFluentI2CDevice(
 }
 
 // ---------------------------------------------------------------------------
+// Fluent Serial/UART API handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Render fluent Serial/UART API calls to Arduino C++.
+ * 
+ * Patterns:
+ * - Serial.config.baudRate(115200).begin()
+ * - Serial.write.line("text") -> Serial.println("text")
+ * - Serial.write.ln("text") -> Serial.println("text")
+ * - Serial.write.string("text") -> Serial.print("text")
+ * - Serial.write.char('A') -> Serial.write('A')
+ * - Serial.write.bytes([1,2,3]) -> Serial.write(...)
+ * - Serial.write.format("fmt", args) -> Serial.printf("fmt", args)
+ * - Serial.write.formatln("fmt", args) -> Serial.printf("fmt\n", args)
+ * - Serial.write.byte(0xFF) -> Serial.write(0xFF)
+ * - Serial.write.uint16(val, 'be') -> Serial.write(...)
+ * - Serial.read.line(timeout) -> Serial.readStringUntil('\n')
+ * - Serial.read.until(delim, timeout) -> Serial.readStringUntil(delim)
+ * - Serial.read.untilEnter(timeout) -> Serial.readStringUntil('\n')
+ * - Serial.read.untilSpace(timeout) -> Serial.readStringUntil(' ')
+ * - Serial.read.untilTab(timeout) -> Serial.readStringUntil('\t')
+ * - Serial.read.bytes(count, timeout) -> Serial.readBytes(count)
+ * - Serial.read.all() -> Serial.readString()
+ * - Serial.read.byte() -> Serial.read()
+ * - Serial.read.char() -> (char)Serial.read()
+ */
+function renderFluentSerial(
+  parts: string[],
+  args: ReadonlyArray<ExpressionIR>,
+  renderArg: (e: ExpressionIR) => string,
+): string | undefined {
+  // Convert UART0 -> Serial, UART1 -> Serial1, etc.
+  // Or keep Serial, Serial1, Serial2 as-is
+  let serialInstance: string;
+  if (parts[0].startsWith('UART')) {
+    const uartNum = parts[0].slice(4);
+    serialInstance = uartNum === '0' ? 'Serial' : `Serial${uartNum}`;
+  } else {
+    serialInstance = parts[0];
+  }
+  const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
+
+  // Serial.config.baudRate / Serial.config.dataBits / Serial.config.parity / Serial.config.begin
+  if (parts[1] === 'config') {
+    const configMethod = parts[2];
+    switch (configMethod) {
+      case 'baudRate':
+      case 'dataBits':
+      case 'parity':
+      case 'stopBits':
+      case 'flowControl':
+      case 'tx':
+      case 'rx':
+      case 'rts':
+      case 'cts':
+      case 'rxBufferSize':
+      case 'txBufferSize':
+      case 'inverted':
+      case 'defaultTimeout':
+        // These are configuration methods that are chained - return comment
+        return `/* ${serialInstance}.config.${configMethod}(${a(0)}) */`;
+      case 'begin':
+        // Config begin without arguments uses stored config - for now default to 9600
+        return `${serialInstance}.begin(9600)`;
+    }
+    return undefined;
+  }
+
+  // Serial.write.line("text") -> Serial.println("text")
+  // Serial.write.format("fmt", args) -> Serial.printf("fmt", args)
+  if (parts[1] === 'write') {
+    const writeMethod = parts[2];
+    switch (writeMethod) {
+      case 'line':
+        // write.line(text) -> println with CRLF
+        return `${serialInstance}.println(${a(0)})`;
+      case 'ln':
+        // write.ln(text) -> println (LF only, but Arduino println does CRLF)
+        return `${serialInstance}.println(${a(0)})`;
+      case 'string':
+        // write.string(text) -> print (no newline)
+        return `${serialInstance}.print(${a(0)})`;
+      case 'char':
+        // write.char('A') or write.char(65) -> write
+        return `${serialInstance}.write(${a(0)})`;
+      case 'byte':
+        // write.byte(0xFF) -> write
+        return `${serialInstance}.write(${a(0)})`;
+      case 'bytes':
+        // write.bytes([1,2,3]) -> write
+        return `${serialInstance}.write(${a(0)})`;
+      case 'format':
+        // write.format("fmt", args) -> printf (no newline)
+        return `${serialInstance}.printf(${a(0)})`;
+      case 'formatln':
+        // write.formatln("fmt", args) -> printf with \n
+        const fmtArg = a(0);
+        // Add \n to the format string if it's a string literal
+        if (fmtArg.startsWith('"') && fmtArg.endsWith('"')) {
+          return `${serialInstance}.printf(${fmtArg.slice(0, -1)}\\n")`;
+        }
+        return `${serialInstance}.printf(${fmtArg})`;
+      case 'uint16':
+      case 'int16':
+      case 'uint32':
+      case 'int32':
+        // Multi-byte writes - need to write individual bytes
+        // For now, just write the low byte
+        // TODO: Proper multi-byte write implementation
+        return `${serialInstance}.write(${a(0)})`;
+    }
+    return undefined;
+  }
+
+  // Serial.read.line(timeout) -> readStringUntil('\n')
+  // Serial.read.until(delim, timeout) -> readStringUntil(delim)
+  if (parts[1] === 'read') {
+    const readMethod = parts[2];
+    switch (readMethod) {
+      case 'line':
+        // read.line(timeout) -> readStringUntil('\n')
+        return `${serialInstance}.readStringUntil('\\n')`;
+      case 'until':
+        // read.until(delim, timeout) -> readStringUntil(delim)
+        const delim = a(0);
+        // Handle character delimiter
+        if (delim.startsWith("'") && delim.endsWith("'")) {
+          // Character literal - convert to char
+          return `${serialInstance}.readStringUntil(${delim})`;
+        } else if (delim.startsWith('"') && delim.endsWith('"')) {
+          // String literal - take first char
+          return `${serialInstance}.readStringUntil(${delim}.charAt(0))`;
+        }
+        return `${serialInstance}.readStringUntil(${delim})`;
+      case 'untilEnter':
+        // read.untilEnter(timeout) -> readStringUntil('\n')
+        return `${serialInstance}.readStringUntil('\\n')`;
+      case 'untilSpace':
+        // read.untilSpace(timeout) -> readStringUntil(' ')
+        return `${serialInstance}.readStringUntil(' ')`;
+      case 'untilTab':
+        // read.untilTab(timeout) -> readStringUntil('\t')
+        return `${serialInstance}.readStringUntil('\\t')`;
+      case 'bytes':
+        // read.bytes(count, timeout) -> readBytes(count)
+        return `${serialInstance}.readBytes(${a(0)})`;
+      case 'all':
+        // read.all() -> readString()
+        return `${serialInstance}.readString()`;
+      case 'byte':
+        // read.byte() -> read()
+        return `${serialInstance}.read()`;
+      case 'char':
+        // read.char() -> (char)read()
+        return `(char)${serialInstance}.read()`;
+    }
+    return undefined;
+  }
+
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Statement-level entry point
 // ---------------------------------------------------------------------------
 
@@ -522,6 +700,12 @@ export function tryRenderTypecodeCallStatement(
     // e.g. "I2C0.config.sda"  "I2C0.config.speed"  "I2C0.config.begin"
     // e.g. "I2C0.device.read.from"  "I2C0.device.write.to"
     return renderFluentI2C(parts, args, renderArg, boardConstants);
+  } else if (parts.length >= 3 && (parts[0] === 'Serial' || parts[0].startsWith('Serial') || parts[0].startsWith('UART'))) {
+    // Fluent Serial/UART API
+    // e.g. "Serial.config.baudRate"  "Serial.config.begin"
+    // e.g. "Serial.write.line"  "Serial.write.format"  "Serial.read.line"  "Serial.read.until"
+    // Also handles UART0, UART1, UART2 which map to Serial, Serial1, Serial2
+    return renderFluentSerial(parts, args, renderArg);
   } else {
     return undefined;
   }

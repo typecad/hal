@@ -265,11 +265,13 @@ export interface IUARTFluentRead {
 }
 
 // ---------------------------------------------------------------------------
-// UART Bus Interface
+// UART Bus Interface (Fluent API only)
+//
+// For Arduino Serial-compatible API, use ISerialArduino from '@typecode/core/arduino'
 // ---------------------------------------------------------------------------
 
 /**
- * UART bus interface with Arduino-compatible and fluent APIs
+ * UART bus interface with fluent API
  */
 export interface IUARTBus {
   readonly uartNumber: number;
@@ -280,38 +282,16 @@ export interface IUARTBus {
   readonly config: IUARTFluentConfig;
   
   // --- Fluent Read/Write Operations ---
-  // These are callable (Arduino style) AND have fluent methods
-  // Usage: Serial.read() or Serial.read.line() or Serial.write(data) or Serial.write.line("text")
   readonly read: IUARTFluentRead;
   readonly write: IUARTFluentWrite;
 
-  // --- Arduino-Compatible API ---
-  /** Initialize with baud rate (Arduino style) */
-  begin(baud: number): void;
-  /** Initialize with full config */
-  begin(config: UARTConfig): void;
-  /** Deinitialize the UART */
-  end(): void;
-
-  // Buffer info
-  /** Number of bytes available to read */
-  available(): number;
-  /** Number of bytes that can be written */
-  availableForWrite(): number;
-  /** Peek at next byte without consuming */
-  peek(): number;
-  
-  // Buffer control
-  /** Wait for transmission to complete */
-  flush(): void;
-
-  // Status
+  // --- Status ---
   /** Get detailed status info */
   getStatus(): UARTStatusInfo;
   /** Clear error flags */
   clearErrors(): void;
 
-  // Callbacks
+  // --- Callbacks ---
   /** Register callback for when data is received */
   onReceive(callback: (bytesAvailable: number) => void): void;
   /** Register callback for when transmission completes */

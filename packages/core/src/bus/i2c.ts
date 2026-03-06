@@ -118,7 +118,9 @@ export interface II2CDeviceAccessor extends II2CReadBuilder, II2CWriteBuilder {
 }
 
 // ---------------------------------------------------------------------------
-// Bus interface (Arduino Wire-compatible + Fluent)
+// Bus interface (Fluent API only)
+//
+// For Arduino Wire-compatible API, use II2CArduino from '@typecode/core/arduino'
 // ---------------------------------------------------------------------------
 
 export interface II2CBus {
@@ -133,49 +135,13 @@ export interface II2CBus {
   /** Access device at address for fluent read/write operations. */
   device(address: I2CAddress): II2CDeviceAccessor;
 
-  // --- Arduino Wire-compatible API ---
-  /** Initialize as I2C master. */
-  begin(): void;
-  /** Initialize as I2C slave with given address. */
-  begin(address: I2CAddress): void;
-
-  // Transactional write API
-  /** Begin a transmission to the given address. */
-  beginTransmission(address: I2CAddress): void;
-  /** Write data to the transmission buffer. Returns number of bytes written. */
-  write(data: number | Uint8Array | string): number;
-  /** End the transmission and send data. Returns I2CStatus. */
-  endTransmission(stop?: boolean): number;
-
-  // Read API
-  /** Request bytes from a slave. Returns number of bytes available. */
-  requestFrom(address: I2CAddress, quantity: number, stop?: boolean): number;
-  /** Number of bytes available to read. */
-  available(): number;
-  /** Read a single byte from the buffer. Returns -1 if no data available. */
-  read(): number;
-
-  // Clock control
-  /** Set the I2C clock frequency in Hz. */
-  setClock(clock: number): void;
-
-  // Slave mode callbacks
-  /** Register a callback for when data is received as slave. */
-  onReceive(handler: (howMany: number) => void): void;
-  /** Register a callback for when data is requested from slave. */
-  onRequest(handler: () => void): void;
-
-  // Error handling
+  // --- Error handling ---
   /** Register a global error handler for all operations. */
   onError(handler: (status: I2CStatus, address: I2CAddress, operation: 'read' | 'write') => void): void;
 
-  // Bus recovery
+  // --- Bus recovery ---
   /** Attempt to recover a stuck bus (toggles SCL to release stuck slaves). */
   recover(): boolean;
-
-  // Cleanup
-  /** Disable the Wire peripheral. */
-  end(): void;
 }
 
 // ---------------------------------------------------------------------------

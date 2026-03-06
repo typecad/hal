@@ -9,7 +9,7 @@ const config: TypecodeConfig = {
   target: 'avr',
 
   // Board package - Arduino Uno with Arduino framework
-  board: '@typecode/board-arduino-uno',
+  board: 'packages/board-arduino-nano',
 
   // Fully-Qualified Board Name for arduino-cli
   fqbn: 'arduino:avr:uno',
@@ -31,7 +31,7 @@ const config: TypecodeConfig = {
 
   // Console polyfill configuration
   console: {
-    baudRate: 9600,
+    baudRate: 115200,
   },
 };
 

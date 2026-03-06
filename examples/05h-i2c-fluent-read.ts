@@ -9,10 +9,10 @@
 // generating Wire calls. Currently experimental.
 // ---------------------------------------------------------------------------
 
-import { I2C0, Serial } from '@typecode/board-arduino-uno';
+import { I2C0, UART0 } from '@typecode/board-arduino-uno';
 import { delay }        from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.initialize({ baudRate: 9600 });
 
 // Initialize using fluent config
 I2C0.config
@@ -31,10 +31,10 @@ while (true) {
     // asUint16('be') = big-endian, asUint16('le') = little-endian
     const tempRaw = result.asUint16('be');
     const temperature = tempRaw / 100.0;
-    Serial.println(temperature);
+    UART0.println(temperature);
   } else {
     // Error handling with status
-    Serial.println(`I2C read failed: ${result.status}`);
+    UART0.println(`I2C read failed: ${result.status}`);
   }
   
   delay(1000);

@@ -2,6 +2,40 @@
 
 TypeCode provides a type-safe I2C API that mirrors Arduino's Wire library while adding compile-time safety and documentation.
 
+## Multiple I2C Buses
+
+TypeCode supports multiple I2C buses using numbered identifiers: `I2C0`, `I2C1`, `I2C2`, etc.
+
+| Identifier | Arduino Mapping | Availability |
+|------------|-----------------|--------------|
+| `I2C0` | `Wire` | Most boards |
+| `I2C1` | `Wire1` | ESP32, STM32, boards with multiple I2C |
+| `I2C2` | `Wire2` | Some STM32 boards |
+
+### Checking Board Capacity
+
+Each board package defines how many I2C buses are available:
+
+```typescript
+// Arduino Uno: Only I2C0 available
+import { I2C0 } from '@typecode/board-arduino-uno';
+I2C0.begin();  // ✓ Valid
+
+// ESP32: I2C0 and I2C1 available
+import { I2C0, I2C1 } from '@typecode/board-esp32-devkit';
+I2C0.begin();  // ✓ Valid
+I2C1.begin();  // ✓ Valid
+```
+
+### Compile-Time Validation
+
+Using an unavailable I2C bus generates a compile-time error:
+
+```typescript
+// On Arduino Uno (only has I2C0)
+I2C1.begin();  // ✗ Error: I2C1 is not available on Arduino Uno. Available: I2C0
+```
+
 ## Overview
 
 The I2C (Inter-Integrated Circuit) bus is a two-wire serial protocol for communicating with sensors, displays, EEPROMs, and other peripherals.

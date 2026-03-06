@@ -8,10 +8,10 @@
 // NOTE: This API is type-safe but requires transpiler support.
 // ---------------------------------------------------------------------------
 
-import { SPI0, Serial, D10 } from '@typecode/board-arduino-uno';
+import { SPI0, UART0, D10 } from '@typecode/board-arduino-uno';
 import { delay } from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.initialize({ baudRate: 9600 });
 
 // Fluent configuration
 SPI0.config
@@ -23,7 +23,7 @@ SPI0.config
 const CS = D10;
 CS.asOutput();
 
-Serial.println("SPI Fluent Transfer Example");
+UART0.println("SPI Fluent Transfer Example");
 
 while (true) {
   // Single byte transfer
@@ -31,7 +31,7 @@ while (true) {
   
   if (result1.ok) {
     const received = result1.asUint8();
-    Serial.println(`Transfer 0x55, received 0x${received.toString(16)}`);
+    UART0.println(`Transfer 0x55, received 0x${received.toString(16)}`);
   }
   
   delay(500);
@@ -46,7 +46,7 @@ while (true) {
     
     // Combine into a 32-bit value (big-endian)
     const value = (rxData[0] << 24) | (rxData[1] << 16) | (rxData[2] << 8) | rxData[3];
-    Serial.println(`32-bit value: ${value}`);
+    UART0.println(`32-bit value: ${value}`);
   }
   
   delay(1000);

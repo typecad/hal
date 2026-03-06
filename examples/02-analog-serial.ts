@@ -6,13 +6,13 @@
 // ---------------------------------------------------------------------------
 
 import { A0 } from '@typecode/board-arduino-uno';
-import { Serial } from '@typecode/board-arduino-uno';
+import { UART0 } from '@typecode/board-arduino-uno/arduino';
 import { delay } from '@typecode/board-arduino-uno';
 
-Serial.begin(9600);
+UART0.begin(9600);
 
 while (true) {
   const value = A0.read();
-  Serial.println(value);
+  UART0.println(value);
   delay(500);
 }

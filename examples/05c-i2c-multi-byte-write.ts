@@ -6,10 +6,10 @@
 //        writing arrays, write() returns byte count
 // ---------------------------------------------------------------------------
 
-import { I2C0, Serial } from '@typecode/board-arduino-uno';
+import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
 import { delay }        from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.begin(9600);
 I2C0.begin();
 I2C0.setClock(400000);
 
@@ -63,15 +63,15 @@ function writeWithTracking(register: number, values: number[]): number {
 
 // Configure sensor at startup
 if (configureSensor()) {
-  Serial.println("Sensor configured successfully");
+  UART0.println("Sensor configured successfully");
 } else {
-  Serial.println("Sensor configuration failed");
+  UART0.println("Sensor configuration failed");
 }
 
 // Example: Write calibration data using buffer
 const calibData = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
 if (writeBuffer(0x88, calibData)) {
-  Serial.println("Calibration data written");
+  UART0.println("Calibration data written");
 }
 
 // Main loop
@@ -83,7 +83,7 @@ while (true) {
   const status = I2C0.endTransmission();
   
   if (status === 0) {
-    Serial.println("Register written");
+    UART0.println("Register written");
   }
   
   delay(5000);

@@ -6,10 +6,10 @@
 //        device abstraction patterns
 // ---------------------------------------------------------------------------
 
-import { I2C0, Serial } from '@typecode/board-arduino-uno';
+import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
 import { delay }        from '@typecode/board-arduino-uno';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.begin(9600);
 I2C0.begin();
 I2C0.setClock(400000);
 
@@ -97,9 +97,9 @@ function readAccel(): { x: number; y: number; z: number } | null {
 
 // Initialize devices
 if (initMPU6050()) {
-  Serial.println("MPU-6050 initialized");
+  UART0.println("MPU-6050 initialized");
 } else {
-  Serial.println("MPU-6050 not found");
+  UART0.println("MPU-6050 not found");
 }
 
 // Main loop - read from multiple devices
@@ -110,18 +110,18 @@ while (true) {
   if (I2C0.endTransmission() === 0) {
     if (I2C0.requestFrom(BME280_ADDR, 2) >= 2) {
       const tempRaw = (I2C0.read() << 8) | I2C0.read();
-      Serial.print("Temp: ");
-      Serial.print(tempRaw / 100.0);
-      Serial.print("C  ");
+      UART0.print("Temp: ");
+      UART0.print(tempRaw / 100.0);
+      UART0.print("C  ");
     }
   }
   
   // Read accelerometer from MPU-6050
   const accel = readAccel();
   if (accel) {
-    Serial.print(`Accel: X=${accel.x} Y=${accel.y} Z=${accel.z}`);
+    UART0.print(`Accel: X=${accel.x} Y=${accel.y} Z=${accel.z}`);
   }
   
-  Serial.println("");
+  UART0.println("");
   delay(1000);
 }

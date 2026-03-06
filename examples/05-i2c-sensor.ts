@@ -6,11 +6,11 @@
 //        requestFrom(), available(), read()
 // ---------------------------------------------------------------------------
 
-import { I2C0, Serial } from '@typecode/board-arduino-uno';
+import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
 import { delay }        from '@typecode/board-arduino-uno';
 
-// Initialize Serial for debug output
-Serial.initialize({ baudRate: 9600 });
+// Initialize UART0 for debug output
+UART0.begin(9600);
 
 // Initialize I2C as master with 400kHz fast mode
 I2C0.begin();
@@ -37,10 +37,10 @@ while (true) {
       // Combine into raw temperature value
       const tempRaw = (msb << 8) | lsb;
       const temperature = tempRaw / 100.0;
-      Serial.println(temperature);
+      UART0.println(temperature);
     }
   } else {
-    Serial.println(`I2C error: ${status}`);
+    UART0.println(`I2C error: ${status}`);
   }
   
   delay(1000);

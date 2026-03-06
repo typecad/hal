@@ -56,6 +56,7 @@ export interface Diagnostic {
   line?: number;
   column?: number;
   code?: string;
+  source?: string;
 }
 
 export interface TreeShakingOptions {
@@ -117,7 +118,7 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "gen-libdefs" | "gen-decls" | "map-error";
+  command: "default" | "gen-libdefs" | "gen-decls" | "map-error" | "create-board";
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;
@@ -182,4 +183,36 @@ export interface ArduinoCompileResult {
 export interface ArduinoUploadResult {
   success: boolean;
   output: string;
+}
+
+// ---------------------------------------------------------------------------
+// Scaffold command options (create-board)
+// ---------------------------------------------------------------------------
+
+export interface ScaffoldCommandOptions {
+  command: "create-board";
+  /** Board name (e.g., 'my-custom-board') */
+  name: string;
+  /** Display name (e.g., 'My Custom Board') */
+  displayName?: string;
+  /** Vendor name */
+  vendor?: string;
+  /** Architecture identifier */
+  architecture?: string;
+  /** MCU part number */
+  mcu?: string;
+  /** Clock speed in MHz */
+  clockSpeedMhz?: number;
+  /** Flash size in KB */
+  flashKb?: number;
+  /** SRAM size in KB */
+  sramKb?: number;
+  /** EEPROM size in KB */
+  eepromKb?: number;
+  /** Fully Qualified Board Name */
+  fqbn?: string;
+  /** Output directory */
+  outDir?: string;
+  /** Generate minimal package */
+  minimal?: boolean;
 }

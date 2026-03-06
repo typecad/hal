@@ -155,28 +155,22 @@ export interface ISPIFluentDevice {
 }
 
 // ---------------------------------------------------------------------------
-// Arduino-Compatible Interface
+// Fluent-Only Interface
+//
+// For Arduino SPI-compatible API, use ISPIArduino from '@typecode/core/arduino'
 // ---------------------------------------------------------------------------
 
 /**
- * Arduino-compatible SPI bus interface
+ * Fluent SPI bus interface
  */
 export interface ISPIBus {
   readonly isInitialized: boolean;
-  readonly config: ISPIFluentConfig;
-  device(chipSelect: IDigitalPin): ISPIFluentDevice;
   
-  begin(): void;
-  beginTransaction(settings: SPISettings): void;
-  endTransaction(): void;
-  transfer(data: number): number;
-  transferBuffer(buffer: Uint8Array): Uint8Array;
-  write(data: number): void;
-  write16(data: number): void;
-  setFrequency(hz: number): void;
-  setMode(mode: SPIMode): void;
-  setBitOrder(order: SPIBitOrder): void;
-  end(): void;
+  // --- Fluent Configuration API ---
+  readonly config: ISPIFluentConfig;
+  
+  // --- Fluent Device Operations ---
+  device(chipSelect: IDigitalPin): ISPIFluentDevice;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +191,7 @@ export interface ISPIDevice {
 }
 
 /**
- * Create an SPI device wrapper
+ * Create an SPI device wrapper using fluent API
  */
 export function createSPIDevice(
   bus: ISPIBus,
@@ -207,49 +201,23 @@ export function createSPIDevice(
     bus,
     chipSelect,
     transfer(data: number | Uint8Array, _options?: SPITransferOptions): Uint8Array {
-      if (typeof data === 'number') {
-        const result = bus.transfer(data);
-        return new Uint8Array([result]);
-      }
-      return bus.transferBuffer(data);
+      const result = bus.device(chipSelect).transfer(data).execute();
+      return result.bytes;
     },
     write(data: number | Uint8Array, _options?: SPITransferOptions): void {
-      if (typeof data === 'number') {
-        bus.write(data);
-      } else {
-        for (const byte of data) {
-          bus.write(byte);
-        }
-      }
+      bus.device(chipSelect).write(data);
     },
     read(count: number, _options?: SPITransferOptions): Uint8Array {
-      const buffer = new Uint8Array(count);
-      for (let i = 0; i < count; i++) {
-        buffer[i] = bus.transfer(0xFF);
-      }
-      return buffer;
+      const result = bus.device(chipSelect).read(count).from(0);
+      return result.bytes;
     },
-    writeRegister(register: number, data: number | Uint8Array): void {
-      chipSelect.low();
-      bus.transfer(register);
-      if (typeof data === 'number') {
-        bus.transfer(data);
-      } else {
-        for (const byte of data) {
-          bus.transfer(byte);
-        }
-      }
-      chipSelect.high();
+    writeRegister(register: number, data: number | Uint8Array): Uint8Array {
+      const result = bus.device(chipSelect).write(data).to(register);
+      return new Uint8Array([result.bytesWritten]);
     },
     readRegister(register: number, count: number): Uint8Array {
-      chipSelect.low();
-      bus.transfer(register | 0x80);
-      const buffer = new Uint8Array(count);
-      for (let i = 0; i < count; i++) {
-        buffer[i] = bus.transfer(0xFF);
-      }
-      chipSelect.high();
-      return buffer;
+      const result = bus.device(chipSelect).read(count).from(register);
+      return result.bytes;
     },
   };
 }

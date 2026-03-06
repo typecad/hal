@@ -177,7 +177,7 @@ export {
 export { HIGH, LOW } from '@typecode/core';
 
 // Peripheral bus instances
-export { I2C0, SPI0, Serial } from './peripherals';
+export { I2C0, SPI0, UART0 } from './peripherals';
 
 // Timing / utility functions
 export { delay, millis, micros, delayMicroseconds, map, constrain } from './timing';

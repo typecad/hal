@@ -7,15 +7,15 @@
 
 import { Board, LOW } from '@typecode';
 
-Board.Serial.initialize({ baudRate: 115200 });
+Board.UART0.config.baudRate(115200).begin();
 Board.LED.config.output.initial(LOW);
 
-Board.Serial.println("Arduino Uno booted");
-Board.Serial.println("MCU: " + Board.definition.mcu);
-Board.Serial.println("Flash: " + Board.definition.memory.flash + " bytes");
+Board.UART0.println("Arduino Uno booted");
+Board.UART0.println("MCU: " + Board.definition.mcu);
+Board.UART0.println("Flash: " + Board.definition.memory.flash + " bytes");
 
 while (true) {
   const sensor = Board.A0.read();
-  Board.Serial.println(sensor);
+  Board.UART0.println(sensor);
   Board.LED.toggle();
 }

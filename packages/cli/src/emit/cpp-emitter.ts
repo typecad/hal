@@ -143,7 +143,7 @@ function normalizeRawExpression(value: string, strategy: PlatformStrategy): stri
 
 /**
  * Render peripheral stub property access to appropriate C++ values.
- * TypeScript peripheral stubs (I2C0, SPI0, Serial) have properties like isInitialized,
+ * TypeScript peripheral stubs (I2C0, SPI0, UART0) have properties like isInitialized,
  * busNumber, speed that don't exist in C++. We map them to appropriate values.
  * 
  * @param chain Property access chain (e.g., ["I2C0", "isInitialized"])
@@ -155,16 +155,30 @@ function renderPeripheralProperty(chain: string[]): string | undefined {
   
   const [peripheral, property] = chain;
   
-  // Map peripheral names to their C++ equivalents
-  const peripheralMap: Record<string, string> = {
-    I2C0: "Wire",
-    SPI0: "SPI",
-    Serial: "Serial",
-    Serial2: "Serial",
-  };
+  // Resolve peripheral name to C++ equivalent
+  let cppPeripheral: string | undefined;
+  
+  // I2C buses: I2C0 -> Wire, I2C1 -> Wire1, I2C2 -> Wire2
+  if (/^I2C\d+$/.test(peripheral)) {
+    const num = peripheral.slice(3);
+    cppPeripheral = num === '0' ? 'Wire' : `Wire${num}`;
+  }
+  // SPI buses: SPI0 -> SPI, SPI1 -> SPI1, SPI2 -> SPI2
+  else if (/^SPI\d+$/.test(peripheral)) {
+    const num = peripheral.slice(3);
+    cppPeripheral = num === '0' ? 'SPI' : `SPI${num}`;
+  }
+  // UART ports: UART0 -> Serial, UART1 -> Serial1, UART2 -> Serial2
+  else if (/^UART\d+$/.test(peripheral)) {
+    const num = peripheral.slice(4);
+    cppPeripheral = num === '0' ? 'Serial' : `Serial${num}`;
+  }
+  // Serial ports: Serial -> Serial, Serial1 -> Serial1, Serial2 -> Serial2
+  else if (/^Serial\d*$/.test(peripheral)) {
+    cppPeripheral = peripheral;
+  }
   
   // Check if this is a known peripheral
-  const cppPeripheral = peripheralMap[peripheral];
   if (!cppPeripheral) return undefined;
   
   // Properties that exist on the C++ objects

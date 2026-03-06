@@ -6,7 +6,7 @@
 //
 //   import { Board } from './code/board-arduino-uno/board';
 //   Board.LED.high();
-//   Board.Serial.println("Hello");
+//   Board.UART0.println("Hello");
 //   Board.delay(1000);
 // ---------------------------------------------------------------------------
 
@@ -28,7 +28,7 @@ import {
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX,
 } from './pins';
 
-import { I2C0, SPI0, Serial } from './peripherals';
+import { I2C0, SPI0, UART0 } from './peripherals';
 import { ArduinoUno } from './index';
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ export interface IBoard {
   // ---- Peripherals ------------------------------------------------------
   readonly I2C0: II2CBus;
   readonly SPI0: ISPIBus;
-  readonly Serial: ISerialPort;
+  readonly UART0: ISerialPort;
 
   // ---- Pin collections --------------------------------------------------
   readonly digital: DigitalPins;
@@ -137,7 +137,7 @@ export const Board: IBoard = {
   // Peripherals
   I2C0,
   SPI0,
-  Serial,
+  UART0,
 
   // Collections
   digital: { D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13 },

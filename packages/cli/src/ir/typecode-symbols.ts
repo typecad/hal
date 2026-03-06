@@ -104,5 +104,12 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
  * Returns `'unknown'` for anything that is not a recognised typecode symbol.
  */
 export function inferKindByName(name: string): TypecodeReceiverKind {
+  // Pattern match peripheral instances (I2C0, I2C1, I2C2, etc.)
+  if (/^I2C\d+$/.test(name)) return 'i2c';
+  if (/^SPI\d+$/.test(name)) return 'spi';
+  if (/^UART\d+$/.test(name)) return 'serial';
+  if (/^Serial\d*$/.test(name)) return 'serial';
+  
+  // Fall back to static mapping for pins and other symbols
   return STATIC_KINDS[name] ?? 'unknown';
 }

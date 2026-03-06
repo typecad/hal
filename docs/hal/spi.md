@@ -2,6 +2,40 @@
 
 TypeCode provides a type-safe SPI API that mirrors Arduino's SPI library while adding compile-time safety and a fluent chainable interface.
 
+## Multiple SPI Buses
+
+TypeCode supports multiple SPI buses using numbered identifiers: `SPI0`, `SPI1`, `SPI2`, etc.
+
+| Identifier | Arduino Mapping | Availability |
+|------------|-----------------|--------------|
+| `SPI0` | `SPI` | Most boards |
+| `SPI1` | `SPI1` | ESP32, STM32, boards with multiple SPI |
+| `SPI2` | `SPI2` | Some STM32 boards |
+
+### Checking Board Capacity
+
+Each board package defines how many SPI buses are available:
+
+```typescript
+// Arduino Uno: Only SPI0 available
+import { SPI0 } from '@typecode/board-arduino-uno';
+SPI0.begin();  // ✓ Valid
+
+// ESP32: SPI0 and SPI1 available
+import { SPI0, SPI1 } from '@typecode/board-esp32-devkit';
+SPI0.begin();  // ✓ Valid
+SPI1.begin();  // ✓ Valid
+```
+
+### Compile-Time Validation
+
+Using an unavailable SPI bus generates a compile-time error:
+
+```typescript
+// On Arduino Uno (only has SPI0)
+SPI1.begin();  // ✗ Error: SPI1 is not available on Arduino Uno. Available: SPI0
+```
+
 ## Overview
 
 SPI is a high-speed synchronous serial protocol for communicating with sensors, displays, SD cards, and other peripherals.

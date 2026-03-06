@@ -1,5 +1,5 @@
 import path from "node:path";
-import { CommandLineOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types";
+import { CommandLineOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions, ScaffoldCommandOptions } from "../types";
 
 const VERSION = "0.1.0";
 
@@ -12,6 +12,7 @@ USAGE
   typecode gen-libdefs <input.ts>
   typecode gen-decls <input.cpp|--all <directory>>
   typecode map-error <mapFile> [options]
+  typecode create-board <name> [options]
 
 Transpilation is always performed first. Use --compile, --upload, and
 --monitor to chain arduino-cli operations after transpilation.
@@ -69,6 +70,32 @@ TREE-SHAKING OPTIONS
 
   --help, -h              Show this help message
 
+BOARD SCAFFOLDING
+  create-board <name>     Create a new board package scaffold
+                          Creates a complete board definition package under packages/
+
+  --arch <id>             Architecture: avr, esp32, esp32s2, esp32s3, esp32c3, rp2040, samd, stm32, nrf52
+
+  --display-name <name>   Human-readable board name
+
+  --vendor <name>         Board vendor/manufacturer
+
+  --mcu <part>            MCU part number (e.g., ATmega328P, ESP32)
+
+  --clock <mhz>           Clock speed in MHz
+
+  --flash <kb>            Flash memory size in KB
+
+  --sram <kb>             SRAM size in KB
+
+  --eeprom <kb>           EEPROM size in KB
+
+  --fqbn <value>          Fully Qualified Board Name for arduino-cli
+
+  --outDir <path>         Output directory (default: packages/board-<name>)
+
+  --minimal               Generate only required files
+
 EXAMPLES
   # Transpile to generic C++
   typecode src/main.ts
@@ -111,11 +138,52 @@ function readFlags(args: string[], flags: string[]): string | undefined {
   return undefined;
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
     return "help";
+  }
+
+  // create-board subcommand
+  if (firstArg === "create-board") {
+    const name = argv[3];
+    if (!name || name.startsWith("-")) {
+      throw new Error("Missing board name. Use: create-board <name> [options]");
+    }
+
+    const displayName = readFlags(argv, ["--display-name", "--name"]);
+    const vendor = readFlags(argv, ["--vendor"]);
+    const architecture = readFlags(argv, ["--arch", "--architecture"]);
+    const mcu = readFlags(argv, ["--mcu"]);
+    const clockSpeedRaw = readFlags(argv, ["--clock", "--clock-speed"]);
+    const flashRaw = readFlags(argv, ["--flash", "--flash-kb"]);
+    const sramRaw = readFlags(argv, ["--sram", "--sram-kb"]);
+    const eepromRaw = readFlags(argv, ["--eeprom", "--eeprom-kb"]);
+    const fqbn = readFlags(argv, ["--fqbn"]);
+    const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
+    const minimal = argv.includes("--minimal");
+
+    const clockSpeedMhz = clockSpeedRaw ? Number(clockSpeedRaw) : undefined;
+    const flashKb = flashRaw ? Number(flashRaw) : undefined;
+    const sramKb = sramRaw ? Number(sramRaw) : undefined;
+    const eepromKb = eepromRaw ? Number(eepromRaw) : undefined;
+
+    return {
+      command: "create-board",
+      name,
+      displayName,
+      vendor,
+      architecture,
+      mcu,
+      clockSpeedMhz,
+      flashKb,
+      sramKb,
+      eepromKb,
+      fqbn,
+      outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+      minimal,
+    } as ScaffoldCommandOptions;
   }
 
   // Named subcommands
