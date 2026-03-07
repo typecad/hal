@@ -34,6 +34,8 @@ export interface VariableDeclarationIR {
   storage: "var" | "let" | "const";
   cppType: string;
   initializer?: ExpressionIR;
+  /** True when the variable should be marked as volatile in C++ (prevents compiler optimization). */
+  isVolatile?: boolean;
 }
 
 export interface AssignmentIR {
@@ -174,6 +176,7 @@ export interface TryIR {
   tryBlock: StatementIR[];
   catchParam?: string;
   catchBlock?: StatementIR[];
+  finallyBlock?: StatementIR[];
 }
 
 export interface ThrowIR {
@@ -219,7 +222,24 @@ export type StatementIR =
   | TryIR
   | ThrowIR
   | LabeledIR
-  | BlockIR;
+  | BlockIR
+  | TypecodeCallStatementIR;
+
+/**
+ * A typecode SDK method call as a statement (e.g., UART0.config.baudRate(115200).begin()).
+ * This is a statement-level version of typecode-call for fluent chains.
+ */
+export interface TypecodeCallStatementIR {
+  kind: "typecode-call";
+  sourceSpan: SourceSpan;
+  leadingComments?: string[];
+  trailingComments?: string[];
+  receiver: string;
+  receiverKind: import('./typecode-symbols').TypecodeReceiverKind;
+  method: string;
+  args: ExpressionIR[];
+  configMethod?: string;
+}
 
 export type CppType = string;
 
@@ -227,6 +247,7 @@ export interface ParameterIR {
   name: string;
   cppType: string;
   defaultValue?: ExpressionIR;
+  isRest: boolean;
 }
 
 export interface FunctionIR {
@@ -261,6 +282,11 @@ export interface ClassFieldIR {
   initializer?: ExpressionIR;
 }
 
+export interface ClassConstructorIR {
+  parameters: ParameterIR[];
+  statements: StatementIR[];
+}
+
 export interface ClassMethodIR {
   name: string;
   returnType: CppType;
@@ -268,22 +294,61 @@ export interface ClassMethodIR {
   statements: StatementIR[];
   visibility: "public" | "private" | "protected";
   isStatic: boolean;
+  isAbstract: boolean;
 }
 
-export interface ClassConstructorIR {
-  parameters: ParameterIR[];
+export interface ClassGetterIR {
+  name: string;
+  returnType: CppType;
   statements: StatementIR[];
+  visibility: "public" | "private" | "protected";
+  isStatic: boolean;
+}
+
+export interface ClassSetterIR {
+  name: string;
+  parameter: ParameterIR;
+  statements: StatementIR[];
+  visibility: "public" | "private" | "protected";
+  isStatic: boolean;
 }
 
 export interface ClassIR {
   name: string;
   extendsClass?: string;
+  implementsInterfaces?: string[];
+  isAbstract: boolean;
   sourceSpan: SourceSpan;
   leadingComments?: string[];
   trailingComments?: string[];
   fields: ClassFieldIR[];
   methods: ClassMethodIR[];
+  getters: ClassGetterIR[];
+  setters: ClassSetterIR[];
   constructor?: ClassConstructorIR;
+}
+
+export interface InterfaceIR {
+  name: string;
+  sourceSpan: SourceSpan;
+  leadingComments?: string[];
+  trailingComments?: string[];
+  extendsInterfaces?: string[];
+  fields: { name: string; cppType: CppType; isOptional: boolean }[];
+  methods: { name: string; returnType: CppType; parameters: ParameterIR[] }[];
+}
+
+export interface NamespaceIR {
+  name: string;
+  sourceSpan: SourceSpan;
+  leadingComments?: string[];
+  trailingComments?: string[];
+  enums: EnumIR[];
+  classes: ClassIR[];
+  interfaces: InterfaceIR[];
+  typeAliases: TypeAliasIR[];
+  functions: FunctionIR[];
+  constants: { name: string; cppType: CppType; value: ExpressionIR }[];
 }
 
 export interface TypeAliasIR {
@@ -326,6 +391,8 @@ export interface ProgramIR {
   structs: StructDefIR[];
   enums: EnumIR[];
   classes: ClassIR[];
+  interfaces: InterfaceIR[];
+  namespaces: NamespaceIR[];
   typeAliases: TypeAliasIR[];
   topLevelStatements: StatementIR[];
   functions: FunctionIR[];
@@ -374,4 +441,6 @@ export type ExpressionIR =
    * The emitter generates a standalone function and passes its name.
    * debounceMs: Optional debounce delay in milliseconds (set by .debounce() chain).
    */
-  | { kind: "callback"; params: string[]; statements: StatementIR[]; sourceSpan: import("../types").SourceSpan; debounceMs?: number };
+  | { kind: "callback"; params: string[]; statements: StatementIR[]; sourceSpan: import("../types").SourceSpan; debounceMs?: number }
+  /** Arrow function or lambda expression: (params) => expression | { statements } */
+  | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean };

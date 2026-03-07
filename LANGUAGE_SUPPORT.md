@@ -374,23 +374,22 @@ interface PolyfillConfig {
 | Feature | Status | Priority | Implementation Notes |
 |---------|--------|----------|---------------------|
 | `for...in` loops | ✅ Done | Medium | Emits warning; for embedded C++, prefer array iteration |
-| Interface type checking | 🔴 Not started | Medium | Type-only; could generate runtime checks |
+| Interface type checking | ✅ Done | Medium | Type-only; interfaces stored in IR for type checking, no C++ output |
 | Type alias support | ✅ Done | Medium | `type MyType = number` → `using MyType = <type>;` |
 | `instanceof` operator | ✅ Done | Medium | Emits C++ `dynamic_cast`; RTTI must be enabled |
 | Spread in arrays | ✅ Done | Medium | `[...arr, x]` emits comment placeholder; limited support |
-| String interpolation | 🔴 Not started | Medium | `` `Hello ${name}` `` → string concat |
+| String interpolation | ✅ Done | Medium | `` `Hello ${name}` `` → `String(...) + "..."` concatenation |
 
 ### Low Priority
 
 | Feature | Status | Priority | Implementation Notes |
 |---------|--------|----------|---------------------|
-| Destructuring | 🔴 Not started | Low | Complex; requires temporary variables |
-| Arrow functions | 🔴 Not started | Low | C++11 lambdas have different capture semantics |
+| Destructuring | ✅ Done | Low | Object and array destructuring supported |
+| Arrow functions | ✅ Done | Low | Supported via callback IR for interrupt handlers |
 | Rest parameters | 🔴 Not started | Low | Requires variadic templates |
 | Function overloads | 🔴 Not started | Low | C++ supports but complex IR mapping |
-| `finally` block | 🔴 Not started | Low | `try/catch/finally` - finally not implemented |
-| Namespaces | 🔴 Not started | Low | C++ namespaces possible but not implemented |
-| Inheritance (`extends`) | 🔴 Not started | Low | Class inheritance not yet supported |
+| `finally` block | ✅ Done | Low | `try/catch/finally` - finally executes in catch, or catch-all + rethrow for finally-only |
+| Namespaces | ✅ Done | Low | C++ namespaces with enums, classes, functions, constants, type aliases |
 
 ---
 
@@ -413,8 +412,6 @@ interface PolyfillConfig {
 | Mixed enums | String/number mixed enums complex |
 | Computed property names | `{ [key]: value }` requires runtime support |
 | Getters/setters | Possible but not yet implemented |
-| `abstract` classes | C++ pure virtual possible but not mapped |
-| `implements` clause | Interface implementation not supported |
 | `export`/module system | C++ has different compilation model |
 | `declare` keyword | Ambient declarations not emitted |
 | Triple-slash directives | Only type references processed |

@@ -3,8 +3,9 @@
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  UART0.config.begin();
-  UART0.write.line("typeCode fluent API!!!");
+  Serial.begin(115200);
+  Serial.println("typeCode fluent API!!!");
+  pinMode(2, INPUT);
 }
 
 void loop()

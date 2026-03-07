@@ -184,6 +184,46 @@ interface CallExpressionIR {
 }
 ```
 
+### Typecode-Call Expression (Fluent Peripheral APIs)
+
+**CRITICAL for UART/I2C/SPI transpilation.**
+
+The `typecode-call` IR node represents calls to TypeCode SDK symbols that must be translated to Arduino APIs. This includes fluent peripheral chains like `UART0.write.line()`.
+
+```typescript
+interface TypecodeCallIR {
+  kind: 'typecode-call';
+  receiver: string;        // e.g., "UART0", "I2C0", "SPI0", "D13", "A0"
+  receiverKind: string;    // e.g., "serial", "i2c", "spi", "digital", "analog"
+  method: string;          // e.g., "write.line", "configBegin", "begin"
+  args: ExpressionIR[];
+  interruptMode?: "FALLING" | "RISING" | "CHANGE";  // For attachInterrupt
+}
+```
+
+#### Transpilation Examples
+
+| TypeScript | IR (`method` field) | C++ Output |
+|------------|---------------------|------------|
+| `UART0.write.line("text")` | `"write.line"` | `Serial.println("text")` |
+| `UART0.write.string("text")` | `"write.string"` | `Serial.print("text")` |
+| `UART0.config.baudRate(115200).begin()` | `"configBegin"` | `Serial.begin(115200)` |
+| `I2C0.config.speed(400000).begin()` | `"configBegin"` | `Wire.begin(); Wire.setClock(400000)` |
+| `SPI0.config.frequency(1000000).begin()` | `"configBegin"` | `SPI.begin()` |
+| `D13.high()` | `"high"` | `digitalWrite(13, HIGH)` |
+| `A0.read()` | `"read"` | `analogRead(A0)` |
+| `D13.config.output.initial(HIGH)` | `"config.output.initial"` | `pinMode(13, OUTPUT); digitalWrite(13, HIGH)` |
+| `D2.config.input.pullup()` | `"config.input.pullup"` | `pinMode(2, INPUT_PULLUP)` |
+| `D9.config.pwm.initial(50)` | `"config.pwm.initial"` | `pinMode(9, OUTPUT); analogWrite(9, 127)` |
+| `A0.config.analog()` | `"config.analog"` | `pinMode(A0, INPUT)` |
+| `D2.on.falling(cb)` | `"on.falling"` | `attachInterrupt(digitalPinToInterrupt(2), cb, FALLING)` |
+
+#### Implementation Notes
+
+The IR builder (`build-ir.ts`) uses `extractRootAndChain()` to detect nested property access chains and generate `typecode-call` IR nodes. The C++ emitter (`cpp-emitter.ts`) translates these via `renderFluentSerial()`, `renderFluentI2C()`, and `renderFluentSPI()` functions.
+
+**Do not remove the chain detection logic** - without it, fluent APIs will emit raw TypeScript as C++ (e.g., `UART0.write.line()` instead of `Serial.println()`).
+
 ## Type IR
 
 ### Type Representation

@@ -19,9 +19,18 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
   // Collect header file names that correspond to the merged .cpp files
   // These includes should be stripped from the entry sketch since the code is merged inline
   const mergedHeaderNames = new Set<string>();
+  // Also track header file paths for inlining
+  const headerFiles = new Map<string, string>(); // baseName -> headerPath
   for (const cppPath of cppFiles) {
     const baseName = path.basename(cppPath, path.extname(cppPath));
-    mergedHeaderNames.add(`${baseName}.h`);
+    const headerName = `${baseName}.h`;
+    mergedHeaderNames.add(headerName);
+    
+    // Check if corresponding .h file exists
+    const headerPath = path.join(path.dirname(cppPath), headerName);
+    if (fs.existsSync(headerPath) && fs.statSync(headerPath).isFile()) {
+      headerFiles.set(baseName, headerPath);
+    }
   }
 
   const originalSketch = fs.readFileSync(normalizedSketchPath, "utf8");
@@ -41,10 +50,29 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
   const moduleContents: string[] = [];
   
   for (const cppPath of cppFiles) {
+    const baseName = path.basename(cppPath, path.extname(cppPath));
     const relativePath = path.relative(sketchDir, cppPath).replace(/\\/g, "/");
+    
+    // First, inline the corresponding .h file if it exists
+    const headerPath = headerFiles.get(baseName);
+    if (headerPath) {
+      const headerRelativePath = path.relative(sketchDir, headerPath).replace(/\\/g, "/");
+      const headerContent = fs.readFileSync(headerPath, "utf8");
+      const sanitizedHeader = headerContent
+        .replace(/^\s*#include\s+<Arduino\.h>\s*$/gm, "")
+        .replace(/^\s*#include\s+"Arduino\.h"\s*$/gm, "");
+      
+      moduleContents.push(`\n// ---- merged from ${headerRelativePath} ----\n${sanitizedHeader}\n`);
+    }
     
     const content = fs.readFileSync(cppPath, "utf8");
     const rewritten = content.replace(/^\s*#include\s+"([^"]+)"\s*$/gm, (_line, includePath: string) => {
+      const headerName = path.basename(includePath);
+      // Strip includes for headers that we've already inlined
+      if (mergedHeaderNames.has(headerName)) {
+        return "";
+      }
+      
       const resolved = path.resolve(path.dirname(cppPath), includePath);
       if (!resolved.startsWith(path.resolve(sketchDir))) {
         return `#include "${includePath}"`;
@@ -76,8 +104,12 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
   const mergedSketch = `${moduleContents.join("")}// ---- entry sketch ----\n${sanitizedSketch}\n`;
   fs.writeFileSync(normalizedSketchPath, mergedSketch, "utf8");
 
+  // Clean up merged .cpp and .h files
   for (const cppPath of cppFiles) {
     fs.rmSync(cppPath, { force: true });
+  }
+  for (const headerPath of headerFiles.values()) {
+    fs.rmSync(headerPath, { force: true });
   }
 }
 

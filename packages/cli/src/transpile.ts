@@ -15,6 +15,7 @@ import { filterProgramIR } from "./ir/filter";
 import { flattenGeneratedModulesIntoSketch } from "./platform/arduino-compile";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
+import { tryGenerateArduinoLibDecl } from "./arduino-libs";
 
 function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
   if (!fs.existsSync(outDir)) {
@@ -456,6 +457,8 @@ export interface NativeCppModule {
   declPath: string;
   /** Path to the .cpp implementation file */
   cppPath: string;
+  /** Path to the .h header file (if exists) */
+  headerPath?: string;
   /** Module key for naming (derived from file name) */
   moduleKey: string;
 }
@@ -501,9 +504,15 @@ function detectNativeCppModule(
     const cppPath = declPath.replace(/\.d\.ts$/i, ".cpp");
     if (fs.existsSync(cppPath) && fs.statSync(cppPath).isFile()) {
       const moduleKey = path.basename(declPath, ".d.ts");
+      
+      // Check for corresponding .h header file
+      const headerPath = declPath.replace(/\.d\.ts$/i, ".h");
+      const headerExists = fs.existsSync(headerPath) && fs.statSync(headerPath).isFile();
+      
       return {
         declPath: path.resolve(declPath),
         cppPath: path.resolve(cppPath),
+        headerPath: headerExists ? path.resolve(headerPath) : undefined,
         moduleKey,
       };
     }
@@ -1307,6 +1316,14 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
     const outputCppPath = path.join(outDir, `${nativeModule.moduleKey}.cpp`);
     fs.writeFileSync(outputCppPath, cppContent, "utf8");
     nativeModuleOutputs.push(outputCppPath);
+    
+    // Also copy the header file if it exists
+    if (nativeModule.headerPath) {
+      const headerContent = readText(nativeModule.headerPath);
+      const outputHeaderPath = path.join(outDir, `${nativeModule.moduleKey}.h`);
+      fs.writeFileSync(outputHeaderPath, headerContent, "utf8");
+      nativeModuleOutputs.push(outputHeaderPath);
+    }
     
     console.log(`Copied native module: ${outputCppPath}`);
   }

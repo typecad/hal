@@ -95,6 +95,8 @@ export function filterProgramIR(
     boilerplates: program.boilerplates,
     diagnostics,
     boardConstants: program.boardConstants,
+    interfaces: program.interfaces,
+    namespaces: program.namespaces,
   };
 }
 

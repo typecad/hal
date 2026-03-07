@@ -4,7 +4,7 @@ import ts from "typescript";
 import { parseSource } from "../ast/parse";
 import { Diagnostic, SourceSpan } from "../types";
 import { withLineColumn } from "../utils/strings";
-import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, ParameterIR, ProgramIR, ReExportIR, StatementIR, TypeAliasIR } from "./model";
+import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ParameterIR, ProgramIR, ReExportIR, StatementIR, TypeAliasIR } from "./model";
 import { inferKindByName } from "./typecode-symbols";
 import { resolveBoardConstants, BoardConstants } from "./board-resolver";
 
@@ -914,15 +914,52 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
         }
       }
 
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL: Fluent Peripheral API Detection
+      // ═══════════════════════════════════════════════════════════════════════════
+      // This helper extracts the root identifier from nested property access chains
+      // like UART0.write.line() or I2C0.device(addr).write.bytes().
+      //
+      // DO NOT REMOVE: Without this, fluent peripheral APIs will NOT transpile:
+      //   - UART0.write.line("text") → would emit raw "UART0.write.line()" 
+      //   - I2C0.device(addr).read() → would emit raw "I2C0.device(addr).read()"
+      //   - SPI0.config.frequency().begin() → would emit raw chain
+      //
+      // The correct behavior generates a `typecode-call` IR node that the emitter
+      // translates to Arduino APIs (Serial.println, Wire.begin, etc.)
+      //
+      // See: docs/transpiler/ir-model.md - Typecode-Call IR Node
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Helper to extract root identifier and method chain from property access
+      // e.g., UART0.write.line -> { root: "UART0", chain: ["write", "line"] }
+      const extractRootAndChain = (node: ts.Expression): { root: string; chain: string[] } | undefined => {
+        if (ts.isIdentifier(node)) {
+          return { root: node.text, chain: [] };
+        }
+        if (ts.isPropertyAccessExpression(node)) {
+          const inner = extractRootAndChain(node.expression);
+          if (inner) {
+            return { root: inner.root, chain: [...inner.chain, node.name.text] };
+          }
+        }
+        return undefined;
+      };
+
       // symbol.method() — direct typecode symbol (A0.read(), Serial.println(), etc.)
-      if (ts.isIdentifier(receiverNode)) {
-        const kind = inferKindByName(receiverNode.text);
+      // Also handles nested chains like UART0.write.line() -> receiver: "UART0", method: "write.line"
+      const chainInfo = extractRootAndChain(expr.expression);
+      if (chainInfo) {
+        const kind = inferKindByName(chainInfo.root);
         if (kind !== 'unknown') {
+          // Build the full method path (e.g., "write.line" from UART0.write.line)
+          const fullMethod = chainInfo.chain.length > 0 
+            ? chainInfo.chain.join('.') 
+            : method;
           return {
             kind: "typecode-call",
-            receiver: receiverNode.text,
+            receiver: chainInfo.root,
             receiverKind: kind,
-            method,
+            method: fullMethod,
             args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
           };
         }
@@ -1982,7 +2019,7 @@ function lowerStatement(
     }];
   }
 
-  // Handle try/catch statements
+  // Handle try/catch/finally statements
   if (ts.isTryStatement(statement)) {
     const comments = extractNodeComments(statement, sourceText);
     const tryBlock = lowerStatementList(
@@ -2013,6 +2050,20 @@ function lowerStatement(
       );
     }
 
+    // Handle finally block
+    let finallyBlock: StatementIR[] | undefined;
+    if (statement.finallyBlock) {
+      finallyBlock = lowerStatementList(
+        statement.finallyBlock.statements,
+        fileName,
+        sourceText,
+        diagnostics,
+        functionReturnTypes,
+        localVariableTypes,
+        functionNameForDiagnostics,
+      );
+    }
+
     return [{
       kind: "try",
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
@@ -2021,6 +2072,7 @@ function lowerStatement(
       tryBlock,
       catchParam,
       catchBlock,
+      finallyBlock,
     }];
   }
 
@@ -2304,6 +2356,23 @@ function variableStatementToIR(
       continue;
     }
 
+    // Check if initializer is a volatile() call - if so, unwrap it and mark as volatile
+    let isVolatile = false;
+    let actualInitializer = declaration.initializer;
+    
+    if (declaration.initializer && ts.isCallExpression(declaration.initializer)) {
+      const callee = declaration.initializer.expression;
+      if (ts.isIdentifier(callee) && callee.text === "volatile") {
+        isVolatile = true;
+        // Unwrap: use the first argument as the actual initializer
+        if (declaration.initializer.arguments.length > 0) {
+          actualInitializer = declaration.initializer.arguments[0];
+        } else {
+          actualInitializer = undefined;
+        }
+      }
+    }
+
     const loweredDeclaration: Extract<StatementIR, { kind: "var_decl" }> = {
       kind: "var_decl",
       sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
@@ -2312,8 +2381,9 @@ function variableStatementToIR(
       name: declaration.name.text,
       storage,
       cppType: "auto",
-      initializer: declaration.initializer
-        ? expressionToIR(declaration.initializer, sourceText, diagnostics)
+      isVolatile,
+      initializer: actualInitializer
+        ? expressionToIR(actualInitializer, sourceText, diagnostics)
         : undefined,
     };
     commentsAssigned = true;
@@ -2455,6 +2525,8 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   const enums: EnumIR[] = [];
   const classes: ClassIR[] = [];
   const typeAliases: TypeAliasIR[] = [];
+  const interfaces: InterfaceIR[] = [];
+  const namespaces: NamespaceIR[] = [];
   const typeAliasNodes = new Map<string, ts.TypeNode>();
   const boilerplates = new Set<string>();
   const functionReturnTypes = buildFunctionReturnTypeMap(source);
@@ -2501,8 +2573,385 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       return;
     }
 
-    // Handle namespace declarations (compile-time only)
+    // Handle namespace declarations
     if (ts.isModuleDeclaration(node)) {
+      // Only handle namespace (not external modules)
+      if (!node.name || !ts.isIdentifier(node.name)) {
+        return;
+      }
+      
+      // Check if this has a body (namespace block)
+      if (!node.body || !ts.isModuleBlock(node.body)) {
+        return;
+      }
+      
+      const namespaceComments = extractNodeComments(node, sourceText);
+      const namespaceName = node.name.text;
+      
+      const nsEnums: EnumIR[] = [];
+      const nsClasses: ClassIR[] = [];
+      const nsInterfaces: InterfaceIR[] = [];
+      const nsTypeAliases: TypeAliasIR[] = [];
+      const nsFunctions: FunctionIR[] = [];
+      const nsConstants: { name: string; cppType: CppType; value: ExpressionIR }[] = [];
+      
+      // Process each statement in the namespace block
+      for (const nsNode of node.body.statements) {
+        // Handle nested namespaces (skip for now - could be recursive)
+        if (ts.isModuleDeclaration(nsNode)) {
+          continue;
+        }
+        
+        // Handle enums in namespace
+        if (ts.isEnumDeclaration(nsNode) && nsNode.name) {
+          const enumComments = extractNodeComments(nsNode, sourceText);
+          const isConst = nsNode.modifiers?.some(m => m.kind === ts.SyntaxKind.ConstKeyword) ?? false;
+          const members: { name: string; value?: number }[] = [];
+          
+          let nextValue = 0;
+          for (const member of nsNode.members) {
+            if (ts.isIdentifier(member.name)) {
+              let value: number | undefined;
+              
+              if (member.initializer) {
+                if (ts.isNumericLiteral(member.initializer)) {
+                  value = Number(member.initializer.text);
+                  nextValue = value + 1;
+                } else if (ts.isPrefixUnaryExpression(member.initializer) && 
+                           member.initializer.operator === ts.SyntaxKind.MinusToken &&
+                           ts.isNumericLiteral(member.initializer.operand)) {
+                  value = -Number((member.initializer.operand as ts.NumericLiteral).text);
+                  nextValue = value + 1;
+                }
+              } else {
+                value = nextValue;
+                nextValue++;
+              }
+              
+              members.push({
+                name: member.name.text,
+                value,
+              });
+            }
+          }
+          
+          nsEnums.push({
+            name: nsNode.name.text,
+            sourceSpan: makeSourceSpan(nsNode, fileName, sourceText),
+            leadingComments: enumComments.leadingComments,
+            trailingComments: enumComments.trailingComments,
+            members,
+            isConst,
+          });
+          continue;
+        }
+        
+        // Handle classes in namespace
+        if (ts.isClassDeclaration(nsNode) && nsNode.name) {
+          // Similar to top-level class handling but add to nsClasses
+          const className = nsNode.name.text;
+          const classComments = extractNodeComments(nsNode, sourceText);
+          const isAbstract = nsNode.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+          const extendsClass = nsNode.heritageClauses
+            ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+            ?.types[0]
+            ?.expression
+            ?.getText();
+          const implementsInterfaces = nsNode.heritageClauses
+            ?.find((clause) => clause.token === ts.SyntaxKind.ImplementsKeyword)
+            ?.types.map(t => t.expression?.getText())
+            .filter((name): name is string => name !== undefined);
+          
+          const fields: ClassFieldIR[] = [];
+          const methods: ClassMethodIR[] = [];
+          let ctor: { parameters: ParameterIR[]; statements: StatementIR[] } | undefined;
+          
+          for (const member of nsNode.members) {
+            if (ts.isConstructorDeclaration(member)) {
+              const ctorParams: ParameterIR[] = [];
+              const ctorLocalTypes = new Map<string, CppTypeHint>();
+              
+              for (const param of member.parameters) {
+                if (ts.isIdentifier(param.name)) {
+                  const paramType = typeNodeToCppType(param.type, typeAliasNodes);
+                  ctorLocalTypes.set(param.name.text, paramType);
+                  ctorParams.push({
+                    name: param.name.text,
+                    cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+                    defaultValue: param.initializer
+                      ? expressionToIR(param.initializer, sourceText, diagnostics)
+                      : undefined,
+                    isRest: false,
+                  });
+                }
+              }
+              
+              const ctorBody = member.body
+                ? lowerStatementList(
+                    member.body.statements,
+                    fileName,
+                    sourceText,
+                    diagnostics,
+                    functionReturnTypes,
+                    ctorLocalTypes,
+                    `${namespaceName}.${className}.constructor`,
+                    typeAliasNodes,
+                  )
+                : [];
+              ctor = { parameters: ctorParams, statements: ctorBody };
+              continue;
+            }
+            
+            if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+              const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+                ? "private"
+                : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+                  ? "protected"
+                  : "public";
+              
+              fields.push({
+                name: member.name.text,
+                cppType: (typeNodeToCppType(member.type, typeAliasNodes) === "void" ? "auto" : typeNodeToCppType(member.type, typeAliasNodes)) as CppType,
+                visibility,
+                initializer: member.initializer
+                  ? expressionToIR(member.initializer, sourceText, diagnostics)
+                  : undefined,
+              });
+              continue;
+            }
+            
+            if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+              const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+                ? "private"
+                : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+                  ? "protected"
+                  : "public";
+              
+              const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+              const isMethodAbstract = member.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+              
+              const methodParams: ParameterIR[] = [];
+              const methodLocalTypes = new Map<string, CppTypeHint>();
+              
+              for (const param of member.parameters) {
+                if (ts.isIdentifier(param.name)) {
+                  const paramType = typeNodeToCppType(param.type, typeAliasNodes);
+                  methodLocalTypes.set(param.name.text, paramType);
+                  methodParams.push({
+                    name: param.name.text,
+                    cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+                    defaultValue: param.initializer
+                      ? expressionToIR(param.initializer, sourceText, diagnostics)
+                      : undefined,
+                    isRest: false,
+                  });
+                }
+              }
+              
+              const methodBody = member.body
+                ? lowerStatementList(
+                    member.body.statements,
+                    fileName,
+                    sourceText,
+                    diagnostics,
+                    functionReturnTypes,
+                    methodLocalTypes,
+                    `${namespaceName}.${className}.${member.name.text}`,
+                    typeAliasNodes,
+                  )
+                : [];
+              
+              methods.push({
+                name: member.name.text,
+                returnType: (
+                  member.type?.kind === ts.SyntaxKind.ThisType
+                    ? `${className}*`
+                    : (typeNodeToCppType(member.type, typeAliasNodes) === "void"
+                        ? "void"
+                        : typeNodeToCppType(member.type, typeAliasNodes))
+                ) as CppType,
+                parameters: methodParams,
+                statements: methodBody,
+                visibility,
+                isStatic,
+                isAbstract: isMethodAbstract || isAbstract,
+              });
+            }
+          }
+          
+          nsClasses.push({
+            name: className,
+            extendsClass,
+            implementsInterfaces,
+            isAbstract,
+            sourceSpan: makeSourceSpan(nsNode, fileName, sourceText),
+            leadingComments: classComments.leadingComments,
+            trailingComments: classComments.trailingComments,
+            fields,
+            methods,
+            constructor: ctor,
+            getters: [],
+            setters: [],
+          });
+          continue;
+        }
+        
+        // Handle interfaces in namespace
+        if (ts.isInterfaceDeclaration(nsNode) && nsNode.name) {
+          const interfaceComments = extractNodeComments(nsNode, sourceText);
+          const interfaceName = nsNode.name.text;
+          const extendsInterfaces = nsNode.heritageClauses
+            ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+            ?.types.map(t => t.expression?.getText())
+            .filter((name): name is string => name !== undefined);
+          
+          const ifaceFields: InterfaceIR['fields'] = [];
+          const ifaceMethods: InterfaceIR['methods'] = [];
+          
+          for (const member of nsNode.members) {
+            if (ts.isPropertySignature(member) && member.name && ts.isIdentifier(member.name)) {
+              const propName = member.name.text;
+              const isOptional = !!member.questionToken;
+              const propType = typeNodeToCppType(member.type, typeAliasNodes);
+              
+              ifaceFields.push({
+                name: propName,
+                cppType: propType,
+                isOptional,
+              });
+              continue;
+            }
+            
+            if (ts.isMethodSignature(member) && member.name && ts.isIdentifier(member.name)) {
+              const methodName = member.name.text;
+              const returnType = typeNodeToCppType(member.type, typeAliasNodes);
+              const params: ParameterIR[] = [];
+              
+              for (const param of member.parameters) {
+                if (ts.isIdentifier(param.name)) {
+                  const paramType = typeNodeToCppType(param.type, typeAliasNodes);
+                  params.push({
+                    name: param.name.text,
+                    cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+                    isRest: !!param.dotDotDotToken,
+                  });
+                }
+              }
+              
+              ifaceMethods.push({
+                name: methodName,
+                returnType,
+                parameters: params,
+              });
+            }
+          }
+          
+          nsInterfaces.push({
+            name: interfaceName,
+            sourceSpan: makeSourceSpan(nsNode, fileName, sourceText),
+            leadingComments: interfaceComments.leadingComments,
+            trailingComments: interfaceComments.trailingComments,
+            extendsInterfaces,
+            fields: ifaceFields,
+            methods: ifaceMethods,
+          });
+          continue;
+        }
+        
+        // Handle type aliases in namespace
+        if (ts.isTypeAliasDeclaration(nsNode)) {
+          if (nsNode.typeParameters && nsNode.typeParameters.length > 0) {
+            continue;
+          }
+          const aliasComments = extractNodeComments(nsNode, sourceText);
+          const cppType = typeNodeToCppType(nsNode.type, typeAliasNodes);
+          nsTypeAliases.push({
+            name: nsNode.name.text,
+            sourceSpan: makeSourceSpan(nsNode, fileName, sourceText),
+            leadingComments: aliasComments.leadingComments,
+            trailingComments: aliasComments.trailingComments,
+            cppType,
+          });
+          continue;
+        }
+        
+        // Handle functions in namespace
+        if (ts.isFunctionDeclaration(nsNode) && nsNode.name) {
+          const fnComments = extractNodeComments(nsNode, sourceText);
+          const isAsync = nsNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+          
+          const localVariableTypes = new Map<string, CppTypeHint>();
+          const parameters: ParameterIR[] = [];
+          
+          for (const parameter of nsNode.parameters) {
+            if (ts.isIdentifier(parameter.name)) {
+              const parameterType = typeNodeToCppType(parameter.type, typeAliasNodes);
+              localVariableTypes.set(parameter.name.text, parameterType);
+              parameters.push({
+                name: parameter.name.text,
+                cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
+                defaultValue: parameter.initializer
+                  ? expressionToIR(parameter.initializer, sourceText, diagnostics)
+                  : undefined,
+                isRest: false,
+              });
+            }
+          }
+          
+          const bodyStatements = lowerStatementList(
+            nsNode.body?.statements ?? [],
+            fileName,
+            sourceText,
+            diagnostics,
+            functionReturnTypes,
+            localVariableTypes,
+            `${namespaceName}.${nsNode.name.text}`,
+            typeAliasNodes,
+          );
+          
+          nsFunctions.push({
+            originalName: nsNode.name.text,
+            isAsync,
+            returnType: resolveFunctionReturnType(nsNode.name.text, functionReturnTypes),
+            sourceSpan: makeSourceSpan(nsNode, fileName, sourceText),
+            leadingComments: fnComments.leadingComments,
+            trailingComments: fnComments.trailingComments,
+            parameters,
+            statements: bodyStatements,
+          });
+          continue;
+        }
+        
+        // Handle const variables in namespace
+        if (ts.isVariableStatement(nsNode)) {
+          const isConst = nsNode.declarationList.flags & ts.NodeFlags.Const;
+          
+          for (const decl of nsNode.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name) && decl.initializer) {
+              const constType = typeNodeToCppType(decl.type, typeAliasNodes);
+              nsConstants.push({
+                name: decl.name.text,
+                cppType: constType,
+                value: expressionToIR(decl.initializer, sourceText, diagnostics),
+              });
+            }
+          }
+          continue;
+        }
+      }
+      
+      namespaces.push({
+        name: namespaceName,
+        sourceSpan: makeSourceSpan(node, fileName, sourceText),
+        leadingComments: namespaceComments.leadingComments,
+        trailingComments: namespaceComments.trailingComments,
+        enums: nsEnums,
+        classes: nsClasses,
+        interfaces: nsInterfaces,
+        typeAliases: nsTypeAliases,
+        functions: nsFunctions,
+        constants: nsConstants,
+      });
       return;
     }
 
@@ -2539,6 +2988,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             defaultValue: parameter.initializer
               ? expressionToIR(parameter.initializer, sourceText, diagnostics)
               : undefined,
+            isRest: false,
           });
         }
       }
@@ -2612,6 +3062,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
               defaultValue: parameter.initializer
                 ? expressionToIR(parameter.initializer, sourceText, diagnostics)
                 : undefined,
+              isRest: false,
             });
           }
 
@@ -2733,11 +3184,21 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       }
 
       const className = node.name.text;
+      
+      // Check for abstract modifier
+      const isAbstract = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+      
       const extendsClass = node.heritageClauses
         ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
         ?.types[0]
         ?.expression
         ?.getText();
+      
+      // Get implemented interfaces
+      const implementsInterfaces = node.heritageClauses
+        ?.find((clause) => clause.token === ts.SyntaxKind.ImplementsKeyword)
+        ?.types.map(t => t.expression?.getText())
+        .filter((name): name is string => name !== undefined);
       const classComments = extractNodeComments(node, sourceText);
       const fields: ClassFieldIR[] = [];
       const methods: ClassMethodIR[] = [];
@@ -2759,6 +3220,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                 defaultValue: param.initializer
                   ? expressionToIR(param.initializer, sourceText, diagnostics)
                   : undefined,
+                isRest: false,
               });
             }
           }
@@ -2810,6 +3272,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
               : "public";
           
           const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+          const isMethodAbstract = member.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
           
           const methodParams: ParameterIR[] = [];
           const methodLocalTypes = new Map<string, CppTypeHint>();
@@ -2824,6 +3287,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                 defaultValue: param.initializer
                   ? expressionToIR(param.initializer, sourceText, diagnostics)
                   : undefined,
+                isRest: false,
               });
             }
           }
@@ -2854,6 +3318,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             statements: methodBody,
             visibility,
             isStatic,
+            isAbstract: isMethodAbstract || isAbstract,
           });
         }
       }
@@ -2861,12 +3326,16 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       classes.push({
         name: className,
         extendsClass,
+        implementsInterfaces,
+        isAbstract,
         sourceSpan: makeSourceSpan(node, fileName, sourceText),
         leadingComments: classComments.leadingComments,
         trailingComments: classComments.trailingComments,
         fields,
         methods,
         constructor: ctor,
+        getters: [],
+        setters: [],
       });
       return;
     }
@@ -2919,8 +3388,74 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       return;
     }
 
-  // Handle interface declarations (type-only, no C++ output needed)
+  // Handle interface declarations
     if (ts.isInterfaceDeclaration(node)) {
+      if (!node.name) {
+        return;
+      }
+
+      const interfaceComments = extractNodeComments(node, sourceText);
+      const interfaceName = node.name.text;
+      
+      // Get extended interfaces
+      const extendsInterfaces = node.heritageClauses
+        ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+        ?.types.map(t => t.expression?.getText())
+        .filter((name): name is string => name !== undefined);
+      
+      const fields: InterfaceIR['fields'] = [];
+      const methods: InterfaceIR['methods'] = [];
+      
+      for (const member of node.members) {
+        // Handle property signatures
+        if (ts.isPropertySignature(member) && member.name && ts.isIdentifier(member.name)) {
+          const propName = member.name.text;
+          const isOptional = !!member.questionToken;
+          const propType = typeNodeToCppType(member.type, typeAliasNodes);
+          
+          fields.push({
+            name: propName,
+            cppType: propType,
+            isOptional,
+          });
+          continue;
+        }
+        
+        // Handle method signatures
+        if (ts.isMethodSignature(member) && member.name && ts.isIdentifier(member.name)) {
+          const methodName = member.name.text;
+          const returnType = typeNodeToCppType(member.type, typeAliasNodes);
+          const params: ParameterIR[] = [];
+          
+          for (const param of member.parameters) {
+            if (ts.isIdentifier(param.name)) {
+              const paramType = typeNodeToCppType(param.type, typeAliasNodes);
+              params.push({
+                name: param.name.text,
+                cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+                isRest: !!param.dotDotDotToken,
+              });
+            }
+          }
+          
+          methods.push({
+            name: methodName,
+            returnType,
+            parameters: params,
+          });
+        }
+      }
+      
+      // Store the interface for type checking (no C++ output - interfaces are TypeScript-only)
+      interfaces.push({
+        name: interfaceName,
+        sourceSpan: makeSourceSpan(node, fileName, sourceText),
+        leadingComments: interfaceComments.leadingComments,
+        trailingComments: interfaceComments.trailingComments,
+        extendsInterfaces,
+        fields,
+        methods,
+      });
       return;
     }
 
@@ -3050,5 +3585,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     diagnostics,
     boardConstants,
     peripheralUsage,
+    interfaces,
+    namespaces,
   };
 }

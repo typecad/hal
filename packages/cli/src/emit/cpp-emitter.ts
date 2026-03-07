@@ -1244,7 +1244,8 @@ function renderStatement(
   }
 
   const declaredType = normalizeCppTypeForTarget(statement.cppType, strategy);
-  const declaration = renderTypedName(statement.cppType, statement.name, strategy, statement.storage === "const");
+  const volatilePrefix = statement.isVolatile ? "volatile " : "";
+  const declaration = `${volatilePrefix}${renderTypedName(statement.cppType, statement.name, strategy, statement.storage === "const")}`;
   if (statement.initializer) {
     // Handle array initializers
     if (statement.initializer.kind === "array") {
@@ -1731,6 +1732,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "try") {
+      // If there's a finally block but no catch, we need to catch all exceptions
+      const needsCatchAll = statement.finallyBlock && !statement.catchBlock;
+      
       appendSourceLine(`${indent}try`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
@@ -1748,8 +1752,34 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         for (const nested of statement.catchBlock) {
           appendRenderedStatement(nested, `${indent}  `);
         }
+        // If there's a finally block, execute it before re-throwing
+        if (statement.finallyBlock) {
+          for (const nested of statement.finallyBlock) {
+            appendRenderedStatement(nested, `${indent}  `);
+          }
+        }
         appendSourceLine(`${indent}}`);
+      } else if (needsCatchAll) {
+        // Catch-all for finally-only blocks
+        appendSourceLine(`${indent}catch (...)`);
+        appendSourceLine(`${indent}{`);
+        if (statement.finallyBlock) {
+          for (const nested of statement.finallyBlock) {
+            appendRenderedStatement(nested, `${indent}  `);
+          }
+        }
+        appendSourceLine(`${indent}  throw;`);  // Re-throw after finally
+        appendSourceLine(`${indent}}`);
+        emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+        return;
       }
+      
+      // If there's a finally block and we had a catch block, the finally was already executed
+      // If there's only a finally (no catch), we handled it above with catch(...)
+      // For try/catch/finally where we want finally to run after catch, we need a different approach
+      // Actually, in C++ we can't have a separate finally block - we need to use RAII or duplicate code
+      // For simplicity, if there's a finally with a catch, we execute finally after catch
+      
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
       return;
     }
@@ -2240,10 +2270,197 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("");
   }
 
+  // Emit namespaces
+  for (const ns of program.namespaces) {
+    emitCommentLines(ns.leadingComments, "", (line) => appendSourceLine(line));
+    appendSourceLine(`namespace ${ns.name} {`);
+    appendSourceLine("");
+    
+    // Emit namespace enums
+    for (const enumDef of ns.enums) {
+      emitCommentLines(enumDef.leadingComments, "  ", (line) => appendSourceLine(line));
+      const enumKeyword = enumDef.isConst ? "enum class" : "enum class";
+      const needsLongUnderlying = strategy.needsLargeEnumUnderlying() &&
+        enumDef.members.some(m => m.value !== undefined && (m.value > 32767 || m.value < -32768));
+      const underlyingType = needsLongUnderlying ? " : long" : "";
+      appendSourceLine(`  ${enumKeyword} ${enumDef.name}${underlyingType} {`);
+      for (let i = 0; i < enumDef.members.length; i++) {
+        const member = enumDef.members[i];
+        const valueSuffix = member.value !== undefined ? ` = ${member.value}` : "";
+        const commaSuffix = i < enumDef.members.length - 1 ? "," : "";
+        appendSourceLine(`    ${member.name}${valueSuffix}${commaSuffix}`);
+      }
+      appendSourceLine("  };");
+      emitCommentLines(enumDef.trailingComments, "  ", (line) => appendSourceLine(line));
+      appendSourceLine("");
+    }
+    
+    // Emit namespace type aliases
+    for (const typeAlias of ns.typeAliases) {
+      emitCommentLines(typeAlias.leadingComments, "  ", (line) => appendSourceLine(line));
+      const cppType = normalizeCppTypeForTarget(typeAlias.cppType, strategy);
+      if (cppType !== "auto" && !strategy.shouldSkipTypeAlias(cppType)) {
+        appendSourceLine(`  using ${typeAlias.name} = ${cppType};`);
+        emitCommentLines(typeAlias.trailingComments, "  ", (line) => appendSourceLine(line));
+        appendSourceLine("");
+      }
+    }
+    
+    // Emit namespace constants
+    for (const constant of ns.constants) {
+      const constType = normalizeCppTypeForTarget(constant.cppType, strategy);
+      if (constType !== "auto") {
+        appendSourceLine(`  const ${constType} ${constant.name} = ${renderExpression(constant.value, undefined, strategy)};`);
+      } else {
+        appendSourceLine(`  const auto ${constant.name} = ${renderExpression(constant.value, undefined, strategy)};`);
+      }
+    }
+    if (ns.constants.length > 0) {
+      appendSourceLine("");
+    }
+    
+    // Emit namespace classes
+    for (const classDef of ns.classes) {
+      emitCommentLines(classDef.leadingComments, "  ", (line) => appendSourceLine(line));
+      
+      if (classDef.isAbstract) {
+        appendSourceLine(`  // Abstract class - contains pure virtual methods`);
+      }
+      
+      appendSourceLine(`  class ${classDef.name} {`);
+      
+      // Group fields and methods by visibility
+      const publicFields = classDef.fields.filter(f => f.visibility === "public");
+      const privateFields = classDef.fields.filter(f => f.visibility === "private");
+      const protectedFields = classDef.fields.filter(f => f.visibility === "protected");
+      const publicMethods = classDef.methods.filter(m => m.visibility === "public");
+      const privateMethods = classDef.methods.filter(m => m.visibility === "private");
+      const protectedMethods = classDef.methods.filter(m => m.visibility === "protected");
+      
+      // Public section
+      if (publicFields.length > 0 || publicMethods.length > 0 || classDef.constructor) {
+        appendSourceLine("  public:");
+        
+        if (classDef.constructor) {
+          const ctorParams = renderParameters(classDef.constructor.parameters, strategy);
+          appendSourceLine(`    ${classDef.name}(${ctorParams}) {`);
+          for (const stmt of classDef.constructor.statements) {
+            appendRenderedStatement(stmt, "      ");
+          }
+          appendSourceLine("    }");
+          appendSourceLine("");
+        }
+        
+        for (const field of publicFields) {
+          const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, strategy)}` : "";
+          const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType, strategy));
+          appendSourceLine(`    ${renderTypedName(fieldType, field.name, strategy)}${initSuffix};`);
+        }
+        if (publicFields.length > 0) {
+          appendSourceLine("");
+        }
+        
+        for (const method of publicMethods) {
+          const methodParams = renderParameters(method.parameters, strategy);
+          const staticPrefix = method.isStatic ? "static " : "";
+          const returnType = normalizeCppTypeForTarget(method.returnType, strategy);
+          
+          if (method.isAbstract) {
+            appendSourceLine(`    virtual ${returnType} ${method.name}(${methodParams}) = 0;`);
+            appendSourceLine("");
+            continue;
+          }
+          
+          appendSourceLine(`    ${staticPrefix}${returnType} ${method.name}(${methodParams}) {`);
+          for (const stmt of method.statements) {
+            appendRenderedStatement(stmt, "      ");
+          }
+          appendSourceLine("    }");
+          appendSourceLine("");
+        }
+      }
+      
+      // Private section
+      if (privateFields.length > 0 || privateMethods.length > 0) {
+        appendSourceLine("  private:");
+        for (const field of privateFields) {
+          const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, strategy)}` : "";
+          const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType, strategy));
+          appendSourceLine(`    ${renderTypedName(fieldType, field.name, strategy)}${initSuffix};`);
+        }
+        for (const method of privateMethods) {
+          const methodParams = renderParameters(method.parameters, strategy);
+          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+          for (const stmt of method.statements) {
+            appendRenderedStatement(stmt, "      ");
+          }
+          appendSourceLine("    }");
+        }
+      }
+      
+      // Protected section
+      if (protectedFields.length > 0 || protectedMethods.length > 0) {
+        appendSourceLine("  protected:");
+        for (const field of protectedFields) {
+          const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, strategy)}` : "";
+          const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType, strategy));
+          appendSourceLine(`    ${renderTypedName(fieldType, field.name, strategy)}${initSuffix};`);
+        }
+        for (const method of protectedMethods) {
+          const methodParams = renderParameters(method.parameters, strategy);
+          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+          for (const stmt of method.statements) {
+            appendRenderedStatement(stmt, "      ");
+          }
+          appendSourceLine("    }");
+        }
+      }
+      
+      appendSourceLine("  };");
+      emitCommentLines(classDef.trailingComments, "  ", (line) => appendSourceLine(line));
+      appendSourceLine("");
+    }
+    
+    // Emit namespace functions
+    for (const fn of ns.functions) {
+      const parameterList = renderParameters(fn.parameters, strategy);
+      emitCommentLines(fn.leadingComments, "  ", (line) => appendSourceLine(line));
+      appendSourceLine(`  ${normalizeCppTypeForTarget(fn.returnType, strategy)} ${fn.originalName}(${parameterList}) {`);
+      for (const statement of fn.statements) {
+        appendRenderedStatement(statement, "    ");
+      }
+      appendSourceLine("  }");
+      emitCommentLines(fn.trailingComments, "  ", (line) => appendSourceLine(line));
+      appendSourceLine("");
+    }
+    
+    appendSourceLine("} // namespace ${ns.name}");
+    emitCommentLines(ns.trailingComments, "", (line) => appendSourceLine(line));
+    appendSourceLine("");
+  }
+
   // Emit classes
   for (const classDef of program.classes) {
     emitCommentLines(classDef.leadingComments, "", (line) => appendSourceLine(line));
-    const inheritanceClause = classDef.extendsClass ? ` : public ${classDef.extendsClass}` : "";
+    
+    // Build inheritance clause: extends + implements
+    const inheritanceParts: string[] = [];
+    if (classDef.extendsClass) {
+      inheritanceParts.push(`public ${classDef.extendsClass}`);
+    }
+    if (classDef.implementsInterfaces && classDef.implementsInterfaces.length > 0) {
+      // In C++, interfaces are just classes - use public inheritance
+      for (const iface of classDef.implementsInterfaces) {
+        inheritanceParts.push(`public ${iface}`);
+      }
+    }
+    const inheritanceClause = inheritanceParts.length > 0 ? ` : ${inheritanceParts.join(", ")}` : "";
+    
+    // Abstract classes get a comment (C++ doesn't have abstract keyword, uses pure virtual methods)
+    if (classDef.isAbstract) {
+      appendSourceLine(`// Abstract class - contains pure virtual methods`);
+    }
+    
     appendSourceLine(`class ${classDef.name}${inheritanceClause} {`);
     
     // Group fields by visibility
@@ -2299,6 +2516,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         const methodParams = renderParameters(method.parameters, strategy);
         const staticPrefix = method.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(method.returnType, strategy);
+        
+        // Handle abstract methods (pure virtual in C++)
+        if (method.isAbstract) {
+          appendSourceLine(`  virtual ${returnType} ${method.name}(${methodParams}) = 0;`);
+          appendSourceLine("");
+          continue;
+        }
+        
         appendSourceLine(`  ${staticPrefix}${returnType} ${method.name}(${methodParams}) {`);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ");

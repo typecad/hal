@@ -136,3 +136,34 @@ export function NoInit(): PropertyDecorator {
 export function Retain(): AnyDecorator {
   return memoryDecorator(MemoryRegion.SRAM, { retain: true });
 }
+
+// ---------------------------------------------------------------------------
+// Standalone variable markers (function-based API)
+// ---------------------------------------------------------------------------
+
+/**
+ * Mark a standalone variable as `volatile` to prevent compiler optimisation.
+ * 
+ * @example
+ * ```typescript
+ * import { volatile } from '@typecode/core';
+ * 
+ * let counter = volatile(0);
+ * let buffer = volatile(new Uint8Array(64));
+ * ```
+ * 
+ * The transpiler will emit `volatile` qualifier in C++:
+ * ```cpp
+ * volatile int counter = 0;
+ * volatile uint8_t buffer[64];
+ * ```
+ * 
+ * @param value - The initial value of the variable
+ * @returns The same value (no runtime effect)
+ */
+export function volatile<T>(value: T): T {
+  // At runtime, this is a no-op - just return the value.
+  // The transpiler detects calls to this function and emits
+  // the C++ `volatile` qualifier.
+  return value;
+}

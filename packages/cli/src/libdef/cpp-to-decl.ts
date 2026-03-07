@@ -130,6 +130,53 @@ function parseCppClass(content: string): CppParseResult {
     });
   }
   
+  // Parse methods with scope resolution (ClassName::methodName) - for .cpp implementation files
+  // This handles cases where the class is defined in a header but implemented in .cpp
+  const scopeResolutionRegex = /(?:^|\n)\s*(?:(\w+(?:\s*[*&])?)\s+)?(\w+)::(\w+)\s*\(([^)]*)\)\s*(?:const\s*)?(?:\{|;)/g;
+  let scopeMatch;
+  const classesFromImpl = new Map<string, CppClass>();
+  
+  while ((scopeMatch = scopeResolutionRegex.exec(content)) !== null) {
+    const returnType = scopeMatch[1]?.trim();
+    const className = scopeMatch[2];
+    const methodName = scopeMatch[3];
+    const params = scopeMatch[4];
+    
+    // Skip if this looks like a namespace (e.g., std::something)
+    if (!returnType && className.toLowerCase() === className) {
+      continue;
+    }
+    
+    if (!classesFromImpl.has(className)) {
+      classesFromImpl.set(className, {
+        name: className,
+        methods: [],
+        constructors: [],
+      });
+    }
+    
+    const cppClass = classesFromImpl.get(className)!;
+    
+    // Check if this is a constructor (method name matches class name)
+    if (methodName === className) {
+      cppClass.constructors.push({
+        parameters: parseParameters(params),
+      });
+    } else if (returnType) {
+      cppClass.methods.push({
+        returnType: mapCppTypeToTs(returnType),
+        name: methodName,
+        parameters: parseParameters(params),
+        isPublic: true, // Assume public for implementation files
+      });
+    }
+  }
+  
+  // Add inferred classes to result
+  for (const cppClass of classesFromImpl.values()) {
+    result.classes.push(cppClass);
+  }
+  
   // Parse class definitions - handle nested braces properly
   // Find class keyword and then find matching closing brace
   const classStartRegex = /\bclass\s+(\w+)\s*\{/g;

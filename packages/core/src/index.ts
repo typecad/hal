@@ -165,6 +165,7 @@ export {
   ProgramMemory,
   Packed,
   Volatile,
+  volatile,
   Aligned,
   DmaBuffer,
   RtcMemory,
