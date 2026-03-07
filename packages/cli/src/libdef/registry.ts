@@ -5,6 +5,7 @@ import { listFiles, readText } from "../utils/fs";
 import { toModuleKey, toPascalCase } from "../utils/strings";
 import { toArchitectureFromFqbn } from "../utils/toolchain";
 import { ImportIR } from "../ir/model";
+import { getArduinoLibraryHeaderName, isArduinoLibraryImport } from "../arduino-libs";
 
 export interface ResolvedImport {
   include: string;
@@ -28,6 +29,15 @@ export function loadLibraryDefinitions(definitionsDir: string): Map<string, Libr
 }
 
 function fallbackInclude(moduleSpecifier: string): string {
+  // For Arduino library imports, try to get the actual header file name
+  if (isArduinoLibraryImport(moduleSpecifier)) {
+    const actualHeader = getArduinoLibraryHeaderName(moduleSpecifier);
+    if (actualHeader) {
+      return `<${actualHeader}>`;
+    }
+  }
+  
+  // Fallback to PascalCase conversion for other modules
   const key = toModuleKey(moduleSpecifier);
   const include = `${toPascalCase(key)}.h`;
   return `<${include}>`;

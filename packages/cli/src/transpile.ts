@@ -275,43 +275,80 @@ function mapDistToSource(packageDir: string, distPath: string, subpath: string):
 }
 
 /**
- * Resolves an npm package import to its TypeScript source file
+ * Auto-generates .d.ts files for C++ modules that are missing declarations.
+ * Also tries to generate declarations for Arduino libraries.
+ * Returns list of generated files.
+ */
+function autoGenerateMissingDecls(
+  files: string[],
+  errors: string[]
+): string[] {
+  const generated: string[] = [];
+  const processedModules = new Set<string>();
+  
+  for (const error of errors) {
+    const modulePath = extractMissingModulePath(error);
+    if (!modulePath || processedModules.has(modulePath)) {
+      continue;
+    }
+    
+    processedModules.add(modulePath);
+    
+    // Try relative C++ module first
+    if (modulePath.startsWith(".")) {
+      for (const file of files) {
+        const cppPath = findCppForModule(file, modulePath);
+        if (cppPath) {
+          const result = generateDeclFromCpp(cppPath);
+          if (result) {
+            generated.push(result);
+            console.log(`\n  Auto-generated: ${path.relative(process.cwd(), result)}`);
+            console.log(`  from C++ source: ${path.relative(process.cwd(), cppPath)}`);
+            console.log(`  Review the generated types and adjust if needed.\n`);
+          }
+          break;
+        }
+      }
+    } else {
+      // Try Arduino library for bare module imports
+      for (const file of files) {
+        const declPath = tryGenerateArduinoLibDecl(modulePath, file);
+        if (declPath) {
+          generated.push(declPath);
+          break;
+        }
+      }
+    }
+  }
+  
+  return generated;
+}
+
+/**
+ * Resolves an npm package import to a TypeScript source file.
  */
 function resolveNpmPackageImport(
   fromFile: string,
   moduleSpecifier: string
 ): ResolvedNpmPackage | undefined {
-  // Skip relative imports
-  if (moduleSpecifier.startsWith(".")) {
-    return undefined;
-  }
-
   const { packageName, subpath } = parseModuleSpecifier(moduleSpecifier);
-
-  // Never pull the typecode CLI package into the user transpile graph.
-  // It is the transpiler itself, not an SDK library; its source files are
-  // TypeScript that the emitter was never designed to process as user code.
-  if (packageName === "typecode") {
-    return undefined;
-  }
   
-  // Find the package in node_modules
+  // Find the package directory
   const packageDir = findNodeModulesPackage(fromFile, packageName);
   if (!packageDir) {
     return undefined;
   }
-  
+
   // Read package.json
   const packageJson = readPackageJson(packageDir);
   if (!packageJson) {
     return undefined;
   }
-  
-  // Try to resolve using exports field
-  let sourcePath: string | undefined;
-  if (packageJson["exports"]) {
-    sourcePath = resolvePackageExports(packageDir, subpath, packageJson);
-  }
+
+  // Try to resolve via exports field first
+  let sourcePath = packageJson 
+    ? resolvePackageExports(packageDir, subpath, packageJson) 
+    : undefined;
   
   // Fallback: try common patterns
   if (!sourcePath) {
@@ -553,11 +590,12 @@ export interface TypeCheckResult {
 
 /**
  * Extracts module path from "Cannot find module" error messages.
- * Returns the module path if it's a relative import, undefined otherwise.
+ * Returns the module path (relative or bare module name), undefined otherwise.
  */
 function extractMissingModulePath(errorMessage: string): string | undefined {
   // Match: Cannot find module './lib/test' or its corresponding type declarations.
-  const match = errorMessage.match(/Cannot find module '(\.[^']+)' or its corresponding type declarations/);
+  // Also matches bare module names like 'BH1750'
+  const match = errorMessage.match(/Cannot find module '([^']+)' or its corresponding type declarations/);
   return match ? match[1] : undefined;
 }
 
@@ -580,45 +618,6 @@ function findCppForModule(fromFile: string, modulePath: string): string | undefi
   }
   
   return undefined;
-}
-
-/**
- * Auto-generates .d.ts files for C++ modules that are missing declarations.
- * Returns list of generated files.
- */
-function autoGenerateMissingDecls(
-  files: string[],
-  errors: string[]
-): string[] {
-  const generated: string[] = [];
-  const processedModules = new Set<string>();
-  
-  for (const error of errors) {
-    const modulePath = extractMissingModulePath(error);
-    if (!modulePath || processedModules.has(modulePath)) {
-      continue;
-    }
-    
-    // Find which file has this import
-    for (const file of files) {
-      const cppPath = findCppForModule(file, modulePath);
-      if (cppPath) {
-        processedModules.add(modulePath);
-        
-        // Generate the .d.ts file
-        const result = generateDeclFromCpp(cppPath);
-        if (result) {
-          generated.push(result);
-          console.log(`\n  Auto-generated: ${path.relative(process.cwd(), result)}`);
-          console.log(`  from C++ source: ${path.relative(process.cwd(), cppPath)}`);
-          console.log(`  Review the generated types and adjust if needed.\n`);
-        }
-        break;
-      }
-    }
-  }
-  
-  return generated;
 }
 
 /**

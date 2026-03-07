@@ -379,14 +379,22 @@ float BH1750::readLightLevel() {
 
 // ---- entry sketch ----
 
+#include <Microfire_SHT3x.h>
+
 // Auto-generated setup() for top-level statements
 void setup()
 {
   Serial.begin(115200);
   Serial.println("typeCode fluent");
   BH1750* lux = new BH1750(35);
+  Microfire::SHT3x* sht30 = new Microfire::SHT3x();
   pinMode(2, INPUT);
   lux->begin(32, 51, 0);
+  // SHT3x temperature/humidity sensor
+  // Uses I2C bus - TypeCode maps TwoWire to I2C automatically
+  sht30->begin(Wire, 68);
+  // Read sensor data
+  sht30->measure();
 }
 
 void loop()

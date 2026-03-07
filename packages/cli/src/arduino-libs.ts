@@ -7,7 +7,6 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
-import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
 
 /**
  * Information about an installed Arduino library
@@ -34,6 +33,15 @@ interface ArduinoCliLibrary {
   install_dir?: string;
   author?: string;
   sentence?: string;
+}
+
+/**
+ * Result from arduino-cli lib list --format json (wrapped format)
+ */
+interface ArduinoCliLibListResult {
+  installed_libraries?: {
+    library: ArduinoCliLibrary;
+  }[];
 }
 
 /**
@@ -83,13 +91,27 @@ export function getInstalledLibraries(): Map<string, ArduinoLibrary> {
   // Run arduino-cli lib list --format json
   const result = runArduinoCli(["lib", "list", "--format", "json"]);
   
-  if (!result || !Array.isArray(result)) {
+  if (!result) {
     libraryCache = libraries;
     cacheTimestamp = now;
     return libraries;
   }
 
-  for (const lib of result as ArduinoCliLibrary[]) {
+  // Handle both formats:
+  // 1. { installed_libraries: [{ library: {...} }] } (newer arduino-cli)
+  // 2. [{ ... }] (older format or different command)
+  let libList: ArduinoCliLibrary[] = [];
+  
+  if (Array.isArray(result)) {
+    libList = result as ArduinoCliLibrary[];
+  } else if (typeof result === "object" && result !== null) {
+    const wrapped = result as ArduinoCliLibListResult;
+    if (wrapped.installed_libraries && Array.isArray(wrapped.installed_libraries)) {
+      libList = wrapped.installed_libraries.map(item => item.library);
+    }
+  }
+
+  for (const lib of libList) {
     if (!lib.name || !lib.install_dir) {
       continue;
     }
@@ -254,20 +276,440 @@ export function isArduinoLibraryImport(moduleSpecifier: string): boolean {
 }
 
 /**
- * Output directory for generated Arduino library declarations
+ * Arduino-to-TypeCode type mappings
+ * Maps common Arduino peripheral types to TypeCode equivalents
+ * Note: Uses the instance names (I2C0, SPI0, UART0) as types for simplicity
  */
-function getArduinoLibDeclDir(): string {
-  // Use a global cache directory for Arduino library declarations
-  // This allows sharing between projects
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ".";
-  return path.join(homeDir, ".typecode", "arduino-libs");
+const ARDUINO_TYPE_MAPPINGS: Record<string, string> = {
+  // I2C - TypeCode uses I2C0 instance
+  "TwoWire": "I2C0",
+  "TwoWire*": "I2C0",
+  "TwoWire&": "I2C0",
+  // SPI - TypeCode uses SPI0 instance
+  "SPIClass": "SPI0",
+  "SPIClass*": "SPI0",
+  "SPIClass&": "SPI0",
+  // Serial - TypeCode uses UART0 instance
+  "HardwareSerial": "UART0",
+  "HardwareSerial*": "UART0",
+  "HardwareSerial&": "UART0",
+  "Stream": "UART0",
+  "Stream*": "UART0",
+  "Stream&": "UART0",
+  // Common Arduino types
+  "Print": "UART0",
+  "Print*": "UART0",
+  "Print&": "UART0",
+};
+
+/**
+ * Maps C++ types to TypeScript types
+ */
+function mapCppTypeToTs(cppType: string): string {
+  const trimmed = cppType.trim();
+  
+  // Remove const qualifier
+  const withoutConst = trimmed.replace(/^const\s+/, "");
+  
+  // Check Arduino type mappings first
+  if (ARDUINO_TYPE_MAPPINGS[withoutConst]) {
+    return ARDUINO_TYPE_MAPPINGS[withoutConst];
+  }
+  
+  // Basic type mappings
+  const typeMap: Record<string, string> = {
+    "int": "number",
+    "unsigned int": "number",
+    "uint8_t": "number",
+    "uint16_t": "number",
+    "uint32_t": "number",
+    "int8_t": "number",
+    "int16_t": "number",
+    "int32_t": "number",
+    "float": "number",
+    "double": "number",
+    "bool": "boolean",
+    "void": "void",
+    "char": "string",
+    "char*": "string",
+    "const char*": "string",
+    "std::string": "string",
+    "String": "string",
+    "byte": "number",
+    "word": "number",
+    "size_t": "number",
+  };
+  
+  // Check direct mapping
+  if (typeMap[withoutConst]) {
+    return typeMap[withoutConst];
+  }
+  
+  // Handle pointers - check if base type is an Arduino type
+  if (withoutConst.endsWith("*")) {
+    const baseType = withoutConst.slice(0, -1).trim();
+    if (ARDUINO_TYPE_MAPPINGS[baseType]) {
+      return ARDUINO_TYPE_MAPPINGS[baseType];
+    }
+    return "number";
+  }
+  
+  // Handle references - check if base type is an Arduino type
+  if (withoutConst.endsWith("&")) {
+    const baseType = withoutConst.slice(0, -1).trim();
+    if (ARDUINO_TYPE_MAPPINGS[baseType]) {
+      return ARDUINO_TYPE_MAPPINGS[baseType];
+    }
+    return mapCppTypeToTs(baseType);
+  }
+  
+  // Default to any for unknown types
+  return "any";
+}
+
+/**
+ * Extracts the parameter list from a function signature
+ */
+function parseParameters(paramString: string): { type: string; name: string }[] {
+  if (!paramString.trim()) {
+    return [];
+  }
+  
+  const params: { type: string; name: string }[] = [];
+  const parts = paramString.split(",");
+  
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    
+    // Handle default values (remove them for the declaration)
+    const withoutDefault = trimmed.split("=")[0].trim();
+    
+    // Split into tokens to find type and name
+    const tokens = withoutDefault.split(/\s+/);
+    if (tokens.length >= 2) {
+      // Last token is the name, rest is the type
+      let name = tokens[tokens.length - 1];
+      let type = tokens.slice(0, -1).join(" ");
+      
+      // Strip & and * prefixes from parameter names (C++ reference/pointer syntax)
+      // These can appear as &name or *name when the type doesn't include them
+      if (name.startsWith("&") || name.startsWith("*")) {
+        // Move the & or * to the type
+        type = type + name[0];
+        name = name.slice(1);
+      }
+      
+      params.push({ type: mapCppTypeToTs(type), name });
+    } else if (tokens.length === 1) {
+      // Just a type (unnamed parameter)
+      params.push({ type: mapCppTypeToTs(tokens[0]), name: "" });
+    }
+  }
+  
+  return params;
+}
+
+interface CppMethod {
+  name: string;
+  returnType: string;
+  parameters: { type: string; name: string }[];
+  isPublic: boolean;
+}
+
+interface CppClass {
+  name: string;
+  /** Fully qualified name including namespace (e.g., "Microfire::SHT3x") */
+  fullName: string;
+  /** Namespace prefix (e.g., "Microfire") */
+  namespace?: string;
+  methods: CppMethod[];
+  constructors: { parameters: { type: string; name: string }[] }[];
+}
+
+interface CppParseResult {
+  classes: CppClass[];
+  constants: { name: string; type: string; value: string }[];
+}
+
+/**
+ * Extract content inside a namespace block
+ */
+function extractNamespaceContent(content: string, namespaceName: string): string {
+  // Find namespace block: namespace Name { ... }
+  const namespaceRegex = new RegExp(`namespace\\s+${namespaceName}\\s*\\{`, 'g');
+  const match = namespaceRegex.exec(content);
+  if (!match) return "";
+  
+  const startIndex = match.index + match[0].length;
+  let braceCount = 1;
+  let endIndex = startIndex;
+  
+  while (endIndex < content.length && braceCount > 0) {
+    if (content[endIndex] === '{') braceCount++;
+    else if (content[endIndex] === '}') braceCount--;
+    endIndex++;
+  }
+  
+  return content.slice(startIndex, endIndex - 1);
+}
+
+/**
+ * Parse classes from content, optionally within a namespace
+ */
+function parseClassesFromContent(content: string, namespace?: string): CppClass[] {
+  const classes: CppClass[] = [];
+  
+  // Parse class definitions - handle nested braces properly
+  const classStartRegex = /\bclass\s+(\w+)\s*\{?/g;
+  let classStartMatch;
+  
+  while ((classStartMatch = classStartRegex.exec(content)) !== null) {
+    const className = classStartMatch[1];
+    const fullName = namespace ? `${namespace}::${className}` : className;
+    
+    const cppClass: CppClass = {
+      name: className,
+      fullName,
+      namespace,
+      methods: [],
+      constructors: [],
+    };
+    
+    // For header files, try to find method declarations
+    // Match: type name(params);
+    const methodRegex = /(\w+(?:\s*[*&])?)\s+(\w+)\s*\(([^)]*)\)\s*(?:const\s*)?;/g;
+    let methodMatch;
+    
+    while ((methodMatch = methodRegex.exec(content)) !== null) {
+      const returnType = methodMatch[1].trim();
+      const name = methodMatch[2].trim();
+      const params = methodMatch[3];
+      
+      // Skip keywords
+      if (["public", "private", "protected", "virtual", "static", "class", "struct"].includes(returnType)) {
+        continue;
+      }
+      
+      // Check if this is a constructor (name matches class name)
+      if (name === className) {
+        cppClass.constructors.push({
+          parameters: parseParameters(params),
+        });
+      } else {
+        cppClass.methods.push({
+          returnType: mapCppTypeToTs(returnType),
+          name,
+          parameters: parseParameters(params),
+          isPublic: true,
+        });
+      }
+    }
+    
+    classes.push(cppClass);
+  }
+  
+  return classes;
+}
+
+/**
+ * Parses a C++ class definition
+ */
+function parseCppClass(content: string): CppParseResult {
+  const result: CppParseResult = {
+    classes: [],
+    constants: [],
+  };
+  
+  // Parse top-level constants: const int NAME = value;
+  const constRegex = /const\s+(\w+)\s+(\w+)\s*=\s*([^;]+);/g;
+  let constMatch;
+  while ((constMatch = constRegex.exec(content)) !== null) {
+    result.constants.push({
+      type: mapCppTypeToTs(constMatch[1]),
+      name: constMatch[2],
+      value: constMatch[3].trim(),
+    });
+  }
+  
+  // Parse methods with scope resolution (ClassName::methodName) - for .cpp implementation files
+  const scopeResolutionRegex = /(?:^|\n)\s*(?:(\w+(?:\s*[*&])?)\s+)?(\w+)::(\w+)\s*\(([^)]*)\)\s*(?:const\s*)?(?:\{|;)/g;
+  let scopeMatch;
+  const classesFromImpl = new Map<string, CppClass>();
+  
+  while ((scopeMatch = scopeResolutionRegex.exec(content)) !== null) {
+    const returnType = scopeMatch[1]?.trim();
+    const className = scopeMatch[2];
+    const methodName = scopeMatch[3];
+    const params = scopeMatch[4];
+    
+    // Skip if this looks like a namespace (e.g., std::something)
+    if (!returnType && className.toLowerCase() === className) {
+      continue;
+    }
+    
+    if (!classesFromImpl.has(className)) {
+      classesFromImpl.set(className, {
+        name: className,
+        fullName: className,
+        methods: [],
+        constructors: [],
+      });
+    }
+    
+    const cppClass = classesFromImpl.get(className)!;
+    
+    // Check if this is a constructor (method name matches class name)
+    if (methodName === className) {
+      cppClass.constructors.push({
+        parameters: parseParameters(params),
+      });
+    } else if (returnType) {
+      cppClass.methods.push({
+        returnType: mapCppTypeToTs(returnType),
+        name: methodName,
+        parameters: parseParameters(params),
+        isPublic: true,
+      });
+    }
+  }
+  
+  // Add inferred classes to result
+  for (const cppClass of classesFromImpl.values()) {
+    result.classes.push(cppClass);
+  }
+  
+  // Parse namespaces first
+  const namespaceRegex = /namespace\s+(\w+)\s*\{/g;
+  let nsMatch;
+  const namespaces: string[] = [];
+  
+  while ((nsMatch = namespaceRegex.exec(content)) !== null) {
+    namespaces.push(nsMatch[1]);
+  }
+  
+  // Parse classes within each namespace
+  for (const ns of namespaces) {
+    const nsContent = extractNamespaceContent(content, ns);
+    const nsClasses = parseClassesFromContent(nsContent, ns);
+    result.classes.push(...nsClasses);
+  }
+  
+  // Parse classes outside of namespaces (skip if already found in a namespace)
+  const namespaceClassNames = new Set(result.classes.map(c => c.name));
+  const topLevelClasses = parseClassesFromContent(content);
+  for (const cls of topLevelClasses) {
+    if (!namespaceClassNames.has(cls.name)) {
+      result.classes.push(cls);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Find the project root by looking for package.json or tsconfig.json
+ */
+function findProjectRoot(fromFile: string): string | undefined {
+  let currentDir = path.dirname(path.resolve(fromFile));
+  
+  while (currentDir !== path.dirname(currentDir)) {
+    if (fs.existsSync(path.join(currentDir, "package.json")) ||
+        fs.existsSync(path.join(currentDir, "tsconfig.json"))) {
+      return currentDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  
+  return undefined;
+}
+
+/**
+ * Generate export-based declaration content for @types packages
+ */
+function generateExportDeclaration(
+  parsed: CppParseResult,
+  moduleDocstring?: string,
+  libraryName?: string
+): string {
+  const lines: string[] = [];
+  
+  // Add header comment explaining auto-generation and manual editing
+  lines.push("/**");
+  if (moduleDocstring) {
+    lines.push(` * ${moduleDocstring}`);
+  }
+  lines.push(" *");
+  lines.push(" * Auto-generated by TypeCode from Arduino library C++ headers.");
+  lines.push(" * Arduino peripheral types (TwoWire, HardwareSerial, etc.) are mapped to TypeCode equivalents.");
+  lines.push(" *");
+  lines.push(" * You can manually edit this file to:");
+  lines.push(" *   - Add missing methods or properties");
+  lines.push(" *   - Fix incorrect type mappings");
+  lines.push(" *   - Add JSDoc documentation");
+  lines.push(" *");
+  lines.push(" * To regenerate: delete this file and re-run typecode transpile.");
+  lines.push(" */");
+  lines.push("");
+  
+  // Export constants
+  for (const constant of parsed.constants) {
+    lines.push(`export declare const ${constant.name}: ${constant.type};`);
+  }
+  
+  if (parsed.constants.length > 0 && parsed.classes.length > 0) {
+    lines.push("");
+  }
+  
+  // Export classes
+  for (const cppClass of parsed.classes) {
+    lines.push(`export declare class ${cppClass.name} {`);
+    
+    // Add constructors
+    for (const ctor of cppClass.constructors) {
+      const params = ctor.parameters
+        .filter(p => p.name)
+        .map(p => `${p.name}: ${p.type}`)
+        .join(", ");
+      lines.push(`  constructor(${params});`);
+    }
+    
+    // Add public methods
+    const publicMethods = cppClass.methods.filter(m => m.isPublic);
+    for (const method of publicMethods) {
+      const params = method.parameters
+        .filter(p => p.name)
+        .map(p => `${p.name}: ${p.type}`)
+        .join(", ");
+      lines.push(`  ${method.name}(${params}): ${method.returnType};`);
+    }
+    
+    lines.push("}");
+  }
+  
+  lines.push("");
+  
+  return lines.join("\n");
+}
+
+/**
+ * Result of generating a .d.ts file for an Arduino library
+ */
+export interface GeneratedArduinoLib {
+  /** Path to the generated .d.ts file */
+  declPath: string;
+  /** The actual header file name (e.g., "Microfire_SHT3x.h") */
+  headerName: string;
 }
 
 /**
  * Generate a .d.ts file for an Arduino library
- * Returns the path to the generated file, or undefined if generation failed
+ * Returns the path to the generated file and header info, or undefined if generation failed
  */
-export function generateArduinoLibDecl(library: ArduinoLibrary): string | undefined {
+export function generateArduinoLibDecl(
+  library: ArduinoLibrary,
+  fromFile: string
+): GeneratedArduinoLib | undefined {
   // Find the main header file
   const headerPath = findLibraryHeader(library);
   if (!headerPath) {
@@ -275,9 +717,71 @@ export function generateArduinoLibDecl(library: ArduinoLibrary): string | undefi
     return undefined;
   }
 
-  // Generate declaration from the header
-  const declPath = generateDeclFromCpp(headerPath);
-  return declPath;
+  if (!fs.existsSync(headerPath)) {
+    console.log(`  Header file does not exist: ${headerPath}`);
+    return undefined;
+  }
+
+  const content = fs.readFileSync(headerPath, "utf8");
+  const parsed = parseCppClass(content);
+  
+  if (parsed.classes.length === 0 && parsed.constants.length === 0) {
+    console.log(`  No class definitions found in '${library.name}' header`);
+    return undefined;
+  }
+
+  // Generate export-based declaration for @types
+  const declaration = generateExportDeclaration(
+    parsed,
+    `Arduino library: ${library.name}`
+  );
+  
+  // Find project root
+  const projectRoot = findProjectRoot(fromFile);
+  if (!projectRoot) {
+    console.log(`  Could not find project root for '${fromFile}'`);
+    return undefined;
+  }
+  
+  // Place declarations in node_modules/@types/LibraryName/
+  // TypeScript automatically looks here for type declarations
+  const typeDir = path.join(projectRoot, "node_modules", "@types", library.name);
+  
+  // Ensure output directory exists
+  if (!fs.existsSync(typeDir)) {
+    fs.mkdirSync(typeDir, { recursive: true });
+  }
+  
+  const declPath = path.join(typeDir, "index.d.ts");
+  
+  // Write the declaration file
+  fs.writeFileSync(declPath, declaration, "utf8");
+  
+  // Also write a minimal package.json for module resolution
+  const packageJson = {
+    name: `@types/${library.name}`,
+    version: "0.0.0",
+    main: "index.d.ts",
+    types: "index.d.ts"
+  };
+  fs.writeFileSync(
+    path.join(typeDir, "package.json"),
+    JSON.stringify(packageJson, null, 2),
+    "utf8"
+  );
+  
+  // Extract the actual header file name from the path
+  const headerName = path.basename(headerPath);
+  
+  // Generate usage documentation
+  const usageDoc = generateUsageDocumentation(parsed, library.name, library);
+  fs.writeFileSync(
+    path.join(typeDir, "USAGE.md"),
+    usageDoc,
+    "utf8"
+  );
+  
+  return { declPath, headerName };
 }
 
 /**
@@ -301,15 +805,279 @@ export function tryGenerateArduinoLibDecl(
 
   console.log(`\n  Found Arduino library '${library.name}' at: ${library.path}`);
   
-  // Generate the declaration
-  const declPath = generateArduinoLibDecl(library);
+  // Generate the declaration (pass the full fromFile path for project root detection)
+  const result = generateArduinoLibDecl(library, fromFile);
   
-  if (declPath) {
-    console.log(`  Generated declaration: ${declPath}`);
+  if (result) {
+    console.log(`  Generated declaration: ${result.declPath}`);
     console.log(`  Review the generated types and adjust if needed.\n`);
+    return result.declPath;
   }
 
-  return declPath;
+  return undefined;
+}
+
+/**
+ * Try to get the actual header file name for an Arduino library import
+ * Returns the header file name (e.g., "Microfire_SHT3x.h") or undefined if not found
+ */
+export function getArduinoLibraryHeaderName(moduleSpecifier: string): string | undefined {
+  // Check if this looks like an Arduino library import
+  if (!isArduinoLibraryImport(moduleSpecifier)) {
+    return undefined;
+  }
+
+  // Find the library
+  const library = findArduinoLibrary(moduleSpecifier);
+  if (!library) {
+    return undefined;
+  }
+
+  // Find the main header file
+  const headerPath = findLibraryHeader(library);
+  if (!headerPath) {
+    return undefined;
+  }
+
+  return path.basename(headerPath);
+}
+
+/**
+ * Get fully qualified class names for an Arduino library
+ * Returns a map of simple class name to fully qualified name (e.g., "SHT3x" -> "Microfire::SHT3x")
+ */
+export function getArduinoLibraryClassNames(moduleSpecifier: string): Map<string, string> {
+  const result = new Map<string, string>();
+  
+  // Check if this looks like an Arduino library import
+  if (!isArduinoLibraryImport(moduleSpecifier)) {
+    return result;
+  }
+
+  // Find the library
+  const library = findArduinoLibrary(moduleSpecifier);
+  if (!library) {
+    return result;
+  }
+
+  // Find the main header file
+  const headerPath = findLibraryHeader(library);
+  if (!headerPath || !fs.existsSync(headerPath)) {
+    return result;
+  }
+
+  const content = fs.readFileSync(headerPath, "utf8");
+  const parsed = parseCppClass(content);
+  
+  for (const cppClass of parsed.classes) {
+    // Map simple name to full name
+    result.set(cppClass.name, cppClass.fullName);
+  }
+  
+  return result;
+}
+
+/**
+ * Generate usage documentation for an Arduino library
+ */
+function generateUsageDocumentation(
+  parsed: CppParseResult,
+  libraryName: string,
+  library?: ArduinoLibrary
+): string {
+  const lines: string[] = [];
+  
+  lines.push(`# ${libraryName} - TypeCode Usage Guide`);
+  lines.push("");
+  
+  if (library?.sentence) {
+    lines.push(`> ${library.sentence}`);
+    lines.push("");
+  }
+  
+  if (library?.author) {
+    lines.push(`**Author:** ${library.author}`);
+    lines.push("");
+  }
+  
+  lines.push("## Overview");
+  lines.push("");
+  lines.push(`This library was auto-discovered from your Arduino installation and TypeCode`);
+  lines.push(`has generated TypeScript type definitions for it.`);
+  lines.push("");
+  
+  if (parsed.classes.length > 0) {
+    lines.push("## Classes");
+    lines.push("");
+    
+    for (const cppClass of parsed.classes) {
+      lines.push(`### ${cppClass.name}`);
+      lines.push("");
+      
+      // Show C++ fully qualified name if different
+      if (cppClass.fullName !== cppClass.name) {
+        lines.push(`**C++:** \`${cppClass.fullName}\``);
+        lines.push("");
+      }
+      
+      // Constructor
+      if (cppClass.constructors.length > 0) {
+        lines.push("#### Constructor");
+        lines.push("");
+        lines.push("```typescript");
+        lines.push(`import { ${cppClass.name} } from '${libraryName}';`);
+        lines.push("");
+        
+        for (const ctor of cppClass.constructors) {
+          const params = ctor.parameters
+            .filter(p => p.name)
+            .map(p => `${p.name}: ${p.type}`)
+            .join(", ");
+          lines.push(`const sensor = new ${cppClass.name}(${params});`);
+        }
+        lines.push("```");
+        lines.push("");
+      }
+      
+      // Methods
+      if (cppClass.methods.length > 0) {
+        lines.push("#### Methods");
+        lines.push("");
+        lines.push("| Method | Parameters | Returns |");
+        lines.push("|--------|------------|---------|");
+        
+        for (const method of cppClass.methods) {
+          const params = method.parameters
+            .filter(p => p.name)
+            .map(p => `${p.name}: ${p.type}`)
+            .join(", ");
+          lines.push(`| \`${method.name}()\` | ${params || "none"} | ${method.returnType} |`);
+        }
+        lines.push("");
+        
+        // Usage examples
+        lines.push("#### Example Usage");
+        lines.push("");
+        lines.push("```typescript");
+        lines.push(`import { ${cppClass.name} } from '${libraryName}';`);
+        
+        // Add peripheral imports if needed
+        const peripheralTypes = new Set<string>();
+        for (const method of cppClass.methods) {
+          for (const param of method.parameters) {
+            if (param.type === "I2C0" || param.type === "I2C1") {
+              peripheralTypes.add("I2C0");
+            } else if (param.type === "SPI0" || param.type === "SPI1") {
+              peripheralTypes.add("SPI0");
+            } else if (param.type === "UART0" || param.type === "UART1") {
+              peripheralTypes.add("UART0");
+            }
+          }
+          for (const ctor of cppClass.constructors) {
+            for (const param of ctor.parameters) {
+              if (param.type === "I2C0" || param.type === "I2C1") {
+                peripheralTypes.add("I2C0");
+              } else if (param.type === "SPI0" || param.type === "SPI1") {
+                peripheralTypes.add("SPI0");
+              } else if (param.type === "UART0" || param.type === "UART1") {
+                peripheralTypes.add("UART0");
+              }
+            }
+          }
+        }
+        
+        if (peripheralTypes.size > 0) {
+          lines.push(`import { ${[...peripheralTypes].join(", ")} } from '@typecode';`);
+        }
+        lines.push("");
+        
+        // Constructor example
+        if (cppClass.constructors.length > 0) {
+          const ctor = cppClass.constructors[0];
+          const args = ctor.parameters
+            .filter(p => p.name)
+            .map(p => {
+              // Provide example values for common types
+              if (p.type === "I2C0") return "I2C0";
+              if (p.type === "SPI0") return "SPI0";
+              if (p.type === "UART0") return "UART0";
+              if (p.type === "number") return "0x44";
+              if (p.type === "boolean") return "true";
+              if (p.type === "string") return '"example"';
+              return p.name;
+            })
+            .join(", ");
+          lines.push(`const device = new ${cppClass.name}(${args});`);
+        } else {
+          lines.push(`const device = new ${cppClass.name}();`);
+        }
+        lines.push("");
+        
+        // Show common method calls
+        const beginMethod = cppClass.methods.find(m => m.name === "begin");
+        if (beginMethod) {
+          const args = beginMethod.parameters
+            .filter(p => p.name)
+            .map(p => {
+              if (p.type === "I2C0") return "I2C0";
+              if (p.type === "SPI0") return "SPI0";
+              if (p.type === "UART0") return "UART0";
+              if (p.type === "number") return "0x44";
+              if (p.type === "boolean") return "true";
+              return p.name;
+            })
+            .join(", ");
+          lines.push(`device.begin(${args});`);
+        }
+        
+        const measureMethod = cppClass.methods.find(m => m.name === "measure" || m.name === "read");
+        if (measureMethod) {
+          lines.push(`device.${measureMethod.name}();`);
+        }
+        
+        const connectedMethod = cppClass.methods.find(m => m.name === "connected" || m.name === "begin");
+        if (connectedMethod && connectedMethod.returnType === "boolean") {
+          lines.push("");
+          lines.push(`if (device.${connectedMethod.name}()) {`);
+          lines.push(`  // Device is ready`);
+          lines.push(`}`);
+        }
+        
+        lines.push("```");
+        lines.push("");
+      }
+    }
+  }
+  
+  // Type mappings section
+  lines.push("## Type Mappings");
+  lines.push("");
+  lines.push("TypeCode automatically maps Arduino C++ types to TypeScript equivalents:");
+  lines.push("");
+  lines.push("| Arduino C++ | TypeCode TypeScript |");
+  lines.push("|-------------|---------------------|");
+  lines.push("| `TwoWire` / `TwoWire*` | `I2C0` |");
+  lines.push("| `SPIClass` / `SPIClass*` | `SPI0` |");
+  lines.push("| `HardwareSerial` / `HardwareSerial*` | `UART0` |");
+  lines.push("| `int`, `uint8_t`, `uint16_t`, etc. | `number` |");
+  lines.push("| `float`, `double` | `number` |");
+  lines.push("| `bool` | `boolean` |");
+  lines.push("| `String`, `const char*` | `string` |");
+  lines.push("");
+  
+  lines.push("## Editing Type Definitions");
+  lines.push("");
+  lines.push("The generated type definitions are best-effort. You can manually edit the");
+  lines.push(`\`node_modules/@types/${libraryName}/index.d.ts\` file to:`);
+  lines.push("");
+  lines.push("- Add missing methods or properties");
+  lines.push("- Fix incorrect type mappings");
+  lines.push("- Add JSDoc documentation");
+  lines.push("");
+  lines.push("To regenerate: delete the file and re-run TypeCode transpile.");
+  lines.push("");
+  
+  return lines.join("\n");
 }
 
 /**

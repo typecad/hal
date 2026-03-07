@@ -5,6 +5,7 @@ import { Diagnostic, EmitMode, GeneratedOutputs, PlatformContext, SourceMapEntry
 import { ensureDir, writeText } from "../utils/fs";
 import { resolveImport } from "../libdef/registry";
 import { LibraryDefinition } from "../types";
+import { getArduinoLibraryClassNames, isArduinoLibraryImport } from "../arduino-libs";
 import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
@@ -22,6 +23,10 @@ import { ArduinoStrategy } from "../platform/arduino-strategy";
 // Using a module-level variable avoids threading boardConstants through the
 // entire renderStatement / renderExpression call chain.
 let _emitBoardConstants: BoardConstants | undefined;
+
+// Arduino library class name mapping (simple name -> fully qualified name with namespace)
+// Used to transform "new SHT3x()" to "new Microfire::SHT3x()" etc.
+let _arduinoClassNameMap: Map<string, string> | undefined;
 
 // Accumulates enum class names across all files compiled in one transpilation
 // run so that renderExpression can use `::` instead of `.` for enum member
@@ -119,7 +124,86 @@ interface EmitterOptions {
 
 
 
-function normalizeRawExpression(value: string, strategy: PlatformStrategy): string {
+// Module-level cache for Arduino library class name mappings
+// Maps module specifier -> (simple class name -> fully qualified name)
+const _arduinoClassNameCache = new Map<string, Map<string, string>>();
+
+/**
+ * Build a mapping from simple class names to fully qualified names (with namespaces)
+ * for all Arduino library imports in the program.
+ */
+function buildArduinoClassNameMap(imports: { moduleSpecifier: string; namedImports: string[] }[]): Map<string, string> {
+  const result = new Map<string, string>();
+  
+  for (const imp of imports) {
+    // Only process Arduino library imports
+    if (!isArduinoLibraryImport(imp.moduleSpecifier)) {
+      continue;
+    }
+    
+    // Check cache first
+    let classMap = _arduinoClassNameCache.get(imp.moduleSpecifier);
+    if (!classMap) {
+      classMap = getArduinoLibraryClassNames(imp.moduleSpecifier);
+      _arduinoClassNameCache.set(imp.moduleSpecifier, classMap);
+    }
+    
+    // Merge into result
+    for (const [simpleName, fullName] of classMap) {
+      result.set(simpleName, fullName);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Transform class names in expressions to their fully qualified names.
+ * E.g., "new SHT3x()" -> "new Microfire::SHT3x()"
+ */
+function transformClassNames(value: string, classNameMap: Map<string, string>): string {
+  if (classNameMap.size === 0) {
+    return value;
+  }
+  
+  // Transform "new ClassName(" patterns
+  let result = value;
+  for (const [simpleName, fullName] of classNameMap) {
+    // Only transform if the full name is different (has namespace)
+    if (fullName !== simpleName && fullName.includes("::")) {
+      const pattern = new RegExp(`\\bnew\\s+${simpleName}\\b`, "g");
+      result = result.replace(pattern, `new ${fullName}`);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Transform type names to their fully qualified names (with namespaces).
+ * E.g., "SHT3x*" -> "Microfire::SHT3x*", "SHT3x" -> "Microfire::SHT3x"
+ */
+function transformTypeName(cppType: string, classNameMap: Map<string, string> | undefined): string {
+  if (!classNameMap || classNameMap.size === 0) {
+    return cppType;
+  }
+  
+  let result = cppType;
+  for (const [simpleName, fullName] of classNameMap) {
+    // Only transform if the full name is different (has namespace)
+    if (fullName !== simpleName && fullName.includes("::")) {
+      // Match the simple name as a word boundary (not already qualified with ::)
+      // Handle patterns like "SHT3x", "SHT3x*", "SHT3x&", etc.
+      // Use negative lookbehind to avoid matching already-qualified names
+      const pattern = new RegExp(`(?<![a-zA-Z0-9_:])${simpleName}\\b`, "g");
+      result = result.replace(pattern, fullName);
+    }
+  }
+  
+  return result;
+}
+
+function normalizeRawExpression(value: string, strategy: PlatformStrategy, classNameMap?: Map<string, string>): string {
   let normalized = value
     .replace(/===/g, "==")
     .replace(/!==/g, "!=");
@@ -137,6 +221,11 @@ function normalizeRawExpression(value: string, strategy: PlatformStrategy): stri
 
   // Apply platform-specific expression normalisation
   normalized = strategy.normalizeRawExpression(normalized);
+
+  // Transform Arduino library class names to their fully qualified names
+  if (classNameMap) {
+    normalized = transformClassNames(normalized, classNameMap);
+  }
 
   return normalized;
 }
@@ -244,7 +333,7 @@ function emitCommentLines(
   }
 }
 
-function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) => string, strategy: PlatformStrategy = _defaultStrategy): string {
+function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) => string, strategy: PlatformStrategy = _defaultStrategy, classNameMap?: Map<string, string>): string {
   // Safety check
   if (!expr || typeof expr !== 'object' || !expr.kind) {
     return "/* invalid expression */";
@@ -262,14 +351,31 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       if (nullVal && (expr.value === "null" || expr.value === "undefined")) {
         return nullVal;
       }
+      // Map peripheral identifiers to Arduino equivalents
+      // I2C0 -> Wire, I2C1 -> Wire1, SPI0 -> SPI, UART0 -> Serial
+      const peripheralName = expr.value;
+      if (/^I2C\d+$/.test(peripheralName)) {
+        const num = peripheralName.slice(3);
+        return num === '0' ? 'Wire' : `Wire${num}`;
+      }
+      if (/^SPI\d+$/.test(peripheralName)) {
+        const num = peripheralName.slice(3);
+        return num === '0' ? 'SPI' : `SPI${num}`;
+      }
+      if (/^UART\d+$/.test(peripheralName)) {
+        const num = peripheralName.slice(4);
+        return num === '0' ? 'Serial' : `Serial${num}`;
+      }
       return expr.value;
     }
     case "raw":
       // Apply transformation to raw expressions (for fixing pointer field access)
+      // Use module-level _arduinoClassNameMap if no classNameMap provided
+      const effectiveClassNameMap = classNameMap ?? _arduinoClassNameMap;
       if (exprTransformer) {
-        return normalizeRawExpression(exprTransformer(expr.value), strategy);
+        return normalizeRawExpression(exprTransformer(expr.value), strategy, effectiveClassNameMap);
       }
-      return normalizeRawExpression(expr.value, strategy);
+      return normalizeRawExpression(expr.value, strategy, effectiveClassNameMap);
     case "await":
       return renderExpression(expr.value, exprTransformer, strategy);
     case "ternary":
@@ -1077,8 +1183,9 @@ function transformConsoleCall(
 /**
  * Collect pointer variable types from program statements
  * Variables initialized with 'new ClassName()' get type 'ClassName*'
+ * Uses Arduino class name mapping to get fully qualified names with namespaces
  */
-function collectPointerVarTypes(statements: StatementIR[]): Map<string, string> {
+function collectPointerVarTypes(statements: StatementIR[], classNameMap?: Map<string, string>): Map<string, string> {
   const pointerVarTypes = new Map<string, string>();
   
   for (const statement of statements) {
@@ -1089,7 +1196,10 @@ function collectPointerVarTypes(statements: StatementIR[]): Map<string, string> 
         // Extract class name from 'new ClassName(...)'
         const match = init.value.match(/^new\s+(\w+)/);
         if (match) {
-          pointerVarTypes.set(statement.name, `${match[1]}*`);
+          const simpleName = match[1];
+          // Use fully qualified name if available (for namespaced classes)
+          const fullName = classNameMap?.get(simpleName) ?? simpleName;
+          pointerVarTypes.set(statement.name, `${fullName}*`);
         }
       }
     }
@@ -1245,7 +1355,9 @@ function renderStatement(
 
   const declaredType = normalizeCppTypeForTarget(statement.cppType, strategy);
   const volatilePrefix = statement.isVolatile ? "volatile " : "";
-  const declaration = `${volatilePrefix}${renderTypedName(statement.cppType, statement.name, strategy, statement.storage === "const")}`;
+  // Transform type name for Arduino library classes (add namespace prefix)
+  const transformedType = transformTypeName(statement.cppType, _arduinoClassNameMap);
+  const declaration = `${volatilePrefix}${renderTypedName(transformedType, statement.name, strategy, statement.storage === "const")}`;
   if (statement.initializer) {
     // Handle array initializers
     if (statement.initializer.kind === "array") {
@@ -1395,6 +1507,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   ensureDir(options.outDir);
+
+  // Build class name mapping for Arduino library imports (for namespace resolution)
+  _arduinoClassNameMap = buildArduinoClassNameMap(program.imports);
 
   // For npm package files, use the moduleKey as the base name
   // For entry files, use the original filename
@@ -2018,7 +2133,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   for (const fn of mappedFunctions) {
     allExecutableStatements.push(...fn.statements);
   }
-  const globalPointerVarTypes = collectPointerVarTypes(allExecutableStatements);
+  const globalPointerVarTypes = collectPointerVarTypes(allExecutableStatements, _arduinoClassNameMap);
 
   // Collect callback functions from call arguments (e.g., attachInterrupt handlers)
   const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[] = [];
