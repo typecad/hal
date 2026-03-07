@@ -303,9 +303,9 @@ const ARDUINO_TYPE_MAPPINGS: Record<string, string> = {
 };
 
 /**
- * Maps C++ types to TypeScript types
+ * Maps C++ types to TypeScript types (exported for testing)
  */
-function mapCppTypeToTs(cppType: string): string {
+export function mapCppTypeToTs(cppType: string): string {
   const trimmed = cppType.trim();
   
   // Remove const qualifier
@@ -368,9 +368,9 @@ function mapCppTypeToTs(cppType: string): string {
 }
 
 /**
- * Extracts the parameter list from a function signature
+ * Extracts the parameter list from a function signature (exported for testing)
  */
-function parseParameters(paramString: string): { type: string; name: string }[] {
+export function parseParameters(paramString: string): { type: string; name: string }[] {
   if (!paramString.trim()) {
     return [];
   }
@@ -513,9 +513,9 @@ function parseClassesFromContent(content: string, namespace?: string): CppClass[
 }
 
 /**
- * Parses a C++ class definition
+ * Parses a C++ class definition (exported for testing)
  */
-function parseCppClass(content: string): CppParseResult {
+export function parseCppClass(content: string): CppParseResult {
   const result: CppParseResult = {
     classes: [],
     constants: [],
@@ -878,9 +878,9 @@ export function getArduinoLibraryClassNames(moduleSpecifier: string): Map<string
 }
 
 /**
- * Generate usage documentation for an Arduino library
+ * Generate usage documentation for an Arduino library (exported for testing)
  */
-function generateUsageDocumentation(
+export function generateUsageDocumentation(
   parsed: CppParseResult,
   libraryName: string,
   library?: ArduinoLibrary

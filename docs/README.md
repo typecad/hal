@@ -149,6 +149,7 @@ Transpiler documentation:
 - [Language Reference](./transpiler/language-reference.md) - TypeScript to C++ mapping
 - [IR Model](./transpiler/ir-model.md) - Intermediate representation
 - [Polyfills](./transpiler/polyfills.md) - Runtime polyfill system
+- [Arduino Library Integration](./transpiler/arduino-libs.md) - Use Arduino C++ libraries with auto-generated types
 - **Mixing TypeScript and C++** - Use native C++ modules alongside TypeScript
 
 ### [Toolchain](./toolchain/)
