@@ -17,6 +17,10 @@ export type TypecodeReceiverKind =
   | 'serial'        // ISerialPort   — Serial
   | 'i2c'           // II2CBus       — I2C0
   | 'spi'           // ISPIBus       — SPI0
+  | 'pulse'         // Pulse namespace - pulseIn/pulseInLong
+  | 'shift'         // Shift namespace - shiftIn/shiftOut
+  | 'random'        // Random namespace - random/randomSeed
+  | 'num'           // Num namespace - map/constrain/abs/min/max
   | 'unknown';      // Not a typecode symbol
 
 /**
@@ -97,6 +101,12 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   I2C2:    'i2c',
   SPI0:    'spi',
   SPI1:    'spi',
+  
+  // ---- Utility namespaces ----------------------------------------------
+  Pulse:   'pulse',
+  Shift:   'shift',
+  Random:  'random',
+  Num:     'num',
 };
 
 /**

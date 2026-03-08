@@ -3,9 +3,9 @@
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
     "C:\\typecad\\typecode\\demo\\src\\sketch.ts": {
-      "hash": "716ab5d2338d1ff8",
-      "mtime": 1772948487867.4695,
-      "size": 572,
+      "hash": "bdb763a8477d4524",
+      "mtime": 1772980777990.733,
+      "size": 643,
       "dependencies": [
         "C:\\typecad\\typecode\\node_modules\\@typecode\\board-arduino-uno\\src\\index.ts"
       ],
@@ -16,5 +16,5 @@
     }
   },
   "createdAt": 1772952897050,
-  "updatedAt": 1772952911053
+  "updatedAt": 1772980812551
 }

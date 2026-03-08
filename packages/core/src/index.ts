@@ -58,6 +58,37 @@ export {
   type IToneAttachment,
 } from './types/pin';
 
+// --- Number utilities (fluent math API) ------------------------------------
+export {
+  type INumMapChain,
+  type INumConstrainChain,
+  type INumNamespace,
+  Num,
+} from './types/num';
+
+// --- Pulse measurement utilities -------------------------------------------
+export {
+  type IPulseChain,
+  type IPulseNamespace,
+  Pulse,
+} from './types/pulse';
+
+// --- Shift register utilities ----------------------------------------------
+export {
+  MSBFIRST,
+  LSBFIRST,
+  type IShiftReadChain,
+  type IShiftWriteChain,
+  type IShiftNamespace,
+  Shift,
+} from './types/shift';
+
+// --- Random number utilities -----------------------------------------------
+export {
+  type IRandomNamespace,
+  Random,
+} from './types/random';
+
 // --- Bus interfaces --------------------------------------------------------
 export {
   I2CStatus,

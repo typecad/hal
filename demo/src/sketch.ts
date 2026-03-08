@@ -16,6 +16,10 @@ D2.config.input.float();
 // Read sensor data
 // sht30.measure();
 
-// D2.on.change(() => {
-//     UART0.write.line("D2 changed!");
-// }).debounce(100);
+D2.on.change(() => {
+    if (D2.isHigh()) {
+        UART0.write.line("D2 high!");
+    } else {
+        UART0.write.line("D2 low!");
+    }
+}).debounce(100);

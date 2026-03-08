@@ -184,6 +184,18 @@ export { I2C0, SPI0, UART0 } from './peripherals';
 // Timing / utility functions
 export { delay, millis, micros, delayMicroseconds, map, constrain } from './timing';
 
+// Number utilities (fluent + direct)
+export { abs, min, max, clamp, inRange, toPercent, toByte, Num } from './num';
+
+// Pulse measurement utilities
+export { pulseIn, pulseInLong, Pulse } from './pulse';
+
+// Shift register utilities
+export { shiftIn, shiftOut, MSBFIRST, LSBFIRST, Shift } from './shift';
+
+// Random number utilities
+export { randomSeed, random, Random } from './random';
+
 // Analog helpers
 export { AnalogReference, analogReference } from './analog';
 

@@ -199,7 +199,18 @@ export class ArduinoStrategy implements PlatformStrategy {
     boardConstants?: BoardConstants,
     interruptMode?: "FALLING" | "RISING" | "CHANGE",
   ): string | undefined {
-    return renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode);
+    // First try the standard pin/peripheral built-ins
+    const builtin = renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode);
+    if (builtin !== undefined) return builtin;
+    
+    // For namespace calls (Pulse, Shift, Random, Num), try the statement-level handler
+    // These need to work in expression context too (e.g., const d = Pulse.in(D2, HIGH))
+    if (receiverKind === 'pulse' || receiverKind === 'shift' || receiverKind === 'random' || receiverKind === 'num') {
+      const callee = `${receiver}.${method}`;
+      return tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants) ?? undefined;
+    }
+    
+    return undefined;
   }
   renderBoardDefinitionAccess(
     chain: string[],
