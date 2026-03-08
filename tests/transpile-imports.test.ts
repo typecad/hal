@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("transpileFile module graph", () => {
-  it("transpiles imported local modules", () => {
+  it("transpiles imported local modules", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
     tempDirs.push(workspaceDir);
 
@@ -45,7 +45,7 @@ describe("transpileFile module graph", () => {
       "utf8",
     );
 
-    const result = transpileFile({
+    const result = await transpileFile({
       inputFile: entryPath,
       emitMode: "split",
       target: "generic",
@@ -65,7 +65,7 @@ describe("transpileFile module graph", () => {
     expect(entryCppText).toContain('#include "test2.h"');
   });
 
-  it("uses case-preserving local header include for relative imports", () => {
+  it("uses case-preserving local header include for relative imports", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
     tempDirs.push(workspaceDir);
 
@@ -96,7 +96,7 @@ describe("transpileFile module graph", () => {
       "utf8",
     );
 
-    const result = transpileFile({
+    const result = await transpileFile({
       inputFile: entryPath,
       emitMode: "split",
       target: "generic",
@@ -110,7 +110,7 @@ describe("transpileFile module graph", () => {
     expect(entryCppText).not.toContain("#include <Myutil.h>");
   });
 
-  it("lowers function-expression aliases without raw or unmapped type warnings", () => {
+  it("lowers function-expression aliases without raw or unmapped type warnings", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
     tempDirs.push(workspaceDir);
 
@@ -158,7 +158,7 @@ describe("transpileFile module graph", () => {
       "utf8",
     );
 
-    const result = transpileFile({
+    const result = await transpileFile({
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
@@ -171,7 +171,7 @@ describe("transpileFile module graph", () => {
     expect(warningCodes).not.toContain("TS2CPP_UNMAPPED_TYPE");
   });
 
-  it("maps string and boolean array aliases to std types", () => {
+  it("maps string and boolean array aliases to std types", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
     tempDirs.push(workspaceDir);
 
@@ -200,7 +200,7 @@ describe("transpileFile module graph", () => {
       "utf8",
     );
 
-    const result = transpileFile({
+    const result = await transpileFile({
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
@@ -220,7 +220,7 @@ describe("transpileFile module graph", () => {
     expect(warningCodes).not.toContain("TS2CPP_STRING_AUTO");
   });
 
-  it("does not warn for generic structural alias object literals", () => {
+  it("does not warn for generic structural alias object literals", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
     tempDirs.push(workspaceDir);
 
@@ -251,7 +251,7 @@ describe("transpileFile module graph", () => {
       "utf8",
     );
 
-    const result = transpileFile({
+    const result = await transpileFile({
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",

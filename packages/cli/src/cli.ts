@@ -341,7 +341,7 @@ async function main(): Promise<void> {
     } else {
       // Default: transpile first
       ui.printTranspiling();
-      result = transpileFile({
+      result = await transpileFile({
         inputFile: options.inputFile,
         emitMode: options.emitMode,
         target: effectiveTarget,

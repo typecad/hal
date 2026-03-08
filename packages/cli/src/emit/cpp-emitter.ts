@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { ProgramIR, ExpressionIR, StatementIR } from "../ir/model";
+import { analyzeProgram, ProgramAnalysisResult } from "../ir/program-analysis";
 import { Diagnostic, EmitMode, GeneratedOutputs, PlatformContext, SourceMapEntry, TargetProfile } from "../types";
 import { ensureDir, writeText } from "../utils/fs";
 import { resolveImport } from "../libdef/registry";
@@ -1511,6 +1512,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Build class name mapping for Arduino library imports (for namespace resolution)
   _arduinoClassNameMap = buildArduinoClassNameMap(program.imports);
 
+  // Perform single-pass program analysis to replace multiple traversals
+  const programAnalysis = analyzeProgram(program);
+
   // For npm package files, use the moduleKey as the base name
   // For entry files, use the original filename
   const originalBaseName = path.basename(program.fileName).replace(/\.[^.]+$/, "");
@@ -1953,32 +1957,30 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendHeaderLine("");
   }
 
-  // Add iostream for generic C++ when console calls are used
-  if (strategy.needsIostream() && hasConsoleCalls(program)) {
+  // Add iostream for generic C++ when console calls are used (use cached analysis)
+  if (strategy.needsIostream() && programAnalysis.hasConsoleCalls) {
     includes.push("<iostream>");
   }
 
-  const declaredTypes = collectDeclaredTypes(program);
-  const usesVectorTypes = declaredTypes.some((typeName) => typeName.includes("std::vector<")) || hasArrayInObjectLiteral(program);
+  // Use cached analysis results instead of multiple traversals
+  const usesVectorTypes = programAnalysis.usesVectorTypes || programAnalysis.hasArrayInObjectLiteral;
   // For Arduino AVR, std::string is not available - skip the include
-  if (declaredTypes.some((typeName) => typeName.includes("std::string")) && strategy.needsStdString()) {
+  if (programAnalysis.usesStdString && strategy.needsStdString()) {
     includes.push("<string>");
   }
-  if (strategy.needsStdVector() && declaredTypes.some((typeName) => typeName.includes("std::vector<"))) {
+  if (strategy.needsStdVector() && programAnalysis.usesVectorTypes) {
     includes.push("<vector>");
   }
-  if (strategy.needsStdVector() && hasArrayInObjectLiteral(program)) {
+  if (strategy.needsStdVector() && programAnalysis.hasArrayInObjectLiteral) {
     includes.push("<vector>");
   }
-  if (declaredTypes
-    .map((typeName) => normalizeCppTypeForTarget(typeName, strategy))
-    .some((typeName) => typeName.includes("std::function<"))) {
+  if (programAnalysis.usesStdFunction) {
     includes.push("<functional>");
   }
-  if (hasThrowStatements(program) && strategy.needsStdExcept()) {
+  if (programAnalysis.hasThrowStatements && strategy.needsStdExcept()) {
     includes.push("<stdexcept>");
   }
-  if (hasStdMathCalls(program)) {
+  if (programAnalysis.hasStdMathCalls) {
     includes.push(strategy.mathHeader());
   }
   if (emittedPolyfills) {
