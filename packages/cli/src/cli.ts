@@ -8,6 +8,7 @@ import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from 
 import { loadTypecodeConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
+import * as ui from "./utils/ui";
 
 function assertTypeScriptInput(filePath: string): void {
   const extension = path.extname(filePath).toLowerCase();
@@ -209,15 +210,16 @@ async function main(): Promise<void> {
       const scanDir = (options as any).scanDir as string | undefined;
       
       if (scanDir) {
-        console.log(`Scanning ${scanDir} for C++ files...`);
+        ui.printHeader();
+        ui.printStep(`Scanning ${scanDir} for C++ files...`);
         const created = generateDeclsForDirectory(scanDir, true);
         
         if (created.length === 0) {
-          console.log("No new declaration files created.");
+          ui.printInfo("No new declaration files created.");
         } else {
-          console.log("Created declaration files:");
+          ui.printSuccess("Created declaration files:");
           for (const filePath of created) {
-            console.log(`- ${filePath}`);
+            ui.printFileCreated(filePath);
           }
         }
         return;
@@ -229,11 +231,13 @@ async function main(): Promise<void> {
         throw new Error(`gen-decls expects a .cpp file, received '${extension || "<no extension>"}'.`);
       }
       
+      ui.printHeader();
+      ui.printStep("Generating declarations...");
       const created = generateDeclFromCpp(options.inputFile);
       if (created) {
-        console.log(`Created declaration file: ${created}`);
+        ui.printSuccess(`Created: ${created}`);
       } else {
-        console.log("No declaration file created (no classes or constants found in C++ file).");
+        ui.printInfo("No declaration file created (no classes or constants found).");
       }
       return;
     }
@@ -273,7 +277,7 @@ async function main(): Promise<void> {
       if (config.board) {
         const validationError = validateBoardPackage(config.board, config.configPath);
         if (validationError) {
-          console.error(`ERROR: ${validationError}`);
+          ui.printError(validationError);
           process.exitCode = 1;
           return;
         }
@@ -313,6 +317,14 @@ async function main(): Promise<void> {
       }
     }
 
+    // Print branded header and build info
+    ui.printHeader();
+    ui.printBuildInfo({
+      framework: effectiveFrameworkPackage,
+      board: effectiveBoardPackage,
+      fqbn: effectivePlatformContext?.arduino?.fqbn,
+    });
+
     let result: { headerPath?: string; sourcePath: string; headerMapPath?: string; sourceMapPath?: string; diagnostics: Array<{ severity: string; message: string; line?: number; column?: number; code?: string }> };
 
     if (options.noTranspile) {
@@ -328,6 +340,7 @@ async function main(): Promise<void> {
       };
     } else {
       // Default: transpile first
+      ui.printTranspiling();
       result = transpileFile({
         inputFile: options.inputFile,
         emitMode: options.emitMode,
@@ -342,19 +355,10 @@ async function main(): Promise<void> {
       });
 
       printDiagnostics(result.diagnostics);
-      if (result.headerPath) {
-        console.log(`Generated header: ${result.headerPath}`);
-      }
-      console.log(`Generated source: ${result.sourcePath}`);
-      if (result.headerMapPath) {
-        console.log(`Generated header map: ${result.headerMapPath}`);
-      }
-      if (result.sourceMapPath) {
-        console.log(`Generated source map: ${result.sourceMapPath}`);
-      }
     }
 
     if (!options.compile) {
+      ui.printSuccess();
       return;
     }
 
@@ -364,7 +368,7 @@ async function main(): Promise<void> {
       throw new Error("--compile requires --fqbn <package:arch:board> or a typecode.config.ts with fqbn.");
     }
 
-    console.log(`Compiling for ${fqbn}...`);
+    ui.printCompiling(fqbn);
     const compileResult = compileArduinoSketch(result.sourcePath, fqbn);
     printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath);
 
@@ -374,15 +378,14 @@ async function main(): Promise<void> {
       return;
     }
 
-    console.log("Compile succeeded.");
-
     if (!options.upload) {
+      ui.printSuccess();
       return;
     }
 
     // --upload
     const port = options.port!;
-    console.log(`Uploading to ${port}...`);
+    ui.printUploading(port);
 
     const sketchDir = path.dirname(result.sourcePath);
     const uploadResult = uploadArduinoSketch(sketchDir, fqbn, port);
@@ -396,18 +399,17 @@ async function main(): Promise<void> {
       return;
     }
 
-    console.log("Upload succeeded.");
-
     if (!options.monitor) {
+      ui.printSuccess();
       return;
     }
 
     // --monitor (blocks until Ctrl+C)
-    console.log(`Opening serial monitor on ${port} at ${options.baud} baud. Press Ctrl+C to exit.`);
+    ui.printMonitoring(port, options.baud);
     monitorArduinoSketch(port, options.baud);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(message);
+    ui.printError(message);
     process.exitCode = 1;
   }
 }

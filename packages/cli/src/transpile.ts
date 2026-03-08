@@ -302,9 +302,6 @@ function autoGenerateMissingDecls(
           const result = generateDeclFromCpp(cppPath);
           if (result) {
             generated.push(result);
-            console.log(`\n  Auto-generated: ${path.relative(process.cwd(), result)}`);
-            console.log(`  from C++ source: ${path.relative(process.cwd(), cppPath)}`);
-            console.log(`  Review the generated types and adjust if needed.\n`);
           }
           break;
         }
@@ -1217,12 +1214,7 @@ export function transpileFile(options: TranspileOptions): GeneratedOutputs {
       
       // If we generated any declaration files, retry type-checking
       if (generatedDecls.length > 0) {
-        console.log(`\n  Retrying type-checking after auto-generation...`);
         typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
-        
-        if (typeCheckResult.success) {
-          console.log(`  Type-checking passed after auto-generation.\n`);
-        }
       }
     }
     

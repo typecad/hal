@@ -1,123 +1,133 @@
 import path from "node:path";
 import { CommandLineOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions, ScaffoldCommandOptions } from "../types";
 
+import chalk from "chalk";
+
 const VERSION = "0.1.0";
+const ICON_TYPECODE = "⤳";
 
 export function printHelp(): void {
-  console.log(`
-typecode v${VERSION} - TypeScript to C++ transpiler for embedded systems
-
-USAGE
-  typecode <input.ts> [options]
-  typecode gen-libdefs <input.ts>
-  typecode gen-decls <input.cpp|--all <directory>>
-  typecode map-error <mapFile> [options]
-  typecode create-board <name> [options]
-
-Transpilation is always performed first. Use --compile, --upload, and
---monitor to chain arduino-cli operations after transpilation.
-
-OPTIONS
-  --emit <mode>           Emit mode: "cpp" or "split" (default: split)
-                          - cpp: single output file
-                          - split: separate .cpp and .h files
-                          Note: Arduino target always emits a single .ino file
-
-  --target <platform>     Target platform: "arduino" or "generic" (default: generic)
-                          Automatically set to "arduino" when --compile, --upload,
-                          or --monitor are used.
-
-  --outDir, --out-dir <path>
-                          Output directory for generated files (default: input file directory)
-
-  --emit-maps <bool>      Emit source maps: "true" or "false" (default: true)
-                          Source maps enable mapping C++ errors back to TypeScript
-
-ARDUINO COMMANDS (chain in order: --compile → --upload → --monitor)
-  --compile               Compile the generated Arduino sketch with arduino-cli.
-                          Requires: --fqbn
-
-  --upload                Upload the compiled sketch to the board.
-                          Requires: --compile, --fqbn, --port
-
-  --monitor               Open an interactive serial monitor after upload.
-                          Requires: --port
-
-  --fqbn <package:arch:board>
-                          Fully Qualified Board Name.
-                          Required for --compile and --upload.
-                          Example: arduino:avr:uno, esp32:esp32:esp32dev
-
-  --port <port>           Serial port of the connected board.
-                          Required for --upload and --monitor.
-                          Example: COM4, /dev/ttyACM0
-
-  --baud <rate>           Baud rate for --monitor (default: 9600)
-
-TREE-SHAKING OPTIONS
-  --no-tree-shake          Disable tree-shaking (dead code elimination)
-
-  --keep-unused-enums      Keep all enums even if not referenced
-
-  --keep-unused-classes    Keep all classes even if not instantiated
-
-  --keep-unused-types      Keep all type aliases even if not used
-
-  --keep-unused-variables   Keep all top-level variables even if not referenced
-
-  --entry-point <name>     Add a custom entry point symbol (repeatable)
-                           Default entry points: setup/loop (Arduino), main (generic)
-
-  --help, -h              Show this help message
-
-BOARD SCAFFOLDING
-  create-board <name>     Create a new board package scaffold
-                          Creates a complete board definition package under packages/
-
-  --arch <id>             Architecture: avr, esp32, esp32s2, esp32s3, esp32c3, rp2040, samd, stm32, nrf52
-
-  --display-name <name>   Human-readable board name
-
-  --vendor <name>         Board vendor/manufacturer
-
-  --mcu <part>            MCU part number (e.g., ATmega328P, ESP32)
-
-  --clock <mhz>           Clock speed in MHz
-
-  --flash <kb>            Flash memory size in KB
-
-  --sram <kb>             SRAM size in KB
-
-  --eeprom <kb>           EEPROM size in KB
-
-  --fqbn <value>          Fully Qualified Board Name for arduino-cli
-
-  --outDir <path>         Output directory (default: packages/board-<name>)
-
-  --minimal               Generate only required files
-
-EXAMPLES
-  # Transpile to generic C++
-  typecode src/main.ts
-
-  # Transpile to Arduino sketch
-  typecode sketch.ts --target arduino --outDir ./build
-
-  # Transpile and compile for Arduino Uno
-  typecode sketch.ts --compile --fqbn arduino:avr:uno
-
-  # Transpile, compile, and upload
-  typecode sketch.ts --compile --upload --fqbn arduino:avr:uno --port COM4
-
-  # Full chain: transpile → compile → upload → monitor
-  typecode sketch.ts --compile --upload --monitor --fqbn arduino:avr:uno --port COM4 --baud 115200
-
-  # Generate library definitions from imports
-  typecode gen-libdefs src/sensor.ts
-
-  # Map a C++ error to TypeScript source
-  typecode map-error .build/sketch.cpp.map --line 42 --column 5 --message "undefined reference"
-`);
+  console.log();
+  console.log(chalk.cyan(`${ICON_TYPECODE} typeCode`) + chalk.gray(` v${VERSION}`));
+  console.log(chalk.gray(`  TypeScript to C++ transpiler for embedded systems`));
+  console.log();
+  console.log(chalk.cyan(`USAGE`));
+  console.log();
+  console.log(`  typecode <input.ts> [options]`);
+  console.log(`  typecode gen-libdefs <input.ts>`);
+  console.log(`  typecode gen-decls <input.cpp|--all <directory>>`);
+  console.log(`  typecode map-error <mapFile> [options]`);
+  console.log(`  typecode create-board <name> [options]`);
+  console.log();
+  console.log(chalk.gray(`Transpilation is always performed first. Use --compile, --upload, and`));
+  console.log(chalk.gray(`--monitor to chain arduino-cli operations after transpilation.`));
+  console.log();
+  console.log(chalk.cyan(`OPTIONS`));
+  console.log();
+  console.log(`  --emit <mode>           Emit mode: "cpp" or "split" (default: split)`);
+  console.log(`                          - cpp: single output file`);
+  console.log(`                          - split: separate .cpp and .h files`);
+  console.log(`                          Note: Arduino target always emits a single .ino file`);
+  console.log();
+  console.log(`  --target <platform>     Target platform: "arduino" or "generic" (default: generic)`);
+  console.log(`                          Automatically set to "arduino" when --compile, --upload,`);
+  console.log(`                          or --monitor are used.`);
+  console.log();
+  console.log(`  --outDir, --out-dir <path>`);
+  console.log(`                          Output directory for generated files (default: input file directory)`);
+  console.log();
+  console.log(`  --emit-maps <bool>      Emit source maps: "true" or "false" (default: true)`);
+  console.log(`                          Source maps enable mapping C++ errors back to TypeScript`);
+  console.log();
+  console.log(chalk.cyan(`ARDUINO COMMANDS`) + chalk.gray(` (chain in order: --compile → --upload → --monitor)`));
+  console.log();
+  console.log(`  --compile               Compile the generated Arduino sketch with arduino-cli.`);
+  console.log(`                          Requires: --fqbn`);
+  console.log();
+  console.log(`  --upload                Upload the compiled sketch to the board.`);
+  console.log(`                          Requires: --compile, --fqbn, --port`);
+  console.log();
+  console.log(`  --monitor               Open an interactive serial monitor after upload.`);
+  console.log(`                          Requires: --port`);
+  console.log();
+  console.log(`  --fqbn <package:arch:board>`);
+  console.log(`                          Fully Qualified Board Name.`);
+  console.log(`                          Required for --compile and --upload.`);
+  console.log(`                          Example: arduino:avr:uno, esp32:esp32:esp32dev`);
+  console.log();
+  console.log(`  --port <port>           Serial port of the connected board.`);
+  console.log(`                          Required for --upload and --monitor.`);
+  console.log(`                          Example: COM4, /dev/ttyACM0`);
+  console.log();
+  console.log(`  --baud <rate>           Baud rate for --monitor (default: 9600)`);
+  console.log();
+  console.log(chalk.cyan(`TREE-SHAKING OPTIONS`));
+  console.log();
+  console.log(`  --no-tree-shake          Disable tree-shaking (dead code elimination)`);
+  console.log();
+  console.log(`  --keep-unused-enums      Keep all enums even if not referenced`);
+  console.log();
+  console.log(`  --keep-unused-classes    Keep all classes even if not instantiated`);
+  console.log();
+  console.log(`  --keep-unused-types      Keep all type aliases even if not used`);
+  console.log();
+  console.log(`  --keep-unused-variables   Keep all top-level variables even if not referenced`);
+  console.log();
+  console.log(`  --entry-point <name>     Add a custom entry point symbol (repeatable)`);
+  console.log(`                           Default entry points: setup/loop (Arduino), main (generic)`);
+  console.log();
+  console.log(`  --help, -h              Show this help message`);
+  console.log();
+  console.log(chalk.cyan(`BOARD SCAFFOLDING`));
+  console.log();
+  console.log(`  create-board <name>     Create a new board package scaffold`);
+  console.log(`                          Creates a complete board definition package under packages/`);
+  console.log();
+  console.log(`  --arch <id>             Architecture: avr, esp32, esp32s2, esp32s3, esp32c3, rp2040, samd, stm32, nrf52`);
+  console.log();
+  console.log(`  --display-name <name>   Human-readable board name`);
+  console.log();
+  console.log(`  --vendor <name>         Board vendor/manufacturer`);
+  console.log();
+  console.log(`  --mcu <part>            MCU part number (e.g., ATmega328P, ESP32)`);
+  console.log();
+  console.log(`  --clock <mhz>           Clock speed in MHz`);
+  console.log();
+  console.log(`  --flash <kb>            Flash memory size in KB`);
+  console.log();
+  console.log(`  --sram <kb>             SRAM size in KB`);
+  console.log();
+  console.log(`  --eeprom <kb>           EEPROM size in KB`);
+  console.log();
+  console.log(`  --fqbn <value>          Fully Qualified Board Name for arduino-cli`);
+  console.log();
+  console.log(`  --outDir <path>         Output directory (default: packages/board-<name>)`);
+  console.log();
+  console.log(`  --minimal               Generate only required files`);
+  console.log();
+  console.log(chalk.cyan(`EXAMPLES`));
+  console.log();
+  console.log(chalk.gray(`  # Transpile to generic C++`));
+  console.log(`  typecode src/main.ts`);
+  console.log();
+  console.log(chalk.gray(`  # Transpile to Arduino sketch`));
+  console.log(`  typecode sketch.ts --target arduino --outDir ./build`);
+  console.log();
+  console.log(chalk.gray(`  # Transpile and compile for Arduino Uno`));
+  console.log(`  typecode sketch.ts --compile --fqbn arduino:avr:uno`);
+  console.log();
+  console.log(chalk.gray(`  # Transpile, compile, and upload`));
+  console.log(`  typecode sketch.ts --compile --upload --fqbn arduino:avr:uno --port COM4`);
+  console.log();
+  console.log(chalk.gray(`  # Full chain: transpile → compile → upload → monitor`));
+  console.log(`  typecode sketch.ts --compile --upload --monitor --fqbn arduino:avr:uno --port COM4 --baud 115200`);
+  console.log();
+  console.log(chalk.gray(`  # Generate library definitions from imports`));
+  console.log(`  typecode gen-libdefs src/sensor.ts`);
+  console.log();
+  console.log(chalk.gray(`  # Map a C++ error to TypeScript source`));
+  console.log(`  typecode map-error .build/sketch.cpp.map --line 42 --column 5 --message "undefined reference"`);
+  console.log();
 }
 
 function readFlag(args: string[], flag: string): string | undefined {
