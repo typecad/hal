@@ -7,12 +7,12 @@
 // ---------------------------------------------------------------------------
 
 import type { PlatformStrategy } from "./platform-strategy";
-import { ArduinoStrategy } from "../../../framework-arduino/dist";
 import { GenericStrategy } from "./generic-strategy";
+import { ArduinoStrategy } from "./arduino-strategy";
 
 const _registry = new Map<string, PlatformStrategy>([
-  ["arduino", new ArduinoStrategy()],
   ["generic", new GenericStrategy()],
+  ["arduino", new ArduinoStrategy()],
 ]);
 
 /**

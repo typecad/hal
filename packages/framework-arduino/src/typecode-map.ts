@@ -6,11 +6,8 @@
 // the rest of the emitter stays regex-free.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from 'typecode/ir';
-import type { TypecodeReceiverKind } from 'typecode/typecode-symbols';
-import { inferKindByName } from 'typecode/typecode-symbols';
-import type { BoardConstants } from 'typecode/board-resolver';
-import type { TargetProfile } from 'typecode/types';
+import type { ExpressionIR, TypecodeReceiverKind, BoardConstants, TargetProfile } from '@typecode/core/shared';
+import { inferKindByName } from '@typecode/core/shared';
 
 // ---------------------------------------------------------------------------
 // Helpers

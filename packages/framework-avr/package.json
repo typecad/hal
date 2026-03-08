@@ -18,10 +18,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typecode/core": "^0.1.0"
-  },
-  "peerDependencies": {
-    "typecode": "^0.1.0"
+    "@typecode/core": "^0.1.0",
+    "@typecode/framework-arduino": "^0.1.0"
   },
   "license": "MIT",
   "publishConfig": {

@@ -7,7 +7,8 @@
 //   A0.read()   →  ADC register operations
 // ---------------------------------------------------------------------------
 
-import { ArduinoStrategy, RuntimePolyfillIR } from 'typecode/platform';
+import { ArduinoStrategy } from '@typecode/framework-arduino';
+import type { RuntimePolyfillIR } from '@typecode/core/shared';
 import {
   getPinInfo,
   parsePinFromReceiver,

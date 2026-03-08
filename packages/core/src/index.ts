@@ -246,3 +246,6 @@ export {
   type TypecodeTestConfig,
   type TypecodeConsoleConfig,
 } from './config';
+
+// --- Shared types (for CLI and framework packages) -------------------------
+export * from './shared';

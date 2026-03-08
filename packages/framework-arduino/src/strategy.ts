@@ -5,12 +5,7 @@
 // cpp-emitter.ts, typecode-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy } from "typecode/platform";
-import type { ExpressionIR, ProgramIR } from "typecode/ir";
-import type { Diagnostic, PlatformContext } from "typecode/types";
-import type { BoardConstants } from "typecode/board-resolver";
-import type { TypecodeReceiverKind } from "typecode/typecode-symbols";
-import type { RuntimePolyfillIR } from "typecode/polyfill/types";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, TypecodeReceiverKind, RuntimePolyfillIR } from "@typecode/core/shared";
 import { resolveArduinoProfile } from "./profile";
 import { renderArduinoBuiltin, tryRenderTypecodeCallStatement } from "./typecode-map";
 

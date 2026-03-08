@@ -5,8 +5,18 @@
 // ---------------------------------------------------------------------------
 
 import { spawnSync } from "node:child_process";
-import type { ArduinoPlatformContext, Diagnostic } from "typecode/types";
-import { toArchitectureFromFqbn } from "typecode/utils/toolchain";
+import type { ArduinoPlatformContext, Diagnostic } from "@typecode/core/shared";
+
+/**
+ * Extract architecture from FQBN string.
+ * FQBN format: vendor:arch:board[:menu=options]
+ * e.g., "arduino:avr:uno" -> "avr"
+ */
+function toArchitectureFromFqbn(fqbn?: string): string | undefined {
+  if (!fqbn) return undefined;
+  const parts = fqbn.split(":");
+  return parts.length >= 2 ? parts[1] : undefined;
+}
 
 export interface ArduinoCliMetadata {
   architecture?: string;

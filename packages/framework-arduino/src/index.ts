@@ -12,7 +12,7 @@ export { ArduinoStrategy } from './strategy';
 export { ArduinoStrategy as FrameworkStrategy } from './strategy';
 
 // Re-export types that consumers may need
-export type { PlatformStrategy } from 'typecode/platform';
+export type { PlatformStrategy } from '@typecode/core/shared';
 
 // Export utility functions for advanced use cases
 export { renderArduinoBuiltin, tryRenderTypecodeCallStatement, extractPropertyChain, renderBoardDefinitionAccess } from './typecode-map';

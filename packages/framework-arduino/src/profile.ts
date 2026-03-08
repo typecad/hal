@@ -4,11 +4,20 @@
 // Resolves Arduino-specific profile settings based on FQBN and program IR.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, ProgramIR, StatementIR } from "typecode/ir";
-import type { ArduinoPlatformContext, Diagnostic, PlatformContext } from "typecode/types";
-import { toArchitectureFromFqbn } from "typecode/utils/toolchain";
+import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext, ArduinoPlatformContext } from "@typecode/core/shared";
 import type { ArduinoCliMetadata } from "./cli-metadata";
 import { loadArduinoCliMetadata } from "./cli-metadata";
+
+/**
+ * Extract architecture from FQBN string.
+ * FQBN format: vendor:arch:board[:menu=options]
+ * e.g., "arduino:avr:uno" -> "avr"
+ */
+function toArchitectureFromFqbn(fqbn?: string): string | undefined {
+  if (!fqbn) return undefined;
+  const parts = fqbn.split(":");
+  return parts.length >= 2 ? parts[1] : undefined;
+}
 
 interface ArduinoProfileVariant {
   architecture: string;

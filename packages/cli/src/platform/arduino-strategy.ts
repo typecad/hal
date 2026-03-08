@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // ArduinoStrategy — Re-export from @typecode/framework-arduino
 //
-// The ArduinoStrategy implementation now lives in the framework-arduino
-// package. This file re-exports it for backward compatibility.
+// The ArduinoStrategy implementation lives in the framework-arduino package.
+// Static import works now that packages are properly self-contained.
 // ---------------------------------------------------------------------------
 
-export { ArduinoStrategy } from '../../../framework-arduino/dist';
+export { ArduinoStrategy } from "@typecode/framework-arduino";

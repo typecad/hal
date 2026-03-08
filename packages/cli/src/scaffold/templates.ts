@@ -780,12 +780,12 @@ export function generateStrategyTs(): string {
   return `// ---------------------------------------------------------------------------
 // Platform strategy re-export
 //
-// Most boards use the shared ArduinoStrategy from the CLI package.
+// Most boards use the shared ArduinoStrategy from the framework-arduino package.
 // Board packages that need customized emit behavior can extend
 // ArduinoStrategy and override specific methods here.
 // ---------------------------------------------------------------------------
 
-export { ArduinoStrategy as BoardStrategy } from 'typecode/platform';
+export { ArduinoStrategy as BoardStrategy } from '@typecode/framework-arduino';
 `;
 }
 
