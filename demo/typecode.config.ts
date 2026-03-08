@@ -8,8 +8,13 @@ const config: TypecodeConfig = {
   // Target architecture (AVR for ATmega328P)
   target: 'avr',
 
-  // Board package - Arduino Uno with Arduino framework
+  // Board package - provides pin definitions and board constants
   board: '@typecode/board-arduino-uno',
+
+  // Framework package - controls code generation strategy
+  // Options: '@typecode/framework-arduino' (digitalWrite, etc.)
+  //          '@typecode/framework-avr' (native registers: PORTB, etc.)
+  framework: '@typecode/framework-arduino',
 
   // Fully-Qualified Board Name for arduino-cli
   fqbn: 'arduino:avr:uno',
@@ -25,7 +30,7 @@ const config: TypecodeConfig = {
   toolchain: {
     type: 'arduino-cli',
     arduinoCli: {
-      verbose: false,
+      verbose: true,
     },
   },
 

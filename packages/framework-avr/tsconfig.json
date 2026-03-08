@@ -14,12 +14,14 @@
     "rootDir": "src",
     "outDir": "dist",
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "typecode/platform": ["../cli/dist/platform/index"],
+      "typecode/platform/registry": ["../cli/dist/platform/registry"],
+      "typecode/ir": ["../cli/dist/ir/model"],
+      "typecode/board-resolver": ["../cli/dist/ir/board-resolver"],
+      "typecode/typecode-symbols": ["../cli/dist/ir/typecode-symbols"]
+    }
   },
-  "include": ["src/**/*.ts"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../arch-avr-native" },
-    { "path": "../board-arduino-uno" }
-  ]
+  "include": ["src/**/*.ts"]
 }

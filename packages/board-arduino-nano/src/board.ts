@@ -68,12 +68,12 @@ export interface DigitalPins {
 }
 
 export interface AnalogPins {
-  A0: IAnalogInput;
-  A1: IAnalogInput;
-  A2: IAnalogInput;
-  A3: IAnalogInput;
-  A4: IAnalogInput;
-  A5: IAnalogInput;
+  A0: IDigitalPin & IAnalogInput;
+  A1: IDigitalPin & IAnalogInput;
+  A2: IDigitalPin & IAnalogInput;
+  A3: IDigitalPin & IAnalogInput;
+  A4: IDigitalPin & IAnalogInput;
+  A5: IDigitalPin & IAnalogInput;
 }
 
 // ---------------------------------------------------------------------------

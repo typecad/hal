@@ -32,8 +32,13 @@ export interface ResolvedTypecodeConfig {
   outputOptimize?: string;
   /** Output directory. */
   outputOutDir?: string;
-  /** Architecture shim override. */
+  /** Architecture shim override. @deprecated Use framework instead. */
   architecture?: string;
+  /**
+   * Framework package for code generation strategy.
+   * Can be '@typecode/framework-arduino', '@typecode/framework-avr', or a custom path.
+   */
+  framework?: string;
   /** Path to the config file that was loaded. */
   configPath: string;
   /** Toolchain configuration. */
@@ -204,6 +209,9 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
 
   const architecture = flat.get("architecture");
   if (typeof architecture === "string") resolved.architecture = architecture;
+
+  const framework = flat.get("framework");
+  if (typeof framework === "string") resolved.framework = framework;
 
   const outputFramework = flat.get("output.framework");
   if (typeof outputFramework === "string") resolved.outputFramework = outputFramework;

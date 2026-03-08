@@ -71,8 +71,19 @@ export interface TypecodeConfig {
   /**
    * Optional architecture shim override.
    * Defaults to the canonical shim for `target` (e.g. `@typecode/arch-avr`).
+   * @deprecated Use `framework` instead.
    */
   architecture?: string;
+
+  /**
+   * Framework package for code generation strategy.
+   * Can be:
+   *   - '@typecode/framework-arduino' - Arduino framework (digitalWrite, etc.)
+   *   - '@typecode/framework-avr' - Native AVR registers (PORTB, etc.)
+   *   - a relative path to a custom framework package
+   * Defaults to '@typecode/framework-arduino' if not specified.
+   */
+  framework?: string;
 
   /** Output / build options. */
   output?: TypecodeOutputConfig;

@@ -8,5 +8,11 @@
     "compile": "npx typecode ./src/sketch.ts --compile",
     "upload": "npx typecode ./src/sketch.ts --compile --upload --port COM4",
     "debug": "npx typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM4"
+  },
+  "dependencies": {
+    "@typecode/core": "*",
+    "@typecode/board-arduino-uno": "*",
+    "@typecode/framework-avr": "*",
+    "@typecode/framework-arduino": "*"
   }
 }

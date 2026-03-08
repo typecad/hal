@@ -1114,32 +1114,94 @@ function applyTreeShaking(
 }
 
 import type { PlatformStrategy } from "./platform/platform-strategy";
+import { ArduinoStrategy } from "./platform/arduino-strategy";
 
 /**
- * Try to load a PlatformStrategy from a board package.
- * Returns undefined if the package doesn't export a BoardStrategy.
+ * Try to load a PlatformStrategy from a package (board or framework).
+ * Checks for FrameworkStrategy (framework packages) or BoardStrategy (legacy board packages).
+ * Returns undefined if the package doesn't export a strategy.
+ * 
+ * @param packageName The package name to load
+ * @param fromDir The directory to resolve from (usually the input file's directory)
+ * @param debug Enable debug logging
  */
-function loadBoardPackageStrategy(boardPackage: string | undefined): PlatformStrategy | undefined {
-  if (!boardPackage) return undefined;
+function loadPackageStrategy(packageName: string | undefined, fromDir: string, debug?: boolean): PlatformStrategy | undefined {
+  if (!packageName) return undefined;
   
   try {
-    const packagePath = require.resolve(boardPackage);
+    // Resolve from the input file's directory to handle monorepo workspaces
+    const packagePath = require.resolve(packageName, { paths: [fromDir] });
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const pkg = require(packagePath);
+    // Prefer FrameworkStrategy (new framework packages) over BoardStrategy (legacy)
+    if (pkg.FrameworkStrategy) {
+      if (debug) {
+        console.log(`Loaded FrameworkStrategy from ${packageName}`);
+      }
+      return new pkg.FrameworkStrategy();
+    }
     if (pkg.BoardStrategy) {
+      if (debug) {
+        console.log(`Loaded BoardStrategy from ${packageName}`);
+      }
       return new pkg.BoardStrategy();
     }
-  } catch {
-    // Board package may not have a strategy or may not be installed
+    if (debug) {
+      console.log(`Package ${packageName} has no FrameworkStrategy or BoardStrategy export`);
+    }
+  } catch (e) {
+    // Package may not have a strategy or may not be installed
+    if (debug) {
+      console.log(`Failed to load strategy from ${packageName}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
   return undefined;
 }
 
+/**
+ * Load the appropriate platform strategy based on config.
+ * Priority: framework package > board package > default ArduinoStrategy
+ * 
+ * @param frameworkPackage The framework package name (e.g., '@typecode/framework-avr')
+ * @param boardPackage The board package name (e.g., '@typecode/board-arduino-uno')
+ * @param fromDir The directory to resolve packages from (usually the input file's directory)
+ */
+function loadPlatformStrategy(
+  frameworkPackage: string | undefined,
+  boardPackage: string | undefined,
+  fromDir: string,
+  debug?: boolean,
+): PlatformStrategy {
+  // Try framework package first (new approach)
+  if (frameworkPackage) {
+    const strategy = loadPackageStrategy(frameworkPackage, fromDir, debug);
+    if (strategy) return strategy;
+  }
+  
+  // Fall back to board package (legacy approach)
+  if (boardPackage) {
+    const strategy = loadPackageStrategy(boardPackage, fromDir, debug);
+    if (strategy) return strategy;
+  }
+  
+  // Default to ArduinoStrategy
+  if (debug) {
+    console.log(`Using default ArduinoStrategy`);
+  }
+  return new ArduinoStrategy();
+}
+
 export function transpileFile(options: TranspileOptions): GeneratedOutputs {
   const entryFile = path.resolve(options.inputFile);
+  const entryDir = path.dirname(entryFile);
   
-  // Load board package strategy before transpilation
-  const boardStrategy = loadBoardPackageStrategy(options.boardPackage);
+  // Load platform strategy from framework or board package
+  const boardStrategy = loadPlatformStrategy(
+    options.frameworkPackage,
+    options.boardPackage,
+    entryDir,
+    options.debug,
+  );
   
   const graphResult = collectTranspileGraph(entryFile, options.boardPackage);
   const transpileFiles = graphResult.files;

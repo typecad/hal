@@ -1,7 +1,7 @@
 {
-  "name": "@typecode/arch-avr-native",
+  "name": "@typecode/framework-avr",
   "version": "0.1.0",
-  "description": "TypeCode architecture package for native AVR register-level code generation",
+  "description": "TypeCode framework package for native AVR register-level code generation",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

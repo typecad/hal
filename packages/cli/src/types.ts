@@ -91,6 +91,12 @@ export interface TranspileOptions {
    * (e.g. `'@typecode/board-arduino-uno'`).
    */
   boardPackage?: string;
+  /**
+   * Framework package for code generation strategy.
+   * Can be '@typecode/framework-arduino', '@typecode/framework-avr', or a custom path.
+   * Defaults to '@typecode/framework-arduino' if not specified.
+   */
+  frameworkPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
   debug?: boolean;
   /** Skip TypeScript type-checking before transpilation (default: false) */
@@ -149,6 +155,11 @@ export interface CommandLineOptions {
    * When present, bare `@typecode` imports are rewritten to this package.
    */
   boardPackage?: string;
+  /**
+   * Framework package for code generation strategy.
+   * Can be '@typecode/framework-arduino', '@typecode/framework-avr', or a custom path.
+   */
+  frameworkPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
   debug?: boolean;
 }

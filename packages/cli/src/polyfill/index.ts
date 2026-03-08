@@ -5,6 +5,11 @@ export * from "./types";
 export * from "./registry";
 export * from "./emitter";
 
+// Template-based polyfill system
+export * from "./template-types";
+export * from "./generator";
+export { STATIC_ARRAY_TEMPLATE, STATIC_STRING_TEMPLATE, CONSOLE_TEMPLATE } from "./templates";
+
 // Re-export polyfill definitions for direct access
 export { consolePolyfill } from "./polyfills/console";
 export { arduinoAsyncPolyfill } from "./polyfills/async-arduino";

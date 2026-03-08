@@ -3,9 +3,10 @@
   "private": true,
   "workspaces": [
     "packages/core",
-    "packages/arch-avr-native",
+    "packages/framework-avr",
+    "packages/framework-arduino",
     "packages/board-arduino-uno",
-    "packages/board-arduino-uno-native",
+    "packages/board-arduino-nano",
     "packages/board-esp32-devkit",
     "packages/board-arduino-nano33iot",
     "packages/board-native-atmega328p",

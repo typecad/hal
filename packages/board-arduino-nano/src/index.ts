@@ -5,8 +5,10 @@
 
 import type { BoardDefinition } from '@typecode/core';
 
-// Re-export the platform strategy so the CLI can resolve it automatically
-export { BoardStrategy } from './strategy';
+// NOTE: Platform strategy is now provided by framework packages:
+//   - @typecode/framework-arduino for Arduino framework (digitalWrite, etc.)
+//   - @typecode/framework-avr for native AVR registers (PORTB, etc.)
+// Set `framework` in typecode.config.ts to choose the code generation strategy.
 
 // ---------------------------------------------------------------------------
 // Default capability flags

@@ -61,12 +61,12 @@ export const D10: IDigitalPin = createDigitalPin(10, 10);
 export const D11: IDigitalPin = createDigitalPin(11, 11);
 export const D12: IDigitalPin = createDigitalPin(12, 12);
 export const D13: IDigitalPin = createDigitalPin(13, 13);
-export const A0: IAnalogInput = createAnalogPin(14, 14);
-export const A1: IAnalogInput = createAnalogPin(15, 15);
-export const A2: IAnalogInput = createAnalogPin(16, 16);
-export const A3: IAnalogInput = createAnalogPin(17, 17);
-export const A4: IAnalogInput = createAnalogPin(18, 18);
-export const A5: IAnalogInput = createAnalogPin(19, 19);
+export const A0: IDigitalPin & IAnalogInput = createAnalogPin(14, 14) as IDigitalPin & IAnalogInput;
+export const A1: IDigitalPin & IAnalogInput = createAnalogPin(15, 15) as IDigitalPin & IAnalogInput;
+export const A2: IDigitalPin & IAnalogInput = createAnalogPin(16, 16) as IDigitalPin & IAnalogInput;
+export const A3: IDigitalPin & IAnalogInput = createAnalogPin(17, 17) as IDigitalPin & IAnalogInput;
+export const A4: IDigitalPin & IAnalogInput = createAnalogPin(18, 18) as IDigitalPin & IAnalogInput;
+export const A5: IDigitalPin & IAnalogInput = createAnalogPin(19, 19) as IDigitalPin & IAnalogInput;
 
 // ---------------------------------------------------------------------------
 // Convenience aliases

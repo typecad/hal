@@ -266,6 +266,7 @@ async function main(): Promise<void> {
     let effectiveTarget = options.target;
     let effectiveOutDir = options.outDir;
     let effectiveBoardPackage = options.boardPackage;
+    let effectiveFrameworkPackage = options.frameworkPackage;
 
     if (config) {
       // Validate board package exists before proceeding
@@ -301,6 +302,10 @@ async function main(): Promise<void> {
       if (config.board) {
         effectiveBoardPackage = config.board;
       }
+      // Load framework package from config (new approach)
+      if (config.framework) {
+        effectiveFrameworkPackage = config.framework;
+      }
       // Pass console baud rate to platform context
       if (config.console?.baudRate) {
         effectivePlatformContext = effectivePlatformContext || {};
@@ -332,6 +337,7 @@ async function main(): Promise<void> {
         platformContext: effectivePlatformContext,
         treeShaking: options.treeShaking,
         boardPackage: effectiveBoardPackage,
+        frameworkPackage: effectiveFrameworkPackage,
         debug: options.debug,
       });
 
