@@ -8,7 +8,7 @@ import type { ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
-import { extractPropertyChain } from "./typecode-map";
+import { extractPropertyChain } from "../platform/typecode-map";
 
 /**
  * Context needed for expression rendering.

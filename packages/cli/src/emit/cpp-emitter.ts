@@ -11,7 +11,7 @@ import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
 import { ResolvedNpmPackage } from "../transpile";
-import { extractPropertyChain } from "./typecode-map";
+import { extractPropertyChain } from "../platform/typecode-map";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import { resolveStrategy } from "../platform/registry";

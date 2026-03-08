@@ -1,15 +1,22 @@
 // ---------------------------------------------------------------------------
 // @typecode/framework-arduino — Arduino framework strategy
 //
-// Re-exports ArduinoStrategy from CLI for use as a framework package.
-// This allows users to specify framework: '@typecode/framework-arduino' in config.
+// Provides the ArduinoStrategy implementation for Arduino framework code
+// generation. This is the main entry point for the framework-arduino package.
 // ---------------------------------------------------------------------------
 
-// Re-export ArduinoStrategy as FrameworkStrategy for consistency
-export { ArduinoStrategy as FrameworkStrategy } from 'typecode/platform';
+// Export the main strategy class
+export { ArduinoStrategy } from './strategy';
 
-// Also export as ArduinoStrategy for direct access
-export { ArduinoStrategy } from 'typecode/platform';
+// Export as FrameworkStrategy for consistency with framework package naming
+export { ArduinoStrategy as FrameworkStrategy } from './strategy';
 
-// Export the strategy type
+// Re-export types that consumers may need
 export type { PlatformStrategy } from 'typecode/platform';
+
+// Export utility functions for advanced use cases
+export { renderArduinoBuiltin, tryRenderTypecodeCallStatement, extractPropertyChain, renderBoardDefinitionAccess } from './typecode-map';
+export { resolveArduinoProfile } from './profile';
+export type { ResolvedArduinoProfile } from './profile';
+export { loadArduinoCliMetadata } from './cli-metadata';
+export type { ArduinoCliMetadata } from './cli-metadata';

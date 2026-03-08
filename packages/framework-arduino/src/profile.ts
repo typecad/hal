@@ -1,7 +1,14 @@
-import { ExpressionIR, ProgramIR, StatementIR } from "../ir/model";
-import { ArduinoPlatformContext, Diagnostic, PlatformContext } from "../types";
-import { ArduinoCliMetadata, loadArduinoCliMetadata } from "./arduino-cli-metadata";
-import { toArchitectureFromFqbn } from "../utils/toolchain";
+// ---------------------------------------------------------------------------
+// Arduino profile resolution
+//
+// Resolves Arduino-specific profile settings based on FQBN and program IR.
+// ---------------------------------------------------------------------------
+
+import type { ExpressionIR, ProgramIR, StatementIR } from "typecode/ir";
+import type { ArduinoPlatformContext, Diagnostic, PlatformContext } from "typecode/types";
+import { toArchitectureFromFqbn } from "typecode/utils/toolchain";
+import type { ArduinoCliMetadata } from "./cli-metadata";
+import { loadArduinoCliMetadata } from "./cli-metadata";
 
 interface ArduinoProfileVariant {
   architecture: string;

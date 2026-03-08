@@ -1,15 +1,16 @@
 // ---------------------------------------------------------------------------
 // Typecode → Arduino C++ translation map
 //
-// Converts structured typecode IR call nodes to the correct Arduino C++
+// Converts structured typecode ir call nodes to the correct Arduino C++
 // built-in expressions.  All translations are centralised here so that
 // the rest of the emitter stays regex-free.
 // ---------------------------------------------------------------------------
 
-import { ExpressionIR } from '../ir/model';
-import { TypecodeReceiverKind, inferKindByName } from '../ir/typecode-symbols';
-import { BoardConstants } from '../ir/board-resolver';
-import { TargetProfile } from '../types';
+import type { ExpressionIR } from 'typecode/ir';
+import type { TypecodeReceiverKind } from 'typecode/typecode-symbols';
+import { inferKindByName } from 'typecode/typecode-symbols';
+import type { BoardConstants } from 'typecode/board-resolver';
+import type { TargetProfile } from 'typecode/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
