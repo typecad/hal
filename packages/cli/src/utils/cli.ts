@@ -320,6 +320,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
   const monitor = argv.includes("--monitor");
   const debug = argv.includes("--debug");
   const noTranspile = argv.includes("--no-transpile");
+  const force = argv.includes("--force");
   const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
   // Tree-shaking options
@@ -384,5 +385,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     platformContext,
     treeShaking,
     debug,
+    force,
   };
 }

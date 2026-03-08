@@ -21,6 +21,13 @@ import {
   cachedIsFile,
   getOrReadFile,
 } from "./cache";
+import {
+  IncrementalCache,
+  initIncrementalCache,
+  getIncrementalCache,
+  saveAndClearIncrementalCache,
+  type FileChangeStatus,
+} from "./incremental-cache";
 import { detectEntryPoints } from "./ir/entry-points";
 import { analyzeReachability } from "./ir/reachability";
 import { filterProgramIR } from "./ir/filter";
@@ -934,6 +941,15 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const entryFile = path.resolve(options.inputFile);
   const entryDir = path.dirname(entryFile);
   
+  // Initialize incremental cache (always enabled unless force is set)
+  let incrementalCache: IncrementalCache | null = null;
+  if (!options.force) {
+    incrementalCache = initIncrementalCache({
+      rootDir: entryDir,
+      enabled: true,
+    });
+  }
+  
   // Load platform strategy from framework or board package, or use target-based resolution
   const boardStrategy = loadPlatformStrategy(
     options.frameworkPackage,
@@ -1002,7 +1018,35 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // Load breakpoints if debug mode is enabled
   const breakpoints = options.debug ? loadBreakpoints(sourceDir) : undefined;
 
-  // Build IR for all files - parallelize file reads for better I/O performance
+  // ── Incremental cache: determine which files need retranspilation ─────────
+  let filesToProcess: string[];
+  const cachedOutputs = new Map<string, string[]>();
+  
+  if (incrementalCache && incrementalCache.isEnabled()) {
+    const changeStatuses = incrementalCache.getFilesNeedingRetranspile(transpileFiles);
+    
+    filesToProcess = [];
+    for (const status of changeStatuses) {
+      if (status.needsRetranspile) {
+        filesToProcess.push(status.filePath);
+      } else {
+        // File is unchanged - get cached outputs
+        const outputs = incrementalCache.getCachedOutputs(status.filePath);
+        if (outputs) {
+          cachedOutputs.set(status.filePath, outputs);
+        }
+      }
+    }
+    
+    if (options.debug && filesToProcess.length < transpileFiles.length) {
+      const skipped = transpileFiles.length - filesToProcess.length;
+      console.log(`Incremental: skipping ${skipped} unchanged file(s)`);
+    }
+  } else {
+    filesToProcess = transpileFiles;
+  }
+
+  // Build IR for files that need retranspilation - parallelize file reads for better I/O performance
   // File reading is async, IR building is CPU-bound synchronous
   const buildIRForFile = async (filePath: string): Promise<PreBuiltFile> => {
     // Use async file read for better I/O parallelism
@@ -1065,9 +1109,9 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     return { filePath, programIR, polyfills, npmPackage };
   };
 
-  // Process all files in parallel using Promise.all for concurrent file I/O
+  // Process only files that need retranspilation in parallel using Promise.all for concurrent file I/O
   // This reads all source files concurrently, then builds IR synchronously
-  const preBuiltArray = await Promise.all(transpileFiles.map(buildIRForFile));
+  const preBuiltArray = await Promise.all(filesToProcess.map(buildIRForFile));
   const preBuilt = new Map<string, PreBuiltFile>();
   for (const item of preBuiltArray) {
     preBuilt.set(item.filePath, item);
@@ -1085,7 +1129,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   }
   registerAllEnumNames(allEnumIRs);
 
-  // ── Pass 2: emit ──────────────────────────────────────────────────────────
+  // ── Pass 2: emit (only for files that needed retranspilation) ─────────────
   for (const [filePath, { programIR, polyfills, npmPackage }] of preBuilt) {
     const emitOptions: Parameters<typeof emitCpp>[1] = {
       outDir,
@@ -1110,10 +1154,57 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     if (filePath === entryFile) {
       entryOutputs = emitted;
     }
+    
+    // Update incremental cache with the emitted outputs
+    if (incrementalCache && incrementalCache.isEnabled()) {
+      const outputs = [
+        emitted.sourcePath,
+        emitted.headerPath,
+        emitted.sourceMapPath,
+        emitted.headerMapPath,
+      ].filter((p): p is string => p !== undefined);
+      
+      // Get dependencies from program IR imports
+      const dependencies = programIR.imports
+        .map(imp => resolveImport(filePath, imp.moduleSpecifier, options.boardPackage)?.sourcePath)
+        .filter((p): p is string => p !== undefined);
+      
+      // Read the source file content for hashing
+      const sourceContent = await fs.promises.readFile(filePath, "utf8");
+      incrementalCache.updateFile(filePath, sourceContent, dependencies, outputs);
+    }
   }
 
+  // ── Handle fully cached builds ────────────────────────────────────────────
   if (!entryOutputs) {
-    throw new Error(`Unable to transpile entry file '${entryFile}'.`);
+    // Check if the entry file was cached (no files needed retranspilation)
+    const cachedEntryOutputs = cachedOutputs.get(entryFile);
+    if (cachedEntryOutputs && cachedEntryOutputs.length > 0) {
+      // All files were cached - return the cached entry file outputs
+      const sourcePath = cachedEntryOutputs.find(p => p.endsWith(".cpp") || p.endsWith(".ino"));
+      const headerPath = cachedEntryOutputs.find(p => p.endsWith(".h"));
+      const sourceMapPath = cachedEntryOutputs.find(p => p.endsWith(".cpp.map") || p.endsWith(".ino.tscppmap.json"));
+      const headerMapPath = cachedEntryOutputs.find(p => p.endsWith(".h.map"));
+      
+      if (sourcePath) {
+        // Log that we're using cached outputs
+        if (options.debug) {
+          console.log(`Incremental: all files unchanged, using cached outputs`);
+        }
+        
+        entryOutputs = {
+          sourcePath,
+          headerPath,
+          sourceMapPath,
+          headerMapPath,
+          diagnostics: [],
+        };
+      }
+    }
+    
+    if (!entryOutputs) {
+      throw new Error(`Unable to transpile entry file '${entryFile}'.`);
+    }
   }
 
   // ── Copy native C++ modules to output ─────────────────────────────────────
@@ -1144,6 +1235,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     } catch {
       // Best-effort flattening for direct arduino-cli sketch compilation.
     }
+  }
+
+  // Save incremental cache to disk
+  if (incrementalCache) {
+    incrementalCache.save();
   }
 
   return {

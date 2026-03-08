@@ -101,6 +101,11 @@ export interface TranspileOptions {
   debug?: boolean;
   /** Skip TypeScript type-checking before transpilation (default: false) */
   skipTypeCheck?: boolean;
+  /**
+   * Force retranspilation of all files, ignoring incremental cache.
+   * (default: false)
+   */
+  force?: boolean;
 }
 
 export interface LibraryDefinitionCondition {
@@ -162,6 +167,8 @@ export interface CommandLineOptions {
   frameworkPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
   debug?: boolean;
+  /** Force retranspilation of all files, ignoring cache */
+  force?: boolean;
 }
 
 export interface GenerateLibdefOptions {

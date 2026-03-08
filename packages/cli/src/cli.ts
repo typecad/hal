@@ -352,6 +352,7 @@ async function main(): Promise<void> {
         boardPackage: effectiveBoardPackage,
         frameworkPackage: effectiveFrameworkPackage,
         debug: options.debug,
+        force: options.force,
       });
 
       printDiagnostics(result.diagnostics);
