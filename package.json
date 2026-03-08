@@ -11,8 +11,7 @@
     "packages/board-arduino-nano33iot",
     "packages/board-native-atmega328p",
     "packages/cli",
-    "packages/expect",
-    "packages/toolchain"
+    "packages/expect"
   ],
   "scripts": {
     "build": "npm run build --workspaces",

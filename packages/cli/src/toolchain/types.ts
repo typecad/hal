@@ -1,8 +1,7 @@
 // ---------------------------------------------------------------------------
 // Toolchain types — interfaces for compile/upload backends
 //
-// A toolchain handles the compilation and upload process for a specific
-// build system (arduino-cli, platformio, etc.).
+// A toolchain handles the compilation and upload process for arduino-cli.
 // ---------------------------------------------------------------------------
 
 /** Error information from compilation. */
@@ -63,11 +62,11 @@ export interface MonitorOptions {
 
 /**
  * Toolchain interface — abstracts compile/upload operations.
- * Implementations: ArduinoCliToolchain, PlatformioToolchain.
+ * Implementation: ArduinoCliToolchain.
  */
 export interface Toolchain {
   /** Unique identifier for this toolchain. */
-  readonly id: 'arduino-cli' | 'platformio';
+  readonly id: 'arduino-cli';
 
   /** Human-readable name. */
   readonly name: string;
@@ -121,16 +120,12 @@ export interface Toolchain {
  */
 export interface ResolvedToolchainConfig {
   /** Toolchain type. */
-  type: 'arduino-cli' | 'platformio';
+  type: 'arduino-cli';
   /** Path to executable (if specified). */
   path?: string;
   /** Arduino CLI specific options. */
   arduinoCli?: {
     configFile?: string;
     verbose?: boolean;
-  };
-  /** PlatformIO specific options. */
-  platformio?: {
-    env?: string;
   };
 }

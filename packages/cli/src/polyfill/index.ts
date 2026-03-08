@@ -15,3 +15,20 @@ export { consolePolyfill } from "./polyfills/console";
 export { arduinoAsyncPolyfill } from "./polyfills/async-arduino";
 export { arrayMethodsPolyfill } from "./polyfills/array-methods";
 export { stringMethodsPolyfill } from "./polyfills/string-methods";
+
+// Plugin system for extensibility
+export {
+  // Types
+  type PolyfillPlugin,
+  type PluginContext,
+  type PluginLogger,
+  type PluginLoadResult,
+  type PluginLoaderOptions,
+  // Functions
+  loadPolyfillPlugin,
+  createSimplePlugin,
+  // Classes
+  PluginManager,
+  // Example
+  exampleCustomPlugin,
+} from "./plugin";

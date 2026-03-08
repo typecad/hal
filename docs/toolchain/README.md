@@ -5,16 +5,14 @@ The TypeCode toolchain manages compilers, uploaders, and build tools for embedde
 ## Documents
 
 - [Arduino CLI](./arduino-cli.md) - Arduino CLI integration
-- [PlatformIO](./platformio.md) - PlatformIO integration
 
 ## Overview
 
-TypeCode supports multiple toolchains:
+TypeCode uses **arduino-cli** as its toolchain backend for compilation and upload operations.
 
 | Toolchain | Description | Use Case |
 |-----------|-------------|----------|
 | Arduino CLI | Official Arduino command-line | Standard Arduino development |
-| PlatformIO | Professional embedded platform | Advanced features, more boards |
 
 ## Installation
 
@@ -29,16 +27,6 @@ brew install arduino-cli
 
 # Linux
 curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
-```
-
-### PlatformIO
-
-```bash
-# Via pip
-pip install platformio
-
-# Via VS Code extension
-# Install "PlatformIO IDE" extension
 ```
 
 ## Toolchain Registry
@@ -87,11 +75,7 @@ interface Toolchain {
 ### Via CLI
 
 ```bash
-# Arduino CLI (default)
 npx typecode sketch.ts --compile --upload --port COM4
-
-# PlatformIO
-npx typecode sketch.ts --toolchain platformio --compile --upload --port COM4
 ```
 
 ### Via Configuration
@@ -99,7 +83,12 @@ npx typecode sketch.ts --toolchain platformio --compile --upload --port COM4
 ```typescript
 // typecode.config.ts
 const config: TypecodeConfig = {
-  toolchain: 'arduino-cli',
+  toolchain: {
+    type: 'arduino-cli',
+    arduinoCli: {
+      verbose: true,
+    },
+  },
   // ... other options
 };
 ```

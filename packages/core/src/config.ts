@@ -108,7 +108,7 @@ export interface TypecodeConfig {
 
   /**
    * Toolchain configuration for compile/upload operations.
-   * Controls which backend (arduino-cli or platformio) is used.
+   * Uses arduino-cli as the backend.
    */
   toolchain?: TypecodeToolchainConfig;
 
@@ -124,7 +124,7 @@ export interface TypecodeConfig {
 // ---------------------------------------------------------------------------
 
 /** Supported toolchain types for compile/upload operations. */
-export type ToolchainType = 'arduino-cli' | 'platformio';
+export type ToolchainType = 'arduino-cli';
 
 /** Arduino CLI specific configuration options. */
 export interface ArduinoCliOptions {
@@ -136,25 +136,15 @@ export interface ArduinoCliOptions {
   verbose?: boolean;
 }
 
-/** PlatformIO specific configuration options. */
-export interface PlatformioOptions {
-  /** Path to pio executable. Auto-detected if not specified. */
-  path?: string;
-  /** Target environment name from platformio.ini. */
-  env?: string;
-}
-
 /**
  * Toolchain configuration for compile and upload operations.
- * Controls which backend (arduino-cli or platformio) is used.
+ * Uses arduino-cli as the backend.
  */
 export interface TypecodeToolchainConfig {
-  /** Toolchain type: 'arduino-cli' or 'platformio'. Default: 'arduino-cli' */
+  /** Toolchain type: 'arduino-cli'. Default: 'arduino-cli' */
   type?: ToolchainType;
   /** Arduino CLI specific options. */
   arduinoCli?: ArduinoCliOptions;
-  /** PlatformIO specific options. */
-  platformio?: PlatformioOptions;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { PolyfillDefinition, PolyfillContext, PolyfillNeed, RuntimePolyfillIR, DEFAULT_POLYFILL_CONFIG, PolyfillConfig } from "./types";
 import { ProgramIR } from "../ir/model";
+import type { PolyfillPlugin, PluginLogger } from "./plugin";
 
 // Import all polyfill definitions
 import { consolePolyfill } from "./polyfills/console";
@@ -8,9 +9,9 @@ import { arrayMethodsPolyfill } from "./polyfills/array-methods";
 import { stringMethodsPolyfill } from "./polyfills/string-methods";
 
 /**
- * Registry of all available polyfills
+ * Registry of all built-in polyfills
  */
-const POLYFILLS: PolyfillDefinition[] = [
+const BUILTIN_POLYFILLS: PolyfillDefinition[] = [
   consolePolyfill,
   arduinoAsyncPolyfill,
   arrayMethodsPolyfill,
@@ -19,18 +20,111 @@ const POLYFILLS: PolyfillDefinition[] = [
 
 /**
  * PolyfillRegistry manages polyfill detection and generation
+ * 
+ * Supports both built-in polyfills and plugins.
  */
 export class PolyfillRegistry {
   private polyfills: Map<string, PolyfillDefinition>;
+  private plugins: Map<string, PolyfillPlugin>;
   private config: PolyfillConfig;
+  private logger: PluginLogger;
 
-  constructor(config?: Partial<PolyfillConfig>) {
+  constructor(config?: Partial<PolyfillConfig>, logger?: PluginLogger) {
     this.polyfills = new Map();
+    this.plugins = new Map();
     this.config = { ...DEFAULT_POLYFILL_CONFIG, ...config };
+    this.logger = logger ?? console;
     
-    // Register all polyfills
-    for (const polyfill of POLYFILLS) {
+    // Register all built-in polyfills
+    for (const polyfill of BUILTIN_POLYFILLS) {
       this.polyfills.set(polyfill.id, polyfill);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plugin Support
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Register a polyfill plugin.
+   * All polyfills from the plugin are added to the registry.
+   */
+  registerPlugin(plugin: PolyfillPlugin): void {
+    if (this.plugins.has(plugin.id)) {
+      this.logger.warn?.(`Plugin "${plugin.id}" is already registered`);
+      return;
+    }
+
+    // Register all polyfills from the plugin
+    for (const polyfill of plugin.polyfills) {
+      if (this.polyfills.has(polyfill.id)) {
+        this.logger.warn?.(`Polyfill "${polyfill.id}" from plugin "${plugin.id}" overrides existing polyfill`);
+      }
+      this.polyfills.set(polyfill.id, polyfill);
+    }
+
+    this.plugins.set(plugin.id, plugin);
+    this.logger.info?.(`Registered polyfill plugin: ${plugin.name} (${plugin.id})`);
+  }
+
+  /**
+   * Unregister a polyfill plugin.
+   * Removes all polyfills that were registered by this plugin.
+   */
+  unregisterPlugin(pluginId: string): boolean {
+    const plugin = this.plugins.get(pluginId);
+    if (!plugin) {
+      return false;
+    }
+
+    // Remove polyfills from this plugin
+    for (const polyfill of plugin.polyfills) {
+      // Only remove if it wasn't overridden by another plugin
+      const current = this.polyfills.get(polyfill.id);
+      if (current === polyfill) {
+        this.polyfills.delete(polyfill.id);
+      }
+    }
+
+    this.plugins.delete(pluginId);
+    this.logger.info?.(`Unregistered polyfill plugin: ${pluginId}`);
+    return true;
+  }
+
+  /**
+   * Get all registered plugins.
+   */
+  getPlugins(): PolyfillPlugin[] {
+    return Array.from(this.plugins.values());
+  }
+
+  /**
+   * Check if a plugin is registered.
+   */
+  hasPlugin(pluginId: string): boolean {
+    return this.plugins.has(pluginId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Manual Polyfill Registration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Register a custom polyfill definition directly.
+   */
+  registerPolyfill(polyfill: PolyfillDefinition): void {
+    if (this.polyfills.has(polyfill.id)) {
+      this.logger.warn?.(`Overriding existing polyfill: ${polyfill.id}`);
+    }
+    this.polyfills.set(polyfill.id, polyfill);
+  }
+
+  /**
+   * Register multiple polyfill definitions.
+   */
+  registerPolyfills(polyfills: PolyfillDefinition[]): void {
+    for (const polyfill of polyfills) {
+      this.registerPolyfill(polyfill);
     }
   }
 

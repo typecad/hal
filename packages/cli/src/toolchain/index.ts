@@ -1,8 +1,7 @@
 // ---------------------------------------------------------------------------
 // Toolchain module — exports for compile/upload backends
 //
-// Provides a unified interface for different build toolchains
-// (arduino-cli, platformio).
+// Provides a unified interface for the arduino-cli build toolchain.
 // ---------------------------------------------------------------------------
 
 // Types
@@ -26,10 +25,8 @@ export {
   findAvailableToolchain,
 } from './registry';
 
-// Implementations (self-registering on import)
+// Implementation (self-registering on import)
 import './arduino-cli';
-import './platformio';
 
-// Re-export classes for direct instantiation
+// Re-export class for direct instantiation
 export { ArduinoCliToolchain } from './arduino-cli';
-export { PlatformioToolchain } from './platformio';

@@ -233,6 +233,22 @@ export {
   type BoardDefinition,
 } from './board/types';
 
+// --- Board Definition Builder ----------------------------------------------
+export {
+  // Branded types
+  type PinNumber as BrandedPinNumber,
+  type GPIO,
+  pinNumber as createPinNumber,
+  gpioNumber,
+  // Builders
+  PinCapabilityBuilder,
+  PinBuilder,
+  PeripheralBuilder,
+  BoardDefinitionBuilder,
+  // Validation
+  validateBoardDefinition,
+} from './board/builder';
+
 // --- Config ----------------------------------------------------------------
 export {
   type OutputFramework,
@@ -241,7 +257,6 @@ export {
   type TypecodeConfig,
   type ToolchainType,
   type ArduinoCliOptions,
-  type PlatformioOptions,
   type TypecodeToolchainConfig,
   type TypecodeTestConfig,
   type TypecodeConsoleConfig,

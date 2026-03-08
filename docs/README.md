@@ -126,6 +126,7 @@ Board packages provide hardware abstractions for specific boards:
 - Peripheral configuration (UART, SPI, I2C)
 - Timing and interrupts
 - Board-specific constants
+- **[Board Definition Builder API](./board/builder-api.md)** — Fluent API for creating board packages
 
 ### [Architecture](./architecture/)
 
@@ -149,6 +150,7 @@ Transpiler documentation:
 - [Language Reference](./transpiler/language-reference.md) - TypeScript to C++ mapping
 - [IR Model](./transpiler/ir-model.md) - Intermediate representation
 - [Polyfills](./transpiler/polyfills.md) - Runtime polyfill system
+- **[Polyfill Plugins](./transpiler/polyfill-plugins.md)** — Extensibility for custom polyfills
 - [Arduino Library Integration](./transpiler/arduino-libs.md) - Use Arduino C++ libraries with auto-generated types
 - **Mixing TypeScript and C++** - Use native C++ modules alongside TypeScript
 

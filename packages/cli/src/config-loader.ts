@@ -43,15 +43,11 @@ export interface ResolvedTypecodeConfig {
   configPath: string;
   /** Toolchain configuration. */
   toolchain?: {
-    type?: 'arduino-cli' | 'platformio';
+    type?: 'arduino-cli';
     arduinoCli?: {
       path?: string;
       configFile?: string;
       verbose?: boolean;
-    };
-    platformio?: {
-      path?: string;
-      env?: string;
     };
   };
   /** Console polyfill configuration. */
@@ -227,19 +223,16 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
   const arduinoCliPath = flat.get("toolchain.arduinoCli.path");
   const arduinoCliConfigFile = flat.get("toolchain.arduinoCli.configFile");
   const arduinoCliVerbose = flat.get("toolchain.arduinoCli.verbose");
-  const platformioPath = flat.get("toolchain.platformio.path");
-  const platformioEnv = flat.get("toolchain.platformio.env");
 
   if (
     typeof toolchainType === "string" ||
     typeof arduinoCliPath === "string" ||
     typeof arduinoCliConfigFile === "string" ||
-    typeof platformioPath === "string" ||
-    typeof platformioEnv === "string"
+    typeof arduinoCliVerbose === "boolean"
   ) {
     resolved.toolchain = {};
 
-    if (toolchainType === "arduino-cli" || toolchainType === "platformio") {
+    if (toolchainType === "arduino-cli") {
       resolved.toolchain.type = toolchainType;
     }
 
@@ -257,16 +250,6 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
       }
       if (typeof arduinoCliVerbose === "boolean") {
         resolved.toolchain.arduinoCli.verbose = arduinoCliVerbose;
-      }
-    }
-
-    if (typeof platformioPath === "string" || typeof platformioEnv === "string") {
-      resolved.toolchain.platformio = {};
-      if (typeof platformioPath === "string") {
-        resolved.toolchain.platformio.path = platformioPath;
-      }
-      if (typeof platformioEnv === "string") {
-        resolved.toolchain.platformio.env = platformioEnv;
       }
     }
   }
