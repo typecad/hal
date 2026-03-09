@@ -2,21 +2,23 @@
 // Example 5d — I2C Bus Scan
 //
 // Scans the I2C bus for connected devices.
-// Shows: Checking device presence with endTransmission(),
-//        iterating through addresses, standard I2C address ranges
+// Shows: Checking device presence, iterating through addresses, standard I2C address ranges
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
-import { delay }        from '@typecode/board-arduino-uno';
+import { I2C0, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
-I2C0.begin();
+// Initialize UART0 for debug output
+UART0.config.baudRate(9600).begin();
+
+// Initialize I2C as master
+I2C0.config.begin();
 
 // Check if a device responds at the given address
 function devicePresent(addr: number): boolean {
-  I2C0.beginTransmission(addr);
-  const status = I2C0.endTransmission();
-  return status === 0;
+  // Try to read 0 bytes from the device to check presence
+  // This is a common I2C device detection technique
+  const result = I2C0.device(addr).read(0).from(0);
+  return result.ok;
 }
 
 // Scan a range of addresses and report found devices

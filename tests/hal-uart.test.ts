@@ -199,6 +199,18 @@ describe('UART HAL - Fluent API Transpilation', () => {
   });
 
   describe('Fluent Read Operations', () => {
+    it('transpiles available() from fluent API', () => {
+      const result = transpile(`
+        import { UART0 } from '@typecode/board-arduino-uno';
+        UART0.config.baudRate(9600).begin();
+        if (UART0.available() > 0) {
+          const data = UART0.read.byte();
+        }
+      `, { target: 'arduino' });
+
+      expect(result.cpp).toContain('Serial.available()');
+    });
+
     it('transpiles read.line() (not yet implemented)', () => {
       const result = transpile(`
         import { UART0 } from '@typecode/board-arduino-uno';

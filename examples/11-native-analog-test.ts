@@ -1,6 +1,6 @@
 // Test compile-time peripheral initialization analysis
 // This should generate ADC initialization in setup() and optimized analog reads
-import { A0, D9, delay, map, LOW } from '@typecode/board-native-atmega328p';
+import { A0, D9, delay, map, LOW } from '@typecode';
 
 D9.config.output.initial(LOW);
 

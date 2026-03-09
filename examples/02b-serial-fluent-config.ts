@@ -5,8 +5,8 @@
 // Shows: Serial.config.baudRate().parity().dataBits().begin()
 // ---------------------------------------------------------------------------
 
-import { UART0 } from '@typecode/board-arduino-uno';
-import { UARTParity, UARTStopBits, UARTFlowControl } from '@typecode/core';
+import { UART0 } from '@typecode';
+import { UARTStopBits, UARTFlowControl, UARTParity } from '@typecode/core';
 
 // Fluent configuration with all options
 UART0.config

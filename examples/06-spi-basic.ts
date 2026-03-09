@@ -5,49 +5,37 @@
 // Shows: begin(), transfer(), setMode(), setBitOrder(), setFrequency()
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0 } from '@typecode/board-arduino-uno/arduino';
-import { D10 } from '@typecode/board-arduino-uno';
-import { delay } from '@typecode/board-arduino-uno';
+import { SPI0, UART0, delay, D10 } from '@typecode';
 
-UART0.begin(9600);
+UART0.config.baudRate(9600).begin();
 
-// Initialize SPI with default settings
-SPI0.begin();
-
-// Configure SPI settings
-SPI0.setMode(0);           // SPI mode 0 (CPOL=0, CPHA=0)
-SPI0.setBitOrder('msb');   // MSB first
-SPI0.setFrequency(1_000_000);  // 1 MHz
+// Initialize SPI with configuration
+SPI0.config.frequency(1_000_000)
+          .mode(0)
+          .bitOrder('msb')
+          .begin();
 
 // Chip select pin
 const CS = D10;
-CS.asOutput();
-CS.high();  // Deselect device
+CS.config.output.initial(true);  // Initialize as output, HIGH (deselected)
 
 UART0.println("SPI Basic Example");
 
 while (true) {
   // Select device
-  CS.low();
+  // CS.low();    // not needed with fluent api
   
   // Send byte and receive response (full-duplex)
-  const response = SPI0.transfer(0xAA);
-  
+  const response = SPI0.device(CS).transfer(0x44);
   // Deselect device
-  CS.high();
+  // CS.high();// not needed with fluent api
   
-  UART0.println(`Sent: 0xAA, Received: 0x${response.toString(16)}`);
+  UART0.write.line(`Sent: 0xAA, Received: 0x${response}`);
   
   delay(1000);
   
   // Transfer multiple bytes
-  CS.low();
-  
-  SPI0.transfer(0x80);  // Command byte
-  SPI0.transfer(0x00);  // Data byte 1
-  SPI0.transfer(0xFF);  // Data byte 2
-  
-  CS.high();
-  
+  SPI0.device(CS).transfer(new Uint8Array([0x80, 0x00, 0xFF]));
+    
   delay(1000);
 }

@@ -10,7 +10,7 @@
 //   done();
 //
 // OUTPUT (preprocessed — fed to transpiler):
-//   Serial.initialize({ baudRate: 115200 });
+//   Serial.begin(115200);
 //   Serial.println("[TC:SUITE_START]");
 //   Serial.println("[TC:DESCRIBE:A0 analog read]");
 //   Serial.println("[TC:IT:reads zero]");
@@ -89,10 +89,10 @@ class PreprocessorContext {
     return `__tc_v${++this.varCounter}`;
   }
 
-  /** Emit the Serial.initialize + SUITE_START preamble (once). */
+  /** Emit the Serial.begin + SUITE_START preamble (once). */
   private emitPreamble(): void {
     this.preambleEmitted = true;
-    this.lines.push(`Serial.initialize({ baudRate: ${this.baudRate} });`);
+    this.lines.push(`Serial.begin(${this.baudRate});`);
     this.lines.push(`Serial.println("[TC:SUITE_START]");`);
   }
 

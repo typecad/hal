@@ -160,7 +160,7 @@ describe('Peripheral Usage Analysis', () => {
     it('detects output pin configuration (requires typecode-call IR)', () => {
       const code = `
         import { D13 } from '@typecode/board-arduino-uno';
-        D13.asOutput();
+        D13.config.output.initial(LOW);
       `;
       
       const ir = buildProgramIR('test.ts', code);

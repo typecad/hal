@@ -5,9 +5,9 @@
 // Shows: Serial.read.line(), Serial.read.until(), Serial.read.bytes()
 // ---------------------------------------------------------------------------
 
-import { UART0 } from '@typecode/board-arduino-uno';
+import { UART0 } from '@typecode';
 
-UART0.begin(115200);
+UART0.config.baudRate(9600).begin();
 UART0.println("Serial Fluent Read Example");
 
 while (true) {

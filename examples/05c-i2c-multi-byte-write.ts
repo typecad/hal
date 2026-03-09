@@ -3,62 +3,38 @@
 //
 // Demonstrates writing multiple bytes to configure a device.
 // Shows: Writing register address + multiple data bytes in one transaction,
-//        writing arrays, write() returns byte count
+//        writing arrays
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
-import { delay }        from '@typecode/board-arduino-uno';
+import { I2C0, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
-I2C0.begin();
-I2C0.setClock(400000);
+// Initialize UART0 for debug output
+UART0.config.baudRate(9600).begin();
+
+// Initialize I2C as master with 400kHz clock
+I2C0.config.speed(400000).begin();
 
 const BME280_ADDR = 0x76;
 
 // Write multiple configuration bytes to device
 function configureSensor(): boolean {
-  I2C0.beginTransmission(BME280_ADDR);
-  
-  // Write register address first (0xF5 = CONFIG)
-  I2C0.write(0xF5);
-  
-  // Write configuration bytes
-  I2C0.write(0b10100000);  // t_sb=101 (1000ms), filter=000 (off)
-  I2C0.write(0b00100111);  // spi3w_en=0, ovrsmpl=001 (1x)
-  
-  const status = I2C0.endTransmission();
-  return status === 0;
+  // Write configuration bytes to register 0xF5
+  const result = I2C0.device(BME280_ADDR).write([0b10100000, 0b00100111]).to(0xF5);
+  return result.ok;
 }
 
 // Write a buffer/array of data
 function writeBuffer(register: number, data: Uint8Array): boolean {
-  I2C0.beginTransmission(BME280_ADDR);
-  I2C0.write(register);
-  
-  // Write all bytes from buffer
-  for (let i = 0; i < data.length; i++) {
-    I2C0.write(data[i]);
-  }
-  
-  const status = I2C0.endTransmission();
-  return status === 0;
+  const result = I2C0.device(BME280_ADDR).write(data).to(register);
+  return result.ok;
 }
 
-// Alternative: Track bytes written
+// Alternative: Track bytes written (not directly supported by fluent API, but can check result)
 function writeWithTracking(register: number, values: number[]): number {
-  I2C0.beginTransmission(BME280_ADDR);
-  
-  let totalWritten = 0;
-  totalWritten += I2C0.write(register);
-  
-  for (const value of values) {
-    totalWritten += I2C0.write(value);
-  }
-  
-  const status = I2C0.endTransmission();
+  const result = I2C0.device(BME280_ADDR).write(values).to(register);
   
   // Return -1 on error, otherwise total bytes written
-  return status === 0 ? totalWritten : -1;
+  return result.ok ? values.length + 1 : -1; // +1 for register address
 }
 
 // Configure sensor at startup
@@ -77,12 +53,9 @@ if (writeBuffer(0x88, calibData)) {
 // Main loop
 while (true) {
   // Write a single register
-  I2C0.beginTransmission(BME280_ADDR);
-  I2C0.write(0xF4);  // CTRL_MEAS register
-  I2C0.write(0x27);  // Normal mode, pressure/temperature oversampling x1
-  const status = I2C0.endTransmission();
+  const result = I2C0.device(BME280_ADDR).write(0x27).to(0xF4); // CTRL_MEAS
   
-  if (status === 0) {
+  if (result.ok) {
     UART0.println("Register written");
   }
   

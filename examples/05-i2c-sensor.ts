@@ -6,42 +6,30 @@
 //        requestFrom(), available(), read()
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
-import { delay }        from '@typecode/board-arduino-uno';
+import { I2C0, UART0, delay } from '@typecode';
 
 // Initialize UART0 for debug output
-UART0.begin(9600);
+UART0.config.baudRate(9600).begin();
 
-// Initialize I2C as master with 400kHz fast mode
-I2C0.begin();
-I2C0.setClock(400000);
+// Initialize I2C as master
+I2C0.config.begin();
 
 const BME280_ADDR = 0x76;
 
 // Main loop
 while (true) {
-  // Write register pointer to 0xFA (temperature MSB)
-  I2C0.beginTransmission(BME280_ADDR);
-  I2C0.write(0xFA);
-  const status = I2C0.endTransmission();
-  
-  if (status === 0) {
-    // Request 2 bytes (temperature MSB and LSB)
-    const bytesAvailable = I2C0.requestFrom(BME280_ADDR, 2);
-    
-    if (bytesAvailable > 0) {
-      // Read the two bytes
-      const msb = I2C0.read();
-      const lsb = I2C0.read();
-      
-      // Combine into raw temperature value
-      const tempRaw = (msb << 8) | lsb;
-      const temperature = tempRaw / 100.0;
-      UART0.println(temperature);
-    }
-  } else {
-    UART0.println(`I2C error: ${status}`);
-  }
-  
+  // Read 2 bytes from register 0xFA (temperature data)
+  const tempData = I2C0.device(BME280_ADDR).readBytes(0xfa, 2);
+
+  // Access bytes directly from returned Uint8Array
+  const msb = tempData[0];
+  const lsb = tempData[1];
+
+  // Combine into raw temperature value
+  const tempRaw = (msb << 8) | lsb;
+  const temperature = tempRaw / 100.0;
+  UART0.println(temperature);
+
+
   delay(1000);
 }

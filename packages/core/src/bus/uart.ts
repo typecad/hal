@@ -129,6 +129,12 @@ export interface IUARTReadResult {
   asUint32(endian: 'be' | 'le'): number;
   /** Get as signed 32-bit integer */
   asInt32(endian: 'be' | 'le'): number;
+  
+  // Convenience methods
+  /** Returns bytes if ok, otherwise prints error to Serial and returns empty array. */
+  unwrap(): Uint8Array;
+  /** Returns bytes if ok, otherwise returns the provided default. */
+  unwrapOr(defaultValue: Uint8Array): Uint8Array;
 }
 
 /**
@@ -141,6 +147,10 @@ export interface IUARTWriteResult {
   readonly status: UARTStatus;
   /** Number of bytes actually written */
   readonly bytesWritten: number;
+  /** Returns bytesWritten if ok, otherwise prints error to Serial and returns 0. */
+  unwrap(): number;
+  /** Returns bytesWritten if ok, otherwise returns the provided default. */
+  unwrapOr(defaultValue: number): number;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +281,8 @@ export interface IUARTBus {
   // --- Status ---
   /** Get detailed status info */
   getStatus(): UARTStatusInfo;
+  /** Number of bytes available to read (Arduino-compatible shortcut) */
+  available(): number;
   /** Clear error flags */
   clearErrors(): void;
 
@@ -281,6 +293,13 @@ export interface IUARTBus {
   onTransmitComplete(callback: () => void): void;
   /** Register callback for errors */
   onError(callback: (error: UARTError) => void): void;
+  
+  // --- Debug mode ---
+  /** 
+   * When enabled, failed operations print error details to Serial before returning.
+   * Format: "[UART ERROR] <message> (uart=N, status=M)"
+   */
+  debugOnError: boolean;
 }
 
 // ---------------------------------------------------------------------------

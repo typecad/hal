@@ -1,17 +1,14 @@
 // ---------------------------------------------------------------------------
-// Example 5g — I2C Fluent API Configuration (Experimental)
+// Example 5g — I2C Fluent API Configuration
 //
 // Demonstrates the fluent chainable configuration API for I2C.
-// Shows: I2C0.config.speed().sda().scl().begin()
-//
-// NOTE: This API is type-safe but requires transpiler support for
-// generating Wire calls. Currently experimental.
+// Shows: I2C0.config.speed().begin()
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0 } from '@typecode/board-arduino-uno';
-import { delay }        from '@typecode/board-arduino-uno';
+import { I2C0, UART0, delay } from '@typecode';
 
-UART0.initialize({ baudRate: 9600 });
+// Initialize UART0 for debug output with fluent config
+UART0.config.baudRate(9600).begin();
 
 // Fluent configuration - chain methods to set up I2C
 I2C0.config
@@ -22,16 +19,17 @@ UART0.println("I2C initialized with fluent API");
 
 const BME280_ADDR = 0x76;
 
-// Main loop
+// Main loop using fluent read API
 while (true) {
-  // Read using Wire-compatible API (fluent read API is experimental)
-  I2C0.beginTransmission(BME280_ADDR);
-  I2C0.write(0xFA);
-  I2C0.endTransmission();
+  // Read 2 bytes from register 0xFA (temperature data)
+  const result = I2C0.device(BME280_ADDR).read(2).from(0xFA);
   
-  I2C0.requestFrom(BME280_ADDR, 2);
-  const tempRaw = (I2C0.read() << 8) | I2C0.read();
-  UART0.println(tempRaw / 100.0);
+  if (result.ok) {
+    const tempRaw = (result.value[0] << 8) | result.value[1];
+    UART0.println(tempRaw / 100.0);
+  } else {
+    UART0.println("Read failed");
+  }
   
   delay(1000);
 }

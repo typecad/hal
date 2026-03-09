@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { IPin } from './pin';
+import type { HIGH, LOW } from './gpio';
 
 /**
  * Chainable pulse measurement builder.
@@ -28,13 +29,13 @@ export interface IPulseNamespace {
    * Measure the length of a pulse in microseconds.
    * Maps to Arduino `pulseIn()`.
    */
-  in(pin: IPin, value: number, timeout?: number): number;
+  in(pin: IPin, value: HIGH | LOW, timeout?: number): number;
   
   /**
    * Measure the length of a pulse (for longer pulses).
    * Maps to Arduino `pulseInLong()`.
    */
-  long(pin: IPin, value: number, timeout?: number): number;
+  long(pin: IPin, value: HIGH | LOW, timeout?: number): number;
   
   // --- Fluent builders ---
   

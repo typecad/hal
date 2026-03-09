@@ -5,9 +5,9 @@
 // Shows: Serial.write.line(), Serial.write.format(), Serial.write.bytes()
 // ---------------------------------------------------------------------------
 
-import { UART0 } from '@typecode/board-arduino-uno';
+import { UART0 } from '@typecode';
 
-UART0.begin(115200);
+UART0.config.baudRate(9600).begin();
 
 // Write line with CRLF (\r\n)
 UART0.write.line("Hello World");  // "Hello World\r\n"

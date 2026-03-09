@@ -55,9 +55,9 @@ npm install typecode
 
 ```typescript
 // sketch.ts
-import { LED, delay } from '@typecode';
+import { LED, delay, HIGH } from '@typecode';
 
-LED.asOutput();
+LED.config.output.initial(HIGH);
 
 while (true) {
   LED.toggle();

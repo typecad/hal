@@ -66,16 +66,13 @@ npx typecode demo/sketch.ts --compile --upload --port COM4
 This demo blinks the built-in LED on pin 13 and prints to serial:
 
 ```typescript
-import { LED, delay, Serial } from '@typecode';
+import { LED, delay, HIGH } from '@typecode';
 
-LED.asOutput();
-Serial.begin(9600);
-Serial.println('LED Blink Demo Started');
+LED.config.output.initial(HIGH);
 
 while (true) {
   LED.toggle();
-  Serial.println('LED toggled');
-  delay(500);
+  delay(1000);
 }
 ```
 

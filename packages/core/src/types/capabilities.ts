@@ -61,22 +61,84 @@ export type SupportsCapabilities<T, U> = T extends U ? true : false;
 
 import type { IPin, IPWMPin, IAnalogInput, IInterruptPin, ITouchPin } from './pin';
 
+/** Type guard to check if a value is an IPin (has required pin properties). */
+function isIPin(value: unknown): value is IPin {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'number' in value &&
+    'gpio' in value &&
+    'getMode' in value &&
+    'setMode' in value
+  );
+}
+
 /** Narrow an IPin to IPWMPin if it supports PWM. */
-export function hasPWM(pin: IPin): pin is IPWMPin {
-  return 'setDutyCycle' in pin && 'setFrequency' in pin;
+export function hasPWM(pin: unknown): pin is IPWMPin {
+  return isIPin(pin) && 'setDutyCycle' in pin && 'setFrequency' in pin;
 }
 
 /** Narrow an IPin to IAnalogInput if it supports analog reads. */
-export function hasAnalogInput(pin: IPin): pin is IAnalogInput {
-  return 'readVoltage' in pin && 'setReference' in pin;
+export function hasAnalogInput(pin: unknown): pin is IAnalogInput {
+  return isIPin(pin) && 'readVoltage' in pin && 'setReference' in pin;
 }
 
 /** Narrow an IPin to IInterruptPin if it supports interrupts. */
-export function hasInterrupt(pin: IPin): pin is IInterruptPin {
-  return 'on' in pin && 'off' in pin && 'hasInterrupt' in pin;
+export function hasInterrupt(pin: unknown): pin is IInterruptPin {
+  return isIPin(pin) && 'on' in pin && 'off' in pin && 'hasInterrupt' in pin;
 }
 
 /** Narrow an IPin to ITouchPin if it supports capacitive touch. */
-export function hasTouch(pin: IPin): pin is ITouchPin {
-  return 'setThreshold' in pin && 'attachTouchInterrupt' in pin;
+export function hasTouch(pin: unknown): pin is ITouchPin {
+  return isIPin(pin) && 'setThreshold' in pin && 'attachTouchInterrupt' in pin;
+}
+
+// ---------------------------------------------------------------------------
+// Convenience aliases (more intuitive names)
+// ---------------------------------------------------------------------------
+
+/** Alias for hasPWM - checks if pin supports PWM output. */
+export const isPWMPin = hasPWM;
+
+/** Alias for hasAnalogInput - checks if pin supports analog reads. */
+export const isAnalogPin = hasAnalogInput;
+
+/** Alias for hasInterrupt - checks if pin supports interrupts. */
+export const isInterruptPin = hasInterrupt;
+
+/** Alias for hasTouch - checks if pin supports capacitive touch. */
+export const isTouchPin = hasTouch;
+
+// ---------------------------------------------------------------------------
+// Assertion functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Assert that a pin supports PWM. Throws at runtime if not.
+ * Useful for fail-fast validation in setup code.
+ */
+export function assertPWM(pin: IPin, message?: string): asserts pin is IPWMPin {
+  if (!hasPWM(pin)) {
+    throw new Error(message ?? 'Pin does not support PWM');
+  }
+}
+
+/**
+ * Assert that a pin supports analog input. Throws at runtime if not.
+ * Useful for fail-fast validation in setup code.
+ */
+export function assertAnalog(pin: IPin, message?: string): asserts pin is IAnalogInput {
+  if (!hasAnalogInput(pin)) {
+    throw new Error(message ?? 'Pin does not support analog input');
+  }
+}
+
+/**
+ * Assert that a pin supports interrupts. Throws at runtime if not.
+ * Useful for fail-fast validation in setup code.
+ */
+export function assertInterrupt(pin: IPin, message?: string): asserts pin is IInterruptPin {
+  if (!hasInterrupt(pin)) {
+    throw new Error(message ?? 'Pin does not support interrupts');
+  }
 }

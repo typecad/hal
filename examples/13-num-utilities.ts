@@ -4,7 +4,8 @@
 // Demonstrates both direct (Arduino-compatible) and fluent chainable APIs.
 // ---------------------------------------------------------------------------
 
-import { A0, D3, D13, Num, map, constrain, abs, min, max, toPercent, toByte } from '@typecode/board-arduino-uno';
+import { LOW } from '@typecode';
+import { A0, D3, D13, Num, map, constrain, abs, min, max, toPercent, toByte, delay } from '@typecode';
 
 // ---------------------------------------------------------------------------
 // Direct function calls (Arduino-compatible)
@@ -56,7 +57,7 @@ const safe = Num.constrain(pwmValue)
 // ---------------------------------------------------------------------------
 
 export function setup() {
-  D13.asOutput();
+  D13.config.output.initial(LOW);
 }
 
 export function loop() {

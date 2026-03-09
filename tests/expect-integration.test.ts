@@ -17,7 +17,7 @@ describe('example test preprocessing', () => {
     const result = preprocess(exampleSource, '09-expect-demo.test.ts');
 
     // Should have Serial preamble
-    expect(result).toContain('Serial.initialize({ baudRate: 115200 })');
+    expect(result).toContain('Serial.begin(115200);');
     expect(result).toContain('[TC:SUITE_START]');
 
     // Should preserve non-expect imports

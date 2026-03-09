@@ -69,6 +69,8 @@ const stubReadResult: II2CReadResult = {
   asInt16() { return 0; },
   asUint32() { return 0; },
   asInt32() { return 0; },
+  unwrap() { return this.value; },
+  unwrapOr(defaultValue) { return this.ok ? this.value : defaultValue; },
 };
 
 const stubWriteResult: II2CWriteResult = {
@@ -78,6 +80,8 @@ const stubWriteResult: II2CWriteResult = {
   success: true,
   onSuccess(handler) { return this; },
   onError(handler) { return this; },
+  unwrap() { return this.value; },
+  unwrapOr(defaultValue) { return this.ok ? this.value : defaultValue; },
 };
 
 /** Arduino Uno I2C bus 0 (Wire library, pins A4=SDA / A5=SCL). */
@@ -130,6 +134,8 @@ const stubSPIWriteResult: ISPIWriteResult = {
   ok: true,
   status: SPIStatus.SUCCESS,
   bytesWritten: 0,
+  unwrap() { return this.bytesWritten; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytesWritten : defaultValue; },
 };
 
 const stubSPIReadResult: ISPIReadResult = {
@@ -140,6 +146,8 @@ const stubSPIReadResult: ISPIReadResult = {
   asUint16(_endian) { return 0; },
   asInt8() { return 0; },
   asInt16(_endian) { return 0; },
+  unwrap() { return this.bytes; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytes : defaultValue; },
 };
 
 const stubSPITransferResult: ISPITransferResult = {
@@ -148,6 +156,8 @@ const stubSPITransferResult: ISPITransferResult = {
   bytes: new Uint8Array(0),
   asUint8() { return 0; },
   asUint16(_endian) { return 0; },
+  unwrap() { return this.bytes; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytes : defaultValue; },
 };
 
 // Fluent config builder
@@ -222,12 +232,16 @@ const stubUARTReadResult: IUARTReadResult = {
   asInt16(_endian) { return 0; },
   asUint32(_endian) { return 0; },
   asInt32(_endian) { return 0; },
+  unwrap() { return this.bytes; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytes : defaultValue; },
 };
 
 const stubUARTWriteResult: IUARTWriteResult = {
   ok: true,
   status: UARTStatus.SUCCESS,
   bytesWritten: 0,
+  unwrap() { return this.bytesWritten; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytesWritten : defaultValue; },
 };
 
 // Fluent UART config builder
@@ -355,6 +369,7 @@ export const UART0: ISerialPort = {
       breakDetected: false,
     };
   },
+  available(): number { return 0; },
   clearErrors() {},
 
   // --- Callbacks ---

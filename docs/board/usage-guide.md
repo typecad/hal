@@ -108,7 +108,6 @@ import {
 import { D4, A0, D5 } from '@typecode';
 
 // ✅ OK  — D4 is IDigitalPin, supports .high()
-D4.asOutput();
 D4.high();
 
 // ✅ OK  — A0 is IAnalogInput, supports .read()
@@ -129,10 +128,9 @@ D5.setDutyCycle(128);
 ### 1. Blink (Hello World)
 
 ```typescript
-import { LED } from '@typecode';
-import { delay } from '@typecode';
+import { LED, delay, HIGH } from '@typecode';
 
-LED.asOutput();
+LED.config.output.initial(HIGH);
 
 while (true) {
   LED.toggle();
@@ -159,7 +157,7 @@ while (true) {
 ```typescript
 import { D9, delay } from '@typecode';
 
-D9.asOutput();
+D9.config.pwm.initial();
 
 let brightness = 0;
 let step = 5;
@@ -177,17 +175,21 @@ while (true) {
 ### 4. External Interrupt (Button)
 
 ```typescript
-import { D2, LED, InterruptMode } from '@typecode';
+import { D2, LED, LOW } from '@typecode';
 
-LED.asOutput();
-D2.asInputPullUp();
+LED.config.output.initial(LOW);
+D2.config.input.pullup();
 
 let ledState = false;
 
-D2.attachInterrupt(() => {
+D2.on.falling(() => {
   ledState = !ledState;
-  if (ledState) { LED.high(); } else { LED.low(); }
-}, InterruptMode.FALLING);
+  if (ledState) {
+    LED.high();
+  } else {
+    LED.low();
+  }
+});
 ```
 
 ### 5. I2C — Read From a Sensor
@@ -211,19 +213,18 @@ while (true) {
 ### 6. SPI — Write to a Shift Register
 
 ```typescript
-import { SPI0, Serial, SS, delay } from '@typecode';
+import { SPI0, SS, delay, LOW } from '@typecode';
 
-SPI0.initialize({ frequency: 1_000_000 });
-SS.asOutput();
+SPI0.config.frequency(1_000_000).begin();
+SS.config.output.initial(LOW);
 
 let pattern = 0b00000001;
 
 while (true) {
-  SS.low();
-  SPI0.write(new Uint8Array([pattern]));
-  SS.high();
+  SPI0.device(SS).write(pattern);
 
-  pattern = ((pattern << 1) | (pattern >> 7)) & 0xFF; // rotate left
+  // rotate left
+  pattern = ((pattern << 1) | (pattern >> 7)) & 0xFF;
   delay(200);
 }
 ```
@@ -234,7 +235,7 @@ while (true) {
 import { Board } from '@typecode';
 
 Board.Serial.initialize({ baudRate: 115200 });
-Board.LED.asOutput();
+Board.LED.config.output.initial(LOW);
 
 Board.Serial.println("Arduino Uno booted");
 Board.Serial.println("MCU: " + Board.definition.mcu);
@@ -281,8 +282,12 @@ const whoAmI = I2C0.readByte(0x68, 0x75);    // read WHO_AM_I
 ```typescript
 import { SPI0, SS } from '@typecode';
 
-SPI0.initialize({ frequency: 4_000_000 });
-SS.asOutput();
+SPI0.config.frequency(1_000_000)
+          .mode(0)
+          .bitOrder('msb')
+          .begin();
+
+SS.config.output.initial(LOW);
 
 SS.low();
 const rx = SPI0.transfer(new Uint8Array([0x80, 0x00]));

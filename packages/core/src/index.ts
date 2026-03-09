@@ -14,6 +14,8 @@ export {
   type IGPIOPinFactory,
   type IPinGroup,
   type IParallelPort,
+  createPinGroup,
+  createParallelPort,
 } from './types/gpio';
 
 // HIGH and LOW are both a *type* and a *value* in gpio.ts (interface + const).
@@ -31,6 +33,15 @@ export {
   hasAnalogInput,
   hasInterrupt,
   hasTouch,
+  // Convenience aliases
+  isPWMPin,
+  isAnalogPin,
+  isInterruptPin,
+  isTouchPin,
+  // Assertion functions
+  assertPWM,
+  assertAnalog,
+  assertInterrupt,
 } from './types/capabilities';
 
 export {

@@ -38,13 +38,13 @@ Board packages follow the pattern: `@typecode/board-<vendor>-<model>[-<hal>]`
 ## Quick Start
 
 ```typescript
-import { Board, delay } from '@typecode';
+import { LED, delay, HIGH } from '@typecode';
 
-Board.LED.asOutput();
+LED.config.output.initial(HIGH);
 
 while (true) {
-  Board.LED.toggle();
-  delay(500);
+  LED.toggle();
+  delay(1000);
 }
 ```
 

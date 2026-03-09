@@ -5,14 +5,14 @@
 // access instead of the Arduino Serial library.
 // ---------------------------------------------------------------------------
 
-import { Serial, A0, delay } from '@typecode/board-native-atmega328p';
+import { UART0, A0, delay } from '@typecode';
 
-// Initialize Serial at 9600 baud
-Serial.initialize({ baudRate: 9600 });
+// Initialize UART0 at 9600 baud
+UART0.config.baudRate(9600).begin();
 
 // Print startup message
-Serial.println("Native UART Demo");
-Serial.println("================");
+UART0.println("Native UART Demo");
+UART0.println("=================");
 
 // Configure A0 as analog input
 A0.config.analog();
@@ -24,10 +24,10 @@ while (true) {
   const sensorValue = A0.read();
   
   // Print counter and sensor value
-  Serial.print("Count: ");
-  Serial.println(counter);
-  Serial.print("ADC: ");
-  Serial.println(sensorValue);
+  UART0.print("Count: ");
+  UART0.println(counter);
+  UART0.print("ADC: ");
+  UART0.println(sensorValue);
   
   // Also demonstrate console.log (maps to Serial.println)
   console.log("Loop iteration complete");

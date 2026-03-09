@@ -36,20 +36,14 @@ Available board packages:
 Import pins, peripherals, and utilities from the virtual `@typecode` specifier — the transpiler resolves it to your configured board package:
 
 ```typescript
-import { Board, delay } from '@typecode';
+import { LED, delay, HIGH } from '@typecode';
 
-Board.LED.asOutput();
+LED.config.output.initial(HIGH);
 
-async function blinkLed() {
-  while (true) {
-    Board.LED.high();
-    await delay(500);
-    Board.LED.low();
-    await delay(500);
-  }
+while (true) {
+  LED.toggle();
+  delay(1000);
 }
-
-blinkLed();
 ```
 
 ### 3. Transpile

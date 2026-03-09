@@ -131,8 +131,6 @@ export function renderArduinoBuiltin(
         case 'setReference':  return `analogReference(${a(0)})`;
         case 'getMode':       return `0`;
         case 'setMode':       return `pinMode(${pin}, ${a(0)})`;
-        case 'asInput':       return `pinMode(${pin}, INPUT)`;
-        case 'asOutput':      return `pinMode(${pin}, OUTPUT)`;
       }
       break;
 

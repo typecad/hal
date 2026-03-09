@@ -628,7 +628,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   /**
    * Core native code generation for pin method calls and Serial.
    */
-  private tryRenderNativeCall(
+   private tryRenderNativeCall(
     receiver: string,
     method: string,
     args: ReadonlyArray<any>,
@@ -680,6 +680,31 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       }
     }
     
+    // Handle pin configuration calls
+    if (method.startsWith('config.output.')) {
+      const pin = parsePinFromReceiver(receiver);
+      if (pin !== null) {
+        if (method === 'config.output.initial') {
+          const value = a(0);
+          return `${nativePinMode(pin, 'OUTPUT')}, ${nativeDigitalWrite(pin, value)}`;
+        }
+        return nativePinMode(pin, 'OUTPUT');
+      }
+    }
+    
+    if (method.startsWith('config.input.')) {
+      const pin = parsePinFromReceiver(receiver);
+      if (pin !== null) {
+        if (method === 'config.input.pullup') {
+          return nativePinMode(pin, 'INPUT_PULLUP');
+        } else if (method === 'config.input.pulldown') {
+          return nativePinMode(pin, 'INPUT'); // No pulldown on AVR
+        } else if (method === 'config.input.float') {
+          return nativePinMode(pin, 'INPUT');
+        }
+      }
+    }
+    
     // Parse pin number from receiver
     const pin = parsePinFromReceiver(receiver);
     if (pin === null) return undefined;
@@ -695,8 +720,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
             return `(nativeAnalogRead(${pin}) * 5.0 / 1023.0)`;
           case 'getResolution':
             return '10';
-          case 'asInput':
-            return nativePinMode(pin, 'INPUT');
           case 'setMode':
             return nativePinMode(pin, a(0));
           default:
@@ -718,12 +741,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
           }
           case 'write':
             return nativeDigitalWrite(pin, a(0));
-          case 'asOutput':
-            return nativePinMode(pin, 'OUTPUT');
-          case 'asInput':
-            return nativePinMode(pin, 'INPUT');
-          case 'asInputPullUp':
-            return nativePinMode(pin, 'INPUT_PULLUP');
           case 'isHigh':
             return `(${nativeDigitalRead(pin)} == 1)`;
           case 'isLow':
@@ -751,12 +768,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
             return nativeAnalogWrite(pin, a(0));
           case 'setDutyCycle':
             return nativeAnalogWrite(pin, a(0));
-          case 'asOutput':
-            return nativePinMode(pin, 'OUTPUT');
-          case 'asInput':
-            return nativePinMode(pin, 'INPUT');
-          case 'asInputPullUp':
-            return nativePinMode(pin, 'INPUT_PULLUP');
           case 'isHigh':
             return `(${nativeDigitalRead(pin)} == 1)`;
           case 'isLow':

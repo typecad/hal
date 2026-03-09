@@ -6,12 +6,13 @@
 //        device abstraction patterns
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0 } from '@typecode/board-arduino-uno/arduino';
-import { delay }        from '@typecode/board-arduino-uno';
+import { I2C0, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
-I2C0.begin();
-I2C0.setClock(400000);
+// Initialize UART0 for debug output
+UART0.config.baudRate(9600).begin();
+
+// Initialize I2C as master with 400kHz clock
+I2C0.config.speed(400000).begin();
 
 // Device addresses
 const OLED_ADDR = 0x3C;
@@ -19,7 +20,7 @@ const BME280_ADDR = 0x76;
 const MPU6050_ADDR = 0x68;
 const EEPROM_ADDR = 0x50;
 
-// Simple device abstraction
+// Simple device abstraction using fluent API
 interface I2CDevice {
   address: number;
   writeRegister(reg: number, value: number): boolean;
@@ -30,20 +31,12 @@ function createDevice(addr: number): I2CDevice {
   return {
     address: addr,
     writeRegister(reg: number, value: number): boolean {
-      I2C0.beginTransmission(this.address);
-      I2C0.write(reg);
-      I2C0.write(value);
-      return I2C0.endTransmission() === 0;
+      const result = I2C0.device(addr).write(value).to(reg);
+      return result.ok;
     },
     readRegister(reg: number): number | null {
-      I2C0.beginTransmission(this.address);
-      I2C0.write(reg);
-      if (I2C0.endTransmission() !== 0) return null;
-      
-      if (I2C0.requestFrom(this.address, 1) > 0) {
-        return I2C0.read();
-      }
-      return null;
+      const result = I2C0.device(addr).read(1).from(reg);
+      return result.ok ? result.value[0] : null;
     }
   };
 }
@@ -54,42 +47,30 @@ const mpu6050 = createDevice(MPU6050_ADDR);
 
 // Read 16-bit value from two consecutive registers
 function readUint16BE(device: I2CDevice, reg: number): number | null {
-  I2C0.beginTransmission(device.address);
-  I2C0.write(reg);
-  if (I2C0.endTransmission() !== 0) return null;
-  
-  if (I2C0.requestFrom(device.address, 2) >= 2) {
-    const msb = I2C0.read();
-    const lsb = I2C0.read();
-    return (msb << 8) | lsb;
+  const result = I2C0.device(device.address).read(2).from(reg);
+  if (result.ok && result.value.length >= 2) {
+    return (result.value[0] << 8) | result.value[1];
   }
   return null;
 }
 
 // Initialize MPU-6050
 function initMPU6050(): boolean {
-  I2C0.beginTransmission(MPU6050_ADDR);
-  I2C0.write(0x6B);  // PWR_MGMT_1 register
-  I2C0.write(0x00);  // Wake up
-  if (I2C0.endTransmission() !== 0) return false;
+  const result1 = I2C0.device(MPU6050_ADDR).write(0x00).to(0x6B); // Wake up
+  if (!result1.ok) return false;
   
-  I2C0.beginTransmission(MPU6050_ADDR);
-  I2C0.write(0x19);  // SMPLRT_DIV
-  I2C0.write(0x07);  // Sample rate divider
-  return I2C0.endTransmission() === 0;
+  const result2 = I2C0.device(MPU6050_ADDR).write(0x07).to(0x19); // Sample rate divider
+  return result2.ok;
 }
 
 // Read accelerometer data from MPU-6050
 function readAccel(): { x: number; y: number; z: number } | null {
   // Accelerometer registers start at 0x3B (X_HIGH)
-  I2C0.beginTransmission(MPU6050_ADDR);
-  I2C0.write(0x3B);
-  if (I2C0.endTransmission() !== 0) return null;
-  
-  if (I2C0.requestFrom(MPU6050_ADDR, 6) >= 6) {
-    const x = (I2C0.read() << 8) | I2C0.read();
-    const y = (I2C0.read() << 8) | I2C0.read();
-    const z = (I2C0.read() << 8) | I2C0.read();
+  const result = I2C0.device(MPU6050_ADDR).read(6).from(0x3B);
+  if (result.ok && result.value.length >= 6) {
+    const x = (result.value[0] << 8) | result.value[1];
+    const y = (result.value[2] << 8) | result.value[3];
+    const z = (result.value[4] << 8) | result.value[5];
     return { x, y, z };
   }
   return null;
@@ -105,15 +86,12 @@ if (initMPU6050()) {
 // Main loop - read from multiple devices
 while (true) {
   // Read temperature from BME280
-  I2C0.beginTransmission(BME280_ADDR);
-  I2C0.write(0xFA);  // Temperature MSB
-  if (I2C0.endTransmission() === 0) {
-    if (I2C0.requestFrom(BME280_ADDR, 2) >= 2) {
-      const tempRaw = (I2C0.read() << 8) | I2C0.read();
-      UART0.print("Temp: ");
-      UART0.print(tempRaw / 100.0);
-      UART0.print("C  ");
-    }
+  const tempResult = I2C0.device(BME280_ADDR).read(2).from(0xFA);
+  if (tempResult.ok && tempResult.value.length >= 2) {
+    const tempRaw = (tempResult.value[0] << 8) | tempResult.value[1];
+    UART0.print("Temp: ");
+    UART0.print(tempRaw / 100.0);
+    UART0.print("C  ");
   }
   
   // Read accelerometer from MPU-6050

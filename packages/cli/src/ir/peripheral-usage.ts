@@ -354,21 +354,21 @@ function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; m
   const pinNumber = parsePinNumber(receiver);
   
   // Check for pin mode configuration
-  if (method === 'asOutput' || method === 'setOutput' || (method === 'setMode' && receiverKind === 'digital')) {
+  if (method === 'config.output.initial') {
     if (pinNumber !== null) {
       usage.outputPins.add(pinNumber);
     }
     return;
   }
   
-  if (method === 'asInput' || method === 'setInput') {
+  if (method === 'config.input.float') {
     if (pinNumber !== null) {
       usage.inputPins.add(pinNumber);
     }
     return;
   }
   
-  if (method === 'asInputPullup' || method === 'setInputPullup') {
+  if (method === 'config.input.pullup') {
     if (pinNumber !== null) {
       usage.inputPullupPins.add(pinNumber);
     }

@@ -59,6 +59,8 @@ const stubI2CReadResult: II2CReadResult = {
   asInt16() { return 0; },
   asUint32() { return 0; },
   asInt32() { return 0; },
+  unwrap() { return this.value; },
+  unwrapOr(defaultValue) { return this.ok ? this.value : defaultValue; },
 };
 
 const stubI2CWriteResult: II2CWriteResult = {
@@ -68,6 +70,8 @@ const stubI2CWriteResult: II2CWriteResult = {
   success: true,
   onSuccess(handler) { return this; },
   onError(handler) { return this; },
+  unwrap() { return this.value; },
+  unwrapOr(defaultValue) { return this.ok ? this.value : defaultValue; },
 };
 
 /** I2C bus 0 (Wire library). */
@@ -114,6 +118,8 @@ const stubSPIWriteResult: ISPIWriteResult = {
   ok: true,
   status: SPIStatus.SUCCESS,
   bytesWritten: 0,
+  unwrap() { return this.bytesWritten; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytesWritten : defaultValue; },
 };
 
 const stubSPIReadResult: ISPIReadResult = {
@@ -124,6 +130,8 @@ const stubSPIReadResult: ISPIReadResult = {
   asUint16(_endian) { return 0; },
   asInt8() { return 0; },
   asInt16(_endian) { return 0; },
+  unwrap() { return this.bytes; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytes : defaultValue; },
 };
 
 const stubSPITransferResult: ISPITransferResult = {
@@ -132,6 +140,8 @@ const stubSPITransferResult: ISPITransferResult = {
   bytes: new Uint8Array(0),
   asUint8() { return 0; },
   asUint16(_endian) { return 0; },
+  unwrap() { return this.bytes; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytes : defaultValue; },
 };
 
 const spiConfigBuilder: ISPIFluentConfig = {
@@ -198,12 +208,16 @@ const stubUARTReadResult: IUARTReadResult = {
   asInt16(_endian) { return 0; },
   asUint32(_endian) { return 0; },
   asInt32(_endian) { return 0; },
+  unwrap() { return this.bytes; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytes : defaultValue; },
 };
 
 const stubUARTWriteResult: IUARTWriteResult = {
   ok: true,
   status: UARTStatus.SUCCESS,
   bytesWritten: 0,
+  unwrap() { return this.bytesWritten; },
+  unwrapOr(defaultValue) { return this.ok ? this.bytesWritten : defaultValue; },
 };
 
 const uartConfigBuilder: IUARTFluentConfig = {
@@ -274,6 +288,7 @@ export const UART0: ISerialPort = {
       breakDetected: false,
     };
   },
+  available(): number { return 0; },
   clearErrors() {},
   onReceive(_callback: (bytesAvailable: number) => void) {},
   onTransmitComplete(_callback: () => void) {},

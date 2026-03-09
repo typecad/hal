@@ -9,10 +9,9 @@
 // generating Wire calls. Currently experimental.
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0 } from '@typecode/board-arduino-uno';
-import { delay }        from '@typecode/board-arduino-uno';
+import { I2C0, UART0, delay } from '@typecode';
 
-UART0.initialize({ baudRate: 9600 });
+UART0.config.baudRate(9600).begin();
 
 // Initialize using fluent config
 I2C0.config

@@ -93,9 +93,7 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   A6:  'analog-input',
   A7:  'analog-input',
 
-  // ---- Peripheral objects ----------------------------------------------
-  Serial:  'serial',
-  Serial2: 'serial',
+   // ---- Peripheral objects ----------------------------------------------
   I2C0:    'i2c',
   I2C1:    'i2c',
   I2C2:    'i2c',
@@ -118,7 +116,6 @@ export function inferKindByName(name: string): TypecodeReceiverKind {
   if (/^I2C\d+$/.test(name)) return 'i2c';
   if (/^SPI\d+$/.test(name)) return 'spi';
   if (/^UART\d+$/.test(name)) return 'serial';
-  if (/^Serial\d*$/.test(name)) return 'serial';
   
   // Fall back to static mapping for pins and other symbols
   return STATIC_KINDS[name] ?? 'unknown';

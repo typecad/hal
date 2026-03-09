@@ -1,18 +1,16 @@
 // ---------------------------------------------------------------------------
-// Example 5i — I2C Fluent Write API (Experimental)
+// Example 5i — I2C Fluent Write API
 //
 // Demonstrates the fluent chainable write API for I2C.
 // Shows: I2C0.device(addr).write(data).to(register)
-//        I2CWriteResult.ok, I2CWriteResult.bytesWritten
-//
-// NOTE: This API is type-safe but requires transpiler support for
-// generating Wire calls. Currently experimental.
+//        I2CWriteResult.ok, I2CStatus enum
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0 } from '@typecode/board-arduino-uno';
-import { delay }        from '@typecode/board-arduino-uno';
+import { I2C0, UART0, delay } from '@typecode';
+import { I2CStatus } from '@typecode/core';
 
-UART0.initialize({ baudRate: 9600 });
+// Initialize UART0 for debug output
+UART0.config.baudRate(9600).begin();
 
 // Initialize using fluent config
 I2C0.config
@@ -27,10 +25,23 @@ function configureSensor(): boolean {
   const result = I2C0.device(BME280_ADDR).write(0x27).to(0xF4);
   
   if (result.ok) {
-    UART0.println(`Wrote ${result.bytesWritten} bytes`);
+    UART0.println("Sensor configured");
     return true;
   } else {
-    UART0.println(`Write failed: ${result.status}`);
+    switch (result.status) {
+      case I2CStatus.DATA_TOO_LONG:
+        UART0.println("Error: Data too long");
+        break;
+      case I2CStatus.NACK_ON_ADDRESS:
+        UART0.println("Error: NACK on address");
+        break;
+      case I2CStatus.NACK_ON_DATA:
+        UART0.println("Error: NACK on data");
+        break;
+      case I2CStatus.OTHER_ERROR:
+        UART0.println("Error: Other I2C error");
+        break;
+    }
     return false;
   }
 }
@@ -46,7 +57,7 @@ function writeMultipleBytes(): boolean {
 
 // Configure sensor at startup
 if (configureSensor()) {
-  UART0.println("Sensor configured");
+  UART0.println("Sensor configuration complete");
 }
 
 // Main loop

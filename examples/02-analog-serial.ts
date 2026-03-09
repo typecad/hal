@@ -5,14 +5,12 @@
 // Uses Arduino-compatible API style.
 // ---------------------------------------------------------------------------
 
-import { A0 } from '@typecode/board-arduino-uno';
-import { UART0 } from '@typecode/board-arduino-uno/arduino';
-import { delay } from '@typecode/board-arduino-uno';
+import { A0, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
+UART0.config.baudRate(9600).begin();
 
 while (true) {
   const value = A0.read();
-  UART0.println(value);
+  UART0.write.line(value.toString());
   delay(500);
 }

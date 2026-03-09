@@ -238,3 +238,186 @@ export interface IDACPin extends IAnalogOutput {
   stopOutput(): void;
   setChannel(channel: number): void;
 }
+
+// ---------------------------------------------------------------------------
+// Pin Groups (for parallel operations)
+// ---------------------------------------------------------------------------
+
+/**
+ * A group of digital output pins that can be controlled together.
+ * Useful for LED arrays, segment displays, or parallel data buses.
+ */
+export interface IPinGroup<T extends IDigitalPin = IDigitalPin> {
+  /** Name identifier for this group. */
+  readonly name: string;
+  /** Number of pins in the group. */
+  readonly count: number;
+  /** Individual pins in the group. */
+  readonly pins: readonly T[];
+  
+  // --- Bulk operations ---
+  /** Write the same value to all pins in the group. */
+  writeAll(value: DigitalValue): void;
+  /** Set all pins HIGH. */
+  allHigh(): void;
+  /** Set all pins LOW. */
+  allLow(): void;
+  /** Toggle all pins. */
+  allToggle(): void;
+  
+  // --- Pattern operations ---
+  /** Write a bit pattern to the group (LSB = first pin). */
+  writePattern(pattern: number): void;
+  /** Read current state as a bit pattern (LSB = first pin). */
+  readPattern(): number;
+  
+  // --- Iteration ---
+  /** Iterate over pins with index. */
+  forEach(callback: (pin: T, index: number) => void): void;
+}
+
+/**
+ * A parallel port for reading/writing byte values across 8 pins.
+ * Commonly used for LCD data buses, shift register interfaces, etc.
+ */
+export interface IParallelPort {
+  /** Name identifier for this port. */
+  readonly name: string;
+  /** Data pins (typically 8 for a full byte). */
+  readonly pins: readonly IDigitalPin[];
+  /** Number of data pins. */
+  readonly width: number;
+  
+  // --- Byte operations ---
+  /** Write a byte value to the parallel port. */
+  writeByte(value: number): void;
+  /** Read a byte value from the parallel port. */
+  readByte(): number;
+  
+  // --- Nibble operations (4-bit) ---
+  /** Write low nibble (bits 0-3). */
+  writeLowNibble(value: number): void;
+  /** Write high nibble (bits 4-7). */
+  writeHighNibble(value: number): void;
+  /** Read low nibble. */
+  readLowNibble(): number;
+  /** Read high nibble. */
+  readHighNibble(): number;
+}
+
+/**
+ * Factory options for creating a pin group.
+ */
+export interface IPinGroupOptions {
+  /** Optional name for the group. */
+  name?: string;
+}
+
+/**
+ * Create a pin group for bulk operations.
+ * @param pins Array of digital pins to group together.
+ * @param options Optional configuration.
+ */
+export declare function createPinGroup<T extends IDigitalPin>(
+  pins: T[],
+  options?: IPinGroupOptions
+): IPinGroup<T>;
+
+/**
+ * Create a parallel port from an array of pins.
+ * @param pins Array of pins (typically 8 for full byte, or 4 for nibble).
+ * @param name Optional name for the port.
+ */
+export declare function createParallelPort(
+  pins: IDigitalPin[],
+  name?: string
+): IParallelPort;
+
+// ---------------------------------------------------------------------------
+// Pin Capability Validation (Compile-time utilities)
+// ---------------------------------------------------------------------------
+
+/**
+ * Type guard to check if a pin supports PWM output.
+ * Accepts unknown for flexibility with runtime validation.
+ * Usage: if (isPWMPin(pin)) { pin.pwm(50); }
+ */
+export declare function isPWMPin(pin: unknown): pin is IPWMPin;
+
+/**
+ * Type guard to check if a pin supports analog input.
+ * Accepts unknown for flexibility with runtime validation.
+ * Usage: if (isAnalogPin(pin)) { const val = pin.read(); }
+ */
+export declare function isAnalogPin(pin: unknown): pin is IAnalogInput;
+
+/**
+ * Type guard to check if a pin supports hardware interrupts.
+ * Accepts unknown for flexibility with runtime validation.
+ * Usage: if (isInterruptPin(pin)) { pin.on.falling(handler); }
+ */
+export declare function isInterruptPin(pin: unknown): pin is IInterruptPin;
+
+/**
+ * Type guard to check if a pin is a digital I/O pin.
+ * Accepts unknown for flexibility with runtime validation.
+ * Usage: if (isDigitalPin(pin)) { pin.high(); }
+ */
+export declare function isDigitalPin(pin: unknown): pin is IDigitalPin;
+
+/**
+ * Utility type to extract only PWM-capable pins from a union.
+ * Usage: type PWMPins = FilterPWM<typeof D9 | typeof D10>;
+ */
+export type FilterPWM<T> = T extends IPWMPin ? T : never;
+
+/**
+ * Utility type to extract only analog-capable pins from a union.
+ * Usage: type AnalogPins = FilterAnalog<typeof A0 | typeof A1>;
+ */
+export type FilterAnalog<T> = T extends IAnalogInput ? T : never;
+
+/**
+ * Utility type to extract only interrupt-capable pins from a union.
+ * Usage: type InterruptPins = FilterInterrupt<typeof D2 | typeof D3>;
+ */
+export type FilterInterrupt<T> = T extends IInterruptPin ? T : never;
+
+/**
+ * Assert that a pin supports PWM. Throws at runtime if not.
+ * Useful for fail-fast validation in setup code.
+ * Usage: assertPWM(D9); D9.pwm(50);
+ */
+export declare function assertPWM(pin: IPin, message?: string): asserts pin is IPWMPin;
+
+/**
+ * Assert that a pin supports analog input. Throws at runtime if not.
+ * Useful for fail-fast validation in setup code.
+ * Usage: assertAnalog(A0); const val = A0.read();
+ */
+export declare function assertAnalog(pin: IPin, message?: string): asserts pin is IAnalogInput;
+
+/**
+ * Assert that a pin supports interrupts. Throws at runtime if not.
+ * Useful for fail-fast validation in setup code.
+ * Usage: assertInterrupt(D2); D2.on.falling(handler);
+ */
+export declare function assertInterrupt(pin: IPin, message?: string): asserts pin is IInterruptPin;
+
+/**
+ * Require a pin to have specific capabilities at compile time.
+ * Usage: function fadeLed(pin: RequirePWM<IDigitalPin>) { pin.pwm(50); }
+ */
+export type RequirePWM<T extends IPin> = T & IPWMPin;
+
+/**
+ * Require a pin to support analog input at compile time.
+ * Usage: function readSensor(pin: RequireAnalog<IPin>) { return pin.read(); }
+ */
+export type RequireAnalog<T extends IPin> = T & IAnalogInput;
+
+/**
+ * Require a pin to support interrupts at compile time.
+ * Usage: function attachHandler(pin: RequireInterrupt<IPin>) { pin.on.falling(fn); }
+ */
+export type RequireInterrupt<T extends IPin> = T & IInterruptPin;

@@ -98,3 +98,73 @@ export interface IParallelPort extends IPinGroup<IDigitalPin> {
   writeByte(value: number): void;
   readByte(): number;
 }
+
+// ---------------------------------------------------------------------------
+// Pin group factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a pin group for bulk operations on multiple pins.
+ * @param name - A descriptive name for the group
+ * @param pins - Array of pins to include in the group
+ */
+export function createPinGroup<T extends IPin>(
+  name: string,
+  pins: T[]
+): IPinGroup<T> {
+  return {
+    name,
+    pins: Object.freeze(pins) as ReadonlyArray<T>,
+    
+    writeAll(values: DigitalValue[]): void {
+      for (let i = 0; i < this.pins.length && i < values.length; i++) {
+        const pin = this.pins[i];
+        if ('write' in pin && typeof pin.write === 'function') {
+          pin.write(values[i]);
+        }
+      }
+    },
+    
+    readAll(): DigitalValue[] {
+      return this.pins.map(pin => {
+        if ('read' in pin && typeof pin.read === 'function') {
+          return pin.read();
+        }
+        return false;
+      });
+    },
+  };
+}
+
+/**
+ * Create a parallel port for byte-level operations on 8 digital pins.
+ * @param name - A descriptive name for the port
+ * @param pins - Exactly 8 digital pins (LSB first)
+ */
+export function createParallelPort(
+  name: string,
+  pins: [IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin]
+): IParallelPort {
+  const group = createPinGroup(name, pins);
+  
+  return {
+    ...group,
+    
+    writeByte(value: number): void {
+      for (let i = 0; i < 8; i++) {
+        const bit = (value >> i) & 1;
+        this.pins[i].write(bit === 1);
+      }
+    },
+    
+    readByte(): number {
+      let value = 0;
+      for (let i = 0; i < 8; i++) {
+        if (this.pins[i].isHigh()) {
+          value |= (1 << i);
+        }
+      }
+      return value;
+    },
+  };
+}

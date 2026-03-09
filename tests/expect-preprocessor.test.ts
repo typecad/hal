@@ -33,7 +33,7 @@ import { describe, done } from '@typecode/expect';
 done();
 `;
     const result = preprocess(source);
-    expect(result).toContain('Serial.initialize({ baudRate: 115200 })');
+    expect(result).toContain('Serial.begin(115200);');
     expect(result).toContain('[TC:SUITE_START]');
   });
 

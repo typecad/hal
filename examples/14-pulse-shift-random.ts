@@ -2,8 +2,8 @@
 // TypeCode example: Pulse, Shift, and Random utilities
 // ---------------------------------------------------------------------------
 
-import { D2, D3, D4, D5, A0 } from '@typecode/board-arduino-uno';
-import { Pulse, Shift, Random, MSBFIRST, LSBFIRST } from '@typecode/board-arduino-uno';
+import { D2, D3, D4, D5, A0, HIGH, LOW } from '@typecode';
+import { Pulse, Shift, Random, MSBFIRST, LSBFIRST } from '@typecode';
 
 // ===========================================================================
 // Pulse measurement examples (pulseIn / pulseInLong)

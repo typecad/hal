@@ -8,10 +8,10 @@
 // NOTE: This API is type-safe but requires transpiler support.
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, D10, HIGH } from '@typecode/board-arduino-uno';
-import { delay } from '@typecode/board-arduino-uno';
+import { SPI0, UART0, D10, HIGH } from '@typecode';
+import { delay } from '@typecode';
 
-UART0.initialize({ baudRate: 9600 });
+UART0.config.baudRate(9600).begin();
 
 // Fluent configuration
 SPI0.config

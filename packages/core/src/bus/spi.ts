@@ -73,6 +73,10 @@ export interface ISPIWriteResult {
   ok: boolean;
   status: SPIStatus;
   bytesWritten: number;
+  /** Returns bytesWritten if ok, otherwise prints error to Serial and returns 0. */
+  unwrap(): number;
+  /** Returns bytesWritten if ok, otherwise returns the provided default. */
+  unwrapOr(defaultValue: number): number;
 }
 
 /**
@@ -86,6 +90,10 @@ export interface ISPIReadResult {
   asUint16(endian: 'be' | 'le'): number;
   asInt8(): number;
   asInt16(endian: 'be' | 'le'): number;
+  /** Returns bytes if ok, otherwise prints error to Serial and returns empty array. */
+  unwrap(): Uint8Array;
+  /** Returns bytes if ok, otherwise returns the provided default. */
+  unwrapOr(defaultValue: Uint8Array): Uint8Array;
 }
 
 /**
@@ -97,6 +105,10 @@ export interface ISPITransferResult {
   bytes: Uint8Array;
   asUint8(): number;
   asUint16(endian: 'be' | 'le'): number;
+  /** Returns bytes if ok, otherwise prints error to Serial and returns empty array. */
+  unwrap(): Uint8Array;
+  /** Returns bytes if ok, otherwise returns the provided default. */
+  unwrapOr(defaultValue: Uint8Array): Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +174,13 @@ export interface ISPIBus {
   
   // --- Fluent Device Operations ---
   device(chipSelect: IDigitalPin): ISPIFluentDevice;
+  
+  // --- Debug mode ---
+  /** 
+   * When enabled, failed operations print error details to Serial before returning.
+   * Format: "[SPI ERROR] <message> (status=N)"
+   */
+  debugOnError: boolean;
 }
 
 // ---------------------------------------------------------------------------

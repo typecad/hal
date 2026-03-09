@@ -7,10 +7,10 @@
 // NOTE: This API is type-safe but requires transpiler support.
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, D10 } from '@typecode/board-arduino-uno';
-import { delay } from '@typecode/board-arduino-uno';
+import { SPI0, UART0, D10 } from '@typecode';
+import { delay } from '@typecode';
 
-UART0.initialize({ baudRate: 9600 });
+UART0.config.baudRate(9600).begin();
 
 // Fluent configuration - chain methods to set up SPI
 SPI0.config
@@ -23,15 +23,12 @@ UART0.println("SPI initialized with fluent API");
 
 // Chip select
 const CS = D10;
-CS.asOutput();
-CS.high();
+CS.config.output.initial(true);  // Initialize as output, HIGH (deselected)
 
 while (true) {
-  // Use Arduino-compatible API for transfers
-  CS.low();
-  const response = SPI0.transfer(0xFF);
-  CS.high();
+  // Use fluent API for transfer
+  const response = SPI0.device(CS).transfer(0xFF);
   
-  UART0.println(`Response: 0x${response.toString(16)}`);
+  UART0.write.line(`Response: 0x${response.toString()}`);
   delay(1000);
 }

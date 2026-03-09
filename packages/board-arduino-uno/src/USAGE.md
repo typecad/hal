@@ -101,7 +101,6 @@ import {
 import { D4, A0 } from './code/board-arduino-uno/pins';
 
 // ✅ OK  — D4 is IDigitalPin, supports .high()
-D4.asOutput();
 D4.high();
 
 // ✅ OK  — A0 is IAnalogInput, supports .read()
@@ -129,10 +128,9 @@ transpiler converts to a valid `.ino` sketch.
 
 ```typescript
 // examples/01-blink.ts
-import { LED } from './code/board-arduino-uno/pins';
-import { delay }  from './code/board-arduino-uno/timing';
+import { LED, delay, HIGH } from '@typecode';
 
-LED.asOutput();
+LED.config.output.initial(HIGH);
 
 while (true) {
   LED.toggle();
@@ -176,10 +174,9 @@ while (true) {
 
 ```typescript
 // examples/03-pwm-fade.ts
-import { D9 }    from './code/board-arduino-uno/pins';
-import { delay }  from './code/board-arduino-uno/timing';
+import { D9, delay, LOW } from '@typecode';
 
-D9.asOutput();
+D9.config.output.initial(LOW);
 
 let brightness = 0;
 let step = 5;
@@ -200,18 +197,21 @@ while (true) {
 
 ```typescript
 // examples/04-interrupt.ts
-import { D2, LED } from './code/board-arduino-uno/pins';
-import { InterruptMode } from './code/core';
+import { D2, LED, LOW } from '@typecode';
 
-LED.asOutput();
-D2.asInputPullUp();
+LED.config.output.initial(LOW);
+D2.config.input.pullup();
 
 let ledState = false;
 
-D2.attachInterrupt(() => {
+D2.on.falling(() => {
   ledState = !ledState;
-  if (ledState) { LED.high(); } else { LED.low(); }
-}, InterruptMode.FALLING);
+  if (ledState) {
+    LED.high();
+  } else {
+    LED.low();
+  }
+});
 ```
 
 ---
@@ -253,21 +253,18 @@ while (true) {
 
 ```typescript
 // examples/06-spi-shift-register.ts
-import { SPI0, Serial } from './code/board-arduino-uno/peripherals';
-import { SS }            from './code/board-arduino-uno/pins';
-import { delay }         from './code/board-arduino-uno/timing';
+import { SPI0, SS, delay, LOW } from '@typecode';
 
-SPI0.initialize({ frequency: 1_000_000 });
-SS.asOutput();
+SPI0.config.frequency(1_000_000).begin();
+SS.config.output.initial(LOW);
 
 let pattern = 0b00000001;
 
 while (true) {
-  SS.low();
-  SPI0.write(new Uint8Array([pattern]));
-  SS.high();
+  SPI0.device(SS).write(pattern);
 
-  pattern = ((pattern << 1) | (pattern >> 7)) & 0xFF; // rotate left
+  // rotate left
+  pattern = ((pattern << 1) | (pattern >> 7)) & 0xFF;
   delay(200);
 }
 ```
@@ -281,7 +278,7 @@ while (true) {
 import { Board } from './code/board-arduino-uno/board';
 
 Board.Serial.initialize({ baudRate: 115200 });
-Board.LED.asOutput();
+Board.LED.config.output.initial(Board.LOW);();
 
 Board.Serial.println("Arduino Uno booted");
 Board.Serial.println("MCU: " + Board.definition.mcu);
@@ -394,8 +391,6 @@ if (result.ok) {
 }
 ```
 
-> **Note:** The fluent API is designed and type-safe, but transpiler support for generating Wire calls from fluent chains is in progress. Use the Wire-compatible API for production code.
-
 ### SPI0
 
 ```typescript
@@ -403,7 +398,7 @@ import { SPI0 } from './code/board-arduino-uno/peripherals';
 import { SS }   from './code/board-arduino-uno/pins';
 
 SPI0.initialize({ frequency: 4_000_000 });
-SS.asOutput();
+SS.config.output.initial(LOW);
 
 SS.low();
 const rx = SPI0.transfer(new Uint8Array([0x80, 0x00]));

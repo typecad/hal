@@ -16,7 +16,7 @@ TypeCode transpiles a subset of TypeScript to efficient C++ code:
 // TypeScript
 import { LED, delay } from '@typecode';
 
-LED.asOutput();
+LED.config.output.initial(LOW );
 
 while (true) {
   LED.toggle();

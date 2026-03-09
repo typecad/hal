@@ -43,6 +43,10 @@ export interface II2CResult<T> {
   onSuccess(handler: (value: T) => void): this;
   /** Chain error handler. */
   onError(handler: (status: I2CStatus, bytesRead?: number) => void): this;
+  /** Returns value if ok, otherwise prints error to Serial and returns default. */
+  unwrap(): T;
+  /** Returns value if ok, otherwise returns the provided default. */
+  unwrapOr(defaultValue: T): T;
 }
 
 /** Result of a read operation with type conversion methods. */
@@ -115,6 +119,16 @@ export interface II2CWriteBuilder {
 export interface II2CDeviceAccessor extends II2CReadBuilder, II2CWriteBuilder {
   /** Device address this accessor targets. */
   readonly address: I2CAddress;
+  
+  // --- Register shortcuts (convenience methods) ---
+  /** Read a single byte from a register. */
+  readByte(register: number): number;
+  /** Read multiple bytes from a register. */
+  readBytes(register: number, count: number): Uint8Array;
+  /** Write a single byte to a register. */
+  writeByte(register: number, value: number): void;
+  /** Write multiple bytes to a register. */
+  writeBytes(register: number, data: Uint8Array | number[]): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +152,13 @@ export interface II2CBus {
   // --- Error handling ---
   /** Register a global error handler for all operations. */
   onError(handler: (status: I2CStatus, address: I2CAddress, operation: 'read' | 'write') => void): void;
+  
+  // --- Debug mode ---
+  /** 
+   * When enabled, failed operations print error details to Serial before returning.
+   * Format: "[I2C ERROR] <message> (address=0xXX, status=N)"
+   */
+  debugOnError: boolean;
 
   // --- Bus recovery ---
   /** Attempt to recover a stuck bus (toggles SCL to release stuck slaves). */
