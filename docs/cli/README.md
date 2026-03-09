@@ -48,7 +48,19 @@ packages/cli/
 │   │   ├── reachability.ts # Tree-shaking
 │   │   └── ...
 │   ├── emit/
-│   │   └── cpp-emitter.ts # C++ code generation
+│   │   ├── cpp-emitter.ts        # Main emitter orchestrator
+│   │   ├── expression-renderer.ts # Expression rendering
+│   │   ├── statement-renderer.ts  # Statement rendering
+│   │   ├── class-emitter.ts       # Class/namespace rendering
+│   │   ├── enum-emitter.ts        # Enum/type alias rendering
+│   │   ├── function-emitter.ts    # Function/callback rendering
+│   │   ├── setup-emitter.ts       # setup()/loop() generation
+│   │   ├── emitter-context.ts     # Emitter state management
+│   │   ├── base-emitter.ts        # Base emitter class
+│   │   └── utils/                 # Utility functions
+│   │       ├── type-inference.ts  # Type inference helpers
+│   │       ├── include-resolver.ts # Include handling
+│   │       └── comment-helpers.ts  # Comment handling
 │   ├── platform/
 │   │   ├── platform-strategy.ts # Strategy interface
 │   │   ├── arduino-strategy.ts  # Arduino implementation

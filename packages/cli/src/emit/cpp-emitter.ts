@@ -20,6 +20,15 @@ import { ArduinoStrategy } from "../platform/arduino-strategy";
 // ---------------------------------------------------------------------------
 // Emit-time context
 // ---------------------------------------------------------------------------
+// DEPRECATED: Module-level mutable state.
+//
+// This pattern makes dependencies implicit and complicates testing.
+// New code should use StatementRenderer/ExpressionRenderer classes from
+// ./statement-renderer.ts and ./expression-renderer.ts which accept
+// context via constructor injection.
+//
+// See CLAUDE.md and ARCHITECTURE.md for the refactoring roadmap.
+//
 // Set at the start of each emitCpp call and consulted by renderExpression.
 // Using a module-level variable avoids threading boardConstants through the
 // entire renderStatement / renderExpression call chain.
@@ -29,12 +38,16 @@ let _emitBoardConstants: BoardConstants | undefined;
 // Used to transform "new SHT3x()" to "new Microfire::SHT3x()" etc.
 let _arduinoClassNameMap: Map<string, string> | undefined;
 
+// DEPRECATED: Module-level mutable state (same as _emitBoardConstants above).
+//
 // Accumulates enum class names across all files compiled in one transpilation
 // run so that renderExpression can use `::` instead of `.` for enum member
 // access (e.g. I2CSpeed.STANDARD → I2CSpeed::STANDARD) even when the enum
 // type is defined in a different source file (imported from @typecode/core).
 const _emitEnumNames: Set<string> = new Set();
 
+// DEPRECATED: Module-level mutable state (same as _emitBoardConstants above).
+//
 // Enum names whose members have values outside the 16-bit signed int range
 // (i.e. > 32767 or < -32768).  On AVR, `int` is 16-bit, so these enums need
 // an explicit `long` underlying type and their static_cast must use `long`.
