@@ -354,7 +354,7 @@ function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; m
   const pinNumber = parsePinNumber(receiver);
   
   // Check for pin mode configuration
-  if (method === 'config.output.initial') {
+  if (method === 'config.output' || method === 'config.output.initial') {
     if (pinNumber !== null) {
       usage.outputPins.add(pinNumber);
     }

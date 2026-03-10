@@ -41,27 +41,33 @@ There are two import styles — pick whichever you prefer.
 ### Style 1: Individual imports (tree-shakeable)
 
 ```typescript
-import { D13, A0 }        from './code/board-arduino-uno/pins';
-import { Serial }         from './code/board-arduino-uno/peripherals';
-import { delay, millis }  from './code/board-arduino-uno/timing';
+import { D13, A0 }        from '@typecode/board-arduino-uno/pins';
+import { UART0 }          from '@typecode/board-arduino-uno/peripherals';
+import { delay, millis }  from '@typecode/board-arduino-uno/timing';
 ```
 
 ### Style 2: Unified `Board` namespace
 
 ```typescript
-import { Board } from './code/board-arduino-uno/board';
+import { Board } from '@typecode/board-arduino-uno/board';
 
 Board.D13.high();
-Board.Serial.println("Hello");
+Board.UART0.println("Hello");
 ```
 
 ### Style 3: Barrel import (everything)
 
 ```typescript
 import {
-  D13, A0, LED, Serial, delay, millis,
+  D13, A0, LED, UART0, delay, millis,
   I2C0, SPI0, Board,
-} from './code/board-arduino-uno';
+} from '@typecode/board-arduino-uno';
+```
+
+### Style 4: Virtual `@typecode` import (recommended)
+
+```typescript
+import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typecode';
 ```
 
 ---
@@ -130,7 +136,7 @@ transpiler converts to a valid `.ino` sketch.
 // examples/01-blink.ts
 import { LED, delay, HIGH } from '@typecode';
 
-LED.config.output.initial(HIGH);
+LED.config.output(HIGH);
 
 while (true) {
   LED.toggle();
@@ -155,15 +161,13 @@ void loop() {
 
 ```typescript
 // examples/02-analog-serial.ts
-import { A0 }     from './code/board-arduino-uno/pins';
-import { Serial }  from './code/board-arduino-uno/peripherals';
-import { delay }   from './code/board-arduino-uno/timing';
+import { A0, UART0, delay } from '@typecode';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.config.baudRate(9600).begin();
 
 while (true) {
   const value = A0.read();
-  Serial.println(value);
+  UART0.write.line(value.toString());
   delay(500);
 }
 ```
@@ -176,7 +180,7 @@ while (true) {
 // examples/03-pwm-fade.ts
 import { D9, delay, LOW } from '@typecode';
 
-D9.config.output.initial(LOW);
+D9.config.output(LOW);
 
 let brightness = 0;
 let step = 5;
@@ -199,7 +203,7 @@ while (true) {
 // examples/04-interrupt.ts
 import { D2, LED, LOW } from '@typecode';
 
-LED.config.output.initial(LOW);
+LED.config.output(LOW);
 D2.config.input.pullup();
 
 let ledState = false;
@@ -216,33 +220,26 @@ D2.on.falling(() => {
 
 ---
 
-### 5. I2C — Read From a Sensor (Wire API)
+### 5. I2C — Read From a Sensor (Fluent API)
 
 ```typescript
 // examples/05-i2c-sensor.ts
-import { I2C0 }   from './code/board-arduino-uno/peripherals';
-import { Serial }  from './code/board-arduino-uno/peripherals';
-import { delay }   from './code/board-arduino-uno/timing';
+import { I2C0, UART0, delay } from '@typecode';
 
-Serial.initialize({ baudRate: 9600 });
-I2C0.begin();               // Wire.begin() - master mode
+UART0.config.baudRate(9600).begin();
+I2C0.config.begin();               // Wire.begin() - master mode
 
 const BME280_ADDR = 0x76;
 
 while (true) {
-  // Read temperature using Wire transactional API
-  I2C0.beginTransmission(BME280_ADDR);
-  I2C0.write(0xFA);         // temperature register
-  I2C0.endTransmission();
-  
-  // Request 2 bytes
-  I2C0.requestFrom(BME280_ADDR, 2);
-  const msb = I2C0.read();
-  const lsb = I2C0.read();
+  // Read 2 bytes from register 0xFA (temperature data)
+  const tempData = I2C0.device(BME280_ADDR).readBytes(0xFA, 2);
+  const msb = tempData[0];
+  const lsb = tempData[1];
   const tempRaw = (msb << 8) | lsb;
   const temperature = tempRaw / 100.0;
   
-  Serial.println(temperature);
+  UART0.write.line(temperature.toString());
   delay(1000);
 }
 ```
@@ -256,7 +253,7 @@ while (true) {
 import { SPI0, SS, delay, LOW } from '@typecode';
 
 SPI0.config.frequency(1_000_000).begin();
-SS.config.output.initial(LOW);
+SS.config.output(LOW);
 
 let pattern = 0b00000001;
 
@@ -275,18 +272,18 @@ while (true) {
 
 ```typescript
 // examples/07-board-namespace.ts
-import { Board } from './code/board-arduino-uno/board';
+import { Board, LOW } from '@typecode';
 
-Board.Serial.initialize({ baudRate: 115200 });
-Board.LED.config.output.initial(Board.LOW);();
+Board.UART0.config.baudRate(115200).begin();
+Board.LED.config.output(LOW);
 
-Board.Serial.println("Arduino Uno booted");
-Board.Serial.println("MCU: " + Board.definition.mcu);
-Board.Serial.println("Flash: " + Board.definition.memory.flash + " bytes");
+Board.UART0.println("Arduino Uno booted");
+Board.UART0.println("MCU: " + Board.definition.mcu);
+Board.UART0.println("Flash: " + Board.definition.memory.flash + " bytes");
 
 while (true) {
   const sensor = Board.A0.read();
-  Board.Serial.println(sensor);
+  Board.UART0.write.line(sensor.toString());
   Board.LED.toggle();
 }
 ```
@@ -298,25 +295,47 @@ while (true) {
 ### Serial (UART 0)
 
 ```typescript
-import { Serial } from './code/board-arduino-uno/peripherals';
+import { UART0 } from '@typecode';
 
-Serial.initialize({ baudRate: 9600 });
-Serial.println("Hello, World!");
-Serial.print("Value: ");
-Serial.println(42);
-Serial.flush();   // wait for transmit buffer to empty
+UART0.config.baudRate(9600).begin();
+UART0.println("Hello, World!");
+UART0.print("Value: ");
+UART0.println(42);
+UART0.flush();   // wait for transmit buffer to empty
 ```
 
 ### I2C0 (Wire)
 
 The I2C interface supports two API styles:
 
-#### Wire-Compatible API (Recommended)
-
-This API directly maps to Arduino's Wire library and is fully supported by the transpiler:
+#### Fluent API (Recommended)
 
 ```typescript
-import { I2C0 } from './code/board-arduino-uno/peripherals';
+import { I2C0, UART0 } from '@typecode';
+import { I2CStatus } from '@typecode/core';
+
+// Initialize as master with fluent config
+I2C0.config.speed(400000).begin();  // 400 kHz fast mode
+
+const DEVICE_ADDR = 0x76;
+
+// Read bytes from a register
+const data = I2C0.device(DEVICE_ADDR).readBytes(0xFA, 2);
+UART0.write.line(`Received: ${data[0]}, ${data[1]}`);
+
+// Write bytes to a register
+const result = I2C0.device(DEVICE_ADDR).write(0x27).to(0xF4);
+if (!result.ok) {
+  UART0.write.line(`Write failed: ${result.status}`);
+}
+```
+
+#### Wire-Compatible API (Legacy)
+
+This API directly maps to Arduino's Wire library:
+
+```typescript
+import { I2C0 } from '@typecode';
 import { I2CStatus } from '@typecode/core';
 
 // Initialize as master
@@ -347,17 +366,6 @@ const bytesReceived = I2C0.requestFrom(0x68, 1);
 if (bytesReceived > 0) {
   const whoAmI = I2C0.read();
 }
-
-// Slave mode (optional)
-I2C0.begin(0x08);  // Initialize as slave at address 0x08
-I2C0.onReceive((howMany) => {
-  while (I2C0.available()) {
-    const data = I2C0.read();
-  }
-});
-I2C0.onRequest(() => {
-  I2C0.write(0x42);  // Send response
-});
 ```
 
 #### Error Codes (I2CStatus)
@@ -371,38 +379,26 @@ I2C0.onRequest(() => {
 | `OTHER_ERROR` | 4 | Other error |
 | `PARTIAL_READ` | 5 | Fewer bytes read than requested |
 
-#### Fluent API (Experimental)
-
-A fluent chainable API is available for type-checking but requires additional transpiler support:
-
-```typescript
-// Fluent configuration (experimental)
-I2C0.config
-  .speed(400000)
-  .begin();
-
-// Fluent device operations (experimental)
-const result = I2C0.device(0x76)
-  .read(2)
-  .from(0xFA);
-
-if (result.ok) {
-  const temp = result.asUint16('be');
-}
-```
-
 ### SPI0
 
 ```typescript
-import { SPI0 } from './code/board-arduino-uno/peripherals';
-import { SS }   from './code/board-arduino-uno/pins';
+import { SPI0, SS, D10 } from '@typecode';
 
-SPI0.initialize({ frequency: 4_000_000 });
-SS.config.output.initial(LOW);
+// Fluent configuration
+SPI0.config.frequency(4_000_000).mode(0).bitOrder('msb').begin();
 
-SS.low();
-const rx = SPI0.transfer(new Uint8Array([0x80, 0x00]));
-SS.high();
+// Chip select pin
+const CS = D10;
+CS.config.output.initial(true);  // HIGH = deselected
+
+// Single byte transfer with fluent device API
+const response = SPI0.device(CS).transfer(0x55);
+
+// Write data to device
+SPI0.device(CS).write(0xFF);
+
+// Multi-byte transfer
+const rxData = SPI0.device(CS).transfer(new Uint8Array([0x80, 0x00, 0xFF]));
 ```
 
 ---
@@ -410,7 +406,7 @@ SS.high();
 ## Timing Functions
 
 ```typescript
-import { delay, millis, micros, delayMicroseconds } from './code/board-arduino-uno/timing';
+import { delay, millis, micros, delayMicroseconds } from '@typecode';
 
 delay(1000);             // block 1 second
 delayMicroseconds(10);   // block 10 µs
@@ -424,7 +420,7 @@ const us = micros();     // µs since reset
 ## Utility Functions
 
 ```typescript
-import { map, constrain } from './code/board-arduino-uno/timing';
+import { map, constrain } from '@typecode';
 
 // Re-map a 10-bit ADC reading (0–1023) to an 8-bit PWM range (0–255)
 const pwmValue = map(sensorReading, 0, 1023, 0, 255);
@@ -441,8 +437,9 @@ The `ArduinoUno` constant (or `Board.definition`) exposes the full hardware
 manifest at design time.
 
 ```typescript
-import { ArduinoUno } from './code/board-arduino-uno';
+import { ArduinoUno, Board } from '@typecode';
 
+// Access via ArduinoUno export
 console.log(ArduinoUno.name);             // "Arduino Uno"
 console.log(ArduinoUno.mcu);              // "ATmega328P"
 console.log(ArduinoUno.clockSpeed);       // 16000000
@@ -452,6 +449,9 @@ console.log(ArduinoUno.memory.eeprom);    // 1024
 console.log(ArduinoUno.pins.pwm);         // ["D3","D5","D6","D9","D10","D11"]
 console.log(ArduinoUno.features.watchdog);// true
 console.log(ArduinoUno.build.arduino);    // "arduino:avr:uno"
+
+// Or via Board namespace
+console.log(Board.definition.name);       // "Arduino Uno"
 ```
 
 ---

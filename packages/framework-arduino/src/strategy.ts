@@ -198,12 +198,11 @@ export class ArduinoStrategy implements PlatformStrategy {
     const builtin = renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode);
     if (builtin !== undefined) return builtin;
     
-    // For namespace calls (Pulse, Shift, Random, Num), try the statement-level handler
-    // These need to work in expression context too (e.g., const d = Pulse.in(D2, HIGH))
-    if (receiverKind === 'pulse' || receiverKind === 'shift' || receiverKind === 'random' || receiverKind === 'num') {
-      const callee = `${receiver}.${method}`;
-      return tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants) ?? undefined;
-    }
+    // Try the statement-level handler for all typecode calls
+    // This handles config chains (D13.config.output), interrupts (D2.on.falling), etc.
+    const callee = `${receiver}.${method}`;
+    const statementResult = tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants);
+    if (statementResult !== undefined) return statementResult;
     
     return undefined;
   }

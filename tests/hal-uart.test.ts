@@ -211,26 +211,26 @@ describe('UART HAL - Fluent API Transpilation', () => {
       expect(result.cpp).toContain('Serial.available()');
     });
 
-    it('transpiles read.line() (not yet implemented)', () => {
+    it('transpiles read.line()', () => {
       const result = transpile(`
         import { UART0 } from '@typecode/board-arduino-uno';
         UART0.config.baudRate(9600).begin();
         const line = UART0.read.line();
       `, { target: 'arduino' });
-      
-      // TODO: read.line() not yet transpiled to Serial calls
-      expect(result.cpp).toContain('UART0.read.line');
+
+      // read.line() transpiles to Serial.readStringUntil
+      expect(result.cpp).toContain('Serial.readStringUntil');
     });
 
-    it('transpiles read.bytes() (not yet implemented)', () => {
+    it('transpiles read.bytes()', () => {
       const result = transpile(`
         import { UART0 } from '@typecode/board-arduino-uno';
         UART0.config.baudRate(9600).begin();
         const data = UART0.read.bytes(10);
       `, { target: 'arduino' });
-      
-      // TODO: read.bytes() not yet transpiled to Serial calls
-      expect(result.cpp).toContain('UART0.read.bytes');
+
+      // read.bytes() transpiles to Serial.readBytes
+      expect(result.cpp).toContain('Serial.readBytes');
     });
   });
 });

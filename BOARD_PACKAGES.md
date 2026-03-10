@@ -659,16 +659,12 @@ export default config;
 In sketch files use the virtual `@typecode` specifier instead of the concrete board package name. The transpiler resolves it to the `board` value from `typecode.config.ts`:
 
 ```typescript
-import { Board, LED, delay } from '@typecode';
+import { LED, delay, HIGH } from '@typecode';
 
-function setup() {
-  Board.LED.asOutput();
-}
+LED.config.output.initial(HIGH);
 
-function loop() {
-  LED.high();
-  delay(500);
-  LED.low();
+while (true) {
+  LED.toggle();
   delay(500);
 }
 ```

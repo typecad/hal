@@ -8,6 +8,16 @@ import { describe, it, expect } from 'vitest';
 import { transpile } from './setup';
 
 describe('Pin Config - Digital Output', () => {
+  it('transpiles D13.config.output()', () => {
+    const result = transpile(`
+      import { D13 } from '@typecode/board-arduino-uno';
+      D13.config.output();
+    `, { target: 'arduino' });
+    
+    // D13.config.output() -> pinMode(13, OUTPUT)
+    expect(result.cpp).toContain('pinMode(13, OUTPUT)');
+  });
+
   it('transpiles D13.config.output.initial(HIGH)', () => {
     const result = transpile(`
       import { D13, HIGH } from '@typecode/board-arduino-uno';
@@ -74,6 +84,16 @@ describe('Pin Config - Digital Input', () => {
 });
 
 describe('Pin Config - PWM', () => {
+  it('transpiles D9.config.pwm()', () => {
+    const result = transpile(`
+      import { D9 } from '@typecode/board-arduino-uno';
+      D9.config.pwm();
+    `, { target: 'arduino' });
+    
+    // D9.config.pwm() -> pinMode(9, OUTPUT)
+    expect(result.cpp).toContain('pinMode(9, OUTPUT)');
+  });
+
   it('transpiles D9.config.pwm.initial(50)', () => {
     const result = transpile(`
       import { D9 } from '@typecode/board-arduino-uno';
@@ -155,10 +175,7 @@ describe('Pin Config - Interrupt Attach', () => {
 });
 
 describe('Pin Config - Interrupt Detach', () => {
-  // TODO: D2.off.all() is not yet transpiling - needs investigation
-  // The IR generates typecode-call with method "off.all" but the emitter
-  // doesn't have a handler for this pattern in tryRenderTypecodeCallStatement
-  it.skip('transpiles D2.off.all()', () => {
+  it('transpiles D2.off.all()', () => {
     const result = transpile(`
       import { D2 } from '@typecode/board-arduino-uno';
       D2.off.all();

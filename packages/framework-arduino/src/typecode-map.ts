@@ -1122,13 +1122,21 @@ export function tryRenderTypecodeCallStatement(
   } else if (parts.length === 3 && (parts[0] === 'Board' || parts[0] === 'Pins')) {
     // e.g. "Board.A0.read"  "Pins.D13.high"
     [, receiver, method] = parts as [string, string, string];
-  } else if (parts.length === 4 && parts[1] === 'config' && parts[2] === 'output') {
-    // e.g. "D2.config.output.initial" -> pinMode(OUTPUT); digitalWrite(value)
-    const [pinName, , , method] = parts as [string, string, string, string];
+  } else if (parts.length === 3 && parts[1] === 'config' && parts[2] === 'output') {
+    // e.g. "D2.config.output()" -> pinMode(OUTPUT) (no initial value)
+    const [pinName] = parts as [string, string, string];
     const kind = inferKindByName(pinName);
     if (kind === 'unknown') return undefined;
     const pin = pinArg(pinName, boardConstants);
-    if (method === 'initial' && args.length >= 1) {
+    // No args - just set pinMode
+    return `pinMode(${pin}, OUTPUT)`;
+  } else if (parts.length === 4 && parts[1] === 'config' && parts[2] === 'output' && parts[3] === 'initial') {
+    // e.g. "D2.config.output.initial(HIGH)" -> pinMode(OUTPUT); digitalWrite(value)
+    const [pinName] = parts as [string, string, string, string];
+    const kind = inferKindByName(pinName);
+    if (kind === 'unknown') return undefined;
+    const pin = pinArg(pinName, boardConstants);
+    if (args.length >= 1) {
       return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${renderArg(args[0])})`;
     }
     return undefined;
@@ -1148,13 +1156,21 @@ export function tryRenderTypecodeCallStatement(
       return `pinMode(${pin}, INPUT)`;
     }
     return undefined;
-  } else if (parts.length === 4 && parts[1] === 'config' && parts[2] === 'pwm') {
-    // e.g. "D3.config.pwm.initial" -> pinMode(OUTPUT); analogWrite(resolved)
-    const [pinName, , , method] = parts as [string, string, string, string];
+  } else if (parts.length === 3 && parts[1] === 'config' && parts[2] === 'pwm') {
+    // e.g. "D3.config.pwm()" -> pinMode(OUTPUT) (no initial value)
+    const [pinName] = parts as [string, string, string];
     const kind = inferKindByName(pinName);
     if (kind !== 'pwm') return undefined;
     const pin = pinArg(pinName, boardConstants);
-    if (method === 'initial' && args.length >= 1) {
+    // No args - just set pinMode
+    return `pinMode(${pin}, OUTPUT)`;
+  } else if (parts.length === 4 && parts[1] === 'config' && parts[2] === 'pwm' && parts[3] === 'initial') {
+    // e.g. "D3.config.pwm.initial(50)" -> pinMode(OUTPUT); analogWrite(resolved)
+    const [pinName] = parts as [string, string, string, string];
+    const kind = inferKindByName(pinName);
+    if (kind !== 'pwm') return undefined;
+    const pin = pinArg(pinName, boardConstants);
+    if (args.length >= 1) {
       // Convert percent (0-100) to 8-bit (0-255)
       return `pinMode(${pin}, OUTPUT); analogWrite(${pin}, (int)((${renderArg(args[0])}) * 255 / 100))`;
     }
@@ -1189,7 +1205,7 @@ export function tryRenderTypecodeCallStatement(
     // e.g. "D2.off.falling"  "D2.off.all"
     const [pinName, , interruptMode] = parts as [string, string, string];
     const kind = inferKindByName(pinName);
-    if (kind !== 'digital' && kind !== 'pwm') return undefined;
+    if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt') return undefined;
     
     const pin = pinArg(pinName, boardConstants);
     if (interruptMode === 'all') {

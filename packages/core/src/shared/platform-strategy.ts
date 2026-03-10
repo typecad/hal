@@ -124,7 +124,7 @@ export interface PlatformStrategy {
     args: ReadonlyArray<ExpressionIR>,
     renderArg: (e: ExpressionIR) => string,
     boardConstants?: BoardConstants,
-    interruptMode?: "FALLING" | "RISING" | "CHANGE",
+    interruptMode?: "FALLING" | "RISING" | "CHANGE" | "ALL",
   ): string | undefined;
 
   /**

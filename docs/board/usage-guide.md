@@ -141,13 +141,13 @@ while (true) {
 ### 2. Analog Read → Serial
 
 ```typescript
-import { A0, Serial, delay } from '@typecode';
+import { A0, UART0, delay } from '@typecode';
 
-Serial.initialize({ baudRate: 9600 });
+UART0.config.baudRate(9600).begin();
 
 while (true) {
   const value = A0.read();
-  Serial.println(value);
+  UART0.write.line(value.toString());
   delay(500);
 }
 ```
@@ -155,9 +155,9 @@ while (true) {
 ### 3. PWM Fade
 
 ```typescript
-import { D9, delay } from '@typecode';
+import { D9, delay, LOW } from '@typecode';
 
-D9.config.pwm.initial();
+D9.config.output.initial(LOW);
 
 let brightness = 0;
 let step = 5;
@@ -195,17 +195,21 @@ D2.on.falling(() => {
 ### 5. I2C — Read From a Sensor
 
 ```typescript
-import { I2C0, Serial, delay } from '@typecode';
+import { I2C0, UART0, delay } from '@typecode';
 
-Serial.initialize({ baudRate: 9600 });
-I2C0.initialize();          // Wire.begin()
+UART0.config.baudRate(9600).begin();
+I2C0.config.begin();
 
 const BME280_ADDR = 0x76;
 
 while (true) {
-  const tempRaw = I2C0.readWord(BME280_ADDR, 0xFA);
+  // Read 2 bytes from register 0xFA (temperature data)
+  const tempData = I2C0.device(BME280_ADDR).readBytes(0xfa, 2);
+  const msb = tempData[0];
+  const lsb = tempData[1];
+  const tempRaw = (msb << 8) | lsb;
   const temperature = tempRaw / 100.0;
-  Serial.println(temperature);
+  UART0.write.line(temperature.toString());
   delay(1000);
 }
 ```
@@ -232,18 +236,18 @@ while (true) {
 ### 7. Board Namespace (All-In-One)
 
 ```typescript
-import { Board } from '@typecode';
+import { Board, LOW } from '@typecode';
 
-Board.Serial.initialize({ baudRate: 115200 });
+Board.UART0.config.baudRate(115200).begin();
 Board.LED.config.output.initial(LOW);
 
-Board.Serial.println("Arduino Uno booted");
-Board.Serial.println("MCU: " + Board.definition.mcu);
-Board.Serial.println("Flash: " + Board.definition.memory.flash + " bytes");
+Board.UART0.println("Arduino Uno booted");
+Board.UART0.println("MCU: " + Board.definition.mcu);
+Board.UART0.println("Flash: " + Board.definition.memory.flash + " bytes");
 
 while (true) {
   const sensor = Board.A0.read();
-  Board.Serial.println(sensor);
+  Board.UART0.println(sensor);
   Board.LED.toggle();
 }
 ```
@@ -253,45 +257,69 @@ while (true) {
 ### Serial (UART 0)
 
 ```typescript
-import { Serial } from '@typecode';
+import { UART0 } from '@typecode';
 
-Serial.initialize({ baudRate: 9600 });
-Serial.println("Hello, World!");
-Serial.print("Value: ");
-Serial.println(42);
-Serial.flush();   // wait for transmit buffer to empty
+// Fluent configuration
+UART0.config.baudRate(9600).begin();
+
+// Write operations
+UART0.write.line("Hello, World!");
+UART0.write.string("Value: ");
+UART0.write.formatln("Number: %d", 42);
+
+// Read operations
+const lineResult = UART0.read.line(5000);  // 5 second timeout
+if (lineResult.ok) {
+  UART0.println(lineResult.asStringTrim());
+}
 ```
 
 ### I2C0 (Wire)
 
 ```typescript
-import { I2C0, I2CSpeed } from '@typecode';
+import { I2C0 } from '@typecode';
 
-I2C0.initialize({ speed: I2CSpeed.FAST });  // 400 kHz
+// Fluent configuration
+I2C0.config.speed(400000).begin();  // 400 kHz
 
-// Scan for devices
-const devices = I2C0.scan();
+// Fluent device API
+const device = I2C0.device(0x68);
 
-// Register-level access
-I2C0.writeByte(0x68, 0x6B, 0x00);           // wake MPU-6050
-const whoAmI = I2C0.readByte(0x68, 0x75);    // read WHO_AM_I
+// Read from register
+const data = device.readBytes(0x75, 1);  // Read WHO_AM_I
+const whoAmI = data[0];
+
+// Write to register
+device.writeByte(0x6B, 0x00);  // Wake MPU-6050
+
+// Fluent read/write
+const result = I2C0.device(0x68).read(2).from(0x3B);
+if (result.ok) {
+  const value = result.asUint16('be');
+}
 ```
 
 ### SPI0
 
 ```typescript
-import { SPI0, SS } from '@typecode';
+import { SPI0, D10 } from '@typecode';
 
-SPI0.config.frequency(1_000_000)
-          .mode(0)
-          .bitOrder('msb')
-          .begin();
+const CS = D10;
 
-SS.config.output.initial(LOW);
+// Fluent configuration
+SPI0.config
+  .frequency(1_000_000)
+  .mode(0)
+  .bitOrder('msb')
+  .begin();
 
-SS.low();
-const rx = SPI0.transfer(new Uint8Array([0x80, 0x00]));
-SS.high();
+CS.config.output.initial(true);  // HIGH = deselected
+
+// Transfer with device API (CS handled automatically)
+const response = SPI0.device(CS).transfer(0x80);
+
+// Multi-byte transfer
+const rx = SPI0.device(CS).transfer(new Uint8Array([0x80, 0x00]));
 ```
 
 ## Timing Functions

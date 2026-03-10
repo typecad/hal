@@ -25,8 +25,10 @@ export interface IPin {
 // Pin Configuration (fluent API)
 // ---------------------------------------------------------------------------
 
-/** Output pin configuration builder. */
+/** Output pin configuration - callable, with optional initial value. */
 export interface IOutputConfig {
+  /** Set pin as OUTPUT (no initial value). */
+  (): void;
   /** Set pin as OUTPUT with initial value. */
   initial(value: DigitalValue): void;
 }
@@ -49,8 +51,10 @@ export interface IPinConfig {
   readonly input: IInputConfig;
 }
 
-/** PWM output configuration builder. */
+/** PWM output configuration - callable, with optional initial duty cycle. */
 export interface IPWMOutputConfig {
+  /** Set pin as PWM output (no initial value). */
+  (): void;
   /** Set pin as PWM output with initial duty cycle (0-100 percent). */
   initial(percent: number): void;
 }

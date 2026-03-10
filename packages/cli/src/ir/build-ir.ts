@@ -895,6 +895,25 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
         }
       }
 
+      // Fluent interrupt detach API: D2.off.falling(), D2.off.rising(), D2.off.change(), D2.off.all()
+      // Pattern: pin.off.<mode>() where mode is falling/rising/change/all
+      if (ts.isPropertyAccessExpression(receiverNode) && 
+          receiverNode.name.text === "off" &&
+          ts.isIdentifier(receiverNode.expression)) {
+        const pinName = receiverNode.expression.text;
+        const kind = inferKindByName(pinName);
+        if (kind !== 'unknown' && (method === 'falling' || method === 'rising' || method === 'change' || method === 'all')) {
+          return {
+            kind: "typecode-call",
+            receiver: pinName,
+            receiverKind: kind,
+            method: `detachInterrupt`,
+            interruptMode: method.toUpperCase() as "FALLING" | "RISING" | "CHANGE" | "ALL",
+            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
+        }
+      }
+
       // Board.A0.method() or Pins.A0.method()
       if (
         ts.isPropertyAccessExpression(receiverNode) &&
@@ -1303,6 +1322,41 @@ function callToStatement(
   pointerVars: PointerTracker = new Set(),
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
+  
+  // ---- Typecode call detection at statement level -------------------------
+  // Handle D13.config.output(), D9.config.pwm(), D2.config.input.pullup(), etc.
+  // These need to be detected as typecode-call IR nodes for proper transpilation.
+  if (ts.isPropertyAccessExpression(call.expression)) {
+    const extractRootAndChain = (node: ts.Expression): { root: string; chain: string[] } | undefined => {
+      if (ts.isIdentifier(node)) {
+        return { root: node.text, chain: [] };
+      }
+      if (ts.isPropertyAccessExpression(node)) {
+        const inner = extractRootAndChain(node.expression);
+        if (inner) {
+          return { root: inner.root, chain: [...inner.chain, node.name.text] };
+        }
+      }
+      return undefined;
+    };
+    
+    const chainInfo = extractRootAndChain(call.expression);
+    if (chainInfo) {
+      const kind = inferKindByName(chainInfo.root);
+      if (kind !== 'unknown') {
+        // Build the full method path (e.g., "config.output" from D13.config.output)
+        const fullMethod = chainInfo.chain.join('.');
+        return {
+          kind: "typecode-call",
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+          receiver: chainInfo.root,
+          receiverKind: kind,
+          method: fullMethod,
+          args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+        };
+      }
+    }
+  }
   
   // ---- Fluent peripheral config chain detection at statement level -------
   // Handle UART0.config.baudRate(115200).begin() -> Serial.begin(115200)

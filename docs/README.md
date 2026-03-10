@@ -180,16 +180,62 @@ Breakpoint-based debugging for embedded devices:
 
 See the `examples/` directory for sample code:
 
+### Basic Examples
+
 | Example | Description |
 |---------|-------------|
 | `01-blink.ts` | Basic LED blink |
 | `02-analog-serial.ts` | Analog read with serial output |
 | `03-pwm-fade.ts` | PWM LED fading |
 | `04-interrupt.ts` | External interrupt handling |
-| `05-i2c-sensor.ts` | I2C sensor reading |
-| `06-spi-shift-register.ts` | SPI shift register |
 | `07-board-namespace.ts` | Board namespace usage |
 | `08-analog-to-pwm.ts` | Analog to PWM conversion |
+
+### Serial/UART Examples
+
+| Example | Description |
+|---------|-------------|
+| `02b-serial-fluent-config.ts` | Fluent serial configuration |
+| `02c-serial-fluent-read.ts` | Fluent serial read operations |
+| `02d-serial-fluent-write.ts` | Fluent serial write operations |
+| `12-native-serial.ts` | Native UART communication |
+
+### I2C Examples
+
+| Example | Description |
+|---------|-------------|
+| `05-i2c-sensor.ts` | Basic I2C sensor reading |
+| `05b-i2c-error-handling.ts` | I2C error handling |
+| `05c-i2c-multi-byte-write.ts` | Multi-byte I2C writes |
+| `05d-i2c-bus-scan.ts` | I2C bus scanning |
+| `05e-i2c-multiple-devices.ts` | Multiple I2C devices |
+| `05g-i2c-fluent-config.ts` | Fluent I2C configuration |
+| `05h-i2c-fluent-read.ts` | Fluent I2C read API |
+| `05i-i2c-fluent-write.ts` | Fluent I2C write API |
+| `16-i2c-register-shortcuts.ts` | I2C register shortcut methods |
+
+### SPI Examples
+
+| Example | Description |
+|---------|-------------|
+| `06-spi-basic.ts` | Basic SPI communication |
+| `06-spi-shift-register.ts` | SPI shift register |
+| `06b-spi-transactions.ts` | SPI transactions |
+| `06c-spi-shift-register.ts` | 74HC595 shift register |
+| `06d-spi-fluent-config.ts` | Fluent SPI configuration |
+| `06e-spi-fluent-device.ts` | Fluent SPI device operations |
+| `06f-spi-fluent-transfer.ts` | Fluent SPI transfer |
+
+### Utilities & Advanced
+
+| Example | Description |
+|---------|-------------|
+| `09-expect-demo.test.ts` | Hardware testing with expect |
+| `11-native-analog-test.ts` | Native analog with peripheral init |
+| `13-num-utilities.ts` | Number utilities (map, constrain) |
+| `14-pulse-shift-random.ts` | Pulse, shift, and random utilities |
+| `15-pin-group-led-bar.ts` | Pin groups for LED bars |
+| `17-pin-validation.ts` | Pin validation utilities |
 
 ## Contributing
 
