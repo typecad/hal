@@ -59,6 +59,8 @@ export interface PinDefinition {
   onboardButton?: boolean;
   /** Notes / warnings about this pin. */
   notes?: string;
+  /** Is this pin marked as unsafe? Use with caution (e.g., boot strapping pins). */
+  unsafe?: boolean;
 }
 
 export interface PeripheralFunction {
@@ -84,6 +86,8 @@ export interface PinDefinitions {
   analog: string[];
   /** PWM-capable pin names. */
   pwm: string[];
+  /** Pin names marked as unsafe (for validation warnings). */
+  unsafe?: string[];
 
   /** I2C bus pin assignments keyed by bus instance number. */
   i2c: Record<number, { sda: string; scl: string }>;

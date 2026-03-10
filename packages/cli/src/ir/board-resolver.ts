@@ -22,6 +22,7 @@ import ts from "typescript";
  *   "memory.flash" → 32768
  *   "memory.sram"  → 2048
  *   "memory.eeprom"→ 1024
+ *   "pins.unsafe"  → "D0,D1" (string arrays stored as comma-separated)
  */
 export type BoardConstants = Map<string, string | number | boolean>;
 
@@ -113,8 +114,19 @@ function walkObjectLiteral(
     } else if (ts.isObjectLiteralExpression(init)) {
       // Recurse into nested objects (e.g. `memory: { flash: 32_768, ... }`).
       walkObjectLiteral(init, fullPath, out);
+    } else if (ts.isArrayLiteralExpression(init)) {
+      // Capture string arrays (e.g. `pins.unsafe: ['D0', 'D1']`)
+      const arrValues: string[] = [];
+      for (const elem of init.elements) {
+        if (ts.isStringLiteral(elem)) {
+          arrValues.push(elem.text);
+        }
+      }
+      if (arrValues.length > 0) {
+        out.set(fullPath, arrValues.join(','));
+      }
     }
-    // Arrays and complex expressions are silently ignored.
+    // Other complex expressions are silently ignored.
   }
 }
 

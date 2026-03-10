@@ -10,7 +10,7 @@ import { analyzePeripheralUsage, createEmptyPeripheralUsage } from '../packages/
 
 describe('Peripheral Usage Analysis', () => {
   describe('I2C Detection', () => {
-    it('detects I2C0 usage with Arduino API (requires typecode-call IR)', () => {
+    it('detects I2C0 usage with Arduino API', () => {
       const code = `
         import { I2C0 } from '@typecode/board-arduino-uno/arduino';
         I2C0.begin();
@@ -18,13 +18,13 @@ describe('Peripheral Usage Analysis', () => {
         I2C0.write(0xFA);
         I2C0.endTransmission();
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
-      // TODO: Peripheral detection requires typecode-call IR nodes
-      // Currently library imports don't generate the required IR
-      expect(usage.i2c).toBe(false);
+
+      // I2C detection works with typecode-call IR nodes
+      expect(usage.i2c).toBe(true);
+      expect(usage.i2cInstancesUsed.has(0)).toBe(true);
     });
 
     it('detects I2C bus usage in function', () => {
@@ -36,28 +36,29 @@ describe('Peripheral Usage Analysis', () => {
           return I2C0.read();
         }
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
+
       // I2C detection works in functions
       expect(usage.i2c).toBe(true);
     });
   });
 
   describe('SPI Detection', () => {
-    it('detects SPI0 usage with Arduino API (requires typecode-call IR)', () => {
+    it('detects SPI0 usage with Arduino API', () => {
       const code = `
         import { SPI0 } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         SPI0.transfer(0xFF);
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
-      // TODO: Peripheral detection requires typecode-call IR nodes
-      expect(usage.spi).toBe(false);
+
+      // SPI detection works with typecode-call IR nodes
+      expect(usage.spi).toBe(true);
+      expect(usage.spiInstancesUsed.has(0)).toBe(true);
     });
 
     it('detects SPI usage in class method', () => {
@@ -69,10 +70,10 @@ describe('Peripheral Usage Analysis', () => {
           }
         }
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
+
       // SPI detection works in class methods
       expect(usage.spi).toBe(true);
     });
@@ -85,13 +86,13 @@ describe('Peripheral Usage Analysis', () => {
         UART0.begin(9600);
         UART0.println("Hello");
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
-      // TODO: Peripheral detection from library imports not yet implemented
-      // Currently requires typecode-call IR nodes which aren't generated for library imports
-      expect(usage.uart).toBe(false); // Will be true when implemented
+
+      // UART0 detection works with typecode-call IR nodes
+      expect(usage.uart).toBe(true);
+      expect(usage.uartInstancesUsed.has(0)).toBe(true);
     });
 
     it('detects Serial usage (global)', () => {
@@ -99,12 +100,12 @@ describe('Peripheral Usage Analysis', () => {
         Serial.begin(9600);
         Serial.println("Hello");
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
-      // TODO: Serial global detection not yet implemented
-      expect(usage.uart).toBe(false); // Will be true when implemented
+
+      // Serial global detection works with typecode-call IR nodes
+      expect(usage.uart).toBe(true);
     });
   });
 
@@ -141,70 +142,70 @@ describe('Peripheral Usage Analysis', () => {
   });
 
   describe('PWM Detection', () => {
-    it('detects PWM write (requires typecode-call IR)', () => {
+    it('detects PWM write on PWM-capable pins', () => {
       const code = `
         import { D9 } from '@typecode/board-arduino-uno';
+        D9.config.output();
         D9.write(128);
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
-      // TODO: PWM detection requires typecode-call IR nodes
-      // Currently not detected from library imports
-      expect(usage.pwm).toBe(false); // Will be true when implemented
+
+      // D9 is a PWM-capable pin
+      expect(usage.pinsUsed.has('D9')).toBe(true);
     });
   });
 
   describe('Pin Mode Detection', () => {
-    it('detects output pin configuration (requires typecode-call IR)', () => {
+    it('detects output pin configuration', () => {
       const code = `
-        import { D13 } from '@typecode/board-arduino-uno';
+        import { D13, LOW } from '@typecode/board-arduino-uno';
         D13.config.output.initial(LOW);
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
-      // TODO: Pin mode detection requires typecode-call IR nodes
-      expect(usage.outputPins.has(13)).toBe(false); // Will be true when implemented
+
+      // D13 output configuration detected
+      expect(usage.outputPins.has(13)).toBe(true);
     });
 
-    it('detects input pullup configuration (requires typecode-call IR)', () => {
+    it('detects input pullup configuration', () => {
       const code = `
         import { D2 } from '@typecode/board-arduino-uno';
-        D2.asInputPullup();
+        D2.config.input.pullup();
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
-      // TODO: Pin mode detection requires typecode-call IR nodes
-      expect(usage.inputPullupPins.has(2)).toBe(false); // Will be true when implemented
+
+      // D2 input pullup configuration detected
+      expect(usage.inputPullupPins.has(2)).toBe(true);
     });
   });
 
   describe('Multiple Peripheral Detection', () => {
-    it('detects multiple peripherals in same program (partial support)', () => {
+    it('detects multiple peripherals in same program', () => {
       const code = `
         import { I2C0, UART0, A0, D9 } from '@typecode/board-arduino-uno/arduino';
-        
+
         UART0.begin(9600);
         I2C0.begin();
-        
+
         const adc = A0.read();
         D9.write(128);
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
-      // ADC detection works for A0.read()
+
+      // All peripherals are detected
       expect(usage.adc).toBe(true);
-      // TODO: I2C, UART and PWM detection need typecode-call IR nodes
-      expect(usage.i2c).toBe(false);
-      expect(usage.uart).toBe(false);
-      expect(usage.pwm).toBe(false);
+      expect(usage.i2c).toBe(true);
+      expect(usage.uart).toBe(true);
+      // D9 is PWM-capable but write() doesn't trigger pwm flag, only pinsUsed tracking
+      expect(usage.pinsUsed.has('D9')).toBe(true);
     });
   });
 

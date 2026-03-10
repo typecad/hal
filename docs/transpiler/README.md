@@ -260,6 +260,32 @@ void loop() {}
 
 ## Key Concepts
 
+### Pin Safety Warnings
+
+TypeCode validates pin usage at compile time and generates warnings for potentially problematic configurations:
+
+**Unsafe Pins:**
+
+Some pins are marked as "unsafe" in board definitions. These pins can be used but may have special behaviors:
+
+```typescript
+import { D0, HIGH } from '@typecode/board-arduino-uno';
+
+D0.config.output();
+D0.write(HIGH);  // Warning: Pin 'D0' is marked as unsafe
+```
+
+The transpiler generates warnings (not errors), allowing the code to compile while alerting you to potential issues:
+
+```
+warning [unsafe-pin-usage]: Pin 'D0' is marked as unsafe. Use with caution -
+this pin may have special boot behavior or conflict with system functions.
+```
+
+**Common Unsafe Pins on Arduino Uno:**
+- `D0` (RX) - UART receive pin; using interferes with serial upload/monitoring
+- `D1` (TX) - UART transmit pin; using interferes with serial communication
+
 ### Compile-Time vs Runtime
 
 TypeCode distinguishes between compile-time and runtime constructs:

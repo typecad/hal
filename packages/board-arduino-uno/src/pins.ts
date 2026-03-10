@@ -29,12 +29,12 @@ function createPWMPin(pin: number, gpio: number): IPWMPin {
   return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IPWMPin;
 }
 
-function createAnalogPin(pin: number, gpio: number): IAnalogInput {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IAnalogInput;
-}
-
 function createInterruptPin(pin: number, gpio: number): IDigitalPin & IInterruptPin {
   return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IInterruptPin;
+}
+
+function createAnalogPin(pin: number, gpio: number): IDigitalPin & IAnalogInput {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IAnalogInput;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,15 +67,15 @@ export const D10: IPWMPin = createPWMPin(10, 10);
 export const D11: IPWMPin = createPWMPin(11, 11);
 
 // ---------------------------------------------------------------------------
-// Analog input pins
+// Analog input pins (also support digital I/O)
 // ---------------------------------------------------------------------------
 
-export const A0: IAnalogInput = createAnalogPin(14, 14);
-export const A1: IAnalogInput = createAnalogPin(15, 15);
-export const A2: IAnalogInput = createAnalogPin(16, 16);
-export const A3: IAnalogInput = createAnalogPin(17, 17);
-export const A4: IAnalogInput = createAnalogPin(18, 18);  // SDA
-export const A5: IAnalogInput = createAnalogPin(19, 19);  // SCL
+export const A0: IDigitalPin & IAnalogInput = createAnalogPin(14, 14);
+export const A1: IDigitalPin & IAnalogInput = createAnalogPin(15, 15);
+export const A2: IDigitalPin & IAnalogInput = createAnalogPin(16, 16);
+export const A3: IDigitalPin & IAnalogInput = createAnalogPin(17, 17);
+export const A4: IDigitalPin & IAnalogInput = createAnalogPin(18, 18);  // SDA
+export const A5: IDigitalPin & IAnalogInput = createAnalogPin(19, 19);  // SCL
 
 // ---------------------------------------------------------------------------
 // Convenience aliases

@@ -41,6 +41,8 @@ export interface PeripheralUsage {
   spiInstancesUsed: Set<number>;
   /** Specific UART instances used (0 for UART0/Serial, 1 for UART1/Serial1, etc.) */
   uartInstancesUsed: Set<number>;
+  /** All pin names used (for unsafe pin validation) */
+  pinsUsed: Set<string>;
 }
 
 /**
@@ -63,6 +65,7 @@ export function createEmptyPeripheralUsage(): PeripheralUsage {
     i2cInstancesUsed: new Set(),
     spiInstancesUsed: new Set(),
     uartInstancesUsed: new Set(),
+    pinsUsed: new Set(),
   };
 }
 
@@ -131,9 +134,16 @@ function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
   if (!stmt || typeof stmt !== 'object' || !stmt.kind) {
     return;
   }
-  
+
   try {
     switch (stmt.kind) {
+    case 'typecode-call': {
+      // Typecode call statements (pin.method() calls) at top level
+      // console.log('[DEBUG] Found typecode-call statement:', stmt);
+      analyzeTypecodeCall(stmt as any, usage);
+      break;
+    }
+
     case 'call': {
       // Call statements at top level - analyze args for nested peripheral calls
       const call = stmt as CallExpressionIR;
@@ -144,7 +154,7 @@ function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
       }
       break;
     }
-    
+
     case 'assign': {
       const assign = stmt as AssignmentIR;
       if (assign.value) analyzeExpression(assign.value, usage);
@@ -349,10 +359,16 @@ function parsePinNumber(receiver: string): number | null {
 function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; method?: string; args?: ExpressionIR[] }, usage: PeripheralUsage): void {
   // Safety checks
   if (!expr || !expr.receiver || !expr.method) return;
-  
+
   const { receiver, receiverKind, method } = expr;
   const pinNumber = parsePinNumber(receiver);
-  
+
+  // Track all pin usage for unsafe pin validation
+  // Include digital, pwm, analog-input, and interrupt pins
+  if (receiverKind && ['digital', 'pwm', 'analog-input', 'interrupt'].includes(receiverKind)) {
+    usage.pinsUsed.add(receiver);
+  }
+
   // Check for pin mode configuration
   if (method === 'config.output' || method === 'config.output.initial') {
     if (pinNumber !== null) {

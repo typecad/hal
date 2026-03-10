@@ -131,6 +131,50 @@ const board = BoardDefinitionBuilder.create('custom-board')
 | `pullDown()` | Enable internal pull-down resistor |
 | `touch()` | Enable touch sensing |
 | `openDrain()` | Enable open-drain output |
+| `unsafe()` | Mark pin as unsafe (generates warnings when used) |
+
+#### Unsafe Pins
+
+Some pins have special behaviors that make them "unsafe" for general use. For example:
+- **Boot strapping pins** - Pins that affect boot behavior when held high/low
+- **UART TX/RX pins** - Using these will interfere with serial communication
+- **JTAG/Debug pins** - Reserved for debugging purposes
+
+Marking a pin as `unsafe()` generates a transpiler warning when the pin is used, alerting developers to potential issues while still allowing the code to compile.
+
+```typescript
+const board = BoardDefinitionBuilder.create('arduino-uno')
+  .addPin(0, (pin) => pin
+    .name('D0')
+    .gpio(0)
+    .capabilities((caps) => caps.digital().interrupt())
+    .uart(0, 'rx')
+    .unsafe()  // UART RX - using interferes with serial communication
+  )
+  .addPin(1, (pin) => pin
+    .name('D1')
+    .gpio(1)
+    .capabilities((caps) => caps.digital().interrupt())
+    .uart(0, 'tx')
+    .unsafe()  // UART TX - using interferes with serial communication
+  )
+  .build();
+```
+
+When a user writes code that uses an unsafe pin:
+
+```typescript
+import { D0, HIGH } from '@typecode/board-arduino-uno';
+D0.config.output();
+D0.write(HIGH);
+```
+
+The transpiler generates a warning:
+
+```
+warning: Pin 'D0' is marked as unsafe. Use with caution - this pin may have
+special boot behavior or conflict with system functions.
+```
 
 ### Pin Function Methods
 

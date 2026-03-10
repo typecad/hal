@@ -7,6 +7,12 @@ import { withLineColumn } from "../utils/strings";
 import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ParameterIR, ProgramIR, ReExportIR, StatementIR, TypeAliasIR } from "./model";
 import { inferKindByName } from "./typecode-symbols";
 import { resolveBoardConstants, BoardConstants } from "./board-resolver";
+import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
+import { validatePeripherals } from "./peripheral-validation";
+import { validateUnsafePins } from "./pin-safety";
+import { validatePeripheralPinConflicts } from "./peripheral-pin-conflict";
+import { analyzeInterruptSafety } from "./interrupt-analysis";
+import { validateADCRange } from "./adc-range-validation";
 
 function normalizeLegacyArduinoSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __arduino_setup__(");
@@ -3582,9 +3588,8 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   }
 
   // Analyze peripheral usage for optimization
-  let peripheralUsage;
+  let peripheralUsage: PeripheralUsage;
   try {
-    const { analyzePeripheralUsage } = require('./peripheral-usage');
     peripheralUsage = analyzePeripheralUsage({
       fileName,
       imports,
@@ -3598,31 +3603,63 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       boilerplates,
       diagnostics,
       boardConstants,
+      interfaces,
+      namespaces,
     });
-    
+
     // Validate peripheral instances against board capacity
-    const { validatePeripherals } = require('./peripheral-validation');
     const validationDiagnostics = validatePeripherals(peripheralUsage, boardConstants);
     diagnostics.push(...validationDiagnostics);
+
+    // Validate unsafe pin usage
+    const unsafePinDiagnostics = validateUnsafePins(peripheralUsage, boardConstants);
+    diagnostics.push(...unsafePinDiagnostics);
+
+    // Validate peripheral pin conflicts (GPIO on peripheral pins)
+    const boardId = boardConstants?.get('id') as string | undefined;
+    const peripheralPinDiagnostics = validatePeripheralPinConflicts(peripheralUsage, boardId);
+    diagnostics.push(...peripheralPinDiagnostics);
+
+    // Validate interrupt safety and duplicate handlers
+    const interruptDiagnostics = analyzeInterruptSafety({
+      fileName,
+      imports,
+      reExports,
+      structs: [],
+      enums,
+      classes,
+      typeAliases,
+      topLevelStatements,
+      functions,
+      boilerplates,
+      diagnostics: [],
+      boardConstants,
+      interfaces,
+      namespaces,
+    }, peripheralUsage);
+    diagnostics.push(...interruptDiagnostics);
+
+    // Validate ADC range comparisons
+    const adcRangeDiagnostics = validateADCRange({
+      fileName,
+      imports,
+      reExports,
+      structs: [],
+      enums,
+      classes,
+      typeAliases,
+      topLevelStatements,
+      functions,
+      boilerplates,
+      diagnostics: [],
+      boardConstants,
+      interfaces,
+      namespaces,
+    }, boardConstants);
+    diagnostics.push(...adcRangeDiagnostics);
   } catch (e) {
     // If peripheral analysis fails, use empty usage
-    peripheralUsage = {
-      adc: false,
-      pwm: false,
-      externalInterrupts: false,
-      timer0: false,
-      i2c: false,
-      spi: false,
-      uart: false,
-      pwmPinsUsed: new Set(),
-      adcChannelsUsed: new Set(),
-      outputPins: new Set(),
-      inputPullupPins: new Set(),
-      inputPins: new Set(),
-      i2cInstancesUsed: new Set(),
-      spiInstancesUsed: new Set(),
-      uartInstancesUsed: new Set(),
-    };
+    peripheralUsage = createEmptyPeripheralUsage();
   }
 
   return {

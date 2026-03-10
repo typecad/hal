@@ -82,3 +82,23 @@ The board package:
 1. Re-exports the architecture's `PlatformStrategy` as `BoardStrategy`
 2. Provides board-specific pin mappings (D13 → pin 13, LED → D13)
 3. Exports board constants (clock speed, LED pin, etc.)
+
+## Pin Categories
+
+Board packages categorize pins by their capabilities:
+
+| Category | Description |
+|----------|-------------|
+| `digital` | Digital I/O pins (includes analog pins since they are also digital-capable) |
+| `analog` | Analog input pins (ADC) - also support digital I/O |
+| `pwm` | PWM-capable pins |
+| `interrupt` | External interrupt pins |
+| `unsafe` | Pins that generate warnings when used (e.g., boot strapping pins, UART TX/RX) |
+
+### Unsafe Pins
+
+Some pins are marked as "unsafe" because they have special behaviors that can cause issues:
+- **UART TX/RX pins** (D0/D1 on Arduino Uno) - Using these interferes with serial communication
+- **Boot strapping pins** - Pins that affect boot mode when held in certain states
+
+Unsafe pins can still be used in code, but the transpiler will generate a warning to alert you of potential issues.

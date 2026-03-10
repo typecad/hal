@@ -406,13 +406,14 @@ export const Board: BoardDefinition = {
   architecture: 'avr',
   mcu: 'atmega328p',
   clockSpeed: 16000000,
-  
+
   pins: {
     digital: [0, 1, 2, /* ... */ 13],
     analog: ['A0', 'A1', /* ... */ 'A5'],
     pwm: [3, 5, 6, 9, 10, 11],
+    unsafe: ['D0', 'D1'],  // Pins that generate warnings when used
   },
-  
+
   capabilities: {
     gpio: true,
     adc: true,
@@ -423,6 +424,31 @@ export const Board: BoardDefinition = {
   },
 };
 ```
+
+### Marking Pins as Unsafe
+
+Some pins have special behaviors that make them "unsafe" for general use. Common examples:
+- **UART TX/RX pins** - Using these interferes with serial communication
+- **Boot strapping pins** - Pins that affect boot mode when held in certain states
+- **JTAG/Debug pins** - Reserved for debugging
+
+Add pins to the `unsafe` array in the `pins` object:
+
+```typescript
+pins: {
+  digital: [0, 1, 2, /* ... */ 13],
+  unsafe: ['D0', 'D1'],  // D0 (RX) and D1 (TX) interfere with serial
+}
+```
+
+When a user writes code that uses an unsafe pin, the transpiler generates a warning:
+
+```
+warning [unsafe-pin-usage]: Pin 'D0' is marked as unsafe. Use with caution -
+this pin may have special boot behavior or conflict with system functions.
+```
+
+The code still compiles, but the warning alerts users to potential issues.
 
 ## Configuration
 
@@ -610,9 +636,11 @@ export const D2: IDigitalPin & IInterruptPin = createDigitalPin(2, 2);
 // Pin 3 supports digital I/O, PWM, and interrupts
 export const D3: IDigitalPin & IPWMPin & IInterruptPin = createPWMPin(3, 3);
 
-// A0 supports analog input and digital I/O
-export const A0: IAnalogInput & IDigitalPin = createAnalogPin(14, 0);
+// A0 supports both digital I/O AND analog input (IMPORTANT: use this pattern!)
+export const A0: IDigitalPin & IAnalogInput = createAnalogPin(14, 14);
 ```
+
+**Important:** Analog pins (A0-A5 on Arduino Uno) are also digital-capable. Always type them as `IDigitalPin & IAnalogInput` so users can use `A0.config.input.pullup()` for digital input in addition to `A0.config.analog()` for analog reads.
 
 The transpiler recognizes intersection types if all component types are known compile-time types.
 
@@ -761,12 +789,15 @@ export const D10: IDigitalPin & IPWMPin = createPWMPin(10, 10);
 export const D11: IDigitalPin & IPWMPin = createPWMPin(11, 11);
 
 // Analog input pins (also digital-capable)
-export const A0: IAnalogInput & IDigitalPin = createAnalogPin(14, 0);
-export const A1: IAnalogInput & IDigitalPin = createAnalogPin(15, 1);
-export const A2: IAnalogInput & IDigitalPin = createAnalogPin(16, 2);
-export const A3: IAnalogInput & IDigitalPin = createAnalogPin(17, 3);
-export const A4: IAnalogInput & IDigitalPin = createAnalogPin(18, 4);
-export const A5: IAnalogInput & IDigitalPin = createAnalogPin(19, 5);
+// NOTE: Use IDigitalPin & IAnalogInput so users can access both:
+//   - A0.config.input.pullup() for digital input mode
+//   - A0.config.analog() for analog input mode
+export const A0: IDigitalPin & IAnalogInput = createAnalogPin(14, 0);
+export const A1: IDigitalPin & IAnalogInput = createAnalogPin(15, 1);
+export const A2: IDigitalPin & IAnalogInput = createAnalogPin(16, 2);
+export const A3: IDigitalPin & IAnalogInput = createAnalogPin(17, 3);
+export const A4: IDigitalPin & IAnalogInput = createAnalogPin(18, 4);
+export const A5: IDigitalPin & IAnalogInput = createAnalogPin(19, 5);
 
 // Special pins
 export const LED: IDigitalPin = createDigitalPin(13, 5);

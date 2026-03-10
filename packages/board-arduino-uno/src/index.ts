@@ -62,9 +62,11 @@ export const ArduinoUno: BoardDefinition = {
     all: [
       // Digital pins D0 – D13
       { number:  0, gpio:  0, name: 'D0',  aliases: ['RX'],   capabilities: DIGITAL_INT,
-        functions: [{ type: 'uart', instance: 0, role: 'rx' }] },
+        functions: [{ type: 'uart', instance: 0, role: 'rx' }],
+        unsafe: true, notes: 'UART RX pin - using will interfere with serial communication' },
       { number:  1, gpio:  1, name: 'D1',  aliases: ['TX'],   capabilities: DIGITAL_INT,
-        functions: [{ type: 'uart', instance: 0, role: 'tx' }] },
+        functions: [{ type: 'uart', instance: 0, role: 'tx' }],
+        unsafe: true, notes: 'UART TX pin - using will interfere with serial communication' },
       { number:  2, gpio:  2, name: 'D2',                     capabilities: DIGITAL_INT },
       { number:  3, gpio:  3, name: 'D3',                     capabilities: DIGITAL_PWM_INT,
         functions: [{ type: 'pwm', instance: 0, role: 'OC2B' }] },
@@ -117,9 +119,11 @@ export const ArduinoUno: BoardDefinition = {
     digital: [
       'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7',
       'D8', 'D9', 'D10', 'D11', 'D12', 'D13',
+      'A0', 'A1', 'A2', 'A3', 'A4', 'A5',
     ],
     analog: ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'],
     pwm:    ['D3', 'D5', 'D6', 'D9', 'D10', 'D11'],
+    unsafe: ['D0', 'D1'],
 
     i2c:  { 0: { sda: 'A4', scl: 'A5' } },
     spi:  { 0: { mosi: 'D11', miso: 'D12', sck: 'D13', cs: 'D10' } },

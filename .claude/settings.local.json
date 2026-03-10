@@ -11,7 +11,8 @@
       "Bash(time node \"../packages/cli/dist/cli.js\" src/sketch.ts --target arduino --force --skipTypeCheck)",
       "Bash(node packages/cli/dist/cli.js demo/src/sketch.ts --skipTypeCheck --profile)",
       "Bash(node packages/cli/dist/cli.js demo/src/sketch.ts)",
-      "Bash(npx typecode src/sketch.ts --force --profile)"
+      "Bash(npx typecode src/sketch.ts --force --profile)",
+      "Bash(npm test)"
     ]
   }
 }

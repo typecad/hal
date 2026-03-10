@@ -75,8 +75,9 @@ export type ExpressionIR =
    * Used for interrupt handlers and other callback contexts.
    * The emitter generates a standalone function and passes its name.
    * debounceMs: Optional debounce delay in milliseconds (set by .debounce() chain).
+   * isInterruptHandler: True when this callback is an ISR (affects safety validation).
    */
-  | { kind: "callback"; params: string[]; statements: StatementIR[]; sourceSpan: SourceSpan; debounceMs?: number }
+  | { kind: "callback"; params: string[]; statements: StatementIR[]; sourceSpan: SourceSpan; debounceMs?: number; isInterruptHandler?: boolean }
   /** Arrow function or lambda expression: (params) => expression | { statements } */
   | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean };
 
