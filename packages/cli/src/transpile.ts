@@ -35,6 +35,7 @@ import { flattenGeneratedModulesIntoSketch } from "./platform/arduino-compile";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
 import { tryGenerateArduinoLibDecl } from "./arduino-libs";
+import { initProfiler, getProfiler } from "./profiler";
 
 function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
   if (!fs.existsSync(outDir)) {
@@ -826,15 +827,22 @@ function applyTreeShaking(
     return programIR;
   }
 
+  const profiler = getProfiler();
+
   // Build call graph
+  profiler.startTimer("tree-shake:call-graph");
   const callGraph = buildCallGraph(programIR);
+  profiler.endTimer("tree-shake:call-graph");
 
   // Detect entry points
+  profiler.startTimer("tree-shake:entry-points");
   const entryPoints = detectEntryPoints(programIR, target, {
     customEntryPoints: treeShakingOptions?.entryPoints ?? [],
   });
+  profiler.endTimer("tree-shake:entry-points");
 
   // Analyze reachability
+  profiler.startTimer("tree-shake:reachability");
   const reachability = analyzeReachability(programIR, callGraph, {
     target,
     keepUnusedEnums: treeShakingOptions?.keepUnusedEnums,
@@ -843,9 +851,11 @@ function applyTreeShaking(
     keepUnusedVariables: treeShakingOptions?.keepUnusedVariables,
     reportUnused: treeShakingOptions?.reportUnused,
   });
+  profiler.endTimer("tree-shake:reachability");
 
   // Filter program IR
-  return filterProgramIR(programIR, reachability, {
+  profiler.startTimer("tree-shake:filter");
+  const result = filterProgramIR(programIR, reachability, {
     enabled: true,
     keepUnusedEnums: treeShakingOptions?.keepUnusedEnums,
     keepUnusedClasses: treeShakingOptions?.keepUnusedClasses,
@@ -853,6 +863,9 @@ function applyTreeShaking(
     keepUnusedVariables: treeShakingOptions?.keepUnusedVariables,
     reportUnused: treeShakingOptions?.reportUnused,
   });
+  profiler.endTimer("tree-shake:filter");
+
+  return result;
 }
 
 import type { PlatformStrategy } from "./platform/platform-strategy";
@@ -935,12 +948,21 @@ function loadPlatformStrategy(
 }
 
 export async function transpileFile(options: TranspileOptions): Promise<GeneratedOutputs> {
+  // Initialize profiler (disabled by default - internal use only)
+  const profiler = initProfiler({
+    enabled: false,
+    trackMemory: false,
+  });
+
+  profiler.startSession();
+  profiler.startTimer("setup:caches");
+
   // Clear session caches at the start of each transpilation
   clearCaches();
-  
+
   const entryFile = path.resolve(options.inputFile);
   const entryDir = path.dirname(entryFile);
-  
+
   // Initialize incremental cache (always enabled unless force is set)
   let incrementalCache: IncrementalCache | null = null;
   if (!options.force) {
@@ -949,7 +971,9 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       enabled: true,
     });
   }
-  
+  profiler.endTimer("setup:caches");
+
+  profiler.startTimer("setup:load-strategy");
   // Load platform strategy from framework or board package, or use target-based resolution
   const boardStrategy = loadPlatformStrategy(
     options.frameworkPackage,
@@ -957,25 +981,35 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     entryDir,
     options.debug,
   );
-  
+  profiler.endTimer("setup:load-strategy");
+
+  profiler.startTimer("graph:collect");
   const graphResult = collectTranspileGraph(entryFile, options.boardPackage);
+  profiler.endTimer("graph:collect");
+
   const transpileFiles = graphResult.files;
 
   // ── Type-check all files before transpiling ────────────────────────────────
   // Skip type-checking if explicitly disabled
   if (options.skipTypeCheck !== true && transpileFiles.length > 0) {
+    profiler.startTimer("typecheck:full");
     let typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
-    
+
     // If type-checking failed, try to auto-generate missing .d.ts files from C++ sources
     if (!typeCheckResult.success) {
+      profiler.startTimer("typecheck:autogen-decls");
       const generatedDecls = autoGenerateMissingDecls(transpileFiles, typeCheckResult.errors);
-      
+      profiler.endTimer("typecheck:autogen-decls");
+
       // If we generated any declaration files, retry type-checking
       if (generatedDecls.length > 0) {
+        profiler.startTimer("typecheck:retry");
         typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
+        profiler.endTimer("typecheck:retry");
       }
     }
-    
+    profiler.endTimer("typecheck:full");
+
     if (!typeCheckResult.success) {
       // Report all type errors and throw to stop transpilation
       const errorMessages = typeCheckResult.errors.map(e => `ERROR: ${e}`).join("\n");
@@ -1049,9 +1083,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // Build IR for files that need retranspilation - parallelize file reads for better I/O performance
   // File reading is async, IR building is CPU-bound synchronous
   const buildIRForFile = async (filePath: string): Promise<PreBuiltFile> => {
+    const fileBasename = path.basename(filePath);
+    profiler.startTimer(`ir:build:${fileBasename}`);
+
     // Use async file read for better I/O parallelism
     let sourceText = await fs.promises.readFile(filePath, "utf8");
-    
+
     // Apply debug preprocessing if enabled and breakpoints exist for this file
     if (options.debug && breakpoints) {
       const instrumented = debugPreprocess({
@@ -1061,9 +1098,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       });
       sourceText = instrumented;
     }
-    
-    let programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
 
+    profiler.startTimer(`ir:build-ir:${fileBasename}`);
+    let programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
+    profiler.endTimer(`ir:build-ir:${fileBasename}`);
+
+    profiler.startTimer(`tree-shake:${fileBasename}`);
     // Apply tree-shaking for all files.
     // Keep variables for all files to avoid dropping top-level variable
     // declarations that are referenced in subsequent statements.
@@ -1085,7 +1125,9 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         keepUnusedVariables: true,
       });
     }
+    profiler.endTimer(`tree-shake:${fileBasename}`);
 
+    profiler.startTimer(`polyfill:${fileBasename}`);
     const polyfillContext: PolyfillContext = {
       target: options.target,
       // Derive architecture from FQBN (e.g. "arduino:avr:uno" → "avr") so
@@ -1104,14 +1146,22 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       },
     };
     const polyfills = polyfillRegistry.detectAndGenerate(programIR, polyfillContext);
+    profiler.endTimer(`polyfill:${fileBasename}`);
+
     const npmPackage = npmPackages.get(filePath);
 
+    profiler.endTimer(`ir:build:${fileBasename}`);
     return { filePath, programIR, polyfills, npmPackage };
   };
 
   // Process only files that need retranspilation in parallel using Promise.all for concurrent file I/O
   // This reads all source files concurrently, then builds IR synchronously
+  profiler.startTimer("ir:build-all");
+  profiler.captureMemorySnapshot("ir:pre-build");
   const preBuiltArray = await Promise.all(filesToProcess.map(buildIRForFile));
+  profiler.captureMemorySnapshot("ir:post-build");
+  profiler.endTimer("ir:build-all");
+
   const preBuilt = new Map<string, PreBuiltFile>();
   for (const item of preBuiltArray) {
     preBuilt.set(item.filePath, item);
@@ -1127,10 +1177,17 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       allEnumIRs.push(e);
     }
   }
+  profiler.startTimer("emit:register-enums");
   registerAllEnumNames(allEnumIRs);
+  profiler.endTimer("emit:register-enums");
 
   // ── Pass 2: emit (only for files that needed retranspilation) ─────────────
+  profiler.startTimer("emit:all");
+  profiler.captureMemorySnapshot("emit:pre");
   for (const [filePath, { programIR, polyfills, npmPackage }] of preBuilt) {
+    const fileBasename = path.basename(filePath);
+    profiler.startTimer(`emit:file:${fileBasename}`);
+
     const emitOptions: Parameters<typeof emitCpp>[1] = {
       outDir,
       emitMode: options.emitMode,
@@ -1154,7 +1211,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     if (filePath === entryFile) {
       entryOutputs = emitted;
     }
-    
+
     // Update incremental cache with the emitted outputs
     if (incrementalCache && incrementalCache.isEnabled()) {
       const outputs = [
@@ -1163,17 +1220,20 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         emitted.sourceMapPath,
         emitted.headerMapPath,
       ].filter((p): p is string => p !== undefined);
-      
+
       // Get dependencies from program IR imports
       const dependencies = programIR.imports
         .map(imp => resolveImport(filePath, imp.moduleSpecifier, options.boardPackage)?.sourcePath)
         .filter((p): p is string => p !== undefined);
-      
+
       // Read the source file content for hashing
       const sourceContent = await fs.promises.readFile(filePath, "utf8");
       incrementalCache.updateFile(filePath, sourceContent, dependencies, outputs);
     }
+    profiler.endTimer(`emit:file:${fileBasename}`);
   }
+  profiler.captureMemorySnapshot("emit:post");
+  profiler.endTimer("emit:all");
 
   // ── Handle fully cached builds ────────────────────────────────────────────
   if (!entryOutputs) {
@@ -1208,16 +1268,17 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   }
 
   // ── Copy native C++ modules to output ─────────────────────────────────────
+  profiler.startTimer("post:native-modules");
   const nativeModuleOutputs: string[] = [];
   for (const [moduleSpecifier, nativeModule] of graphResult.nativeModules) {
     // Read the C++ source
     const cppContent = readText(nativeModule.cppPath);
-    
+
     // Write to output directory
     const outputCppPath = path.join(outDir, `${nativeModule.moduleKey}.cpp`);
     fs.writeFileSync(outputCppPath, cppContent, "utf8");
     nativeModuleOutputs.push(outputCppPath);
-    
+
     // Also copy the header file if it exists
     if (nativeModule.headerPath) {
       const headerContent = readText(nativeModule.headerPath);
@@ -1225,10 +1286,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       fs.writeFileSync(outputHeaderPath, headerContent, "utf8");
       nativeModuleOutputs.push(outputHeaderPath);
     }
-    
+
     console.log(`Copied native module: ${outputCppPath}`);
   }
+  profiler.endTimer("post:native-modules");
 
+  profiler.startTimer("post:flatten");
   if (options.target === "arduino") {
     try {
       flattenGeneratedModulesIntoSketch(path.dirname(entryOutputs.sourcePath), entryOutputs.sourcePath);
@@ -1236,11 +1299,15 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       // Best-effort flattening for direct arduino-cli sketch compilation.
     }
   }
+  profiler.endTimer("post:flatten");
 
+  profiler.startTimer("post:save-cache");
   // Save incremental cache to disk
   if (incrementalCache) {
     incrementalCache.save();
   }
+  profiler.endTimer("post:save-cache");
+  // Profiler session ends (profiling disabled - no report generation)
 
   return {
     ...entryOutputs,

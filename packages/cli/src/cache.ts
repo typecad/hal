@@ -7,6 +7,7 @@
 
 import ts from "typescript";
 import path from "path";
+import { clearArduinoProfileCache } from "./platform/registry";
 
 /**
  * Cache for resolved npm package paths.
@@ -47,6 +48,9 @@ export function clearCaches(): void {
   sourceFileCache.clear();
   fileExistsCache.clear();
   fileContentCache.clear();
+
+  // Clear Arduino profile cache to ensure fresh resolution
+  clearArduinoProfileCache();
 }
 
 // ============================================

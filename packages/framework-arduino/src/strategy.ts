@@ -64,6 +64,10 @@ let _largeEnumNames: ReadonlySet<string> = new Set();
 export class ArduinoStrategy implements PlatformStrategy {
   readonly id = "arduino";
 
+  // Cached profile to avoid repeated arduino-cli calls
+  private _cachedProfile: ReturnType<typeof resolveArduinoProfile> | null = null;
+  private _cachedProfileKey: string | null = null;
+
   /**
    * Allows the emitter to inform this strategy which enums have large values
    * so that static_cast uses `long` instead of `int`.
@@ -72,19 +76,42 @@ export class ArduinoStrategy implements PlatformStrategy {
     _largeEnumNames = names;
   }
 
+  /**
+   * Clears the cached profile. Should be called between transpilations.
+   */
+  clearProfileCache(): void {
+    this._cachedProfile = null;
+    this._cachedProfileKey = null;
+  }
+
+  /**
+   * Gets or resolves the Arduino profile, caching the result.
+   */
+  private getOrResolveProfile(program: ProgramIR, ctx?: PlatformContext): ReturnType<typeof resolveArduinoProfile> {
+    const key = ctx?.arduino?.fqbn ?? 'default';
+
+    if (this._cachedProfile && this._cachedProfileKey === key) {
+      return this._cachedProfile;
+    }
+
+    this._cachedProfile = resolveArduinoProfile(program, ctx);
+    this._cachedProfileKey = key;
+    return this._cachedProfile;
+  }
+
   // ── Profile ─────────────────────────────────────────────────────────────
 
   forcedIncludes(program: ProgramIR, ctx?: PlatformContext): string[] {
-    return resolveArduinoProfile(program, ctx).forcedIncludes;
+    return this.getOrResolveProfile(program, ctx).forcedIncludes;
   }
   symbolAliases(program: ProgramIR, ctx?: PlatformContext): Record<string, string> {
-    return resolveArduinoProfile(program, ctx).symbolAliases;
+    return this.getOrResolveProfile(program, ctx).symbolAliases;
   }
   shimLines(program: ProgramIR, ctx?: PlatformContext): string[] {
-    return resolveArduinoProfile(program, ctx).shimLines;
+    return this.getOrResolveProfile(program, ctx).shimLines;
   }
   profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
-    return resolveArduinoProfile(program, ctx).diagnostics;
+    return this.getOrResolveProfile(program, ctx).diagnostics;
   }
 
   // ── Polyfill overrides ──────────────────────────────────────────────────

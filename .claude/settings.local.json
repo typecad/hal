@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(npm run build)",
-      "Bash(npm test -- tests/hal-uart.test.ts)"
+      "Bash(npm test -- tests/hal-uart.test.ts)",
+      "Bash(node packages/cli/dist/cli.js examples/01-blink.ts --profile --target arduino)",
+      "Bash(npm run build --workspace typecode)",
+      "Bash(node ../packages/cli/dist/cli.js src/sketch.ts --profile --target arduino --force)",
+      "Bash(time node \"../packages/cli/dist/cli.js\" src/sketch.ts --target arduino --force)",
+      "Bash(time node -e \":*)",
+      "Bash(time node \"../packages/cli/dist/cli.js\" src/sketch.ts --target arduino --force --skipTypeCheck)",
+      "Bash(node packages/cli/dist/cli.js demo/src/sketch.ts --skipTypeCheck --profile)",
+      "Bash(node packages/cli/dist/cli.js demo/src/sketch.ts)",
+      "Bash(npx typecode src/sketch.ts --force --profile)"
     ]
   }
 }

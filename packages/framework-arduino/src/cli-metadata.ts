@@ -2,10 +2,84 @@
 // Arduino CLI metadata loader
 //
 // Loads board metadata from arduino-cli when available.
+// Uses disk caching to avoid repeated slow arduino-cli calls.
 // ---------------------------------------------------------------------------
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import type { ArduinoPlatformContext, Diagnostic } from "@typecode/core/shared";
+
+// ---------------------------------------------------------------------------
+// Disk cache for arduino-cli metadata
+// ---------------------------------------------------------------------------
+
+const CACHE_DIR = path.join(os.homedir(), ".typecode", "cache");
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+interface CachedMetadata {
+  fqbn: string;
+  metadata: {
+    architecture?: string;
+    pins: Record<string, number>;
+    builtinFunctions: string[];  // Serialized as array
+    builtinGlobals: string[];    // Serialized as array
+  };
+  timestamp: number;
+}
+
+function getCachePath(fqbn: string): string {
+  const safeFqbn = fqbn.replace(/[:/\\]/g, "_");
+  return path.join(CACHE_DIR, `arduino-cli-${safeFqbn}.json`);
+}
+
+function loadCachedMetadata(fqbn: string): ArduinoCliMetadata | null {
+  try {
+    const cachePath = getCachePath(fqbn);
+    if (!fs.existsSync(cachePath)) return null;
+
+    const cached: CachedMetadata = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+
+    // Check TTL
+    if (Date.now() - cached.timestamp > CACHE_TTL_MS) {
+      return null; // Expired
+    }
+
+    // Convert arrays back to Sets
+    return {
+      architecture: cached.metadata.architecture,
+      pins: cached.metadata.pins,
+      builtinFunctions: new Set(cached.metadata.builtinFunctions),
+      builtinGlobals: new Set(cached.metadata.builtinGlobals),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedMetadata(fqbn: string, metadata: ArduinoCliMetadata): void {
+  try {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+    const cached: CachedMetadata = {
+      fqbn,
+      metadata: {
+        architecture: metadata.architecture,
+        pins: metadata.pins,
+        builtinFunctions: [...metadata.builtinFunctions],  // Convert Set to array
+        builtinGlobals: [...metadata.builtinGlobals],      // Convert Set to array
+      },
+      timestamp: Date.now(),
+    };
+    fs.writeFileSync(getCachePath(fqbn), JSON.stringify(cached));
+  } catch {
+    // Ignore cache write errors
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Arduino CLI probing
+// ---------------------------------------------------------------------------
 
 /**
  * Extract architecture from FQBN string.
@@ -142,17 +216,29 @@ export function loadArduinoCliMetadata(context?: ArduinoPlatformContext): {
   diagnostics: Diagnostic[];
 } {
   const diagnostics: Diagnostic[] = [];
+  const fqbn = context?.fqbn;
 
+  if (!fqbn) {
+    return { diagnostics };
+  }
+
+  // Try disk cache first
+  const cached = loadCachedMetadata(fqbn);
+  if (cached) {
+    return { metadata: cached, diagnostics };
+  }
+
+  // Cache miss - probe arduino-cli
   const probe = tryArduinoCliProbe(context);
   if (probe.diagnostic) {
     diagnostics.push(probe.diagnostic);
   }
 
   if (probe.raw) {
-    return {
-      metadata: normalizeMetadata(probe.raw, context),
-      diagnostics,
-    };
+    const metadata = normalizeMetadata(probe.raw, context);
+    // Save to disk cache for future sessions
+    saveCachedMetadata(fqbn, metadata);
+    return { metadata, diagnostics };
   }
 
   return { diagnostics };

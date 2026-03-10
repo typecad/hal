@@ -18,6 +18,22 @@ import { resolveStrategy } from "../platform/registry";
 import { ArduinoStrategy } from "../platform/arduino-strategy";
 
 // ---------------------------------------------------------------------------
+// Pre-compiled regex patterns for performance
+// ---------------------------------------------------------------------------
+const STRICT_EQUALITY_PATTERN = /===/g;
+const STRICT_INEQUALITY_PATTERN = /!==/g;
+const ENUM_ACCESS_PATTERN = /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Z]{2,}[A-Z0-9_]*)\b/g;
+const PATH_BACKSLASH_PATTERN = /\\/g;
+const DOUBLE_QUOTE_PATTERN = /"/g;
+const DOUBLE_QUOTE_ESCAPE_PATTERN = /"/g;
+const JS_EXTENSION_PATTERN = /\.js$/;
+const MJS_EXTENSION_PATTERN = /\.mjs$/;
+const FILE_EXTENSION_PATTERN = /\.[^.]+$/;
+const I2C_PERIPHERAL_PATTERN = /^I2C\d+$/;
+const SPI_PERIPHERAL_PATTERN = /^SPI\d+$/;
+const UART_PERIPHERAL_PATTERN = /^UART\d+$/;
+
+// ---------------------------------------------------------------------------
 // Emit-time context
 // ---------------------------------------------------------------------------
 // DEPRECATED: Module-level mutable state.
@@ -218,9 +234,14 @@ function transformTypeName(cppType: string, classNameMap: Map<string, string> | 
 }
 
 function normalizeRawExpression(value: string, strategy: PlatformStrategy, classNameMap?: Map<string, string>): string {
+  // Reset regex lastIndex for global patterns (needed for reused patterns)
+  STRICT_EQUALITY_PATTERN.lastIndex = 0;
+  STRICT_INEQUALITY_PATTERN.lastIndex = 0;
+  ENUM_ACCESS_PATTERN.lastIndex = 0;
+
   let normalized = value
-    .replace(/===/g, "==")
-    .replace(/!==/g, "!=");
+    .replace(STRICT_EQUALITY_PATTERN, "==")
+    .replace(STRICT_INEQUALITY_PATTERN, "!=");
 
   // Convert TypeScript-style enum member access (EnumType.MEMBER_NAME) to C++ scoped
   // enum access (EnumType::MEMBER_NAME).  The pattern matches an identifier followed by
@@ -228,10 +249,7 @@ function normalizeRawExpression(value: string, strategy: PlatformStrategy, class
   // naming convention for enum class members.  Pin aliases like D0, D1 (single uppercase
   // letter + digits) are intentionally excluded because they don't start with 2+ uppercase
   // letters.
-  normalized = normalized.replace(
-    /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Z]{2,}[A-Z0-9_]*)\b/g,
-    "$1::$2"
-  );
+  normalized = normalized.replace(ENUM_ACCESS_PATTERN, "$1::$2");
 
   // Apply platform-specific expression normalisation
   normalized = strategy.normalizeRawExpression(normalized);
@@ -357,7 +375,8 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
     case "number":
       return `${expr.value}`;
     case "string":
-      return `"${expr.value.replace(/"/g, '\\"')}"`;  
+      DOUBLE_QUOTE_PATTERN.lastIndex = 0;
+      return `"${expr.value.replace(DOUBLE_QUOTE_PATTERN, '\\"')}"`;
     case "boolean":
       return expr.value ? "true" : "false";
     case "identifier": {
@@ -368,15 +387,15 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       // Map peripheral identifiers to Arduino equivalents
       // I2C0 -> Wire, I2C1 -> Wire1, SPI0 -> SPI, UART0 -> Serial
       const peripheralName = expr.value;
-      if (/^I2C\d+$/.test(peripheralName)) {
+      if (I2C_PERIPHERAL_PATTERN.test(peripheralName)) {
         const num = peripheralName.slice(3);
         return num === '0' ? 'Wire' : `Wire${num}`;
       }
-      if (/^SPI\d+$/.test(peripheralName)) {
+      if (SPI_PERIPHERAL_PATTERN.test(peripheralName)) {
         const num = peripheralName.slice(3);
         return num === '0' ? 'SPI' : `SPI${num}`;
       }
-      if (/^UART\d+$/.test(peripheralName)) {
+      if (UART_PERIPHERAL_PATTERN.test(peripheralName)) {
         const num = peripheralName.slice(4);
         return num === '0' ? 'Serial' : `Serial${num}`;
       }
@@ -1619,6 +1638,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
+
   // Collect re-export includes for the header file
   const headerIncludes: string[] = [];
   for (const reExport of program.reExports) {
@@ -2068,6 +2088,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("");
   }
 
+
   // Reserved names that conflict with macros/globals predefined by the target framework.
   // Provided by the platform strategy (e.g. Arduino defines HIGH, LOW, A0, etc.).
   const reservedNames = strategy.reservedNames();
@@ -2149,6 +2170,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     allExecutableStatements.push(...fn.statements);
   }
   const globalPointerVarTypes = collectPointerVarTypes(allExecutableStatements, _arduinoClassNameMap);
+
 
   // Collect callback functions from call arguments (e.g., attachInterrupt handlers)
   const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[] = [];
@@ -2292,6 +2314,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
+
   // Some platforms require a loop/main-loop function even if empty
   if (isEntryFile && strategy.requiresLoopFunction() && !mappedFunctions.some((fn) => fn.name === "loop")) {
     mappedFunctions.push({
@@ -2392,13 +2415,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
     appendRenderedStatement(statement, "");
   }
-  if (emittedTopLevelStatements.some(s => 
-    s.kind === "var_decl" && 
-    s.initializer?.kind !== "object" && 
+  if (emittedTopLevelStatements.some(s =>
+    s.kind === "var_decl" &&
+    s.initializer?.kind !== "object" &&
     !(s.initializer && isRuntimeExpression(s.initializer))
   )) {
     appendSourceLine("");
   }
+
 
   // Emit namespaces
   for (const ns of program.namespaces) {
@@ -2713,6 +2737,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     emitCommentLines(classDef.trailingComments, "", (line) => appendSourceLine(line));
     appendSourceLine("");
   }
+
 
   // Emit runtime variable declarations AFTER classes (for non-entry files)
   // These are variables that use 'new' or function calls and need the class defined first

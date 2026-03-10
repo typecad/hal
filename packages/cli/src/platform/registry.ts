@@ -10,9 +10,13 @@ import type { PlatformStrategy } from "./platform-strategy";
 import { GenericStrategy } from "./generic-strategy";
 import { ArduinoStrategy } from "./arduino-strategy";
 
+// Store references to strategy instances for cache management
+const _genericStrategy = new GenericStrategy();
+const _arduinoStrategy = new ArduinoStrategy();
+
 const _registry = new Map<string, PlatformStrategy>([
-  ["generic", new GenericStrategy()],
-  ["arduino", new ArduinoStrategy()],
+  ["generic", _genericStrategy],
+  ["arduino", _arduinoStrategy],
 ]);
 
 /**
@@ -34,4 +38,12 @@ export function registerPlatformStrategy(strategy: PlatformStrategy): void {
  */
 export function resolveStrategy(target: string): PlatformStrategy {
   return _registry.get(target) ?? _registry.get("generic")!;
+}
+
+/**
+ * Clear the Arduino profile cache.
+ * Should be called between transpilations to ensure fresh profile resolution.
+ */
+export function clearArduinoProfileCache(): void {
+  _arduinoStrategy.clearProfileCache();
 }
