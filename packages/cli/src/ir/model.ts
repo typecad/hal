@@ -67,6 +67,10 @@ export type {
   // Peripheral usage
   PeripheralUsageIR,
   
+  // Register-mapped structs
+  RegisterBitFieldIR,
+  RegisterClassIR,
+  
   // Program
   ProgramIR,
 } from "@typecode/core";

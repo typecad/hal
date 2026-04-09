@@ -1,6 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
-import { ProgramIR, ExpressionIR, StatementIR } from "../ir/model";
+import { ProgramIR, ExpressionIR, StatementIR, VariableDeclarationIR, AssignmentIR } from "../ir/model";
 import { analyzeProgram, ProgramAnalysisResult } from "../ir/program-analysis";
 import { Diagnostic, EmitMode, GeneratedOutputs, PlatformContext, SourceMapEntry, TargetProfile } from "../types";
 import { ensureDir, writeText } from "../utils/fs";
@@ -527,6 +527,282 @@ function renderTypedName(cppType: string, name: string, strategy: PlatformStrate
 
 function mapReturnType(functionName: string, returnType: string, strategy: PlatformStrategy): string {
   return strategy.mapReturnType(functionName, returnType);
+}
+
+interface KnownVariableInfo {
+  cppType: string;
+  floatPrecision?: number;
+}
+
+interface SnprintfRenderResult {
+  formatString: string;
+  args: string[];
+  estimatedLength: number;
+  preludeLines: string[];
+}
+
+interface EmissionScopeState {
+  readonly knownVariableTypes: Map<string, KnownVariableInfo>;
+  readonly snprintfBuffers: Set<string>;
+  nextSnprintfTempId: number;
+}
+
+function createEmissionScopeState(initialTypes?: Map<string, KnownVariableInfo>): EmissionScopeState {
+  return {
+    knownVariableTypes: initialTypes ? new Map(initialTypes) : new Map(),
+    snprintfBuffers: new Set<string>(),
+    nextSnprintfTempId: 0,
+  };
+}
+
+function cloneEmissionScopeState(state: EmissionScopeState): EmissionScopeState {
+  return {
+    knownVariableTypes: new Map(state.knownVariableTypes),
+    snprintfBuffers: new Set(state.snprintfBuffers),
+    nextSnprintfTempId: state.nextSnprintfTempId,
+  };
+}
+
+function createChildEmissionScope(
+  baseScope: EmissionScopeState,
+  parameters?: readonly { name: string; cppType: string }[],
+): EmissionScopeState {
+  const childScope = cloneEmissionScopeState(baseScope);
+  for (const parameter of parameters ?? []) {
+    childScope.knownVariableTypes.set(parameter.name, { cppType: parameter.cppType });
+  }
+  return childScope;
+}
+
+function getFloatPrecisionFromNumber(value: number): number | undefined {
+  if (!Number.isFinite(value) || Number.isInteger(value)) return undefined;
+  const text = `${value}`;
+  const decimalIndex = text.indexOf(".");
+  if (decimalIndex === -1) return undefined;
+  return text.length - decimalIndex - 1;
+}
+
+function recordVariableType(statement: VariableDeclarationIR, scopeState: EmissionScopeState): void {
+  scopeState.knownVariableTypes.set(statement.name, {
+    cppType: statement.cppType,
+    floatPrecision: statement.initializer?.kind === "number"
+      ? getFloatPrecisionFromNumber(statement.initializer.value)
+      : undefined,
+  });
+}
+
+function escapeCppStringLiteral(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+function isStringLikeCppType(typeName: string): boolean {
+  return typeName === "std::string" || typeName === "const char*" || typeName === "char*";
+}
+
+function createArduinoFloatSnprintfArg(
+  renderedExpr: string,
+  precision: number | undefined,
+  scopeState: EmissionScopeState,
+): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } {
+  const effectivePrecision = precision ?? 6;
+  const bufferName = `__typecode_float_${++scopeState.nextSnprintfTempId}`;
+  const estimatedLength = Math.max(16, effectivePrecision + 8);
+  return {
+    format: "%s",
+    arg: bufferName,
+    estimatedLength,
+    preludeLines: [
+      `char ${bufferName}[${estimatedLength}];`,
+      `dtostrf(${renderedExpr}, 0, ${effectivePrecision}, ${bufferName});`,
+    ],
+  };
+}
+
+function inferSnprintfArg(
+  expr: ExpressionIR,
+  strategy: PlatformStrategy,
+  scopeState: EmissionScopeState,
+  pointerVarTypes?: Map<string, string>,
+  knownFunctionReturnTypes?: Map<string, string>,
+): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } | undefined {
+  switch (expr.kind) {
+    case "number": {
+      if (Number.isInteger(expr.value)) {
+        return { format: "%d", arg: `${expr.value}`, estimatedLength: 12, preludeLines: [] };
+      }
+      const precision = getFloatPrecisionFromNumber(expr.value);
+      if (strategy.id === "arduino") {
+        return createArduinoFloatSnprintfArg(`${expr.value}`, precision, scopeState);
+      }
+      return {
+        format: precision !== undefined ? `%.${precision}f` : "%g",
+        arg: `${expr.value}`,
+        estimatedLength: 8,
+        preludeLines: [],
+      };
+    }
+    case "boolean":
+      return {
+        format: "%s",
+        arg: expr.value ? '"true"' : '"false"',
+        estimatedLength: 5,
+        preludeLines: [],
+      };
+    case "string":
+      return {
+        format: "%s",
+        arg: `"${escapeCppStringLiteral(expr.value)}"`,
+        estimatedLength: Math.max(expr.value.length, 1),
+        preludeLines: [],
+      };
+    case "identifier": {
+      const knownVar = scopeState.knownVariableTypes.get(expr.value);
+      const cppType = knownVar?.cppType;
+      if (cppType && isStringLikeCppType(cppType)) {
+        return { format: "%s", arg: expr.value, estimatedLength: 24, preludeLines: [] };
+      }
+      if (cppType === "bool") {
+        return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
+      }
+      if (cppType === "float" || cppType === "double") {
+        if (strategy.id === "arduino") {
+          return createArduinoFloatSnprintfArg(expr.value, knownVar?.floatPrecision, scopeState);
+        }
+        return {
+          format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%g",
+          arg: expr.value,
+          estimatedLength: 8,
+          preludeLines: [],
+        };
+      }
+      if (cppType === "int" || cppType === "long" || cppType === "short" || cppType === "auto") {
+        return { format: "%d", arg: expr.value, estimatedLength: 12, preludeLines: [] };
+      }
+      if (pointerVarTypes?.has(expr.value)) {
+        const pointerType = pointerVarTypes.get(expr.value)!;
+        if (isStringLikeCppType(pointerType)) {
+          return { format: "%s", arg: expr.value, estimatedLength: 24, preludeLines: [] };
+        }
+      }
+      return undefined;
+    }
+    case "raw": {
+      const callMatch = expr.value.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+      if (callMatch && knownFunctionReturnTypes) {
+        const returnType = knownFunctionReturnTypes.get(callMatch[1]);
+        if (returnType && isStringLikeCppType(returnType)) {
+          return { format: "%s", arg: renderExpression(expr, undefined, strategy), estimatedLength: 24, preludeLines: [] };
+        }
+        if (returnType === "bool") {
+          const rendered = renderExpression(expr, undefined, strategy);
+          return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
+        }
+        if (returnType === "float" || returnType === "double") {
+          if (strategy.id === "arduino") {
+            return createArduinoFloatSnprintfArg(renderExpression(expr, undefined, strategy), undefined, scopeState);
+          }
+          return { format: "%g", arg: renderExpression(expr, undefined, strategy), estimatedLength: 8, preludeLines: [] };
+        }
+        if (returnType === "int" || returnType === "long" || returnType === "short") {
+          return { format: "%d", arg: renderExpression(expr, undefined, strategy), estimatedLength: 12, preludeLines: [] };
+        }
+      }
+      return undefined;
+    }
+    case "property-access":
+    case "binary":
+    case "unary":
+    case "ternary":
+      return { format: "%d", arg: renderExpression(expr, undefined, strategy), estimatedLength: 12, preludeLines: [] };
+    default:
+      return undefined;
+  }
+}
+
+function buildSnprintfRenderResult(
+  expr: ExpressionIR,
+  strategy: PlatformStrategy,
+  scopeState: EmissionScopeState,
+  pointerVarTypes?: Map<string, string>,
+  knownFunctionReturnTypes?: Map<string, string>,
+): SnprintfRenderResult | undefined {
+  if (expr.kind !== "string_concat") {
+    return undefined;
+  }
+
+  let formatString = "";
+  const args: string[] = [];
+  let estimatedLength = 1;
+  const preludeLines: string[] = [];
+
+  for (const part of expr.parts) {
+    if (part.kind === "string") {
+      formatString += escapeCppStringLiteral(part.value);
+      estimatedLength += part.value.length;
+      continue;
+    }
+
+    if (part.kind !== "template_string") {
+      return undefined;
+    }
+
+    const arg = inferSnprintfArg(part.expression, strategy, scopeState, pointerVarTypes, knownFunctionReturnTypes);
+    if (!arg) {
+      return undefined;
+    }
+
+    formatString += arg.format;
+    args.push(arg.arg);
+    estimatedLength += arg.estimatedLength;
+    preludeLines.push(...arg.preludeLines);
+  }
+
+  return { formatString, args, estimatedLength: Math.max(estimatedLength, 16), preludeLines };
+}
+
+function shouldUseSnprintfForArduinoString(
+  statement: VariableDeclarationIR | AssignmentIR,
+  strategy: PlatformStrategy,
+): boolean {
+  if (strategy.id !== "arduino") {
+    return false;
+  }
+
+  const value = statement.kind === "var_decl" ? statement.initializer : statement.value;
+  return value?.kind === "string_concat";
+}
+
+function statementNeedsSnprintf(statement: StatementIR, strategy: PlatformStrategy): boolean {
+  if (statement.kind === "var_decl" && shouldUseSnprintfForArduinoString(statement, strategy)) {
+    return true;
+  }
+
+  switch (statement.kind) {
+    case "while":
+    case "for":
+    case "for_of":
+    case "for_in":
+    case "do_while":
+    case "block":
+    case "labeled":
+      return statement.body.some((nested) => statementNeedsSnprintf(nested, strategy));
+    case "if":
+      return statement.thenBranch.some((nested) => statementNeedsSnprintf(nested, strategy)) ||
+        (statement.elseBranch?.some((nested) => statementNeedsSnprintf(nested, strategy)) ?? false);
+    case "switch":
+      return statement.cases.some((caseClause) => caseClause.body.some((nested) => statementNeedsSnprintf(nested, strategy)));
+    case "try":
+      return statement.tryBlock.some((nested) => statementNeedsSnprintf(nested, strategy)) ||
+        (statement.catchBlock?.some((nested) => statementNeedsSnprintf(nested, strategy)) ?? false) ||
+        (statement.finallyBlock?.some((nested) => statementNeedsSnprintf(nested, strategy)) ?? false);
+    default:
+      return false;
+  }
 }
 
 function collectDeclaredTypes(program: ProgramIR): string[] {
@@ -1765,8 +2041,81 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     });
   }
 
-  function appendRenderedStatement(statement: StatementIR, indent: string, pointerVarTypes?: Map<string, string>): void {
+  function appendRenderedStatement(
+    statement: StatementIR,
+    indent: string,
+    pointerVarTypes?: Map<string, string>,
+    scopeState: EmissionScopeState = createEmissionScopeState(),
+  ): void {
     emitCommentLines(statement.leadingComments, indent, (line) => appendSourceLine(line));
+
+    if (statement.kind === "var_decl" && shouldUseSnprintfForArduinoString(statement, strategy) && statement.initializer) {
+      const snprintfRender = buildSnprintfRenderResult(
+        statement.initializer,
+        strategy,
+        scopeState,
+        pointerVarTypes,
+        knownFunctionReturnTypes,
+      );
+
+      if (snprintfRender) {
+        appendSourceLine(`${indent}char ${statement.name}[${snprintfRender.estimatedLength}];`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+        for (const preludeLine of snprintfRender.preludeLines) {
+          appendSourceLine(`${indent}${preludeLine}`, {
+            tsSpan: statement.sourceSpan,
+            nodeKind: statement.kind,
+          });
+        }
+        appendSourceLine(
+          `${indent}snprintf(${statement.name}, sizeof(${statement.name}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
+          {
+            tsSpan: statement.sourceSpan,
+            nodeKind: statement.kind,
+          },
+        );
+        recordVariableType(statement, scopeState);
+        scopeState.snprintfBuffers.add(statement.name);
+        emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+        return;
+      }
+
+    }
+
+    if (
+      statement.kind === "assign" &&
+      statement.operator === "=" &&
+      scopeState.snprintfBuffers.has(statement.target) &&
+      shouldUseSnprintfForArduinoString(statement, strategy)
+    ) {
+      const snprintfRender = buildSnprintfRenderResult(
+        statement.value,
+        strategy,
+        scopeState,
+        pointerVarTypes,
+        knownFunctionReturnTypes,
+      );
+
+      if (snprintfRender) {
+        for (const preludeLine of snprintfRender.preludeLines) {
+          appendSourceLine(`${indent}${preludeLine}`, {
+            tsSpan: statement.sourceSpan,
+            nodeKind: statement.kind,
+          });
+        }
+        appendSourceLine(
+          `${indent}snprintf(${statement.target}, sizeof(${statement.target}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
+          {
+            tsSpan: statement.sourceSpan,
+            nodeKind: statement.kind,
+          },
+        );
+        emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+        return;
+      }
+    }
 
     if (statement.kind === "while") {
       appendSourceLine(`${indent}${renderStatement(statement, false, strategy, pointerVarTypes, undefined, knownFunctionReturnTypes)}`, {
@@ -1774,8 +2123,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         nodeKind: statement.kind,
       });
       appendSourceLine(`${indent}{`);
+      const whileScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, whileScope);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1788,15 +2138,17 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         nodeKind: statement.kind,
       });
       appendSourceLine(`${indent}{`);
+      const thenScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.thenBranch) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, thenScope);
       }
       appendSourceLine(`${indent}}`);
-      
+
       if (statement.elseBranch && statement.elseBranch.length > 0) {
         appendSourceLine(`${indent}else {`);
+        const elseScope = cloneEmissionScopeState(scopeState);
         for (const nested of statement.elseBranch) {
-          appendRenderedStatement(nested, `${indent}  `);
+          appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, elseScope);
         }
         appendSourceLine(`${indent}}`);
       }
@@ -1810,8 +2162,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         nodeKind: statement.kind,
       });
       appendSourceLine(`${indent}{`);
+      const forScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forScope);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1824,8 +2177,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         nodeKind: statement.kind,
       });
       appendSourceLine(`${indent}{`);
+      const forOfScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forOfScope);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1838,8 +2192,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         nodeKind: statement.kind,
       });
       appendSourceLine(`${indent}{`);
+      const forInScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forInScope);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1852,8 +2207,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         nodeKind: statement.kind,
       });
       appendSourceLine(`${indent}{`);
+      const doScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, doScope);
       }
       appendSourceLine(`${indent}} while (${renderExpression(statement.condition, undefined, strategy)});`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1873,8 +2229,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         } else {
           appendSourceLine(`${indent}  default:`);
         }
+        const caseScope = cloneEmissionScopeState(scopeState);
         for (const nested of caseClause.body) {
-          appendRenderedStatement(nested, `${indent}    `);
+          appendRenderedStatement(nested, `${indent}    `, pointerVarTypes, caseScope);
         }
         emitCommentLines(caseClause.trailingComments, `${indent}  `, (line) => appendSourceLine(line));
       }
@@ -1884,54 +2241,49 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "try") {
-      // If there's a finally block but no catch, we need to catch all exceptions
       const needsCatchAll = statement.finallyBlock && !statement.catchBlock;
-      
+
       appendSourceLine(`${indent}try`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
       appendSourceLine(`${indent}{`);
+      const tryScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.tryBlock) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, tryScope);
       }
       appendSourceLine(`${indent}}`);
-      
+
       if (statement.catchBlock) {
         const catchParam = statement.catchParam ?? "e";
         appendSourceLine(`${indent}catch (const std::exception& ${catchParam})`);
         appendSourceLine(`${indent}{`);
+        const catchScope = cloneEmissionScopeState(scopeState);
         for (const nested of statement.catchBlock) {
-          appendRenderedStatement(nested, `${indent}  `);
+          appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, catchScope);
         }
-        // If there's a finally block, execute it before re-throwing
         if (statement.finallyBlock) {
+          const finallyScope = cloneEmissionScopeState(scopeState);
           for (const nested of statement.finallyBlock) {
-            appendRenderedStatement(nested, `${indent}  `);
+            appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, finallyScope);
           }
         }
         appendSourceLine(`${indent}}`);
       } else if (needsCatchAll) {
-        // Catch-all for finally-only blocks
         appendSourceLine(`${indent}catch (...)`);
         appendSourceLine(`${indent}{`);
         if (statement.finallyBlock) {
+          const finallyScope = cloneEmissionScopeState(scopeState);
           for (const nested of statement.finallyBlock) {
-            appendRenderedStatement(nested, `${indent}  `);
+            appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, finallyScope);
           }
         }
-        appendSourceLine(`${indent}  throw;`);  // Re-throw after finally
+        appendSourceLine(`${indent}  throw;`);
         appendSourceLine(`${indent}}`);
         emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
         return;
       }
-      
-      // If there's a finally block and we had a catch block, the finally was already executed
-      // If there's only a finally (no catch), we handled it above with catch(...)
-      // For try/catch/finally where we want finally to run after catch, we need a different approach
-      // Actually, in C++ we can't have a separate finally block - we need to use RAII or duplicate code
-      // For simplicity, if there's a finally with a catch, we execute finally after catch
-      
+
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
       return;
     }
@@ -1951,8 +2303,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         nodeKind: statement.kind,
       });
       appendSourceLine(`${indent}{`);
+      const labeledScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, labeledScope);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1964,8 +2317,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
+      const blockScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, blockScope);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1976,6 +2330,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       tsSpan: statement.sourceSpan,
       nodeKind: statement.kind,
     });
+    if (statement.kind === "var_decl") {
+      recordVariableType(statement, scopeState);
+    }
     emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
   }
 
@@ -2015,6 +2372,18 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
   if (programAnalysis.hasStdMathCalls) {
     includes.push(strategy.mathHeader());
+  }
+  const needsSnprintf = strategy.id === "arduino" && (
+    program.topLevelStatements.some((statement) => statementNeedsSnprintf(statement, strategy)) ||
+    program.functions.some((fn) => fn.statements.some((statement) => statementNeedsSnprintf(statement, strategy))) ||
+    program.classes.some((classDef) =>
+      (classDef.constructor?.statements.some((statement) => statementNeedsSnprintf(statement, strategy)) ?? false) ||
+      classDef.methods.some((method) => method.statements.some((statement) => statementNeedsSnprintf(statement, strategy)))
+    )
+  );
+  if (needsSnprintf) {
+    includes.push("<stdio.h>");
+    includes.push("<stdlib.h>");
   }
   if (emittedPolyfills) {
     includes.push(...emittedPolyfills.includes.map((include) => normalizeInclude(include)));
@@ -2314,6 +2683,31 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
+  // Ensure the entrypoint function (setup/main) exists even when all top-level
+  // executables were filtered out (e.g., only async function calls remain which
+  // are replaced by cooperative task instances driven in loop()).
+  if (isEntryFile && !mappedFunctions.some((fn) => fn.name === entrypointFunctionName)) {
+    const isMain = entrypointFunctionName === "main";
+    const returnType = isMain ? "int" : "void";
+    const stmts: StatementIR[] = isMain
+      ? [{ kind: "return" as const, sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number" as const, value: 0 } } as StatementIR]
+      : [];
+    const insertFn = {
+      name: entrypointFunctionName,
+      returnType,
+      sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+      leadingComments: undefined,
+      trailingComments: undefined,
+      parameters: [],
+      isAsync: false,
+      statements: stmts,
+    };
+    if (isMain) {
+      mappedFunctions.push(insertFn);
+    } else {
+      mappedFunctions.unshift(insertFn);
+    }
+  }
 
   // Some platforms require a loop/main-loop function even if empty
   if (isEntryFile && strategy.requiresLoopFunction() && !mappedFunctions.some((fn) => fn.name === "loop")) {
@@ -2346,6 +2740,17 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Enum class names that are already declared as C typedefs in the target API.
   // Guard them with a preprocessor conditional so they are only emitted when needed.
   const apiReservedEnums = strategy.apiReservedEnumNames();
+
+  // Emit register-mapped structs (volatile pointers to MMIO addresses)
+  for (const reg of program.registerClasses ?? []) {
+    const addrHex = '0x' + reg.address.toString(16).toUpperCase().replace(/^0X/, '');
+    emitCommentLines(reg.leadingComments, "", (line) => appendSourceLine(line));
+    appendSourceLine(`volatile uint32_t* const ${reg.name} = reinterpret_cast<volatile uint32_t*>(${addrHex});`);
+    emitCommentLines(reg.trailingComments, "", (line) => appendSourceLine(line));
+  }
+  if ((program.registerClasses?.length ?? 0) > 0) {
+    appendSourceLine("");
+  }
 
   // Emit enums
   for (const enumDef of program.enums) {
@@ -2404,16 +2809,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // used in class constructor default parameters are defined first.
   // ONLY emit compile-time declarations here (literals, simple identifiers).
   // Runtime declarations (new expressions, function calls) must go AFTER classes.
+  const topLevelScope = createEmissionScopeState();
   for (const statement of emittedTopLevelStatements) {
-    // Skip object literals - they need special handling with structs
     if (statement.kind === "var_decl" && statement.initializer?.kind === "object") {
       continue;
     }
-    // Skip runtime expressions - they must be emitted after classes
     if (statement.kind === "var_decl" && statement.initializer && isRuntimeExpression(statement.initializer)) {
       continue;
     }
-    appendRenderedStatement(statement, "");
+    appendRenderedStatement(statement, "", globalPointerVarTypes, topLevelScope);
   }
   if (emittedTopLevelStatements.some(s =>
     s.kind === "var_decl" &&
@@ -2498,8 +2902,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         if (classDef.constructor) {
           const ctorParams = renderParameters(classDef.constructor.parameters, strategy);
           appendSourceLine(`    ${classDef.name}(${ctorParams}) {`);
+          const ctorScope = createChildEmissionScope(topLevelScope, classDef.constructor.parameters);
           for (const stmt of classDef.constructor.statements) {
-            appendRenderedStatement(stmt, "      ");
+            appendRenderedStatement(stmt, "      ", undefined, ctorScope);
           }
           appendSourceLine("    }");
           appendSourceLine("");
@@ -2526,8 +2931,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           }
           
           appendSourceLine(`    ${staticPrefix}${returnType} ${method.name}(${methodParams}) {`);
+          const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
-            appendRenderedStatement(stmt, "      ");
+            appendRenderedStatement(stmt, "      ", undefined, methodScope);
           }
           appendSourceLine("    }");
           appendSourceLine("");
@@ -2545,8 +2951,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         for (const method of privateMethods) {
           const methodParams = renderParameters(method.parameters, strategy);
           appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+          const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
-            appendRenderedStatement(stmt, "      ");
+            appendRenderedStatement(stmt, "      ", undefined, methodScope);
           }
           appendSourceLine("    }");
         }
@@ -2563,8 +2970,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         for (const method of protectedMethods) {
           const methodParams = renderParameters(method.parameters, strategy);
           appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+          const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
-            appendRenderedStatement(stmt, "      ");
+            appendRenderedStatement(stmt, "      ", undefined, methodScope);
           }
           appendSourceLine("    }");
         }
@@ -2580,8 +2988,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const parameterList = renderParameters(fn.parameters, strategy);
       emitCommentLines(fn.leadingComments, "  ", (line) => appendSourceLine(line));
       appendSourceLine(`  ${normalizeCppTypeForTarget(fn.returnType, strategy)} ${fn.originalName}(${parameterList}) {`);
+      const namespaceFunctionScope = createChildEmissionScope(topLevelScope, fn.parameters);
       for (const statement of fn.statements) {
-        appendRenderedStatement(statement, "    ");
+        appendRenderedStatement(statement, "    ", undefined, namespaceFunctionScope);
       }
       appendSourceLine("  }");
       emitCommentLines(fn.trailingComments, "  ", (line) => appendSourceLine(line));
@@ -2648,8 +3057,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
 
         appendSourceLine(`  ${classDef.name}(${ctorParams})${ctorInitializer} {`);
+        const ctorScope = createChildEmissionScope(topLevelScope, classDef.constructor.parameters);
         for (const stmt of ctorStatements) {
-          appendRenderedStatement(stmt, "    ");
+          appendRenderedStatement(stmt, "    ", undefined, ctorScope);
         }
         appendSourceLine("  }");
         appendSourceLine("");
@@ -2679,8 +3089,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
         
         appendSourceLine(`  ${staticPrefix}${returnType} ${method.name}(${methodParams}) {`);
+        const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
-          appendRenderedStatement(stmt, "    ");
+          appendRenderedStatement(stmt, "    ", undefined, methodScope);
         }
         appendSourceLine("  }");
         appendSourceLine("");
@@ -2702,8 +3113,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         const methodParams = renderParameters(method.parameters, strategy);
         const staticPrefix = method.isStatic ? "static " : "";
         appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+        const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
-          appendRenderedStatement(stmt, "    ");
+          appendRenderedStatement(stmt, "    ", undefined, methodScope);
         }
         appendSourceLine("  }");
         appendSourceLine("");
@@ -2725,8 +3137,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         const methodParams = renderParameters(method.parameters, strategy);
         const staticPrefix = method.isStatic ? "static " : "";
         appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+        const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
-          appendRenderedStatement(stmt, "    ");
+          appendRenderedStatement(stmt, "    ", undefined, methodScope);
         }
         appendSourceLine("  }");
         appendSourceLine("");
@@ -2743,9 +3156,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // These are variables that use 'new' or function calls and need the class defined first
   // For entry files, these go into setup() instead
   if (!isEntryFile) {
+    const runtimeTopLevelScope = cloneEmissionScopeState(topLevelScope);
     for (const statement of emittedTopLevelStatements) {
       if (statement.kind === "var_decl" && statement.initializer && isRuntimeExpression(statement.initializer)) {
-        appendRenderedStatement(statement, "");
+        appendRenderedStatement(statement, "", globalPointerVarTypes, runtimeTopLevelScope);
       }
     }
   }
@@ -2829,8 +3243,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`  ${callback.name}_lastTime = now;`);
     }
     
+    const callbackScope = createChildEmissionScope(topLevelScope);
     for (const stmt of callback.statements) {
-      appendRenderedStatement(stmt, "  ", globalPointerVarTypes);
+      appendRenderedStatement(stmt, "  ", globalPointerVarTypes, callbackScope);
     }
     appendSourceLine("}");
     appendSourceLine("");
@@ -2864,8 +3279,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (fn.isAsync && hasAsyncRuntime) {
       appendSourceLine(`  // driven as cooperative task in ${asyncDriverFn}()`);
     } else {
+      const functionScope = createChildEmissionScope(topLevelScope, fn.parameters);
       for (const statement of fn.statements) {
-        appendRenderedStatement(statement, "  ", globalPointerVarTypes);
+        appendRenderedStatement(statement, "  ", globalPointerVarTypes, functionScope);
       }
     }
     if (hasAsyncRuntime && fn.name === asyncDriverFn) {

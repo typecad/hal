@@ -4,7 +4,7 @@ import ts from "typescript";
 import { parseSource } from "../ast/parse";
 import { Diagnostic, SourceSpan } from "../types";
 import { withLineColumn } from "../utils/strings";
-import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ParameterIR, ProgramIR, ReExportIR, StatementIR, TypeAliasIR } from "./model";
+import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ParameterIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "./model";
 import { inferKindByName } from "./typecode-symbols";
 import { resolveBoardConstants, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
@@ -16,6 +16,66 @@ import { validateADCRange } from "./adc-range-validation";
 
 function normalizeLegacyArduinoSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __arduino_setup__(");
+}
+
+// ---------------------------------------------------------------------------
+// @register / @bits decorator detection helpers
+// ---------------------------------------------------------------------------
+
+/** Module-level register field map, populated during buildProgramIR. */
+const registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
+
+/**
+ * Extract the address argument from a `@register(address)` decorator on a class.
+ * Returns `undefined` if the class has no `@register` decorator.
+ */
+function getRegisterAddress(node: ts.ClassDeclaration): number | undefined {
+  const decorators = (ts as any).canHaveDecorators?.(node)
+    ? (ts as any).getDecorators?.(node)
+    : (node as any).decorators;
+  if (!decorators) return undefined;
+
+  for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
+    if (!ts.isCallExpression(dec.expression)) continue;
+    const callee = dec.expression.expression;
+    if (!ts.isIdentifier(callee) || callee.text !== "register") continue;
+    const args = dec.expression.arguments;
+    if (args.length < 1) continue;
+    const arg = args[0];
+    if (ts.isNumericLiteral(arg) || ts.isBigIntLiteral?.(arg)) {
+      return Number(arg.text);
+    }
+    // Handle negative numbers
+    if (ts.isPrefixUnaryExpression(arg) && arg.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(arg.operand)) {
+      return -Number(arg.operand.text);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Extract the (hi, lo) arguments from a `@bits(hi, lo)` decorator on a property.
+ * Returns `undefined` if the property has no `@bits` decorator.
+ */
+function getBitsRange(node: ts.PropertyDeclaration): { hi: number; lo: number } | undefined {
+  const decorators = (ts as any).canHaveDecorators?.(node)
+    ? (ts as any).getDecorators?.(node)
+    : (node as any).decorators;
+  if (!decorators) return undefined;
+
+  for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
+    if (!ts.isCallExpression(dec.expression)) continue;
+    const callee = dec.expression.expression;
+    if (!ts.isIdentifier(callee) || callee.text !== "bits") continue;
+    const args = dec.expression.arguments;
+    if (args.length < 2) continue;
+    const hiArg = args[0];
+    const loArg = args[1];
+    if (ts.isNumericLiteral(hiArg) && ts.isNumericLiteral(loArg)) {
+      return { hi: Number(hiArg.text), lo: Number(loArg.text) };
+    }
+  }
+  return undefined;
 }
 
 function makeDiagnostic(
@@ -1093,6 +1153,26 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
 
   // Handle property access expressions like obj.property or this.field
   if (ts.isPropertyAccessExpression(expr)) {
+    // ── Register bit-field read ──────────────────────────────────
+    // If the object is a register class name and the property is a known
+    // bit field, emit the inline bit-extract expression.
+    if (ts.isIdentifier(expr.expression)) {
+      const regName = expr.expression.text;
+      const fieldName = expr.name.text;
+      const fieldMap = registerFieldMap.get(regName);
+      if (fieldMap) {
+        const field = fieldMap.get(fieldName);
+        if (field) {
+          const mask = ((1 << field.width) - 1) >>> 0;
+          const maskUL = mask + 'UL';
+          if (field.lo === 0 && field.width === 1) {
+            return { kind: "raw", value: `(*${regName} >> ${field.lo}) & 1UL` };
+          }
+          return { kind: "raw", value: `(*${regName} >> ${field.lo}) & ${maskUL}` };
+        }
+      }
+    }
+
     // In C++, 'this' is a pointer, so use -> instead of .
     if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
       return { kind: "raw", value: `this->${expr.name.text}` };
@@ -1632,6 +1712,42 @@ function expressionStatementToIR(
       return { ...callStmt, isAwaited: true };
     }
     return callStmt;
+  }
+
+  // ── Register bit-field write ────────────────────────────────────────
+  // Handle: RegName.fieldName = value
+  // Emits:  *RegName = (*RegName & ~mask) | ((value & fieldMask) << lo)
+  if (ts.isBinaryExpression(expr) && ts.isPropertyAccessExpression(expr.left) && expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    const objExpr = expr.left.expression;
+    const fieldName = expr.left.name.text;
+    if (ts.isIdentifier(objExpr)) {
+      const regName = objExpr.text;
+      const fieldMap = registerFieldMap.get(regName);
+      if (fieldMap) {
+        const field = fieldMap.get(fieldName);
+        if (field) {
+          const fieldMask = ((1 << field.width) - 1) >>> 0;
+          const fieldMaskUL = fieldMask + 'UL';
+          const shiftMask = (fieldMask << field.lo) >>> 0;
+          const shiftMaskUL = shiftMask + 'UL';
+          const valueIR = expressionToIR(expr.right, sourceText, diagnostics);
+          const valueText = renderExprAsText(valueIR);
+          const comments = extractNodeComments(statement, sourceText);
+          // Generate: *REG = (*REG & ~clearMask) | ((value & fieldMask) << lo)
+          const cppExpr = `*${regName} = (*${regName} & ~${shiftMaskUL}) | ((${valueText} & ${fieldMaskUL}) << ${field.lo})`;
+          return {
+            kind: "assign",
+            sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+            leadingComments: comments.leadingComments,
+            trailingComments: comments.trailingComments,
+            target: `*${regName}`,
+            operator: "=",
+            value: { kind: "raw", value: `(*${regName} & ~${shiftMaskUL}) | ((${valueText} & ${fieldMaskUL}) << ${field.lo})` },
+          };
+        }
+      }
+    }
+    // Fall through to normal handling if not a register field
   }
 
   if (ts.isBinaryExpression(expr) && ts.isIdentifier(expr.left)) {
@@ -2587,6 +2703,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   const typeAliases: TypeAliasIR[] = [];
   const interfaces: InterfaceIR[] = [];
   const namespaces: NamespaceIR[] = [];
+  const registerClasses: RegisterClassIR[] = [];
   const typeAliasNodes = new Map<string, ts.TypeNode>();
   const boilerplates = new Set<string>();
   const functionReturnTypes = buildFunctionReturnTypeMap(source);
@@ -3244,7 +3361,46 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       }
 
       const className = node.name.text;
-      
+
+      // ── @register(addr) detection ────────────────────────────────
+      // If the class has a @register(addr) decorator, create a
+      // RegisterClassIR instead of a normal ClassIR and skip normal
+      // class processing.
+      const regAddr = getRegisterAddress(node);
+      if (regAddr !== undefined) {
+        const classComments = extractNodeComments(node, sourceText);
+        const bitFields: RegisterClassIR['bitFields'] = [];
+        for (const member of node.members) {
+          if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+            const range = getBitsRange(member);
+            if (range) {
+              bitFields.push({
+                name: member.name.text,
+                hi: range.hi,
+                lo: range.lo,
+                width: range.hi - range.lo + 1,
+              });
+            }
+          }
+        }
+        const regIR: RegisterClassIR = {
+          name: className,
+          address: regAddr,
+          bitFields,
+          sourceSpan: makeSourceSpan(node, fileName, sourceText),
+          leadingComments: classComments.leadingComments,
+          trailingComments: classComments.trailingComments,
+        };
+        registerClasses.push(regIR);
+        // Build lookup map for expression rewriting
+        const fieldMap = new Map<string, { hi: number; lo: number; width: number }>();
+        for (const bf of bitFields) {
+          fieldMap.set(bf.name, { hi: bf.hi, lo: bf.lo, width: bf.width });
+        }
+        registerFieldMap.set(className, fieldMap);
+        return;
+      }
+
       // Check for abstract modifier
       const isAbstract = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
       
@@ -3602,6 +3758,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       functions,
       boilerplates,
       diagnostics,
+      registerClasses,
       boardConstants,
       interfaces,
       namespaces,
@@ -3633,6 +3790,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       functions,
       boilerplates,
       diagnostics: [],
+      registerClasses,
       boardConstants,
       interfaces,
       namespaces,
@@ -3652,6 +3810,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       functions,
       boilerplates,
       diagnostics: [],
+      registerClasses,
       boardConstants,
       interfaces,
       namespaces,
@@ -3670,6 +3829,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     enums,
     classes,
     typeAliases,
+    registerClasses,
     topLevelStatements,
     functions,
     boilerplates,

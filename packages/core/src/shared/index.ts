@@ -47,6 +47,8 @@ export type {
   TypeAliasIR,
   NamespaceIR,
   PeripheralUsageIR,
+  RegisterBitFieldIR,
+  RegisterClassIR,
   ParameterIR,
   CppType,
 } from './ir';

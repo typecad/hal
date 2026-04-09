@@ -1,12 +1,12 @@
-import { LED, I2C0, A4 } from '@typecode';
+import { UART0 } from '@typecode';
 
-// Configure LED pin as output, starting HIGH
-LED.config.output();
+UART0.config.baudRate(9600).begin();
 
-A4.config.input.float();
+const temp = 24.5;
+const msg = `Temp is ${1 + 2}C`; 
 
-while (true) {
-  LED.toggle();  // Switch between HIGH and LOW
-  
-  // Or use: LED.high(), LED.low()
-}
+// strips the dynamic allocation and emits safe C++:
+// char __voltts_buf_1[16];
+// snprintf(__voltts_buf_1, sizeof(__voltts_buf_1), "Temp is %.1fC", temp);
+
+UART0.println(msg);

@@ -17,6 +17,27 @@ import crypto from "node:crypto";
  */
 const CACHE_VERSION = 1;
 
+function computeToolchainFingerprint(): string {
+  const candidates = [
+    path.join(__dirname, "transpile.js"),
+    path.join(__dirname, "transpile.ts"),
+    path.join(__dirname, "emit", "cpp-emitter.js"),
+    path.join(__dirname, "emit", "cpp-emitter.ts"),
+    path.join(__dirname, "ir", "build-ir.js"),
+    path.join(__dirname, "ir", "build-ir.ts"),
+  ];
+
+  const signature = candidates
+    .filter((filePath) => fs.existsSync(filePath))
+    .map((filePath) => {
+      const stat = fs.statSync(filePath);
+      return `${path.basename(filePath)}:${stat.size}:${stat.mtimeMs}`;
+    })
+    .join("|");
+
+  return crypto.createHash("sha256").update(signature).digest("hex").slice(0, 16);
+}
+
 /**
  * File entry in the cache
  */
@@ -38,6 +59,7 @@ export interface CachedFileEntry {
  */
 export interface IncrementalCacheData {
   version: number;
+  toolchainFingerprint: string;
   /** Project root directory */
   rootDir: string;
   /** File entries keyed by resolved absolute path */
@@ -112,9 +134,14 @@ export class IncrementalCache {
       if (fs.existsSync(this.cachePath)) {
         const content = fs.readFileSync(this.cachePath, "utf8");
         const data = JSON.parse(content) as IncrementalCacheData;
+        const currentToolchainFingerprint = computeToolchainFingerprint();
         
         // Validate cache version and root
-        if (data.version === CACHE_VERSION && path.resolve(data.rootDir) === this.rootDir) {
+        if (
+          data.version === CACHE_VERSION &&
+          data.toolchainFingerprint === currentToolchainFingerprint &&
+          path.resolve(data.rootDir) === this.rootDir
+        ) {
           return data;
         }
       }
@@ -131,6 +158,7 @@ export class IncrementalCache {
   private createEmptyCache(): IncrementalCacheData {
     return {
       version: CACHE_VERSION,
+      toolchainFingerprint: computeToolchainFingerprint(),
       rootDir: this.rootDir,
       files: {},
       createdAt: Date.now(),

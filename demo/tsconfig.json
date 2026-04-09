@@ -1,18 +1,17 @@
 {
   "compilerOptions": {
     "target": "ES2021",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "baseUrl": "..",
     "paths": {
-      "@typecode": ["packages/board-arduino-uno/src/index.ts"],
-      "@typecode/core": ["packages/core/src/index.ts"],
-      "@typecode/board-arduino-uno": ["packages/board-arduino-uno/src/index.ts"]
+      "@typecode": ["../packages/board-arduino-uno/src/index.ts"],
+      "@typecode/core": ["../packages/core/src/index.ts"],
+      "@typecode/board-arduino-uno": ["../packages/board-arduino-uno/src/index.ts"]
     },
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },

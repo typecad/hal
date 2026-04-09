@@ -107,6 +107,22 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).toContain('std::string message = "initial"');
       expect(result.cpp).toContain('message = "updated"');
     });
+
+    it("uses snprintf for Arduino template literals", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const temp = 24.5;",
+        "  const msg = `Temp is ${temp}C`;",
+        "}",
+      ].join("\n"), { target: "arduino" });
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      expect(hasInclude(result.cpp, "stdlib.h")).toBe(true);
+      expect(result.cpp).toContain("char msg[");
+      expect(result.cpp).toContain("char __typecode_float_");
+      expect(result.cpp).toContain("dtostrf(temp, 0, 1, __typecode_float_");
+      expect(result.cpp).toContain('snprintf(msg, sizeof(msg), "Temp is %sC", __typecode_float_');
+      expect(result.cpp).not.toContain("String(temp)");
+    });
   });
 
   describe("Boolean Literals", () => {

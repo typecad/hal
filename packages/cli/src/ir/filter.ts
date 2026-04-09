@@ -94,6 +94,7 @@ export function filterProgramIR(
     functions: filteredFunctions,
     boilerplates: program.boilerplates,
     diagnostics,
+    registerClasses: program.registerClasses,
     boardConstants: program.boardConstants,
     interfaces: program.interfaces,
     namespaces: program.namespaces,

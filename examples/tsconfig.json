@@ -1,16 +1,17 @@
 {
   "compilerOptions": {
     "target": "ES2021",
-    "module": "NodeNext",
-    "moduleResolution": "nodenext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
+    "experimentalDecorators": true,
     "paths": {
+      "@typecode": ["../../packages/board-arduino-uno/src/index.ts"],
       "@typecode/*": ["../../packages/*/src"]
     }
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "*.d.ts"]
 }

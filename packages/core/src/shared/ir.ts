@@ -471,6 +471,33 @@ export interface PeripheralUsageIR {
 }
 
 // ---------------------------------------------------------------------------
+// Register-mapped structs
+// ---------------------------------------------------------------------------
+
+export interface RegisterBitFieldIR {
+  /** Field name */
+  name: string;
+  /** High bit index (inclusive) */
+  hi: number;
+  /** Low bit index (inclusive) */
+  lo: number;
+  /** Width in bits (hi - lo + 1) */
+  width: number;
+}
+
+export interface RegisterClassIR {
+  /** Register class name (e.g. "USART1") */
+  name: string;
+  /** MMIO register address (e.g. 0x40011000) */
+  address: number;
+  /** Bit field descriptors */
+  bitFields: RegisterBitFieldIR[];
+  sourceSpan: SourceSpan;
+  leadingComments?: string[];
+  trailingComments?: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Program
 // ---------------------------------------------------------------------------
 
@@ -484,6 +511,8 @@ export interface ProgramIR {
   interfaces: InterfaceIR[];
   namespaces: NamespaceIR[];
   typeAliases: TypeAliasIR[];
+  /** Register-mapped structs (from @register decorator) */
+  registerClasses: RegisterClassIR[];
   topLevelStatements: StatementIR[];
   functions: FunctionIR[];
   boilerplates: Set<string>;

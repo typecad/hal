@@ -217,6 +217,18 @@ export {
   Retain,
 } from './memory/decorators';
 
+// --- Register-mapped structs -----------------------------------------------
+export {
+  type Bit,
+  type Bits,
+  type BitFieldMeta,
+  type RegisterClassMeta,
+  register,
+  bits,
+  getRegisterMeta,
+  getBitFields,
+} from './memory/register';
+
 export {
   type FixedBuffer,
   type CircularBuffer,
