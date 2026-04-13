@@ -3,14 +3,14 @@ import { buildProgramIR } from "../packages/cli/src/ir/build-ir";
 import { emitCpp } from "../packages/cli/src/emit/cpp-emitter";
 import { resolveStrategy } from "../packages/cli/src/platform/registry";
 
-const TARGET = { name: "generic", cpu: "unknown", flash: 0, ram: 0 };
+const TARGET = "generic" as const;
 const STRATEGY = resolveStrategy("generic");
 
 function transpile(source: string): string {
   const ir = buildProgramIR("test.ts", source);
   const result = emitCpp(ir, {
     outDir: "/tmp/test-out",
-    emitMode: "single",
+    emitMode: "cpp",
     target: TARGET,
     libdefs: new Map(),
     emitMaps: false,

@@ -70,8 +70,24 @@ export class StatementRenderer {
   }
 
   /**
+   * Renders a statement IR node to a C++ string, including any snprintf
+   * prelude lines accumulated during expression rendering.
+   *
+   * @param statement The statement to render
+   * @param forHeader Whether this is for a header file (no semicolons)
+   * @param calleeTransformer Optional transformer for callee names
+   * @returns Object with prelude lines and the rendered statement
+   */
+  renderWithPrelude(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string): { prelude: string[]; statement: string } {
+    this.expressionRenderer.clearPrelude();
+    const rendered = this.render(statement, forHeader, calleeTransformer);
+    const prelude = this.expressionRenderer.drainPrelude();
+    return { prelude, statement: rendered };
+  }
+
+  /**
    * Renders a statement IR node to a C++ string.
-   * 
+   *
    * @param statement The statement to render
    * @param forHeader Whether this is for a header file (no semicolons)
    * @param calleeTransformer Optional transformer for callee names
@@ -175,11 +191,11 @@ export class StatementRenderer {
   private renderTypecodeCallStatement(statement: Extract<StatementIR, { kind: "typecode-call" }>, forHeader: boolean): string {
     const renderA = (e: ExpressionIR) => this.expressionRenderer.render(e);
     const translated = this.strategy.tryRenderTypecodeCall(
-      statement.receiver, 
-      statement.receiverKind, 
-      statement.method, 
-      statement.args, 
-      renderA, 
+      statement.receiver,
+      statement.receiverKind,
+      statement.method,
+      statement.args,
+      renderA,
       this.expressionRenderer.getBoardConstants(),
       (statement as any).interruptMode
     );
@@ -187,7 +203,7 @@ export class StatementRenderer {
       return forHeader ? translated : `${translated};`;
     }
     // Fallback: render as plain method call
-    return forHeader 
+    return forHeader
       ? `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")})`
       : `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")});`;
   }

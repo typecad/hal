@@ -34,9 +34,9 @@ describe('example test preprocessing', () => {
     expect(result).toContain('[TC:IT:returns a non-negative value]');
     expect(result).toContain('[TC:IT:is within 10-bit ADC range]');
 
-    // Should have hoisted A0.read() calls
-    expect(result).toMatch(/const __tc_v\d+: number = A0\.read\(\)/);
-    expect(result).toMatch(/const __tc_v\d+: number = A1\.read\(\)/);
+    // Should have hoisted A0.readAnalog() calls
+    expect(result).toMatch(/const __tc_v\d+: number = A0\.readAnalog\(\)/);
+    expect(result).toMatch(/const __tc_v\d+: number = A1\.readAnalog\(\)/);
 
     // Should have correct matchers
     expect(result).toContain('[TC:EXPECT:toBeWithinRange:0,1023:');

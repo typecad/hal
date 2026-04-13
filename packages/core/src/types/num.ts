@@ -1,85 +1,73 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Fluent number utilities (map, constrain, min, max, abs)
+// @typecode/core — Fluent number utilities
 //
-// Provides both Arduino-compatible direct functions and fluent chainable API.
+// Direct functions and fluent chainable API.
 // ---------------------------------------------------------------------------
 
 /**
- * Chainable map builder - collects from/to ranges then computes result.
+ * Chainable map builder.
  */
 export interface INumMapChain {
   /** Set the input range */
   from(low: number, high: number): this;
   /** Set the output range and compute the result */
   to(low: number, high: number): number;
-  /** Convenience: map to 0-100 percent range */
+  /** Map to 0-100 percent */
   toPercent(): number;
-  /** Convenience: map to 0-255 byte range */
+  /** Map to 0-255 byte */
   toByte(): number;
-  /** Chain into constrain operation */
-  constrain(): INumConstrainChain;
 }
 
 /**
- * Chainable constrain builder - collects bounds then constrains value.
+ * Chainable clamp builder.
  */
-export interface INumConstrainChain {
-  /** Set the bounds and constrain the value */
+export interface INumClampChain {
+  /** Set the bounds and clamp the value */
   between(low: number, high: number): number;
-  /** Chain into abs operation */
-  abs(): number;
-  /** Chain into map operation */
-  map(): INumMapChain;
 }
 
 /**
  * Number utilities namespace with both direct and fluent APIs.
  */
 export interface INumNamespace {
-  // --- Direct functions (Arduino-compatible) ---
-  
-  /**
-   * Re-map a number from one range to another.
-   * Maps to Arduino `map()` function.
-   */
+  // --- Direct functions ---
+
+  /** Re-map a number from one range to another. */
   (value: number, fromLow: number, fromHigh: number, toLow: number, toHigh: number): number;
-  
-  /** Constrain a number to be within a range. */
-  constrain(value: number, low: number, high: number): number;
-  
+
+  /** Clamp a number to be within a range. */
+  clamp(value: number, low: number, high: number): number;
+
   /** Get the absolute value. */
   abs(value: number): number;
-  
+
   /** Get the minimum of two values. */
   min(a: number, b: number): number;
-  
+
   /** Get the maximum of two values. */
   max(a: number, b: number): number;
-  
+
   // --- Fluent builders ---
-  
+
   /** Start a fluent map chain. */
   map(value: number): INumMapChain;
-  
-  /** Start a fluent constrain chain. */
-  constrain(value: number): INumConstrainChain;
-  
+
+  /** Start a fluent clamp chain. */
+  clamp(value: number): INumClampChain;
+
   // --- Convenience helpers ---
-  
-  /** Clamp a value to a range (alias for constrain). */
-  clamp(value: number, low: number, high: number): number;
-  
+
   /** Check if a value is within a range. */
   inRange(value: number, low: number, high: number): boolean;
-  
-  /** Map a value to 0-100 percent (convenience). */
+
+  /** Map a value to 0-100 percent. */
   toPercent(value: number, fromLow: number, fromHigh: number): number;
-  
-  /** Map a value to 0-255 byte (convenience). */
+
+  /** Map a value to 0-255 byte. */
   toByte(value: number, fromLow: number, fromHigh: number): number;
 }
 
-/** Stub for type checking. The transpiler replaces these with Arduino built-ins. */
+/** Stub for type checking. The transpiler replaces these with built-ins. */
 declare const Num: INumNamespace;
 
 export { Num };

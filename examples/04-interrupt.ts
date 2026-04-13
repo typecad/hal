@@ -2,22 +2,25 @@
 // Example 4 — External Interrupt (Button Toggle)
 //
 // A button on D2 (with internal pull-up) toggles the onboard LED.
-// D2 is typed as IDigitalPin & IInterruptPin, so attachInterrupt is valid.
-// Trying this on D4 (IDigitalPin only) would be a compile error.
+// D2 has interrupt capability so .onFalling() is available.
+// Trying this on D4 would produce a compile error.
+//
+// Uses the object-creation pattern: asOutput()/asInputPullUp() configure
+// pinMode AND return type-narrowed aliases for subsequent calls.
 // ---------------------------------------------------------------------------
 
-import { D2, LED, LOW } from '@typecode';
+import { D2, LED } from '@typecode';
 
-LED.config.output.initial(LOW);
-D2.config.input.pullup();
+const led = LED.asOutput(false);
+const btn = D2.asInputPullUp();
 
 let ledState = false;
 
-D2.on.falling(() => {
+D2.onFalling(() => {
   ledState = !ledState;
   if (ledState) {
-    LED.high();
+    led.high();
   } else {
-    LED.low();
+    led.low();
   }
 });

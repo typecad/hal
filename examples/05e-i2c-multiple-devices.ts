@@ -9,10 +9,11 @@
 import { I2C0, UART0, delay } from '@typecode';
 
 // Initialize UART0 for debug output
-UART0.config.baudRate(9600).begin();
+const serial = UART0.begin(9600);
 
 // Initialize I2C as master with 400kHz clock
-I2C0.config.speed(400000).begin();
+const sensor = I2C0.begin();
+sensor.setClock(400000);
 
 // Device addresses
 const OLED_ADDR = 0x3C;
@@ -20,23 +21,26 @@ const BME280_ADDR = 0x76;
 const MPU6050_ADDR = 0x68;
 const EEPROM_ADDR = 0x50;
 
-// Simple device abstraction using fluent API
+// Simple device abstraction
 interface I2CDevice {
   address: number;
-  writeRegister(reg: number, value: number): boolean;
+  writeRegister(reg: number, value: number): void;
   readRegister(reg: number): number | null;
 }
 
 function createDevice(addr: number): I2CDevice {
   return {
     address: addr,
-    writeRegister(reg: number, value: number): boolean {
-      const result = I2C0.device(addr).write(value).to(reg);
-      return result.ok;
+    writeRegister(reg: number, value: number): void {
+      sensor.device(addr).writeByte(reg, value);
     },
     readRegister(reg: number): number | null {
-      const result = I2C0.device(addr).read(1).from(reg);
-      return result.ok ? result.value[0] : null;
+      try {
+        const data = sensor.device(addr).readBytes(reg, 1);
+        return data.length > 0 ? data[0] : null;
+      } catch {
+        return null;
+      }
     }
   };
 }
@@ -47,59 +51,61 @@ const mpu6050 = createDevice(MPU6050_ADDR);
 
 // Read 16-bit value from two consecutive registers
 function readUint16BE(device: I2CDevice, reg: number): number | null {
-  const result = I2C0.device(device.address).read(2).from(reg);
-  if (result.ok && result.value.length >= 2) {
-    return (result.value[0] << 8) | result.value[1];
+  try {
+    const data = sensor.device(device.address).readBytes(reg, 2);
+    if (data.length >= 2) {
+      return (data[0] << 8) | data[1];
+    }
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 // Initialize MPU-6050
-function initMPU6050(): boolean {
-  const result1 = I2C0.device(MPU6050_ADDR).write(0x00).to(0x6B); // Wake up
-  if (!result1.ok) return false;
-  
-  const result2 = I2C0.device(MPU6050_ADDR).write(0x07).to(0x19); // Sample rate divider
-  return result2.ok;
+function initMPU6050(): void {
+  sensor.device(MPU6050_ADDR).writeByte(0x6B, 0x00); // Wake up
+  sensor.device(MPU6050_ADDR).writeByte(0x19, 0x07); // Sample rate divider
 }
 
 // Read accelerometer data from MPU-6050
 function readAccel(): { x: number; y: number; z: number } | null {
   // Accelerometer registers start at 0x3B (X_HIGH)
-  const result = I2C0.device(MPU6050_ADDR).read(6).from(0x3B);
-  if (result.ok && result.value.length >= 6) {
-    const x = (result.value[0] << 8) | result.value[1];
-    const y = (result.value[2] << 8) | result.value[3];
-    const z = (result.value[4] << 8) | result.value[5];
-    return { x, y, z };
+  try {
+    const data = sensor.device(MPU6050_ADDR).readBytes(0x3B, 6);
+    if (data.length >= 6) {
+      const x = (data[0] << 8) | data[1];
+      const y = (data[2] << 8) | data[3];
+      const z = (data[4] << 8) | data[5];
+      return { x, y, z };
+    }
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 // Initialize devices
-if (initMPU6050()) {
-  UART0.println("MPU-6050 initialized");
-} else {
-  UART0.println("MPU-6050 not found");
-}
+initMPU6050();
+serial.println("MPU-6050 initialized");
 
 // Main loop - read from multiple devices
 while (true) {
   // Read temperature from BME280
-  const tempResult = I2C0.device(BME280_ADDR).read(2).from(0xFA);
-  if (tempResult.ok && tempResult.value.length >= 2) {
-    const tempRaw = (tempResult.value[0] << 8) | tempResult.value[1];
-    UART0.print("Temp: ");
-    UART0.print(tempRaw / 100.0);
-    UART0.print("C  ");
+  const tempData = sensor.device(BME280_ADDR).readBytes(0xFA, 2);
+  if (tempData.length >= 2) {
+    const tempRaw = (tempData[0] << 8) | tempData[1];
+    serial.print("Temp: ");
+    serial.print(tempRaw / 100.0);
+    serial.print("C  ");
   }
   
   // Read accelerometer from MPU-6050
   const accel = readAccel();
   if (accel) {
-    UART0.print(`Accel: X=${accel.x} Y=${accel.y} Z=${accel.z}`);
+    serial.print(`Accel: X=${accel.x} Y=${accel.y} Z=${accel.z}`);
   }
   
-  UART0.println("");
+  serial.println("");
   delay(1000);
 }

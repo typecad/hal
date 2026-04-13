@@ -4,141 +4,117 @@
 
 // --- Pin types -------------------------------------------------------------
 export {
-  type PinNumber,
-  pinNumber,
-  type DigitalValue,
-  type AnalogValue,
+  DigitalValue,
+  AnalogValue,
+  HIGH,
+  LOW,
   PinMode,
   InterruptMode,
-  type GPIOConfig,
-  type IGPIOPinFactory,
-  type IPinGroup,
-  type IParallelPort,
+  GPIOConfig,
+  IGPIOPinFactory,
+  IPinGroup,
+  IParallelPort,
   createPinGroup,
   createParallelPort,
 } from './types/gpio';
 
-// HIGH and LOW are both a *type* and a *value* in gpio.ts (interface + const).
-// Re-export the values; consumers can use `typeof HIGH` for the type.
-export { HIGH, LOW } from './types/gpio';
-
 export {
-  type PinCapabilityFlags,
-  type DigitalOnlyCapabilities,
-  type PWMCapabilities,
-  type AnalogInputCapabilities,
-  type TouchCapabilities,
-  type SupportsCapabilities,
+  PinCapabilityFlags,
+  DigitalOnlyCapabilities,
+  PWMCapabilities,
+  AnalogInputCapabilities,
+  TouchCapabilities,
+  SupportsCapabilities,
   hasPWM,
   hasAnalogInput,
   hasInterrupt,
-  hasTouch,
-  // Convenience aliases
   isPWMPin,
   isAnalogPin,
   isInterruptPin,
-  isTouchPin,
-  // Assertion functions
   assertPWM,
   assertAnalog,
   assertInterrupt,
 } from './types/capabilities';
 
 export {
-  type IPin,
-  type IDigitalInput,
-  type IDigitalOutput,
-  type IDigitalPin,
-  type IAnalogInput,
-  type IAnalogOutput,
-  type IPWMPin,
-  type IInterruptPin,
-  type InterruptHandler,
-  type ITouchPin,
-  type IADCPin,
-  type IDACPin,
-  // Pin configuration types
-  type IOutputConfig,
-  type IInputConfig,
-  type IPinConfig,
-  type IPWMOutputConfig,
-  type IPWMConfig,
-  type IAnalogInputConfig,
-  type IAnalogConfig,
-  // Tone API
-  type IToneAttachment,
+  BasePin,
+  Pin,
+  IOutputModePin,
+  IInputModePin,
+  IPin,
+  IDigitalPin,
+  IPWMPin,
+  IAnalogInput,
+  IAnalogPin,
+  IInterruptPin,
+  InterruptHandler,
+  InterruptOptions,
+  IToneAttachment,
+  PinCapability,
+  isPwmPin,
+  assertPwm,
+  IPinGroupOptions,
 } from './types/pin';
 
 // --- Number utilities (fluent math API) ------------------------------------
 export {
-  type INumMapChain,
-  type INumConstrainChain,
-  type INumNamespace,
+  INumMapChain,
+  INumClampChain,
+  INumNamespace,
   Num,
 } from './types/num';
 
 // --- Pulse measurement utilities -------------------------------------------
 export {
-  type IPulseChain,
-  type IPulseNamespace,
+  IPulseChain,
+  IPulseNamespace,
   Pulse,
 } from './types/pulse';
 
 // --- Shift register utilities ----------------------------------------------
 export {
-  MSBFIRST,
-  LSBFIRST,
-  type IShiftReadChain,
-  type IShiftWriteChain,
-  type IShiftNamespace,
+  ShiftBitOrder,
+  IShiftReadChain,
+  IShiftWriteChain,
+  IShiftNamespace,
   Shift,
 } from './types/shift';
 
 // --- Random number utilities -----------------------------------------------
 export {
-  type IRandomNamespace,
+  IRandomNamespace,
   Random,
 } from './types/random';
 
 // --- Bus interfaces --------------------------------------------------------
 export {
   I2CStatus,
-  type I2CAddress,
-  type II2CBus,
-  type II2CDevice,
-  type II2CConfigBuilder,
-  type II2CDeviceAccessor,
-  type II2CReadBuilder,
-  type II2CWriteBuilder,
-  type II2CReadSource,
-  type II2CWriteTarget,
-  type II2CReadResult,
-  type II2CWriteResult,
-  type II2CResult,
-  createI2CDevice,
+  I2CAddress,
+  II2CBus,
+  IUninitializedI2CBus,
+  IOwnedI2CBus,
+  II2CDeviceAccessor,
+  ErrorPolicy as I2CErrorPolicy,
 } from './bus/i2c';
 
+// --- Peripheral enums ------------------------------------------------------
 export {
-  SPIClockPolarity,
-  SPIClockPhase,
+  BaudRate,
+  I2CSpeed,
+  SPIClock,
+  AnalogRef,
+} from './types/peripheral-enums';
+
+export {
   SPIBitOrder,
   SPIMode,
   SPIStatus,
-  type SPISettings,
-  type SPITransferOptions,
-  type ISPIWriteResult,
-  type ISPIReadResult,
-  type ISPITransferResult,
-  type ISPIFluentConfig,
-  type ISPIFluentWrite,
-  type ISPIFluentRead,
-  type ISPIFluentTransfer,
-  type ISPIFluentDevice,
-  type ISPIBus,
-  type ISPIDevice,
-  SPIError,
-  SPITimeoutError,
-  createSPIDevice,
+  SPISettings,
+  ISPIBus,
+  IUninitializedSPIBus,
+  IOwnedSPIBus,
+  ISPIDevice,
+  ErrorPolicy as SPIErrorPolicy,
   spiModeToCpolCpha,
   cpolCphaToSpiMode,
 } from './bus/spi';
@@ -148,60 +124,55 @@ export {
   UARTStopBits,
   UARTFlowControl,
   UARTStatus,
-  type UARTStatusInfo,
-  UARTError,
-  UARTBufferOverflowError,
-  UARTTimeoutError,
-  type IUARTReadResult,
-  type IUARTWriteResult,
-  type IUARTFluentConfig,
-  type IUARTFluentWrite,
-  type IUARTFluentRead,
-  type IUARTBus,
-  type ISerialPort,
-  type IDebugSerial,
-  type LogLevel,
+  UARTStatusInfo,
+  IUARTBus,
+  IUninitializedUARTBus,
+  IOwnedSerialPort,
+  ISerialPort,
+  IDebugSerial,
+  LogLevel,
+  ErrorPolicy as UARTErrorPolicy,
 } from './bus/uart';
 
 // --- Concurrency -----------------------------------------------------------
 export {
   TaskState,
   TaskPriority,
-  type TaskConfig,
-  type TaskCreateOptions,
-  type TaskStats,
-  type ITaskHandle,
-  type ITaskManager,
+  TaskConfig,
+  TaskCreateOptions,
+  TaskStats,
+  ITaskHandle,
+  ITaskManager,
 } from './concurrency/task';
 
 export {
-  type SchedulerConfig,
-  type SchedulerStats,
-  type IScheduler,
-  type TimerConfig,
-  type ITimer,
-  type ITimerManager,
+  SchedulerConfig,
+  SchedulerStats,
+  IScheduler,
+  TimerConfig,
+  ITimer,
+  ITimerManager,
 } from './concurrency/scheduler';
 
 export {
-  type LockCapabilities,
-  type IMutex,
-  type ISemaphore,
-  type IBinarySemaphore,
-  type ISpinlock,
-  type ICriticalSection,
-  type ILockFactory,
-  type IQueue,
-  type IQueueFactory,
-  type IEvent,
-  type IEventFactory,
+  LockCapabilities,
+  IMutex,
+  ISemaphore,
+  IBinarySemaphore,
+  ISpinlock,
+  ICriticalSection,
+  ILockFactory,
+  IQueue,
+  IQueueFactory,
+  IEvent,
+  IEventFactory,
 } from './concurrency/lock';
 
 // --- Memory ----------------------------------------------------------------
 export {
   MemoryRegion,
-  type MemoryOptions,
-  type MemoryDecorator,
+  MemoryOptions,
+  MemoryDecorator,
   getMemoryMeta,
   Static,
   ProgramMemory,
@@ -219,10 +190,10 @@ export {
 
 // --- Register-mapped structs -----------------------------------------------
 export {
-  type Bit,
-  type Bits,
-  type BitFieldMeta,
-  type RegisterClassMeta,
+  Bit,
+  Bits,
+  BitFieldMeta,
+  RegisterClassMeta,
   register,
   bits,
   getRegisterMeta,
@@ -230,59 +201,54 @@ export {
 } from './memory/register';
 
 export {
-  type FixedBuffer,
-  type CircularBuffer,
-  type ObjectPool,
+  FixedBuffer,
+  CircularBuffer,
+  ObjectPool,
 } from './memory/buffer';
 
 // --- Board -----------------------------------------------------------------
 export {
-  type ArchitectureIdentifier,
-  type MemorySpec,
-  type PinDefinition,
-  type PeripheralFunction,
-  type PinDefinitions,
-  type PeripheralInstance,
-  type ADCDefinition,
-  type DACDefinition,
-  type PWMDefinition,
-  type USBDefinition,
-  type WiFiDefinition,
-  type BluetoothDefinition,
-  type TouchDefinition,
-  type PeripheralDefinitions,
-  type FeatureFlags,
-  type BuildConfig,
-  type BoardDefinition,
+  ArchitectureIdentifier,
+  MemorySpec,
+  PinDefinition,
+  PeripheralFunction,
+  PinDefinitions,
+  PeripheralInstance,
+  ADCDefinition,
+  DACDefinition,
+  PWMDefinition,
+  USBDefinition,
+  WiFiDefinition,
+  BluetoothDefinition,
+  TouchDefinition,
+  PeripheralDefinitions,
+  FeatureFlags,
+  BuildConfig,
+  BoardDefinition,
 } from './board/types';
 
 // --- Board Definition Builder ----------------------------------------------
 export {
-  // Branded types
-  type PinNumber as BrandedPinNumber,
-  type GPIO,
-  pinNumber as createPinNumber,
+  GPIO,
   gpioNumber,
-  // Builders
   PinCapabilityBuilder,
   PinBuilder,
   PeripheralBuilder,
   BoardDefinitionBuilder,
-  // Validation
   validateBoardDefinition,
 } from './board/builder';
 
 // --- Config ----------------------------------------------------------------
 export {
-  type OutputFramework,
-  type OptimizationLevel,
-  type TypecodeOutputConfig,
-  type TypecodeConfig,
-  type ToolchainType,
-  type ArduinoCliOptions,
-  type TypecodeToolchainConfig,
-  type TypecodeTestConfig,
-  type TypecodeConsoleConfig,
+  OutputFramework,
+  OptimizationLevel,
+  TypecodeOutputConfig,
+  TypecodeConfig,
+  ToolchainType,
+  ArduinoCliOptions,
+  TypecodeToolchainConfig,
+  TypecodeTestConfig,
+  TypecodeConsoleConfig,
 } from './config';
 
 // --- Shared types (for CLI and framework packages) -------------------------

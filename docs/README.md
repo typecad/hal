@@ -57,7 +57,7 @@ npm install typecode
 // sketch.ts
 import { LED, delay, HIGH } from '@typecode';
 
-LED.config.output.initial(HIGH);
+LED.output(HIGH);
 
 while (true) {
   LED.toggle();
@@ -195,9 +195,6 @@ See the `examples/` directory for sample code:
 
 | Example | Description |
 |---------|-------------|
-| `02b-serial-fluent-config.ts` | Fluent serial configuration |
-| `02c-serial-fluent-read.ts` | Fluent serial read operations |
-| `02d-serial-fluent-write.ts` | Fluent serial write operations |
 | `12-native-serial.ts` | Native UART communication |
 
 ### I2C Examples
@@ -209,9 +206,6 @@ See the `examples/` directory for sample code:
 | `05c-i2c-multi-byte-write.ts` | Multi-byte I2C writes |
 | `05d-i2c-bus-scan.ts` | I2C bus scanning |
 | `05e-i2c-multiple-devices.ts` | Multiple I2C devices |
-| `05g-i2c-fluent-config.ts` | Fluent I2C configuration |
-| `05h-i2c-fluent-read.ts` | Fluent I2C read API |
-| `05i-i2c-fluent-write.ts` | Fluent I2C write API |
 | `16-i2c-register-shortcuts.ts` | I2C register shortcut methods |
 
 ### SPI Examples
@@ -222,9 +216,6 @@ See the `examples/` directory for sample code:
 | `06-spi-shift-register.ts` | SPI shift register |
 | `06b-spi-transactions.ts` | SPI transactions |
 | `06c-spi-shift-register.ts` | 74HC595 shift register |
-| `06d-spi-fluent-config.ts` | Fluent SPI configuration |
-| `06e-spi-fluent-device.ts` | Fluent SPI device operations |
-| `06f-spi-fluent-transfer.ts` | Fluent SPI transfer |
 
 ### Utilities & Advanced
 

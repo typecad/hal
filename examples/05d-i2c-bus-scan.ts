@@ -8,49 +8,53 @@
 import { I2C0, UART0, delay } from '@typecode';
 
 // Initialize UART0 for debug output
-UART0.config.baudRate(9600).begin();
+const serial = UART0.begin(9600);
 
 // Initialize I2C as master
-I2C0.config.begin();
+const sensor = I2C0.begin();
 
 // Check if a device responds at the given address
 function devicePresent(addr: number): boolean {
-  // Try to read 0 bytes from the device to check presence
+  // Try to read 1 byte from register 0 to check presence
   // This is a common I2C device detection technique
-  const result = I2C0.device(addr).read(0).from(0);
-  return result.ok;
+  try {
+    const data = sensor.device(addr).readBytes(0, 1);
+    return data.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 // Scan a range of addresses and report found devices
 function scanBus(): number {
   let devicesFound = 0;
   
-  UART0.println("Scanning I2C bus...");
-  UART0.println("     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F");
+  serial.println("Scanning I2C bus...");
+  serial.println("     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F");
   
   // Scan addresses 0x08 to 0x77 (valid 7-bit address range)
   // 0x00-0x07 and 0x78-0x7F are reserved
   for (let row = 0; row < 8; row++) {
     // Print row header (high nibble)
-    UART0.print(`${row.toString(16).toUpperCase()}0: `);
+    serial.print(`${row.toString(16).toUpperCase()}0: `);
     
     for (let col = 0; col < 16; col++) {
       const addr = row * 16 + col;
       
       // Skip reserved addresses
       if (addr < 0x08 || addr > 0x77) {
-        UART0.print("   ");
+        serial.print("   ");
         continue;
       }
       
       if (devicePresent(addr)) {
-        UART0.print(`${addr.toString(16).toUpperCase().padStart(2, '0')} `);
+        serial.print(`${addr.toString(16).toUpperCase().padStart(2, '0')} `);
         devicesFound++;
       } else {
-        UART0.print("-- ");
+        serial.print("-- ");
       }
     }
-    UART0.println("");
+    serial.println("");
   }
   
   return devicesFound;
@@ -70,16 +74,16 @@ function quickScan(): number[] {
 }
 
 // Initial scan at startup
-UART0.println("=== I2C Bus Scan ===");
+serial.println("=== I2C Bus Scan ===");
 const count = scanBus();
-UART0.println(`Found ${count} device(s)`);
+serial.println(`Found ${count} device(s)`);
 
 // Print known device addresses
-UART0.println("\nCommon I2C addresses:");
-UART0.println("0x3C-0x3D: OLED displays (SSD1306)");
-UART0.println("0x68: RTC (DS3231), IMU (MPU-6050)");
-UART0.println("0x76-0x77: BME280/BMP280");
-UART0.println("0x48-0x4F: I/O expanders, ADCs");
+serial.println("\nCommon I2C addresses:");
+serial.println("0x3C-0x3D: OLED displays (SSD1306)");
+serial.println("0x68: RTC (DS3231), IMU (MPU-6050)");
+serial.println("0x76-0x77: BME280/BMP280");
+serial.println("0x48-0x4F: I/O expanders, ADCs");
 
 // Periodic quick scan
 while (true) {
@@ -87,12 +91,12 @@ while (true) {
   
   const devices = quickScan();
   if (devices.length > 0) {
-    UART0.print("Devices at: ");
+    serial.print("Devices at: ");
     for (const addr of devices) {
-      UART0.print(`0x${addr.toString(16).toUpperCase()} `);
+      serial.print(`0x${addr.toString(16).toUpperCase()} `);
     }
-    UART0.println("");
+    serial.println("");
   } else {
-    UART0.println("No I2C devices found");
+    serial.println("No I2C devices found");
   }
 }

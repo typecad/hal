@@ -1,427 +1,377 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Pin type hierarchy
+// @typecode/core — Unified Pin Interface
+//
+// Single flattened interface with compile-time mode safety and capability
+// checking. All methods are visible in autocomplete, and invalid operations
+// are prevented at compile time.
+//
+// DESIGN PRINCIPLE: One obvious way to do each thing.
+//   - Configure: input(), inputPullUp(), output(initial?)
+//   - Act: set(value), setHigh(), setLow(), toggle(), pwm(duty)
+//   - Sense: read(), readAnalog(), readVoltage()
+//   - Events: onRising(), onFalling(), onChange(), offInterrupts()
 // ---------------------------------------------------------------------------
 
-import type { PinNumber, DigitalValue, AnalogValue } from './gpio';
-import { PinMode, InterruptMode } from './gpio';
+import type { DigitalValue, AnalogValue } from './gpio';
+import { PinMode } from './gpio';
 
 // ---------------------------------------------------------------------------
-// Base pin
+// Capability type for runtime introspection
 // ---------------------------------------------------------------------------
 
-/** Minimal contract shared by every pin. */
-export interface IPin {
-  /** Physical pin number on the package. */
-  readonly number: PinNumber;
-  /** GPIO / logical pin number (may differ from physical). */
-  readonly gpio: PinNumber;
-  /** Current pin mode. */
-  getMode(): PinMode;
-  /** Change pin mode. */
-  setMode(mode: PinMode): void;
-}
+/** Supported pin capabilities. */
+export type PinCapability = 'pwm' | 'analog' | 'interrupt' | 'touch' | 'pullUp' | 'pullDown';
 
 // ---------------------------------------------------------------------------
-// Pin Configuration (fluent API)
+// Branded types for mode safety
 // ---------------------------------------------------------------------------
 
-/** Output pin configuration - callable, with optional initial value. */
-export interface IOutputConfig {
-  /** Set pin as OUTPUT (no initial value). */
-  (): void;
-  /** Set pin as OUTPUT with initial value. */
-  initial(value: DigitalValue): void;
-}
+declare const PinModeBrand: unique symbol;
 
-/** Input pin configuration builder. */
-export interface IInputConfig {
-  /** Set pin as INPUT (floating). */
-  float(): void;
-  /** Set pin as INPUT_PULLUP. */
-  pullup(): void;
-  /** Set pin as INPUT_PULLDOWN (if supported). */
-  pulldown(): void;
-}
-
-/** Pin configuration namespace. */
-export interface IPinConfig {
-  /** Configure as output. */
-  readonly output: IOutputConfig;
-  /** Configure as input. */
-  readonly input: IInputConfig;
-}
-
-/** PWM output configuration - callable, with optional initial duty cycle. */
-export interface IPWMOutputConfig {
-  /** Set pin as PWM output (no initial value). */
-  (): void;
-  /** Set pin as PWM output with initial duty cycle (0-100 percent). */
-  initial(percent: number): void;
-}
-
-/** PWM pin configuration namespace. */
-export interface IPWMConfig extends IPinConfig {
-  /** Configure as PWM output. */
-  readonly pwm: IPWMOutputConfig;
-}
-
-/** Analog input configuration builder. */
-export interface IAnalogInputConfig {
-  /** Set pin as analog input. */
-  analog(): void;
-}
-
-/** Analog pin configuration namespace. */
-export interface IAnalogConfig {
-  /** Configure as analog input. */
-  readonly config: IAnalogInputConfig;
-}
+/** Pin branded with current mode for compile-time safety. */
+export type Pin<Mode extends PinMode = PinMode> = BasePin & {
+  readonly [PinModeBrand]: Mode;
+};
 
 // ---------------------------------------------------------------------------
-// Tone API (available on all digital output pins)
+// Tone Attachment
 // ---------------------------------------------------------------------------
 
 /** Returned by tone() to allow chaining .for() duration. */
 export interface IToneAttachment {
-  /** Set duration for the tone in milliseconds. */
   for(duration: number): void;
 }
 
 // ---------------------------------------------------------------------------
-// Digital
-// ---------------------------------------------------------------------------
-
-export interface IDigitalInput extends IPin {
-  read(): DigitalValue;
-  isHigh(): boolean;
-  isLow(): boolean;
-  waitForRising(timeout?: number): Promise<void>;
-  waitForFalling(timeout?: number): Promise<void>;
-}
-
-export interface IDigitalOutput extends IPin {
-  write(value: DigitalValue): void;
-  high(): void;
-  low(): void;
-  toggle(): void;
-  pulse(duration: number): void;
-  /** Play a tone at the specified frequency in Hz. */
-  tone(frequency: number): IToneAttachment;
-  /** Stop any playing tone. */
-  noTone(): void;
-}
-
-/**
- * A pin that can be switched between input and output at runtime.
- * Inherits both IDigitalInput and IDigitalOutput.
- */
-export interface IDigitalPin extends IDigitalInput, IDigitalOutput {
-  /** Pin configuration namespace. */
-  readonly config: IPinConfig;
-}
-
-// ---------------------------------------------------------------------------
-// Analog
-// ---------------------------------------------------------------------------
-
-export interface IAnalogInput extends IPin {
-  /** Pin configuration namespace. */
-  readonly config: IAnalogInputConfig;
-  read(): AnalogValue;
-  readVoltage(): number;
-  setReference(voltage: number): void;
-  getResolution(): number;
-}
-
-export interface IAnalogOutput extends IPin {
-  write(value: AnalogValue): void;
-  writeVoltage(voltage: number): void;
-  getResolution(): number;
-}
-
-// ---------------------------------------------------------------------------
-// PWM
-// ---------------------------------------------------------------------------
-
-export interface IPWMPin extends IDigitalPin {
-  /** Pin configuration namespace (extends base with pwm). */
-  readonly config: IPWMConfig;
-  /** Write a digital value **or** an analog duty-cycle value. */
-  write(value: DigitalValue | AnalogValue): void;
-  /** Set PWM duty cycle as percentage (0-100). Converts to resolution-specific value. */
-  pwm(percent: number): void;
-  /** Stop any playing tone (alias for noTone). */
-  stop(): void;
-  setFrequency(hz: number): void;
-  setDutyCycle(duty: number): void;
-  getFrequency(): number;
-  getResolution(): number;
-  attach(): void;
-  detach(): void;
-}
-
-// ---------------------------------------------------------------------------
-// Interrupt
+// Interrupt Types
 // ---------------------------------------------------------------------------
 
 export type InterruptHandler = () => void;
 
-/**
- * Returned by interrupt attachment methods to allow chaining debounce().
- * Ensures debounce can only be called after setting an interrupt handler.
- */
-export interface IInterruptAttachment {
-  /** Apply debounce delay (in milliseconds) to this interrupt. */
-  debounce(ms: number): void;
-}
-
-/**
- * Fluent interrupt attachment API.
- * Usage: D2.on.falling(() => LED.toggle()).debounce(50)
- */
-export interface IInterruptOn {
-  /** Trigger interrupt when pin goes from LOW to HIGH. */
-  rising(handler: InterruptHandler): IInterruptAttachment;
-  /** Trigger interrupt when pin goes from HIGH to LOW. */
-  falling(handler: InterruptHandler): IInterruptAttachment;
-  /** Trigger interrupt on any change. */
-  change(handler: InterruptHandler): IInterruptAttachment;
-  /** Trigger interrupt while pin is LOW (platform-specific). */
-  low?(handler: InterruptHandler): IInterruptAttachment;
-  /** Trigger interrupt while pin is HIGH (platform-specific). */
-  high?(handler: InterruptHandler): IInterruptAttachment;
-}
-
-/**
- * Fluent interrupt removal API.
- * Usage: D2.off.falling() or D2.off.all()
- */
-export interface IInterruptOff {
-  /** Remove rising-edge interrupt. */
-  rising(): void;
-  /** Remove falling-edge interrupt. */
-  falling(): void;
-  /** Remove change interrupt. */
-  change(): void;
-  /** Remove all interrupts on this pin. */
-  all(): void;
-}
-
-export interface IInterruptPin extends IPin {
-  /** Check if this pin has an interrupt attached. */
-  hasInterrupt(): boolean;
-  /** Fluent interrupt attachment: D2.on.falling(() => ...) */
-  readonly on: IInterruptOn;
-  /** Fluent interrupt removal: D2.off.all() */
-  readonly off: IInterruptOff;
+export interface InterruptOptions {
+  debounce?: number;
 }
 
 // ---------------------------------------------------------------------------
-// Touch (ESP32)
-// ---------------------------------------------------------------------------
-
-export interface ITouchPin extends IPin {
-  read(): number;
-  setThreshold(threshold: number): void;
-  attachTouchInterrupt(handler: () => void): void;
-}
-
-// ---------------------------------------------------------------------------
-// Extended ADC / DAC
-// ---------------------------------------------------------------------------
-
-export interface IADCPin extends IAnalogInput {
-  setAttenuation(db: number): void;
-  startContinuousSampling(): void;
-  stopContinuousSampling(): void;
-  readAveraged(samples: number): AnalogValue;
-}
-
-export interface IDACPin extends IAnalogOutput {
-  outputSine(frequency: number): void;
-  stopOutput(): void;
-  setChannel(channel: number): void;
-}
-
-// ---------------------------------------------------------------------------
-// Pin Groups (for parallel operations)
+// Base Unified Pin Interface
 // ---------------------------------------------------------------------------
 
 /**
- * A group of digital output pins that can be controlled together.
- * Useful for LED arrays, segment displays, or parallel data buses.
+ * Unified pin interface with all possible operations.
+ * Capability-specific methods are optional and type guarded.
+ *
+ * INTENT-BASED DESIGN:
+ *   Configure — one way to set mode:
+ *     pin.input() / pin.inputPullUp() / pin.output() / pin.output(initial)
+ *
+ *   Act — one way to change state:
+ *     pin.set(HIGH) / pin.set(LOW) / pin.toggle() / pin.pwm(duty)
+ *
+ *   Sense — one way to read:
+ *     pin.read() / pin.readAnalog() / pin.readVoltage()
+ *
+ *   Events — one way to handle interrupts:
+ *     pin.onRising(fn) / pin.onFalling(fn) / pin.offInterrupts()
  */
-export interface IPinGroup<T extends IDigitalPin = IDigitalPin> {
-  /** Name identifier for this group. */
-  readonly name: string;
-  /** Number of pins in the group. */
-  readonly count: number;
-  /** Individual pins in the group. */
-  readonly pins: readonly T[];
-  
-  // --- Bulk operations ---
-  /** Write the same value to all pins in the group. */
-  writeAll(value: DigitalValue): void;
-  /** Set all pins HIGH. */
-  allHigh(): void;
-  /** Set all pins LOW. */
-  allLow(): void;
-  /** Toggle all pins. */
-  allToggle(): void;
-  
-  // --- Pattern operations ---
-  /** Write a bit pattern to the group (LSB = first pin). */
-  writePattern(pattern: number): void;
-  /** Read current state as a bit pattern (LSB = first pin). */
-  readPattern(): number;
-  
-  // --- Iteration ---
-  /** Iterate over pins with index. */
-  forEach(callback: (pin: T, index: number) => void): void;
+export interface BasePin {
+  /** Physical pin number on the MCU package. */
+  readonly number: number;
+  /** GPIO / logical pin number. */
+  readonly gpio: number;
+  /** Capabilities supported by this pin. */
+  readonly capabilities: ReadonlySet<PinCapability>;
+
+  // -------------------------------------------------------------------------
+  // Digital I/O (all digital pins)
+  // -------------------------------------------------------------------------
+
+  /** Read current digital value. */
+  read(): DigitalValue;
+  /** Check if pin is HIGH. */
+  isHigh(): boolean;
+  /** Check if pin is LOW. */
+  isLow(): boolean;
+
+  /** Write digital value. Implicitly sets OUTPUT mode. */
+  write(value: DigitalValue): void;
+  /** Set pin HIGH. Implicitly sets OUTPUT mode. */
+  high(): void;
+  /** Set pin LOW. Implicitly sets OUTPUT mode. */
+  low(): void;
+  /** Toggle pin state. Implicitly sets OUTPUT mode. */
+  toggle(): void;
+  /** Pulse pin HIGH for duration ms. Implicitly sets OUTPUT mode. */
+  pulse(duration: number): void;
+
+  /** Play tone at specified frequency. */
+  tone(frequency: number): IToneAttachment;
+  /** Stop playing tone. */
+  noTone(): void;
+
+  // -------------------------------------------------------------------------
+  // Mode configuration
+  // -------------------------------------------------------------------------
+
+  /** Set as floating INPUT. */
+  input(): void;
+  /** Set as INPUT with internal pull-up. */
+  inputPullUp(): void;
+  /** Set as INPUT with internal pull-down (if supported). */
+  inputPullDown?(): void;
+  /** Set as OUTPUT, optionally with initial value. */
+  output(initial?: DigitalValue): void;
+  /** Set as OUTPUT in open drain mode. */
+  outputOpenDrain(initial?: DigitalValue): void;
+
+  // -------------------------------------------------------------------------
+  // Fluent mode conversion (mode-specific type safety)
+  // -------------------------------------------------------------------------
+
+  /** Return pin typed as OUTPUT mode — only write operations available. */
+  asOutput(initial?: DigitalValue): IOutputModePin;
+  /** Return pin typed as INPUT mode — only read operations available. */
+  asInput(): IInputModePin;
+  /** Return pin typed as INPUT_PULLUP mode — only read operations available. */
+  asInputPullUp(): IInputModePin;
+
+  // -------------------------------------------------------------------------
+  // Capability-based optional methods
+  // -------------------------------------------------------------------------
+
+  /** PWM output (only if pin has 'pwm' capability). */
+  pwm?(percent: number): void;
+  /** Get PWM frequency. */
+  getPwmFrequency?(): number;
+  /** Get PWM resolution in bits. */
+  getPwmResolution?(): number;
+
+  /** Analog input read (only if pin has 'analog' capability). */
+  readAnalog?(): AnalogValue;
+  /** Read analog voltage in volts. */
+  readVoltage?(): number;
+  /** Set ADC reference voltage. */
+  setAnalogReference?(voltage: number): void;
+  /** Get ADC resolution in bits. */
+  getAnalogResolution?(): number;
+
+  /** Attach interrupt on rising edge (only if pin has 'interrupt' capability). */
+  onRising?(handler: InterruptHandler, options?: InterruptOptions): void;
+  /** Attach interrupt on falling edge. */
+  onFalling?(handler: InterruptHandler, options?: InterruptOptions): void;
+  /** Attach interrupt on any state change. */
+  onChange?(handler: InterruptHandler, options?: InterruptOptions): void;
+  /** Remove all interrupt handlers. */
+  offInterrupts?(): void;
+
+  // -------------------------------------------------------------------------
+  // Wait operations
+  // -------------------------------------------------------------------------
+
+  /** Wait for rising edge with optional timeout. */
+  waitForRising(timeout?: number): Promise<void>;
+  /** Wait for falling edge with optional timeout. */
+  waitForFalling(timeout?: number): Promise<void>;
 }
 
-/**
- * A parallel port for reading/writing byte values across 8 pins.
- * Commonly used for LCD data buses, shift register interfaces, etc.
- */
-export interface IParallelPort {
-  /** Name identifier for this port. */
-  readonly name: string;
-  /** Data pins (typically 8 for a full byte). */
-  readonly pins: readonly IDigitalPin[];
-  /** Number of data pins. */
-  readonly width: number;
-  
-  // --- Byte operations ---
-  /** Write a byte value to the parallel port. */
-  writeByte(value: number): void;
-  /** Read a byte value from the parallel port. */
-  readByte(): number;
-  
-  // --- Nibble operations (4-bit) ---
-  /** Write low nibble (bits 0-3). */
-  writeLowNibble(value: number): void;
-  /** Write high nibble (bits 4-7). */
-  writeHighNibble(value: number): void;
-  /** Read low nibble. */
-  readLowNibble(): number;
-  /** Read high nibble. */
-  readHighNibble(): number;
+// ---------------------------------------------------------------------------
+// Mode-Restricted Pin Interfaces
+//
+// After calling asOutput() or asInput(), only the appropriate I/O methods
+// are available on the returned type. Mode-switching methods remain available
+// on all mode types so transitions are always possible.
+// ---------------------------------------------------------------------------
+
+/** Pin in OUTPUT mode — only write operations available. */
+export interface IOutputModePin {
+  /** Physical pin number on the MCU package. */
+  readonly number: number;
+  /** GPIO / logical pin number. */
+  readonly gpio: number;
+  /** Capabilities supported by this pin. */
+  readonly capabilities: ReadonlySet<PinCapability>;
+
+  // --- Write operations (output mode) --------------------------------------
+
+  /** Write digital value. */
+  write(value: DigitalValue): void;
+  /** Set pin HIGH. */
+  high(): void;
+  /** Set pin LOW. */
+  low(): void;
+  /** Toggle pin state. */
+  toggle(): void;
+  /** Pulse pin HIGH for duration ms. */
+  pulse(duration: number): void;
+  /** Play tone at specified frequency. */
+  tone(frequency: number): IToneAttachment;
+  /** Stop playing tone. */
+  noTone(): void;
+
+  // --- Capability-dependent output methods ---------------------------------
+
+  /** PWM output (only if pin has 'pwm' capability). */
+  pwm?(percent: number): void;
+  /** Get PWM frequency. */
+  getPwmFrequency?(): number;
+  /** Get PWM resolution in bits. */
+  getPwmResolution?(): number;
+
+  // --- Mode switching (always available) -----------------------------------
+
+  /** Switch to OUTPUT mode. Returns output-typed pin. */
+  asOutput(initial?: DigitalValue): IOutputModePin;
+  /** Switch to INPUT mode. Returns input-typed pin. */
+  asInput(): IInputModePin;
+  /** Switch to INPUT_PULLUP mode. Returns input-typed pin. */
+  asInputPullUp(): IInputModePin;
+
+  // --- Non-fluent mode setters (backward compat) --------------------------
+
+  /** Set as floating INPUT. */
+  input(): void;
+  /** Set as INPUT with internal pull-up. */
+  inputPullUp(): void;
+  /** Set as INPUT with internal pull-down (if supported). */
+  inputPullDown?(): void;
+  /** Set as OUTPUT, optionally with initial value. */
+  output(initial?: DigitalValue): void;
+  /** Set as OUTPUT in open drain mode. */
+  outputOpenDrain(initial?: DigitalValue): void;
 }
 
-/**
- * Factory options for creating a pin group.
- */
+/** Pin in INPUT mode — only read operations available. */
+export interface IInputModePin {
+  /** Physical pin number on the MCU package. */
+  readonly number: number;
+  /** GPIO / logical pin number. */
+  readonly gpio: number;
+  /** Capabilities supported by this pin. */
+  readonly capabilities: ReadonlySet<PinCapability>;
+
+  // --- Read operations (input mode) ----------------------------------------
+
+  /** Read current digital value. */
+  read(): DigitalValue;
+  /** Check if pin is HIGH. */
+  isHigh(): boolean;
+  /** Check if pin is LOW. */
+  isLow(): boolean;
+
+  // --- Capability-dependent input methods ----------------------------------
+
+  /** Analog input read (only if pin has 'analog' capability). */
+  readAnalog?(): AnalogValue;
+  /** Read analog voltage in volts. */
+  readVoltage?(): number;
+  /** Set ADC reference voltage. */
+  setAnalogReference?(voltage: number): void;
+  /** Get ADC resolution in bits. */
+  getAnalogResolution?(): number;
+
+  // --- Interrupts (input-mode only) ----------------------------------------
+
+  /** Attach interrupt on rising edge (only if pin has 'interrupt' capability). */
+  onRising?(handler: InterruptHandler, options?: InterruptOptions): void;
+  /** Attach interrupt on falling edge. */
+  onFalling?(handler: InterruptHandler, options?: InterruptOptions): void;
+  /** Attach interrupt on any state change. */
+  onChange?(handler: InterruptHandler, options?: InterruptOptions): void;
+  /** Remove all interrupt handlers. */
+  offInterrupts?(): void;
+
+  // --- Wait operations (input-mode only) -----------------------------------
+
+  /** Wait for rising edge with optional timeout. */
+  waitForRising(timeout?: number): Promise<void>;
+  /** Wait for falling edge with optional timeout. */
+  waitForFalling(timeout?: number): Promise<void>;
+
+  // --- Mode switching (always available) -----------------------------------
+
+  /** Switch to OUTPUT mode. Returns output-typed pin. */
+  asOutput(initial?: DigitalValue): IOutputModePin;
+  /** Switch to INPUT mode. Returns input-typed pin. */
+  asInput(): IInputModePin;
+  /** Switch to INPUT_PULLUP mode. Returns input-typed pin. */
+  asInputPullUp(): IInputModePin;
+
+  // --- Non-fluent mode setters (backward compat) --------------------------
+
+  /** Set as floating INPUT. */
+  input(): void;
+  /** Set as INPUT with internal pull-up. */
+  inputPullUp(): void;
+  /** Set as INPUT with internal pull-down (if supported). */
+  inputPullDown?(): void;
+  /** Set as OUTPUT, optionally with initial value. */
+  output(initial?: DigitalValue): void;
+  /** Set as OUTPUT in open drain mode. */
+  outputOpenDrain(initial?: DigitalValue): void;
+}
+
+// ---------------------------------------------------------------------------
+// Type Guards and Utilities
+// ---------------------------------------------------------------------------
+
+/** Type guard for PWM capable pins. */
+export function isPwmPin(pin: BasePin): pin is BasePin & { pwm: NonNullable<BasePin['pwm']> } {
+  return pin.capabilities.has('pwm');
+}
+
+/** Type guard for analog input capable pins. */
+export function isAnalogPin(pin: BasePin): pin is BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> } {
+  return pin.capabilities.has('analog');
+}
+
+/** Type guard for interrupt capable pins. */
+export function isInterruptPin(pin: BasePin): pin is BasePin & { onRising: NonNullable<BasePin['onRising']> } {
+  return pin.capabilities.has('interrupt');
+}
+
+/** Assert pin supports PWM, throws at runtime if not. */
+export function assertPwm(pin: BasePin, message?: string): asserts pin is BasePin & { pwm: NonNullable<BasePin['pwm']> } {
+  if (!isPwmPin(pin)) {
+    throw new Error(message ?? `Pin ${pin.number} does not support PWM`);
+  }
+}
+
+/** Assert pin supports analog input, throws at runtime if not. */
+export function assertAnalog(pin: BasePin, message?: string): asserts pin is BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> } {
+  if (!isAnalogPin(pin)) {
+    throw new Error(message ?? `Pin ${pin.number} does not support analog input`);
+  }
+}
+
+/** Assert pin supports interrupts, throws at runtime if not. */
+export function assertInterrupt(pin: BasePin, message?: string): asserts pin is BasePin & { onRising: NonNullable<BasePin['onRising']> } {
+  if (!isInterruptPin(pin)) {
+    throw new Error(message ?? `Pin ${pin.number} does not support interrupts`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pin Groups
+// ---------------------------------------------------------------------------
+
+export type { IPinGroup, IParallelPort } from './gpio';
+
 export interface IPinGroupOptions {
-  /** Optional name for the group. */
   name?: string;
 }
 
-/**
- * Create a pin group for bulk operations.
- * @param pins Array of digital pins to group together.
- * @param options Optional configuration.
- */
-export declare function createPinGroup<T extends IDigitalPin>(
-  pins: T[],
-  options?: IPinGroupOptions
-): IPinGroup<T>;
-
-/**
- * Create a parallel port from an array of pins.
- * @param pins Array of pins (typically 8 for full byte, or 4 for nibble).
- * @param name Optional name for the port.
- */
-export declare function createParallelPort(
-  pins: IDigitalPin[],
-  name?: string
-): IParallelPort;
-
 // ---------------------------------------------------------------------------
-// Pin Capability Validation (Compile-time utilities)
+// Legacy Type Aliases (for backward compatibility during transition)
 // ---------------------------------------------------------------------------
 
-/**
- * Type guard to check if a pin supports PWM output.
- * Accepts unknown for flexibility with runtime validation.
- * Usage: if (isPWMPin(pin)) { pin.pwm(50); }
- */
-export declare function isPWMPin(pin: unknown): pin is IPWMPin;
-
-/**
- * Type guard to check if a pin supports analog input.
- * Accepts unknown for flexibility with runtime validation.
- * Usage: if (isAnalogPin(pin)) { const val = pin.read(); }
- */
-export declare function isAnalogPin(pin: unknown): pin is IAnalogInput;
-
-/**
- * Type guard to check if a pin supports hardware interrupts.
- * Accepts unknown for flexibility with runtime validation.
- * Usage: if (isInterruptPin(pin)) { pin.on.falling(handler); }
- */
-export declare function isInterruptPin(pin: unknown): pin is IInterruptPin;
-
-/**
- * Type guard to check if a pin is a digital I/O pin.
- * Accepts unknown for flexibility with runtime validation.
- * Usage: if (isDigitalPin(pin)) { pin.high(); }
- */
-export declare function isDigitalPin(pin: unknown): pin is IDigitalPin;
-
-/**
- * Utility type to extract only PWM-capable pins from a union.
- * Usage: type PWMPins = FilterPWM<typeof D9 | typeof D10>;
- */
-export type FilterPWM<T> = T extends IPWMPin ? T : never;
-
-/**
- * Utility type to extract only analog-capable pins from a union.
- * Usage: type AnalogPins = FilterAnalog<typeof A0 | typeof A1>;
- */
-export type FilterAnalog<T> = T extends IAnalogInput ? T : never;
-
-/**
- * Utility type to extract only interrupt-capable pins from a union.
- * Usage: type InterruptPins = FilterInterrupt<typeof D2 | typeof D3>;
- */
-export type FilterInterrupt<T> = T extends IInterruptPin ? T : never;
-
-/**
- * Assert that a pin supports PWM. Throws at runtime if not.
- * Useful for fail-fast validation in setup code.
- * Usage: assertPWM(D9); D9.pwm(50);
- */
-export declare function assertPWM(pin: IPin, message?: string): asserts pin is IPWMPin;
-
-/**
- * Assert that a pin supports analog input. Throws at runtime if not.
- * Useful for fail-fast validation in setup code.
- * Usage: assertAnalog(A0); const val = A0.read();
- */
-export declare function assertAnalog(pin: IPin, message?: string): asserts pin is IAnalogInput;
-
-/**
- * Assert that a pin supports interrupts. Throws at runtime if not.
- * Useful for fail-fast validation in setup code.
- * Usage: assertInterrupt(D2); D2.on.falling(handler);
- */
-export declare function assertInterrupt(pin: IPin, message?: string): asserts pin is IInterruptPin;
-
-/**
- * Require a pin to have specific capabilities at compile time.
- * Usage: function fadeLed(pin: RequirePWM<IDigitalPin>) { pin.pwm(50); }
- */
-export type RequirePWM<T extends IPin> = T & IPWMPin;
-
-/**
- * Require a pin to support analog input at compile time.
- * Usage: function readSensor(pin: RequireAnalog<IPin>) { return pin.read(); }
- */
-export type RequireAnalog<T extends IPin> = T & IAnalogInput;
-
-/**
- * Require a pin to support interrupts at compile time.
- * Usage: function attachHandler(pin: RequireInterrupt<IPin>) { pin.on.falling(fn); }
- */
-export type RequireInterrupt<T extends IPin> = T & IInterruptPin;
+/** @deprecated Use Pin instead */
+export type IPin = BasePin;
+/** @deprecated Use Pin instead */
+export type IDigitalPin = BasePin;
+/** @deprecated Use Pin instead */
+export type IPWMPin = BasePin & { pwm: NonNullable<BasePin['pwm']> };
+/** @deprecated Use Pin instead */
+export type IAnalogInput = BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> };
+/** @deprecated Use Pin instead */
+export type IAnalogPin = BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> };
+/** @deprecated Use Pin instead */
+export type IInterruptPin = BasePin & { onRising: NonNullable<BasePin['onRising']> };

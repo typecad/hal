@@ -21,28 +21,28 @@ const BME280_REG_CTRL_MEAS = 0xF4;
 const BME280_REG_TEMP_MSB = 0xFA;
 
 // Initialize serial and I2C
-UART0.config.baudRate(9600).begin();
-I2C0.config.begin();
+const serial = UART0.begin(9600);
+const sensor = I2C0.begin();
 
 // Enable debug output for I2C errors
-I2C0.debugOnError = true;
+sensor.debugOnError = true;
 
 // Read device ID to verify connection
-const device = I2C0.device(BME280_ADDR);
+const device = sensor.device(BME280_ADDR);
 const chipId = device.readByte(BME280_REG_ID);
 
-UART0.print("BME280 Chip ID: 0x");
-UART0.println(chipId.toString(16));
+serial.print("BME280 Chip ID: 0x");
+serial.println(chipId.toString(16));
 
 if (chipId !== 0x58) {
-  UART0.println("BME280 not found! Check wiring and address.");
+  serial.println("BME280 not found! Check wiring and address.");
 }
 
 // Configure sensor for normal mode
 device.writeByte(BME280_REG_CTRL_MEAS, 0x27);
 
-UART0.println("Starting temperature readings...");
-UART0.println("-------------------");
+serial.println("Starting temperature readings...");
+serial.println("-------------------");
 
 while (true) {
   // Read 3 bytes of temperature data using the shortcut
@@ -54,9 +54,9 @@ while (true) {
   // Approximate Celsius (full compensation requires calibration data)
   const tempC = rawTemp / 5120.0;
   
-  UART0.print("Temperature: ");
-  UART0.print(tempC);
-  UART0.println(" C");
+  serial.print("Temperature: ");
+  serial.print(tempC);
+  serial.println(" C");
   
   delay(1000);
 }

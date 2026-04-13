@@ -158,6 +158,15 @@ interface EmitterOptions {
 // Maps module specifier -> (simple class name -> fully qualified name)
 const _arduinoClassNameCache = new Map<string, Map<string, string>>();
 
+// Module-level state for snprintf prelude accumulation during statement rendering.
+// Set by appendRenderedStatement() before calling renderStatement() for the generic
+// fallback path, and consumed by renderExpression() when encountering string_concat
+// or template_string expressions.
+let _pendingSnprintfLines: string[] = [];
+let _currentScopeState: EmissionScopeState | undefined;
+let _currentPointerVarTypes: Map<string, string> | undefined;
+let _currentKnownFunctionReturnTypes: Map<string, string> | undefined;
+
 /**
  * Build a mapping from simple class names to fully qualified names (with namespaces)
  * for all Arduino library imports in the program.
@@ -415,7 +424,23 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       return `(${renderExpression(expr.condition, exprTransformer, strategy)} ? ${renderExpression(expr.whenTrue, exprTransformer, strategy)} : ${renderExpression(expr.whenFalse, exprTransformer, strategy)})`;
 
     case "string_concat": {
-      // Build a String concatenation chain
+      // When snprintf mode is active and we're in a statement rendering context,
+      // build snprintf buffer instead of String() concatenation
+      if (strategy.useSnprintfForStrings() && _currentScopeState) {
+        const snprintfRender = buildSnprintfRenderResult(
+          expr, strategy, _currentScopeState, _currentPointerVarTypes, _currentKnownFunctionReturnTypes,
+        );
+        if (snprintfRender) {
+          const bufferName = `__typecode_str_${++_currentScopeState.nextSnprintfTempId}`;
+          _pendingSnprintfLines.push(
+            ...snprintfRender.preludeLines,
+            `char ${bufferName}[${snprintfRender.estimatedLength}];`,
+            `snprintf(${bufferName}, sizeof(${bufferName}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
+          );
+          return bufferName;
+        }
+      }
+      // Fallback: Build a String concatenation chain
       const renderedParts = expr.parts.map(part => {
         const rendered = renderExpression(part, exprTransformer, strategy);
         // Wrap non-string expressions in String() constructor for concatenation
@@ -433,7 +458,22 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
     }
 
     case "template_string": {
-      // Wrap the expression in String() to convert to string
+      // When snprintf mode is active and we're in a statement rendering context,
+      // build snprintf buffer for single interpolation
+      if (strategy.useSnprintfForStrings() && _currentScopeState) {
+        const arg = inferSnprintfArg(expr.expression, strategy, _currentScopeState, _currentPointerVarTypes, _currentKnownFunctionReturnTypes);
+        if (arg) {
+          const bufferName = `__typecode_str_${++_currentScopeState.nextSnprintfTempId}`;
+          const estimatedLength = Math.max(arg.estimatedLength + 1, 16);
+          _pendingSnprintfLines.push(
+            ...arg.preludeLines,
+            `char ${bufferName}[${estimatedLength}];`,
+            `snprintf(${bufferName}, sizeof(${bufferName}), "${arg.format}", ${arg.arg});`,
+          );
+          return bufferName;
+        }
+      }
+      // Fallback: Wrap the expression in String() to convert to string
       return `String(${renderExpression(expr.expression, exprTransformer, strategy)})`;
     }
     case "array":
@@ -718,6 +758,7 @@ function inferSnprintfArg(
     case "binary":
     case "unary":
     case "ternary":
+    case "typecode-call":
       return { format: "%d", arg: renderExpression(expr, undefined, strategy), estimatedLength: 12, preludeLines: [] };
     default:
       return undefined;
@@ -769,7 +810,7 @@ function shouldUseSnprintfForArduinoString(
   statement: VariableDeclarationIR | AssignmentIR,
   strategy: PlatformStrategy,
 ): boolean {
-  if (strategy.id !== "arduino") {
+  if (!strategy.useSnprintfForStrings()) {
     return false;
   }
 
@@ -778,7 +819,29 @@ function shouldUseSnprintfForArduinoString(
 }
 
 function statementNeedsSnprintf(statement: StatementIR, strategy: PlatformStrategy): boolean {
-  if (statement.kind === "var_decl" && shouldUseSnprintfForArduinoString(statement, strategy)) {
+  if (!strategy.useSnprintfForStrings()) {
+    return false;
+  }
+
+  // var_decl with string_concat initializer
+  if (statement.kind === "var_decl" && statement.initializer?.kind === "string_concat") {
+    return true;
+  }
+
+  // assign with string_concat value
+  if (statement.kind === "assign" && statement.value?.kind === "string_concat") {
+    return true;
+  }
+
+  // Any call or typecode-call with string_concat arguments
+  if ((statement.kind === "call" || statement.kind === "typecode-call") && statement.args.length > 0) {
+    if (statement.args.some(arg => arg.kind === "string_concat")) {
+      return true;
+    }
+  }
+
+  // return with string_concat value
+  if (statement.kind === "return" && statement.value?.kind === "string_concat") {
     return true;
   }
 
@@ -1482,9 +1545,38 @@ function transformConsoleCall(
   callee: string,
   args: ExpressionIR[],
   strategy: PlatformStrategy,
-  forHeader: boolean
+  forHeader: boolean,
+  scopeState?: EmissionScopeState,
+  pointerVarTypes?: Map<string, string>,
+  knownFunctionReturnTypes?: Map<string, string>,
 ): string {
   const method = getConsoleMethod(callee);
+  
+  // For Arduino, check if any argument is a string_concat that should use snprintf
+  if (strategy.id === "arduino" && args.length > 0) {
+    const firstArg = args[0];
+    if (firstArg.kind === "string_concat" && scopeState) {
+      const snprintfRender = buildSnprintfRenderResult(
+        firstArg,
+        strategy,
+        scopeState,
+        pointerVarTypes,
+        knownFunctionReturnTypes,
+      );
+
+      if (snprintfRender) {
+        // Generate a temporary buffer for snprintf
+        const bufferName = `__typecode_println_${++scopeState.nextSnprintfTempId}`;
+        const prelude = snprintfRender.preludeLines.length > 0
+          ? snprintfRender.preludeLines.join(" ") + " "
+          : "";
+        const snprintfCall = `char ${bufferName}[${snprintfRender.estimatedLength}]; ${prelude}snprintf(${bufferName}, sizeof(${bufferName}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""})`;
+        return strategy.transformConsoleCall(method, snprintfCall, forHeader);
+      }
+    }
+  }
+  
+  // Fallback to regular rendering
   const renderedArgs = args.map((arg) => renderExpression(arg, undefined, strategy)).join(", ");
   return strategy.transformConsoleCall(method, renderedArgs, forHeader);
 }
@@ -1529,11 +1621,11 @@ function renderStatement(
     // Handle typecode-call statements (from fluent chains like UART0.config.baudRate(115200).begin())
     const renderA = (e: ExpressionIR) => renderExpression(e, undefined, strategy);
     const translated = strategy.tryRenderTypecodeCall(
-      statement.receiver, 
-      statement.receiverKind, 
-      statement.method, 
-      statement.args, 
-      renderA, 
+      statement.receiver,
+      statement.receiverKind,
+      statement.method,
+      statement.args,
+      renderA,
       _emitBoardConstants,
       (statement as any).interruptMode
     );
@@ -1541,7 +1633,7 @@ function renderStatement(
       return forHeader ? translated : `${translated};`;
     }
     // Fallback: render as plain method call
-    return forHeader 
+    return forHeader
       ? `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")})`
       : `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")});`;
   }
@@ -2117,6 +2209,119 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       }
     }
 
+    // Handle console calls with snprintf for Arduino
+    if (statement.kind === "call" && isConsoleCall(statement.callee) && strategy.useSnprintfForStrings() && statement.args.length > 0) {
+      const firstArg = statement.args[0];
+      if (firstArg.kind === "string_concat") {
+        const snprintfRender = buildSnprintfRenderResult(
+          firstArg,
+          strategy,
+          scopeState,
+          pointerVarTypes,
+          knownFunctionReturnTypes,
+        );
+
+        if (snprintfRender) {
+          const bufferName = `__typecode_println_${++scopeState.nextSnprintfTempId}`;
+          // Emit prelude code (e.g., dtostrf for floats)
+          for (const preludeLine of snprintfRender.preludeLines) {
+            appendSourceLine(`${indent}${preludeLine}`, {
+              tsSpan: statement.sourceSpan,
+              nodeKind: statement.kind,
+            });
+          }
+          // Emit buffer declaration
+          appendSourceLine(
+            `${indent}char ${bufferName}[${snprintfRender.estimatedLength}];`,
+            {
+              tsSpan: statement.sourceSpan,
+              nodeKind: statement.kind,
+            },
+          );
+          // Emit snprintf call
+          appendSourceLine(
+            `${indent}snprintf(${bufferName}, sizeof(${bufferName}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
+            {
+              tsSpan: statement.sourceSpan,
+              nodeKind: statement.kind,
+            },
+          );
+          // Emit Serial.println call
+          const method = getConsoleMethod(statement.callee);
+          const serialCall = strategy.transformConsoleCall(method, bufferName, false);
+          appendSourceLine(`${indent}${serialCall}`, {
+            tsSpan: statement.sourceSpan,
+            nodeKind: statement.kind,
+          });
+          emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+          return;
+        }
+      }
+    }
+
+    // Handle typecode-call for serial println/print with snprintf for Arduino
+    if (statement.kind === "typecode-call" && strategy.useSnprintfForStrings() && statement.args.length > 0) {
+      const isSerialPrint = (statement.method === "println" || statement.method === "print") &&
+        (statement.receiver === "UART0" || statement.receiver === "Serial" ||
+         statement.receiver.startsWith("UART") || statement.receiver.startsWith("Serial"));
+      
+      if (isSerialPrint) {
+        const firstArg = statement.args[0];
+        if (firstArg.kind === "string_concat") {
+          const snprintfRender = buildSnprintfRenderResult(
+            firstArg,
+            strategy,
+            scopeState,
+            pointerVarTypes,
+            knownFunctionReturnTypes,
+          );
+
+          if (snprintfRender) {
+            const bufferName = `__typecode_println_${++scopeState.nextSnprintfTempId}`;
+            // Emit prelude code (e.g., dtostrf for floats)
+            for (const preludeLine of snprintfRender.preludeLines) {
+              appendSourceLine(`${indent}${preludeLine}`, {
+                tsSpan: statement.sourceSpan,
+                nodeKind: statement.kind,
+              });
+            }
+            // Emit buffer declaration
+            appendSourceLine(
+              `${indent}char ${bufferName}[${snprintfRender.estimatedLength}];`,
+              {
+                tsSpan: statement.sourceSpan,
+                nodeKind: statement.kind,
+              },
+            );
+            // Emit snprintf call
+            appendSourceLine(
+              `${indent}snprintf(${bufferName}, sizeof(${bufferName}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
+              {
+                tsSpan: statement.sourceSpan,
+                nodeKind: statement.kind,
+              },
+            );
+            // Emit Serial.println/print call
+            const serialInstance = statement.receiver.startsWith("UART")
+              ? statement.receiver.slice(4) === "0" ? "Serial" : `Serial${statement.receiver.slice(4)}`
+              : statement.receiver.startsWith("Serial")
+                ? statement.receiver
+                : "Serial";
+            const serialMethod = statement.method;
+            appendSourceLine(
+              `${indent}${serialInstance}.${serialMethod}(${bufferName});`,
+              {
+                tsSpan: statement.sourceSpan,
+                nodeKind: statement.kind,
+              },
+            );
+            emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+            return;
+          }
+        }
+      }
+    }
+
     if (statement.kind === "while") {
       appendSourceLine(`${indent}${renderStatement(statement, false, strategy, pointerVarTypes, undefined, knownFunctionReturnTypes)}`, {
         tsSpan: statement.sourceSpan,
@@ -2326,7 +2531,29 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       return;
     }
 
-    appendSourceLine(`${indent}${renderStatement(statement, false, strategy, pointerVarTypes, fixPointerFieldAccess, knownFunctionReturnTypes)}`, {
+    // Set module-level state for snprintf prelude accumulation during renderStatement
+    _pendingSnprintfLines = [];
+    _currentScopeState = scopeState;
+    _currentPointerVarTypes = pointerVarTypes;
+    _currentKnownFunctionReturnTypes = knownFunctionReturnTypes;
+
+    const rendered = renderStatement(statement, false, strategy, pointerVarTypes, fixPointerFieldAccess, knownFunctionReturnTypes);
+
+    // Emit any accumulated snprintf prelude lines before the statement
+    for (const preludeLine of _pendingSnprintfLines) {
+      appendSourceLine(`${indent}${preludeLine}`, {
+        tsSpan: statement.sourceSpan,
+        nodeKind: statement.kind,
+      });
+    }
+
+    // Clear module-level state
+    _pendingSnprintfLines = [];
+    _currentScopeState = undefined;
+    _currentPointerVarTypes = undefined;
+    _currentKnownFunctionReturnTypes = undefined;
+
+    appendSourceLine(`${indent}${rendered}`, {
       tsSpan: statement.sourceSpan,
       nodeKind: statement.kind,
     });
@@ -2373,7 +2600,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   if (programAnalysis.hasStdMathCalls) {
     includes.push(strategy.mathHeader());
   }
-  const needsSnprintf = strategy.id === "arduino" && (
+  const needsSnprintf = strategy.useSnprintfForStrings() && (
     program.topLevelStatements.some((statement) => statementNeedsSnprintf(statement, strategy)) ||
     program.functions.some((fn) => fn.statements.some((statement) => statementNeedsSnprintf(statement, strategy))) ||
     program.classes.some((classDef) =>

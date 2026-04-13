@@ -68,7 +68,7 @@ This demo blinks the built-in LED on pin 13 and prints to serial:
 ```typescript
 import { LED, delay, HIGH } from '@typecode';
 
-LED.config.output.initial(HIGH);
+LED.output(HIGH);
 
 while (true) {
   LED.toggle();

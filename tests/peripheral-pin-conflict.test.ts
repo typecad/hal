@@ -9,8 +9,8 @@ describe('Peripheral Pin Conflict Detection', () => {
   it('generates warning when I2C pin is used as GPIO while I2C is active', () => {
     const result = transpile(`
       import { I2C0, A4 } from '@typecode/board-arduino-uno';
-      I2C0.initialize();
-      A4.config.output();
+      I2C0.begin();
+      A4.output();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -26,8 +26,8 @@ describe('Peripheral Pin Conflict Detection', () => {
   it('generates warning when I2C SCL pin is used as GPIO', () => {
     const result = transpile(`
       import { I2C0, A5 } from '@typecode/board-arduino-uno';
-      I2C0.initialize();
-      A5.config.output();
+      I2C0.begin();
+      A5.output();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -39,10 +39,27 @@ describe('Peripheral Pin Conflict Detection', () => {
     expect(conflictWarnings[0].message).toContain('SCL');
   });
 
+  it('generates warning when I2C alias SDA is used as GPIO while I2C is active', () => {
+    const result = transpile(`
+      import { I2C0, SDA } from '@typecode/board-arduino-uno';
+      I2C0.begin();
+      SDA.output();
+    `, { target: 'arduino' });
+
+    const conflictWarnings = result.diagnostics.filter(
+      d => d.code === 'peripheral-pin-conflict'
+    );
+
+    expect(conflictWarnings.length).toBeGreaterThan(0);
+    expect(conflictWarnings[0].message).toContain('SDA');
+    expect(conflictWarnings[0].message).toContain('A4');
+    expect(conflictWarnings[0].message).toContain('I2C0');
+  });
+
   it('does not generate warning when I2C pin is used without I2C active', () => {
     const result = transpile(`
       import { A4 } from '@typecode/board-arduino-uno';
-      A4.config.output();
+      A4.output();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -55,8 +72,8 @@ describe('Peripheral Pin Conflict Detection', () => {
   it('generates warning when SPI pin is used as GPIO while SPI is active', () => {
     const result = transpile(`
       import { SPI0, D11 } from '@typecode/board-arduino-uno';
-      SPI0.initialize();
-      D11.config.output();
+      SPI0.begin();
+      D11.output();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -73,7 +90,7 @@ describe('Peripheral Pin Conflict Detection', () => {
     const result = transpile(`
       import { Serial, D1 } from '@typecode/board-arduino-uno';
       Serial.begin(9600);
-      D1.config.output();
+      D1.output();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(

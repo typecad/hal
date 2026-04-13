@@ -38,7 +38,7 @@ Import pins, peripherals, and utilities from the virtual `@typecode` specifier â
 ```typescript
 import { LED, delay, HIGH } from '@typecode';
 
-LED.config.output.initial(HIGH);
+LED.output(HIGH);
 
 while (true) {
   LED.toggle();
@@ -78,6 +78,23 @@ declare module '@typecode' {
 ```
 
 TypeScript's language server discovers this file automatically, resolving the `@typecode` virtual import without any `tsconfig.json` changes. The file is regenerated whenever the transpiler runs, keeping it in sync if you change boards.
+
+### 5. Board-aware safety
+
+TypeCode uses your configured board definition during transpilation, so it can warn about hardware mistakes before you flash code:
+
+- `unsafe-pin-usage`: using pins marked risky on the current board, such as `D0` and `D1` on Uno while `UART0` is in play
+- `peripheral-pin-conflict`: reusing pins that belong to an enabled peripheral, such as `A4`/`A5` for I2C or `D11`/`D12`/`D13` for SPI
+- `pulldown-not-supported`: requesting hardware features the board does not have
+- suspicious peripheral units: values that look like `kHz` or UART baud values passed where `Hz` are expected
+
+On Arduino Uno specifically, keep these constraints in mind early:
+
+- `D0` / `D1`: UART0 RX/TX
+- `A4` / `A5`: I2C0 SDA/SCL
+- `D11` / `D12` / `D13`: SPI0 MOSI/MISO/SCK
+
+The intent is not to mimic Arduino's API surface. TypeCode leans on board metadata and static analysis so the editor and transpiler can explain conflicts before they become runtime debugging sessions.
 
 ---
 

@@ -1,12 +1,11 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Shift register utilities (shiftIn, shiftOut)
+// @typecode/core — Shift register utilities
 // ---------------------------------------------------------------------------
 
 import type { IPin } from './pin';
 
-/** Bit order constants */
-export const MSBFIRST = 1;
-export const LSBFIRST = 0;
+/** Bit transmission order */
+export type ShiftBitOrder = 'msb' | 'lsb';
 
 /**
  * Chainable shift read builder.
@@ -36,30 +35,28 @@ export interface IShiftWriteChain {
  * Shift register namespace with both direct and fluent APIs.
  */
 export interface IShiftNamespace {
-  // --- Direct functions (Arduino-compatible) ---
-  
+  // --- Direct functions ---
+
   /**
    * Shift data in from a pin.
-   * Maps to Arduino `shiftIn()`.
    */
-  in(dataPin: IPin, clockPin: IPin, bitOrder: number): number;
-  
+  in(dataPin: IPin, clockPin: IPin, bitOrder: ShiftBitOrder): number;
+
   /**
    * Shift data out to a pin.
-   * Maps to Arduino `shiftOut()`.
    */
-  out(dataPin: IPin, clockPin: IPin, bitOrder: number, value: number): void;
-  
+  out(dataPin: IPin, clockPin: IPin, bitOrder: ShiftBitOrder, value: number): void;
+
   // --- Fluent builders ---
-  
+
   /** Start a fluent shift read chain */
   read(dataPin: IPin): IShiftReadChain;
-  
+
   /** Start a fluent shift write chain */
   write(dataPin: IPin, value: number): IShiftWriteChain;
 }
 
-/** Stub for type checking. The transpiler replaces these with Arduino built-ins. */
+/** Stub for type checking. The transpiler replaces these with built-ins. */
 declare const Shift: IShiftNamespace;
 
 export { Shift };

@@ -25,7 +25,7 @@ Digital pins can be configured as inputs or outputs and read/write HIGH or LOW v
 import { LED, HIGH, LOW } from '@typecode';
 
 // Configure LED pin as output, starting HIGH
-LED.config.output.initial(HIGH);
+LED.output(HIGH);
 
 while (true) {
   LED.toggle();  // Switch between HIGH and LOW
@@ -39,9 +39,9 @@ while (true) {
 import { D2, LED } from '@typecode';
 
 // Configure button pin with internal pull-up resistor
-D2.config.input.pullup();
+D2.inputPullUp();
 
-LED.config.output();
+LED.output();
 
 while (true) {
   if (D2.read() === LOW) {
@@ -63,11 +63,11 @@ Analog pins read continuous voltage values (0-1023 on 10-bit ADC).
 ```typescript
 import { A0, UART0, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
+UART0.begin(9600);
 
 while (true) {
-  const value = A0.read();  // 0-1023
-  UART0.write.line(value.toString());
+  const value = A0.readAnalog();  // 0-1023 on Uno
+  UART0.println(value.toString());
   delay(500);
 }
 ```
@@ -84,13 +84,13 @@ PWM pins can output analog-like values by varying duty cycle (0-255).
 import { D9, delay, LOW } from '@typecode';
 
 // D9 must be a PWM-capable pin
-D9.config.output.initial(LOW);
+D9.output(LOW);
 
 let brightness = 0;
 let step = 5;
 
 while (true) {
-  D9.write(brightness);  // 0-255
+  D9.pwm(brightness / 2.55);  // convert 0-255 into 0-100 percent
   brightness += step;
   
   if (brightness <= 0 || brightness >= 255) {
@@ -99,6 +99,25 @@ while (true) {
   delay(30);
 }
 ```
+
+### PWM Duty Cycle
+
+```typescript
+import { D9 } from '@typecode';
+
+// Set PWM to 50% duty cycle
+D9.pwm(50);
+```
+
+### Shared PWM Timers
+
+PWM outputs are not always independent. On Uno, these pins share hardware timers:
+
+- `D5` and `D6` share `timer0`
+- `D9` and `D10` share `timer1`
+- `D3` and `D11` share `timer2`
+
+TypeCode now emits an informational diagnostic when your program uses multiple PWM pins from the same timer group. That is not automatically wrong, but it matters whenever the target framework or board ties PWM configuration to timer-wide state.
 
 ---
 
@@ -111,8 +130,8 @@ UART provides serial communication for debugging and data transfer.
 ```typescript
 import { UART0, delay } from '@typecode';
 
-// Configure and begin serial at 9600 baud
-UART0.config.baudRate(9600).begin();
+// Begin serial at 9600 baud
+UART0.begin(9600);
 
 let counter = 0;
 
@@ -124,27 +143,12 @@ while (true) {
 }
 ```
 
-### Full Configuration Options
-
-```typescript
-import { UART0 } from '@typecode';
-import { UARTStopBits, UARTFlowControl, UARTParity } from '@typecode/core';
-
-UART0.config
-  .baudRate(115200)
-  .dataBits(8)
-  .parity(UARTParity.NONE)
-  .stopBits(UARTStopBits.ONE)
-  .flowControl(UARTFlowControl.NONE)
-  .begin();
-```
-
 ### Reading Serial Data
 
 ```typescript
 import { UART0 } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
+UART0.begin(9600);
 
 while (true) {
   if (UART0.available() > 0) {
@@ -166,7 +170,7 @@ I2C is a two-wire protocol for communicating with sensors and other devices.
 import { I2C0 } from '@typecode';
 
 // Initialize I2C as master
-I2C0.config.begin();
+I2C0.begin();
 ```
 
 ### Reading from a Sensor
@@ -174,8 +178,8 @@ I2C0.config.begin();
 ```typescript
 import { I2C0, UART0, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
-I2C0.config.begin();
+UART0.begin(9600);
+I2C0.begin();
 
 const SENSOR_ADDR = 0x76;
 
@@ -187,7 +191,7 @@ while (true) {
   const lsb = data[1];
   const value = (msb << 8) | lsb;
   
-  UART0.write.line(value.toString());
+  UART0.println(value.toString());
   delay(1000);
 }
 ```
@@ -197,7 +201,7 @@ while (true) {
 ```typescript
 import { I2C0 } from '@typecode';
 
-I2C0.config.begin();
+I2C0.begin();
 
 const DEVICE_ADDR = 0x40;
 
@@ -219,16 +223,16 @@ SPI is a high-speed serial protocol for communicating with devices like sensors,
 ```typescript
 import { SPI0, D10 } from '@typecode';
 
+const spi = SPI0.begin();
+
 // Configure SPI: 1MHz, Mode 0, MSB first
-SPI0.config
-  .frequency(1_000_000)
-  .mode(0)
-  .bitOrder('msb')
-  .begin();
+spi.setFrequency(1_000_000);
+spi.setMode(0);
+spi.setBitOrder('msb');
 
 // Chip select pin (active LOW)
 const CS = D10;
-CS.config.output.initial(true);  // Start HIGH (deselected)
+CS.output(HIGH);  // Start HIGH (deselected)
 ```
 
 ### Single Byte Transfer
@@ -236,16 +240,18 @@ CS.config.output.initial(true);  // Start HIGH (deselected)
 ```typescript
 import { SPI0, D10, UART0, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
-SPI0.config.frequency(1_000_000).mode(0).begin();
+UART0.begin(9600);
+const spi = SPI0.begin();
+spi.setFrequency(1_000_000);
+spi.setMode(0);
 
 const CS = D10;
-CS.config.output.initial(true);
+CS.output(HIGH);
 
 while (true) {
   // Transfer automatically handles chip select
-  const response = SPI0.device(CS).transfer(0xAA);
-  UART0.write.line(`Received: 0x${response.toString(16)}`);
+  const response = spi.device(CS).transfer(0xAA);
+  UART0.println(`Received: 0x${response.toString(16)}`);
   delay(1000);
 }
 ```
@@ -255,14 +261,16 @@ while (true) {
 ```typescript
 import { SPI0, D10 } from '@typecode';
 
-SPI0.config.frequency(1_000_000).mode(0).begin();
+const spi = SPI0.begin();
+spi.setFrequency(1_000_000);
+spi.setMode(0);
 
 const CS = D10;
-CS.config.output.initial(true);
+CS.output(HIGH);
 
 // Transfer multiple bytes at once
 const txData = new Uint8Array([0x80, 0x00, 0xFF]);
-const rxData = SPI0.device(CS).transfer(txData);
+const rxData = spi.device(CS).transfer(txData);
 ```
 
 ---
@@ -276,13 +284,13 @@ Interrupts allow immediate response to external events without polling.
 ```typescript
 import { D2, LED, LOW } from '@typecode';
 
-LED.config.output.initial(LOW);
+LED.output(LOW);
 
 // Configure button with pull-up
-D2.config.input.pullup();
+D2.inputPullUp();
 
 // Toggle LED on falling edge (button press)
-D2.on.falling(() => {
+D2.onFalling(() => {
   LED.toggle();
 });
 ```
@@ -292,12 +300,12 @@ D2.on.falling(() => {
 ```typescript
 import { D2 } from '@typecode';
 
-D2.config.input.pullup();
+D2.inputPullUp();
 
 // Available triggers:
-D2.on.rising(() => { /* called on LOW to HIGH */ });
-D2.on.falling(() => { /* called on HIGH to LOW */ });
-D2.on.change(() => { /* called on any change */ });
+D2.onRising(() => { /* called on LOW to HIGH */ });
+D2.onFalling(() => { /* called on HIGH to LOW */ });
+D2.onChange(() => { /* called on any change */ });
 ```
 
 ---
@@ -311,7 +319,7 @@ TypeCode provides timing functions for delays and measuring elapsed time.
 ```typescript
 import { LED, delay } from '@typecode';
 
-LED.config.output();
+LED.output();
 
 while (true) {
   LED.toggle();
@@ -324,13 +332,13 @@ while (true) {
 ```typescript
 import { UART0, millis, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
+UART0.begin(9600);
 
 const startTime = millis();
 
 while (true) {
   const elapsed = millis() - startTime;
-  UART0.write.line(`Elapsed: ${elapsed}ms`);
+  UART0.println(`Elapsed: ${elapsed}ms`);
   delay(1000);
 }
 ```
@@ -341,11 +349,23 @@ while (true) {
 
 | System | Import | Key Methods |
 |--------|--------|-------------|
-| Digital I/O | `D2, LED, HIGH, LOW` | `.config.output()`, `.config.input()`, `.read()`, `.write()`, `.high()`, `.low()`, `.toggle()` |
-| Analog | `A0` | `.read()` |
-| PWM | `D9` (PWM pin) | `.write(value)` |
-| UART | `UART0` | `.config.baudRate().begin()`, `.print()`, `.println()`, `.read()`, `.available()` |
-| I2C | `I2C0` | `.config.begin()`, `.device(addr).readBytes()`, `.device(addr).writeBytes()` |
-| SPI | `SPI0, D10` | `.config.frequency().mode().begin()`, `.device(cs).transfer()` |
-| Interrupts | `D2` (interrupt pin) | `.on.rising()`, `.on.falling()`, `.on.change()` |
-| Timing | `delay, millis` | `delay(ms)`, `millis()` |
+| Digital I/O | `D2, LED, HIGH, LOW` | `.output()`, `.inputPullUp()`, `.read()`, `.write()`, `.high()`, `.low()`, `.toggle()` |
+| Analog | `A0` | `.readAnalog()`, `.readVoltage()` |
+| PWM | `D9` (PWM pin) | `.pwm(percent)` |
+| UART | `UART0` | `.begin(baud)`, `.end()`, `.print()`, `.println()`, `.read()`, `.available()` |
+| I2C | `I2C0` | `.begin()`, `.end()`, `.device(addr).readBytes()`, `.device(addr).writeBytes()` |
+| SPI | `SPI0, D10` | `const spi = SPI0.begin()`, `.setFrequency()`, `.setMode()`, `.device(cs).transfer()` |
+| Interrupts | `D2` (interrupt pin) | `.onRising()`, `.onFalling()`, `.onChange()` |
+
+## Board-aware constraints
+
+TypeCode's HAL is designed around board knowledge, not generic GPIO optimism. The transpiler can already tell you about conflicts such as:
+
+- using `D0` or `D1` as general GPIO on Uno while serial is active
+- using `A4` or `A5` as GPIO while `I2C0` is enabled
+- using `D11`, `D12`, or `D13` as general GPIO while `SPI0` is enabled
+- mixing `LED` and `D13` or `TX` and `D1` in the same program for the same physical pin
+- using multiple PWM pins that share one hardware timer group
+- requesting hardware pulldown on boards that only support pull-up
+
+Treat those diagnostics as part of the programming model. The goal is to make the “safe path” the easiest path.

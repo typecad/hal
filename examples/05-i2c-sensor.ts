@@ -9,17 +9,16 @@
 import { I2C0, UART0, delay } from '@typecode';
 
 // Initialize UART0 for debug output
-UART0.config.baudRate(9600).begin();
+const serial = UART0.begin(9600);
 
 // Initialize I2C as master
-I2C0.config.begin();
-
+const sensor = I2C0.begin();
 const BME280_ADDR = 0x76;
 
 // Main loop
 while (true) {
   // Read 2 bytes from register 0xFA (temperature data)
-  const tempData = I2C0.device(BME280_ADDR).readBytes(0xfa, 2);
+  const tempData = sensor.device(BME280_ADDR).readBytes(0xfa, 2);
 
   // Access bytes directly from returned Uint8Array
   const msb = tempData[0];
@@ -28,8 +27,9 @@ while (true) {
   // Combine into raw temperature value
   const tempRaw = (msb << 8) | lsb;
   const temperature = tempRaw / 100.0;
-  UART0.println(temperature);
+  serial.println(temperature);
 
 
   delay(1000);
 }
+

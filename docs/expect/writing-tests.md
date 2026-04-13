@@ -32,7 +32,7 @@ Opens a named test group. Returns a `Suite` that you chain `.it()` calls onto.
 ```typescript
 describe("A0 analog read")
   .it("returns a value")
-    .expect(A0.read()).toBeTruthy();
+    .expect(A0.readAnalog()).toBeTruthy();
 ```
 
 ### suite.it(name: string): Suite
@@ -51,12 +51,12 @@ describe("GPIO pins")
 
 ### expect(value: number): Expectation
 
-Captures a hardware value to be asserted. The argument must be a TypeCode hardware expression (e.g. `A0.read()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
+Captures a hardware value to be asserted. The argument must be a TypeCode hardware expression (e.g. `A0.readAnalog()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
 
 ```typescript
 describe("Analog pins")
   .it("A0 reads valid value")
-    .expect(A0.read()).toBeWithinRange(0, 1023);
+    .expect(A0.readAnalog()).toBeWithinRange(0, 1023);
 ```
 
 ### expectString(value: string): StringExpectation
@@ -111,9 +111,9 @@ describe("Numeric matchers")
   .it("toBeLessThan checks upper bound")
     .expect(5).toBeLessThan(10)
   .it("toBeWithinRange checks inclusive range")
-    .expect(A0.read()).toBeWithinRange(0, 1023)
+    .expect(A0.readAnalog()).toBeWithinRange(0, 1023)
   .it("toBeTruthy checks non-zero")
-    .expect(A0.read()).toBeTruthy()
+    .expect(A0.readAnalog()).toBeTruthy()
   .it("toBeFalsy checks zero")
     .expect(0).toBeFalsy()
   .it("toBeCloseTo checks floating point precision")
@@ -155,9 +155,9 @@ import { A0, A1, D2, D3 } from '@typecode';
 
 describe("Analog inputs")
   .it("A0 reads valid range")
-    .expect(A0.read()).toBeWithinRange(0, 1023)
+    .expect(A0.readAnalog()).toBeWithinRange(0, 1023)
   .it("A1 reads valid range")
-    .expect(A1.read()).toBeWithinRange(0, 1023);
+    .expect(A1.readAnalog()).toBeWithinRange(0, 1023);
 
 describe("Digital pins")
   .it("D2 can be read")
@@ -174,7 +174,7 @@ The `.expect()` argument must be a hardware expression that produces a value:
 
 ```typescript
 // Valid hardware expressions
-.expect(A0.read())           // Analog read
+.expect(A0.readAnalog())     // Analog read
 .expect(D2.read())           // Digital read
 .expect(pin.readValue())     // Custom pin method
 .expect(sensor.getValue())   // Sensor method
@@ -191,13 +191,13 @@ The `.expect()` argument must be a hardware expression that produces a value:
 ```typescript
 describe("Pin A0")
   .it("reads valid ADC value")
-    .expect(A0.read()).toBeWithinRange(0, 1023)
+    .expect(A0.readAnalog()).toBeWithinRange(0, 1023)
   .it("changes with input voltage")
-    .expect(A0.read()).toBeGreaterThan(0);
+    .expect(A0.readAnalog()).toBeGreaterThan(0);
 
 describe("Pin A1")
   .it("reads valid ADC value")
-    .expect(A1.read()).toBeWithinRange(0, 1023);
+    .expect(A1.readAnalog()).toBeWithinRange(0, 1023);
 
 done();
 ```
@@ -227,7 +227,7 @@ done();
 ```typescript
 // Good: One assertion per test
 .it("reads a valid range")
-  .expect(A0.read()).toBeWithinRange(0, 1023)
+  .expect(A0.readAnalog()).toBeWithinRange(0, 1023)
 
 // Avoid: Multiple assertions in one it()
 // This is not supported - chain new .it() instead
@@ -238,11 +238,11 @@ done();
 ```typescript
 // Good
 .it("reads less than mid-scale when grounded")
-  .expect(A0.read()).toBeLessThan(512)
+  .expect(A0.readAnalog()).toBeLessThan(512)
 
 // Less clear
 .it("works")
-  .expect(A0.read()).toBeLessThan(512)
+  .expect(A0.readAnalog()).toBeLessThan(512)
 ```
 
 ### 3. Order Tests Logically

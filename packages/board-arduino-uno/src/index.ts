@@ -63,9 +63,13 @@ export const ArduinoUno: BoardDefinition = {
       // Digital pins D0 – D13
       { number:  0, gpio:  0, name: 'D0',  aliases: ['RX'],   capabilities: DIGITAL_INT,
         functions: [{ type: 'uart', instance: 0, role: 'rx' }],
+        alternateFunctions: ['UART0 RX'],
+        warnings: ['Using D0 as GPIO will interfere with Serial (UART0) receive'],
         unsafe: true, notes: 'UART RX pin - using will interfere with serial communication' },
       { number:  1, gpio:  1, name: 'D1',  aliases: ['TX'],   capabilities: DIGITAL_INT,
         functions: [{ type: 'uart', instance: 0, role: 'tx' }],
+        alternateFunctions: ['UART0 TX'],
+        warnings: ['Using D1 as GPIO will interfere with Serial (UART0) transmit'],
         unsafe: true, notes: 'UART TX pin - using will interfere with serial communication' },
       { number:  2, gpio:  2, name: 'D2',                     capabilities: DIGITAL_INT },
       { number:  3, gpio:  3, name: 'D3',                     capabilities: DIGITAL_PWM_INT,
@@ -83,16 +87,23 @@ export const ArduinoUno: BoardDefinition = {
         functions: [
           { type: 'pwm', instance: 0, role: 'OC1B' },
           { type: 'spi', instance: 0, role: 'cs'   },
-        ] },
+        ],
+        alternateFunctions: ['SPI0 CS'] },
       { number: 11, gpio: 11, name: 'D11', aliases: ['MOSI'], capabilities: DIGITAL_PWM,
         functions: [
           { type: 'pwm', instance: 0, role: 'OC2A' },
           { type: 'spi', instance: 0, role: 'mosi' },
-        ] },
+        ],
+        alternateFunctions: ['SPI0 MOSI'],
+        warnings: ['Using D11 as GPIO will interfere with SPI0 MOSI'] },
       { number: 12, gpio: 12, name: 'D12', aliases: ['MISO'], capabilities: DIGITAL,
-        functions: [{ type: 'spi', instance: 0, role: 'miso' }] },
+        functions: [{ type: 'spi', instance: 0, role: 'miso' }],
+        alternateFunctions: ['SPI0 MISO'],
+        warnings: ['Using D12 as GPIO will interfere with SPI0 MISO'] },
       { number: 13, gpio: 13, name: 'D13', aliases: ['SCK', 'LED'], capabilities: DIGITAL,
         functions: [{ type: 'spi', instance: 0, role: 'sck' }],
+        alternateFunctions: ['SPI0 SCK', 'On-board LED'],
+        warnings: ['D13 is SPI0 SCK and the on-board LED — using as GPIO conflicts with SPI0'],
         onboardLed: true },
 
       // Analog pins A0 – A5
@@ -108,12 +119,16 @@ export const ArduinoUno: BoardDefinition = {
         functions: [
           { type: 'adc', instance: 0, role: 'ch4' },
           { type: 'i2c', instance: 0, role: 'sda' },
-        ] },
+        ],
+        alternateFunctions: ['I2C0 SDA', 'ADC ch4'],
+        warnings: ['Using A4 as GPIO will interfere with I2C0 SDA'] },
       { number: 19, gpio: 19, name: 'A5', aliases: ['SCL'], capabilities: ANALOG_IN,
         functions: [
           { type: 'adc', instance: 0, role: 'ch5' },
           { type: 'i2c', instance: 0, role: 'scl' },
-        ] },
+        ],
+        alternateFunctions: ['I2C0 SCL', 'ADC ch5'],
+        warnings: ['Using A5 as GPIO will interfere with I2C0 SCL'] },
     ],
 
     digital: [
@@ -168,6 +183,76 @@ export const ArduinoUno: BoardDefinition = {
 export default ArduinoUno;
 
 // ---------------------------------------------------------------------------
+// Pin Discovery API
+// ---------------------------------------------------------------------------
+
+import {
+  D0, D1, D2, D3, D4, D5, D6, D7,
+  D8, D9, D10, D11, D12, D13,
+  A0, A1, A2, A3, A4, A5,
+} from './pins';
+
+/**
+ * Pin collections for runtime capability discovery.
+ * Use these when you need to iterate over pins by capability
+ * or for dynamic pin handling.
+ * 
+ * @example
+ * ```typescript
+ * import { pins, D9 } from '@typecode/board-arduino-uno';
+ * 
+ * // Check if a specific pin is in a capability group
+ * if (pins.pwm.includes(D9)) {
+ *   D9.pwm(50);
+ * }
+ * 
+ * // Or iterate over all PWM pins
+ * for (const pwmPin of pins.pwm) {
+ *   pwmPin.output();
+ * }
+ * ```
+ */
+export const pins = {
+  /** PWM-capable pins: D3, D5, D6, D9, D10, D11 */
+  pwm: [D3, D5, D6, D9, D10, D11] as const,
+  /** Analog input pins: A0, A1, A2, A3, A4, A5 */
+  analog: [A0, A1, A2, A3, A4, A5] as const,
+  /** External interrupt-capable pins: D0, D1, D2, D3 */
+  interrupt: [D0, D1, D2, D3] as const,
+  /** All digital I/O pins */
+  digital: [D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13, A0, A1, A2, A3, A4, A5] as const,
+} as const;
+
+// ---------------------------------------------------------------------------
+// Peripheral Pin Assignments
+// ---------------------------------------------------------------------------
+
+/**
+ * Peripheral-to-pin mapping for the Arduino Uno.
+ * Use this to understand which pins are reserved by each peripheral
+ * and avoid conflicts in your designs.
+ *
+ * @example
+ * ```typescript
+ * import { PeripheralPins } from '@typecode/board-arduino-uno';
+ *
+ * // Check which pins I2C uses
+ * console.log(PeripheralPins.I2C0); // { SDA: 'A4', SCL: 'A5' }
+ *
+ * // D13 is used by SPI as SCK AND is the onboard LED.
+ * // Using D13 as GPIO while SPI is active will cause conflicts.
+ * ```
+ */
+export const PeripheralPins = {
+  /** I2C bus 0 — requires A4 (SDA) and A5 (SCL). */
+  I2C0: { SDA: 'A4', SCL: 'A5' } as const,
+  /** SPI bus 0 — requires D11 (MOSI), D12 (MISO), D13 (SCK). D10 is default CS. */
+  SPI0: { MOSI: 'D11', MISO: 'D12', SCK: 'D13', CS: 'D10' } as const,
+  /** UART/Serial 0 — requires D1 (TX) and D0 (RX). */
+  UART0: { TX: 'D1', RX: 'D0' } as const,
+} as const;
+
+// ---------------------------------------------------------------------------
 // Re-exports — convenience barrel
 // ---------------------------------------------------------------------------
 
@@ -195,7 +280,7 @@ export { abs, min, max, clamp, inRange, toPercent, toByte, Num } from './num';
 export { pulseIn, pulseInLong, Pulse } from './pulse';
 
 // Shift register utilities
-export { shiftIn, shiftOut, MSBFIRST, LSBFIRST, Shift } from './shift';
+export { shiftIn, shiftOut, Shift, ShiftBitOrder } from './shift';
 
 // Random number utilities
 export { randomSeed, random, Random } from './random';

@@ -640,7 +640,7 @@ export const D3: IDigitalPin & IPWMPin & IInterruptPin = createPWMPin(3, 3);
 export const A0: IDigitalPin & IAnalogInput = createAnalogPin(14, 14);
 ```
 
-**Important:** Analog pins (A0-A5 on Arduino Uno) are also digital-capable. Always type them as `IDigitalPin & IAnalogInput` so users can use `A0.config.input.pullup()` for digital input in addition to `A0.config.analog()` for analog reads.
+**Important:** Analog pins (A0-A5 on Arduino Uno) are also digital-capable. Always type them as `IDigitalPin & IAnalogInput` so users can use `A0.inputPullUp()` for digital input in addition to `A0.readAnalog()` for analog reads.
 
 The transpiler recognizes intersection types if all component types are known compile-time types.
 
@@ -790,8 +790,8 @@ export const D11: IDigitalPin & IPWMPin = createPWMPin(11, 11);
 
 // Analog input pins (also digital-capable)
 // NOTE: Use IDigitalPin & IAnalogInput so users can access both:
-//   - A0.config.input.pullup() for digital input mode
-//   - A0.config.analog() for analog input mode
+//   - A0.inputPullUp() for digital input mode
+//   - A0.readAnalog() for analog input mode
 export const A0: IDigitalPin & IAnalogInput = createAnalogPin(14, 0);
 export const A1: IDigitalPin & IAnalogInput = createAnalogPin(15, 1);
 export const A2: IDigitalPin & IAnalogInput = createAnalogPin(16, 2);

@@ -16,17 +16,15 @@ import { register, bits, type Bit, type Bits } from '@typecode/core';
 
 // ---------------------------------------------------------------------------
 // Define a USART peripheral at address 0x4001_1000
-// Each @bits(hi, lo) declares a named bit field with its position.
-// Fields are static so they're accessed on the class directly: USART1.UE
 // ---------------------------------------------------------------------------
 
 @register(0x4001_1000)
 class USART1 {
-  @bits(0, 0)   static UE:  Bit;       // USART enable
-  @bits(2, 2)   static RE:  Bit;       // Receiver enable
-  @bits(3, 3)   static TE:  Bit;       // Transmitter enable
-  @bits(9, 8)   static PS:  Bits<2>;   // Parity selection
-  @bits(15, 8)  static BAUD: Bits<8>;  // Baud rate mantissa
+  @bits(0, 0)   static UE:  Bit = 0;       // USART enable
+  @bits(2, 2)   static RE:  Bit = 0;       // Receiver enable
+  @bits(3, 3)   static TE:  Bit = 0;       // Transmitter enable
+  @bits(9, 8)   static PS:  Bits<2> = 0;   // Parity selection
+  @bits(15, 8)  static BAUD: Bits<8> = 0;  // Baud rate mantissa
 }
 
 // ---------------------------------------------------------------------------
@@ -35,39 +33,31 @@ class USART1 {
 
 @register(0x4001_0800)
 class GPIOA {
-  @bits(0, 0)   static MODER0: Bits<2>;   // Pin 0 mode
-  @bits(1, 1)   static ODR0:   Bit;       // Pin 0 output data
-  @bits(31, 16) static IDR_HI: Bits<16>;  // Upper half input data
+  @bits(0, 0)   static MODER0: Bits<2> = 0;   // Pin 0 mode
+  @bits(1, 1)   static ODR0:   Bit = 0;       // Pin 0 output data
+  @bits(31, 16) static IDR_HI: Bits<16> = 0;  // Upper half input data
 }
 
 // ---------------------------------------------------------------------------
-// Usage: reads and writes compile to inline bit manipulation
+// Usage
 // ---------------------------------------------------------------------------
 
-UART0.config.baudRate(9600).begin();
+const serial = UART0.begin(9600);
 
-// Enable the USART transmitter and receiver
 USART1.UE = 1;
 USART1.RE = 1;
 USART1.TE = 1;
 
-// Set parity selection to even (value 2)
 USART1.PS = 2;
-
-// Set baud rate mantissa
 USART1.BAUD = 115;
 
-// Read back parity setting
 const parity = USART1.PS;
-UART0.println(parity);
+serial.println(parity);
 
-// Read current baud mantissa
 const baud = USART1.BAUD;
-UART0.println(baud);
+serial.println(baud);
 
-// Toggle an LED on GPIO pin
 GPIOA.ODR0 = 1;
 
-// Read upper input data register
 const inputs = GPIOA.IDR_HI;
-UART0.println(inputs);
+serial.println(inputs);

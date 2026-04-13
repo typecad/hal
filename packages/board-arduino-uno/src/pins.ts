@@ -12,70 +12,93 @@
 import type {
   IDigitalPin,
   IPWMPin,
-  IAnalogInput,
+  IAnalogPin,
   IInterruptPin,
 } from '@typecode/core';
-import { pinNumber } from '@typecode/core';
+import type {
+  IUnoDigitalPin,
+  IUnoPWMPin,
+  IUnoAnalogPin,
+  IUnoInterruptPin,
+} from './pin-types';
 
 // ---------------------------------------------------------------------------
 // Internal stub factories (no-op at runtime; consumed by transpiler)
 // ---------------------------------------------------------------------------
 
-function createDigitalPin(pin: number, gpio: number): IDigitalPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin;
+import { PinCapability } from '@typecode/core';
+
+function createDigitalPin(pin: number, gpio: number, capabilities: PinCapability[] = ['pullUp']): IUnoDigitalPin {
+  return {
+    number: pin,
+    gpio,
+    capabilities: new Set(capabilities),
+  } as unknown as IUnoDigitalPin;
 }
 
-function createPWMPin(pin: number, gpio: number): IPWMPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IPWMPin;
+function createPWMPin(pin: number, gpio: number): IUnoPWMPin {
+  return {
+    number: pin,
+    gpio,
+    capabilities: new Set(['pullUp', 'pwm']),
+  } as unknown as IUnoPWMPin;
 }
 
-function createInterruptPin(pin: number, gpio: number): IDigitalPin & IInterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IInterruptPin;
+function createInterruptPin(pin: number, gpio: number): IUnoInterruptPin {
+  return {
+    number: pin,
+    gpio,
+    capabilities: new Set(['pullUp', 'interrupt']),
+  } as unknown as IUnoInterruptPin;
 }
 
-function createAnalogPin(pin: number, gpio: number): IDigitalPin & IAnalogInput {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IAnalogInput;
+function createAnalogPin(pin: number, gpio: number): IUnoAnalogPin {
+  return {
+    number: pin,
+    gpio,
+    capabilities: new Set(['pullUp', 'analog']),
+  } as unknown as IUnoAnalogPin;
 }
 
 // ---------------------------------------------------------------------------
 // Digital-only pins (no PWM, no interrupt)
 // ---------------------------------------------------------------------------
 
-export const D4:  IDigitalPin = createDigitalPin(4, 4);
-export const D7:  IDigitalPin = createDigitalPin(7, 7);
-export const D8:  IDigitalPin = createDigitalPin(8, 8);
-export const D12: IDigitalPin = createDigitalPin(12, 12);
-export const D13: IDigitalPin = createDigitalPin(13, 13);  // onboard LED
+export const D4:  IUnoDigitalPin = createDigitalPin(4, 4);
+export const D7:  IUnoDigitalPin = createDigitalPin(7, 7);
+export const D8:  IUnoDigitalPin = createDigitalPin(8, 8);
+export const D12: IUnoDigitalPin = createDigitalPin(12, 12);
+export const D13: IUnoDigitalPin = createDigitalPin(13, 13);  // onboard LED
 
 // ---------------------------------------------------------------------------
 // Interrupt-capable digital pins (INT0 on D2, INT1 on D3)
 // ---------------------------------------------------------------------------
 
-export const D0: IDigitalPin & IInterruptPin = createInterruptPin(0, 0);   // RX
-export const D1: IDigitalPin & IInterruptPin = createInterruptPin(1, 1);   // TX
-export const D2: IDigitalPin & IInterruptPin = createInterruptPin(2, 2);
+export const D0: IUnoInterruptPin = createInterruptPin(0, 0);   // RX
+export const D1: IUnoInterruptPin = createInterruptPin(1, 1);   // TX
+export const D2: IUnoInterruptPin = createInterruptPin(2, 2);
 
 // ---------------------------------------------------------------------------
 // PWM pins
 // ---------------------------------------------------------------------------
 
-export const D3:  IPWMPin = createPWMPin(3, 3);    // also INT1
-export const D5:  IPWMPin = createPWMPin(5, 5);
-export const D6:  IPWMPin = createPWMPin(6, 6);
-export const D9:  IPWMPin = createPWMPin(9, 9);
-export const D10: IPWMPin = createPWMPin(10, 10);
-export const D11: IPWMPin = createPWMPin(11, 11);
+export const D3:  IUnoPWMPin = createPWMPin(3, 3);    // also INT1
+export const D5:  IUnoPWMPin = createPWMPin(5, 5);
+export const D6:  IUnoPWMPin = createPWMPin(6, 6);
+export const D9:  IUnoPWMPin = createPWMPin(9, 9);
+export const D10: IUnoPWMPin = createPWMPin(10, 10);
+export const D11: IUnoPWMPin = createPWMPin(11, 11);
 
 // ---------------------------------------------------------------------------
 // Analog input pins (also support digital I/O)
 // ---------------------------------------------------------------------------
 
-export const A0: IDigitalPin & IAnalogInput = createAnalogPin(14, 14);
-export const A1: IDigitalPin & IAnalogInput = createAnalogPin(15, 15);
-export const A2: IDigitalPin & IAnalogInput = createAnalogPin(16, 16);
-export const A3: IDigitalPin & IAnalogInput = createAnalogPin(17, 17);
-export const A4: IDigitalPin & IAnalogInput = createAnalogPin(18, 18);  // SDA
-export const A5: IDigitalPin & IAnalogInput = createAnalogPin(19, 19);  // SCL
+export const A0: IUnoAnalogPin = createAnalogPin(14, 14);
+export const A1: IUnoAnalogPin = createAnalogPin(15, 15);
+export const A2: IUnoAnalogPin = createAnalogPin(16, 16);
+export const A3: IUnoAnalogPin = createAnalogPin(17, 17);
+export const A4: IUnoAnalogPin = createAnalogPin(18, 18);  // SDA
+export const A5: IUnoAnalogPin = createAnalogPin(19, 19);  // SCL
 
 // ---------------------------------------------------------------------------
 // Convenience aliases

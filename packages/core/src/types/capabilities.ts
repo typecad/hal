@@ -59,7 +59,7 @@ export type SupportsCapabilities<T, U> = T extends U ? true : false;
 // Runtime type guards
 // ---------------------------------------------------------------------------
 
-import type { IPin, IPWMPin, IAnalogInput, IInterruptPin, ITouchPin } from './pin';
+import type { IPin, IPWMPin, IAnalogInput, IInterruptPin } from './pin';
 
 /** Type guard to check if a value is an IPin (has required pin properties). */
 function isIPin(value: unknown): value is IPin {
@@ -88,11 +88,6 @@ export function hasInterrupt(pin: unknown): pin is IInterruptPin {
   return isIPin(pin) && 'on' in pin && 'off' in pin && 'hasInterrupt' in pin;
 }
 
-/** Narrow an IPin to ITouchPin if it supports capacitive touch. */
-export function hasTouch(pin: unknown): pin is ITouchPin {
-  return isIPin(pin) && 'setThreshold' in pin && 'attachTouchInterrupt' in pin;
-}
-
 // ---------------------------------------------------------------------------
 // Convenience aliases (more intuitive names)
 // ---------------------------------------------------------------------------
@@ -105,9 +100,6 @@ export const isAnalogPin = hasAnalogInput;
 
 /** Alias for hasInterrupt - checks if pin supports interrupts. */
 export const isInterruptPin = hasInterrupt;
-
-/** Alias for hasTouch - checks if pin supports capacitive touch. */
-export const isTouchPin = hasTouch;
 
 // ---------------------------------------------------------------------------
 // Assertion functions

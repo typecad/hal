@@ -1,23 +1,11 @@
 // ---------------------------------------------------------------------------
 // @typecode/core - SPI Bus Interfaces
 //
-// Provides TypeScript interfaces for SPI communication.
-// Two API styles:
-//   1. Arduino-compatible (SPI.begin, SPI.transfer, etc.)
-//   2. Fluent chainable (SPI0.config.frequency().mode().begin())
+// Modern API: SPI0.enable(), SPI0.device(CS).transfer(data)
+// CS is managed automatically by .device().
 // ---------------------------------------------------------------------------
 
 import type { IDigitalPin } from '../types/pin';
-
-/**
- * SPI clock polarity (CPOL) options
- */
-export type SPIClockPolarity = 0 | 1;
-
-/**
- * SPI clock phase (CPHA) options
- */
-export type SPIClockPhase = 0 | 1;
 
 /**
  * SPI mode (combination of CPOL and CPHA)
@@ -46,6 +34,14 @@ export enum SPIStatus {
 }
 
 /**
+ * How the bus handles errors at runtime.
+ * - 'throw': Assert-style — throws on error (good for development)
+ * - 'callback': Calls registered onError handlers
+ * - 'silent': Returns status codes only (good for production)
+ */
+export type ErrorPolicy = 'throw' | 'callback' | 'silent';
+
+/**
  * SPI settings for transaction
  */
 export interface SPISettings {
@@ -54,129 +50,103 @@ export interface SPISettings {
   bitOrder: SPIBitOrder;
 }
 
-/**
- * Transfer options
- */
-export interface SPITransferOptions {
-  csPin?: IDigitalPin;
-  csActiveLow?: boolean;
-}
-
 // ---------------------------------------------------------------------------
-// Result Types
+// SPI Device abstraction
 // ---------------------------------------------------------------------------
 
 /**
- * Result of a SPI write operation
+ * SPI device handle. CS is asserted before each operation and deasserted after.
+ * Use SPI0.device(CS) to create — do not manage CS manually when using this.
  */
-export interface ISPIWriteResult {
-  ok: boolean;
-  status: SPIStatus;
-  bytesWritten: number;
-  /** Returns bytesWritten if ok, otherwise prints error to Serial and returns 0. */
-  unwrap(): number;
-  /** Returns bytesWritten if ok, otherwise returns the provided default. */
-  unwrapOr(defaultValue: number): number;
-}
-
-/**
- * Result of a SPI read operation
- */
-export interface ISPIReadResult {
-  ok: boolean;
-  status: SPIStatus;
-  bytes: Uint8Array;
-  asUint8(): number;
-  asUint16(endian: 'be' | 'le'): number;
-  asInt8(): number;
-  asInt16(endian: 'be' | 'le'): number;
-  /** Returns bytes if ok, otherwise prints error to Serial and returns empty array. */
-  unwrap(): Uint8Array;
-  /** Returns bytes if ok, otherwise returns the provided default. */
-  unwrapOr(defaultValue: Uint8Array): Uint8Array;
-}
-
-/**
- * Result of a SPI transfer operation
- */
-export interface ISPITransferResult {
-  ok: boolean;
-  status: SPIStatus;
-  bytes: Uint8Array;
-  asUint8(): number;
-  asUint16(endian: 'be' | 'le'): number;
-  /** Returns bytes if ok, otherwise prints error to Serial and returns empty array. */
-  unwrap(): Uint8Array;
-  /** Returns bytes if ok, otherwise returns the provided default. */
-  unwrapOr(defaultValue: Uint8Array): Uint8Array;
+export interface ISPIDevice {
+  readonly chipSelect: IDigitalPin;
+  /** Transfer data (full-duplex) and return received bytes. CS asserted automatically. */
+  transfer(data: number | Uint8Array): Uint8Array;
+  /** Write data (ignore received bytes). CS asserted automatically. */
+  write(data: number | Uint8Array): void;
+  /** Read count bytes (send dummy 0xFF). CS asserted automatically. */
+  read(count: number): Uint8Array;
+  /** Write data to a register. CS asserted automatically. */
+  writeRegister(register: number, data: number | Uint8Array): void;
+  /** Read count bytes from a register. CS asserted automatically. */
+  readRegister(register: number, count: number): Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
-// Fluent API Interfaces
+// SPI Bus Interface — split by initialization state
 // ---------------------------------------------------------------------------
 
 /**
- * Fluent SPI configuration builder
+ * Uninitialized SPI bus — available before .begin() is called.
+ * Only allows initialization methods. Device operations (.device())
+ * are not available until the bus is initialized.
  */
-export interface ISPIFluentConfig {
-  frequency(hz: number): this;
-  mode(mode: SPIMode): this;
-  bitOrder(order: SPIBitOrder): this;
-  cpol(level: SPIClockPolarity): this;
-  cpha(level: SPIClockPhase): this;
-  begin(): void;
+export interface IUninitializedSPIBus {
+  readonly isEnabled: false;
+
+  // --- Initialization ---
+  /** Initialize the SPI bus. Returns initialized bus. */
+  begin(): ISPIBus;
+
+  // --- Ownership (opt-in, for multi-threaded contention) ---
+  /**
+   * Acquire exclusive ownership of the SPI bus.
+   * Returns `undefined` if the bus is already owned by another task.
+   *
+   * This is opt-in — use `begin()` for single-threaded scenarios.
+   * On single-threaded AVR, this is a boolean flag check.
+   * On ESP32/FreeRTOS, this acquires a mutex.
+   */
+  take(): IOwnedSPIBus | undefined;
 }
 
 /**
- * Fluent write operation builder
- */
-export interface ISPIFluentWrite {
-  to(register: number): ISPIWriteResult;
-}
-
-/**
- * Fluent read operation builder
- */
-export interface ISPIFluentRead {
-  from(register: number): ISPIReadResult;
-}
-
-/**
- * Fluent transfer operation builder
- */
-export interface ISPIFluentTransfer {
-  execute(): ISPITransferResult;
-}
-
-/**
- * Fluent device operations
- */
-export interface ISPIFluentDevice {
-  write(data: number | Uint8Array): ISPIFluentWrite;
-  read(count: number): ISPIFluentRead;
-  transfer(data: number | Uint8Array): ISPIFluentTransfer;
-}
-
-// ---------------------------------------------------------------------------
-// Fluent-Only Interface
-//
-// For Arduino SPI-compatible API, use ISPIArduino from '@typecode/core/arduino'
-// ---------------------------------------------------------------------------
-
-/**
- * Fluent SPI bus interface
+ * SPI bus interface.
  */
 export interface ISPIBus {
-  readonly isInitialized: boolean;
-  
-  // --- Fluent Configuration API ---
-  readonly config: ISPIFluentConfig;
-  
-  // --- Fluent Device Operations ---
-  device(chipSelect: IDigitalPin): ISPIFluentDevice;
-  
-  // --- Debug mode ---
-  /** 
+  readonly isEnabled: boolean;
+
+  // --- Initialization ---
+  /** Re-initialize the SPI bus (no-op if already initialized). */
+  begin(): void;
+  /** Disable the SPI bus. Returns uninitialized bus. */
+  end(): IUninitializedSPIBus;
+
+  // --- Configuration ---
+  /** Set SPI mode (0-3). */
+  setMode(mode: SPIMode): void;
+  /** Set bit transmission order. */
+  setBitOrder(order: SPIBitOrder): void;
+  /** Set clock frequency in Hz. */
+  setFrequency(hz: number): void;
+
+  // --- Transactions ---
+  /** Begin a transaction with the given settings. */
+  beginTransaction(settings: SPISettings): void;
+  /** End the current transaction. */
+  endTransaction(): void;
+
+  // --- Device accessor (automatic CS) ---
+  /** Get a device handle for the given chip-select pin. CS is managed automatically. */
+  device(chipSelect: any): ISPIDevice;
+
+  // --- Error handling ---
+  /** Register a global error handler for all operations. */
+  onError(handler: (status: SPIStatus, operation: 'transfer' | 'read' | 'write') => void): void;
+
+  // --- Error policy ---
+  /**
+   * How errors are handled on this bus.
+   * - 'throw': Assert-style — throws on error (good for development)
+   * - 'callback': Calls registered onError handlers
+   * - 'silent': Returns status codes only (good for production)
+   * @default 'callback'
+   */
+  errorPolicy: ErrorPolicy;
+
+  // --- Debug mode (legacy, prefer errorPolicy) ---
+  /**
+   * @deprecated Use errorPolicy instead.
    * When enabled, failed operations print error details to Serial before returning.
    * Format: "[SPI ERROR] <message> (status=N)"
    */
@@ -184,81 +154,23 @@ export interface ISPIBus {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy/Extended Interfaces (for backward compatibility)
+// Owned SPI Bus — exclusive access via take()
 // ---------------------------------------------------------------------------
 
 /**
- * SPI Device abstraction
+ * Owned SPI bus — obtained via `SPI0.take()`, released via `release()`.
+ * Extends ISPIBus with ownership semantics for multi-threaded contention.
  */
-export interface ISPIDevice {
-  readonly bus: ISPIBus;
-  readonly chipSelect: IDigitalPin;
-  transfer(data: number | Uint8Array, options?: SPITransferOptions): Uint8Array;
-  write(data: number | Uint8Array, options?: SPITransferOptions): void;
-  read(count: number, options?: SPITransferOptions): Uint8Array;
-  writeRegister(register: number, data: number | Uint8Array): void;
-  readRegister(register: number, count: number): Uint8Array;
-}
-
-/**
- * Create an SPI device wrapper using fluent API
- */
-export function createSPIDevice(
-  bus: ISPIBus,
-  chipSelect: IDigitalPin
-): ISPIDevice {
-  return {
-    bus,
-    chipSelect,
-    transfer(data: number | Uint8Array, _options?: SPITransferOptions): Uint8Array {
-      const result = bus.device(chipSelect).transfer(data).execute();
-      return result.bytes;
-    },
-    write(data: number | Uint8Array, _options?: SPITransferOptions): void {
-      bus.device(chipSelect).write(data);
-    },
-    read(count: number, _options?: SPITransferOptions): Uint8Array {
-      const result = bus.device(chipSelect).read(count).from(0);
-      return result.bytes;
-    },
-    writeRegister(register: number, data: number | Uint8Array): void {
-      bus.device(chipSelect).write(data).to(register);
-    },
-    readRegister(register: number, count: number): Uint8Array {
-      const result = bus.device(chipSelect).read(count).from(register);
-      return result.bytes;
-    },
-  };
-}
-
-/**
- * SPI Error class
- */
-export class SPIError extends Error {
-  constructor(
-    message: string,
-    public readonly status: SPIStatus
-  ) {
-    super(message);
-    this.name = 'SPIError';
-  }
-}
-
-/**
- * SPI Timeout Error
- */
-export class SPITimeoutError extends SPIError {
-  constructor(message: string = 'SPI operation timed out') {
-    super(message, SPIStatus.TIMEOUT);
-    this.name = 'SPITimeoutError';
-  }
+export interface IOwnedSPIBus extends ISPIBus {
+  /** Release exclusive ownership back to the free bus. */
+  release(): void;
 }
 
 // ---------------------------------------------------------------------------
 // Utility Functions
 // ---------------------------------------------------------------------------
 
-export function spiModeToCpolCpha(mode: SPIMode): { cpol: SPIClockPolarity; cpha: SPIClockPhase } {
+export function spiModeToCpolCpha(mode: SPIMode): { cpol: 0 | 1; cpha: 0 | 1 } {
   switch (mode) {
     case 0: return { cpol: 0, cpha: 0 };
     case 1: return { cpol: 0, cpha: 1 };
@@ -267,6 +179,6 @@ export function spiModeToCpolCpha(mode: SPIMode): { cpol: SPIClockPolarity; cpha
   }
 }
 
-export function cpolCphaToSpiMode(cpol: SPIClockPolarity, cpha: SPIClockPhase): SPIMode {
+export function cpolCphaToSpiMode(cpol: 0 | 1, cpha: 0 | 1): SPIMode {
   return (cpol * 2 + cpha) as SPIMode;
 }

@@ -35,6 +35,8 @@ export interface PeripheralUsage {
   inputPullupPins: Set<number>;
   /** Pins configured as input (no pullup) */
   inputPins: Set<number>;
+  /** Pins configured as input with pulldown */
+  inputPulldownPins: Set<number>;
   /** Specific I2C bus instances used (0 for I2C0, 1 for I2C1, etc.) */
   i2cInstancesUsed: Set<number>;
   /** Specific SPI bus instances used (0 for SPI0, 1 for SPI1, etc.) */
@@ -62,6 +64,7 @@ export function createEmptyPeripheralUsage(): PeripheralUsage {
     outputPins: new Set(),
     inputPullupPins: new Set(),
     inputPins: new Set(),
+    inputPulldownPins: new Set(),
     i2cInstancesUsed: new Set(),
     spiInstancesUsed: new Set(),
     uartInstancesUsed: new Set(),
@@ -116,6 +119,28 @@ export function analyzePeripheralUsage(program: ProgramIR): PeripheralUsage {
   return usage;
 }
 
+function markTimer0UsageFromText(text: string | undefined, usage: PeripheralUsage): void {
+  if (!text) return;
+
+  const normalized = text.replace(/\s+/g, '');
+  if (
+    normalized === 'delay' ||
+    normalized === 'millis' ||
+    normalized === 'micros' ||
+    normalized === 'Board.delay' ||
+    normalized === 'Board.millis' ||
+    normalized === 'Board.micros' ||
+    normalized.startsWith('delay(') ||
+    normalized.startsWith('millis(') ||
+    normalized.startsWith('micros(') ||
+    normalized.startsWith('Board.delay(') ||
+    normalized.startsWith('Board.millis(') ||
+    normalized.startsWith('Board.micros(')
+  ) {
+    usage.timer0 = true;
+  }
+}
+
 /**
  * Analyze statements for peripheral usage.
  */
@@ -147,6 +172,7 @@ function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
     case 'call': {
       // Call statements at top level - analyze args for nested peripheral calls
       const call = stmt as CallExpressionIR;
+      markTimer0UsageFromText((call as any).callee, usage);
       if (call.args) {
         for (const arg of call.args) {
           if (arg) analyzeExpression(arg, usage);
@@ -282,6 +308,10 @@ function analyzeExpression(expr: ExpressionIR | undefined, usage: PeripheralUsag
       analyzeTypecodeCall(expr as any, usage);
       return;
     }
+
+    if (exprKind === 'raw' && 'value' in expr) {
+      markTimer0UsageFromText((expr as any).value, usage);
+    }
     
     // Recursively analyze nested expressions
     if ('args' in expr && Array.isArray((expr as any).args)) {
@@ -341,6 +371,14 @@ function analyzeExpression(expr: ExpressionIR | undefined, usage: PeripheralUsag
  */
 function parsePinNumber(receiver: string): number | null {
   if (receiver === 'LED') return 13;
+  if (receiver === 'SDA') return 18;
+  if (receiver === 'SCL') return 19;
+  if (receiver === 'MOSI') return 11;
+  if (receiver === 'MISO') return 12;
+  if (receiver === 'SCK') return 13;
+  if (receiver === 'SS') return 10;
+  if (receiver === 'TX') return 1;
+  if (receiver === 'RX') return 0;
   if (receiver.startsWith('D')) {
     const num = parseInt(receiver.slice(1), 10);
     return isNaN(num) ? null : num;
@@ -369,24 +407,31 @@ function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; m
     usage.pinsUsed.add(receiver);
   }
 
-  // Check for pin mode configuration
-  if (method === 'config.output' || method === 'config.output.initial') {
+  // Check for pin mode configuration (direct API: output, input, inputPullUp, inputPullDown)
+  if (method === 'output' || method === 'config.output' || method === 'config.output.initial') {
     if (pinNumber !== null) {
       usage.outputPins.add(pinNumber);
     }
     return;
   }
-  
-  if (method === 'config.input.float') {
+
+  if (method === 'input' || method === 'config.input') {
     if (pinNumber !== null) {
       usage.inputPins.add(pinNumber);
     }
     return;
   }
-  
-  if (method === 'config.input.pullup') {
+
+  if (method === 'inputPullUp' || method === 'config.inputPullUp') {
     if (pinNumber !== null) {
       usage.inputPullupPins.add(pinNumber);
+    }
+    return;
+  }
+
+  if (method === 'inputPullDown' || method === 'config.inputPullDown') {
+    if (pinNumber !== null) {
+      usage.inputPulldownPins.add(pinNumber);
     }
     return;
   }
@@ -401,18 +446,21 @@ function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; m
     return;
   }
   
-  // Check for PWM writes
-  if (receiverKind === 'pwm' && (method === 'write' || method === 'setDutyCycle')) {
+  // Check for PWM writes (new direct API: pwm(), old API: write/setDutyCycle)
+  if (receiverKind === 'pwm' && (method === 'pwm' || method === 'write' || method === 'setDutyCycle')) {
     usage.pwm = true;
-    const pinMatch = receiver.match(/^D(\d+)$/);
-    if (pinMatch) {
-      usage.pwmPinsUsed.add(parseInt(pinMatch[1], 10));
+    if (pinNumber !== null) {
+      usage.pwmPinsUsed.add(pinNumber);
     }
     return;
   }
   
   // Check for digital pin methods on interrupt-capable pins
-  if (method === 'attachInterrupt' || method === 'detachInterrupt') {
+  // New direct API: on.falling, on.rising, on.change, off.all
+  // Old API: attachInterrupt, detachInterrupt
+  if (method === 'attachInterrupt' || method === 'detachInterrupt' ||
+      method === 'on.falling' || method === 'on.rising' || method === 'on.change' ||
+      method === 'off.all') {
     usage.externalInterrupts = true;
     return;
   }

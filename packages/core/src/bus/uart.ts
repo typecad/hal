@@ -1,10 +1,7 @@
 // ---------------------------------------------------------------------------
 // @typecode/core — UART / Serial interfaces
 //
-// Provides TypeScript interfaces for UART communication.
-// Two API styles:
-//   1. Arduino-compatible (Serial.begin, Serial.read, Serial.write, etc.)
-//   2. Fluent chainable (Serial.config.baudRate().parity().begin())
+// Modern API: const serial = UART0.begin(baud); serial.print(), serial.println()
 // ---------------------------------------------------------------------------
 
 import type { IPin } from '../types/pin';
@@ -47,6 +44,14 @@ export enum UARTStatus {
   READ_FAILED = 9,
 }
 
+/**
+ * How the bus handles errors at runtime.
+ * - 'throw': Assert-style — throws on error (good for development)
+ * - 'callback': Calls registered onError handlers
+ * - 'silent': Returns status codes only (good for production)
+ */
+export type ErrorPolicy = 'throw' | 'callback' | 'silent';
+
 // ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
@@ -61,241 +66,97 @@ export interface UARTStatusInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
-export class UARTError extends Error {
-  constructor(
-    message: string,
-    public readonly uart: number,
-    public readonly status: UARTStatus,
-  ) {
-    super(message);
-    this.name = 'UARTError';
-  }
-}
-
-export class UARTBufferOverflowError extends UARTError {
-  constructor(uart: number) {
-    super(`Buffer overflow on UART ${uart}`, uart, UARTStatus.BUFFER_OVERFLOW);
-    this.name = 'UARTBufferOverflowError';
-  }
-}
-
-export class UARTTimeoutError extends UARTError {
-  constructor(uart: number) {
-    super(`Timeout on UART ${uart}`, uart, UARTStatus.TIMEOUT);
-    this.name = 'UARTTimeoutError';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Result Types
+// UART Bus Interface — split by initialization state
 // ---------------------------------------------------------------------------
 
 /**
- * Result of a UART read operation
+ * Uninitialized UART bus — available before .begin() is called.
+ * Only allows initialization methods. Read/write operations
+ * are not available until the bus is initialized.
  */
-export interface IUARTReadResult {
-  /** True if operation succeeded */
-  readonly ok: boolean;
-  /** Status code indicating success or type of failure */
-  readonly status: UARTStatus;
-  /** Raw bytes read */
-  readonly bytes: Uint8Array;
-  /** Number of bytes actually read */
-  readonly bytesRead: number;
-  /** True if the operation timed out */
-  readonly timedOut: boolean;
-  
-  // Type conversions
-  /** Convert to string (UTF-8) */
-  asString(): string;
-  /** Convert to trimmed string */
-  asStringTrim(): string;
-  /** Parse as integer */
-  asInt(): number;
-  /** Parse as float */
-  asFloat(): number;
-  /** Get first byte as unsigned 8-bit integer */
-  asUint8(): number;
-  /** Get first byte as signed 8-bit integer */
-  asInt8(): number;
-  /** Get as unsigned 16-bit integer */
-  asUint16(endian: 'be' | 'le'): number;
-  /** Get as signed 16-bit integer */
-  asInt16(endian: 'be' | 'le'): number;
-  /** Get as unsigned 32-bit integer */
-  asUint32(endian: 'be' | 'le'): number;
-  /** Get as signed 32-bit integer */
-  asInt32(endian: 'be' | 'le'): number;
-  
-  // Convenience methods
-  /** Returns bytes if ok, otherwise prints error to Serial and returns empty array. */
-  unwrap(): Uint8Array;
-  /** Returns bytes if ok, otherwise returns the provided default. */
-  unwrapOr(defaultValue: Uint8Array): Uint8Array;
+export interface IUninitializedUARTBus {
+  readonly uartNumber: number;
+  readonly isEnabled: false;
+
+  // --- Initialization ---
+  /** Initialize UART with the specified baud rate. Returns initialized bus. */
+  begin(baud: number): ISerialPort;
+
+  // --- Ownership (opt-in, for multi-threaded contention) ---
+  /**
+   * Acquire exclusive ownership of the UART bus.
+   * Returns `undefined` if the bus is already owned by another task.
+   *
+   * This is opt-in — use `begin()` for single-threaded scenarios.
+   * On single-threaded AVR, this is a boolean flag check.
+   * On ESP32/FreeRTOS, this acquires a mutex.
+   */
+  take(): IOwnedSerialPort | undefined;
 }
 
 /**
- * Result of a UART write operation
- */
-export interface IUARTWriteResult {
-  /** True if operation succeeded */
-  readonly ok: boolean;
-  /** Status code indicating success or type of failure */
-  readonly status: UARTStatus;
-  /** Number of bytes actually written */
-  readonly bytesWritten: number;
-  /** Returns bytesWritten if ok, otherwise prints error to Serial and returns 0. */
-  unwrap(): number;
-  /** Returns bytesWritten if ok, otherwise returns the provided default. */
-  unwrapOr(defaultValue: number): number;
-}
-
-// ---------------------------------------------------------------------------
-// Fluent Configuration Builder
-// ---------------------------------------------------------------------------
-
-/**
- * Fluent UART configuration builder
- */
-export interface IUARTFluentConfig {
-  /** Set baud rate (e.g., 9600, 115200) */
-  baudRate(bps: number): this;
-  /** Set data bits (5, 6, 7, or 8) */
-  dataBits(bits: 5 | 6 | 7 | 8): this;
-  /** Set parity mode */
-  parity(parity: UARTParity): this;
-  /** Set stop bits */
-  stopBits(bits: UARTStopBits): this;
-  /** Set flow control mode */
-  flowControl(mode: UARTFlowControl): this;
-  /** Set TX pin */
-  tx(pin: IPin): this;
-  /** Set RX pin */
-  rx(pin: IPin): this;
-  /** Set RTS pin (for hardware flow control) */
-  rts(pin: IPin): this;
-  /** Set CTS pin (for hardware flow control) */
-  cts(pin: IPin): this;
-  /** Set RX buffer size */
-  rxBufferSize(size: number): this;
-  /** Set TX buffer size */
-  txBufferSize(size: number): this;
-  /** Enable inverted signal */
-  inverted(invert: boolean): this;
-  /** Set default timeout for read operations (milliseconds) */
-  defaultTimeout(ms: number): this;
-  /** Apply configuration and initialize the UART */
-  begin(): void;
-}
-
-// ---------------------------------------------------------------------------
-// Fluent Write Operations
-// ---------------------------------------------------------------------------
-
-/**
- * Fluent write operation builder - also callable as Serial.write(data)
- */
-export interface IUARTFluentWrite {
-  /** Write text followed by \r\n (CRLF) */
-  line(text: string): IUARTWriteResult;
-  /** Write text followed by \n (LF only) */
-  ln(text: string): IUARTWriteResult;
-  /** Write a single character/byte */
-  char(c: number | string): IUARTWriteResult;
-  /** Write raw string without line ending */
-  string(text: string): IUARTWriteResult;
-  /** Write raw bytes */
-  bytes(data: Uint8Array | number[]): IUARTWriteResult;
-  /** Printf-style formatted output (no line ending) */
-  format(fmt: string, ...args: unknown[]): IUARTWriteResult;
-  /** Printf-style formatted output with \r\n */
-  formatln(fmt: string, ...args: unknown[]): IUARTWriteResult;
-  /** Write a specific byte value (0-255) */
-  byte(value: number): IUARTWriteResult;
-  /** Write 16-bit unsigned value */
-  uint16(value: number, endian: 'be' | 'le'): IUARTWriteResult;
-  /** Write 16-bit signed value */
-  int16(value: number, endian: 'be' | 'le'): IUARTWriteResult;
-  /** Write 32-bit unsigned value */
-  uint32(value: number, endian: 'be' | 'le'): IUARTWriteResult;
-  /** Write 32-bit signed value */
-  int32(value: number, endian: 'be' | 'le'): IUARTWriteResult;
-  // Callable signature for Arduino compatibility: Serial.write(data)
-  (data: number | Uint8Array | string): number;
-}
-
-// ---------------------------------------------------------------------------
-// Fluent Read Operations
-// ---------------------------------------------------------------------------
-
-/**
- * Fluent read operation builder - also callable as Serial.read()
- */
-export interface IUARTFluentRead {
-  /** Read until newline (\n or \r\n) */
-  line(timeout?: number): IUARTReadResult;
-  /** Read until specific character/byte or string */
-  until(delimiter: number | string, timeout?: number): IUARTReadResult;
-  /** Read until Enter key (handles \r, \n, or \r\n) */
-  untilEnter(timeout?: number): IUARTReadResult;
-  /** Read until space character */
-  untilSpace(timeout?: number): IUARTReadResult;
-  /** Read until tab character */
-  untilTab(timeout?: number): IUARTReadResult;
-  /** Read exact number of bytes */
-  bytes(count: number, timeout?: number): IUARTReadResult;
-  /** Read all available bytes */
-  all(): IUARTReadResult;
-  /** Read a single byte */
-  byte(): IUARTReadResult;
-  /** Read a single character as string */
-  char(): IUARTReadResult;
-  // Callable signature for Arduino compatibility: Serial.read()
-  (): number;
-}
-
-// ---------------------------------------------------------------------------
-// UART Bus Interface (Fluent API only)
-//
-// For Arduino Serial-compatible API, use ISerialArduino from '@typecode/core/arduino'
-// ---------------------------------------------------------------------------
-
-/**
- * UART bus interface with fluent API
+ * UART bus interface.
  */
 export interface IUARTBus {
   readonly uartNumber: number;
   readonly baudRate: number;
-  readonly isInitialized: boolean;
+  readonly isEnabled: boolean;
 
-  // --- Fluent Configuration API ---
-  readonly config: IUARTFluentConfig;
-  
-  // --- Fluent Read/Write Operations ---
-  readonly read: IUARTFluentRead;
-  readonly write: IUARTFluentWrite;
+  // --- Initialization ---
+  /** Re-initialize UART with the specified baud rate (no-op if already initialized). */
+  begin(baud: number): void;
+  /** Disable the UART. Returns uninitialized bus. */
+  end(): IUninitializedUARTBus;
+
+  // --- Read operations ---
+  /** Read a single byte (-1 if none available). */
+  read(): number;
+  /** Peek at the next byte without consuming it. */
+  peek(): number;
+  /** Read a line (until newline). */
+  readLine(): string;
+  /** Read exactly count bytes. */
+  readBytes(count: number): Uint8Array;
+  /** Read all available bytes as a string. */
+  readString(): string;
+  /** Number of bytes available to read. */
+  available(): number;
+
+  // --- Write operations ---
+  /** Write data (byte, bytes, or string). Returns bytes written. */
+  write(data: number | Uint8Array | string): number;
+
+  // --- Buffer control ---
+  /** Flush the transmit buffer. */
+  flush(): void;
 
   // --- Status ---
-  /** Get detailed status info */
+  /** Get detailed status info. */
   getStatus(): UARTStatusInfo;
-  /** Number of bytes available to read (Arduino-compatible shortcut) */
-  available(): number;
-  /** Clear error flags */
+  /** Clear error flags. */
   clearErrors(): void;
 
   // --- Callbacks ---
-  /** Register callback for when data is received */
+  /** Register callback for when data is received. */
   onReceive(callback: (bytesAvailable: number) => void): void;
-  /** Register callback for when transmission completes */
+  /** Register callback for when transmission completes. */
   onTransmitComplete(callback: () => void): void;
-  /** Register callback for errors */
-  onError(callback: (error: UARTError) => void): void;
-  
-  // --- Debug mode ---
-  /** 
+  /** Register callback for errors. */
+  onError(callback: (status: UARTStatus) => void): void;
+
+  // --- Error policy ---
+  /**
+   * How errors are handled on this bus.
+   * - 'throw': Assert-style — throws on error (good for development)
+   * - 'callback': Calls registered onError handlers
+   * - 'silent': Returns status codes only (good for production)
+   * @default 'callback'
+   */
+  errorPolicy: ErrorPolicy;
+
+  // --- Debug mode (legacy, prefer errorPolicy) ---
+  /**
+   * @deprecated Use errorPolicy instead.
    * When enabled, failed operations print error details to Serial before returning.
    * Format: "[UART ERROR] <message> (uart=N, status=M)"
    */
@@ -307,7 +168,7 @@ export interface IUARTBus {
 // ---------------------------------------------------------------------------
 
 /**
- * Serial port interface with Arduino-style print methods
+ * Serial port interface with print methods
  */
 export interface ISerialPort extends IUARTBus {
   /** Print values without newline */
@@ -320,6 +181,19 @@ export interface ISerialPort extends IUARTBus {
   isConnected(): boolean;
   /** Wait for USB connection */
   waitForConnection(timeout?: number): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Owned Serial Port — exclusive access via take()
+// ---------------------------------------------------------------------------
+
+/**
+ * Owned serial port — obtained via `UART0.take()`, released via `release()`.
+ * Extends ISerialPort with ownership semantics for multi-threaded contention.
+ */
+export interface IOwnedSerialPort extends ISerialPort {
+  /** Release exclusive ownership. */
+  release(): void;
 }
 
 // ---------------------------------------------------------------------------

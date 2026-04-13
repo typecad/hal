@@ -72,6 +72,9 @@ export class GenericStrategy implements PlatformStrategy {
   wrapStringConcat(_leftRendered: string, _rightRendered: string, _leftIsString: boolean): string | undefined {
     return undefined;
   }
+  useSnprintfForStrings(): boolean {
+    return false;
+  }
   renameEnumMember(_enumName: string, memberName: string): string {
     return memberName;
   }

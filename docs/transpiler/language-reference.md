@@ -203,8 +203,8 @@ class PWMPin extends LED {
     this.channel = channel;
   }
   
-  setDutyCycle(duty: number): void {
-    ledcWrite(this.channel, duty);
+  pwm(percent: number): void {
+    ledcWrite(this.channel, percent);
   }
 }
 ```
@@ -217,8 +217,8 @@ private:
 public:
   PWMPin(int pin, int channel) : LED(pin), channel(channel) {}
   
-  void setDutyCycle(int duty) {
-    ledcWrite(this->channel, duty);
+  void pwm(int percent) {
+    ledcWrite(this->channel, percent);
   }
 };
 ```

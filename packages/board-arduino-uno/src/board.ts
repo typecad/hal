@@ -6,18 +6,19 @@
 //
 //   import { Board } from './code/board-arduino-uno/board';
 //   Board.LED.high();
-//   Board.UART0.println("Hello");
+//   const serial = Board.UART0.begin(115200);
+//   serial.println("Hello");
 //   Board.delay(1000);
 // ---------------------------------------------------------------------------
 
 import type {
   IDigitalPin,
   IPWMPin,
-  IAnalogInput,
+  IAnalogPin,
   IInterruptPin,
-  II2CBus,
-  ISPIBus,
-  ISerialPort,
+  IUninitializedI2CBus,
+  IUninitializedSPIBus,
+  IUninitializedUARTBus,
   BoardDefinition,
 } from '@typecode/core';
 
@@ -53,12 +54,12 @@ export interface DigitalPins {
 }
 
 export interface AnalogPins {
-  A0: IAnalogInput;
-  A1: IAnalogInput;
-  A2: IAnalogInput;
-  A3: IAnalogInput;
-  A4: IAnalogInput;
-  A5: IAnalogInput;
+  A0: IAnalogPin;
+  A1: IAnalogPin;
+  A2: IAnalogPin;
+  A3: IAnalogPin;
+  A4: IAnalogPin;
+  A5: IAnalogPin;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,17 +86,17 @@ export interface IBoard {
   readonly D12: IDigitalPin;
   readonly D13: IDigitalPin;
 
-  readonly A0: IAnalogInput;
-  readonly A1: IAnalogInput;
-  readonly A2: IAnalogInput;
-  readonly A3: IAnalogInput;
-  readonly A4: IAnalogInput;
-  readonly A5: IAnalogInput;
+  readonly A0: IAnalogPin;
+  readonly A1: IAnalogPin;
+  readonly A2: IAnalogPin;
+  readonly A3: IAnalogPin;
+  readonly A4: IAnalogPin;
+  readonly A5: IAnalogPin;
 
   // ---- Aliases ----------------------------------------------------------
   readonly LED: IDigitalPin;
-  readonly SDA: IAnalogInput;
-  readonly SCL: IAnalogInput;
+  readonly SDA: IAnalogPin;
+  readonly SCL: IAnalogPin;
   readonly MOSI: IPWMPin;
   readonly MISO: IDigitalPin;
   readonly SCK: IDigitalPin;
@@ -104,9 +105,9 @@ export interface IBoard {
   readonly RX: IDigitalPin & IInterruptPin;
 
   // ---- Peripherals ------------------------------------------------------
-  readonly I2C0: II2CBus;
-  readonly SPI0: ISPIBus;
-  readonly UART0: ISerialPort;
+  readonly I2C0: IUninitializedI2CBus;
+  readonly SPI0: IUninitializedSPIBus;
+  readonly UART0: IUninitializedUARTBus;
 
   // ---- Pin collections --------------------------------------------------
   readonly digital: DigitalPins;

@@ -102,6 +102,13 @@ export interface PlatformStrategy {
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined;
 
   /**
+   * Whether string concat / template interpolation should use snprintf()
+   * instead of Arduino String() objects.
+   * When true, the emitter generates char[] buffers + snprintf() calls.
+   */
+  useSnprintfForStrings(): boolean;
+
+  /**
    * Prefix an enum member name if it conflicts with a platform macro.
    * Return the original name if no rename is needed.
    */

@@ -201,10 +201,18 @@ export class ArduinoStrategy implements PlatformStrategy {
     return "0";
   }
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined {
+    // When snprintf mode is active, string concat is handled at the expression
+    // renderer level — no String() wrapping needed here.
+    if (this.useSnprintfForStrings()) {
+      return undefined;
+    }
     if (leftIsString) {
       return `String(${leftRendered}) + ${rightRendered}`;
     }
     return undefined;
+  }
+  useSnprintfForStrings(): boolean {
+    return true;
   }
   renameEnumMember(_enumName: string, memberName: string): string {
     return ARDUINO_ENUM_MEMBER_RENAMES.has(memberName) ? `_${memberName}` : memberName;
@@ -224,13 +232,13 @@ export class ArduinoStrategy implements PlatformStrategy {
     // First try the standard pin/peripheral built-ins
     const builtin = renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode);
     if (builtin !== undefined) return builtin;
-    
+
     // Try the statement-level handler for all typecode calls
-    // This handles config chains (D13.config.output), interrupts (D2.on.falling), etc.
+    // This handles config chains (D13.config.output), interrupts (D2.onFalling), etc.
     const callee = `${receiver}.${method}`;
     const statementResult = tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants);
     if (statementResult !== undefined) return statementResult;
-    
+
     return undefined;
   }
   renderBoardDefinitionAccess(

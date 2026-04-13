@@ -123,6 +123,72 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).toContain('snprintf(msg, sizeof(msg), "Temp is %sC", __typecode_float_');
       expect(result.cpp).not.toContain("String(temp)");
     });
+
+    it("uses snprintf for string concat as function argument", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const x = 42;",
+        "  console.log(`value: ${x}`);",
+        "}",
+      ].join("\n"), { target: "arduino" });
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).toContain("Serial.println(");
+      expect(result.cpp).not.toContain("String(x)");
+    });
+
+    it("uses snprintf for string concat in return statement", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const x = 42;",
+        "  return `result: ${x}`;",
+        "}",
+      ].join("\n"), { target: "arduino" });
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).not.toContain("String(x)");
+    });
+
+    it("uses snprintf for multiple string concats in same function", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const a = `first: ${1}`;",
+        "  const b = `second: ${2}`;",
+        "}",
+      ].join("\n"), { target: "arduino" });
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      // Both variables should use snprintf
+      expect(result.cpp).toContain("char a[");
+      expect(result.cpp).toContain("char b[");
+      expect(result.cpp).toContain('snprintf(a, sizeof(a), "first: %d", 1)');
+      expect(result.cpp).toContain('snprintf(b, sizeof(b), "second: %d", 2)');
+    });
+
+    it("keeps std::string for generic target", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const x = 42;",
+        "  const msg = `value: ${x}`;",
+        "}",
+      ].join("\n"), { target: "generic" });
+      expect(result.cpp).not.toContain("snprintf(");
+      expect(result.cpp).not.toContain("char msg[");
+    });
+
+    it("uses snprintf for template literal with typecode-call expression (D3.read())", () => {
+      const result = transpile([
+        "import { D3, UART0 } from '@typecode/board-arduino-uno';",
+        "function test(): void {",
+        "  const uart = UART0.begin(9600);",
+        "  uart.println(`d3: ${D3.read()}`);",
+        "}",
+      ].join("\n"), { target: "arduino" });
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).toContain("digitalRead(3)");
+      expect(result.cpp).toContain('"d3: %d"');
+      expect(result.cpp).not.toContain("String(");
+    });
   });
 
   describe("Boolean Literals", () => {

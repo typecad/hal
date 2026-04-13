@@ -14,7 +14,7 @@ import type { Suite } from './types';
  * @example
  * ```ts
  * describe("A0 analog read")
- *   .it("reads zero").expect(A0.read()).toBe(0);
+ *   .it("reads zero").expect(A0.readAnalog()).toBe(0);
  * ```
  */
 export declare function describe(name: string): Suite;

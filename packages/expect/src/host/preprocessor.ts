@@ -6,7 +6,7 @@
 //
 // INPUT (user test file):
 //   describe("A0 analog read")
-//     .it("reads zero").expect(A0.read()).toBe(0);
+//     .it("reads zero").expect(A0.readAnalog()).toBe(0);
 //   done();
 //
 // OUTPUT (preprocessed — fed to transpiler):
@@ -14,7 +14,7 @@
 //   Serial.println("[TC:SUITE_START]");
 //   Serial.println("[TC:DESCRIBE:A0 analog read]");
 //   Serial.println("[TC:IT:reads zero]");
-//   const __tc_v1: number = A0.read();
+//   const __tc_v1: number = A0.readAnalog();
 //   Serial.print("[TC:EXPECT:toBe:0:");
 //   Serial.print(__tc_v1);
 //   Serial.println("]");
@@ -304,7 +304,7 @@ function emitSegments(segments: ChainSegment[], ctx: PreprocessorContext): void 
           // No hoisting needed — can inline directly
           emitExpectProtocol(actualExpr, seg.matcher, seg.matcherArgs ?? [], ctx);
         } else {
-          // Hoist: const __tc_v1: number = A0.read();
+          // Hoist: const __tc_v1: number = A0.readAnalog();
           ctx.emit(`const ${tmpVar}: ${typeAnnotation} = ${actualExpr};`);
           emitExpectProtocol(tmpVar, seg.matcher, seg.matcherArgs ?? [], ctx);
         }
@@ -356,7 +356,7 @@ function extractStringArg(
  * hoisting for correct typecode translation)?
  *
  * Simple: identifiers, number literals, string literals.
- * Complex: anything with `.` method calls (e.g. `A0.read()`).
+ * Complex: anything with `.` method calls (e.g. `A0.readAnalog()`).
  */
 function isSimpleExpression(expr: string): boolean {
   // If it contains a dot followed by a word and parens, it's a method call

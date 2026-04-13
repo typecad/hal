@@ -8,6 +8,33 @@
 import type { PeripheralUsage } from './peripheral-usage';
 import type { BoardConstants } from './board-resolver';
 import type { Diagnostic } from '../types';
+import { findBoardPinByName, formatPinReference } from './board-pin-utils';
+
+function buildUnsafePinMessage(
+  pinName: string,
+  boardConstants: BoardConstants | undefined,
+): string {
+  const boardName = boardConstants?.get('name');
+  const boardLabel = typeof boardName === 'string' && boardName.length > 0
+    ? ` on ${boardName}`
+    : '';
+  const metadata = findBoardPinByName(pinName, boardConstants);
+  const pinReference = formatPinReference(pinName, metadata);
+
+  if (metadata?.warnings[0]) {
+    return `${pinReference} is marked as unsafe${boardLabel}. ${metadata.warnings[0]}.`;
+  }
+
+  if (metadata?.note) {
+    return `${pinReference} is marked as unsafe${boardLabel}. ${metadata.note}.`;
+  }
+
+  if (metadata && metadata.alternateFunctions.length > 0) {
+    return `${pinReference} is marked as unsafe${boardLabel}. It is also used for ${metadata.alternateFunctions.join(', ')}.`;
+  }
+
+  return `${pinReference} is marked as unsafe${boardLabel}. Use with caution - this pin may have special boot behavior or conflict with system functions.`;
+}
 
 /**
  * Validate unsafe pin usage and generate warning diagnostics.
@@ -33,10 +60,12 @@ export function validateUnsafePins(
 
   // Check each used pin against the unsafe list
   for (const pinName of usage.pinsUsed) {
-    if (unsafePins.includes(pinName)) {
+    const boardPin = findBoardPinByName(pinName, boardConstants);
+    const canonicalPinName = boardPin?.name ?? pinName;
+    if (unsafePins.includes(canonicalPinName)) {
       diagnostics.push({
         severity: 'warning',
-        message: `Pin '${pinName}' is marked as unsafe. Use with caution - this pin may have special boot behavior or conflict with system functions.`,
+        message: buildUnsafePinMessage(pinName, boardConstants),
         code: 'unsafe-pin-usage',
         source: 'pin-safety',
       });

@@ -79,9 +79,9 @@ import { A0 } from '@typecode';
 
 describe("A0 analog read")
   .it("reads a value in valid ADC range")
-    .expect(A0.read()).toBeWithinRange(0, 1023)
+    .expect(A0.readAnalog()).toBeWithinRange(0, 1023)
   .it("reads less than mid-scale when grounded")
-    .expect(A0.read()).toBeLessThan(512);
+    .expect(A0.readAnalog()).toBeLessThan(512);
 
 done();
 ```
@@ -100,7 +100,7 @@ Opens a named test case within the current group. Returns the same `Suite` for f
 
 `suite.expect(value: number): Expectation`
 
-Captures a hardware value to be asserted. The argument must be a TypeCode hardware expression (e.g. `A0.read()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
+Captures a hardware value to be asserted. The argument must be a TypeCode hardware expression (e.g. `A0.readAnalog()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
 
 `suite.expectString(value: string): StringExpectation`
 
@@ -264,7 +264,7 @@ Assertion math (pass/fail, formatting) is computed entirely on the host, not in 
 
 ### AST preprocessor
 
-The TypeCode transpiler cannot evaluate hardware calls (like `A0.read()`) when they are nested inside non-typecode function calls — they lose their structured IR and become plain text. The preprocessor solves this before transpilation:
+The TypeCode transpiler cannot evaluate hardware calls (like `A0.readAnalog()`) when they are nested inside non-typecode function calls — they lose their structured IR and become plain text. The preprocessor solves this before transpilation:
 
 1. Removes the `import { describe, done } from '@typecode/expect'` statement.
 2. Emits a `Serial.initialize(...)` + `[TC:SUITE_START]` preamble once.

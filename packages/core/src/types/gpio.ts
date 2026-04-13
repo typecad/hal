@@ -1,35 +1,21 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — GPIO primitives, branded pin numbers, and digital values
+// @typecode/core — GPIO primitives and digital values
 // ---------------------------------------------------------------------------
-
-/**
- * Branded pin number — prevents accidental use of arbitrary numbers
- * where a physical or GPIO pin number is expected.
- */
-export type PinNumber = number & { readonly __pinNumber: unique symbol };
-
-/** Helper to create a PinNumber from a plain number. */
-export function pinNumber(n: number): PinNumber {
-  return n as PinNumber;
-}
 
 // ---------------------------------------------------------------------------
 // Digital value constants
 // ---------------------------------------------------------------------------
 
-/** Logical-high marker. */
-export interface HIGH { readonly __high: unique symbol }
-/** Logical-low marker. */
-export interface LOW { readonly __low: unique symbol }
+/** Logical-high — alias for `true`. */
+export const HIGH = true;
+/** Logical-low — alias for `false`. */
+export const LOW = false;
 
-/** A digital value is a boolean **or** the branded HIGH / LOW literal. */
-export type DigitalValue = HIGH | LOW | boolean;
+/** A digital value is a plain boolean. */
+export type DigitalValue = boolean;
 
 /** An analog value is a plain number (resolution-dependent). */
 export type AnalogValue = number;
-
-export const HIGH: HIGH = Object.freeze({ __high: Symbol('HIGH') }) as unknown as HIGH;
-export const LOW: LOW = Object.freeze({ __low: Symbol('LOW') }) as unknown as LOW;
 
 // ---------------------------------------------------------------------------
 // Pin mode
@@ -63,8 +49,8 @@ export enum InterruptMode {
 import type { PinCapabilityFlags } from './capabilities';
 
 export interface GPIOConfig {
-  pin: PinNumber;
-  gpio?: PinNumber;
+  pin: number;
+  gpio?: number;
   capabilities: PinCapabilityFlags;
   name?: string;
   peripheral?: string;
@@ -87,15 +73,27 @@ export interface IGPIOPinFactory {
 // Pin groups
 // ---------------------------------------------------------------------------
 
-export interface IPinGroup<T extends IPin> {
+/**
+ * A group of digital output pins that can be controlled together.
+ */
+export interface IPinGroup<T extends IPin = IPin> {
   readonly name: string;
   readonly pins: ReadonlyArray<T>;
-  writeAll(values: DigitalValue[]): void;
-  readAll(): DigitalValue[];
+  /** Write a bitmask to the group (bit 0 = first pin). */
+  writePattern(pattern: number): void;
+  /** Read current state as a bitmask (bit 0 = first pin). */
+  readPattern(): number;
+  /** Set all pins to the same value. */
+  fill(value: DigitalValue): void;
 }
 
+/**
+ * A parallel port for byte-level operations on 8 digital pins.
+ */
 export interface IParallelPort extends IPinGroup<IDigitalPin> {
+  /** Write a byte value (alias for writePattern). */
   writeByte(value: number): void;
+  /** Read a byte value (alias for readPattern). */
   readByte(): number;
 }
 
@@ -115,23 +113,34 @@ export function createPinGroup<T extends IPin>(
   return {
     name,
     pins: Object.freeze(pins) as ReadonlyArray<T>,
-    
-    writeAll(values: DigitalValue[]): void {
-      for (let i = 0; i < this.pins.length && i < values.length; i++) {
+
+    writePattern(pattern: number): void {
+      for (let i = 0; i < this.pins.length; i++) {
+        const bit = (pattern >> i) & 1;
         const pin = this.pins[i];
         if ('write' in pin && typeof pin.write === 'function') {
-          pin.write(values[i]);
+          pin.write(bit === 1);
         }
       }
     },
-    
-    readAll(): DigitalValue[] {
-      return this.pins.map(pin => {
-        if ('read' in pin && typeof pin.read === 'function') {
-          return pin.read();
+
+    readPattern(): number {
+      let value = 0;
+      for (let i = 0; i < this.pins.length; i++) {
+        const pin = this.pins[i];
+        if ('isHigh' in pin && typeof pin.isHigh === 'function' && pin.isHigh()) {
+          value |= (1 << i);
         }
-        return false;
-      });
+      }
+      return value;
+    },
+
+    fill(value: DigitalValue): void {
+      for (const pin of this.pins) {
+        if ('write' in pin && typeof pin.write === 'function') {
+          pin.write(value);
+        }
+      }
     },
   };
 }
@@ -146,25 +155,16 @@ export function createParallelPort(
   pins: [IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin]
 ): IParallelPort {
   const group = createPinGroup(name, pins);
-  
+
   return {
     ...group,
-    
+
     writeByte(value: number): void {
-      for (let i = 0; i < 8; i++) {
-        const bit = (value >> i) & 1;
-        this.pins[i].write(bit === 1);
-      }
+      group.writePattern(value);
     },
-    
+
     readByte(): number {
-      let value = 0;
-      for (let i = 0; i < 8; i++) {
-        if (this.pins[i].isHigh()) {
-          value |= (1 << i);
-        }
-      }
-      return value;
+      return group.readPattern();
     },
   };
 }

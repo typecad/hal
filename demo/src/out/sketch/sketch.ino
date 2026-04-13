@@ -1,16 +1,17 @@
 #include <Arduino.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-const float temp = 24.5;
 
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  Serial.begin(9600);
-  char msg[22];
-  snprintf(msg, sizeof(msg), "Temp is %dC", 1 + 2);
-  Serial.println(msg);
+  // ── I2C with ownership ─────────────────────────────────────────────────────
+  // take() claims exclusive access; returns undefined if already owned.
+  // The returned IOwnedI2CBus has the full II2CBus API plus release().
+  /* I2C0.take() */;
+  if (i2c)
+  {
+    Wire.beginTransmission(118); Wire.write(250); Wire.write(85); Wire.endTransmission();
+    /* I2C0.release() */;
+  }
 }
 
 void loop()

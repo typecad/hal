@@ -5,14 +5,21 @@ import { parseSource } from "../ast/parse";
 import { Diagnostic, SourceSpan } from "../types";
 import { withLineColumn } from "../utils/strings";
 import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ParameterIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "./model";
-import { inferKindByName } from "./typecode-symbols";
+import { inferKindByName, TypecodeReceiverKind } from "./typecode-symbols";
 import { resolveBoardConstants, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { validatePeripherals } from "./peripheral-validation";
 import { validateUnsafePins } from "./pin-safety";
 import { validatePeripheralPinConflicts } from "./peripheral-pin-conflict";
+import { validatePinAliasConflicts } from "./pin-alias-conflict";
+import { validatePWMTimerSharing } from "./pwm-timer-sharing";
+import { validateTimer0PWMTimingConflict } from "./timer0-pwm-timing-conflict";
+import { validatePulldownSupport } from "./pulldown-validation";
 import { analyzeInterruptSafety } from "./interrupt-analysis";
 import { validateADCRange } from "./adc-range-validation";
+import { validateUnitSuspicion } from "./unit-suspicion-validation";
+import { validatePinModeConfig } from "./pin-mode-validation";
+import { validatePeripheralOwnership } from "./peripheral-ownership";
 
 function normalizeLegacyArduinoSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __arduino_setup__(");
@@ -246,7 +253,7 @@ function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: Map<stri
       "IPin", "IDigitalPin", "IDigitalInput", "IDigitalOutput",
       "IPWMPin", "IAnalogInput", "IAnalogOutput", "IInterruptPin",
       "ITouchPin", "IADCPin", "IDACPin",
-      "PinNumber", "DigitalValue", "AnalogValue",
+      "InterruptOptions",
       "PinMode", "InterruptMode",
     ]);
     if (pinInterfaceTypes.has(typeName)) {
@@ -287,9 +294,9 @@ function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: Map<stri
       return "auto";
     }
     
-    // Board constant values (HIGH, LOW, etc.)
+    // Board constant values (pin modes, interrupt modes, etc.)
     const boardConstants = new Set<string>([
-      "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP",
+      "INPUT", "OUTPUT", "INPUT_PULLUP", "INPUT_PULLDOWN",
       "CHANGE", "FALLING", "RISING",
     ]);
     if (boardConstants.has(typeName)) {
@@ -369,7 +376,7 @@ function isKnownTypeName(typeName: string): boolean {
     "IPin", "IDigitalPin", "IDigitalInput", "IDigitalOutput",
     "IPWMPin", "IAnalogInput", "IAnalogOutput", "IInterruptPin",
     "ITouchPin", "IADCPin", "IDACPin",
-    "PinNumber", "DigitalValue", "AnalogValue",
+    "InterruptOptions",
     "PinMode", "InterruptMode",
   ]);
   if (pinInterfaceTypes.has(typeName)) {
@@ -420,9 +427,9 @@ function isKnownTypeName(typeName: string): boolean {
     return true;
   }
 
-  // Board constant values (HIGH, LOW, etc.)
+  // Board constant values (pin modes, interrupt modes, etc.)
   const boardConstants = new Set<string>([
-    "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP",
+    "INPUT", "OUTPUT", "INPUT_PULLUP", "INPUT_PULLDOWN",
     "CHANGE", "FALLING", "RISING",
   ]);
   if (boardConstants.has(typeName)) {
@@ -661,9 +668,7 @@ const PIN_FACTORY_FUNCTIONS = new Set([
 ]);
 
 // Helper functions that should be constant-folded to their first argument
-const CONSTANT_FOLD_FUNCTIONS = new Set([
-  "pinNumber",
-]);
+const CONSTANT_FOLD_FUNCTIONS = new Set<string>([]);
 
 function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Set()): ExpressionIR {
   const formatExpressionText = (node: ts.Expression): string => {
@@ -791,7 +796,7 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
 
   if (ts.isCallExpression(expr)) {
     // ---- Debounce chain detection -------------------------------------------
-    // Handle D2.on.falling(() => {...}).debounce(50) pattern
+    // Handle D2.onFalling(() => {...}).debounce(50) pattern
     // The outer call is .debounce(ms), inner call is the interrupt attachment
     if (ts.isPropertyAccessExpression(expr.expression) && 
         expr.expression.name.text === "debounce" &&
@@ -942,41 +947,45 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
       const method = expr.expression.name.text;
       const receiverNode = expr.expression.expression;
 
-      // Fluent interrupt API: D2.on.falling(callback) or D2.on.rising(callback)
-      // Pattern: pin.on.<mode>(callback) where mode is falling/rising/change
-      if (ts.isPropertyAccessExpression(receiverNode) && 
-          receiverNode.name.text === "on" &&
-          ts.isIdentifier(receiverNode.expression)) {
-        const pinName = receiverNode.expression.text;
-        const kind = inferKindByName(pinName);
-        if (kind !== 'unknown' && (method === 'falling' || method === 'rising' || method === 'change')) {
-          return {
-            kind: "typecode-call",
-            receiver: pinName,
-            receiverKind: kind,
-            method: `attachInterrupt`,  // Map to attachInterrupt
-            interruptMode: method.toUpperCase() as "FALLING" | "RISING" | "CHANGE",
-            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-          };
+      // Flat interrupt API: D2.onFalling(callback), D2.onRising(callback), D2.onChange(callback)
+      // Pattern: pin.onFalling(callback) where method is onFalling/onRising/onChange
+      if (method === 'onFalling' || method === 'onRising' || method === 'onChange') {
+        const pinName = ts.isIdentifier(receiverNode) ? receiverNode.text : null;
+        if (pinName) {
+          const kind = inferKindByName(pinName);
+          if (kind !== 'unknown') {
+            const interruptModeMap: Record<string, string> = {
+              onFalling: 'FALLING',
+              onRising: 'RISING',
+              onChange: 'CHANGE',
+            };
+            return {
+              kind: "typecode-call",
+              receiver: pinName,
+              receiverKind: kind,
+              method: `attachInterrupt`,
+              interruptMode: interruptModeMap[method] as "FALLING" | "RISING" | "CHANGE",
+              args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+            };
+          }
         }
       }
 
-      // Fluent interrupt detach API: D2.off.falling(), D2.off.rising(), D2.off.change(), D2.off.all()
-      // Pattern: pin.off.<mode>() where mode is falling/rising/change/all
-      if (ts.isPropertyAccessExpression(receiverNode) && 
-          receiverNode.name.text === "off" &&
-          ts.isIdentifier(receiverNode.expression)) {
-        const pinName = receiverNode.expression.text;
-        const kind = inferKindByName(pinName);
-        if (kind !== 'unknown' && (method === 'falling' || method === 'rising' || method === 'change' || method === 'all')) {
-          return {
-            kind: "typecode-call",
-            receiver: pinName,
-            receiverKind: kind,
-            method: `detachInterrupt`,
-            interruptMode: method.toUpperCase() as "FALLING" | "RISING" | "CHANGE" | "ALL",
-            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-          };
+      // Flat interrupt detach API: D2.offFalling(), D2.offRising(), D2.offChange(), D2.offAll()
+      if (method === 'offFalling' || method === 'offRising' || method === 'offChange' || method === 'offAll') {
+        const pinName = ts.isIdentifier(receiverNode) ? receiverNode.text : null;
+        if (pinName) {
+          const kind = inferKindByName(pinName);
+          if (kind !== 'unknown') {
+            return {
+              kind: "typecode-call",
+              receiver: pinName,
+              receiverKind: kind,
+              method: `detachInterrupt`,
+              interruptMode: method.toUpperCase() as "FALLING" | "RISING" | "CHANGE" | "ALL",
+              args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+            };
+          }
         }
       }
 
@@ -1037,8 +1046,8 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
         const kind = inferKindByName(chainInfo.root);
         if (kind !== 'unknown') {
           // Build the full method path (e.g., "write.line" from UART0.write.line)
-          const fullMethod = chainInfo.chain.length > 0 
-            ? chainInfo.chain.join('.') 
+          const fullMethod = chainInfo.chain.length > 0
+            ? chainInfo.chain.join('.')
             : method;
           return {
             kind: "typecode-call",
@@ -1047,6 +1056,96 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
             method: fullMethod,
             args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
           };
+        }
+        // Pin alias resolution: led.toggle() → LED.toggle()
+        const aliasTarget = activePinAliases.get(chainInfo.root);
+        if (aliasTarget) {
+          const aliasKind = inferKindByName(aliasTarget);
+          if (aliasKind !== 'unknown') {
+            const fullMethod = chainInfo.chain.length > 0
+              ? chainInfo.chain.join('.')
+              : method;
+            return {
+              kind: "typecode-call",
+              receiver: aliasTarget,
+              receiverKind: aliasKind,
+              method: fullMethod,
+              args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+            };
+          }
+        }
+        // Bus alias resolution: i2c.device() → I2C0.device()
+        const busAlias = activeBusAliases.get(chainInfo.root);
+        if (busAlias) {
+          const fullMethod = chainInfo.chain.length > 0
+            ? chainInfo.chain.join('.')
+            : method;
+          return {
+            kind: "typecode-call",
+            receiver: busAlias.receiver,
+            receiverKind: busAlias.kind,
+            method: fullMethod,
+            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
+        }
+      }
+
+      // ── Device accessor pattern detection ──────────────────────────────
+      // Handle: I2C0.device(0x76).writeByte(0xFA, 0x55)
+      //   or:   i2c.device(0x76).writeByte(0xFA, 0x55)  (bus alias)
+      // AST: CallExpr(PropertyAccessExpr(CallExpr(PropertyAccessExpr(root, "device"), [addr]), outerMethod), [args])
+      if (ts.isCallExpression(expr.expression.expression) &&
+          ts.isPropertyAccessExpression(expr.expression.expression.expression)) {
+        const innerCall = expr.expression.expression;
+        const innerProp = expr.expression.expression.expression;
+        const outerMethod = expr.expression.name.text;
+
+        if (innerProp.name.text === 'device' && ts.isIdentifier(innerProp.expression)) {
+          const rootName = innerProp.expression.text;
+          const kind = inferKindByName(rootName);
+          if (kind !== 'unknown') {
+            return {
+              kind: "typecode-call",
+              receiver: rootName,
+              receiverKind: kind,
+              method: `device.${outerMethod}`,
+              args: [
+                ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+                ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+              ],
+            };
+          }
+          // Bus alias resolution for device accessor
+          const busAlias = activeBusAliases.get(rootName);
+          if (busAlias) {
+            return {
+              kind: "typecode-call",
+              receiver: busAlias.receiver,
+              receiverKind: busAlias.kind,
+              method: `device.${outerMethod}`,
+              args: [
+                ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+                ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+              ],
+            };
+          }
+          // Pin alias resolution for device accessor
+          const pinAlias = activePinAliases.get(rootName);
+          if (pinAlias) {
+            const aliasKind = inferKindByName(pinAlias);
+            if (aliasKind !== 'unknown') {
+              return {
+                kind: "typecode-call",
+                receiver: pinAlias,
+                receiverKind: aliasKind,
+                method: `device.${outerMethod}`,
+                args: [
+                  ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+                  ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+                ],
+              };
+            }
+          }
         }
       }
     }
@@ -1410,7 +1509,7 @@ function callToStatement(
   const comments = extractNodeComments(statementNode, sourceText);
   
   // ---- Typecode call detection at statement level -------------------------
-  // Handle D13.config.output(), D9.config.pwm(), D2.config.input.pullup(), etc.
+  // Handle D13.output(), D9.pwm(), D2.pullup(), etc.
   // These need to be detected as typecode-call IR nodes for proper transpilation.
   if (ts.isPropertyAccessExpression(call.expression)) {
     const extractRootAndChain = (node: ts.Expression): { root: string; chain: string[] } | undefined => {
@@ -1440,6 +1539,98 @@ function callToStatement(
           method: fullMethod,
           args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
         };
+      }
+      // Pin alias resolution at statement level: led.toggle() → LED.toggle()
+      const aliasTarget = activePinAliases.get(chainInfo.root);
+      if (aliasTarget) {
+        const aliasKind = inferKindByName(aliasTarget);
+        if (aliasKind !== 'unknown') {
+          const fullMethod = chainInfo.chain.join('.');
+          return {
+            kind: "typecode-call",
+            sourceSpan: makeSourceSpan(call, fileName, sourceText),
+            receiver: aliasTarget,
+            receiverKind: aliasKind,
+            method: fullMethod,
+            args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
+        }
+      }
+      // Bus alias resolution at statement level: i2c.device() → I2C0.device()
+      const busAlias = activeBusAliases.get(chainInfo.root);
+      if (busAlias) {
+        const fullMethod = chainInfo.chain.join('.');
+        return {
+          kind: "typecode-call",
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+          receiver: busAlias.receiver,
+          receiverKind: busAlias.kind,
+          method: fullMethod,
+          args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+        };
+      }
+    }
+
+    // ── Device accessor pattern detection at statement level ──────────
+    // Handle: I2C0.device(0x76).writeByte(0xFA, 0x55)
+    //   or:   i2c.device(0x76).writeByte(0xFA, 0x55)  (bus alias)
+    // This MUST be outside the chainInfo block because extractRootAndChain
+    // cannot traverse through intermediate CallExpression nodes.
+    if (ts.isCallExpression(call.expression.expression) &&
+        ts.isPropertyAccessExpression(call.expression.expression.expression)) {
+      const innerCall = call.expression.expression;
+      const innerProp = call.expression.expression.expression;
+      const outerMethod = call.expression.name.text;
+
+      if (innerProp.name.text === 'device' && ts.isIdentifier(innerProp.expression)) {
+        const rootName = innerProp.expression.text;
+        const kind = inferKindByName(rootName);
+        if (kind !== 'unknown') {
+          return {
+            kind: "typecode-call",
+            sourceSpan: makeSourceSpan(call, fileName, sourceText),
+            receiver: rootName,
+            receiverKind: kind,
+            method: `device.${outerMethod}`,
+            args: [
+              ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+              ...call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+            ],
+          };
+        }
+        // Bus alias resolution for device accessor
+        const busAlias = activeBusAliases.get(rootName);
+        if (busAlias) {
+          return {
+            kind: "typecode-call",
+            sourceSpan: makeSourceSpan(call, fileName, sourceText),
+            receiver: busAlias.receiver,
+            receiverKind: busAlias.kind,
+            method: `device.${outerMethod}`,
+            args: [
+              ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+              ...call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+            ],
+          };
+        }
+        // Pin alias resolution for device accessor
+        const pinAlias = activePinAliases.get(rootName);
+        if (pinAlias) {
+          const aliasKind = inferKindByName(pinAlias);
+          if (aliasKind !== 'unknown') {
+            return {
+              kind: "typecode-call",
+              sourceSpan: makeSourceSpan(call, fileName, sourceText),
+              receiver: pinAlias,
+              receiverKind: aliasKind,
+              method: `device.${outerMethod}`,
+              args: [
+                ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+                ...call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+              ],
+            };
+          }
+        }
       }
     }
   }
@@ -1488,7 +1679,7 @@ function callToStatement(
   }
   
   // ---- Debounce chain detection at statement level -----------------------
-  // Handle D2.on.falling(() => {...}).debounce(50) pattern
+  // Handle D2.onFalling(() => {...}).debounce(50) pattern
   if (ts.isPropertyAccessExpression(call.expression) && 
       call.expression.name.text === "debounce" &&
       call.arguments.length === 1 &&
@@ -2564,6 +2755,52 @@ function variableStatementToIR(
     };
     commentsAssigned = true;
 
+    // ── Pin alias detection ──────────────────────────────────────────────
+    // Handle: const led = LED.asOutput() or const btn = D2.asInput()
+    // These create compile-time-only aliases — no C++ variable is emitted.
+    // The typecode-call (pinMode) is emitted as a standalone statement,
+    // and the variable name is recorded for alias resolution in subsequent calls.
+    const initIR = loweredDeclaration.initializer as any;
+    if (initIR?.kind === 'typecode-call' &&
+        typeof initIR.method === 'string' &&
+        (initIR.method === 'asOutput' || initIR.method === 'asInput' || initIR.method === 'asInputPullUp')) {
+      activePinAliases.set(declaration.name.text, initIR.receiver);
+      lowered.push({
+        kind: "typecode-call",
+        sourceSpan: loweredDeclaration.sourceSpan,
+        leadingComments: loweredDeclaration.leadingComments,
+        trailingComments: loweredDeclaration.trailingComments,
+        receiver: initIR.receiver,
+        receiverKind: initIR.receiverKind,
+        method: initIR.method,
+        args: initIR.args || [],
+      });
+      continue;
+    }
+
+    // ── Bus alias detection ──────────────────────────────────────────────
+    // Handle: const i2c = I2C0.begin() or const serial = UART0.begin(9600)
+    // These create compile-time-only aliases — no C++ variable is emitted.
+    // The typecode-call (begin) is emitted as a standalone statement,
+    // and the variable name is recorded for alias resolution in subsequent calls.
+    if (initIR?.kind === 'typecode-call' &&
+        typeof initIR.method === 'string' &&
+        (initIR.method === 'begin' || initIR.method === 'enable' || initIR.method === 'take') &&
+        (initIR.receiverKind === 'i2c' || initIR.receiverKind === 'spi' || initIR.receiverKind === 'serial')) {
+      activeBusAliases.set(declaration.name.text, { receiver: initIR.receiver, kind: initIR.receiverKind });
+      lowered.push({
+        kind: "typecode-call",
+        sourceSpan: loweredDeclaration.sourceSpan,
+        leadingComments: loweredDeclaration.leadingComments,
+        trailingComments: loweredDeclaration.trailingComments,
+        receiver: initIR.receiver,
+        receiverKind: initIR.receiverKind,
+        method: initIR.method,
+        args: initIR.args || [],
+      });
+      continue;
+    }
+
     const explicitType = typeNodeToCppType(declaration.type, typeAliases);
     const inferredType = declaration.initializer
       ? inferExprCppType(declaration.initializer, functionReturnTypes, localVariableTypes)
@@ -2624,6 +2861,20 @@ function collectPointerVars(statements: readonly ts.Statement[]): PointerTracker
   
   return pointerVars;
 }
+
+// ---------------------------------------------------------------------------
+// Pin alias tracking
+// ---------------------------------------------------------------------------
+
+// Module-level pin alias map for the current buildProgramIR invocation.
+// Maps alias variable names (e.g., "led") to their original pin names (e.g., "LED").
+// Reset at the start of each buildProgramIR call.
+let activePinAliases: Map<string, string> = new Map();
+
+// Module-level bus alias map for the current buildProgramIR invocation.
+// Maps alias variable names (e.g., "i2c") to their original peripheral receiver info.
+// Reset at the start of each buildProgramIR call.
+let activeBusAliases: Map<string, { receiver: string; kind: TypecodeReceiverKind }> = new Map();
 
 /**
  * Given a source file path and a relative import module specifier, check
@@ -2711,6 +2962,10 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   
   // Collect pointer variables at top level (for correct -> vs . usage)
   const topLevelPointerVars = collectPointerVars(source.statements);
+  
+  // Reset alias tracking for this file
+  activePinAliases = new Map();
+  activeBusAliases = new Map();
 
   for (const statement of source.statements) {
     if (ts.isTypeAliasDeclaration(statement)) {
@@ -3773,9 +4028,24 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     diagnostics.push(...unsafePinDiagnostics);
 
     // Validate peripheral pin conflicts (GPIO on peripheral pins)
-    const boardId = boardConstants?.get('id') as string | undefined;
-    const peripheralPinDiagnostics = validatePeripheralPinConflicts(peripheralUsage, boardId);
+    const peripheralPinDiagnostics = validatePeripheralPinConflicts(peripheralUsage, boardConstants);
     diagnostics.push(...peripheralPinDiagnostics);
+
+    // Validate mixed alias usage for the same physical pin
+    const pinAliasDiagnostics = validatePinAliasConflicts(peripheralUsage, boardConstants);
+    diagnostics.push(...pinAliasDiagnostics);
+
+    // Validate shared PWM timer groups for simultaneously used PWM pins
+    const pwmTimerSharingDiagnostics = validatePWMTimerSharing(peripheralUsage, boardConstants);
+    diagnostics.push(...pwmTimerSharingDiagnostics);
+
+    // Validate Timer0 PWM coupling with delay()/millis()/micros() on AVR boards
+    const timer0ConflictDiagnostics = validateTimer0PWMTimingConflict(peripheralUsage, boardConstants);
+    diagnostics.push(...timer0ConflictDiagnostics);
+
+    // Validate pulldown capability (pins must support hardware pulldown)
+    const pulldownDiagnostics = validatePulldownSupport(peripheralUsage, boardConstants);
+    diagnostics.push(...pulldownDiagnostics);
 
     // Validate interrupt safety and duplicate handlers
     const interruptDiagnostics = analyzeInterruptSafety({
@@ -3816,6 +4086,66 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       namespaces,
     }, boardConstants);
     diagnostics.push(...adcRangeDiagnostics);
+
+    const unitSuspicionDiagnostics = validateUnitSuspicion({
+      fileName,
+      imports,
+      reExports,
+      structs: [],
+      enums,
+      classes,
+      typeAliases,
+      topLevelStatements,
+      functions,
+      boilerplates,
+      diagnostics: [],
+      registerClasses,
+      boardConstants,
+      interfaces,
+      namespaces,
+      peripheralUsage,
+    });
+    diagnostics.push(...unitSuspicionDiagnostics);
+
+    // Validate pin mode configuration (read/write without prior mode set)
+    const pinModeDiagnostics = validatePinModeConfig({
+      fileName,
+      imports,
+      reExports,
+      structs: [],
+      enums,
+      classes,
+      typeAliases,
+      topLevelStatements,
+      functions,
+      boilerplates,
+      diagnostics: [],
+      registerClasses,
+      boardConstants,
+      interfaces,
+      namespaces,
+    });
+    diagnostics.push(...pinModeDiagnostics);
+
+    // Validate peripheral bus ownership (take/release pattern)
+    const ownershipDiagnostics = validatePeripheralOwnership({
+      fileName,
+      imports,
+      reExports,
+      structs: [],
+      enums,
+      classes,
+      typeAliases,
+      topLevelStatements,
+      functions,
+      boilerplates,
+      diagnostics: [],
+      registerClasses,
+      boardConstants,
+      interfaces,
+      namespaces,
+    });
+    diagnostics.push(...ownershipDiagnostics);
   } catch (e) {
     // If peripheral analysis fails, use empty usage
     peripheralUsage = createEmptyPeripheralUsage();

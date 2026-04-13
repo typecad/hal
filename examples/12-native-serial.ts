@@ -8,26 +8,25 @@
 import { UART0, A0, delay } from '@typecode';
 
 // Initialize UART0 at 9600 baud
-UART0.config.baudRate(9600).begin();
+const serial = UART0.begin(9600);
 
 // Print startup message
-UART0.println("Native UART Demo");
-UART0.println("=================");
+serial.println("Native UART Demo");
+serial.println("=================");
 
-// Configure A0 as analog input
-A0.config.analog();
+// Configure A0 as analog input (analog reads work without explicit config)
 
 let counter = 0;
 
 while (true) {
   // Read analog value
-  const sensorValue = A0.read();
+  const sensorValue = A0.readAnalog();
   
   // Print counter and sensor value
-  UART0.print("Count: ");
-  UART0.println(counter);
-  UART0.print("ADC: ");
-  UART0.println(sensorValue);
+  serial.print("Count: ");
+  serial.println(counter);
+  serial.print("ADC: ");
+  serial.println(sensorValue);
   
   // Also demonstrate console.log (maps to Serial.println)
   console.log("Loop iteration complete");

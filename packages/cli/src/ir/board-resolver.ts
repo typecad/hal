@@ -100,7 +100,7 @@ function walkObjectLiteral(
 
     const keyNode = prop.name;
     const key =
-      ts.isIdentifier(keyNode) || ts.isStringLiteral(keyNode)
+      ts.isIdentifier(keyNode) || ts.isStringLiteral(keyNode) || ts.isNumericLiteral(keyNode)
         ? keyNode.text
         : undefined;
     if (!key) continue;
@@ -124,10 +124,55 @@ function walkObjectLiteral(
       }
       if (arrValues.length > 0) {
         out.set(fullPath, arrValues.join(','));
+      } else {
+        walkArrayLiteral(init, fullPath, out);
+      }
+    }
+
+    // Encode peripheral pin maps in a compact parseable format.
+    // pins.i2c = { 0: { sda: 'A4', scl: 'A5' } } -> "0:sda=A4,scl=A5"
+    // pins.spi = { 0: { mosi: 'D11', miso: 'D12', sck: 'D13', cs: 'D10' } } -> "0:mosi=D11,miso=D12,sck=D13,cs=D10"
+    // pins.uart = { 0: { tx: 'D1', rx: 'D0' } } -> "0:tx=D1,rx=D0"
+    if (ts.isObjectLiteralExpression(init)) {
+      const encoded = tryEncodePeripheralPinMap(key, init);
+      if (encoded) {
+        out.set(fullPath, encoded);
       }
     }
     // Other complex expressions are silently ignored.
   }
+}
+
+function walkArrayLiteral(
+  arr: ts.ArrayLiteralExpression,
+  prefix: string,
+  out: BoardConstants,
+): void {
+  arr.elements.forEach((elem, index) => {
+    const fullPath = `${prefix}.${index}`;
+    const scalar = resolveScalar(elem as ts.Expression);
+    if (scalar !== undefined) {
+      out.set(fullPath, scalar);
+      return;
+    }
+
+    if (ts.isObjectLiteralExpression(elem)) {
+      walkObjectLiteral(elem, fullPath, out);
+      return;
+    }
+
+    if (ts.isArrayLiteralExpression(elem)) {
+      const arrValues: string[] = [];
+      for (const nested of elem.elements) {
+        if (ts.isStringLiteral(nested)) {
+          arrValues.push(nested.text);
+        }
+      }
+      if (arrValues.length > 0) {
+        out.set(fullPath, arrValues.join(','));
+      }
+    }
+  });
 }
 
 /**
@@ -161,6 +206,62 @@ function resolveScalar(
     ts.isNumericLiteral(expr.operand)
   ) {
     return -Number(expr.operand.text.replace(/_/g, ""));
+  }
+
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Peripheral pin map encoding
+// ---------------------------------------------------------------------------
+
+/**
+ * Try to encode a peripheral pin map object into a compact string format.
+ * Handles pins.i2c, pins.spi, pins.uart structures.
+ *
+ * Input:  { 0: { sda: 'A4', scl: 'A5' } }
+ * Output: "0:sda=A4,scl=A5"
+ *
+ * Input:  { 0: { mosi: 'D11', miso: 'D12', sck: 'D13', cs: 'D10' } }
+ * Output: "0:mosi=D11,miso=D12,sck=D13,cs=D10"
+ */
+function tryEncodePeripheralPinMap(
+  key: string,
+  obj: ts.ObjectLiteralExpression,
+): string | undefined {
+  // Only encode known peripheral pin structures
+  if (key !== 'i2c' && key !== 'spi' && key !== 'uart') return undefined;
+
+  const instances: string[] = [];
+
+  for (const prop of obj.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const keyNode = prop.name;
+    if (!ts.isIdentifier(keyNode) && !ts.isStringLiteral(keyNode) && !ts.isNumericLiteral(keyNode)) continue;
+
+    const instanceKey = keyNode.text;
+    const value = prop.initializer;
+    if (!ts.isObjectLiteralExpression(value)) continue;
+
+    // Parse the inner object { sda: 'A4', scl: 'A5' } etc.
+    const fields: string[] = [];
+    for (const field of value.properties) {
+      if (!ts.isPropertyAssignment(field)) continue;
+      const fieldKey = field.name;
+      if (!ts.isIdentifier(fieldKey) && !ts.isStringLiteral(fieldKey) && !ts.isNumericLiteral(fieldKey)) continue;
+      const fieldValue = field.initializer;
+      if (!ts.isStringLiteral(fieldValue)) continue;
+
+      fields.push(`${fieldKey.text}=${fieldValue.text}`);
+    }
+
+    if (fields.length > 0) {
+      instances.push(`${instanceKey}:${fields.join(',')}`);
+    }
+  }
+
+  if (instances.length > 0) {
+    return instances.join(';');
   }
 
   return undefined;

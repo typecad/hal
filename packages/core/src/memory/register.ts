@@ -11,22 +11,12 @@
 
 /**
  * A single-bit value (0 or 1).  Used as the type annotation for 1-bit fields.
- *
- * @example
- * ```typescript
- * @bits(0, 0) declare UE: Bit;
- * ```
  */
 export type Bit = 0 | 1;
 
 /**
  * An N-bit wide unsigned value.  Used as the type annotation for multi-bit
  * fields.
- *
- * @example
- * ```typescript
- * @bits(9, 8) declare PS: Bits<2>;
- * ```
  */
 export type Bits<N extends number = number> = number;
 
@@ -64,18 +54,6 @@ const registerMetaStore = new WeakMap<Function, RegisterClassMeta>();
 
 /**
  * Class decorator that maps a class to a hardware register address.
- * The transpiler emits a `volatile` pointer instead of a C++ class.
- *
- * @example
- * ```typescript
- * @register(0x4001_1000)
- * class USART1 {
- *   @bits(0, 0)   declare UE:   Bit;
- *   @bits(9, 8)   declare PS:   Bits<2>;
- * }
- * ```
- *
- * @param address - The MMIO register address
  */
 export function register(address: number): ClassDecorator {
   return (target: Function): void => {
@@ -90,13 +68,6 @@ export function register(address: number): ClassDecorator {
  *
  * @param hi - High bit index (inclusive)
  * @param lo - Low bit index (inclusive)
- *
- * @example
- * ```typescript
- * @bits(0, 0)   declare UE:   Bit;     // single bit at position 0
- * @bits(9, 8)   declare PS:   Bits<2>; // bits 8-9 (2 bits wide)
- * @bits(15, 8)  declare BAUD: Bits<8>; // bits 8-15 (8 bits wide)
- * ```
  */
 export function bits(hi: number, lo: number): PropertyDecorator {
   return (target: object, propertyKey: string | symbol): void => {
@@ -121,10 +92,7 @@ export function getRegisterMeta(target: Function): RegisterClassMeta | undefined
   return registerMetaStore.get(target);
 }
 
-/**
- * Get all bit fields for a register class.
- * Returns an empty array if the class is not a register class.
- */
+/** Get all bit fields for a register class. */
 export function getBitFields(target: Function): BitFieldMeta[] {
   return registerMetaStore.get(target)?.bitFields ?? [];
 }

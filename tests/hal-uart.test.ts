@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // HAL UART/Serial Tests
 //
-// Tests for UART fluent and Arduino-compatible APIs
+// Tests for UART Arduino-compatible API
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
@@ -126,111 +126,6 @@ describe('UART HAL - Arduino API Transpilation', () => {
       `, { target: 'arduino' });
       
       expect(result.cpp).toContain('Serial.flush()');
-    });
-  });
-});
-
-describe('UART HAL - Fluent API Transpilation', () => {
-  describe('Configuration', () => {
-    it('transpiles fluent config chain with baudRate propagation', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(115200).begin();
-      `, { target: 'arduino' });
-      
-      // Fluent chain: UART0.config.baudRate(115200).begin() -> Serial.begin(115200)
-      expect(result.cpp).toContain('Serial.begin(115200)');
-    });
-
-    it('transpiles config with dataBits (requires IR chain tracking)', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(9600).dataBits(8).begin();
-      `, { target: 'arduino' });
-      
-      // TODO: Full fluent chain tracking requires IR-level chain analysis
-      expect(result.cpp).toContain('UART0.config.baudRate(9600).dataBits(8).begin()');
-    });
-
-    it('transpiles config with parity (requires IR chain tracking)', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(9600).parity(UARTParity.NONE).begin();
-      `, { target: 'arduino' });
-      
-      // TODO: Full fluent chain tracking requires IR-level chain analysis
-      expect(result.cpp).toContain('UART0.config.baudRate(9600).parity');
-    });
-  });
-
-  describe('Fluent Write Operations', () => {
-    it('transpiles write.line()', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(9600).begin();
-        UART0.write.line("Hello World");
-      `, { target: 'arduino' });
-      
-      // Fluent write.line() IS transpiled to Serial.println
-      expect(result.cpp).toContain('Serial.println');
-    });
-
-    it('transpiles write.string()', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(9600).begin();
-        UART0.write.string("Hello");
-      `, { target: 'arduino' });
-      
-      // Fluent write.string() IS transpiled to Serial.print
-      expect(result.cpp).toContain('Serial.print');
-    });
-
-    it('transpiles write.bytes()', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(9600).begin();
-        UART0.write.bytes([0x01, 0x02, 0x03]);
-      `, { target: 'arduino' });
-      
-      // Fluent write.bytes() IS transpiled to Serial.write
-      expect(result.cpp).toContain('Serial.write');
-    });
-  });
-
-  describe('Fluent Read Operations', () => {
-    it('transpiles available() from fluent API', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(9600).begin();
-        if (UART0.available() > 0) {
-          const data = UART0.read.byte();
-        }
-      `, { target: 'arduino' });
-
-      expect(result.cpp).toContain('Serial.available()');
-    });
-
-    it('transpiles read.line()', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(9600).begin();
-        const line = UART0.read.line();
-      `, { target: 'arduino' });
-
-      // read.line() transpiles to Serial.readStringUntil
-      expect(result.cpp).toContain('Serial.readStringUntil');
-    });
-
-    it('transpiles read.bytes()', () => {
-      const result = transpile(`
-        import { UART0 } from '@typecode/board-arduino-uno';
-        UART0.config.baudRate(9600).begin();
-        const data = UART0.read.bytes(10);
-      `, { target: 'arduino' });
-
-      // read.bytes() transpiles to Serial.readBytes
-      expect(result.cpp).toContain('Serial.readBytes');
     });
   });
 });

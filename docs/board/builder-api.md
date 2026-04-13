@@ -165,7 +165,7 @@ When a user writes code that uses an unsafe pin:
 
 ```typescript
 import { D0, HIGH } from '@typecode/board-arduino-uno';
-D0.config.output();
+D0.output();
 D0.write(HIGH);
 ```
 

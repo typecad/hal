@@ -110,18 +110,37 @@ import { D4, A0, D5 } from '@typecode';
 // ✅ OK  — D4 is IDigitalPin, supports .high()
 D4.high();
 
-// ✅ OK  — A0 is IAnalogInput, supports .read()
-const value = A0.read();
+// ✅ OK  — A0 is an analog-capable pin, supports .readAnalog()
+const value = A0.readAnalog();
 
-// ❌ COMPILE ERROR — IAnalogInput has no .high() method
+// ❌ COMPILE ERROR — analog-only helpers do not expose digital-only APIs as the primary path
 A0.high();  // Property 'high' does not exist on type 'IAnalogInput'
 
-// ❌ COMPILE ERROR — IDigitalPin has no .setDutyCycle()
-D4.setDutyCycle(128);  // Property 'setDutyCycle' does not exist
+// ❌ COMPILE ERROR — IDigitalPin has no .pwm()
+D4.pwm(50);  // Property 'pwm' does not exist
 
-// ✅ OK  — D5 is IPWMPin, supports .setDutyCycle()
-D5.setDutyCycle(128);
+// ✅ OK  — D5 is IPWMPin, supports .pwm(percent)
+D5.pwm(50);
 ```
+
+### Board-aware pin rules
+
+Board packages carry conflict metadata, not just names. On Uno, TypeCode can tell you about these constraints before code generation:
+
+| Pins | Reserved by | Why it matters |
+|------|-------------|----------------|
+| `D0`, `D1` | `UART0` | Using them as GPIO interferes with serial RX/TX |
+| `A4`, `A5` | `I2C0` | Using them as GPIO conflicts with SDA/SCL |
+| `D11`, `D12`, `D13` | `SPI0` | Using them as GPIO conflicts with MOSI/MISO/SCK |
+
+This is a core TypeCode design goal: board metadata should make misuse obvious without forcing you to memorize the schematic.
+
+The same metadata also helps with softer resource coupling:
+
+- pin aliases such as `LED` and `D13` refer to the same physical pin, so mixing both names makes diagnostics harder to read
+- PWM pins are grouped by timer on Uno: `D5/D6`, `D9/D10`, and `D3/D11`
+
+When TypeCode warns about alias mixing or shared PWM timers, it is pointing at places where the board schematic leaks into behavior.
 
 ## Examples
 
@@ -130,7 +149,7 @@ D5.setDutyCycle(128);
 ```typescript
 import { LED, delay, HIGH } from '@typecode';
 
-LED.config.output.initial(HIGH);
+LED.output(HIGH);
 
 while (true) {
   LED.toggle();
@@ -143,11 +162,11 @@ while (true) {
 ```typescript
 import { A0, UART0, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
+UART0.begin(9600);
 
 while (true) {
-  const value = A0.read();
-  UART0.write.line(value.toString());
+  const value = A0.readAnalog();
+  UART0.println(value.toString());
   delay(500);
 }
 ```
@@ -157,13 +176,13 @@ while (true) {
 ```typescript
 import { D9, delay, LOW } from '@typecode';
 
-D9.config.output.initial(LOW);
+D9.output(LOW);
 
 let brightness = 0;
 let step = 5;
 
 while (true) {
-  D9.write(brightness);
+  D9.pwm(brightness / 2.55);
   brightness += step;
   if (brightness <= 0 || brightness >= 255) {
     step = -step;
@@ -172,17 +191,19 @@ while (true) {
 }
 ```
 
+PWM timer note: on Uno, `D9` shares its timer with `D10`, so choose pins from different timer groups when you need independent PWM timing behavior.
+
 ### 4. External Interrupt (Button)
 
 ```typescript
 import { D2, LED, LOW } from '@typecode';
 
-LED.config.output.initial(LOW);
-D2.config.input.pullup();
+LED.output(LOW);
+D2.inputPullUp();
 
 let ledState = false;
 
-D2.on.falling(() => {
+D2.onFalling(() => {
   ledState = !ledState;
   if (ledState) {
     LED.high();
@@ -197,19 +218,19 @@ D2.on.falling(() => {
 ```typescript
 import { I2C0, UART0, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
-I2C0.config.begin();
+UART0.begin(9600);
+const i2c = I2C0.begin();
 
 const BME280_ADDR = 0x76;
 
 while (true) {
   // Read 2 bytes from register 0xFA (temperature data)
-  const tempData = I2C0.device(BME280_ADDR).readBytes(0xfa, 2);
+  const tempData = i2c.device(BME280_ADDR).readBytes(0xfa, 2);
   const msb = tempData[0];
   const lsb = tempData[1];
   const tempRaw = (msb << 8) | lsb;
   const temperature = tempRaw / 100.0;
-  UART0.write.line(temperature.toString());
+  UART0.println(temperature.toString());
   delay(1000);
 }
 ```
@@ -219,13 +240,14 @@ while (true) {
 ```typescript
 import { SPI0, SS, delay, LOW } from '@typecode';
 
-SPI0.config.frequency(1_000_000).begin();
-SS.config.output.initial(LOW);
+const spi = SPI0.begin();
+spi.setFrequency(1_000_000);
+SS.output(LOW);
 
 let pattern = 0b00000001;
 
 while (true) {
-  SPI0.device(SS).write(pattern);
+  spi.device(SS).write(pattern);
 
   // rotate left
   pattern = ((pattern << 1) | (pattern >> 7)) & 0xFF;
@@ -238,15 +260,15 @@ while (true) {
 ```typescript
 import { Board, LOW } from '@typecode';
 
-Board.UART0.config.baudRate(115200).begin();
-Board.LED.config.output.initial(LOW);
+Board.UART0.begin(115200);
+Board.LED.output(LOW);
 
 Board.UART0.println("Arduino Uno booted");
 Board.UART0.println("MCU: " + Board.definition.mcu);
 Board.UART0.println("Flash: " + Board.definition.memory.flash + " bytes");
 
 while (true) {
-  const sensor = Board.A0.read();
+  const sensor = Board.A0.readAnalog();
   Board.UART0.println(sensor);
   Board.LED.toggle();
 }
@@ -259,18 +281,18 @@ while (true) {
 ```typescript
 import { UART0 } from '@typecode';
 
-// Fluent configuration
-UART0.config.baudRate(9600).begin();
+// Initialize with baud rate
+UART0.begin(9600);
 
 // Write operations
-UART0.write.line("Hello, World!");
-UART0.write.string("Value: ");
-UART0.write.formatln("Number: %d", 42);
+UART0.println("Hello, World!");
+UART0.print("Value: ");
+UART0.printf("Number: %d", 42);
 
 // Read operations
-const lineResult = UART0.read.line(5000);  // 5 second timeout
-if (lineResult.ok) {
-  UART0.println(lineResult.asStringTrim());
+if (UART0.available() > 0) {
+  const byte = UART0.read();
+  UART0.println(byte);
 }
 ```
 
@@ -279,11 +301,12 @@ if (lineResult.ok) {
 ```typescript
 import { I2C0 } from '@typecode';
 
-// Fluent configuration
-I2C0.config.speed(400000).begin();  // 400 kHz
+// Initialize with optional clock speed
+const i2c = I2C0.begin();  // 100 kHz default
+i2c.setClock(400000);      // optionally switch to 400 kHz fast mode
 
-// Fluent device API
-const device = I2C0.device(0x68);
+// Device accessor
+const device = i2c.device(0x68);
 
 // Read from register
 const data = device.readBytes(0x75, 1);  // Read WHO_AM_I
@@ -291,35 +314,28 @@ const whoAmI = data[0];
 
 // Write to register
 device.writeByte(0x6B, 0x00);  // Wake MPU-6050
-
-// Fluent read/write
-const result = I2C0.device(0x68).read(2).from(0x3B);
-if (result.ok) {
-  const value = result.asUint16('be');
-}
 ```
 
 ### SPI0
 
 ```typescript
-import { SPI0, D10 } from '@typecode';
+import { SPI0, D10, HIGH } from '@typecode';
 
 const CS = D10;
 
-// Fluent configuration
-SPI0.config
-  .frequency(1_000_000)
-  .mode(0)
-  .bitOrder('msb')
-  .begin();
+// Initialize and configure
+const spi = SPI0.begin();
+spi.setFrequency(1_000_000);
+spi.setMode(0);
+spi.setBitOrder('msb');
 
-CS.config.output.initial(true);  // HIGH = deselected
+CS.output(HIGH);  // HIGH = deselected
 
 // Transfer with device API (CS handled automatically)
-const response = SPI0.device(CS).transfer(0x80);
+const response = spi.device(CS).transfer(0x80);
 
 // Multi-byte transfer
-const rx = SPI0.device(CS).transfer(new Uint8Array([0x80, 0x00]));
+const rx = spi.device(CS).transfer(new Uint8Array([0x80, 0x00]));
 ```
 
 ## Timing Functions

@@ -125,12 +125,21 @@ export function renderArduinoBuiltin(
     // ------------------------------------------------------------------
     case 'analog-input':
       switch (method) {
-        case 'read':          return `analogRead(${pin})`;
+        case 'read':          return `analogRead(${pin})`;  // backward compat
+        case 'readAnalog':    return `analogRead(${pin})`;
         case 'readVoltage':   return `(analogRead(${pin}) * 5.0 / 1023.0)`;
         case 'getResolution': return `10`;
         case 'setReference':  return `analogReference(${a(0)})`;
         case 'getMode':       return `0`;
         case 'setMode':       return `pinMode(${pin}, ${a(0)})`;
+        // Analog pins are always inputs, but allow explicit .input() for API consistency
+        case 'input':         return `/* analog pin ${receiver} is always input */`;
+        case 'inputPullUp':   return `pinMode(${pin}, INPUT_PULLUP)`;
+        case 'inputPullDown': return `pinMode(${pin}, INPUT_PULLDOWN)`;
+        case 'output':        return `/* analog pin ${receiver} cannot be output */`;
+        // Object-creation aliases (same C++ as input/inputPullUp, different TS return types)
+        case 'asInput':         return `/* analog pin ${receiver} is always input */`;
+        case 'asInputPullUp':   return `pinMode(${pin}, INPUT_PULLUP)`;
       }
       break;
 
@@ -150,33 +159,34 @@ export function renderArduinoBuiltin(
         case 'isLow':          return `(digitalRead(${pin}) == LOW)`;
         case 'getMode':        return `0`;
         case 'setMode':        return `pinMode(${pin}, ${a(0)})`;
+        // Direct pin configuration
+        case 'output':
+          if (args.length > 0) {
+            return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
+          }
+          return `pinMode(${pin}, OUTPUT)`;
+        case 'input':          return `pinMode(${pin}, INPUT)`;
+        case 'inputPullUp':    return `pinMode(${pin}, INPUT_PULLUP)`;
+        case 'inputPullDown':  return `pinMode(${pin}, INPUT_PULLDOWN)`;
+        // Object-creation aliases (same C++ as output/input/inputPullUp, different TS return types)
+        case 'asOutput':
+          if (args.length > 0) {
+            return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
+          }
+          return `pinMode(${pin}, OUTPUT)`;
+        case 'asInput':          return `pinMode(${pin}, INPUT)`;
+        case 'asInputPullUp':    return `pinMode(${pin}, INPUT_PULLUP)`;
         // Tone API - available on all digital output pins
         case 'tone':           return `tone(${pin}, ${a(0)})`;
         case 'toneFor':        return `tone(${pin}, ${a(0)}, ${a(1)})`;  // tone with duration
         case 'noTone':         return `noTone(${pin})`;
         case 'attachInterrupt':
-          // Fluent interrupt API: D2.on.falling(callback) -> attachInterrupt with mode
+          // Direct interrupt API: D2.onFalling(callback) -> attachInterrupt with mode
           if (interruptMode) {
             const handler = a(0);
             return `attachInterrupt(digitalPinToInterrupt(${pin}), ${handler}, ${interruptMode})`;
           }
           return undefined;
-      }
-      // Handle config.output.initial(value) -> pinMode(OUTPUT); digitalWrite(value)
-      if (method === 'initial' && args.length >= 1) {
-        return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
-      }
-      // Handle config.input.pullup() -> pinMode(INPUT_PULLUP)
-      if (method === 'pullup') {
-        return `pinMode(${pin}, INPUT_PULLUP)`;
-      }
-      // Handle config.input.pulldown() -> pinMode(INPUT) (no pulldown on AVR)
-      if (method === 'pulldown') {
-        return `pinMode(${pin}, INPUT)`;
-      }
-      // Handle config.input.float() -> pinMode(INPUT)
-      if (method === 'float') {
-        return `pinMode(${pin}, INPUT)`;
       }
       break;
 
@@ -201,31 +211,32 @@ export function renderArduinoBuiltin(
         case 'isLow':          return `(digitalRead(${pin}) == LOW)`;
         case 'getMode':        return `0`;
         case 'setMode':        return `pinMode(${pin}, ${a(0)})`;
-        // New fluent API methods
-        case 'pwm':            return `analogWrite(${pin}, (int)((${a(0)}) * 255 / 100))`;  // percent to 8-bit
+        // Direct pin configuration
+        case 'output':
+          if (args.length > 0) {
+            return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
+          }
+          return `pinMode(${pin}, OUTPUT)`;
+        case 'input':           return `pinMode(${pin}, INPUT)`;
+        case 'inputPullUp':     return `pinMode(${pin}, INPUT_PULLUP)`;
+        case 'inputPullDown':   return `pinMode(${pin}, INPUT_PULLDOWN)`;
+        // Object-creation aliases (same C++ as output/input/inputPullUp, different TS return types)
+        case 'asOutput':
+          if (args.length > 0) {
+            return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
+          }
+          return `pinMode(${pin}, OUTPUT)`;
+        case 'asInput':           return `pinMode(${pin}, INPUT)`;
+        case 'asInputPullUp':     return `pinMode(${pin}, INPUT_PULLUP)`;
+        // PWM configuration
+        case 'pwm':
+          if (args.length > 0) {
+            return `pinMode(${pin}, OUTPUT); analogWrite(${pin}, (int)((${a(0)}) * 255 / 100))`;
+          }
+          return `pinMode(${pin}, OUTPUT)`;
         case 'tone':           return `tone(${pin}, ${a(0)})`;
         case 'toneFor':        return `tone(${pin}, ${a(0)}, ${a(1)})`;  // tone with duration
         case 'stop':           return `noTone(${pin})`;
-      }
-      // Handle config.output.initial(value) -> pinMode(OUTPUT); digitalWrite(value)
-      if (method === 'initial' && args.length >= 1) {
-        return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
-      }
-      // Handle config.input.pullup() -> pinMode(INPUT_PULLUP)
-      if (method === 'pullup') {
-        return `pinMode(${pin}, INPUT_PULLUP)`;
-      }
-      // Handle config.input.pulldown() -> pinMode(INPUT) (no pulldown on AVR)
-      if (method === 'pulldown') {
-        return `pinMode(${pin}, INPUT)`;
-      }
-      // Handle config.input.float() -> pinMode(INPUT)
-      if (method === 'float') {
-        return `pinMode(${pin}, INPUT)`;
-      }
-      // Handle config.pwm.initial(percent) -> pinMode(OUTPUT); analogWrite(resolved)
-      if (method === 'pwmInitial') {
-        return `pinMode(${pin}, OUTPUT); analogWrite(${pin}, (int)((${a(0)}) * 255 / 100))`;
       }
       break;
 
@@ -257,20 +268,24 @@ export function renderArduinoBuiltin(
           }
           return `${serialInstance}.begin(9600)`;
         }
+        case 'enable': {
+          // UART0.enable(baud) -> Serial.begin(baud)
+          // @deprecated — use begin() instead
+          if (args.length > 0) {
+            return `${serialInstance}.begin(${a(0)})`;
+          }
+          return `${serialInstance}.begin(9600)`;
+        }
         case 'begin': {
-          // UART0.begin(baud) -> Serial.begin(baud)
+          // UART0.begin(baud) -> Serial.begin(baud) — primary method
           if (args.length > 0) {
             return `${serialInstance}.begin(${a(0)})`;
           }
           return `${serialInstance}.begin(9600)`;
         }
         case 'deinitialize':     return `${serialInstance}.end()`;
+        case 'disable':          return `${serialInstance}.end()`;
         case 'end':              return `${serialInstance}.end()`;
-        case 'configBegin': {
-          // Fluent config chain: UART0.config.baudRate(115200).begin() -> Serial.begin(115200)
-          const baudRate = a(0) || '9600';
-          return `${serialInstance}.begin(${baudRate})`;
-        }
         case 'print':            return `${serialInstance}.print(${allArgs()})`;
         case 'println':          return `${serialInstance}.println(${allArgs()})`;
         case 'printf':           return `${serialInstance}.printf(${allArgs()})`;
@@ -287,6 +302,9 @@ export function renderArduinoBuiltin(
         case 'clearRxBuffer':    return `while (${serialInstance}.available()) ${serialInstance}.read()`;
         case 'isConnected':      return `(bool)${serialInstance}`;
         case 'setBaudRate':      return `${serialInstance}.begin(${a(0)})`;
+        // Ownership (opt-in, single-threaded Arduino = no-op with comment)
+        case 'take':             return `/* ${receiver}.take() */`;
+        case 'release':          return `/* ${receiver}.release() */`;
       }
       break;
     }
@@ -299,8 +317,16 @@ export function renderArduinoBuiltin(
       const wireInstance = receiver === 'I2C0' ? 'Wire' : `Wire${receiver.slice(3)}`;
       switch (method) {
         // Initialization
+        case 'enable': {
+          // I2C0.enable() -> Wire.begin() (master), I2C0.enable(addr) -> Wire.begin(addr) (slave)
+          // @deprecated — use begin() instead
+          if (args.length > 0) {
+            return `${wireInstance}.begin(${a(0)})`;
+          }
+          return `${wireInstance}.begin()`;
+        }
         case 'begin': {
-          // begin() for master, begin(address) for slave
+          // I2C0.begin() -> Wire.begin() (master), I2C0.begin(address) -> Wire.begin(address) (slave)
           if (args.length > 0) {
             return `${wireInstance}.begin(${a(0)})`;
           }
@@ -320,10 +346,40 @@ export function renderArduinoBuiltin(
         case 'onReceive':         return `${wireInstance}.onReceive(${a(0)})`;
         case 'onRequest':         return `${wireInstance}.onRequest(${a(0)})`;
         // Cleanup
+        case 'disable':           return `${wireInstance}.end()`;
         case 'end':               return `${wireInstance}.end()`;
-        // Fluent config chain: I2C0.config.speed(400000).begin() -> Wire.begin()
-        case 'configBegin':
-          return `${wireInstance}.begin()`;
+        // Ownership (opt-in, single-threaded Arduino = no-op with comment)
+        case 'take':              return `/* ${receiver}.take() */`;
+        case 'release':           return `/* ${receiver}.release() */`;
+        // Device accessor convenience methods (II2CDeviceAccessor)
+        // I2C0.device(addr).writeByte(register, value) → Wire.beginTransmission(addr); Wire.write(reg); Wire.write(val); Wire.endTransmission()
+        case 'device.writeByte': {
+          const addr = a(0);
+          const register = a(1);
+          const value = a(2);
+          return `${wireInstance}.beginTransmission(${addr}); ${wireInstance}.write(${register}); ${wireInstance}.write(${value}); ${wireInstance}.endTransmission()`;
+        }
+        case 'device.writeBytes': {
+          const addr = a(0);
+          const register = a(1);
+          const data = a(2);
+          return `${wireInstance}.beginTransmission(${addr}); ${wireInstance}.write(${register}); ${wireInstance}.write(${data}); ${wireInstance}.endTransmission()`;
+        }
+        case 'device.readByte': {
+          const addr = a(0);
+          const register = a(1);
+          return `${wireInstance}.beginTransmission(${addr}); ${wireInstance}.write(${register}); ${wireInstance}.endTransmission(false); ${wireInstance}.requestFrom(${addr}, 1); ${wireInstance}.read()`;
+        }
+        case 'device.readBytes': {
+          const addr = a(0);
+          const register = a(1);
+          const count = a(2);
+          return `${wireInstance}.beginTransmission(${addr}); ${wireInstance}.write(${register}); ${wireInstance}.endTransmission(false); ${wireInstance}.requestFrom(${addr}, ${count})`;
+        }
+        case 'device': {
+          // I2C0.device(addr) — returns accessor, no direct C++ equivalent
+          return `/* ${receiver}.device(${a(0)}) */`;
+        }
       }
       break;
     }
@@ -337,6 +393,8 @@ export function renderArduinoBuiltin(
       switch (method) {
         case 'initialize':      return `${spiInstance}.begin()`;
         case 'deinitialize':    return `${spiInstance}.end()`;
+        case 'enable':          return `${spiInstance}.begin()`;  // @deprecated — use begin() instead
+        case 'disable':         return `${spiInstance}.end()`;
         case 'begin':           return `${spiInstance}.begin()`;
         case 'end':             return `${spiInstance}.end()`;
         case 'transfer':        return `${spiInstance}.transfer(${a(0)})`;
@@ -361,174 +419,15 @@ export function renderArduinoBuiltin(
           return `${spiInstance}.beginTransaction(SPISettings())`;
         }
         case 'endTransaction':  return `${spiInstance}.endTransaction()`;
+        // Ownership (opt-in, single-threaded Arduino = no-op with comment)
+        case 'take':            return `/* ${receiver}.take() */`;
+        case 'release':         return `/* ${receiver}.release() */`;
       }
       break;
     }
   }
 
   return undefined; // No translation — caller uses fallback rendering
-}
-
-// ---------------------------------------------------------------------------
-// Fluent SPI API handler
-// ---------------------------------------------------------------------------
-
-/**
- * Render fluent SPI API calls to Arduino C++.
- * 
- * Patterns:
- * - SPI0.config.frequency(hz).mode(m).bitOrder(bo).begin()
- * - SPI0.device(csPin).transfer(data)
- * - SPI0.device(csPin).read()
- * - SPI0.device(csPin).write(data)
- */
-function renderFluentSPI(
-  parts: string[],
-  args: ReadonlyArray<ExpressionIR>,
-  renderArg: (e: ExpressionIR) => string,
-): string | undefined {
-  const busName = parts[0];  // SPI0, SPI1, etc.
-  const spiInstance = busName === 'SPI0' ? 'SPI' : `SPI${busName.slice(3)}`;
-  const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
-
-  // SPI0.config.frequency / SPI0.config.mode / SPI0.config.bitOrder / SPI0.config.begin
-  if (parts[1] === 'config') {
-    const configMethod = parts[2];
-    
-    // Handle chained config.begin() - e.g., SPI0.config.frequency(1000000).begin()
-    if (parts.length === 4 && parts[3] === 'begin') {
-      // For SPI, just call begin() - config settings are applied separately
-      return `${spiInstance}.begin()`;
-    }
-    
-    switch (configMethod) {
-      case 'frequency':
-        // Frequency config - stored for beginTransaction
-        return `/* ${spiInstance}.setClockDivider(${a(0)}) */`;
-      case 'mode':
-        // SPI mode (0-3)
-        return `/* ${spiInstance}.setDataMode(${a(0)}) */`;
-      case 'bitOrder':
-        // Bit order (MSBFIRST/LSBFIRST)
-        return `/* ${spiInstance}.setBitOrder(${a(0)}) */`;
-      case 'begin':
-        return `${spiInstance}.begin()`;
-    }
-    return undefined;
-  }
-
-  // SPI0.device.transfer / SPI0.device.read / SPI0.device.write
-  if (parts[1] === 'device') {
-    const deviceMethod = parts[2];
-    switch (deviceMethod) {
-      case 'transfer':
-        return `${spiInstance}.transfer(${a(0)})`;
-      case 'read':
-        return `${spiInstance}.transfer(0xFF)`;
-      case 'write':
-        return `${spiInstance}.transfer(${a(0)})`;
-    }
-    return undefined;
-  }
-
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Fluent I2C API handler
-// ---------------------------------------------------------------------------
-
-/**
- * Render fluent I2C API calls to Arduino C++.
- * 
- * Patterns:
- * - I2C0.config.sda(pin).scl(pin).speed(hz).begin()
- * - I2C0.device(addr).write(data).to(register)
- * - I2C0.device(addr).read(count).from(register)
- */
-function renderFluentI2C(
-  parts: string[],
-  args: ReadonlyArray<ExpressionIR>,
-  renderArg: (e: ExpressionIR) => string,
-  boardConstants?: BoardConstants,
-): string | undefined {
-  const busName = parts[0];  // I2C0, I2C1, etc.
-  const wireInstance = busName === 'I2C0' ? 'Wire' : `Wire${busName.slice(3)}`;
-  const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
-
-  // I2C0.config.sda / I2C0.config.scl / I2C0.config.speed / I2C0.config.begin
-  // Also handles chained patterns like: I2C0.config.speed(400000).begin()
-  if (parts[1] === 'config') {
-    const configMethod = parts[2];
-    
-    // Handle chained config.begin() - e.g., I2C0.config.speed(400000).begin()
-    if (parts.length === 4 && parts[3] === 'begin') {
-      // For I2C, just call begin() - speed is set separately via setClock
-      return `${wireInstance}.begin()`;
-    }
-    
-    switch (configMethod) {
-      case 'sda':
-      case 'scl':
-        // Pin config - no-op on Arduino Uno (fixed pins), but store for other boards
-        return `/* ${wireInstance}.${configMethod}(${a(0)}) */`;
-      case 'speed':
-        return `/* ${wireInstance}.setClock(${a(0)}) */`;
-      case 'begin':
-        return `${wireInstance}.begin()`;
-    }
-    return undefined;
-  }
-
-  // I2C0.device(addr).read(count).from(register)
-  // I2C0.device(addr).write(data).to(register)
-  if (parts[1] === 'device') {
-    // This is handled by tracking the chain - the full chain needs to be processed
-    // For now, return undefined to let the general handler deal with it
-    return undefined;
-  }
-
-  return undefined;
-}
-
-/**
- * Render fluent I2C device operations that span multiple call sites.
- * Called when the full chain pattern is detected.
- * 
- * For reads: I2C0.device(addr).read(count).from(register)
- * For writes: I2C0.device(addr).write(data).to(register)
- */
-function renderFluentI2CDevice(
-  busName: string,
-  address: string,
-  operation: 'read' | 'write',
-  countOrData: string,
-  register: string,
-  typeConversion?: string,
-): string {
-  const wireInstance = busName === 'I2C0' ? 'Wire' : `Wire${busName.slice(3)}`;
-  
-  if (operation === 'read') {
-    // Generate read sequence with result struct
-    const count = countOrData;
-    if (typeConversion) {
-      // With type conversion (asUint16, etc.)
-      const bytes = parseInt(count) || 2;
-      if (bytes === 1) {
-        return `({ uint8_t _i2c_val; ${wireInstance}.beginTransmission(${address}); ${wireInstance}.write(${register}); ${wireInstance}.endTransmission(); ${wireInstance}.requestFrom(${address}, 1); _i2c_val = ${wireInstance}.read(); _i2c_val; })`;
-      } else if (bytes === 2) {
-        const shift = typeConversion === "'le'" ? '0' : '8';
-        return `({ uint8_t _buf[2]; ${wireInstance}.beginTransmission(${address}); ${wireInstance}.write(${register}); ${wireInstance}.endTransmission(); ${wireInstance}.requestFrom(${address}, 2); for(int i=0;i<2;i++) _buf[i] = ${wireInstance}.read(); (${typeConversion} === 'le' ? (_buf[0] | (_buf[1] << 8)) : ((_buf[0] << 8) | _buf[1])); })`;
-      } else if (bytes === 4) {
-        return `({ uint8_t _buf[4]; ${wireInstance}.beginTransmission(${address}); ${wireInstance}.write(${register}); ${wireInstance}.endTransmission(); ${wireInstance}.requestFrom(${address}, 4); for(int i=0;i<4;i++) _buf[i] = ${wireInstance}.read(); (${typeConversion} === 'le' ? (_buf[0] | (_buf[1]<<8) | (_buf[2]<<16) | (_buf[3]<<24)) : ((_buf[0]<<24) | (_buf[1]<<16) | (_buf[2]<<8) | _buf[3])); })`;
-      }
-    }
-    // Raw bytes read
-    return `({ ${wireInstance}.beginTransmission(${address}); ${wireInstance}.write(${register}); ${wireInstance}.endTransmission(); ${wireInstance}.requestFrom(${address}, ${count}); })`;
-  } else {
-    // Write operation
-    return `({ ${wireInstance}.beginTransmission(${address}); ${wireInstance}.write(${register}); ${wireInstance}.write(${countOrData}); ${wireInstance}.endTransmission(); })`;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -650,186 +549,6 @@ function renderNumCall(
 }
 
 // ---------------------------------------------------------------------------
-// Fluent Serial/UART API handler
-// ---------------------------------------------------------------------------
-
-/**
- * Render fluent Serial/UART API calls to Arduino C++.
- * 
- * Patterns:
- * - Serial.config.baudRate(115200).begin()
- * - Serial.write.line("text") -> Serial.println("text")
- * - Serial.write.ln("text") -> Serial.println("text")
- * - Serial.write.string("text") -> Serial.print("text")
- * - Serial.write.char('A') -> Serial.write('A')
- * - Serial.write.bytes([1,2,3]) -> Serial.write(...)
- * - Serial.write.format("fmt", args) -> Serial.printf("fmt", args)
- * - Serial.write.formatln("fmt", args) -> Serial.printf("fmt\n", args)
- * - Serial.write.byte(0xFF) -> Serial.write(0xFF)
- * - Serial.write.uint16(val, 'be') -> Serial.write(...)
- * - Serial.read.line(timeout) -> Serial.readStringUntil('\n')
- * - Serial.read.until(delim, timeout) -> Serial.readStringUntil(delim)
- * - Serial.read.untilEnter(timeout) -> Serial.readStringUntil('\n')
- * - Serial.read.untilSpace(timeout) -> Serial.readStringUntil(' ')
- * - Serial.read.untilTab(timeout) -> Serial.readStringUntil('\t')
- * - Serial.read.bytes(count, timeout) -> Serial.readBytes(count)
- * - Serial.read.all() -> Serial.readString()
- * - Serial.read.byte() -> Serial.read()
- * - Serial.read.char() -> (char)Serial.read()
- */
-function renderFluentSerial(
-  parts: string[],
-  args: ReadonlyArray<ExpressionIR>,
-  renderArg: (e: ExpressionIR) => string,
-): string | undefined {
-  // Convert UART0 -> Serial, UART1 -> Serial1, etc.
-  // Or keep Serial, Serial1, Serial2 as-is
-  let serialInstance: string;
-  if (parts[0].startsWith('UART')) {
-    const uartNum = parts[0].slice(4);
-    serialInstance = uartNum === '0' ? 'Serial' : `Serial${uartNum}`;
-  } else {
-    serialInstance = parts[0];
-  }
-  const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
-
-  // Serial.config.baudRate / Serial.config.dataBits / Serial.config.parity / Serial.config.begin
-  // Also handles chained patterns like: Serial.config.baudRate(115200).begin()
-  if (parts[1] === 'config') {
-    const configMethod = parts[2];
-    
-    // Handle chained config.begin() - e.g., UART0.config.baudRate(115200).begin()
-    // In this case parts = ['UART0', 'config', 'baudRate', 'begin'] and args has the baudRate value
-    if (parts.length === 4 && parts[3] === 'begin') {
-      // Extract the config value from args
-      const configValue = a(0);
-      switch (configMethod) {
-        case 'baudRate':
-          return `${serialInstance}.begin(${configValue})`;
-        default:
-          // For other config methods chained with begin, use default baud
-          return `${serialInstance}.begin(9600)`;
-      }
-    }
-    
-    switch (configMethod) {
-      case 'baudRate':
-      case 'dataBits':
-      case 'parity':
-      case 'stopBits':
-      case 'flowControl':
-      case 'tx':
-      case 'rx':
-      case 'rts':
-      case 'cts':
-      case 'rxBufferSize':
-      case 'txBufferSize':
-      case 'inverted':
-      case 'defaultTimeout':
-        // These are configuration methods that are chained - return comment
-        return `/* ${serialInstance}.config.${configMethod}(${a(0)}) */`;
-      case 'begin':
-        // Config begin without arguments uses stored config - for now default to 9600
-        return `${serialInstance}.begin(9600)`;
-    }
-    return undefined;
-  }
-
-  // Serial.write.line("text") -> Serial.println("text")
-  // Serial.write.format("fmt", args) -> Serial.printf("fmt", args)
-  if (parts[1] === 'write') {
-    const writeMethod = parts[2];
-    switch (writeMethod) {
-      case 'line':
-        // write.line(text) -> println with CRLF
-        return `${serialInstance}.println(${a(0)})`;
-      case 'ln':
-        // write.ln(text) -> println (LF only, but Arduino println does CRLF)
-        return `${serialInstance}.println(${a(0)})`;
-      case 'string':
-        // write.string(text) -> print (no newline)
-        return `${serialInstance}.print(${a(0)})`;
-      case 'char':
-        // write.char('A') or write.char(65) -> write
-        return `${serialInstance}.write(${a(0)})`;
-      case 'byte':
-        // write.byte(0xFF) -> write
-        return `${serialInstance}.write(${a(0)})`;
-      case 'bytes':
-        // write.bytes([1,2,3]) -> write
-        return `${serialInstance}.write(${a(0)})`;
-      case 'format':
-        // write.format("fmt", args) -> printf (no newline)
-        return `${serialInstance}.printf(${a(0)})`;
-      case 'formatln':
-        // write.formatln("fmt", args) -> printf with \n
-        const fmtArg = a(0);
-        // Add \n to the format string if it's a string literal
-        if (fmtArg.startsWith('"') && fmtArg.endsWith('"')) {
-          return `${serialInstance}.printf(${fmtArg.slice(0, -1)}\\n")`;
-        }
-        return `${serialInstance}.printf(${fmtArg})`;
-      case 'uint16':
-      case 'int16':
-      case 'uint32':
-      case 'int32':
-        // Multi-byte writes - need to write individual bytes
-        // For now, just write the low byte
-        // TODO: Proper multi-byte write implementation
-        return `${serialInstance}.write(${a(0)})`;
-    }
-    return undefined;
-  }
-
-  // Serial.read.line(timeout) -> readStringUntil('\n')
-  // Serial.read.until(delim, timeout) -> readStringUntil(delim)
-  if (parts[1] === 'read') {
-    const readMethod = parts[2];
-    switch (readMethod) {
-      case 'line':
-        // read.line(timeout) -> readStringUntil('\n')
-        return `${serialInstance}.readStringUntil('\\n')`;
-      case 'until':
-        // read.until(delim, timeout) -> readStringUntil(delim)
-        const delim = a(0);
-        // Handle character delimiter
-        if (delim.startsWith("'") && delim.endsWith("'")) {
-          // Character literal - convert to char
-          return `${serialInstance}.readStringUntil(${delim})`;
-        } else if (delim.startsWith('"') && delim.endsWith('"')) {
-          // String literal - take first char
-          return `${serialInstance}.readStringUntil(${delim}.charAt(0))`;
-        }
-        return `${serialInstance}.readStringUntil(${delim})`;
-      case 'untilEnter':
-        // read.untilEnter(timeout) -> readStringUntil('\n')
-        return `${serialInstance}.readStringUntil('\\n')`;
-      case 'untilSpace':
-        // read.untilSpace(timeout) -> readStringUntil(' ')
-        return `${serialInstance}.readStringUntil(' ')`;
-      case 'untilTab':
-        // read.untilTab(timeout) -> readStringUntil('\t')
-        return `${serialInstance}.readStringUntil('\\t')`;
-      case 'bytes':
-        // read.bytes(count, timeout) -> readBytes(count)
-        return `${serialInstance}.readBytes(${a(0)})`;
-      case 'all':
-        // read.all() -> readString()
-        return `${serialInstance}.readString()`;
-      case 'byte':
-        // read.byte() -> read()
-        return `${serialInstance}.read()`;
-      case 'char':
-        // read.char() -> (char)read()
-        return `(char)${serialInstance}.read()`;
-    }
-    return undefined;
-  }
-
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
 // Pulse API handler
 // ---------------------------------------------------------------------------
 
@@ -865,16 +584,21 @@ function renderPulseCall(
     switch (method) {
       case 'in':
         // Pulse.in(pin, value, timeout?) -> pulseIn(pin, value, timeout)
+        // Convert boolean value: true -> HIGH, false -> LOW
+        const valueArg1 = a(1);
+        const pulseValue1 = valueArg1 === 'true' ? 'HIGH' : valueArg1 === 'false' ? 'LOW' : valueArg1;
         if (args.length > 2) {
-          return `pulseIn(${pinArgRaw(a(0))}, ${a(1)}, ${a(2)})`;
+          return `pulseIn(${pinArgRaw(a(0))}, ${pulseValue1}, ${a(2)})`;
         }
-        return `pulseIn(${pinArgRaw(a(0))}, ${a(1)})`;
+        return `pulseIn(${pinArgRaw(a(0))}, ${pulseValue1})`;
       case 'long':
         // Pulse.long(pin, value, timeout?) -> pulseInLong(pin, value, timeout)
+        const valueArg2 = a(1);
+        const pulseValue2 = valueArg2 === 'true' ? 'HIGH' : valueArg2 === 'false' ? 'LOW' : valueArg2;
         if (args.length > 2) {
-          return `pulseInLong(${pinArgRaw(a(0))}, ${a(1)}, ${a(2)})`;
+          return `pulseInLong(${pinArgRaw(a(0))}, ${pulseValue2}, ${a(2)})`;
         }
-        return `pulseInLong(${pinArgRaw(a(0))}, ${a(1)})`;
+        return `pulseInLong(${pinArgRaw(a(0))}, ${pulseValue2})`;
     }
   }
 
@@ -1117,118 +841,71 @@ export function tryRenderTypecodeCallStatement(
   }
 
   if (parts.length === 2) {
-    // e.g. "D13.high"  "Serial.println"
+    // Direct pin method: e.g. "D13.high", "D2.pullup", "D2.onFalling"
+    let receiver: string;
+    let method: string;
     [receiver, method] = parts as [string, string];
-  } else if (parts.length === 3 && (parts[0] === 'Board' || parts[0] === 'Pins')) {
-    // e.g. "Board.A0.read"  "Pins.D13.high"
-    [, receiver, method] = parts as [string, string, string];
-  } else if (parts.length === 3 && parts[1] === 'config' && parts[2] === 'output') {
-    // e.g. "D2.config.output()" -> pinMode(OUTPUT) (no initial value)
-    const [pinName] = parts as [string, string, string];
-    const kind = inferKindByName(pinName);
-    if (kind === 'unknown') return undefined;
-    const pin = pinArg(pinName, boardConstants);
-    // No args - just set pinMode
-    return `pinMode(${pin}, OUTPUT)`;
-  } else if (parts.length === 4 && parts[1] === 'config' && parts[2] === 'output' && parts[3] === 'initial') {
-    // e.g. "D2.config.output.initial(HIGH)" -> pinMode(OUTPUT); digitalWrite(value)
-    const [pinName] = parts as [string, string, string, string];
-    const kind = inferKindByName(pinName);
-    if (kind === 'unknown') return undefined;
-    const pin = pinArg(pinName, boardConstants);
-    if (args.length >= 1) {
-      return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${renderArg(args[0])})`;
-    }
-    return undefined;
-  } else if (parts.length === 4 && parts[1] === 'config' && parts[2] === 'input') {
-    // e.g. "D2.config.input.pullup" -> pinMode(INPUT_PULLUP)
-    const [pinName, , , method] = parts as [string, string, string, string];
-    const kind = inferKindByName(pinName);
-    if (kind === 'unknown') return undefined;
-    const pin = pinArg(pinName, boardConstants);
+
+    // Handle direct pin configuration methods
     if (method === 'pullup') {
+      const kind = inferKindByName(receiver);
+      if (kind === 'unknown') return undefined;
+      const pin = pinArg(receiver, boardConstants);
       return `pinMode(${pin}, INPUT_PULLUP)`;
     }
     if (method === 'pulldown') {
-      return `pinMode(${pin}, INPUT)`;  // no pulldown on AVR
+      const kind = inferKindByName(receiver);
+      if (kind === 'unknown') return undefined;
+      const pin = pinArg(receiver, boardConstants);
+      return `pinMode(${pin}, INPUT_PULLDOWN)`;
     }
     if (method === 'float') {
+      const kind = inferKindByName(receiver);
+      if (kind === 'unknown') return undefined;
+      const pin = pinArg(receiver, boardConstants);
       return `pinMode(${pin}, INPUT)`;
     }
-    return undefined;
-  } else if (parts.length === 3 && parts[1] === 'config' && parts[2] === 'pwm') {
-    // e.g. "D3.config.pwm()" -> pinMode(OUTPUT) (no initial value)
-    const [pinName] = parts as [string, string, string];
-    const kind = inferKindByName(pinName);
-    if (kind !== 'pwm') return undefined;
-    const pin = pinArg(pinName, boardConstants);
-    // No args - just set pinMode
-    return `pinMode(${pin}, OUTPUT)`;
-  } else if (parts.length === 4 && parts[1] === 'config' && parts[2] === 'pwm' && parts[3] === 'initial') {
-    // e.g. "D3.config.pwm.initial(50)" -> pinMode(OUTPUT); analogWrite(resolved)
-    const [pinName] = parts as [string, string, string, string];
-    const kind = inferKindByName(pinName);
-    if (kind !== 'pwm') return undefined;
-    const pin = pinArg(pinName, boardConstants);
-    if (args.length >= 1) {
-      // Convert percent (0-100) to 8-bit (0-255)
-      return `pinMode(${pin}, OUTPUT); analogWrite(${pin}, (int)((${renderArg(args[0])}) * 255 / 100))`;
+
+    // Handle flat interrupt API
+    if (method === 'onFalling' || method === 'onRising' || method === 'onChange' || method === 'onLow' || method === 'onHigh') {
+      const kind = inferKindByName(receiver);
+      if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt') return undefined;
+      const pin = pinArg(receiver, boardConstants);
+      const handler = args[0] ? renderArg(args[0]) : '';
+      const modeMap: Record<string, string> = {
+        onRising: 'RISING',
+        onFalling: 'FALLING',
+        onChange: 'CHANGE',
+        onLow: 'LOW',
+        onHigh: 'HIGH',
+      };
+      const mode = modeMap[method] ?? 'CHANGE';
+      return `attachInterrupt(digitalPinToInterrupt(${pin}), ${handler}, ${mode})`;
     }
-    return undefined;
-  } else if (parts.length === 3 && parts[1] === 'config' && parts[2] === 'analog') {
-    // e.g. "A1.config.analog" -> pinMode(INPUT)
-    const [pinName] = parts as [string, string, string];
-    const kind = inferKindByName(pinName);
-    if (kind !== 'analog-input') return undefined;
-    const pin = pinArg(pinName, boardConstants);
-    return `pinMode(${pin}, INPUT)`;
-  } else if (parts.length === 3 && parts[1] === 'on') {
-    // e.g. "D2.on.falling"  "D3.on.rising"  "D2.on.change"
-    // Fluent interrupt API: D2.on.falling(() => ...) -> attachInterrupt(..., FALLING)
-    const [pinName, , interruptMode] = parts as [string, string, string];
-    const kind = inferKindByName(pinName);
-    if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt') return undefined;
-    
-    const pin = pinArg(pinName, boardConstants);
-    const handler = args[0] ? renderArg(args[0]) : '';
-    // Map the fluent method name to Arduino interrupt mode
-    const modeMap: Record<string, string> = {
-      rising: 'RISING',
-      falling: 'FALLING',
-      change: 'CHANGE',
-      low: 'LOW',
-      high: 'HIGH',
-    };
-    const mode = modeMap[interruptMode] ?? 'CHANGE';
-    return `attachInterrupt(digitalPinToInterrupt(${pin}), ${handler}, ${mode})`;
-  } else if (parts.length === 3 && parts[1] === 'off') {
-    // e.g. "D2.off.falling"  "D2.off.all"
-    const [pinName, , interruptMode] = parts as [string, string, string];
-    const kind = inferKindByName(pinName);
-    if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt') return undefined;
-    
-    const pin = pinArg(pinName, boardConstants);
-    if (interruptMode === 'all') {
+
+    if (method === 'offRising' || method === 'offFalling' || method === 'offChange' || method === 'offAll') {
+      const kind = inferKindByName(receiver);
+      if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt') return undefined;
+      const pin = pinArg(receiver, boardConstants);
       return `detachInterrupt(digitalPinToInterrupt(${pin}))`;
     }
-    // For specific mode removal, we still use detachInterrupt (AVR doesn't support per-mode removal)
-    return `detachInterrupt(digitalPinToInterrupt(${pin}))`;
-  } else if (parts.length >= 3 && parts[0].startsWith('SPI')) {
-    // Fluent SPI API
-    // e.g. "SPI0.config.frequency"  "SPI0.config.mode"  "SPI0.config.begin"
-    // e.g. "SPI0.device.transfer"  "SPI0.device.read"  "SPI0.device.write"
-    return renderFluentSPI(parts, args, renderArg);
-  } else if (parts.length >= 3 && parts[0].startsWith('I2C')) {
-    // Fluent I2C API
-    // e.g. "I2C0.config.sda"  "I2C0.config.speed"  "I2C0.config.begin"
-    // e.g. "I2C0.device.read.from"  "I2C0.device.write.to"
-    return renderFluentI2C(parts, args, renderArg, boardConstants);
-  } else if (parts.length >= 3 && (parts[0] === 'Serial' || parts[0].startsWith('Serial') || parts[0].startsWith('UART'))) {
-    // Fluent Serial/UART API
-    // e.g. "Serial.config.baudRate"  "Serial.config.begin"
-    // e.g. "Serial.write.line"  "Serial.write.format"  "Serial.read.line"  "Serial.read.until"
-    // Also handles UART0, UART1, UART2 which map to Serial, Serial1, Serial2
-    return renderFluentSerial(parts, args, renderArg);
+
+    // Fall through to general pin method handling
+    const kind = inferKindByName(receiver);
+    if (kind === 'unknown') return undefined;
+    return renderArduinoBuiltin(receiver, kind, method, args, renderArg, boardConstants);
+  } else if (parts.length === 3 && (parts[0] === 'Board' || parts[0] === 'Pins')) {
+    // e.g. "Board.A0.read"  "Pins.D13.high"
+    [, receiver, method] = parts as [string, string, string];
+    const kind = inferKindByName(receiver);
+    if (kind === 'unknown') return undefined;
+    return renderArduinoBuiltin(receiver, kind, method, args, renderArg, boardConstants);
+  } else if (parts.length === 3) {
+    // Handle D3.input.pulldown() / D3.input.pullup() / D3.input() patterns
+    [receiver, method] = [parts[0], parts.slice(1).join('.')];
+    const kind = inferKindByName(receiver);
+    if (kind === 'unknown') return undefined;
+    return renderArduinoBuiltin(receiver, kind, method, args, renderArg, boardConstants);
   } else if (parts[0] === 'Num') {
     // Num namespace - math utilities
     // Direct calls: Num.abs(x), Num.min(a, b), Num.max(a, b), Num.constrain(v, lo, hi), etc.

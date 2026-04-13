@@ -10,16 +10,11 @@
  */
 
 import { D2, D3, A0, LED, delay, UART0 } from '@typecode';
+import { isPWMPin, isAnalogPin, isInterruptPin, assertPWM } from '@typecode/core';
 import type { IPin, IPWMPin } from '@typecode/core';
-import { 
-  isPWMPin, 
-  isAnalogPin, 
-  isInterruptPin,
-  assertPWM 
-} from '@typecode/core';
 
 // Initialize serial for output
-UART0.config.baudRate(9600).begin();
+const serial = UART0.begin(9600);
 
 // Example 1: Using type guards for runtime checks
 function safeAnalogWrite(pin: unknown, value: number) {
@@ -28,30 +23,30 @@ function safeAnalogWrite(pin: unknown, value: number) {
     // Convert 0-255 to percentage
     const percent = (value / 255) * 100;
     pin.pwm(percent);
-    UART0.println("PWM write successful");
+    serial.println("PWM write successful");
   } else {
-    UART0.println("Pin does not support PWM!");
+    serial.println("Pin does not support PWM!");
   }
 }
 
 // Example 2: Using assertion functions
 void function() {
-  UART0.println("Testing pin capabilities...");
+  serial.println("Testing pin capabilities...");
   
   // D3 is a PWM pin - this passes
   assertPWM(D3, 'D3 must support PWM');
-  UART0.println("D3 supports PWM");
+  serial.println("D3 supports PWM");
   
   // Check analog capability with type guard
   if (isAnalogPin(A0)) {
-    const value = A0.read();
-    UART0.print("A0 analog value: ");
-    UART0.println(value);
+    const value = A0.readAnalog();
+    serial.print("A0 analog value: ");
+    serial.println(value);
   }
   
   // Check interrupt capability
   if (isInterruptPin(D2)) {
-    UART0.println("D2 supports interrupts");
+    serial.println("D2 supports interrupts");
   }
 };
 
@@ -69,10 +64,10 @@ function fadeLED(pin: IPin & IPWMPin) {
 }
 
 // Main program
-LED.config.output.initial(false);
-D3.config.pwm.initial(0);
+LED.output(false);
+D3.pwm(0);
 
-UART0.println("Starting main loop...");
+serial.println("Starting main loop...");
 
 while (true) {
   // Fade the LED on D3 (PWM capable)
@@ -81,9 +76,9 @@ while (true) {
   
   // Read and display analog value
   if (isAnalogPin(A0)) {
-    const reading = A0.read();
-    UART0.print("Sensor reading: ");
-    UART0.println(reading);
+    const reading = A0.readAnalog();
+    serial.print("Sensor reading: ");
+    serial.println(reading);
   }
   
   delay(100);

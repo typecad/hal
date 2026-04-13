@@ -1,33 +1,32 @@
 // ---------------------------------------------------------------------------
-// Example: Number utilities (map, constrain, min, max, abs)
+// Number utilities (map, clamp, min, max, abs)
 //
-// Demonstrates both direct (Arduino-compatible) and fluent chainable APIs.
+// Demonstrates both direct and fluent chainable APIs.
 // ---------------------------------------------------------------------------
 
-import { LOW } from '@typecode';
-import { A0, D3, D13, Num, map, constrain, abs, min, max, toPercent, toByte, delay } from '@typecode';
+import { A0, D3, D13, Num, delay } from '@typecode';
 
 // ---------------------------------------------------------------------------
-// Direct function calls (Arduino-compatible)
+// Direct function calls
 // ---------------------------------------------------------------------------
 
 // Read analog value and map to PWM range
-const sensorValue = A0.read();
-const pwmValue = map(sensorValue, 0, 1023, 0, 255);
+const sensorValue = A0.readAnalog();
+const pwmValue = Num(sensorValue, 0, 1023, 0, 255);
 
-// Constrain a value to valid PWM range
-const safePwm = constrain(pwmValue, 0, 255);
+// Clamp a value to valid PWM range
+const safePwm = Num.clamp(pwmValue, 0, 255);
 
 // Get absolute value
-const absolute = abs(-42);
+const absolute = Num.abs(-42);
 
 // Min/max
-const smallest = min(3, 7);
-const largest = max(3, 7);
+const smallest = Num.min(3, 7);
+const largest = Num.max(3, 7);
 
 // Convenience helpers
-const percent = toPercent(sensorValue, 0, 1023);
-const byte = toByte(percent, 0, 100);
+const percent = Num.toPercent(sensorValue, 0, 1023);
+const byteVal = Num.toByte(percent, 0, 100);
 
 // ---------------------------------------------------------------------------
 // Fluent chainable API
@@ -48,8 +47,8 @@ const b = Num.map(sensorValue)
   .from(0, 1023)
   .toByte();
 
-// Fluent constrain
-const safe = Num.constrain(pwmValue)
+// Fluent clamp
+const safe = Num.clamp(pwmValue)
   .between(0, 255);
 
 // ---------------------------------------------------------------------------
@@ -57,22 +56,22 @@ const safe = Num.constrain(pwmValue)
 // ---------------------------------------------------------------------------
 
 export function setup() {
-  D13.config.output.initial(LOW);
+  D13.output(false);
 }
 
 export function loop() {
   // Read sensor and map to PWM
-  const raw = A0.read();
-  
+  const raw = A0.readAnalog();
+
   // Using direct map
-  const pwm1 = map(raw, 0, 1023, 0, 255);
-  
+  const pwm1 = Num(raw, 0, 1023, 0, 255);
+
   // Using fluent API
   const pwm2 = Num.map(raw).from(0, 1023).to(0, 255);
-  
+
   // Apply to PWM pin
-  D3.write(pwm1);
-  
+  D3.pwm(pwm2 / 2.55);
+
   // Blink LED
   D13.high();
   delay(100);

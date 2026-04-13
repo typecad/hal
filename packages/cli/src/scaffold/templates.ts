@@ -805,7 +805,8 @@ export function generateBoardTs(options: BoardTemplateOptions): string {
 //
 //   import { Board } from '@typecode/board-${name}';
 //   Board.LED.high();
-//   Board.UART0.println("Hello");
+//   const serial = Board.UART0.begin(115200);
+//   serial.println("Hello");
 //   Board.delay(1000);
 // ---------------------------------------------------------------------------
 

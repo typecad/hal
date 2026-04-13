@@ -61,6 +61,17 @@ export interface PinDefinition {
   notes?: string;
   /** Is this pin marked as unsafe? Use with caution (e.g., boot strapping pins). */
   unsafe?: boolean;
+  /**
+   * Peripheral functions this pin participates in, expressed as human-readable
+   * strings for IDE hover / documentation. E.g. ["I2C0 SDA", "ADC ch4"].
+   * Auto-derived from `functions` but can be overridden for clarity.
+   */
+  alternateFunctions?: string[];
+  /**
+   * Warnings about using this pin. Shown in IDE hover and transpile diagnostics.
+   * E.g. ["Conflicts with UART0 — avoid if using Serial"]
+   */
+  warnings?: string[];
 }
 
 export interface PeripheralFunction {

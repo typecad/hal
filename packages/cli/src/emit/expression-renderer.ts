@@ -44,6 +44,11 @@ export class ExpressionRenderer {
   private readonly knownFunctionReturnTypes?: Map<string, string>;
   private readonly pointerVarTypes?: Map<string, string>;
 
+  /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
+  private _preludeLines: string[] = [];
+  /** Monotonic counter for unique snprintf buffer names. */
+  private _snprintfTempCounter = 0;
+
   constructor(context: ExpressionRendererContext) {
     this.strategy = context.strategy;
     this.boardConstants = context.boardConstants;
@@ -59,6 +64,24 @@ export class ExpressionRenderer {
    */
   getBoardConstants(): BoardConstants | undefined {
     return this.boardConstants;
+  }
+
+  /**
+   * Clear accumulated prelude lines. Call before each top-level render.
+   */
+  clearPrelude(): void {
+    this._preludeLines = [];
+    this._snprintfTempCounter = 0;
+  }
+
+  /**
+   * Drain accumulated prelude lines and clear. The caller is responsible
+   * for emitting these lines before the statement that uses the expression.
+   */
+  drainPrelude(): string[] {
+    const lines = this._preludeLines;
+    this._preludeLines = [];
+    return lines;
   }
 
   /**
@@ -151,6 +174,14 @@ export class ExpressionRenderer {
   }
 
   private renderStringConcat(expr: Extract<ExpressionIR, { kind: "string_concat" }>, exprTransformer?: (expr: string) => string): string {
+    // When snprintf mode is active, build snprintf buffer instead of String() concatenation
+    if (this.strategy.useSnprintfForStrings()) {
+      const snprintfResult = this.buildSnprintfFromParts(expr.parts, exprTransformer);
+      if (snprintfResult) {
+        return snprintfResult;
+      }
+    }
+    // Fallback: Build a String concatenation chain
     const renderedParts = expr.parts.map(part => {
       const rendered = this.render(part, exprTransformer);
       // Wrap non-string expressions in String() constructor for concatenation
@@ -168,7 +199,106 @@ export class ExpressionRenderer {
   }
 
   private renderTemplateString(expr: Extract<ExpressionIR, { kind: "template_string" }>, exprTransformer?: (expr: string) => string): string {
+    // When snprintf mode is active, build snprintf buffer for single interpolation
+    if (this.strategy.useSnprintfForStrings()) {
+      const argInfo = this.inferFormatSpecifier(expr.expression, exprTransformer);
+      if (argInfo) {
+        const bufferName = `__typecode_str_${++this._snprintfTempCounter}`;
+        const estimatedLength = Math.max(argInfo.estimatedLength + 1, 16);
+        this._preludeLines.push(
+          `char ${bufferName}[${estimatedLength}];`,
+          `snprintf(${bufferName}, sizeof(${bufferName}), "${argInfo.format}", ${argInfo.arg});`,
+        );
+        return bufferName;
+      }
+    }
+    // Fallback: Wrap the expression in String() to convert to string
     return `String(${this.render(expr.expression, exprTransformer)})`;
+  }
+
+  /**
+   * Build snprintf format string and args from string_concat parts.
+   * Returns the buffer name on success, or undefined if snprintf can't handle it.
+   */
+  private buildSnprintfFromParts(
+    parts: ExpressionIR[],
+    exprTransformer?: (expr: string) => string,
+  ): string | undefined {
+    let formatString = "";
+    const args: string[] = [];
+    let estimatedLength = 1;
+
+    for (const part of parts) {
+      if (part.kind === "string") {
+        formatString += part.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+        estimatedLength += part.value.length;
+        continue;
+      }
+
+      if (part.kind === "template_string") {
+        const argInfo = this.inferFormatSpecifier(part.expression, exprTransformer);
+        if (!argInfo) return undefined;
+        formatString += argInfo.format;
+        args.push(argInfo.arg);
+        estimatedLength += argInfo.estimatedLength;
+        continue;
+      }
+
+      // Can't handle other part types with snprintf
+      return undefined;
+    }
+
+    const bufferName = `__typecode_str_${++this._snprintfTempCounter}`;
+    estimatedLength = Math.max(estimatedLength, 16);
+    this._preludeLines.push(
+      `char ${bufferName}[${estimatedLength}];`,
+      `snprintf(${bufferName}, sizeof(${bufferName}), "${formatString}"${args.length > 0 ? `, ${args.join(", ")}` : ""});`,
+    );
+    return bufferName;
+  }
+
+  /**
+   * Infer printf format specifier for an expression.
+   * Returns format string, rendered arg, and estimated length, or undefined if unknown.
+   */
+  private inferFormatSpecifier(
+    expr: ExpressionIR,
+    exprTransformer?: (expr: string) => string,
+  ): { format: string; arg: string; estimatedLength: number } | undefined {
+    switch (expr.kind) {
+      case "number": {
+        if (Number.isInteger(expr.value)) {
+          return { format: "%d", arg: `${expr.value}`, estimatedLength: 12 };
+        }
+        // Float: use %g for simplicity (dtostrf prelude not available here)
+        return { format: "%g", arg: `${expr.value}`, estimatedLength: 16 };
+      }
+      case "boolean":
+        return { format: "%s", arg: expr.value ? '"true"' : '"false"', estimatedLength: 5 };
+      case "string":
+        return { format: "%s", arg: `"${expr.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`, estimatedLength: Math.max(expr.value.length, 1) };
+      case "identifier": {
+        // Check known variable types for better format specifiers
+        const cppType = this.knownFunctionReturnTypes?.get(expr.value);
+        if (cppType === "bool") {
+          return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5 };
+        }
+        if (cppType === "float" || cppType === "double") {
+          return { format: "%g", arg: expr.value, estimatedLength: 16 };
+        }
+        // Default to %d for integers and unknowns
+        return { format: "%d", arg: expr.value, estimatedLength: 12 };
+      }
+      case "raw":
+      case "property-access":
+      case "binary":
+      case "unary":
+      case "ternary":
+      case "typecode-call":
+        return { format: "%d", arg: this.render(expr, exprTransformer), estimatedLength: 12 };
+      default:
+        return undefined;
+    }
   }
 
   private renderArray(expr: Extract<ExpressionIR, { kind: "array" }>, exprTransformer?: (expr: string) => string): string {

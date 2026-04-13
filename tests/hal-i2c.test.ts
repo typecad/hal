@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // HAL I2C Bus Tests
 //
-// Tests for I2C fluent and Arduino-compatible APIs
+// Tests for I2C Arduino-compatible API
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
@@ -133,46 +133,6 @@ describe('I2C HAL - Arduino API Transpilation', () => {
   });
 });
 
-describe('I2C HAL - Fluent API Transpilation', () => {
-  describe('Configuration', () => {
-    it('transpiles fluent config chain (requires IR chain tracking)', () => {
-      const result = transpile(`
-        import { I2C0 } from '@typecode/board-arduino-uno';
-        I2C0.config.speed(400000).begin();
-      `, { target: 'arduino' });
-      
-      // TODO: Full fluent chain tracking requires IR-level chain analysis
-      // Currently each method in chain is processed separately
-      // I2C0.config.speed(400000).begin() -> Wire.begin() (speed handled separately)
-      expect(result.cpp).toContain('Wire.begin()');
-    });
-  });
-
-  describe('Device Operations', () => {
-    it('transpiles device read operation', () => {
-      const result = transpile(`
-        import { I2C0 } from '@typecode/board-arduino-uno';
-        I2C0.config.begin();
-        const result = I2C0.device(0x76).read(2).from(0xFA);
-      `, { target: 'arduino' });
-      
-      // Should contain Wire calls for reading from register
-      expect(result.cpp).toContain('Wire');
-    });
-
-    it('transpiles device write operation', () => {
-      const result = transpile(`
-        import { I2C0 } from '@typecode/board-arduino-uno';
-        I2C0.config.begin();
-        I2C0.device(0x76).write(0x01).to(0xF4);
-      `, { target: 'arduino' });
-      
-      // Should contain Wire calls for writing to register
-      expect(result.cpp).toContain('Wire');
-    });
-  });
-});
-
 describe('I2C HAL - Multiple Bus Support', () => {
   it('uses Wire for I2C0 on Arduino Uno', () => {
     const result = transpile(`
@@ -181,5 +141,120 @@ describe('I2C HAL - Multiple Bus Support', () => {
     `, { target: 'arduino' });
     
     expect(result.cpp).toContain('Wire.begin()');
+  });
+});
+
+describe('I2C HAL - Device Accessor Pattern', () => {
+  it('transpiles I2C0.device(addr).writeByte(reg, val)', () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+      I2C0.begin();
+      I2C0.device(0x76).writeByte(0xFA, 0x55);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('Wire.begin()');
+    expect(result.cpp).toContain('Wire.beginTransmission(118)');
+    expect(result.cpp).toContain('Wire.write(250)');
+    expect(result.cpp).toContain('Wire.write(85)');
+    expect(result.cpp).toContain('Wire.endTransmission()');
+    expect(result.cpp).not.toContain('.device(');
+    expect(result.cpp).not.toContain('.writeByte(');
+  });
+
+  it('transpiles I2C0.device(addr).readByte(reg)', () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+      I2C0.begin();
+      const val = I2C0.device(0x76).readByte(0xFA);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('Wire.beginTransmission(118)');
+    expect(result.cpp).toContain('Wire.write(250)');
+    expect(result.cpp).toContain('Wire.endTransmission(false)');
+    expect(result.cpp).toContain('Wire.requestFrom(118, 1)');
+    expect(result.cpp).toContain('Wire.read()');
+  });
+
+  it('transpiles I2C0.device(addr).writeBytes(reg, data)', () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+      I2C0.begin();
+      I2C0.device(0x76).writeBytes(0xFA, [0x01, 0x02, 0x03]);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('Wire.beginTransmission(118)');
+    expect(result.cpp).toContain('Wire.write(250)');
+    expect(result.cpp).toContain('Wire.endTransmission()');
+  });
+
+  it('transpiles I2C0.device(addr).readBytes(reg, count)', () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+      I2C0.begin();
+      const buf = I2C0.device(0x76).readBytes(0xFA, 4);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('Wire.beginTransmission(118)');
+    expect(result.cpp).toContain('Wire.write(250)');
+    expect(result.cpp).toContain('Wire.endTransmission(false)');
+    expect(result.cpp).toContain('Wire.requestFrom(118, 4)');
+  });
+});
+
+describe('I2C HAL - Bus Variable Aliasing', () => {
+  it('transpiles const i2c = I2C0.begin() without emitting C++ variable', () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+      const i2c = I2C0.begin();
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('Wire.begin()');
+    expect(result.cpp).not.toContain('const int i2c');
+    expect(result.cpp).not.toContain('i2c =');
+  });
+
+  it('transpiles bus alias with device accessor: const i2c = I2C0.begin(); i2c.device(addr).writeByte(reg, val)', () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+      const i2c = I2C0.begin();
+      i2c.device(0x76).writeByte(0xFA, 0x55);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('Wire.begin()');
+    expect(result.cpp).not.toContain('const int i2c');
+    expect(result.cpp).toContain('Wire.beginTransmission(118)');
+    expect(result.cpp).toContain('Wire.write(250)');
+    expect(result.cpp).toContain('Wire.write(85)');
+    expect(result.cpp).toContain('Wire.endTransmission()');
+    expect(result.cpp).not.toContain('i2c.');
+  });
+
+  it('transpiles bus alias with setClock', () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+      const i2c = I2C0.begin();
+      i2c.setClock(400000);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('Wire.begin()');
+    expect(result.cpp).toContain('Wire.setClock(400000)');
+    expect(result.cpp).not.toContain('const int i2c');
+  });
+
+  it('transpiles bus alias with beginTransmission/write/endTransmission', () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+      const i2c = I2C0.begin();
+      i2c.beginTransmission(0x76);
+      i2c.write(0xFA);
+      i2c.endTransmission();
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('Wire.begin()');
+    expect(result.cpp).toContain('Wire.beginTransmission(118)');
+    expect(result.cpp).toContain('Wire.write(250)');
+    expect(result.cpp).toContain('Wire.endTransmission');
+    expect(result.cpp).not.toContain('const int i2c');
+    expect(result.cpp).not.toContain('i2c.');
   });
 });

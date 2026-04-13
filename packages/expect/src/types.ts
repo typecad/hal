@@ -84,9 +84,9 @@ export interface StringExpectation {
  * ```ts
  * describe("A0 reads")
  *   .it("reads zero when grounded")
- *     .expect(A0.read()).toBe(0)
+ *     .expect(A0.readAnalog()).toBe(0)
  *   .it("reads less than 100")
- *     .expect(A0.read()).toBeLessThan(100);
+ *     .expect(A0.readAnalog()).toBeLessThan(100);
  * ```
  */
 export interface Suite {

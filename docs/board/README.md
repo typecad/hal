@@ -40,7 +40,7 @@ Board packages follow the pattern: `@typecode/board-<vendor>-<model>[-<hal>]`
 ```typescript
 import { LED, delay, HIGH } from '@typecode';
 
-LED.config.output.initial(HIGH);
+LED.output(HIGH);
 
 while (true) {
   LED.toggle();

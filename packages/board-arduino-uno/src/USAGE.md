@@ -101,6 +101,14 @@ import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typecode
 | `TX` | `D1` | UART transmit |
 | `RX` | `D0` | UART receive |
 
+### Alias And Timer Notes
+
+- `LED` and `D13` are the same physical pin. Use one name consistently.
+- `SDA/A4`, `SCL/A5`, `TX/D1`, and `RX/D0` follow the same rule.
+- PWM pins are grouped by timer on Uno: `D5/D6` share `timer0`, `D9/D10` share `timer1`, and `D3/D11` share `timer2`.
+
+TypeCode surfaces both conditions as diagnostics so the schematic does not stay hidden until runtime.
+
 ### Type Safety in Action
 
 ```typescript
@@ -109,18 +117,18 @@ import { D4, A0 } from './code/board-arduino-uno/pins';
 // ✅ OK  — D4 is IDigitalPin, supports .high()
 D4.high();
 
-// ✅ OK  — A0 is IAnalogInput, supports .read()
-const value = A0.read();
+// ✅ OK  — A0 is IAnalogInput, supports .readAnalog()
+const value = A0.readAnalog();
 
 // ❌ COMPILE ERROR — IAnalogInput has no .high() method
 A0.high();  // Property 'high' does not exist on type 'IAnalogInput'
 
-// ❌ COMPILE ERROR — IDigitalPin has no .setDutyCycle()
-D4.setDutyCycle(128);  // Property 'setDutyCycle' does not exist on type 'IDigitalPin'
+// ❌ COMPILE ERROR — IDigitalPin has no .pwm()
+D4.pwm(50);  // Property 'pwm' does not exist on type 'IDigitalPin'
 
-// ✅ OK  — D5 is IPWMPin, supports .setDutyCycle()
+// ✅ OK  — D5 is IPWMPin, supports .pwm()
 import { D5 } from './code/board-arduino-uno/pins';
-D5.setDutyCycle(128);
+D5.pwm(50);
 ```
 
 ---
@@ -136,7 +144,7 @@ transpiler converts to a valid `.ino` sketch.
 // examples/01-blink.ts
 import { LED, delay, HIGH } from '@typecode';
 
-LED.config.output(HIGH);
+LED.output(HIGH);
 
 while (true) {
   LED.toggle();
@@ -163,11 +171,11 @@ void loop() {
 // examples/02-analog-serial.ts
 import { A0, UART0, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
+UART0.begin(9600);
 
 while (true) {
-  const value = A0.read();
-  UART0.write.line(value.toString());
+  const value = A0.readAnalog();
+  UART0.println(value.toString());
   delay(500);
 }
 ```
@@ -180,13 +188,13 @@ while (true) {
 // examples/03-pwm-fade.ts
 import { D9, delay, LOW } from '@typecode';
 
-D9.config.output(LOW);
+D9.output(LOW);
 
 let brightness = 0;
 let step = 5;
 
 while (true) {
-  D9.write(brightness);
+  D9.pwm(brightness / 2.55);
   brightness += step;
   if (brightness <= 0 || brightness >= 255) {
     step = -step;
@@ -203,12 +211,12 @@ while (true) {
 // examples/04-interrupt.ts
 import { D2, LED, LOW } from '@typecode';
 
-LED.config.output(LOW);
-D2.config.input.pullup();
+LED.output(LOW);
+D2.inputPullUp();
 
 let ledState = false;
 
-D2.on.falling(() => {
+D2.onFalling(() => {
   ledState = !ledState;
   if (ledState) {
     LED.high();
@@ -220,14 +228,14 @@ D2.on.falling(() => {
 
 ---
 
-### 5. I2C — Read From a Sensor (Fluent API)
+### 5. I2C — Read From a Sensor
 
 ```typescript
 // examples/05-i2c-sensor.ts
 import { I2C0, UART0, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
-I2C0.config.begin();               // Wire.begin() - master mode
+UART0.begin(9600);
+I2C0.begin();                      // Wire.begin() - master mode
 
 const BME280_ADDR = 0x76;
 
@@ -239,7 +247,7 @@ while (true) {
   const tempRaw = (msb << 8) | lsb;
   const temperature = tempRaw / 100.0;
   
-  UART0.write.line(temperature.toString());
+  UART0.println(temperature.toString());
   delay(1000);
 }
 ```
@@ -252,8 +260,9 @@ while (true) {
 // examples/06-spi-shift-register.ts
 import { SPI0, SS, delay, LOW } from '@typecode';
 
-SPI0.config.frequency(1_000_000).begin();
-SS.config.output(LOW);
+SPI0.begin();
+SPI0.setFrequency(1_000_000);
+SS.output(LOW);
 
 let pattern = 0b00000001;
 
@@ -274,16 +283,16 @@ while (true) {
 // examples/07-board-namespace.ts
 import { Board, LOW } from '@typecode';
 
-Board.UART0.config.baudRate(115200).begin();
-Board.LED.config.output(LOW);
+Board.UART0.begin(115200);
+Board.LED.output(LOW);
 
 Board.UART0.println("Arduino Uno booted");
 Board.UART0.println("MCU: " + Board.definition.mcu);
 Board.UART0.println("Flash: " + Board.definition.memory.flash + " bytes");
 
 while (true) {
-  const sensor = Board.A0.read();
-  Board.UART0.write.line(sensor.toString());
+  const sensor = Board.A0.readAnalog();
+  Board.UART0.println(sensor.toString());
   Board.LED.toggle();
 }
 ```
@@ -297,7 +306,7 @@ while (true) {
 ```typescript
 import { UART0 } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
+UART0.begin(9600);
 UART0.println("Hello, World!");
 UART0.print("Value: ");
 UART0.println(42);
@@ -306,31 +315,24 @@ UART0.flush();   // wait for transmit buffer to empty
 
 ### I2C0 (Wire)
 
-The I2C interface supports two API styles:
-
-#### Fluent API (Recommended)
-
 ```typescript
 import { I2C0, UART0 } from '@typecode';
-import { I2CStatus } from '@typecode/core';
 
-// Initialize as master with fluent config
-I2C0.config.speed(400000).begin();  // 400 kHz fast mode
+// Initialize as master
+I2C0.begin();            // 100 kHz (default)
+I2C0.setClock(400000);   // optionally switch to 400 kHz fast mode
 
 const DEVICE_ADDR = 0x76;
 
 // Read bytes from a register
 const data = I2C0.device(DEVICE_ADDR).readBytes(0xFA, 2);
-UART0.write.line(`Received: ${data[0]}, ${data[1]}`);
+UART0.println(`Received: ${data[0]}, ${data[1]}`);
 
 // Write bytes to a register
-const result = I2C0.device(DEVICE_ADDR).write(0x27).to(0xF4);
-if (!result.ok) {
-  UART0.write.line(`Write failed: ${result.status}`);
-}
+I2C0.device(DEVICE_ADDR).writeByte(0xF4, 0x27);
 ```
 
-#### Wire-Compatible API (Legacy)
+#### Wire-Compatible API
 
 This API directly maps to Arduino's Wire library:
 
@@ -384,12 +386,15 @@ if (bytesReceived > 0) {
 ```typescript
 import { SPI0, SS, D10 } from '@typecode';
 
-// Fluent configuration
-SPI0.config.frequency(4_000_000).mode(0).bitOrder('msb').begin();
+// Initialize and configure
+SPI0.begin();
+SPI0.setFrequency(4_000_000);
+SPI0.setMode(0);
+SPI0.setBitOrder('msb');
 
 // Chip select pin
 const CS = D10;
-CS.config.output.initial(true);  // HIGH = deselected
+CS.output(HIGH);  // HIGH = deselected
 
 // Single byte transfer with fluent device API
 const response = SPI0.device(CS).transfer(0x55);

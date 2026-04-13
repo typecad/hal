@@ -55,9 +55,9 @@ import { A0 } from '@typecode';
 
 describe("A0 analog read")
   .it("reads a value in valid ADC range")
-    .expect(A0.read()).toBeWithinRange(0, 1023)
+    .expect(A0.readAnalog()).toBeWithinRange(0, 1023)
   .it("reads less than mid-scale when grounded")
-    .expect(A0.read()).toBeLessThan(512);
+    .expect(A0.readAnalog()).toBeLessThan(512);
 
 done();
 ```

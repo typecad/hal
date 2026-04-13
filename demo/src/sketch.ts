@@ -1,12 +1,12 @@
-import { UART0 } from '@typecode';
+import { I2C0, SPI0, UART0, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
+// ── I2C with ownership ─────────────────────────────────────────────────────
+// take() claims exclusive access; returns undefined if already owned.
+// The returned IOwnedI2CBus has the full II2CBus API plus release().
 
-const temp = 24.5;
-const msg = `Temp is ${1 + 2}C`; 
-
-// strips the dynamic allocation and emits safe C++:
-// char __voltts_buf_1[16];
-// snprintf(__voltts_buf_1, sizeof(__voltts_buf_1), "Temp is %.1fC", temp);
-
-UART0.println(msg);
+const i2c = I2C0.take();
+if (i2c) {
+  // Bus is owned — safe to do I/O through the typed device accessor
+  i2c.device(0x76).writeByte(0xFA, 0x55);
+  i2c.release();  // return bus to shared pool
+}

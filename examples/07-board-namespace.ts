@@ -5,17 +5,17 @@
 // peripherals, and metadata under one namespace.
 // ---------------------------------------------------------------------------
 
-import { Board, LOW } from '@typecode';
+import { Board } from '@typecode';
 
-Board.UART0.config.baudRate(115200).begin();
-Board.LED.config.output.initial(LOW);
+const serial = Board.UART0.begin(115200);
+Board.LED.output(false);
 
-Board.UART0.println("Arduino Uno booted");
-Board.UART0.println("MCU: " + Board.definition.mcu);
-Board.UART0.println("Flash: " + Board.definition.memory.flash + " bytes");
+serial.println("Arduino Uno booted");
+serial.println(`MCU: ${Board.definition.mcu}`);
+serial.println("Flash: " + Board.definition.memory.flash + " bytes");
 
 while (true) {
-  const sensor = Board.A0.read();
-  Board.UART0.println(sensor);
+  const sensor = Board.A0.readAnalog();
+  serial.println(sensor);
   Board.LED.toggle();
 }

@@ -226,8 +226,9 @@ function checkCalleeForUnsafeOp(callee: string, diagnostics: Diagnostic[]): void
 
 /**
  * Helper to scan nested statements in control flow structures.
+ * Exported for reuse by other diagnostic passes.
  */
-function scanNestedStatements(stmt: any, visitor: (s: StatementIR) => void): void {
+export function scanNestedStatements(stmt: any, visitor: (s: StatementIR) => void): void {
   if (!stmt) return;
 
   // if statement

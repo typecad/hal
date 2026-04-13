@@ -7,40 +7,40 @@
 
 import { SPI0, UART0, D10, delay } from '@typecode';
 
-UART0.config.baudRate(9600).begin();
+const serial = UART0.begin(9600);
 
 // Chip select pin
 const CS = D10;
-CS.config.output.initial(true);  // Initialize as output, HIGH (deselected)
+CS.output(true);  // true (deselected)
 
 // Initialize SPI with default settings
-SPI0.config.frequency(1_000_000)
-          .mode(0)
-          .bitOrder('msb')
-          .begin();
+const spi = SPI0.begin();
+spi.setFrequency(1_000_000);
+spi.setMode(0);
+spi.setBitOrder('msb');
 
-UART0.println("SPI Transactions Example");
+serial.println("SPI Transactions Example");
 
 while (true) {
   // Transaction 1: Fast device (4 MHz, mode 0, MSB)
-  SPI0.config.frequency(4_000_000)
-            .mode(0)
-            .bitOrder('msb');
+  spi.setFrequency(4_000_000);
+  spi.setMode(0);
+  spi.setBitOrder('msb');
   
-  const response1 = SPI0.device(CS).transfer(0x55);
+  const response1 = spi.device(CS).transfer(0x55);
   
-  UART0.println(`Fast device: 0x${response1.toString()}`);
+  serial.println(`Fast device: 0x${response1.toString()}`);
   
   delay(100);
   
   // Transaction 2: Slow device (500 kHz, mode 2, LSB)
-  SPI0.config.frequency(500_000)
-            .mode(2)
-            .bitOrder('lsb');
+  spi.setFrequency(500_000);
+  spi.setMode(2);
+  spi.setBitOrder('lsb');
   
-  const response2 = SPI0.device(CS).transfer(0xAA);
+  const response2 = spi.device(CS).transfer(0xAA);
   
-  UART0.println(`Slow device: 0x${response2.toString()}`);
+  serial.println(`Slow device: 0x${response2.toString()}`);
   
   delay(1000);
 }

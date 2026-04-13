@@ -115,10 +115,10 @@ describe('Peripheral Usage Analysis', () => {
         import { A0 } from '@typecode/board-arduino-uno';
         const value = A0.read();
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
+
       expect(usage.adc).toBe(true);
       expect(usage.adcChannelsUsed.has(0)).toBe(true);
     });
@@ -130,10 +130,10 @@ describe('Peripheral Usage Analysis', () => {
         const v1 = A1.read();
         const v2 = A2.read();
       `;
-      
+
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
-      
+
       expect(usage.adc).toBe(true);
       expect(usage.adcChannelsUsed.has(0)).toBe(true);
       expect(usage.adcChannelsUsed.has(1)).toBe(true);
@@ -145,7 +145,7 @@ describe('Peripheral Usage Analysis', () => {
     it('detects PWM write on PWM-capable pins', () => {
       const code = `
         import { D9 } from '@typecode/board-arduino-uno';
-        D9.config.output();
+        D9.output();
         D9.write(128);
       `;
 
@@ -160,27 +160,25 @@ describe('Peripheral Usage Analysis', () => {
   describe('Pin Mode Detection', () => {
     it('detects output pin configuration', () => {
       const code = `
-        import { D13, LOW } from '@typecode/board-arduino-uno';
-        D13.config.output.initial(LOW);
+        import { D13 } from '@typecode/board-arduino-uno';
+        D13.output(false);
       `;
 
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
 
-      // D13 output configuration detected
       expect(usage.outputPins.has(13)).toBe(true);
     });
 
     it('detects input pullup configuration', () => {
       const code = `
         import { D2 } from '@typecode/board-arduino-uno';
-        D2.config.input.pullup();
+        D2.inputPullUp();
       `;
 
       const ir = buildProgramIR('test.ts', code);
       const usage = analyzePeripheralUsage(ir);
 
-      // D2 input pullup configuration detected
       expect(usage.inputPullupPins.has(2)).toBe(true);
     });
   });
@@ -256,6 +254,26 @@ describe('Peripheral Usage Analysis', () => {
       expect(usage.i2cInstancesUsed).toBeInstanceOf(Set);
       expect(usage.spiInstancesUsed).toBeInstanceOf(Set);
       expect(usage.uartInstancesUsed).toBeInstanceOf(Set);
+    });
+
+    it('tracks timer0 usage for delay()', () => {
+      const ir = buildProgramIR('test.ts', `
+        import { delay } from '@typecode/board-arduino-uno';
+        delay(10);
+      `);
+      const usage = analyzePeripheralUsage(ir);
+
+      expect(usage.timer0).toBe(true);
+    });
+
+    it('tracks timer0 usage for millis() in expressions', () => {
+      const ir = buildProgramIR('test.ts', `
+        import { millis } from '@typecode/board-arduino-uno';
+        const now = millis();
+      `);
+      const usage = analyzePeripheralUsage(ir);
+
+      expect(usage.timer0).toBe(true);
     });
   });
 });

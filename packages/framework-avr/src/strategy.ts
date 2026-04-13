@@ -29,14 +29,17 @@ import {
 function nativePinMode(pin: number, mode: string): string {
   const info = getPinInfo(pin);
   if (!info) return `/* invalid pin ${pin} */`;
-  
+
   const { ddr, port, bit } = info;
   const mask = getPinBitMask(pin);  // Pre-computed hex constant
-  
+
   if (mode === 'OUTPUT' || mode === '1') {
     return `${ddr} |= ${mask}`;
   } else if (mode === 'INPUT_PULLUP' || mode === '2') {
     return `${ddr} &= ~${mask}, ${port} |= ${mask}`;
+  } else if (mode === 'INPUT_PULLDOWN') {
+    // AVR has no hardware pulldown — fall back to floating input
+    return `${ddr} &= ~${mask}, ${port} &= ~${mask}`;
   } else { // INPUT
     return `${ddr} &= ~${mask}, ${port} &= ~${mask}`;
   }
@@ -675,6 +678,11 @@ export class NativeAVRStrategy extends ArduinoStrategy {
           return `_uart_write(${a(0)})`;
         case 'flush':
           return '/* UART flush: wait for TX complete */ (void)0';
+        // Ownership (opt-in, single-threaded AVR = boolean flag)
+        case 'take':
+          return `/* ${receiver}.take() */ (!_${receiver.toLowerCase()}_owned && (_${receiver.toLowerCase()}_owned = true))`;
+        case 'release':
+          return `/* ${receiver}.release() */ (_${receiver.toLowerCase()}_owned = false)`;
         default:
           return undefined;
       }
@@ -695,13 +703,56 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     if (method.startsWith('config.input.')) {
       const pin = parsePinFromReceiver(receiver);
       if (pin !== null) {
-        if (method === 'config.input.pullup') {
+        if (method === 'config.inputPullUp') {
           return nativePinMode(pin, 'INPUT_PULLUP');
-        } else if (method === 'config.input.pulldown') {
-          return nativePinMode(pin, 'INPUT'); // No pulldown on AVR
-        } else if (method === 'config.input.float') {
+        } else if (method === 'config.inputPullDown') {
+          return nativePinMode(pin, 'INPUT_PULLDOWN');
+        } else if (method === 'config.input') {
           return nativePinMode(pin, 'INPUT');
         }
+      }
+    }
+
+    if (method === 'input') {
+      const pin = parsePinFromReceiver(receiver);
+      if (pin !== null) {
+        return nativePinMode(pin, 'INPUT');
+      }
+    }
+
+    if (method === 'inputPullUp') {
+      const pin = parsePinFromReceiver(receiver);
+      if (pin !== null) {
+        return nativePinMode(pin, 'INPUT_PULLUP');
+      }
+    }
+
+    if (method === 'inputPullDown') {
+      const pin = parsePinFromReceiver(receiver);
+      if (pin !== null) {
+        return nativePinMode(pin, 'INPUT_PULLDOWN');
+      }
+    }
+
+    // Object-creation aliases (same C++ as output/input/inputPullUp, different TS return types)
+    if (method === 'asOutput') {
+      const pin = parsePinFromReceiver(receiver);
+      if (pin !== null) {
+        return nativePinMode(pin, 'OUTPUT');
+      }
+    }
+
+    if (method === 'asInput') {
+      const pin = parsePinFromReceiver(receiver);
+      if (pin !== null) {
+        return nativePinMode(pin, 'INPUT');
+      }
+    }
+
+    if (method === 'asInputPullUp') {
+      const pin = parsePinFromReceiver(receiver);
+      if (pin !== null) {
+        return nativePinMode(pin, 'INPUT_PULLUP');
       }
     }
     
