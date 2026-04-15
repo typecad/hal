@@ -131,7 +131,7 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "gen-libdefs" | "gen-decls" | "map-error" | "create-board" | "init";
+  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "create-board" | "init";
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;

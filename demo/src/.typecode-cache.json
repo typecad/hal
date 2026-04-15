@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "toolchainFingerprint": "9ce7c0a8d6f74dee",
+  "toolchainFingerprint": "78e1392aab31c65f",
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
     "C:\\typecad\\typecode\\demo\\src\\sketch.ts": {
-      "hash": "7b198c672f05e1bc",
-      "mtime": 1776258526146.029,
-      "size": 8151,
+      "hash": "ce04da1af29353e6",
+      "mtime": 1776273275316.0996,
+      "size": 8155,
       "dependencies": [],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\sketch.ino",
@@ -14,6 +14,6 @@
       ]
     }
   },
-  "createdAt": 1776273170830,
-  "updatedAt": 1776273171536
+  "createdAt": 1776295449508,
+  "updatedAt": 1776295450314
 }

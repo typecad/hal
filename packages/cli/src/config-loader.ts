@@ -37,6 +37,8 @@ export interface ResolvedTypecodeConfig {
    * Can be '@typecode/framework-arduino', '@typecode/framework-avr', or a custom path.
    */
   framework?: string;
+  /** Entry point TypeScript file (relative to config file directory). */
+  entry?: string;
   /** Path to the config file that was loaded. */
   configPath: string;
   /** Toolchain configuration. */
@@ -191,6 +193,9 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
 
   // Map flat keys to the resolved config shape.
   const resolved: ResolvedTypecodeConfig = { configPath };
+
+  const entry = flat.get("entry");
+  if (typeof entry === "string") resolved.entry = entry;
 
   const target = flat.get("target");
   if (typeof target === "string") resolved.target = target;

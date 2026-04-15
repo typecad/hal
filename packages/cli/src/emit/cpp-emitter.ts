@@ -150,6 +150,12 @@ interface EmitterOptions {
   strategy?: PlatformStrategy;
   /** Native C++ modules detected during import resolution (module specifier -> info) */
   nativeModules?: Map<string, { declPath: string; cppPath: string; moduleKey: string }>;
+  /**
+   * Class names defined in other transpiled modules.
+   * Used to emit forward declarations in the header so that cross-module
+   * type references compile correctly (especially for pointer/reference types).
+   */
+  crossModuleClasses?: Set<string>;
 }
 
 
@@ -3187,6 +3193,43 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const includeLines = headerIncludeLines.map((inc) => `#include ${inc}`);
       finalHeaderLines.splice(1, 0, ...includeLines, "");
     }
+
+    // Emit forward declarations for cross-module class types.
+    // When a file references a class defined in another transpiled module
+    // (e.g., as a pointer or parameter type), the compiler needs a forward
+    // declaration if the header hasn't been included yet.
+    if (options.crossModuleClasses && options.crossModuleClasses.size > 0) {
+      // Collect class names defined in THIS file (no need to forward-declare own classes)
+      const localClasses = new Set(program.classes.map(cls => cls.name));
+      // Collect imported symbols that refer to cross-module classes
+      const importedSymbols = new Set<string>();
+      for (const imp of program.imports) {
+        for (const sym of imp.namedImports) {
+          importedSymbols.add(sym);
+        }
+      }
+      const forwardDecls: string[] = [];
+      for (const className of options.crossModuleClasses) {
+        if (!localClasses.has(className) && importedSymbols.has(className)) {
+          forwardDecls.push(`class ${className};`);
+        }
+      }
+      if (forwardDecls.length > 0) {
+        // Find the insertion point: after #pragma once, blank line, and includes
+        // The header starts with "#pragma once" at index 0, then includes were
+        // spliced in at index 1. Find the first non-include, non-blank line after includes.
+        let insertIdx = 1;
+        // Skip past any inserted include lines
+        while (insertIdx < finalHeaderLines.length &&
+               (finalHeaderLines[insertIdx].startsWith("#include") ||
+                finalHeaderLines[insertIdx] === "")) {
+          insertIdx++;
+        }
+        // Insert forward declarations with a blank line separator
+        finalHeaderLines.splice(insertIdx, 0, ...forwardDecls, "");
+      }
+    }
+
     writeText(headerPath, finalHeaderLines.join("\n").trimEnd() + "\n");
     outputHeaderPath = headerPath;
     if (options.emitMaps) {

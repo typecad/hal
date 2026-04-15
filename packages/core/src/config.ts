@@ -58,6 +58,9 @@ export interface TypecodeOutputConfig {
  * ```
  */
 export interface TypecodeConfig {
+  /** Entry point TypeScript file (relative to config file directory). */
+  entry?: string;
+
   /** Target architecture identifier (e.g. 'avr', 'esp32', 'rp2040'). */
   target: ArchitectureIdentifier;
 

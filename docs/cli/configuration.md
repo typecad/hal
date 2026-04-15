@@ -30,6 +30,7 @@ export default config;
 | `target` | string | Yes | Target architecture (`avr`, `samd`, `esp32`, etc.) |
 | `board` | string | Yes | Board package name (`@typecode/board-*`) |
 | `fqbn` | string | For compile | Fully Qualified Board Name |
+| `entry` | string | For `build` | Entry point TypeScript file (relative to config file) |
 | `output` | object | No | Output configuration |
 | `include` | string[] | No | Additional include paths |
 | `define` | object | No | Preprocessor definitions |
@@ -123,6 +124,25 @@ const config: TypecodeConfig = {
   ],
 };
 ```
+
+### Entry Point
+
+The `entry` field specifies the main TypeScript file for the `typecode build` command. It is required when using `npx typecode build`:
+
+```typescript
+const config: TypecodeConfig = {
+  target: 'avr',
+  board: '@typecode/board-arduino-uno',
+  fqbn: 'arduino:avr:uno',
+  entry: './src/sketch.ts',  // Relative to config file location
+  output: {
+    framework: 'arduino',
+    outDir: './out',
+  },
+};
+```
+
+When set, `typecode build` resolves the entry file from the config and transpiles the full import graph. This enables multi-file project support — see [Multi-File Projects](../transpiler/README.md#multi-file-projects) for details.
 
 ## Complete Example
 

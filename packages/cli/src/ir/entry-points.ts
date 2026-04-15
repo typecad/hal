@@ -55,8 +55,9 @@ export function detectEntryPoints(
   }
 
   // Add custom entry points
+  const definedEnums = new Set(program.enums.map((e) => e.name));
   for (const entryPoint of effectiveConfig.customEntryPoints) {
-    if (definedFunctions.has(entryPoint) || definedClasses.has(entryPoint)) {
+    if (definedFunctions.has(entryPoint) || definedClasses.has(entryPoint) || definedEnums.has(entryPoint)) {
       entryPoints.add(entryPoint);
     }
   }
@@ -199,4 +200,36 @@ export function getTargetEntryPoints(target: TargetProfile): string[] {
   return target === "arduino"
     ? DEFAULT_ENTRY_POINT_CONFIG.arduinoEntryPoints
     : DEFAULT_ENTRY_POINT_CONFIG.genericEntryPoints;
+}
+
+/**
+ * Detect symbols in a program that are imported by other files in the project.
+ * These become additional entry points for tree-shaking so they aren't
+ * eliminated as "unused" when they are only used externally.
+ *
+ * @param program  The IR for one file
+ * @param importedByOtherFiles  Symbol names that other files import from this one
+ * @returns Set of symbol names that should be treated as entry points
+ */
+export function detectExportedEntryPoints(
+  program: ProgramIR,
+  importedByOtherFiles: Set<string>,
+): Set<string> {
+  const entryPoints = new Set<string>();
+
+  if (importedByOtherFiles.size === 0) return entryPoints;
+
+  const definedFunctions = new Set(program.functions.map(fn => fn.originalName));
+  const definedClasses = new Set(program.classes.map(cls => cls.name));
+  const definedEnums = new Set(program.enums.map(e => e.name));
+  const definedTypeAliases = new Set(program.typeAliases.map(ta => ta.name));
+
+  for (const symbol of importedByOtherFiles) {
+    if (definedFunctions.has(symbol)) entryPoints.add(symbol);
+    if (definedClasses.has(symbol)) entryPoints.add(symbol);
+    if (definedEnums.has(symbol)) entryPoints.add(symbol);
+    if (definedTypeAliases.has(symbol)) entryPoints.add(symbol);
+  }
+
+  return entryPoints;
 }

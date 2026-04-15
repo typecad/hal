@@ -14,6 +14,7 @@ export function printHelp(): void {
   console.log(chalk.cyan(`USAGE`));
   console.log();
   console.log(`  typecode <input.ts> [options]`);
+  console.log(`  typecode build [options]`);
   console.log(`  typecode init [name] [options]`);
   console.log(`  typecode gen-libdefs <input.ts>`);
   console.log(`  typecode gen-decls <input.cpp|--all <directory>>`);
@@ -61,6 +62,12 @@ export function printHelp(): void {
   console.log(`                          Example: COM4, /dev/ttyACM0`);
   console.log();
   console.log(`  --baud <rate>           Baud rate for --monitor (default: 9600)`);
+  console.log();
+  console.log(chalk.cyan(`BUILD COMMAND`));
+  console.log();
+  console.log(`  build                    Build using entry point from typecode.config.ts`);
+  console.log(`                           Requires 'entry' field in config file.`);
+  console.log(`                           Supports all transpile, compile, upload, and watch options.`);
   console.log();
   console.log(chalk.cyan(`WATCH MODE`));
   console.log();
@@ -136,6 +143,12 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.gray(`  # Non-interactive project setup`));
   console.log(`  typecode init my-project --board arduino-uno --framework arduino`);
+  console.log();
+  console.log(chalk.gray(`  # Build using config entry point`));
+  console.log(`  typecode build --compile --upload --port COM4`);
+  console.log();
+  console.log(chalk.gray(`  # Build in watch mode`));
+  console.log(`  typecode build --watch`);
   console.log();
   console.log(chalk.gray(`  # Transpile to generic C++`));
   console.log(`  typecode src/main.ts`);
@@ -255,6 +268,93 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
       noSketch,
       outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
     } as InitCommandOptions;
+  }
+
+  // build subcommand — entry point comes from typecode.config.ts
+  if (firstArg === "build") {
+    const emitFlag = readFlags(argv, ["--emit"]);
+    const targetFlag = readFlags(argv, ["--target"]);
+    const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
+    const emitMapsFlag = readFlags(argv, ["--emit-maps"]);
+    const fqbn = readFlags(argv, ["--fqbn"]);
+    const port = readFlags(argv, ["--port"]);
+    const baudRaw = readFlags(argv, ["--baud"]);
+
+    const compile = argv.includes("--compile");
+    const upload = argv.includes("--upload");
+    const monitor = argv.includes("--monitor");
+    const watch = argv.includes("--watch") || argv.includes("-w");
+    const debug = argv.includes("--debug");
+    const force = argv.includes("--force");
+    const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
+
+    // Tree-shaking options
+    const noTreeShake = argv.includes("--no-tree-shake");
+    const keepUnusedEnums = argv.includes("--keep-unused-enums");
+    const keepUnusedClasses = argv.includes("--keep-unused-classes");
+    const keepUnusedTypes = argv.includes("--keep-unused-types");
+    const keepUnusedVariables = argv.includes("--keep-unused-variables");
+
+    const entryPoints: string[] = [];
+    for (let i = 0; i < argv.length; i++) {
+      if (argv[i] === "--entry-point" && i + 1 < argv.length) {
+        entryPoints.push(argv[i + 1]);
+      }
+    }
+
+    const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
+    const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
+
+    // Auto-select arduino target when using Arduino CLI commands
+    const effectiveTargetFlag = compile || upload || monitor ? "arduino" : targetFlag;
+    const target: TargetProfile =
+      effectiveTargetFlag === "arduino" || effectiveTargetFlag === "generic" ? effectiveTargetFlag : "generic";
+
+    const platformContext: PlatformContext = { arduino: { fqbn } };
+
+    // Validate flag combinations
+    if (upload && !compile) {
+      throw new Error("--upload requires --compile.");
+    }
+    if (upload && !port) {
+      throw new Error("--upload requires --port <port>.");
+    }
+    if (monitor && !port) {
+      throw new Error("--monitor requires --port <port>.");
+    }
+    if (watch && monitor) {
+      throw new Error("--watch and --monitor cannot be used together (monitor blocks the process).");
+    }
+
+    const treeShaking: TreeShakingOptions = {
+      enabled: !noTreeShake,
+      keepUnusedEnums,
+      keepUnusedClasses,
+      keepUnusedTypeAliases: keepUnusedTypes,
+      keepUnusedVariables,
+      reportUnused: false,
+      entryPoints: entryPoints.length > 0 ? entryPoints : undefined,
+    };
+
+    return {
+      command: "build",
+      inputFile: undefined, // resolved later from config
+      emitMode,
+      target,
+      outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+      emitMaps,
+      noTranspile: false,
+      compile,
+      upload,
+      monitor,
+      watch,
+      port,
+      baud,
+      platformContext,
+      treeShaking,
+      debug,
+      force,
+    };
   }
 
   // Named subcommands

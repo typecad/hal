@@ -7,6 +7,7 @@ The TypeCode transpiler converts TypeScript to C++/Arduino code.
 - [Language Reference](./language-reference.md) - TypeScript to C++ mapping
 - [IR Model](./ir-model.md) - Intermediate representation
 - [Polyfills](./polyfills.md) - Runtime polyfill system
+- [Multi-File Projects](#multi-file-projects) - Multi-file project support
 
 ## Overview
 
@@ -219,6 +220,164 @@ void loop() {}
 | Async/Await | ❌ Not supported |
 | Try/Catch | ❌ Not supported |
 | Dynamic allocation | ⚠️ Limited |
+
+## Multi-File Projects
+
+TypeCode supports multi-file TypeScript projects with `import`/`export` statements. You can split your code across multiple `.ts` files and the transpiler will resolve dependencies, tree-shake across module boundaries, and generate proper C++ output with headers and forward declarations.
+
+### Project Structure
+
+```
+project/
+├── typecode.config.ts     # Config with entry point
+├── src/
+│   ├── main.ts            # Entry file
+│   ├── sensors.ts         # Sensor module
+│   ├── motors.ts          # Motor module
+│   └── utils.ts           # Shared utilities
+└── out/                   # Generated output
+    ├── main.cpp
+    ├── main.h
+    ├── sensors.cpp
+    ├── sensors.h
+    ├── motors.cpp
+    ├── motors.h
+    ├── utils.cpp
+    └── utils.h
+```
+
+### Configuration
+
+Set the `entry` field in `typecode.config.ts` to specify the entry file:
+
+```typescript
+import type { TypecodeConfig } from '@typecode/core';
+
+const config: TypecodeConfig = {
+  target: 'avr',
+  board: '@typecode/board-arduino-uno',
+  fqbn: 'arduino:avr:uno',
+  entry: './src/main.ts',   // Entry point for the build
+  output: {
+    framework: 'arduino',
+    outDir: './out',
+    emitMode: 'split',      // Generates separate .cpp/.h per module
+  },
+};
+
+export default config;
+```
+
+Then build with:
+
+```bash
+npx typecode build
+```
+
+### Importing Local Modules
+
+Use standard TypeScript `import`/`export` syntax to reference other files:
+
+**sensors.ts** — library module:
+```typescript
+import { Serial } from '@typecode';
+
+export function readTemperature(pin: number): number {
+  const value = analogRead(pin);
+  Serial.print("Temp: ");
+  Serial.println(value);
+  return value;
+}
+
+export function readHumidity(pin: number): number {
+  return analogRead(pin);
+}
+```
+
+**main.ts** — entry file:
+```typescript
+import { LED, delay } from '@typecode';
+import { readTemperature } from './sensors';
+
+while (true) {
+  const temp = readTemperature(A0);
+  LED.toggle();
+  delay(1000);
+}
+```
+
+Only `readTemperature` is included in the output — `readHumidity` is tree-shaken since it is never imported.
+
+### Build Pipeline
+
+Multi-file projects use a three-phase build pipeline:
+
+```
+Phase A: Build all IRs
+    Parse and build IR for every file in the import graph
+         │
+         ▼
+Phase B: Compute cross-module imports
+    Detect which exported symbols are imported by other files
+    and register them as entry points for tree-shaking
+         │
+         ▼
+Phase C: Tree-shake with cross-module awareness
+    Run dead-code elimination on each file, preserving
+    symbols that are imported by other modules
+```
+
+Files are processed in **topological order** (dependencies first), ensuring that headers are available before they are included.
+
+### Cross-Module Tree-Shaking
+
+The transpiler automatically detects which exported symbols are actually used by other files in the project. Symbols that are exported but never imported are removed by tree-shaking, just like unused code within a single file.
+
+```typescript
+// utils.ts
+export function used() { /* kept */ }     // imported by main.ts → kept
+export function notUsed() { /* removed */ } // not imported → tree-shaken
+export class Helper { /* kept */ }         // imported by main.ts → kept
+export enum Mode { A, B, C }              // imported by main.ts → kept
+```
+
+```typescript
+// main.ts
+import { used, Helper, Mode } from './utils';
+// Only used(), Helper, and Mode appear in generated C++
+```
+
+### Generated Output
+
+In `split` mode (the default), each TypeScript file generates a pair of C++ files:
+
+| TypeScript | C++ Header | C++ Source |
+|------------|------------|------------|
+| `main.ts` | `main.h` | `main.cpp` |
+| `sensors.ts` | `sensors.h` | `sensors.cpp` |
+
+- **Headers** contain class declarations, enum definitions, and function declarations
+- **Sources** contain function implementations and `#include` directives for dependencies
+- All headers include `#pragma once` guards to prevent multiple inclusion
+
+### Forward Declarations
+
+When a file uses a class defined in another module, the transpiler automatically generates forward declarations:
+
+```cpp
+// sensors.cpp
+#include "motors.h"        // Full include for Motors class
+class Helper;              // Forward declaration from utils module
+```
+
+This allows cross-module type references without creating circular include dependencies.
+
+### Limitations
+
+- Circular dependencies between TypeScript files are not supported (the build uses topological ordering)
+- Re-exports (`export * from './other'`) are not supported
+- Default exports are not supported — use named exports only
+- Dynamic imports (`import()`) are not supported
 
 ## Transpilation Pipeline
 

@@ -51,10 +51,10 @@ export function generateProjectPackageJson(options: InitProjectOptions): string 
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "typecode ./src/sketch.ts",
-    "compile": "typecode ./src/sketch.ts --compile",
-    "upload": "typecode ./src/sketch.ts --compile --upload --port ${portHint}",
-    "monitor": "typecode ./src/sketch.ts --compile --upload --monitor --port ${portHint}"
+    "build": "typecode build",
+    "compile": "typecode build --compile",
+    "upload": "typecode build --compile --upload --port ${portHint}",
+    "monitor": "typecode build --compile --upload --monitor --port ${portHint}"
   },
   "dependencies": {
     "@typecode/core": "^0.1.0",
@@ -108,6 +108,9 @@ export function generateProjectConfig(options: InitProjectOptions): string {
 import type { TypecodeConfig } from '@typecode/core';
 
 const config: TypecodeConfig = {
+  // Entry point — the main TypeScript file to transpile
+  entry: './src/sketch.ts',
+
   // Target architecture
   target: '${architecture}',
 

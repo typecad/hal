@@ -28,7 +28,7 @@ import {
   saveAndClearIncrementalCache,
   type FileChangeStatus,
 } from "./incremental-cache";
-import { detectEntryPoints } from "./ir/entry-points";
+import { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points";
 import { analyzeReachability } from "./ir/reachability";
 import { filterProgramIR } from "./ir/filter";
 import { flattenGeneratedModulesIntoSketch } from "./platform/arduino-compile";
@@ -735,8 +735,74 @@ function typeCheckFiles(
 }
 
 /**
+ * Sort files in dependency order using Kahn's algorithm.
+ * Dependencies come before dependents so that include ordering is correct
+ * (e.g., if A imports B, B appears before A in the result).
+ *
+ * Falls back to the original order for any files involved in dependency cycles.
+ */
+function topologicalSortFiles(
+  files: string[],
+  dependencies: Map<string, Set<string>>,
+): string[] {
+  if (files.length <= 1) return [...files];
+
+  const fileSet = new Set(files);
+
+  // Build reverse adjacency list: dep → Set<files that depend on dep>
+  const dependents = new Map<string, Set<string>>();
+  const inDegree = new Map<string, number>();
+  for (const f of files) {
+    dependents.set(f, new Set());
+    inDegree.set(f, 0);
+  }
+
+  for (const [file, deps] of dependencies) {
+    if (!fileSet.has(file)) continue;
+    for (const dep of deps) {
+      if (fileSet.has(dep) && dep !== file) {
+        dependents.get(dep)!.add(file);
+        inDegree.set(file, (inDegree.get(file) ?? 0) + 1);
+      }
+    }
+  }
+
+  // Kahn's algorithm: start with files that have no in-edges
+  const queue: string[] = [];
+  for (const f of files) {
+    if (inDegree.get(f) === 0) {
+      queue.push(f);
+    }
+  }
+
+  const sorted: string[] = [];
+  while (queue.length > 0) {
+    const file = queue.shift()!;
+    sorted.push(file);
+    for (const dependent of dependents.get(file) ?? []) {
+      const newDegree = (inDegree.get(dependent) ?? 1) - 1;
+      inDegree.set(dependent, newDegree);
+      if (newDegree === 0) {
+        queue.push(dependent);
+      }
+    }
+  }
+
+  // If there are cycles, append remaining files in original order
+  if (sorted.length < files.length) {
+    const sortedSet = new Set(sorted);
+    for (const f of files) {
+      if (!sortedSet.has(f)) sorted.push(f);
+    }
+  }
+
+  return sorted;
+}
+
+/**
  * Collects all files that need to be transpiled, following both relative and npm imports.
  * Also detects native C++ modules (.d.ts + .cpp pairs).
+ * Files are returned in dependency order (dependencies before dependents).
  *
  * @param boardPackage  When provided, bare `@typecode` imports resolve to this
  *                      board package (e.g. `'@typecode/board-arduino-uno'`).
@@ -747,6 +813,8 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
   const visited = new Set<string>();
   const npmPackages = new Map<string, ResolvedNpmPackage>();
   const nativeModules = new Map<string, NativeCppModule>();
+  // Track dependency edges for topological sorting
+  const dependencies = new Map<string, Set<string>>();
 
   while (pending.length > 0) {
     const filePath = pending.shift();
@@ -762,6 +830,8 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
     }
 
     ordered.push(filePath);
+    const fileDeps = new Set<string>();
+    dependencies.set(filePath, fileDeps);
 
     const sourceText = readText(filePath);
     const extension = path.extname(filePath).toLowerCase();
@@ -794,24 +864,31 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
       }
 
       const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
-      if (resolved && !visited.has(resolved.sourcePath)) {
-        pending.push(resolved.sourcePath);
-        if (resolved.npmPackage) {
-          npmPackages.set(resolved.sourcePath, resolved.npmPackage);
-        } else if (isInNodeModules(resolved.sourcePath)) {
-          // If the file is in node_modules but wasn't resolved as an npm package,
-          // it was reached via relative import from another npm package file.
-          // Create npm package info for it.
-          const npmInfo = getNpmPackageInfoForFile(resolved.sourcePath, moduleSpecifier);
-          if (npmInfo) {
-            npmPackages.set(resolved.sourcePath, npmInfo);
+      if (resolved) {
+        // Track dependency edge for topological sorting
+        fileDeps.add(resolved.sourcePath);
+
+        if (!visited.has(resolved.sourcePath)) {
+          pending.push(resolved.sourcePath);
+          if (resolved.npmPackage) {
+            npmPackages.set(resolved.sourcePath, resolved.npmPackage);
+          } else if (isInNodeModules(resolved.sourcePath)) {
+            // If the file is in node_modules but wasn't resolved as an npm package,
+            // it was reached via relative import from another npm package file.
+            // Create npm package info for it.
+            const npmInfo = getNpmPackageInfoForFile(resolved.sourcePath, moduleSpecifier);
+            if (npmInfo) {
+              npmPackages.set(resolved.sourcePath, npmInfo);
+            }
           }
         }
       }
     }
   }
 
-  return { files: ordered, npmPackages, nativeModules };
+  // Sort files in dependency order (dependencies before dependents)
+  const sorted = topologicalSortFiles(ordered, dependencies);
+  return { files: sorted, npmPackages, nativeModules };
 }
 
 /**
@@ -847,6 +924,9 @@ function applyTreeShaking(
   profiler.startTimer("tree-shake:reachability");
   const reachability = analyzeReachability(programIR, callGraph, {
     target,
+    entryPointConfig: {
+      customEntryPoints: treeShakingOptions?.entryPoints ?? [],
+    },
     keepUnusedEnums: treeShakingOptions?.keepUnusedEnums,
     keepUnusedClasses: treeShakingOptions?.keepUnusedClasses,
     keepUnusedTypeAliases: treeShakingOptions?.keepUnusedTypeAliases,
@@ -1069,16 +1149,21 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     filesToProcess = transpileFiles;
   }
 
-  // Build IR for files that need retranspilation - parallelize file reads for better I/O performance
-  // File reading is async, IR building is CPU-bound synchronous
-  const buildIRForFile = async (filePath: string): Promise<PreBuiltFile> => {
+  // ── Phase A: Build IR for all files (no tree-shaking yet) ────────────────
+  // We need all IRs built before we can compute cross-module imports for
+  // accurate tree-shaking across file boundaries.
+  type RawIRFile = {
+    filePath: string;
+    programIR: ProgramIR;
+    npmPackage: ReturnType<typeof npmPackages.get>;
+  };
+
+  const buildRawIR = async (filePath: string): Promise<RawIRFile> => {
     const fileBasename = path.basename(filePath);
     profiler.startTimer(`ir:build:${fileBasename}`);
 
-    // Use async file read for better I/O parallelism
     let sourceText = await fs.promises.readFile(filePath, "utf8");
 
-    // Apply debug preprocessing if enabled and breakpoints exist for this file
     if (options.debug && breakpoints) {
       const instrumented = debugPreprocess({
         fileName: filePath,
@@ -1089,29 +1174,92 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
 
     profiler.startTimer(`ir:build-ir:${fileBasename}`);
-    let programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
+    const programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
     profiler.endTimer(`ir:build-ir:${fileBasename}`);
 
+    const npmPackage = npmPackages.get(filePath);
+    profiler.endTimer(`ir:build:${fileBasename}`);
+    return { filePath, programIR, npmPackage };
+  };
+
+  profiler.startTimer("ir:build-all");
+  profiler.captureMemorySnapshot("ir:pre-build");
+  const rawIRArray = await Promise.all(filesToProcess.map(buildRawIR));
+  profiler.captureMemorySnapshot("ir:post-build");
+  profiler.endTimer("ir:build-all");
+
+  // ── Phase B: Compute cross-module import map ─────────────────────────────
+  // For each file, determine which of its symbols are imported by other files
+  // in the project. Those symbols become additional entry points for tree-shaking
+  // so they aren't eliminated as "unused" when they're only consumed externally.
+  profiler.startTimer("ir:cross-module-imports");
+  const symbolExportedTo = new Map<string, Set<string>>(); // symbol → Set<filePath that defines it>
+  const fileDefinedSymbols = new Map<string, Set<string>>(); // filePath → Set<symbol names>
+
+  for (const { filePath, programIR } of rawIRArray) {
+    const defined = new Set<string>();
+    for (const fn of programIR.functions) defined.add(fn.originalName);
+    for (const cls of programIR.classes) defined.add(cls.name);
+    for (const e of programIR.enums) defined.add(e.name);
+    for (const ta of programIR.typeAliases) defined.add(ta.name);
+    fileDefinedSymbols.set(filePath, defined);
+  }
+
+  // For each file, look at its imports and record which symbols it imports
+  // from other files in the project.
+  const crossModuleImports = new Map<string, Set<string>>(); // filePath → symbols imported by OTHER files
+  for (const { filePath, programIR } of rawIRArray) {
+    for (const imp of programIR.imports) {
+      // Resolve the import to find which file it comes from
+      const resolved = resolveImport(filePath, imp.moduleSpecifier, options.boardPackage);
+      if (!resolved) continue;
+      const targetFile = resolved.sourcePath;
+      // Only track imports from files in our transpile graph
+      if (!fileDefinedSymbols.has(targetFile)) continue;
+      for (const symbol of imp.namedImports) {
+        if (!crossModuleImports.has(targetFile)) {
+          crossModuleImports.set(targetFile, new Set());
+        }
+        crossModuleImports.get(targetFile)!.add(symbol);
+      }
+    }
+  }
+  profiler.endTimer("ir:cross-module-imports");
+
+  // ── Phase C: Tree-shake with cross-module awareness + compute polyfills ──
+  const preBuiltArray: PreBuiltFile[] = [];
+  for (const { filePath, programIR: rawIR, npmPackage } of rawIRArray) {
+    const fileBasename = path.basename(filePath);
+
+    // Detect symbols that other files import from this one
+    const importedByOthers = crossModuleImports.get(filePath) ?? new Set<string>();
+    const exportedEntryPoints = detectExportedEntryPoints(rawIR, importedByOthers);
+
     profiler.startTimer(`tree-shake:${fileBasename}`);
-    // Apply tree-shaking for all files.
-    // Keep variables for all files to avoid dropping top-level variable
-    // declarations that are referenced in subsequent statements.
-    // For non-entry modules, also preserve enums to avoid dropping
-    // constants that may be referenced in class default parameters or after lowering.
+    let programIR: ProgramIR;
     if (filePath === entryFile) {
-      programIR = applyTreeShaking(programIR, options.target, {
+      programIR = applyTreeShaking(rawIR, options.target, {
         ...options.treeShaking,
         keepUnusedVariables: true,
+        // Merge exported entry points so cross-module imports aren't shaken out
+        entryPoints: [
+          ...(options.treeShaking?.entryPoints ?? []),
+          ...exportedEntryPoints,
+        ],
       });
     } else {
-      programIR = applyTreeShaking(programIR, options.target, {
+      programIR = applyTreeShaking(rawIR, options.target, {
         enabled: options.treeShaking?.enabled ?? true,
         keepUnusedEnums: true,
         keepUnusedClasses: options.treeShaking?.keepUnusedClasses,
         keepUnusedTypeAliases: options.treeShaking?.keepUnusedTypeAliases,
         reportUnused: options.treeShaking?.reportUnused,
-        entryPoints: options.treeShaking?.entryPoints,
         keepUnusedVariables: true,
+        // Merge exported entry points so cross-module imports aren't shaken out
+        entryPoints: [
+          ...(options.treeShaking?.entryPoints ?? []),
+          ...exportedEntryPoints,
+        ],
       });
     }
     profiler.endTimer(`tree-shake:${fileBasename}`);
@@ -1119,11 +1267,8 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     profiler.startTimer(`polyfill:${fileBasename}`);
     const polyfillContext: PolyfillContext = {
       target: options.target,
-      // Derive architecture from FQBN (e.g. "arduino:avr:uno" → "avr") so
-      // polyfills can gate stdlib-dependent code correctly.
       architecture: options.platformContext?.arduino?.fqbn?.split(":")[1]?.toLowerCase(),
       usedIdentifiers: collectUsedIdentifiers(programIR),
-      // Pass console config for baud rate
       config: {
         console: {
           enabled: true,
@@ -1137,19 +1282,8 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     const polyfills = polyfillRegistry.detectAndGenerate(programIR, polyfillContext);
     profiler.endTimer(`polyfill:${fileBasename}`);
 
-    const npmPackage = npmPackages.get(filePath);
-
-    profiler.endTimer(`ir:build:${fileBasename}`);
-    return { filePath, programIR, polyfills, npmPackage };
-  };
-
-  // Process only files that need retranspilation in parallel using Promise.all for concurrent file I/O
-  // This reads all source files concurrently, then builds IR synchronously
-  profiler.startTimer("ir:build-all");
-  profiler.captureMemorySnapshot("ir:pre-build");
-  const preBuiltArray = await Promise.all(filesToProcess.map(buildIRForFile));
-  profiler.captureMemorySnapshot("ir:post-build");
-  profiler.endTimer("ir:build-all");
+    preBuiltArray.push({ filePath, programIR, polyfills, npmPackage });
+  }
 
   const preBuilt = new Map<string, PreBuiltFile>();
   for (const item of preBuiltArray) {
@@ -1161,9 +1295,14 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // aware of every enum type (including its member values for AVR range checks)
   // regardless of which file it's defined in or what order files are emitted.
   const allEnumIRs: { name: string; members: { name: string; value?: number }[] }[] = [];
+  // Also collect all class names across all files for forward declarations.
+  const allClassNames = new Set<string>();
   for (const { programIR } of preBuilt.values()) {
     for (const e of programIR.enums) {
       allEnumIRs.push(e);
+    }
+    for (const cls of programIR.classes) {
+      allClassNames.add(cls.name);
     }
   }
   profiler.startTimer("emit:register-enums");
@@ -1189,6 +1328,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       npmPackages,
       isEntryFile: filePath === entryFile,
       nativeModules: graphResult.nativeModules,
+      crossModuleClasses: allClassNames,
     };
     // Only pass strategy if loaded from a package - otherwise let emitCpp resolve from target
     if (boardStrategy) {

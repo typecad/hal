@@ -5,6 +5,9 @@
 import type { TypecodeConfig } from '@typecode/core';
 
 const config: TypecodeConfig = {
+  // Entry point — the main TypeScript file to transpile
+  entry: './src/sketch.ts',
+
   // Target architecture (AVR for ATmega328P)
   target: 'avr',
 

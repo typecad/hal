@@ -6,11 +6,51 @@ Complete command reference for the TypeCode CLI.
 
 ```
 typecode <input.ts> [options]
+typecode build [options]
 typecode gen-decls <input.cpp>
 typecode gen-decls --scan-dir <directory>
 typecode gen-libdefs <input.ts>
 typecode map-error <mapFile> [options]
 ```
+
+## Build Command
+
+Builds a project using the entry point from `typecode.config.ts`. Requires the `entry` field in the config file.
+
+```bash
+npx typecode build [options]
+```
+
+This resolves the entry file from `typecode.config.ts`, discovers the full import graph, and transpiles all TypeScript files in dependency order. It supports all the same options as the transpile command.
+
+### Options
+
+The build command accepts all [Transpile Options](#options) plus:
+
+| Flag | Description |
+|------|-------------|
+| `--watch`, `-w` | Watch for file changes and rebuild automatically |
+| `--compile` | Run `arduino-cli compile` after transpilation |
+| `--upload` | Upload compiled sketch (requires `--compile`, `--port`) |
+| `--monitor` | Open serial monitor after upload |
+| `--port <port>` | Serial port (e.g. `COM4` or `/dev/ttyACM0`) |
+| `--baud <rate>` | Baud rate for serial monitor (default: `9600`) |
+| `--debug` | Enable debug mode with breakpoint instrumentation |
+
+### Example
+
+```bash
+# Build and compile
+npx typecode build --compile
+
+# Build, compile, and upload
+npx typecode build --compile --upload --port COM4
+
+# Build with watch mode
+npx typecode build --watch
+```
+
+See [Multi-File Projects](../transpiler/README.md#multi-file-projects) for details on project structure.
 
 ## Transpile Command
 

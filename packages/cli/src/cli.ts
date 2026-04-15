@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import path from "node:path";
+import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
@@ -310,6 +311,31 @@ async function main(): Promise<void> {
         console.log(`Compiler message: ${mapped.message}`);
       }
       return;
+    }
+
+    // ── Handle build command — entry point comes from config ──────────
+    if (options.command === "build") {
+      const buildConfig = loadTypecodeConfig(process.cwd());
+      if (!buildConfig) {
+        throw new Error(
+          "No typecode.config.ts found in current directory.\n" +
+          "Run 'typecode init' to create one, or use: typecode <input.ts> [options]",
+        );
+      }
+      if (!buildConfig.entry) {
+        throw new Error(
+          "typecode.config.ts has no 'entry' field.\n" +
+          "Add: entry: './src/sketch.ts'",
+        );
+      }
+
+      const entryFile = path.resolve(path.dirname(buildConfig.configPath), buildConfig.entry);
+      if (!fs.existsSync(entryFile)) {
+        throw new Error(`Entry file not found: ${entryFile}`);
+      }
+
+      assertTypeScriptInput(entryFile);
+      (options as any).inputFile = entryFile;
     }
 
     if (!options.inputFile) {
