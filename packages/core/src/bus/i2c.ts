@@ -9,7 +9,7 @@
 //   - TypeScript prevents .device() calls before .begin() at compile time
 // ---------------------------------------------------------------------------
 
-import type { IPin } from '../types/pin';
+import type { BasePin } from '../types/pin';
 
 // ---------------------------------------------------------------------------
 // Address type
@@ -138,14 +138,6 @@ export interface II2CBus {
    * @default 'callback'
    */
   errorPolicy: ErrorPolicy;
-
-  // --- Debug mode (legacy, prefer errorPolicy) ---
-  /**
-   * @deprecated Use errorPolicy instead.
-   * When enabled, failed operations print error details to Serial before returning.
-   * Format: "[I2C ERROR] <message> (address=0xXX, status=N)"
-   */
-  debugOnError: boolean;
 
   // --- Bus recovery ---
   /** Attempt to recover a stuck bus (toggles SCL to release stuck slaves). */

@@ -9,6 +9,7 @@ import { loadTypecodeConfig, generateVirtualTypeDeclaration, validateBoardPackag
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
 import * as ui from "./utils/ui";
+import chalk from "chalk";
 
 function assertTypeScriptInput(filePath: string): void {
   const extension = path.extname(filePath).toLowerCase();
@@ -19,16 +20,43 @@ function assertTypeScriptInput(filePath: string): void {
   }
 }
 
-function printDiagnostics(diagnostics: Array<{ severity: string; message: string; line?: number; column?: number; code?: string }>): void {
+function printDiagnostics(diagnostics: Array<{ severity: string; message: string; hint?: string; line?: number; column?: number; code?: string }>): void {
   for (const diagnostic of diagnostics) {
-    const position = diagnostic.line && diagnostic.column ? `(${diagnostic.line},${diagnostic.column})` : "";
-    const code = diagnostic.code ? `[${diagnostic.code}]` : "";
-    const prefix = `${diagnostic.severity.toUpperCase()} ${code}${position}`.trim();
-    const line = `${prefix}: ${diagnostic.message}`;
+    const position = diagnostic.line && diagnostic.column ? chalk.gray(`(${diagnostic.line},${diagnostic.column})`) : "";
+    const code = diagnostic.code ? chalk.gray(` [${diagnostic.code}]`) : "";
+
+    let severityLabel: string;
+    let hintColor: (s: string) => string;
     if (diagnostic.severity === "error") {
-      console.error(line);
+      severityLabel = chalk.red.bold("error");
+      hintColor = chalk.red;
+    } else if (diagnostic.severity === "warning") {
+      severityLabel = chalk.yellow.bold("warning");
+      hintColor = chalk.yellow;
     } else {
-      console.warn(line);
+      severityLabel = chalk.cyan.bold(diagnostic.severity);
+      hintColor = chalk.cyan;
+    }
+
+    const location = position ? ` ${position}` : "";
+    const header = `${severityLabel}${code}${location}: ${chalk.white(diagnostic.message)}`;
+
+    if (diagnostic.severity === "error") {
+      console.error(header);
+    } else {
+      console.warn(header);
+    }
+
+    if (diagnostic.hint) {
+      const hintLines = diagnostic.hint.split("\n");
+      for (const hintLine of hintLines) {
+        const formatted = hintColor(`  \u21b3  ${hintLine}`);
+        if (diagnostic.severity === "error") {
+          console.error(formatted);
+        } else {
+          console.warn(formatted);
+        }
+      }
     }
   }
 }

@@ -7,6 +7,14 @@
 // Board: @typecode/board-arduino-uno
 // ---------------------------------------------------------------------------
 
+declare global {
+  type Owned<T = any> = T;
+  type Ref<T = any> = T;
+  type MutRef<T = any> = T;
+}
+
 declare module '@typecode' {
   export * from '@typecode/board-arduino-uno';
 }
+
+export {};

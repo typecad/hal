@@ -264,10 +264,10 @@ export function generatePinsTs(options: BoardTemplateOptions): string {
 // ---------------------------------------------------------------------------
 
 import type {
-  IDigitalPin,
-  IPWMPin,
-  IAnalogInput,
-  IInterruptPin,
+  BasePin,
+  PWMPin,
+  AnalogPin,
+  InterruptPin,
 } from '@typecode/core';
 import { pinNumber } from '@typecode/core';
 
@@ -275,20 +275,20 @@ import { pinNumber } from '@typecode/core';
 // Internal stub factories (no-op at runtime; consumed by transpiler)
 // ---------------------------------------------------------------------------
 
-function createDigitalPin(pin: number, gpio: number): IDigitalPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin;
+function createDigitalPin(pin: number, gpio: number): BasePin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin;
 }
 
-function createPWMPin(pin: number, gpio: number): IPWMPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IPWMPin;
+function createPWMPin(pin: number, gpio: number): PWMPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as PWMPin;
 }
 
-function createAnalogPin(pin: number, gpio: number): IAnalogInput {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IAnalogInput;
+function createAnalogPin(pin: number, gpio: number): AnalogPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as AnalogPin;
 }
 
-function createInterruptPin(pin: number, gpio: number): IDigitalPin & IInterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IInterruptPin;
+function createInterruptPin(pin: number, gpio: number): BasePin & InterruptPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & InterruptPin;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,17 +296,17 @@ function createInterruptPin(pin: number, gpio: number): IDigitalPin & IInterrupt
 // ---------------------------------------------------------------------------
 
 // Example digital-only pins:
-// export const D0: IDigitalPin = createDigitalPin(0, 0);
-// export const D1: IDigitalPin = createDigitalPin(1, 1);
+// export const D0: BasePin = createDigitalPin(0, 0);
+// export const D1: BasePin = createDigitalPin(1, 1);
 
 // Example PWM pins:
-// export const D3: IPWMPin = createPWMPin(3, 3);
+// export const D3: PWMPin = createPWMPin(3, 3);
 
 // Example analog input pins:
-// export const A0: IAnalogInput = createAnalogPin(14, 14);
+// export const A0: AnalogPin = createAnalogPin(14, 14);
 
 // Example interrupt-capable pins:
-// export const D2: IDigitalPin & IInterruptPin = createInterruptPin(2, 2);
+// export const D2: BasePin & InterruptPin = createInterruptPin(2, 2);
 
 // ---------------------------------------------------------------------------
 // Convenience aliases (uncomment and customize for your board)
@@ -363,7 +363,7 @@ import type {
   I2CAddress,
   I2CStatus,
 } from '@typecode/core';
-import type { IPin } from '@typecode/core';
+import type { BasePin } from '@typecode/core';
 import type {
   ISPIBus,
   ISPIFluentConfig,
@@ -374,7 +374,7 @@ import type {
   ISPIWriteResult,
   ISPIReadResult,
   ISPITransferResult,
-  IDigitalPin,
+  BasePin,
 } from '@typecode/core';
 import { SPIMode, SPIBitOrder, SPIStatus } from '@typecode/core';
 import type {
@@ -421,8 +421,8 @@ export const I2C0: II2CBus = {
   isInitialized: false,
 
   config: {
-    sda(_pin: IPin) { return this; },
-    scl(_pin: IPin) { return this; },
+    sda(_pin: BasePin) { return this; },
+    scl(_pin: BasePin) { return this; },
     speed(_hz: number) { return this; },
     begin() { /* transpiler: Wire.begin(); */ },
   } as II2CConfigBuilder,
@@ -488,7 +488,7 @@ const spiConfigBuilder: ISPIFluentConfig = {
   begin() { /* transpiler: SPI.begin(); */ },
 };
 
-function createSPIDeviceAccessor(_csPin: IDigitalPin): ISPIFluentDevice {
+function createSPIDeviceAccessor(_csPin: BasePin): ISPIFluentDevice {
   const writeBuilder: ISPIFluentWrite = {
     to(_register: number): ISPIWriteResult {
       return stubSPIWriteResult;
@@ -518,7 +518,7 @@ function createSPIDeviceAccessor(_csPin: IDigitalPin): ISPIFluentDevice {
 export const SPI0: ISPIBus = {
   isInitialized: false,
   config: spiConfigBuilder,
-  device(chipSelect: IDigitalPin): ISPIFluentDevice {
+  device(chipSelect: BasePin): ISPIFluentDevice {
     return createSPIDeviceAccessor(chipSelect);
   },
 } as ISPIBus;
@@ -557,10 +557,10 @@ const uartConfigBuilder: IUARTFluentConfig = {
   parity(_parity: UARTParity) { return this; },
   stopBits(_bits: UARTStopBits) { return this; },
   flowControl(_mode: UARTFlowControl) { return this; },
-  tx(_pin: IPin) { return this; },
-  rx(_pin: IPin) { return this; },
-  rts(_pin: IPin) { return this; },
-  cts(_pin: IPin) { return this; },
+  tx(_pin: BasePin) { return this; },
+  rx(_pin: BasePin) { return this; },
+  rts(_pin: BasePin) { return this; },
+  cts(_pin: BasePin) { return this; },
   rxBufferSize(_size: number) { return this; },
   txBufferSize(_size: number) { return this; },
   inverted(_invert: boolean) { return this; },
@@ -778,14 +778,21 @@ export declare function detachInterrupt(pin: number): void;
 
 export function generateStrategyTs(): string {
   return `// ---------------------------------------------------------------------------
-// Platform strategy re-export
+// Platform strategy extension point (optional)
 //
-// Most boards use the shared ArduinoStrategy from the framework-arduino package.
-// Board packages that need customized emit behavior can extend
-// ArduinoStrategy and override specific methods here.
+// Board packages do NOT need to export a strategy. The CLI loads the
+// platform strategy exclusively from the framework package configured in
+// typecode.config.ts (frameworkPackage field).
+//
+// Only create a custom strategy here if this board requires emit behaviour
+// that differs from the base ArduinoStrategy. In that case, extend
+// ArduinoStrategy and override specific methods, then export it as
+// FrameworkStrategy so the CLI can load it.
 // ---------------------------------------------------------------------------
 
-export { ArduinoStrategy as BoardStrategy } from '@typecode/framework-arduino';
+// import { ArduinoStrategy } from '@typecode/framework-arduino';
+// export class BoardStrategy extends ArduinoStrategy { ... }
+// export { BoardStrategy as FrameworkStrategy };
 `;
 }
 
@@ -811,10 +818,10 @@ export function generateBoardTs(options: BoardTemplateOptions): string {
 // ---------------------------------------------------------------------------
 
 import type {
-  IDigitalPin,
-  IPWMPin,
-  IAnalogInput,
-  IInterruptPin,
+  BasePin,
+  PWMPin,
+  AnalogPin,
+  InterruptPin,
   II2CBus,
   ISPIBus,
   ISerialPort,
@@ -836,14 +843,14 @@ import { ${className} } from './index';
 // ---------------------------------------------------------------------------
 
 export interface DigitalPins {
-  // D0: IDigitalPin & IInterruptPin;
-  // D1: IDigitalPin & IInterruptPin;
+  // D0: BasePin & InterruptPin;
+  // D1: BasePin & InterruptPin;
   // ... add all digital pins
 }
 
 export interface AnalogPins {
-  // A0: IAnalogInput;
-  // A1: IAnalogInput;
+  // A0: AnalogPin;
+  // A1: AnalogPin;
   // ... add all analog pins
 }
 
@@ -856,20 +863,20 @@ export interface IBoard {
   readonly definition: BoardDefinition;
 
   // ---- Individual pins (uncomment and customize) ------------------------
-  // readonly D0: IDigitalPin & IInterruptPin;
-  // readonly D1: IDigitalPin & IInterruptPin;
+  // readonly D0: BasePin & InterruptPin;
+  // readonly D1: BasePin & InterruptPin;
   // ...
 
   // ---- Aliases ----------------------------------------------------------
-  // readonly LED: IDigitalPin;
-  // readonly SDA: IAnalogInput;
-  // readonly SCL: IAnalogInput;
-  // readonly MOSI: IPWMPin;
-  // readonly MISO: IDigitalPin;
-  // readonly SCK: IDigitalPin;
-  // readonly SS: IPWMPin;
-  // readonly TX: IDigitalPin & IInterruptPin;
-  // readonly RX: IDigitalPin & IInterruptPin;
+  // readonly LED: BasePin;
+  // readonly SDA: AnalogPin;
+  // readonly SCL: AnalogPin;
+  // readonly MOSI: PWMPin;
+  // readonly MISO: BasePin;
+  // readonly SCK: BasePin;
+  // readonly SS: PWMPin;
+  // readonly TX: BasePin & InterruptPin;
+  // readonly RX: BasePin & InterruptPin;
 
   // ---- Peripherals ------------------------------------------------------
   readonly I2C0: II2CBus;

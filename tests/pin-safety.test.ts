@@ -9,7 +9,7 @@ describe('Pin Safety Validation', () => {
   it('generates warning when unsafe pin D0 is used', () => {
     const result = transpile(`
       import { D0 } from '@typecode/board-arduino-uno';
-      D0.output();
+      D0.asOutput();
       D0.high();
     `, { target: 'arduino' });
 
@@ -26,7 +26,7 @@ describe('Pin Safety Validation', () => {
   it('generates warning when unsafe pin D1 is used', () => {
     const result = transpile(`
       import { D1 } from '@typecode/board-arduino-uno';
-      D1.output();
+      D1.asOutput();
       D1.high();
     `, { target: 'arduino' });
 
@@ -41,7 +41,7 @@ describe('Pin Safety Validation', () => {
   it('generates warning when unsafe pin alias TX is used', () => {
     const result = transpile(`
       import { TX } from '@typecode/board-arduino-uno';
-      TX.output();
+      TX.asOutput();
       TX.high();
     `, { target: 'arduino' });
 
@@ -57,7 +57,7 @@ describe('Pin Safety Validation', () => {
   it('does not generate warning for safe pins', () => {
     const result = transpile(`
       import { D13 } from '@typecode/board-arduino-uno';
-      D13.output();
+      D13.asOutput();
       D13.high();
     `, { target: 'arduino' });
 

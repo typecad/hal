@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { transpile, normalizeCpp, hasInclude } from "./setup";
+import { inferSnprintfArg, createEmissionScopeState } from "../packages/cli/src/emit/arduino-snprintf";
 
 describe("Expression Transpilation", () => {
   describe("Number Literals", () => {
@@ -188,6 +189,62 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).toContain("digitalRead(3)");
       expect(result.cpp).toContain('"d3: %d"');
       expect(result.cpp).not.toContain("String(");
+    });
+  });
+
+  describe("Binary String Concatenation", () => {
+    it("uses snprintf for string literal + int variable on Arduino", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const flash = 32768;",
+        '  const msg = "Flash: " + flash + " bytes";',
+        "}",
+      ].join("\n"), { target: "arduino" });
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      expect(result.cpp).toContain("char msg[");
+      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).toContain("%d");
+      expect(result.cpp).not.toContain("String(");
+    });
+
+    it("uses snprintf with dtostrf for string literal + float variable on Arduino", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const val = 3.14;",
+        '  const msg = "Value: " + val;',
+        "}",
+      ].join("\n"), { target: "arduino" });
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      expect(hasInclude(result.cpp, "stdlib.h")).toBe(true);
+      expect(result.cpp).toContain("char msg[");
+      expect(result.cpp).toContain("dtostrf(");
+      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).not.toContain("String(");
+    });
+
+    it("uses snprintf for string var + string var concat on Arduino", () => {
+      const result = transpile([
+        "function test(): void {",
+        '  const a = "hello";',
+        '  const b = "world";',
+        '  const c = a + " " + b;',
+        "}",
+      ].join("\n"), { target: "arduino" });
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      expect(result.cpp).toContain("char c[");
+      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).not.toContain("String(");
+    });
+
+    it("does not use snprintf for string literal + int on generic target", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const flash = 32768;",
+        '  const msg = "Flash: " + flash + " bytes";',
+        "}",
+      ].join("\n"), { target: "generic" });
+      expect(result.cpp).not.toContain("snprintf(");
+      expect(result.cpp).not.toContain("char msg[");
     });
   });
 
@@ -494,5 +551,52 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).toContain("const int b = 5 | 3");
       expect(result.cpp).toContain("const int c = 5 ^ 3");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit tests for inferSnprintfArg — property-access format selection
+// ---------------------------------------------------------------------------
+
+describe("inferSnprintfArg property-access", () => {
+  // Minimal mock: the only method called for property-access is renderExpression.
+  const mockStrategy: any = {};
+  const scopeState = createEmissionScopeState();
+  const propAccessExpr: any = { kind: "property-access", object: { kind: "identifier", value: "Board" }, property: "mcu" };
+
+  it("uses %s format when rendered value is a C++ string literal (board string constant)", () => {
+    const result = inferSnprintfArg(propAccessExpr, mockStrategy, scopeState, () => '"ATmega328P"');
+    expect(result?.format).toBe("%s");
+    expect(result?.arg).toBe('"ATmega328P"');
+  });
+
+  it("uses %ld format when rendered value exceeds AVR int16 max (e.g. flash = 32768)", () => {
+    const result = inferSnprintfArg(propAccessExpr, mockStrategy, scopeState, () => "32768");
+    expect(result?.format).toBe("%ld");
+    expect(result?.arg).toBe("32768L");
+  });
+
+  it("uses %ld format when rendered value is below AVR int16 min (e.g. -32769)", () => {
+    const result = inferSnprintfArg(propAccessExpr, mockStrategy, scopeState, () => "-32769");
+    expect(result?.format).toBe("%ld");
+    expect(result?.arg).toBe("-32769L");
+  });
+
+  it("uses %d format for values that fit in AVR int16 (e.g. clockSpeed / 1000 = 16)", () => {
+    const result = inferSnprintfArg(propAccessExpr, mockStrategy, scopeState, () => "16");
+    expect(result?.format).toBe("%d");
+    expect(result?.arg).toBe("16");
+  });
+
+  it("uses %d format for zero", () => {
+    const result = inferSnprintfArg(propAccessExpr, mockStrategy, scopeState, () => "0");
+    expect(result?.format).toBe("%d");
+    expect(result?.arg).toBe("0");
+  });
+
+  it("uses %d format for AVR int16 boundary value 32767", () => {
+    const result = inferSnprintfArg(propAccessExpr, mockStrategy, scopeState, () => "32767");
+    expect(result?.format).toBe("%d");
+    expect(result?.arg).toBe("32767");
   });
 });

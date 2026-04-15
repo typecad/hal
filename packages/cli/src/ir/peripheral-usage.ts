@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { ProgramIR, StatementIR, ExpressionIR, CallExpressionIR, VariableDeclarationIR, AssignmentIR, ForOfIR, ForInIR, SwitchIR, CaseIR, TryIR } from './model';
+import { parsePeripheralInstance } from './peripheral-symbols';
 
 /**
  * Tracks which hardware peripherals are used in the program.
@@ -400,6 +401,7 @@ function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; m
 
   const { receiver, receiverKind, method } = expr;
   const pinNumber = parsePinNumber(receiver);
+  const peripheralInstance = parsePeripheralInstance(receiver);
 
   // Track all pin usage for unsafe pin validation
   // Include digital, pwm, analog-input, and interrupt pins
@@ -466,38 +468,28 @@ function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; m
   }
   
   // Check for I2C bus usage (I2C0, I2C1, I2C2, etc.)
-  if (receiverKind === 'i2c' || /^I2C\d+$/.test(receiver)) {
+  if (receiverKind === 'i2c' || peripheralInstance?.kind === 'i2c') {
     usage.i2c = true;
-    const match = receiver.match(/^I2C(\d+)$/);
-    if (match) {
-      usage.i2cInstancesUsed.add(parseInt(match[1], 10));
+    if (peripheralInstance?.kind === 'i2c') {
+      usage.i2cInstancesUsed.add(peripheralInstance.index);
     }
     return;
   }
   
   // Check for SPI bus usage (SPI0, SPI1, SPI2, etc.)
-  if (receiverKind === 'spi' || /^SPI\d+$/.test(receiver)) {
+  if (receiverKind === 'spi' || peripheralInstance?.kind === 'spi') {
     usage.spi = true;
-    const match = receiver.match(/^SPI(\d+)$/);
-    if (match) {
-      usage.spiInstancesUsed.add(parseInt(match[1], 10));
+    if (peripheralInstance?.kind === 'spi') {
+      usage.spiInstancesUsed.add(peripheralInstance.index);
     }
     return;
   }
   
   // Check for Serial/UART usage (Serial, Serial1, Serial2 or UART0, UART1, UART2)
-  if (receiver === 'Serial' || /^Serial\d*$/.test(receiver) || receiverKind === 'serial' || /^UART\d+$/.test(receiver)) {
+  if (receiverKind === 'serial' || peripheralInstance?.kind === 'serial') {
     usage.uart = true;
-    // Handle Serial, Serial1, Serial2
-    const serialMatch = receiver.match(/^Serial(\d*)$/);
-    if (serialMatch) {
-      const num = serialMatch[1] === '' ? 0 : parseInt(serialMatch[1], 10);
-      usage.uartInstancesUsed.add(num);
-    }
-    // Handle UART0, UART1, UART2
-    const uartMatch = receiver.match(/^UART(\d+)$/);
-    if (uartMatch) {
-      usage.uartInstancesUsed.add(parseInt(uartMatch[1], 10));
+    if (peripheralInstance?.kind === 'serial') {
+      usage.uartInstancesUsed.add(peripheralInstance.index);
     }
     return;
   }

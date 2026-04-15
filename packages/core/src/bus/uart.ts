@@ -4,7 +4,7 @@
 // Modern API: const serial = UART0.begin(baud); serial.print(), serial.println()
 // ---------------------------------------------------------------------------
 
-import type { IPin } from '../types/pin';
+import type { BasePin } from '../types/pin';
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -153,14 +153,6 @@ export interface IUARTBus {
    * @default 'callback'
    */
   errorPolicy: ErrorPolicy;
-
-  // --- Debug mode (legacy, prefer errorPolicy) ---
-  /**
-   * @deprecated Use errorPolicy instead.
-   * When enabled, failed operations print error details to Serial before returning.
-   * Format: "[UART ERROR] <message> (uart=N, status=M)"
-   */
-  debugOnError: boolean;
 }
 
 // ---------------------------------------------------------------------------

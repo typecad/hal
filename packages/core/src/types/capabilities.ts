@@ -59,33 +59,31 @@ export type SupportsCapabilities<T, U> = T extends U ? true : false;
 // Runtime type guards
 // ---------------------------------------------------------------------------
 
-import type { IPin, IPWMPin, IAnalogInput, IInterruptPin } from './pin';
+import type { BasePin, PWMPin, AnalogPin, InterruptPin } from './pin';
 
-/** Type guard to check if a value is an IPin (has required pin properties). */
-function isIPin(value: unknown): value is IPin {
+/** Type guard to check if a value is a BasePin (has required pin properties). */
+function isBasePin(value: unknown): value is BasePin {
   return (
     typeof value === 'object' &&
     value !== null &&
     'number' in value &&
-    'gpio' in value &&
-    'getMode' in value &&
-    'setMode' in value
+    'gpio' in value
   );
 }
 
-/** Narrow an IPin to IPWMPin if it supports PWM. */
-export function hasPWM(pin: unknown): pin is IPWMPin {
-  return isIPin(pin) && 'setDutyCycle' in pin && 'setFrequency' in pin;
+/** Narrow a BasePin to PWMPin if it supports PWM. */
+export function hasPWM(pin: unknown): pin is PWMPin {
+  return isBasePin(pin) && 'pwm' in pin && typeof pin.pwm === 'function';
 }
 
-/** Narrow an IPin to IAnalogInput if it supports analog reads. */
-export function hasAnalogInput(pin: unknown): pin is IAnalogInput {
-  return isIPin(pin) && 'readVoltage' in pin && 'setReference' in pin;
+/** Narrow a BasePin to AnalogPin if it supports analog reads. */
+export function hasAnalogInput(pin: unknown): pin is AnalogPin {
+  return isBasePin(pin) && 'readAnalog' in pin && typeof pin.readAnalog === 'function';
 }
 
-/** Narrow an IPin to IInterruptPin if it supports interrupts. */
-export function hasInterrupt(pin: unknown): pin is IInterruptPin {
-  return isIPin(pin) && 'on' in pin && 'off' in pin && 'hasInterrupt' in pin;
+/** Narrow a BasePin to InterruptPin if it supports interrupts. */
+export function hasInterrupt(pin: unknown): pin is InterruptPin {
+  return isBasePin(pin) && 'onRising' in pin && typeof pin.onRising === 'function';
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +107,7 @@ export const isInterruptPin = hasInterrupt;
  * Assert that a pin supports PWM. Throws at runtime if not.
  * Useful for fail-fast validation in setup code.
  */
-export function assertPWM(pin: IPin, message?: string): asserts pin is IPWMPin {
+export function assertPWM(pin: BasePin, message?: string): asserts pin is PWMPin {
   if (!hasPWM(pin)) {
     throw new Error(message ?? 'Pin does not support PWM');
   }
@@ -119,7 +117,7 @@ export function assertPWM(pin: IPin, message?: string): asserts pin is IPWMPin {
  * Assert that a pin supports analog input. Throws at runtime if not.
  * Useful for fail-fast validation in setup code.
  */
-export function assertAnalog(pin: IPin, message?: string): asserts pin is IAnalogInput {
+export function assertAnalog(pin: BasePin, message?: string): asserts pin is AnalogPin {
   if (!hasAnalogInput(pin)) {
     throw new Error(message ?? 'Pin does not support analog input');
   }
@@ -129,7 +127,7 @@ export function assertAnalog(pin: IPin, message?: string): asserts pin is IAnalo
  * Assert that a pin supports interrupts. Throws at runtime if not.
  * Useful for fail-fast validation in setup code.
  */
-export function assertInterrupt(pin: IPin, message?: string): asserts pin is IInterruptPin {
+export function assertInterrupt(pin: BasePin, message?: string): asserts pin is InterruptPin {
   if (!hasInterrupt(pin)) {
     throw new Error(message ?? 'Pin does not support interrupts');
   }

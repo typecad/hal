@@ -36,6 +36,36 @@ describe('Interrupt Safety Analysis', () => {
 
       expect(duplicateWarnings.length).toBe(0);
     });
+
+    it('generates warning for D2.onFalling + D2.onRising on the same pin (flat API)', () => {
+      const result = transpile(`
+        import { D2 } from '@typecode/board-arduino-uno';
+        D2.onFalling(() => {});
+        D2.onRising(() => {});
+      `, { target: 'arduino' });
+
+      const duplicateWarnings = result.diagnostics.filter(
+        d => d.code === 'duplicate-interrupt-handler'
+      );
+
+      expect(duplicateWarnings.length).toBeGreaterThan(0);
+      expect(duplicateWarnings[0].message).toContain('D2');
+      expect(duplicateWarnings[0].message).toContain('already has');
+    });
+
+    it('does not warn for onFalling on D2 and onRising on D3 (different pins, flat API)', () => {
+      const result = transpile(`
+        import { D2, D3 } from '@typecode/board-arduino-uno';
+        D2.onFalling(() => {});
+        D3.onRising(() => {});
+      `, { target: 'arduino' });
+
+      const duplicateWarnings = result.diagnostics.filter(
+        d => d.code === 'duplicate-interrupt-handler'
+      );
+
+      expect(duplicateWarnings.length).toBe(0);
+    });
   });
 
   describe('Unsafe Operations in ISR', () => {

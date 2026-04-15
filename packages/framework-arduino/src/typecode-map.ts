@@ -121,7 +121,7 @@ export function renderArduinoBuiltin(
 
   switch (receiverKind) {
     // ------------------------------------------------------------------
-    // Analog input (IAnalogInput) — A0-A5, SDA, SCL
+    // Analog input (AnalogPin) — A0-A5, SDA, SCL
     // ------------------------------------------------------------------
     case 'analog-input':
       switch (method) {
@@ -132,19 +132,16 @@ export function renderArduinoBuiltin(
         case 'setReference':  return `analogReference(${a(0)})`;
         case 'getMode':       return `0`;
         case 'setMode':       return `pinMode(${pin}, ${a(0)})`;
-        // Analog pins are always inputs, but allow explicit .input() for API consistency
-        case 'input':         return `/* analog pin ${receiver} is always input */`;
         case 'inputPullUp':   return `pinMode(${pin}, INPUT_PULLUP)`;
         case 'inputPullDown': return `pinMode(${pin}, INPUT_PULLDOWN)`;
-        case 'output':        return `/* analog pin ${receiver} cannot be output */`;
-        // Object-creation aliases (same C++ as input/inputPullUp, different TS return types)
+        // Fluent mode converters
         case 'asInput':         return `/* analog pin ${receiver} is always input */`;
         case 'asInputPullUp':   return `pinMode(${pin}, INPUT_PULLUP)`;
       }
       break;
 
     // ------------------------------------------------------------------
-    // Digital I/O (IDigitalPin) — D0-D13 (non-PWM)
+    // Digital I/O (BasePin) — D0-D13 (non-PWM)
     // ------------------------------------------------------------------
     case 'digital':
     case 'interrupt':  // Interrupt-capable pins also support digital operations
@@ -159,16 +156,9 @@ export function renderArduinoBuiltin(
         case 'isLow':          return `(digitalRead(${pin}) == LOW)`;
         case 'getMode':        return `0`;
         case 'setMode':        return `pinMode(${pin}, ${a(0)})`;
-        // Direct pin configuration
-        case 'output':
-          if (args.length > 0) {
-            return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
-          }
-          return `pinMode(${pin}, OUTPUT)`;
-        case 'input':          return `pinMode(${pin}, INPUT)`;
         case 'inputPullUp':    return `pinMode(${pin}, INPUT_PULLUP)`;
         case 'inputPullDown':  return `pinMode(${pin}, INPUT_PULLDOWN)`;
-        // Object-creation aliases (same C++ as output/input/inputPullUp, different TS return types)
+        // Fluent mode converters
         case 'asOutput':
           if (args.length > 0) {
             return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
@@ -191,7 +181,7 @@ export function renderArduinoBuiltin(
       break;
 
     // ------------------------------------------------------------------
-    // PWM pin (IPWMPin extends IDigitalPin) — D3, D5, D6, D9, D10, D11
+    // PWM pin (PWMPin) — D3, D5, D6, D9, D10, D11
     // ------------------------------------------------------------------
     case 'pwm':
       switch (method) {
@@ -211,16 +201,9 @@ export function renderArduinoBuiltin(
         case 'isLow':          return `(digitalRead(${pin}) == LOW)`;
         case 'getMode':        return `0`;
         case 'setMode':        return `pinMode(${pin}, ${a(0)})`;
-        // Direct pin configuration
-        case 'output':
-          if (args.length > 0) {
-            return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
-          }
-          return `pinMode(${pin}, OUTPUT)`;
-        case 'input':           return `pinMode(${pin}, INPUT)`;
         case 'inputPullUp':     return `pinMode(${pin}, INPUT_PULLUP)`;
         case 'inputPullDown':   return `pinMode(${pin}, INPUT_PULLDOWN)`;
-        // Object-creation aliases (same C++ as output/input/inputPullUp, different TS return types)
+        // Fluent mode converters
         case 'asOutput':
           if (args.length > 0) {
             return `pinMode(${pin}, OUTPUT); digitalWrite(${pin}, ${a(0)})`;
@@ -231,6 +214,13 @@ export function renderArduinoBuiltin(
         // PWM configuration
         case 'pwm':
           if (args.length > 0) {
+            const arg0 = args[0];
+            // Optimize: pre-compute percent→byte for numeric literals
+            if (arg0 && typeof arg0 === 'object' && arg0.kind === 'number' && typeof (arg0 as any).value === 'number') {
+              const percent = (arg0 as any).value as number;
+              const byteVal = Math.round(percent * 255 / 100);
+              return `pinMode(${pin}, OUTPUT); analogWrite(${pin}, ${byteVal})`;
+            }
             return `pinMode(${pin}, OUTPUT); analogWrite(${pin}, (int)((${a(0)}) * 255 / 100))`;
           }
           return `pinMode(${pin}, OUTPUT)`;
@@ -268,14 +258,6 @@ export function renderArduinoBuiltin(
           }
           return `${serialInstance}.begin(9600)`;
         }
-        case 'enable': {
-          // UART0.enable(baud) -> Serial.begin(baud)
-          // @deprecated — use begin() instead
-          if (args.length > 0) {
-            return `${serialInstance}.begin(${a(0)})`;
-          }
-          return `${serialInstance}.begin(9600)`;
-        }
         case 'begin': {
           // UART0.begin(baud) -> Serial.begin(baud) — primary method
           if (args.length > 0) {
@@ -283,8 +265,6 @@ export function renderArduinoBuiltin(
           }
           return `${serialInstance}.begin(9600)`;
         }
-        case 'deinitialize':     return `${serialInstance}.end()`;
-        case 'disable':          return `${serialInstance}.end()`;
         case 'end':              return `${serialInstance}.end()`;
         case 'print':            return `${serialInstance}.print(${allArgs()})`;
         case 'println':          return `${serialInstance}.println(${allArgs()})`;
@@ -317,14 +297,6 @@ export function renderArduinoBuiltin(
       const wireInstance = receiver === 'I2C0' ? 'Wire' : `Wire${receiver.slice(3)}`;
       switch (method) {
         // Initialization
-        case 'enable': {
-          // I2C0.enable() -> Wire.begin() (master), I2C0.enable(addr) -> Wire.begin(addr) (slave)
-          // @deprecated — use begin() instead
-          if (args.length > 0) {
-            return `${wireInstance}.begin(${a(0)})`;
-          }
-          return `${wireInstance}.begin()`;
-        }
         case 'begin': {
           // I2C0.begin() -> Wire.begin() (master), I2C0.begin(address) -> Wire.begin(address) (slave)
           if (args.length > 0) {
@@ -392,9 +364,6 @@ export function renderArduinoBuiltin(
       const spiInstance = receiver === 'SPI0' ? 'SPI' : `SPI${receiver.slice(3)}`;
       switch (method) {
         case 'initialize':      return `${spiInstance}.begin()`;
-        case 'deinitialize':    return `${spiInstance}.end()`;
-        case 'enable':          return `${spiInstance}.begin()`;  // @deprecated — use begin() instead
-        case 'disable':         return `${spiInstance}.end()`;
         case 'begin':           return `${spiInstance}.begin()`;
         case 'end':             return `${spiInstance}.end()`;
         case 'transfer':        return `${spiInstance}.transfer(${a(0)})`;

@@ -1,46 +1,46 @@
 // ---------------------------------------------------------------------------
 // HAL Pin Configuration Tests
 //
-// Tests for direct pin configuration APIs (output, input, inputPullUp, pwm)
+// Tests for direct pin configuration APIs (asOutput, asInput, inputPullUp, pwm)
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
 import { transpile } from './setup';
 
 describe('Pin Config - Digital Output', () => {
-  it('transpiles D13.output()', () => {
+  it('transpiles D13.asOutput()', () => {
     const result = transpile(`
       import { D13 } from '@typecode/board-arduino-uno';
-      D13.output();
+      D13.asOutput();
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
   });
 
-  it('transpiles D13.output(true)', () => {
+  it('transpiles D13.asOutput(true)', () => {
     const result = transpile(`
       import { D13 } from '@typecode/board-arduino-uno';
-      D13.output(true);
+      D13.asOutput(true);
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
     expect(result.cpp).toContain('digitalWrite(13, true)');
   });
 
-  it('transpiles D13.output(false)', () => {
+  it('transpiles D13.asOutput(false)', () => {
     const result = transpile(`
       import { D13 } from '@typecode/board-arduino-uno';
-      D13.output(false);
+      D13.asOutput(false);
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
     expect(result.cpp).toContain('digitalWrite(13, false)');
   });
 
-  it('transpiles LED.output(true)', () => {
+  it('transpiles LED.asOutput(true)', () => {
     const result = transpile(`
       import { LED } from '@typecode/board-arduino-uno';
-      LED.output(true);
+      LED.asOutput(true);
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
@@ -49,10 +49,10 @@ describe('Pin Config - Digital Output', () => {
 });
 
 describe('Pin Config - Digital Input', () => {
-  it('transpiles D2.input()', () => {
+  it('transpiles D2.asInput()', () => {
     const result = transpile(`
       import { D2 } from '@typecode/board-arduino-uno';
-      D2.input();
+      D2.asInput();
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(2, INPUT)');
@@ -96,6 +96,8 @@ describe('Pin Config - PWM', () => {
 
     expect(result.cpp).toContain('pinMode(9, OUTPUT)');
     expect(result.cpp).toContain('analogWrite(9');
+    // Literal percent should be pre-computed: Math.round(50 * 255 / 100) = 128
+    expect(result.cpp).toContain('analogWrite(9, 128)');
   });
 
   it('transpiles D3.pwm(100)', () => {
@@ -121,6 +123,33 @@ describe('Pin Config - Interrupt Attach', () => {
     expect(result.cpp).toContain('FALLING');
   });
 
+  it('emits a named ISR function for D2.onFalling(callback), not a placeholder', () => {
+    const result = transpile(`
+      import { D2 } from '@typecode/board-arduino-uno';
+      D2.onFalling(() => {});
+    `, { target: 'arduino' });
+
+    expect(result.cpp).not.toContain('/* callback:');
+    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*isr_\d+,\s*FALLING\)/);
+    expect(result.cpp).toMatch(/void isr_\d+\(\)/);
+  });
+
+  it('emits a named ISR function with body for D2.onFalling(callback)', () => {
+    const result = transpile(`
+      import { D2, LED } from '@typecode/board-arduino-uno';
+      const led = LED.asOutput(false);
+      let ledState = false;
+      D2.onFalling(() => {
+        ledState = !ledState;
+        if (ledState) { led.high(); } else { led.low(); }
+      });
+    `, { target: 'arduino' });
+
+    expect(result.cpp).not.toContain('/* callback:');
+    expect(result.cpp).toMatch(/void isr_\d+\(\)/);
+    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*isr_\d+,\s*FALLING\)/);
+  });
+
   it('transpiles D2.onRising(callback)', () => {
     const result = transpile(`
       import { D2 } from '@typecode/board-arduino-uno';
@@ -132,6 +161,17 @@ describe('Pin Config - Interrupt Attach', () => {
     expect(result.cpp).toContain('RISING');
   });
 
+  it('emits a named ISR function for D2.onRising(callback), not a placeholder', () => {
+    const result = transpile(`
+      import { D2 } from '@typecode/board-arduino-uno';
+      D2.onRising(() => {});
+    `, { target: 'arduino' });
+
+    expect(result.cpp).not.toContain('/* callback:');
+    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*isr_\d+,\s*RISING\)/);
+    expect(result.cpp).toMatch(/void isr_\d+\(\)/);
+  });
+
   it('transpiles D2.onChange(callback)', () => {
     const result = transpile(`
       import { D2 } from '@typecode/board-arduino-uno';
@@ -140,6 +180,17 @@ describe('Pin Config - Interrupt Attach', () => {
 
     expect(result.cpp).toContain('attachInterrupt');
     expect(result.cpp).toContain('CHANGE');
+  });
+
+  it('emits a named ISR function for D2.onChange(callback), not a placeholder', () => {
+    const result = transpile(`
+      import { D2 } from '@typecode/board-arduino-uno';
+      D2.onChange(() => {});
+    `, { target: 'arduino' });
+
+    expect(result.cpp).not.toContain('/* callback:');
+    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*isr_\d+,\s*CHANGE\)/);
+    expect(result.cpp).toMatch(/void isr_\d+\(\)/);
   });
 });
 

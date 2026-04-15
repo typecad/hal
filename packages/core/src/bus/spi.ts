@@ -5,7 +5,7 @@
 // CS is managed automatically by .device().
 // ---------------------------------------------------------------------------
 
-import type { IDigitalPin } from '../types/pin';
+import type { BasePin } from '../types/pin';
 
 /**
  * SPI mode (combination of CPOL and CPHA)
@@ -59,7 +59,7 @@ export interface SPISettings {
  * Use SPI0.device(CS) to create — do not manage CS manually when using this.
  */
 export interface ISPIDevice {
-  readonly chipSelect: IDigitalPin;
+  readonly chipSelect: BasePin;
   /** Transfer data (full-duplex) and return received bytes. CS asserted automatically. */
   transfer(data: number | Uint8Array): Uint8Array;
   /** Write data (ignore received bytes). CS asserted automatically. */
@@ -143,14 +143,6 @@ export interface ISPIBus {
    * @default 'callback'
    */
   errorPolicy: ErrorPolicy;
-
-  // --- Debug mode (legacy, prefer errorPolicy) ---
-  /**
-   * @deprecated Use errorPolicy instead.
-   * When enabled, failed operations print error details to Serial before returning.
-   * Format: "[SPI ERROR] <message> (status=N)"
-   */
-  debugOnError: boolean;
 }
 
 // ---------------------------------------------------------------------------

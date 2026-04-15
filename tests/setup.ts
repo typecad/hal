@@ -1,7 +1,9 @@
 import { buildProgramIR } from "../packages/cli/src/ir/build-ir";
+import { analyzePeripheralUsage } from "../packages/cli/src/ir/peripheral-usage";
 import { emitCpp } from "../packages/cli/src/emit/cpp-emitter";
 import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/cli/src/types";
 import { createPolyfillRegistry } from "../packages/cli/src/polyfill";
+import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -82,6 +84,10 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   return { cpp, header, diagnostics: result.diagnostics };
 }
 
+export function transpileArduino(tsCode: string, options: Omit<TranspileOptions, "target"> = {}): TranspileResult {
+  return transpile(tsCode, { ...options, target: "arduino" });
+}
+
 /**
  * Helper to strip whitespace for comparison while maintaining readability
  */
@@ -126,4 +132,25 @@ export function hasInclude(cpp: string, include: string): boolean {
     ? `#include ${include}`
     : `#include <${include}>`;
   return cpp.includes(pattern);
+}
+
+export function expectCppContains(result: TranspileResult, snippets: string[]): void {
+  for (const snippet of snippets) {
+    expect(result.cpp).toContain(snippet);
+  }
+}
+
+export function expectCppNotContains(result: TranspileResult, snippets: string[]): void {
+  for (const snippet of snippets) {
+    expect(result.cpp).not.toContain(snippet);
+  }
+}
+
+export function findDiagnostics(result: TranspileResult, code: string) {
+  return result.diagnostics.filter((diagnostic) => diagnostic.code === code);
+}
+
+export function analyzeUsage(tsCode: string) {
+  const ir = buildProgramIR("test.ts", tsCode);
+  return analyzePeripheralUsage(ir);
 }

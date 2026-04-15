@@ -4,125 +4,118 @@
 // Tests for SPI Arduino-compatible API
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect } from 'vitest';
-import { transpile } from './setup';
+import { describe, it } from 'vitest';
+import { expectCppContains, transpileArduino } from './setup';
 
 describe('SPI HAL - Arduino API Transpilation', () => {
   describe('Initialization', () => {
     it('transpiles SPI0.begin()', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0 } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
-      `, { target: 'arduino' });
+      `);
       
-      // SPI0 -> SPI mapping implemented
-      expect(result.cpp).toContain('SPI.begin()');
+      expectCppContains(result, ['SPI.begin()']);
+      expectCppContains(result, ['#include <SPI.h>']);
     });
 
     it('transpiles SPI0.end()', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0 } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         SPI0.end();
-      `, { target: 'arduino' });
+      `);
       
-      // SPI0 -> SPI mapping implemented
-      expect(result.cpp).toContain('SPI.end()');
+      expectCppContains(result, ['SPI.end()']);
     });
   });
 
   describe('Configuration', () => {
     it('transpiles setMode()', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0 } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         SPI0.setMode(0);
-      `, { target: 'arduino' });
+      `);
       
-      expect(result.cpp).toContain('SPI.setDataMode');
+      expectCppContains(result, ['SPI.setDataMode']);
     });
 
     it('transpiles setBitOrder()', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0, SPIBitOrder } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         SPI0.setBitOrder(SPIBitOrder.MSB);
-      `, { target: 'arduino' });
+      `);
       
-      expect(result.cpp).toContain('SPI.setBitOrder');
+      expectCppContains(result, ['SPI.setBitOrder']);
     });
 
     it('transpiles setFrequency()', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0 } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         SPI0.setFrequency(1000000);
-      `, { target: 'arduino' });
+      `);
       
-      expect(result.cpp).toContain('SPI.setClockDivider');
+      expectCppContains(result, ['SPI.setClockDivider']);
     });
   });
 
   describe('Transactions', () => {
     it('transpiles beginTransaction/endTransaction', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0, SPISettings } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         SPI0.beginTransaction({ frequency: 1000000, mode: 0, bitOrder: 'msb' });
         SPI0.transfer(0xFF);
         SPI0.endTransaction();
-      `, { target: 'arduino' });
+      `);
       
-      // SPI0.beginTransaction -> SPI.beginTransaction mapping implemented
-      expect(result.cpp).toContain('SPI.beginTransaction');
-      expect(result.cpp).toContain('SPI.endTransaction()');
+      expectCppContains(result, ['SPI.beginTransaction', 'SPI.endTransaction()']);
     });
   });
 
   describe('Transfer Operations', () => {
     it('transpiles single byte transfer', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0 } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         const data = SPI0.transfer(0xFF);
-      `, { target: 'arduino' });
+      `);
       
-      // SPI0.transfer -> SPI.transfer
-      expect(result.cpp).toContain('SPI.transfer(255)');
+      expectCppContains(result, ['SPI.transfer(255)']);
     });
 
     it('transpiles write (transfer ignoring return)', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0 } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         SPI0.write(0xFF);
-      `, { target: 'arduino' });
+      `);
       
-      // SPI0.write -> SPI.transfer (ignoring return)
-      expect(result.cpp).toContain('SPI.transfer(255)');
+      expectCppContains(result, ['SPI.transfer(255)']);
     });
 
     it('transpiles write16', () => {
-      const result = transpile(`
+      const result = transpileArduino(`
         import { SPI0 } from '@typecode/board-arduino-uno/arduino';
         SPI0.begin();
         SPI0.write16(0xABCD);
-      `, { target: 'arduino' });
+      `);
       
-      // SPI0.write16 -> SPI.transfer16
-      expect(result.cpp).toContain('SPI.transfer16');
+      expectCppContains(result, ['SPI.transfer16']);
     });
   });
 });
 
 describe('SPI HAL - Multiple Bus Support', () => {
   it('uses SPI for SPI0 on Arduino Uno', () => {
-    const result = transpile(`
+    const result = transpileArduino(`
       import { SPI0 } from '@typecode/board-arduino-uno/arduino';
       SPI0.begin();
-    `, { target: 'arduino' });
+    `);
     
-    // SPI0 -> SPI mapping implemented
-    expect(result.cpp).toContain('SPI.begin()');
+    expectCppContains(result, ['SPI.begin()']);
   });
 });

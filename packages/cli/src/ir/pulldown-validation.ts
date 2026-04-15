@@ -34,7 +34,7 @@ export function validatePulldownSupport(
       const pinName = getPinName(pinNumber, boardConstants);
       diagnostics.push({
         code: 'pulldown-not-supported',
-        message: `${pinName ?? `pin ${pinNumber}`} does not support hardware pulldown on ${arch?.toUpperCase()} boards. Use ${pinName ?? 'pin'}.input() or ${pinName ?? 'pin'}.inputPullUp() instead.`,
+        message: `${pinName ?? `pin ${pinNumber}`} does not support hardware pulldown on ${arch?.toUpperCase()} boards. Use ${pinName ?? 'pin'}.asInput() or ${pinName ?? 'pin'}.inputPullUp() instead.`,
         source: 'pulldown-validation',
         severity: 'error',
       });

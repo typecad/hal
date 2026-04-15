@@ -10,7 +10,7 @@ describe('Peripheral Pin Conflict Detection', () => {
     const result = transpile(`
       import { I2C0, A4 } from '@typecode/board-arduino-uno';
       I2C0.begin();
-      A4.output();
+      A4.asOutput();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -27,7 +27,7 @@ describe('Peripheral Pin Conflict Detection', () => {
     const result = transpile(`
       import { I2C0, A5 } from '@typecode/board-arduino-uno';
       I2C0.begin();
-      A5.output();
+      A5.asOutput();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -43,7 +43,7 @@ describe('Peripheral Pin Conflict Detection', () => {
     const result = transpile(`
       import { I2C0, SDA } from '@typecode/board-arduino-uno';
       I2C0.begin();
-      SDA.output();
+      SDA.asOutput();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -59,7 +59,7 @@ describe('Peripheral Pin Conflict Detection', () => {
   it('does not generate warning when I2C pin is used without I2C active', () => {
     const result = transpile(`
       import { A4 } from '@typecode/board-arduino-uno';
-      A4.output();
+      A4.asOutput();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -73,7 +73,7 @@ describe('Peripheral Pin Conflict Detection', () => {
     const result = transpile(`
       import { SPI0, D11 } from '@typecode/board-arduino-uno';
       SPI0.begin();
-      D11.output();
+      D11.asOutput();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(
@@ -90,7 +90,7 @@ describe('Peripheral Pin Conflict Detection', () => {
     const result = transpile(`
       import { Serial, D1 } from '@typecode/board-arduino-uno';
       Serial.begin(9600);
-      D1.output();
+      D1.asOutput();
     `, { target: 'arduino' });
 
     const conflictWarnings = result.diagnostics.filter(

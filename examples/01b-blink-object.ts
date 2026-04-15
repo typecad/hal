@@ -3,9 +3,9 @@
 //
 // Shows both GPIO access patterns side-by-side. Both produce identical C++.
 //
-// Pattern A (direct):  LED.output(); LED.toggle();
+// Pattern A (direct):  LED.asOutput(); LED.toggle();
 //   - Two separate calls: one for mode, one for I/O
-//   - Pin-mode validation warns if you forget .output()
+//   - Pin-mode validation warns if you forget .asOutput()
 //
 // Pattern B (object):  const led = LED.asOutput(); led.toggle();
 //   - Single call configures mode AND returns a type-narrowed alias
@@ -16,7 +16,7 @@
 import { HIGH, LED, delay } from '@typecode';
 
 // ── Pattern A: Direct API (original) ──────────────────────────────────────
-// LED.output(HIGH);          // pinMode + implicit mode tracking
+// LED.asOutput(HIGH);          // pinMode + implicit mode tracking
 // while (true) {
 //   LED.toggle();            // digitalWrite(LED_BUILTIN, !digitalRead(...))
 //   delay(1000);

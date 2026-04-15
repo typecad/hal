@@ -92,7 +92,7 @@ const mega = createSimBoard({
   spiBusCount: 1,
 });
 
-mega.digital(53).output();
+mega.digital(53).asOutput();
 mega.serial(3).begin(115200);
 ```
 

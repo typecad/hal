@@ -37,6 +37,8 @@ export interface ParameterIR {
   cppType: string;
   defaultValue?: ExpressionIR;
   isRest: boolean;
+  /** Ownership kind inferred from type annotation (Ref<T>, MutRef<T>, Owned<T>). */
+  ownershipKind?: 'owned' | 'ref' | 'mut_ref';
 }
 
 export type ExpressionIR =
@@ -107,6 +109,8 @@ export interface VariableDeclarationIR {
   initializer?: ExpressionIR;
   /** True when the variable should be marked as volatile in C++ (prevents compiler optimization). */
   isVolatile?: boolean;
+  /** Ownership kind inferred from type annotation (Ref<T>, MutRef<T>, Owned<T>). */
+  ownershipKind?: 'owned' | 'ref' | 'mut_ref';
 }
 
 export interface AssignmentIR {

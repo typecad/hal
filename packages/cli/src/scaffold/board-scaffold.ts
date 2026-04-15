@@ -463,26 +463,26 @@ function generatePinsTsWithData(options: BoardTemplateOptions, pins: PinDefiniti
   const pinExports = pins.map(pin => {
     const caps = pin.capabilities;
     let factoryFn = 'createDigitalPin';
-    let interfaceType = 'IDigitalPin';
+    let interfaceType = 'BasePin';
     
     if (caps.analogInput && caps.pwm && caps.interrupt) {
       factoryFn = 'createFullPin';
-      interfaceType = 'IDigitalPin & IPWMPin & IAnalogInput & IInterruptPin';
+      interfaceType = 'BasePin & PWMPin & AnalogPin & InterruptPin';
     } else if (caps.analogInput && caps.pwm) {
       factoryFn = 'createAnalogPWMPin';
-      interfaceType = 'IDigitalPin & IPWMPin & IAnalogInput';
+      interfaceType = 'BasePin & PWMPin & AnalogPin';
     } else if (caps.analogInput) {
       factoryFn = 'createAnalogPin';
-      interfaceType = 'IAnalogInput';
+      interfaceType = 'AnalogPin';
     } else if (caps.pwm && caps.interrupt) {
       factoryFn = 'createPWMInterruptPin';
-      interfaceType = 'IDigitalPin & IPWMPin & IInterruptPin';
+      interfaceType = 'BasePin & PWMPin & InterruptPin';
     } else if (caps.pwm) {
       factoryFn = 'createPWMPin';
-      interfaceType = 'IPWMPin';
+      interfaceType = 'PWMPin';
     } else if (caps.interrupt) {
       factoryFn = 'createInterruptPin';
-      interfaceType = 'IDigitalPin & IInterruptPin';
+      interfaceType = 'BasePin & InterruptPin';
     }
     
     return `export const ${pin.name}: ${interfaceType} = ${factoryFn}(${pin.number}, ${pin.gpio ?? pin.number});`;
@@ -505,10 +505,10 @@ function generatePinsTsWithData(options: BoardTemplateOptions, pins: PinDefiniti
 // ---------------------------------------------------------------------------
 
 import type {
-  IDigitalPin,
-  IPWMPin,
-  IAnalogInput,
-  IInterruptPin,
+  BasePin,
+  PWMPin,
+  AnalogPin,
+  InterruptPin,
 } from '@typecode/core';
 import { pinNumber } from '@typecode/core';
 
@@ -516,32 +516,32 @@ import { pinNumber } from '@typecode/core';
 // Internal stub factories (no-op at runtime; consumed by transpiler)
 // ---------------------------------------------------------------------------
 
-function createDigitalPin(pin: number, gpio: number): IDigitalPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin;
+function createDigitalPin(pin: number, gpio: number): BasePin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin;
 }
 
-function createPWMPin(pin: number, gpio: number): IPWMPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IPWMPin;
+function createPWMPin(pin: number, gpio: number): PWMPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as PWMPin;
 }
 
-function createAnalogPin(pin: number, gpio: number): IAnalogInput {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IAnalogInput;
+function createAnalogPin(pin: number, gpio: number): AnalogPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as AnalogPin;
 }
 
-function createInterruptPin(pin: number, gpio: number): IDigitalPin & IInterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IInterruptPin;
+function createInterruptPin(pin: number, gpio: number): BasePin & InterruptPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & InterruptPin;
 }
 
-function createPWMInterruptPin(pin: number, gpio: number): IDigitalPin & IPWMPin & IInterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IPWMPin & IInterruptPin;
+function createPWMInterruptPin(pin: number, gpio: number): BasePin & PWMPin & InterruptPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & PWMPin & InterruptPin;
 }
 
-function createAnalogPWMPin(pin: number, gpio: number): IDigitalPin & IPWMPin & IAnalogInput {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IPWMPin & IAnalogInput;
+function createAnalogPWMPin(pin: number, gpio: number): BasePin & PWMPin & AnalogPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & PWMPin & AnalogPin;
 }
 
-function createFullPin(pin: number, gpio: number): IDigitalPin & IPWMPin & IAnalogInput & IInterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as IDigitalPin & IPWMPin & IAnalogInput & IInterruptPin;
+function createFullPin(pin: number, gpio: number): BasePin & PWMPin & AnalogPin & InterruptPin {
+  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & PWMPin & AnalogPin & InterruptPin;
 }
 
 // ---------------------------------------------------------------------------
@@ -585,10 +585,10 @@ function generateBoardTsWithPins(options: BoardTemplateOptions, pins: PinDefinit
 // ---------------------------------------------------------------------------
 
 import type {
-  IDigitalPin,
-  IPWMPin,
-  IAnalogInput,
-  IInterruptPin,
+  BasePin,
+  PWMPin,
+  AnalogPin,
+  InterruptPin,
   II2CBus,
   ISPIBus,
   ISerialPort,
@@ -608,15 +608,15 @@ import { ${className} } from './index';
 
 export interface DigitalPins {
   ${digitalPins.map(p => {
-    const types = ['IDigitalPin'];
-    if (p.capabilities.pwm) types.push('IPWMPin');
-    if (p.capabilities.interrupt) types.push('IInterruptPin');
+    const types = ['BasePin'];
+    if (p.capabilities.pwm) types.push('PWMPin');
+    if (p.capabilities.interrupt) types.push('InterruptPin');
     return `${p.name}: ${types.join(' & ')};`;
   }).join('\n  ')}
 }
 
 export interface AnalogPins {
-  ${analogPins.map(p => `${p.name}: IAnalogInput;`).join('\n  ')}
+  ${analogPins.map(p => `${p.name}: AnalogPin;`).join('\n  ')}
 }
 
 // ---------------------------------------------------------------------------
@@ -629,10 +629,10 @@ export interface IBoard {
 
   // ---- Individual pins ---------------------------------------------------
   ${pins.map(p => {
-    const types = ['IDigitalPin'];
-    if (p.capabilities.pwm) types.push('IPWMPin');
-    if (p.capabilities.analogInput) types.push('IAnalogInput');
-    if (p.capabilities.interrupt) types.push('IInterruptPin');
+    const types = ['BasePin'];
+    if (p.capabilities.pwm) types.push('PWMPin');
+    if (p.capabilities.analogInput) types.push('AnalogPin');
+    if (p.capabilities.interrupt) types.push('InterruptPin');
     return `readonly ${p.name}: ${types.join(' & ')};`;
   }).join('\n  ')}
 

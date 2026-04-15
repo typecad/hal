@@ -32,8 +32,6 @@ export interface ResolvedTypecodeConfig {
   outputOptimize?: string;
   /** Output directory. */
   outputOutDir?: string;
-  /** Architecture shim override. @deprecated Use framework instead. */
-  architecture?: string;
   /**
    * Framework package for code generation strategy.
    * Can be '@typecode/framework-arduino', '@typecode/framework-avr', or a custom path.
@@ -203,9 +201,6 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
   const fqbn = flat.get("fqbn");
   if (typeof fqbn === "string") resolved.fqbn = fqbn;
 
-  const architecture = flat.get("architecture");
-  if (typeof architecture === "string") resolved.architecture = architecture;
-
   const framework = flat.get("framework");
   if (typeof framework === "string") resolved.framework = framework;
 
@@ -289,9 +284,17 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypecodeConfig): 
     `// Board: ${config.board}`,
     "// ---------------------------------------------------------------------------",
     "",
+    "declare global {",
+    "  type Owned<T = any> = T;",
+    "  type Ref<T = any> = T;",
+    "  type MutRef<T = any> = T;",
+    "}",
+    "",
     "declare module '@typecode' {",
     `  export * from '${config.board}';`,
     "}",
+    "",
+    "export {};",
     "",
   ].join("\n");
 

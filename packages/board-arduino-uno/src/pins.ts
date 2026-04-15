@@ -10,10 +10,10 @@
 // ---------------------------------------------------------------------------
 
 import type {
-  IDigitalPin,
-  IPWMPin,
-  IAnalogPin,
-  IInterruptPin,
+  BasePin,
+  PWMPin,
+  AnalogPin,
+  InterruptPin,
 } from '@typecode/core';
 import type {
   IUnoDigitalPin,
@@ -26,13 +26,36 @@ import type {
 // Internal stub factories (no-op at runtime; consumed by transpiler)
 // ---------------------------------------------------------------------------
 
-import { PinCapability } from '@typecode/core';
+import type { PinCapabilityFlags } from '@typecode/core';
 
-function createDigitalPin(pin: number, gpio: number, capabilities: PinCapability[] = ['pullUp']): IUnoDigitalPin {
+const DIGITAL_CAPS: PinCapabilityFlags = {
+  digitalInput: true, digitalOutput: true,
+  analogInput: false, analogOutput: false,
+  pwm: false, interrupt: false,
+  pullUp: true, pullDown: false,
+  touch: false, openDrain: false,
+};
+
+const PWM_CAPS: PinCapabilityFlags = {
+  ...DIGITAL_CAPS,
+  pwm: true,
+};
+
+const INTERRUPT_CAPS: PinCapabilityFlags = {
+  ...DIGITAL_CAPS,
+  interrupt: true,
+};
+
+const ANALOG_CAPS: PinCapabilityFlags = {
+  ...DIGITAL_CAPS,
+  analogInput: true,
+};
+
+function createDigitalPin(pin: number, gpio: number): IUnoDigitalPin {
   return {
     number: pin,
     gpio,
-    capabilities: new Set(capabilities),
+    capabilities: DIGITAL_CAPS,
   } as unknown as IUnoDigitalPin;
 }
 
@@ -40,7 +63,7 @@ function createPWMPin(pin: number, gpio: number): IUnoPWMPin {
   return {
     number: pin,
     gpio,
-    capabilities: new Set(['pullUp', 'pwm']),
+    capabilities: PWM_CAPS,
   } as unknown as IUnoPWMPin;
 }
 
@@ -48,7 +71,7 @@ function createInterruptPin(pin: number, gpio: number): IUnoInterruptPin {
   return {
     number: pin,
     gpio,
-    capabilities: new Set(['pullUp', 'interrupt']),
+    capabilities: INTERRUPT_CAPS,
   } as unknown as IUnoInterruptPin;
 }
 
@@ -56,7 +79,7 @@ function createAnalogPin(pin: number, gpio: number): IUnoAnalogPin {
   return {
     number: pin,
     gpio,
-    capabilities: new Set(['pullUp', 'analog']),
+    capabilities: ANALOG_CAPS,
   } as unknown as IUnoAnalogPin;
 }
 

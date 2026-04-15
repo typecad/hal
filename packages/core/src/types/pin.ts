@@ -6,7 +6,7 @@
 // are prevented at compile time.
 //
 // DESIGN PRINCIPLE: One obvious way to do each thing.
-//   - Configure: input(), inputPullUp(), output(initial?)
+//   - Configure: asInput(), asInputPullUp(), asOutput(initial?)
 //   - Act: set(value), setHigh(), setLow(), toggle(), pwm(duty)
 //   - Sense: read(), readAnalog(), readVoltage()
 //   - Events: onRising(), onFalling(), onChange(), offInterrupts()
@@ -14,13 +14,7 @@
 
 import type { DigitalValue, AnalogValue } from './gpio';
 import { PinMode } from './gpio';
-
-// ---------------------------------------------------------------------------
-// Capability type for runtime introspection
-// ---------------------------------------------------------------------------
-
-/** Supported pin capabilities. */
-export type PinCapability = 'pwm' | 'analog' | 'interrupt' | 'touch' | 'pullUp' | 'pullDown';
+import type { PinCapabilityFlags } from './capabilities';
 
 // ---------------------------------------------------------------------------
 // Branded types for mode safety
@@ -62,7 +56,7 @@ export interface InterruptOptions {
  *
  * INTENT-BASED DESIGN:
  *   Configure — one way to set mode:
- *     pin.input() / pin.inputPullUp() / pin.output() / pin.output(initial)
+ *     pin.asInput() / pin.asInputPullUp() / pin.asOutput() / pin.asOutput(initial)
  *
  *   Act — one way to change state:
  *     pin.set(HIGH) / pin.set(LOW) / pin.toggle() / pin.pwm(duty)
@@ -79,7 +73,7 @@ export interface BasePin {
   /** GPIO / logical pin number. */
   readonly gpio: number;
   /** Capabilities supported by this pin. */
-  readonly capabilities: ReadonlySet<PinCapability>;
+  readonly capabilities: PinCapabilityFlags;
 
   // -------------------------------------------------------------------------
   // Digital I/O (all digital pins)
@@ -112,14 +106,10 @@ export interface BasePin {
   // Mode configuration
   // -------------------------------------------------------------------------
 
-  /** Set as floating INPUT. */
-  input(): void;
   /** Set as INPUT with internal pull-up. */
   inputPullUp(): void;
   /** Set as INPUT with internal pull-down (if supported). */
   inputPullDown?(): void;
-  /** Set as OUTPUT, optionally with initial value. */
-  output(initial?: DigitalValue): void;
   /** Set as OUTPUT in open drain mode. */
   outputOpenDrain(initial?: DigitalValue): void;
 
@@ -188,7 +178,7 @@ export interface IOutputModePin {
   /** GPIO / logical pin number. */
   readonly gpio: number;
   /** Capabilities supported by this pin. */
-  readonly capabilities: ReadonlySet<PinCapability>;
+  readonly capabilities: PinCapabilityFlags;
 
   // --- Write operations (output mode) --------------------------------------
 
@@ -225,16 +215,12 @@ export interface IOutputModePin {
   /** Switch to INPUT_PULLUP mode. Returns input-typed pin. */
   asInputPullUp(): IInputModePin;
 
-  // --- Non-fluent mode setters (backward compat) --------------------------
+  // --- Non-fluent mode setters ---------------------------------------------
 
-  /** Set as floating INPUT. */
-  input(): void;
   /** Set as INPUT with internal pull-up. */
   inputPullUp(): void;
   /** Set as INPUT with internal pull-down (if supported). */
   inputPullDown?(): void;
-  /** Set as OUTPUT, optionally with initial value. */
-  output(initial?: DigitalValue): void;
   /** Set as OUTPUT in open drain mode. */
   outputOpenDrain(initial?: DigitalValue): void;
 }
@@ -246,7 +232,7 @@ export interface IInputModePin {
   /** GPIO / logical pin number. */
   readonly gpio: number;
   /** Capabilities supported by this pin. */
-  readonly capabilities: ReadonlySet<PinCapability>;
+  readonly capabilities: PinCapabilityFlags;
 
   // --- Read operations (input mode) ----------------------------------------
 
@@ -295,16 +281,12 @@ export interface IInputModePin {
   /** Switch to INPUT_PULLUP mode. Returns input-typed pin. */
   asInputPullUp(): IInputModePin;
 
-  // --- Non-fluent mode setters (backward compat) --------------------------
+  // --- Non-fluent mode setters ---------------------------------------------
 
-  /** Set as floating INPUT. */
-  input(): void;
   /** Set as INPUT with internal pull-up. */
   inputPullUp(): void;
   /** Set as INPUT with internal pull-down (if supported). */
   inputPullDown?(): void;
-  /** Set as OUTPUT, optionally with initial value. */
-  output(initial?: DigitalValue): void;
   /** Set as OUTPUT in open drain mode. */
   outputOpenDrain(initial?: DigitalValue): void;
 }
@@ -315,17 +297,17 @@ export interface IInputModePin {
 
 /** Type guard for PWM capable pins. */
 export function isPwmPin(pin: BasePin): pin is BasePin & { pwm: NonNullable<BasePin['pwm']> } {
-  return pin.capabilities.has('pwm');
+  return pin.capabilities.pwm;
 }
 
 /** Type guard for analog input capable pins. */
 export function isAnalogPin(pin: BasePin): pin is BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> } {
-  return pin.capabilities.has('analog');
+  return pin.capabilities.analogInput;
 }
 
 /** Type guard for interrupt capable pins. */
 export function isInterruptPin(pin: BasePin): pin is BasePin & { onRising: NonNullable<BasePin['onRising']> } {
-  return pin.capabilities.has('interrupt');
+  return pin.capabilities.interrupt;
 }
 
 /** Assert pin supports PWM, throws at runtime if not. */
@@ -360,18 +342,14 @@ export interface IPinGroupOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy Type Aliases (for backward compatibility during transition)
+// Capability-narrowed pin types
 // ---------------------------------------------------------------------------
 
-/** @deprecated Use Pin instead */
-export type IPin = BasePin;
-/** @deprecated Use Pin instead */
-export type IDigitalPin = BasePin;
-/** @deprecated Use Pin instead */
-export type IPWMPin = BasePin & { pwm: NonNullable<BasePin['pwm']> };
-/** @deprecated Use Pin instead */
-export type IAnalogInput = BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> };
-/** @deprecated Use Pin instead */
-export type IAnalogPin = BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> };
-/** @deprecated Use Pin instead */
-export type IInterruptPin = BasePin & { onRising: NonNullable<BasePin['onRising']> };
+/** Pin with PWM output capability. */
+export type PWMPin = BasePin & { pwm: NonNullable<BasePin['pwm']> };
+
+/** Pin with analog input capability. */
+export type AnalogPin = BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> };
+
+/** Pin with interrupt capability. */
+export type InterruptPin = BasePin & { onRising: NonNullable<BasePin['onRising']> };

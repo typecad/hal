@@ -25,6 +25,10 @@ function computeToolchainFingerprint(): string {
     path.join(__dirname, "emit", "cpp-emitter.ts"),
     path.join(__dirname, "ir", "build-ir.js"),
     path.join(__dirname, "ir", "build-ir.ts"),
+    path.join(__dirname, "ir", "ownership-analysis.js"),
+    path.join(__dirname, "ir", "ownership-analysis.ts"),
+    path.join(__dirname, "ir", "validation-orchestrator.js"),
+    path.join(__dirname, "ir", "validation-orchestrator.ts"),
   ];
 
   const signature = candidates

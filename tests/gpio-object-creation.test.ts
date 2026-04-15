@@ -1,0 +1,129 @@
+// ---------------------------------------------------------------------------
+// GPIO Object-Creation Pattern Tests
+// ---------------------------------------------------------------------------
+
+import { describe, it } from 'vitest';
+import { expectCppContains, transpile } from './setup';
+
+describe('GPIO Object-Creation Pattern', () => {
+  describe('asOutput()', () => {
+    it('emits pinMode OUTPUT for LED.asOutput()', () => {
+      const result = transpile(`
+        import { LED } from '@typecode/board-arduino-uno/arduino';
+        const led = LED.asOutput();
+        led.toggle();
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(13, OUTPUT)',
+        'digitalWrite(13, !digitalRead(13))',
+      ]);
+    });
+
+    it('emits pinMode + digitalWrite for LED.asOutput(true)', () => {
+      const result = transpile(`
+        import { LED } from '@typecode/board-arduino-uno/arduino';
+        const led = LED.asOutput(true);
+        led.toggle();
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(13, OUTPUT)',
+        'digitalWrite(13, true)',
+      ]);
+    });
+
+    it('emits pinMode for D9.asOutput() and alias resolves for high()/low()', () => {
+      const result = transpile(`
+        import { D9 } from '@typecode/board-arduino-uno/arduino';
+        const buzzer = D9.asOutput();
+        buzzer.high();
+        buzzer.low();
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(9, OUTPUT)',
+        'digitalWrite(9, HIGH)',
+        'digitalWrite(9, LOW)',
+      ]);
+    });
+
+    it('resolves alias inside while loop', () => {
+      const result = transpile(`
+        import { LED, D2, delay } from '@typecode/board-arduino-uno/arduino';
+        const led = LED.asOutput();
+        const btn = D2.asInput();
+        while (true) {
+          if (!btn.read()) {
+            led.toggle();
+          }
+          delay(100);
+        }
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(13, OUTPUT)',
+        'pinMode(2, INPUT)',
+        'digitalRead(2)',
+        'digitalWrite(13, !digitalRead(13))',
+      ]);
+    });
+  });
+
+  describe('asInput()', () => {
+    it('emits pinMode INPUT for D2.asInput()', () => {
+      const result = transpile(`
+        import { D2 } from '@typecode/board-arduino-uno/arduino';
+        const button = D2.asInput();
+        const val = button.read();
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(2, INPUT)',
+        'digitalRead(2)',
+      ]);
+    });
+  });
+
+  describe('asInputPullUp()', () => {
+    it('emits pinMode INPUT_PULLUP for D3.asInputPullUp()', () => {
+      const result = transpile(`
+        import { D3 } from '@typecode/board-arduino-uno/arduino';
+        const btn = D3.asInputPullUp();
+        const val = btn.read();
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(3, INPUT_PULLUP)',
+        'digitalRead(3)',
+      ]);
+    });
+  });
+
+  describe('Multiple pins with aliases', () => {
+    it('tracks multiple aliases independently', () => {
+      const result = transpile(`
+        import { LED, D2, D9, delay } from '@typecode/board-arduino-uno/arduino';
+        const led = LED.asOutput();
+        const button = D2.asInput();
+        const buzzer = D9.asOutput();
+        while (true) {
+          if (!button.read()) {
+            led.toggle();
+          }
+          buzzer.high();
+          delay(100);
+        }
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(13, OUTPUT)',
+        'pinMode(2, INPUT)',
+        'pinMode(9, OUTPUT)',
+        'digitalRead(2)',
+        'digitalWrite(13, !digitalRead(13))',
+        'digitalWrite(9, HIGH)',
+      ]);
+    });
+  });
+});

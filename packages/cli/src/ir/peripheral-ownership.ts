@@ -32,7 +32,7 @@ const BUS_IO_METHODS = new Set([
 
 /** Methods that initialize a bus (not I/O, so no ownership required). */
 const INIT_METHODS = new Set([
-  'begin', 'end', 'initialize', 'deinitialize', 'enable', 'disable',
+  'begin', 'end', 'initialize',
   'take', 'release',
 ]);
 

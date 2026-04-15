@@ -28,6 +28,8 @@ export type DiagnosticSeverity = "info" | "warning" | "error";
 export interface Diagnostic {
   severity: DiagnosticSeverity;
   message: string;
+  /** Actionable fix suggestion, shown as a distinct code block in CLI output. */
+  hint?: string;
   line?: number;
   column?: number;
   code?: string;

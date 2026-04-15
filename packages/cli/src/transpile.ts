@@ -669,6 +669,7 @@ function typeCheckFiles(
     esModuleInterop: true,
     moduleResolution: ts.ModuleResolutionKind.Node10,
   };
+  let rootNames = [...files];
 
   if (configPath) {
     const configResult = ts.readConfigFile(configPath, (path) => fs.readFileSync(path, "utf8"));
@@ -680,12 +681,13 @@ function typeCheckFiles(
       );
       if (!parsedConfig.errors.length) {
         compilerOptions = { ...parsedConfig.options, noEmit: true };
+        rootNames = Array.from(new Set([...parsedConfig.fileNames, ...files]));
       }
     }
   }
 
-  // Create a TypeScript program with all files to check
-  const program = ts.createProgram(files, compilerOptions);
+  // Create a TypeScript program with all files from tsconfig plus the requested entries
+  const program = ts.createProgram(rootNames, compilerOptions);
 
   // Collect all diagnostics
   const allDiagnostics: ts.Diagnostic[] = [
@@ -872,9 +874,8 @@ import type { PlatformStrategy } from "./platform/platform-strategy";
 import { ArduinoStrategy } from "./platform/arduino-strategy";
 
 /**
- * Try to load a PlatformStrategy from a package (board or framework).
- * Checks for FrameworkStrategy (framework packages) or BoardStrategy (legacy board packages).
- * Returns undefined if the package doesn't export a strategy.
+ * Try to load a PlatformStrategy from a framework package.
+ * Returns undefined if the package doesn't export a FrameworkStrategy.
  * 
  * @param packageName The package name to load
  * @param fromDir The directory to resolve from (usually the input file's directory)
@@ -888,21 +889,14 @@ function loadPackageStrategy(packageName: string | undefined, fromDir: string, d
     const packagePath = require.resolve(packageName, { paths: [fromDir] });
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const pkg = require(packagePath);
-    // Prefer FrameworkStrategy (new framework packages) over BoardStrategy (legacy)
     if (pkg.FrameworkStrategy) {
       if (debug) {
         console.log(`Loaded FrameworkStrategy from ${packageName}`);
       }
       return new pkg.FrameworkStrategy();
     }
-    if (pkg.BoardStrategy) {
-      if (debug) {
-        console.log(`Loaded BoardStrategy from ${packageName}`);
-      }
-      return new pkg.BoardStrategy();
-    }
     if (debug) {
-      console.log(`Package ${packageName} has no FrameworkStrategy or BoardStrategy export`);
+      console.log(`Package ${packageName} has no FrameworkStrategy export`);
     }
   } catch (e) {
     // Package may not have a strategy or may not be installed
@@ -915,12 +909,13 @@ function loadPackageStrategy(packageName: string | undefined, fromDir: string, d
 
 /**
  * Load the appropriate platform strategy based on config.
- * Priority: framework package > board package > undefined (use target-based resolution)
+ * Loads strategy from the framework package if provided.
+ * Returns undefined to fall back to target-based resolution via the registry.
  * 
  * @param frameworkPackage The framework package name (e.g., '@typecode/framework-avr')
- * @param boardPackage The board package name (e.g., '@typecode/board-arduino-uno')
+ * @param boardPackage The board package name (used for import resolution, not strategy loading)
  * @param fromDir The directory to resolve packages from (usually the input file's directory)
- * @returns PlatformStrategy if loaded from a package, undefined otherwise
+ * @returns PlatformStrategy if loaded from a framework package, undefined otherwise
  */
 function loadPlatformStrategy(
   frameworkPackage: string | undefined,
@@ -928,21 +923,15 @@ function loadPlatformStrategy(
   fromDir: string,
   debug?: boolean,
 ): PlatformStrategy | undefined {
-  // Try framework package first (new approach)
+  // Load strategy from framework package
   if (frameworkPackage) {
     const strategy = loadPackageStrategy(frameworkPackage, fromDir, debug);
     if (strategy) return strategy;
   }
   
-  // Fall back to board package (legacy approach)
-  if (boardPackage) {
-    const strategy = loadPackageStrategy(boardPackage, fromDir, debug);
-    if (strategy) return strategy;
-  }
-  
   // Return undefined to let emitCpp resolve based on target option
   if (debug) {
-    console.log(`No package strategy loaded, will use target-based resolution`);
+    console.log(`No framework strategy loaded, will use target-based resolution`);
   }
   return undefined;
 }

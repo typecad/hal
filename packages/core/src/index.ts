@@ -39,18 +39,14 @@ export {
 export {
   BasePin,
   Pin,
+  PWMPin,
+  AnalogPin,
+  InterruptPin,
   IOutputModePin,
   IInputModePin,
-  IPin,
-  IDigitalPin,
-  IPWMPin,
-  IAnalogInput,
-  IAnalogPin,
-  IInterruptPin,
   InterruptHandler,
   InterruptOptions,
   IToneAttachment,
-  PinCapability,
   isPwmPin,
   assertPwm,
   IPinGroupOptions,
@@ -250,6 +246,18 @@ export {
   TypecodeTestConfig,
   TypecodeConsoleConfig,
 } from './config';
+
+// --- Ownership & Borrowing Safety -------------------------------------------
+export type {
+  OwnershipKind,
+  Owned,
+  Ref,
+  MutRef,
+} from './types/ownership';
+export {
+  extractOwnershipKind,
+  unwrapOwnershipType,
+} from './types/ownership';
 
 // --- Shared types (for CLI and framework packages) -------------------------
 export * from './shared';

@@ -78,7 +78,7 @@ expect(history[1]).toEqual({ timestamp: expect.any(Number), from: 0, to: 1 });
 ```typescript
 const led = board.digital(13);
 
-led.output();
+led.asOutput();
 led.high();
 expect(led.getBitValue()).toBe(1);
 

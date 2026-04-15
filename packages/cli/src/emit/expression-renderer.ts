@@ -85,6 +85,15 @@ export class ExpressionRenderer {
   }
 
   /**
+   * Push lines directly into the prelude buffer. Used by the statement renderer
+   * to inject multi-statement expansions (e.g. Wire read setup) that must appear
+   * before the surrounding statement.
+   */
+  pushPrelude(lines: string[]): void {
+    this._preludeLines.push(...lines);
+  }
+
+  /**
    * Renders an expression IR node to a C++ string.
    * 
    * @param expr The expression to render
@@ -404,7 +413,7 @@ function transformClassNames(value: string, classNameMap: Map<string, string>): 
  * Normalizes a raw expression string for C++ output.
  * Handles === to == conversion, enum access, and class name transformation.
  */
-function normalizeRawExpression(value: string, strategy: PlatformStrategy, classNameMap?: Map<string, string>): string {
+export function normalizeRawExpression(value: string, strategy: PlatformStrategy, classNameMap?: Map<string, string>): string {
   let normalized = value
     .replace(/===/g, "==")
     .replace(/!==/g, "!=");

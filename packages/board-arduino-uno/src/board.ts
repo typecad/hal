@@ -12,10 +12,10 @@
 // ---------------------------------------------------------------------------
 
 import type {
-  IDigitalPin,
-  IPWMPin,
-  IAnalogPin,
-  IInterruptPin,
+  BasePin,
+  PWMPin,
+  AnalogPin,
+  InterruptPin,
   IUninitializedI2CBus,
   IUninitializedSPIBus,
   IUninitializedUARTBus,
@@ -37,29 +37,29 @@ import { ArduinoUno } from './index';
 // ---------------------------------------------------------------------------
 
 export interface DigitalPins {
-  D0: IDigitalPin & IInterruptPin;
-  D1: IDigitalPin & IInterruptPin;
-  D2: IDigitalPin & IInterruptPin;
-  D3: IPWMPin;
-  D4: IDigitalPin;
-  D5: IPWMPin;
-  D6: IPWMPin;
-  D7: IDigitalPin;
-  D8: IDigitalPin;
-  D9: IPWMPin;
-  D10: IPWMPin;
-  D11: IPWMPin;
-  D12: IDigitalPin;
-  D13: IDigitalPin;
+  D0: BasePin & InterruptPin;
+  D1: BasePin & InterruptPin;
+  D2: BasePin & InterruptPin;
+  D3: PWMPin;
+  D4: BasePin;
+  D5: PWMPin;
+  D6: PWMPin;
+  D7: BasePin;
+  D8: BasePin;
+  D9: PWMPin;
+  D10: PWMPin;
+  D11: PWMPin;
+  D12: BasePin;
+  D13: BasePin;
 }
 
 export interface AnalogPins {
-  A0: IAnalogPin;
-  A1: IAnalogPin;
-  A2: IAnalogPin;
-  A3: IAnalogPin;
-  A4: IAnalogPin;
-  A5: IAnalogPin;
+  A0: AnalogPin;
+  A1: AnalogPin;
+  A2: AnalogPin;
+  A3: AnalogPin;
+  A4: AnalogPin;
+  A5: AnalogPin;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,38 +71,38 @@ export interface IBoard {
   readonly definition: BoardDefinition;
 
   // ---- Individual pins (convenience) ------------------------------------
-  readonly D0: IDigitalPin & IInterruptPin;
-  readonly D1: IDigitalPin & IInterruptPin;
-  readonly D2: IDigitalPin & IInterruptPin;
-  readonly D3: IPWMPin;
-  readonly D4: IDigitalPin;
-  readonly D5: IPWMPin;
-  readonly D6: IPWMPin;
-  readonly D7: IDigitalPin;
-  readonly D8: IDigitalPin;
-  readonly D9: IPWMPin;
-  readonly D10: IPWMPin;
-  readonly D11: IPWMPin;
-  readonly D12: IDigitalPin;
-  readonly D13: IDigitalPin;
+  readonly D0: BasePin & InterruptPin;
+  readonly D1: BasePin & InterruptPin;
+  readonly D2: BasePin & InterruptPin;
+  readonly D3: PWMPin;
+  readonly D4: BasePin;
+  readonly D5: PWMPin;
+  readonly D6: PWMPin;
+  readonly D7: BasePin;
+  readonly D8: BasePin;
+  readonly D9: PWMPin;
+  readonly D10: PWMPin;
+  readonly D11: PWMPin;
+  readonly D12: BasePin;
+  readonly D13: BasePin;
 
-  readonly A0: IAnalogPin;
-  readonly A1: IAnalogPin;
-  readonly A2: IAnalogPin;
-  readonly A3: IAnalogPin;
-  readonly A4: IAnalogPin;
-  readonly A5: IAnalogPin;
+  readonly A0: AnalogPin;
+  readonly A1: AnalogPin;
+  readonly A2: AnalogPin;
+  readonly A3: AnalogPin;
+  readonly A4: AnalogPin;
+  readonly A5: AnalogPin;
 
   // ---- Aliases ----------------------------------------------------------
-  readonly LED: IDigitalPin;
-  readonly SDA: IAnalogPin;
-  readonly SCL: IAnalogPin;
-  readonly MOSI: IPWMPin;
-  readonly MISO: IDigitalPin;
-  readonly SCK: IDigitalPin;
-  readonly SS: IPWMPin;
-  readonly TX: IDigitalPin & IInterruptPin;
-  readonly RX: IDigitalPin & IInterruptPin;
+  readonly LED: BasePin;
+  readonly SDA: AnalogPin;
+  readonly SCL: AnalogPin;
+  readonly MOSI: PWMPin;
+  readonly MISO: BasePin;
+  readonly SCK: BasePin;
+  readonly SS: PWMPin;
+  readonly TX: BasePin & InterruptPin;
+  readonly RX: BasePin & InterruptPin;
 
   // ---- Peripherals ------------------------------------------------------
   readonly I2C0: IUninitializedI2CBus;

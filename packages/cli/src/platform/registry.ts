@@ -2,7 +2,7 @@
 // Platform strategy registry
 //
 // Maps TargetProfile strings to PlatformStrategy implementations.
-// Board packages can call `registerPlatformStrategy()` to plug in custom
+// Framework packages call `registerPlatformStrategy()` to plug in custom
 // strategies at import time.
 // ---------------------------------------------------------------------------
 

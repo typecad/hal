@@ -36,7 +36,7 @@ describe('LED blink logic', () => {
     const board = createSimBoard({ boardType: 'arduino-uno' });
 
     // Configure pin 13 as output (same direct API as real hardware)
-    board.digital(13).output();
+    board.digital(13).asOutput();
 
     // Turn LED on
     board.digital(13).high();

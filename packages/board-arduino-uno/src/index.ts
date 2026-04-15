@@ -208,7 +208,7 @@ import {
  * 
  * // Or iterate over all PWM pins
  * for (const pwmPin of pins.pwm) {
- *   pwmPin.output();
+ *   pwmPin.asOutput();
  * }
  * ```
  */

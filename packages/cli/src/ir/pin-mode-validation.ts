@@ -11,7 +11,7 @@ import { scanNestedStatements } from './interrupt-analysis';
 
 /** Methods that configure pin mode. */
 const MODE_SET_METHODS = new Set([
-  'output', 'input', 'inputPullUp', 'inputPullDown', 'outputOpenDrain',
+  'inputPullUp', 'inputPullDown', 'outputOpenDrain',
   'asOutput', 'asInput', 'asInputPullUp',
 ]);
 
@@ -46,13 +46,25 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   const checkTypecodeCall = (receiver: string, receiverKind: string | undefined, method: string): void => {
     if (!receiverKind || !PIN_RECEIVER_KINDS.has(receiverKind)) return;
 
+    // Warn when analog pin is used as digital output — analog capability is lost
+    if (receiverKind === 'analog-input' && method === 'asOutput') {
+      diagnostics.push({
+        severity: 'warning',
+        message: `Analog pin '${receiver}' used as digital output. ` +
+                 `Analog input capability (ADC) is lost while pin is in OUTPUT mode. ` +
+                 `Call ${receiver}.asInput() to restore analog reading.`,
+        code: 'analog-pin-as-output',
+        source: 'pin-mode-validation',
+      });
+    }
+
     if (MODE_SET_METHODS.has(method)) {
       pinModeSet.add(receiver);
     } else if (READ_METHODS.has(method) && !pinModeSet.has(receiver)) {
       diagnostics.push({
         severity: 'warning',
         message: `Pin '${receiver}' read via '${method}()' without prior mode configuration. ` +
-                 `Call ${receiver}.input() or ${receiver}.inputPullUp() first.`,
+                 `Call ${receiver}.asInput() or ${receiver}.inputPullUp() first.`,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
       });
@@ -60,7 +72,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
       diagnostics.push({
         severity: 'info',
         message: `Pin '${receiver}' written via '${method}()' without explicit mode configuration. ` +
-                 `Arduino implicitly sets OUTPUT, but explicit ${receiver}.output() is recommended.`,
+                 `Arduino implicitly sets OUTPUT, but explicit ${receiver}.asOutput() is recommended.`,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
       });

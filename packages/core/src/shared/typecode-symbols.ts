@@ -10,10 +10,10 @@
  * Used by the emitter to select the correct Arduino built-in.
  */
 export type TypecodeReceiverKind =
-  | 'analog-input'  // IAnalogInput  — A0-A5, SDA, SCL
-  | 'digital'       // IDigitalPin   — D4, D7, D8, D12, D13, LED, MISO, SCK
-  | 'interrupt'     // IDigitalPin & IInterruptPin — D0, D1, D2 (interrupt-capable digital)
-  | 'pwm'           // IPWMPin       — D3, D5, D6, D9, D10, D11 (MOSI, SS are also PWM)
+  | 'analog-input'  // AnalogPin     — A0-A5, SDA, SCL
+  | 'digital'       // BasePin       — D4, D7, D8, D12, D13, LED, MISO, SCK
+  | 'interrupt'     // InterruptPin  — D0, D1, D2 (interrupt-capable digital)
+  | 'pwm'           // PWMPin        — D3, D5, D6, D9, D10, D11 (MOSI, SS are also PWM)
   | 'serial'        // ISerialPort   — Serial
   | 'i2c'           // II2CBus       — I2C0
   | 'spi'           // ISPIBus       — SPI0

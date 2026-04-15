@@ -2,18 +2,21 @@
 // Typecode SDK symbol kind inference
 //
 // Maps known typecode symbol names to their receiver kind.
-// This is the ONLY place that knows the mapping — no regexes elsewhere.
+// Static symbol mappings live here; peripheral instance parsing is shared via
+// peripheral-symbols.ts so other IR passes do not reimplement it.
 // ---------------------------------------------------------------------------
+
+import { inferPeripheralKindByName } from "./peripheral-symbols";
 
 /**
  * Which category of typecode object a symbol belongs to.
  * Used by the emitter to select the correct Arduino built-in.
  */
 export type TypecodeReceiverKind =
-  | 'analog-input'  // IAnalogInput  — A0-A5, SDA, SCL
-  | 'digital'       // IDigitalPin   — D4, D7, D8, D12, D13, LED, MISO, SCK
-  | 'interrupt'     // IDigitalPin & IInterruptPin — D0, D1, D2 (interrupt-capable digital)
-  | 'pwm'           // IPWMPin       — D3, D5, D6, D9, D10, D11 (MOSI, SS are also PWM)
+  | 'analog-input'  // AnalogPin     — A0-A5, SDA, SCL
+  | 'digital'       // BasePin       — D4, D7, D8, D12, D13, LED, MISO, SCK
+  | 'interrupt'     // InterruptPin  — D0, D1, D2 (interrupt-capable digital)
+  | 'pwm'           // PWMPin        — D3, D5, D6, D9, D10, D11 (MOSI, SS are also PWM)
   | 'serial'        // ISerialPort   — Serial
   | 'i2c'           // II2CBus       — I2C0
   | 'spi'           // ISPIBus       — SPI0
@@ -114,12 +117,9 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
  * Returns `'unknown'` for anything that is not a recognised typecode symbol.
  */
 export function inferKindByName(name: string): TypecodeReceiverKind {
-  // Pattern match peripheral instances (I2C0, I2C1, I2C2, etc.)
-  if (/^I2C\d+$/.test(name)) return 'i2c';
-  if (/^SPI\d+$/.test(name)) return 'spi';
-  if (/^UART\d+$/.test(name)) return 'serial';
-  if (/^Serial\d*$/.test(name)) return 'serial';
-  
+  const peripheralKind = inferPeripheralKindByName(name);
+  if (peripheralKind) return peripheralKind;
+
   // Fall back to static mapping for pins and other symbols
   return STATIC_KINDS[name] ?? 'unknown';
 }

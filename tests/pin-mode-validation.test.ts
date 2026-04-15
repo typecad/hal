@@ -32,7 +32,7 @@ describe('Pin Mode Configuration Validation', () => {
   it('does not generate warning when mode is set before read', () => {
     const result = transpile(`
       import { D4 } from '@typecode/board-arduino-uno';
-      D4.input();
+      D4.asInput();
       const value = D4.read();
     `);
 
@@ -42,10 +42,10 @@ describe('Pin Mode Configuration Validation', () => {
     expect(warnings.length).toBe(0);
   });
 
-  it('does not generate warning when output() is called before toggle', () => {
+  it('does not generate warning when asOutput() is called before toggle', () => {
     const result = transpile(`
       import { LED } from '@typecode/board-arduino-uno';
-      LED.output(true);
+      LED.asOutput(true);
       LED.toggle();
     `);
 

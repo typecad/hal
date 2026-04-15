@@ -6,8 +6,8 @@
   "scripts": {
     "build": "npx typecode ./src/sketch.ts",
     "compile": "npx typecode ./src/sketch.ts --compile",
-    "upload": "npx typecode ./src/sketch.ts --compile --upload --port COM4",
-    "debug": "npx typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM4"
+    "upload": "npx typecode ./src/sketch.ts --compile --upload --port COM6",
+    "debug": "npx typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM6"
   },
   "dependencies": {
     "@typecode/core": "*",

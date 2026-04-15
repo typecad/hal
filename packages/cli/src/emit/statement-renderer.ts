@@ -33,6 +33,24 @@ export interface StatementRendererContext {
 }
 
 /**
+ * Returns true for C++ scalar/primitive types that are cheaply passed by value.
+ * Non-primitives (std::vector, String, structs, arrays) should be passed by reference
+ * when borrowed via Ref<T> or MutRef<T> to avoid deep copies.
+ */
+function isPrimitiveCppType(cppType: string): boolean {
+  const t = cppType.trim();
+  const primitives = new Set([
+    'int', 'float', 'double', 'bool', 'char', 'long', 'void',
+    'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
+    'int8_t', 'int16_t', 'int32_t', 'int64_t',
+    'size_t', 'byte', 'word',
+    'unsigned int', 'unsigned long', 'unsigned char',
+    'signed int', 'signed long', 'signed char',
+  ]);
+  return primitives.has(t);
+}
+
+/**
  * Renders StatementIR nodes to C++ code strings.
  */
 export class StatementRenderer {
@@ -246,9 +264,58 @@ export class StatementRenderer {
     const volatilePrefix = statement.isVolatile ? "volatile " : "";
     // Transform type name for Arduino library classes (add namespace prefix)
     const transformedType = transformTypeName(statement.cppType, this.arduinoClassNameMap);
-    const declaration = `${volatilePrefix}${this.renderTypedName(transformedType, statement.name, statement.storage === "const")}`;
+    const ownershipKind = (statement as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
+    // Emit const for Ref<T> ownership annotations (ownershipKind === 'ref')
+    const isConst = statement.storage === "const" || ownershipKind === 'ref';
+    // Emit C++ reference for non-primitive Ref<T>/MutRef<T> from named variables.
+    // Primitives pass by value (no overhead). Temporary/literal initializers fall back to copy.
+    const isRef = (ownershipKind === 'ref' || ownershipKind === 'mut_ref')
+      && !isPrimitiveCppType(statement.cppType)
+      && statement.initializer?.kind === 'identifier';
+    const declaration = `${volatilePrefix}${this.renderTypedName(transformedType, statement.name, isConst, isRef)}`;
     
     if (statement.initializer) {
+      // Handle device.readByte / device.readBytes — multi-statement Wire expansions
+      // that cannot be used as a C++ r-value expression.
+      if (statement.initializer.kind === "typecode-call") {
+        const initCall = statement.initializer as Extract<ExpressionIR, { kind: "typecode-call" }>;
+        if (initCall.method === "device.readByte" || initCall.method === "device.readBytes") {
+          const renderA = (e: ExpressionIR) => this.expressionRenderer.render(e);
+          const addr = renderA(initCall.args[0]);
+          const reg = renderA(initCall.args[1]);
+          const wireNum = initCall.receiver.slice(3); // strip leading "I2C"
+          const wire = wireNum === '0' ? 'Wire' : `Wire${wireNum}`;
+
+          if (initCall.method === "device.readByte") {
+            // Emit Wire setup as prelude, keep Wire.read() as the variable initializer.
+            this.expressionRenderer.pushPrelude([
+              `${wire}.beginTransmission(${addr});`,
+              `${wire}.write(${reg});`,
+              `${wire}.endTransmission(false);`,
+              `${wire}.requestFrom(${addr}, 1);`,
+            ]);
+            return forHeader
+              ? `${declaration} = ${wire}.read()`
+              : `${declaration} = ${wire}.read();`;
+          } else {
+            // device.readBytes: declare a uint8_t array and fill it via a read loop.
+            const count = renderA(initCall.args[2]);
+            const name = statement.name;
+            this.expressionRenderer.pushPrelude([
+              `uint8_t ${name}[${count}];`,
+              `${wire}.beginTransmission(${addr});`,
+              `${wire}.write(${reg});`,
+              `${wire}.endTransmission(false);`,
+              `${wire}.requestFrom(${addr}, ${count});`,
+              `for (int i = 0; i < ${count}; i++) { ${name}[i] = ${wire}.read(); }`,
+            ]);
+            // The declaration is fully handled in the prelude; return empty so
+            // the emitter just appends a blank line.
+            return "";
+          }
+        }
+      }
+
       // Handle array initializers
       if (statement.initializer.kind === "array") {
         const elements = statement.initializer.elements.map((e) => this.expressionRenderer.render(e)).join(", ");
@@ -301,7 +368,7 @@ export class StatementRenderer {
   /**
    * Renders a typed name with proper C++ syntax.
    */
-  renderTypedName(cppType: string, name: string, isConst = false): string {
+  renderTypedName(cppType: string, name: string, isConst = false, isRef = false): string {
     const normalizedType = this.normalizeCppType(cppType);
     const fnPtrMatch = normalizedType.match(/^(.+?)\s*\(\*\)\((.*)\)$/);
     if (fnPtrMatch) {
@@ -311,14 +378,16 @@ export class StatementRenderer {
       return `${constPrefix}${returnType} (*${name})(${params})`;
     }
     const constPrefix = isConst ? "const " : "";
-    return `${constPrefix}${normalizedType} ${name}`;
+    const refMark = isRef ? "& " : " ";
+    return `${constPrefix}${normalizedType}${refMark}${name}`;
   }
 
   /**
    * Renders function parameters.
+   * Emits `const` for parameters annotated with `Ref<T>` (ownershipKind === 'ref').
    */
   renderParameters(
-    parameters: Array<{ name: string; cppType: string; defaultValue?: any }>,
+    parameters: Array<{ name: string; cppType: string; defaultValue?: any; ownershipKind?: 'owned' | 'ref' | 'mut_ref' }>,
   ): string {
     if (parameters.length === 0) {
       return "";
@@ -326,7 +395,12 @@ export class StatementRenderer {
 
     return parameters
       .map((parameter) => {
-        let result = this.renderTypedName(parameter.cppType, parameter.name);
+        const paramOwnershipKind = (parameter as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
+        const isConst = paramOwnershipKind === 'ref';
+        // Emit C++ reference for non-primitive Ref<T>/MutRef<T> parameters.
+        const isRef = (paramOwnershipKind === 'ref' || paramOwnershipKind === 'mut_ref')
+          && !isPrimitiveCppType(parameter.cppType);
+        let result = this.renderTypedName(parameter.cppType, parameter.name, isConst, isRef);
         if (parameter.defaultValue) {
           result += ` = ${this.expressionRenderer.render(parameter.defaultValue)}`;
         }

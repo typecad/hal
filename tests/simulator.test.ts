@@ -23,7 +23,7 @@ import type { ISimI2CDevice, ISimSPIDevice } from '../packages/simulator/src/typ
 describe('SimDigitalPin', () => {
   it('configures as output and writes high/low', () => {
     const pin = new SimDigitalPin(13);
-    pin.output();
+    pin.asOutput();
     pin.high();
     expect(pin.getBitValue()).toBe(1);
     expect(pin.isHigh()).toBe(true);
@@ -35,7 +35,7 @@ describe('SimDigitalPin', () => {
 
   it('toggles state', () => {
     const pin = new SimDigitalPin(2);
-    pin.output();
+    pin.asOutput();
     pin.low();
     pin.toggle();
     expect(pin.getBitValue()).toBe(1);
@@ -45,7 +45,7 @@ describe('SimDigitalPin', () => {
 
   it('injects value for input reading', () => {
     const pin = new SimDigitalPin(5);
-    pin.input();
+    pin.asInput();
     pin.injectValue(1);
     expect(pin.isHigh()).toBe(true);
     pin.injectValue(0);
@@ -68,7 +68,7 @@ describe('SimDigitalPin', () => {
 
   it('tracks state history', () => {
     const pin = new SimDigitalPin(7);
-    pin.output();
+    pin.asOutput();
     pin.high();
     pin.low();
     pin.high();
@@ -81,7 +81,7 @@ describe('SimDigitalPin', () => {
 
   it('resets to initial state', () => {
     const pin = new SimDigitalPin(3);
-    pin.output();
+    pin.asOutput();
     pin.high();
     pin.reset();
     expect(pin.getHistory()).toHaveLength(0);
@@ -93,7 +93,7 @@ describe('SimAnalogPin', () => {
   it('reads injected ADC value', () => {
     const pin = new SimAnalogPin(0);
     pin.injectValue(512);
-    expect(pin.read()).toBe(512);
+    expect(pin.readAnalog()).toBe(512);
   });
 
   it('reads injected voltage', () => {
@@ -101,21 +101,21 @@ describe('SimAnalogPin', () => {
     pin.setResolution(10); // 10-bit ADC
     pin.injectVoltage(2.5); // 2.5V on 5V reference
     // 2.5/5.0 * 1023 ≈ 511.5 → 512
-    expect(pin.read()).toBe(512);
+    expect(pin.readAnalog()).toBe(512);
   });
 
   it('resets to initial state', () => {
     const pin = new SimAnalogPin(0);
     pin.injectValue(999);
     pin.reset();
-    expect(pin.read()).toBe(0);
+    expect(pin.readAnalog()).toBe(0);
   });
 });
 
 describe('SimPWMPin', () => {
   it('writes PWM duty cycle', () => {
     const pin = new SimPWMPin(9);
-    pin.output();
+    pin.asOutput();
     pin.write(128); // 50% duty on 0-255 range
     expect(pin.getPwmPercent()).toBeCloseTo(50, 0);
     expect(pin.isPwmActive()).toBe(true);
@@ -123,7 +123,7 @@ describe('SimPWMPin', () => {
 
   it('activates PWM mode', () => {
     const pin = new SimPWMPin(10);
-    pin.output();
+    pin.asOutput();
     pin.pwm();
     expect(pin.isPwmActive()).toBe(true);
     // pwm() with no args activates PWM mode
@@ -194,14 +194,14 @@ describe('SimInterruptPin', () => {
 describe('SimSerialPort', () => {
   it('writes and reads back via TX buffer', () => {
     const port = new SimSerialPort(0);
-    port.enable(9600);
+    port.begin(9600);
     port.write('Hello');
     expect(port.peekTxAsString()).toBe('Hello');
   });
 
   it('injects RX data and reads it', () => {
     const port = new SimSerialPort(0);
-    port.enable(9600);
+    port.begin(9600);
     port.injectRx('Hello World\n');
     const line = port.readLine();
     expect(line).toBe('Hello World');
@@ -241,7 +241,7 @@ describe('SimSerialPort', () => {
 
   it('resets all state', () => {
     const port = new SimSerialPort(0);
-    port.enable(9600);
+    port.begin(9600);
     port.write('data');
     port.injectRx('rx');
     port.reset();
@@ -267,7 +267,7 @@ describe('SimI2CBus', () => {
     };
     bus.attachDevice(0x68, mockDevice);
     bus.setClock(100000);
-    bus.enable();
+    bus.begin();
 
     const bytes = bus.device(0x68).readBytes(0x00, 2);
     expect(bytes[0]).toBe(0x48);
@@ -286,7 +286,7 @@ describe('SimI2CBus', () => {
       },
     };
     bus.attachDevice(0x68, mockDevice);
-    bus.enable();
+    bus.begin();
 
     bus.device(0x68).writeBytes(0x10, [0x0A, 0x0B]);
     expect(writtenRegister).toBe(0x10);
@@ -295,7 +295,7 @@ describe('SimI2CBus', () => {
 
   it('returns empty for missing device read', () => {
     const bus = new SimI2CBus(0);
-    bus.enable();
+    bus.begin();
     const bytes = bus.device(0x40).readBytes(0x00, 1);
     expect(bytes.length).toBe(0);
   });
@@ -307,7 +307,7 @@ describe('SimI2CBus', () => {
       write() {},
     };
     bus.attachDevice(0x50, mockDevice);
-    bus.enable();
+    bus.begin();
     bus.device(0x50).readBytes(0x00, 1);
     bus.device(0x50).writeByte(0x01, 0xFF);
 
@@ -331,7 +331,7 @@ describe('SimI2CBus', () => {
       },
     };
     bus.attachDevice(0x40, mockDevice);
-    bus.enable();
+    bus.begin();
 
     const accessor = bus.device(0x40);
     expect(accessor.readByte(0x00)).toBe(0xAB);
@@ -349,7 +349,7 @@ describe('SimSPIBus', () => {
   it('transfers data to a mock device', () => {
     const bus = new SimSPIBus();
     const csPin = new SimDigitalPin(10);
-    csPin.output();
+    csPin.asOutput();
 
     const mockDevice: ISimSPIDevice = {
       transfer(mosiData: number[]): number[] {
@@ -359,7 +359,7 @@ describe('SimSPIBus', () => {
     };
     bus.attachDevice(csPin, mockDevice);
     bus.setMode(0);
-    bus.enable();
+    bus.begin();
 
     const result = bus.device(csPin).transfer(new Uint8Array([0xAA, 0x55]));
     expect(result[0]).toBe(0x55);
@@ -369,7 +369,7 @@ describe('SimSPIBus', () => {
   it('writes to a mock device with write handler', () => {
     const bus = new SimSPIBus();
     const csPin = new SimDigitalPin(10);
-    csPin.output();
+    csPin.asOutput();
 
     let writtenReg = -1;
     let writtenData: number[] = [];
@@ -381,7 +381,7 @@ describe('SimSPIBus', () => {
       },
     };
     bus.attachDevice(csPin, mockDevice);
-    bus.enable();
+    bus.begin();
 
     bus.device(csPin).writeRegister(0x20, new Uint8Array([0xDE, 0xAD]));
     expect(writtenReg).toBe(0x20);
@@ -391,7 +391,7 @@ describe('SimSPIBus', () => {
   it('reads from a mock device with readRegister handler', () => {
     const bus = new SimSPIBus();
     const csPin = new SimDigitalPin(10);
-    csPin.output();
+    csPin.asOutput();
 
     const mockDevice: ISimSPIDevice = {
       transfer() { return []; },
@@ -401,7 +401,7 @@ describe('SimSPIBus', () => {
       },
     };
     bus.attachDevice(csPin, mockDevice);
-    bus.enable();
+    bus.begin();
 
     const result = bus.device(csPin).readRegister(0x00, 2);
     expect(result[0]).toBe(0x12);
@@ -411,7 +411,7 @@ describe('SimSPIBus', () => {
   it('logs operations', () => {
     const bus = new SimSPIBus();
     const csPin = new SimDigitalPin(10);
-    csPin.output();
+    csPin.asOutput();
 
     const mockDevice: ISimSPIDevice = {
       transfer(mosiData: number[]): number[] {
@@ -419,7 +419,7 @@ describe('SimSPIBus', () => {
       },
     };
     bus.attachDevice(csPin, mockDevice);
-    bus.enable();
+    bus.begin();
 
     bus.device(csPin).transfer(new Uint8Array([0x01]));
     const log = bus.getLog();
@@ -455,18 +455,18 @@ describe('createSimBoard', () => {
 
     // Digital pin
     const d13 = board.digital(13);
-    d13.output();
+    d13.asOutput();
     d13.high();
     expect(d13.getBitValue()).toBe(1);
 
     // Analog pin
     const a0 = board.analog(0);
     a0.injectValue(42);
-    expect(a0.read()).toBe(42);
+    expect(a0.readAnalog()).toBe(42);
 
     // PWM pin
     const pwm9 = board.pwm(9);
-    pwm9.output();
+    pwm9.asOutput();
     pwm9.write(128);
     expect(pwm9.getPwmPercent()).toBeCloseTo(50, 0);
 
@@ -479,7 +479,7 @@ describe('createSimBoard', () => {
 
     // Serial
     const serial = board.serial(0);
-    serial.enable(9600);
+    serial.begin(9600);
     serial.write('test');
     expect(serial.peekTxAsString()).toBe('test');
 
@@ -503,7 +503,7 @@ describe('createSimBoard', () => {
   it('resets all peripherals', () => {
     const board = createSimBoard({ boardType: 'arduino-uno' });
     const d13 = board.digital(13);
-    d13.output();
+    d13.asOutput();
     d13.high();
 
     const a0 = board.analog(0);
@@ -512,7 +512,7 @@ describe('createSimBoard', () => {
     board.reset();
 
     expect(d13.getBitValue()).toBe(0);
-    expect(a0.read()).toBe(0);
+    expect(a0.readAnalog()).toBe(0);
   });
 
   it('respects custom pin counts', () => {

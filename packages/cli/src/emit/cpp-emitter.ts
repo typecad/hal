@@ -6,7 +6,6 @@ import { Diagnostic, EmitMode, GeneratedOutputs, PlatformContext, SourceMapEntry
 import { ensureDir, writeText } from "../utils/fs";
 import { resolveImport } from "../libdef/registry";
 import { LibraryDefinition } from "../types";
-import { getArduinoLibraryClassNames, isArduinoLibraryImport } from "../arduino-libs";
 import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
@@ -16,13 +15,14 @@ import type { BoardConstants } from "../ir/board-resolver";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import { resolveStrategy } from "../platform/registry";
 import { ArduinoStrategy } from "../platform/arduino-strategy";
+import { buildArduinoClassNameMap } from "./arduino-class-map";
+import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
+import { normalizeRawExpression, transformTypeName } from "./expression-renderer";
+import { StatementRenderer } from "./statement-renderer";
 
 // ---------------------------------------------------------------------------
 // Pre-compiled regex patterns for performance
 // ---------------------------------------------------------------------------
-const STRICT_EQUALITY_PATTERN = /===/g;
-const STRICT_INEQUALITY_PATTERN = /!==/g;
-const ENUM_ACCESS_PATTERN = /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Z]{2,}[A-Z0-9_]*)\b/g;
 const PATH_BACKSLASH_PATTERN = /\\/g;
 const DOUBLE_QUOTE_PATTERN = /"/g;
 const DOUBLE_QUOTE_ESCAPE_PATTERN = /"/g;
@@ -154,10 +154,6 @@ interface EmitterOptions {
 
 
 
-// Module-level cache for Arduino library class name mappings
-// Maps module specifier -> (simple class name -> fully qualified name)
-const _arduinoClassNameCache = new Map<string, Map<string, string>>();
-
 // Module-level state for snprintf prelude accumulation during statement rendering.
 // Set by appendRenderedStatement() before calling renderStatement() for the generic
 // fallback path, and consumed by renderExpression() when encountering string_concat
@@ -166,110 +162,6 @@ let _pendingSnprintfLines: string[] = [];
 let _currentScopeState: EmissionScopeState | undefined;
 let _currentPointerVarTypes: Map<string, string> | undefined;
 let _currentKnownFunctionReturnTypes: Map<string, string> | undefined;
-
-/**
- * Build a mapping from simple class names to fully qualified names (with namespaces)
- * for all Arduino library imports in the program.
- */
-function buildArduinoClassNameMap(imports: { moduleSpecifier: string; namedImports: string[] }[]): Map<string, string> {
-  const result = new Map<string, string>();
-  
-  for (const imp of imports) {
-    // Only process Arduino library imports
-    if (!isArduinoLibraryImport(imp.moduleSpecifier)) {
-      continue;
-    }
-    
-    // Check cache first
-    let classMap = _arduinoClassNameCache.get(imp.moduleSpecifier);
-    if (!classMap) {
-      classMap = getArduinoLibraryClassNames(imp.moduleSpecifier);
-      _arduinoClassNameCache.set(imp.moduleSpecifier, classMap);
-    }
-    
-    // Merge into result
-    for (const [simpleName, fullName] of classMap) {
-      result.set(simpleName, fullName);
-    }
-  }
-  
-  return result;
-}
-
-/**
- * Transform class names in expressions to their fully qualified names.
- * E.g., "new SHT3x()" -> "new Microfire::SHT3x()"
- */
-function transformClassNames(value: string, classNameMap: Map<string, string>): string {
-  if (classNameMap.size === 0) {
-    return value;
-  }
-  
-  // Transform "new ClassName(" patterns
-  let result = value;
-  for (const [simpleName, fullName] of classNameMap) {
-    // Only transform if the full name is different (has namespace)
-    if (fullName !== simpleName && fullName.includes("::")) {
-      const pattern = new RegExp(`\\bnew\\s+${simpleName}\\b`, "g");
-      result = result.replace(pattern, `new ${fullName}`);
-    }
-  }
-  
-  return result;
-}
-
-/**
- * Transform type names to their fully qualified names (with namespaces).
- * E.g., "SHT3x*" -> "Microfire::SHT3x*", "SHT3x" -> "Microfire::SHT3x"
- */
-function transformTypeName(cppType: string, classNameMap: Map<string, string> | undefined): string {
-  if (!classNameMap || classNameMap.size === 0) {
-    return cppType;
-  }
-  
-  let result = cppType;
-  for (const [simpleName, fullName] of classNameMap) {
-    // Only transform if the full name is different (has namespace)
-    if (fullName !== simpleName && fullName.includes("::")) {
-      // Match the simple name as a word boundary (not already qualified with ::)
-      // Handle patterns like "SHT3x", "SHT3x*", "SHT3x&", etc.
-      // Use negative lookbehind to avoid matching already-qualified names
-      const pattern = new RegExp(`(?<![a-zA-Z0-9_:])${simpleName}\\b`, "g");
-      result = result.replace(pattern, fullName);
-    }
-  }
-  
-  return result;
-}
-
-function normalizeRawExpression(value: string, strategy: PlatformStrategy, classNameMap?: Map<string, string>): string {
-  // Reset regex lastIndex for global patterns (needed for reused patterns)
-  STRICT_EQUALITY_PATTERN.lastIndex = 0;
-  STRICT_INEQUALITY_PATTERN.lastIndex = 0;
-  ENUM_ACCESS_PATTERN.lastIndex = 0;
-
-  let normalized = value
-    .replace(STRICT_EQUALITY_PATTERN, "==")
-    .replace(STRICT_INEQUALITY_PATTERN, "!=");
-
-  // Convert TypeScript-style enum member access (EnumType.MEMBER_NAME) to C++ scoped
-  // enum access (EnumType::MEMBER_NAME).  The pattern matches an identifier followed by
-  // a dot followed by an ALL_CAPS name (2+ uppercase letters at the start), which is the
-  // naming convention for enum class members.  Pin aliases like D0, D1 (single uppercase
-  // letter + digits) are intentionally excluded because they don't start with 2+ uppercase
-  // letters.
-  normalized = normalized.replace(ENUM_ACCESS_PATTERN, "$1::$2");
-
-  // Apply platform-specific expression normalisation
-  normalized = strategy.normalizeRawExpression(normalized);
-
-  // Transform Arduino library class names to their fully qualified names
-  if (classNameMap) {
-    normalized = transformClassNames(normalized, classNameMap);
-  }
-
-  return normalized;
-}
 
 /**
  * Render peripheral stub property access to appropriate C++ values.
@@ -428,7 +320,12 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       // build snprintf buffer instead of String() concatenation
       if (strategy.useSnprintfForStrings() && _currentScopeState) {
         const snprintfRender = buildSnprintfRenderResult(
-          expr, strategy, _currentScopeState, _currentPointerVarTypes, _currentKnownFunctionReturnTypes,
+          expr,
+          strategy,
+          _currentScopeState,
+          (expression) => renderExpression(expression, undefined, strategy),
+          _currentPointerVarTypes,
+          _currentKnownFunctionReturnTypes,
         );
         if (snprintfRender) {
           const bufferName = `__typecode_str_${++_currentScopeState.nextSnprintfTempId}`;
@@ -461,7 +358,14 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       // When snprintf mode is active and we're in a statement rendering context,
       // build snprintf buffer for single interpolation
       if (strategy.useSnprintfForStrings() && _currentScopeState) {
-        const arg = inferSnprintfArg(expr.expression, strategy, _currentScopeState, _currentPointerVarTypes, _currentKnownFunctionReturnTypes);
+        const arg = inferSnprintfArg(
+          expr.expression,
+          strategy,
+          _currentScopeState,
+          (expression) => renderExpression(expression, undefined, strategy),
+          _currentPointerVarTypes,
+          _currentKnownFunctionReturnTypes,
+        );
         if (arg) {
           const bufferName = `__typecode_str_${++_currentScopeState.nextSnprintfTempId}`;
           const estimatedLength = Math.max(arg.estimatedLength + 1, 16);
@@ -552,7 +456,20 @@ function normalizeCppTypeForTarget(typeName: string, strategy: PlatformStrategy)
   return strategy.normalizeCppType(typeName);
 }
 
-function renderTypedName(cppType: string, name: string, strategy: PlatformStrategy, isConst = false): string {
+function isPrimitiveCppType(cppType: string): boolean {
+  const t = cppType.trim();
+  const primitives = new Set([
+    'int', 'float', 'double', 'bool', 'char', 'long', 'void',
+    'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
+    'int8_t', 'int16_t', 'int32_t', 'int64_t',
+    'size_t', 'byte', 'word',
+    'unsigned int', 'unsigned long', 'unsigned char',
+    'signed int', 'signed long', 'signed char',
+  ]);
+  return primitives.has(t);
+}
+
+function renderTypedName(cppType: string, name: string, strategy: PlatformStrategy, isConst = false, isRef = false): string {
   const normalizedType = normalizeCppTypeForTarget(cppType, strategy);
   const fnPtrMatch = normalizedType.match(/^(.+?)\s*\(\*\)\((.*)\)$/);
   if (fnPtrMatch) {
@@ -562,310 +479,12 @@ function renderTypedName(cppType: string, name: string, strategy: PlatformStrate
     return `${constPrefix}${returnType} (*${name})(${params})`;
   }
   const constPrefix = isConst ? "const " : "";
-  return `${constPrefix}${normalizedType} ${name}`;
+  const refMark = isRef ? "& " : " ";
+  return `${constPrefix}${normalizedType}${refMark}${name}`;
 }
 
 function mapReturnType(functionName: string, returnType: string, strategy: PlatformStrategy): string {
   return strategy.mapReturnType(functionName, returnType);
-}
-
-interface KnownVariableInfo {
-  cppType: string;
-  floatPrecision?: number;
-}
-
-interface SnprintfRenderResult {
-  formatString: string;
-  args: string[];
-  estimatedLength: number;
-  preludeLines: string[];
-}
-
-interface EmissionScopeState {
-  readonly knownVariableTypes: Map<string, KnownVariableInfo>;
-  readonly snprintfBuffers: Set<string>;
-  nextSnprintfTempId: number;
-}
-
-function createEmissionScopeState(initialTypes?: Map<string, KnownVariableInfo>): EmissionScopeState {
-  return {
-    knownVariableTypes: initialTypes ? new Map(initialTypes) : new Map(),
-    snprintfBuffers: new Set<string>(),
-    nextSnprintfTempId: 0,
-  };
-}
-
-function cloneEmissionScopeState(state: EmissionScopeState): EmissionScopeState {
-  return {
-    knownVariableTypes: new Map(state.knownVariableTypes),
-    snprintfBuffers: new Set(state.snprintfBuffers),
-    nextSnprintfTempId: state.nextSnprintfTempId,
-  };
-}
-
-function createChildEmissionScope(
-  baseScope: EmissionScopeState,
-  parameters?: readonly { name: string; cppType: string }[],
-): EmissionScopeState {
-  const childScope = cloneEmissionScopeState(baseScope);
-  for (const parameter of parameters ?? []) {
-    childScope.knownVariableTypes.set(parameter.name, { cppType: parameter.cppType });
-  }
-  return childScope;
-}
-
-function getFloatPrecisionFromNumber(value: number): number | undefined {
-  if (!Number.isFinite(value) || Number.isInteger(value)) return undefined;
-  const text = `${value}`;
-  const decimalIndex = text.indexOf(".");
-  if (decimalIndex === -1) return undefined;
-  return text.length - decimalIndex - 1;
-}
-
-function recordVariableType(statement: VariableDeclarationIR, scopeState: EmissionScopeState): void {
-  scopeState.knownVariableTypes.set(statement.name, {
-    cppType: statement.cppType,
-    floatPrecision: statement.initializer?.kind === "number"
-      ? getFloatPrecisionFromNumber(statement.initializer.value)
-      : undefined,
-  });
-}
-
-function escapeCppStringLiteral(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/\t/g, "\\t");
-}
-
-function isStringLikeCppType(typeName: string): boolean {
-  return typeName === "std::string" || typeName === "const char*" || typeName === "char*";
-}
-
-function createArduinoFloatSnprintfArg(
-  renderedExpr: string,
-  precision: number | undefined,
-  scopeState: EmissionScopeState,
-): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } {
-  const effectivePrecision = precision ?? 6;
-  const bufferName = `__typecode_float_${++scopeState.nextSnprintfTempId}`;
-  const estimatedLength = Math.max(16, effectivePrecision + 8);
-  return {
-    format: "%s",
-    arg: bufferName,
-    estimatedLength,
-    preludeLines: [
-      `char ${bufferName}[${estimatedLength}];`,
-      `dtostrf(${renderedExpr}, 0, ${effectivePrecision}, ${bufferName});`,
-    ],
-  };
-}
-
-function inferSnprintfArg(
-  expr: ExpressionIR,
-  strategy: PlatformStrategy,
-  scopeState: EmissionScopeState,
-  pointerVarTypes?: Map<string, string>,
-  knownFunctionReturnTypes?: Map<string, string>,
-): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } | undefined {
-  switch (expr.kind) {
-    case "number": {
-      if (Number.isInteger(expr.value)) {
-        return { format: "%d", arg: `${expr.value}`, estimatedLength: 12, preludeLines: [] };
-      }
-      const precision = getFloatPrecisionFromNumber(expr.value);
-      if (strategy.id === "arduino") {
-        return createArduinoFloatSnprintfArg(`${expr.value}`, precision, scopeState);
-      }
-      return {
-        format: precision !== undefined ? `%.${precision}f` : "%g",
-        arg: `${expr.value}`,
-        estimatedLength: 8,
-        preludeLines: [],
-      };
-    }
-    case "boolean":
-      return {
-        format: "%s",
-        arg: expr.value ? '"true"' : '"false"',
-        estimatedLength: 5,
-        preludeLines: [],
-      };
-    case "string":
-      return {
-        format: "%s",
-        arg: `"${escapeCppStringLiteral(expr.value)}"`,
-        estimatedLength: Math.max(expr.value.length, 1),
-        preludeLines: [],
-      };
-    case "identifier": {
-      const knownVar = scopeState.knownVariableTypes.get(expr.value);
-      const cppType = knownVar?.cppType;
-      if (cppType && isStringLikeCppType(cppType)) {
-        return { format: "%s", arg: expr.value, estimatedLength: 24, preludeLines: [] };
-      }
-      if (cppType === "bool") {
-        return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
-      }
-      if (cppType === "float" || cppType === "double") {
-        if (strategy.id === "arduino") {
-          return createArduinoFloatSnprintfArg(expr.value, knownVar?.floatPrecision, scopeState);
-        }
-        return {
-          format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%g",
-          arg: expr.value,
-          estimatedLength: 8,
-          preludeLines: [],
-        };
-      }
-      if (cppType === "int" || cppType === "long" || cppType === "short" || cppType === "auto") {
-        return { format: "%d", arg: expr.value, estimatedLength: 12, preludeLines: [] };
-      }
-      if (pointerVarTypes?.has(expr.value)) {
-        const pointerType = pointerVarTypes.get(expr.value)!;
-        if (isStringLikeCppType(pointerType)) {
-          return { format: "%s", arg: expr.value, estimatedLength: 24, preludeLines: [] };
-        }
-      }
-      return undefined;
-    }
-    case "raw": {
-      const callMatch = expr.value.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
-      if (callMatch && knownFunctionReturnTypes) {
-        const returnType = knownFunctionReturnTypes.get(callMatch[1]);
-        if (returnType && isStringLikeCppType(returnType)) {
-          return { format: "%s", arg: renderExpression(expr, undefined, strategy), estimatedLength: 24, preludeLines: [] };
-        }
-        if (returnType === "bool") {
-          const rendered = renderExpression(expr, undefined, strategy);
-          return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
-        }
-        if (returnType === "float" || returnType === "double") {
-          if (strategy.id === "arduino") {
-            return createArduinoFloatSnprintfArg(renderExpression(expr, undefined, strategy), undefined, scopeState);
-          }
-          return { format: "%g", arg: renderExpression(expr, undefined, strategy), estimatedLength: 8, preludeLines: [] };
-        }
-        if (returnType === "int" || returnType === "long" || returnType === "short") {
-          return { format: "%d", arg: renderExpression(expr, undefined, strategy), estimatedLength: 12, preludeLines: [] };
-        }
-      }
-      return undefined;
-    }
-    case "property-access":
-    case "binary":
-    case "unary":
-    case "ternary":
-    case "typecode-call":
-      return { format: "%d", arg: renderExpression(expr, undefined, strategy), estimatedLength: 12, preludeLines: [] };
-    default:
-      return undefined;
-  }
-}
-
-function buildSnprintfRenderResult(
-  expr: ExpressionIR,
-  strategy: PlatformStrategy,
-  scopeState: EmissionScopeState,
-  pointerVarTypes?: Map<string, string>,
-  knownFunctionReturnTypes?: Map<string, string>,
-): SnprintfRenderResult | undefined {
-  if (expr.kind !== "string_concat") {
-    return undefined;
-  }
-
-  let formatString = "";
-  const args: string[] = [];
-  let estimatedLength = 1;
-  const preludeLines: string[] = [];
-
-  for (const part of expr.parts) {
-    if (part.kind === "string") {
-      formatString += escapeCppStringLiteral(part.value);
-      estimatedLength += part.value.length;
-      continue;
-    }
-
-    if (part.kind !== "template_string") {
-      return undefined;
-    }
-
-    const arg = inferSnprintfArg(part.expression, strategy, scopeState, pointerVarTypes, knownFunctionReturnTypes);
-    if (!arg) {
-      return undefined;
-    }
-
-    formatString += arg.format;
-    args.push(arg.arg);
-    estimatedLength += arg.estimatedLength;
-    preludeLines.push(...arg.preludeLines);
-  }
-
-  return { formatString, args, estimatedLength: Math.max(estimatedLength, 16), preludeLines };
-}
-
-function shouldUseSnprintfForArduinoString(
-  statement: VariableDeclarationIR | AssignmentIR,
-  strategy: PlatformStrategy,
-): boolean {
-  if (!strategy.useSnprintfForStrings()) {
-    return false;
-  }
-
-  const value = statement.kind === "var_decl" ? statement.initializer : statement.value;
-  return value?.kind === "string_concat";
-}
-
-function statementNeedsSnprintf(statement: StatementIR, strategy: PlatformStrategy): boolean {
-  if (!strategy.useSnprintfForStrings()) {
-    return false;
-  }
-
-  // var_decl with string_concat initializer
-  if (statement.kind === "var_decl" && statement.initializer?.kind === "string_concat") {
-    return true;
-  }
-
-  // assign with string_concat value
-  if (statement.kind === "assign" && statement.value?.kind === "string_concat") {
-    return true;
-  }
-
-  // Any call or typecode-call with string_concat arguments
-  if ((statement.kind === "call" || statement.kind === "typecode-call") && statement.args.length > 0) {
-    if (statement.args.some(arg => arg.kind === "string_concat")) {
-      return true;
-    }
-  }
-
-  // return with string_concat value
-  if (statement.kind === "return" && statement.value?.kind === "string_concat") {
-    return true;
-  }
-
-  switch (statement.kind) {
-    case "while":
-    case "for":
-    case "for_of":
-    case "for_in":
-    case "do_while":
-    case "block":
-    case "labeled":
-      return statement.body.some((nested) => statementNeedsSnprintf(nested, strategy));
-    case "if":
-      return statement.thenBranch.some((nested) => statementNeedsSnprintf(nested, strategy)) ||
-        (statement.elseBranch?.some((nested) => statementNeedsSnprintf(nested, strategy)) ?? false);
-    case "switch":
-      return statement.cases.some((caseClause) => caseClause.body.some((nested) => statementNeedsSnprintf(nested, strategy)));
-    case "try":
-      return statement.tryBlock.some((nested) => statementNeedsSnprintf(nested, strategy)) ||
-        (statement.catchBlock?.some((nested) => statementNeedsSnprintf(nested, strategy)) ?? false) ||
-        (statement.finallyBlock?.some((nested) => statementNeedsSnprintf(nested, strategy)) ?? false);
-    default:
-      return false;
-  }
 }
 
 function collectDeclaredTypes(program: ProgramIR): string[] {
@@ -1514,7 +1133,11 @@ function renderParameters(
 
   return parameters
     .map((parameter) => {
-      let result = renderTypedName(parameter.cppType, parameter.name, strategy);
+      const paramOwnershipKind = (parameter as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
+      const isConst = paramOwnershipKind === 'ref';
+      const isRef = (paramOwnershipKind === 'ref' || paramOwnershipKind === 'mut_ref')
+        && !isPrimitiveCppType(parameter.cppType);
+      let result = renderTypedName(parameter.cppType, parameter.name, strategy, isConst, isRef);
       if (parameter.defaultValue) {
         result += ` = ${renderExpression(parameter.defaultValue, undefined, strategy)}`;
       }
@@ -1560,6 +1183,7 @@ function transformConsoleCall(
         firstArg,
         strategy,
         scopeState,
+        (expression) => renderExpression(expression, undefined, strategy),
         pointerVarTypes,
         knownFunctionReturnTypes,
       );
@@ -1758,7 +1382,12 @@ function renderStatement(
   const volatilePrefix = statement.isVolatile ? "volatile " : "";
   // Transform type name for Arduino library classes (add namespace prefix)
   const transformedType = transformTypeName(statement.cppType, _arduinoClassNameMap);
-  const declaration = `${volatilePrefix}${renderTypedName(transformedType, statement.name, strategy, statement.storage === "const")}`;
+  const ownershipKind = (statement as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
+  const isConstDecl = statement.storage === "const" || ownershipKind === 'ref';
+  const isRefDecl = (ownershipKind === 'ref' || ownershipKind === 'mut_ref')
+    && !isPrimitiveCppType(statement.cppType)
+    && statement.initializer?.kind === 'identifier';
+  const declaration = `${volatilePrefix}${renderTypedName(transformedType, statement.name, strategy, isConstDecl, isRefDecl)}`;
   if (statement.initializer) {
     // Handle array initializers
     if (statement.initializer.kind === "array") {
@@ -2141,33 +1770,73 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   ): void {
     emitCommentLines(statement.leadingComments, indent, (line) => appendSourceLine(line));
 
+    const emitSnprintfLines = (
+      bufferName: string,
+      snprintfRender: {
+        estimatedLength: number;
+        preludeLines: string[];
+        formatString: string;
+        args: string[];
+      },
+      options?: { declareBuffer?: boolean; finalLine?: string },
+    ): void => {
+      for (const preludeLine of snprintfRender.preludeLines) {
+        appendSourceLine(`${indent}${preludeLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      if (options?.declareBuffer ?? false) {
+        appendSourceLine(`${indent}char ${bufferName}[${snprintfRender.estimatedLength}];`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      appendSourceLine(
+        `${indent}snprintf(${bufferName}, sizeof(${bufferName}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
+        {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        },
+      );
+      if (options?.finalLine) {
+        appendSourceLine(`${indent}${options.finalLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+    };
+
+    const renderWithPrelude = (
+      statementToRender: StatementIR,
+      rendererPointerVarTypes?: Map<string, string>,
+      calleeTransformer?: (callee: string) => string,
+    ): { prelude: string[]; statement: string } => {
+      const statementRenderer = new StatementRenderer({
+        strategy,
+        boardConstants: _emitBoardConstants,
+        arduinoClassNameMap: _arduinoClassNameMap,
+        enumNames: _emitEnumNames,
+        largeEnumNames: _largeEnumNames,
+        knownFunctionReturnTypes,
+        pointerVarTypes: rendererPointerVarTypes,
+        pointerStructFields,
+      });
+      return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
+    };
+
     if (statement.kind === "var_decl" && shouldUseSnprintfForArduinoString(statement, strategy) && statement.initializer) {
       const snprintfRender = buildSnprintfRenderResult(
         statement.initializer,
         strategy,
         scopeState,
+        (expression) => renderExpression(expression, undefined, strategy),
         pointerVarTypes,
         knownFunctionReturnTypes,
       );
 
       if (snprintfRender) {
-        appendSourceLine(`${indent}char ${statement.name}[${snprintfRender.estimatedLength}];`, {
-          tsSpan: statement.sourceSpan,
-          nodeKind: statement.kind,
-        });
-        for (const preludeLine of snprintfRender.preludeLines) {
-          appendSourceLine(`${indent}${preludeLine}`, {
-            tsSpan: statement.sourceSpan,
-            nodeKind: statement.kind,
-          });
-        }
-        appendSourceLine(
-          `${indent}snprintf(${statement.name}, sizeof(${statement.name}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
-          {
-            tsSpan: statement.sourceSpan,
-            nodeKind: statement.kind,
-          },
-        );
+        emitSnprintfLines(statement.name, snprintfRender, { declareBuffer: true });
         recordVariableType(statement, scopeState);
         scopeState.snprintfBuffers.add(statement.name);
         emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -2186,24 +1855,13 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         statement.value,
         strategy,
         scopeState,
+        (expression) => renderExpression(expression, undefined, strategy),
         pointerVarTypes,
         knownFunctionReturnTypes,
       );
 
       if (snprintfRender) {
-        for (const preludeLine of snprintfRender.preludeLines) {
-          appendSourceLine(`${indent}${preludeLine}`, {
-            tsSpan: statement.sourceSpan,
-            nodeKind: statement.kind,
-          });
-        }
-        appendSourceLine(
-          `${indent}snprintf(${statement.target}, sizeof(${statement.target}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
-          {
-            tsSpan: statement.sourceSpan,
-            nodeKind: statement.kind,
-          },
-        );
+        emitSnprintfLines(statement.target, snprintfRender);
         emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
         return;
       }
@@ -2217,41 +1875,18 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           firstArg,
           strategy,
           scopeState,
+          (expression) => renderExpression(expression, undefined, strategy),
           pointerVarTypes,
           knownFunctionReturnTypes,
         );
 
         if (snprintfRender) {
           const bufferName = `__typecode_println_${++scopeState.nextSnprintfTempId}`;
-          // Emit prelude code (e.g., dtostrf for floats)
-          for (const preludeLine of snprintfRender.preludeLines) {
-            appendSourceLine(`${indent}${preludeLine}`, {
-              tsSpan: statement.sourceSpan,
-              nodeKind: statement.kind,
-            });
-          }
-          // Emit buffer declaration
-          appendSourceLine(
-            `${indent}char ${bufferName}[${snprintfRender.estimatedLength}];`,
-            {
-              tsSpan: statement.sourceSpan,
-              nodeKind: statement.kind,
-            },
-          );
-          // Emit snprintf call
-          appendSourceLine(
-            `${indent}snprintf(${bufferName}, sizeof(${bufferName}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
-            {
-              tsSpan: statement.sourceSpan,
-              nodeKind: statement.kind,
-            },
-          );
-          // Emit Serial.println call
           const method = getConsoleMethod(statement.callee);
           const serialCall = strategy.transformConsoleCall(method, bufferName, false);
-          appendSourceLine(`${indent}${serialCall}`, {
-            tsSpan: statement.sourceSpan,
-            nodeKind: statement.kind,
+          emitSnprintfLines(bufferName, snprintfRender, {
+            declareBuffer: true,
+            finalLine: serialCall,
           });
           emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
           return;
@@ -2272,49 +1907,23 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
             firstArg,
             strategy,
             scopeState,
+            (expression) => renderExpression(expression, undefined, strategy),
             pointerVarTypes,
             knownFunctionReturnTypes,
           );
 
           if (snprintfRender) {
             const bufferName = `__typecode_println_${++scopeState.nextSnprintfTempId}`;
-            // Emit prelude code (e.g., dtostrf for floats)
-            for (const preludeLine of snprintfRender.preludeLines) {
-              appendSourceLine(`${indent}${preludeLine}`, {
-                tsSpan: statement.sourceSpan,
-                nodeKind: statement.kind,
-              });
-            }
-            // Emit buffer declaration
-            appendSourceLine(
-              `${indent}char ${bufferName}[${snprintfRender.estimatedLength}];`,
-              {
-                tsSpan: statement.sourceSpan,
-                nodeKind: statement.kind,
-              },
-            );
-            // Emit snprintf call
-            appendSourceLine(
-              `${indent}snprintf(${bufferName}, sizeof(${bufferName}), "${snprintfRender.formatString}"${snprintfRender.args.length > 0 ? `, ${snprintfRender.args.join(", ")}` : ""});`,
-              {
-                tsSpan: statement.sourceSpan,
-                nodeKind: statement.kind,
-              },
-            );
-            // Emit Serial.println/print call
             const serialInstance = statement.receiver.startsWith("UART")
               ? statement.receiver.slice(4) === "0" ? "Serial" : `Serial${statement.receiver.slice(4)}`
               : statement.receiver.startsWith("Serial")
                 ? statement.receiver
                 : "Serial";
             const serialMethod = statement.method;
-            appendSourceLine(
-              `${indent}${serialInstance}.${serialMethod}(${bufferName});`,
-              {
-                tsSpan: statement.sourceSpan,
-                nodeKind: statement.kind,
-              },
-            );
+            emitSnprintfLines(bufferName, snprintfRender, {
+              declareBuffer: true,
+              finalLine: `${serialInstance}.${serialMethod}(${bufferName});`,
+            });
             emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
             return;
           }
@@ -2323,7 +1932,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "while") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, strategy, pointerVarTypes, undefined, knownFunctionReturnTypes)}`, {
+      const rendered = renderWithPrelude(statement, pointerVarTypes);
+      for (const preludeLine of rendered.prelude) {
+        appendSourceLine(`${indent}${preludeLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      appendSourceLine(`${indent}${rendered.statement}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -2338,7 +1954,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "if") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, strategy, undefined, undefined, knownFunctionReturnTypes)}`, {
+      const rendered = renderWithPrelude(statement);
+      for (const preludeLine of rendered.prelude) {
+        appendSourceLine(`${indent}${preludeLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      appendSourceLine(`${indent}${rendered.statement}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -2362,7 +1985,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "for") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, strategy, undefined, undefined, knownFunctionReturnTypes)}`, {
+      const rendered = renderWithPrelude(statement);
+      for (const preludeLine of rendered.prelude) {
+        appendSourceLine(`${indent}${preludeLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      appendSourceLine(`${indent}${rendered.statement}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -2377,7 +2007,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "for_of") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, strategy, undefined, undefined, knownFunctionReturnTypes)}`, {
+      const rendered = renderWithPrelude(statement);
+      for (const preludeLine of rendered.prelude) {
+        appendSourceLine(`${indent}${preludeLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      appendSourceLine(`${indent}${rendered.statement}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -2392,7 +2029,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "for_in") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, strategy, undefined, undefined, knownFunctionReturnTypes)}`, {
+      const rendered = renderWithPrelude(statement);
+      for (const preludeLine of rendered.prelude) {
+        appendSourceLine(`${indent}${preludeLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      appendSourceLine(`${indent}${rendered.statement}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -2422,7 +2066,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "switch") {
-      appendSourceLine(`${indent}switch (${renderExpression(statement.expression, undefined, strategy)})`, {
+      const rendered = renderWithPrelude(statement);
+      for (const preludeLine of rendered.prelude) {
+        appendSourceLine(`${indent}${preludeLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      appendSourceLine(`${indent}${rendered.statement}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -2494,7 +2145,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
 
     if (statement.kind === "throw") {
-      appendSourceLine(`${indent}${renderStatement(statement, false, strategy, undefined, undefined, knownFunctionReturnTypes)}`, {
+      const rendered = renderWithPrelude(statement);
+      for (const preludeLine of rendered.prelude) {
+        appendSourceLine(`${indent}${preludeLine}`, {
+          tsSpan: statement.sourceSpan,
+          nodeKind: statement.kind,
+        });
+      }
+      appendSourceLine(`${indent}${rendered.statement}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
@@ -2531,27 +2189,18 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       return;
     }
 
-    // Set module-level state for snprintf prelude accumulation during renderStatement
-    _pendingSnprintfLines = [];
-    _currentScopeState = scopeState;
-    _currentPointerVarTypes = pointerVarTypes;
-    _currentKnownFunctionReturnTypes = knownFunctionReturnTypes;
+    const { prelude, statement: rendered } = renderWithPrelude(
+      statement,
+      pointerVarTypes,
+      fixPointerFieldAccess,
+    );
 
-    const rendered = renderStatement(statement, false, strategy, pointerVarTypes, fixPointerFieldAccess, knownFunctionReturnTypes);
-
-    // Emit any accumulated snprintf prelude lines before the statement
-    for (const preludeLine of _pendingSnprintfLines) {
+    for (const preludeLine of prelude) {
       appendSourceLine(`${indent}${preludeLine}`, {
         tsSpan: statement.sourceSpan,
         nodeKind: statement.kind,
       });
     }
-
-    // Clear module-level state
-    _pendingSnprintfLines = [];
-    _currentScopeState = undefined;
-    _currentPointerVarTypes = undefined;
-    _currentKnownFunctionReturnTypes = undefined;
 
     appendSourceLine(`${indent}${rendered}`, {
       tsSpan: statement.sourceSpan,
@@ -2774,7 +2423,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   
   function collectCallbacks(statements: StatementIR[]): void {
     for (const stmt of statements) {
-      if (stmt.kind === "call") {
+      if (stmt.kind === "call" || stmt.kind === "typecode-call") {
         for (const arg of stmt.args) {
           if (arg.kind === "callback") {
             const callbackName = `isr_${callbackCounter++}`;

@@ -3,652 +3,22 @@ import fs from "node:fs";
 import ts from "typescript";
 import { parseSource } from "../ast/parse";
 import { Diagnostic, SourceSpan } from "../types";
-import { withLineColumn } from "../utils/strings";
 import { CppType, EnumIR, ClassIR, ClassFieldIR, ClassMethodIR, ExpressionIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ParameterIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "./model";
+import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
+import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnlyMethodName } from "./compile-time-only";
+import { buildFunctionReturnTypeMap, collectReturns, CppTypeHint, FunctionTypeSignature, inferExprCppType, resolveAliasedTypeNode, resolveDeclarationType, resolveFunctionReturnType, resolveFunctionTypeSignature, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName, TypecodeReceiverKind } from "./typecode-symbols";
 import { resolveBoardConstants, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
-import { validatePeripherals } from "./peripheral-validation";
-import { validateUnsafePins } from "./pin-safety";
-import { validatePeripheralPinConflicts } from "./peripheral-pin-conflict";
-import { validatePinAliasConflicts } from "./pin-alias-conflict";
-import { validatePWMTimerSharing } from "./pwm-timer-sharing";
-import { validateTimer0PWMTimingConflict } from "./timer0-pwm-timing-conflict";
-import { validatePulldownSupport } from "./pulldown-validation";
-import { analyzeInterruptSafety } from "./interrupt-analysis";
-import { validateADCRange } from "./adc-range-validation";
-import { validateUnitSuspicion } from "./unit-suspicion-validation";
-import { validatePinModeConfig } from "./pin-mode-validation";
-import { validatePeripheralOwnership } from "./peripheral-ownership";
+import { getBitsRange, getRegisterAddress } from "./register-decorators";
+import { runProgramValidations } from "./validation-orchestrator";
 
 function normalizeLegacyArduinoSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __arduino_setup__(");
 }
 
-// ---------------------------------------------------------------------------
-// @register / @bits decorator detection helpers
-// ---------------------------------------------------------------------------
-
 /** Module-level register field map, populated during buildProgramIR. */
 const registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
-
-/**
- * Extract the address argument from a `@register(address)` decorator on a class.
- * Returns `undefined` if the class has no `@register` decorator.
- */
-function getRegisterAddress(node: ts.ClassDeclaration): number | undefined {
-  const decorators = (ts as any).canHaveDecorators?.(node)
-    ? (ts as any).getDecorators?.(node)
-    : (node as any).decorators;
-  if (!decorators) return undefined;
-
-  for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
-    if (!ts.isCallExpression(dec.expression)) continue;
-    const callee = dec.expression.expression;
-    if (!ts.isIdentifier(callee) || callee.text !== "register") continue;
-    const args = dec.expression.arguments;
-    if (args.length < 1) continue;
-    const arg = args[0];
-    if (ts.isNumericLiteral(arg) || ts.isBigIntLiteral?.(arg)) {
-      return Number(arg.text);
-    }
-    // Handle negative numbers
-    if (ts.isPrefixUnaryExpression(arg) && arg.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(arg.operand)) {
-      return -Number(arg.operand.text);
-    }
-  }
-  return undefined;
-}
-
-/**
- * Extract the (hi, lo) arguments from a `@bits(hi, lo)` decorator on a property.
- * Returns `undefined` if the property has no `@bits` decorator.
- */
-function getBitsRange(node: ts.PropertyDeclaration): { hi: number; lo: number } | undefined {
-  const decorators = (ts as any).canHaveDecorators?.(node)
-    ? (ts as any).getDecorators?.(node)
-    : (node as any).decorators;
-  if (!decorators) return undefined;
-
-  for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
-    if (!ts.isCallExpression(dec.expression)) continue;
-    const callee = dec.expression.expression;
-    if (!ts.isIdentifier(callee) || callee.text !== "bits") continue;
-    const args = dec.expression.arguments;
-    if (args.length < 2) continue;
-    const hiArg = args[0];
-    const loArg = args[1];
-    if (ts.isNumericLiteral(hiArg) && ts.isNumericLiteral(loArg)) {
-      return { hi: Number(hiArg.text), lo: Number(loArg.text) };
-    }
-  }
-  return undefined;
-}
-
-function makeDiagnostic(
-  sourceText: string,
-  position: number,
-  message: string,
-  severity: Diagnostic["severity"] = "warning",
-  code?: string,
-): Diagnostic {
-  const { line, column } = withLineColumn(sourceText, position);
-  return { severity, message, line, column, code };
-}
-
-function makeSourceSpan(node: ts.Node, filePath: string, sourceText: string): SourceSpan {
-  const startOffset = node.getStart();
-  const endOffset = node.getEnd();
-  const start = withLineColumn(sourceText, startOffset);
-  const end = withLineColumn(sourceText, endOffset);
-
-  return {
-    filePath,
-    startOffset,
-    endOffset,
-    startLine: start.line,
-    startColumn: start.column,
-    endLine: end.line,
-    endColumn: end.column,
-  };
-}
-
-function extractNodeComments(node: ts.Node, sourceText: string): { leadingComments: string[]; trailingComments: string[] } {
-  const leadingRanges = ts.getLeadingCommentRanges(sourceText, node.getFullStart()) ?? [];
-  const trailingRanges = ts.getTrailingCommentRanges(sourceText, node.getEnd()) ?? [];
-
-  const normalize = (ranges: ts.CommentRange[]): string[] =>
-    ranges
-      .map((range) => sourceText.slice(range.pos, range.end).trim())
-      .filter((value) => value.length > 0);
-
-  return {
-    leadingComments: normalize(leadingRanges),
-    trailingComments: normalize(trailingRanges),
-  };
-}
-
-type CppTypeHint =
-  | "int"
-  | "float"
-  | "bool"
-  | "auto"
-  | "void"
-  | "std::string"
-  | "unsigned int"
-  | `std::vector<${string}>`
-  | `std::set<${string}>`
-  | `std::map<${string}, ${string}>`
-  | `std::function<${string}>`
-  | `${string}*`;
-
-interface FunctionTypeSignature {
-  parameterTypes: CppTypeHint[];
-  returnType: CppTypeHint;
-}
-
-function resolveAliasedTypeNode(
-  node: ts.TypeNode | undefined,
-  typeAliases?: Map<string, ts.TypeNode>,
-  visited: Set<string> = new Set(),
-): ts.TypeNode | undefined {
-  if (!node || !typeAliases) {
-    return node;
-  }
-
-  if (!ts.isTypeReferenceNode(node) || !ts.isIdentifier(node.typeName)) {
-    return node;
-  }
-
-  const aliasName = node.typeName.text;
-  if (visited.has(aliasName)) {
-    return node;
-  }
-
-  const aliasNode = typeAliases.get(aliasName);
-  if (!aliasNode) {
-    return node;
-  }
-
-  visited.add(aliasName);
-  return resolveAliasedTypeNode(aliasNode, typeAliases, visited);
-}
-
-function inferNumericCppType(literalText: string): CppTypeHint {
-  return /[.eE]/.test(literalText) ? "float" : "int";
-}
-
-function normalizeTypeHintForUse(typeHint: CppTypeHint): string {
-  if (typeHint === "auto") {
-    return "int";
-  }
-  return typeHint;
-}
-
-function functionTypeNodeToCppType(node: ts.FunctionTypeNode, typeAliases?: Map<string, ts.TypeNode>): CppTypeHint {
-  const returnType = normalizeTypeHintForUse(typeNodeToCppType(node.type, typeAliases));
-  const parameterTypes = node.parameters
-    .map((parameter) => normalizeTypeHintForUse(typeNodeToCppType(parameter.type, typeAliases)))
-    .join(", ");
-  return `std::function<${returnType}(${parameterTypes})>`;
-}
-
-function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: Map<string, ts.TypeNode>): CppTypeHint {
-  if (!node) {
-    return "auto";
-  }
-
-  const resolvedNode = resolveAliasedTypeNode(node, typeAliases) ?? node;
-
-  if (ts.isArrayTypeNode(resolvedNode)) {
-    const elementType = normalizeTypeHintForUse(typeNodeToCppType(resolvedNode.elementType, typeAliases));
-    return `std::vector<${elementType}>`;
-  }
-
-  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Array") {
-    const elementTypeNode = resolvedNode.typeArguments?.[0];
-    const elementType = normalizeTypeHintForUse(typeNodeToCppType(elementTypeNode, typeAliases));
-    return `std::vector<${elementType}>`;
-  }
-
-  if (ts.isFunctionTypeNode(resolvedNode)) {
-    return functionTypeNodeToCppType(resolvedNode, typeAliases);
-  }
-
-  if (resolvedNode.kind === ts.SyntaxKind.NumberKeyword) {
-    return "int";
-  }
-
-  if (resolvedNode.kind === ts.SyntaxKind.BooleanKeyword) {
-    return "bool";
-  }
-
-  if (resolvedNode.kind === ts.SyntaxKind.StringKeyword) {
-    return "std::string";
-  }
-
-  if (resolvedNode.kind === ts.SyntaxKind.VoidKeyword) {
-    return "void";
-  }
-
-  // Recognize C++ type names as type references (int, float, bool, string, etc.)
-  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName)) {
-    const typeName = resolvedNode.typeName.text;
-    // Known C++ types that can be used directly in type annotations
-    const cppTypes = new Set<string>([
-      "int", "float", "bool", "string", "void",
-      "double", "long", "unsigned",
-      "uint8_t", "uint16_t", "uint32_t",
-      "int8_t", "int16_t", "int32_t",
-      "size_t",
-    ]);
-    if (cppTypes.has(typeName)) {
-      if (typeName === "string") return "std::string";
-      if (typeName === "unsigned") return "unsigned int";
-      return typeName as CppTypeHint;
-    }
-    
-    // Pin interface types - these are compile-time only, emit as auto without warning
-    const pinInterfaceTypes = new Set<string>([
-      "IPin", "IDigitalPin", "IDigitalInput", "IDigitalOutput",
-      "IPWMPin", "IAnalogInput", "IAnalogOutput", "IInterruptPin",
-      "ITouchPin", "IADCPin", "IDACPin",
-      "InterruptOptions",
-      "PinMode", "InterruptMode",
-    ]);
-    if (pinInterfaceTypes.has(typeName)) {
-      return "auto";
-    }
-    
-    // Platform strategy types - compile-time only
-    const strategyTypes = new Set<string>([
-      "NativeStrategy", "ArduinoStrategy", "BoardStrategy",
-      "RuntimePolyfillIR", "PeripheralUsage",
-    ]);
-    if (strategyTypes.has(typeName)) {
-      return "auto";
-    }
-    
-    // Board definition types - compile-time only
-    if (typeName.endsWith("Board") || typeName.endsWith("Definition") || 
-        typeName.startsWith("Native") || typeName.startsWith("Arduino")) {
-      return "auto";
-    }
-    
-    // Serial type - maps to auto (handled specially in codegen)
-    if (typeName === "Serial" || typeName.endsWith("Serial")) {
-      return "auto";
-    }
-    
-    // Pin constant types (D0-D53, A0-A15, LED, TX, RX, etc.)
-    if (/^D\d+$/.test(typeName) || /^A\d+$/.test(typeName)) {
-      return "auto";
-    }
-    if (typeName === "LED" || typeName === "TX" || typeName === "RX" || 
-        typeName.startsWith("TX") || typeName.startsWith("RX")) {
-      return "auto";
-    }
-    
-    // Pin interface implementations (AVRDigitalPin*, AVRPWMPin*, etc.)
-    if (typeName.startsWith("AVR") || typeName.startsWith("ESP")) {
-      return "auto";
-    }
-    
-    // Board constant values (pin modes, interrupt modes, etc.)
-    const boardConstants = new Set<string>([
-      "INPUT", "OUTPUT", "INPUT_PULLUP", "INPUT_PULLDOWN",
-      "CHANGE", "FALLING", "RISING",
-    ]);
-    if (boardConstants.has(typeName)) {
-      return "auto";
-    }
-  }
-
-  // Handle Set<T> type - map to std::set<T>
-  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Set") {
-    const elementTypeNode = resolvedNode.typeArguments?.[0];
-    const elementType = normalizeTypeHintForUse(typeNodeToCppType(elementTypeNode, typeAliases));
-    return `std::set<${elementType}>`;
-  }
-
-  // Handle Map<K, V> type - map to std::map<K, V>
-  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Map") {
-    const keyTypeNode = resolvedNode.typeArguments?.[0];
-    const valueTypeNode = resolvedNode.typeArguments?.[1];
-    const keyType = normalizeTypeHintForUse(typeNodeToCppType(keyTypeNode, typeAliases));
-    const valueType = normalizeTypeHintForUse(typeNodeToCppType(valueTypeNode, typeAliases));
-    return `std::map<${keyType}, ${valueType}>`;
-  }
-
-  // Handle Record<K, V> type - map to std::map<K, V>
-  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Record") {
-    const keyTypeNode = resolvedNode.typeArguments?.[0];
-    const valueTypeNode = resolvedNode.typeArguments?.[1];
-    const keyType = normalizeTypeHintForUse(typeNodeToCppType(keyTypeNode, typeAliases));
-    const valueType = normalizeTypeHintForUse(typeNodeToCppType(valueTypeNode, typeAliases));
-    return `std::map<${keyType}, ${valueType}>`;
-  }
-
-  return "auto";
-}
-
-function resolveFunctionTypeSignature(
-  typeNode: ts.TypeNode | undefined,
-  typeAliases?: Map<string, ts.TypeNode>,
-): FunctionTypeSignature | undefined {
-  const resolvedNode = resolveAliasedTypeNode(typeNode, typeAliases);
-  if (!resolvedNode || !ts.isFunctionTypeNode(resolvedNode)) {
-    return undefined;
-  }
-
-  return {
-    parameterTypes: resolvedNode.parameters.map((parameter) => typeNodeToCppType(parameter.type, typeAliases)),
-    returnType: typeNodeToCppType(resolvedNode.type, typeAliases),
-  };
-}
-
-function isStructuredTypeAnnotation(
-  typeNode: ts.TypeNode | undefined,
-  typeAliases?: Map<string, ts.TypeNode>,
-): boolean {
-  const resolvedNode = resolveAliasedTypeNode(typeNode, typeAliases);
-  if (!resolvedNode) {
-    return false;
-  }
-
-  if (ts.isTypeLiteralNode(resolvedNode)) {
-    return true;
-  }
-
-  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName)) {
-    return resolvedNode.typeName.text === "Record";
-  }
-
-  return false;
-}
-
-/**
- * Check if a single type name is a known compile-time-only interface/type.
- */
-function isKnownTypeName(typeName: string): boolean {
-  // Pin interface types
-  const pinInterfaceTypes = new Set<string>([
-    "IPin", "IDigitalPin", "IDigitalInput", "IDigitalOutput",
-    "IPWMPin", "IAnalogInput", "IAnalogOutput", "IInterruptPin",
-    "ITouchPin", "IADCPin", "IDACPin",
-    "InterruptOptions",
-    "PinMode", "InterruptMode",
-  ]);
-  if (pinInterfaceTypes.has(typeName)) {
-    return true;
-  }
-
-  // Bus/peripheral interface types
-  const busInterfaceTypes = new Set<string>([
-    "II2CBus", "ISPIBus", "ISerialPort", "IUART",
-    "I2CConfig", "SPIConfig", "UARTConfig",
-    "I2CAddress", "UARTStatus", "SPITransferOptions",
-  ]);
-  if (busInterfaceTypes.has(typeName)) {
-    return true;
-  }
-
-  // Platform strategy types
-  const strategyTypes = new Set<string>([
-    "NativeStrategy", "ArduinoStrategy", "BoardStrategy",
-    "RuntimePolyfillIR", "PeripheralUsage",
-  ]);
-  if (strategyTypes.has(typeName)) {
-    return true;
-  }
-
-  // Board definition types
-  if (typeName.endsWith("Board") || typeName.endsWith("Definition") || 
-      typeName.startsWith("Native") || typeName.startsWith("Arduino")) {
-    return true;
-  }
-
-  // Serial type
-  if (typeName === "Serial" || typeName.endsWith("Serial")) {
-    return true;
-  }
-
-  // Pin constant types (D0-D53, A0-A15, LED, TX, RX, etc.)
-  if (/^D\d+$/.test(typeName) || /^A\d+$/.test(typeName)) {
-    return true;
-  }
-  if (typeName === "LED" || typeName === "TX" || typeName === "RX" || 
-      typeName.startsWith("TX") || typeName.startsWith("RX")) {
-    return true;
-  }
-
-  // Pin interface implementations (AVR*, ESP*)
-  if (typeName.startsWith("AVR") || typeName.startsWith("ESP")) {
-    return true;
-  }
-
-  // Board constant values (pin modes, interrupt modes, etc.)
-  const boardConstants = new Set<string>([
-    "INPUT", "OUTPUT", "INPUT_PULLUP", "INPUT_PULLDOWN",
-    "CHANGE", "FALLING", "RISING",
-  ]);
-  if (boardConstants.has(typeName)) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Check if a type annotation is a known compile-time-only type that should not
- * emit an "unmapped type" warning. These are typecode-specific types that are
- * resolved at compile time and don't have a direct C++ representation.
- */
-function isKnownCompileTimeType(
-  typeNode: ts.TypeNode | undefined,
-  typeAliases?: Map<string, ts.TypeNode>,
-): boolean {
-  const resolvedNode = resolveAliasedTypeNode(typeNode, typeAliases);
-  if (!resolvedNode) {
-    return false;
-  }
-
-  // Handle intersection types: IDigitalPin & IInterruptPin
-  if (ts.isIntersectionTypeNode(resolvedNode)) {
-    // All parts must be known types
-    return resolvedNode.types.every(part => isKnownCompileTimeType(part, typeAliases));
-  }
-
-  // Handle union types
-  if (ts.isUnionTypeNode(resolvedNode)) {
-    return resolvedNode.types.every(part => isKnownCompileTimeType(part, typeAliases));
-  }
-
-  // Handle parenthesized types
-  if (ts.isParenthesizedTypeNode(resolvedNode)) {
-    return isKnownCompileTimeType(resolvedNode.type, typeAliases);
-  }
-
-  // Simple type reference
-  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName)) {
-    return isKnownTypeName(resolvedNode.typeName.text);
-  }
-
-  return false;
-}
-
-function inferExprCppType(
-  expr: ts.Expression,
-  functionReturnTypes: Map<string, CppTypeHint>,
-  localVariableTypes: Map<string, CppTypeHint>,
-): CppTypeHint {
-  if (ts.isAwaitExpression(expr)) {
-    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes);
-  }
-
-  if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) {
-    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes);
-  }
-
-  if (ts.isNumericLiteral(expr)) {
-    return inferNumericCppType(expr.text);
-  }
-
-  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
-    return "std::string";
-  }
-
-  if (ts.isArrayLiteralExpression(expr)) {
-    const inferredElementTypes = expr.elements
-      .filter((item): item is ts.Expression => !ts.isSpreadElement(item))
-      .map((item) => inferExprCppType(item, functionReturnTypes, localVariableTypes))
-      .filter((item) => item !== "auto");
-
-    if (inferredElementTypes.length === 0) {
-      return "std::vector<int>";
-    }
-
-    if (inferredElementTypes.includes("float")) {
-      return "std::vector<float>";
-    }
-    if (inferredElementTypes.includes("std::string")) {
-      return "std::vector<std::string>";
-    }
-    if (inferredElementTypes.includes("bool") && !inferredElementTypes.includes("int")) {
-      return "std::vector<bool>";
-    }
-    if (inferredElementTypes.includes("int") || inferredElementTypes.includes("bool")) {
-      return "std::vector<int>";
-    }
-    return "std::vector<int>";
-  }
-
-  if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) {
-    return "bool";
-  }
-
-  if (ts.isIdentifier(expr)) {
-    return localVariableTypes.get(expr.text) ?? "auto";
-  }
-
-  if (ts.isParenthesizedExpression(expr)) {
-    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes);
-  }
-
-  if (ts.isBinaryExpression(expr)) {
-    const operator = expr.operatorToken.kind;
-    const leftType = inferExprCppType(expr.left, functionReturnTypes, localVariableTypes);
-    const rightType = inferExprCppType(expr.right, functionReturnTypes, localVariableTypes);
-
-    if (
-      operator === ts.SyntaxKind.EqualsEqualsToken ||
-      operator === ts.SyntaxKind.EqualsEqualsEqualsToken ||
-      operator === ts.SyntaxKind.ExclamationEqualsToken ||
-      operator === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
-      operator === ts.SyntaxKind.GreaterThanToken ||
-      operator === ts.SyntaxKind.GreaterThanEqualsToken ||
-      operator === ts.SyntaxKind.LessThanToken ||
-      operator === ts.SyntaxKind.LessThanEqualsToken ||
-      operator === ts.SyntaxKind.AmpersandAmpersandToken ||
-      operator === ts.SyntaxKind.BarBarToken
-    ) {
-      return "bool";
-    }
-
-    if (operator === ts.SyntaxKind.PlusToken && (leftType === "std::string" || rightType === "std::string")) {
-      return "std::string";
-    }
-
-    if (leftType === "float" || rightType === "float") {
-      return "float";
-    }
-
-    if ((leftType === "int" || leftType === "bool") && (rightType === "int" || rightType === "bool")) {
-      return "int";
-    }
-
-    return "auto";
-  }
-
-  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
-    return functionReturnTypes.get(expr.expression.text) ?? "auto";
-  }
-
-  if (ts.isNewExpression(expr)) {
-    if (ts.isIdentifier(expr.expression)) {
-      return `${expr.expression.text}*`;
-    }
-    return "auto";
-  }
-
-  return "auto";
-}
-
-function collectReturns(block: ts.Block): ts.ReturnStatement[] {
-  const returns: ts.ReturnStatement[] = [];
-  const walk = (node: ts.Node): void => {
-    if (ts.isReturnStatement(node)) {
-      returns.push(node);
-      return;
-    }
-    node.forEachChild(walk);
-  };
-
-  walk(block);
-  return returns;
-}
-
-function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, CppTypeHint> {
-  const result = new Map<string, CppTypeHint>();
-  const functions = source.statements.filter(ts.isFunctionDeclaration);
-
-  for (let pass = 0; pass < 3; pass++) {
-    for (const fn of functions) {
-      if (!fn.name || !fn.body) {
-        continue;
-      }
-
-      if (fn.type) {
-        const annotatedType = typeNodeToCppType(fn.type);
-        if (annotatedType !== "auto") {
-          result.set(fn.name.text, annotatedType);
-          continue;
-        }
-      }
-
-      const returns = collectReturns(fn.body).filter((item) => item.expression);
-      if (returns.length === 0) {
-        continue;
-      }
-
-      const inferredTypes = returns
-        .map((item) => inferExprCppType(item.expression as ts.Expression, result, new Map<string, CppTypeHint>()))
-        .filter((item) => item !== "auto");
-
-      if (inferredTypes.length === 0) {
-        continue;
-      }
-
-      if (inferredTypes.includes("float")) {
-        result.set(fn.name.text, "float");
-      } else if (inferredTypes.includes("int")) {
-        result.set(fn.name.text, "int");
-      } else if (inferredTypes.includes("bool")) {
-        result.set(fn.name.text, "bool");
-      } else if (inferredTypes.includes("std::string")) {
-        result.set(fn.name.text, "std::string");
-      } else {
-        result.set(fn.name.text, inferredTypes[0]);
-      }
-    }
-  }
-
-  return result;
-}
-
-function resolveFunctionReturnType(name: string, functionReturnTypes: Map<string, CppTypeHint>): CppType {
-  return functionReturnTypes.get(name) ?? "void";
-}
 
 // Track variables that are pointers (from 'new' expressions)
 type PointerTracker = Set<string>;
@@ -764,6 +134,47 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     const object = expressionToIR(expr.left, sourceText, diagnostics);
     const className = expr.right.getText();
     return { kind: "instanceof", object, className };
+  }
+
+  // Detect string-bearing + chains and fold them into string_concat IR so they
+  // flow through the same snprintf / std::string pipeline that template literals use.
+  function isStringBearingConcatChain(e: ts.Expression): boolean {
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return true;
+    if (
+      ts.isBinaryExpression(e) &&
+      e.operatorToken.kind === ts.SyntaxKind.PlusToken
+    ) {
+      return isStringBearingConcatChain(e.left) || isStringBearingConcatChain(e.right);
+    }
+    return false;
+  }
+
+  function flattenStringConcatParts(e: ts.Expression): ExpressionIR[] {
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) {
+      return e.text ? [{ kind: "string", value: e.text }] : [];
+    }
+    if (
+      ts.isBinaryExpression(e) &&
+      e.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+      isStringBearingConcatChain(e)
+    ) {
+      return [
+        ...flattenStringConcatParts(e.left),
+        ...flattenStringConcatParts(e.right),
+      ];
+    }
+    return [{ kind: "template_string", expression: expressionToIR(e, sourceText, diagnostics, pointerVars) }];
+  }
+
+  // Route string-bearing + chains into string_concat IR (same path as template literals).
+  if (
+    ts.isBinaryExpression(expr) &&
+    expr.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+    isStringBearingConcatChain(expr)
+  ) {
+    const parts = flattenStringConcatParts(expr);
+    if (parts.length === 1) return parts[0];
+    return { kind: "string_concat", parts };
   }
 
   // Recurse into binary expressions so nested typecode calls are translated correctly.
@@ -1509,7 +920,7 @@ function callToStatement(
   const comments = extractNodeComments(statementNode, sourceText);
   
   // ---- Typecode call detection at statement level -------------------------
-  // Handle D13.output(), D9.pwm(), D2.pullup(), etc.
+  // Handle D13.asOutput(), D9.pwm(), D2.pullup(), etc.
   // These need to be detected as typecode-call IR nodes for proper transpilation.
   if (ts.isPropertyAccessExpression(call.expression)) {
     const extractRootAndChain = (node: ts.Expression): { root: string; chain: string[] } | undefined => {
@@ -1806,28 +1217,21 @@ function forInitializerToIR(
     return undefined;
   }
 
-  const explicitType = typeNodeToCppType(declaration.type);
-  const inferredType = declaration.initializer
-    ? inferExprCppType(declaration.initializer, functionReturnTypes, localVariableTypes)
-    : "auto";
+  const declarationType = resolveDeclarationType(
+    declaration.type,
+    declaration.initializer,
+    functionReturnTypes,
+    localVariableTypes,
+  );
 
-  let resolvedType: CppTypeHint;
-  if (explicitType === "auto") {
-    resolvedType = inferredType;
-  } else if (explicitType === "int" && inferredType === "float") {
-    resolvedType = "float";
-  } else {
-    resolvedType = explicitType;
-  }
-
-  localVariableTypes.set(declaration.name.text, resolvedType);
+  localVariableTypes.set(declaration.name.text, declarationType.resolvedType);
 
   return {
     kind: "var_decl",
     sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
     name: declaration.name.text,
     storage,
-    cppType: (resolvedType === "void" ? "auto" : resolvedType) as Exclude<CppTypeHint, "void">,
+    cppType: (declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType) as Exclude<CppTypeHint, "void">,
     initializer: declaration.initializer
       ? expressionToIR(declaration.initializer, sourceText, diagnostics)
       : undefined,
@@ -2013,26 +1417,14 @@ function lowerStatement(
       const call = statement.expression;
       if (ts.isIdentifier(call.expression)) {
         const calleeName = call.expression.text;
-        const compileTimeOnlyCalls = new Set([
-          'registerPlatformStrategy',
-          'registerPolyfill',
-          'registerBoard',
-          'defineBoardManifest',
-        ]);
-        if (compileTimeOnlyCalls.has(calleeName)) {
+        if (isCompileTimeOnlyCallName(calleeName)) {
           return []; // Skip silently - no C++ emission needed
         }
       }
       // Also check for method calls like "something.register()" that are compile-time only
       if (ts.isPropertyAccessExpression(call.expression)) {
         const method = call.expression.name.text;
-        const compileTimeOnlyMethods = new Set([
-          'registerPlatformStrategy',
-          'registerPolyfill',
-          'registerBoard',
-          'defineBoardManifest',
-        ]);
-        if (compileTimeOnlyMethods.has(method)) {
+        if (isCompileTimeOnlyMethodName(method)) {
           return [];
         }
       }
@@ -2044,17 +1436,12 @@ function lowerStatement(
       // Check if it's a known strategy type
       if (ts.isIdentifier(statement.expression.expression)) {
         const className = statement.expression.expression.text;
-        const compileTimeOnlyClasses = new Set([
-          'NativeStrategy',
-          'ArduinoStrategy',
-          'BoardStrategy',
-        ]);
-        if (compileTimeOnlyClasses.has(className) || className.endsWith('Strategy')) {
+        if (isCompileTimeOnlyClassName(className)) {
           return []; // Skip silently
         }
       }
     }
-    
+
     const loweredExpression = expressionStatementToIR(
       statement,
       fileName,
@@ -2785,7 +2172,7 @@ function variableStatementToIR(
     // and the variable name is recorded for alias resolution in subsequent calls.
     if (initIR?.kind === 'typecode-call' &&
         typeof initIR.method === 'string' &&
-        (initIR.method === 'begin' || initIR.method === 'enable' || initIR.method === 'take') &&
+        (initIR.method === 'begin' || initIR.method === 'take') &&
         (initIR.receiverKind === 'i2c' || initIR.receiverKind === 'spi' || initIR.receiverKind === 'serial')) {
       activeBusAliases.set(declaration.name.text, { receiver: initIR.receiver, kind: initIR.receiverKind });
       lowered.push({
@@ -2801,33 +2188,26 @@ function variableStatementToIR(
       continue;
     }
 
-    const explicitType = typeNodeToCppType(declaration.type, typeAliases);
-    const inferredType = declaration.initializer
-      ? inferExprCppType(declaration.initializer, functionReturnTypes, localVariableTypes)
-      : "auto";
-    const hasStructuredTypeAnnotation = isStructuredTypeAnnotation(declaration.type, typeAliases);
+    const declarationType = resolveDeclarationType(
+      declaration.type,
+      declaration.initializer,
+      functionReturnTypes,
+      localVariableTypes,
+      typeAliases,
+    );
 
-    let resolvedType: CppTypeHint;
-    if (explicitType === "auto") {
-      resolvedType = inferredType;
-    } else if (explicitType === "int" && inferredType === "float") {
-      resolvedType = "float";
-    } else {
-      resolvedType = explicitType;
+    loweredDeclaration.cppType = (declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType) as Exclude<CppTypeHint, "void">;
+    localVariableTypes.set(declaration.name.text, declarationType.resolvedType);
+
+    // ── Ownership kind detection ────────────────────────────────────────
+    // Detect Ref<T>, MutRef<T>, Owned<T> wrapper types and store the
+    // ownership kind on the IR node for validation and const emission.
+    const ownershipKind = extractOwnershipKindFromTypeNode(declaration.type, typeAliases);
+    if (ownershipKind) {
+      (loweredDeclaration as any).ownershipKind = ownershipKind;
     }
 
-    loweredDeclaration.cppType = (resolvedType === "void" ? "auto" : resolvedType) as Exclude<CppTypeHint, "void">;
-    localVariableTypes.set(declaration.name.text, resolvedType);
-
-    const canLowerFromStructuredInitializer =
-      hasStructuredTypeAnnotation &&
-      !!declaration.initializer &&
-      ts.isObjectLiteralExpression(declaration.initializer);
-
-    // Skip warning for known compile-time-only types (pin types, board constants, etc.)
-    const isKnownType = isKnownCompileTimeType(declaration.type, typeAliases);
-
-    if (explicitType === "auto" && inferredType === "auto" && declaration.type && !canLowerFromStructuredInitializer && !isKnownType) {
+    if (declarationType.shouldWarnUnmappedType) {
       diagnostics.push(
         makeDiagnostic(
           sourceText,
@@ -3140,10 +2520,11 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                 : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
                   ? "protected"
                   : "public";
+              const fieldType = typeNodeToCppType(member.type, typeAliasNodes);
               
               fields.push({
                 name: member.name.text,
-                cppType: (typeNodeToCppType(member.type, typeAliasNodes) === "void" ? "auto" : typeNodeToCppType(member.type, typeAliasNodes)) as CppType,
+                cppType: (fieldType === "void" ? "auto" : fieldType) as CppType,
                 visibility,
                 initializer: member.initializer
                   ? expressionToIR(member.initializer, sourceText, diagnostics)
@@ -3192,15 +2573,14 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                     typeAliasNodes,
                   )
                 : [];
+              const methodReturnType = typeNodeToCppType(member.type, typeAliasNodes);
               
               methods.push({
                 name: member.name.text,
                 returnType: (
                   member.type?.kind === ts.SyntaxKind.ThisType
                     ? `${className}*`
-                    : (typeNodeToCppType(member.type, typeAliasNodes) === "void"
-                        ? "void"
-                        : typeNodeToCppType(member.type, typeAliasNodes))
+                    : (methodReturnType === "void" ? "void" : methodReturnType)
                 ) as CppType,
                 parameters: methodParams,
                 statements: methodBody,
@@ -3319,6 +2699,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             if (ts.isIdentifier(parameter.name)) {
               const parameterType = typeNodeToCppType(parameter.type, typeAliasNodes);
               localVariableTypes.set(parameter.name.text, parameterType);
+              const paramOwnershipKind = extractOwnershipKindFromTypeNode(parameter.type, typeAliasNodes);
               parameters.push({
                 name: parameter.name.text,
                 cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
@@ -3326,6 +2707,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                   ? expressionToIR(parameter.initializer, sourceText, diagnostics)
                   : undefined,
                 isRest: false,
+                ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
               });
             }
           }
@@ -3414,6 +2796,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         if (ts.isIdentifier(parameter.name)) {
           const parameterType = typeNodeToCppType(parameter.type, typeAliasNodes);
           localVariableTypes.set(parameter.name.text, parameterType);
+          const paramOwnershipKind = extractOwnershipKindFromTypeNode(parameter.type, typeAliasNodes);
           parameters.push({
             name: parameter.name.text,
             cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
@@ -3421,6 +2804,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
               ? expressionToIR(parameter.initializer, sourceText, diagnostics)
               : undefined,
             isRest: false,
+            ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
           });
         }
       }
@@ -3488,6 +2872,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             const parameterType = explicitParameterType !== "auto" ? explicitParameterType : aliasedParameterType;
 
             localVariableTypes.set(parameter.name.text, parameterType);
+            const paramOwnershipKind = extractOwnershipKindFromTypeNode(parameter.type, typeAliasNodes);
             parameters.push({
               name: parameter.name.text,
               cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
@@ -3495,6 +2880,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                 ? expressionToIR(parameter.initializer, sourceText, diagnostics)
                 : undefined,
               isRest: false,
+              ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
             });
           }
 
@@ -3685,6 +3071,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             if (ts.isIdentifier(param.name)) {
               const paramType = typeNodeToCppType(param.type, typeAliasNodes);
               ctorLocalTypes.set(param.name.text, paramType);
+              const paramOwnershipKind = extractOwnershipKindFromTypeNode(param.type, typeAliasNodes);
               ctorParams.push({
                 name: param.name.text,
                 cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
@@ -3692,6 +3079,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                   ? expressionToIR(param.initializer, sourceText, diagnostics)
                   : undefined,
                 isRest: false,
+                ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
               });
             }
           }
@@ -3722,10 +3110,11 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
               : "public";
           
           const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+          const fieldType = typeNodeToCppType(member.type, typeAliasNodes);
           
           fields.push({
             name: member.name.text,
-            cppType: (typeNodeToCppType(member.type, typeAliasNodes) === "void" ? "auto" : typeNodeToCppType(member.type, typeAliasNodes)) as CppType,
+            cppType: (fieldType === "void" ? "auto" : fieldType) as CppType,
             visibility,
             initializer: member.initializer
               ? expressionToIR(member.initializer, sourceText, diagnostics)
@@ -3752,6 +3141,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             if (ts.isIdentifier(param.name)) {
               const paramType = typeNodeToCppType(param.type, typeAliasNodes);
               methodLocalTypes.set(param.name.text, paramType);
+              const paramOwnershipKind = extractOwnershipKindFromTypeNode(param.type, typeAliasNodes);
               methodParams.push({
                 name: param.name.text,
                 cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
@@ -3759,6 +3149,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                   ? expressionToIR(param.initializer, sourceText, diagnostics)
                   : undefined,
                 isRest: false,
+                ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
               });
             }
           }
@@ -3775,15 +3166,14 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                 typeAliasNodes,
               )
             : [];
+          const methodReturnType = typeNodeToCppType(member.type, typeAliasNodes);
 
           methods.push({
             name: member.name.text,
             returnType: (
               member.type?.kind === ts.SyntaxKind.ThisType
                 ? `${className}*`
-                : (typeNodeToCppType(member.type, typeAliasNodes) === "void"
-                    ? "void"
-                    : typeNodeToCppType(member.type, typeAliasNodes))
+                : (methodReturnType === "void" ? "void" : methodReturnType)
             ) as CppType,
             parameters: methodParams,
             statements: methodBody,
@@ -4019,36 +3409,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       namespaces,
     });
 
-    // Validate peripheral instances against board capacity
-    const validationDiagnostics = validatePeripherals(peripheralUsage, boardConstants);
-    diagnostics.push(...validationDiagnostics);
-
-    // Validate unsafe pin usage
-    const unsafePinDiagnostics = validateUnsafePins(peripheralUsage, boardConstants);
-    diagnostics.push(...unsafePinDiagnostics);
-
-    // Validate peripheral pin conflicts (GPIO on peripheral pins)
-    const peripheralPinDiagnostics = validatePeripheralPinConflicts(peripheralUsage, boardConstants);
-    diagnostics.push(...peripheralPinDiagnostics);
-
-    // Validate mixed alias usage for the same physical pin
-    const pinAliasDiagnostics = validatePinAliasConflicts(peripheralUsage, boardConstants);
-    diagnostics.push(...pinAliasDiagnostics);
-
-    // Validate shared PWM timer groups for simultaneously used PWM pins
-    const pwmTimerSharingDiagnostics = validatePWMTimerSharing(peripheralUsage, boardConstants);
-    diagnostics.push(...pwmTimerSharingDiagnostics);
-
-    // Validate Timer0 PWM coupling with delay()/millis()/micros() on AVR boards
-    const timer0ConflictDiagnostics = validateTimer0PWMTimingConflict(peripheralUsage, boardConstants);
-    diagnostics.push(...timer0ConflictDiagnostics);
-
-    // Validate pulldown capability (pins must support hardware pulldown)
-    const pulldownDiagnostics = validatePulldownSupport(peripheralUsage, boardConstants);
-    diagnostics.push(...pulldownDiagnostics);
-
-    // Validate interrupt safety and duplicate handlers
-    const interruptDiagnostics = analyzeInterruptSafety({
+    const program: ProgramIR = {
       fileName,
       imports,
       reExports,
@@ -4056,96 +3417,18 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       enums,
       classes,
       typeAliases,
+      registerClasses,
       topLevelStatements,
       functions,
       boilerplates,
-      diagnostics: [],
-      registerClasses,
+      diagnostics,
       boardConstants,
-      interfaces,
-      namespaces,
-    }, peripheralUsage);
-    diagnostics.push(...interruptDiagnostics);
-
-    // Validate ADC range comparisons
-    const adcRangeDiagnostics = validateADCRange({
-      fileName,
-      imports,
-      reExports,
-      structs: [],
-      enums,
-      classes,
-      typeAliases,
-      topLevelStatements,
-      functions,
-      boilerplates,
-      diagnostics: [],
-      registerClasses,
-      boardConstants,
-      interfaces,
-      namespaces,
-    }, boardConstants);
-    diagnostics.push(...adcRangeDiagnostics);
-
-    const unitSuspicionDiagnostics = validateUnitSuspicion({
-      fileName,
-      imports,
-      reExports,
-      structs: [],
-      enums,
-      classes,
-      typeAliases,
-      topLevelStatements,
-      functions,
-      boilerplates,
-      diagnostics: [],
-      registerClasses,
-      boardConstants,
-      interfaces,
-      namespaces,
       peripheralUsage,
-    });
-    diagnostics.push(...unitSuspicionDiagnostics);
-
-    // Validate pin mode configuration (read/write without prior mode set)
-    const pinModeDiagnostics = validatePinModeConfig({
-      fileName,
-      imports,
-      reExports,
-      structs: [],
-      enums,
-      classes,
-      typeAliases,
-      topLevelStatements,
-      functions,
-      boilerplates,
-      diagnostics: [],
-      registerClasses,
-      boardConstants,
       interfaces,
       namespaces,
-    });
-    diagnostics.push(...pinModeDiagnostics);
+    };
 
-    // Validate peripheral bus ownership (take/release pattern)
-    const ownershipDiagnostics = validatePeripheralOwnership({
-      fileName,
-      imports,
-      reExports,
-      structs: [],
-      enums,
-      classes,
-      typeAliases,
-      topLevelStatements,
-      functions,
-      boilerplates,
-      diagnostics: [],
-      registerClasses,
-      boardConstants,
-      interfaces,
-      namespaces,
-    });
-    diagnostics.push(...ownershipDiagnostics);
+    diagnostics.push(...runProgramValidations(program));
   } catch (e) {
     // If peripheral analysis fails, use empty usage
     peripheralUsage = createEmptyPeripheralUsage();

@@ -2,3 +2,6 @@ node_modules/
 dist/
 **/.build/
 example/
+vitest.config.js
+demo/typecode.config.js
+**/*.tsbuildinfo

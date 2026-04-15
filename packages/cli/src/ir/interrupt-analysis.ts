@@ -104,10 +104,13 @@ function scanStatementForInterruptHandler(
 ): void {
   if (!stmt || typeof stmt !== 'object') return;
 
-  // Check for typecode-call statements (pin.attachInterrupt())
+  // Check for typecode-call statements — both the low-level pin.attachInterrupt() and
+  // the flat sugar API (pin.onFalling / pin.onRising / pin.onChange / etc.) which all
+  // lower to a single attachInterrupt call on the same hardware interrupt line.
+  const ATTACH_METHODS = new Set(['attachInterrupt', 'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh']);
   if (stmt.kind === 'typecode-call') {
     const tc = stmt as any;
-    if (tc.method === 'attachInterrupt' && tc.receiver) {
+    if (ATTACH_METHODS.has(tc.method) && tc.receiver) {
       const pinName = tc.receiver;
       const count = handlersByPin.get(pinName) ?? 0;
 

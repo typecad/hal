@@ -53,6 +53,8 @@ export interface MappedDiagnostic {
 export interface Diagnostic {
   severity: "info" | "warning" | "error";
   message: string;
+  /** Actionable fix suggestion, shown as a distinct code block in CLI output. */
+  hint?: string;
   line?: number;
   column?: number;
   code?: string;

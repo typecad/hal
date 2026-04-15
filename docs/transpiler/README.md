@@ -271,7 +271,7 @@ Some pins are marked as "unsafe" in board definitions. These pins can be used bu
 ```typescript
 import { D0, HIGH } from '@typecode/board-arduino-uno';
 
-D0.output();
+D0.asOutput();
 D0.write(HIGH);  // Warning: Pin 'D0' is marked as unsafe
 ```
 

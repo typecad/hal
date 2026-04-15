@@ -109,6 +109,23 @@ export interface PlatformStrategy {
   useSnprintfForStrings(): boolean;
 
   /**
+   * Convert a float expression to an snprintf-compatible argument.
+   * When implemented, the strategy returns a format specifier, a rendered arg
+   * string, an estimated buffer length, and any prelude lines needed before
+   * the snprintf call (e.g. dtostrf on Arduino).
+   * Return undefined to let the emitter use generic %g / %.Nf formatting.
+   *
+   * @param renderedExpr The already-rendered C++ expression string.
+   * @param precision    Decimal precision hint from the source literal, or undefined.
+   * @param tempId       A unique integer for naming temporaries.
+   */
+  floatToSnprintfArg?(
+    renderedExpr: string,
+    precision: number | undefined,
+    tempId: number,
+  ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } | undefined;
+
+  /**
    * Prefix an enum member name if it conflicts with a platform macro.
    * Return the original name if no rename is needed.
    */

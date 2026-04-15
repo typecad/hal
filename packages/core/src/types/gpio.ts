@@ -60,13 +60,13 @@ export interface GPIOConfig {
 // GPIO pin factory
 // ---------------------------------------------------------------------------
 
-import type { IDigitalPin, IPWMPin, IAnalogInput, IPin } from './pin';
+import type { BasePin, PWMPin, AnalogPin } from './pin';
 
 export interface IGPIOPinFactory {
-  createDigitalPin(config: GPIOConfig): IDigitalPin;
-  createPWMPin(config: GPIOConfig): IPWMPin;
-  createAnalogPin(config: GPIOConfig): IAnalogInput;
-  createPin(config: GPIOConfig): IPin;
+  createDigitalPin(config: GPIOConfig): BasePin;
+  createPWMPin(config: GPIOConfig): PWMPin;
+  createAnalogPin(config: GPIOConfig): AnalogPin;
+  createPin(config: GPIOConfig): BasePin;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ export interface IGPIOPinFactory {
 /**
  * A group of digital output pins that can be controlled together.
  */
-export interface IPinGroup<T extends IPin = IPin> {
+export interface IPinGroup<T extends BasePin = BasePin> {
   readonly name: string;
   readonly pins: ReadonlyArray<T>;
   /** Write a bitmask to the group (bit 0 = first pin). */
@@ -90,7 +90,7 @@ export interface IPinGroup<T extends IPin = IPin> {
 /**
  * A parallel port for byte-level operations on 8 digital pins.
  */
-export interface IParallelPort extends IPinGroup<IDigitalPin> {
+export interface IParallelPort extends IPinGroup<BasePin> {
   /** Write a byte value (alias for writePattern). */
   writeByte(value: number): void;
   /** Read a byte value (alias for readPattern). */
@@ -106,7 +106,7 @@ export interface IParallelPort extends IPinGroup<IDigitalPin> {
  * @param name - A descriptive name for the group
  * @param pins - Array of pins to include in the group
  */
-export function createPinGroup<T extends IPin>(
+export function createPinGroup<T extends BasePin>(
   name: string,
   pins: T[]
 ): IPinGroup<T> {
@@ -152,7 +152,7 @@ export function createPinGroup<T extends IPin>(
  */
 export function createParallelPort(
   name: string,
-  pins: [IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin, IDigitalPin]
+  pins: [BasePin, BasePin, BasePin, BasePin, BasePin, BasePin, BasePin, BasePin]
 ): IParallelPort {
   const group = createPinGroup(name, pins);
 

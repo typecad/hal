@@ -214,6 +214,24 @@ export class ArduinoStrategy implements PlatformStrategy {
   useSnprintfForStrings(): boolean {
     return true;
   }
+  floatToSnprintfArg(
+    renderedExpr: string,
+    precision: number | undefined,
+    tempId: number,
+  ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } {
+    const effectivePrecision = precision ?? 6;
+    const bufferName = `__typecode_float_${tempId}`;
+    const estimatedLength = Math.max(16, effectivePrecision + 8);
+    return {
+      format: "%s",
+      arg: bufferName,
+      estimatedLength,
+      preludeLines: [
+        `char ${bufferName}[${estimatedLength}];`,
+        `dtostrf(${renderedExpr}, 0, ${effectivePrecision}, ${bufferName});`,
+      ],
+    };
+  }
   renameEnumMember(_enumName: string, memberName: string): string {
     return ARDUINO_ENUM_MEMBER_RENAMES.has(memberName) ? `_${memberName}` : memberName;
   }

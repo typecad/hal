@@ -4,7 +4,7 @@
 // Resolves Arduino-specific profile settings based on FQBN and program IR.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext, ArduinoPlatformContext } from "@typecode/core/shared";
+import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext, ArduinoPlatformContext, TypecodeReceiverKind } from "@typecode/core/shared";
 import type { ArduinoCliMetadata } from "./cli-metadata";
 import { loadArduinoCliMetadata } from "./cli-metadata";
 
@@ -218,6 +218,27 @@ function collectTopLevelDeclarations(program: ProgramIR): Set<string> {
   return declared;
 }
 
+function collectTypecodeReceiverKinds(program: ProgramIR): Set<TypecodeReceiverKind> {
+  const kinds = new Set<TypecodeReceiverKind>();
+
+  const collectFromStatement = (statement: StatementIR): void => {
+    if (statement.kind === "typecode-call") {
+      kinds.add(statement.receiverKind);
+      return;
+    }
+    if (statement.kind === "var_decl" && statement.initializer?.kind === "typecode-call") {
+      kinds.add((statement.initializer as Extract<ExpressionIR, { kind: "typecode-call" }>).receiverKind);
+    }
+  };
+
+  walkStatements(program.topLevelStatements, collectFromStatement);
+  for (const fn of program.functions) {
+    walkStatements(fn.statements, collectFromStatement);
+  }
+
+  return kinds;
+}
+
 function resolveVariant(context?: ArduinoPlatformContext): ArduinoProfileVariant {
   const architecture = toArchitectureFromFqbn(context?.fqbn);
   if (!architecture) {
@@ -282,6 +303,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
   const used = collectUsedIdentifiers(program);
   const calledFunctions = collectCalledFunctions(program);
   const declared = collectTopLevelDeclarations(program);
+  const receiverKinds = collectTypecodeReceiverKinds(program);
   const shimLines: string[] = [];
 
   for (const functionName of calledFunctions) {
@@ -354,8 +376,12 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     });
   }
 
+  const extraIncludes: string[] = [];
+  if (receiverKinds.has('i2c')) extraIncludes.push('<Wire.h>');
+  if (receiverKinds.has('spi')) extraIncludes.push('<SPI.h>');
+
   return {
-    forcedIncludes: variant.forcedIncludes,
+    forcedIncludes: [...variant.forcedIncludes, ...extraIncludes],
     symbolAliases: {
       ...(variant.symbolAliases ?? {}),
     },

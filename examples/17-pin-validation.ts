@@ -11,14 +11,14 @@
 
 import { D2, D3, A0, LED, delay, UART0 } from '@typecode';
 import { isPWMPin, isAnalogPin, isInterruptPin, assertPWM } from '@typecode/core';
-import type { IPin, IPWMPin } from '@typecode/core';
+import type { PWMPin } from '@typecode/core';
 
 // Initialize serial for output
 const serial = UART0.begin(9600);
 
 // Example 1: Using type guards for runtime checks
 function safeAnalogWrite(pin: unknown, value: number) {
-  // Type guard narrows type to IPWMPin
+  // Type guard narrows type to PWMPin
   if (isPWMPin(pin)) {
     // Convert 0-255 to percentage
     const percent = (value / 255) * 100;
@@ -52,7 +52,7 @@ void function() {
 
 // Example 3: Fade LED with compile-time validation
 // This function only accepts PWM-capable pins
-function fadeLED(pin: IPin & IPWMPin) {
+function fadeLED(pin: PWMPin) {
   for (let i = 0; i <= 100; i++) {
     pin.pwm(i);
     delay(5);

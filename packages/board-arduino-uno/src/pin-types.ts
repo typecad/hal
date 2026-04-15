@@ -5,7 +5,7 @@
 // TypeScript autocomplete will not show it on any Uno pin.
 // ---------------------------------------------------------------------------
 
-import type { BasePin, IOutputModePin, IInputModePin } from '@typecode/core';
+import type { BasePin, IOutputModePin, IInputModePin, PWMPin, AnalogPin, InterruptPin } from '@typecode/core';
 
 /** Digital pin on Arduino Uno — no hardware pulldown. */
 export type IUnoDigitalPin = Omit<BasePin, 'inputPullDown'>;

@@ -2,6 +2,15 @@
 
 This guide covers the major Hardware Abstraction Layer (HAL) systems in TypeCode with simple, practical examples.
 
+TypeCode currently supports two styles of hardware access:
+
+- Recommended: object-style configuration such as `LED.asOutput()` and explicit bus ownership via `I2C0.take()`.
+- Direct pin methods such as `D2.inputPullUp()` for pull-up configuration.
+
+Both styles still transpile, but the recommended style is easier to reason about because configuration returns a type-narrowed alias that carries the intended mode or ownership in the source.
+
+For runnable examples, see [examples/README.md](../examples/README.md).
+
 ## Table of Contents
 
 - [Digital Pins](#digital-pins)
@@ -19,35 +28,50 @@ This guide covers the major Hardware Abstraction Layer (HAL) systems in TypeCode
 
 Digital pins can be configured as inputs or outputs and read/write HIGH or LOW values.
 
-### Basic Output
+### Recommended Output Pattern
 
 ```typescript
-import { LED, HIGH, LOW } from '@typecode';
+import { LED, delay } from '@typecode';
 
-// Configure LED pin as output, starting HIGH
-LED.output(HIGH);
+// Configure LED pin as an output and return a typed alias.
+const led = LED.asOutput(true);
 
 while (true) {
-  LED.toggle();  // Switch between HIGH and LOW
-  // Or use: LED.high(), LED.low()
+  led.toggle();
+  delay(1000);
 }
 ```
 
-### Input with Pull-up
+### Recommended Input with Pull-up
 
 ```typescript
 import { D2, LED } from '@typecode';
 
-// Configure button pin with internal pull-up resistor
-D2.inputPullUp();
+const button = D2.asInputPullUp();
+const led = LED.asOutput();
 
-LED.output();
+while (true) {
+  if (!button.read()) {
+    led.high();
+  } else {
+    led.low();
+  }
+}
+```
+
+### Direct Pin API
+
+```typescript
+import { D2, LED, LOW } from '@typecode';
+
+D2.inputPullUp();
+const led = LED.asOutput();
 
 while (true) {
   if (D2.read() === LOW) {
-    LED.high();  // Button pressed (pulled low)
+    led.high();
   } else {
-    LED.low();   // Button released
+    led.low();
   }
 }
 ```
@@ -81,20 +105,20 @@ PWM pins can output analog-like values by varying duty cycle (0-255).
 ### LED Fading
 
 ```typescript
-import { D9, delay, LOW } from '@typecode';
+import { D9, delay } from '@typecode';
 
-// D9 must be a PWM-capable pin
-D9.output(LOW);
+// D9 must be a PWM-capable pin.
+const led = D9.asOutput(false);
 
 let brightness = 0;
 let step = 5;
 
 while (true) {
-  D9.pwm(brightness / 2.55);  // convert 0-255 into 0-100 percent
+  led.pwm(brightness / 2.55);
   brightness += step;
   
   if (brightness <= 0 || brightness >= 255) {
-    step = -step;  // Reverse direction
+    step = -step;
   }
   delay(30);
 }
@@ -105,8 +129,8 @@ while (true) {
 ```typescript
 import { D9 } from '@typecode';
 
-// Set PWM to 50% duty cycle
-D9.pwm(50);
+const pwmPin = D9.asOutput();
+pwmPin.pwm(50);
 ```
 
 ### Shared PWM Timers
@@ -158,6 +182,18 @@ while (true) {
 }
 ```
 
+### Ownership Pattern for Shared UART Access
+
+```typescript
+import { UART0 } from '@typecode';
+
+const uart = UART0.take();
+if (uart) {
+  uart.println("Bus is owned");
+  uart.release();
+}
+```
+
 ---
 
 ## I2C
@@ -196,6 +232,18 @@ while (true) {
 }
 ```
 
+### Recommended Ownership Pattern
+
+```typescript
+import { I2C0 } from '@typecode';
+
+const bus = I2C0.take();
+if (bus) {
+  bus.device(0x76).writeByte(0xFA, 0x55);
+  bus.release();
+}
+```
+
 ### Writing to a Device
 
 ```typescript
@@ -231,8 +279,7 @@ spi.setMode(0);
 spi.setBitOrder('msb');
 
 // Chip select pin (active LOW)
-const CS = D10;
-CS.output(HIGH);  // Start HIGH (deselected)
+const chipSelect = D10.asOutput(true);
 ```
 
 ### Single Byte Transfer
@@ -245,12 +292,10 @@ const spi = SPI0.begin();
 spi.setFrequency(1_000_000);
 spi.setMode(0);
 
-const CS = D10;
-CS.output(HIGH);
+const chipSelect = D10.asOutput(true);
 
 while (true) {
-  // Transfer automatically handles chip select
-  const response = spi.device(CS).transfer(0xAA);
+  const response = spi.device(chipSelect).transfer(0xAA);
   UART0.println(`Received: 0x${response.toString(16)}`);
   delay(1000);
 }
@@ -265,12 +310,11 @@ const spi = SPI0.begin();
 spi.setFrequency(1_000_000);
 spi.setMode(0);
 
-const CS = D10;
-CS.output(HIGH);
+const chipSelect = D10.asOutput(true);
 
 // Transfer multiple bytes at once
 const txData = new Uint8Array([0x80, 0x00, 0xFF]);
-const rxData = spi.device(CS).transfer(txData);
+const rxData = spi.device(chipSelect).transfer(txData);
 ```
 
 ---
@@ -282,16 +326,14 @@ Interrupts allow immediate response to external events without polling.
 ### Button Interrupt
 
 ```typescript
-import { D2, LED, LOW } from '@typecode';
+import { D2, LED } from '@typecode';
 
-LED.output(LOW);
-
-// Configure button with pull-up
-D2.inputPullUp();
+const led = LED.asOutput(false);
+const button = D2.asInputPullUp();
 
 // Toggle LED on falling edge (button press)
-D2.onFalling(() => {
-  LED.toggle();
+button.onFalling(() => {
+  led.toggle();
 });
 ```
 
@@ -300,12 +342,12 @@ D2.onFalling(() => {
 ```typescript
 import { D2 } from '@typecode';
 
-D2.inputPullUp();
+const button = D2.asInputPullUp();
 
 // Available triggers:
-D2.onRising(() => { /* called on LOW to HIGH */ });
-D2.onFalling(() => { /* called on HIGH to LOW */ });
-D2.onChange(() => { /* called on any change */ });
+button.onRising(() => { /* called on LOW to HIGH */ });
+button.onFalling(() => { /* called on HIGH to LOW */ });
+button.onChange(() => { /* called on any change */ });
 ```
 
 ---
@@ -319,11 +361,11 @@ TypeCode provides timing functions for delays and measuring elapsed time.
 ```typescript
 import { LED, delay } from '@typecode';
 
-LED.output();
+const led = LED.asOutput();
 
 while (true) {
-  LED.toggle();
-  delay(1000);  // Wait 1000ms (1 second)
+  led.toggle();
+  delay(1000);
 }
 ```
 
@@ -349,13 +391,13 @@ while (true) {
 
 | System | Import | Key Methods |
 |--------|--------|-------------|
-| Digital I/O | `D2, LED, HIGH, LOW` | `.output()`, `.inputPullUp()`, `.read()`, `.write()`, `.high()`, `.low()`, `.toggle()` |
+| Digital I/O | `D2, LED, HIGH, LOW` | `.asOutput()`, `.asInput()`, `.asInputPullUp()`, `.read()`, `.high()`, `.low()`, `.toggle()` |
 | Analog | `A0` | `.readAnalog()`, `.readVoltage()` |
-| PWM | `D9` (PWM pin) | `.pwm(percent)` |
-| UART | `UART0` | `.begin(baud)`, `.end()`, `.print()`, `.println()`, `.read()`, `.available()` |
-| I2C | `I2C0` | `.begin()`, `.end()`, `.device(addr).readBytes()`, `.device(addr).writeBytes()` |
-| SPI | `SPI0, D10` | `const spi = SPI0.begin()`, `.setFrequency()`, `.setMode()`, `.device(cs).transfer()` |
-| Interrupts | `D2` (interrupt pin) | `.onRising()`, `.onFalling()`, `.onChange()` |
+| PWM | `D9` (PWM pin) | `.asOutput()`, `.pwm(percent)` |
+| UART | `UART0` | `.begin(baud)`, `.end()`, `.print()`, `.println()`, `.read()`, `.available()`, `.take()`, `.release()` |
+| I2C | `I2C0` | `.begin()`, `.end()`, `.device(addr).readBytes()`, `.device(addr).writeBytes()`, `.take()`, `.release()` |
+| SPI | `SPI0, D10` | `const spi = SPI0.begin()`, `.setFrequency()`, `.setMode()`, `.device(cs).transfer()`, `.take()`, `.release()` |
+| Interrupts | `D2` (interrupt pin) | `.asInputPullUp()`, `.onRising()`, `.onFalling()`, `.onChange()` |
 
 ## Board-aware constraints
 
