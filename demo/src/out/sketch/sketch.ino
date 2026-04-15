@@ -156,8 +156,7 @@ void demo()
   // OK: data is still Owned in this scope
   printFirst(data);
   // OK: data is still alive
-  const std::vector<int> moved = data;
-  // ownership transfer
+  // const moved = data;     // ownership transfer
   printFirst(data);
   // If 'data' had been moved, this would be
 }

@@ -131,7 +131,7 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "gen-libdefs" | "gen-decls" | "map-error" | "create-board";
+  command: "default" | "gen-libdefs" | "gen-decls" | "map-error" | "create-board" | "init";
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;
@@ -171,6 +171,8 @@ export interface CommandLineOptions {
   debug?: boolean;
   /** Force retranspilation of all files, ignoring cache */
   force?: boolean;
+  /** Watch for file changes and retranspile automatically */
+  watch: boolean;
 }
 
 export interface GenerateLibdefOptions {
@@ -235,4 +237,24 @@ export interface ScaffoldCommandOptions {
   outDir?: string;
   /** Generate minimal package */
   minimal?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Init command options (project scaffolding)
+// ---------------------------------------------------------------------------
+
+export interface InitCommandOptions {
+  command: "init";
+  /** Project name (e.g., 'my-blink') */
+  projectName?: string;
+  /** Board identifier from the built-in registry (e.g., 'arduino-uno') */
+  board?: string;
+  /** Framework: 'arduino' or 'avr' */
+  framework?: string;
+  /** Serial baud rate for console/monitor */
+  baud?: number;
+  /** Skip generating the starter sketch */
+  noSketch?: boolean;
+  /** Output directory (default: ./<projectName>) */
+  outDir?: string;
 }

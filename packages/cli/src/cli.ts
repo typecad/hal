@@ -8,6 +8,9 @@ import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from 
 import { loadTypecodeConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
+import { scaffoldProject, printInitNextSteps, KNOWN_BOARDS } from "./scaffold/init-scaffold";
+import { runInitWizard } from "./scaffold/init-wizard";
+import { runWatch, discoverWatchDirs } from "./watch";
 import * as ui from "./utils/ui";
 import chalk from "chalk";
 
@@ -120,6 +123,86 @@ async function main(): Promise<void> {
 
     if (options === "help") {
       printHelp();
+      return;
+    }
+
+    // Handle init command
+    if (options.command === "init") {
+      const initOptions = options as import("./types").InitCommandOptions;
+
+      try {
+        // Check if we have enough flags for non-interactive mode
+        const hasBoard = !!initOptions.board;
+
+        if (hasBoard) {
+          // Non-interactive mode: resolve board from registry
+          const board = KNOWN_BOARDS.find(b => b.id === initOptions.board);
+          if (!board) {
+            const available = KNOWN_BOARDS.map(b => `  - ${b.id} (${b.displayName})`).join("\n");
+            throw new Error(
+              `Unknown board '${initOptions.board}'. Available boards:\n${available}`,
+            );
+          }
+
+          const framework: 'arduino' | 'avr' = initOptions.framework === 'avr' ? 'avr' : 'arduino';
+          const frameworkPackage = framework === 'avr'
+            ? '@typecode/framework-avr'
+            : '@typecode/framework-arduino';
+
+          const projectName = initOptions.projectName || 'my-project';
+
+          const result = scaffoldProject({
+            projectName,
+            boardId: board.id,
+            boardDisplayName: board.displayName,
+            architecture: board.architecture,
+            boardPackage: board.boardPackage,
+            frameworkPackage,
+            framework,
+            fqbn: board.fqbn,
+            mcu: board.mcu,
+            baudRate: initOptions.baud ?? 9600,
+            includeSketch: !initOptions.noSketch,
+          }, initOptions.outDir);
+
+          console.log("\nCreated project files:");
+          for (const file of result.createdFiles) {
+            const relative = path.relative(process.cwd(), file);
+            console.log(`  ${relative || file}`);
+          }
+
+          printInitNextSteps(result.options, result.outDir);
+        } else {
+          // Interactive mode: launch wizard
+          console.log("Launching interactive project setup...\n");
+          const wizardResult = await runInitWizard({
+            projectName: initOptions.projectName,
+            board: initOptions.board,
+            framework: initOptions.framework,
+            baud: initOptions.baud,
+            noSketch: initOptions.noSketch,
+          });
+
+          if (!wizardResult) {
+            console.log("Project setup cancelled.");
+            return;
+          }
+
+          const result = scaffoldProject(wizardResult, initOptions.outDir);
+
+          console.log("\nCreated project files:");
+          for (const file of result.createdFiles) {
+            const relative = path.relative(process.cwd(), file);
+            console.log(`  ${relative || file}`);
+          }
+
+          printInitNextSteps(result.options, result.outDir);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        console.error(`Error creating project: ${message}`);
+        process.exitCode = 1;
+      }
       return;
     }
 
@@ -353,11 +436,143 @@ async function main(): Promise<void> {
       fqbn: effectivePlatformContext?.arduino?.fqbn,
     });
 
+    // ── Watch mode ────────────────────────────────────────────────────────
+    // In watch mode, the initial build may fail — we catch errors and still
+    // start the watcher so the user can fix issues and see it auto-rebuild.
+    if (options.watch) {
+      let initialBuildOk = false;
+
+      try {
+        ui.printTranspiling();
+        const result = await transpileFile({
+          inputFile: options.inputFile!,
+          emitMode: options.emitMode,
+          target: effectiveTarget,
+          outDir: effectiveOutDir,
+          emitMaps: options.emitMaps,
+          platformContext: effectivePlatformContext,
+          treeShaking: options.treeShaking,
+          boardPackage: effectiveBoardPackage,
+          frameworkPackage: effectiveFrameworkPackage,
+          debug: options.debug,
+          force: options.force,
+        });
+
+        printDiagnostics(result.diagnostics);
+
+        if (result.diagnostics.length === 0) {
+          ui.printSuccess();
+          initialBuildOk = true;
+
+          // Initial compile + upload if flags are set
+          if (options.compile) {
+            const fqbn = effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn;
+            if (fqbn) {
+              ui.printCompiling(fqbn);
+              const compileResult = compileArduinoSketch(result.sourcePath, fqbn);
+              printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath);
+
+              if (compileResult.success && options.upload && options.port) {
+                ui.printUploading(options.port);
+                const sketchDir = path.dirname(result.sourcePath);
+                const uploadResult = uploadArduinoSketch(sketchDir, fqbn, options.port);
+                if (uploadResult.output) console.log(uploadResult.output);
+                if (uploadResult.success) ui.printSuccess();
+              } else if (compileResult.success) {
+                ui.printSuccess();
+              }
+            }
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        ui.printError(message);
+        console.log();
+        ui.printInfo("Initial build failed — fix errors and save to retry.");
+      }
+
+      // Discover directories to watch
+      const configPath = config?.configPath;
+      const watchDirs = discoverWatchDirs(options.inputFile!, configPath);
+
+      console.log();
+      ui.printInfo(`Watching for changes... (${watchDirs.length} dir${watchDirs.length !== 1 ? "s" : ""}, Ctrl+C to stop)`);
+
+      await runWatch({
+        watchDirs,
+        configPath,
+        entryDir: inputDir,
+        onRebuild: async (changedFile: string) => {
+          // Clear terminal
+          process.stdout.write("\x1Bc");
+
+          const timestamp = new Date().toLocaleTimeString();
+          const relativePath = path.relative(process.cwd(), changedFile);
+          console.log(chalk.cyan(`⤳ typeCode`) + chalk.gray(` v0.1.0`));
+          console.log();
+          ui.printInfo(`[${timestamp}] Change detected: ${relativePath}`);
+          console.log();
+
+          try {
+            ui.printTranspiling();
+            const rebuildResult = await transpileFile({
+              inputFile: options.inputFile!,
+              emitMode: options.emitMode,
+              target: effectiveTarget,
+              outDir: effectiveOutDir,
+              emitMaps: options.emitMaps,
+              platformContext: effectivePlatformContext,
+              treeShaking: options.treeShaking,
+              boardPackage: effectiveBoardPackage,
+              frameworkPackage: effectiveFrameworkPackage,
+              debug: options.debug,
+              force: true, // Always force in watch mode to bypass stale cache
+            });
+
+            printDiagnostics(rebuildResult.diagnostics);
+
+            if (rebuildResult.diagnostics.length > 0) {
+              // Errors shown via printDiagnostics — skip compile/upload
+            } else {
+              ui.printSuccess();
+
+              if (options.compile) {
+                const fqbn = effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn;
+                if (fqbn) {
+                  ui.printCompiling(fqbn);
+                  const compileResult = compileArduinoSketch(rebuildResult.sourcePath, fqbn);
+                  printMappedCompileErrors(compileResult, rebuildResult.sourceMapPath, rebuildResult.sourcePath);
+
+                  if (compileResult.success && options.upload && options.port) {
+                    ui.printUploading(options.port);
+                    const sketchDir = path.dirname(rebuildResult.sourcePath);
+                    const uploadResult = uploadArduinoSketch(sketchDir, fqbn, options.port);
+                    if (uploadResult.output) console.log(uploadResult.output);
+                    if (uploadResult.success) ui.printSuccess();
+                  } else if (compileResult.success) {
+                    ui.printSuccess();
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            ui.printError(message);
+          }
+
+          console.log();
+          ui.printInfo("Watching for changes... (Ctrl+C to stop)");
+        },
+      });
+
+      return; // runWatch never resolves under normal operation
+    }
+
+    // ── One-shot mode (no --watch) ────────────────────────────────────────
     let result: { headerPath?: string; sourcePath: string; headerMapPath?: string; sourceMapPath?: string; diagnostics: Array<{ severity: string; message: string; line?: number; column?: number; code?: string }> };
 
     if (options.noTranspile) {
-      // Skip transpilation - use existing generated files
-      const inputBasename = path.basename(options.inputFile, path.extname(options.inputFile));
+      const inputBasename = path.basename(options.inputFile!, path.extname(options.inputFile!));
       const outDirPath = effectiveOutDir || inputDir;
       result = {
         sourcePath: path.join(outDirPath, `${inputBasename}.cpp`),
@@ -367,10 +582,9 @@ async function main(): Promise<void> {
         diagnostics: [],
       };
     } else {
-      // Default: transpile first
       ui.printTranspiling();
       result = await transpileFile({
-        inputFile: options.inputFile,
+        inputFile: options.inputFile!,
         emitMode: options.emitMode,
         target: effectiveTarget,
         outDir: effectiveOutDir,

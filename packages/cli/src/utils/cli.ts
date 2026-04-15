@@ -1,5 +1,5 @@
 import path from "node:path";
-import { CommandLineOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions, ScaffoldCommandOptions } from "../types";
+import { CommandLineOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions, ScaffoldCommandOptions, InitCommandOptions } from "../types";
 
 import chalk from "chalk";
 
@@ -14,6 +14,7 @@ export function printHelp(): void {
   console.log(chalk.cyan(`USAGE`));
   console.log();
   console.log(`  typecode <input.ts> [options]`);
+  console.log(`  typecode init [name] [options]`);
   console.log(`  typecode gen-libdefs <input.ts>`);
   console.log(`  typecode gen-decls <input.cpp|--all <directory>>`);
   console.log(`  typecode map-error <mapFile> [options]`);
@@ -61,6 +62,13 @@ export function printHelp(): void {
   console.log();
   console.log(`  --baud <rate>           Baud rate for --monitor (default: 9600)`);
   console.log();
+  console.log(chalk.cyan(`WATCH MODE`));
+  console.log();
+  console.log(`  --watch, -w             Watch for file changes and retranspile automatically.`);
+  console.log(`                          Monitors the entry file and all imports for changes.`);
+  console.log(`                          Works with --compile and --upload.`);
+  console.log(`                          Incompatible with --monitor.`);
+  console.log();
   console.log(chalk.cyan(`TREE-SHAKING OPTIONS`));
   console.log();
   console.log(`  --no-tree-shake          Disable tree-shaking (dead code elimination)`);
@@ -77,6 +85,22 @@ export function printHelp(): void {
   console.log(`                           Default entry points: setup/loop (Arduino), main (generic)`);
   console.log();
   console.log(`  --help, -h              Show this help message`);
+  console.log();
+  console.log(chalk.cyan(`PROJECT SCAFFOLDING`));
+  console.log();
+  console.log(`  init [name]             Create a new TypeCode project`);
+  console.log(`                          Generates package.json, tsconfig.json, typecode.config.ts,`);
+  console.log(`                          and an optional starter sketch.`);
+  console.log();
+  console.log(`  --board <id>            Board to target (e.g., arduino-uno)`);
+  console.log();
+  console.log(`  --framework <id>        Framework: arduino or avr (default: arduino)`);
+  console.log();
+  console.log(`  --baud <rate>           Serial baud rate (default: 9600)`);
+  console.log();
+  console.log(`  --no-sketch             Skip generating starter sketch`);
+  console.log();
+  console.log(`  --outDir <path>         Output directory (default: ./<name>)`);
   console.log();
   console.log(chalk.cyan(`BOARD SCAFFOLDING`));
   console.log();
@@ -107,6 +131,12 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.cyan(`EXAMPLES`));
   console.log();
+  console.log(chalk.gray(`  # Interactive project setup`));
+  console.log(`  typecode init`);
+  console.log();
+  console.log(chalk.gray(`  # Non-interactive project setup`));
+  console.log(`  typecode init my-project --board arduino-uno --framework arduino`);
+  console.log();
   console.log(chalk.gray(`  # Transpile to generic C++`));
   console.log(`  typecode src/main.ts`);
   console.log();
@@ -121,6 +151,12 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.gray(`  # Full chain: transpile → compile → upload → monitor`));
   console.log(`  typecode sketch.ts --compile --upload --monitor --fqbn arduino:avr:uno --port COM4 --baud 115200`);
+  console.log();
+  console.log(chalk.gray(`  # Watch mode: auto-retranspile on changes`));
+  console.log(`  typecode sketch.ts --watch`);
+  console.log();
+  console.log(chalk.gray(`  # Watch and auto-compile for Arduino`));
+  console.log(`  typecode sketch.ts --watch --compile --fqbn arduino:avr:uno`);
   console.log();
   console.log(chalk.gray(`  # Generate library definitions from imports`));
   console.log(`  typecode gen-libdefs src/sensor.ts`);
@@ -148,7 +184,7 @@ function readFlags(args: string[], flags: string[]): string | undefined {
   return undefined;
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldCommandOptions | InitCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -196,6 +232,31 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     } as ScaffoldCommandOptions;
   }
 
+  // init subcommand
+  if (firstArg === "init") {
+    // Project name is optional positional arg after 'init'
+    const secondArg = argv[3];
+    const projectName = secondArg && !secondArg.startsWith("-") ? secondArg : undefined;
+
+    const board = readFlags(argv, ["--board"]);
+    const framework = readFlags(argv, ["--framework"]);
+    const baudRaw = readFlags(argv, ["--baud"]);
+    const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
+    const noSketch = argv.includes("--no-sketch");
+
+    const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : undefined;
+
+    return {
+      command: "init",
+      projectName,
+      board,
+      framework,
+      baud,
+      noSketch,
+      outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+    } as InitCommandOptions;
+  }
+
   // Named subcommands
   if (firstArg === "gen-libdefs" || firstArg === "gen-decls" || firstArg === "map-error") {
     const command = firstArg;
@@ -236,6 +297,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
         compile: false,
         upload: false,
         monitor: false,
+        watch: false,
         baud: 9600,
         platformContext,
         mapFile: path.resolve(process.cwd(), mapFile),
@@ -269,6 +331,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
         compile: false,
         upload: false,
         monitor: false,
+        watch: false,
         baud: 9600,
         platformContext,
         // Custom fields for gen-decls
@@ -293,6 +356,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
       compile: false,
       upload: false,
       monitor: false,
+      watch: false,
       baud: 9600,
       platformContext,
     };
@@ -318,6 +382,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
   const compile = argv.includes("--compile");
   const upload = argv.includes("--upload");
   const monitor = argv.includes("--monitor");
+  const watch = argv.includes("--watch") || argv.includes("-w");
   const debug = argv.includes("--debug");
   const noTranspile = argv.includes("--no-transpile");
   const force = argv.includes("--force");
@@ -358,6 +423,9 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
   if (monitor && !port) {
     throw new Error("--monitor requires --port <port>.");
   }
+  if (watch && monitor) {
+    throw new Error("--watch and --monitor cannot be used together (monitor blocks the process).");
+  }
 
   const treeShaking: TreeShakingOptions = {
     enabled: !noTreeShake,
@@ -380,6 +448,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     compile,
     upload,
     monitor,
+    watch,
     port,
     baud,
     platformContext,
