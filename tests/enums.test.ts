@@ -1,4 +1,4 @@
-import { describe, it } from "vitest";
+import { describe, it, expect } from "vitest";
 import { expectCppContains, transpile } from "./setup";
 
 describe("Enum Transpilation", () => {
@@ -58,7 +58,8 @@ describe("Enum Transpilation", () => {
           return c == Color.Red;
         }
       `);
-      expectCppContains(result, ["enum class Color"]);
+      expectCppContains(result, ["enum class Color", "isRed("]);
+      expect(result.cpp).toMatch(/return\s+c\s*==\s*Color(?:::|\.)Red/);
     });
   });
 });

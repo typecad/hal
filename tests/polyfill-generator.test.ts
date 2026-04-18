@@ -168,7 +168,8 @@ describe("PolyfillGenerator", () => {
         { templateId: "console", usageCount: 1, config: {} },
       ]);
 
-      expect(result.code).toBeDefined();
+      expect(result.code).toBe("");
+      expect(result.includes).not.toContain("<Arduino.h>");
     });
   });
 

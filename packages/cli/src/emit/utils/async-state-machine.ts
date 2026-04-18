@@ -175,8 +175,15 @@ export function generateAsyncTaskClass(
  */
 function renderExpression(expr: ExpressionIR, strategy: PlatformStrategy): string {
   switch (expr.kind) {
-    case "number":
+    case "number": {
+      if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+        const str = `${expr.value}`;
+        return str.includes('.') || str.includes('e') || str.includes('E')
+          ? `${str}f`
+          : `${str}.0f`;
+      }
       return `${expr.value}`;
+    }
     case "string":
       return `"${expr.value.replace(/"/g, '\\"')}"`;
     case "boolean":

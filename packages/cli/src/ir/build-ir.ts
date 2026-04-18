@@ -23,6 +23,11 @@ const registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; w
 // Track variables that are pointers (from 'new' expressions)
 type PointerTracker = Set<string>;
 
+// Module-level accumulators for nested function hoisting (Bug 6).
+// These are reset at the start of each buildProgramIR() call.
+let hoistedNestedFunctions: FunctionIR[] = [];
+let nestedFunctionAliases: Map<string, string> = new Map();
+
 // Context flags for expression processing
 type ExpressionContext = {
   pointerVars: PointerTracker;
@@ -40,7 +45,66 @@ const PIN_FACTORY_FUNCTIONS = new Set([
 // Helper functions that should be constant-folded to their first argument
 const CONSTANT_FOLD_FUNCTIONS = new Set<string>([]);
 
+// Maps typed array constructor names to their C++ element types.
+// Used for: new expression handling, collectPointerVars, and function-level tracking.
+const TYPED_ARRAY_ELEMENT_MAP: Record<string, string> = {
+  Uint8Array:  "uint8_t",
+  Int8Array:   "int8_t",
+  Uint16Array: "uint16_t",
+  Int16Array:  "int16_t",
+  Uint32Array: "uint32_t",
+  Int32Array:  "int32_t",
+  Float32Array: "float",
+  Float64Array: "double",
+};
+
 function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Set()): ExpressionIR {
+  function emitUnsupportedExpression(message: string): ExpressionIR {
+    diagnostics.push(makeDiagnostic(
+      sourceText,
+      expr.pos,
+      message,
+      "warning",
+      "TS2CPP_UNSUPPORTED_EXPR",
+    ));
+    return { kind: "raw", value: "0 /* unsupported_expr */" };
+  }
+
+  function isOptionalChainNode(node: ts.Node): boolean {
+    return !!(node as any).questionDotToken ||
+      (typeof (ts as any).isOptionalChain === "function" && (ts as any).isOptionalChain(node));
+  }
+
+  function renderMemberAccessText(receiverNode: ts.Expression, memberName: string): string {
+    const isThisAccess = receiverNode.kind === ts.SyntaxKind.ThisKeyword ||
+      (ts.isIdentifier(receiverNode) && receiverNode.text === "this");
+    if (isThisAccess) {
+      if (memberName === "length") {
+        return `this->size()`;
+      }
+      return `this->${memberName}`;
+    }
+    if (ts.isIdentifier(receiverNode) && pointerVars.has(receiverNode.text)) {
+      return `${receiverNode.text}->${memberName}`;
+    }
+    if (ts.isIdentifier(receiverNode) && receiverNode.text === "Math") {
+      return `std::${memberName}`;
+    }
+    const objectText = formatExpressionText(receiverNode);
+    if (memberName === "length") {
+      if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
+        return `(sizeof(${objectText}) / sizeof(${objectText}[0]))`;
+      }
+      return `${objectText}.size()`;
+    }
+    return `${objectText}.${memberName}`;
+  }
+
+  function renderOptionalGuardedAccess(receiverNode: ts.Expression, accessText: string): string {
+    const receiverText = formatExpressionText(receiverNode);
+    return `(typecode_exists(${receiverText}) ? ${accessText} : 0)`;
+  }
+
   const formatExpressionText = (node: ts.Expression): string => {
     if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
       return formatExpressionText(node.expression);
@@ -51,28 +115,11 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     }
 
     if (ts.isPropertyAccessExpression(node)) {
-      // In C++, 'this' is a pointer, so use -> instead of .
-      // Check if expression is 'this' keyword
-      const isThisAccess = node.expression.kind === ts.SyntaxKind.ThisKeyword || 
-                           (ts.isIdentifier(node.expression) && node.expression.text === "this");
-      if (isThisAccess) {
-        if (node.name.text === "length") {
-          return `this->size()`;
-        }
-        return `this->${node.name.text}`;
+      const accessText = renderMemberAccessText(node.expression, node.name.text);
+      if (isOptionalChainNode(node)) {
+        return renderOptionalGuardedAccess(node.expression, accessText);
       }
-      // Check if the object is a pointer variable (from 'new')
-      if (ts.isIdentifier(node.expression) && pointerVars.has(node.expression.text)) {
-        return `${node.expression.text}->${node.name.text}`;
-      }
-      if (ts.isIdentifier(node.expression) && node.expression.text === "Math") {
-        return `std::${node.name.text}`;
-      }
-      const objectText = formatExpressionText(node.expression);
-      if (node.name.text === "length") {
-        return `${objectText}.size()`;
-      }
-      return `${objectText}.${node.name.text}`;
+      return accessText;
     }
 
     if (ts.isElementAccessExpression(node)) {
@@ -82,8 +129,12 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     }
 
     if (ts.isCallExpression(node)) {
-      const calleeText = formatExpressionText(node.expression);
       const argsText = node.arguments.map((arg) => formatExpressionText(arg)).join(", ");
+      if (isOptionalChainNode(node) && ts.isPropertyAccessExpression(node.expression)) {
+        const calleeText = renderMemberAccessText(node.expression.expression, node.expression.name.text);
+        return renderOptionalGuardedAccess(node.expression.expression, `${calleeText}(${argsText})`);
+      }
+      const calleeText = formatExpressionText(node.expression);
       return `${calleeText}(${argsText})`;
     }
 
@@ -97,6 +148,12 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
         operator = "==";
       } else if (operator === "!==") {
         operator = "!=";
+      } else if (operator === "??") {
+        // Nullish coalescing must not use truthiness semantics because 0/false
+        // are valid values in TypeScript. Emit a helper call instead.
+        const left = formatExpressionText(node.left);
+        const right = formatExpressionText(node.right);
+        return `typecode_nullish(${left}, ${right})`;
       }
       return `${formatExpressionText(node.left)} ${operator} ${formatExpressionText(node.right)}`;
     }
@@ -105,7 +162,11 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   };
 
   if (ts.isNumericLiteral(expr)) {
-    return { kind: "number", value: Number(expr.text) };
+    const numValue = Number(expr.text);
+    // Use original source text to detect float literals — TypeScript normalizes "2.0" to "2" in expr.text
+    const originalText = sourceText.substring(expr.pos, expr.end).trim();
+    const isFloat = /[.eE]/.test(originalText);
+    return { kind: "number" as const, value: numValue, ...(isFloat ? { cppType: "float" as const } : {}) };
   }
 
   if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) {
@@ -139,7 +200,7 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   // Detect string-bearing + chains and fold them into string_concat IR so they
   // flow through the same snprintf / std::string pipeline that template literals use.
   function isStringBearingConcatChain(e: ts.Expression): boolean {
-    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return true;
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) || ts.isTemplateExpression(e)) return true;
     if (
       ts.isBinaryExpression(e) &&
       e.operatorToken.kind === ts.SyntaxKind.PlusToken
@@ -152,6 +213,10 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   function flattenStringConcatParts(e: ts.Expression): ExpressionIR[] {
     if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) {
       return e.text ? [{ kind: "string", value: e.text }] : [];
+    }
+    if (ts.isTemplateExpression(e)) {
+      const nested = expressionToIR(e, sourceText, diagnostics, pointerVars);
+      return nested.kind === "string_concat" ? nested.parts : [nested];
     }
     if (
       ts.isBinaryExpression(e) &&
@@ -177,6 +242,14 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     return { kind: "string_concat", parts };
   }
 
+  // Nullish coalescing: use a helper instead of truthiness so that
+  // values like 0 and false are preserved correctly.
+  if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+    const left = renderExprAsText(expressionToIR(expr.left, sourceText, diagnostics, pointerVars));
+    const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
+    return { kind: "raw", value: `typecode_nullish(${left}, ${right})` };
+  }
+
   // Recurse into binary expressions so nested typecode calls are translated correctly.
   if (ts.isBinaryExpression(expr)) {
     let operator = ts.tokenToString(expr.operatorToken.kind) ?? expr.operatorToken.getText();
@@ -190,9 +263,10 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     };
   }
 
-  // Unwrap parenthesized expressions — the emitter re-parenthesizes as needed.
+  // Preserve parenthesized expressions as a `paren` IR node so that explicit
+  // grouping from the TS source is retained in the emitted C++ (e.g. `(2+3)*4`).
   if (ts.isParenthesizedExpression(expr)) {
-    return expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
+    return { kind: "paren", inner: expressionToIR(expr.expression, sourceText, diagnostics, pointerVars) };
   }
 
   // Recurse into prefix unary so nested typecode calls are translated correctly.
@@ -205,7 +279,37 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     };
   }
 
+  // Handle postfix unary (i++, i--) so they compose correctly in IR.
+  if (ts.isPostfixUnaryExpression(expr)) {
+    const operator = ts.tokenToString(expr.operator) ?? "";
+    return {
+      kind: "unary",
+      operator,
+      operand: expressionToIR(expr.operand, sourceText, diagnostics, pointerVars),
+      postfix: true,
+    };
+  }
+
   if (ts.isCallExpression(expr)) {
+    // Warn about optional chaining on call expressions — we preserve a null guard,
+    // but the runtime semantics are still only approximate compared to TypeScript.
+    if (isOptionalChainNode(expr)) {
+      diagnostics.push(makeDiagnostic(
+        sourceText, expr.pos,
+        "Optional chaining (?.) is lowered with an approximate null guard in C++; semantics may differ from TypeScript.",
+        "warning", "TS2CPP_OPTIONAL_CHAINING"
+      ));
+      if (ts.isPropertyAccessExpression(expr.expression)) {
+        const argsText = expr.arguments
+          .map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars)))
+          .join(", ");
+        const calleeText = renderMemberAccessText(expr.expression.expression, expr.expression.name.text);
+        return {
+          kind: "raw",
+          value: renderOptionalGuardedAccess(expr.expression.expression, `${calleeText}(${argsText})`),
+        };
+      }
+    }
     // ---- Debounce chain detection -------------------------------------------
     // Handle D2.onFalling(() => {...}).debounce(50) pattern
     // The outer call is .debounce(ms), inner call is the interrupt attachment
@@ -357,6 +461,35 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     if (ts.isPropertyAccessExpression(expr.expression)) {
       const method = expr.expression.name.text;
       const receiverNode = expr.expression.expression;
+
+      // Device accessor in expression context:
+      //   spi.device(cs).transfer(x)  -> receiver: SPI0, method: device.transfer, args: [cs, x]
+      //   i2c.device(addr).readByte(r) -> receiver: I2C0, method: device.readByte, args: [addr, r]
+      if (
+        ts.isCallExpression(receiverNode) &&
+        ts.isPropertyAccessExpression(receiverNode.expression) &&
+        receiverNode.expression.name.text === 'device' &&
+        ts.isIdentifier(receiverNode.expression.expression)
+      ) {
+        const rootName = receiverNode.expression.expression.text;
+        const directKind = inferKindByName(rootName);
+        const busAlias = activeBusAliases.get(rootName);
+        const resolvedReceiver = directKind !== 'unknown' ? rootName : busAlias?.receiver;
+        const resolvedKind = directKind !== 'unknown' ? directKind : busAlias?.kind;
+
+        if (resolvedReceiver && resolvedKind) {
+          return {
+            kind: "typecode-call",
+            receiver: resolvedReceiver,
+            receiverKind: resolvedKind,
+            method: `device.${method}`,
+            args: [
+              ...receiverNode.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+              ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+            ],
+          };
+        }
+      }
 
       // Flat interrupt API: D2.onFalling(callback), D2.onRising(callback), D2.onChange(callback)
       // Pattern: pin.onFalling(callback) where method is onFalling/onRising/onChange
@@ -581,7 +714,8 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
         calleeText = `${objText}${accessor}${expr.expression.name.text}`;
       }
     } else {
-      calleeText = expr.expression.getText();
+      const rawText = expr.expression.getText();
+      calleeText = nestedFunctionAliases.get(rawText) ?? rawText;
     }
     const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
     return { kind: "raw", value: `${calleeText}(${argsText})` };
@@ -589,6 +723,32 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
 
   if (ts.isNewExpression(expr)) {
     const ctorText = formatExpressionText(expr.expression);
+
+    // Special case: new TypedArray([...]) → C++ array initializer
+    const elementType = TYPED_ARRAY_ELEMENT_MAP[ctorText];
+    if (elementType) {
+      const args = expr.arguments ?? [];
+      if (args.length === 1 && ts.isArrayLiteralExpression(args[0])) {
+        const elements = args[0].elements.map(e =>
+          expressionToIR(e, sourceText, diagnostics, pointerVars)
+        );
+        return { kind: "array", elements, elementType } as any;
+      }
+      // new TypedArray(n) — allocate n elements (zero-initialized)
+      if (args.length === 1) {
+        const sizeIR = expressionToIR(args[0], sourceText, diagnostics, pointerVars);
+        const size = renderExprAsText(sizeIR);
+        const count = parseInt(size, 10);
+        if (!isNaN(count) && count > 0 && count <= 256) {
+          // Return array IR with zero elements so var_decl renderer emits proper C array
+          const zeros = Array(count).fill(0).map(() => ({ kind: "number" as const, value: 0 }));
+          return { kind: "array", elements: zeros, elementType } as any;
+        }
+        // Dynamic size fallback — emit as raw (may not compile in all contexts)
+        return { kind: "raw", value: `{${elementType}(${size})}` };
+      }
+    }
+
     const argsText = (expr.arguments ?? [])
       .map((arg) => {
         if (ts.isObjectLiteralExpression(arg)) {
@@ -653,6 +813,14 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   }
 
   if (ts.isIdentifier(expr)) {
+    const pinAlias = activePinAliases.get(expr.text);
+    if (pinAlias) {
+      return { kind: "identifier", value: pinAlias };
+    }
+    const busAlias = activeBusAliases.get(expr.text);
+    if (busAlias) {
+      return { kind: "identifier", value: busAlias.receiver };
+    }
     return { kind: "identifier", value: expr.text };
   }
 
@@ -663,6 +831,15 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
 
   // Handle property access expressions like obj.property or this.field
   if (ts.isPropertyAccessExpression(expr)) {
+    if (isOptionalChainNode(expr)) {
+      diagnostics.push(makeDiagnostic(
+        sourceText, expr.pos,
+        "Optional chaining (?.) is lowered with an approximate null guard in C++; semantics may differ from TypeScript.",
+        "warning", "TS2CPP_OPTIONAL_CHAINING"
+      ));
+      const accessText = renderMemberAccessText(expr.expression, expr.name.text);
+      return { kind: "raw", value: renderOptionalGuardedAccess(expr.expression, accessText) };
+    }
     // ── Register bit-field read ──────────────────────────────────
     // If the object is a register class name and the property is a known
     // bit field, emit the inline bit-extract expression.
@@ -692,6 +869,10 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
+      if (ts.isIdentifier(expr.expression) && activeCArrayVars.has(expr.expression.text)) {
+        const objName = renderExprAsText(object);
+        return { kind: "raw", value: `(sizeof(${objName}) / sizeof(${objName}[0]))` };
+      }
       return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
     }
     return { kind: "property-access", object, property: expr.name.text };
@@ -840,29 +1021,28 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
 
   // Handle class expressions (anonymous classes assigned to variables)
   if (ts.isClassExpression(expr)) {
-    return { kind: "raw", value: "/* class stub */" };
+    return emitUnsupportedExpression("Class expressions are unsupported in the C++ transpiler and were lowered to a placeholder.");
   }
 
   // Handle tagged template expressions (e.g., tag`template`)
   if (ts.isTaggedTemplateExpression(expr)) {
-    return { kind: "raw", value: expr.getText() };
+    return emitUnsupportedExpression("Tagged template expressions are unsupported in the C++ transpiler and were lowered to a placeholder.");
   }
 
   // Handle meta properties (e.g., import.meta, new.target)
   if (ts.isMetaProperty(expr)) {
-    return { kind: "raw", value: expr.getText() };
+    return emitUnsupportedExpression("Meta-property expressions are unsupported in the C++ transpiler and were lowered to a placeholder.");
   }
 
-  // The remaining RAW_EXPR warnings are for expressions in board package files
-  // that are compile-time constructs (peripheral stubs, pin factories, etc.)
-  // These don't need C++ emission, so suppress the warning for cleaner output.
-  // The raw text is still emitted as a fallback.
-  return { kind: "raw", value: expr.getText() };
+  return emitUnsupportedExpression(
+    `Unsupported expression kind '${ts.SyntaxKind[expr.kind] ?? expr.kind}' was lowered to a placeholder.`,
+  );
 }
 
 function calleeToText(expr: ts.LeftHandSideExpression): string {
   if (ts.isIdentifier(expr)) {
-    return expr.text;
+    const alias = nestedFunctionAliases.get(expr.text);
+    return alias ?? expr.text;
   }
 
   if (ts.isPropertyAccessExpression(expr)) {
@@ -874,8 +1054,15 @@ function calleeToText(expr: ts.LeftHandSideExpression): string {
 
 function renderExprAsText(expr: ExpressionIR): string {
   switch (expr.kind) {
-    case "number":
+    case "number": {
+      if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+        const str = `${expr.value}`;
+        return str.includes('.') || str.includes('e') || str.includes('E')
+          ? `${str}f`
+          : `${str}.0f`;
+      }
       return `${expr.value}`;
+    }
     case "string":
       return `"${expr.value.replace(/"/g, '\\"')}"`;
     case "boolean":
@@ -900,12 +1087,14 @@ function renderExprAsText(expr: ExpressionIR): string {
       return `${expr.operator}${renderExprAsText(expr.operand)}`;
     case "property-access":
       return `${renderExprAsText(expr.object)}.${expr.property}`;
+    case "paren":
+      return `(${renderExprAsText(expr.inner)})`;
     case "typecode-call":
       // Fallback text rendering used inside build-ir.ts only.
       // The real Arduino translation happens in renderExpression (cpp-emitter.ts).
       return `${expr.receiver}.${expr.method}(${expr.args.map(renderExprAsText).join(', ')})`;
     default:
-      return "/* unsupported_expr */";
+      return "0 /* unsupported_expr */";
   }
 }
 
@@ -1271,7 +1460,7 @@ function incrementorToIR(
   if (ts.isBinaryExpression(expr) && ts.isIdentifier(expr.left)) {
     const operator = assignmentOperatorToString(expr.operatorToken.kind);
     if (operator) {
-      const valueType = inferExprCppType(expr.right, new Map(), localVariableTypes);
+      const valueType = inferExprCppType(expr.right, new Map(), localVariableTypes, sourceText);
       updateLocalTypeFromAssignment(expr.left.text, operator, valueType, localVariableTypes);
       return {
         kind: "assign",
@@ -1345,13 +1534,51 @@ function expressionStatementToIR(
     // Fall through to normal handling if not a register field
   }
 
+  // Handle this.field = value, obj.field = value, and compound assignments (+=, -=, etc.)
+  if (ts.isBinaryExpression(expr) && ts.isPropertyAccessExpression(expr.left)) {
+    const operator = assignmentOperatorToString(expr.operatorToken.kind);
+    if (operator) {
+      const targetIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
+      const targetText = renderExprAsText(targetIR);
+      const comments = extractNodeComments(statement, sourceText);
+      return {
+        kind: "assign",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
+        operator,
+        value: expressionToIR(expr.right, sourceText, diagnostics),
+      };
+    }
+  }
+
+  // Handle arr[index] = value and compound assignments (arr[i] += 5, etc.)
+  if (ts.isBinaryExpression(expr) && ts.isElementAccessExpression(expr.left)) {
+    const operator = assignmentOperatorToString(expr.operatorToken.kind);
+    if (operator) {
+      const targetIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
+      const targetText = renderExprAsText(targetIR);
+      const comments = extractNodeComments(statement, sourceText);
+      return {
+        kind: "assign",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
+        operator,
+        value: expressionToIR(expr.right, sourceText, diagnostics),
+      };
+    }
+  }
+
   if (ts.isBinaryExpression(expr) && ts.isIdentifier(expr.left)) {
     const operator = assignmentOperatorToString(expr.operatorToken.kind);
     if (!operator) {
       return undefined;
     }
 
-    const valueType = inferExprCppType(expr.right, functionReturnTypes, localVariableTypes);
+    const valueType = inferExprCppType(expr.right, functionReturnTypes, localVariableTypes, sourceText);
     updateLocalTypeFromAssignment(expr.left.text, operator, valueType, localVariableTypes);
     const comments = extractNodeComments(statement, sourceText);
 
@@ -1939,6 +2166,77 @@ function lowerStatement(
   return undefined;
 }
 
+/**
+ * Hoist a nested function declaration to file scope.
+ * Creates a mangled name (parent__inner) and registers it in the alias map
+ * so that call sites within the parent function get rewritten.
+ */
+function hoistNestedFunction(
+  statement: ts.FunctionDeclaration,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  functionReturnTypes: Map<string, CppTypeHint>,
+  parentFunctionName: string,
+  typeAliases?: Map<string, ts.TypeNode>,
+): void {
+  const originalName = statement.name!.text;
+  const safeParentName = parentFunctionName.replace(/\./g, "_");
+  const mangledName = `${safeParentName}__${originalName}`;
+
+  // Resolve return type from annotation, or default to auto
+  const returnType = statement.type
+    ? typeNodeToCppType(statement.type, typeAliases)
+    : "auto";
+
+  const localVariableTypes = new Map<string, CppTypeHint>();
+  const parameters: ParameterIR[] = [];
+
+  for (const parameter of statement.parameters) {
+    if (ts.isIdentifier(parameter.name)) {
+      const parameterType = typeNodeToCppType(parameter.type, typeAliases);
+      localVariableTypes.set(parameter.name.text, parameterType);
+      const paramOwnershipKind = extractOwnershipKindFromTypeNode(parameter.type, typeAliases);
+      parameters.push({
+        name: parameter.name.text,
+        cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
+        defaultValue: parameter.initializer
+          ? expressionToIR(parameter.initializer, sourceText, diagnostics)
+          : undefined,
+        isRest: false,
+        ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
+      });
+    }
+  }
+
+  // Lower the body — recursive call to lowerStatementList handles deeper nesting
+  const bodyStatements = lowerStatementList(
+    statement.body?.statements ?? [],
+    fileName,
+    sourceText,
+    diagnostics,
+    functionReturnTypes,
+    localVariableTypes,
+    mangledName,
+    typeAliases,
+  );
+
+  const typeParams = statement.typeParameters
+    ? statement.typeParameters.map(tp => tp.name.text)
+    : undefined;
+
+  hoistedNestedFunctions.push({
+    originalName: mangledName,
+    isAsync: false,
+    returnType: returnType as any,
+    sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+    ...extractNodeComments(statement, sourceText),
+    parameters,
+    statements: bodyStatements,
+    ...(typeParams && typeParams.length > 0 ? { typeParameters: typeParams } : {}),
+  });
+}
+
 function lowerStatementList(
   statements: ts.NodeArray<ts.Statement> | ts.Statement[],
   fileName: string,
@@ -1950,8 +2248,40 @@ function lowerStatementList(
   typeAliases?: Map<string, ts.TypeNode>,
 ): StatementIR[] {
   const lowered: StatementIR[] = [];
+  const nestedNames: string[] = [];
 
+  // Phase 1: Pre-scan for nested function declarations — register aliases only.
+  // This ensures sibling functions can reference each other.
   for (const statement of statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      const originalName = statement.name.text;
+      const safeParentName = functionNameForDiagnostics.replace(/\./g, "_");
+      const mangledName = `${safeParentName}__${originalName}`;
+      nestedFunctionAliases.set(originalName, mangledName);
+      nestedNames.push(originalName);
+    }
+  }
+
+  // Phase 2: Hoist nested functions (process their bodies).
+  for (const statement of statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      hoistNestedFunction(
+        statement,
+        fileName,
+        sourceText,
+        diagnostics,
+        functionReturnTypes,
+        functionNameForDiagnostics,
+        typeAliases,
+      );
+    }
+  }
+
+  // Phase 3: Process remaining (non-function) statements.
+  for (const statement of statements) {
+    if (ts.isFunctionDeclaration(statement)) {
+      continue; // Already hoisted
+    }
     const result = lowerStatement(
       statement,
       fileName,
@@ -1965,6 +2295,11 @@ function lowerStatementList(
     if (result) {
       lowered.push(...result);
     }
+  }
+
+  // Phase 4: Clean up aliases so they don't leak to sibling scopes.
+  for (const name of nestedNames) {
+    nestedFunctionAliases.delete(name);
   }
 
   return lowered;
@@ -2029,7 +2364,13 @@ function variableStatementToIR(
         
         // Create individual variable declaration for each destructured property
         const propAccess: ExpressionIR = { kind: "raw", value: `${objText}.${propName}` };
-        
+        const initializer = element.initializer
+          ? {
+              kind: "raw" as const,
+              value: `typecode_nullish(${renderExprAsText(propAccess)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
+            }
+          : propAccess;
+
         lowered.push({
           kind: "var_decl",
           sourceSpan: makeSourceSpan(element, fileName, sourceText),
@@ -2038,7 +2379,7 @@ function variableStatementToIR(
           name: varName,
           storage,
           cppType: "auto",
-          initializer: propAccess,
+          initializer,
         });
         
         localVariableTypes.set(varName, "auto");
@@ -2079,7 +2420,13 @@ function variableStatementToIR(
         
         // Create individual variable declaration for each destructured element
         const indexAccess: ExpressionIR = { kind: "raw", value: `${arrText}[${i}]` };
-        
+        const initializer = element.initializer
+          ? {
+              kind: "raw" as const,
+              value: `typecode_nullish(${renderExprAsText(indexAccess)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
+            }
+          : indexAccess;
+
         lowered.push({
           kind: "var_decl",
           sourceSpan: makeSourceSpan(element, fileName, sourceText),
@@ -2088,7 +2435,7 @@ function variableStatementToIR(
           name: varName,
           storage,
           cppType: "auto",
-          initializer: indexAccess,
+          initializer,
         });
         
         localVariableTypes.set(varName, "auto");
@@ -2124,6 +2471,17 @@ function variableStatementToIR(
         } else {
           actualInitializer = undefined;
         }
+      }
+    }
+
+    // ── Track function-level typed array vars for .length → sizeof ──────
+    // Variables initialized with new TypedArray(...) inside function bodies
+    // need the same tracking as top-level ones for correct .length handling.
+    if (actualInitializer && ts.isNewExpression(actualInitializer)) {
+      const ctorText = actualInitializer.expression && ts.isIdentifier(actualInitializer.expression)
+        ? actualInitializer.expression.text : "";
+      if (TYPED_ARRAY_ELEMENT_MAP[ctorText] && ts.isIdentifier(declaration.name)) {
+        activeCArrayVars.add(declaration.name.text);
       }
     }
 
@@ -2165,14 +2523,13 @@ function variableStatementToIR(
       continue;
     }
 
-    // ── Bus alias detection ──────────────────────────────────────────────
-    // Handle: const i2c = I2C0.begin() or const serial = UART0.begin(9600)
-    // These create compile-time-only aliases — no C++ variable is emitted.
-    // The typecode-call (begin) is emitted as a standalone statement,
-    // and the variable name is recorded for alias resolution in subsequent calls.
+    // ── Ownership-handle bus alias detection ─────────────────────────────
+    // Handle: const bus = I2C0.take() / SPI0.take() / UART0.take()
+    // These are compile-time aliases for ownership analysis, and the emitted
+    // statement remains the underlying take() call.
     if (initIR?.kind === 'typecode-call' &&
         typeof initIR.method === 'string' &&
-        (initIR.method === 'begin' || initIR.method === 'take') &&
+        (initIR.method === 'take' || initIR.method === 'begin' || initIR.method === 'configBegin') &&
         (initIR.receiverKind === 'i2c' || initIR.receiverKind === 'spi' || initIR.receiverKind === 'serial')) {
       activeBusAliases.set(declaration.name.text, { receiver: initIR.receiver, kind: initIR.receiverKind });
       lowered.push({
@@ -2233,7 +2590,14 @@ function collectPointerVars(statements: readonly ts.Statement[]): PointerTracker
     if (ts.isVariableStatement(statement)) {
       for (const decl of statement.declarationList.declarations) {
         if (ts.isIdentifier(decl.name) && decl.initializer && ts.isNewExpression(decl.initializer)) {
-          pointerVars.add(decl.name.text);
+          const ctorText = decl.initializer.expression && ts.isIdentifier(decl.initializer.expression)
+            ? decl.initializer.expression.text : "";
+          if (TYPED_ARRAY_ELEMENT_MAP[ctorText]) {
+            // new TypedArray([...]) etc. → C array, not a pointer
+            activeCArrayVars.add(decl.name.text);
+          } else {
+            pointerVars.add(decl.name.text);
+          }
         }
       }
     }
@@ -2255,6 +2619,13 @@ let activePinAliases: Map<string, string> = new Map();
 // Maps alias variable names (e.g., "i2c") to their original peripheral receiver info.
 // Reset at the start of each buildProgramIR call.
 let activeBusAliases: Map<string, { receiver: string; kind: TypecodeReceiverKind }> = new Map();
+
+// Module-level C-array variable tracker for the current buildProgramIR invocation.
+// Tracks variable names initialized with new Uint8Array([...]) (or similar typed array
+// constructors) that transpile to C arrays rather than pointers. For these variables,
+// .length should become sizeof(arr)/sizeof(arr[0]) instead of arr.size().
+// Reset at the start of each buildProgramIR call.
+let activeCArrayVars: Set<string> = new Set();
 
 /**
  * Given a source file path and a relative import module specifier, check
@@ -2340,12 +2711,16 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   const functionReturnTypes = buildFunctionReturnTypeMap(source);
   const topLevelVariableTypes = new Map<string, CppTypeHint>();
   
-  // Collect pointer variables at top level (for correct -> vs . usage)
-  const topLevelPointerVars = collectPointerVars(source.statements);
-  
   // Reset alias tracking for this file
   activePinAliases = new Map();
   activeBusAliases = new Map();
+  activeCArrayVars = new Set();
+  hoistedNestedFunctions = [];
+  nestedFunctionAliases = new Map();
+  
+  // Collect pointer variables at top level (for correct -> vs . usage)
+  // This also populates activeCArrayVars for typed array variables
+  const topLevelPointerVars = collectPointerVars(source.statements);
 
   for (const statement of source.statements) {
     if (ts.isTypeAliasDeclaration(statement)) {
@@ -2723,6 +3098,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             typeAliasNodes,
           );
           
+          const nsFnTypeParams = nsNode.typeParameters
+            ? nsNode.typeParameters.map(tp => tp.name.text)
+            : undefined;
           nsFunctions.push({
             originalName: nsNode.name.text,
             isAsync,
@@ -2732,6 +3110,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             trailingComments: fnComments.trailingComments,
             parameters,
             statements: bodyStatements,
+            ...(nsFnTypeParams && nsFnTypeParams.length > 0 ? { typeParameters: nsFnTypeParams } : {}),
           });
           continue;
         }
@@ -2770,6 +3149,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
 
     if (ts.isFunctionDeclaration(node)) {
+      // Skip overload signatures (declarations without a body).
+      if (!node.body) return;
+
       if (!node.name) {
         diagnostics.push(makeDiagnostic(sourceText, node.pos, "Anonymous function declaration is unsupported.", "warning"));
         return;
@@ -2820,6 +3202,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         typeAliasNodes,
       );
 
+      const fnTypeParams = node.typeParameters
+        ? node.typeParameters.map(tp => tp.name.text)
+        : undefined;
       functions.push({
         originalName: node.name.text,
         isAsync,
@@ -2828,6 +3213,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         ...extractNodeComments(node, sourceText),
         parameters,
         statements: bodyStatements,
+        ...(fnTypeParams && fnTypeParams.length > 0 ? { typeParameters: fnTypeParams } : {}),
       });
       return;
     }
@@ -2910,11 +3296,29 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             resolvedReturnType = signatureFromAlias.returnType;
           }
 
+          // Promote int → float when the function body returns float expressions
+          if (resolvedReturnType === "int") {
+            if (ts.isBlock(fnExpression.body)) {
+              const returnTypes = collectReturns(fnExpression.body)
+                .filter((item) => item.expression)
+                .map((item) => inferExprCppType(item.expression as ts.Expression, functionReturnTypes, localVariableTypes, sourceText))
+                .filter((item) => item !== "auto");
+              if (returnTypes.includes("float")) {
+                resolvedReturnType = "float";
+              }
+            } else {
+              const inferredBodyType = inferExprCppType(fnExpression.body, functionReturnTypes, localVariableTypes, sourceText);
+              if (inferredBodyType === "float") {
+                resolvedReturnType = "float";
+              }
+            }
+          }
+
           if (resolvedReturnType === "auto") {
             if (ts.isBlock(fnExpression.body)) {
               const returnTypes = collectReturns(fnExpression.body)
                 .filter((item) => item.expression)
-                .map((item) => inferExprCppType(item.expression as ts.Expression, functionReturnTypes, localVariableTypes))
+                .map((item) => inferExprCppType(item.expression as ts.Expression, functionReturnTypes, localVariableTypes, sourceText))
                 .filter((item) => item !== "auto");
 
               if (returnTypes.includes("float")) {
@@ -2929,7 +3333,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
                 resolvedReturnType = returnTypes[0];
               }
             } else {
-              resolvedReturnType = inferExprCppType(fnExpression.body, functionReturnTypes, localVariableTypes);
+              resolvedReturnType = inferExprCppType(fnExpression.body, functionReturnTypes, localVariableTypes, sourceText);
             }
           }
 
@@ -3371,6 +3775,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       ),
     );
   });
+
+  // Collect any nested functions that were hoisted during IR building
+  functions.push(...hoistedNestedFunctions);
 
   // Resolve board-definition constants from the actual board package file.
   // This replaces the old hard-coded ARDUINO_BOARD_METADATA table in

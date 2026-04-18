@@ -8,7 +8,8 @@ import type { StatementIR, ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import { ExpressionRenderer, transformTypeName } from "./expression-renderer";
-import { isConsoleCall, getConsoleMethod, inferObjectFieldType } from "./utils";
+import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
+import { escapeCppKeyword } from "../utils/strings";
 
 /**
  * Context needed for statement rendering.
@@ -319,22 +320,36 @@ export class StatementRenderer {
       // Handle array initializers
       if (statement.initializer.kind === "array") {
         const elements = statement.initializer.elements.map((e) => this.expressionRenderer.render(e)).join(", ");
-        if (declaredType.startsWith("std::vector<")) {
+        if (declaredType.startsWith("std::vector<") && this.strategy.needsStdVector()) {
           return forHeader
             ? `${declaration} = { ${elements} }`
             : `${declaration} = { ${elements} };`;
         }
         // Use "int" for "auto" element type since C arrays need explicit types
         const arrayType = statement.initializer.elementType === "auto" ? "int" : statement.initializer.elementType;
-        return forHeader 
-          ? `${arrayType} ${statement.name}[] = { ${elements} }`
-          : `${arrayType} ${statement.name}[] = { ${elements} };`;
+        const safeArrName = escapeCppKeyword(statement.name);
+        return forHeader
+          ? `${arrayType} ${safeArrName}[] = { ${elements} }`
+          : `${arrayType} ${safeArrName}[] = { ${elements} };`;
       }
       // Handle object initializers with inline struct definition
       if (statement.initializer.kind === "object") {
         const structName = `_${statement.name}_t`;
+
+        // Collect nested struct definitions (deepest first) and emit as prelude
+        const nestedStructs = collectNestedStructDefs(
+          statement.initializer, statement.name,
+          this.pointerVarTypes, this.knownFunctionReturnTypes,
+        );
+        if (nestedStructs.length > 0) {
+          const nestedDefs = nestedStructs.map(
+            (ns) => `struct ${ns.structName} { ${ns.fields.map((f) => `${f.type} ${f.name};`).join(" ")} };`
+          );
+          this.expressionRenderer.pushPrelude(nestedDefs);
+        }
+
         const fieldDefs = statement.initializer.fields
-          .map((f) => `${this.inferFieldType(f.value)} ${f.name};`)
+          .map((f) => `${this.inferFieldType(f.value, statement.name, f.name)} ${f.name};`)
           .join(" ");
         const initValues = statement.initializer.fields
           .map((f) => {
@@ -344,18 +359,23 @@ export class StatementRenderer {
             return renderExpr(f.value);
           })
           .join(", ");
+        const safeObjName = escapeCppKeyword(statement.name);
         return forHeader
-          ? `struct ${structName} { ${fieldDefs} } ${statement.name} = { ${initValues} }`
-          : `struct ${structName} { ${fieldDefs} } ${statement.name} = { ${initValues} };`;
+          ? `struct ${structName} { ${fieldDefs} } ${safeObjName} = { ${initValues} }`
+          : `struct ${structName} { ${fieldDefs} } ${safeObjName} = { ${initValues} };`;
       }
       // Handle spread array initializers
       if (statement.initializer.kind === "spread_array") {
         const arrayType = statement.initializer.elementType === "auto" ? "int" : statement.initializer.elementType;
         const spreadName = this.expressionRenderer.render(statement.initializer.spreadExpr, calleeTransformer);
-        const additionalElements = statement.initializer.additionalElements.map(e => this.expressionRenderer.render(e, calleeTransformer)).join(", ");
+        const renderedExtraElements = statement.initializer.additionalElements
+          .map(e => this.expressionRenderer.render(e, calleeTransformer));
+        const initializerParts = [`/* spread from ${spreadName} */`, ...renderedExtraElements];
+        const initializerText = initializerParts.join(', ');
+        const safeSpreadArrName = escapeCppKeyword(statement.name);
         return forHeader
-          ? `${arrayType} ${statement.name}[] = { /* spread from ${spreadName} */ ${additionalElements} }`
-          : `${arrayType} ${statement.name}[] = { /* spread from ${spreadName} */ ${additionalElements} };`;
+          ? `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} }`
+          : `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} };`;
       }
       return forHeader 
         ? `${declaration} = ${this.expressionRenderer.render(statement.initializer, calleeTransformer)}`
@@ -369,17 +389,19 @@ export class StatementRenderer {
    * Renders a typed name with proper C++ syntax.
    */
   renderTypedName(cppType: string, name: string, isConst = false, isRef = false): string {
+    const safeName = escapeCppKeyword(name);
     const normalizedType = this.normalizeCppType(cppType);
     const fnPtrMatch = normalizedType.match(/^(.+?)\s*\(\*\)\((.*)\)$/);
     if (fnPtrMatch) {
       const returnType = fnPtrMatch[1].trim();
       const params = fnPtrMatch[2].trim();
       const constPrefix = isConst ? "const " : "";
-      return `${constPrefix}${returnType} (*${name})(${params})`;
+      return `${constPrefix}${returnType} (*${safeName})(${params})`;
     }
-    const constPrefix = isConst ? "const " : "";
+    const alreadyConstQualified = /^const\s+/.test(normalizedType);
+    const constPrefix = isConst && !alreadyConstQualified ? "const " : "";
     const refMark = isRef ? "& " : " ";
-    return `${constPrefix}${normalizedType}${refMark}${name}`;
+    return `${constPrefix}${normalizedType}${refMark}${safeName}`;
   }
 
   /**
@@ -413,14 +435,16 @@ export class StatementRenderer {
     return this.strategy.normalizeCppType(typeName);
   }
 
-  private inferFieldType(value: ExpressionIR): string {
+  private inferFieldType(value: ExpressionIR, parentName?: string, fieldName?: string): string {
     return inferObjectFieldType(
       value,
       this.pointerVarTypes,
       this.knownFunctionReturnTypes,
       undefined,
       undefined,
-      undefined // largeEnumNames - would need to pass through
+      undefined, // largeEnumNames - would need to pass through
+      parentName,
+      fieldName,
     );
   }
 

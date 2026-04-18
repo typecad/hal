@@ -188,7 +188,8 @@ describe("cross-module tree-shaking", () => {
     const libCpp = fs.readFileSync(path.join(outDir, "lib.cpp"), "utf8");
 
     // `used` should survive tree-shaking because it's imported by main.ts
-    expect(libCpp).toContain("used");
+    expect(libCpp).toContain("int used()");
+    expect(libCpp).not.toContain("notUsed()");
   });
 
   it("preserves classes imported by the entry file", async () => {

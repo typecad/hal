@@ -4,15 +4,21 @@
   "description": "TypeCode demo project for Arduino Uno",
   "private": true,
   "scripts": {
-    "build": "npx typecode ./src/sketch.ts",
-    "compile": "npx typecode ./src/sketch.ts --compile",
-    "upload": "npx typecode ./src/sketch.ts --compile --upload --port COM6",
-    "debug": "npx typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM6"
+    "clean": "node -e \"const fs=require('fs'); for (const p of ['./src/.typecode-cache.json','./src/out']) { if (fs.existsSync(p)) fs.rmSync(p,{ recursive:true, force:true }); }\"",
+    "prebuild": "npm run clean",
+    "build": "node ../packages/cli/dist/cli.js ./src/sketch.ts",
+    "build:watch": "node ../packages/cli/dist/cli.js build --watch",
+    "precompile": "npm run clean",
+    "compile": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile",
+    "upload": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --port COM6",
+    "debug": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --debug --monitor --port COM6",
+    "test:hw": "node ../packages/expect/dist/host/cli.js"
   },
   "dependencies": {
     "@typecode/core": "*",
     "@typecode/board-arduino-uno": "*",
     "@typecode/framework-avr": "*",
-    "@typecode/framework-arduino": "*"
+    "@typecode/framework-arduino": "*",
+    "@typecode/expect": "*"
   }
 }

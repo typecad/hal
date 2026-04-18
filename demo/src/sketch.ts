@@ -1,175 +1,186 @@
+import { describe, done } from '@typecode/expect';
+import { A0, UART0 } from '@typecode';
 
-// // ==========================================================================
-// // Feature 1: Immutable borrow (Ref)
-// // Ref<number[]> → const std::vector<int>&   (zero-copy, read-only)
-// // Ref<number>   → const int                 (primitive by value)
-// // DIAGNOSTIC: assigning to a Ref parameter → ownership-assign-to-ref (error)
-// // ==========================================================================
+// ---------------------------------------------------------------------------
+// Variables
+// ---------------------------------------------------------------------------
+const a = 1;
+let b = 2;
+let c = 3;
+const uint8array = new Uint8Array([0xAA, 0x10, 0x20]);
+const int16array = new Int16Array([4, -2, 7]);
+const float32array = new Float32Array([1.0, 0.5, 0.25]);
 
-// function readBuffer(buf: Ref): void {
-//   console.log(buf[0]);
-// }
- 
-// // Intentional diagnostic: assigning to an immutable borrow
-// function assignToRefDemo(x: Ref): void {
-//   x = 99;  // error  [ownership-assign-to-ref]: Cannot assign to 'x' — it is an immutable borrow.
-//            //   ↳  change 'x: Ref' → 'x: MutRef'  // MutRef allows mutation
-// }
-
-// // ==========================================================================
-// // Feature 2: Mutable borrow (MutRef)
-// // MutRef<number[]> → std::vector<int>&   (read/write reference)
-// // ==========================================================================
-
-// function zeroFirst(buf: MutRef): void {
-//   buf[0] = 0;   // OK: MutRef allows writes
-// }
-
-// // ==========================================================================
-// // Feature 3: Ownership transfer + use-after-move
-// // DIAGNOSTIC: using an Owned variable after it has been moved → ownership-use-after-move (error)
-// // ==========================================================================
-
-// function useAfterMoveDemo(): void {
-//   let a: Owned = [1, 2, 3];
-//   let b = a;  // move — 'a' is now invalid
-//   let c = a;  // error [ownership-use-after-move]: 'a' was moved and cannot be used again.
-//               //   ↳  const a_ref: Ref = a;  // add this before the move
-// }
-
-// // ==========================================================================
-// // Feature 4: Zero-copy borrow  (Ref = ownedVar)
-// // `const view: Ref = source` emits `const std::vector<int>& view = source` — no copy.
-// // DIAGNOSTIC: assigning Owned to bare variable → ownership-owned-copy (info)
-// // ==========================================================================
-
-// function zeroCopyDemo(): void {
-//   const source: Owned = [1, 2, 3];
-//   const view: Ref = source;   // const std::vector<int>& view = source;  ← zero copy ✓
-//   readBuffer(view);
-
-//   const source2: Owned = [4, 5, 6];
-//   const copy = source2;       // info  [ownership-owned-copy]: Moving 'source2' into 'copy'
-//                               //         creates a C++ copy — ownership types do not emit std::move()
-//                               //   ↳  const copy: Ref = source2;  // borrow by reference instead
-// }
-
-// // ==========================================================================
-// // Feature 5: Borrow-mismatch guard
-// // DIAGNOSTIC: Ref argument passed to MutRef parameter → ownership-borrow-mismatch (error)
-// // ==========================================================================
-
-// function doubleFirst(buf: MutRef): void {
-//   buf[0] = buf[0] * 2;
-// }
-
-// function borrowMismatchDemo(): void {
-//   const source: Owned = [1, 2, 3];
-//   const data: Ref = source;  // zero-copy borrow
-//   doubleFirst(data);  // error [ownership-borrow-mismatch]: Cannot pass 'data' (immutable Ref)
-//                       //         to 'doubleFirst' which expects a mutable borrow.
-//                       //   ↳  change 'data: Ref = ...' → 'data: MutRef = ...'
-// }
-
-// // ==========================================================================
-// // Feature 6: Temp-ref warning  (Ref from literal)
-// // C++ cannot bind const& to an rvalue — emitter falls back to a copy.
-// // DIAGNOSTIC: Ref initialised from non-identifier → ownership-temp-ref-warn (warning)
-// // ==========================================================================
-
-// function tempRefDemo(): void {
-//   const view: Ref = [1, 2, 3];  // warning [ownership-temp-ref-warn]:
-//                                            //   'view: Ref' borrows a temporary — C++ cannot bind
-//                                            //   a reference to an rvalue. Emitter falls back to copy.
-//                                            //   ↳  const _tmp: Owned = ...;
-//                                            //      const view: Ref = _tmp;
-//   readBuffer(view);
-// }
-
-// // ==========================================================================
-// // Feature 7: Dangling-borrow detection  (NEW)
-// // A borrow that outlives its Owned source → undefined behaviour in C++.
-// // DIAGNOSTIC: borrow outlives scope of owning variable → ownership-dangling-borrow (error)
-// // ==========================================================================
-
-// function danglingDemo(): void {
-//   const outer: Owned = [9, 9, 9];
-//   let saved: MutRef = outer;  // initial safe borrow of a local variable
-//   {
-//     const local: Owned = [1, 2, 3];
-//     saved = local;  // error [ownership-dangling-borrow]: 'saved' borrows 'local'
-//                     //         which goes out of scope here — potential dangling reference.
-//                     //   ↳  move 'local' to the outer scope, or ensure 'saved' does not outlive it
-//   }
-//   readBuffer(saved);  // ← C++ UB: 'local' has been destroyed
-// }
-
-// // ==========================================================================
-// // Feature 8: Return-local-ref detection  (NEW)
-// // Returning a Ref whose source is a stack-local Owned variable is UB in C++.
-// // DIAGNOSTIC: returning borrow of local → ownership-return-local-ref (error)
-// // ==========================================================================
-
-// function returnLocalRefDemo(): Ref {
-//   const local: Owned = [4, 5, 6];
-//   const view: Ref = local;
-//   return view;  // error [ownership-return-local-ref]: Returning 'view' borrows 'local'
-//                 //         which will be destroyed when this function returns — dangling reference.
-//                 //   ↳  return local directly as Owned, or change the function to accept
-//                 //         'local: Ref' as a parameter
-// }
-
-// // ==========================================================================
-// // Feature 9: Const suggestion
-// // DIAGNOSTIC: let variable never reassigned → ownership-suggest-const (warning)
-// // ==========================================================================
-
-// function constSuggestionDemo(): void {
-//   let threshold = 42;   // warning [ownership-suggest-const]: 'threshold' is never reassigned.
-//                         //   ↳  const threshold = ...;
-//   console.log(threshold);
-// }
-
-// // ==========================================================================
-// // Entry point — all demos run
-// // ==========================================================================
-
-// const buf: Owned = [1, 2, 3];
-
-// readBuffer(buf);
-// zeroFirst(buf);
-// assignToRefDemo(10);
-// useAfterMoveDemo();
-// zeroCopyDemo();
-// borrowMismatchDemo();
-// tempRefDemo();
-// danglingDemo();
-// constSuggestionDemo();
-
-// Accepts a read-only view of the buffer.
-// C++: void printFirst(const std::vector<int>& buf)
-function printFirst(buf: Ref): void {
-  console.log(buf[0]);
+// ---------------------------------------------------------------------------
+// Functions
+// ---------------------------------------------------------------------------
+function add(a: number, b: number): number {
+  return a + b;
 }
 
-// Accepts a mutable reference — can write back.
-// C++: void clear(std::vector<int>& buf)
-function clear(buf: MutRef): void {
-  buf[0] = 0;
+function clamp(value: number, min: number = 0, max: number = 1023): number {
+  return Math.max(min, Math.min(max, value));
 }
 
-// Demonstrates safe borrow — no copy, no UB.
-function demo(): void {
-  const data: Owned = [10, 20, 30];  // data owns the array
+// ---------------------------------------------------------------------------
+// Object / destructuring
+// ---------------------------------------------------------------------------
+const config = {
+  low: 150,
+  high: 700,
+  timeout: undefined,
+};
 
-  const view: Ref  = data;  // zero-copy const reference
-  printFirst(view);          // OK
+const { low, high, timeout = 500 } = config;
 
-  clear(data);               // OK: data is still Owned in this scope
-  printFirst(data);          // OK: data is still alive
+// ---------------------------------------------------------------------------
+// Number literals
+// ---------------------------------------------------------------------------
+const hex = 0xFF;
+const binary = 0b1010;
+const octal = 0o77;
+const negative = -42;
+const floating = 3.14;
 
-  // const moved = data;     // ownership transfer
-  printFirst(data);       // If 'data' had been moved, this would be
-  //                         // caught as ownership-use-after-move here.
+// ---------------------------------------------------------------------------
+// Mutable variables for mutation tests
+// ---------------------------------------------------------------------------
+let mut = 10;
+
+// ---------------------------------------------------------------------------
+// Variables for comparison tests (typed as number to avoid literal-type errors)
+// ---------------------------------------------------------------------------
+let n1: number = 1;
+let n2: number = 2;
+let n3: number = 3;
+let n5: number = 5;
+
+// ---------------------------------------------------------------------------
+// Arrow function
+// ---------------------------------------------------------------------------
+const square = (x: number): number => x * x;
+
+// ---------------------------------------------------------------------------
+// for-of loop
+// ---------------------------------------------------------------------------
+const scores: ReadonlyArray<number> = [10, 20, 30, 40];
+
+function forOfSum(): number {
+  let total = 0;
+  for (const value of scores) {
+    total += value;
+  }
+  return total;
 }
-demo(); 
+
+// ===========================================================================
+// TESTS
+// ===========================================================================
+
+describe("Basics")
+  .it("basic math")
+    .expect(a + b).toBe(3)
+    .expect(b - a).toBe(1)
+    .expect(b * c).toBe(6)
+  .it("Variable assignment")
+    .expect(a).toBe(1)
+    .expect(b).toBe(2)
+    .expect(c).toBe(3)
+  .it("Functions")
+    .expect(add(1, 2)).toBe(3)
+    .expect(clamp(2000, 0)).toBe(1023)
+  .it("Arrays")
+    .expect(uint8array[1]).toBe(0x10)
+    .expect(int16array[1]).toBe(-2)
+    .expect(float32array[1]).toBe(0.5)
+    .expect(config.low).toBe(150)
+    .expect(low).toBe(150)
+    .expect(timeout).toBe(500)
+
+describe("Arithmetic operators")
+  .it("division and modulo")
+    .expect(10 % 3).toBe(1)
+    .expect(7 % 2).toBe(1)
+  .it("unary negation")
+    .expect(-a).toBe(-1)
+    .expect(-negative).toBe(42)
+  .it("order of operations")
+    .expect(2 + 3 * 4).toBe(14)
+  .it("parenthesized expressions (Bug 7)")
+    .expect((2 + 3) * 4).toBe(20)
+    .expect(2 * (3 + 4)).toBe(14)
+    .expect((1 + 2) * (3 + 4)).toBe(21)
+
+describe("Number literals")
+  .it("hex literal")
+    .expect(hex).toBe(255)
+  .it("binary literal")
+    .expect(binary).toBe(10)
+  .it("octal literal")
+    .expect(octal).toBe(63)
+  .it("negative literal")
+    .expect(negative).toBe(-42)
+  .it("floating point literal")
+    .expect(floating).toBeCloseTo(3.14, 1)
+
+describe("Compound assignment")
+  .it("+=, -=, *=, /=")
+    .expect(mut).toBe(10)
+    .expect(mut += 5).toBe(15)
+    .expect(mut -= 3).toBe(12)
+    .expect(mut *= 2).toBe(24)
+    .expect(mut /= 4).toBe(6)
+
+describe("Comparison via ternary")
+  .it("equality and inequality")
+    .expect(n5 === n5 ? 1 : 0).toBe(1)
+    .expect(n5 === n3 ? 1 : 0).toBe(0)
+    .expect(n5 !== n3 ? 1 : 0).toBe(1)
+  .it("less than / greater than")
+    .expect(n3 < n5 ? 1 : 0).toBe(1)
+    .expect(n5 > n3 ? 1 : 0).toBe(1)
+    .expect(n5 < n3 ? 1 : 0).toBe(0)
+  .it("less or equal / greater or equal")
+    .expect(n5 <= n5 ? 1 : 0).toBe(1)
+    .expect(n3 <= n5 ? 1 : 0).toBe(1)
+    .expect(n5 >= n5 ? 1 : 0).toBe(1)
+    .expect(n5 >= n3 ? 1 : 0).toBe(1)
+
+describe("Logical operators via numeric patterns")
+  .it("logical AND")
+    .expect(n1 === n1 && n2 === n2 ? 1 : 0).toBe(1)
+    .expect(n1 === n1 && n2 === n3 ? 1 : 0).toBe(0)
+  .it("logical OR")
+    .expect(n1 === n1 || n2 === n3 ? 1 : 0).toBe(1)
+    .expect(n1 === n3 || n2 === n3 ? 1 : 0).toBe(0)
+  .it("logical NOT")
+    .expect(n1 !== n3 ? 1 : 0).toBe(1)
+    .expect(n1 !== n1 ? 1 : 0).toBe(0)
+
+describe("Bitwise operators")
+  .it("AND, OR, XOR")
+    .expect(0xFF & 0x0F).toBe(0x0F)
+    .expect(0xF0 | 0x0F).toBe(0xFF)
+    .expect(0xFF ^ 0x0F).toBe(0xF0)
+  .it("shifts and NOT")
+    .expect(1 << 4).toBe(16)
+    .expect(256 >> 4).toBe(16)
+    .expect(~0).toBe(-1)
+
+describe("Ternary expressions")
+  .it("simple ternary")
+    .expect(n1 === n1 ? 1 : 0).toBe(1)
+    .expect(n1 === n3 ? 1 : 0).toBe(0)
+  .it("nested ternary")
+    .expect(n5 > 10 ? 1 : n5 > n3 ? 2 : 3).toBe(2)
+
+describe("Arrow function")
+  .it("arrow function call")
+    .expect(square(4)).toBe(16)
+    .expect(square(7)).toBe(49)
+
+describe("For-of loop")
+  .it("for-of accumulation")
+    .expect(forOfSum()).toBe(100)
+
+done();

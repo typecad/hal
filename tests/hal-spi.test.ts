@@ -4,7 +4,7 @@
 // Tests for SPI Arduino-compatible API
 // ---------------------------------------------------------------------------
 
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { expectCppContains, transpileArduino } from './setup';
 
 describe('SPI HAL - Arduino API Transpilation', () => {
@@ -38,7 +38,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
         SPI0.setMode(0);
       `);
       
-      expectCppContains(result, ['SPI.setDataMode']);
+      expect(result.cpp).toMatch(/SPI\.setDataMode\((SPI_MODE)?0\)/);
     });
 
     it('transpiles setBitOrder()', () => {
@@ -48,7 +48,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
         SPI0.setBitOrder(SPIBitOrder.MSB);
       `);
       
-      expectCppContains(result, ['SPI.setBitOrder']);
+      expect(result.cpp).toMatch(/SPI\.setBitOrder\((SPIBitOrder\.MSB|MSBFIRST|SPI_MSBFIRST)\)/);
     });
 
     it('transpiles setFrequency()', () => {
@@ -58,7 +58,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
         SPI0.setFrequency(1000000);
       `);
       
-      expectCppContains(result, ['SPI.setClockDivider']);
+      expect(result.cpp).toContain('SPI.setClockDivider(1000000)');
     });
   });
 
@@ -73,6 +73,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
       `);
       
       expectCppContains(result, ['SPI.beginTransaction', 'SPI.endTransaction()']);
+      expect(result.cpp).toContain('SPISettings(1000000, "msb", 0)');
     });
   });
 
@@ -110,12 +111,13 @@ describe('SPI HAL - Arduino API Transpilation', () => {
 });
 
 describe('SPI HAL - Multiple Bus Support', () => {
-  it('uses SPI for SPI0 on Arduino Uno', () => {
+  it('lowers the high-level SPI API to SPI calls on Arduino Uno', () => {
     const result = transpileArduino(`
       import { SPI0 } from '@typecode/board-arduino-uno/arduino';
       SPI0.begin();
     `);
     
     expectCppContains(result, ['SPI.begin()']);
+    expect(result.cpp).not.toContain('SPI0.begin');
   });
 });

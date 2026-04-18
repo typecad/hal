@@ -9,6 +9,7 @@ import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
 import { extractPropertyChain } from "../platform/typecode-map";
+import { escapeCppKeyword } from "../utils/strings";
 
 /**
  * Context needed for expression rendering.
@@ -107,8 +108,15 @@ export class ExpressionRenderer {
     }
     
     switch (expr.kind) {
-      case "number":
+      case "number": {
+        if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+          const str = `${expr.value}`;
+          return str.includes('.') || str.includes('e') || str.includes('E')
+            ? `${str}f`
+            : `${str}.0f`;
+        }
         return `${expr.value}`;
+      }
       case "string":
         return `"${expr.value.replace(/"/g, '\\"')}"`;  
       case "boolean":
@@ -133,6 +141,8 @@ export class ExpressionRenderer {
         return this.renderInstanceof(expr, exprTransformer);
       case "spread_array":
         return `/* spread_array: see variable declaration */`;
+      case "paren":
+        return `(${this.render(expr.inner, exprTransformer)})`;
       case "binary":
         return this.renderBinary(expr, exprTransformer);
       case "unary":
@@ -144,7 +154,7 @@ export class ExpressionRenderer {
       case "callback":
         return this.renderCallback(expr);
       default:
-        return "/* unsupported_expr */";
+        return "0 /* unsupported_expr */";
     }
   }
 
@@ -167,7 +177,7 @@ export class ExpressionRenderer {
       const num = peripheralName.slice(4);
       return num === '0' ? 'Serial' : `Serial${num}`;
     }
-    return value;
+    return escapeCppKeyword(value);
   }
 
   private renderRaw(value: string, exprTransformer?: (expr: string) => string): string {
@@ -276,11 +286,14 @@ export class ExpressionRenderer {
   ): { format: string; arg: string; estimatedLength: number } | undefined {
     switch (expr.kind) {
       case "number": {
-        if (Number.isInteger(expr.value)) {
-          return { format: "%d", arg: `${expr.value}`, estimatedLength: 12 };
+        if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+          const str = `${expr.value}`;
+          const rendered = str.includes('.') || str.includes('e') || str.includes('E')
+            ? `${str}f`
+            : `${str}.0f`;
+          return { format: "%g", arg: rendered, estimatedLength: 16 };
         }
-        // Float: use %g for simplicity (dtostrf prelude not available here)
-        return { format: "%g", arg: `${expr.value}`, estimatedLength: 16 };
+        return { format: "%d", arg: `${expr.value}`, estimatedLength: 12 };
       }
       case "boolean":
         return { format: "%s", arg: expr.value ? '"true"' : '"false"', estimatedLength: 5 };
@@ -332,11 +345,22 @@ export class ExpressionRenderer {
       const wrapped = this.strategy.wrapStringConcat(leftRendered, rightRendered, expr.left.kind === "string");
       if (wrapped !== undefined) return wrapped;
     }
-    return `${leftRendered} ${expr.operator} ${rightRendered}`;
+    // Precedence-aware parenthesization to preserve TS semantics in C++.
+    const myPrec = operatorPrecedence(expr.operator);
+    const leftNeedsParens = expr.left.kind === "binary" && operatorPrecedence((expr.left as any).operator) < myPrec;
+    const rightNeedsParens = expr.right.kind === "binary" && operatorPrecedence((expr.right as any).operator) <= myPrec;
+    const left = leftNeedsParens ? `(${leftRendered})` : leftRendered;
+    const right = rightNeedsParens ? `(${rightRendered})` : rightRendered;
+    return `${left} ${expr.operator} ${right}`;
   }
 
   private renderUnary(expr: Extract<ExpressionIR, { kind: "unary" }>, exprTransformer?: (expr: string) => string): string {
-    return `${expr.operator}${this.render(expr.operand, exprTransformer)}`;
+    const rendered = this.render(expr.operand, exprTransformer);
+    // Postfix operators (e.g. i++, i--) render after the operand.
+    if ((expr as any).postfix) {
+      return `${rendered}${expr.operator}`;
+    }
+    return `${expr.operator}${rendered}`;
   }
 
   private renderPropertyAccess(expr: Extract<ExpressionIR, { kind: "property-access" }>, exprTransformer?: (expr: string) => string): string {
@@ -361,6 +385,10 @@ export class ExpressionRenderer {
       }
       return enumAccess;
     }
+    // Handle .length property on arrays → sizeof(obj)/sizeof(obj[0])
+    if (expr.property === "length" && expr.object.kind === "identifier") {
+      return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
+    }
     return `${objStr}.${expr.property}`;
   }
 
@@ -384,6 +412,26 @@ export class ExpressionRenderer {
     // Callbacks are rendered by the statement emitter which tracks them globally
     // Here we just return a marker that gets replaced with the actual function name
     return `/* callback:${expr.sourceSpan.startLine}:${expr.sourceSpan.startColumn} */`;
+  }
+}
+
+/**
+ * Returns the C++ operator precedence for precedence-aware parenthesization.
+ * Higher number = higher precedence (binds tighter).
+ */
+function operatorPrecedence(op: string): number {
+  switch (op) {
+    case "*": case "/": case "%": return 5;
+    case "+": case "-": return 4;
+    case "<<": case ">>": return 3;
+    case "<": case "<=": case ">": case ">=": return 2;
+    case "==": case "!=": return 1;
+    case "&": return 0;
+    case "^": return -1;
+    case "|": return -2;
+    case "&&": return -3;
+    case "||": return -4;
+    default: return 0;
   }
 }
 

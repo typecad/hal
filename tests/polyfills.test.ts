@@ -148,7 +148,7 @@ describe("Polyfill Transpilation", () => {
       expect(result.cpp).toContain("std::cout");
     });
 
-    it("transpiles console.log in nested function", () => {
+    it("preserves the outer function when console.log appears in a nested function", () => {
       const result = transpile(`
         function outer(): void {
           function inner(): void {
@@ -265,24 +265,25 @@ describe("Polyfill Transpilation", () => {
 });
 
 describe("Array Method Polyfills", () => {
-  it("transpiles array.push", () => {
+  it("transpiles array.push into emitted vector-style array code", () => {
     const result = transpile(`
       function test(): void {
         const arr: int[] = [1, 2, 3];
         arr.push(4);
       }
     `);
-    expect(result.cpp).toContain("arr");
+    expect(result.cpp).toContain("const std::vector<int> arr = { 1, 2, 3 }");
+    expect(result.cpp).toContain("arr.push(4)");
   });
 
-  it("transpiles array.length", () => {
+  it("transpiles array.length to size()", () => {
     const result = transpile(`
       function test(): int {
         const arr = [1, 2, 3, 4, 5];
         return arr.length;
       }
     `);
-    expect(result.cpp).toContain("arr");
+    expect(result.cpp).toContain("return arr.size()");
   });
 
   it("transpiles array access", () => {
@@ -297,16 +298,41 @@ describe("Array Method Polyfills", () => {
 });
 
 describe("String Method Polyfills", () => {
-  it("transpiles string.length", () => {
+  it("transpiles string.length to size()", () => {
     const result = transpile(`
       function test(): int {
         const s = "hello";
         return s.length;
       }
     `);
-    expect(result.cpp).toContain("s");
+    expect(result.cpp).toContain("return s.size()");
   });
 
+  it("transpiles string concatenation", () => {
+    const result = transpile(`
+      function test(): void {
+        const a = "hello";
+        const b = "world";
+        const c = a + " " + b;
+      }
+    `);
+    expect(result.cpp).toContain('const std::string c =');
+    expect(result.cpp).toContain('" "');
+    expect(result.cpp).toContain('String(String(a))');
+    expect(result.cpp).toContain('String(String(b))');
+  });
+
+  it("transpiles string comparison", () => {
+    const result = transpile(`
+      function test(): bool {
+        const a = "hello";
+        const b = "hello";
+        return a == b;
+      }
+    `);
+    expect(result.cpp).toContain("return a == b");
+  });
+});
 
 describe("Async Runtime Polyfill", () => {
   it("emits Promise runtime primitives for async functions", () => {
@@ -319,32 +345,9 @@ describe("Async Runtime Polyfill", () => {
       }
     `, { target: "generic" });
 
-    // The async runtime uses typecode_async namespace
     expect(result.cpp).toContain("namespace typecode_async");
     expect(result.cpp).toContain("class MicrotaskQueue");
     expect(result.cpp).toContain("class Promise");
     expect(result.cpp).toContain("inline void typecode_pump_microtasks()");
-  });
-});
-  it("transpiles string concatenation", () => {
-    const result = transpile(`
-      function test(): void {
-        const a = "hello";
-        const b = "world";
-        const c = a + " " + b;
-      }
-    `);
-    expect(result.cpp).toContain("+");
-  });
-
-  it("transpiles string comparison", () => {
-    const result = transpile(`
-      function test(): bool {
-        const a = "hello";
-        const b = "hello";
-        return a == b;
-      }
-    `);
-    expect(result.cpp).toContain("==");
   });
 });

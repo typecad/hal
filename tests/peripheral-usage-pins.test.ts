@@ -33,13 +33,15 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
   });
 
   describe('PWM Detection', () => {
-    it('tracks PWM-capable pins that are written to', () => {
+    it('detects PWM usage and records the pin number', () => {
       const usage = analyzeUsage(`
         import { D9 } from '@typecode/board-arduino-uno';
         D9.asOutput();
         D9.write(128);
       `);
 
+      expect(usage.pwm).toBe(true);
+      expect(usage.pwmPinsUsed.has(9)).toBe(true);
       expect(usage.pinsUsed.has('D9')).toBe(true);
     });
   });

@@ -33,6 +33,16 @@ function pinArg(receiver: string, boardConstants?: BoardConstants): string {
   return receiver;
 }
 
+function pinLikeArgValue(value: string, boardConstants?: BoardConstants): string {
+  if (value === 'LED') {
+    return pinArg(value, boardConstants);
+  }
+  if (/^D\d+$/.test(value)) {
+    return value.slice(1);
+  }
+  return value;
+}
+
 /**
  * Pull a named field out of an `{ kind: "object" }` ExpressionIR.
  * Returns undefined if the field is not present.
@@ -334,8 +344,17 @@ export function renderArduinoBuiltin(
         case 'device.writeBytes': {
           const addr = a(0);
           const register = a(1);
+          const dataArg = args[2];
+          // Expand array literal into individual Wire.write() calls
+          if (dataArg && dataArg.kind === 'array') {
+            const elementWrites = dataArg.elements
+              .map(e => `${wireInstance}.write(${renderArg(e)})`)
+              .join('; ');
+            return `${wireInstance}.beginTransmission(${addr}); ${wireInstance}.write(${register}); ${elementWrites}; ${wireInstance}.endTransmission()`;
+          }
+          // Variable reference — use Wire.write(data, sizeof(data))
           const data = a(2);
-          return `${wireInstance}.beginTransmission(${addr}); ${wireInstance}.write(${register}); ${wireInstance}.write(${data}); ${wireInstance}.endTransmission()`;
+          return `${wireInstance}.beginTransmission(${addr}); ${wireInstance}.write(${register}); ${wireInstance}.write(${data}, sizeof(${data})); ${wireInstance}.endTransmission()`;
         }
         case 'device.readByte': {
           const addr = a(0);
@@ -372,7 +391,10 @@ export function renderArduinoBuiltin(
         case 'read':            return `${spiInstance}.transfer(0xFF)`;     // read by sending dummy
         case 'setFrequency':    return `${spiInstance}.setClockDivider(${a(0)})`;
         case 'setMode':         return `${spiInstance}.setDataMode(${a(0)})`;
-        case 'setBitOrder':     return `${spiInstance}.setBitOrder(${a(0)})`;
+        case 'setBitOrder': {
+          const order = a(0) === '"lsb"' ? 'LSBFIRST' : 'MSBFIRST';
+          return `${spiInstance}.setBitOrder(${order})`;
+        }
         case 'beginTransaction': {
           // Extract settings from SPISettings object
           const configArg = args[0];
@@ -388,6 +410,16 @@ export function renderArduinoBuiltin(
           return `${spiInstance}.beginTransaction(SPISettings())`;
         }
         case 'endTransaction':  return `${spiInstance}.endTransaction()`;
+        case 'device.transfer': {
+          const cs = pinLikeArgValue(a(0), boardConstants);
+          const value = a(1);
+          return `({ digitalWrite(${cs}, LOW); uint8_t __typecode_spi_result = ${spiInstance}.transfer(${value}); digitalWrite(${cs}, HIGH); __typecode_spi_result; })`;
+        }
+        case 'device.write': {
+          const cs = pinLikeArgValue(a(0), boardConstants);
+          const value = a(1);
+          return `({ digitalWrite(${cs}, LOW); ${spiInstance}.transfer(${value}); digitalWrite(${cs}, HIGH); 0; })`;
+        }
         // Ownership (opt-in, single-threaded Arduino = no-op with comment)
         case 'take':            return `/* ${receiver}.take() */`;
         case 'release':         return `/* ${receiver}.release() */`;

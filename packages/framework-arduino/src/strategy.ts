@@ -193,12 +193,12 @@ export class ArduinoStrategy implements PlatformStrategy {
       "$1",
     );
     v = v.replace(/\bDate\.now\(\)/g, "millis()");
-    v = v.replace(/\bundefined\b/g, "0");
-    v = v.replace(/\bnull\b/g, "0");
+    v = v.replace(/\bundefined\b/g, "TYPECODE_UNDEFINED");
+    v = v.replace(/\bnull\b/g, "TYPECODE_UNDEFINED");
     return v;
   }
   nullValue(): string {
-    return "0";
+    return "TYPECODE_UNDEFINED";
   }
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined {
     // When snprintf mode is active, string concat is handled at the expression
@@ -304,8 +304,7 @@ export class ArduinoStrategy implements PlatformStrategy {
     }
   }
   objectFieldInitializer(fieldValue: ExpressionIR, _renderExpr: (e: ExpressionIR) => string): string | undefined {
-    // Nested objects are zero-initialized on Arduino (no nested struct init support)
-    if (fieldValue.kind === "object") return "0";
+    // Nested objects are now supported with proper nested struct definitions
     return undefined;
   }
   overrideClassFieldType(fieldName: string, normalizedType: string): string {
@@ -351,7 +350,8 @@ export class ArduinoStrategy implements PlatformStrategy {
     compiletimeVarNames: Set<string>,
     _renderExpr: (e: ExpressionIR) => string,
   ): string | undefined {
-    if (fieldValue.kind === "object") return "0";
+    // Nested object literals are now supported with proper struct definitions
+    // so they should render normally as aggregate initializers.
     if (fieldValue.kind === "identifier") {
       const identName = fieldValue.value;
       if (!compiletimeVarNames.has(identName)) return "0";

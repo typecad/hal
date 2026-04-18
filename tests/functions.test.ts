@@ -79,9 +79,9 @@ describe("Function Transpilation", () => {
           return x * x;
         }
       `);
-      // Types are inferred, may use auto or int
-      expect(result.cpp).toContain("square");
-      expect(result.cpp).toContain("x");
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("float square(float x)");
+      expect(cpp).toContain("return x * x;");
     });
 
     it("transpiles function with bool parameter", () => {
@@ -90,9 +90,9 @@ describe("Function Transpilation", () => {
           return !flag;
         }
       `);
-      // Types are inferred, may use auto or int
-      expect(result.cpp).toContain("invert");
-      expect(result.cpp).toContain("flag");
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("bool invert(bool flag)");
+      expect(cpp).toContain("return !flag;");
     });
 
     it("transpiles function with mixed parameter types", () => {
@@ -104,10 +104,10 @@ describe("Function Transpilation", () => {
           return a - b;
         }
       `);
-      // Types are inferred, may use auto or int
-      expect(result.cpp).toContain("calculate");
-      expect(result.cpp).toContain("a");
-      expect(result.cpp).toContain("b");
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("float calculate(int a, float b, bool flag)");
+      expect(cpp).toContain("return a + b;");
+      expect(cpp).toContain("return a - b;");
     });
 
     it("transpiles function with parameter default value (literal)", () => {
@@ -116,7 +116,9 @@ describe("Function Transpilation", () => {
           const msg = name;
         }
       `);
-      expect(result.cpp).toContain("greet");
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("void greet(std::string name = \"world\")");
+      expect(cpp).toContain("const std::string msg = name;");
     });
   });
 

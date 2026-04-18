@@ -12,6 +12,7 @@ import { validateUnsafePins } from "./pin-safety";
 import { validatePulldownSupport } from "./pulldown-validation";
 import { validatePWMTimerSharing } from "./pwm-timer-sharing";
 import { validateTimer0PWMTimingConflict } from "./timer0-pwm-timing-conflict";
+import { validateTryCatch } from "./try-catch-validation";
 import { validateUnitSuspicion } from "./unit-suspicion-validation";
 import { validateOwnership } from "./ownership-analysis";
 
@@ -32,6 +33,7 @@ export function runProgramValidations(program: ProgramIR): Diagnostic[] {
   diagnostics.push(...validatePinModeConfig(program));
   diagnostics.push(...validatePeripheralOwnership(program));
   diagnostics.push(...validateOwnership(program));
+  diagnostics.push(...validateTryCatch(program, program.boardConstants));
 
   return diagnostics;
 }

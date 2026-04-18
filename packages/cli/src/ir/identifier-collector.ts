@@ -166,6 +166,8 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
       // Extract function/method name from callee
       const calleeParts = statement.callee.split(/[.(]/);
       identifiers.add(calleeParts[0]);
+      // Also add the full callee (e.g. "Serial.begin") for polyfill detection
+      identifiers.add(statement.callee);
       for (const arg of statement.args) {
         for (const id of collectExpressionIdentifiers(arg)) {
           identifiers.add(id);

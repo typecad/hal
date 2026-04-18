@@ -252,7 +252,7 @@ describe("Control Flow Transpilation", () => {
           }
         }
       `);
-      expect(result.cpp).toContain("for");
+      expect(result.cpp).toMatch(/for\s*\(\s*(const\s+)?int\s+x\s*=\s*0\s*;\s*;\s*\)/);
     });
 
     it("transpiles for loop with multiple statements", () => {

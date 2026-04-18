@@ -973,6 +973,17 @@ function getNestedStatements(stmt: StatementIR): StatementIR[] | undefined {
         ...(s.finallyBlock ?? []),
       ];
     }
+    case 'typecode-call':
+    case 'call': {
+      const s = stmt as any;
+      const result: StatementIR[] = [];
+      for (const arg of (s.args ?? [])) {
+        if (arg.kind === 'callback' && arg.statements) {
+          result.push(...arg.statements);
+        }
+      }
+      return result.length > 0 ? result : undefined;
+    }
     default:
       return undefined;
   }

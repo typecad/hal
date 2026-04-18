@@ -11,9 +11,10 @@
     "paths": {
       "@typecode": ["../packages/board-arduino-uno/src/index.ts"],
       "@typecode/core": ["../packages/core/src/index.ts"],
-      "@typecode/board-arduino-uno": ["../packages/board-arduino-uno/src/index.ts"]
+      "@typecode/board-arduino-uno": ["../packages/board-arduino-uno/src/index.ts"],
+      "@typecode/expect": ["../packages/expect/src/index.ts"]
     },
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "typecode.config.ts", "typecode-env.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "typecode.config.ts", "typecode-env.d.ts", "src/02-control.test.ts-notest"]
 }

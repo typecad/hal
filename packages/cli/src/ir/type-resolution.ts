@@ -45,6 +45,14 @@ const DIRECT_CPP_TYPE_MAP = new Map<string, string>([
   ["int16_t", "int16_t"],
   ["int32_t", "int32_t"],
   ["size_t", "size_t"],
+  ["Uint8Array", "uint8_t*"],
+  ["Uint16Array", "uint16_t*"],
+  ["Uint32Array", "uint32_t*"],
+  ["Int8Array", "int8_t*"],
+  ["Int16Array", "int16_t*"],
+  ["Int32Array", "int32_t*"],
+  ["Float32Array", "float*"],
+  ["Float64Array", "double*"],
 ]);
 
 const PIN_INTERFACE_TYPE_NAMES = new Set<string>([
@@ -67,6 +75,10 @@ const STRATEGY_TYPE_NAMES = new Set<string>([
 const BOARD_CONSTANT_TYPE_NAMES = new Set<string>([
   "INPUT", "OUTPUT", "INPUT_PULLUP", "INPUT_PULLDOWN",
   "CHANGE", "FALLING", "RISING",
+]);
+
+const OWNERSHIP_WRAPPER_TYPE_NAMES = new Set<string>([
+  "Owned", "Ref", "MutRef",
 ]);
 
 export function resolveAliasedTypeNode(
@@ -132,6 +144,7 @@ function isSharedCompileTimeOnlyTypeName(typeName: string): boolean {
   return PIN_INTERFACE_TYPE_NAMES.has(typeName) ||
     STRATEGY_TYPE_NAMES.has(typeName) ||
     BOARD_CONSTANT_TYPE_NAMES.has(typeName) ||
+    OWNERSHIP_WRAPPER_TYPE_NAMES.has(typeName) ||
     isBoardDefinitionTypeName(typeName) ||
     isSerialTypeName(typeName) ||
     isPinConstantTypeName(typeName) ||
@@ -175,6 +188,16 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   }
 
   const resolvedNode = resolveAliasedTypeNode(node, typeAliases) ?? node;
+
+  if (ts.isUnionTypeNode(resolvedNode)) {
+    const nonNullTypes = resolvedNode.types.filter(t => {
+      return t.kind !== ts.SyntaxKind.NullKeyword && t.kind !== ts.SyntaxKind.UndefinedKeyword;
+    });
+    if (nonNullTypes.length === 1) {
+      return typeNodeToCppType(nonNullTypes[0], typeAliases);
+    }
+    return "auto";
+  }
 
   if (ts.isArrayTypeNode(resolvedNode)) {
     const elementType = normalizeTypeHintForUse(typeNodeToCppType(resolvedNode.elementType, typeAliases));
@@ -225,7 +248,21 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     return `std::set<${elementType}>`;
   }
 
+  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "ReadonlySet") {
+    const elementTypeNode = resolvedNode.typeArguments?.[0];
+    const elementType = normalizeTypeHintForUse(typeNodeToCppType(elementTypeNode, typeAliases));
+    return `std::set<${elementType}>`;
+  }
+
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Map") {
+    const keyTypeNode = resolvedNode.typeArguments?.[0];
+    const valueTypeNode = resolvedNode.typeArguments?.[1];
+    const keyType = normalizeTypeHintForUse(typeNodeToCppType(keyTypeNode, typeAliases));
+    const valueType = normalizeTypeHintForUse(typeNodeToCppType(valueTypeNode, typeAliases));
+    return `std::map<${keyType}, ${valueType}>`;
+  }
+
+  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "ReadonlyMap") {
     const keyTypeNode = resolvedNode.typeArguments?.[0];
     const valueTypeNode = resolvedNode.typeArguments?.[1];
     const keyType = normalizeTypeHintForUse(typeNodeToCppType(keyTypeNode, typeAliases));
@@ -239,6 +276,12 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     const keyType = normalizeTypeHintForUse(typeNodeToCppType(keyTypeNode, typeAliases));
     const valueType = normalizeTypeHintForUse(typeNodeToCppType(valueTypeNode, typeAliases));
     return `std::map<${keyType}, ${valueType}>`;
+  }
+
+  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "ReadonlyArray") {
+    const elementTypeNode = resolvedNode.typeArguments?.[0];
+    const elementType = normalizeTypeHintForUse(typeNodeToCppType(elementTypeNode, typeAliases));
+    return `std::vector<${elementType}>`;
   }
 
   return "auto";
@@ -315,17 +358,22 @@ export function inferExprCppType(
   expr: ts.Expression,
   functionReturnTypes: Map<string, CppTypeHint>,
   localVariableTypes: Map<string, CppTypeHint>,
+  sourceText?: string,
 ): CppTypeHint {
   if (ts.isAwaitExpression(expr)) {
-    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes);
+    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
   }
 
   if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) {
-    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes);
+    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
   }
 
   if (ts.isNumericLiteral(expr)) {
-    return inferNumericCppType(expr.text);
+    // Use original source text — TypeScript normalizes "2.0" to "2" in expr.text
+    const literalText = sourceText
+      ? sourceText.substring(expr.pos, expr.end).trim()
+      : expr.text;
+    return inferNumericCppType(literalText);
   }
 
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
@@ -335,7 +383,7 @@ export function inferExprCppType(
   if (ts.isArrayLiteralExpression(expr)) {
     const inferredElementTypes = expr.elements
       .filter((item): item is ts.Expression => !ts.isSpreadElement(item))
-      .map((item) => inferExprCppType(item, functionReturnTypes, localVariableTypes))
+      .map((item) => inferExprCppType(item, functionReturnTypes, localVariableTypes, sourceText))
       .filter((item) => item !== "auto");
 
     if (inferredElementTypes.length === 0) {
@@ -366,13 +414,42 @@ export function inferExprCppType(
   }
 
   if (ts.isParenthesizedExpression(expr)) {
-    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes);
+    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
+  }
+
+  if (ts.isConditionalExpression(expr)) {
+    const whenTrueType = inferExprCppType(expr.whenTrue, functionReturnTypes, localVariableTypes, sourceText);
+    const whenFalseType = inferExprCppType(expr.whenFalse, functionReturnTypes, localVariableTypes, sourceText);
+
+    if (whenTrueType === "std::string" || whenFalseType === "std::string") {
+      return "std::string";
+    }
+    if (whenTrueType === "float" || whenFalseType === "float") {
+      return "float";
+    }
+    if ((whenTrueType === "int" || whenTrueType === "bool") && (whenFalseType === "int" || whenFalseType === "bool")) {
+      return "int";
+    }
+    if (whenTrueType === whenFalseType) {
+      return whenTrueType;
+    }
+    return "auto";
+  }
+
+  if (ts.isPropertyAccessExpression(expr)) {
+    if (expr.name.text === "length") {
+      return "int";
+    }
+    if (ts.isIdentifier(expr.expression) && /^[A-Z]/.test(expr.expression.text)) {
+      return "int";
+    }
+    return "auto";
   }
 
   if (ts.isBinaryExpression(expr)) {
     const operator = expr.operatorToken.kind;
-    const leftType = inferExprCppType(expr.left, functionReturnTypes, localVariableTypes);
-    const rightType = inferExprCppType(expr.right, functionReturnTypes, localVariableTypes);
+    const leftType = inferExprCppType(expr.left, functionReturnTypes, localVariableTypes, sourceText);
+    const rightType = inferExprCppType(expr.right, functionReturnTypes, localVariableTypes, sourceText);
 
     if (
       operator === ts.SyntaxKind.EqualsEqualsToken ||
@@ -410,7 +487,13 @@ export function inferExprCppType(
 
   if (ts.isNewExpression(expr)) {
     if (ts.isIdentifier(expr.expression)) {
-      return `${expr.expression.text}*`;
+      const ctorName = expr.expression.text;
+      // Check if it's a typed array with a known C++ mapping
+      const directType = getDirectCppType(ctorName);
+      if (directType) {
+        return directType;  // e.g. "uint8_t*" for Uint8Array
+      }
+      return `${ctorName}*`;
     }
     return "auto";
   }
@@ -477,6 +560,7 @@ export function collectReturns(block: ts.Block): ts.ReturnStatement[] {
 
 export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, CppTypeHint> {
   const result = new Map<string, CppTypeHint>();
+  const sourceText = source.text;
   const functions = source.statements.filter(ts.isFunctionDeclaration);
 
   for (let pass = 0; pass < 3; pass++) {
@@ -488,6 +572,17 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
       if (fn.type) {
         const annotatedType = typeNodeToCppType(fn.type);
         if (annotatedType !== "auto") {
+          // Promote int → float when the function body returns float expressions
+          if (annotatedType === "int") {
+            const returns = collectReturns(fn.body).filter((item) => item.expression);
+            const inferredTypes = returns
+              .map((item) => inferExprCppType(item.expression as ts.Expression, result, new Map<string, CppTypeHint>(), sourceText))
+              .filter((item) => item !== "auto");
+            if (inferredTypes.includes("float")) {
+              result.set(fn.name.text, "float");
+              continue;
+            }
+          }
           result.set(fn.name.text, annotatedType);
           continue;
         }
@@ -499,7 +594,7 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
       }
 
       const inferredTypes = returns
-        .map((item) => inferExprCppType(item.expression as ts.Expression, result, new Map<string, CppTypeHint>()))
+        .map((item) => inferExprCppType(item.expression as ts.Expression, result, new Map<string, CppTypeHint>(), sourceText))
         .filter((item) => item !== "auto");
 
       if (inferredTypes.length === 0) {

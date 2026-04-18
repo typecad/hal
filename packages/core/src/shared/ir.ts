@@ -42,7 +42,7 @@ export interface ParameterIR {
 }
 
 export type ExpressionIR =
-  | { kind: "number"; value: number }
+  | { kind: "number"; value: number; cppType?: "int" | "float" }
   | { kind: "string"; value: string }
   | { kind: "boolean"; value: boolean }
   | { kind: "identifier"; value: string }
@@ -57,8 +57,8 @@ export type ExpressionIR =
   | { kind: "spread_array"; elementType: string; spreadExpr: ExpressionIR; additionalElements: ExpressionIR[] }
   /** Binary expression: left OP right (e.g. `val + 100`, `a && b`). */
   | { kind: "binary"; left: ExpressionIR; operator: string; right: ExpressionIR }
-  /** Prefix unary expression: OP operand (e.g. `!flag`, `-x`, `~n`). */
-  | { kind: "unary"; operator: string; operand: ExpressionIR }
+  /** Unary expression: OP operand (prefix) or operand OP (postfix). */
+  | { kind: "unary"; operator: string; operand: ExpressionIR; postfix?: boolean }
   /**
    * Property access: `object.property`.
    * Produced by `expressionToIR` for all property-read expressions so that
@@ -81,7 +81,9 @@ export type ExpressionIR =
    */
   | { kind: "callback"; params: string[]; statements: StatementIR[]; sourceSpan: SourceSpan; debounceMs?: number; isInterruptHandler?: boolean }
   /** Arrow function or lambda expression: (params) => expression | { statements } */
-  | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean };
+  | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean }
+  /** Parenthesized expression: preserves explicit grouping from TS source (e.g. `(2+3)*4`). */
+  | { kind: "paren"; inner: ExpressionIR };
 
 // ---------------------------------------------------------------------------
 // Statements
@@ -329,6 +331,8 @@ export interface FunctionIR {
   trailingComments?: string[];
   parameters: ParameterIR[];
   statements: StatementIR[];
+  /** Generic type parameters (e.g. `["T"]` for `function clamp<T>(...)`). */
+  typeParameters?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +377,8 @@ export interface ClassMethodIR {
   visibility: "public" | "private" | "protected";
   isStatic: boolean;
   isAbstract: boolean;
+  /** Generic type parameters (e.g. `["T"]` for `method<T>(...)`). */
+  typeParameters?: string[];
 }
 
 export interface ClassGetterIR {

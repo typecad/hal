@@ -95,18 +95,22 @@ export function inferSnprintfArg(
 ): SnprintfArgRenderResult | undefined {
   switch (expr.kind) {
     case "number": {
-      if (Number.isInteger(expr.value)) {
-        return { format: "%d", arg: `${expr.value}`, estimatedLength: 12, preludeLines: [] };
+      if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+        const str = `${expr.value}`;
+        const rendered = str.includes('.') || str.includes('e') || str.includes('E')
+          ? `${str}f`
+          : `${str}.0f`;
+        const precision = getFloatPrecisionFromNumber(expr.value);
+        const floatArgN = strategy.floatToSnprintfArg?.(rendered, precision, ++scopeState.nextSnprintfTempId);
+        if (floatArgN !== undefined) return floatArgN;
+        return {
+          format: precision !== undefined ? `%.${precision}f` : "%g",
+          arg: rendered,
+          estimatedLength: 8,
+          preludeLines: [],
+        };
       }
-      const precision = getFloatPrecisionFromNumber(expr.value);
-      const floatArgN = strategy.floatToSnprintfArg?.(`${expr.value}`, precision, ++scopeState.nextSnprintfTempId);
-      if (floatArgN !== undefined) return floatArgN;
-      return {
-        format: precision !== undefined ? `%.${precision}f` : "%g",
-        arg: `${expr.value}`,
-        estimatedLength: 8,
-        preludeLines: [],
-      };
+      return { format: "%d", arg: `${expr.value}`, estimatedLength: 12, preludeLines: [] };
     }
     case "boolean":
       return {

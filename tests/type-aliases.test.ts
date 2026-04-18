@@ -1,20 +1,26 @@
-import { describe, it, expect } from "vitest";
-import { transpile } from "./setup";
+import { describe, it } from "vitest";
+import { expectCppContains, transpile } from "./setup";
 
 describe("Type Aliases", () => {
-  it("transpiles object type alias without failing", () => {
+  it("transpiles an object type alias when used in a function signature", () => {
     const result = transpile(`
       type Point = { x: int; y: int };
+      function getX(p: Point): int {
+        return p.x;
+      }
     `);
 
-    expect(result.cpp).toBeDefined();
+    expectCppContains(result, ["int getX(", "return p.x"]);
   });
 
-  it("transpiles simple type alias without failing", () => {
+  it("transpiles a simple type alias in parameters and keeps the alias definition", () => {
     const result = transpile(`
       type ID = int;
+      function normalize(id: ID): ID {
+        return id;
+      }
     `);
 
-    expect(result.cpp).toBeDefined();
+    expectCppContains(result, ["using ID = int;", "normalize(int id)", "return id"]);
   });
 });

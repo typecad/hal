@@ -36,6 +36,7 @@ import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
 import { tryGenerateArduinoLibDecl } from "./arduino-libs";
 import { initProfiler, getProfiler } from "./profiler";
+const { preprocess: expectPreprocess } = require("@typecode/expect/preprocessor") as { preprocess: (source: string, fileName?: string) => string };
 
 function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
   if (!fs.existsSync(outDir)) {
@@ -577,19 +578,23 @@ function detectNativeCppModule(
 
 /**
  * Checks whether a resolved file path belongs to the typecode SDK
- * (i.e. lives under a `code/core/` or `code/board-*` directory).
+ * (i.e. lives under a `typecode/core/` or `typecode/board-*` directory).
  * These files are type-level definitions only and must NOT be transpiled to C++.
  */
 function isTypecodeSDKPath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/");
   // Match @typecode/core and @typecode/board-* in both flat (node_modules)
   // and monorepo (packages/) layouts.
+  // Also match @typecode/expect — it provides type-level stubs only;
+  // the AST preprocessor rewrites all calls before transpilation.
   return (
     /\/code\/core\//.test(normalized) ||
     /\/code\/board-/.test(normalized) ||
     /\/packages\/board-/.test(normalized) ||
+    /\/packages\/expect\//.test(normalized) ||
     /\/node_modules\/@typecode\/board-/.test(normalized) ||
-    /\/node_modules\/@typecode\/core\//.test(normalized)
+    /\/node_modules\/@typecode\/core\//.test(normalized) ||
+    /\/node_modules\/@typecode\/expect\//.test(normalized)
   );
 }
 
@@ -648,10 +653,13 @@ function findCppForModule(fromFile: string, modulePath: string): string | undefi
 function typeCheckFiles(
   files: string[],
   boardPackage?: string,
+  entryFile?: string,
 ): TypeCheckResult {
-  // Find the nearest tsconfig.json by walking up from the first file
+  // Find the nearest tsconfig.json by walking up from the entry file (preferred)
+  // or the first file in the graph. Using the entry file ensures we pick up the
+  // user's tsconfig (with path mappings) rather than a dependency's tsconfig.
   let configPath: string | undefined;
-  let currentDir = path.dirname(files[0]);
+  let currentDir = path.dirname(entryFile ?? files[0]);
   while (currentDir !== path.dirname(currentDir)) {
     const candidate = path.join(currentDir, "tsconfig.json");
     if (fs.existsSync(candidate)) {
@@ -863,6 +871,12 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
         continue; // Don't try to resolve as TypeScript
       }
 
+      // Skip @typecode/expect — it provides type-level stubs only.
+      // The AST preprocessor rewrites all expect calls before transpilation.
+      if (moduleSpecifier === "@typecode/expect") {
+        continue;
+      }
+
       const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
       if (resolved) {
         // Track dependency edge for topological sorting
@@ -1062,7 +1076,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // Skip type-checking if explicitly disabled
   if (options.skipTypeCheck !== true && transpileFiles.length > 0) {
     profiler.startTimer("typecheck:full");
-    let typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
+    let typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage, entryFile);
 
     // If type-checking failed, try to auto-generate missing .d.ts files from C++ sources
     if (!typeCheckResult.success) {
@@ -1073,7 +1087,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       // If we generated any declaration files, retry type-checking
       if (generatedDecls.length > 0) {
         profiler.startTimer("typecheck:retry");
-        typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage);
+        typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage, entryFile);
         profiler.endTimer("typecheck:retry");
       }
     }
@@ -1163,6 +1177,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     profiler.startTimer(`ir:build:${fileBasename}`);
 
     let sourceText = await fs.promises.readFile(filePath, "utf8");
+
+    // If the file imports @typecode/expect, run the AST preprocessor
+    // to rewrite describe/it/expect/done calls into Serial protocol statements.
+    if (sourceText.includes("@typecode/expect")) {
+      sourceText = expectPreprocess(sourceText, filePath);
+    }
 
     if (options.debug && breakpoints) {
       const instrumented = debugPreprocess({

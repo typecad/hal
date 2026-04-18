@@ -282,11 +282,10 @@ inline void console_warn(double val) { Serial.print(${F}[WARN]${F_close}); Seria
   }
 
   // Check if Serial.begin is already called in the user's code
-  // (we need to pass the program IR to check this)
-  // For now, we'll always auto-inject unless explicitly disabled
-  // The detectSerialBeginCall function is defined above but we'd need to pass program IR
-  // For simplicity, we'll auto-inject by default when console.log is used
-  const hasSerialBegin = false; // Simplified - always auto-inject when console is used
+  // (e.g. the expect preprocessor emits Serial.begin(115200) as a preamble)
+  const hasSerialBegin = usedIdentifiers?.has("Serial_begin") ||
+                         usedIdentifiers?.has("Serial.begin") ||
+                         false;
 
   // Add Serial.begin helper macro for setup
   if (autoInject && !hasSerialBegin) {

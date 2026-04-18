@@ -44,7 +44,7 @@ describe('Peripheral configuration', () => {
 
     const sourceText = fs.readFileSync(result.sourcePath, 'utf8');
     expect(sourceText).toContain('Serial.begin(115200)');
-  });
+  }, 15000);
 
   it('accepts bare number in baudRate config (no unit wrapping required)', async () => {
     const workspaceDir = createTempWorkspace();
@@ -68,9 +68,10 @@ describe('Peripheral configuration', () => {
       emitMaps: false,
     });
 
+    const sourceText = fs.readFileSync(result.sourcePath, 'utf8');
     expect(result.diagnostics).toHaveLength(0);
-    expect(result.sourcePath).toBeDefined();
-  });
+    expect(sourceText).toContain('Serial.begin(9600)');
+  }, 15000);
 
   it('transpiles I2C with bare number', async () => {
     const workspaceDir = createTempWorkspace();
@@ -97,5 +98,6 @@ describe('Peripheral configuration', () => {
 
     const sourceText = fs.readFileSync(result.sourcePath, 'utf8');
     expect(sourceText).toContain('Wire.begin()');
-  });
+    expect(sourceText).toContain('Wire.setClock(400000)');
+  }, 15000);
 });

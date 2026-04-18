@@ -62,7 +62,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
         I2C0.endTransmission();
       `);
       
-      expectCppContains(result, ['Wire.write']);
+      expectCppContains(result, ['Wire.beginTransmission(118)', 'Wire.write({ 1, 2, 3 })', 'Wire.endTransmission(true)']);
     });
 
     it('transpiles endTransmission with stop parameter', () => {
@@ -128,13 +128,14 @@ describe('I2C HAL - Arduino API Transpilation', () => {
 });
 
 describe('I2C HAL - Multiple Bus Support', () => {
-  it('uses Wire for I2C0 on Arduino Uno', () => {
+  it('lowers the high-level I2C API to Wire calls on Arduino Uno', () => {
     const result = transpileArduino(`
       import { I2C0 } from '@typecode/board-arduino-uno/arduino';
       I2C0.begin();
     `);
     
     expectCppContains(result, ['Wire.begin()']);
+    expectCppNotContains(result, ['I2C0.begin']);
   });
 });
 
@@ -250,5 +251,104 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
     expectCppContains(result, ['Wire.begin()', 'Wire.beginTransmission(118)', 'Wire.write(250)']);
     expect(result.cpp).toContain('Wire.endTransmission');
     expectCppNotContains(result, ['const int i2c', 'i2c.']);
+  });
+  
+  describe('I2C HAL - Multi-Byte Write & Uint8Array', () => {
+    it('transpiles new Uint8Array([...]) as uint8_t C array', () => {
+      const result = transpileArduino(`
+        import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+        I2C0.begin();
+        const buf = new Uint8Array([0x01, 0x02, 0x03]);
+      `);
+  
+      expectCppContains(result, ['uint8_t buf[] = { 1, 2, 3 }']);
+      expectCppNotContains(result, ['new Uint8Array', 'Uint8Array*']);
+    });
+  
+    it('expands device.writeBytes array literal into individual Wire.write() calls', () => {
+      const result = transpileArduino(`
+        import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+        I2C0.begin();
+        I2C0.device(0x76).writeBytes(0xF5, [0b10100000, 0b00100111]);
+      `);
+  
+      expectCppContains(result, [
+        'Wire.beginTransmission(118)',
+        'Wire.write(245)',
+        'Wire.write(160)',
+        'Wire.write(39)',
+        'Wire.endTransmission()',
+      ]);
+      // Must NOT emit bare init-list { 160, 39 }
+      expect(result.cpp).not.toContain('Wire.write({');
+    });
+  
+    it('transpiles device.writeBytes with variable reference using sizeof', () => {
+      const result = transpileArduino(`
+        import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+        I2C0.begin();
+        const data = new Uint8Array([0x10, 0x20]);
+        I2C0.device(0x76).writeBytes(0xFA, data);
+      `);
+  
+      expectCppContains(result, [
+        'uint8_t data[] = { 16, 32 }',
+        'Wire.write(data, sizeof(data))',
+      ]);
+    });
+  
+    it('escapes C++ reserved keyword register in function parameters', () => {
+      const result = transpileArduino(`
+        import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+        I2C0.begin();
+        function writeReg(register: number, value: number): void {
+          I2C0.device(0x76).writeByte(register, value);
+        }
+      `);
+  
+      // Parameter declaration must use register_ not register
+      expectCppContains(result, ['register_']);
+      expectCppNotContains(result, ['int register,']);
+      // Body references must also use register_
+      expect(result.cpp).toMatch(/register_/);
+      expect(result.cpp).not.toMatch(/\bregister\b[^_]/);
+    });
+  
+    it('maps Uint8Array parameter type to uint8_t*', () => {
+      const result = transpileArduino(`
+        import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+        I2C0.begin();
+        function send(register: number, data: Uint8Array): void {
+          I2C0.device(0x76).writeBytes(register, data);
+        }
+      `);
+  
+      expect(result.cpp).toContain('uint8_t*');
+      expectCppNotContains(result, ['int data']);
+    });
+  
+    it('transpiles .length on number[] variable as .size() (std::vector)', () => {
+      const result = transpileArduino(`
+        import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+        I2C0.begin();
+        const values = [10, 20, 30];
+        const len = values.length;
+      `);
+  
+      // number[] maps to std::vector<int>, so .length → .size()
+      expect(result.cpp).toContain('values.size()');
+    });
+  
+    it('transpiles .length on Uint8Array variable as sizeof expression', () => {
+      const result = transpileArduino(`
+        import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+        I2C0.begin();
+        const buf = new Uint8Array([0x01, 0x02, 0x03]);
+        const len = buf.length;
+      `);
+  
+      // Uint8Array maps to uint8_t[] C array, so .length → sizeof(buf)/sizeof(buf[0])
+      expect(result.cpp).toContain('sizeof(buf) / sizeof(buf[0])');
+    });
   });
 });

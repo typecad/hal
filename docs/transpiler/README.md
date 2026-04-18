@@ -217,8 +217,8 @@ void loop() {}
 | Interfaces | ✅ Compile-time only |
 | Enums | ✅ Full |
 | Generics | ⚠️ Limited |
-| Async/Await | ❌ Not supported |
-| Try/Catch | ❌ Not supported |
+| Async/Await | ⚠️ Partial cooperative lowering |
+| Try/Catch | ⚠️ Target-specific |
 | Dynamic allocation | ⚠️ Limited |
 
 ## Multi-File Projects

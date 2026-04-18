@@ -24,6 +24,14 @@ describe('evaluator', () => {
       expect(evaluate('toBe', 'hello', 'hello')).toBe(true);
       expect(evaluate('toBe', 'hello', 'world')).toBe(false);
     });
+
+    it('handles hex literals in expected value', () => {
+      // Regression: parseFloat("0x10") returns 0; Number("0x10") returns 16
+      expect(evaluate('toBe', '0x10', '16')).toBe(true);
+      expect(evaluate('toBe', '0xAA', '170')).toBe(true);
+      expect(evaluate('toBe', '0xFF', '255')).toBe(true);
+      expect(evaluate('toBe', '0x00', '0')).toBe(true);
+    });
   });
 
   describe('toNotBe', () => {

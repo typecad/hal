@@ -1,164 +1,285 @@
 #include <Arduino.h>
+#include <math.h>
+
+const int a = 1;
+int b = 2;
+int c = 3;
+uint8_t uint8array[] = { 170, 16, 32 };
+int16_t int16array[] = { 4, -2, 7 };
+float float32array[] = { 1, 0.5f, 0.25f };
+struct _config_t { int low; int high; int timeout; } config = { 150, 700, TYPECODE_UNDEFINED };
+const int low = config.low;
+const int high = config.high;
+const int timeout = config.timeout;
+const int hex = 255;
+const int binary = 10;
+const int octal = 63;
+const int negative = -42;
+const float floating = 3.14f;
+int mut = 10;
+int n1 = 1;
+int n2 = 2;
+int n3 = 3;
+int n5 = 5;
+int scores[] = { 10, 20, 30, 40 };
+
+
+int add(int a, int b);
+int clamp(int value, int min = 0, int max = 1023);
+int square(int x);
+int forOfSum();
 
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  Serial.begin(9600);
-  demo();
+  Serial.begin(115200);
+  Serial.println("[TC:SUITE_START]");
+  Serial.println("[TC:DESCRIBE:Basics]");
+  Serial.println("[TC:IT:basic math]");
+  Serial.print("[TC:EXPECT:toBe:3:");
+  Serial.print(a + b);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print(b - a);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:6:");
+  Serial.print(b * c);
+  Serial.println("]");
+  Serial.println("[TC:IT:Variable assignment]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print(a);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:2:");
+  Serial.print(b);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:3:");
+  Serial.print(c);
+  Serial.println("]");
+  Serial.println("[TC:IT:Functions]");
+  Serial.print("[TC:EXPECT:toBe:3:");
+  Serial.print(add(1, 2));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:1023:");
+  Serial.print(clamp(2000, 0));
+  Serial.println("]");
+  Serial.println("[TC:IT:Arrays]");
+  Serial.print("[TC:EXPECT:toBe:0x10:");
+  Serial.print(uint8array[1]);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:-2:");
+  Serial.print(int16array[1]);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0.5:");
+  Serial.print(float32array[1]);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:150:");
+  Serial.print(config.low);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:150:");
+  Serial.print(low);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:500:");
+  Serial.print(timeout);
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Arithmetic operators]");
+  Serial.println("[TC:IT:division and modulo]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print(10 % 3);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print(7 % 2);
+  Serial.println("]");
+  Serial.println("[TC:IT:unary negation]");
+  Serial.print("[TC:EXPECT:toBe:-1:");
+  Serial.print(-a);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:42:");
+  Serial.print(-negative);
+  Serial.println("]");
+  Serial.println("[TC:IT:order of operations]");
+  Serial.print("[TC:EXPECT:toBe:14:");
+  Serial.print(2 + 3 * 4);
+  Serial.println("]");
+  Serial.println("[TC:IT:parenthesized expressions (Bug 7)]");
+  Serial.print("[TC:EXPECT:toBe:20:");
+  Serial.print((2 + 3) * 4);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:14:");
+  Serial.print(2 * (3 + 4));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:21:");
+  Serial.print((1 + 2) * (3 + 4));
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Number literals]");
+  Serial.println("[TC:IT:hex literal]");
+  Serial.print("[TC:EXPECT:toBe:255:");
+  Serial.print(hex);
+  Serial.println("]");
+  Serial.println("[TC:IT:binary literal]");
+  Serial.print("[TC:EXPECT:toBe:10:");
+  Serial.print(binary);
+  Serial.println("]");
+  Serial.println("[TC:IT:octal literal]");
+  Serial.print("[TC:EXPECT:toBe:63:");
+  Serial.print(octal);
+  Serial.println("]");
+  Serial.println("[TC:IT:negative literal]");
+  Serial.print("[TC:EXPECT:toBe:-42:");
+  Serial.print(negative);
+  Serial.println("]");
+  Serial.println("[TC:IT:floating point literal]");
+  Serial.print("[TC:EXPECT:toBeCloseTo:3.14,1:");
+  Serial.print(floating);
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Compound assignment]");
+  Serial.println("[TC:IT:+=, -=, *=, /=]");
+  Serial.print("[TC:EXPECT:toBe:10:");
+  Serial.print(mut);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:15:");
+  Serial.print(mut += 5);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:12:");
+  Serial.print(mut -= 3);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:24:");
+  Serial.print(mut *= 2);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:6:");
+  Serial.print(mut /= 4);
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Comparison via ternary]");
+  Serial.println("[TC:IT:equality and inequality]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n5 == n5 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0:");
+  Serial.print((n5 == n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n5 != n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.println("[TC:IT:less than / greater than]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n3 < n5 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n5 > n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0:");
+  Serial.print((n5 < n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.println("[TC:IT:less or equal / greater or equal]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n5 <= n5 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n3 <= n5 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n5 >= n5 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n5 >= n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Logical operators via numeric patterns]");
+  Serial.println("[TC:IT:logical AND]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n1 == n1 && n2 == n2 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0:");
+  Serial.print((n1 == n1 && n2 == n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.println("[TC:IT:logical OR]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n1 == n1 || n2 == n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0:");
+  Serial.print((n1 == n3 || n2 == n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.println("[TC:IT:logical NOT]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n1 != n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0:");
+  Serial.print((n1 != n1 ? 1 : 0));
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Bitwise operators]");
+  Serial.println("[TC:IT:AND, OR, XOR]");
+  Serial.print("[TC:EXPECT:toBe:0x0F:");
+  Serial.print(255 & 15);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0xFF:");
+  Serial.print(240 | 15);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0xF0:");
+  Serial.print(255 ^ 15);
+  Serial.println("]");
+  Serial.println("[TC:IT:shifts and NOT]");
+  Serial.print("[TC:EXPECT:toBe:16:");
+  Serial.print(1 << 4);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:16:");
+  Serial.print(256 >> 4);
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:-1:");
+  Serial.print(~0);
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Ternary expressions]");
+  Serial.println("[TC:IT:simple ternary]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print((n1 == n1 ? 1 : 0));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:0:");
+  Serial.print((n1 == n3 ? 1 : 0));
+  Serial.println("]");
+  Serial.println("[TC:IT:nested ternary]");
+  Serial.print("[TC:EXPECT:toBe:2:");
+  Serial.print((n5 > 10 ? 1 : (n5 > n3 ? 2 : 3)));
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Arrow function]");
+  Serial.println("[TC:IT:arrow function call]");
+  Serial.print("[TC:EXPECT:toBe:16:");
+  Serial.print(square(4));
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:49:");
+  Serial.print(square(7));
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:For-of loop]");
+  Serial.println("[TC:IT:for-of accumulation]");
+  Serial.print("[TC:EXPECT:toBe:100:");
+  Serial.print(forOfSum());
+  Serial.println("]");
+  Serial.println("[TC:SUITE_END]");
+  while (true)
+  {
+    delay(1000);
+  }
 }
 
-// // ==========================================================================
-// // Feature 1: Immutable borrow (Ref)
-// // Ref<number[]> → const std::vector<int>&   (zero-copy, read-only)
-// // Ref<number>   → const int                 (primitive by value)
-// // DIAGNOSTIC: assigning to a Ref parameter → ownership-assign-to-ref (error)
-// // ==========================================================================
-// function readBuffer(buf: Ref): void {
-//   console.log(buf[0]);
-// }
-// // Intentional diagnostic: assigning to an immutable borrow
-// function assignToRefDemo(x: Ref): void {
-//   x = 99;  // error  [ownership-assign-to-ref]: Cannot assign to 'x' — it is an immutable borrow.
-//            //   ↳  change 'x: Ref' → 'x: MutRef'  // MutRef allows mutation
-// }
-// // ==========================================================================
-// // Feature 2: Mutable borrow (MutRef)
-// // MutRef<number[]> → std::vector<int>&   (read/write reference)
-// // ==========================================================================
-// function zeroFirst(buf: MutRef): void {
-//   buf[0] = 0;   // OK: MutRef allows writes
-// }
-// // ==========================================================================
-// // Feature 3: Ownership transfer + use-after-move
-// // DIAGNOSTIC: using an Owned variable after it has been moved → ownership-use-after-move (error)
-// // ==========================================================================
-// function useAfterMoveDemo(): void {
-//   let a: Owned = [1, 2, 3];
-//   let b = a;  // move — 'a' is now invalid
-//   let c = a;  // error [ownership-use-after-move]: 'a' was moved and cannot be used again.
-//               //   ↳  const a_ref: Ref = a;  // add this before the move
-// }
-// // ==========================================================================
-// // Feature 4: Zero-copy borrow  (Ref = ownedVar)
-// // `const view: Ref = source` emits `const std::vector<int>& view = source` — no copy.
-// // DIAGNOSTIC: assigning Owned to bare variable → ownership-owned-copy (info)
-// // ==========================================================================
-// function zeroCopyDemo(): void {
-//   const source: Owned = [1, 2, 3];
-//   const view: Ref = source;   // const std::vector<int>& view = source;  ← zero copy ✓
-//   readBuffer(view);
-//   const source2: Owned = [4, 5, 6];
-//   const copy = source2;       // info  [ownership-owned-copy]: Moving 'source2' into 'copy'
-//                               //         creates a C++ copy — ownership types do not emit std::move()
-//                               //   ↳  const copy: Ref = source2;  // borrow by reference instead
-// }
-// // ==========================================================================
-// // Feature 5: Borrow-mismatch guard
-// // DIAGNOSTIC: Ref argument passed to MutRef parameter → ownership-borrow-mismatch (error)
-// // ==========================================================================
-// function doubleFirst(buf: MutRef): void {
-//   buf[0] = buf[0] * 2;
-// }
-// function borrowMismatchDemo(): void {
-//   const source: Owned = [1, 2, 3];
-//   const data: Ref = source;  // zero-copy borrow
-//   doubleFirst(data);  // error [ownership-borrow-mismatch]: Cannot pass 'data' (immutable Ref)
-//                       //         to 'doubleFirst' which expects a mutable borrow.
-//                       //   ↳  change 'data: Ref = ...' → 'data: MutRef = ...'
-// }
-// // ==========================================================================
-// // Feature 6: Temp-ref warning  (Ref from literal)
-// // C++ cannot bind const& to an rvalue — emitter falls back to a copy.
-// // DIAGNOSTIC: Ref initialised from non-identifier → ownership-temp-ref-warn (warning)
-// // ==========================================================================
-// function tempRefDemo(): void {
-//   const view: Ref = [1, 2, 3];  // warning [ownership-temp-ref-warn]:
-//                                            //   'view: Ref' borrows a temporary — C++ cannot bind
-//                                            //   a reference to an rvalue. Emitter falls back to copy.
-//                                            //   ↳  const _tmp: Owned = ...;
-//                                            //      const view: Ref = _tmp;
-//   readBuffer(view);
-// }
-// // ==========================================================================
-// // Feature 7: Dangling-borrow detection  (NEW)
-// // A borrow that outlives its Owned source → undefined behaviour in C++.
-// // DIAGNOSTIC: borrow outlives scope of owning variable → ownership-dangling-borrow (error)
-// // ==========================================================================
-// function danglingDemo(): void {
-//   const outer: Owned = [9, 9, 9];
-//   let saved: MutRef = outer;  // initial safe borrow of a local variable
-//   {
-//     const local: Owned = [1, 2, 3];
-//     saved = local;  // error [ownership-dangling-borrow]: 'saved' borrows 'local'
-//                     //         which goes out of scope here — potential dangling reference.
-//                     //   ↳  move 'local' to the outer scope, or ensure 'saved' does not outlive it
-//   }
-//   readBuffer(saved);  // ← C++ UB: 'local' has been destroyed
-// }
-// // ==========================================================================
-// // Feature 8: Return-local-ref detection  (NEW)
-// // Returning a Ref whose source is a stack-local Owned variable is UB in C++.
-// // DIAGNOSTIC: returning borrow of local → ownership-return-local-ref (error)
-// // ==========================================================================
-// function returnLocalRefDemo(): Ref {
-//   const local: Owned = [4, 5, 6];
-//   const view: Ref = local;
-//   return view;  // error [ownership-return-local-ref]: Returning 'view' borrows 'local'
-//                 //         which will be destroyed when this function returns — dangling reference.
-//                 //   ↳  return local directly as Owned, or change the function to accept
-//                 //         'local: Ref' as a parameter
-// }
-// // ==========================================================================
-// // Feature 9: Const suggestion
-// // DIAGNOSTIC: let variable never reassigned → ownership-suggest-const (warning)
-// // ==========================================================================
-// function constSuggestionDemo(): void {
-//   let threshold = 42;   // warning [ownership-suggest-const]: 'threshold' is never reassigned.
-//                         //   ↳  const threshold = ...;
-//   console.log(threshold);
-// }
-// // ==========================================================================
-// // Entry point — all demos run
-// // ==========================================================================
-// const buf: Owned = [1, 2, 3];
-// readBuffer(buf);
-// zeroFirst(buf);
-// assignToRefDemo(10);
-// useAfterMoveDemo();
-// zeroCopyDemo();
-// borrowMismatchDemo();
-// tempRefDemo();
-// danglingDemo();
-// constSuggestionDemo();
-// Accepts a read-only view of the buffer.
-// C++: void printFirst(const std::vector<int>& buf)
-void printFirst(const int& buf)
+int add(int a, int b)
 {
-  Serial.println(buf[0]);
+  return a + b;
 }
 
-// Accepts a mutable reference — can write back.
-// C++: void clear(std::vector<int>& buf)
-void clear(int& buf)
+int clamp(int value, int min, int max)
 {
+  return max(min, min(max, value));
 }
 
-// Demonstrates safe borrow — no copy, no UB.
-void demo()
+int square(int x)
 {
-  const std::vector<int> data = { 10, 20, 30 };
-  // data owns the array
-  const std::vector<int>& view = data;
-  // zero-copy const reference
-  printFirst(view);
-  // OK
-  clear(data);
-  // OK: data is still Owned in this scope
-  printFirst(data);
-  // OK: data is still alive
-  // const moved = data;     // ownership transfer
-  printFirst(data);
-  // If 'data' had been moved, this would be
+  return x * x;
+}
+
+int forOfSum()
+{
+  int total = 0;
+  for (const int value : scores)
+  {
+    total += value;
+  }
+  return total;
 }
 
 void loop()

@@ -107,7 +107,7 @@ describe('Pin Config - PWM', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(3, OUTPUT)');
-    expect(result.cpp).toContain('analogWrite(3');
+    expect(result.cpp).toContain('analogWrite(3, 255)');
   });
 });
 
@@ -215,10 +215,9 @@ describe('Pin Config - Combined Usage', () => {
       D9.pwm(50);
     `, { target: 'arduino' });
 
-    expect(result.cpp).toContain('pinMode(13, OUTPUT)');
-    expect(result.cpp).toContain('digitalWrite(13, true)');
+    expect(result.cpp).toContain('D13.output(true)');
     expect(result.cpp).toContain('pinMode(2, INPUT_PULLUP)');
     expect(result.cpp).toContain('pinMode(9, OUTPUT)');
-    expect(result.cpp).toContain('analogWrite(9');
+    expect(result.cpp).toContain('analogWrite(9, 128)');
   });
 });

@@ -486,6 +486,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
   const debug = argv.includes("--debug");
   const noTranspile = argv.includes("--no-transpile");
   const force = argv.includes("--force");
+  const skipTypeCheck = argv.includes("--skip-type-check");
   const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
   // Tree-shaking options
@@ -555,5 +556,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     treeShaking,
     debug,
     force,
+    skipTypeCheck,
   };
 }

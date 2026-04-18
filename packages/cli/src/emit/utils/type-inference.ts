@@ -23,9 +23,14 @@ export function inferObjectFieldType(
   knownObjectTypes?: Map<string, string>,
   knownObjectFieldTypes?: Map<string, Map<string, string>>,
   largeEnumNames?: Set<string>,
+  parentName?: string,
+  fieldName?: string,
 ): string {
   if (value.kind === "number") {
-    return Number.isInteger(value.value) ? "int" : "float";
+    if (value.cppType === "float" || !Number.isInteger(value.value)) {
+      return "float";
+    }
+    return "int";
   }
 
   if (value.kind === "boolean") {
@@ -113,7 +118,68 @@ export function inferObjectFieldType(
     return `std::vector<${elementType}>`;
   }
 
+  // Nested object literal — generate a struct type name
+  if (value.kind === "object") {
+    if (parentName && fieldName) {
+      return `_${parentName}_${fieldName}_t`;
+    }
+    return "int";
+  }
+
   return "int";
+}
+
+/**
+ * Recursively collects nested struct definitions from an object ExpressionIR.
+ * Returns an array of struct definitions ordered from deepest to shallowest,
+ * so that inner structs are defined before outer structs that reference them.
+ *
+ * @param objExpr  The object ExpressionIR to scan for nested objects
+ * @param parentName The variable/struct name prefix for generating struct type names
+ * @param pointerVarTypes Optional pointer variable type map
+ * @param knownFunctionReturnTypes Optional function return type map
+ * @param knownObjectTypes Optional object type map
+ * @param knownObjectFieldTypes Optional object field type map
+ * @param largeEnumNames Optional large enum names set
+ */
+export function collectNestedStructDefs(
+  objExpr: Extract<ExpressionIR, { kind: "object" }>,
+  parentName: string,
+  pointerVarTypes?: Map<string, string>,
+  knownFunctionReturnTypes?: Map<string, string>,
+  knownObjectTypes?: Map<string, string>,
+  knownObjectFieldTypes?: Map<string, Map<string, string>>,
+  largeEnumNames?: Set<string>,
+): { structName: string; fields: { type: string; name: string }[] }[] {
+  const result: { structName: string; fields: { type: string; name: string }[] }[] = [];
+
+  for (const field of objExpr.fields) {
+    if (field.value.kind === "object") {
+      const nestedObj = field.value as Extract<ExpressionIR, { kind: "object" }>;
+      const nestedStructName = `_${parentName}_${field.name}_t`;
+
+      // Recursively collect deeper nested structs first
+      const deeper = collectNestedStructDefs(
+        nestedObj, `${parentName}_${field.name}`,
+        pointerVarTypes, knownFunctionReturnTypes,
+        knownObjectTypes, knownObjectFieldTypes, largeEnumNames,
+      );
+      result.push(...deeper);
+
+      // Collect this nested struct's fields
+      const nestedFields = nestedObj.fields.map((f) => ({
+        type: inferObjectFieldType(
+          f.value, pointerVarTypes, knownFunctionReturnTypes,
+          knownObjectTypes, knownObjectFieldTypes, largeEnumNames,
+          `${parentName}_${field.name}`, f.name,
+        ),
+        name: f.name,
+      }));
+      result.push({ structName: nestedStructName, fields: nestedFields });
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -529,10 +595,9 @@ export function isRuntimeExpression(expr: ExpressionIR): boolean {
       return expr.elements.some((e) => isRuntimeExpression(e));
     
     case "object":
-      // Object literals with runtime values need runtime execution
-      // Also, object literals with identifier fields need runtime execution
-      // because they may reference runtime-created variables (like pointers from 'new')
-      return expr.fields.some((f) => isRuntimeExpression(f.value) || f.value.kind === "identifier");
+      // Plain object literals can stay at global scope as long as all their
+      // field initializers are themselves compile-time-safe.
+      return expr.fields.some((f) => isRuntimeExpression(f.value));
     
     case "raw":
       // Raw expressions might contain method calls - check for common patterns
@@ -560,6 +625,12 @@ export function isRuntimeExpression(expr: ExpressionIR): boolean {
         isRuntimeExpression(expr.whenTrue) ||
         isRuntimeExpression(expr.whenFalse)
       );
+
+    case "binary":
+      return isRuntimeExpression(expr.left) || isRuntimeExpression(expr.right);
+
+    case "unary":
+      return isRuntimeExpression(expr.operand);
     
     case "instanceof":
       // instanceof requires RTTI and runtime evaluation

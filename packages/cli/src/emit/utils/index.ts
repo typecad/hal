@@ -6,6 +6,7 @@
 // Type inference utilities
 export {
   inferObjectFieldType,
+  collectNestedStructDefs,
   collectDeclaredTypes,
   hasArrayInObjectLiteral,
   hasThrowStatements,

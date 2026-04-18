@@ -8,11 +8,9 @@
 import { A0, UART0, delay } from '@typecode';
 
 const serial = UART0.begin(9600);
-
-A0.asInput();
+A0.asInput()
 
 while (true) {
-  const value = A0.readAnalog();
-  serial.println(value);
+  serial.println(`A0: ${A0.readAnalog()}`);
   delay(500);
 }

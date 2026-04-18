@@ -169,6 +169,8 @@ export interface CommandLineOptions {
   frameworkPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
   debug?: boolean;
+  /** Skip TypeScript type-checking before transpilation */
+  skipTypeCheck?: boolean;
   /** Force retranspilation of all files, ignoring cache */
   force?: boolean;
   /** Watch for file changes and retranspile automatically */

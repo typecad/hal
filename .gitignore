@@ -5,3 +5,4 @@ example/
 vitest.config.js
 demo/typecode.config.js
 **/*.tsbuildinfo
+*.zip

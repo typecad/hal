@@ -4,7 +4,7 @@ const VERSION = "0.1.0";
 
 // Icons
 const ICON_TYPECODE = "⤳";
-const ICON_COMPILE = "↦";
+const ICON_COMPILE = "⇉";
 const ICON_UPLOAD = "↱";
 const ICON_SUCCESS = "✓";
 const ICON_ERROR = "✗";

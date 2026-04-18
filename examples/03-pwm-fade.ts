@@ -8,7 +8,7 @@
 
 import { D9, delay } from '@typecode';
 
-D9.output(false);
+D9.asOutput(false);
 
 let brightness = 0;
 let step = 5;

@@ -134,7 +134,8 @@ String greet(String name = "World") {
 
 ### Overloaded Functions
 
-TypeScript overloads map to C++ overloads:
+TypeScript overload **signatures** (declarations without a body) are filtered
+out — only the implementation signature (the one with a body) is emitted:
 
 ```typescript
 function process(value: number): number;
@@ -145,6 +146,8 @@ function process(value: number | string): number | string {
 ```
 
 ```cpp
+// Only the implementation signature is emitted;
+// overload declarations without a body are skipped.
 int process(int value) { return value; }
 String process(String value) { return value; }
 ```
@@ -223,6 +226,10 @@ public:
 };
 ```
 
+When a derived class appears before its base class in source order, the
+transpiler emits a forward declaration of the base class so the C++ compiler
+can resolve the inheritance.
+
 ### Static Members
 
 ```typescript
@@ -244,6 +251,19 @@ public:
     return x * x;
   }
 };
+```
+
+#### Static Member Access
+
+TypeScript dot-access on class or enum types is converted to C++ scope
+resolution (`::`):
+
+```typescript
+const area = Math.PI * Math.square(4);
+```
+
+```cpp
+const double area = Math::PI * Math::square(4);
 ```
 
 ## Enums
@@ -282,7 +302,10 @@ const enum Speed {
 
 ## Interfaces
 
-Interfaces are compile-time only and erased during transpilation:
+Interfaces are compile-time only and erased during transpilation. The
+`implements` clause is omitted from the generated C++ since C++ has no
+interface concept — structural compatibility is validated at the TypeScript
+level:
 
 ```typescript
 interface IPin {
@@ -460,6 +483,40 @@ for (int v : values) {
 | `a << n` | `a << n` |
 | `a >> n` | `a >> n` |
 
+### Strings
+
+#### String Concatenation
+
+The `+` operator with string operands wraps the result in Arduino's `String()`
+constructor to ensure proper C++ concatenation:
+
+```typescript
+const greeting = "Hello, " + name + "!";
+```
+
+```cpp
+String greeting = String("Hello, ") + name + "!";
+```
+
+#### String `.length`
+
+Accessing `.length` on a string-typed variable emits `strlen()`:
+
+```typescript
+function getMessageLength(msg: string): number {
+  return msg.length;
+}
+```
+
+```cpp
+int getMessageLength(const char* msg) {
+  return strlen(msg);
+}
+```
+
+> **Note:** Array `.length` is handled separately and uses `sizeof(array) /
+> sizeof(array[0])`.
+
 ## Console
 
 Console output is polyfilled:
@@ -476,23 +533,45 @@ console_log("Value: ", 42);
 console_error("Error occurred");
 ```
 
+## Identifier Safety
+
+### C++ Keyword Escaping
+
+TypeScript identifiers that collide with C++ reserved keywords are
+automatically suffixed with `_` to avoid compilation errors:
+
+```typescript
+function setRegister(register: number, auto: number): void {
+  // ...
+}
+```
+
+```cpp
+void setRegister(int register_, int auto_) {
+  // ...
+}
+```
+
+This applies to all declarations — variable names, function parameters, class
+members, etc.
+
 ## Limitations
 
 ### Not Supported
 
-- `async`/`await`
-- `try`/`catch`/`throw`
-- `Promise`
 - Dynamic `import()`
 - `eval()`
 - `Proxy`
 - `Reflect`
 - `Symbol`
-- `Map`/`Set` (use arrays)
-- Template literals (use concatenation)
 
 ### Limited Support
 
+- `async`/`await`: lowered approximately through a cooperative runtime model
+- `try`/`catch`/`throw`: validated per target; blocked on AVR and megaAVR
+- `Promise`: partial runtime/polyfill behavior only
+- `Map`/`Set`: type-level lowering exists, but runtime behavior is still limited by target and usage
+- Template literals: lowered to concatenation and string helpers rather than native template semantics
 - Generics: Type parameters erased, limited inference
 - Closures: Captured variables have lifetime constraints
 - Recursion: May cause stack overflow on embedded targets

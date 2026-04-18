@@ -482,6 +482,7 @@ async function main(): Promise<void> {
           frameworkPackage: effectiveFrameworkPackage,
           debug: options.debug,
           force: options.force,
+          skipTypeCheck: options.skipTypeCheck,
         });
 
         printDiagnostics(result.diagnostics);
@@ -553,6 +554,7 @@ async function main(): Promise<void> {
               frameworkPackage: effectiveFrameworkPackage,
               debug: options.debug,
               force: true, // Always force in watch mode to bypass stale cache
+              skipTypeCheck: options.skipTypeCheck,
             });
 
             printDiagnostics(rebuildResult.diagnostics);
@@ -621,6 +623,7 @@ async function main(): Promise<void> {
         frameworkPackage: effectiveFrameworkPackage,
         debug: options.debug,
         force: options.force,
+        skipTypeCheck: options.skipTypeCheck,
       });
 
       printDiagnostics(result.diagnostics);

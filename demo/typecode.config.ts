@@ -41,6 +41,17 @@ const config: TypecodeConfig = {
   console: {
     baudRate: 115200,
   },
+
+  // Hardware test configuration (used by typecode-test / @typecode/expect)
+  test: {
+    port: 'COM6',
+    baudRate: 115200,
+    timeout: 30000,
+    include: [
+      'src/**/*.test.ts',
+      'src/sketch.ts',
+    ],
+  },
 };
 
 export default config;

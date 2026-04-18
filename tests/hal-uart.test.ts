@@ -4,7 +4,7 @@
 // Tests for UART Arduino-compatible API
 // ---------------------------------------------------------------------------
 
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { expectCppContains, transpileArduino } from './setup';
 
 describe('UART HAL - Arduino API Transpilation', () => {
@@ -79,7 +79,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
         UART0.write("hello");
       `);
       
-      expectCppContains(result, ['Serial.write']);
+      expectCppContains(result, ['Serial.write("hello")']);
     });
   });
 
@@ -91,7 +91,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
         UART0.print("Hello");
       `);
       
-      expectCppContains(result, ['Serial.print']);
+      expectCppContains(result, ['Serial.print("Hello")']);
     });
 
     it('transpiles println()', () => {
@@ -101,7 +101,20 @@ describe('UART HAL - Arduino API Transpilation', () => {
         UART0.println("Hello");
       `);
       
-      expectCppContains(result, ['Serial.println']);
+      expectCppContains(result, ['Serial.println("Hello")']);
+    });
+
+    it('preserves UART aliases across later println calls', () => {
+      const result = transpileArduino(`
+        import { UART0 } from '@typecode/board-arduino-uno/arduino';
+        const serial = UART0.begin(115200);
+        serial.println(` + "`value=${1}`" + `);
+      `);
+
+      expect(result.cpp).toContain('Serial.begin(115200);');
+      expect(result.cpp).toContain('Serial.println(');
+      expect(result.cpp).not.toContain('const int serial = Serial.begin(115200);');
+      expect(result.cpp).not.toContain('serial.println(');
     });
 
     it('transpiles printf()', () => {
@@ -111,7 +124,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
         UART0.printf("Value: %d", 42);
       `);
       
-      expectCppContains(result, ['Serial.printf']);
+      expectCppContains(result, ['Serial.printf("Value: %d", 42)']);
     });
   });
 
@@ -129,13 +142,14 @@ describe('UART HAL - Arduino API Transpilation', () => {
 });
 
 describe('UART HAL - Multiple Port Support', () => {
-  it('uses Serial for UART0 on Arduino Uno (maps to Serial)', () => {
+  it('lowers the high-level UART API to Serial calls on Arduino Uno', () => {
     const result = transpileArduino(`
       import { UART0 } from '@typecode/board-arduino-uno/arduino';
       UART0.begin(9600);
     `);
     
     expectCppContains(result, ['Serial.begin(9600)']);
+    expect(result.cpp).not.toContain('UART0.begin');
   });
 });
 
