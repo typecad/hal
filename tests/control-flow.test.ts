@@ -373,8 +373,8 @@ describe("Control Flow Transpilation", () => {
           }
         }
       `);
-      expect(result.cpp).toContain("for (");
-      expect(result.cpp).toContain(" : obj)");
+      expect(result.cpp).toContain("for (int _ki_obj = 0");
+      expect(result.cpp).toContain("_ki_obj_keys");
     });
   });
 

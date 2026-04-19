@@ -5,9 +5,11 @@ import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnlyMethodName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
+import { escapeCppKeyword } from "../utils/strings";
 import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, nestedFunctionAliases, activePinAliases, activeBusAliases, activeCArrayVars } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
+import { extractRootAndChain } from "./ast-patterns";
 
 export function callToStatement(
   statementNode: ts.ExpressionStatement,
@@ -23,19 +25,6 @@ export function callToStatement(
   // Handle D13.asOutput(), D9.pwm(), D2.pullup(), etc.
   // These need to be detected as typecode-call IR nodes for proper transpilation.
   if (ts.isPropertyAccessExpression(call.expression)) {
-    const extractRootAndChain = (node: ts.Expression): { root: string; chain: string[] } | undefined => {
-      if (ts.isIdentifier(node)) {
-        return { root: node.text, chain: [] };
-      }
-      if (ts.isPropertyAccessExpression(node)) {
-        const inner = extractRootAndChain(node.expression);
-        if (inner) {
-          return { root: inner.root, chain: [...inner.chain, node.name.text] };
-        }
-      }
-      return undefined;
-    };
-    
     const chainInfo = extractRootAndChain(call.expression);
     if (chainInfo) {
       const kind = inferKindByName(chainInfo.root);
@@ -223,8 +212,24 @@ export function callToStatement(
   let calleeText: string;
   if (ts.isPropertyAccessExpression(call.expression)) {
     const objExpr = call.expression.expression;
+    const methodName = escapeCppKeyword(call.expression.name.text);
     if (ts.isIdentifier(objExpr) && pointerVars.has(objExpr.text)) {
-      calleeText = `${objExpr.text}->${call.expression.name.text}`;
+      calleeText = `${objExpr.text}->${methodName}`;
+    } else if (ts.isCallExpression(objExpr) && ts.isPropertyAccessExpression(objExpr.expression)) {
+      // Chained method call: obj.method1().method2()
+      const innerReceiver = objExpr.expression.expression;
+      const innerMethodName = objExpr.expression.name.text;
+      const innerCallText = renderExprAsText(expressionToIR(objExpr, sourceText, diagnostics, pointerVars));
+      let accessor = ".";
+      if (ts.isIdentifier(innerReceiver) && pointerVars.has(innerReceiver.text)) {
+        const className = pointerVars.get(innerReceiver.text);
+        const cls = className ? hoistedNestedClasses.find(c => c.name === className) : undefined;
+        const method = cls?.methods.find(m => m.name === innerMethodName);
+        if (method && (method.returnType as string).endsWith("*")) {
+          accessor = "->";
+        }
+      }
+      calleeText = `${innerCallText}${accessor}${methodName}`;
     } else {
       calleeText = calleeToText(call.expression);
     }
@@ -616,6 +621,7 @@ export function lowerStatement(
       diagnostics,
       functionReturnTypes,
       localVariableTypes,
+      pointerVars,
     );
     return loweredExpression ? [loweredExpression] : undefined;
   }
@@ -629,6 +635,7 @@ export function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       typeAliases,
+      pointerVars,
     );
   }
 
@@ -649,7 +656,7 @@ export function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      value: expressionToIR(statement.expression, sourceText, diagnostics),
+      value: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
     }];
   }
 
@@ -670,7 +677,7 @@ export function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics),
+      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       body: bodyStatements,
     }];
   }
@@ -705,7 +712,7 @@ export function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics),
+      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       thenBranch: thenStatements,
       elseBranch,
     }];
@@ -733,13 +740,14 @@ export function lowerStatement(
           diagnostics,
           functionReturnTypes,
           localVariableTypes,
+          pointerVars,
         );
         initializer = loweredExpr;
       }
     }
 
     const condition = statement.condition
-      ? expressionToIR(statement.condition, sourceText, diagnostics)
+      ? expressionToIR(statement.condition, sourceText, diagnostics, pointerVars)
       : undefined;
 
     let increment: StatementIR | undefined;
@@ -800,7 +808,7 @@ export function lowerStatement(
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
       variable: variable!,
-      iterable: expressionToIR(statement.expression, sourceText, diagnostics),
+      iterable: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       body: bodyStatements,
     }];
   }
@@ -839,7 +847,7 @@ export function lowerStatement(
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
       variable: variable!,
-      object: expressionToIR(statement.expression, sourceText, diagnostics),
+      object: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       keys,
       body: bodyStatements,
     }];
@@ -883,7 +891,7 @@ export function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics),
+      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       body: bodyStatements,
     }];
   }
@@ -919,7 +927,7 @@ export function lowerStatement(
           sourceSpan: makeSourceSpan(clause, fileName, sourceText),
           leadingComments: caseComments.leadingComments,
           trailingComments: caseComments.trailingComments,
-          value: expressionToIR(clause.expression, sourceText, diagnostics),
+          value: expressionToIR(clause.expression, sourceText, diagnostics, pointerVars),
           body: lowerStatementList(
             clause.statements,
             fileName,
@@ -938,7 +946,7 @@ export function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      expression: expressionToIR(statement.expression, sourceText, diagnostics),
+      expression: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       cases,
     }];
   }
@@ -1008,7 +1016,7 @@ export function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      value: expressionToIR(statement.expression, sourceText, diagnostics),
+      value: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
     }];
   }
 
@@ -1378,6 +1386,22 @@ export function lowerStatementList(
     }
   }
 
+  // Collect pointer variables from this scope (vars initialized with 'new')
+  const scopePointerVars = new Map<string, string>();
+  for (const statement of statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer && ts.isNewExpression(decl.initializer)) {
+          const ctorText = decl.initializer.expression && ts.isIdentifier(decl.initializer.expression)
+            ? decl.initializer.expression.text : "";
+          if (!TYPED_ARRAY_ELEMENT_MAP[ctorText]) {
+            scopePointerVars.set(decl.name.text, ctorText);
+          }
+        }
+      }
+    }
+  }
+
   // Phase 3: Process remaining (non-function, non-class) statements.
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement)) {
@@ -1395,6 +1419,7 @@ export function lowerStatementList(
       localVariableTypes,
       functionNameForDiagnostics,
       typeAliases,
+      scopePointerVars,
     );
     if (result) {
       lowered.push(...result);
@@ -1417,6 +1442,7 @@ export function variableStatementToIR(
   functionReturnTypes: Map<string, CppTypeHint>,
   localVariableTypes: Map<string, CppTypeHint>,
   typeAliases?: Map<string, ts.TypeNode>,
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR[] {
   const statementComments = extractNodeComments(statement, sourceText);
   const storage: "var" | "let" | "const" =

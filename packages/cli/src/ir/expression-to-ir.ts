@@ -7,6 +7,7 @@ import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_A
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement } from "./statement-to-ir";
 import { escapeCppKeyword } from "../utils/strings";
+import { extractRootAndChain } from "./ast-patterns";
 
 export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
   function emitUnsupportedExpression(message: string): ExpressionIR {
@@ -522,21 +523,6 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       //
       // See: docs/transpiler/ir-model.md - Typecode-Call IR Node
       // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // Helper to extract root identifier and method chain from property access
-      // e.g., UART0.write.line -> { root: "UART0", chain: ["write", "line"] }
-      const extractRootAndChain = (node: ts.Expression): { root: string; chain: string[] } | undefined => {
-        if (ts.isIdentifier(node)) {
-          return { root: node.text, chain: [] };
-        }
-        if (ts.isPropertyAccessExpression(node)) {
-          const inner = extractRootAndChain(node.expression);
-          if (inner) {
-            return { root: inner.root, chain: [...inner.chain, node.name.text] };
-          }
-        }
-        return undefined;
-      };
-
       // symbol.method() â€” direct typecode symbol (A0.read(), Serial.println(), etc.)
       // Also handles nested chains like UART0.write.line() -> receiver: "UART0", method: "write.line"
       const chainInfo = extractRootAndChain(expr.expression);
@@ -836,16 +822,23 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
     // In C++, 'this' is a pointer, so use -> instead of .
     if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      return { kind: "raw", value: `this->${expr.name.text}` };
+      return { kind: "raw", value: `this->${escapeCppKeyword(expr.name.text)}` };
     }
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "Math") {
-      return { kind: "raw", value: `std::${expr.name.text}` };
+      return { kind: "raw", value: `std::${escapeCppKeyword(expr.name.text)}` };
+    }
+    // Use -> for pointer variables in property access
+    if (ts.isIdentifier(expr.expression) && pointerVars.has(expr.expression.text)) {
+      return { kind: "raw", value: `${expr.expression.text}->${escapeCppKeyword(expr.name.text)}` };
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
       if (ts.isIdentifier(expr.expression) && activeCArrayVars.has(expr.expression.text)) {
         const objName = renderExprAsText(object);
         return { kind: "raw", value: `(sizeof(${objName}) / sizeof(${objName}[0]))` };
+      }
+      if (ts.isCallExpression(expr.expression)) {
+        return { kind: "raw", value: `strlen(${renderExprAsText(object)})` };
       }
       return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
     }
