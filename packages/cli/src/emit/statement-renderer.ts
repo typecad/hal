@@ -122,15 +122,17 @@ export class StatementRenderer {
     }
 
     if (statement.kind === "assign") {
-      return forHeader 
-        ? `${statement.target} ${statement.operator} ${this.expressionRenderer.render(statement.value)}`
-        : `${statement.target} ${statement.operator} ${this.expressionRenderer.render(statement.value)};`;
+      const target = escapeCppKeyword(statement.target);
+      return forHeader
+        ? `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)}`
+        : `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)};`;
     }
 
     if (statement.kind === "update") {
+      const target = escapeCppKeyword(statement.target);
       return statement.prefix
-        ? `${statement.operator}${statement.target}${forHeader ? "" : ";"}`
-        : `${statement.target}${statement.operator}${forHeader ? "" : ";"}`;
+        ? `${statement.operator}${target}${forHeader ? "" : ";"}`
+        : `${target}${statement.operator}${forHeader ? "" : ";"}`;
     }
 
     if (statement.kind === "return") {
@@ -276,6 +278,15 @@ export class StatementRenderer {
     const declaration = `${volatilePrefix}${this.renderTypedName(transformedType, statement.name, isConst, isRef)}`;
     
     if (statement.initializer) {
+      // Handle lambda initializers: const fn = (x) => expr
+      if (statement.initializer.kind === "lambda") {
+        const params = statement.initializer.params.map(p => `${p.cppType} ${p.name}`).join(", ");
+        const ret = statement.initializer.returnType && statement.initializer.returnType !== "auto"
+          ? ` -> ${statement.initializer.returnType}` : "";
+        const bodyStr = statement.initializer.body.map(s => "  " + this.render(s)).join("\n");
+        const safeName = escapeCppKeyword(statement.name);
+        return `auto ${safeName} = [=](${params})${ret} {\n${bodyStr}\n};`;
+      }
       // Handle device.readByte / device.readBytes — multi-statement Wire expansions
       // that cannot be used as a C++ r-value expression.
       if (statement.initializer.kind === "typecode-call") {

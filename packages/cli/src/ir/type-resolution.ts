@@ -498,6 +498,22 @@ export function inferExprCppType(
     return "auto";
   }
 
+  if (ts.isElementAccessExpression(expr)) {
+    const objectType = inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
+    // Typed array pointers → element types
+    if (objectType === "float*") return "float";
+    if (objectType === "uint8_t*") return "int";
+    if (objectType === "int16_t*") return "int";
+    if (objectType === "int32_t*") return "int";
+    // Check local variable declarations for typed array constructors
+    if (ts.isIdentifier(expr.expression)) {
+      const varName = expr.expression.text;
+      const varType = localVariableTypes.get(varName);
+      if (varType === "float*") return "float";
+    }
+    return "auto";
+  }
+
   return "auto";
 }
 
@@ -544,6 +560,24 @@ export function resolveDeclarationType(
   };
 }
 
+/** Collect local variable types from a function body (single-level scan). */
+function collectLocalVarTypes(body: ts.Block, functionReturnTypes: Map<string, CppTypeHint>, sourceText: string): Map<string, CppTypeHint> {
+  const locals = new Map<string, CppTypeHint>();
+  for (const stmt of body.statements) {
+    if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer) {
+          const initType = inferExprCppType(decl.initializer, functionReturnTypes, locals, sourceText);
+          if (initType !== "auto") {
+            locals.set(decl.name.text, initType);
+          }
+        }
+      }
+    }
+  }
+  return locals;
+}
+
 export function collectReturns(block: ts.Block): ts.ReturnStatement[] {
   const returns: ts.ReturnStatement[] = [];
   const walk = (node: ts.Node): void => {
@@ -574,9 +608,10 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
         if (annotatedType !== "auto") {
           // Promote int → float when the function body returns float expressions
           if (annotatedType === "int") {
+            const locals = collectLocalVarTypes(fn.body, result, sourceText);
             const returns = collectReturns(fn.body).filter((item) => item.expression);
             const inferredTypes = returns
-              .map((item) => inferExprCppType(item.expression as ts.Expression, result, new Map<string, CppTypeHint>(), sourceText))
+              .map((item) => inferExprCppType(item.expression as ts.Expression, result, locals, sourceText))
               .filter((item) => item !== "auto");
             if (inferredTypes.includes("float")) {
               result.set(fn.name.text, "float");
@@ -588,13 +623,14 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
         }
       }
 
+      const locals = collectLocalVarTypes(fn.body, result, sourceText);
       const returns = collectReturns(fn.body).filter((item) => item.expression);
       if (returns.length === 0) {
         continue;
       }
 
       const inferredTypes = returns
-        .map((item) => inferExprCppType(item.expression as ts.Expression, result, new Map<string, CppTypeHint>(), sourceText))
+        .map((item) => inferExprCppType(item.expression as ts.Expression, result, locals, sourceText))
         .filter((item) => item !== "auto");
 
       if (inferredTypes.length === 0) {

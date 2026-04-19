@@ -1396,6 +1396,40 @@ export function variableStatementToIR(
       }
     }
 
+    // Detect arrow/function-expression initializers and produce lambda IR
+    let lambdaInitializer: ExpressionIR | undefined;
+    if (actualInitializer && (ts.isArrowFunction(actualInitializer) || ts.isFunctionExpression(actualInitializer))) {
+      const fnExpr = actualInitializer;
+      const params: ParameterIR[] = [];
+      for (const param of fnExpr.parameters) {
+        if (ts.isIdentifier(param.name)) {
+          const paramType = typeNodeToCppType(param.type, typeAliases);
+          params.push({
+            name: param.name.text,
+            cppType: (paramType === "void" ? "auto" : paramType) as any,
+            defaultValue: param.initializer ? expressionToIR(param.initializer, sourceText, diagnostics) : undefined,
+            isRest: false,
+          });
+        }
+      }
+      const isBlock = ts.isBlock(fnExpr.body);
+      const body: StatementIR[] = isBlock
+        ? lowerStatementList(
+            (fnExpr.body as ts.Block).statements,
+            fileName, sourceText, diagnostics,
+            new Map(), new Map(),
+            declaration.name.getText(),
+            typeAliases,
+          )
+        : [{
+            kind: "return" as const,
+            sourceSpan: makeSourceSpan(fnExpr.body, fileName, sourceText),
+            value: expressionToIR(fnExpr.body, sourceText, diagnostics),
+          }];
+      const returnType = typeNodeToCppType(fnExpr.type, typeAliases);
+      lambdaInitializer = { kind: "lambda", params, body, returnType, isExpressionBody: !isBlock };
+    }
+
     const loweredDeclaration: Extract<StatementIR, { kind: "var_decl" }> = {
       kind: "var_decl",
       sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
@@ -1405,9 +1439,9 @@ export function variableStatementToIR(
       storage,
       cppType: "auto",
       isVolatile,
-      initializer: actualInitializer
+      initializer: lambdaInitializer ?? (actualInitializer
         ? expressionToIR(actualInitializer, sourceText, diagnostics)
-        : undefined,
+        : undefined),
     };
     commentsAssigned = true;
 

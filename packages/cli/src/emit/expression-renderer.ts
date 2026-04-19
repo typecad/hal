@@ -153,6 +153,8 @@ export class ExpressionRenderer {
         return this.renderTypecodeCall(expr, exprTransformer);
       case "callback":
         return this.renderCallback(expr);
+      case "lambda":
+        return this.renderLambda(expr, exprTransformer);
       default:
         return "0 /* unsupported_expr */";
     }
@@ -412,6 +414,15 @@ export class ExpressionRenderer {
     // Callbacks are rendered by the statement emitter which tracks them globally
     // Here we just return a marker that gets replaced with the actual function name
     return `/* callback:${expr.sourceSpan.startLine}:${expr.sourceSpan.startColumn} */`;
+  }
+
+  private renderLambda(expr: Extract<ExpressionIR, { kind: "lambda" }>, exprTransformer?: (expr: string) => string): string {
+    const params = expr.params.map(p => `${p.cppType} ${p.name}`).join(", ");
+    const ret = expr.returnType && expr.returnType !== "auto" ? ` -> ${expr.returnType}` : "";
+    if (expr.isExpressionBody && expr.body.length === 1 && expr.body[0].kind === "return" && "value" in expr.body[0]) {
+      return `[=](${params})${ret} { return ${this.render((expr.body[0] as any).value, exprTransformer)}; }`;
+    }
+    return `[=](${params})${ret} { /* body */ }`;
   }
 }
 
