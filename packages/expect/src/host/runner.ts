@@ -98,7 +98,9 @@ async function processTestFile(
   console.log(`  ${DIM}preprocessing...${RESET}`);
   let preprocessed: string;
   try {
-    preprocessed = preprocess(source, path.basename(filePath));
+    preprocessed = preprocess(source, path.basename(filePath), {
+      isAvr: config.target === 'avr' || config.target === 'megaavr',
+    });
   } catch (e) {
     return errorResult(filePath, `Preprocessing failed: ${(e as Error).message}`, startTime);
   }

@@ -41,10 +41,15 @@ import ts from 'typescript';
  * @param fileName  Used for diagnostics.
  * @returns Preprocessed TypeScript source ready for the typecode transpiler.
  */
-export function preprocess(source: string, fileName: string = 'test.ts'): string {
+export interface PreprocessorOptions {
+  /** Wrap string literals in Arduino F() macro to save SRAM on AVR. */
+  isAvr?: boolean;
+}
+
+export function preprocess(source: string, fileName: string = 'test.ts', options?: PreprocessorOptions): string {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 
-  const ctx = new PreprocessorContext();
+  const ctx = new PreprocessorContext(options?.isAvr ?? false);
 
   // Collect non-expect imports to preserve
   for (const stmt of sf.statements) {
@@ -75,6 +80,16 @@ class PreprocessorContext {
   private varCounter = 0;
   private preambleEmitted = false;
   private baudRate = 115200;
+  private readonly isAvr: boolean;
+
+  constructor(isAvr: boolean) {
+    this.isAvr = isAvr;
+  }
+
+  /** Wrap a string literal in F() on AVR to keep it in flash. */
+  flash(s: string): string {
+    return this.isAvr ? `F("${s}")` : `"${s}"`;
+  }
 
   /** Emit a line of TypeScript output. */
   emit(line: string): void {
@@ -93,7 +108,7 @@ class PreprocessorContext {
   private emitPreamble(): void {
     this.preambleEmitted = true;
     this.lines.push(`Serial.begin(${this.baudRate});`);
-    this.lines.push(`Serial.println("[TC:SUITE_START]");`);
+    this.lines.push(`Serial.println(${this.flash('[TC:SUITE_START]')});`);
   }
 
   /** Build the final output source. */
@@ -115,7 +130,7 @@ function processExpressionStatement(
 
   // Check for `done()` call
   if (isDoneCall(expr)) {
-    ctx.emit(`Serial.println("[TC:SUITE_END]");`);
+    ctx.emit(`Serial.println(${ctx.flash('[TC:SUITE_END]')});`);
     ctx.emit(`while (true) { delay(1000); }`);
     return;
   }
@@ -280,11 +295,11 @@ function emitSegments(segments: ChainSegment[], ctx: PreprocessorContext): void 
   for (const seg of segments) {
     switch (seg.kind) {
       case 'describe':
-        ctx.emit(`Serial.println("[TC:DESCRIBE:${escapeProtocol(seg.name ?? '')}]");`);
+        ctx.emit(`Serial.println(${ctx.flash(`[TC:DESCRIBE:${escapeProtocol(seg.name ?? '')}]`)});`);
         break;
 
       case 'it':
-        ctx.emit(`Serial.println("[TC:IT:${escapeProtocol(seg.name ?? '')}]");`);
+        ctx.emit(`Serial.println(${ctx.flash(`[TC:IT:${escapeProtocol(seg.name ?? '')}]`)});`);
         break;
 
       case 'expect': {
@@ -330,9 +345,9 @@ function emitExpectProtocol(
   ctx: PreprocessorContext,
 ): void {
   const expectedPart = matcherArgs.join(',');
-  ctx.emit(`Serial.print("[TC:EXPECT:${matcher}:${expectedPart}:");`);
+  ctx.emit(`Serial.print(${ctx.flash(`[TC:EXPECT:${matcher}:${expectedPart}:`)});`);
   ctx.emit(`Serial.print(${actualVar});`);
-  ctx.emit(`Serial.println("]");`);
+  ctx.emit(`Serial.println(${ctx.flash(']')});`);
 }
 
 // ---------------------------------------------------------------------------
