@@ -1,8 +1,9 @@
-import type { FunctionIR } from "./model";
+import type { FunctionIR, ClassIR } from "./model";
 import type { TypecodeReceiverKind } from "./typecode-symbols";
 
 // Track variables that are pointers (from 'new' expressions)
-export type PointerTracker = Set<string>;
+// Maps variable name → class name (e.g., "b" → "Builder")
+export type PointerTracker = Map<string, string>;
 
 // Pin factory function names that should be constant-folded to the pin number
 export const PIN_FACTORY_FUNCTIONS = new Set([
@@ -31,9 +32,10 @@ export const TYPED_ARRAY_ELEMENT_MAP: Record<string, string> = {
 /** Module-level register field map, populated during buildProgramIR. */
 export const registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
 
-// Module-level accumulators for nested function hoisting (Bug 6).
+// Module-level accumulators for nested function/class hoisting.
 // These are reset at the start of each buildProgramIR() call.
 export const hoistedNestedFunctions: FunctionIR[] = [];
+export const hoistedNestedClasses: ClassIR[] = [];
 export const nestedFunctionAliases = new Map<string, string>();
 
 // Module-level pin alias map for the current buildProgramIR invocation.
@@ -52,6 +54,7 @@ export const activeCArrayVars = new Set<string>();
 
 export function resetBuildState(): void {
   hoistedNestedFunctions.length = 0;
+  hoistedNestedClasses.length = 0;
   nestedFunctionAliases.clear();
   activePinAliases.clear();
   activeBusAliases.clear();

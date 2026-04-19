@@ -201,6 +201,8 @@ export interface ForInIR {
   trailingComments?: string[];
   variable: StatementIR;
   object: ExpressionIR;
+  /** Field/key names of the iterated object, used to generate a key array for C++ emission */
+  keys?: string[];
   body: StatementIR[];
 }
 

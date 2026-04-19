@@ -54,7 +54,8 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.cyan(`TESTING`));
   console.log();
-  console.log(`  --expect                Run hardware tests via @typecode/expect.`);
+  console.log(`  --expect [file]         Run hardware tests via @typecode/expect.`);
+  console.log(`                          Optionally specify a test file to run a single test.`);
   console.log(`                          Discovers test files and validates via serial.`);
   console.log();
   console.log(`  --fqbn <package:arch:board>`);
@@ -292,6 +293,8 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     const debug = argv.includes("--debug");
     const force = argv.includes("--force");
     const expect = argv.includes("--expect");
+    const expectArg = readFlag(argv, "--expect");
+    const expectFile = expect && expectArg && !expectArg.startsWith("-") ? expectArg : undefined;
     const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
     // Tree-shaking options
@@ -361,6 +364,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
       debug,
       force,
       expect,
+      expectFile,
     };
   }
 
@@ -495,6 +499,8 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
   const force = argv.includes("--force");
   const skipTypeCheck = argv.includes("--skip-type-check");
   const expect = argv.includes("--expect");
+  const expectArg = readFlag(argv, "--expect");
+  const expectFile = expect && expectArg && !expectArg.startsWith("-") ? expectArg : undefined;
   const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
   // Tree-shaking options
@@ -566,5 +572,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     force,
     skipTypeCheck,
     expect,
+    expectFile,
   };
 }

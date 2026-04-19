@@ -716,11 +716,13 @@ function renderStatement(
   }
 
   if (statement.kind === "for_in") {
-    // for...in iterates over object keys
-    // In C++, we need to use a map iterator or similar pattern
+    if (statement.keys && statement.keys.length > 0) {
+      const objName = statement.object.kind === "identifier" ? statement.object.value : "_obj";
+      const idxVar = `_ki_${objName}`;
+      return `for (int ${idxVar} = 0; ${idxVar} < ${statement.keys.length}; ${idxVar}++)`;
+    }
     const varDecl = statement.variable;
     if (varDecl.kind === "var_decl") {
-      // Use a key iteration pattern - the object should be a map-like structure
       return `for (${renderTypedName(varDecl.cppType, varDecl.name, strategy, varDecl.storage === "const")} : ${renderExpression(statement.object, undefined, strategy)})`;
     }
     return `for (auto key : ${renderExpression(statement.object, undefined, strategy)})`;
@@ -1370,6 +1372,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       });
       appendSourceLine(`${indent}{`);
       const forInScope = cloneEmissionScopeState(scopeState);
+      // Inject key variable assignment inside the loop body for for_in with known keys
+      if (statement.keys && statement.keys.length > 0 && statement.variable.kind === "var_decl") {
+        const objName = statement.object.kind === "identifier" ? statement.object.value : "_obj";
+        const idxVar = `_ki_${objName}`;
+        const varDecl = statement.variable;
+        const safeName = escapeCppKeyword(varDecl.name);
+        appendSourceLine(`${indent}  const char* ${safeName} = ${idxVar}_keys[${idxVar}];`);
+      }
       for (const nested of statement.body) {
         appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forInScope);
       }
@@ -2129,12 +2139,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           const returnType = normalizeCppTypeForTarget(method.returnType, strategy);
           
           if (method.isAbstract) {
-            appendSourceLine(`    virtual ${returnType} ${method.name}(${methodParams}) = 0;`);
+            appendSourceLine(`    virtual ${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) = 0;`);
             appendSourceLine("");
             continue;
           }
           
-          appendSourceLine(`    ${staticPrefix}${returnType} ${method.name}(${methodParams}) {`);
+          appendSourceLine(`    ${staticPrefix}${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(stmt, "      ", undefined, methodScope);
@@ -2154,7 +2164,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
         for (const method of privateMethods) {
           const methodParams = renderParameters(method.parameters, strategy);
-          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(stmt, "      ", undefined, methodScope);
@@ -2173,7 +2183,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
         for (const method of protectedMethods) {
           const methodParams = renderParameters(method.parameters, strategy);
-          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(stmt, "      ", undefined, methodScope);
@@ -2352,12 +2362,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         
         // Handle abstract methods (pure virtual in C++)
         if (method.isAbstract) {
-          appendSourceLine(`  virtual ${returnType} ${method.name}(${methodParams}) = 0;`);
+          appendSourceLine(`  virtual ${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) = 0;`);
           appendSourceLine("");
           continue;
         }
         
-        appendSourceLine(`  ${staticPrefix}${returnType} ${method.name}(${methodParams}) {`);
+        appendSourceLine(`  ${staticPrefix}${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ", undefined, methodScope);
@@ -2381,7 +2391,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const method of privateMethods) {
         const methodParams = renderParameters(method.parameters, strategy);
         const staticPrefix = method.isStatic ? "static " : "";
-        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ", undefined, methodScope);
@@ -2405,7 +2415,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const method of protectedMethods) {
         const methodParams = renderParameters(method.parameters, strategy);
         const staticPrefix = method.isStatic ? "static " : "";
-        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${method.name}(${methodParams}) {`);
+        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ", undefined, methodScope);

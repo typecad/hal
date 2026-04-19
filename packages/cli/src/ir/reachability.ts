@@ -132,6 +132,19 @@ export function analyzeReachability(
     }
   }
 
+  // Mark base classes as reachable when their derived classes are reachable.
+  // The call graph only tracks direct references, not inheritance relationships.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const cls of program.classes) {
+      if (reachableClasses.has(cls.name) && cls.extendsClass && !reachableClasses.has(cls.extendsClass)) {
+        reachableClasses.add(cls.extendsClass);
+        changed = true;
+      }
+    }
+  }
+
   // Apply keep options
   if (keepUnusedEnums) {
     for (const [name] of definedEnums) {

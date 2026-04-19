@@ -24,12 +24,13 @@ function resolveExpectCliPath(): string {
   return "typecode-test";
 }
 
-function runExpectTests(options: { port?: string; fqbn?: string; baud?: number }): number {
+function runExpectTests(options: { port?: string; fqbn?: string; baud?: number; expectFile?: string }): number {
   const expectCliPath = resolveExpectCliPath();
   const args: string[] = [expectCliPath];
   if (options.port) args.push("--port", options.port);
   if (options.fqbn) args.push("--fqbn", options.fqbn);
   if (options.baud) args.push("--baud", String(options.baud));
+  if (options.expectFile) args.push(path.resolve(process.cwd(), options.expectFile));
 
   ui.printStep("Running hardware tests...");
   const result = spawnSync(process.execPath, args, {
@@ -371,6 +372,7 @@ async function main(): Promise<void> {
           port: options.port,
           fqbn: config?.fqbn,
           baud: config?.console?.baudRate ?? options.baud,
+          expectFile: options.expectFile,
         });
         process.exitCode = exitCode;
         return;
@@ -672,6 +674,7 @@ async function main(): Promise<void> {
           port: options.port,
           fqbn: effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn,
           baud: config?.console?.baudRate ?? options.baud,
+          expectFile: options.expectFile,
         });
         process.exitCode = exitCode;
       }
@@ -734,6 +737,7 @@ async function main(): Promise<void> {
         port: options.port,
         fqbn,
         baud: config?.console?.baudRate ?? options.baud,
+        expectFile: options.expectFile,
       });
       process.exitCode = exitCode;
       return;

@@ -3,11 +3,12 @@ import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { inferKindByName } from "./typecode-symbols";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, nestedFunctionAliases, registerFieldMap } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, nestedFunctionAliases, registerFieldMap, hoistedNestedClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement } from "./statement-to-ir";
+import { escapeCppKeyword } from "../utils/strings";
 
-export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Set()): ExpressionIR {
+export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
   function emitUnsupportedExpression(message: string): ExpressionIR {
     diagnostics.push(makeDiagnostic(
       sourceText,
@@ -25,28 +26,32 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   function renderMemberAccessText(receiverNode: ts.Expression, memberName: string): string {
+    const escapedName = escapeCppKeyword(memberName);
     const isThisAccess = receiverNode.kind === ts.SyntaxKind.ThisKeyword ||
       (ts.isIdentifier(receiverNode) && receiverNode.text === "this");
     if (isThisAccess) {
       if (memberName === "length") {
         return `this->size()`;
       }
-      return `this->${memberName}`;
+      return `this->${escapedName}`;
     }
     if (ts.isIdentifier(receiverNode) && pointerVars.has(receiverNode.text)) {
-      return `${receiverNode.text}->${memberName}`;
+      return `${receiverNode.text}->${escapedName}`;
     }
     if (ts.isIdentifier(receiverNode) && receiverNode.text === "Math") {
-      return `std::${memberName}`;
+      return `std::${escapedName}`;
     }
     const objectText = formatExpressionText(receiverNode);
     if (memberName === "length") {
       if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
         return `(sizeof(${objectText}) / sizeof(${objectText}[0]))`;
       }
+      if (ts.isCallExpression(receiverNode)) {
+        return `strlen(${objectText})`;
+      }
       return `${objectText}.size()`;
     }
-    return `${objectText}.${memberName}`;
+    return `${objectText}.${escapedName}`;
   }
 
   function renderOptionalGuardedAccess(receiverNode: ts.Expression, accessText: string): string {
@@ -652,15 +657,35 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // Use -> for pointer variables (from 'new') and for 'this', . for value types
     let calleeText: string;
     if (ts.isPropertyAccessExpression(expr.expression)) {
+      const receiver = expr.expression.expression;
+      const methodName = escapeCppKeyword(expr.expression.name.text);
       // Check if it's a this.method() call - in C++, this is a pointer so use ->
-      if (expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
-        calleeText = `this->${expr.expression.name.text}`;
-      } else if (ts.isIdentifier(expr.expression.expression) && expr.expression.expression.text === "Math") {
-        calleeText = `std::${expr.expression.name.text}`;
+      if (receiver.kind === ts.SyntaxKind.ThisKeyword) {
+        calleeText = `this->${methodName}`;
+      } else if (ts.isIdentifier(receiver) && receiver.text === "Math") {
+        calleeText = `std::${methodName}`;
+      } else if (ts.isIdentifier(receiver) && hoistedNestedClasses.some(c => c.name === receiver.text)) {
+        // Static method call on a hoisted class: use ::
+        calleeText = `${receiver.text}::${methodName}`;
       } else {
-        const objText = renderExprAsText(expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars));
-        const accessor = pointerVars.has(expr.expression.expression.getText()) ? "->" : ".";
-        calleeText = `${objText}${accessor}${expr.expression.name.text}`;
+        const objText = renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars));
+        let accessor = ".";
+        if (ts.isIdentifier(receiver) && pointerVars.has(receiver.text)) {
+          accessor = "->";
+        } else if (ts.isCallExpression(receiver) && ts.isPropertyAccessExpression(receiver.expression)) {
+          const innerReceiver = receiver.expression.expression;
+          const innerMethodName = receiver.expression.name.text;
+          if (ts.isIdentifier(innerReceiver) && pointerVars.has(innerReceiver.text)) {
+            // Check if the inner method returns a pointer type (for method chaining)
+            const className = pointerVars.get(innerReceiver.text);
+            const cls = className ? hoistedNestedClasses.find(c => c.name === className) : undefined;
+            const method = cls?.methods.find(m => m.name === innerMethodName);
+            if (method && (method.returnType as string).endsWith("*")) {
+              accessor = "->";
+            }
+          }
+        }
+        calleeText = `${objText}${accessor}${methodName}`;
       }
     } else {
       const rawText = expr.expression.getText();

@@ -163,6 +163,15 @@ export class StatementRenderer {
     }
 
     if (statement.kind === "for_in") {
+      if (statement.keys && statement.keys.length > 0) {
+        const keysArr = statement.keys.map(k => `"${k}"`).join(", ");
+        const objName = statement.object.kind === "identifier" ? statement.object.value : "_obj";
+        const idxVar = `_ki_${objName}`;
+        this.expressionRenderer.pushPrelude([
+          `const char* ${idxVar}_keys[] = { ${keysArr} };`,
+        ]);
+        return `for (int ${idxVar} = 0; ${idxVar} < ${statement.keys.length}; ${idxVar}++)`;
+      }
       const varDecl = statement.variable;
       if (varDecl.kind === "var_decl") {
         return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.object)})`;

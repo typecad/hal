@@ -8,6 +8,7 @@ import type { ClassIR, StatementIR, ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import { StatementRenderer, type StatementRendererContext } from "./statement-renderer";
+import { escapeCppKeyword } from "../utils/strings";
 import { ExpressionRenderer, type ExpressionRendererContext } from "./expression-renderer";
 import { emitCommentLines, inferObjectFieldType, collectPointerVarTypes } from "./utils";
 
@@ -148,12 +149,12 @@ export class ClassEmitter {
         const returnType = this.normalizeCppType(method.returnType);
 
         if (method.isAbstract) {
-          appendLine(`  virtual ${returnType} ${method.name}(${methodParams}) = 0;`);
+          appendLine(`  virtual ${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) = 0;`);
           appendLine("");
           continue;
         }
 
-        appendLine(`  ${staticPrefix}${returnType} ${method.name}(${methodParams}) {`);
+        appendLine(`  ${staticPrefix}${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
         for (const stmt of method.statements) {
           renderNestedStatement(stmt, "    ");
         }
@@ -176,7 +177,7 @@ export class ClassEmitter {
       for (const method of privateMethods) {
         const methodParams = this.statementRenderer.renderParameters(method.parameters);
         const staticPrefix = method.isStatic ? "static " : "";
-        appendLine(`  ${staticPrefix}${this.normalizeCppType(method.returnType)} ${method.name}(${methodParams}) {`);
+        appendLine(`  ${staticPrefix}${this.normalizeCppType(method.returnType)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
         for (const stmt of method.statements) {
           renderNestedStatement(stmt, "    ");
         }
@@ -199,7 +200,7 @@ export class ClassEmitter {
       for (const method of protectedMethods) {
         const methodParams = this.statementRenderer.renderParameters(method.parameters);
         const staticPrefix = method.isStatic ? "static " : "";
-        appendLine(`  ${staticPrefix}${this.normalizeCppType(method.returnType)} ${method.name}(${methodParams}) {`);
+        appendLine(`  ${staticPrefix}${this.normalizeCppType(method.returnType)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
         for (const stmt of method.statements) {
           renderNestedStatement(stmt, "    ");
         }

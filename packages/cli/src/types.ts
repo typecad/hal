@@ -177,6 +177,8 @@ export interface CommandLineOptions {
   watch: boolean;
   /** Run hardware tests via @typecode/expect */
   expect?: boolean;
+  /** Optional test file path filter for --expect */
+  expectFile?: string;
 }
 
 export interface GenerateLibdefOptions {

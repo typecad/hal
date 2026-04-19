@@ -1,11 +1,11 @@
 import ts from "typescript";
 import { Diagnostic, SourceSpan } from "../types";
-import { ExpressionIR, ParameterIR, StatementIR } from "./model";
+import { ClassIR, ClassFieldIR, ClassMethodIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "./model";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnlyMethodName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, nestedFunctionAliases, activePinAliases, activeBusAliases, activeCArrayVars } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, nestedFunctionAliases, activePinAliases, activeBusAliases, activeCArrayVars } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 
@@ -15,7 +15,7 @@ export function callToStatement(
   fileName: string,
   sourceText: string,
   diagnostics: Diagnostic[],
-  pointerVars: PointerTracker = new Set(),
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
   
@@ -297,6 +297,35 @@ function updateLocalTypeFromAssignment(
   localVariableTypes.set(target, currentType);
 }
 
+function extractForInKeys(expr: ts.Expression): string[] | undefined {
+  if (ts.isObjectLiteralExpression(expr)) {
+    return expr.properties
+      .filter(ts.isPropertyAssignment)
+      .map(p => (ts.isIdentifier(p.name) ? p.name.text : p.name.getText()));
+  }
+  if (ts.isIdentifier(expr)) {
+    const varName = expr.text;
+    let parent: ts.Node | undefined = expr.parent;
+    while (parent && !ts.isBlock(parent) && !ts.isSourceFile(parent)) {
+      parent = parent.parent;
+    }
+    if (parent && (ts.isBlock(parent) || ts.isSourceFile(parent))) {
+      for (const stmt of parent.statements) {
+        if (ts.isVariableStatement(stmt)) {
+          for (const decl of stmt.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name) && decl.name.text === varName && decl.initializer && ts.isObjectLiteralExpression(decl.initializer)) {
+              return decl.initializer.properties
+                .filter(ts.isPropertyAssignment)
+                .map(p => (ts.isIdentifier(p.name) ? p.name.text : p.name.getText()));
+            }
+          }
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 function forInitializerToIR(
   declarationList: ts.VariableDeclarationList,
   fileName: string,
@@ -393,7 +422,7 @@ export function expressionStatementToIR(
   diagnostics: Diagnostic[],
   functionReturnTypes: Map<string, CppTypeHint>,
   localVariableTypes: Map<string, CppTypeHint>,
-  pointerVars: PointerTracker = new Set(),
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR | undefined {
   const expr = statement.expression;
 
@@ -546,7 +575,7 @@ export function lowerStatement(
   localVariableTypes: Map<string, CppTypeHint>,
   functionNameForDiagnostics: string,
   typeAliases?: Map<string, ts.TypeNode>,
-  pointerVars: PointerTracker = new Set(),
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR[] | undefined {
   if (ts.isExpressionStatement(statement)) {
     // Check for compile-time-only calls first (e.g., registerPlatformStrategy())
@@ -802,6 +831,8 @@ export function lowerStatement(
       functionNameForDiagnostics,
     );
 
+    const keys = extractForInKeys(statement.expression);
+
     return [{
       kind: "for_in",
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
@@ -809,6 +840,7 @@ export function lowerStatement(
       trailingComments: comments.trailingComments,
       variable: variable!,
       object: expressionToIR(statement.expression, sourceText, diagnostics),
+      keys,
       body: bodyStatements,
     }];
   }
@@ -1148,6 +1180,149 @@ function hoistNestedFunction(
   });
 }
 
+function hoistNestedClass(
+  node: ts.ClassDeclaration,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  functionReturnTypes: Map<string, CppTypeHint>,
+  functionNameForDiagnostics: string,
+  typeAliases?: Map<string, ts.TypeNode>,
+): void {
+  if (!node.name) return;
+  const className = node.name.text;
+
+  const extendsClass = node.heritageClauses
+    ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+    ?.types[0]
+    ?.expression
+    ?.getText();
+
+  const isAbstract = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+  const classComments = extractNodeComments(node, sourceText);
+  const fields: ClassFieldIR[] = [];
+  const methods: ClassMethodIR[] = [];
+  let ctor: { parameters: ParameterIR[]; statements: StatementIR[] } | undefined;
+
+  for (const member of node.members) {
+    if (ts.isConstructorDeclaration(member)) {
+      const ctorParams: ParameterIR[] = [];
+      const ctorLocalTypes = new Map<string, CppTypeHint>();
+      for (const param of member.parameters) {
+        if (ts.isIdentifier(param.name)) {
+          const paramType = typeNodeToCppType(param.type, typeAliases);
+          ctorLocalTypes.set(param.name.text, paramType);
+          const paramOwnershipKind = extractOwnershipKindFromTypeNode(param.type, typeAliases);
+          ctorParams.push({
+            name: param.name.text,
+            cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+            defaultValue: param.initializer
+              ? expressionToIR(param.initializer, sourceText, diagnostics)
+              : undefined,
+            isRest: false,
+            ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
+          });
+        }
+      }
+      const ctorBody = member.body
+        ? lowerStatementList(
+            member.body.statements, fileName, sourceText, diagnostics,
+            functionReturnTypes, ctorLocalTypes, `${className}.constructor`, typeAliases,
+          )
+        : [];
+      ctor = { parameters: ctorParams, statements: ctorBody };
+      continue;
+    }
+
+    if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+        ? "private"
+        : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+          ? "protected"
+          : "public";
+      const fieldType = typeNodeToCppType(member.type, typeAliases);
+      fields.push({
+        name: member.name.text,
+        cppType: (fieldType === "void" ? "auto" : fieldType) as CppType,
+        visibility,
+        initializer: member.initializer
+          ? expressionToIR(member.initializer, sourceText, diagnostics)
+          : undefined,
+      });
+      continue;
+    }
+
+    if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+        ? "private"
+        : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+          ? "protected"
+          : "public";
+      const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+      const isMethodAbstract = member.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+
+      const methodParams: ParameterIR[] = [];
+      const methodLocalTypes = new Map<string, CppTypeHint>();
+      for (const param of member.parameters) {
+        if (ts.isIdentifier(param.name)) {
+          const paramType = typeNodeToCppType(param.type, typeAliases);
+          methodLocalTypes.set(param.name.text, paramType);
+          const paramOwnershipKind = extractOwnershipKindFromTypeNode(param.type, typeAliases);
+          methodParams.push({
+            name: param.name.text,
+            cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+            defaultValue: param.initializer
+              ? expressionToIR(param.initializer, sourceText, diagnostics)
+              : undefined,
+            isRest: false,
+            ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
+          });
+        }
+      }
+
+      const methodBody = member.body
+        ? lowerStatementList(
+            member.body.statements, fileName, sourceText, diagnostics,
+            functionReturnTypes, methodLocalTypes, `${className}.${member.name.text}`, typeAliases,
+          )
+        : [];
+      const methodReturnType = typeNodeToCppType(member.type, typeAliases);
+      const typeText = member.type ? sourceText.substring(member.type.pos, member.type.end).trim() : "";
+      const returnsSelf = member.type?.kind === ts.SyntaxKind.ThisType
+        || typeText === className
+        || methodReturnType === className;
+
+      methods.push({
+        name: member.name.text,
+        returnType: (
+          returnsSelf
+            ? `${className}*`
+            : (methodReturnType === "void" ? "void" : methodReturnType)
+        ) as CppType,
+        parameters: methodParams,
+        statements: methodBody,
+        visibility,
+        isStatic,
+        isAbstract: isMethodAbstract || isAbstract,
+      });
+    }
+  }
+
+  hoistedNestedClasses.push({
+    name: className,
+    extendsClass,
+    isAbstract,
+    sourceSpan: makeSourceSpan(node, fileName, sourceText),
+    leadingComments: classComments.leadingComments,
+    trailingComments: classComments.trailingComments,
+    fields,
+    methods,
+    constructor: ctor,
+    getters: [],
+    setters: [],
+  });
+}
+
 export function lowerStatementList(
   statements: ts.NodeArray<ts.Statement> | ts.Statement[],
   fileName: string,
@@ -1188,9 +1363,27 @@ export function lowerStatementList(
     }
   }
 
-  // Phase 3: Process remaining (non-function) statements.
+  // Phase 2.5: Hoist nested class declarations.
+  for (const statement of statements) {
+    if (ts.isClassDeclaration(statement) && statement.name) {
+      hoistNestedClass(
+        statement,
+        fileName,
+        sourceText,
+        diagnostics,
+        functionReturnTypes,
+        functionNameForDiagnostics,
+        typeAliases,
+      );
+    }
+  }
+
+  // Phase 3: Process remaining (non-function, non-class) statements.
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement)) {
+      continue; // Already hoisted
+    }
+    if (ts.isClassDeclaration(statement)) {
       continue; // Already hoisted
     }
     const result = lowerStatement(
@@ -1593,10 +1786,10 @@ export function variableStatementToIR(
   return lowered;
 }
 
-// Helper to scan for pointer variables (variables initialized with 'new')
+// Helper to scan for pointer variables (variables initialized with ‘new’)
 export function collectPointerVars(statements: readonly ts.Statement[]): PointerTracker {
-  const pointerVars = new Set<string>();
-  
+  const pointerVars = new Map<string, string>();
+
   for (const statement of statements) {
     if (ts.isVariableStatement(statement)) {
       for (const decl of statement.declarationList.declarations) {
@@ -1604,15 +1797,15 @@ export function collectPointerVars(statements: readonly ts.Statement[]): Pointer
           const ctorText = decl.initializer.expression && ts.isIdentifier(decl.initializer.expression)
             ? decl.initializer.expression.text : "";
           if (TYPED_ARRAY_ELEMENT_MAP[ctorText]) {
-            // new TypedArray([...]) etc. â†’ C array, not a pointer
+            // new TypedArray([...]) etc. → C array, not a pointer
             activeCArrayVars.add(decl.name.text);
           } else {
-            pointerVars.add(decl.name.text);
+            pointerVars.set(decl.name.text, ctorText);
           }
         }
       }
     }
   }
-  
+
   return pointerVars;
 }

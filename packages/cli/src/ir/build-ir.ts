@@ -12,6 +12,7 @@ import { resolveBoardConstants, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { getBitsRange, getRegisterAddress } from "./register-decorators";
 import { runProgramValidations } from "./validation-orchestrator";
+import { escapeCppKeyword } from "../utils/strings";
 
 function normalizeLegacyArduinoSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __arduino_setup__(");
@@ -21,11 +22,13 @@ function normalizeLegacyArduinoSyntax(sourceText: string): string {
 const registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
 
 // Track variables that are pointers (from 'new' expressions)
-type PointerTracker = Set<string>;
+// Maps variable name → class name (e.g., "b" → "Builder")
+type PointerTracker = Map<string, string>;
 
-// Module-level accumulators for nested function hoisting (Bug 6).
+// Module-level accumulators for nested function/class hoisting.
 // These are reset at the start of each buildProgramIR() call.
 let hoistedNestedFunctions: FunctionIR[] = [];
+let hoistedNestedClasses: ClassIR[] = [];
 let nestedFunctionAliases: Map<string, string> = new Map();
 
 // Context flags for expression processing
@@ -58,7 +61,7 @@ const TYPED_ARRAY_ELEMENT_MAP: Record<string, string> = {
   Float64Array: "double",
 };
 
-function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Set()): ExpressionIR {
+function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
   function emitUnsupportedExpression(message: string): ExpressionIR {
     diagnostics.push(makeDiagnostic(
       sourceText,
@@ -76,28 +79,32 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
   }
 
   function renderMemberAccessText(receiverNode: ts.Expression, memberName: string): string {
+    const escapedName = escapeCppKeyword(memberName);
     const isThisAccess = receiverNode.kind === ts.SyntaxKind.ThisKeyword ||
       (ts.isIdentifier(receiverNode) && receiverNode.text === "this");
     if (isThisAccess) {
       if (memberName === "length") {
         return `this->size()`;
       }
-      return `this->${memberName}`;
+      return `this->${escapedName}`;
     }
     if (ts.isIdentifier(receiverNode) && pointerVars.has(receiverNode.text)) {
-      return `${receiverNode.text}->${memberName}`;
+      return `${receiverNode.text}->${escapedName}`;
     }
     if (ts.isIdentifier(receiverNode) && receiverNode.text === "Math") {
-      return `std::${memberName}`;
+      return `std::${escapedName}`;
     }
     const objectText = formatExpressionText(receiverNode);
     if (memberName === "length") {
       if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
         return `(sizeof(${objectText}) / sizeof(${objectText}[0]))`;
       }
+      if (ts.isCallExpression(receiverNode)) {
+        return `strlen(${objectText})`;
+      }
       return `${objectText}.size()`;
     }
-    return `${objectText}.${memberName}`;
+    return `${objectText}.${escapedName}`;
   }
 
   function renderOptionalGuardedAccess(receiverNode: ts.Expression, accessText: string): string {
@@ -703,15 +710,35 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
     // Use -> for pointer variables (from 'new') and for 'this', . for value types
     let calleeText: string;
     if (ts.isPropertyAccessExpression(expr.expression)) {
+      const receiver = expr.expression.expression;
+      const methodName = escapeCppKeyword(expr.expression.name.text);
       // Check if it's a this.method() call - in C++, this is a pointer so use ->
-      if (expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
-        calleeText = `this->${expr.expression.name.text}`;
-      } else if (ts.isIdentifier(expr.expression.expression) && expr.expression.expression.text === "Math") {
-        calleeText = `std::${expr.expression.name.text}`;
+      if (receiver.kind === ts.SyntaxKind.ThisKeyword) {
+        calleeText = `this->${methodName}`;
+      } else if (ts.isIdentifier(receiver) && receiver.text === "Math") {
+        calleeText = `std::${methodName}`;
+      } else if (ts.isIdentifier(receiver) && hoistedNestedClasses.some(c => c.name === receiver.text)) {
+        // Static method call on a hoisted class: use ::
+        calleeText = `${receiver.text}::${methodName}`;
       } else {
-        const objText = renderExprAsText(expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars));
-        const accessor = pointerVars.has(expr.expression.expression.getText()) ? "->" : ".";
-        calleeText = `${objText}${accessor}${expr.expression.name.text}`;
+        const objText = renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars));
+        let accessor = ".";
+        if (ts.isIdentifier(receiver) && pointerVars.has(receiver.text)) {
+          accessor = "->";
+        } else if (ts.isCallExpression(receiver) && ts.isPropertyAccessExpression(receiver.expression)) {
+          const innerReceiver = receiver.expression.expression;
+          const innerMethodName = receiver.expression.name.text;
+          if (ts.isIdentifier(innerReceiver) && pointerVars.has(innerReceiver.text)) {
+            // Check if the inner method returns a pointer type (for method chaining)
+            const className = pointerVars.get(innerReceiver.text);
+            const cls = className ? hoistedNestedClasses.find(c => c.name === className) : undefined;
+            const method = cls?.methods.find(m => m.name === innerMethodName);
+            if (method && (method.returnType as string).endsWith("*")) {
+              accessor = "->";
+            }
+          }
+        }
+        calleeText = `${objText}${accessor}${methodName}`;
       }
     } else {
       const rawText = expr.expression.getText();
@@ -862,16 +889,23 @@ function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Di
 
     // In C++, 'this' is a pointer, so use -> instead of .
     if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      return { kind: "raw", value: `this->${expr.name.text}` };
+      return { kind: "raw", value: `this->${escapeCppKeyword(expr.name.text)}` };
     }
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "Math") {
-      return { kind: "raw", value: `std::${expr.name.text}` };
+      return { kind: "raw", value: `std::${escapeCppKeyword(expr.name.text)}` };
+    }
+    // Use -> for pointer variables in property access
+    if (ts.isIdentifier(expr.expression) && pointerVars.has(expr.expression.text)) {
+      return { kind: "raw", value: `${expr.expression.text}->${escapeCppKeyword(expr.name.text)}` };
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
       if (ts.isIdentifier(expr.expression) && activeCArrayVars.has(expr.expression.text)) {
         const objName = renderExprAsText(object);
         return { kind: "raw", value: `(sizeof(${objName}) / sizeof(${objName}[0]))` };
+      }
+      if (ts.isCallExpression(expr.expression)) {
+        return { kind: "raw", value: `strlen(${renderExprAsText(object)})` };
       }
       return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
     }
@@ -1104,7 +1138,7 @@ function callToStatement(
   fileName: string,
   sourceText: string,
   diagnostics: Diagnostic[],
-  pointerVars: PointerTracker = new Set(),
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
   
@@ -1312,8 +1346,24 @@ function callToStatement(
   let calleeText: string;
   if (ts.isPropertyAccessExpression(call.expression)) {
     const objExpr = call.expression.expression;
+    const methodName = escapeCppKeyword(call.expression.name.text);
     if (ts.isIdentifier(objExpr) && pointerVars.has(objExpr.text)) {
-      calleeText = `${objExpr.text}->${call.expression.name.text}`;
+      calleeText = `${objExpr.text}->${methodName}`;
+    } else if (ts.isCallExpression(objExpr) && ts.isPropertyAccessExpression(objExpr.expression)) {
+      // Chained method call: obj.method1().method2()
+      const innerReceiver = objExpr.expression.expression;
+      const innerMethodName = objExpr.expression.name.text;
+      const innerCallText = renderExprAsText(expressionToIR(objExpr, sourceText, diagnostics, pointerVars));
+      let accessor = ".";
+      if (ts.isIdentifier(innerReceiver) && pointerVars.has(innerReceiver.text)) {
+        const className = pointerVars.get(innerReceiver.text);
+        const cls = className ? hoistedNestedClasses.find(c => c.name === className) : undefined;
+        const method = cls?.methods.find(m => m.name === innerMethodName);
+        if (method && (method.returnType as string).endsWith("*")) {
+          accessor = "->";
+        }
+      }
+      calleeText = `${innerCallText}${accessor}${methodName}`;
     } else {
       calleeText = calleeToText(call.expression);
     }
@@ -1384,6 +1434,41 @@ function updateLocalTypeFromAssignment(
   }
 
   localVariableTypes.set(target, currentType);
+}
+
+/**
+ * Extracts the key/field names from a for...in target expression.
+ * Works for inline object literals and variable references to object literals.
+ */
+function extractForInKeys(expr: ts.Expression): string[] | undefined {
+  // Case 1: inline object literal `for (const key in { a: 1, b: 2 })`
+  if (ts.isObjectLiteralExpression(expr)) {
+    return expr.properties
+      .filter(ts.isPropertyAssignment)
+      .map(p => (ts.isIdentifier(p.name) ? p.name.text : p.name.getText()));
+  }
+  // Case 2: variable reference `for (const key in obj)`
+  if (ts.isIdentifier(expr)) {
+    const varName = expr.text;
+    let parent: ts.Node | undefined = expr.parent;
+    while (parent && !ts.isBlock(parent) && !ts.isSourceFile(parent)) {
+      parent = parent.parent;
+    }
+    if (parent && (ts.isBlock(parent) || ts.isSourceFile(parent))) {
+      for (const stmt of parent.statements) {
+        if (ts.isVariableStatement(stmt)) {
+          for (const decl of stmt.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name) && decl.name.text === varName && decl.initializer && ts.isObjectLiteralExpression(decl.initializer)) {
+              return decl.initializer.properties
+                .filter(ts.isPropertyAssignment)
+                .map(p => (ts.isIdentifier(p.name) ? p.name.text : p.name.getText()));
+            }
+          }
+        }
+      }
+    }
+  }
+  return undefined;
 }
 
 function forInitializerToIR(
@@ -1482,7 +1567,7 @@ function expressionStatementToIR(
   diagnostics: Diagnostic[],
   functionReturnTypes: Map<string, CppTypeHint>,
   localVariableTypes: Map<string, CppTypeHint>,
-  pointerVars: PointerTracker = new Set(),
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR | undefined {
   const expr = statement.expression;
 
@@ -1635,7 +1720,7 @@ function lowerStatement(
   localVariableTypes: Map<string, CppTypeHint>,
   functionNameForDiagnostics: string,
   typeAliases?: Map<string, ts.TypeNode>,
-  pointerVars: PointerTracker = new Set(),
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR[] | undefined {
   if (ts.isExpressionStatement(statement)) {
     // Check for compile-time-only calls first (e.g., registerPlatformStrategy())
@@ -1676,6 +1761,7 @@ function lowerStatement(
       diagnostics,
       functionReturnTypes,
       localVariableTypes,
+      pointerVars,
     );
     return loweredExpression ? [loweredExpression] : undefined;
   }
@@ -1689,6 +1775,7 @@ function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       typeAliases,
+      pointerVars,
     );
   }
 
@@ -1709,7 +1796,7 @@ function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      value: expressionToIR(statement.expression, sourceText, diagnostics),
+      value: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
     }];
   }
 
@@ -1730,7 +1817,7 @@ function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics),
+      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       body: bodyStatements,
     }];
   }
@@ -1765,7 +1852,7 @@ function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics),
+      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       thenBranch: thenStatements,
       elseBranch,
     }];
@@ -1793,13 +1880,14 @@ function lowerStatement(
           diagnostics,
           functionReturnTypes,
           localVariableTypes,
+          pointerVars,
         );
         initializer = loweredExpr;
       }
     }
 
     const condition = statement.condition
-      ? expressionToIR(statement.condition, sourceText, diagnostics)
+      ? expressionToIR(statement.condition, sourceText, diagnostics, pointerVars)
       : undefined;
 
     let increment: StatementIR | undefined;
@@ -1860,7 +1948,7 @@ function lowerStatement(
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
       variable: variable!,
-      iterable: expressionToIR(statement.expression, sourceText, diagnostics),
+      iterable: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       body: bodyStatements,
     }];
   }
@@ -1891,13 +1979,17 @@ function lowerStatement(
       functionNameForDiagnostics,
     );
 
+    // Extract key names from the object expression for C++ key array generation
+    const keys = extractForInKeys(statement.expression);
+
     return [{
       kind: "for_in",
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
       variable: variable!,
-      object: expressionToIR(statement.expression, sourceText, diagnostics),
+      object: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
+      keys,
       body: bodyStatements,
     }];
   }
@@ -1940,7 +2032,7 @@ function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics),
+      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       body: bodyStatements,
     }];
   }
@@ -1976,7 +2068,7 @@ function lowerStatement(
           sourceSpan: makeSourceSpan(clause, fileName, sourceText),
           leadingComments: caseComments.leadingComments,
           trailingComments: caseComments.trailingComments,
-          value: expressionToIR(clause.expression, sourceText, diagnostics),
+          value: expressionToIR(clause.expression, sourceText, diagnostics, pointerVars),
           body: lowerStatementList(
             clause.statements,
             fileName,
@@ -1995,7 +2087,7 @@ function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      expression: expressionToIR(statement.expression, sourceText, diagnostics),
+      expression: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
       cases,
     }];
   }
@@ -2065,7 +2157,7 @@ function lowerStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      value: expressionToIR(statement.expression, sourceText, diagnostics),
+      value: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
     }];
   }
 
@@ -2237,6 +2329,151 @@ function hoistNestedFunction(
   });
 }
 
+function hoistNestedClass(
+  node: ts.ClassDeclaration,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  functionReturnTypes: Map<string, CppTypeHint>,
+  functionNameForDiagnostics: string,
+  typeAliases?: Map<string, ts.TypeNode>,
+): void {
+  if (!node.name) return;
+  const className = node.name.text;
+
+  const extendsClass = node.heritageClauses
+    ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
+    ?.types[0]
+    ?.expression
+    ?.getText();
+
+  const isAbstract = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+  const classComments = extractNodeComments(node, sourceText);
+  const fields: ClassFieldIR[] = [];
+  const methods: ClassMethodIR[] = [];
+  let ctor: { parameters: ParameterIR[]; statements: StatementIR[] } | undefined;
+
+  for (const member of node.members) {
+    if (ts.isConstructorDeclaration(member)) {
+      const ctorParams: ParameterIR[] = [];
+      const ctorLocalTypes = new Map<string, CppTypeHint>();
+      for (const param of member.parameters) {
+        if (ts.isIdentifier(param.name)) {
+          const paramType = typeNodeToCppType(param.type, typeAliases);
+          ctorLocalTypes.set(param.name.text, paramType);
+          const paramOwnershipKind = extractOwnershipKindFromTypeNode(param.type, typeAliases);
+          ctorParams.push({
+            name: param.name.text,
+            cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+            defaultValue: param.initializer
+              ? expressionToIR(param.initializer, sourceText, diagnostics)
+              : undefined,
+            isRest: false,
+            ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
+          });
+        }
+      }
+      const ctorBody = member.body
+        ? lowerStatementList(
+            member.body.statements, fileName, sourceText, diagnostics,
+            functionReturnTypes, ctorLocalTypes, `${className}.constructor`, typeAliases,
+          )
+        : [];
+      ctor = { parameters: ctorParams, statements: ctorBody };
+      continue;
+    }
+
+    if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+        ? "private"
+        : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+          ? "protected"
+          : "public";
+      const fieldType = typeNodeToCppType(member.type, typeAliases);
+      fields.push({
+        name: member.name.text,
+        cppType: (fieldType === "void" ? "auto" : fieldType) as CppType,
+        visibility,
+        initializer: member.initializer
+          ? expressionToIR(member.initializer, sourceText, diagnostics)
+          : undefined,
+      });
+      continue;
+    }
+
+    if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+        ? "private"
+        : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+          ? "protected"
+          : "public";
+      const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+      const isMethodAbstract = member.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+
+      const methodParams: ParameterIR[] = [];
+      const methodLocalTypes = new Map<string, CppTypeHint>();
+      for (const param of member.parameters) {
+        if (ts.isIdentifier(param.name)) {
+          const paramType = typeNodeToCppType(param.type, typeAliases);
+          methodLocalTypes.set(param.name.text, paramType);
+          const paramOwnershipKind = extractOwnershipKindFromTypeNode(param.type, typeAliases);
+          methodParams.push({
+            name: param.name.text,
+            cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+            defaultValue: param.initializer
+              ? expressionToIR(param.initializer, sourceText, diagnostics)
+              : undefined,
+            isRest: false,
+            ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
+          });
+        }
+      }
+
+      const methodBody = member.body
+        ? lowerStatementList(
+            member.body.statements, fileName, sourceText, diagnostics,
+            functionReturnTypes, methodLocalTypes, `${className}.${member.name.text}`, typeAliases,
+          )
+        : [];
+      const methodReturnType = typeNodeToCppType(member.type, typeAliases);
+      const typeText = member.type ? sourceText.substring(member.type.pos, member.type.end).trim() : "";
+      const returnsSelf = member.type?.kind === ts.SyntaxKind.ThisType
+        || typeText === className
+        || methodReturnType === className;
+
+      const resolvedReturnType = (
+        returnsSelf
+          ? `${className}*`
+          : (methodReturnType === "void" ? "void" : methodReturnType)
+      ) as CppType;
+
+      methods.push({
+        name: member.name.text,
+        returnType: resolvedReturnType,
+        parameters: methodParams,
+        statements: methodBody,
+        visibility,
+        isStatic,
+        isAbstract: isMethodAbstract || isAbstract,
+      });
+    }
+  }
+
+  hoistedNestedClasses.push({
+    name: className,
+    extendsClass,
+    isAbstract,
+    sourceSpan: makeSourceSpan(node, fileName, sourceText),
+    leadingComments: classComments.leadingComments,
+    trailingComments: classComments.trailingComments,
+    fields,
+    methods,
+    constructor: ctor,
+    getters: [],
+    setters: [],
+  });
+}
+
 function lowerStatementList(
   statements: ts.NodeArray<ts.Statement> | ts.Statement[],
   fileName: string,
@@ -2277,9 +2514,43 @@ function lowerStatementList(
     }
   }
 
-  // Phase 3: Process remaining (non-function) statements.
+  // Phase 2.5: Hoist nested class declarations.
+  for (const statement of statements) {
+    if (ts.isClassDeclaration(statement) && statement.name) {
+      hoistNestedClass(
+        statement,
+        fileName,
+        sourceText,
+        diagnostics,
+        functionReturnTypes,
+        functionNameForDiagnostics,
+        typeAliases,
+      );
+    }
+  }
+
+  // Collect pointer variables from this scope (vars initialized with 'new')
+  const scopePointerVars = new Map<string, string>();
+  for (const statement of statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer && ts.isNewExpression(decl.initializer)) {
+          const ctorText = decl.initializer.expression && ts.isIdentifier(decl.initializer.expression)
+            ? decl.initializer.expression.text : "";
+          if (!TYPED_ARRAY_ELEMENT_MAP[ctorText]) {
+            scopePointerVars.set(decl.name.text, ctorText);
+          }
+        }
+      }
+    }
+  }
+
+  // Phase 3: Process remaining (non-function, non-class) statements.
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement)) {
+      continue; // Already hoisted
+    }
+    if (ts.isClassDeclaration(statement)) {
       continue; // Already hoisted
     }
     const result = lowerStatement(
@@ -2291,6 +2562,7 @@ function lowerStatementList(
       localVariableTypes,
       functionNameForDiagnostics,
       typeAliases,
+      scopePointerVars,
     );
     if (result) {
       lowered.push(...result);
@@ -2313,6 +2585,7 @@ function variableStatementToIR(
   functionReturnTypes: Map<string, CppTypeHint>,
   localVariableTypes: Map<string, CppTypeHint>,
   typeAliases?: Map<string, ts.TypeNode>,
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR[] {
   const statementComments = extractNodeComments(statement, sourceText);
   const storage: "var" | "let" | "const" =
@@ -2684,8 +2957,8 @@ function variableStatementToIR(
 
 // Helper to scan for pointer variables (variables initialized with 'new')
 function collectPointerVars(statements: readonly ts.Statement[]): PointerTracker {
-  const pointerVars = new Set<string>();
-  
+  const pointerVars = new Map<string, string>();
+
   for (const statement of statements) {
     if (ts.isVariableStatement(statement)) {
       for (const decl of statement.declarationList.declarations) {
@@ -2696,13 +2969,13 @@ function collectPointerVars(statements: readonly ts.Statement[]): PointerTracker
             // new TypedArray([...]) etc. → C array, not a pointer
             activeCArrayVars.add(decl.name.text);
           } else {
-            pointerVars.add(decl.name.text);
+            pointerVars.set(decl.name.text, ctorText);
           }
         }
       }
     }
   }
-  
+
   return pointerVars;
 }
 
@@ -2816,6 +3089,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   activeBusAliases = new Map();
   activeCArrayVars = new Set();
   hoistedNestedFunctions = [];
+  hoistedNestedClasses = [];
   nestedFunctionAliases = new Map();
   
   // Collect pointer variables at top level (for correct -> vs . usage)
@@ -3677,7 +3951,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             returnType: (
               member.type?.kind === ts.SyntaxKind.ThisType
                 ? `${className}*`
-                : (methodReturnType === "void" ? "void" : methodReturnType)
+                : (methodReturnType === className ? `${className}*` : (methodReturnType === "void" ? "void" : methodReturnType))
             ) as CppType,
             parameters: methodParams,
             statements: methodBody,
@@ -3878,6 +4152,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
   // Collect any nested functions that were hoisted during IR building
   functions.push(...hoistedNestedFunctions);
+
+  // Collect any nested classes that were hoisted during IR building
+  classes.push(...hoistedNestedClasses);
 
   // Resolve board-definition constants from the actual board package file.
   // This replaces the old hard-coded ARDUINO_BOARD_METADATA table in
