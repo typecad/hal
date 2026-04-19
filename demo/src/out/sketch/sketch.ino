@@ -81,6 +81,9 @@ int __tc_fn59();
 int __tc_fn60();
 int __tc_fn61();
 int __tc_fn62();
+int __tc_fn63();
+int __tc_fn64();
+int __tc_fn65();
 int __tc_fn7__add(int a, int b);
 int __tc_fn8__clamp(int value, int min = 0, int max = 1023);
 
@@ -313,6 +316,18 @@ void setup()
   Serial.println("[TC:IT:block scoping (shadowing)]");
   Serial.print("[TC:EXPECT:toBe:1:");
   Serial.print(__tc_fn62());
+  Serial.println("]");
+  Serial.println("[TC:IT:object destructuring and aliasing]");
+  Serial.print("[TC:EXPECT:toBe:42:");
+  Serial.print(__tc_fn63());
+  Serial.println("]");
+  Serial.println("[TC:IT:nested object destructuring]");
+  Serial.print("[TC:EXPECT:toBe:200:");
+  Serial.print(__tc_fn64());
+  Serial.println("]");
+  Serial.println("[TC:IT:array destructuring with rest]");
+  Serial.print("[TC:EXPECT:toBe:2:");
+  Serial.print(__tc_fn65());
   Serial.println("]");
   Serial.println("[TC:SUITE_END]");
   while (true)
@@ -725,6 +740,30 @@ int __tc_fn62()
     // Should not overwrite outer x in C++
   }
   return x;
+}
+
+int __tc_fn63()
+{
+  struct _user_t { int id; const char* name; } user = { 42, "Alice" };
+  const int userId = user.id;
+  const int name = user.name;
+  return userId;
+}
+
+int __tc_fn64()
+{
+  struct _meta_data_t { int status; };
+  struct _meta_t { _meta_data_t data; } meta = { { 200 } };
+  const int status = meta.data.status;
+  return status;
+}
+
+int __tc_fn65()
+{
+  const int first = 10;
+  const int second = 20;
+  int rest[] = { 30, 40 };
+  return (sizeof(rest) / sizeof(rest[0]));
 }
 
 int __tc_fn7__add(int a, int b)

@@ -1260,10 +1260,44 @@ export function variableStatementToIR(
         if (!ts.isBindingElement(element)) {
           continue;
         }
+        if (ts.isObjectBindingPattern(element.name)) {
+          // Nested object destructuring: const { data: { status } } = meta;
+          const nestedPropName = element.propertyName && ts.isIdentifier(element.propertyName)
+            ? element.propertyName.text
+            : undefined;
+          if (nestedPropName) {
+            const nestedObjText = `${objText}.${nestedPropName}`;
+            for (const nestedElement of element.name.elements) {
+              if (!ts.isBindingElement(nestedElement) || !ts.isIdentifier(nestedElement.name)) continue;
+              const nestedVarName = nestedElement.name.text;
+              let nPropName = nestedVarName;
+              if (nestedElement.propertyName && ts.isIdentifier(nestedElement.propertyName)) {
+                nPropName = nestedElement.propertyName.text;
+              }
+              const propAccess: ExpressionIR = { kind: "raw", value: `${nestedObjText}.${nPropName}` };
+              const initializer = nestedElement.initializer
+                ? { kind: "raw" as const, value: `typecode_nullish(${renderExprAsText(propAccess)}, ${renderExprAsText(expressionToIR(nestedElement.initializer, sourceText, diagnostics))})` }
+                : propAccess;
+              lowered.push({
+                kind: "var_decl",
+                sourceSpan: makeSourceSpan(nestedElement, fileName, sourceText),
+                leadingComments: [],
+                trailingComments: [],
+                name: nestedVarName,
+                storage,
+                cppType: "auto",
+                initializer,
+              });
+              localVariableTypes.set(nestedVarName, "auto");
+              commentsAssigned = true;
+            }
+          }
+          continue;
+        }
         if (!ts.isIdentifier(element.name)) {
           continue;
         }
-        
+
         const varName = element.name.text;
         // Get the property name (could be renamed via propertyName)
         let propName: string;
@@ -1272,7 +1306,7 @@ export function variableStatementToIR(
         } else {
           propName = varName;
         }
-        
+
         // Create individual variable declaration for each destructured property
         const propAccess: ExpressionIR = { kind: "raw", value: `${objText}.${propName}` };
         const initializer = element.initializer
@@ -1292,7 +1326,7 @@ export function variableStatementToIR(
           cppType: "auto",
           initializer,
         });
-        
+
         localVariableTypes.set(varName, "auto");
         commentsAssigned = true;
       }
@@ -1313,30 +1347,62 @@ export function variableStatementToIR(
         );
         continue;
       }
-      
+
       const arrExpr = expressionToIR(declaration.initializer, sourceText, diagnostics);
       const arrText = renderExprAsText(arrExpr);
-      
+      const isArrayLiteral = arrExpr.kind === "array";
+      const arrElements = isArrayLiteral ? (arrExpr as { kind: "array"; elementType: string; elements: ExpressionIR[] }).elements : null;
+      const arrElementType = isArrayLiteral ? (arrExpr as { kind: "array"; elementType: string; elements: ExpressionIR[] }).elementType : "auto";
+
       for (let i = 0; i < declaration.name.elements.length; i++) {
         const element = declaration.name.elements[i];
         // Skip omitted expressions (holes in array binding pattern)
         if (!ts.isBindingElement(element)) {
           continue;
         }
+
+        // Handle rest element: const [a, ...rest] = arr;
+        if (element.dotDotDotToken && ts.isIdentifier(element.name)) {
+          const varName = element.name.text;
+          if (isArrayLiteral && arrElements) {
+            const remaining = arrElements.slice(i);
+            lowered.push({
+              kind: "var_decl",
+              sourceSpan: makeSourceSpan(element, fileName, sourceText),
+              leadingComments: [],
+              trailingComments: [],
+              name: varName,
+              storage,
+              cppType: "auto",
+              initializer: { kind: "array", elementType: arrElementType, elements: remaining },
+            });
+            localVariableTypes.set(varName, "auto");
+            activeCArrayVars.add(varName);
+            commentsAssigned = true;
+          }
+          continue;
+        }
+
         if (!ts.isIdentifier(element.name)) {
           continue;
         }
-        
+
         const varName = element.name.text;
-        
-        // Create individual variable declaration for each destructured element
-        const indexAccess: ExpressionIR = { kind: "raw", value: `${arrText}[${i}]` };
-        const initializer = element.initializer
-          ? {
-              kind: "raw" as const,
-              value: `typecode_nullish(${renderExprAsText(indexAccess)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
-            }
-          : indexAccess;
+
+        // For array literals, use elements directly; otherwise index into the expression
+        let initializer: ExpressionIR;
+        if (isArrayLiteral && arrElements) {
+          initializer = arrElements[i];
+        } else {
+          initializer = { kind: "raw", value: `${arrText}[${i}]` };
+        }
+
+        if (element.initializer) {
+          initializer = {
+            kind: "raw" as const,
+            value: `typecode_nullish(${renderExprAsText(initializer)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
+          };
+        }
 
         lowered.push({
           kind: "var_decl",
@@ -1348,7 +1414,7 @@ export function variableStatementToIR(
           cppType: "auto",
           initializer,
         });
-        
+
         localVariableTypes.set(varName, "auto");
         commentsAssigned = true;
       }
