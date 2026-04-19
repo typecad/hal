@@ -210,4 +210,84 @@ done();
     const result = preprocess(source);
     expect(result).toContain('[TC:EXPECT:toBeCloseTo:3,2:');
   });
+
+  it('extracts arrow function with block body from expect()', () => {
+    const source = `
+import { describe, done } from '@typecode/expect';
+describe("Variables and Scoping")
+  .it("const and let assignment")
+    .expect(() => {
+      const fixed = 10;
+      let mutable = 5;
+      mutable += fixed;
+      return mutable;
+    }).toBe(15);
+done();
+`;
+    const result = preprocess(source);
+    // Should emit a named function definition
+    expect(result).toMatch(/function __tc_fn\d+\(\): number \{/);
+    expect(result).toContain('const fixed = 10');
+    expect(result).toContain('let mutable = 5');
+    expect(result).toContain('mutable += fixed');
+    expect(result).toContain('return mutable');
+    // Should call the named function as the actual value (inlined since it's a simple call)
+    expect(result).toMatch(/Serial\.print\(__tc_fn\d+\(\)\)/);
+    // The matcher protocol should be present
+    expect(result).toContain('[TC:EXPECT:toBe:15:');
+  });
+
+  it('extracts arrow function with expression body from expect()', () => {
+    const source = `
+import { describe, done } from '@typecode/expect';
+describe("group")
+  .it("test")
+    .expect(() => 1 + 2).toBe(3);
+done();
+`;
+    const result = preprocess(source);
+    // Expression body should be wrapped in { return ...; }
+    expect(result).toMatch(/function __tc_fn\d+\(\): number \{ return 1 \+ 2; \}/);
+    expect(result).toContain('[TC:EXPECT:toBe:3:');
+  });
+
+  it('extracts function expression from expect()', () => {
+    const source = `
+import { describe, done } from '@typecode/expect';
+describe("group")
+  .it("test")
+    .expect(function () { const x = 5; return x * 2; }).toBe(10);
+done();
+`;
+    const result = preprocess(source);
+    expect(result).toMatch(/function __tc_fn\d+\(\): number \{/);
+    expect(result).toContain('const x = 5');
+    expect(result).toContain('return x * 2');
+    expect(result).toContain('[TC:EXPECT:toBe:10:');
+  });
+
+  it('extracts IIFE arrow function from expect()', () => {
+    const source = `
+import { describe, done } from '@typecode/expect';
+describe("Variables and Scoping")
+  .it("const and let assignment")
+    .expect(
+      (() => {
+        const fixed = 10;
+        let mutable = 5;
+        mutable += fixed;
+        return mutable;
+      })()
+    ).toBe(15);
+done();
+`;
+    const result = preprocess(source);
+    expect(result).toMatch(/function __tc_fn\d+\(\): number \{/);
+    expect(result).toContain('const fixed = 10');
+    expect(result).toContain('mutable += fixed');
+    expect(result).toMatch(/Serial\.print\(__tc_fn\d+\(\)\)/);
+    expect(result).toContain('[TC:EXPECT:toBe:15:');
+    // Must NOT contain the raw IIFE in Serial.print
+    expect(result).not.toContain('Serial.print((() =>');
+  });
 });

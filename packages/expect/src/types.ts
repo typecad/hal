@@ -93,9 +93,9 @@ export interface Suite {
   /** Start a new test case within the current describe group. */
   it(name: string): Suite;
 
-  /** Assert a numeric value. */
-  expect(actual: number): Expectation;
+  /** Assert a numeric value (or a function that returns one). */
+  expect(actual: number | (() => number)): Expectation;
 
-  /** Assert a string value. */
-  expectString(actual: string): StringExpectation;
+  /** Assert a string value (or a function that returns one). */
+  expectString(actual: string | (() => string)): StringExpectation;
 }

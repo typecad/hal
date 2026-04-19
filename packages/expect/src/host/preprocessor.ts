@@ -78,6 +78,7 @@ export function preprocess(source: string, fileName: string = 'test.ts', options
 class PreprocessorContext {
   private lines: string[] = [];
   private varCounter = 0;
+  private fnCounter = 0;
   private preambleEmitted = false;
   private baudRate = 115200;
   private readonly isAvr: boolean;
@@ -102,6 +103,11 @@ class PreprocessorContext {
   /** Generate a unique temporary variable name. */
   nextVar(): string {
     return `__tc_v${++this.varCounter}`;
+  }
+
+  /** Generate a unique extracted function name. */
+  nextFn(): string {
+    return `__tc_fn${++this.fnCounter}`;
   }
 
   /** Emit the Serial.begin + SUITE_START preamble (once). */
@@ -218,19 +224,21 @@ interface ChainSegment {
   matcherArgs?: string[];
   /** True when the chain used .expectString() rather than .expect(). */
   isStringExpect?: boolean;
+  /** For expect with function arg: named function definition to emit before the chain. */
+  extractedFn?: string;
 }
 
 function walkChain(expr: ts.Expression, sf: ts.SourceFile, ctx: PreprocessorContext): void {
-  const segments = collectSegments(expr, sf);
+  const segments = collectSegments(expr, sf, ctx);
   emitSegments(segments, ctx);
 }
 
 /**
  * Recursively collect chain segments from bottom (describe) to top (last matcher).
  */
-function collectSegments(expr: ts.Expression, sf: ts.SourceFile): ChainSegment[] {
+function collectSegments(expr: ts.Expression, sf: ts.SourceFile, ctx: PreprocessorContext): ChainSegment[] {
   const segments: ChainSegment[] = [];
-  collectSegmentsRecursive(expr, sf, segments);
+  collectSegmentsRecursive(expr, sf, segments, ctx);
   return segments;
 }
 
@@ -238,6 +246,7 @@ function collectSegmentsRecursive(
   expr: ts.Expression,
   sf: ts.SourceFile,
   segments: ChainSegment[],
+  ctx: PreprocessorContext,
 ): void {
   if (!ts.isCallExpression(expr)) {
     return;
@@ -257,22 +266,31 @@ function collectSegmentsRecursive(
 
     if (methodName === 'it') {
       // Recurse into the receiver first (process everything before this `.it()`)
-      collectSegmentsRecursive(receiver, sf, segments);
+      collectSegmentsRecursive(receiver, sf, segments, ctx);
       const name = extractStringArg(expr, 0, sf);
       segments.push({ kind: 'it', name: name ?? 'unnamed' });
     } else if (methodName === 'expect' || methodName === 'expectString') {
       // Recurse into the receiver first
-      collectSegmentsRecursive(receiver, sf, segments);
-      // The actual-value expression is the first argument
-      const actualExpr = expr.arguments.length > 0
-        ? expr.arguments[0].getText(sf)
-        : '0';
-      segments.push({ kind: 'expect', actualExpr, isStringExpect: methodName === 'expectString' });
+      collectSegmentsRecursive(receiver, sf, segments, ctx);
+      // Check if the argument is a function (arrow or function expression)
+      const argNode = expr.arguments[0];
+      const fnInfo = argNode ? tryExtractFunction(argNode, sf, ctx) : null;
+      if (fnInfo) {
+        segments.push({
+          kind: 'expect',
+          actualExpr: fnInfo.fnCall,
+          isStringExpect: methodName === 'expectString',
+          extractedFn: fnInfo.fnDef,
+        });
+      } else {
+        const actualExpr = argNode ? argNode.getText(sf) : '0';
+        segments.push({ kind: 'expect', actualExpr, isStringExpect: methodName === 'expectString' });
+      }
     } else {
       // This is a matcher: toBe, toBeLessThan, etc.
       // The receiver should be an `.expect(...)` call — process it first
       // which will push the 'expect' segment.  Then we augment with matcher info.
-      collectSegmentsRecursive(receiver, sf, segments);
+      collectSegmentsRecursive(receiver, sf, segments, ctx);
 
       // The last segment should be an 'expect' — attach matcher info to it
       const last = segments[segments.length - 1];
@@ -292,6 +310,14 @@ function collectSegmentsRecursive(
 // ---------------------------------------------------------------------------
 
 function emitSegments(segments: ChainSegment[], ctx: PreprocessorContext): void {
+  // First pass: emit any extracted function definitions before the protocol
+  for (const seg of segments) {
+    if (seg.kind === 'expect' && seg.extractedFn) {
+      ctx.emit(seg.extractedFn);
+    }
+  }
+
+  // Second pass: emit protocol segments
   for (const seg of segments) {
     switch (seg.kind) {
       case 'describe':
@@ -396,4 +422,70 @@ function escapeProtocol(s: string): string {
     .replace(/"/g, '\\"')
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r');
+}
+
+// ---------------------------------------------------------------------------
+// Internal — Function extraction
+// ---------------------------------------------------------------------------
+
+/** Result of extracting a function passed to expect(). */
+interface ExtractedFnInfo {
+  /** Named function definition to emit before the protocol. */
+  fnDef: string;
+  /** Call expression to use as the actual value. */
+  fnCall: string;
+}
+
+/**
+ * Detect an arrow/function expression or IIFE passed to expect() and
+ * convert it into a named function definition + call.
+ *
+ * Handles both:
+ *   `.expect(() => { const x = 1; return x; })`       — direct function
+ *   `.expect((() => { const x = 1; return x; })())`   — IIFE
+ */
+function tryExtractFunction(
+  node: ts.Expression,
+  sf: ts.SourceFile,
+  ctx: PreprocessorContext,
+): ExtractedFnInfo | null {
+  // Unwrap IIFE: `(() => { ... })()` → get the inner function
+  let fnNode: ts.Expression = node;
+  if (ts.isCallExpression(node)) {
+    let callee: ts.Node = node.expression;
+    while (ts.isParenthesizedExpression(callee)) {
+      callee = callee.expression;
+    }
+    if (ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)) {
+      fnNode = callee as ts.Expression;
+    } else {
+      return null;
+    }
+  }
+
+  // Unwrap parens: `(() => { ... })` → `() => { ... }`
+  if (ts.isParenthesizedExpression(fnNode)) {
+    fnNode = fnNode.expression;
+  }
+
+  if (!ts.isArrowFunction(fnNode) && !ts.isFunctionExpression(fnNode)) return null;
+
+  // Only handle parameterless functions for now
+  if (fnNode.parameters.length > 0) return null;
+
+  const fnName = ctx.nextFn();
+  const body = fnNode.body;
+
+  let fnBody: string;
+  if (ts.isBlock(body)) {
+    fnBody = body.getText(sf);
+  } else {
+    // Expression body (arrow shorthand): `() => x + 1`
+    fnBody = `{ return ${body.getText(sf)}; }`;
+  }
+
+  const fnDef = `function ${fnName}(): number ${fnBody}`;
+  const fnCall = `${fnName}()`;
+
+  return { fnDef, fnCall };
 }

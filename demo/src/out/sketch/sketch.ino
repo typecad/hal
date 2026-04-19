@@ -45,8 +45,7 @@ int add(int a, int b);
 int clamp(int value, int min = 0, int max = 1023);
 int square(int x);
 int forOfSum();
-int const_let();
-int test_block_scoping();
+int __tc_fn1();
 
 // Auto-generated setup() for top-level statements
 void setup()
@@ -271,13 +270,9 @@ void setup()
   Serial.print(forOfSum());
   Serial.println("]");
   Serial.println("[TC:DESCRIBE:Variables and Scoping]");
-  Serial.println("[TC:IT:const and let assignment]");
-  Serial.print("[TC:EXPECT:toBe:15:");
-  Serial.print(const_let());
-  Serial.println("]");
-  Serial.println("[TC:IT:block scoping shadowing]");
+  Serial.println("[TC:IT:block scoping (shadowing)]");
   Serial.print("[TC:EXPECT:toBe:1:");
-  Serial.print(test_block_scoping());
+  Serial.print(__tc_fn1());
   Serial.println("]");
   Serial.println("[TC:SUITE_END]");
   while (true)
@@ -311,21 +306,12 @@ int forOfSum()
   return total;
 }
 
-int const_let()
-{
-  const int fixed = 10;
-  int mutable_ = 5;
-  mutable_ = fixed + mutable_;
-  // this is a transpilation bug, 'let mutable_' is emitted on the above line, but 'mutable_' is not used
-  return mutable_;
-}
-
-int test_block_scoping()
+int __tc_fn1()
 {
   int x = 1;
   {
     int x = 2;
-    // C++ must handle this as a separate stack variable
+    // Should not overwrite outer x in C++
   }
   return x;
 }
