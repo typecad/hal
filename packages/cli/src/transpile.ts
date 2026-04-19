@@ -38,35 +38,10 @@ import { tryGenerateArduinoLibDecl } from "./arduino-libs";
 import { initProfiler, getProfiler } from "./profiler";
 const { preprocess: expectPreprocess } = require("@typecode/expect/preprocessor") as { preprocess: (source: string, fileName?: string) => string };
 
-function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
-  if (!fs.existsSync(outDir)) {
-    return;
-  }
-
-  for (const fileName of fs.readdirSync(outDir)) {
-    const fullPath = path.join(outDir, fileName);
-    const lower = fileName.toLowerCase();
-    const isSourceArtifact = lower.endsWith(".ino") || lower.endsWith(".cpp") || lower.endsWith(".h");
-    const isMapArtifact = lower.endsWith(".tscppmap.json");
-    if (!isSourceArtifact && !isMapArtifact) {
-      continue;
-    }
-
-    const artifactBase = lower.endsWith(".tscppmap.json")
-      ? path.basename(fileName.slice(0, -".tscppmap.json".length)).replace(/\.[^.]+$/, "")
-      : path.basename(fileName).replace(/\.[^.]+$/, "");
-
-    const isCurrentSketch = artifactBase === currentBaseName && (lower.endsWith(".ino") || lower.endsWith(".ino.tscppmap.json"));
-    if (isCurrentSketch) {
-      continue;
-    }
-
-    try {
-      fs.unlinkSync(fullPath);
-    } catch {
-      // Ignore cleanup failures and continue with transpilation.
-    }
-  }
+function cleanOutput(entryDir: string, outDir: string): void {
+  const cachePath = path.join(entryDir, ".typecode-cache.json");
+  try { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); } catch { /* ignore */ }
+  try { if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
 }
 
 function resolveLocalImport(fromFile: string, moduleSpecifier: string): string | undefined {
@@ -1045,8 +1020,15 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   const entryFile = path.resolve(options.inputFile);
   const entryDir = path.dirname(entryFile);
+  const sourceDir = entryDir;
+  const sketchBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");
+  const outBaseDir = options.outDir ?? sourceDir;
+  const outDir = path.join(outBaseDir, options.target === "arduino" ? sketchBaseName : ".build");
 
-  // Initialize incremental cache (always enabled unless force is set)
+  // Always start fresh: delete cache and output directory
+  cleanOutput(entryDir, outDir);
+
+  // Initialize incremental cache (always starts empty since we deleted the file)
   let incrementalCache: IncrementalCache | null = null;
   if (!options.force) {
     incrementalCache = initIncrementalCache({
@@ -1100,17 +1082,6 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
   }
   const npmPackages = graphResult.npmPackages;
-  const sourceDir = path.dirname(entryFile);
-  const sketchBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");
-  const outBaseDir = options.outDir ?? sourceDir;
-  const outDir = path.join(outBaseDir, options.target === "arduino" ? sketchBaseName : ".build");
-  const currentBaseName = options.target === "arduino"
-    ? path.basename(outDir)
-    : sketchBaseName;
-
-  if (options.target === "arduino") {
-    cleanStaleArduinoOutputs(outDir, currentBaseName);
-  }
 
   const definitions = loadLibraryDefinitions(sourceDir);
   const polyfillRegistry = createPolyfillRegistry();

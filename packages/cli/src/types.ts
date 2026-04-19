@@ -175,6 +175,8 @@ export interface CommandLineOptions {
   force?: boolean;
   /** Watch for file changes and retranspile automatically */
   watch: boolean;
+  /** Run hardware tests via @typecode/expect */
+  expect?: boolean;
 }
 
 export interface GenerateLibdefOptions {

@@ -1,0 +1,59 @@
+import type { FunctionIR } from "./model";
+import type { TypecodeReceiverKind } from "./typecode-symbols";
+
+// Track variables that are pointers (from 'new' expressions)
+export type PointerTracker = Set<string>;
+
+// Pin factory function names that should be constant-folded to the pin number
+export const PIN_FACTORY_FUNCTIONS = new Set([
+  "createDigitalPin",
+  "createPWMPin",
+  "createAnalogPin",
+  "createInterruptPin",
+]);
+
+// Helper functions that should be constant-folded to their first argument
+export const CONSTANT_FOLD_FUNCTIONS = new Set<string>([]);
+
+// Maps typed array constructor names to their C++ element types.
+// Used for: new expression handling, collectPointerVars, and function-level tracking.
+export const TYPED_ARRAY_ELEMENT_MAP: Record<string, string> = {
+  Uint8Array:  "uint8_t",
+  Int8Array:   "int8_t",
+  Uint16Array: "uint16_t",
+  Int16Array:  "int16_t",
+  Uint32Array: "uint32_t",
+  Int32Array:  "int32_t",
+  Float32Array: "float",
+  Float64Array: "double",
+};
+
+/** Module-level register field map, populated during buildProgramIR. */
+export const registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
+
+// Module-level accumulators for nested function hoisting (Bug 6).
+// These are reset at the start of each buildProgramIR() call.
+export const hoistedNestedFunctions: FunctionIR[] = [];
+export const nestedFunctionAliases = new Map<string, string>();
+
+// Module-level pin alias map for the current buildProgramIR invocation.
+// Maps alias variable names (e.g., "led") to their original pin names (e.g., "LED").
+export const activePinAliases = new Map<string, string>();
+
+// Module-level bus alias map for the current buildProgramIR invocation.
+// Maps alias variable names (e.g., "i2c") to their original peripheral receiver info.
+export const activeBusAliases = new Map<string, { receiver: string; kind: TypecodeReceiverKind }>();
+
+// Module-level C-array variable tracker for the current buildProgramIR invocation.
+// Tracks variable names initialized with new Uint8Array([...]) (or similar typed array
+// constructors) that transpile to C arrays rather than pointers. For these variables,
+// .length should become sizeof(arr)/sizeof(arr[0]) instead of arr.size().
+export const activeCArrayVars = new Set<string>();
+
+export function resetBuildState(): void {
+  hoistedNestedFunctions.length = 0;
+  nestedFunctionAliases.clear();
+  activePinAliases.clear();
+  activeBusAliases.clear();
+  activeCArrayVars.clear();
+}

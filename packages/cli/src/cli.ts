@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import path from "node:path";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import { parseCommandLine, printHelp } from "./utils/cli";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
@@ -14,6 +15,31 @@ import { runInitWizard } from "./scaffold/init-wizard";
 import { runWatch, discoverWatchDirs } from "./watch";
 import * as ui from "./utils/ui";
 import chalk from "chalk";
+
+function resolveExpectCliPath(): string {
+  const monorepoPath = path.resolve(__dirname, "..", "..", "expect", "dist", "host", "cli.js");
+  if (fs.existsSync(monorepoPath)) return monorepoPath;
+  const nmPath = path.resolve(__dirname, "..", "node_modules", "@typecode", "expect", "dist", "host", "cli.js");
+  if (fs.existsSync(nmPath)) return nmPath;
+  return "typecode-test";
+}
+
+function runExpectTests(options: { port?: string; fqbn?: string; baud?: number }): number {
+  const expectCliPath = resolveExpectCliPath();
+  const args: string[] = [expectCliPath];
+  if (options.port) args.push("--port", options.port);
+  if (options.fqbn) args.push("--fqbn", options.fqbn);
+  if (options.baud) args.push("--baud", String(options.baud));
+
+  ui.printStep("Running hardware tests...");
+  const result = spawnSync(process.execPath, args, {
+    encoding: "utf8",
+    cwd: process.cwd(),
+    timeout: 300_000,
+    stdio: "inherit",
+  });
+  return result.status ?? 1;
+}
 
 function assertTypeScriptInput(filePath: string): void {
   const extension = path.extname(filePath).toLowerCase();
@@ -339,6 +365,16 @@ async function main(): Promise<void> {
     }
 
     if (!options.inputFile) {
+      if (options.expect) {
+        const config = loadTypecodeConfig(process.cwd());
+        const exitCode = runExpectTests({
+          port: options.port,
+          fqbn: config?.fqbn,
+          baud: config?.console?.baudRate ?? options.baud,
+        });
+        process.exitCode = exitCode;
+        return;
+      }
       throw new Error("Missing input file path.");
     }
 
@@ -631,6 +667,14 @@ async function main(): Promise<void> {
 
     if (!options.compile) {
       ui.printSuccess();
+      if (options.expect) {
+        const exitCode = runExpectTests({
+          port: options.port,
+          fqbn: effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn,
+          baud: config?.console?.baudRate ?? options.baud,
+        });
+        process.exitCode = exitCode;
+      }
       return;
     }
 
@@ -671,14 +715,29 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (!options.monitor) {
+    if (!options.monitor && !options.expect) {
       ui.printSuccess();
       return;
     }
 
-    // --monitor (blocks until Ctrl+C)
-    ui.printMonitoring(port, options.baud);
-    monitorArduinoSketch(port, options.baud);
+    if (options.monitor) {
+      // --monitor (blocks until Ctrl+C)
+      ui.printMonitoring(port, options.baud);
+      monitorArduinoSketch(port, options.baud);
+      return;
+    }
+
+    // --expect: Run hardware tests after upload
+    if (options.expect) {
+      ui.printSuccess();
+      const exitCode = runExpectTests({
+        port: options.port,
+        fqbn,
+        baud: config?.console?.baudRate ?? options.baud,
+      });
+      process.exitCode = exitCode;
+      return;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     ui.printError(message);

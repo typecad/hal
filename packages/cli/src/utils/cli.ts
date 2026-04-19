@@ -52,6 +52,11 @@ export function printHelp(): void {
   console.log(`  --monitor               Open an interactive serial monitor after upload.`);
   console.log(`                          Requires: --port`);
   console.log();
+  console.log(chalk.cyan(`TESTING`));
+  console.log();
+  console.log(`  --expect                Run hardware tests via @typecode/expect.`);
+  console.log(`                          Discovers test files and validates via serial.`);
+  console.log();
   console.log(`  --fqbn <package:arch:board>`);
   console.log(`                          Fully Qualified Board Name.`);
   console.log(`                          Required for --compile and --upload.`);
@@ -286,6 +291,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     const watch = argv.includes("--watch") || argv.includes("-w");
     const debug = argv.includes("--debug");
     const force = argv.includes("--force");
+    const expect = argv.includes("--expect");
     const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
     // Tree-shaking options
@@ -354,6 +360,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
       treeShaking,
       debug,
       force,
+      expect,
     };
   }
 
@@ -468,8 +475,8 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     return "help";
   }
 
-  // Default: firstArg is the input file
-  const inputFile = firstArg;
+  // Default: firstArg is the input file (unless it's a flag like --expect)
+  const inputFile = firstArg.startsWith("-") ? undefined : firstArg;
 
   const emitFlag = readFlags(argv, ["--emit"]);
   const targetFlag = readFlags(argv, ["--target"]);
@@ -487,6 +494,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
   const noTranspile = argv.includes("--no-transpile");
   const force = argv.includes("--force");
   const skipTypeCheck = argv.includes("--skip-type-check");
+  const expect = argv.includes("--expect");
   const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
 
   // Tree-shaking options
@@ -540,7 +548,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
 
   return {
     command: "default",
-    inputFile: path.resolve(process.cwd(), inputFile),
+    inputFile: inputFile ? path.resolve(process.cwd(), inputFile) : undefined,
     emitMode,
     target,
     outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
@@ -557,5 +565,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     debug,
     force,
     skipTypeCheck,
+    expect,
   };
 }

@@ -1,16 +1,33 @@
 #include <Arduino.h>
 #include <math.h>
 
+// Sentinel value representing JS undefined for integer types.
+// Uses INT_MIN from <limits.h> so it is correct for the target
+// platform (16-bit int on AVR, 32-bit int on ARM/ESP32, etc.).
+#include <limits.h>
+#ifndef TYPECODE_UNDEFINED
+#define TYPECODE_UNDEFINED INT_MIN
+#endif
+
+template <typename T, typename U>
+inline T typecode_nullish(T value, U fallback) {
+  return (value == TYPECODE_UNDEFINED) ? fallback : value;
+}
+
+template <typename T>
+inline T* typecode_nullish(T* value, T* fallback) {
+  return value != nullptr ? value : fallback;
+}
+
 const int a = 1;
 int b = 2;
 int c = 3;
 uint8_t uint8array[] = { 170, 16, 32 };
 int16_t int16array[] = { 4, -2, 7 };
-float float32array[] = { 1, 0.5f, 0.25f };
+float float32array[] = { 1.0f, 0.5f, 0.25f };
 struct _config_t { int low; int high; int timeout; } config = { 150, 700, TYPECODE_UNDEFINED };
 const int low = config.low;
 const int high = config.high;
-const int timeout = config.timeout;
 const int hex = 255;
 const int binary = 10;
 const int octal = 63;
@@ -28,12 +45,15 @@ int add(int a, int b);
 int clamp(int value, int min = 0, int max = 1023);
 int square(int x);
 int forOfSum();
+int const_let();
+int test_block_scoping();
 
 // Auto-generated setup() for top-level statements
 void setup()
 {
   Serial.begin(115200);
   Serial.println("[TC:SUITE_START]");
+  const int timeout = typecode_nullish(config.timeout, 500);
   Serial.println("[TC:DESCRIBE:Basics]");
   Serial.println("[TC:IT:basic math]");
   Serial.print("[TC:EXPECT:toBe:3:");
@@ -250,6 +270,15 @@ void setup()
   Serial.print("[TC:EXPECT:toBe:100:");
   Serial.print(forOfSum());
   Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Variables and Scoping]");
+  Serial.println("[TC:IT:const and let assignment]");
+  Serial.print("[TC:EXPECT:toBe:15:");
+  Serial.print(const_let());
+  Serial.println("]");
+  Serial.println("[TC:IT:block scoping shadowing]");
+  Serial.print("[TC:EXPECT:toBe:1:");
+  Serial.print(test_block_scoping());
+  Serial.println("]");
   Serial.println("[TC:SUITE_END]");
   while (true)
   {
@@ -280,6 +309,25 @@ int forOfSum()
     total += value;
   }
   return total;
+}
+
+int const_let()
+{
+  const int fixed = 10;
+  int mutable_ = 5;
+  mutable_ = fixed + mutable_;
+  // this is a transpilation bug, 'let mutable_' is emitted on the above line, but 'mutable_' is not used
+  return mutable_;
+}
+
+int test_block_scoping()
+{
+  int x = 1;
+  {
+    int x = 2;
+    // C++ must handle this as a separate stack variable
+  }
+  return x;
 }
 
 void loop()

@@ -4,15 +4,12 @@
   "description": "TypeCode demo project for Arduino Uno",
   "private": true,
   "scripts": {
-    "clean": "node -e \"const fs=require('fs'); for (const p of ['./src/.typecode-cache.json','./src/out']) { if (fs.existsSync(p)) fs.rmSync(p,{ recursive:true, force:true }); }\"",
-    "prebuild": "npm run clean",
     "build": "node ../packages/cli/dist/cli.js ./src/sketch.ts",
     "build:watch": "node ../packages/cli/dist/cli.js build --watch",
-    "precompile": "npm run clean",
     "compile": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile",
     "upload": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --port COM6",
     "debug": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --debug --monitor --port COM6",
-    "test:hw": "node ../packages/expect/dist/host/cli.js"
+    "test:hw": "node ../packages/cli/dist/cli.js --expect"
   },
   "dependencies": {
     "@typecode/core": "*",
