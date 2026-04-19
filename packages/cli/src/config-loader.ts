@@ -41,15 +41,6 @@ export interface ResolvedTypecodeConfig {
   entry?: string;
   /** Path to the config file that was loaded. */
   configPath: string;
-  /** Toolchain configuration. */
-  toolchain?: {
-    type?: 'arduino-cli';
-    arduinoCli?: {
-      path?: string;
-      configFile?: string;
-      verbose?: boolean;
-    };
-  };
   /** Console polyfill configuration. */
   console?: {
     baudRate?: number;
@@ -217,42 +208,6 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
 
   const outputOutDir = flat.get("output.outDir");
   if (typeof outputOutDir === "string") resolved.outputOutDir = outputOutDir;
-
-  // Parse toolchain configuration
-  const toolchainType = flat.get("toolchain.type");
-  const arduinoCliPath = flat.get("toolchain.arduinoCli.path");
-  const arduinoCliConfigFile = flat.get("toolchain.arduinoCli.configFile");
-  const arduinoCliVerbose = flat.get("toolchain.arduinoCli.verbose");
-
-  if (
-    typeof toolchainType === "string" ||
-    typeof arduinoCliPath === "string" ||
-    typeof arduinoCliConfigFile === "string" ||
-    typeof arduinoCliVerbose === "boolean"
-  ) {
-    resolved.toolchain = {};
-
-    if (toolchainType === "arduino-cli") {
-      resolved.toolchain.type = toolchainType;
-    }
-
-    if (
-      typeof arduinoCliPath === "string" ||
-      typeof arduinoCliConfigFile === "string" ||
-      typeof arduinoCliVerbose === "boolean"
-    ) {
-      resolved.toolchain.arduinoCli = {};
-      if (typeof arduinoCliPath === "string") {
-        resolved.toolchain.arduinoCli.path = arduinoCliPath;
-      }
-      if (typeof arduinoCliConfigFile === "string") {
-        resolved.toolchain.arduinoCli.configFile = arduinoCliConfigFile;
-      }
-      if (typeof arduinoCliVerbose === "boolean") {
-        resolved.toolchain.arduinoCli.verbose = arduinoCliVerbose;
-      }
-    }
-  }
 
   // Parse console configuration
   const consoleBaudRate = flat.get("console.baudRate");

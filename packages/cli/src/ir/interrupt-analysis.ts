@@ -9,26 +9,22 @@ import type { ProgramIR, StatementIR, ExpressionIR } from './model';
 import type { PeripheralUsage } from './peripheral-usage';
 import type { Diagnostic } from '../types';
 
+/** ISR-unsafe operation entry. */
+export interface IsrUnsafeOp { reason: string; severity: 'warning' | 'info'; }
+
 /**
- * Operations that are unsafe to use inside interrupt handlers.
- * Using these can cause crashes, lockups, or unpredictable behavior.
+ * Default ISR-unsafe operations used when no platform-specific map is provided.
+ * Platforms should supply their own list via PlatformStrategy.isrUnsafeOperations().
  */
-const ISR_UNSAFE_OPERATIONS: Map<string, { reason: string; severity: 'warning' | 'info' }> = new Map([
-  // Blocking delays - ISR should be fast
+const DEFAULT_ISR_UNSAFE_OPERATIONS: Map<string, IsrUnsafeOp> = new Map([
   ['delay', { reason: 'delay() blocks the CPU and should not be used in interrupt context', severity: 'warning' }],
   ['delayMicroseconds', { reason: 'delayMicroseconds() blocks and should be avoided in ISRs', severity: 'warning' }],
-
-  // Serial operations - may not work correctly in ISR
   ['Serial.print', { reason: 'Serial.print() may not work correctly in interrupt context', severity: 'info' }],
   ['Serial.println', { reason: 'Serial.println() may not work correctly in interrupt context', severity: 'info' }],
   ['Serial.write', { reason: 'Serial.write() may not work correctly in interrupt context', severity: 'info' }],
   ['Serial.read', { reason: 'Serial.read() may not work correctly in interrupt context', severity: 'info' }],
-
-  // I2C operations - can cause lockups
   ['I2C0', { reason: 'I2C operations can cause lockups in interrupt context', severity: 'warning' }],
   ['I2C1', { reason: 'I2C operations can cause lockups in interrupt context', severity: 'warning' }],
-
-  // SPI operations - can cause issues
   ['SPI0', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
   ['SPI1', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
 ]);
@@ -47,13 +43,16 @@ export interface InterruptHandlerInfo {
  *
  * @param program - The program IR to analyze
  * @param usage - Peripheral usage information
+ * @param isrUnsafeOps - Platform-specific ISR-unsafe operations map (from strategy)
  * @returns Array of diagnostics for interrupt-related issues
  */
 export function analyzeInterruptSafety(
   program: ProgramIR,
   usage: PeripheralUsage,
+  isrUnsafeOps?: Map<string, IsrUnsafeOp>,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
+  const unsafeOps = isrUnsafeOps ?? DEFAULT_ISR_UNSAFE_OPERATIONS;
 
   // Track duplicate handlers
   const handlersByPin: Map<string, number> = new Map();
@@ -62,7 +61,7 @@ export function analyzeInterruptSafety(
   scanForInterruptHandlers(program, handlersByPin, diagnostics);
 
   // Scan for unsafe operations inside ISR callbacks
-  scanForUnsafeOperations(program, diagnostics);
+  scanForUnsafeOperations(program, diagnostics, unsafeOps);
 
   return diagnostics;
 }
@@ -137,6 +136,7 @@ function scanStatementForInterruptHandler(
 function scanForUnsafeOperations(
   program: ProgramIR,
   diagnostics: Diagnostic[],
+  unsafeOps: Map<string, IsrUnsafeOp>,
 ): void {
   // Scan callback expressions that are interrupt handlers
   scanProgramForCallbacks(program, (callback, parentExpr) => {
@@ -146,7 +146,7 @@ function scanForUnsafeOperations(
 
     if (isISR && callback.statements) {
       for (const stmt of callback.statements) {
-        scanStatementForUnsafeOps(stmt, diagnostics);
+        scanStatementForUnsafeOps(stmt, diagnostics, unsafeOps);
       }
     }
   });
@@ -175,34 +175,35 @@ function isInterruptHandlerCallback(callback: any, parentExpr: any): boolean {
 function scanStatementForUnsafeOps(
   stmt: StatementIR,
   diagnostics: Diagnostic[],
+  unsafeOps: Map<string, IsrUnsafeOp>,
 ): void {
   if (!stmt || typeof stmt !== 'object') return;
 
   // Check for call statements
   if (stmt.kind === 'call') {
     const call = stmt as any;
-    checkCalleeForUnsafeOp(call.callee, diagnostics);
+    checkCalleeForUnsafeOp(call.callee, diagnostics, unsafeOps);
   }
 
   // Check for typecode-call statements
   if (stmt.kind === 'typecode-call') {
     const tc = stmt as any;
     const callee = `${tc.receiver}.${tc.method}`;
-    checkCalleeForUnsafeOp(callee, diagnostics);
+    checkCalleeForUnsafeOp(callee, diagnostics, unsafeOps);
   }
 
   // Recursively scan nested statements
-  scanNestedStatements(stmt, (s) => scanStatementForUnsafeOps(s, diagnostics));
+  scanNestedStatements(stmt, (s) => scanStatementForUnsafeOps(s, diagnostics, unsafeOps));
 }
 
 /**
  * Check if a callee is an unsafe operation and generate diagnostic.
  */
-function checkCalleeForUnsafeOp(callee: string, diagnostics: Diagnostic[]): void {
+function checkCalleeForUnsafeOp(callee: string, diagnostics: Diagnostic[], unsafeOps: Map<string, IsrUnsafeOp>): void {
   if (!callee) return;
 
   // Check direct matches
-  const unsafe = ISR_UNSAFE_OPERATIONS.get(callee);
+  const unsafe = unsafeOps.get(callee);
   if (unsafe) {
     diagnostics.push({
       severity: unsafe.severity,
@@ -214,7 +215,7 @@ function checkCalleeForUnsafeOp(callee: string, diagnostics: Diagnostic[]): void
   }
 
   // Check prefix matches (e.g., I2C0.write matches I2C0)
-  for (const [prefix, info] of ISR_UNSAFE_OPERATIONS) {
+  for (const [prefix, info] of unsafeOps) {
     if (callee.startsWith(prefix + '.') || callee.startsWith(prefix + ':')) {
       diagnostics.push({
         severity: info.severity,

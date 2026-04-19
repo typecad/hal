@@ -200,6 +200,21 @@ export class ArduinoStrategy implements PlatformStrategy {
   nullValue(): string {
     return "TYPECODE_UNDEFINED";
   }
+  mapPeripheralIdentifier(name: string): string | undefined {
+    if (/^I2C\d+$/.test(name)) {
+      const num = name.slice(3);
+      return num === '0' ? 'Wire' : `Wire${num}`;
+    }
+    if (/^SPI\d+$/.test(name)) {
+      const num = name.slice(3);
+      return num === '0' ? 'SPI' : `SPI${num}`;
+    }
+    if (/^UART\d+$/.test(name)) {
+      const num = name.slice(4);
+      return num === '0' ? 'Serial' : `Serial${num}`;
+    }
+    return undefined;
+  }
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined {
     // When snprintf mode is active, string concat is handled at the expression
     // renderer level — no String() wrapping needed here.
@@ -382,5 +397,22 @@ export class ArduinoStrategy implements PlatformStrategy {
   emitDiagnostics(_emitMode: string): Diagnostic[] {
     // Split mode info message removed - Arduino inherently uses .ino format
     return [];
+  }
+
+  // ── Interrupt safety ────────────────────────────────────────────────────
+
+  isrUnsafeOperations(): Map<string, { reason: string; severity: 'warning' | 'info' }> {
+    return new Map([
+      ['delay', { reason: 'delay() blocks the CPU and should not be used in interrupt context', severity: 'warning' }],
+      ['delayMicroseconds', { reason: 'delayMicroseconds() blocks and should be avoided in ISRs', severity: 'warning' }],
+      ['Serial.print', { reason: 'Serial.print() may not work correctly in interrupt context', severity: 'info' }],
+      ['Serial.println', { reason: 'Serial.println() may not work correctly in interrupt context', severity: 'info' }],
+      ['Serial.write', { reason: 'Serial.write() may not work correctly in interrupt context', severity: 'info' }],
+      ['Serial.read', { reason: 'Serial.read() may not work correctly in interrupt context', severity: 'info' }],
+      ['I2C0', { reason: 'I2C operations can cause lockups in interrupt context', severity: 'warning' }],
+      ['I2C1', { reason: 'I2C operations can cause lockups in interrupt context', severity: 'warning' }],
+      ['SPI0', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
+      ['SPI1', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
+    ]);
   }
 }

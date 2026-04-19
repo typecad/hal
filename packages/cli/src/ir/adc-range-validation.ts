@@ -34,19 +34,8 @@ function getADCConfig(boardConstants: BoardConstants | undefined): ADCConfig | n
     };
   }
 
-  // Default to 10-bit for AVR boards (Arduino Uno, Nano, etc.)
-  const mcu = boardConstants.get('mcu') as string | undefined;
-  if (mcu?.includes('ATmega') || mcu?.includes('avr')) {
-    return { resolution: 10, maxValue: 1023 };
-  }
-
-  // Default to 12-bit for ESP32, STM32, etc.
-  if (mcu?.includes('ESP32') || mcu?.includes('STM32')) {
-    return { resolution: 12, maxValue: 4095 };
-  }
-
-  // Unknown board, use 10-bit as safe default
-  return { resolution: 10, maxValue: 1023 };
+  // No board ADC resolution available — cannot validate
+  return null;
 }
 
 /**

@@ -165,20 +165,9 @@ export class ExpressionRenderer {
     if (nullVal && (value === "null" || value === "undefined")) {
       return nullVal;
     }
-    // Map peripheral identifiers to Arduino equivalents
-    const peripheralName = value;
-    if (/^I2C\d+$/.test(peripheralName)) {
-      const num = peripheralName.slice(3);
-      return num === '0' ? 'Wire' : `Wire${num}`;
-    }
-    if (/^SPI\d+$/.test(peripheralName)) {
-      const num = peripheralName.slice(3);
-      return num === '0' ? 'SPI' : `SPI${num}`;
-    }
-    if (/^UART\d+$/.test(peripheralName)) {
-      const num = peripheralName.slice(4);
-      return num === '0' ? 'Serial' : `Serial${num}`;
-    }
+    // Delegate peripheral identifier mapping to the platform strategy
+    const mapped = this.strategy.mapPeripheralIdentifier?.(value);
+    if (mapped) return mapped;
     return escapeCppKeyword(value);
   }
 

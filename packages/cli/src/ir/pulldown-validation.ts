@@ -10,12 +10,6 @@ import type { PeripheralUsage } from './peripheral-usage';
 import type { BoardConstants } from './board-resolver';
 
 /**
- * Architectures that do NOT support hardware pulldown.
- * AVR (ATmega328P, etc.) only has pull-up, not pull-down.
- */
-const NO_PULLDOWN_ARCHS = new Set(['avr']);
-
-/**
  * Validate that pins used with inputPullDown() support pulldown on this board.
  */
 export function validatePulldownSupport(
@@ -28,13 +22,16 @@ export function validatePulldownSupport(
     return diagnostics;
   }
 
-  const arch = boardConstants?.get('architecture') as string | undefined;
-  if (arch && NO_PULLDOWN_ARCHS.has(arch)) {
-    for (const pinNumber of usage.inputPulldownPins) {
+  for (const pinNumber of usage.inputPulldownPins) {
+    // Check the pin's own pullDown capability from board definition
+    // undefined or false both mean pulldown is not supported on this pin
+    const supportsPullDown = boardConstants?.get(`pins.all.${pinNumber}.capabilities.pullDown`);
+    if (supportsPullDown !== true) {
       const pinName = getPinName(pinNumber, boardConstants);
+      const arch = boardConstants?.get('architecture') as string | undefined;
       diagnostics.push({
         code: 'pulldown-not-supported',
-        message: `${pinName ?? `pin ${pinNumber}`} does not support hardware pulldown on ${arch?.toUpperCase()} boards. Use ${pinName ?? 'pin'}.asInput() or ${pinName ?? 'pin'}.inputPullUp() instead.`,
+        message: `${pinName ?? `pin ${pinNumber}`} does not support hardware pulldown${arch ? ` on ${arch.toUpperCase()} boards` : ''}. Use ${pinName ?? 'pin'}.asInput() or ${pinName ?? 'pin'}.inputPullUp() instead.`,
         source: 'pulldown-validation',
         severity: 'error',
       });

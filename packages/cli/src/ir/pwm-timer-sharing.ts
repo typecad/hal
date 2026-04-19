@@ -10,11 +10,17 @@ interface PwmTimerPin {
   timerId: string;
 }
 
-function extractTimerId(role: string | undefined): string | undefined {
+function extractTimerId(role: string | undefined, timerField: string | undefined): string | undefined {
+  // Prefer explicit timer field from board definition
+  if (timerField) {
+    return timerField;
+  }
+
   if (!role) {
     return undefined;
   }
 
+  // Fall back to parsing AVR OC register naming convention
   const match = role.match(/^OC(\d+)[A-Z]?$/i);
   return match ? `timer${match[1]}` : undefined;
 }
@@ -53,7 +59,11 @@ function getPwmTimerPins(boardConstants: BoardConstants | undefined): PwmTimerPi
 
     const pinIndex = typeMatch[1];
     const roleKey = key.replace(/\.type$/, '.role');
-    const timerId = extractTimerId(boardConstants.get(roleKey) as string | undefined);
+    const timerKey = key.replace(/\.type$/, '.timer');
+    const timerId = extractTimerId(
+      boardConstants.get(roleKey) as string | undefined,
+      boardConstants.get(timerKey) as string | undefined,
+    );
     if (!timerId) {
       continue;
     }

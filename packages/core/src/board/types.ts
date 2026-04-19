@@ -81,6 +81,8 @@ export interface PeripheralFunction {
   instance: number;
   /** Function role (e.g. "sda", "scl", "mosi", "miso"). */
   role: string;
+  /** Timer associated with this PWM function (e.g. "timer0", "timer1"). */
+  timer?: string;
 }
 
 // ---------------------------------------------------------------------------

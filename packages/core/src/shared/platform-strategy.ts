@@ -98,6 +98,13 @@ export interface PlatformStrategy {
   /** How to render a null/undefined identifier value. */
   nullValue(): string;
 
+  /**
+   * Map a peripheral identifier to the platform-specific name.
+   * E.g. Arduino: I2C0→Wire, SPI0→SPI, UART0→Serial.
+   * Return `undefined` to keep the original name.
+   */
+  mapPeripheralIdentifier?(name: string): string | undefined;
+
   /** Whether string-literal + concatenation needs wrapping (Arduino: String(...)). */
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined;
 
@@ -283,4 +290,13 @@ export interface PlatformStrategy {
 
   /** Extra diagnostics to add during emit (e.g. Arduino split-mode ignored). */
   emitDiagnostics(emitMode: string): Diagnostic[];
+
+  // ── Interrupt safety ────────────────────────────────────────────────────
+
+  /**
+   * Operations that are unsafe to use inside interrupt handlers.
+   * Returns a map of operation name/prefix → { reason, severity }.
+   * The analyzer uses prefix matching for entries like "I2C0" (matches I2C0.write, etc.).
+   */
+  isrUnsafeOperations?(): Map<string, { reason: string; severity: 'warning' | 'info' }>;
 }

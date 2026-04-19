@@ -39,13 +39,23 @@ function getTimer0PwmPins(boardConstants: BoardConstants | undefined): TimerPwmP
   const timer0Pins: TimerPwmPin[] = [];
 
   for (const [key, value] of boardConstants) {
+    // Check for timer field first, fall back to OC register regex
+    const timerMatch = key.match(/^pins\.all\.(\d+)\.functions\.(\d+)\.timer$/);
+    if (timerMatch && value === 'timer0') {
+      const pin = pinsByIndex.get(timerMatch[1]);
+      if (pin) {
+        timer0Pins.push(pin);
+      }
+      continue;
+    }
+
     const match = key.match(/^pins\.all\.(\d+)\.functions\.\d+\.role$/);
     if (!match || typeof value !== 'string' || !/^OC0[A-Z]?$/i.test(value)) {
       continue;
     }
 
     const pin = pinsByIndex.get(match[1]);
-    if (pin) {
+    if (pin && !timer0Pins.some(p => p.pinNumber === pin.pinNumber)) {
       timer0Pins.push(pin);
     }
   }
@@ -57,8 +67,7 @@ export function validateTimer0PWMTimingConflict(
   usage: PeripheralUsage,
   boardConstants: BoardConstants | undefined,
 ): Diagnostic[] {
-  const arch = boardConstants?.get('architecture');
-  if (arch !== 'avr' || !usage.timer0 || usage.pwmPinsUsed.size === 0) {
+  if (!usage.timer0 || usage.pwmPinsUsed.size === 0) {
     return [];
   }
 
