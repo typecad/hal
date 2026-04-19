@@ -438,6 +438,7 @@ export interface TypeAliasIR {
   leadingComments?: string[];
   trailingComments?: string[];
   cppType: string;  // The underlying C++ type
+  structFields?: { name: string; cppType: string }[];  // Set when type alias is an object literal type
 }
 
 export interface NamespaceIR {

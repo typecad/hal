@@ -7,7 +7,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, resetBuildState } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, resetBuildState } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR } from "./statement-to-ir";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
@@ -212,6 +212,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
   // Collect any nested classes that were hoisted during IR building
   classes.push(...hoistedNestedClasses);
+
+  // Collect any nested enums that were hoisted during IR building
+  enums.push(...hoistedNestedEnums);
 
   // Resolve board-definition constants from the actual board package file.
   // This replaces the old hard-coded ARDUINO_BOARD_METADATA table in

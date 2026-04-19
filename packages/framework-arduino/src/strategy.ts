@@ -143,7 +143,9 @@ export class ArduinoStrategy implements PlatformStrategy {
   // ── File shape ──────────────────────────────────────────────────────────
 
   sourceExtension(isEntryFile: boolean, isNpmPackage: boolean): string {
-    return (isEntryFile && !isNpmPackage) ? "ino" : "cpp";
+    if (isNpmPackage) return "cpp";
+    if (isEntryFile) return "ino";
+    return "h";
   }
   entrypointFunctionName(): string {
     return "setup";

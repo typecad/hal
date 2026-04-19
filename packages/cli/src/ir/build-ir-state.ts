@@ -1,4 +1,4 @@
-import type { FunctionIR, ClassIR } from "./model";
+import type { FunctionIR, ClassIR, EnumIR } from "./model";
 import type { TypecodeReceiverKind } from "./typecode-symbols";
 
 // Track variables that are pointers (from 'new' expressions)
@@ -36,6 +36,7 @@ export const registerFieldMap = new Map<string, Map<string, { hi: number; lo: nu
 // These are reset at the start of each buildProgramIR() call.
 export const hoistedNestedFunctions: FunctionIR[] = [];
 export const hoistedNestedClasses: ClassIR[] = [];
+export const hoistedNestedEnums: EnumIR[] = [];
 export const nestedFunctionAliases = new Map<string, string>();
 
 // Module-level pin alias map for the current buildProgramIR invocation.
@@ -52,11 +53,30 @@ export const activeBusAliases = new Map<string, { receiver: string; kind: Typeco
 // .length should become sizeof(arr)/sizeof(arr[0]) instead of arr.size().
 export const activeCArrayVars = new Set<string>();
 
+// Module-level string variable tracker for the current buildProgramIR invocation.
+// Tracks variable names whose inferred type is std::string (string literals, template
+// literals, etc.). For these variables, .length should become strlen() instead of .size().
+export const activeStringVars = new Set<string>();
+
+// Track array variables that need StaticArray (push, pop, indexOf).
+export const mutableArrayVars = new Set<string>();
+
+// Track array literal sizes: variable name → element count.
+export const arrayLiteralSizes = new Map<string, number>();
+
+// Track filter result length counters: array name → length counter var name.
+export const filteredArrayLengthVars = new Map<string, string>();
+
 export function resetBuildState(): void {
   hoistedNestedFunctions.length = 0;
   hoistedNestedClasses.length = 0;
+  hoistedNestedEnums.length = 0;
   nestedFunctionAliases.clear();
   activePinAliases.clear();
   activeBusAliases.clear();
   activeCArrayVars.clear();
+  activeStringVars.clear();
+  mutableArrayVars.clear();
+  arrayLiteralSizes.clear();
+  filteredArrayLengthVars.clear();
 }

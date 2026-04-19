@@ -349,11 +349,26 @@ export function typeAliasDeclarationToIR(
   }
   const aliasComments = extractNodeComments(node, sourceText);
   const cppType = typeNodeToCppType(node.type, typeAliasNodes);
+
+  // Extract struct fields when the alias is an object literal type
+  let structFields: { name: string; cppType: string }[] | undefined;
+  const resolved = node.type;
+  if (ts.isTypeLiteralNode(resolved)) {
+    structFields = resolved.members
+      .filter(ts.isPropertySignature)
+      .filter(m => ts.isIdentifier(m.name))
+      .map(m => ({
+        name: (m.name as ts.Identifier).text,
+        cppType: typeNodeToCppType(m.type, typeAliasNodes),
+      }));
+  }
+
   return {
     name: node.name.text,
     sourceSpan: makeSourceSpan(node, fileName, sourceText),
     leadingComments: aliasComments.leadingComments,
     trailingComments: aliasComments.trailingComments,
     cppType,
+    structFields,
   };
 }

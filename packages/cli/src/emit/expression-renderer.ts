@@ -29,6 +29,8 @@ export interface ExpressionRendererContext {
   knownFunctionReturnTypes?: Map<string, string>;
   /** Map of variable names to their pointer types */
   pointerVarTypes?: Map<string, string>;
+  /** Set of variable names known to hold string values (for snprintf %s) */
+  stringVarNames?: Set<string>;
   /** Optional transformer for expression values */
   exprTransformer?: (expr: string) => string;
 }
@@ -44,6 +46,7 @@ export class ExpressionRenderer {
   private readonly largeEnumNames: Set<string>;
   private readonly knownFunctionReturnTypes?: Map<string, string>;
   private readonly pointerVarTypes?: Map<string, string>;
+  private readonly stringVarNames?: Set<string>;
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
   private _preludeLines: string[] = [];
@@ -58,6 +61,7 @@ export class ExpressionRenderer {
     this.largeEnumNames = context.largeEnumNames;
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.pointerVarTypes = context.pointerVarTypes;
+    this.stringVarNames = context.stringVarNames;
   }
 
   /**
@@ -298,6 +302,9 @@ export class ExpressionRenderer {
         }
         if (cppType === "float" || cppType === "double") {
           return { format: "%g", arg: expr.value, estimatedLength: 16 };
+        }
+        if (this.stringVarNames?.has(expr.value)) {
+          return { format: "%s", arg: expr.value, estimatedLength: 32 };
         }
         // Default to %d for integers and unknowns
         return { format: "%d", arg: expr.value, estimatedLength: 12 };

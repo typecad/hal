@@ -1151,6 +1151,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         knownFunctionReturnTypes,
         pointerVarTypes: rendererPointerVarTypes,
         pointerStructFields,
+        stringVarNames: _stringVarTypes,
       });
       return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
     };
@@ -2009,6 +2010,20 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   for (const typeAlias of program.typeAliases) {
     const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
     emitCommentLines(typeAlias.leadingComments, "", (line) => appendLine(line));
+
+    // Object literal type aliases become struct definitions
+    if (typeAlias.structFields && typeAlias.structFields.length > 0) {
+      appendLine(`struct ${typeAlias.name} {`);
+      for (const field of typeAlias.structFields) {
+        const fieldType = normalizeCppTypeForTarget(field.cppType, strategy);
+        appendLine(`  ${fieldType} ${field.name};`);
+      }
+      appendLine("};");
+      emitCommentLines(typeAlias.trailingComments, "", (line) => appendLine(line));
+      appendLine("");
+      continue;
+    }
+
     // Skip type aliases with 'auto' as it's not valid in C++ type aliases
     // Also skip for Arduino if the type uses std::string (not available on AVR)
     const cppType = normalizeCppTypeForTarget(typeAlias.cppType, strategy);
@@ -2673,6 +2688,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (options.emitMaps) {
       outputHeaderMapPath = writeSourceMap(makeGeneratedMap(headerPath, program.fileName, headerMapEntries));
     }
+  }
+
+  // Non-entry Arduino files are emitted as header-only .h files
+  if (sourceExtension === "h" && !isNpmPackage) {
+    sourceLines.unshift("#pragma once", "");
   }
 
   writeText(sourcePath, sourceLines.join("\n").trimEnd() + "\n");

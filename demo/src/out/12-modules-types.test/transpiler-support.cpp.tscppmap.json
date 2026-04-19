@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\demo\\src\\out\\12-modules-types.test\\transpiler-support.cpp",
+  "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+  "entries": [
+    {
+      "generatedStartLine": 6,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 6,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 377,
+        "endOffset": 395,
+        "startLine": 22,
+        "startColumn": 5,
+        "endLine": 22,
+        "endColumn": 23
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 12,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 12,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 439,
+        "endOffset": 458,
+        "startLine": 26,
+        "startColumn": 5,
+        "endLine": 26,
+        "endColumn": 24
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 13,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 13,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 464,
+        "endOffset": 482,
+        "startLine": 27,
+        "startColumn": 5,
+        "endLine": 27,
+        "endColumn": 23
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 18,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 18,
+      "generatedEndColumn": 42,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 69,
+        "endOffset": 287,
+        "startLine": 6,
+        "startColumn": 1,
+        "endLine": 16,
+        "endColumn": 2
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "clampToWindow"
+    },
+    {
+      "generatedStartLine": 20,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 20,
+      "generatedEndColumn": 41,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 69,
+        "endOffset": 287,
+        "startLine": 6,
+        "startColumn": 1,
+        "endLine": 16,
+        "endColumn": 2
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "clampToWindow"
+    },
+    {
+      "generatedStartLine": 22,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 22,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 149,
+        "endOffset": 203,
+        "startLine": 7,
+        "startColumn": 3,
+        "endLine": 9,
+        "endColumn": 4
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 24,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 24,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 180,
+        "endOffset": 198,
+        "startLine": 8,
+        "startColumn": 5,
+        "endLine": 8,
+        "endColumn": 23
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 26,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 26,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 209,
+        "endOffset": 265,
+        "startLine": 11,
+        "startColumn": 3,
+        "endLine": 13,
+        "endColumn": 4
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 28,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 28,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 241,
+        "endOffset": 260,
+        "startLine": 12,
+        "startColumn": 5,
+        "endLine": 12,
+        "endColumn": 24
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 30,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 30,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
+        "startOffset": 271,
+        "endOffset": 284,
+        "startLine": 15,
+        "startColumn": 3,
+        "endLine": 15,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    }
+  ]
+}

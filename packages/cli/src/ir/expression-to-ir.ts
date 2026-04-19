@@ -3,7 +3,7 @@ import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { inferKindByName } from "./typecode-symbols";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, nestedFunctionAliases, registerFieldMap, hoistedNestedClasses } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, nestedFunctionAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement } from "./statement-to-ir";
 import { escapeCppKeyword } from "../utils/strings";
@@ -48,6 +48,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return `(sizeof(${objectText}) / sizeof(${objectText}[0]))`;
       }
       if (ts.isCallExpression(receiverNode)) {
+        return `strlen(${objectText})`;
+      }
+      if (ts.isIdentifier(receiverNode) && activeStringVars.has(receiverNode.text)) {
         return `strlen(${objectText})`;
       }
       return `${objectText}.size()`;
@@ -156,6 +159,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   // flow through the same snprintf / std::string pipeline that template literals use.
   function isStringBearingConcatChain(e: ts.Expression): boolean {
     if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) || ts.isTemplateExpression(e)) return true;
+    if (ts.isIdentifier(e) && activeStringVars.has(e.text)) return true;
     if (
       ts.isBinaryExpression(e) &&
       e.operatorToken.kind === ts.SyntaxKind.PlusToken
@@ -406,6 +410,22 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // Also handle nested expressions like pinNumber(someVar)
       if (expr.arguments.length >= 1) {
         return expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
+      }
+    }
+
+    // ---- Array method translation for mutable arrays (StaticArray) -----------
+    // Translate push → push_back, pop → pop_back at the expression level.
+    if (ts.isPropertyAccessExpression(expr.expression) &&
+        ts.isIdentifier(expr.expression.expression) &&
+        mutableArrayVars.has(expr.expression.expression.text)) {
+      const arrName = expr.expression.expression.text;
+      const methodName = expr.expression.name.text;
+      if (methodName === "pop") {
+        return { kind: "raw", value: `${arrName}.pop_back()` };
+      }
+      if (methodName === "push") {
+        const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
+        return { kind: "raw", value: `${arrName}.push_back(${argsText})` };
       }
     }
 
@@ -833,12 +853,22 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
+      if (ts.isIdentifier(expr.expression) && filteredArrayLengthVars.has(expr.expression.text)) {
+        const lenVar = filteredArrayLengthVars.get(expr.expression.text)!;
+        return { kind: "identifier", value: lenVar };
+      }
+      if (ts.isIdentifier(expr.expression) && mutableArrayVars.has(expr.expression.text)) {
+        return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
+      }
       if (ts.isIdentifier(expr.expression) && activeCArrayVars.has(expr.expression.text)) {
         const objName = renderExprAsText(object);
         return { kind: "raw", value: `(sizeof(${objName}) / sizeof(${objName}[0]))` };
       }
       if (ts.isCallExpression(expr.expression)) {
         return { kind: "raw", value: `strlen(${renderExprAsText(object)})` };
+      }
+      if (ts.isIdentifier(expr.expression) && activeStringVars.has(expr.expression.text)) {
+        return { kind: "raw", value: `strlen(${escapeCppKeyword(expr.expression.text)})` };
       }
       return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
     }
@@ -866,23 +896,35 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   if (ts.isArrayLiteralExpression(expr)) {
     // Check for spread element in array
     const spreadIndex = expr.elements.findIndex(e => ts.isSpreadElement(e));
-    
+
     if (spreadIndex !== -1) {
-      // Handle spread in array: [...arr, x, y] 
-      // We only support spread at the beginning for now
+      // Handle spread in array: [...arr, x, y]
       const spreadElement = expr.elements[spreadIndex];
       if (ts.isSpreadElement(spreadElement)) {
+        // If spread source is a known-size array variable, expand inline
+        if (ts.isIdentifier(spreadElement.expression) && arrayLiteralSizes.has(spreadElement.expression.text)) {
+          const srcName = spreadElement.expression.text;
+          const srcSize = arrayLiteralSizes.get(srcName)!;
+          const expandedElements: ExpressionIR[] = [];
+          for (let i = 0; i < srcSize; i++) {
+            expandedElements.push({ kind: "raw", value: `${srcName}[${i}]` });
+          }
+          for (const elem of expr.elements.slice(spreadIndex + 1)) {
+            expandedElements.push(expressionToIR(elem, sourceText, diagnostics));
+          }
+          return { kind: "array", elementType: "auto", elements: expandedElements };
+        }
         const spreadExpr = expressionToIR(spreadElement.expression, sourceText, diagnostics);
         const additionalElements = expr.elements
           .slice(spreadIndex + 1)
           .map(e => expressionToIR(e, sourceText, diagnostics));
-        
+
         // Emit as spread_array IR node
-        return { 
-          kind: "spread_array", 
-          elementType: "auto", 
-          spreadExpr, 
-          additionalElements 
+        return {
+          kind: "spread_array",
+          elementType: "auto",
+          spreadExpr,
+          additionalElements
         };
       }
     }

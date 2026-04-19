@@ -274,7 +274,8 @@ function collectSegmentsRecursive(
       collectSegmentsRecursive(receiver, sf, segments, ctx);
       // Check if the argument is a function (arrow or function expression)
       const argNode = expr.arguments[0];
-      const fnInfo = argNode ? tryExtractFunction(argNode, sf, ctx) : null;
+      const isString = methodName === 'expectString';
+      const fnInfo = argNode ? tryExtractFunction(argNode, sf, ctx, isString) : null;
       if (fnInfo) {
         segments.push({
           kind: 'expect',
@@ -345,11 +346,11 @@ function emitSegments(segments: ChainSegment[], ctx: PreprocessorContext): void 
 
         if (isSimple) {
           // No hoisting needed — can inline directly
-          emitExpectProtocol(actualExpr, seg.matcher, seg.matcherArgs ?? [], ctx);
+          emitExpectProtocol(actualExpr, seg.matcher, seg.matcherArgs ?? [], ctx, isString);
         } else {
           // Hoist: const __tc_v1: number = A0.readAnalog();
           ctx.emit(`const ${tmpVar}: ${typeAnnotation} = ${actualExpr};`);
-          emitExpectProtocol(tmpVar, seg.matcher, seg.matcherArgs ?? [], ctx);
+          emitExpectProtocol(tmpVar, seg.matcher, seg.matcherArgs ?? [], ctx, isString);
         }
         break;
       }
@@ -369,7 +370,20 @@ function emitExpectProtocol(
   matcher: string,
   matcherArgs: string[],
   ctx: PreprocessorContext,
+  isString: boolean = false,
 ): void {
+  // For string expectations, emit expected value separately to avoid
+  // breaking the F() macro with embedded quotes/commas.
+  if (isString && matcher === 'toBe') {
+    // Strip TypeScript quotes from the expected string value
+    const rawExpected = (matcherArgs[0] ?? '').replace(/^["']|["']$/g, '');
+    ctx.emit(`Serial.print(${ctx.flash(`[TC:EXPECT:${matcher}:`)});`);
+    ctx.emit(`Serial.print("${escapeProtocol(rawExpected)}");`);
+    ctx.emit(`Serial.print(${ctx.flash(':')});`);
+    ctx.emit(`Serial.print(${actualVar});`);
+    ctx.emit(`Serial.println(${ctx.flash(']')});`);
+    return;
+  }
   const expectedPart = matcherArgs.join(',');
   ctx.emit(`Serial.print(${ctx.flash(`[TC:EXPECT:${matcher}:${expectedPart}:`)});`);
   ctx.emit(`Serial.print(${actualVar});`);
@@ -448,6 +462,7 @@ function tryExtractFunction(
   node: ts.Expression,
   sf: ts.SourceFile,
   ctx: PreprocessorContext,
+  isStringExpect?: boolean,
 ): ExtractedFnInfo | null {
   // Unwrap IIFE: `(() => { ... })()` → get the inner function
   let fnNode: ts.Expression = node;
@@ -484,7 +499,8 @@ function tryExtractFunction(
     fnBody = `{ return ${body.getText(sf)}; }`;
   }
 
-  const fnDef = `function ${fnName}(): number ${fnBody}`;
+  const returnType = isStringExpect ? 'string' : 'number';
+  const fnDef = `function ${fnName}(): ${returnType} ${fnBody}`;
   const fnCall = `${fnName}()`;
 
   return { fnDef, fnCall };

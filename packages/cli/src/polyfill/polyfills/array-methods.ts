@@ -62,7 +62,7 @@ function detectArrayMethodsInStatement(
   if (stmt.kind === "call") {
     // Check for array methods: .push, .pop, .shift, .unshift, etc.
     const callee = stmt.callee;
-    const arrayMethods = ["push", "pop", "shift", "unshift", "length", "map", "filter", "forEach"];
+    const arrayMethods = ["push", "pop", "push_back", "pop_back", "indexOf", "shift", "unshift", "length", "map", "filter", "forEach"];
     
     for (const method of arrayMethods) {
       if (callee.endsWith(`.${method}`) || callee.includes(`.${method}(`)) {
@@ -193,6 +193,13 @@ struct StaticArray {
     const T* end() const { return data + length; }
     
     void clear() { length = 0; }
+
+    size_t indexOf(const T& value) const {
+        for (size_t i = 0; i < length; i++) {
+            if (data[i] == value) return i;
+        }
+        return (size_t)-1;
+    }
 };
 `);
 

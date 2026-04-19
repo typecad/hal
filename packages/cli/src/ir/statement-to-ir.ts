@@ -6,9 +6,10 @@ import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnl
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, nestedFunctionAliases, activePinAliases, activeBusAliases, activeCArrayVars } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
+import { enumDeclarationToIR } from "./declaration-builders";
 import { extractRootAndChain } from "./ast-patterns";
 
 export function callToStatement(
@@ -207,7 +208,35 @@ export function callToStatement(
     
     return innerStmt;
   }
-  
+
+  // ── Array method translation: push → push_back, pop → pop_back ──────────
+  if (ts.isPropertyAccessExpression(call.expression)) {
+    const methodName = call.expression.name.text;
+    const objExpr = call.expression.expression;
+    if (ts.isIdentifier(objExpr) && mutableArrayVars.has(objExpr.text)) {
+      if (methodName === "push") {
+        return {
+          kind: "call",
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+          leadingComments: comments.leadingComments,
+          trailingComments: comments.trailingComments,
+          callee: `${objExpr.text}.push_back`,
+          args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+        };
+      }
+      if (methodName === "pop") {
+        return {
+          kind: "call",
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+          leadingComments: comments.leadingComments,
+          trailingComments: comments.trailingComments,
+          callee: `${objExpr.text}.pop_back`,
+          args: [],
+        };
+      }
+    }
+  }
+
   // Format callee, using -> for pointer variables
   let calleeText: string;
   if (ts.isPropertyAccessExpression(call.expression)) {
@@ -518,6 +547,49 @@ export function expressionStatementToIR(
   }
 
   if (ts.isBinaryExpression(expr) && ts.isIdentifier(expr.left)) {
+    // Handle ||= operator: x ||= val → x = (x == TYPECODE_UNDEFINED) ? val : x;
+    if (expr.operatorToken.kind === ts.SyntaxKind.BarBarEqualsToken) {
+      const comments = extractNodeComments(statement, sourceText);
+      const varName = expr.left.text;
+      const valIR = expressionToIR(expr.right, sourceText, diagnostics);
+      return {
+        kind: "assign",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: varName,
+        operator: "=",
+        value: {
+          kind: "ternary",
+          condition: {
+            kind: "binary",
+            operator: "==",
+            left: { kind: "identifier", value: varName },
+            right: { kind: "identifier", value: "TYPECODE_UNDEFINED" },
+          },
+          whenTrue: valIR,
+          whenFalse: { kind: "identifier", value: varName },
+        },
+      };
+    }
+    // Handle &&= operator: x &&= val → if (x) x = val;
+    if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken) {
+      const comments = extractNodeComments(statement, sourceText);
+      return {
+        kind: "if",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        condition: { kind: "identifier", value: expr.left.text },
+        thenBranch: [{
+          kind: "assign",
+          sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+          target: expr.left.text,
+          operator: "=",
+          value: expressionToIR(expr.right, sourceText, diagnostics),
+        }],
+      };
+    }
     const operator = assignmentOperatorToString(expr.operatorToken.kind);
     if (!operator) {
       return undefined;
@@ -1331,6 +1403,84 @@ function hoistNestedClass(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Array method pre-scan
+// ---------------------------------------------------------------------------
+
+const ARRAY_MUTATING_METHODS = new Set(["push", "pop", "indexOf"]);
+
+function prescanArrayUsage(statement: ts.Statement): void {
+  if (ts.isVariableStatement(statement)) {
+    for (const decl of statement.declarationList.declarations) {
+      if (ts.isIdentifier(decl.name) && decl.initializer) {
+        if (ts.isArrayLiteralExpression(decl.initializer)) {
+          arrayLiteralSizes.set(decl.name.text, decl.initializer.elements.length);
+        }
+        prescanExprForArrayMethods(decl.initializer);
+      }
+    }
+  } else if (ts.isExpressionStatement(statement)) {
+    prescanExprForArrayMethods(statement.expression);
+  } else if (ts.isReturnStatement(statement) && statement.expression) {
+    prescanExprForArrayMethods(statement.expression);
+  } else if (ts.isIfStatement(statement)) {
+    prescanArrayUsageBlock(statement.thenStatement);
+    if (statement.elseStatement) prescanArrayUsageBlock(statement.elseStatement);
+  } else if (ts.isForStatement(statement) || ts.isWhileStatement(statement) || ts.isDoStatement(statement)) {
+    prescanArrayUsageBlock(statement.statement);
+  } else if (ts.isForOfStatement(statement) || ts.isForInStatement(statement)) {
+    prescanArrayUsageBlock(statement.statement);
+  } else if (ts.isBlock(statement)) {
+    for (const s of statement.statements) prescanArrayUsage(s);
+  }
+}
+
+function prescanArrayUsageBlock(stmt: ts.Statement): void {
+  if (ts.isBlock(stmt)) {
+    for (const s of stmt.statements) prescanArrayUsage(s);
+  } else {
+    prescanArrayUsage(stmt);
+  }
+}
+
+function prescanExprForArrayMethods(expr: ts.Expression): void {
+  if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
+    const methodName = expr.expression.name.text;
+    if (ARRAY_MUTATING_METHODS.has(methodName) && ts.isIdentifier(expr.expression.expression)) {
+      const varName = expr.expression.expression.text;
+      if (arrayLiteralSizes.has(varName)) {
+        mutableArrayVars.add(varName);
+      }
+    }
+  }
+}
+
+function buildInlineForLoop(
+  span: any,
+  srcSize: number,
+  srcName: string,
+  paramName: string,
+  bodyExpr: ts.Expression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  assignTarget: string,
+  _isFilter: boolean,
+): StatementIR {
+  const bodyIR = expressionToIR(bodyExpr, sourceText, diagnostics);
+  return {
+    kind: "for",
+    sourceSpan: span,
+    initializer: { kind: "var_decl", sourceSpan: span, name: "__tc_i", storage: "let", cppType: "int", initializer: { kind: "number", value: 0 } },
+    condition: { kind: "binary", left: { kind: "identifier", value: "__tc_i" }, operator: "<", right: { kind: "number", value: srcSize } },
+    increment: { kind: "update", sourceSpan: span, target: "__tc_i", operator: "++", prefix: false },
+    body: [
+      { kind: "var_decl", sourceSpan: span, name: paramName, storage: "const", cppType: "auto",
+        initializer: { kind: "raw", value: `${srcName}[__tc_i]` } },
+      { kind: "assign", sourceSpan: span, target: assignTarget, operator: "=", value: bodyIR },
+    ],
+  };
+}
+
 export function lowerStatementList(
   statements: ts.NodeArray<ts.Statement> | ts.Statement[],
   fileName: string,
@@ -1386,6 +1536,16 @@ export function lowerStatementList(
     }
   }
 
+  // Phase 2.6: Hoist nested enum declarations.
+  for (const statement of statements) {
+    if (ts.isEnumDeclaration(statement)) {
+      const enumIR = enumDeclarationToIR(statement, fileName, sourceText);
+      if (enumIR && !hoistedNestedEnums.some(e => e.name === enumIR.name)) {
+        hoistedNestedEnums.push(enumIR);
+      }
+    }
+  }
+
   // Collect pointer variables from this scope (vars initialized with 'new')
   const scopePointerVars = new Map<string, string>();
   for (const statement of statements) {
@@ -1402,12 +1562,22 @@ export function lowerStatementList(
     }
   }
 
+  // Phase 2.7: Pre-scan for array method usage (push, pop, indexOf).
+  mutableArrayVars.clear();
+  arrayLiteralSizes.clear();
+  for (const statement of statements) {
+    prescanArrayUsage(statement);
+  }
+
   // Phase 3: Process remaining (non-function, non-class) statements.
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement)) {
       continue; // Already hoisted
     }
     if (ts.isClassDeclaration(statement)) {
+      continue; // Already hoisted
+    }
+    if (ts.isEnumDeclaration(statement)) {
       continue; // Already hoisted
     }
     const result = lowerStatement(
@@ -1785,6 +1955,214 @@ export function variableStatementToIR(
 
     loweredDeclaration.cppType = (declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType) as Exclude<CppTypeHint, "void">;
     localVariableTypes.set(declaration.name.text, declarationType.resolvedType);
+
+    // Track string-typed variables for .length → strlen() conversion
+    if (declarationType.resolvedType === "std::string") {
+      activeStringVars.add(declaration.name.text);
+    }
+
+    // ── Array method handling ──────────────────────────────────────────────
+    if (ts.isIdentifier(declaration.name) && actualInitializer) {
+      const varName = declaration.name.text;
+
+      // 1) Mutable array (push/pop/indexOf) → StaticArray with push_back init
+      if (mutableArrayVars.has(varName) && ts.isArrayLiteralExpression(actualInitializer)) {
+        const elements = actualInitializer.elements;
+        lowered.push({
+          kind: "var_decl",
+          sourceSpan: loweredDeclaration.sourceSpan,
+          leadingComments: loweredDeclaration.leadingComments,
+          trailingComments: [],
+          name: varName,
+          storage: "let",
+          cppType: "StaticArray<int>",
+          initializer: undefined,
+        });
+        for (let ei = 0; ei < elements.length; ei++) {
+          lowered.push({
+            kind: "call",
+            sourceSpan: loweredDeclaration.sourceSpan,
+            callee: `${varName}.push_back`,
+            args: [expressionToIR(elements[ei], sourceText, diagnostics)],
+          });
+        }
+        commentsAssigned = true;
+        continue;
+      }
+
+      // 2) arr.map(arrowFn) → inline loop
+      if (ts.isCallExpression(actualInitializer) &&
+          ts.isPropertyAccessExpression(actualInitializer.expression) &&
+          actualInitializer.expression.name.text === "map" &&
+          ts.isIdentifier(actualInitializer.expression.expression)) {
+        const srcName = actualInitializer.expression.expression.text;
+        const srcSize = arrayLiteralSizes.get(srcName);
+        const arrowFn = actualInitializer.arguments[0];
+        if (srcSize !== undefined && arrowFn && (ts.isArrowFunction(arrowFn) || ts.isFunctionExpression(arrowFn))) {
+          const param = arrowFn.parameters[0];
+          const paramName = param && ts.isIdentifier(param.name) ? param.name.text : "__x";
+          const bodyExpr = ts.isBlock(arrowFn.body) ? undefined : arrowFn.body;
+          if (bodyExpr) {
+            const span = loweredDeclaration.sourceSpan;
+            // result array
+            const zeroElements: ExpressionIR[] = [];
+            for (let zi = 0; zi < srcSize; zi++) zeroElements.push({ kind: "number", value: 0 });
+            lowered.push({
+              kind: "var_decl",
+              sourceSpan: span,
+              leadingComments: loweredDeclaration.leadingComments,
+              trailingComments: [],
+              name: varName,
+              storage: "let",
+              cppType: "auto",
+              initializer: { kind: "array", elementType: "auto", elements: zeroElements },
+            });
+            activeCArrayVars.add(varName);
+            // for loop
+            lowered.push(buildInlineForLoop(
+              span, srcSize, srcName, paramName, bodyExpr,
+              sourceText, diagnostics, `${varName}[__tc_i]`, false,
+            ));
+            commentsAssigned = true;
+            continue;
+          }
+        }
+      }
+
+      // 3) arr.filter(arrowFn) → inline loop with conditional push
+      if (ts.isCallExpression(actualInitializer) &&
+          ts.isPropertyAccessExpression(actualInitializer.expression) &&
+          actualInitializer.expression.name.text === "filter" &&
+          ts.isIdentifier(actualInitializer.expression.expression)) {
+        const srcName = actualInitializer.expression.expression.text;
+        const srcSize = arrayLiteralSizes.get(srcName);
+        const arrowFn = actualInitializer.arguments[0];
+        if (srcSize !== undefined && arrowFn && (ts.isArrowFunction(arrowFn) || ts.isFunctionExpression(arrowFn))) {
+          const param = arrowFn.parameters[0];
+          const paramName = param && ts.isIdentifier(param.name) ? param.name.text : "__x";
+          const bodyExpr = ts.isBlock(arrowFn.body) ? undefined : arrowFn.body;
+          if (bodyExpr) {
+            const span = loweredDeclaration.sourceSpan;
+            const lenVar = `${varName}__len`;
+            // result array (oversized)
+            const zeroElements: ExpressionIR[] = [];
+            for (let zi = 0; zi < srcSize; zi++) zeroElements.push({ kind: "number", value: 0 });
+            lowered.push({
+              kind: "var_decl", sourceSpan: span,
+              leadingComments: loweredDeclaration.leadingComments, trailingComments: [],
+              name: varName, storage: "let", cppType: "auto",
+              initializer: { kind: "array", elementType: "auto", elements: zeroElements },
+            });
+            // length counter
+            lowered.push({
+              kind: "var_decl", sourceSpan: span,
+              leadingComments: [], trailingComments: [],
+              name: lenVar, storage: "let", cppType: "int",
+              initializer: { kind: "number", value: 0 },
+            });
+            filteredArrayLengthVars.set(varName, lenVar);
+            // for loop with conditional push
+            const conditionIR = expressionToIR(bodyExpr, sourceText, diagnostics);
+            lowered.push({
+              kind: "for",
+              sourceSpan: span,
+              initializer: { kind: "var_decl", sourceSpan: span, name: "__tc_i", storage: "let", cppType: "int", initializer: { kind: "number", value: 0 } },
+              condition: { kind: "binary", left: { kind: "identifier", value: "__tc_i" }, operator: "<", right: { kind: "number", value: srcSize } },
+              increment: { kind: "update", sourceSpan: span, target: "__tc_i", operator: "++", prefix: false },
+              body: [
+                { kind: "var_decl", sourceSpan: span, name: paramName, storage: "const", cppType: "auto",
+                  initializer: { kind: "raw", value: `${srcName}[__tc_i]` } },
+                { kind: "if", sourceSpan: span,
+                  condition: conditionIR,
+                  thenBranch: [
+                    { kind: "assign", sourceSpan: span, target: `${varName}[${lenVar}]`, operator: "=",
+                      value: { kind: "raw", value: `${srcName}[__tc_i]` } },
+                    { kind: "update", sourceSpan: span, target: lenVar, operator: "++", prefix: false },
+                  ],
+                },
+              ],
+            });
+            commentsAssigned = true;
+            continue;
+          }
+        }
+      }
+
+      // 4) arr.reduce(arrowFn, init) → inline accumulation loop
+      if (ts.isCallExpression(actualInitializer) &&
+          ts.isPropertyAccessExpression(actualInitializer.expression) &&
+          actualInitializer.expression.name.text === "reduce" &&
+          ts.isIdentifier(actualInitializer.expression.expression)) {
+        const srcName = actualInitializer.expression.expression.text;
+        const srcSize = arrayLiteralSizes.get(srcName);
+        const arrowFn = actualInitializer.arguments[0];
+        const initVal = actualInitializer.arguments[1];
+        if (srcSize !== undefined && arrowFn && (ts.isArrowFunction(arrowFn) || ts.isFunctionExpression(arrowFn))) {
+          const accParam = arrowFn.parameters[0];
+          const valParam = arrowFn.parameters[1];
+          const accName = accParam && ts.isIdentifier(accParam.name) ? accParam.name.text : "__acc";
+          const valName = valParam && ts.isIdentifier(valParam.name) ? valParam.name.text : "__val";
+          const bodyExpr = ts.isBlock(arrowFn.body) ? undefined : arrowFn.body;
+          if (bodyExpr && initVal) {
+            const span = loweredDeclaration.sourceSpan;
+            // accumulator variable with initial value
+            lowered.push({
+              kind: "var_decl", sourceSpan: span,
+              leadingComments: loweredDeclaration.leadingComments, trailingComments: [],
+              name: varName, storage: "let", cppType: "auto",
+              initializer: expressionToIR(initVal, sourceText, diagnostics),
+            });
+            // for loop: for each element, compute new accumulator
+            const bodyIR = expressionToIR(bodyExpr, sourceText, diagnostics);
+            lowered.push({
+              kind: "for",
+              sourceSpan: span,
+              initializer: { kind: "var_decl", sourceSpan: span, name: "__tc_i", storage: "let", cppType: "int", initializer: { kind: "number", value: 0 } },
+              condition: { kind: "binary", left: { kind: "identifier", value: "__tc_i" }, operator: "<", right: { kind: "number", value: srcSize } },
+              increment: { kind: "update", sourceSpan: span, target: "__tc_i", operator: "++", prefix: false },
+              body: [
+                { kind: "var_decl", sourceSpan: span, name: valName, storage: "const", cppType: "auto",
+                  initializer: { kind: "raw", value: `${srcName}[__tc_i]` } },
+                { kind: "var_decl", sourceSpan: span, name: accName, storage: "const", cppType: "auto",
+                  initializer: { kind: "identifier", value: varName } },
+                { kind: "assign", sourceSpan: span, target: varName, operator: "=", value: bodyIR },
+              ],
+            });
+            commentsAssigned = true;
+            continue;
+          }
+        }
+      }
+
+      // 5) const x = arr.push(val) → push_back + x = arr.size()
+      if (ts.isCallExpression(actualInitializer) &&
+          ts.isPropertyAccessExpression(actualInitializer.expression) &&
+          actualInitializer.expression.name.text === "push" &&
+          ts.isIdentifier(actualInitializer.expression.expression)) {
+        const arrName = actualInitializer.expression.expression.text;
+        if (mutableArrayVars.has(arrName) && actualInitializer.arguments.length > 0) {
+          const span = loweredDeclaration.sourceSpan;
+          lowered.push({
+            kind: "call", sourceSpan: span,
+            callee: `${arrName}.push_back`,
+            args: [expressionToIR(actualInitializer.arguments[0], sourceText, diagnostics)],
+          });
+          lowered.push({
+            kind: "var_decl", sourceSpan: span,
+            leadingComments: loweredDeclaration.leadingComments, trailingComments: [],
+            name: varName, storage, cppType: "auto",
+            initializer: { kind: "raw", value: `${arrName}.size()` },
+          });
+          commentsAssigned = true;
+          continue;
+        }
+      }
+
+      // 6) Regular array literal → track in activeCArrayVars for .length → sizeof
+      if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
+        activeCArrayVars.add(varName);
+      }
+    }
 
     // â”€â”€ Ownership kind detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Detect Ref<T>, MutRef<T>, Owned<T> wrapper types and store the

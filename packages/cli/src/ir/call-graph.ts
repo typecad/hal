@@ -50,6 +50,18 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
     // Add parameters as local (don't count as external dependencies)
     const localBindings = new Set(fn.parameters.map((p) => p.name));
 
+    // Collect type references from parameter types (e.g. SampleWindow)
+    for (const param of fn.parameters) {
+      const typeMatches = param.cppType.match(/[A-Za-z_][A-Za-z0-9_]*/g);
+      if (typeMatches) {
+        for (const match of typeMatches) {
+          if (!["int", "float", "bool", "void", "auto", "const", "char", "std", "vector", "string", "function", "map", "set"].includes(match)) {
+            dependencies.add(match);
+          }
+        }
+      }
+    }
+
     // Collect identifiers from function body
     for (const statement of fn.statements) {
       for (const id of collectStatementIdentifiers(statement)) {

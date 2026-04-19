@@ -31,6 +31,8 @@ export interface StatementRendererContext {
   pointerVarTypes?: Map<string, string>;
   /** Set of pointer struct fields for -> access */
   pointerStructFields?: Set<string>;
+  /** Set of variable names known to hold string values */
+  stringVarNames?: Set<string>;
 }
 
 /**
@@ -78,6 +80,7 @@ export class StatementRenderer {
       largeEnumNames: context.largeEnumNames,
       knownFunctionReturnTypes: context.knownFunctionReturnTypes,
       pointerVarTypes: context.pointerVarTypes,
+      stringVarNames: context.stringVarNames,
     });
   }
 
@@ -100,7 +103,12 @@ export class StatementRenderer {
   renderWithPrelude(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string): { prelude: string[]; statement: string } {
     this.expressionRenderer.clearPrelude();
     const rendered = this.render(statement, forHeader, calleeTransformer);
-    const prelude = this.expressionRenderer.drainPrelude();
+    let prelude = this.expressionRenderer.drainPrelude();
+    // When returning a snprintf buffer, make it static so the pointer remains
+    // valid after the function returns (avoids dangling pointer to local stack).
+    if (statement.kind === "return" && prelude.length > 0) {
+      prelude = prelude.map(line => line.replace(/^char /, "static char "));
+    }
     return { prelude, statement: rendered };
   }
 

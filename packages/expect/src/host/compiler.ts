@@ -257,32 +257,38 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
   const buildConfigPath = path.join(buildDir, 'typecode.config.ts');
 
   if (fs.existsSync(baseConfigPath)) {
-    let importPath = path.relative(buildDir, baseConfigPath).replace(/\\/g, '/');
-    importPath = importPath.replace(/\.ts$/, '');
-    if (!importPath.startsWith('.')) {
-      importPath = `./${importPath}`;
+    // Parse base config via AST to extract scalar values, then inline them.
+    // This avoids spreads (...baseConfig) which the config loader cannot evaluate.
+    const baseValues = parseConfigScalars(baseConfigPath);
+    const lines = [
+      `import type { TypecodeConfig } from '@typecode/core';`,
+      '',
+      'const config: TypecodeConfig = {',
+      `  entry: './${entryFileName}',`,
+    ];
+    if (baseValues.target) lines.push(`  target: '${baseValues.target}',`);
+    if (baseValues.board) lines.push(`  board: '${baseValues.board}',`);
+    if (baseValues.framework) lines.push(`  framework: '${baseValues.framework}',`);
+    if (baseValues.fqbn) lines.push(`  fqbn: '${baseValues.fqbn}',`);
+
+    lines.push('  output: {');
+    if (baseValues.outputFramework) lines.push(`    framework: '${baseValues.outputFramework}',`);
+    if (baseValues.outputOptimize) lines.push(`    optimize: '${baseValues.outputOptimize}',`);
+    lines.push(`    outDir: './out',`);
+    lines.push('  },');
+
+    if (baseValues.consoleBaudRate) {
+      lines.push('  console: {');
+      lines.push(`    baudRate: ${baseValues.consoleBaudRate},`);
+      lines.push('  },');
     }
 
-    fs.writeFileSync(
-      buildConfigPath,
-      [
-        `import type { TypecodeConfig } from '@typecode/core';`,
-        `import baseConfig from '${importPath}';`,
-        '',
-        'const config: TypecodeConfig = {',
-        '  ...baseConfig,',
-        `  entry: './${entryFileName}',`,
-        '  output: {',
-        '    ...(baseConfig.output ?? {}),',
-        `    outDir: './out',`,
-        '  },',
-        '};',
-        '',
-        'export default config;',
-        '',
-      ].join('\n'),
-      'utf8',
-    );
+    lines.push('};');
+    lines.push('');
+    lines.push('export default config;');
+    lines.push('');
+
+    fs.writeFileSync(buildConfigPath, lines.join('\n'), 'utf8');
     return;
   }
 
@@ -306,4 +312,72 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
     ].join('\n'),
     'utf8',
   );
+}
+
+/**
+ * Simple AST-based extraction of scalar values from a typecode.config.ts file.
+ * Walks the default-exported object literal and collects string/number/boolean values.
+ */
+function parseConfigScalars(configPath: string): Record<string, string | number | undefined> {
+  const ts = require('typescript');
+  const sourceText = fs.readFileSync(configPath, 'utf-8');
+  const sourceFile = ts.createSourceFile(configPath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+  // Find the exported config object literal
+  let configObject: any = undefined;
+  for (const stmt of sourceFile.statements) {
+    if (ts.isExportAssignment(stmt) && !stmt.isExportEquals && ts.isObjectLiteralExpression(stmt.expression)) {
+      configObject = stmt.expression;
+      break;
+    }
+    if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer && ts.isObjectLiteralExpression(decl.initializer)) {
+          // Check if this variable is the default export
+          for (const s2 of sourceFile.statements) {
+            if (ts.isExportAssignment(s2) && ts.isIdentifier(s2.expression) && s2.expression.text === decl.name.text) {
+              configObject = decl.initializer;
+              break;
+            }
+          }
+          if (configObject) break;
+        }
+      }
+      if (configObject) break;
+    }
+  }
+
+  const flat: Record<string, string | number | undefined> = {};
+  if (!configObject) return flat;
+
+  function walk(obj: any, prefix: string): void {
+    for (const prop of obj.properties) {
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const key = ts.isIdentifier(prop.name) ? prop.name.text : undefined;
+      if (!key) continue;
+      const fullKey = prefix ? `${prefix}.${key}` : key;
+      if (ts.isObjectLiteralExpression(prop.initializer)) {
+        walk(prop.initializer, fullKey);
+      } else {
+        const val = prop.initializer;
+        if (ts.isStringLiteral(val) || ts.isNoSubstitutionTemplateLiteral(val)) {
+          flat[fullKey] = val.text;
+        } else if (ts.isNumericLiteral(val)) {
+          flat[fullKey] = Number(val.text);
+        }
+      }
+    }
+  }
+
+  walk(configObject, '');
+
+  return {
+    target: flat['target'] as string | undefined,
+    board: flat['board'] as string | undefined,
+    framework: flat['framework'] as string | undefined,
+    fqbn: flat['fqbn'] as string | undefined,
+    outputFramework: flat['output.framework'] as string | undefined,
+    outputOptimize: flat['output.optimize'] as string | undefined,
+    consoleBaudRate: flat['console.baudRate'] as number | undefined,
+  };
 }

@@ -7,6 +7,7 @@ export type CppTypeHint =
   | "bool"
   | "auto"
   | "void"
+  | "long"
   | "std::string"
   | "unsigned int"
   | `std::vector<${string}>`
@@ -188,6 +189,12 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   }
 
   const resolvedNode = resolveAliasedTypeNode(node, typeAliases) ?? node;
+
+  // If the resolved node is an object literal type (e.g. type X = { a: number }),
+  // return the original type reference name as the C++ struct type.
+  if (ts.isTypeLiteralNode(resolvedNode) && ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+    return node.typeName.text as CppTypeHint;
+  }
 
   if (ts.isUnionTypeNode(resolvedNode)) {
     const nonNullTypes = resolvedNode.types.filter(t => {
@@ -617,6 +624,11 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
               result.set(fn.name.text, "float");
               continue;
             }
+            // Promote int → long when returning large enum values
+            if (returnsLargeEnumValue(fn.body, returns)) {
+              result.set(fn.name.text, "long");
+              continue;
+            }
           }
           result.set(fn.name.text, annotatedType);
           continue;
@@ -652,6 +664,54 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
   }
 
   return result;
+}
+
+/**
+ * Check if a function body contains enum declarations with values outside the
+ * 16-bit signed int range (>32767 or <-32768) and any return expression
+ * accesses those enums.
+ */
+function returnsLargeEnumValue(
+  body: ts.Block,
+  returns: ts.ReturnStatement[],
+): boolean {
+  const largeEnumNames = new Set<string>();
+
+  const walkForEnums = (node: ts.Node): void => {
+    if (ts.isEnumDeclaration(node) && node.name) {
+      for (const member of node.members) {
+        let value: number | undefined;
+        if (member.initializer && ts.isNumericLiteral(member.initializer)) {
+          value = Number(member.initializer.text);
+        } else if (
+          member.initializer &&
+          ts.isPrefixUnaryExpression(member.initializer) &&
+          member.initializer.operator === ts.SyntaxKind.MinusToken &&
+          ts.isNumericLiteral(member.initializer.operand)
+        ) {
+          value = -Number((member.initializer.operand as ts.NumericLiteral).text);
+        }
+        if (value !== undefined && (value > 32767 || value < -32768)) {
+          largeEnumNames.add(node.name.text);
+          break;
+        }
+      }
+    }
+    node.forEachChild(walkForEnums);
+  };
+  walkForEnums(body);
+
+  if (largeEnumNames.size === 0) return false;
+
+  for (const ret of returns) {
+    if (ret.expression &&
+        ts.isPropertyAccessExpression(ret.expression) &&
+        ts.isIdentifier(ret.expression.expression) &&
+        largeEnumNames.has(ret.expression.expression.text)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function resolveFunctionReturnType(name: string, functionReturnTypes: Map<string, CppTypeHint>): CppType {

@@ -292,6 +292,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     const watch = argv.includes("--watch") || argv.includes("-w");
     const debug = argv.includes("--debug");
     const force = argv.includes("--force");
+    const skipTypeCheck = argv.includes("--skip-type-check");
     const expect = argv.includes("--expect");
     const expectArg = readFlag(argv, "--expect");
     const expectFile = expect && expectArg && !expectArg.startsWith("-") ? expectArg : undefined;
@@ -363,6 +364,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
       treeShaking,
       debug,
       force,
+      skipTypeCheck,
       expect,
       expectFile,
     };

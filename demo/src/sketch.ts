@@ -438,4 +438,5 @@ describe("Variables and Scoping")
   //       return colors[0];
   //     })()
   //   ).toBe("red");
+
 done();
