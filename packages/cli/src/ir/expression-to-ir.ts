@@ -442,7 +442,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
 
     // ---- Array method translation for mutable arrays (StaticArray) -----------
-    // Translate push → push_back, pop → pop_back at the expression level.
+    // Translate push → push_back, pop → pop_back, indexOf → indexOf at the expression level.
     if (ts.isPropertyAccessExpression(expr.expression) &&
         ts.isIdentifier(expr.expression.expression) &&
         mutableArrayVars.has(expr.expression.expression.text)) {
@@ -455,6 +455,21 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
         return { kind: "raw", value: `${arrName}.push_back(${argsText})` };
       }
+      if (methodName === "indexOf") {
+        const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
+        return { kind: "raw", value: `${arrName}.indexOf(${argsText})` };
+      }
+    }
+
+    // ---- String indexOf wrapping (const char* needs String() on Arduino) ---
+    if (ts.isPropertyAccessExpression(expr.expression) &&
+        ts.isIdentifier(expr.expression.expression) &&
+        expr.expression.name.text === "indexOf" &&
+        !mutableArrayVars.has(expr.expression.expression.text) &&
+        !activeCArrayVars.has(expr.expression.expression.text)) {
+      const varName = expr.expression.expression.text;
+      const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
+      return { kind: "raw", value: `String(${varName}).indexOf(${argsText})` };
     }
 
     // ---- Typecode SDK method call detection (expression context) -----------

@@ -1,4 +1,11 @@
+#pragma once
+
 #include <Arduino.h>
+
+struct SampleWindow {
+  int low;
+  int high;
+};
 
 class RollingCounter {
 public:
@@ -15,9 +22,9 @@ public:
 
 };
 
-int clampToWindow(int value, int window);
+int clampToWindow(int value, SampleWindow window);
 
-int clampToWindow(int value, int window)
+int clampToWindow(int value, SampleWindow window)
 {
   if (value < window.low)
   {

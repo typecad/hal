@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "generatedFilePath": "C:\\typecad\\typecode\\demo\\src\\out\\12-modules-types.test\\transpiler-support.cpp",
+  "generatedFilePath": "C:\\typecad\\typecode\\demo\\src\\out\\12-modules-types.test\\transpiler-support.h",
   "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
   "entries": [
     {
-      "generatedStartLine": 6,
+      "generatedStartLine": 11,
       "generatedStartColumn": 1,
-      "generatedEndLine": 6,
+      "generatedEndLine": 11,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
@@ -20,9 +20,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 12,
+      "generatedStartLine": 17,
       "generatedStartColumn": 1,
-      "generatedEndLine": 12,
+      "generatedEndLine": 17,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
@@ -36,9 +36,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 13,
+      "generatedStartLine": 18,
       "generatedStartColumn": 1,
-      "generatedEndLine": 13,
+      "generatedEndLine": 18,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
@@ -52,10 +52,10 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 18,
+      "generatedStartLine": 23,
       "generatedStartColumn": 1,
-      "generatedEndLine": 18,
-      "generatedEndColumn": 42,
+      "generatedEndLine": 23,
+      "generatedEndColumn": 51,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
         "startOffset": 69,
@@ -69,10 +69,10 @@
       "symbolName": "clampToWindow"
     },
     {
-      "generatedStartLine": 20,
+      "generatedStartLine": 25,
       "generatedStartColumn": 1,
-      "generatedEndLine": 20,
-      "generatedEndColumn": 41,
+      "generatedEndLine": 25,
+      "generatedEndColumn": 50,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
         "startOffset": 69,
@@ -86,9 +86,9 @@
       "symbolName": "clampToWindow"
     },
     {
-      "generatedStartLine": 22,
+      "generatedStartLine": 27,
       "generatedStartColumn": 1,
-      "generatedEndLine": 22,
+      "generatedEndLine": 27,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
@@ -102,9 +102,9 @@
       "nodeKind": "if"
     },
     {
-      "generatedStartLine": 24,
+      "generatedStartLine": 29,
       "generatedStartColumn": 1,
-      "generatedEndLine": 24,
+      "generatedEndLine": 29,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
@@ -118,9 +118,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 26,
+      "generatedStartLine": 31,
       "generatedStartColumn": 1,
-      "generatedEndLine": 26,
+      "generatedEndLine": 31,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
@@ -134,9 +134,9 @@
       "nodeKind": "if"
     },
     {
-      "generatedStartLine": 28,
+      "generatedStartLine": 33,
       "generatedStartColumn": 1,
-      "generatedEndLine": 28,
+      "generatedEndLine": 33,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",
@@ -150,9 +150,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 30,
+      "generatedStartLine": 35,
       "generatedStartColumn": 1,
-      "generatedEndLine": 30,
+      "generatedEndLine": 35,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\transpiler-support.ts",

@@ -4,9 +4,9 @@
   "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
   "entries": [
     {
-      "generatedStartLine": 3,
+      "generatedStartLine": 5,
       "generatedStartColumn": 1,
-      "generatedEndLine": 3,
+      "generatedEndLine": 5,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -21,9 +21,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 4,
+      "generatedStartLine": 6,
       "generatedStartColumn": 1,
-      "generatedEndLine": 4,
+      "generatedEndLine": 6,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -38,9 +38,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 5,
+      "generatedStartLine": 7,
       "generatedStartColumn": 1,
-      "generatedEndLine": 5,
+      "generatedEndLine": 7,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -55,9 +55,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 6,
+      "generatedStartLine": 8,
       "generatedStartColumn": 1,
-      "generatedEndLine": 6,
+      "generatedEndLine": 8,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -72,9 +72,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 7,
+      "generatedStartLine": 9,
       "generatedStartColumn": 1,
-      "generatedEndLine": 7,
+      "generatedEndLine": 9,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -89,9 +89,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 8,
+      "generatedStartLine": 10,
       "generatedStartColumn": 1,
-      "generatedEndLine": 8,
+      "generatedEndLine": 10,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -106,9 +106,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 11,
+      "generatedStartLine": 13,
       "generatedStartColumn": 1,
-      "generatedEndLine": 11,
+      "generatedEndLine": 13,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -123,9 +123,9 @@
       "symbolName": "setup"
     },
     {
-      "generatedStartLine": 13,
+      "generatedStartLine": 15,
       "generatedStartColumn": 1,
-      "generatedEndLine": 13,
+      "generatedEndLine": 15,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -139,9 +139,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 14,
+      "generatedStartLine": 16,
       "generatedStartColumn": 1,
-      "generatedEndLine": 14,
+      "generatedEndLine": 16,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -155,9 +155,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 15,
+      "generatedStartLine": 17,
       "generatedStartColumn": 1,
-      "generatedEndLine": 15,
+      "generatedEndLine": 17,
       "generatedEndColumn": 55,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -171,9 +171,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 16,
+      "generatedStartLine": 18,
       "generatedStartColumn": 1,
-      "generatedEndLine": 16,
+      "generatedEndLine": 18,
       "generatedEndColumn": 44,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -187,9 +187,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 17,
+      "generatedStartLine": 19,
       "generatedStartColumn": 1,
-      "generatedEndLine": 17,
+      "generatedEndLine": 19,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -203,9 +203,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 18,
+      "generatedStartLine": 20,
       "generatedStartColumn": 1,
-      "generatedEndLine": 18,
+      "generatedEndLine": 20,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -219,9 +219,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 19,
+      "generatedStartLine": 21,
       "generatedStartColumn": 1,
-      "generatedEndLine": 19,
+      "generatedEndLine": 21,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -235,9 +235,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 20,
+      "generatedStartLine": 22,
       "generatedStartColumn": 1,
-      "generatedEndLine": 20,
+      "generatedEndLine": 22,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -251,9 +251,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 21,
+      "generatedStartLine": 23,
       "generatedStartColumn": 1,
-      "generatedEndLine": 21,
+      "generatedEndLine": 23,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -267,9 +267,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 22,
+      "generatedStartLine": 24,
       "generatedStartColumn": 1,
-      "generatedEndLine": 22,
+      "generatedEndLine": 24,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -283,9 +283,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 23,
+      "generatedStartLine": 25,
       "generatedStartColumn": 1,
-      "generatedEndLine": 23,
+      "generatedEndLine": 25,
       "generatedEndColumn": 44,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -299,9 +299,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 24,
+      "generatedStartLine": 26,
       "generatedStartColumn": 1,
-      "generatedEndLine": 24,
+      "generatedEndLine": 26,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -315,9 +315,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 25,
+      "generatedStartLine": 27,
       "generatedStartColumn": 1,
-      "generatedEndLine": 25,
+      "generatedEndLine": 27,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -331,9 +331,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 26,
+      "generatedStartLine": 28,
       "generatedStartColumn": 1,
-      "generatedEndLine": 26,
+      "generatedEndLine": 28,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -347,9 +347,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 27,
+      "generatedStartLine": 29,
       "generatedStartColumn": 1,
-      "generatedEndLine": 27,
+      "generatedEndLine": 29,
       "generatedEndColumn": 50,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -363,9 +363,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 28,
+      "generatedStartLine": 30,
       "generatedStartColumn": 1,
-      "generatedEndLine": 28,
+      "generatedEndLine": 30,
       "generatedEndColumn": 49,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -379,9 +379,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 29,
+      "generatedStartLine": 31,
       "generatedStartColumn": 1,
-      "generatedEndLine": 29,
+      "generatedEndLine": 31,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -395,9 +395,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 30,
+      "generatedStartLine": 32,
       "generatedStartColumn": 1,
-      "generatedEndLine": 30,
+      "generatedEndLine": 32,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -411,9 +411,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 31,
+      "generatedStartLine": 33,
       "generatedStartColumn": 1,
-      "generatedEndLine": 31,
+      "generatedEndLine": 33,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -427,9 +427,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 32,
+      "generatedStartLine": 34,
       "generatedStartColumn": 1,
-      "generatedEndLine": 32,
+      "generatedEndLine": 34,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -443,9 +443,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 33,
+      "generatedStartLine": 35,
       "generatedStartColumn": 1,
-      "generatedEndLine": 33,
+      "generatedEndLine": 35,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -459,9 +459,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 34,
+      "generatedStartLine": 36,
       "generatedStartColumn": 1,
-      "generatedEndLine": 34,
+      "generatedEndLine": 36,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -475,9 +475,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 35,
+      "generatedStartLine": 37,
       "generatedStartColumn": 1,
-      "generatedEndLine": 35,
+      "generatedEndLine": 37,
       "generatedEndColumn": 47,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -491,9 +491,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 36,
+      "generatedStartLine": 38,
       "generatedStartColumn": 1,
-      "generatedEndLine": 36,
+      "generatedEndLine": 38,
       "generatedEndColumn": 49,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -507,9 +507,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 37,
+      "generatedStartLine": 39,
       "generatedStartColumn": 1,
-      "generatedEndLine": 37,
+      "generatedEndLine": 39,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -523,9 +523,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 38,
+      "generatedStartLine": 40,
       "generatedStartColumn": 1,
-      "generatedEndLine": 38,
+      "generatedEndLine": 40,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -539,9 +539,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 39,
+      "generatedStartLine": 41,
       "generatedStartColumn": 1,
-      "generatedEndLine": 39,
+      "generatedEndLine": 41,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -555,9 +555,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 40,
+      "generatedStartLine": 42,
       "generatedStartColumn": 1,
-      "generatedEndLine": 40,
+      "generatedEndLine": 42,
       "generatedEndColumn": 36,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -571,9 +571,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 41,
+      "generatedStartLine": 43,
       "generatedStartColumn": 1,
-      "generatedEndLine": 41,
+      "generatedEndLine": 43,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -587,9 +587,9 @@
       "nodeKind": "while"
     },
     {
-      "generatedStartLine": 43,
+      "generatedStartLine": 45,
       "generatedStartColumn": 1,
-      "generatedEndLine": 43,
+      "generatedEndLine": 45,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -603,9 +603,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 47,
+      "generatedStartLine": 49,
       "generatedStartColumn": 1,
-      "generatedEndLine": 47,
+      "generatedEndLine": 49,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -620,9 +620,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 49,
+      "generatedStartLine": 51,
       "generatedStartColumn": 1,
-      "generatedEndLine": 49,
+      "generatedEndLine": 51,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -636,9 +636,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 50,
+      "generatedStartLine": 52,
       "generatedStartColumn": 1,
-      "generatedEndLine": 50,
+      "generatedEndLine": 52,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -652,9 +652,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 51,
+      "generatedStartLine": 53,
       "generatedStartColumn": 1,
-      "generatedEndLine": 51,
+      "generatedEndLine": 53,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -668,9 +668,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 54,
+      "generatedStartLine": 56,
       "generatedStartColumn": 1,
-      "generatedEndLine": 54,
+      "generatedEndLine": 56,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -685,9 +685,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 56,
+      "generatedStartLine": 58,
       "generatedStartColumn": 1,
-      "generatedEndLine": 56,
+      "generatedEndLine": 58,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -701,9 +701,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 57,
+      "generatedStartLine": 59,
       "generatedStartColumn": 1,
-      "generatedEndLine": 57,
+      "generatedEndLine": 59,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -717,9 +717,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 58,
+      "generatedStartLine": 60,
       "generatedStartColumn": 1,
-      "generatedEndLine": 58,
+      "generatedEndLine": 60,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -733,9 +733,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 61,
+      "generatedStartLine": 63,
       "generatedStartColumn": 1,
-      "generatedEndLine": 61,
+      "generatedEndLine": 63,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -750,9 +750,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 63,
+      "generatedStartLine": 65,
       "generatedStartColumn": 1,
-      "generatedEndLine": 63,
+      "generatedEndLine": 65,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -766,9 +766,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 64,
+      "generatedStartLine": 66,
       "generatedStartColumn": 1,
-      "generatedEndLine": 64,
+      "generatedEndLine": 66,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -782,9 +782,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 65,
+      "generatedStartLine": 67,
       "generatedStartColumn": 1,
-      "generatedEndLine": 65,
+      "generatedEndLine": 67,
       "generatedEndColumn": 44,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -798,9 +798,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 68,
+      "generatedStartLine": 70,
       "generatedStartColumn": 1,
-      "generatedEndLine": 68,
+      "generatedEndLine": 70,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -815,9 +815,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 70,
+      "generatedStartLine": 72,
       "generatedStartColumn": 1,
-      "generatedEndLine": 70,
+      "generatedEndLine": 72,
       "generatedEndColumn": 55,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -831,9 +831,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 71,
+      "generatedStartLine": 73,
       "generatedStartColumn": 1,
-      "generatedEndLine": 71,
+      "generatedEndLine": 73,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -847,9 +847,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 74,
+      "generatedStartLine": 76,
       "generatedStartColumn": 1,
-      "generatedEndLine": 74,
+      "generatedEndLine": 76,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -864,9 +864,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 76,
+      "generatedStartLine": 78,
       "generatedStartColumn": 1,
-      "generatedEndLine": 76,
+      "generatedEndLine": 78,
       "generatedEndColumn": 55,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -880,9 +880,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 77,
+      "generatedStartLine": 79,
       "generatedStartColumn": 1,
-      "generatedEndLine": 77,
+      "generatedEndLine": 79,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -896,9 +896,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 80,
+      "generatedStartLine": 82,
       "generatedStartColumn": 1,
-      "generatedEndLine": 80,
+      "generatedEndLine": 82,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -913,9 +913,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 82,
+      "generatedStartLine": 84,
       "generatedStartColumn": 1,
-      "generatedEndLine": 82,
+      "generatedEndLine": 84,
       "generatedEndColumn": 37,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -929,9 +929,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 83,
+      "generatedStartLine": 85,
       "generatedStartColumn": 1,
-      "generatedEndLine": 83,
+      "generatedEndLine": 85,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -945,9 +945,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 84,
+      "generatedStartLine": 86,
       "generatedStartColumn": 1,
-      "generatedEndLine": 84,
+      "generatedEndLine": 86,
       "generatedEndColumn": 33,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -961,9 +961,9 @@
       "nodeKind": "for_of"
     },
     {
-      "generatedStartLine": 86,
+      "generatedStartLine": 88,
       "generatedStartColumn": 1,
-      "generatedEndLine": 86,
+      "generatedEndLine": 88,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -977,9 +977,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 88,
+      "generatedStartLine": 90,
       "generatedStartColumn": 1,
-      "generatedEndLine": 88,
+      "generatedEndLine": 90,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",
@@ -993,9 +993,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 91,
+      "generatedStartLine": 93,
       "generatedStartColumn": 1,
-      "generatedEndLine": 91,
+      "generatedEndLine": 93,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\04-control-flow.test.ts",

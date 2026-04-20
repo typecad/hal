@@ -129,6 +129,8 @@ let _vectorVarTypes: Set<string> = new Set();
 // Module-level tracking for class getter/setter names (class name → property name → type).
 // Populated during class emission so renderExpression can rewrite property access.
 let _classAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> = new Map();
+// Variable name → accessor map for instances of classes with getters/setters.
+let _varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> = new Map();
 
 interface EmitterOptions {
   outDir: string;
@@ -295,14 +297,25 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       }
       return escapeCppKeyword(expr.value);
     }
-    case "raw":
+    case "raw": {
       // Apply transformation to raw expressions (for fixing pointer field access)
       // Use module-level _arduinoClassNameMap if no classNameMap provided
       const effectiveClassNameMap = classNameMap ?? _arduinoClassNameMap;
-      if (exprTransformer) {
-        return normalizeRawExpression(exprTransformer(expr.value), strategy, effectiveClassNameMap);
+      let rawValue = exprTransformer ? exprTransformer(expr.value) : expr.value;
+      let result = normalizeRawExpression(rawValue, strategy, effectiveClassNameMap);
+      // Rewrite getter property access: s->reading → s->getReading()
+      for (const [varName, accessors] of _varAccessorNames) {
+        for (const [propName, kind] of accessors) {
+          if (kind === "getter" || kind === "both") {
+            const getterName = `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+            // Match var->prop (not already a getter call)
+            const pattern = new RegExp(`\\b${varName}->${propName}\\b(?!\\()`, "g");
+            result = result.replace(pattern, `${varName}->${getterName}()`);
+          }
+        }
       }
-      return normalizeRawExpression(expr.value, strategy, effectiveClassNameMap);
+      return result;
+    }
     case "await":
       return renderExpression(expr.value, exprTransformer, strategy);
     case "ternary":
@@ -434,9 +447,9 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
         }
       }
       // Rewrite property access to getter call if the property is an accessor
-      if (expr.object.kind === "identifier" && _classAccessorNames.has(expr.object.value)) {
-        const accessors = _classAccessorNames.get(expr.object.value)!;
-        if (accessors.has(expr.property)) {
+      if (expr.object.kind === "identifier") {
+        const accessors = _classAccessorNames.get(expr.object.value) ?? _varAccessorNames.get(expr.object.value);
+        if (accessors?.has(expr.property)) {
           const getterName = `get${expr.property.charAt(0).toUpperCase()}${expr.property.slice(1)}`;
           return `${objStr}->${getterName}()`;
         }
@@ -703,7 +716,34 @@ function renderStatement(
   }
 
   if (statement.kind === "assign") {
-    return forHeader 
+    // Rewrite setter assignments: c->count = val → c->setCount(val)
+    if (statement.operator === "=" || statement.operator === "+=" || statement.operator === "-=") {
+      const setterMatch = statement.target.match(/^(.+?)(->|\.)(\w+)$/);
+      if (setterMatch) {
+        const [, objStr, sep, propName] = setterMatch;
+        const varName = objStr.trim();
+        const accessors = _varAccessorNames.get(varName) ?? _classAccessorNames.get(varName);
+        if (accessors?.has(propName)) {
+          const kind = accessors.get(propName)!;
+          if (kind === "setter" || kind === "both") {
+            const setterName = `set${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+            const renderedValue = renderExpression(statement.value, undefined, strategy);
+            if (statement.operator === "=") {
+              return forHeader
+                ? `${varName}${sep}${setterName}(${renderedValue})`
+                : `${varName}${sep}${setterName}(${renderedValue});`;
+            }
+            // For compound assignments on setters, get → compute → set
+            const getterName = `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+            const op = statement.operator.replace("=", "");
+            return forHeader
+              ? `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue})`
+              : `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue});`;
+          }
+        }
+      }
+    }
+    return forHeader
       ? `${statement.target} ${statement.operator} ${renderExpression(statement.value, undefined, strategy)}`
       : `${statement.target} ${statement.operator} ${renderExpression(statement.value, undefined, strategy)};`;
   }
@@ -938,8 +978,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   );
   
   // Get native polyfill implementations from the strategy
-  const nativePolyfills = strategy.generateNativePolyfills?.(program, options.platformContext) ?? [];
-  
+  // Skip for non-entry files — they're emitted in the entry .ino and shared via includes
+  const nativePolyfills = isEntryFile
+    ? (strategy.generateNativePolyfills?.(program, options.platformContext) ?? [])
+    : [];
+
   // Merge filtered and native polyfills, then emit
   const allPolyfills = [...filteredPolyfills, ...nativePolyfills];
   const emittedPolyfills = allPolyfills.length > 0
@@ -1191,6 +1234,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         stdStringVarNames: _stdStringVarTypes,
         vectorVarNames: _vectorVarTypes,
         namespaceNames: _namespaceNames,
+        varAccessorNames: _varAccessorNames,
       });
       return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
     };
@@ -2373,6 +2417,26 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
   _classAccessorNames = classAccessorNames;
+
+  // Build variable → accessor map by scanning var_decls for class-typed variables.
+  const varAccessorNames = new Map<string, Map<string, "getter" | "setter" | "both">>();
+  const allVarDecls: { name: string; cppType: string }[] = [];
+  for (const stmt of program.topLevelStatements) {
+    if (stmt.kind === "var_decl") allVarDecls.push(stmt);
+  }
+  for (const fn of mappedFunctions) {
+    for (const stmt of fn.statements) {
+      if (stmt.kind === "var_decl") allVarDecls.push(stmt);
+    }
+  }
+  for (const v of allVarDecls) {
+    const bareType = v.cppType.replace(/\*$/, "").replace(/^const\s+/, "");
+    const accessors = classAccessorNames.get(bareType);
+    if (accessors) {
+      varAccessorNames.set(v.name, accessors);
+    }
+  }
+  _varAccessorNames = varAccessorNames;
 
   for (const classDef of program.classes) {
     emitCommentLines(classDef.leadingComments, "", (line) => appendSourceLine(line));

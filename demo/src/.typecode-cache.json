@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "toolchainFingerprint": "918f9b3da6eb531a",
+  "rootDir": "C:\\typecad\\typecode\\demo\\src",
+  "files": {
+    "C:\\typecad\\typecode\\demo\\src\\06-loops.test.ts": {
+      "hash": "d2b2f1a367910aeb",
+      "mtime": 1776607702840.7485,
+      "size": 2486,
+      "dependencies": [],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\06-loops.test\\06-loops.test.ino",
+        "C:\\typecad\\typecode\\demo\\src\\out\\06-loops.test\\06-loops.test.ino.tscppmap.json"
+      ]
+    }
+  },
+  "createdAt": 1776698912730,
+  "updatedAt": 1776698913278
+}

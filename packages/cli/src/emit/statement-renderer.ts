@@ -39,6 +39,8 @@ export interface StatementRendererContext {
   vectorVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) */
   namespaceNames?: Set<string>;
+  /** Map of variable names to their class's accessor map for getter/setter rewriting */
+  varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
 }
 
 /**
@@ -69,6 +71,7 @@ export class StatementRenderer {
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly pointerStructFields?: Set<string>;
   private readonly arduinoClassNameMap?: Map<string, string>;
+  private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
 
   constructor(context: StatementRendererContext) {
     this.strategy = context.strategy;
@@ -76,6 +79,7 @@ export class StatementRenderer {
     this.pointerVarTypes = context.pointerVarTypes;
     this.pointerStructFields = context.pointerStructFields;
     this.arduinoClassNameMap = context.arduinoClassNameMap;
+    this.varAccessorNames = context.varAccessorNames ?? new Map();
 
     // Create expression renderer with shared context
     this.expressionRenderer = new ExpressionRenderer({
@@ -90,6 +94,7 @@ export class StatementRenderer {
       stdStringVarNames: context.stdStringVarNames,
       vectorVarNames: context.vectorVarNames,
       namespaceNames: context.namespaceNames,
+      varAccessorNames: context.varAccessorNames,
     });
   }
 
@@ -140,6 +145,32 @@ export class StatementRenderer {
 
     if (statement.kind === "assign") {
       const target = escapeCppKeyword(statement.target);
+      // Rewrite setter assignments: c->count = val → c->setCount(val)
+      if (statement.operator === "=" || statement.operator === "+=" || statement.operator === "-=") {
+        const setterMatch = target.match(/^(.+?)(->|\.)(\w+)$/);
+        if (setterMatch) {
+          const [, objStr, sep, propName] = setterMatch;
+          const varName = objStr.trim();
+          const accessors = this.varAccessorNames.get(varName);
+          if (accessors?.has(propName)) {
+            const kind = accessors.get(propName)!;
+            if (kind === "setter" || kind === "both") {
+              const setterName = `set${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+              const renderedValue = this.expressionRenderer.render(statement.value);
+              if (statement.operator === "=") {
+                return forHeader
+                  ? `${varName}${sep}${setterName}(${renderedValue})`
+                  : `${varName}${sep}${setterName}(${renderedValue});`;
+              }
+              const getterName = `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+              const op = statement.operator.replace("=", "");
+              return forHeader
+                ? `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue})`
+                : `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue});`;
+            }
+          }
+        }
+      }
       return forHeader
         ? `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)}`
         : `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)};`;

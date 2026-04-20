@@ -394,6 +394,11 @@ export function inferExprCppType(
     return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
   }
 
+  // typeof always produces a string result
+  if (ts.isTypeOfExpression(expr)) {
+    return "std::string";
+  }
+
   if (ts.isNumericLiteral(expr)) {
     // Use original source text — TypeScript normalizes "2.0" to "2" in expr.text
     const literalText = sourceText
@@ -433,6 +438,13 @@ export function inferExprCppType(
 
   if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) {
     return "bool";
+  }
+
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const fnReturnType = functionReturnTypes.get(expr.expression.text);
+    if (fnReturnType && fnReturnType !== "auto") {
+      return fnReturnType;
+    }
   }
 
   if (ts.isIdentifier(expr)) {

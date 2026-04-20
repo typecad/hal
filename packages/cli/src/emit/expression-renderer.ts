@@ -37,6 +37,8 @@ export interface ExpressionRendererContext {
   vectorVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) instead of (.) */
   namespaceNames?: Set<string>;
+  /** Map of variable names to their class's accessor map for getter/setter rewriting */
+  varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
   /** Optional transformer for expression values */
   exprTransformer?: (expr: string) => string;
 }
@@ -56,6 +58,7 @@ export class ExpressionRenderer {
   private readonly stdStringVarNames?: Set<string>;
   private readonly vectorVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
+  private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
   private _preludeLines: string[] = [];
@@ -74,6 +77,7 @@ export class ExpressionRenderer {
     this.stdStringVarNames = context.stdStringVarNames;
     this.vectorVarNames = context.vectorVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
+    this.varAccessorNames = context.varAccessorNames ?? new Map();
   }
 
   /**
@@ -189,10 +193,20 @@ export class ExpressionRenderer {
 
   private renderRaw(value: string, exprTransformer?: (expr: string) => string): string {
     const effectiveClassNameMap = this.arduinoClassNameMap;
-    if (exprTransformer) {
-      return normalizeRawExpression(exprTransformer(value), this.strategy, effectiveClassNameMap);
+    let result = exprTransformer
+      ? normalizeRawExpression(exprTransformer(value), this.strategy, effectiveClassNameMap)
+      : normalizeRawExpression(value, this.strategy, effectiveClassNameMap);
+    // Rewrite getter property access: s->reading → s->getReading()
+    for (const [varName, accessors] of this.varAccessorNames) {
+      for (const [propName, kind] of accessors) {
+        if (kind === "getter" || kind === "both") {
+          const getterName = `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+          const pattern = new RegExp(`\\b${varName}->${propName}\\b(?!\\()`, "g");
+          result = result.replace(pattern, `${varName}->${getterName}()`);
+        }
+      }
     }
-    return normalizeRawExpression(value, this.strategy, effectiveClassNameMap);
+    return result;
   }
 
   private renderTernary(expr: Extract<ExpressionIR, { kind: "ternary" }>, exprTransformer?: (expr: string) => string): string {

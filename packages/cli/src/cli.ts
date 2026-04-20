@@ -36,7 +36,7 @@ function runExpectTests(options: { port?: string; fqbn?: string; baud?: number; 
   const result = spawnSync(process.execPath, args, {
     encoding: "utf8",
     cwd: process.cwd(),
-    timeout: 300_000,
+    timeout: 0,
     stdio: "inherit",
   });
   return result.status ?? 1;

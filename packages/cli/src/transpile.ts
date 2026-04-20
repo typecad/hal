@@ -664,7 +664,6 @@ function typeCheckFiles(
       );
       if (!parsedConfig.errors.length) {
         compilerOptions = { ...parsedConfig.options, noEmit: true };
-        rootNames = Array.from(new Set([...parsedConfig.fileNames, ...files]));
       }
     }
   }

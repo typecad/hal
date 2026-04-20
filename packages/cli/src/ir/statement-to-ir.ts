@@ -2315,9 +2315,9 @@ export function variableStatementToIR(
       }
 
       // 6) Regular array literal → track in activeCArrayVars for .length → sizeof
-      // Only track as C-array if the resolved type is NOT std::vector (vectors use .size())
-      if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)
-          && !declarationType.resolvedType.startsWith("std::vector<")) {
+      // These are emitted as C arrays (int arr[] = {...}), not std::vector,
+      // regardless of what resolveDeclarationType reports.
+      if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
         activeCArrayVars.add(varName);
       }
     }

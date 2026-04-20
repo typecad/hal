@@ -231,7 +231,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     v = v.replace(/(\w+)\.substring\(([^)]+)\)/g, "__tc_substring1($1, $2)");
     v = v.replace(/(\w+)\.slice\(([^,]+),\s*([^)]+)\)/g, "__tc_slice2($1, $2, $3)");
     v = v.replace(/(\w+)\.slice\(([^)]+)\)/g, "__tc_slice1($1, $2)");
-    v = v.replace(/(\w+)\.indexOf\(([^)]+)\)/g, "String($1).indexOf($2)");
     v = v.replace(/(\w+)\.replace\(([^,]+),\s*([^)]+)\)/g, "__tc_replace($1, $2, $3)");
     v = v.replace(/(\w+)\.charAt\(([^)]+)\)/g, "__tc_charAt($1, $2)");
     v = v.replace(/(\w+)\.charCodeAt\(([^)]+)\)/g, "__tc_charCodeAt($1, $2)");

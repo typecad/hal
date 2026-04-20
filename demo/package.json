@@ -10,7 +10,7 @@
     "upload": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --port COM6",
     "debug": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --debug --monitor --port COM6",
     "test:hw": "node ../packages/cli/dist/cli.js --expect",
-    "test:hw-26": "node ../packages/cli/dist/cli.js --expect ./src/26-instanceof.test.ts"
+    "test:hw-29": "node ../packages/cli/dist/cli.js --expect ./src/29-accessors-foreach-typeof.test.ts"
   },
   "dependencies": {
     "@typecode/core": "*",

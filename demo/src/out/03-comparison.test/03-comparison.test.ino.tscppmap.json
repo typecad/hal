@@ -4,9 +4,9 @@
   "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
   "entries": [
     {
-      "generatedStartLine": 3,
+      "generatedStartLine": 5,
       "generatedStartColumn": 1,
-      "generatedEndLine": 3,
+      "generatedEndLine": 5,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -21,9 +21,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 4,
+      "generatedStartLine": 6,
       "generatedStartColumn": 1,
-      "generatedEndLine": 4,
+      "generatedEndLine": 6,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -38,9 +38,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 5,
+      "generatedStartLine": 7,
       "generatedStartColumn": 1,
-      "generatedEndLine": 5,
+      "generatedEndLine": 7,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -55,9 +55,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 6,
+      "generatedStartLine": 8,
       "generatedStartColumn": 1,
-      "generatedEndLine": 6,
+      "generatedEndLine": 8,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -72,9 +72,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 7,
+      "generatedStartLine": 9,
       "generatedStartColumn": 1,
-      "generatedEndLine": 7,
+      "generatedEndLine": 9,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -89,9 +89,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 8,
+      "generatedStartLine": 10,
       "generatedStartColumn": 1,
-      "generatedEndLine": 8,
+      "generatedEndLine": 10,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -106,9 +106,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 9,
+      "generatedStartLine": 11,
       "generatedStartColumn": 1,
-      "generatedEndLine": 9,
+      "generatedEndLine": 11,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -123,9 +123,9 @@
       "symbolName": "__tc_fn7"
     },
     {
-      "generatedStartLine": 10,
+      "generatedStartLine": 12,
       "generatedStartColumn": 1,
-      "generatedEndLine": 10,
+      "generatedEndLine": 12,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -140,9 +140,9 @@
       "symbolName": "__tc_fn8"
     },
     {
-      "generatedStartLine": 11,
+      "generatedStartLine": 13,
       "generatedStartColumn": 1,
-      "generatedEndLine": 11,
+      "generatedEndLine": 13,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -157,9 +157,9 @@
       "symbolName": "__tc_fn9"
     },
     {
-      "generatedStartLine": 12,
+      "generatedStartLine": 14,
       "generatedStartColumn": 1,
-      "generatedEndLine": 12,
+      "generatedEndLine": 14,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -174,9 +174,9 @@
       "symbolName": "__tc_fn10"
     },
     {
-      "generatedStartLine": 13,
+      "generatedStartLine": 15,
       "generatedStartColumn": 1,
-      "generatedEndLine": 13,
+      "generatedEndLine": 15,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -191,9 +191,9 @@
       "symbolName": "__tc_fn11"
     },
     {
-      "generatedStartLine": 14,
+      "generatedStartLine": 16,
       "generatedStartColumn": 1,
-      "generatedEndLine": 14,
+      "generatedEndLine": 16,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -208,9 +208,9 @@
       "symbolName": "__tc_fn12"
     },
     {
-      "generatedStartLine": 15,
+      "generatedStartLine": 17,
       "generatedStartColumn": 1,
-      "generatedEndLine": 15,
+      "generatedEndLine": 17,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -225,9 +225,9 @@
       "symbolName": "__tc_fn13"
     },
     {
-      "generatedStartLine": 16,
+      "generatedStartLine": 18,
       "generatedStartColumn": 1,
-      "generatedEndLine": 16,
+      "generatedEndLine": 18,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -242,9 +242,9 @@
       "symbolName": "__tc_fn14"
     },
     {
-      "generatedStartLine": 17,
+      "generatedStartLine": 19,
       "generatedStartColumn": 1,
-      "generatedEndLine": 17,
+      "generatedEndLine": 19,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -259,9 +259,9 @@
       "symbolName": "__tc_fn15"
     },
     {
-      "generatedStartLine": 18,
+      "generatedStartLine": 20,
       "generatedStartColumn": 1,
-      "generatedEndLine": 18,
+      "generatedEndLine": 20,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -276,9 +276,9 @@
       "symbolName": "__tc_fn16"
     },
     {
-      "generatedStartLine": 19,
+      "generatedStartLine": 21,
       "generatedStartColumn": 1,
-      "generatedEndLine": 19,
+      "generatedEndLine": 21,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -293,9 +293,9 @@
       "symbolName": "__tc_fn17"
     },
     {
-      "generatedStartLine": 20,
+      "generatedStartLine": 22,
       "generatedStartColumn": 1,
-      "generatedEndLine": 20,
+      "generatedEndLine": 22,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -310,9 +310,9 @@
       "symbolName": "__tc_fn18"
     },
     {
-      "generatedStartLine": 21,
+      "generatedStartLine": 23,
       "generatedStartColumn": 1,
-      "generatedEndLine": 21,
+      "generatedEndLine": 23,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -327,9 +327,9 @@
       "symbolName": "__tc_fn19"
     },
     {
-      "generatedStartLine": 22,
+      "generatedStartLine": 24,
       "generatedStartColumn": 1,
-      "generatedEndLine": 22,
+      "generatedEndLine": 24,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -344,9 +344,9 @@
       "symbolName": "__tc_fn20"
     },
     {
-      "generatedStartLine": 23,
+      "generatedStartLine": 25,
       "generatedStartColumn": 1,
-      "generatedEndLine": 23,
+      "generatedEndLine": 25,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -361,9 +361,9 @@
       "symbolName": "__tc_fn21"
     },
     {
-      "generatedStartLine": 24,
+      "generatedStartLine": 26,
       "generatedStartColumn": 1,
-      "generatedEndLine": 24,
+      "generatedEndLine": 26,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -378,9 +378,9 @@
       "symbolName": "__tc_fn22"
     },
     {
-      "generatedStartLine": 27,
+      "generatedStartLine": 29,
       "generatedStartColumn": 1,
-      "generatedEndLine": 27,
+      "generatedEndLine": 29,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -395,9 +395,9 @@
       "symbolName": "setup"
     },
     {
-      "generatedStartLine": 29,
+      "generatedStartLine": 31,
       "generatedStartColumn": 1,
-      "generatedEndLine": 29,
+      "generatedEndLine": 31,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -411,9 +411,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 30,
+      "generatedStartLine": 32,
       "generatedStartColumn": 1,
-      "generatedEndLine": 30,
+      "generatedEndLine": 32,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -427,9 +427,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 31,
+      "generatedStartLine": 33,
       "generatedStartColumn": 1,
-      "generatedEndLine": 31,
+      "generatedEndLine": 33,
       "generatedEndColumn": 58,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -443,9 +443,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 32,
+      "generatedStartLine": 34,
       "generatedStartColumn": 1,
-      "generatedEndLine": 32,
+      "generatedEndLine": 34,
       "generatedEndColumn": 53,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -459,9 +459,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 33,
+      "generatedStartLine": 35,
       "generatedStartColumn": 1,
-      "generatedEndLine": 33,
+      "generatedEndLine": 35,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -475,9 +475,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 34,
+      "generatedStartLine": 36,
       "generatedStartColumn": 1,
-      "generatedEndLine": 34,
+      "generatedEndLine": 36,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -491,9 +491,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 35,
+      "generatedStartLine": 37,
       "generatedStartColumn": 1,
-      "generatedEndLine": 35,
+      "generatedEndLine": 37,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -507,9 +507,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 36,
+      "generatedStartLine": 38,
       "generatedStartColumn": 1,
-      "generatedEndLine": 36,
+      "generatedEndLine": 38,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -523,9 +523,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 37,
+      "generatedStartLine": 39,
       "generatedStartColumn": 1,
-      "generatedEndLine": 37,
+      "generatedEndLine": 39,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -539,9 +539,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 38,
+      "generatedStartLine": 40,
       "generatedStartColumn": 1,
-      "generatedEndLine": 38,
+      "generatedEndLine": 40,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -555,9 +555,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 39,
+      "generatedStartLine": 41,
       "generatedStartColumn": 1,
-      "generatedEndLine": 39,
+      "generatedEndLine": 41,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -571,9 +571,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 40,
+      "generatedStartLine": 42,
       "generatedStartColumn": 1,
-      "generatedEndLine": 40,
+      "generatedEndLine": 42,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -587,9 +587,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 41,
+      "generatedStartLine": 43,
       "generatedStartColumn": 1,
-      "generatedEndLine": 41,
+      "generatedEndLine": 43,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -603,9 +603,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 42,
+      "generatedStartLine": 44,
       "generatedStartColumn": 1,
-      "generatedEndLine": 42,
+      "generatedEndLine": 44,
       "generatedEndColumn": 54,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -619,9 +619,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 43,
+      "generatedStartLine": 45,
       "generatedStartColumn": 1,
-      "generatedEndLine": 43,
+      "generatedEndLine": 45,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -635,9 +635,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 44,
+      "generatedStartLine": 46,
       "generatedStartColumn": 1,
-      "generatedEndLine": 44,
+      "generatedEndLine": 46,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -651,9 +651,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 45,
+      "generatedStartLine": 47,
       "generatedStartColumn": 1,
-      "generatedEndLine": 45,
+      "generatedEndLine": 47,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -667,9 +667,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 46,
+      "generatedStartLine": 48,
       "generatedStartColumn": 1,
-      "generatedEndLine": 46,
+      "generatedEndLine": 48,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -683,9 +683,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 47,
+      "generatedStartLine": 49,
       "generatedStartColumn": 1,
-      "generatedEndLine": 47,
+      "generatedEndLine": 49,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -699,9 +699,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 48,
+      "generatedStartLine": 50,
       "generatedStartColumn": 1,
-      "generatedEndLine": 48,
+      "generatedEndLine": 50,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -715,9 +715,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 49,
+      "generatedStartLine": 51,
       "generatedStartColumn": 1,
-      "generatedEndLine": 49,
+      "generatedEndLine": 51,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -731,9 +731,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 50,
+      "generatedStartLine": 52,
       "generatedStartColumn": 1,
-      "generatedEndLine": 50,
+      "generatedEndLine": 52,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -747,9 +747,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 51,
+      "generatedStartLine": 53,
       "generatedStartColumn": 1,
-      "generatedEndLine": 51,
+      "generatedEndLine": 53,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -763,9 +763,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 52,
+      "generatedStartLine": 54,
       "generatedStartColumn": 1,
-      "generatedEndLine": 52,
+      "generatedEndLine": 54,
       "generatedEndColumn": 62,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -779,9 +779,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 53,
+      "generatedStartLine": 55,
       "generatedStartColumn": 1,
-      "generatedEndLine": 53,
+      "generatedEndLine": 55,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -795,9 +795,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 54,
+      "generatedStartLine": 56,
       "generatedStartColumn": 1,
-      "generatedEndLine": 54,
+      "generatedEndLine": 56,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -811,9 +811,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 55,
+      "generatedStartLine": 57,
       "generatedStartColumn": 1,
-      "generatedEndLine": 55,
+      "generatedEndLine": 57,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -827,9 +827,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 56,
+      "generatedStartLine": 58,
       "generatedStartColumn": 1,
-      "generatedEndLine": 56,
+      "generatedEndLine": 58,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -843,9 +843,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 57,
+      "generatedStartLine": 59,
       "generatedStartColumn": 1,
-      "generatedEndLine": 57,
+      "generatedEndLine": 59,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -859,9 +859,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 58,
+      "generatedStartLine": 60,
       "generatedStartColumn": 1,
-      "generatedEndLine": 58,
+      "generatedEndLine": 60,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -875,9 +875,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 59,
+      "generatedStartLine": 61,
       "generatedStartColumn": 1,
-      "generatedEndLine": 59,
+      "generatedEndLine": 61,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -891,9 +891,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 60,
+      "generatedStartLine": 62,
       "generatedStartColumn": 1,
-      "generatedEndLine": 60,
+      "generatedEndLine": 62,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -907,9 +907,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 61,
+      "generatedStartLine": 63,
       "generatedStartColumn": 1,
-      "generatedEndLine": 61,
+      "generatedEndLine": 63,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -923,9 +923,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 62,
+      "generatedStartLine": 64,
       "generatedStartColumn": 1,
-      "generatedEndLine": 62,
+      "generatedEndLine": 64,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -939,9 +939,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 63,
+      "generatedStartLine": 65,
       "generatedStartColumn": 1,
-      "generatedEndLine": 63,
+      "generatedEndLine": 65,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -955,9 +955,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 64,
+      "generatedStartLine": 66,
       "generatedStartColumn": 1,
-      "generatedEndLine": 64,
+      "generatedEndLine": 66,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -971,9 +971,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 65,
+      "generatedStartLine": 67,
       "generatedStartColumn": 1,
-      "generatedEndLine": 65,
+      "generatedEndLine": 67,
       "generatedEndColumn": 74,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -987,9 +987,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 66,
+      "generatedStartLine": 68,
       "generatedStartColumn": 1,
-      "generatedEndLine": 66,
+      "generatedEndLine": 68,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1003,9 +1003,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 67,
+      "generatedStartLine": 69,
       "generatedStartColumn": 1,
-      "generatedEndLine": 67,
+      "generatedEndLine": 69,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1019,9 +1019,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 68,
+      "generatedStartLine": 70,
       "generatedStartColumn": 1,
-      "generatedEndLine": 68,
+      "generatedEndLine": 70,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1035,9 +1035,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 69,
+      "generatedStartLine": 71,
       "generatedStartColumn": 1,
-      "generatedEndLine": 69,
+      "generatedEndLine": 71,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1051,9 +1051,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 70,
+      "generatedStartLine": 72,
       "generatedStartColumn": 1,
-      "generatedEndLine": 70,
+      "generatedEndLine": 72,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1067,9 +1067,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 71,
+      "generatedStartLine": 73,
       "generatedStartColumn": 1,
-      "generatedEndLine": 71,
+      "generatedEndLine": 73,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1083,9 +1083,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 72,
+      "generatedStartLine": 74,
       "generatedStartColumn": 1,
-      "generatedEndLine": 72,
+      "generatedEndLine": 74,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1099,9 +1099,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 73,
+      "generatedStartLine": 75,
       "generatedStartColumn": 1,
-      "generatedEndLine": 73,
+      "generatedEndLine": 75,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1115,9 +1115,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 74,
+      "generatedStartLine": 76,
       "generatedStartColumn": 1,
-      "generatedEndLine": 74,
+      "generatedEndLine": 76,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1131,9 +1131,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 75,
+      "generatedStartLine": 77,
       "generatedStartColumn": 1,
-      "generatedEndLine": 75,
+      "generatedEndLine": 77,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1147,9 +1147,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 76,
+      "generatedStartLine": 78,
       "generatedStartColumn": 1,
-      "generatedEndLine": 76,
+      "generatedEndLine": 78,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1163,9 +1163,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 77,
+      "generatedStartLine": 79,
       "generatedStartColumn": 1,
-      "generatedEndLine": 77,
+      "generatedEndLine": 79,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1179,9 +1179,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 78,
+      "generatedStartLine": 80,
       "generatedStartColumn": 1,
-      "generatedEndLine": 78,
+      "generatedEndLine": 80,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1195,9 +1195,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 79,
+      "generatedStartLine": 81,
       "generatedStartColumn": 1,
-      "generatedEndLine": 79,
+      "generatedEndLine": 81,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1211,9 +1211,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 80,
+      "generatedStartLine": 82,
       "generatedStartColumn": 1,
-      "generatedEndLine": 80,
+      "generatedEndLine": 82,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1227,9 +1227,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 81,
+      "generatedStartLine": 83,
       "generatedStartColumn": 1,
-      "generatedEndLine": 81,
+      "generatedEndLine": 83,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1243,9 +1243,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 82,
+      "generatedStartLine": 84,
       "generatedStartColumn": 1,
-      "generatedEndLine": 82,
+      "generatedEndLine": 84,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1259,9 +1259,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 83,
+      "generatedStartLine": 85,
       "generatedStartColumn": 1,
-      "generatedEndLine": 83,
+      "generatedEndLine": 85,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1275,9 +1275,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 84,
+      "generatedStartLine": 86,
       "generatedStartColumn": 1,
-      "generatedEndLine": 84,
+      "generatedEndLine": 86,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1291,9 +1291,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 85,
+      "generatedStartLine": 87,
       "generatedStartColumn": 1,
-      "generatedEndLine": 85,
+      "generatedEndLine": 87,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1307,9 +1307,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 86,
+      "generatedStartLine": 88,
       "generatedStartColumn": 1,
-      "generatedEndLine": 86,
+      "generatedEndLine": 88,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1323,9 +1323,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 87,
+      "generatedStartLine": 89,
       "generatedStartColumn": 1,
-      "generatedEndLine": 87,
+      "generatedEndLine": 89,
       "generatedEndColumn": 53,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1339,9 +1339,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 88,
+      "generatedStartLine": 90,
       "generatedStartColumn": 1,
-      "generatedEndLine": 88,
+      "generatedEndLine": 90,
       "generatedEndColumn": 42,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1355,9 +1355,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 89,
+      "generatedStartLine": 91,
       "generatedStartColumn": 1,
-      "generatedEndLine": 89,
+      "generatedEndLine": 91,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1371,9 +1371,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 90,
+      "generatedStartLine": 92,
       "generatedStartColumn": 1,
-      "generatedEndLine": 90,
+      "generatedEndLine": 92,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1387,9 +1387,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 91,
+      "generatedStartLine": 93,
       "generatedStartColumn": 1,
-      "generatedEndLine": 91,
+      "generatedEndLine": 93,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1403,9 +1403,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 92,
+      "generatedStartLine": 94,
       "generatedStartColumn": 1,
-      "generatedEndLine": 92,
+      "generatedEndLine": 94,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1419,9 +1419,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 93,
+      "generatedStartLine": 95,
       "generatedStartColumn": 1,
-      "generatedEndLine": 93,
+      "generatedEndLine": 95,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1435,9 +1435,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 94,
+      "generatedStartLine": 96,
       "generatedStartColumn": 1,
-      "generatedEndLine": 94,
+      "generatedEndLine": 96,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1451,9 +1451,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 95,
+      "generatedStartLine": 97,
       "generatedStartColumn": 1,
-      "generatedEndLine": 95,
+      "generatedEndLine": 97,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1467,9 +1467,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 96,
+      "generatedStartLine": 98,
       "generatedStartColumn": 1,
-      "generatedEndLine": 96,
+      "generatedEndLine": 98,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1483,9 +1483,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 97,
+      "generatedStartLine": 99,
       "generatedStartColumn": 1,
-      "generatedEndLine": 97,
+      "generatedEndLine": 99,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1499,9 +1499,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 98,
+      "generatedStartLine": 100,
       "generatedStartColumn": 1,
-      "generatedEndLine": 98,
+      "generatedEndLine": 100,
       "generatedEndColumn": 44,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1515,9 +1515,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 99,
+      "generatedStartLine": 101,
       "generatedStartColumn": 1,
-      "generatedEndLine": 99,
+      "generatedEndLine": 101,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1531,9 +1531,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 100,
+      "generatedStartLine": 102,
       "generatedStartColumn": 1,
-      "generatedEndLine": 100,
+      "generatedEndLine": 102,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1547,9 +1547,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 101,
+      "generatedStartLine": 103,
       "generatedStartColumn": 1,
-      "generatedEndLine": 101,
+      "generatedEndLine": 103,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1563,9 +1563,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 102,
+      "generatedStartLine": 104,
       "generatedStartColumn": 1,
-      "generatedEndLine": 102,
+      "generatedEndLine": 104,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1579,9 +1579,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 103,
+      "generatedStartLine": 105,
       "generatedStartColumn": 1,
-      "generatedEndLine": 103,
+      "generatedEndLine": 105,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1595,9 +1595,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 104,
+      "generatedStartLine": 106,
       "generatedStartColumn": 1,
-      "generatedEndLine": 104,
+      "generatedEndLine": 106,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1611,9 +1611,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 105,
+      "generatedStartLine": 107,
       "generatedStartColumn": 1,
-      "generatedEndLine": 105,
+      "generatedEndLine": 107,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1627,9 +1627,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 106,
+      "generatedStartLine": 108,
       "generatedStartColumn": 1,
-      "generatedEndLine": 106,
+      "generatedEndLine": 108,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1643,9 +1643,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 107,
+      "generatedStartLine": 109,
       "generatedStartColumn": 1,
-      "generatedEndLine": 107,
+      "generatedEndLine": 109,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1659,9 +1659,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 108,
+      "generatedStartLine": 110,
       "generatedStartColumn": 1,
-      "generatedEndLine": 108,
+      "generatedEndLine": 110,
       "generatedEndColumn": 36,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1675,9 +1675,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 109,
+      "generatedStartLine": 111,
       "generatedStartColumn": 1,
-      "generatedEndLine": 109,
+      "generatedEndLine": 111,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1691,9 +1691,9 @@
       "nodeKind": "while"
     },
     {
-      "generatedStartLine": 111,
+      "generatedStartLine": 113,
       "generatedStartColumn": 1,
-      "generatedEndLine": 111,
+      "generatedEndLine": 113,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1707,9 +1707,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 115,
+      "generatedStartLine": 117,
       "generatedStartColumn": 1,
-      "generatedEndLine": 115,
+      "generatedEndLine": 117,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1724,9 +1724,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 117,
+      "generatedStartLine": 119,
       "generatedStartColumn": 1,
-      "generatedEndLine": 117,
+      "generatedEndLine": 119,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1740,9 +1740,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 118,
+      "generatedStartLine": 120,
       "generatedStartColumn": 1,
-      "generatedEndLine": 118,
+      "generatedEndLine": 120,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1756,9 +1756,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 121,
+      "generatedStartLine": 123,
       "generatedStartColumn": 1,
-      "generatedEndLine": 121,
+      "generatedEndLine": 123,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1773,9 +1773,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 123,
+      "generatedStartLine": 125,
       "generatedStartColumn": 1,
-      "generatedEndLine": 123,
+      "generatedEndLine": 125,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1789,9 +1789,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 124,
+      "generatedStartLine": 126,
       "generatedStartColumn": 1,
-      "generatedEndLine": 124,
+      "generatedEndLine": 126,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1805,9 +1805,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 125,
+      "generatedStartLine": 127,
       "generatedStartColumn": 1,
-      "generatedEndLine": 125,
+      "generatedEndLine": 127,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1821,9 +1821,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 128,
+      "generatedStartLine": 130,
       "generatedStartColumn": 1,
-      "generatedEndLine": 128,
+      "generatedEndLine": 130,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1838,9 +1838,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 130,
+      "generatedStartLine": 132,
       "generatedStartColumn": 1,
-      "generatedEndLine": 130,
+      "generatedEndLine": 132,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1854,9 +1854,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 131,
+      "generatedStartLine": 133,
       "generatedStartColumn": 1,
-      "generatedEndLine": 131,
+      "generatedEndLine": 133,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1870,9 +1870,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 132,
+      "generatedStartLine": 134,
       "generatedStartColumn": 1,
-      "generatedEndLine": 132,
+      "generatedEndLine": 134,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1886,9 +1886,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 135,
+      "generatedStartLine": 137,
       "generatedStartColumn": 1,
-      "generatedEndLine": 135,
+      "generatedEndLine": 137,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1903,9 +1903,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 137,
+      "generatedStartLine": 139,
       "generatedStartColumn": 1,
-      "generatedEndLine": 137,
+      "generatedEndLine": 139,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1919,9 +1919,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 138,
+      "generatedStartLine": 140,
       "generatedStartColumn": 1,
-      "generatedEndLine": 138,
+      "generatedEndLine": 140,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1935,9 +1935,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 139,
+      "generatedStartLine": 141,
       "generatedStartColumn": 1,
-      "generatedEndLine": 139,
+      "generatedEndLine": 141,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1951,9 +1951,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 142,
+      "generatedStartLine": 144,
       "generatedStartColumn": 1,
-      "generatedEndLine": 142,
+      "generatedEndLine": 144,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1968,9 +1968,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 144,
+      "generatedStartLine": 146,
       "generatedStartColumn": 1,
-      "generatedEndLine": 144,
+      "generatedEndLine": 146,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -1984,9 +1984,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 145,
+      "generatedStartLine": 147,
       "generatedStartColumn": 1,
-      "generatedEndLine": 145,
+      "generatedEndLine": 147,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2000,9 +2000,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 146,
+      "generatedStartLine": 148,
       "generatedStartColumn": 1,
-      "generatedEndLine": 146,
+      "generatedEndLine": 148,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2016,9 +2016,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 149,
+      "generatedStartLine": 151,
       "generatedStartColumn": 1,
-      "generatedEndLine": 149,
+      "generatedEndLine": 151,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2033,9 +2033,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 151,
+      "generatedStartLine": 153,
       "generatedStartColumn": 1,
-      "generatedEndLine": 151,
+      "generatedEndLine": 153,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2049,9 +2049,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 152,
+      "generatedStartLine": 154,
       "generatedStartColumn": 1,
-      "generatedEndLine": 152,
+      "generatedEndLine": 154,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2065,9 +2065,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 153,
+      "generatedStartLine": 155,
       "generatedStartColumn": 1,
-      "generatedEndLine": 153,
+      "generatedEndLine": 155,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2081,9 +2081,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 156,
+      "generatedStartLine": 158,
       "generatedStartColumn": 1,
-      "generatedEndLine": 156,
+      "generatedEndLine": 158,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2098,9 +2098,9 @@
       "symbolName": "__tc_fn7"
     },
     {
-      "generatedStartLine": 158,
+      "generatedStartLine": 160,
       "generatedStartColumn": 1,
-      "generatedEndLine": 158,
+      "generatedEndLine": 160,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2114,9 +2114,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 159,
+      "generatedStartLine": 161,
       "generatedStartColumn": 1,
-      "generatedEndLine": 159,
+      "generatedEndLine": 161,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2130,9 +2130,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 162,
+      "generatedStartLine": 164,
       "generatedStartColumn": 1,
-      "generatedEndLine": 162,
+      "generatedEndLine": 164,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2147,9 +2147,9 @@
       "symbolName": "__tc_fn8"
     },
     {
-      "generatedStartLine": 164,
+      "generatedStartLine": 166,
       "generatedStartColumn": 1,
-      "generatedEndLine": 164,
+      "generatedEndLine": 166,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2163,9 +2163,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 165,
+      "generatedStartLine": 167,
       "generatedStartColumn": 1,
-      "generatedEndLine": 165,
+      "generatedEndLine": 167,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2179,9 +2179,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 166,
+      "generatedStartLine": 168,
       "generatedStartColumn": 1,
-      "generatedEndLine": 166,
+      "generatedEndLine": 168,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2195,9 +2195,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 169,
+      "generatedStartLine": 171,
       "generatedStartColumn": 1,
-      "generatedEndLine": 169,
+      "generatedEndLine": 171,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2212,9 +2212,9 @@
       "symbolName": "__tc_fn9"
     },
     {
-      "generatedStartLine": 171,
+      "generatedStartLine": 173,
       "generatedStartColumn": 1,
-      "generatedEndLine": 171,
+      "generatedEndLine": 173,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2228,9 +2228,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 172,
+      "generatedStartLine": 174,
       "generatedStartColumn": 1,
-      "generatedEndLine": 172,
+      "generatedEndLine": 174,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2244,9 +2244,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 175,
+      "generatedStartLine": 177,
       "generatedStartColumn": 1,
-      "generatedEndLine": 175,
+      "generatedEndLine": 177,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2261,9 +2261,9 @@
       "symbolName": "__tc_fn10"
     },
     {
-      "generatedStartLine": 177,
+      "generatedStartLine": 179,
       "generatedStartColumn": 1,
-      "generatedEndLine": 177,
+      "generatedEndLine": 179,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2277,9 +2277,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 178,
+      "generatedStartLine": 180,
       "generatedStartColumn": 1,
-      "generatedEndLine": 178,
+      "generatedEndLine": 180,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2293,9 +2293,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 179,
+      "generatedStartLine": 181,
       "generatedStartColumn": 1,
-      "generatedEndLine": 179,
+      "generatedEndLine": 181,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2309,9 +2309,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 182,
+      "generatedStartLine": 184,
       "generatedStartColumn": 1,
-      "generatedEndLine": 182,
+      "generatedEndLine": 184,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2326,9 +2326,9 @@
       "symbolName": "__tc_fn11"
     },
     {
-      "generatedStartLine": 184,
+      "generatedStartLine": 186,
       "generatedStartColumn": 1,
-      "generatedEndLine": 184,
+      "generatedEndLine": 186,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2342,9 +2342,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 185,
+      "generatedStartLine": 187,
       "generatedStartColumn": 1,
-      "generatedEndLine": 185,
+      "generatedEndLine": 187,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2358,9 +2358,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 186,
+      "generatedStartLine": 188,
       "generatedStartColumn": 1,
-      "generatedEndLine": 186,
+      "generatedEndLine": 188,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2374,9 +2374,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 189,
+      "generatedStartLine": 191,
       "generatedStartColumn": 1,
-      "generatedEndLine": 189,
+      "generatedEndLine": 191,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2391,9 +2391,9 @@
       "symbolName": "__tc_fn12"
     },
     {
-      "generatedStartLine": 191,
+      "generatedStartLine": 193,
       "generatedStartColumn": 1,
-      "generatedEndLine": 191,
+      "generatedEndLine": 193,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2407,9 +2407,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 192,
+      "generatedStartLine": 194,
       "generatedStartColumn": 1,
-      "generatedEndLine": 192,
+      "generatedEndLine": 194,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2423,9 +2423,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 193,
+      "generatedStartLine": 195,
       "generatedStartColumn": 1,
-      "generatedEndLine": 193,
+      "generatedEndLine": 195,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2439,9 +2439,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 194,
+      "generatedStartLine": 196,
       "generatedStartColumn": 1,
-      "generatedEndLine": 194,
+      "generatedEndLine": 196,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2455,9 +2455,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 197,
+      "generatedStartLine": 199,
       "generatedStartColumn": 1,
-      "generatedEndLine": 197,
+      "generatedEndLine": 199,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2472,9 +2472,9 @@
       "symbolName": "__tc_fn13"
     },
     {
-      "generatedStartLine": 199,
+      "generatedStartLine": 201,
       "generatedStartColumn": 1,
-      "generatedEndLine": 199,
+      "generatedEndLine": 201,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2488,9 +2488,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 200,
+      "generatedStartLine": 202,
       "generatedStartColumn": 1,
-      "generatedEndLine": 200,
+      "generatedEndLine": 202,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2504,9 +2504,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 201,
+      "generatedStartLine": 203,
       "generatedStartColumn": 1,
-      "generatedEndLine": 201,
+      "generatedEndLine": 203,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2520,9 +2520,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 202,
+      "generatedStartLine": 204,
       "generatedStartColumn": 1,
-      "generatedEndLine": 202,
+      "generatedEndLine": 204,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2536,9 +2536,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 205,
+      "generatedStartLine": 207,
       "generatedStartColumn": 1,
-      "generatedEndLine": 205,
+      "generatedEndLine": 207,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2553,9 +2553,9 @@
       "symbolName": "__tc_fn14"
     },
     {
-      "generatedStartLine": 207,
+      "generatedStartLine": 209,
       "generatedStartColumn": 1,
-      "generatedEndLine": 207,
+      "generatedEndLine": 209,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2569,9 +2569,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 208,
+      "generatedStartLine": 210,
       "generatedStartColumn": 1,
-      "generatedEndLine": 208,
+      "generatedEndLine": 210,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2585,9 +2585,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 209,
+      "generatedStartLine": 211,
       "generatedStartColumn": 1,
-      "generatedEndLine": 209,
+      "generatedEndLine": 211,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2601,9 +2601,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 210,
+      "generatedStartLine": 212,
       "generatedStartColumn": 1,
-      "generatedEndLine": 210,
+      "generatedEndLine": 212,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2617,9 +2617,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 213,
+      "generatedStartLine": 215,
       "generatedStartColumn": 1,
-      "generatedEndLine": 213,
+      "generatedEndLine": 215,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2634,9 +2634,9 @@
       "symbolName": "__tc_fn15"
     },
     {
-      "generatedStartLine": 215,
+      "generatedStartLine": 217,
       "generatedStartColumn": 1,
-      "generatedEndLine": 215,
+      "generatedEndLine": 217,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2650,9 +2650,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 216,
+      "generatedStartLine": 218,
       "generatedStartColumn": 1,
-      "generatedEndLine": 216,
+      "generatedEndLine": 218,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2666,9 +2666,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 217,
+      "generatedStartLine": 219,
       "generatedStartColumn": 1,
-      "generatedEndLine": 217,
+      "generatedEndLine": 219,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2682,9 +2682,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 220,
+      "generatedStartLine": 222,
       "generatedStartColumn": 1,
-      "generatedEndLine": 220,
+      "generatedEndLine": 222,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2699,9 +2699,9 @@
       "symbolName": "__tc_fn16"
     },
     {
-      "generatedStartLine": 222,
+      "generatedStartLine": 224,
       "generatedStartColumn": 1,
-      "generatedEndLine": 222,
+      "generatedEndLine": 224,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2715,9 +2715,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 223,
+      "generatedStartLine": 225,
       "generatedStartColumn": 1,
-      "generatedEndLine": 223,
+      "generatedEndLine": 225,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2731,9 +2731,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 226,
+      "generatedStartLine": 228,
       "generatedStartColumn": 1,
-      "generatedEndLine": 226,
+      "generatedEndLine": 228,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2748,9 +2748,9 @@
       "symbolName": "__tc_fn17"
     },
     {
-      "generatedStartLine": 228,
+      "generatedStartLine": 230,
       "generatedStartColumn": 1,
-      "generatedEndLine": 228,
+      "generatedEndLine": 230,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2764,9 +2764,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 231,
+      "generatedStartLine": 233,
       "generatedStartColumn": 1,
-      "generatedEndLine": 231,
+      "generatedEndLine": 233,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2781,9 +2781,9 @@
       "symbolName": "__tc_fn18"
     },
     {
-      "generatedStartLine": 233,
+      "generatedStartLine": 235,
       "generatedStartColumn": 1,
-      "generatedEndLine": 233,
+      "generatedEndLine": 235,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2797,9 +2797,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 236,
+      "generatedStartLine": 238,
       "generatedStartColumn": 1,
-      "generatedEndLine": 236,
+      "generatedEndLine": 238,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2814,9 +2814,9 @@
       "symbolName": "__tc_fn19"
     },
     {
-      "generatedStartLine": 238,
+      "generatedStartLine": 240,
       "generatedStartColumn": 1,
-      "generatedEndLine": 238,
+      "generatedEndLine": 240,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2830,9 +2830,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 241,
+      "generatedStartLine": 243,
       "generatedStartColumn": 1,
-      "generatedEndLine": 241,
+      "generatedEndLine": 243,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2847,9 +2847,9 @@
       "symbolName": "__tc_fn20"
     },
     {
-      "generatedStartLine": 243,
+      "generatedStartLine": 245,
       "generatedStartColumn": 1,
-      "generatedEndLine": 243,
+      "generatedEndLine": 245,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2863,9 +2863,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 246,
+      "generatedStartLine": 248,
       "generatedStartColumn": 1,
-      "generatedEndLine": 246,
+      "generatedEndLine": 248,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2880,9 +2880,9 @@
       "symbolName": "__tc_fn21"
     },
     {
-      "generatedStartLine": 248,
+      "generatedStartLine": 250,
       "generatedStartColumn": 1,
-      "generatedEndLine": 248,
+      "generatedEndLine": 250,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2896,9 +2896,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 251,
+      "generatedStartLine": 253,
       "generatedStartColumn": 1,
-      "generatedEndLine": 251,
+      "generatedEndLine": 253,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2913,9 +2913,9 @@
       "symbolName": "__tc_fn22"
     },
     {
-      "generatedStartLine": 253,
+      "generatedStartLine": 255,
       "generatedStartColumn": 1,
-      "generatedEndLine": 253,
+      "generatedEndLine": 255,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",
@@ -2929,9 +2929,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 256,
+      "generatedStartLine": 258,
       "generatedStartColumn": 1,
-      "generatedEndLine": 256,
+      "generatedEndLine": 258,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\03-comparison.test.ts",

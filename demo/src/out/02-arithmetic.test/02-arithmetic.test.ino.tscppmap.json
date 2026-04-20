@@ -4,9 +4,9 @@
   "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
   "entries": [
     {
-      "generatedStartLine": 3,
+      "generatedStartLine": 5,
       "generatedStartColumn": 1,
-      "generatedEndLine": 3,
+      "generatedEndLine": 5,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -21,9 +21,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 4,
+      "generatedStartLine": 6,
       "generatedStartColumn": 1,
-      "generatedEndLine": 4,
+      "generatedEndLine": 6,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -38,9 +38,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 5,
+      "generatedStartLine": 7,
       "generatedStartColumn": 1,
-      "generatedEndLine": 5,
+      "generatedEndLine": 7,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -55,9 +55,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 6,
+      "generatedStartLine": 8,
       "generatedStartColumn": 1,
-      "generatedEndLine": 6,
+      "generatedEndLine": 8,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -72,9 +72,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 7,
+      "generatedStartLine": 9,
       "generatedStartColumn": 1,
-      "generatedEndLine": 7,
+      "generatedEndLine": 9,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -89,9 +89,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 8,
+      "generatedStartLine": 10,
       "generatedStartColumn": 1,
-      "generatedEndLine": 8,
+      "generatedEndLine": 10,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -106,9 +106,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 9,
+      "generatedStartLine": 11,
       "generatedStartColumn": 1,
-      "generatedEndLine": 9,
+      "generatedEndLine": 11,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -123,9 +123,9 @@
       "symbolName": "__tc_fn7"
     },
     {
-      "generatedStartLine": 10,
+      "generatedStartLine": 12,
       "generatedStartColumn": 1,
-      "generatedEndLine": 10,
+      "generatedEndLine": 12,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -140,14 +140,14 @@
       "symbolName": "__tc_fn8"
     },
     {
-      "generatedStartLine": 11,
+      "generatedStartLine": 13,
       "generatedStartColumn": 1,
-      "generatedEndLine": 11,
+      "generatedEndLine": 13,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1444,
-        "endOffset": 1505,
+        "startOffset": 1436,
+        "endOffset": 1497,
         "startLine": 46,
         "startColumn": 1,
         "endLine": 46,
@@ -157,14 +157,14 @@
       "symbolName": "__tc_fn9"
     },
     {
-      "generatedStartLine": 12,
+      "generatedStartLine": 14,
       "generatedStartColumn": 1,
-      "generatedEndLine": 12,
+      "generatedEndLine": 14,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1506,
-        "endOffset": 1576,
+        "startOffset": 1498,
+        "endOffset": 1568,
         "startLine": 47,
         "startColumn": 1,
         "endLine": 47,
@@ -174,14 +174,14 @@
       "symbolName": "__tc_fn10"
     },
     {
-      "generatedStartLine": 13,
+      "generatedStartLine": 15,
       "generatedStartColumn": 1,
-      "generatedEndLine": 13,
+      "generatedEndLine": 15,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1577,
-        "endOffset": 1643,
+        "startOffset": 1569,
+        "endOffset": 1635,
         "startLine": 48,
         "startColumn": 1,
         "endLine": 48,
@@ -191,14 +191,14 @@
       "symbolName": "__tc_fn11"
     },
     {
-      "generatedStartLine": 14,
+      "generatedStartLine": 16,
       "generatedStartColumn": 1,
-      "generatedEndLine": 14,
+      "generatedEndLine": 16,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1644,
-        "endOffset": 1715,
+        "startOffset": 1636,
+        "endOffset": 1707,
         "startLine": 49,
         "startColumn": 1,
         "endLine": 49,
@@ -208,14 +208,14 @@
       "symbolName": "__tc_fn12"
     },
     {
-      "generatedStartLine": 15,
+      "generatedStartLine": 17,
       "generatedStartColumn": 1,
-      "generatedEndLine": 15,
+      "generatedEndLine": 17,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1716,
-        "endOffset": 1804,
+        "startOffset": 1708,
+        "endOffset": 1796,
         "startLine": 50,
         "startColumn": 1,
         "endLine": 53,
@@ -225,14 +225,14 @@
       "symbolName": "__tc_fn13"
     },
     {
-      "generatedStartLine": 16,
+      "generatedStartLine": 18,
       "generatedStartColumn": 1,
-      "generatedEndLine": 16,
+      "generatedEndLine": 18,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2507,
-        "endOffset": 2581,
+        "startOffset": 2499,
+        "endOffset": 2573,
         "startLine": 75,
         "startColumn": 1,
         "endLine": 78,
@@ -242,14 +242,14 @@
       "symbolName": "__tc_fn14"
     },
     {
-      "generatedStartLine": 17,
+      "generatedStartLine": 19,
       "generatedStartColumn": 1,
-      "generatedEndLine": 17,
+      "generatedEndLine": 19,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2582,
-        "endOffset": 2672,
+        "startOffset": 2574,
+        "endOffset": 2664,
         "startLine": 79,
         "startColumn": 1,
         "endLine": 83,
@@ -259,14 +259,14 @@
       "symbolName": "__tc_fn15"
     },
     {
-      "generatedStartLine": 18,
+      "generatedStartLine": 20,
       "generatedStartColumn": 1,
-      "generatedEndLine": 18,
+      "generatedEndLine": 20,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2673,
-        "endOffset": 2779,
+        "startOffset": 2665,
+        "endOffset": 2771,
         "startLine": 84,
         "startColumn": 1,
         "endLine": 89,
@@ -276,14 +276,14 @@
       "symbolName": "__tc_fn16"
     },
     {
-      "generatedStartLine": 19,
+      "generatedStartLine": 21,
       "generatedStartColumn": 1,
-      "generatedEndLine": 19,
+      "generatedEndLine": 21,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2780,
-        "endOffset": 2902,
+        "startOffset": 2772,
+        "endOffset": 2894,
         "startLine": 90,
         "startColumn": 1,
         "endLine": 96,
@@ -293,14 +293,14 @@
       "symbolName": "__tc_fn17"
     },
     {
-      "generatedStartLine": 20,
+      "generatedStartLine": 22,
       "generatedStartColumn": 1,
-      "generatedEndLine": 20,
+      "generatedEndLine": 22,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2903,
-        "endOffset": 3041,
+        "startOffset": 2895,
+        "endOffset": 3033,
         "startLine": 97,
         "startColumn": 1,
         "endLine": 104,
@@ -310,9 +310,9 @@
       "symbolName": "__tc_fn18"
     },
     {
-      "generatedStartLine": 23,
+      "generatedStartLine": 25,
       "generatedStartColumn": 1,
-      "generatedEndLine": 23,
+      "generatedEndLine": 25,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -327,9 +327,9 @@
       "symbolName": "setup"
     },
     {
-      "generatedStartLine": 25,
+      "generatedStartLine": 27,
       "generatedStartColumn": 1,
-      "generatedEndLine": 25,
+      "generatedEndLine": 27,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -343,9 +343,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 26,
+      "generatedStartLine": 28,
       "generatedStartColumn": 1,
-      "generatedEndLine": 26,
+      "generatedEndLine": 28,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -359,9 +359,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 27,
+      "generatedStartLine": 29,
       "generatedStartColumn": 1,
-      "generatedEndLine": 27,
+      "generatedEndLine": 29,
       "generatedEndColumn": 56,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -375,9 +375,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 28,
+      "generatedStartLine": 30,
       "generatedStartColumn": 1,
-      "generatedEndLine": 28,
+      "generatedEndLine": 30,
       "generatedEndColumn": 49,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -391,9 +391,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 29,
+      "generatedStartLine": 31,
       "generatedStartColumn": 1,
-      "generatedEndLine": 29,
+      "generatedEndLine": 31,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -407,9 +407,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 30,
+      "generatedStartLine": 32,
       "generatedStartColumn": 1,
-      "generatedEndLine": 30,
+      "generatedEndLine": 32,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -423,9 +423,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 31,
+      "generatedStartLine": 33,
       "generatedStartColumn": 1,
-      "generatedEndLine": 31,
+      "generatedEndLine": 33,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -439,9 +439,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 32,
+      "generatedStartLine": 34,
       "generatedStartColumn": 1,
-      "generatedEndLine": 32,
+      "generatedEndLine": 34,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -455,9 +455,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 33,
+      "generatedStartLine": 35,
       "generatedStartColumn": 1,
-      "generatedEndLine": 33,
+      "generatedEndLine": 35,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -471,9 +471,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 34,
+      "generatedStartLine": 36,
       "generatedStartColumn": 1,
-      "generatedEndLine": 34,
+      "generatedEndLine": 36,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -487,9 +487,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 35,
+      "generatedStartLine": 37,
       "generatedStartColumn": 1,
-      "generatedEndLine": 35,
+      "generatedEndLine": 37,
       "generatedEndColumn": 44,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -503,9 +503,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 36,
+      "generatedStartLine": 38,
       "generatedStartColumn": 1,
-      "generatedEndLine": 36,
+      "generatedEndLine": 38,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -519,9 +519,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 37,
+      "generatedStartLine": 39,
       "generatedStartColumn": 1,
-      "generatedEndLine": 37,
+      "generatedEndLine": 39,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -535,9 +535,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 38,
+      "generatedStartLine": 40,
       "generatedStartColumn": 1,
-      "generatedEndLine": 38,
+      "generatedEndLine": 40,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -551,9 +551,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 39,
+      "generatedStartLine": 41,
       "generatedStartColumn": 1,
-      "generatedEndLine": 39,
+      "generatedEndLine": 41,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -567,9 +567,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 40,
+      "generatedStartLine": 42,
       "generatedStartColumn": 1,
-      "generatedEndLine": 40,
+      "generatedEndLine": 42,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -583,9 +583,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 41,
+      "generatedStartLine": 43,
       "generatedStartColumn": 1,
-      "generatedEndLine": 41,
+      "generatedEndLine": 43,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -599,9 +599,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 42,
+      "generatedStartLine": 44,
       "generatedStartColumn": 1,
-      "generatedEndLine": 42,
+      "generatedEndLine": 44,
       "generatedEndColumn": 49,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -615,9 +615,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 43,
+      "generatedStartLine": 45,
       "generatedStartColumn": 1,
-      "generatedEndLine": 43,
+      "generatedEndLine": 45,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -631,9 +631,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 44,
+      "generatedStartLine": 46,
       "generatedStartColumn": 1,
-      "generatedEndLine": 44,
+      "generatedEndLine": 46,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -647,9 +647,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 45,
+      "generatedStartLine": 47,
       "generatedStartColumn": 1,
-      "generatedEndLine": 45,
+      "generatedEndLine": 47,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -663,30 +663,30 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 46,
+      "generatedStartLine": 48,
       "generatedStartColumn": 1,
-      "generatedEndLine": 46,
-      "generatedEndColumn": 63,
+      "generatedEndLine": 48,
+      "generatedEndColumn": 55,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
         "startOffset": 1131,
-        "endOffset": 1190,
+        "endOffset": 1182,
         "startLine": 36,
         "startColumn": 1,
         "endLine": 36,
-        "endColumn": 60
+        "endColumn": 52
       },
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 47,
+      "generatedStartLine": 49,
       "generatedStartColumn": 1,
-      "generatedEndLine": 47,
+      "generatedEndLine": 49,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1192,
-        "endOffset": 1227,
+        "startOffset": 1184,
+        "endOffset": 1219,
         "startLine": 37,
         "startColumn": 1,
         "endLine": 37,
@@ -695,14 +695,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 48,
+      "generatedStartLine": 50,
       "generatedStartColumn": 1,
-      "generatedEndLine": 48,
+      "generatedEndLine": 50,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1229,
-        "endOffset": 1253,
+        "startOffset": 1221,
+        "endOffset": 1245,
         "startLine": 38,
         "startColumn": 1,
         "endLine": 38,
@@ -711,14 +711,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 49,
+      "generatedStartLine": 51,
       "generatedStartColumn": 1,
-      "generatedEndLine": 49,
+      "generatedEndLine": 51,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1255,
-        "endOffset": 1274,
+        "startOffset": 1247,
+        "endOffset": 1266,
         "startLine": 39,
         "startColumn": 1,
         "endLine": 39,
@@ -727,14 +727,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 50,
+      "generatedStartLine": 52,
       "generatedStartColumn": 1,
-      "generatedEndLine": 50,
+      "generatedEndLine": 52,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1276,
-        "endOffset": 1311,
+        "startOffset": 1268,
+        "endOffset": 1303,
         "startLine": 40,
         "startColumn": 1,
         "endLine": 40,
@@ -743,14 +743,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 51,
+      "generatedStartLine": 53,
       "generatedStartColumn": 1,
-      "generatedEndLine": 51,
+      "generatedEndLine": 53,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1313,
-        "endOffset": 1337,
+        "startOffset": 1305,
+        "endOffset": 1329,
         "startLine": 41,
         "startColumn": 1,
         "endLine": 41,
@@ -759,14 +759,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 52,
+      "generatedStartLine": 54,
       "generatedStartColumn": 1,
-      "generatedEndLine": 52,
+      "generatedEndLine": 54,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1339,
-        "endOffset": 1358,
+        "startOffset": 1331,
+        "endOffset": 1350,
         "startLine": 42,
         "startColumn": 1,
         "endLine": 42,
@@ -775,14 +775,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 53,
+      "generatedStartLine": 55,
       "generatedStartColumn": 1,
-      "generatedEndLine": 53,
+      "generatedEndLine": 55,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1360,
-        "endOffset": 1395,
+        "startOffset": 1352,
+        "endOffset": 1387,
         "startLine": 43,
         "startColumn": 1,
         "endLine": 43,
@@ -791,14 +791,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 54,
+      "generatedStartLine": 56,
       "generatedStartColumn": 1,
-      "generatedEndLine": 54,
+      "generatedEndLine": 56,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1397,
-        "endOffset": 1421,
+        "startOffset": 1389,
+        "endOffset": 1413,
         "startLine": 44,
         "startColumn": 1,
         "endLine": 44,
@@ -807,14 +807,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 55,
+      "generatedStartLine": 57,
       "generatedStartColumn": 1,
-      "generatedEndLine": 55,
+      "generatedEndLine": 57,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1423,
-        "endOffset": 1442,
+        "startOffset": 1415,
+        "endOffset": 1434,
         "startLine": 45,
         "startColumn": 1,
         "endLine": 45,
@@ -823,14 +823,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 56,
+      "generatedStartLine": 58,
       "generatedStartColumn": 1,
-      "generatedEndLine": 56,
+      "generatedEndLine": 58,
       "generatedEndColumn": 51,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1805,
-        "endOffset": 1852,
+        "startOffset": 1797,
+        "endOffset": 1844,
         "startLine": 54,
         "startColumn": 1,
         "endLine": 54,
@@ -839,14 +839,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 57,
+      "generatedStartLine": 59,
       "generatedStartColumn": 1,
-      "generatedEndLine": 57,
+      "generatedEndLine": 59,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1854,
-        "endOffset": 1891,
+        "startOffset": 1846,
+        "endOffset": 1883,
         "startLine": 55,
         "startColumn": 1,
         "endLine": 55,
@@ -855,14 +855,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 58,
+      "generatedStartLine": 60,
       "generatedStartColumn": 1,
-      "generatedEndLine": 58,
+      "generatedEndLine": 60,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1893,
-        "endOffset": 1929,
+        "startOffset": 1885,
+        "endOffset": 1921,
         "startLine": 56,
         "startColumn": 1,
         "endLine": 56,
@@ -871,14 +871,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 59,
+      "generatedStartLine": 61,
       "generatedStartColumn": 1,
-      "generatedEndLine": 59,
+      "generatedEndLine": 61,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1931,
-        "endOffset": 1955,
+        "startOffset": 1923,
+        "endOffset": 1947,
         "startLine": 57,
         "startColumn": 1,
         "endLine": 57,
@@ -887,14 +887,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 60,
+      "generatedStartLine": 62,
       "generatedStartColumn": 1,
-      "generatedEndLine": 60,
+      "generatedEndLine": 62,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1957,
-        "endOffset": 1976,
+        "startOffset": 1949,
+        "endOffset": 1968,
         "startLine": 58,
         "startColumn": 1,
         "endLine": 58,
@@ -903,14 +903,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 61,
+      "generatedStartLine": 63,
       "generatedStartColumn": 1,
-      "generatedEndLine": 61,
+      "generatedEndLine": 63,
       "generatedEndColumn": 44,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1978,
-        "endOffset": 2018,
+        "startOffset": 1970,
+        "endOffset": 2010,
         "startLine": 59,
         "startColumn": 1,
         "endLine": 59,
@@ -919,14 +919,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 62,
+      "generatedStartLine": 64,
       "generatedStartColumn": 1,
-      "generatedEndLine": 62,
+      "generatedEndLine": 64,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2020,
-        "endOffset": 2055,
+        "startOffset": 2012,
+        "endOffset": 2047,
         "startLine": 60,
         "startColumn": 1,
         "endLine": 60,
@@ -935,14 +935,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 63,
+      "generatedStartLine": 65,
       "generatedStartColumn": 1,
-      "generatedEndLine": 63,
+      "generatedEndLine": 65,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2057,
-        "endOffset": 2082,
+        "startOffset": 2049,
+        "endOffset": 2074,
         "startLine": 61,
         "startColumn": 1,
         "endLine": 61,
@@ -951,14 +951,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 64,
+      "generatedStartLine": 66,
       "generatedStartColumn": 1,
-      "generatedEndLine": 64,
+      "generatedEndLine": 66,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2084,
-        "endOffset": 2103,
+        "startOffset": 2076,
+        "endOffset": 2095,
         "startLine": 62,
         "startColumn": 1,
         "endLine": 62,
@@ -967,14 +967,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 65,
+      "generatedStartLine": 67,
       "generatedStartColumn": 1,
-      "generatedEndLine": 65,
+      "generatedEndLine": 67,
       "generatedEndColumn": 43,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2105,
-        "endOffset": 2144,
+        "startOffset": 2097,
+        "endOffset": 2136,
         "startLine": 63,
         "startColumn": 1,
         "endLine": 63,
@@ -983,14 +983,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 66,
+      "generatedStartLine": 68,
       "generatedStartColumn": 1,
-      "generatedEndLine": 66,
+      "generatedEndLine": 68,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2146,
-        "endOffset": 2181,
+        "startOffset": 2138,
+        "endOffset": 2173,
         "startLine": 64,
         "startColumn": 1,
         "endLine": 64,
@@ -999,14 +999,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 67,
+      "generatedStartLine": 69,
       "generatedStartColumn": 1,
-      "generatedEndLine": 67,
+      "generatedEndLine": 69,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2183,
-        "endOffset": 2208,
+        "startOffset": 2175,
+        "endOffset": 2200,
         "startLine": 65,
         "startColumn": 1,
         "endLine": 65,
@@ -1015,14 +1015,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 68,
+      "generatedStartLine": 70,
       "generatedStartColumn": 1,
-      "generatedEndLine": 68,
+      "generatedEndLine": 70,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2210,
-        "endOffset": 2229,
+        "startOffset": 2202,
+        "endOffset": 2221,
         "startLine": 66,
         "startColumn": 1,
         "endLine": 66,
@@ -1031,14 +1031,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 69,
+      "generatedStartLine": 71,
       "generatedStartColumn": 1,
-      "generatedEndLine": 69,
+      "generatedEndLine": 71,
       "generatedEndColumn": 46,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2231,
-        "endOffset": 2273,
+        "startOffset": 2223,
+        "endOffset": 2265,
         "startLine": 67,
         "startColumn": 1,
         "endLine": 67,
@@ -1047,14 +1047,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 70,
+      "generatedStartLine": 72,
       "generatedStartColumn": 1,
-      "generatedEndLine": 70,
+      "generatedEndLine": 72,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2275,
-        "endOffset": 2311,
+        "startOffset": 2267,
+        "endOffset": 2303,
         "startLine": 68,
         "startColumn": 1,
         "endLine": 68,
@@ -1063,14 +1063,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 71,
+      "generatedStartLine": 73,
       "generatedStartColumn": 1,
-      "generatedEndLine": 71,
+      "generatedEndLine": 73,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2313,
-        "endOffset": 2338,
+        "startOffset": 2305,
+        "endOffset": 2330,
         "startLine": 69,
         "startColumn": 1,
         "endLine": 69,
@@ -1079,14 +1079,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 72,
+      "generatedStartLine": 74,
       "generatedStartColumn": 1,
-      "generatedEndLine": 72,
+      "generatedEndLine": 74,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2340,
-        "endOffset": 2359,
+        "startOffset": 2332,
+        "endOffset": 2351,
         "startLine": 70,
         "startColumn": 1,
         "endLine": 70,
@@ -1095,14 +1095,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 73,
+      "generatedStartLine": 75,
       "generatedStartColumn": 1,
-      "generatedEndLine": 73,
+      "generatedEndLine": 75,
       "generatedEndColumn": 52,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2361,
-        "endOffset": 2409,
+        "startOffset": 2353,
+        "endOffset": 2401,
         "startLine": 71,
         "startColumn": 1,
         "endLine": 71,
@@ -1111,14 +1111,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 74,
+      "generatedStartLine": 76,
       "generatedStartColumn": 1,
-      "generatedEndLine": 74,
+      "generatedEndLine": 76,
       "generatedEndColumn": 50,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2411,
-        "endOffset": 2457,
+        "startOffset": 2403,
+        "endOffset": 2449,
         "startLine": 72,
         "startColumn": 1,
         "endLine": 72,
@@ -1127,14 +1127,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 75,
+      "generatedStartLine": 77,
       "generatedStartColumn": 1,
-      "generatedEndLine": 75,
+      "generatedEndLine": 77,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2459,
-        "endOffset": 2484,
+        "startOffset": 2451,
+        "endOffset": 2476,
         "startLine": 73,
         "startColumn": 1,
         "endLine": 73,
@@ -1143,14 +1143,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 76,
+      "generatedStartLine": 78,
       "generatedStartColumn": 1,
-      "generatedEndLine": 76,
+      "generatedEndLine": 78,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2486,
-        "endOffset": 2505,
+        "startOffset": 2478,
+        "endOffset": 2497,
         "startLine": 74,
         "startColumn": 1,
         "endLine": 74,
@@ -1159,14 +1159,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 77,
+      "generatedStartLine": 79,
       "generatedStartColumn": 1,
-      "generatedEndLine": 77,
+      "generatedEndLine": 79,
       "generatedEndColumn": 55,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3042,
-        "endOffset": 3093,
+        "startOffset": 3034,
+        "endOffset": 3085,
         "startLine": 105,
         "startColumn": 1,
         "endLine": 105,
@@ -1175,14 +1175,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 78,
+      "generatedStartLine": 80,
       "generatedStartColumn": 1,
-      "generatedEndLine": 78,
+      "generatedEndLine": 80,
       "generatedEndColumn": 44,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3095,
-        "endOffset": 3135,
+        "startOffset": 3087,
+        "endOffset": 3127,
         "startLine": 106,
         "startColumn": 1,
         "endLine": 106,
@@ -1191,14 +1191,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 79,
+      "generatedStartLine": 81,
       "generatedStartColumn": 1,
-      "generatedEndLine": 79,
+      "generatedEndLine": 81,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3137,
-        "endOffset": 3172,
+        "startOffset": 3129,
+        "endOffset": 3164,
         "startLine": 107,
         "startColumn": 1,
         "endLine": 107,
@@ -1207,14 +1207,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 80,
+      "generatedStartLine": 82,
       "generatedStartColumn": 1,
-      "generatedEndLine": 80,
+      "generatedEndLine": 82,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3174,
-        "endOffset": 3199,
+        "startOffset": 3166,
+        "endOffset": 3191,
         "startLine": 108,
         "startColumn": 1,
         "endLine": 108,
@@ -1223,14 +1223,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 81,
+      "generatedStartLine": 83,
       "generatedStartColumn": 1,
-      "generatedEndLine": 81,
+      "generatedEndLine": 83,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3201,
-        "endOffset": 3220,
+        "startOffset": 3193,
+        "endOffset": 3212,
         "startLine": 109,
         "startColumn": 1,
         "endLine": 109,
@@ -1239,14 +1239,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 82,
+      "generatedStartLine": 84,
       "generatedStartColumn": 1,
-      "generatedEndLine": 82,
+      "generatedEndLine": 84,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3222,
-        "endOffset": 3257,
+        "startOffset": 3214,
+        "endOffset": 3249,
         "startLine": 110,
         "startColumn": 1,
         "endLine": 110,
@@ -1255,14 +1255,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 83,
+      "generatedStartLine": 85,
       "generatedStartColumn": 1,
-      "generatedEndLine": 83,
+      "generatedEndLine": 85,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3259,
-        "endOffset": 3284,
+        "startOffset": 3251,
+        "endOffset": 3276,
         "startLine": 111,
         "startColumn": 1,
         "endLine": 111,
@@ -1271,14 +1271,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 84,
+      "generatedStartLine": 86,
       "generatedStartColumn": 1,
-      "generatedEndLine": 84,
+      "generatedEndLine": 86,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3286,
-        "endOffset": 3305,
+        "startOffset": 3278,
+        "endOffset": 3297,
         "startLine": 112,
         "startColumn": 1,
         "endLine": 112,
@@ -1287,14 +1287,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 85,
+      "generatedStartLine": 87,
       "generatedStartColumn": 1,
-      "generatedEndLine": 85,
+      "generatedEndLine": 87,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3307,
-        "endOffset": 3342,
+        "startOffset": 3299,
+        "endOffset": 3334,
         "startLine": 113,
         "startColumn": 1,
         "endLine": 113,
@@ -1303,14 +1303,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 86,
+      "generatedStartLine": 88,
       "generatedStartColumn": 1,
-      "generatedEndLine": 86,
+      "generatedEndLine": 88,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3344,
-        "endOffset": 3369,
+        "startOffset": 3336,
+        "endOffset": 3361,
         "startLine": 114,
         "startColumn": 1,
         "endLine": 114,
@@ -1319,14 +1319,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 87,
+      "generatedStartLine": 89,
       "generatedStartColumn": 1,
-      "generatedEndLine": 87,
+      "generatedEndLine": 89,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3371,
-        "endOffset": 3390,
+        "startOffset": 3363,
+        "endOffset": 3382,
         "startLine": 115,
         "startColumn": 1,
         "endLine": 115,
@@ -1335,14 +1335,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 88,
+      "generatedStartLine": 90,
       "generatedStartColumn": 1,
-      "generatedEndLine": 88,
+      "generatedEndLine": 90,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3392,
-        "endOffset": 3427,
+        "startOffset": 3384,
+        "endOffset": 3419,
         "startLine": 116,
         "startColumn": 1,
         "endLine": 116,
@@ -1351,14 +1351,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 89,
+      "generatedStartLine": 91,
       "generatedStartColumn": 1,
-      "generatedEndLine": 89,
+      "generatedEndLine": 91,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3429,
-        "endOffset": 3454,
+        "startOffset": 3421,
+        "endOffset": 3446,
         "startLine": 117,
         "startColumn": 1,
         "endLine": 117,
@@ -1367,14 +1367,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 90,
+      "generatedStartLine": 92,
       "generatedStartColumn": 1,
-      "generatedEndLine": 90,
+      "generatedEndLine": 92,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3456,
-        "endOffset": 3475,
+        "startOffset": 3448,
+        "endOffset": 3467,
         "startLine": 118,
         "startColumn": 1,
         "endLine": 118,
@@ -1383,14 +1383,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 91,
+      "generatedStartLine": 93,
       "generatedStartColumn": 1,
-      "generatedEndLine": 91,
+      "generatedEndLine": 93,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3477,
-        "endOffset": 3511,
+        "startOffset": 3469,
+        "endOffset": 3503,
         "startLine": 119,
         "startColumn": 1,
         "endLine": 119,
@@ -1399,14 +1399,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 92,
+      "generatedStartLine": 94,
       "generatedStartColumn": 1,
-      "generatedEndLine": 92,
+      "generatedEndLine": 94,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3513,
-        "endOffset": 3538,
+        "startOffset": 3505,
+        "endOffset": 3530,
         "startLine": 120,
         "startColumn": 1,
         "endLine": 120,
@@ -1415,14 +1415,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 93,
+      "generatedStartLine": 95,
       "generatedStartColumn": 1,
-      "generatedEndLine": 93,
+      "generatedEndLine": 95,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3540,
-        "endOffset": 3559,
+        "startOffset": 3532,
+        "endOffset": 3551,
         "startLine": 121,
         "startColumn": 1,
         "endLine": 121,
@@ -1431,14 +1431,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 94,
+      "generatedStartLine": 96,
       "generatedStartColumn": 1,
-      "generatedEndLine": 94,
+      "generatedEndLine": 96,
       "generatedEndColumn": 36,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3561,
-        "endOffset": 3593,
+        "startOffset": 3553,
+        "endOffset": 3585,
         "startLine": 122,
         "startColumn": 1,
         "endLine": 122,
@@ -1447,14 +1447,14 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 95,
+      "generatedStartLine": 97,
       "generatedStartColumn": 1,
-      "generatedEndLine": 95,
+      "generatedEndLine": 97,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3595,
-        "endOffset": 3624,
+        "startOffset": 3587,
+        "endOffset": 3616,
         "startLine": 123,
         "startColumn": 1,
         "endLine": 123,
@@ -1463,14 +1463,14 @@
       "nodeKind": "while"
     },
     {
-      "generatedStartLine": 97,
+      "generatedStartLine": 99,
       "generatedStartColumn": 1,
-      "generatedEndLine": 97,
+      "generatedEndLine": 99,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3610,
-        "endOffset": 3621,
+        "startOffset": 3602,
+        "endOffset": 3613,
         "startLine": 123,
         "startColumn": 16,
         "endLine": 123,
@@ -1479,9 +1479,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 101,
+      "generatedStartLine": 103,
       "generatedStartColumn": 1,
-      "generatedEndLine": 101,
+      "generatedEndLine": 103,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1496,9 +1496,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 103,
+      "generatedStartLine": 105,
       "generatedStartColumn": 1,
-      "generatedEndLine": 103,
+      "generatedEndLine": 105,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1512,9 +1512,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 106,
+      "generatedStartLine": 108,
       "generatedStartColumn": 1,
-      "generatedEndLine": 106,
+      "generatedEndLine": 108,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1529,9 +1529,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 108,
+      "generatedStartLine": 110,
       "generatedStartColumn": 1,
-      "generatedEndLine": 108,
+      "generatedEndLine": 110,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1545,9 +1545,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 111,
+      "generatedStartLine": 113,
       "generatedStartColumn": 1,
-      "generatedEndLine": 111,
+      "generatedEndLine": 113,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1562,9 +1562,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 113,
+      "generatedStartLine": 115,
       "generatedStartColumn": 1,
-      "generatedEndLine": 113,
+      "generatedEndLine": 115,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1578,9 +1578,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 114,
+      "generatedStartLine": 116,
       "generatedStartColumn": 1,
-      "generatedEndLine": 114,
+      "generatedEndLine": 116,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1594,9 +1594,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 117,
+      "generatedStartLine": 119,
       "generatedStartColumn": 1,
-      "generatedEndLine": 117,
+      "generatedEndLine": 119,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1611,9 +1611,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 119,
+      "generatedStartLine": 121,
       "generatedStartColumn": 1,
-      "generatedEndLine": 119,
+      "generatedEndLine": 121,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1627,9 +1627,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 120,
+      "generatedStartLine": 122,
       "generatedStartColumn": 1,
-      "generatedEndLine": 120,
+      "generatedEndLine": 122,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1643,9 +1643,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 123,
+      "generatedStartLine": 125,
       "generatedStartColumn": 1,
-      "generatedEndLine": 123,
+      "generatedEndLine": 125,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1660,9 +1660,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 125,
+      "generatedStartLine": 127,
       "generatedStartColumn": 1,
-      "generatedEndLine": 125,
+      "generatedEndLine": 127,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1676,9 +1676,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 128,
+      "generatedStartLine": 130,
       "generatedStartColumn": 1,
-      "generatedEndLine": 128,
+      "generatedEndLine": 130,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1693,9 +1693,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 130,
+      "generatedStartLine": 132,
       "generatedStartColumn": 1,
-      "generatedEndLine": 130,
+      "generatedEndLine": 132,
       "generatedEndColumn": 22,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1709,9 +1709,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 133,
+      "generatedStartLine": 135,
       "generatedStartColumn": 1,
-      "generatedEndLine": 133,
+      "generatedEndLine": 135,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1726,9 +1726,9 @@
       "symbolName": "__tc_fn7"
     },
     {
-      "generatedStartLine": 135,
+      "generatedStartLine": 137,
       "generatedStartColumn": 1,
-      "generatedEndLine": 135,
+      "generatedEndLine": 137,
       "generatedEndColumn": 22,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1742,9 +1742,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 138,
+      "generatedStartLine": 140,
       "generatedStartColumn": 1,
-      "generatedEndLine": 138,
+      "generatedEndLine": 140,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1759,9 +1759,9 @@
       "symbolName": "__tc_fn8"
     },
     {
-      "generatedStartLine": 140,
+      "generatedStartLine": 142,
       "generatedStartColumn": 1,
-      "generatedEndLine": 140,
+      "generatedEndLine": 142,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
@@ -1775,14 +1775,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 143,
+      "generatedStartLine": 145,
       "generatedStartColumn": 1,
-      "generatedEndLine": 143,
+      "generatedEndLine": 145,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1444,
-        "endOffset": 1505,
+        "startOffset": 1436,
+        "endOffset": 1497,
         "startLine": 46,
         "startColumn": 1,
         "endLine": 46,
@@ -1792,14 +1792,14 @@
       "symbolName": "__tc_fn9"
     },
     {
-      "generatedStartLine": 145,
+      "generatedStartLine": 147,
       "generatedStartColumn": 1,
-      "generatedEndLine": 145,
+      "generatedEndLine": 147,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1480,
-        "endOffset": 1490,
+        "startOffset": 1472,
+        "endOffset": 1482,
         "startLine": 46,
         "startColumn": 37,
         "endLine": 46,
@@ -1808,14 +1808,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 146,
+      "generatedStartLine": 148,
       "generatedStartColumn": 1,
-      "generatedEndLine": 146,
+      "generatedEndLine": 148,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1492,
-        "endOffset": 1503,
+        "startOffset": 1484,
+        "endOffset": 1495,
         "startLine": 46,
         "startColumn": 49,
         "endLine": 46,
@@ -1824,14 +1824,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 149,
+      "generatedStartLine": 151,
       "generatedStartColumn": 1,
-      "generatedEndLine": 149,
+      "generatedEndLine": 151,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1506,
-        "endOffset": 1576,
+        "startOffset": 1498,
+        "endOffset": 1568,
         "startLine": 47,
         "startColumn": 1,
         "endLine": 47,
@@ -1841,14 +1841,14 @@
       "symbolName": "__tc_fn10"
     },
     {
-      "generatedStartLine": 151,
+      "generatedStartLine": 153,
       "generatedStartColumn": 1,
-      "generatedEndLine": 151,
+      "generatedEndLine": 153,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1543,
-        "endOffset": 1558,
+        "startOffset": 1535,
+        "endOffset": 1550,
         "startLine": 47,
         "startColumn": 38,
         "endLine": 47,
@@ -1857,14 +1857,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 152,
+      "generatedStartLine": 154,
       "generatedStartColumn": 1,
-      "generatedEndLine": 152,
+      "generatedEndLine": 154,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1560,
-        "endOffset": 1574,
+        "startOffset": 1552,
+        "endOffset": 1566,
         "startLine": 47,
         "startColumn": 55,
         "endLine": 47,
@@ -1873,14 +1873,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 155,
+      "generatedStartLine": 157,
       "generatedStartColumn": 1,
-      "generatedEndLine": 155,
+      "generatedEndLine": 157,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1577,
-        "endOffset": 1643,
+        "startOffset": 1569,
+        "endOffset": 1635,
         "startLine": 48,
         "startColumn": 1,
         "endLine": 48,
@@ -1890,14 +1890,14 @@
       "symbolName": "__tc_fn11"
     },
     {
-      "generatedStartLine": 157,
+      "generatedStartLine": 159,
       "generatedStartColumn": 1,
-      "generatedEndLine": 157,
+      "generatedEndLine": 159,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1614,
-        "endOffset": 1626,
+        "startOffset": 1606,
+        "endOffset": 1618,
         "startLine": 48,
         "startColumn": 38,
         "endLine": 48,
@@ -1906,14 +1906,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 158,
+      "generatedStartLine": 160,
       "generatedStartColumn": 1,
-      "generatedEndLine": 158,
+      "generatedEndLine": 160,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1628,
-        "endOffset": 1641,
+        "startOffset": 1620,
+        "endOffset": 1633,
         "startLine": 48,
         "startColumn": 52,
         "endLine": 48,
@@ -1922,14 +1922,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 161,
+      "generatedStartLine": 163,
       "generatedStartColumn": 1,
-      "generatedEndLine": 161,
+      "generatedEndLine": 163,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1644,
-        "endOffset": 1715,
+        "startOffset": 1636,
+        "endOffset": 1707,
         "startLine": 49,
         "startColumn": 1,
         "endLine": 49,
@@ -1939,14 +1939,14 @@
       "symbolName": "__tc_fn12"
     },
     {
-      "generatedStartLine": 163,
+      "generatedStartLine": 165,
       "generatedStartColumn": 1,
-      "generatedEndLine": 163,
+      "generatedEndLine": 165,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1681,
-        "endOffset": 1695,
+        "startOffset": 1673,
+        "endOffset": 1687,
         "startLine": 49,
         "startColumn": 38,
         "endLine": 49,
@@ -1955,14 +1955,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 164,
+      "generatedStartLine": 166,
       "generatedStartColumn": 1,
-      "generatedEndLine": 164,
+      "generatedEndLine": 166,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1697,
-        "endOffset": 1713,
+        "startOffset": 1689,
+        "endOffset": 1705,
         "startLine": 49,
         "startColumn": 54,
         "endLine": 49,
@@ -1971,14 +1971,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 167,
+      "generatedStartLine": 169,
       "generatedStartColumn": 1,
-      "generatedEndLine": 167,
+      "generatedEndLine": 169,
       "generatedEndColumn": 18,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1716,
-        "endOffset": 1804,
+        "startOffset": 1708,
+        "endOffset": 1796,
         "startLine": 50,
         "startColumn": 1,
         "endLine": 53,
@@ -1988,14 +1988,14 @@
       "symbolName": "__tc_fn13"
     },
     {
-      "generatedStartLine": 169,
+      "generatedStartLine": 171,
       "generatedStartColumn": 1,
-      "generatedEndLine": 169,
+      "generatedEndLine": 171,
       "generatedEndColumn": 32,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1759,
-        "endOffset": 1774,
+        "startOffset": 1751,
+        "endOffset": 1766,
         "startLine": 51,
         "startColumn": 13,
         "endLine": 51,
@@ -2004,14 +2004,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 170,
+      "generatedStartLine": 172,
       "generatedStartColumn": 1,
-      "generatedEndLine": 170,
+      "generatedEndLine": 172,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 1782,
-        "endOffset": 1798,
+        "startOffset": 1774,
+        "endOffset": 1790,
         "startLine": 52,
         "startColumn": 7,
         "endLine": 52,
@@ -2020,14 +2020,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 173,
+      "generatedStartLine": 175,
       "generatedStartColumn": 1,
-      "generatedEndLine": 173,
+      "generatedEndLine": 175,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2507,
-        "endOffset": 2581,
+        "startOffset": 2499,
+        "endOffset": 2573,
         "startLine": 75,
         "startColumn": 1,
         "endLine": 78,
@@ -2037,14 +2037,14 @@
       "symbolName": "__tc_fn14"
     },
     {
-      "generatedStartLine": 175,
+      "generatedStartLine": 177,
       "generatedStartColumn": 1,
-      "generatedEndLine": 175,
+      "generatedEndLine": 177,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2548,
-        "endOffset": 2556,
+        "startOffset": 2540,
+        "endOffset": 2548,
         "startLine": 76,
         "startColumn": 11,
         "endLine": 76,
@@ -2053,14 +2053,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 176,
+      "generatedStartLine": 178,
       "generatedStartColumn": 1,
-      "generatedEndLine": 176,
+      "generatedEndLine": 178,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2564,
-        "endOffset": 2575,
+        "startOffset": 2556,
+        "endOffset": 2567,
         "startLine": 77,
         "startColumn": 7,
         "endLine": 77,
@@ -2069,14 +2069,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 179,
+      "generatedStartLine": 181,
       "generatedStartColumn": 1,
-      "generatedEndLine": 179,
+      "generatedEndLine": 181,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2582,
-        "endOffset": 2672,
+        "startOffset": 2574,
+        "endOffset": 2664,
         "startLine": 79,
         "startColumn": 1,
         "endLine": 83,
@@ -2086,14 +2086,14 @@
       "symbolName": "__tc_fn15"
     },
     {
-      "generatedStartLine": 181,
+      "generatedStartLine": 183,
       "generatedStartColumn": 1,
-      "generatedEndLine": 181,
+      "generatedEndLine": 183,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2623,
-        "endOffset": 2631,
+        "startOffset": 2615,
+        "endOffset": 2623,
         "startLine": 80,
         "startColumn": 11,
         "endLine": 80,
@@ -2102,14 +2102,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 182,
+      "generatedStartLine": 184,
       "generatedStartColumn": 1,
-      "generatedEndLine": 182,
+      "generatedEndLine": 184,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2639,
-        "endOffset": 2648,
+        "startOffset": 2631,
+        "endOffset": 2640,
         "startLine": 81,
         "startColumn": 7,
         "endLine": 81,
@@ -2118,14 +2118,14 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 183,
+      "generatedStartLine": 185,
       "generatedStartColumn": 1,
-      "generatedEndLine": 183,
+      "generatedEndLine": 185,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2655,
-        "endOffset": 2666,
+        "startOffset": 2647,
+        "endOffset": 2658,
         "startLine": 82,
         "startColumn": 7,
         "endLine": 82,
@@ -2134,14 +2134,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 186,
+      "generatedStartLine": 188,
       "generatedStartColumn": 1,
-      "generatedEndLine": 186,
+      "generatedEndLine": 188,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2673,
-        "endOffset": 2779,
+        "startOffset": 2665,
+        "endOffset": 2771,
         "startLine": 84,
         "startColumn": 1,
         "endLine": 89,
@@ -2151,14 +2151,14 @@
       "symbolName": "__tc_fn16"
     },
     {
-      "generatedStartLine": 188,
+      "generatedStartLine": 190,
       "generatedStartColumn": 1,
-      "generatedEndLine": 188,
+      "generatedEndLine": 190,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2714,
-        "endOffset": 2722,
+        "startOffset": 2706,
+        "endOffset": 2714,
         "startLine": 85,
         "startColumn": 11,
         "endLine": 85,
@@ -2167,14 +2167,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 189,
+      "generatedStartLine": 191,
       "generatedStartColumn": 1,
-      "generatedEndLine": 189,
+      "generatedEndLine": 191,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2730,
-        "endOffset": 2739,
+        "startOffset": 2722,
+        "endOffset": 2731,
         "startLine": 86,
         "startColumn": 7,
         "endLine": 86,
@@ -2183,14 +2183,14 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 190,
+      "generatedStartLine": 192,
       "generatedStartColumn": 1,
-      "generatedEndLine": 190,
+      "generatedEndLine": 192,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2746,
-        "endOffset": 2755,
+        "startOffset": 2738,
+        "endOffset": 2747,
         "startLine": 87,
         "startColumn": 7,
         "endLine": 87,
@@ -2199,14 +2199,14 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 191,
+      "generatedStartLine": 193,
       "generatedStartColumn": 1,
-      "generatedEndLine": 191,
+      "generatedEndLine": 193,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2762,
-        "endOffset": 2773,
+        "startOffset": 2754,
+        "endOffset": 2765,
         "startLine": 88,
         "startColumn": 7,
         "endLine": 88,
@@ -2215,14 +2215,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 194,
+      "generatedStartLine": 196,
       "generatedStartColumn": 1,
-      "generatedEndLine": 194,
+      "generatedEndLine": 196,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2780,
-        "endOffset": 2902,
+        "startOffset": 2772,
+        "endOffset": 2894,
         "startLine": 90,
         "startColumn": 1,
         "endLine": 96,
@@ -2232,14 +2232,14 @@
       "symbolName": "__tc_fn17"
     },
     {
-      "generatedStartLine": 196,
+      "generatedStartLine": 198,
       "generatedStartColumn": 1,
-      "generatedEndLine": 196,
+      "generatedEndLine": 198,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2821,
-        "endOffset": 2829,
+        "startOffset": 2813,
+        "endOffset": 2821,
         "startLine": 91,
         "startColumn": 11,
         "endLine": 91,
@@ -2248,14 +2248,14 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 197,
+      "generatedStartLine": 199,
       "generatedStartColumn": 1,
-      "generatedEndLine": 197,
+      "generatedEndLine": 199,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2837,
-        "endOffset": 2846,
+        "startOffset": 2829,
+        "endOffset": 2838,
         "startLine": 92,
         "startColumn": 7,
         "endLine": 92,
@@ -2264,14 +2264,14 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 198,
+      "generatedStartLine": 200,
       "generatedStartColumn": 1,
-      "generatedEndLine": 198,
+      "generatedEndLine": 200,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2853,
-        "endOffset": 2862,
+        "startOffset": 2845,
+        "endOffset": 2854,
         "startLine": 93,
         "startColumn": 7,
         "endLine": 93,
@@ -2280,14 +2280,14 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 199,
+      "generatedStartLine": 201,
       "generatedStartColumn": 1,
-      "generatedEndLine": 199,
+      "generatedEndLine": 201,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2869,
-        "endOffset": 2878,
+        "startOffset": 2861,
+        "endOffset": 2870,
         "startLine": 94,
         "startColumn": 7,
         "endLine": 94,
@@ -2296,14 +2296,14 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 200,
+      "generatedStartLine": 202,
       "generatedStartColumn": 1,
-      "generatedEndLine": 200,
+      "generatedEndLine": 202,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2885,
-        "endOffset": 2896,
+        "startOffset": 2877,
+        "endOffset": 2888,
         "startLine": 95,
         "startColumn": 7,
         "endLine": 95,
@@ -2312,14 +2312,14 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 203,
+      "generatedStartLine": 205,
       "generatedStartColumn": 1,
-      "generatedEndLine": 203,
+      "generatedEndLine": 205,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2903,
-        "endOffset": 3041,
+        "startOffset": 2895,
+        "endOffset": 3033,
         "startLine": 97,
         "startColumn": 1,
         "endLine": 104,
@@ -2329,14 +2329,14 @@
       "symbolName": "__tc_fn18"
     },
     {
-      "generatedStartLine": 205,
+      "generatedStartLine": 207,
       "generatedStartColumn": 1,
-      "generatedEndLine": 205,
+      "generatedEndLine": 207,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2944,
-        "endOffset": 2952,
+        "startOffset": 2936,
+        "endOffset": 2944,
         "startLine": 98,
         "startColumn": 11,
         "endLine": 98,
@@ -2345,49 +2345,17 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 206,
-      "generatedStartColumn": 1,
-      "generatedEndLine": 206,
-      "generatedEndColumn": 12,
-      "tsSpan": {
-        "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2960,
-        "endOffset": 2969,
-        "startLine": 99,
-        "startColumn": 7,
-        "endLine": 99,
-        "endColumn": 16
-      },
-      "nodeKind": "assign"
-    },
-    {
-      "generatedStartLine": 207,
-      "generatedStartColumn": 1,
-      "generatedEndLine": 207,
-      "generatedEndColumn": 12,
-      "tsSpan": {
-        "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2976,
-        "endOffset": 2985,
-        "startLine": 100,
-        "startColumn": 7,
-        "endLine": 100,
-        "endColumn": 16
-      },
-      "nodeKind": "assign"
-    },
-    {
       "generatedStartLine": 208,
       "generatedStartColumn": 1,
       "generatedEndLine": 208,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 2992,
-        "endOffset": 3001,
-        "startLine": 101,
+        "startOffset": 2952,
+        "endOffset": 2961,
+        "startLine": 99,
         "startColumn": 7,
-        "endLine": 101,
+        "endLine": 99,
         "endColumn": 16
       },
       "nodeKind": "assign"
@@ -2399,11 +2367,11 @@
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3008,
-        "endOffset": 3017,
-        "startLine": 102,
+        "startOffset": 2968,
+        "endOffset": 2977,
+        "startLine": 100,
         "startColumn": 7,
-        "endLine": 102,
+        "endLine": 100,
         "endColumn": 16
       },
       "nodeKind": "assign"
@@ -2412,11 +2380,43 @@
       "generatedStartLine": 210,
       "generatedStartColumn": 1,
       "generatedEndLine": 210,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
+        "startOffset": 2984,
+        "endOffset": 2993,
+        "startLine": 101,
+        "startColumn": 7,
+        "endLine": 101,
+        "endColumn": 16
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 211,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 211,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
+        "startOffset": 3000,
+        "endOffset": 3009,
+        "startLine": 102,
+        "startColumn": 7,
+        "endLine": 102,
+        "endColumn": 16
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 212,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 212,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
-        "startOffset": 3024,
-        "endOffset": 3035,
+        "startOffset": 3016,
+        "endOffset": 3027,
         "startLine": 103,
         "startColumn": 7,
         "endLine": 103,
@@ -2425,9 +2425,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 213,
+      "generatedStartLine": 215,
       "generatedStartColumn": 1,
-      "generatedEndLine": 213,
+      "generatedEndLine": 215,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\02-arithmetic.test.ts",
