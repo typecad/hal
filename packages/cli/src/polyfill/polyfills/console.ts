@@ -1,6 +1,17 @@
-import { PolyfillDefinition, PolyfillContext, PolyfillNeed, RuntimePolyfillIR, getStdLibSupport } from "../types";
+// ---------------------------------------------------------------------------
+// Console polyfill — detection (CLI) + generation (framework)
+//
+// Detection logic lives here in the CLI since it analyzes the IR.
+// C++ code generation is delegated to framework packages via imported
+// generator functions, since the generated C++ is platform-specific.
+// ---------------------------------------------------------------------------
+
+import { PolyfillDefinition, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import { generateArduinoConsolePolyfill } from "@typecode/framework-arduino";
+import {
+  generateArduinoConsolePolyfill,
+  generateGenericConsolePolyfill,
+} from "@typecode/framework-arduino";
 
 export const consolePolyfill: PolyfillDefinition = {
   id: "console",
@@ -70,11 +81,6 @@ export const consolePolyfill: PolyfillDefinition = {
     const isArduino = context.target === "arduino";
     const isAvr = context.architecture === "avr" || context.architecture === "megaavr";
     
-    // For Arduino, the strategy (ArduinoStrategy) already transforms console.log to Serial.println
-    // via transformConsoleCall, so we don't need the polyfill helper functions.
-    // We only need the polyfill for Serial.begin injection.
-    // The polyfill still returns empty helpers since the strategy handles the transformation.
-    
     // Determine which implementation to use
     let impl: "serial" | "cout";
     
@@ -84,14 +90,13 @@ export const consolePolyfill: PolyfillDefinition = {
       impl = isArduino ? "serial" : "cout";
     }
 
+    // Delegate to framework package for C++ generation
     if (impl === "serial") {
       const baudRate = context.config?.console?.baudRate ?? 9600;
       const autoInject = context.config?.console?.autoInjectSerialBegin ?? true;
-      // For Arduino, return empty helper functions since strategy handles transformation
-      // Only need to inject Serial.begin in setup
       return generateArduinoConsolePolyfill(methods, isAvr, context.config?.console?.useFlashStrings ?? true, baudRate, autoInject, context.usedIdentifiers, isArduino);
     } else {
-      return generateStdConsolePolyfill(methods);
+      return generateGenericConsolePolyfill(methods);
     }
   },
 };
@@ -151,49 +156,4 @@ function detectConsoleInStatement(stmt: StatementIR): PolyfillNeed[] {
   }
 
   return needs;
-}
-
-function generateStdConsolePolyfill(methods: Set<string>): RuntimePolyfillIR {
-  const helperFunctions: string[] = [];
-  const shimMacros: string[] = [];
-
-  if (methods.has("log")) {
-    helperFunctions.push(`
-// Polyfill: console.log using std::cout
-#include <iostream>
-template<typename T>
-inline void console_log(const T& val) { std::cout << val << std::endl; }
-`);
-    shimMacros.push(`#define console_log(...) console_log(__VA_ARGS__)`);
-  }
-
-  if (methods.has("error")) {
-    helperFunctions.push(`
-// Polyfill: console.error using std::cerr
-template<typename T>
-inline void console_error(const T& val) { std::cerr << "[ERROR] " << val << std::endl; }
-`);
-    shimMacros.push(`#define console_error(...) console_error(__VA_ARGS__)`);
-  }
-
-  if (methods.has("warn")) {
-    helperFunctions.push(`
-// Polyfill: console.warn using std::cerr
-template<typename T>
-inline void console_warn(const T& val) { std::cerr << "[WARN] " << val << std::endl; }
-`);
-    shimMacros.push(`#define console_warn(...) console_warn(__VA_ARGS__)`);
-  }
-
-  return {
-    kind: "polyfill",
-    id: "console",
-    domain: "standard",
-    requiredIncludes: ["<iostream>"],
-    forwardDeclarations: [],
-    helperStructs: [],
-    helperFunctions,
-    shimMacros,
-    dependencies: [],
-  };
 }

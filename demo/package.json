@@ -10,7 +10,7 @@
     "upload": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --port COM6",
     "debug": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --debug --monitor --port COM6",
     "test:hw": "node ../packages/cli/dist/cli.js --expect",
-    "test:hw-01": "node ../packages/cli/dist/cli.js --expect ./src/10-expressions.test.ts"
+    "test:hw-26": "node ../packages/cli/dist/cli.js --expect ./src/26-instanceof.test.ts"
   },
   "dependencies": {
     "@typecode/core": "*",

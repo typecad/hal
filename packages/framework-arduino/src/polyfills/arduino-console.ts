@@ -184,3 +184,52 @@ inline void console_warn(double val) { Serial.print(${F}[WARN]${F_close}); Seria
     dependencies: [],
   };
 }
+
+/**
+ * Generate generic console polyfill using std::cout/std::cerr.
+ * Used as the fallback for non-Arduino targets (generic C++ output).
+ */
+export function generateGenericConsolePolyfill(methods: Set<string>): RuntimePolyfillIR {
+  const helperFunctions: string[] = [];
+  const shimMacros: string[] = [];
+
+  if (methods.has("log")) {
+    helperFunctions.push(`
+// Polyfill: console.log using std::cout
+#include <iostream>
+template<typename T>
+inline void console_log(const T& val) { std::cout << val << std::endl; }
+`);
+    shimMacros.push(`#define console_log(...) console_log(__VA_ARGS__)`);
+  }
+
+  if (methods.has("error")) {
+    helperFunctions.push(`
+// Polyfill: console.error using std::cerr
+template<typename T>
+inline void console_error(const T& val) { std::cerr << "[ERROR] " << val << std::endl; }
+`);
+    shimMacros.push(`#define console_error(...) console_error(__VA_ARGS__)`);
+  }
+
+  if (methods.has("warn")) {
+    helperFunctions.push(`
+// Polyfill: console.warn using std::cerr
+template<typename T>
+inline void console_warn(const T& val) { std::cerr << "[WARN] " << val << std::endl; }
+`);
+    shimMacros.push(`#define console_warn(...) console_warn(__VA_ARGS__)`);
+  }
+
+  return {
+    kind: "polyfill",
+    id: "console",
+    domain: "standard",
+    requiredIncludes: ["<iostream>"],
+    forwardDeclarations: [],
+    helperStructs: [],
+    helperFunctions,
+    shimMacros,
+    dependencies: [],
+  };
+}

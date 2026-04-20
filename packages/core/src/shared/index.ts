@@ -63,6 +63,7 @@ export type { BoardConstants } from './board-resolver';
 // Polyfill types
 export type {
   RuntimePolyfillIR,
+  PolyfillDefinition,
   PolyfillContext,
   PolyfillNeed,
   PolyfillConfig,
@@ -73,3 +74,7 @@ export { DEFAULT_POLYFILL_CONFIG, STDLIB_SUPPORT, getStdLibSupport } from './pol
 
 // Platform strategy
 export type { PlatformStrategy } from './platform-strategy';
+
+// Toolchain types
+export type { CompileError, ArduinoCompileResult, ArduinoUploadResult } from './toolchain-types';
+export { parseCompileErrors, collectCppFiles, toArchitectureFromFqbn } from './toolchain-types';

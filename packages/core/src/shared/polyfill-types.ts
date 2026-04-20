@@ -5,9 +5,26 @@
 // ---------------------------------------------------------------------------
 
 import type { SourceSpan } from './types';
+import type { ProgramIR } from './ir';
 
 export type PolyfillDomain = "standard" | "arduino" | "embedded";
 export type TargetProfile = "generic" | "arduino" | (string & {});
+
+/**
+ * A polyfill definition: the contract between the CLI (detection) and
+ * framework packages (C++ code generation).
+ *
+ * Detection logic lives in the CLI; C++ generation is delegated to the
+ * active framework package via the `generate` method.
+ */
+export interface PolyfillDefinition {
+  id: string;
+  name: string;
+  description: string;
+  domains: PolyfillDomain[];
+  detect: (program: ProgramIR, context: PolyfillContext) => PolyfillNeed[];
+  generate: (needs: PolyfillNeed[], context: PolyfillContext) => RuntimePolyfillIR;
+}
 
 export interface RuntimePolyfillIR {
   kind: "polyfill";
