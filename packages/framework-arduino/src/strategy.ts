@@ -206,6 +206,10 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
 
   // ── Expression rendering ────────────────────────────────────────────────
 
+  // Apply regex transformations to raw expression text.
+  // NOTE: String method regexes (toUpperCase, includes, etc.) assume the receiver
+  // is a string (const char*). Array methods (indexOf, push, etc.) are handled at
+  // the IR level in expression-to-ir.ts where type context is available.
   normalizeRawExpression(value: string): string {
     let v = value;
     v = v.replace(/\bPinMode::(HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP)\b/g, "PinMode::_$1");

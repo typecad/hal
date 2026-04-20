@@ -18,6 +18,7 @@ import { ArduinoStrategy } from "../platform/arduino-strategy";
 import { buildArduinoClassNameMap } from "./arduino-class-map";
 import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
 import { normalizeRawExpression, transformTypeName } from "./expression-renderer";
+import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
 import { StatementRenderer } from "./statement-renderer";
 import {
   isTypecodeSDKImport,
@@ -120,11 +121,8 @@ let _defaultStrategy: PlatformStrategy = resolveStrategy("generic");
 // Populated during class emission so renderExpression can use :: for static access.
 let _classStaticMembers: Map<string, Set<string>> = new Map();
 
-// Module-level tracking for string-typed variables (for .length rendering).
-// Only const char* / char* vars use strlen(); std::string vars use .size().
+// Module-level tracking for string-typed variables (for snprintf %s detection).
 let _stringVarTypes: Set<string> = new Set();
-let _stdStringVarTypes: Set<string> = new Set();
-let _vectorVarTypes: Set<string> = new Set();
 
 // Module-level tracking for class getter/setter names (class name → property name → type).
 // Populated during class emission so renderExpression can rewrite property access.
@@ -307,7 +305,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       for (const [varName, accessors] of _varAccessorNames) {
         for (const [propName, kind] of accessors) {
           if (kind === "getter" || kind === "both") {
-            const getterName = `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+            const getterName = accessorGetterName(propName);
             // Match var->prop (not already a getter call)
             const pattern = new RegExp(`\\b${varName}->${propName}\\b(?!\\()`, "g");
             result = result.replace(pattern, `${varName}->${getterName}()`);
@@ -440,7 +438,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
           // Check if this property is a getter — render as Class::getProp()
           const accessors = _classAccessorNames.get(expr.object.value);
           if (accessors?.has(expr.property)) {
-            const getterName = `get${expr.property.charAt(0).toUpperCase()}${expr.property.slice(1)}`;
+            const getterName = accessorGetterName(expr.property);
             return `${objStr}::${getterName}()`;
           }
           return `${objStr}::${expr.property}`;
@@ -450,19 +448,9 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       if (expr.object.kind === "identifier") {
         const accessors = _classAccessorNames.get(expr.object.value) ?? _varAccessorNames.get(expr.object.value);
         if (accessors?.has(expr.property)) {
-          const getterName = `get${expr.property.charAt(0).toUpperCase()}${expr.property.slice(1)}`;
+          const getterName = accessorGetterName(expr.property);
           return `${objStr}->${getterName}()`;
         }
-      }
-      // Handle .length property: std::string and std::vector → .size(), const char* → strlen(), C-array → sizeof
-      if (expr.property === "length" && expr.object.kind === "identifier") {
-        if (_stdStringVarTypes.has(expr.object.value) || _vectorVarTypes.has(expr.object.value)) {
-          return `${objStr}.size()`;
-        }
-        if (_stringVarTypes.has(expr.object.value)) {
-          return `strlen(${objStr})`;
-        }
-        return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
       }
       return `${objStr}.${expr.property}`;
     }
@@ -726,7 +714,7 @@ function renderStatement(
         if (accessors?.has(propName)) {
           const kind = accessors.get(propName)!;
           if (kind === "setter" || kind === "both") {
-            const setterName = `set${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+            const setterName = accessorSetterName(propName);
             const renderedValue = renderExpression(statement.value, undefined, strategy);
             if (statement.operator === "=") {
               return forHeader
@@ -734,7 +722,7 @@ function renderStatement(
                 : `${varName}${sep}${setterName}(${renderedValue});`;
             }
             // For compound assignments on setters, get → compute → set
-            const getterName = `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+            const getterName = accessorGetterName(propName);
             const op = statement.operator.replace("=", "");
             return forHeader
               ? `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue})`
@@ -1231,8 +1219,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         pointerVarTypes: rendererPointerVarTypes,
         pointerStructFields,
         stringVarNames: _stringVarTypes,
-        stdStringVarNames: _stdStringVarTypes,
-        vectorVarNames: _vectorVarTypes,
         namespaceNames: _namespaceNames,
         varAccessorNames: _varAccessorNames,
       });
@@ -2363,20 +2349,13 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
-  // Track string-typed variables for .length rendering
+  // Track string-typed variables for snprintf %s detection
   const stringVarTypes = new Set<string>();
-  const stdStringVarTypes = new Set<string>();
-  const vectorVarTypes = new Set<string>();
   for (const stmt of program.topLevelStatements) {
     if (stmt.kind === "var_decl") {
       const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
-      if (normalizedType === "std::string") {
-        stdStringVarTypes.add(stmt.name);
-      } else if (normalizedType === "const char*" || normalizedType === "char*") {
+      if (normalizedType === "const char*" || normalizedType === "char*") {
         stringVarTypes.add(stmt.name);
-      }
-      if (normalizedType.startsWith("std::vector<")) {
-        vectorVarTypes.add(stmt.name);
       }
     }
   }
@@ -2384,13 +2363,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     for (const stmt of fn.statements) {
       if (stmt.kind === "var_decl") {
         const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
-        if (normalizedType === "std::string") {
-          stdStringVarTypes.add(stmt.name);
-        } else if (normalizedType === "const char*" || normalizedType === "char*") {
+        if (normalizedType === "const char*" || normalizedType === "char*") {
           stringVarTypes.add(stmt.name);
-        }
-        if (normalizedType.startsWith("std::vector<")) {
-          vectorVarTypes.add(stmt.name);
         }
       }
     }
@@ -2399,8 +2373,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Populate module-level tracking for renderExpression
   _classStaticMembers = classStaticMembers;
   _stringVarTypes = stringVarTypes;
-  _stdStringVarTypes = stdStringVarTypes;
-  _vectorVarTypes = vectorVarTypes;
 
   // Build accessor name map for expression rewriting
   const classAccessorNames = new Map<string, Map<string, "getter" | "setter" | "both">>();
@@ -2540,7 +2512,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const getter of publicGetters) {
         const staticPrefix = getter.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(getter.returnType, strategy);
-        const getterName = `get${getter.name.charAt(0).toUpperCase()}${getter.name.slice(1)}`;
+        const getterName = accessorGetterName(getter.name);
         appendSourceLine(`  ${staticPrefix}${returnType} ${getterName}() const {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         for (const stmt of getter.statements) {
@@ -2554,7 +2526,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const setter of publicSetters) {
         const staticPrefix = setter.isStatic ? "static " : "";
         const paramType = normalizeCppTypeForTarget(setter.parameter.cppType, strategy);
-        const setterName = `set${setter.name.charAt(0).toUpperCase()}${setter.name.slice(1)}`;
+        const setterName = accessorSetterName(setter.name);
         appendSourceLine(`  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
         const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
         for (const stmt of setter.statements) {
@@ -2590,7 +2562,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const getter of privateGetters) {
         const staticPrefix = getter.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(getter.returnType, strategy);
-        const getterName = `get${getter.name.charAt(0).toUpperCase()}${getter.name.slice(1)}`;
+        const getterName = accessorGetterName(getter.name);
         appendSourceLine(`  ${staticPrefix}${returnType} ${getterName}() const {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         for (const stmt of getter.statements) {
@@ -2602,7 +2574,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const setter of privateSetters) {
         const staticPrefix = setter.isStatic ? "static " : "";
         const paramType = normalizeCppTypeForTarget(setter.parameter.cppType, strategy);
-        const setterName = `set${setter.name.charAt(0).toUpperCase()}${setter.name.slice(1)}`;
+        const setterName = accessorSetterName(setter.name);
         appendSourceLine(`  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
         const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
         for (const stmt of setter.statements) {
@@ -2638,7 +2610,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const getter of protectedGetters) {
         const staticPrefix = getter.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(getter.returnType, strategy);
-        const getterName = `get${getter.name.charAt(0).toUpperCase()}${getter.name.slice(1)}`;
+        const getterName = accessorGetterName(getter.name);
         appendSourceLine(`  ${staticPrefix}${returnType} ${getterName}() const {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         for (const stmt of getter.statements) {
@@ -2650,7 +2622,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const setter of protectedSetters) {
         const staticPrefix = setter.isStatic ? "static " : "";
         const paramType = normalizeCppTypeForTarget(setter.parameter.cppType, strategy);
-        const setterName = `set${setter.name.charAt(0).toUpperCase()}${setter.name.slice(1)}`;
+        const setterName = accessorSetterName(setter.name);
         appendSourceLine(`  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
         const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
         for (const stmt of setter.statements) {

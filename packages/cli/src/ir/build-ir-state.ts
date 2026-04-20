@@ -84,11 +84,16 @@ export function resetBuildState(): void {
   nestedClassAliases.clear();
   activePinAliases.clear();
   activeBusAliases.clear();
+  resetFunctionScopeState();
+  activeNamespaceNames.clear();
+}
+
+/** Clear state that should be scoped to a single function body. */
+export function resetFunctionScopeState(): void {
   activeCArrayVars.clear();
   activeStringVars.clear();
   mutableArrayVars.clear();
   arrayLiteralSizes.clear();
   filteredArrayLengthVars.clear();
-  activeNamespaceNames.clear();
   activeLocalTypes.clear();
 }

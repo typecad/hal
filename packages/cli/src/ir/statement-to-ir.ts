@@ -6,7 +6,7 @@ import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnl
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR } from "./declaration-builders";
@@ -251,7 +251,8 @@ export function callToStatement(
       const innerCallText = renderExprAsText(expressionToIR(objExpr, sourceText, diagnostics, pointerVars));
       let accessor = ".";
       if (ts.isIdentifier(innerReceiver) && pointerVars.has(innerReceiver.text)) {
-        const className = pointerVars.get(innerReceiver.text);
+        let className = pointerVars.get(innerReceiver.text);
+        if (className) className = nestedClassAliases.get(className) ?? className;
         const cls = className ? hoistedNestedClasses.find(c => c.name === className) : undefined;
         const method = cls?.methods.find(m => m.name === innerMethodName);
         if (method && (method.returnType as string).endsWith("*")) {
@@ -1440,15 +1441,19 @@ function hoistNestedClass(
       const methodReturnType = typeNodeToCppType(member.type, typeAliases);
       const typeText = member.type ? sourceText.substring(member.type.pos, member.type.end).trim() : "";
       const returnsSelf = member.type?.kind === ts.SyntaxKind.ThisType
+        || typeText === originalClassName
         || typeText === className
+        || methodReturnType === originalClassName
         || methodReturnType === className;
+      // Resolve return type through nested class aliases
+      const resolvedReturnType = nestedClassAliases.get(methodReturnType) ?? methodReturnType;
 
       methods.push({
         name: member.name.text,
         returnType: (
           returnsSelf
             ? `${className}*`
-            : (methodReturnType === "void" ? "void" : methodReturnType)
+            : (resolvedReturnType === "void" ? "void" : resolvedReturnType)
         ) as CppType,
         parameters: methodParams,
         statements: methodBody,
@@ -1542,7 +1547,9 @@ function hoistNestedClass(
 // Array method pre-scan
 // ---------------------------------------------------------------------------
 
-const ARRAY_MUTATING_METHODS = new Set(["push", "pop", "indexOf"]);
+// Methods that require StaticArray promotion (not all are mutating — indexOf is read-only
+// but needs StaticArray since C arrays don't have an indexOf method).
+const ARRAY_METHODS_REQUIRING_STATIC_ARRAY = new Set(["push", "pop", "indexOf"]);
 
 function prescanArrayUsage(statement: ts.Statement): void {
   if (ts.isVariableStatement(statement)) {
@@ -1581,7 +1588,7 @@ function prescanArrayUsageBlock(stmt: ts.Statement): void {
 function prescanExprForArrayMethods(expr: ts.Expression): void {
   if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
     const methodName = expr.expression.name.text;
-    if (ARRAY_MUTATING_METHODS.has(methodName) && ts.isIdentifier(expr.expression.expression)) {
+    if (ARRAY_METHODS_REQUIRING_STATIC_ARRAY.has(methodName) && ts.isIdentifier(expr.expression.expression)) {
       const varName = expr.expression.expression.text;
       if (arrayLiteralSizes.has(varName)) {
         mutableArrayVars.add(varName);
@@ -1707,9 +1714,9 @@ export function lowerStatementList(
     }
   }
 
-  // Phase 2.7: Pre-scan for array method usage (push, pop, indexOf).
-  mutableArrayVars.clear();
-  arrayLiteralSizes.clear();
+  // Phase 2.7: Pre-scan for array methods requiring StaticArray promotion.
+  // Clear function-scoped state so variables from previous functions don't leak.
+  resetFunctionScopeState();
   for (const statement of statements) {
     prescanArrayUsage(statement);
   }
@@ -2316,9 +2323,16 @@ export function variableStatementToIR(
 
       // 6) Regular array literal → track in activeCArrayVars for .length → sizeof
       // These are emitted as C arrays (int arr[] = {...}), not std::vector,
-      // regardless of what resolveDeclarationType reports.
+      // regardless of what resolveDeclarationType reports. Fix the cppType to match.
       if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
         activeCArrayVars.add(varName);
+        // Extract element type from std::vector<T> or use "auto"
+        const vecMatch = varCppType.match(/^std::vector<(.+)>$/);
+        if (vecMatch) {
+          loweredDeclaration.cppType = "auto" as any;
+          localVariableTypes.set(varName, "auto");
+          activeLocalTypes.set(varName, "auto");
+        }
       }
     }
 

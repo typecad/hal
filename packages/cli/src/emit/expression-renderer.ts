@@ -10,6 +10,7 @@ import type { BoardConstants } from "../ir/board-resolver";
 import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
 import { extractPropertyChain } from "../platform/typecode-map";
 import { escapeCppKeyword } from "../utils/strings";
+import { accessorGetterName } from "./utils/cpp-helpers";
 
 /**
  * Context needed for expression rendering.
@@ -31,10 +32,6 @@ export interface ExpressionRendererContext {
   pointerVarTypes?: Map<string, string>;
   /** Set of variable names known to hold string values (for snprintf %s) */
   stringVarNames?: Set<string>;
-  /** Set of variable names typed as std::string (for .length → .size()) */
-  stdStringVarNames?: Set<string>;
-  /** Set of variable names typed as std::vector (for .length → .size()) */
-  vectorVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) instead of (.) */
   namespaceNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
@@ -55,8 +52,6 @@ export class ExpressionRenderer {
   private readonly knownFunctionReturnTypes?: Map<string, string>;
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly stringVarNames?: Set<string>;
-  private readonly stdStringVarNames?: Set<string>;
-  private readonly vectorVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
 
@@ -74,8 +69,6 @@ export class ExpressionRenderer {
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.pointerVarTypes = context.pointerVarTypes;
     this.stringVarNames = context.stringVarNames;
-    this.stdStringVarNames = context.stdStringVarNames;
-    this.vectorVarNames = context.vectorVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
   }
@@ -200,7 +193,7 @@ export class ExpressionRenderer {
     for (const [varName, accessors] of this.varAccessorNames) {
       for (const [propName, kind] of accessors) {
         if (kind === "getter" || kind === "both") {
-          const getterName = `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+          const getterName = accessorGetterName(propName);
           const pattern = new RegExp(`\\b${varName}->${propName}\\b(?!\\()`, "g");
           result = result.replace(pattern, `${varName}->${getterName}()`);
         }
@@ -412,13 +405,6 @@ export class ExpressionRenderer {
     // Use C++ scope-resolution operator (::) for namespace member access.
     if (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value)) {
       return `${objStr}::${expr.property}`;
-    }
-    // Handle .length: std::string/std::vector → .size(), C-array → sizeof
-    if (expr.property === "length" && expr.object.kind === "identifier") {
-      if (this.stdStringVarNames?.has(expr.object.value) || this.vectorVarNames?.has(expr.object.value)) {
-        return `${objStr}.size()`;
-      }
-      return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
     }
     return `${objStr}.${expr.property}`;
   }

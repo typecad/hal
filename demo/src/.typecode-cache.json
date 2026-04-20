@@ -1,19 +1,19 @@
 {
   "version": 1,
-  "toolchainFingerprint": "918f9b3da6eb531a",
+  "toolchainFingerprint": "711e139d38a4ab4c",
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
-    "C:\\typecad\\typecode\\demo\\src\\06-loops.test.ts": {
-      "hash": "d2b2f1a367910aeb",
-      "mtime": 1776607702840.7485,
-      "size": 2486,
+    "C:\\typecad\\typecode\\demo\\src\\29-accessors-foreach-typeof.test.ts": {
+      "hash": "e29532ec051cab63",
+      "mtime": 1776654874192.8088,
+      "size": 5668,
       "dependencies": [],
       "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\06-loops.test\\06-loops.test.ino",
-        "C:\\typecad\\typecode\\demo\\src\\out\\06-loops.test\\06-loops.test.ino.tscppmap.json"
+        "C:\\typecad\\typecode\\demo\\src\\out\\29-accessors-foreach-typeof.test\\29-accessors-foreach-typeof.test.ino",
+        "C:\\typecad\\typecode\\demo\\src\\out\\29-accessors-foreach-typeof.test\\29-accessors-foreach-typeof.test.ino.tscppmap.json"
       ]
     }
   },
-  "createdAt": 1776698912730,
-  "updatedAt": 1776698913278
+  "createdAt": 1776708078704,
+  "updatedAt": 1776708079238
 }

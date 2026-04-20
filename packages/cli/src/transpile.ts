@@ -668,7 +668,7 @@ function typeCheckFiles(
     }
   }
 
-  // Create a TypeScript program with all files from tsconfig plus the requested entries
+  // Create a TypeScript program with the transpile graph files, using compiler options from tsconfig
   const program = ts.createProgram(rootNames, compilerOptions);
 
   // Collect all diagnostics

@@ -26,6 +26,46 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       (typeof (ts as any).isOptionalChain === "function" && (ts as any).isOptionalChain(node));
   }
 
+  /**
+   * Resolve .length property access to the correct C++ expression.
+   * Shared by both renderMemberAccessText and the main PropertyAccess handler
+   * to ensure consistent behavior for top-level and nested .length access.
+   *
+   * Returns the C++ text. Special case: returns the filteredArrayLengthVars
+   * variable name prefixed with "__FILTERED_LEN__" so the caller can detect it.
+   */
+  function resolveLengthProperty(receiverNode: ts.Expression, objectText: string): string {
+    // Escape C++ keywords in identifier texts for generated C++ output
+    const safeText = ts.isIdentifier(receiverNode) ? escapeCppKeyword(objectText) : objectText;
+    if (ts.isIdentifier(receiverNode) && filteredArrayLengthVars.has(receiverNode.text)) {
+      return `__FILTERED_LEN__${filteredArrayLengthVars.get(receiverNode.text)!}`;
+    }
+    if (ts.isIdentifier(receiverNode) && mutableArrayVars.has(receiverNode.text)) {
+      return `${safeText}.size()`;
+    }
+    if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
+      return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
+    }
+    if (ts.isCallExpression(receiverNode)) {
+      return `strlen(${safeText})`;
+    }
+    if (ts.isIdentifier(receiverNode) && activeStringVars.has(receiverNode.text)) {
+      return `strlen(${safeText})`;
+    }
+    // const char* / char* variables → strlen()
+    if (ts.isIdentifier(receiverNode)) {
+      const varType = activeLocalTypes.get(receiverNode.text);
+      if (varType === "const char*" || varType === "char*") {
+        return `strlen(${safeText})`;
+      }
+    }
+    // Handle this->field.length where field is a string (const char*)
+    if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      return `strlen(${safeText})`;
+    }
+    return `${safeText}.size()`;
+  }
+
   function renderMemberAccessText(receiverNode: ts.Expression, memberName: string): string {
     const escapedName = escapeCppKeyword(memberName);
     const isThisAccess = receiverNode.kind === ts.SyntaxKind.ThisKeyword ||
@@ -46,17 +86,27 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return `${receiverNode.text}::${escapedName}`;
     }
     const objectText = formatExpressionText(receiverNode);
+    // Detect if receiver is a method call that returns a pointer (for chaining)
+    if (ts.isCallExpression(receiverNode) && ts.isPropertyAccessExpression(receiverNode.expression)) {
+      const innerReceiver = receiverNode.expression.expression;
+      const innerMethodName = receiverNode.expression.name.text;
+      if (ts.isIdentifier(innerReceiver) && pointerVars.has(innerReceiver.text)) {
+        let className = pointerVars.get(innerReceiver.text)!;
+        className = nestedClassAliases.get(className) ?? className;
+        const cls = hoistedNestedClasses.find(c => c.name === className);
+        const chainMethod = cls?.methods.find(m => m.name === innerMethodName);
+        if (chainMethod && (chainMethod.returnType as string).endsWith("*")) {
+          return `${objectText}->${escapedName}`;
+        }
+      }
+    }
     if (memberName === "length") {
-      if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
-        return `(sizeof(${objectText}) / sizeof(${objectText}[0]))`;
+      const resolved = resolveLengthProperty(receiverNode, objectText);
+      // Filtered length vars use a special prefix — extract the variable name
+      if (resolved.startsWith("__FILTERED_LEN__")) {
+        return resolved.slice("__FILTERED_LEN__".length);
       }
-      if (ts.isCallExpression(receiverNode)) {
-        return `strlen(${objectText})`;
-      }
-      if (ts.isIdentifier(receiverNode) && activeStringVars.has(receiverNode.text)) {
-        return `${objectText}.size()`;
-      }
-      return `${objectText}.size()`;
+      return resolved;
     }
     return `${objectText}.${escapedName}`;
   }
@@ -730,10 +780,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           const innerMethodName = receiver.expression.name.text;
           if (ts.isIdentifier(innerReceiver) && pointerVars.has(innerReceiver.text)) {
             // Check if the inner method returns a pointer type (for method chaining)
-            const className = pointerVars.get(innerReceiver.text);
+            let className = pointerVars.get(innerReceiver.text);
+            // Resolve nested class aliases (e.g., "Builder" → "__tc_fn6__Builder")
+            if (className) className = nestedClassAliases.get(className) ?? className;
             const cls = className ? hoistedNestedClasses.find(c => c.name === className) : undefined;
-            const method = cls?.methods.find(m => m.name === innerMethodName);
-            if (method && (method.returnType as string).endsWith("*")) {
+            const chainMethod = cls?.methods.find(m => m.name === innerMethodName);
+            if (chainMethod && (chainMethod.returnType as string).endsWith("*")) {
               accessor = "->";
             }
           }
@@ -901,28 +953,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
-      if (ts.isIdentifier(expr.expression) && filteredArrayLengthVars.has(expr.expression.text)) {
-        const lenVar = filteredArrayLengthVars.get(expr.expression.text)!;
-        return { kind: "identifier", value: lenVar };
+      const objectText = renderExprAsText(object);
+      const resolved = resolveLengthProperty(expr.expression, objectText);
+      if (resolved.startsWith("__FILTERED_LEN__")) {
+        return { kind: "identifier", value: resolved.slice("__FILTERED_LEN__".length) };
       }
-      if (ts.isIdentifier(expr.expression) && mutableArrayVars.has(expr.expression.text)) {
-        return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
-      }
-      if (ts.isIdentifier(expr.expression) && activeCArrayVars.has(expr.expression.text)) {
-        const objName = renderExprAsText(object);
-        return { kind: "raw", value: `(sizeof(${objName}) / sizeof(${objName}[0]))` };
-      }
-      if (ts.isCallExpression(expr.expression)) {
-        return { kind: "raw", value: `strlen(${renderExprAsText(object)})` };
-      }
-      if (ts.isIdentifier(expr.expression) && activeStringVars.has(expr.expression.text)) {
-        return { kind: "raw", value: `${escapeCppKeyword(expr.expression.text)}.size()` };
-      }
-      // Handle this->field.length where field is a string (const char*)
-      if (ts.isPropertyAccessExpression(expr.expression) && expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
-        return { kind: "raw", value: `strlen(${renderExprAsText(object)})` };
-      }
-      return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
+      return { kind: "raw", value: resolved };
     }
     return { kind: "property-access", object, property: expr.name.text };
   }

@@ -10,6 +10,7 @@ import type { BoardConstants } from "../ir/board-resolver";
 import { ExpressionRenderer, transformTypeName } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
 import { escapeCppKeyword } from "../utils/strings";
+import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
 
 /**
  * Context needed for statement rendering.
@@ -33,10 +34,6 @@ export interface StatementRendererContext {
   pointerStructFields?: Set<string>;
   /** Set of variable names known to hold string values */
   stringVarNames?: Set<string>;
-  /** Set of variable names typed as std::string (for .length → .size()) */
-  stdStringVarNames?: Set<string>;
-  /** Set of variable names typed as std::vector (for .length → .size()) */
-  vectorVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) */
   namespaceNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
@@ -91,8 +88,6 @@ export class StatementRenderer {
       knownFunctionReturnTypes: context.knownFunctionReturnTypes,
       pointerVarTypes: context.pointerVarTypes,
       stringVarNames: context.stringVarNames,
-      stdStringVarNames: context.stdStringVarNames,
-      vectorVarNames: context.vectorVarNames,
       namespaceNames: context.namespaceNames,
       varAccessorNames: context.varAccessorNames,
     });
@@ -155,14 +150,14 @@ export class StatementRenderer {
           if (accessors?.has(propName)) {
             const kind = accessors.get(propName)!;
             if (kind === "setter" || kind === "both") {
-              const setterName = `set${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+              const setterName = accessorSetterName(propName);
               const renderedValue = this.expressionRenderer.render(statement.value);
               if (statement.operator === "=") {
                 return forHeader
                   ? `${varName}${sep}${setterName}(${renderedValue})`
                   : `${varName}${sep}${setterName}(${renderedValue});`;
               }
-              const getterName = `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+              const getterName = accessorGetterName(propName);
               const op = statement.operator.replace("=", "");
               return forHeader
                 ? `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue})`
