@@ -33,6 +33,8 @@ export interface StatementRendererContext {
   pointerStructFields?: Set<string>;
   /** Set of variable names known to hold string values */
   stringVarNames?: Set<string>;
+  /** Set of namespace names for scoped access (::) */
+  namespaceNames?: Set<string>;
 }
 
 /**
@@ -81,6 +83,7 @@ export class StatementRenderer {
       knownFunctionReturnTypes: context.knownFunctionReturnTypes,
       pointerVarTypes: context.pointerVarTypes,
       stringVarNames: context.stringVarNames,
+      namespaceNames: context.namespaceNames,
     });
   }
 

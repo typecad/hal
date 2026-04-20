@@ -6,7 +6,7 @@ import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnl
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR } from "./declaration-builders";
@@ -389,12 +389,20 @@ function forInitializerToIR(
 
   localVariableTypes.set(declaration.name.text, declarationType.resolvedType);
 
+  // Resolve type through nested class aliases for hoisted class names.
+  let resolvedType: string = declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType;
+  const isPointer = resolvedType.endsWith("*");
+  const baseType = isPointer ? resolvedType.slice(0, -1) : resolvedType;
+  if (nestedClassAliases.has(baseType)) {
+    resolvedType = nestedClassAliases.get(baseType)! + (isPointer ? "*" : "");
+  }
+
   return {
     kind: "var_decl",
     sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
     name: declaration.name.text,
     storage,
-    cppType: (declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType) as Exclude<CppTypeHint, "void">,
+    cppType: resolvedType as CppType,
     initializer: declaration.initializer
       ? expressionToIR(declaration.initializer, sourceText, diagnostics)
       : undefined,
@@ -1270,13 +1278,20 @@ function hoistNestedClass(
   typeAliases?: Map<string, ts.TypeNode>,
 ): void {
   if (!node.name) return;
-  const className = node.name.text;
+  const originalClassName = node.name.text;
+  const safeParentName = functionNameForDiagnostics.replace(/\./g, "_");
+  const className = safeParentName ? `${safeParentName}__${originalClassName}` : originalClassName;
 
-  const extendsClass = node.heritageClauses
+  const rawExtendsClass = node.heritageClauses
     ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
     ?.types[0]
     ?.expression
     ?.getText();
+
+  // Resolve extends name through nested class aliases (abstract parent may also be hoisted).
+  const extendsClass = rawExtendsClass
+    ? (nestedClassAliases.get(rawExtendsClass) ?? rawExtendsClass)
+    : undefined;
 
   const isAbstract = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
   const classComments = extractNodeComments(node, sourceText);
@@ -1383,7 +1398,7 @@ function hoistNestedClass(
         statements: methodBody,
         visibility,
         isStatic,
-        isAbstract: isMethodAbstract || isAbstract,
+        isAbstract: isMethodAbstract,
       });
     }
   }
@@ -1401,6 +1416,10 @@ function hoistNestedClass(
     getters: [],
     setters: [],
   });
+
+  if (safeParentName) {
+    nestedClassAliases.set(originalClassName, className);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1493,6 +1512,7 @@ export function lowerStatementList(
 ): StatementIR[] {
   const lowered: StatementIR[] = [];
   const nestedNames: string[] = [];
+  const nestedClassNames: string[] = [];
 
   // Phase 1: Pre-scan for nested function declarations â€” register aliases only.
   // This ensures sibling functions can reference each other.
@@ -1503,6 +1523,15 @@ export function lowerStatementList(
       const mangledName = `${safeParentName}__${originalName}`;
       nestedFunctionAliases.set(originalName, mangledName);
       nestedNames.push(originalName);
+    }
+    if (ts.isClassDeclaration(statement) && statement.name) {
+      const originalName = statement.name.text;
+      const safeParentName = functionNameForDiagnostics.replace(/\./g, "_");
+      if (safeParentName) {
+        const mangledName = `${safeParentName}__${originalName}`;
+        nestedClassAliases.set(originalName, mangledName);
+        nestedClassNames.push(originalName);
+      }
     }
   }
 
@@ -1599,6 +1628,9 @@ export function lowerStatementList(
   // Phase 4: Clean up aliases so they don't leak to sibling scopes.
   for (const name of nestedNames) {
     nestedFunctionAliases.delete(name);
+  }
+  for (const name of nestedClassNames) {
+    nestedClassAliases.delete(name);
   }
 
   return lowered;
@@ -1953,7 +1985,14 @@ export function variableStatementToIR(
       typeAliases,
     );
 
-    loweredDeclaration.cppType = (declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType) as Exclude<CppTypeHint, "void">;
+    // Resolve type through nested class aliases for hoisted class names.
+    let varCppType: string = declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType;
+    const isPtr = varCppType.endsWith("*");
+    const baseCppType = isPtr ? varCppType.slice(0, -1) : varCppType;
+    if (nestedClassAliases.has(baseCppType)) {
+      varCppType = nestedClassAliases.get(baseCppType)! + (isPtr ? "*" : "");
+    }
+    loweredDeclaration.cppType = varCppType as CppType;
     localVariableTypes.set(declaration.name.text, declarationType.resolvedType);
 
     // Track string-typed variables for .length → strlen() conversion

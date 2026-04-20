@@ -31,6 +31,8 @@ export interface ExpressionRendererContext {
   pointerVarTypes?: Map<string, string>;
   /** Set of variable names known to hold string values (for snprintf %s) */
   stringVarNames?: Set<string>;
+  /** Set of namespace names for scoped access (::) instead of (.) */
+  namespaceNames?: Set<string>;
   /** Optional transformer for expression values */
   exprTransformer?: (expr: string) => string;
 }
@@ -47,6 +49,7 @@ export class ExpressionRenderer {
   private readonly knownFunctionReturnTypes?: Map<string, string>;
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly stringVarNames?: Set<string>;
+  private readonly namespaceNames: Set<string>;
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
   private _preludeLines: string[] = [];
@@ -62,6 +65,7 @@ export class ExpressionRenderer {
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.pointerVarTypes = context.pointerVarTypes;
     this.stringVarNames = context.stringVarNames;
+    this.namespaceNames = context.namespaceNames ?? new Set();
   }
 
   /**
@@ -122,7 +126,7 @@ export class ExpressionRenderer {
         return `${expr.value}`;
       }
       case "string":
-        return `"${expr.value.replace(/"/g, '\\"')}"`;  
+        return `"${expr.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")}"`;
       case "boolean":
         return expr.value ? "true" : "false";
       case "identifier":
@@ -382,6 +386,10 @@ export class ExpressionRenderer {
         return `static_cast<${castType}>(${enumAccess})`;
       }
       return enumAccess;
+    }
+    // Use C++ scope-resolution operator (::) for namespace member access.
+    if (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value)) {
+      return `${objStr}::${expr.property}`;
     }
     // Handle .length property on arrays → sizeof(obj)/sizeof(obj[0])
     if (expr.property === "length" && expr.object.kind === "identifier") {

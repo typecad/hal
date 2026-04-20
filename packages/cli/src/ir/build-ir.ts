@@ -7,7 +7,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, resetBuildState } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, activeNamespaceNames, resetBuildState } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR } from "./statement-to-ir";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
@@ -87,6 +87,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       const nsIR = namespaceToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, registerClasses);
       if (nsIR) {
         namespaces.push(nsIR);
+        activeNamespaceNames.add(nsIR.name);
       }
       return;
     }

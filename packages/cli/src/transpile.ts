@@ -1292,6 +1292,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     for (const e of programIR.enums) {
       allEnumIRs.push(e);
     }
+    for (const ns of programIR.namespaces) {
+      for (const e of ns.enums) {
+        allEnumIRs.push(e);
+      }
+    }
     for (const cls of programIR.classes) {
       allClassNames.add(cls.name);
     }

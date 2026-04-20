@@ -38,6 +38,7 @@ export const hoistedNestedFunctions: FunctionIR[] = [];
 export const hoistedNestedClasses: ClassIR[] = [];
 export const hoistedNestedEnums: EnumIR[] = [];
 export const nestedFunctionAliases = new Map<string, string>();
+export const nestedClassAliases = new Map<string, string>();
 
 // Module-level pin alias map for the current buildProgramIR invocation.
 // Maps alias variable names (e.g., "led") to their original pin names (e.g., "LED").
@@ -67,11 +68,16 @@ export const arrayLiteralSizes = new Map<string, number>();
 // Track filter result length counters: array name → length counter var name.
 export const filteredArrayLengthVars = new Map<string, string>();
 
+// Module-level namespace name tracker for the current buildProgramIR invocation.
+// Tracks namespace identifiers so property access like Foo.bar renders as Foo::bar.
+export const activeNamespaceNames = new Set<string>();
+
 export function resetBuildState(): void {
   hoistedNestedFunctions.length = 0;
   hoistedNestedClasses.length = 0;
   hoistedNestedEnums.length = 0;
   nestedFunctionAliases.clear();
+  nestedClassAliases.clear();
   activePinAliases.clear();
   activeBusAliases.clear();
   activeCArrayVars.clear();
@@ -79,4 +85,5 @@ export function resetBuildState(): void {
   mutableArrayVars.clear();
   arrayLiteralSizes.clear();
   filteredArrayLengthVars.clear();
+  activeNamespaceNames.clear();
 }

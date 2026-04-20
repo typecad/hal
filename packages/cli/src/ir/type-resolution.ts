@@ -291,6 +291,11 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     return `std::vector<${elementType}>`;
   }
 
+  // User-defined types (interfaces, classes, enums) pass through as their C++ type name.
+  if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName)) {
+    return resolvedNode.typeName.text as CppTypeHint;
+  }
+
   return "auto";
 }
 

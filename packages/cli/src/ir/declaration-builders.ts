@@ -197,7 +197,7 @@ export function classDeclarationToIR(
         statements: methodBody,
         visibility,
         isStatic,
-        isAbstract: isMethodAbstract || isAbstract,
+        isAbstract: isMethodAbstract,
       });
     }
   }

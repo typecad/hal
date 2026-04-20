@@ -125,10 +125,13 @@ export function namespaceToIR(
       const nsFnTypeParams = nsNode.typeParameters
         ? nsNode.typeParameters.map(tp => tp.name.text)
         : undefined;
+      const nsFnReturnType = nsNode.type
+        ? typeNodeToCppType(nsNode.type, typeAliasNodes)
+        : resolveFunctionReturnType(nsNode.name.text, functionReturnTypes);
       nsFunctions.push({
         originalName: nsNode.name.text,
         isAsync,
-        returnType: resolveFunctionReturnType(nsNode.name.text, functionReturnTypes),
+        returnType: nsFnReturnType,
         sourceSpan: makeSourceSpan(nsNode, fileName, sourceText),
         leadingComments: fnComments.leadingComments,
         trailingComments: fnComments.trailingComments,

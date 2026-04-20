@@ -3,7 +3,7 @@ import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { inferKindByName } from "./typecode-symbols";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, nestedFunctionAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement } from "./statement-to-ir";
 import { escapeCppKeyword } from "../utils/strings";
@@ -41,6 +41,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
     if (ts.isIdentifier(receiverNode) && receiverNode.text === "Math") {
       return `std::${escapedName}`;
+    }
+    if (ts.isIdentifier(receiverNode) && activeNamespaceNames.has(receiverNode.text)) {
+      return `${receiverNode.text}::${escapedName}`;
     }
     const objectText = formatExpressionText(receiverNode);
     if (memberName === "length") {
@@ -670,8 +673,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         calleeText = `this->${methodName}`;
       } else if (ts.isIdentifier(receiver) && receiver.text === "Math") {
         calleeText = `std::${methodName}`;
-      } else if (ts.isIdentifier(receiver) && hoistedNestedClasses.some(c => c.name === receiver.text)) {
-        // Static method call on a hoisted class: use ::
+      } else if (ts.isIdentifier(receiver) && (hoistedNestedClasses.some(c => c.name === receiver.text) || nestedClassAliases.has(receiver.text))) {
+        // Static method call on a hoisted class: use :: with mangled name
+        const resolvedName = nestedClassAliases.get(receiver.text) ?? receiver.text;
+        calleeText = `${resolvedName}::${methodName}`;
+      } else if (ts.isIdentifier(receiver) && activeNamespaceNames.has(receiver.text)) {
+        // Namespace method call: use ::
         calleeText = `${receiver.text}::${methodName}`;
       } else {
         const objText = renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars));
@@ -745,7 +752,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return { kind: "raw", value: `std::runtime_error(${message})` };
     }
 
-    return { kind: "raw", value: `new ${ctorText}(${argsText})` };
+    const resolvedCtorText = nestedClassAliases.get(ctorText) ?? ctorText;
+    return { kind: "raw", value: `new ${resolvedCtorText}(${argsText})` };
   }
   if (ts.isStringLiteral(expr)) {
     return { kind: "string", value: expr.text };
@@ -869,6 +877,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
       if (ts.isIdentifier(expr.expression) && activeStringVars.has(expr.expression.text)) {
         return { kind: "raw", value: `strlen(${escapeCppKeyword(expr.expression.text)})` };
+      }
+      // Handle this->field.length where field is a string (const char*)
+      if (ts.isPropertyAccessExpression(expr.expression) && expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        return { kind: "raw", value: `strlen(${renderExprAsText(object)})` };
       }
       return { kind: "raw", value: `${renderExprAsText(object)}.size()` };
     }

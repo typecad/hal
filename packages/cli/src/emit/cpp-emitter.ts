@@ -89,6 +89,9 @@ const _emitEnumNames: Set<string> = new Set();
 // an explicit `long` underlying type and their static_cast must use `long`.
 const _largeEnumNames: Set<string> = new Set();
 
+// Namespace names for scoped access (::) instead of (.)
+const _namespaceNames: Set<string> = new Set();
+
 /**
  * Pre-populate the module-level enum registries from *all* program IRs before
  * any `emitCpp` call. Call this once in `transpile.ts` after building +
@@ -856,6 +859,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       _largeEnumNames.add(e.name);
     }
   }
+  // Register namespace-internal enums and namespace names.
+  for (const ns of program.namespaces) {
+    _namespaceNames.add(ns.name);
+    for (const e of ns.enums) {
+      _emitEnumNames.add(e.name);
+      if (e.members.some(m => m.value !== undefined && (m.value > 32767 || m.value < -32768))) {
+        _largeEnumNames.add(e.name);
+      }
+    }
+  }
 
   // Resolve the platform strategy for this target.
   const strategy: PlatformStrategy = options.strategy ?? resolveStrategy(options.target ?? "generic");
@@ -1152,6 +1165,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         pointerVarTypes: rendererPointerVarTypes,
         pointerStructFields,
         stringVarNames: _stringVarTypes,
+        namespaceNames: _namespaceNames,
       });
       return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
     };
@@ -2544,6 +2558,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         continue;
       }
       const declarationParameterList = renderParameters(fn.parameters, strategy, true);
+      if (fn.typeParameters && fn.typeParameters.length > 0) {
+        appendSourceLine(`template<typename ${fn.typeParameters.join(", typename ")}>`);
+      }
       appendSourceLine(`${normalizeCppTypeForTarget(fn.returnType, strategy)} ${fn.name}(${declarationParameterList});`, {
         tsSpan: fn.sourceSpan,
         nodeKind: "function_declaration",
@@ -2587,6 +2604,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     const definitionParameterList = renderParameters(fn.parameters, strategy, false);
     if (effectiveEmitMode === "split") {
       emitCommentLines(fn.leadingComments, "", (line) => appendHeaderLine(line));
+      if (fn.typeParameters && fn.typeParameters.length > 0) {
+        appendHeaderLine(`template<typename ${fn.typeParameters.join(", typename ")}>`);
+      }
       appendHeaderLine(`${normalizeCppTypeForTarget(fn.returnType, strategy)} ${fn.name}(${declarationParameterList});`, {
         tsSpan: fn.sourceSpan,
         nodeKind: "function_declaration",
