@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { Diagnostic } from "../types";
-import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, EnumIR, ExpressionIR, InterfaceIR, ParameterIR, RegisterClassIR, StatementIR, TypeAliasIR } from "./model";
+import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, EnumIR, ExpressionIR, InterfaceIR, ParameterIR, RegisterClassIR, StatementIR, TypeAliasIR } from "./model";
 import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { getBitsRange, getRegisterAddress } from "./register-decorators";
@@ -76,6 +76,8 @@ export function classDeclarationToIR(
   const classComments = extractNodeComments(node, sourceText);
   const fields: ClassFieldIR[] = [];
   const methods: ClassMethodIR[] = [];
+  const getters: ClassGetterIR[] = [];
+  const setters: ClassSetterIR[] = [];
   let ctor: { parameters: ParameterIR[]; statements: StatementIR[] } | undefined;
 
   const qualifiedName = scopePrefix ? `${scopePrefix}.${className}` : className;
@@ -200,6 +202,75 @@ export function classDeclarationToIR(
         isAbstract: isMethodAbstract,
       });
     }
+
+    // Handle get accessors
+    if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+        ? "private"
+        : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+          ? "protected"
+          : "public";
+      const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+      const returnType = typeNodeToCppType(member.type, typeAliasNodes);
+      const body = member.body
+        ? lowerStatementList(
+            member.body.statements,
+            fileName,
+            sourceText,
+            diagnostics,
+            functionReturnTypes,
+            new Map<string, CppTypeHint>(),
+            `${qualifiedName}.${member.name.text}`,
+            typeAliasNodes,
+          )
+        : [];
+      getters.push({
+        name: member.name.text,
+        returnType: (returnType === "void" ? "auto" : returnType) as CppType,
+        statements: body,
+        visibility,
+        isStatic,
+      });
+      continue;
+    }
+
+    // Handle set accessors
+    if (ts.isSetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+        ? "private"
+        : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+          ? "protected"
+          : "public";
+      const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+      const param = member.parameters[0];
+      const paramType = param && ts.isIdentifier(param.name)
+        ? typeNodeToCppType(param.type, typeAliasNodes)
+        : "auto";
+      const body = member.body
+        ? lowerStatementList(
+            member.body.statements,
+            fileName,
+            sourceText,
+            diagnostics,
+            functionReturnTypes,
+            new Map<string, CppTypeHint>(),
+            `${qualifiedName}.${member.name.text}`,
+            typeAliasNodes,
+          )
+        : [];
+      setters.push({
+        name: member.name.text,
+        parameter: {
+          name: param && ts.isIdentifier(param.name) ? param.name.text : "value",
+          cppType: (paramType === "void" ? "auto" : paramType) as CppType,
+          isRest: false,
+        },
+        statements: body,
+        visibility,
+        isStatic,
+      });
+      continue;
+    }
   }
 
   return {
@@ -213,8 +284,8 @@ export function classDeclarationToIR(
     fields,
     methods,
     constructor: ctor,
-    getters: [],
-    setters: [],
+    getters,
+    setters,
   };
 }
 

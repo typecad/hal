@@ -30,8 +30,8 @@ describe('Transpiler showcase example', () => {
 
     const result = transpileArduino(source);
 
-    expect(result.cpp).toContain('int classify(int value);');
-    expect(result.cpp).toContain('int classify(int value)');
+    expect(result.cpp).toContain('SystemMode classify(int value);');
+    expect(result.cpp).toContain('SystemMode classify(int value)');
     expect(result.cpp).not.toContain('void classify(int value)');
   });
 });

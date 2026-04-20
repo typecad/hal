@@ -3,7 +3,7 @@ import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { inferKindByName } from "./typecode-symbols";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement } from "./statement-to-ir";
 import { escapeCppKeyword } from "../utils/strings";
@@ -54,7 +54,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return `strlen(${objectText})`;
       }
       if (ts.isIdentifier(receiverNode) && activeStringVars.has(receiverNode.text)) {
-        return `strlen(${objectText})`;
+        return `${objectText}.size()`;
       }
       return `${objectText}.size()`;
     }
@@ -210,6 +210,31 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     const left = renderExprAsText(expressionToIR(expr.left, sourceText, diagnostics, pointerVars));
     const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
     return { kind: "raw", value: `typecode_nullish(${left}, ${right})` };
+  }
+
+  // Handle typeof expressions — at transpile time, typeof on a known variable
+  // can be resolved. For typeof x === "number", the binary handler will compare.
+  // Standalone typeof x emits a type-name string literal.
+  if (ts.isTypeOfExpression(expr)) {
+    const operand = expr.expression;
+    if (ts.isIdentifier(operand)) {
+      const varType = activeLocalTypes.get(operand.text);
+      const typeName = varType === "int" || varType === "float" || varType === "double" || varType === "long" || varType === "unsigned" || varType === "size_t"
+        ? "number"
+        : varType === "bool"
+          ? "boolean"
+          : varType === "std::string"
+            ? "string"
+            : varType === "void"
+              ? "undefined"
+              : "object";
+      return { kind: "string", value: typeName };
+    }
+    // typeof on a literal — resolve from the literal itself
+    if (ts.isNumericLiteral(operand)) return { kind: "string", value: "number" };
+    if (ts.isStringLiteral(operand) || ts.isNoSubstitutionTemplateLiteral(operand)) return { kind: "string", value: "string" };
+    if (operand.kind === ts.SyntaxKind.TrueKeyword || operand.kind === ts.SyntaxKind.FalseKeyword) return { kind: "string", value: "boolean" };
+    return { kind: "raw", value: `/* typeof */` };
   }
 
   // Recurse into binary expressions so nested typecode calls are translated correctly.
@@ -876,7 +901,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return { kind: "raw", value: `strlen(${renderExprAsText(object)})` };
       }
       if (ts.isIdentifier(expr.expression) && activeStringVars.has(expr.expression.text)) {
-        return { kind: "raw", value: `strlen(${escapeCppKeyword(expr.expression.text)})` };
+        return { kind: "raw", value: `${escapeCppKeyword(expr.expression.text)}.size()` };
       }
       // Handle this->field.length where field is a string (const char*)
       if (ts.isPropertyAccessExpression(expr.expression) && expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {

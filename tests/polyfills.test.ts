@@ -272,8 +272,8 @@ describe("Array Method Polyfills", () => {
         arr.push(4);
       }
     `);
-    expect(result.cpp).toContain("const std::vector<int> arr = { 1, 2, 3 }");
-    expect(result.cpp).toContain("arr.push(4)");
+    expect(result.cpp).toContain("StaticArray<int> arr");
+    expect(result.cpp).toContain("arr.push_back(4)");
   });
 
   it("transpiles array.length to size()", () => {

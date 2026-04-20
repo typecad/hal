@@ -1,12 +1,12 @@
 import ts from "typescript";
 import { Diagnostic, SourceSpan } from "../types";
-import { ClassIR, ClassFieldIR, ClassMethodIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "./model";
+import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "./model";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnlyMethodName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR } from "./declaration-builders";
@@ -663,6 +663,60 @@ export function lowerStatement(
   pointerVars: PointerTracker = new Map(),
 ): StatementIR[] | undefined {
   if (ts.isExpressionStatement(statement)) {
+    // Handle arr.forEach(arrowFn) as a standalone statement → inline loop
+    if (ts.isCallExpression(statement.expression) &&
+        ts.isPropertyAccessExpression(statement.expression.expression) &&
+        statement.expression.expression.name.text === "forEach" &&
+        ts.isIdentifier(statement.expression.expression.expression)) {
+      const srcName = statement.expression.expression.expression.text;
+      const srcSize = arrayLiteralSizes.get(srcName);
+      const arrowFn = statement.expression.arguments[0];
+      if (srcSize !== undefined && arrowFn && (ts.isArrowFunction(arrowFn) || ts.isFunctionExpression(arrowFn))) {
+        const param = arrowFn.parameters[0];
+        const paramName = param && ts.isIdentifier(param.name) ? param.name.text : "__x";
+        const span = makeSourceSpan(statement, fileName, sourceText);
+        const comments = extractNodeComments(statement, sourceText);
+        if (!ts.isBlock(arrowFn.body)) {
+          // Expression body
+          const bodyIR = expressionToIR(arrowFn.body, sourceText, diagnostics);
+          return [{
+            kind: "for",
+            sourceSpan: span,
+            leadingComments: comments.leadingComments,
+            trailingComments: comments.trailingComments,
+            initializer: { kind: "var_decl", sourceSpan: span, name: "__tc_i", storage: "let", cppType: "int", initializer: { kind: "number", value: 0 } },
+            condition: { kind: "binary", left: { kind: "identifier", value: "__tc_i" }, operator: "<", right: { kind: "number", value: srcSize } },
+            increment: { kind: "update", sourceSpan: span, target: "__tc_i", operator: "++", prefix: false },
+            body: [
+              { kind: "var_decl", sourceSpan: span, name: paramName, storage: "const", cppType: "auto",
+                initializer: { kind: "raw", value: `${srcName}[__tc_i]` } },
+              { kind: "var_decl", sourceSpan: span, name: "__tc_result", storage: "let", cppType: "auto", initializer: bodyIR },
+            ],
+          }];
+        } else {
+          // Block body — lower statements and prepend param decl
+          const blockStatements = lowerStatementList(
+            arrowFn.body.statements, fileName, sourceText, diagnostics,
+            functionReturnTypes, localVariableTypes, functionNameForDiagnostics, typeAliases,
+          );
+          return [{
+            kind: "for",
+            sourceSpan: span,
+            leadingComments: comments.leadingComments,
+            trailingComments: comments.trailingComments,
+            initializer: { kind: "var_decl", sourceSpan: span, name: "__tc_i", storage: "let", cppType: "int", initializer: { kind: "number", value: 0 } },
+            condition: { kind: "binary", left: { kind: "identifier", value: "__tc_i" }, operator: "<", right: { kind: "number", value: srcSize } },
+            increment: { kind: "update", sourceSpan: span, target: "__tc_i", operator: "++", prefix: false },
+            body: [
+              { kind: "var_decl", sourceSpan: span, name: paramName, storage: "const", cppType: "auto",
+                initializer: { kind: "raw", value: `${srcName}[__tc_i]` } },
+              ...blockStatements,
+            ],
+          }];
+        }
+      }
+    }
+
     // Check for compile-time-only calls first (e.g., registerPlatformStrategy())
     // These are registration calls that don't need C++ emission
     if (ts.isCallExpression(statement.expression)) {
@@ -1297,6 +1351,8 @@ function hoistNestedClass(
   const classComments = extractNodeComments(node, sourceText);
   const fields: ClassFieldIR[] = [];
   const methods: ClassMethodIR[] = [];
+  const getters: ClassGetterIR[] = [];
+  const setters: ClassSetterIR[] = [];
   let ctor: { parameters: ParameterIR[]; statements: StatementIR[] } | undefined;
 
   for (const member of node.members) {
@@ -1400,6 +1456,66 @@ function hoistNestedClass(
         isStatic,
         isAbstract: isMethodAbstract,
       });
+      continue;
+    }
+
+    // Handle get accessors in nested classes
+    if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+        ? "private"
+        : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+          ? "protected"
+          : "public";
+      const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+      const returnType = typeNodeToCppType(member.type, typeAliases);
+      const body = member.body
+        ? lowerStatementList(
+            member.body.statements, fileName, sourceText, diagnostics,
+            functionReturnTypes, new Map<string, CppTypeHint>(),
+            `${className}.${member.name.text}`, typeAliases,
+          )
+        : [];
+      getters.push({
+        name: member.name.text,
+        returnType: (returnType === "void" ? "auto" : returnType) as CppType,
+        statements: body,
+        visibility,
+        isStatic,
+      });
+      continue;
+    }
+
+    // Handle set accessors in nested classes
+    if (ts.isSetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const visibility: "public" | "private" | "protected" = member.modifiers?.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+        ? "private"
+        : member.modifiers?.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+          ? "protected"
+          : "public";
+      const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+      const param = member.parameters[0];
+      const paramType = param && ts.isIdentifier(param.name)
+        ? typeNodeToCppType(param.type, typeAliases)
+        : "auto";
+      const body = member.body
+        ? lowerStatementList(
+            member.body.statements, fileName, sourceText, diagnostics,
+            functionReturnTypes, new Map<string, CppTypeHint>(),
+            `${className}.${member.name.text}`, typeAliases,
+          )
+        : [];
+      setters.push({
+        name: member.name.text,
+        parameter: {
+          name: param && ts.isIdentifier(param.name) ? param.name.text : "value",
+          cppType: (paramType === "void" ? "auto" : paramType) as CppType,
+          isRest: false,
+        },
+        statements: body,
+        visibility,
+        isStatic,
+      });
+      continue;
     }
   }
 
@@ -1413,8 +1529,8 @@ function hoistNestedClass(
     fields,
     methods,
     constructor: ctor,
-    getters: [],
-    setters: [],
+    getters,
+    setters,
   });
 
   if (safeParentName) {
@@ -1994,6 +2110,7 @@ export function variableStatementToIR(
     }
     loweredDeclaration.cppType = varCppType as CppType;
     localVariableTypes.set(declaration.name.text, declarationType.resolvedType);
+    activeLocalTypes.set(declaration.name.text, declarationType.resolvedType);
 
     // Track string-typed variables for .length → strlen() conversion
     if (declarationType.resolvedType === "std::string") {
@@ -2198,7 +2315,9 @@ export function variableStatementToIR(
       }
 
       // 6) Regular array literal → track in activeCArrayVars for .length → sizeof
-      if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
+      // Only track as C-array if the resolved type is NOT std::vector (vectors use .size())
+      if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)
+          && !declarationType.resolvedType.startsWith("std::vector<")) {
         activeCArrayVars.add(varName);
       }
     }

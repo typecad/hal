@@ -120,8 +120,15 @@ let _defaultStrategy: PlatformStrategy = resolveStrategy("generic");
 // Populated during class emission so renderExpression can use :: for static access.
 let _classStaticMembers: Map<string, Set<string>> = new Map();
 
-// Module-level tracking for string-typed variables (for strlen() on .length).
+// Module-level tracking for string-typed variables (for .length rendering).
+// Only const char* / char* vars use strlen(); std::string vars use .size().
 let _stringVarTypes: Set<string> = new Set();
+let _stdStringVarTypes: Set<string> = new Set();
+let _vectorVarTypes: Set<string> = new Set();
+
+// Module-level tracking for class getter/setter names (class name → property name → type).
+// Populated during class emission so renderExpression can rewrite property access.
+let _classAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> = new Map();
 
 interface EmitterOptions {
   outDir: string;
@@ -417,12 +424,28 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       if (expr.object.kind === "identifier" && _classStaticMembers.has(expr.object.value)) {
         const statics = _classStaticMembers.get(expr.object.value)!;
         if (statics.has(expr.property)) {
+          // Check if this property is a getter — render as Class::getProp()
+          const accessors = _classAccessorNames.get(expr.object.value);
+          if (accessors?.has(expr.property)) {
+            const getterName = `get${expr.property.charAt(0).toUpperCase()}${expr.property.slice(1)}`;
+            return `${objStr}::${getterName}()`;
+          }
           return `${objStr}::${expr.property}`;
         }
       }
-      // Handle .length property on arrays → sizeof(obj)/sizeof(obj[0])
-      // For string-typed variables, use strlen() instead.
+      // Rewrite property access to getter call if the property is an accessor
+      if (expr.object.kind === "identifier" && _classAccessorNames.has(expr.object.value)) {
+        const accessors = _classAccessorNames.get(expr.object.value)!;
+        if (accessors.has(expr.property)) {
+          const getterName = `get${expr.property.charAt(0).toUpperCase()}${expr.property.slice(1)}`;
+          return `${objStr}->${getterName}()`;
+        }
+      }
+      // Handle .length property: std::string and std::vector → .size(), const char* → strlen(), C-array → sizeof
       if (expr.property === "length" && expr.object.kind === "identifier") {
+        if (_stdStringVarTypes.has(expr.object.value) || _vectorVarTypes.has(expr.object.value)) {
+          return `${objStr}.size()`;
+        }
         if (_stringVarTypes.has(expr.object.value)) {
           return `strlen(${objStr})`;
         }
@@ -1165,6 +1188,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         pointerVarTypes: rendererPointerVarTypes,
         pointerStructFields,
         stringVarNames: _stringVarTypes,
+        stdStringVarNames: _stdStringVarTypes,
+        vectorVarNames: _vectorVarTypes,
         namespaceNames: _namespaceNames,
       });
       return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
@@ -2283,18 +2308,31 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       // Check if field has isStatic (future-proofing)
       if ((field as any).isStatic) statics.add(field.name);
     }
+    for (const getter of classDef.getters) {
+      if (getter.isStatic) statics.add(getter.name);
+    }
+    for (const setter of classDef.setters) {
+      if (setter.isStatic) statics.add(setter.name);
+    }
     if (statics.size > 0) {
       classStaticMembers.set(classDef.name, statics);
     }
   }
 
-  // Track string-typed variables for strlen() rendering
+  // Track string-typed variables for .length rendering
   const stringVarTypes = new Set<string>();
+  const stdStringVarTypes = new Set<string>();
+  const vectorVarTypes = new Set<string>();
   for (const stmt of program.topLevelStatements) {
     if (stmt.kind === "var_decl") {
       const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
-      if (normalizedType === "std::string" || normalizedType === "const char*" || normalizedType === "char*") {
+      if (normalizedType === "std::string") {
+        stdStringVarTypes.add(stmt.name);
+      } else if (normalizedType === "const char*" || normalizedType === "char*") {
         stringVarTypes.add(stmt.name);
+      }
+      if (normalizedType.startsWith("std::vector<")) {
+        vectorVarTypes.add(stmt.name);
       }
     }
   }
@@ -2302,8 +2340,13 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     for (const stmt of fn.statements) {
       if (stmt.kind === "var_decl") {
         const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
-        if (normalizedType === "std::string" || normalizedType === "const char*" || normalizedType === "char*") {
+        if (normalizedType === "std::string") {
+          stdStringVarTypes.add(stmt.name);
+        } else if (normalizedType === "const char*" || normalizedType === "char*") {
           stringVarTypes.add(stmt.name);
+        }
+        if (normalizedType.startsWith("std::vector<")) {
+          vectorVarTypes.add(stmt.name);
         }
       }
     }
@@ -2312,6 +2355,24 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Populate module-level tracking for renderExpression
   _classStaticMembers = classStaticMembers;
   _stringVarTypes = stringVarTypes;
+  _stdStringVarTypes = stdStringVarTypes;
+  _vectorVarTypes = vectorVarTypes;
+
+  // Build accessor name map for expression rewriting
+  const classAccessorNames = new Map<string, Map<string, "getter" | "setter" | "both">>();
+  for (const classDef of program.classes) {
+    const accessors = new Map<string, "getter" | "setter" | "both">();
+    for (const g of classDef.getters) {
+      accessors.set(g.name, accessors.has(g.name) ? "both" : "getter");
+    }
+    for (const s of classDef.setters) {
+      accessors.set(s.name, accessors.has(s.name) ? "both" : "setter");
+    }
+    if (accessors.size > 0) {
+      classAccessorNames.set(classDef.name, accessors);
+    }
+  }
+  _classAccessorNames = classAccessorNames;
 
   for (const classDef of program.classes) {
     emitCommentLines(classDef.leadingComments, "", (line) => appendSourceLine(line));
@@ -2342,9 +2403,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     const publicMethods = classDef.methods.filter(m => m.visibility === "public");
     const privateMethods = classDef.methods.filter(m => m.visibility === "private");
     const protectedMethods = classDef.methods.filter(m => m.visibility === "protected");
-    
+    const publicGetters = classDef.getters.filter(g => g.visibility === "public");
+    const publicSetters = classDef.setters.filter(s => s.visibility === "public");
+    const privateGetters = classDef.getters.filter(g => g.visibility === "private");
+    const privateSetters = classDef.setters.filter(s => s.visibility === "private");
+    const protectedGetters = classDef.getters.filter(g => g.visibility === "protected");
+    const protectedSetters = classDef.setters.filter(s => s.visibility === "protected");
+
     // Emit public section
-    if (publicFields.length > 0 || publicMethods.length > 0 || classDef.constructor) {
+    if (publicFields.length > 0 || publicMethods.length > 0 || publicGetters.length > 0 || publicSetters.length > 0 || classDef.constructor) {
       appendSourceLine("public:");
       
       // Constructor
@@ -2404,10 +2471,38 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine("  }");
         appendSourceLine("");
       }
+
+      // Public getters
+      for (const getter of publicGetters) {
+        const staticPrefix = getter.isStatic ? "static " : "";
+        const returnType = normalizeCppTypeForTarget(getter.returnType, strategy);
+        const getterName = `get${getter.name.charAt(0).toUpperCase()}${getter.name.slice(1)}`;
+        appendSourceLine(`  ${staticPrefix}${returnType} ${getterName}() const {`);
+        const getterScope = createChildEmissionScope(topLevelScope, []);
+        for (const stmt of getter.statements) {
+          appendRenderedStatement(stmt, "    ", undefined, getterScope);
+        }
+        appendSourceLine("  }");
+        appendSourceLine("");
+      }
+
+      // Public setters
+      for (const setter of publicSetters) {
+        const staticPrefix = setter.isStatic ? "static " : "";
+        const paramType = normalizeCppTypeForTarget(setter.parameter.cppType, strategy);
+        const setterName = `set${setter.name.charAt(0).toUpperCase()}${setter.name.slice(1)}`;
+        appendSourceLine(`  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
+        const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
+        for (const stmt of setter.statements) {
+          appendRenderedStatement(stmt, "    ", undefined, setterScope);
+        }
+        appendSourceLine("  }");
+        appendSourceLine("");
+      }
     }
-    
+
     // Emit private section
-    if (privateFields.length > 0 || privateMethods.length > 0) {
+    if (privateFields.length > 0 || privateMethods.length > 0 || privateGetters.length > 0 || privateSetters.length > 0) {
       appendSourceLine("private:");
       for (const field of privateFields) {
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, strategy)}` : "";
@@ -2428,10 +2523,34 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine("  }");
         appendSourceLine("");
       }
+      for (const getter of privateGetters) {
+        const staticPrefix = getter.isStatic ? "static " : "";
+        const returnType = normalizeCppTypeForTarget(getter.returnType, strategy);
+        const getterName = `get${getter.name.charAt(0).toUpperCase()}${getter.name.slice(1)}`;
+        appendSourceLine(`  ${staticPrefix}${returnType} ${getterName}() const {`);
+        const getterScope = createChildEmissionScope(topLevelScope, []);
+        for (const stmt of getter.statements) {
+          appendRenderedStatement(stmt, "    ", undefined, getterScope);
+        }
+        appendSourceLine("  }");
+        appendSourceLine("");
+      }
+      for (const setter of privateSetters) {
+        const staticPrefix = setter.isStatic ? "static " : "";
+        const paramType = normalizeCppTypeForTarget(setter.parameter.cppType, strategy);
+        const setterName = `set${setter.name.charAt(0).toUpperCase()}${setter.name.slice(1)}`;
+        appendSourceLine(`  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
+        const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
+        for (const stmt of setter.statements) {
+          appendRenderedStatement(stmt, "    ", undefined, setterScope);
+        }
+        appendSourceLine("  }");
+        appendSourceLine("");
+      }
     }
-    
+
     // Emit protected section
-    if (protectedFields.length > 0 || protectedMethods.length > 0) {
+    if (protectedFields.length > 0 || protectedMethods.length > 0 || protectedGetters.length > 0 || protectedSetters.length > 0) {
       appendSourceLine("protected:");
       for (const field of protectedFields) {
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, strategy)}` : "";
@@ -2452,8 +2571,32 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine("  }");
         appendSourceLine("");
       }
+      for (const getter of protectedGetters) {
+        const staticPrefix = getter.isStatic ? "static " : "";
+        const returnType = normalizeCppTypeForTarget(getter.returnType, strategy);
+        const getterName = `get${getter.name.charAt(0).toUpperCase()}${getter.name.slice(1)}`;
+        appendSourceLine(`  ${staticPrefix}${returnType} ${getterName}() const {`);
+        const getterScope = createChildEmissionScope(topLevelScope, []);
+        for (const stmt of getter.statements) {
+          appendRenderedStatement(stmt, "    ", undefined, getterScope);
+        }
+        appendSourceLine("  }");
+        appendSourceLine("");
+      }
+      for (const setter of protectedSetters) {
+        const staticPrefix = setter.isStatic ? "static " : "";
+        const paramType = normalizeCppTypeForTarget(setter.parameter.cppType, strategy);
+        const setterName = `set${setter.name.charAt(0).toUpperCase()}${setter.name.slice(1)}`;
+        appendSourceLine(`  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
+        const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
+        for (const stmt of setter.statements) {
+          appendRenderedStatement(stmt, "    ", undefined, setterScope);
+        }
+        appendSourceLine("  }");
+        appendSourceLine("");
+      }
     }
-    
+
     appendSourceLine("};");
     emitCommentLines(classDef.trailingComments, "", (line) => appendSourceLine(line));
     appendSourceLine("");

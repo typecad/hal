@@ -200,8 +200,22 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     const nonNullTypes = resolvedNode.types.filter(t => {
       return t.kind !== ts.SyntaxKind.NullKeyword && t.kind !== ts.SyntaxKind.UndefinedKeyword;
     });
+    if (nonNullTypes.length === 0) {
+      return "auto";
+    }
     if (nonNullTypes.length === 1) {
       return typeNodeToCppType(nonNullTypes[0], typeAliases);
+    }
+    // Multi-type union: resolve each member and emit std::variant
+    const memberTypes = nonNullTypes
+      .map(t => typeNodeToCppType(t, typeAliases))
+      .filter((t): t is CppTypeHint => t !== "auto" && t !== undefined);
+    const uniqueTypes = [...new Set(memberTypes)];
+    if (uniqueTypes.length >= 2) {
+      return `std::variant<${uniqueTypes.join(", ")}>` as CppTypeHint;
+    }
+    if (uniqueTypes.length === 1) {
+      return uniqueTypes[0];
     }
     return "auto";
   }

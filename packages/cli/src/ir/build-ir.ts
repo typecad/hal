@@ -35,6 +35,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   const boilerplates = new Set<string>();
   const functionReturnTypes = buildFunctionReturnTypeMap(source);
   const topLevelVariableTypes = new Map<string, CppTypeHint>();
+  let defaultExportName: string | undefined;
   
   // Reset module-level state for this file
   resetBuildState();
@@ -51,12 +52,28 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   }
 
   source.forEachChild((node) => {
-    if (ts.isImportDeclaration(node) && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
-      const moduleSpecifier = (node.moduleSpecifier as ts.StringLiteral).text;
-      imports.push({
-        moduleSpecifier,
-        namedImports: node.importClause.namedBindings.elements.map((e) => e.name.text),
-      });
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const moduleSpecifier = node.moduleSpecifier.text;
+      const namedImports: string[] = [];
+      let defaultImportName: string | undefined;
+
+      // Handle default import: import X from "./module"
+      if (node.importClause?.name && ts.isIdentifier(node.importClause.name)) {
+        defaultImportName = node.importClause.name.text;
+      }
+
+      // Handle named imports: import { a, b } from "./module"
+      if (node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
+        namedImports.push(...node.importClause.namedBindings.elements.map((e) => e.name.text));
+      }
+
+      if (namedImports.length > 0 || defaultImportName) {
+        imports.push({
+          moduleSpecifier,
+          namedImports,
+          ...(defaultImportName ? { defaultImportName } : {}),
+        });
+      }
       return;
     }
 
@@ -77,8 +94,17 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
 
     // Handle export default statements (ExportAssignment)
-    // These are compile-time constructs for board packages - skip silently
     if (ts.isExportAssignment(node)) {
+      if (node.isExportEquals) {
+        // export = X — board config style, skip
+        return;
+      }
+      // export default <identifier> — record the name for default import resolution
+      if (ts.isIdentifier(node.expression)) {
+        defaultExportName = node.expression.text;
+      }
+      // For export default function/class, the declaration is already processed
+      // by the function/class handlers above — we just record the name.
       return;
     }
 
@@ -280,5 +306,6 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     peripheralUsage,
     interfaces,
     namespaces,
+    ...(defaultExportName ? { defaultExportName } : {}),
   };
 }

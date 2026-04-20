@@ -1213,6 +1213,17 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         }
         crossModuleImports.get(targetFile)!.add(symbol);
       }
+      // Handle default imports: import X from "./module"
+      if (imp.defaultImportName) {
+        // Find the target module's default export name
+        const targetIR = rawIRArray.find(r => r.filePath === targetFile);
+        if (targetIR?.programIR.defaultExportName) {
+          if (!crossModuleImports.has(targetFile)) {
+            crossModuleImports.set(targetFile, new Set());
+          }
+          crossModuleImports.get(targetFile)!.add(targetIR.programIR.defaultExportName);
+        }
+      }
     }
   }
   profiler.endTimer("ir:cross-module-imports");

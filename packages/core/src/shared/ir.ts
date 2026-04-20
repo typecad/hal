@@ -17,6 +17,8 @@ import type { Diagnostic } from './types';
 export interface ImportIR {
   moduleSpecifier: string;
   namedImports: string[];
+  /** For default imports: import X from "./module" */
+  defaultImportName?: string;
 }
 
 export interface ReExportIR {
@@ -534,4 +536,6 @@ export interface ProgramIR {
   boardConstants?: BoardConstants;
   /** Tracks which hardware peripherals are used (for optimized initialization) */
   peripheralUsage?: PeripheralUsageIR;
+  /** The name of the default export, if this module has `export default <name>` */
+  defaultExportName?: string;
 }

@@ -31,6 +31,10 @@ export interface ExpressionRendererContext {
   pointerVarTypes?: Map<string, string>;
   /** Set of variable names known to hold string values (for snprintf %s) */
   stringVarNames?: Set<string>;
+  /** Set of variable names typed as std::string (for .length → .size()) */
+  stdStringVarNames?: Set<string>;
+  /** Set of variable names typed as std::vector (for .length → .size()) */
+  vectorVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) instead of (.) */
   namespaceNames?: Set<string>;
   /** Optional transformer for expression values */
@@ -49,6 +53,8 @@ export class ExpressionRenderer {
   private readonly knownFunctionReturnTypes?: Map<string, string>;
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly stringVarNames?: Set<string>;
+  private readonly stdStringVarNames?: Set<string>;
+  private readonly vectorVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
@@ -65,6 +71,8 @@ export class ExpressionRenderer {
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.pointerVarTypes = context.pointerVarTypes;
     this.stringVarNames = context.stringVarNames;
+    this.stdStringVarNames = context.stdStringVarNames;
+    this.vectorVarNames = context.vectorVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
   }
 
@@ -391,8 +399,11 @@ export class ExpressionRenderer {
     if (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value)) {
       return `${objStr}::${expr.property}`;
     }
-    // Handle .length property on arrays → sizeof(obj)/sizeof(obj[0])
+    // Handle .length: std::string/std::vector → .size(), C-array → sizeof
     if (expr.property === "length" && expr.object.kind === "identifier") {
+      if (this.stdStringVarNames?.has(expr.object.value) || this.vectorVarNames?.has(expr.object.value)) {
+        return `${objStr}.size()`;
+      }
       return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
     }
     return `${objStr}.${expr.property}`;

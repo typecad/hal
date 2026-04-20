@@ -72,6 +72,10 @@ export const filteredArrayLengthVars = new Map<string, string>();
 // Tracks namespace identifiers so property access like Foo.bar renders as Foo::bar.
 export const activeNamespaceNames = new Set<string>();
 
+// Module-level local variable type tracker for typeof resolution.
+// Maps variable name → inferred C++ type string (e.g., "int", "std::string").
+export const activeLocalTypes = new Map<string, string>();
+
 export function resetBuildState(): void {
   hoistedNestedFunctions.length = 0;
   hoistedNestedClasses.length = 0;
@@ -86,4 +90,5 @@ export function resetBuildState(): void {
   arrayLiteralSizes.clear();
   filteredArrayLengthVars.clear();
   activeNamespaceNames.clear();
+  activeLocalTypes.clear();
 }

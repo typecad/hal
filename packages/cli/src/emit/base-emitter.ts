@@ -333,6 +333,39 @@ export abstract class BaseEmitter {
   }
 
   /**
+   * Checks if the program uses std::variant types (from multi-type unions).
+   */
+  private programUsesVariant(program: ProgramIR): boolean {
+    const variantPattern = /std::variant</;
+    const checkType = (t: string): boolean => variantPattern.test(t);
+
+    // Check functions
+    for (const fn of program.functions) {
+      if (checkType(fn.returnType)) return true;
+      for (const param of fn.parameters) {
+        if (checkType(param.cppType)) return true;
+      }
+    }
+    // Check classes
+    for (const cls of program.classes) {
+      for (const field of cls.fields) {
+        if (checkType(field.cppType)) return true;
+      }
+      for (const method of cls.methods) {
+        if (checkType(method.returnType)) return true;
+        for (const param of method.parameters) {
+          if (checkType(param.cppType)) return true;
+        }
+      }
+    }
+    // Check type aliases
+    for (const ta of program.typeAliases) {
+      if (checkType(ta.cppType)) return true;
+    }
+    return false;
+  }
+
+  /**
    * Determines required includes for the program.
    */
   protected collectIncludes(program: ProgramIR, filePath: string): string[] {
@@ -346,6 +379,11 @@ export abstract class BaseEmitter {
     if (hasConsoleCalls(program)) {
       // Arduino uses Serial, native could use stdio
       includes.push("<Arduino.h>");
+    }
+
+    // Check for std::variant usage (from union types)
+    if (this.programUsesVariant(program)) {
+      includes.push("<variant>");
     }
 
     // Add includes from imports

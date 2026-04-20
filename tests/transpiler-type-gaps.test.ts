@@ -447,7 +447,8 @@ describe('Transpiler Type Gaps', () => {
       `);
 
       expect(result.cpp).not.toContain('void classify(');
-      expect(result.cpp).toContain('const int mode = classify(1);');
+      expect(result.cpp).toContain('SystemMode classify(int value)');
+      expect(result.cpp).toContain('const SystemMode mode = classify(1);');
     });
 
     it('combines template-string concat for Arduino printing without char-array addition', () => {
