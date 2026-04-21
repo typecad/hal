@@ -6,7 +6,7 @@ import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnl
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR } from "./declaration-builders";
@@ -2347,6 +2347,7 @@ export function variableStatementToIR(
       // These are emitted as C arrays (int arr[] = {...}), not std::vector,
       // regardless of what resolveDeclarationType reports. Fix the cppType to match.
       if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
+        activeArrayLiteralVars.add(varName);
         // Preserve std::vector typing when inferred; fall back to C arrays otherwise.
         // Extract element type from std::vector<T> or use "auto"
         const vecMatch = varCppType.match(/^std::vector<(.+)>$/);

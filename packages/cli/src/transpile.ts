@@ -1,3 +1,107 @@
+/*
+LLM TRANSPILER GUIDE
+====================
+
+This comment block is intended as a readme-style guide for language models and future maintainers
+who are investigating or extending the TypeCode transpiler. It is deliberately placed at the top of
+`packages/cli/src/transpile.ts` so it is found during normal code exploration.
+
+Key files:
+  - packages/cli/src/cli.ts                : main CLI entry, command dispatch, build/watch flows
+  - packages/cli/src/utils/cli.ts          : CLI option parser, command validation, help text
+  - packages/cli/src/transpile.ts          : transpilation pipeline, import resolution, emit orchestration
+  - packages/cli/src/emit/cpp-emitter.ts   : C++ emission logic and platform-specific codegen
+  - packages/cli/src/config-loader.ts      : typecode.config.ts loading and board/package config
+  - packages/cli/src/cli-utils.ts          : shared CLI helpers like expect test runner and error mapping
+  - packages/cli/src/mapping/source-map.ts : source map I/O and C++ → TypeScript error mapping
+  - packages/cli/src/watch.ts              : watch mode, directory discovery, rebuild callbacks
+
+Main code paths for creating or evaluating transpilation
+--------------------------------------------------------
+1. CLI command entry
+   - `packages/cli/src/cli.ts` is the application's entrypoint.
+   - `main()` calls `parseCommandLine(process.argv)` from `packages/cli/src/utils/cli.ts`.
+   - CLI parsing produces one of: `default`, `build`, `gen-libdefs`, `gen-decls`, `map-error`, `create-board`, `init`.
+   - For `default` and `build`, CLI options are normalized and passed into the transpilation flow.
+
+2. Config loading and effective option resolution
+   - `loadTypecodeConfig()` from `packages/cli/src/config-loader.ts` reads `typecode.config.ts`.
+   - Config values override CLI-supplied flags for board package, fqbn, target, outDir, framework, and console settings.
+   - `generateVirtualTypeDeclaration()` is used to keep editor type resolution aligned with bare `@typecode` imports.
+
+3. Transpilation flow
+   - The main runtime entry is `transpileFile(options)` in this file.
+   - `transpileFile()` performs these high-level steps:
+       a. Resolve the input file and watch/config context.
+       b. Collect the dependency graph and resolve imports.
+       c. Type-check the candidate files (unless `skipTypeCheck` is set).
+       d. Build IR for every file via `buildProgramIR()`.
+       e. Tree-shake and filter the program IR.
+       f. Register enum metadata with `registerAllEnumNames()`.
+       g. Emit C++/headers with `emitCpp()`.
+       h. Write generated files and source maps.
+   - Output is a `GeneratedOutputs` object with generated paths and diagnostics.
+
+4. Import resolution and source discovery
+   - `resolveImport()` decides whether an import is local or npm-based.
+   - `resolveLocalImport()` handles relative TypeScript imports and `.js` / `.mjs` rewrite patterns.
+   - `resolveNpmPackageImport()` locates packages in `node_modules` and monorepo layouts, and tries exports-to-source mapping.
+   - `detectNativeCppModule()` identifies `.d.ts` + `.cpp` pairs used for native bindings.
+   - `getNpmPackageInfoForFile()` maps a file path back to its npm package metadata after resolution.
+
+5. Type-checking and diagnostics
+   - `typeCheckFiles()` performs TS compilation and reports errors before emission.
+   - Diagnostics are surfaced via `GeneratedOutputs.diagnostics`.
+   - CLI output uses `printDiagnostics()` in `packages/cli/src/cli-utils.ts`.
+   - A build may still produce generated outputs alongside warnings and errors.
+
+6. Emission and platform strategy
+   - `emitCpp()` in `packages/cli/src/emit/cpp-emitter.ts` is the emission engine.
+   - It consumes IR, platform strategy, board constants, and polyfills.
+   - `registerAllEnumNames()` is required before emission to keep enum access normalization correct.
+   - For Arduino, `flattenGeneratedModulesIntoSketch()` is used to create an `.ino` sketch.
+
+7. Source maps and error mapping
+   - Generated output may include source maps via `emitMaps`.
+   - `packages/cli/src/mapping/source-map.ts` reads and maps C++ error locations back to TypeScript.
+   - `printMappedCompileErrors()` in `packages/cli/src/cli-utils.ts` uses this mapping during Arduino compile failures.
+
+8. Watch mode and incremental rebuilds
+   - `packages/cli/src/watch.ts` handles filesystem watch events and rebuild callbacks.
+   - `discoverWatchDirs()` finds relevant directories for the entry file and config file.
+   - Incremental rebuilds use `packages/cli/src/incremental-cache.ts` when enabled.
+   - Watch mode still goes through `transpileFile()` on each rebuild, but may bypass unchanged files.
+
+9. @typecode/expect support and preprocessing
+   - Code that imports `@typecode/expect` is transformed by the preprocessor.
+   - `loadExpectPreprocessor()` loads `@typecode/expect/preprocessor` lazily to avoid startup dependency failures.
+   - `runExpectTests()` in `packages/cli/src/cli-utils.ts` is the runtime test harness invoked after transpilation/upload.
+
+Common extension checklist for new transpiler features
+------------------------------------------------------
+  1. Decide whether the feature belongs to CLI parsing, config behavior, transpile graph resolution, emit logic, or runtime support.
+  2. Add the new option/command to `packages/cli/src/types.ts`.
+  3. Parse CLI flags in `packages/cli/src/utils/cli.ts`.
+  4. Wire command behavior in `packages/cli/src/cli.ts`.
+  5. Implement transpilation behavior in `packages/cli/src/transpile.ts` or `packages/cli/src/emit/*`.
+  6. Preserve diagnostics, source maps, and default `watch` semantics.
+  7. Add tests under `tests/` for the new CLI behavior and transpilation path.
+
+Important design notes
+----------------------
+  - Keep the CLI surface separate from the transpiler runtime. CLI files should only handle parsing, config, and orchestration.
+  - Transpilation should be driven by a single `transpileFile()` entrypoint, with internal helpers for resolution and IR building.
+  - Avoid adding new global mutable state in the emitter; prefer explicit context objects.
+  - Maintain a clear distinction between TypeScript source imports, npm package source resolution, and native module declarations.
+
+Search tokens:
+  - LLM TRANSPILER GUIDE
+  - LLM API MAP
+  - TRANSPILE TASKS
+  - MAIN CODE PATHS
+  - TRANSPILE FLOW
+*/
+
 import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
@@ -5,6 +109,7 @@ import { buildProgramIR } from "./ir/build-ir";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter";
 import { GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types";
 import { readText } from "./utils/fs";
+import { debug as logDebug, info } from "./utils/logger";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry";
 import { createPolyfillRegistry, PolyfillContext } from "./polyfill";
 import { ProgramIR } from "./ir/model";
@@ -36,7 +141,32 @@ import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
 import { tryGenerateArduinoLibDecl } from "./arduino-libs";
 import { initProfiler, getProfiler } from "./profiler";
-const { preprocess: expectPreprocess } = require("@typecode/expect/preprocessor") as { preprocess: (source: string, fileName?: string) => string };
+import {
+  ResolvedNpmPackage,
+  NativeCppModule,
+  TranspileGraphResult,
+  detectNativeCppModule,
+  getNpmPackageInfoForFile,
+  isInNodeModules,
+  resolveImport,
+  isTypecodeSDKPath,
+} from "./transpile/resolution";
+export type { ResolvedNpmPackage, NativeCppModule, TranspileGraphResult } from "./transpile/resolution";
+type ExpectPreprocessor = (source: string, fileName?: string) => string;
+let expectPreprocess: ExpectPreprocessor | undefined;
+
+function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
+  if (expectPreprocess) {
+    return expectPreprocess;
+  }
+  try {
+    const mod = require("@typecode/expect/preprocessor");
+    expectPreprocess = mod?.preprocess;
+    return expectPreprocess;
+  } catch {
+    return undefined;
+  }
+}
 
 function cleanOutput(entryDir: string, outDir: string): void {
   const cachePath = path.join(entryDir, ".typecode-cache.json");
@@ -44,231 +174,7 @@ function cleanOutput(entryDir: string, outDir: string): void {
   try { if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
 }
 
-function resolveLocalImport(fromFile: string, moduleSpecifier: string): string | undefined {
-  if (!moduleSpecifier.startsWith(".")) {
-    return undefined;
-  }
-
-  // Handle .js extensions in imports (TypeScript ESM pattern: import from "./foo.js")
-  // Map .js to .ts source files
-  let normalizedSpecifier = moduleSpecifier;
-  if (normalizedSpecifier.endsWith(".js")) {
-    normalizedSpecifier = normalizedSpecifier.slice(0, -3) + ".ts";
-  } else if (normalizedSpecifier.endsWith(".mjs")) {
-    normalizedSpecifier = normalizedSpecifier.slice(0, -5) + ".ts";
-  }
-
-  const basePath = path.resolve(path.dirname(fromFile), normalizedSpecifier);
-  const candidates = [
-    basePath,
-    `${basePath}.ts`,
-    `${basePath}.tsx`,
-    path.join(basePath, "index.ts"),
-    path.join(basePath, "index.tsx"),
-  ];
-
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) {
-      continue;
-    }
-
-    const extension = path.extname(candidate).toLowerCase();
-    if (extension === ".ts" || extension === ".tsx") {
-      return path.resolve(candidate);
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Information about a resolved npm package import
- */
-export interface ResolvedNpmPackage {
-  /** Path to the package directory (e.g., node_modules/typecode-implementation) */
-  packagePath: string;
-  /** Resolved TypeScript source file path */
-  sourcePath: string;
-  /** The subpath being imported (e.g., "board-arduino-uno") */
-  subpath: string;
-  /** The package name (e.g., "typecode-implementation") */
-  packageName: string;
-  /** Module key for header generation (e.g., "board-arduino-uno") */
-  moduleKey: string;
-}
-
-/**
- * Parses an npm module specifier into package name and subpath.
- * Handles scoped packages like @scope/package/subpath
- */
-function parseModuleSpecifier(moduleSpecifier: string): { packageName: string; subpath: string } {
-  const parts = moduleSpecifier.split("/");
   
-  if (moduleSpecifier.startsWith("@")) {
-    // Scoped package: @scope/package/subpath
-    const scope = parts[0];
-    const packageName = parts.length > 1 ? `${scope}/${parts[1]}` : scope;
-    const subpath = parts.length > 2 ? parts.slice(2).join("/") : "";
-    return { packageName, subpath };
-  } else {
-    // Regular package: package/subpath
-    const packageName = parts[0];
-    const subpath = parts.length > 1 ? parts.slice(1).join("/") : "";
-    return { packageName, subpath };
-  }
-}
-
-/**
- * Finds the node_modules directory containing the package by walking up the directory tree
- */
-function findNodeModulesPackage(
-  fromFile: string,
-  packageName: string
-): string | undefined {
-  let currentDir = path.dirname(path.resolve(fromFile));
-  
-  while (currentDir !== path.dirname(currentDir)) {
-    const packageDir = path.join(currentDir, "node_modules", packageName);
-    if (fs.existsSync(packageDir) && fs.statSync(packageDir).isDirectory()) {
-      return packageDir;
-    }
-    currentDir = path.dirname(currentDir);
-  }
-  
-  // Check root level
-  const rootPackageDir = path.join(currentDir, "node_modules", packageName);
-  if (fs.existsSync(rootPackageDir) && fs.statSync(rootPackageDir).isDirectory()) {
-    return rootPackageDir;
-  }
-  
-  return undefined;
-}
-
-/**
- * Reads and parses package.json, returning null if not found or invalid
- */
-function readPackageJson(packageDir: string): Record<string, unknown> | null {
-  const packageJsonPath = path.join(packageDir, "package.json");
-  if (!fs.existsSync(packageJsonPath)) {
-    return null;
-  }
-  
-  try {
-    const content = readText(packageJsonPath);
-    return JSON.parse(content) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Resolves a subpath using the package.json exports field
- */
-function resolvePackageExports(
-  packageDir: string,
-  subpath: string,
-  packageJson: Record<string, unknown>
-): string | undefined {
-  const exports = packageJson["exports"];
-  
-  if (!exports || typeof exports !== "object") {
-    return undefined;
-  }
-  
-  // Try to match the subpath against exports
-  const exportKey = subpath ? `./${subpath}` : ".";
-  const exportsObj = exports as Record<string, unknown>;
-  
-  // Look for direct match
-  let exportTarget = exportsObj[exportKey];
-  
-  // Handle conditional exports (e.g., { "import": "...", "types": "..." })
-  if (exportTarget && typeof exportTarget === "object") {
-    const conditional = exportTarget as Record<string, unknown>;
-    // Prefer types, then import, then default
-    exportTarget = conditional["types"] ?? conditional["import"] ?? conditional["default"];
-  }
-  
-  if (typeof exportTarget !== "string") {
-    return undefined;
-  }
-  
-  // Map dist path to source path
-  return mapDistToSource(packageDir, exportTarget, subpath);
-}
-
-/**
- * Maps a dist path from package.json to the actual TypeScript source
- */
-function mapDistToSource(packageDir: string, distPath: string, subpath: string): string | undefined {
-  // Remove ./ prefix if present
-  const relativePath = distPath.startsWith("./") ? distPath.slice(2) : distPath;
-  
-  // Common patterns for mapping dist to source:
-  // 1. dist/package/src/index.js -> packages/package/src/index.ts
-  // 2. dist/src/index.js -> src/index.ts
-  // 3. dist/index.js -> src/index.ts or index.ts
-  
-  let sourcePath: string | undefined;
-  
-  // Pattern: dist/packages/*/src/*.js -> packages/*/src/*.ts
-  const packagesMatch = relativePath.match(/^dist\/(packages\/[^/]+\/src\/.+)\.js$/);
-  if (packagesMatch) {
-    sourcePath = path.join(packageDir, packagesMatch[1] + ".ts");
-    if (fs.existsSync(sourcePath)) {
-      return sourcePath;
-    }
-  }
-  
-  // Pattern: dist/src/*.js -> src/*.ts
-  const distSrcMatch = relativePath.match(/^dist\/(src\/.+)\.js$/);
-  if (distSrcMatch) {
-    sourcePath = path.join(packageDir, distSrcMatch[1] + ".ts");
-    if (fs.existsSync(sourcePath)) {
-      return sourcePath;
-    }
-  }
-  
-  // Pattern: dist/*.js -> src/*.ts
-  const distMatch = relativePath.match(/^dist\/(.+)\.js$/);
-  if (distMatch) {
-    // Try src/ first
-    sourcePath = path.join(packageDir, "src", distMatch[1] + ".ts");
-    if (fs.existsSync(sourcePath)) {
-      return sourcePath;
-    }
-    // Try direct
-    sourcePath = path.join(packageDir, distMatch[1] + ".ts");
-    if (fs.existsSync(sourcePath)) {
-      return sourcePath;
-    }
-  }
-  
-  // Fallback: try common source locations based on subpath
-  const subpathPrefix = subpath ? `${subpath}/` : "";
-  
-  // Try packages/subpath/src/index.ts (monorepo pattern)
-  if (subpath) {
-    sourcePath = path.join(packageDir, "packages", subpath, "src", "index.ts");
-    if (fs.existsSync(sourcePath)) {
-      return sourcePath;
-    }
-  }
-  
-  // Try src/subpath/index.ts
-  sourcePath = path.join(packageDir, "src", subpathPrefix, "index.ts");
-  if (fs.existsSync(sourcePath)) {
-    return sourcePath;
-  }
-  
-  // Try subpath/index.ts
-  sourcePath = path.join(packageDir, subpathPrefix, "index.ts");
-  if (fs.existsSync(sourcePath)) {
-    return sourcePath;
-  }
-  
-  return undefined;
-}
 
 /**
  * Auto-generates .d.ts files for C++ modules that are missing declarations.
@@ -320,258 +226,6 @@ function autoGenerateMissingDecls(
 /**
  * Resolves an npm package import to a TypeScript source file.
  */
-function resolveNpmPackageImport(
-  fromFile: string,
-  moduleSpecifier: string
-): ResolvedNpmPackage | undefined {
-  const { packageName, subpath } = parseModuleSpecifier(moduleSpecifier);
-  
-  // Find the package directory
-  const packageDir = findNodeModulesPackage(fromFile, packageName);
-  if (!packageDir) {
-    return undefined;
-  }
-
-  // Read package.json
-  const packageJson = readPackageJson(packageDir);
-  if (!packageJson) {
-    return undefined;
-  }
-
-  // Try to resolve via exports field first
-  let sourcePath = packageJson 
-    ? resolvePackageExports(packageDir, subpath, packageJson) 
-    : undefined;
-  
-  // Fallback: try common patterns
-  if (!sourcePath) {
-    // Try packages/subpath/src/index.ts (monorepo pattern)
-    if (subpath) {
-      sourcePath = path.join(packageDir, "packages", subpath, "src", "index.ts");
-    }
-    if (!sourcePath || !fs.existsSync(sourcePath)) {
-      // Try src/index.ts
-      sourcePath = path.join(packageDir, "src", "index.ts");
-    }
-    if (!fs.existsSync(sourcePath)) {
-      // Try index.ts
-      sourcePath = path.join(packageDir, "index.ts");
-    }
-    if (!fs.existsSync(sourcePath)) {
-      sourcePath = undefined;
-    }
-  }
-  
-  if (!sourcePath) {
-    return undefined;
-  }
-  
-  // Generate module key for header naming
-  // Strip .js/.mjs extension if present (TypeScript ESM pattern)
-  let moduleKey = subpath || packageName.split("/").pop() || packageName;
-  if (moduleKey.endsWith(".js")) {
-    moduleKey = moduleKey.slice(0, -3);
-  } else if (moduleKey.endsWith(".mjs")) {
-    moduleKey = moduleKey.slice(0, -4);
-  }
-  
-  return {
-    packagePath: packageDir,
-    sourcePath: path.resolve(sourcePath),
-    subpath,
-    packageName,
-    moduleKey,
-  };
-}
-
-/**
- * Resolves any import (relative or npm) to a TypeScript source file.
- *
- * When `boardPackage` is provided (from typecode.config.ts), a bare
- * `@typecode` import is rewritten to the concrete board package before
- * resolution proceeds.
- */
-function resolveImport(
-  fromFile: string,
-  moduleSpecifier: string,
-  boardPackage?: string,
-): { sourcePath: string; npmPackage?: ResolvedNpmPackage } | undefined {
-  // Rewrite bare "@typecode" virtual import to the concrete board package
-  let effectiveSpecifier = moduleSpecifier;
-  if (moduleSpecifier === "@typecode" && boardPackage) {
-    effectiveSpecifier = boardPackage;
-  }
-
-  // Try relative import first
-  const localResolved = resolveLocalImport(fromFile, effectiveSpecifier);
-  if (localResolved) {
-    return { sourcePath: localResolved };
-  }
-  
-  // Try npm package import
-  const npmResolved = resolveNpmPackageImport(fromFile, effectiveSpecifier);
-  if (npmResolved) {
-    return { sourcePath: npmResolved.sourcePath, npmPackage: npmResolved };
-  }
-  
-  return undefined;
-}
-
-/**
- * Checks if a file path is within a node_modules directory
- */
-function isInNodeModules(filePath: string): boolean {
-  const normalized = path.resolve(filePath).replace(/\\/g, "/");
-  return normalized.includes("/node_modules/");
-}
-
-/**
- * Gets the npm package info for a file that's already been resolved
- * (used for files within node_modules that were reached via relative imports)
- */
-function getNpmPackageInfoForFile(
-  filePath: string,
-  moduleSpecifier: string
-): ResolvedNpmPackage | undefined {
-  if (!isInNodeModules(filePath)) {
-    return undefined;
-  }
-  
-  // Parse the module specifier
-  const parts = moduleSpecifier.split("/");
-  let packageName: string;
-  let subpath: string;
-  
-  if (moduleSpecifier.startsWith("@")) {
-    packageName = parts.length > 1 ? `${parts[0]}/${parts[1]}` : parts[0];
-    subpath = parts.length > 2 ? parts.slice(2).join("/") : "";
-  } else {
-    packageName = parts[0];
-    subpath = parts.length > 1 ? parts.slice(1).join("/") : "";
-  }
-  
-  // Extract module key from the file path
-  // For workspace packages like @typecode/core, use "core" as the module key
-  // Strip .js/.mjs extension if present (TypeScript ESM pattern)
-  let moduleKey = subpath || packageName.split("/").pop() || packageName;
-  if (moduleKey.endsWith(".js")) {
-    moduleKey = moduleKey.slice(0, -3);
-  } else if (moduleKey.endsWith(".mjs")) {
-    moduleKey = moduleKey.slice(0, -4);
-  }
-  
-  // Find the package directory by walking up from the file
-  let packageDir = path.dirname(filePath);
-  while (packageDir !== path.dirname(packageDir)) {
-    const packageJsonPath = path.join(packageDir, "package.json");
-    if (fs.existsSync(packageJsonPath)) {
-      break;
-    }
-    packageDir = path.dirname(packageDir);
-  }
-  
-  return {
-    packagePath: packageDir,
-    sourcePath: path.resolve(filePath),
-    subpath,
-    packageName,
-    moduleKey,
-  };
-}
-
-/**
- * Information about a native C++ module
- */
-export interface NativeCppModule {
-  /** Path to the .d.ts declaration file */
-  declPath: string;
-  /** Path to the .cpp implementation file */
-  cppPath: string;
-  /** Path to the .h header file (if exists) */
-  headerPath?: string;
-  /** Module key for naming (derived from file name) */
-  moduleKey: string;
-}
-
-/**
- * Result of collecting the transpile graph
- */
-export interface TranspileGraphResult {
-  /** Ordered list of files to transpile */
-  files: string[];
-  /** Map of source file paths to their npm package info (if from npm) */
-  npmPackages: Map<string, ResolvedNpmPackage>;
-  /** Map of import specifiers to native C++ modules */
-  nativeModules: Map<string, NativeCppModule>;
-}
-
-/**
- * Detects a native C++ module: a .d.ts declaration file with a corresponding .cpp implementation.
- * Returns undefined if not a native module.
- */
-function detectNativeCppModule(
-  fromFile: string,
-  moduleSpecifier: string
-): NativeCppModule | undefined {
-  if (!moduleSpecifier.startsWith(".")) {
-    return undefined;
-  }
-
-  const basePath = path.resolve(path.dirname(fromFile), moduleSpecifier);
-  
-  // Check for .d.ts + .cpp pair
-  const declCandidates = [
-    `${basePath}.d.ts`,
-    path.join(basePath, "index.d.ts"),
-  ];
-  
-  for (const declPath of declCandidates) {
-    if (!fs.existsSync(declPath) || !fs.statSync(declPath).isFile()) {
-      continue;
-    }
-    
-    // Found .d.ts, check for corresponding .cpp
-    const cppPath = declPath.replace(/\.d\.ts$/i, ".cpp");
-    if (fs.existsSync(cppPath) && fs.statSync(cppPath).isFile()) {
-      const moduleKey = path.basename(declPath, ".d.ts");
-      
-      // Check for corresponding .h header file
-      const headerPath = declPath.replace(/\.d\.ts$/i, ".h");
-      const headerExists = fs.existsSync(headerPath) && fs.statSync(headerPath).isFile();
-      
-      return {
-        declPath: path.resolve(declPath),
-        cppPath: path.resolve(cppPath),
-        headerPath: headerExists ? path.resolve(headerPath) : undefined,
-        moduleKey,
-      };
-    }
-  }
-  
-  return undefined;
-}
-
-/**
- * Checks whether a resolved file path belongs to the typecode SDK
- * (i.e. lives under a `typecode/core/` or `typecode/board-*` directory).
- * These files are type-level definitions only and must NOT be transpiled to C++.
- */
-function isTypecodeSDKPath(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, "/");
-  // Match @typecode/core and @typecode/board-* in both flat (node_modules)
-  // and monorepo (packages/) layouts.
-  // Also match @typecode/expect — it provides type-level stubs only;
-  // the AST preprocessor rewrites all calls before transpilation.
-  return (
-    /\/code\/core\//.test(normalized) ||
-    /\/code\/board-/.test(normalized) ||
-    /\/packages\/board-/.test(normalized) ||
-    /\/packages\/expect\//.test(normalized) ||
-    /\/node_modules\/@typecode\/board-/.test(normalized) ||
-    /\/node_modules\/@typecode\/core\//.test(normalized) ||
-    /\/node_modules\/@typecode\/expect\//.test(normalized)
-  );
-}
 
 /**
  * Result of type-checking files
@@ -959,17 +613,17 @@ function loadPackageStrategy(packageName: string | undefined, fromDir: string, d
     const pkg = require(packagePath);
     if (pkg.FrameworkStrategy) {
       if (debug) {
-        console.log(`Loaded FrameworkStrategy from ${packageName}`);
+        logDebug(`Loaded FrameworkStrategy from ${packageName}`, true);
       }
       return new pkg.FrameworkStrategy();
     }
     if (debug) {
-      console.log(`Package ${packageName} has no FrameworkStrategy export`);
+      logDebug(`Package ${packageName} has no FrameworkStrategy export`, true);
     }
   } catch (e) {
     // Package may not have a strategy or may not be installed
     if (debug) {
-      console.log(`Failed to load strategy from ${packageName}: ${e instanceof Error ? e.message : String(e)}`);
+      logDebug(`Failed to load strategy from ${packageName}: ${e instanceof Error ? e.message : String(e)}`, true);
     }
   }
   return undefined;
@@ -999,7 +653,7 @@ function loadPlatformStrategy(
   
   // Return undefined to let emitCpp resolve based on target option
   if (debug) {
-    console.log(`No framework strategy loaded, will use target-based resolution`);
+    logDebug(`No framework strategy loaded, will use target-based resolution`, true);
   }
   return undefined;
 }
@@ -1127,7 +781,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     
     if (options.debug && filesToProcess.length < transpileFiles.length) {
       const skipped = transpileFiles.length - filesToProcess.length;
-      console.log(`Incremental: skipping ${skipped} unchanged file(s)`);
+      logDebug(`Incremental: skipping ${skipped} unchanged file(s)`, true);
     }
   } else {
     filesToProcess = transpileFiles;
@@ -1151,7 +805,14 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     // If the file imports @typecode/expect, run the AST preprocessor
     // to rewrite describe/it/expect/done calls into Serial protocol statements.
     if (sourceText.includes("@typecode/expect")) {
-      sourceText = expectPreprocess(sourceText, filePath);
+      const preprocess = loadExpectPreprocessor();
+      if (!preprocess) {
+        throw new Error(
+          "The @typecode/expect package is required to transpile files that import @typecode/expect. " +
+          "Install @typecode/expect or remove the import."
+        );
+      }
+      sourceText = preprocess(sourceText, filePath);
     }
 
     if (options.debug && breakpoints) {
@@ -1384,7 +1045,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       if (sourcePath) {
         // Log that we're using cached outputs
         if (options.debug) {
-          console.log(`Incremental: all files unchanged, using cached outputs`);
+          logDebug(`Incremental: all files unchanged, using cached outputs`, true);
         }
         
         entryOutputs = {
@@ -1422,7 +1083,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       nativeModuleOutputs.push(outputHeaderPath);
     }
 
-    console.log(`Copied native module: ${outputCppPath}`);
+    info(`Copied native module: ${outputCppPath}`);
   }
   profiler.endTimer("post:native-modules");
 

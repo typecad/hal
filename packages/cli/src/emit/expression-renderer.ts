@@ -32,6 +32,8 @@ export interface ExpressionRendererContext {
   pointerVarTypes?: Map<string, string>;
   /** Set of variable names known to hold string values (for snprintf %s) */
   stringVarNames?: Set<string>;
+  /** Set of variable names known to be emitted as C arrays */
+  cArrayVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) instead of (.) */
   namespaceNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
@@ -52,6 +54,7 @@ export class ExpressionRenderer {
   private readonly knownFunctionReturnTypes?: Map<string, string>;
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly stringVarNames?: Set<string>;
+  private readonly cArrayVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
 
@@ -69,6 +72,7 @@ export class ExpressionRenderer {
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.pointerVarTypes = context.pointerVarTypes;
     this.stringVarNames = context.stringVarNames;
+    this.cArrayVarNames = context.cArrayVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
   }
@@ -419,6 +423,14 @@ export class ExpressionRenderer {
       if (peripheralProperty !== undefined) return peripheralProperty;
     }
     const objStr = this.render(expr.object, exprTransformer);
+    if (expr.object.kind === "identifier" && expr.property === "length") {
+      if (this.cArrayVarNames?.has(expr.object.value)) {
+        return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
+      }
+      if (this.stringVarNames?.has(expr.object.value)) {
+        return `strlen(${objStr})`;
+      }
+    }
     // Use C++ scope-resolution operator (::) for enum class member access.
     if (expr.object.kind === "identifier" && this.enumNames.has(expr.object.value)) {
       const enumMember = this.strategy.renameEnumMember(expr.object.value, expr.property);

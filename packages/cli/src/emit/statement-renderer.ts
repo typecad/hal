@@ -34,6 +34,8 @@ export interface StatementRendererContext {
   pointerStructFields?: Set<string>;
   /** Set of variable names known to hold string values */
   stringVarNames?: Set<string>;
+  /** Set of variable names known to be emitted as C arrays */
+  cArrayVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) */
   namespaceNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
@@ -88,6 +90,7 @@ export class StatementRenderer {
       knownFunctionReturnTypes: context.knownFunctionReturnTypes,
       pointerVarTypes: context.pointerVarTypes,
       stringVarNames: context.stringVarNames,
+      cArrayVarNames: context.cArrayVarNames,
       namespaceNames: context.namespaceNames,
       varAccessorNames: context.varAccessorNames,
     });

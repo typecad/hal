@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest';
-import { reportResults } from '../packages/expect/src/host/reporter';
+import { reportFileResult, reportResults } from '../packages/expect/src/host/reporter';
 import type { RunResult } from '../packages/expect/src/host/types';
 
 describe('reporter', () => {
@@ -43,6 +43,38 @@ describe('reporter', () => {
     expect(output).toContain('reads zero');
     expect(output).toContain('1 passed');
     expect(output).toContain('PASS');
+
+    logSpy.mockRestore();
+  });
+
+  it('reports a single file immediately with failure details', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result: RunResult['files'][number] = {
+      filePath: 'tests/temp.test.ts',
+      describes: [{
+        name: 'temperature',
+        tests: [{
+          name: 'room temp',
+          assertions: [{ matcher: 'toBeWithinRange', expected: '20,25', actual: '31', passed: false }],
+          passed: false,
+          durationMs: 3,
+        }],
+        passed: false,
+      }],
+      passed: false,
+      durationMs: 6000,
+      debugOutput: [],
+    };
+
+    reportFileResult(result);
+
+    const output = logSpy.mock.calls.map(c => c.join(' ')).join('\n');
+    expect(output).toContain('temperature');
+    expect(output).toContain('room temp');
+    expect(output).toContain('FAILURES');
+    expect(output).toContain('Actual:');
+    expect(output).toContain('Expected:');
 
     logSpy.mockRestore();
   });

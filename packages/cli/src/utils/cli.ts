@@ -185,22 +185,134 @@ export function printHelp(): void {
   console.log();
 }
 
-function readFlag(args: string[], flag: string): string | undefined {
-  const index = args.indexOf(flag);
-  if (index === -1 || index === args.length - 1) {
+function readFlag(argv: string[], flag: string): string | undefined {
+  const index = argv.indexOf(flag);
+  if (index === -1 || index === argv.length - 1) {
     return undefined;
   }
-  return args[index + 1];
+  return argv[index + 1];
 }
 
-function readFlags(args: string[], flags: string[]): string | undefined {
+function readFirstFlagValue(argv: string[], flags: string[]): string | undefined {
   for (const flag of flags) {
-    const value = readFlag(args, flag);
+    const value = readFlag(argv, flag);
     if (value !== undefined) {
       return value;
     }
   }
   return undefined;
+}
+
+function readBooleanFlag(argv: string[], flags: string[]): boolean {
+  return flags.some(flag => argv.includes(flag));
+}
+
+function readNumberFlag(argv: string[], flags: string[], defaultValue?: number): number | undefined {
+  const rawValue = readFirstFlagValue(argv, flags);
+  if (rawValue === undefined) {
+    return defaultValue;
+  }
+  const parsed = Number(rawValue);
+  return Number.isNaN(parsed) ? defaultValue : parsed;
+}
+
+function readRepeatedFlag(argv: string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === flag && i + 1 < argv.length && !argv[i + 1].startsWith("-")) {
+      values.push(argv[i + 1]);
+    }
+  }
+  return values;
+}
+
+function parsePipelineCommand(
+  argv: string[],
+  command: "build" | "default",
+  inputFile?: string,
+): CommandLineOptions {
+  const emitFlag = readFirstFlagValue(argv, ["--emit"]);
+  const targetFlag = readFirstFlagValue(argv, ["--target"]);
+  const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir"]);
+  const emitMapsFlag = readFirstFlagValue(argv, ["--emit-maps"]);
+  const fqbn = readFirstFlagValue(argv, ["--fqbn"]);
+  const port = readFirstFlagValue(argv, ["--port"]);
+  const baud = readNumberFlag(argv, ["--baud"], 9600) ?? 9600;
+
+  const compile = readBooleanFlag(argv, ["--compile"]);
+  const upload = readBooleanFlag(argv, ["--upload"]);
+  const monitor = readBooleanFlag(argv, ["--monitor"]);
+  const watch = readBooleanFlag(argv, ["--watch"]) || argv.includes("-w");
+  const debug = readBooleanFlag(argv, ["--debug"]);
+  const noTranspile = readBooleanFlag(argv, ["--no-transpile"]);
+  const force = readBooleanFlag(argv, ["--force"]);
+  const skipTypeCheck = readBooleanFlag(argv, ["--skip-type-check"]);
+  const expect = readBooleanFlag(argv, ["--expect"]);
+  const expectArg = readFlag(argv, "--expect");
+  const expectFile = expect && expectArg && !expectArg.startsWith("-") ? expectArg : undefined;
+
+  const noTreeShake = readBooleanFlag(argv, ["--no-tree-shake"]);
+  const keepUnusedEnums = readBooleanFlag(argv, ["--keep-unused-enums"]);
+  const keepUnusedClasses = readBooleanFlag(argv, ["--keep-unused-classes"]);
+  const keepUnusedTypes = readBooleanFlag(argv, ["--keep-unused-types"]);
+  const keepUnusedVariables = readBooleanFlag(argv, ["--keep-unused-variables"]);
+  const entryPoints = readRepeatedFlag(argv, "--entry-point");
+
+  const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
+  const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
+  const effectiveTargetFlag = compile || upload || monitor ? "arduino" : targetFlag;
+  const target: TargetProfile =
+    effectiveTargetFlag === "arduino" || effectiveTargetFlag === "generic"
+      ? effectiveTargetFlag
+      : "generic";
+
+  const platformContext: PlatformContext = { arduino: { fqbn } };
+
+  if (upload && !compile) {
+    throw new Error("--upload requires --compile.");
+  }
+  if (upload && !port) {
+    throw new Error("--upload requires --port <port>.");
+  }
+  if (monitor && !port) {
+    throw new Error("--monitor requires --port <port>.");
+  }
+  if (watch && monitor) {
+    throw new Error("--watch and --monitor cannot be used together (monitor blocks the process).");
+  }
+
+  const treeShaking: TreeShakingOptions = {
+    enabled: !noTreeShake,
+    keepUnusedEnums,
+    keepUnusedClasses,
+    keepUnusedTypeAliases: keepUnusedTypes,
+    keepUnusedVariables,
+    reportUnused: false,
+    entryPoints: entryPoints.length > 0 ? entryPoints : undefined,
+  };
+
+  return {
+    command,
+    inputFile: inputFile ? path.resolve(process.cwd(), inputFile) : undefined,
+    emitMode,
+    target,
+    outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+    emitMaps,
+    noTranspile: command === "default" ? noTranspile : false,
+    compile,
+    upload,
+    monitor,
+    watch,
+    port,
+    baud,
+    platformContext,
+    treeShaking,
+    debug,
+    force,
+    skipTypeCheck,
+    expect,
+    expectFile,
+  };
 }
 
 export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldCommandOptions | InitCommandOptions | "help" {
@@ -217,16 +329,16 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
       throw new Error("Missing board name. Use: create-board <name> [options]");
     }
 
-    const displayName = readFlags(argv, ["--display-name", "--name"]);
-    const vendor = readFlags(argv, ["--vendor"]);
-    const architecture = readFlags(argv, ["--arch", "--architecture"]);
-    const mcu = readFlags(argv, ["--mcu"]);
-    const clockSpeedRaw = readFlags(argv, ["--clock", "--clock-speed"]);
-    const flashRaw = readFlags(argv, ["--flash", "--flash-kb"]);
-    const sramRaw = readFlags(argv, ["--sram", "--sram-kb"]);
-    const eepromRaw = readFlags(argv, ["--eeprom", "--eeprom-kb"]);
-    const fqbn = readFlags(argv, ["--fqbn"]);
-    const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
+    const displayName = readFirstFlagValue(argv, ["--display-name", "--name"]);
+    const vendor = readFirstFlagValue(argv, ["--vendor"]);
+    const architecture = readFirstFlagValue(argv, ["--arch", "--architecture"]);
+    const mcu = readFirstFlagValue(argv, ["--mcu"]);
+    const clockSpeedRaw = readFirstFlagValue(argv, ["--clock", "--clock-speed"]);
+    const flashRaw = readFirstFlagValue(argv, ["--flash", "--flash-kb"]);
+    const sramRaw = readFirstFlagValue(argv, ["--sram", "--sram-kb"]);
+    const eepromRaw = readFirstFlagValue(argv, ["--eeprom", "--eeprom-kb"]);
+    const fqbn = readFirstFlagValue(argv, ["--fqbn"]);
+    const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir"]);
     const minimal = argv.includes("--minimal");
 
     const clockSpeedMhz = clockSpeedRaw ? Number(clockSpeedRaw) : undefined;
@@ -257,10 +369,10 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     const secondArg = argv[3];
     const projectName = secondArg && !secondArg.startsWith("-") ? secondArg : undefined;
 
-    const board = readFlags(argv, ["--board"]);
-    const framework = readFlags(argv, ["--framework"]);
-    const baudRaw = readFlags(argv, ["--baud"]);
-    const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
+    const board = readFirstFlagValue(argv, ["--board"]);
+    const framework = readFirstFlagValue(argv, ["--framework"]);
+    const baudRaw = readFirstFlagValue(argv, ["--baud"]);
+    const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir"]);
     const noSketch = argv.includes("--no-sketch");
 
     const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : undefined;
@@ -278,107 +390,18 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
 
   // build subcommand — entry point comes from typecode.config.ts
   if (firstArg === "build") {
-    const emitFlag = readFlags(argv, ["--emit"]);
-    const targetFlag = readFlags(argv, ["--target"]);
-    const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
-    const emitMapsFlag = readFlags(argv, ["--emit-maps"]);
-    const fqbn = readFlags(argv, ["--fqbn"]);
-    const port = readFlags(argv, ["--port"]);
-    const baudRaw = readFlags(argv, ["--baud"]);
-
-    const compile = argv.includes("--compile");
-    const upload = argv.includes("--upload");
-    const monitor = argv.includes("--monitor");
-    const watch = argv.includes("--watch") || argv.includes("-w");
-    const debug = argv.includes("--debug");
-    const force = argv.includes("--force");
-    const skipTypeCheck = argv.includes("--skip-type-check");
-    const expect = argv.includes("--expect");
-    const expectArg = readFlag(argv, "--expect");
-    const expectFile = expect && expectArg && !expectArg.startsWith("-") ? expectArg : undefined;
-    const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
-
-    // Tree-shaking options
-    const noTreeShake = argv.includes("--no-tree-shake");
-    const keepUnusedEnums = argv.includes("--keep-unused-enums");
-    const keepUnusedClasses = argv.includes("--keep-unused-classes");
-    const keepUnusedTypes = argv.includes("--keep-unused-types");
-    const keepUnusedVariables = argv.includes("--keep-unused-variables");
-
-    const entryPoints: string[] = [];
-    for (let i = 0; i < argv.length; i++) {
-      if (argv[i] === "--entry-point" && i + 1 < argv.length) {
-        entryPoints.push(argv[i + 1]);
-      }
-    }
-
-    const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
-    const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
-
-    // Auto-select arduino target when using Arduino CLI commands
-    const effectiveTargetFlag = compile || upload || monitor ? "arduino" : targetFlag;
-    const target: TargetProfile =
-      effectiveTargetFlag === "arduino" || effectiveTargetFlag === "generic" ? effectiveTargetFlag : "generic";
-
-    const platformContext: PlatformContext = { arduino: { fqbn } };
-
-    // Validate flag combinations
-    if (upload && !compile) {
-      throw new Error("--upload requires --compile.");
-    }
-    if (upload && !port) {
-      throw new Error("--upload requires --port <port>.");
-    }
-    if (monitor && !port) {
-      throw new Error("--monitor requires --port <port>.");
-    }
-    if (watch && monitor) {
-      throw new Error("--watch and --monitor cannot be used together (monitor blocks the process).");
-    }
-
-    const treeShaking: TreeShakingOptions = {
-      enabled: !noTreeShake,
-      keepUnusedEnums,
-      keepUnusedClasses,
-      keepUnusedTypeAliases: keepUnusedTypes,
-      keepUnusedVariables,
-      reportUnused: false,
-      entryPoints: entryPoints.length > 0 ? entryPoints : undefined,
-    };
-
-    return {
-      command: "build",
-      inputFile: undefined, // resolved later from config
-      emitMode,
-      target,
-      outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
-      emitMaps,
-      noTranspile: false,
-      compile,
-      upload,
-      monitor,
-      watch,
-      port,
-      baud,
-      platformContext,
-      treeShaking,
-      debug,
-      force,
-      skipTypeCheck,
-      expect,
-      expectFile,
-    };
+    return parsePipelineCommand(argv, "build");
   }
 
   // Named subcommands
   if (firstArg === "gen-libdefs" || firstArg === "gen-decls" || firstArg === "map-error") {
     const command = firstArg;
 
-    const emitFlag = readFlags(argv, ["--emit"]);
-    const targetFlag = readFlags(argv, ["--target"]);
-    const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
-    const emitMapsFlag = readFlags(argv, ["--emit-maps"]);
-    const fqbn = readFlags(argv, ["--fqbn"]);
+    const emitFlag = readFirstFlagValue(argv, ["--emit"]);
+    const targetFlag = readFirstFlagValue(argv, ["--target"]);
+    const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir"]);
+    const emitMapsFlag = readFirstFlagValue(argv, ["--emit-maps"]);
+    const fqbn = readFirstFlagValue(argv, ["--fqbn"]);
 
     const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
     const target: TargetProfile = targetFlag === "arduino" || targetFlag === "generic" ? targetFlag : "generic";
@@ -391,14 +414,14 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
         throw new Error("Missing source map path for map-error.");
       }
 
-      const cppLineRaw = readFlags(argv, ["--line", "--cpp-line"]);
+      const cppLineRaw = readFirstFlagValue(argv, ["--line", "--cpp-line"]);
       if (!cppLineRaw || Number.isNaN(Number(cppLineRaw))) {
         throw new Error("map-error requires --line <number>.");
       }
 
-      const cppColumnRaw = readFlags(argv, ["--column", "--cpp-column"]);
-      const cppFile = readFlags(argv, ["--cpp-file"]);
-      const message = readFlags(argv, ["--message"]);
+      const cppColumnRaw = readFirstFlagValue(argv, ["--column", "--cpp-column"]);
+      const cppFile = readFirstFlagValue(argv, ["--cpp-file"]);
+      const message = readFirstFlagValue(argv, ["--message"]);
 
       return {
         command,
@@ -483,97 +506,5 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
 
   // Default: firstArg is the input file (unless it's a flag like --expect)
   const inputFile = firstArg.startsWith("-") ? undefined : firstArg;
-
-  const emitFlag = readFlags(argv, ["--emit"]);
-  const targetFlag = readFlags(argv, ["--target"]);
-  const outDir = readFlags(argv, ["--outDir", "--out-dir"]);
-  const emitMapsFlag = readFlags(argv, ["--emit-maps"]);
-  const fqbn = readFlags(argv, ["--fqbn"]);
-  const port = readFlags(argv, ["--port"]);
-  const baudRaw = readFlags(argv, ["--baud"]);
-
-  const compile = argv.includes("--compile");
-  const upload = argv.includes("--upload");
-  const monitor = argv.includes("--monitor");
-  const watch = argv.includes("--watch") || argv.includes("-w");
-  const debug = argv.includes("--debug");
-  const noTranspile = argv.includes("--no-transpile");
-  const force = argv.includes("--force");
-  const skipTypeCheck = argv.includes("--skip-type-check");
-  const expect = argv.includes("--expect");
-  const expectArg = readFlag(argv, "--expect");
-  const expectFile = expect && expectArg && !expectArg.startsWith("-") ? expectArg : undefined;
-  const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : 9600;
-
-  // Tree-shaking options
-  const noTreeShake = argv.includes("--no-tree-shake");
-  const keepUnusedEnums = argv.includes("--keep-unused-enums");
-  const keepUnusedClasses = argv.includes("--keep-unused-classes");
-  const keepUnusedTypes = argv.includes("--keep-unused-types");
-  const keepUnusedVariables = argv.includes("--keep-unused-variables");
-
-  const entryPoints: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--entry-point" && i + 1 < argv.length) {
-      entryPoints.push(argv[i + 1]);
-    }
-  }
-
-  const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
-  const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
-
-  // Auto-select arduino target when using Arduino CLI commands
-  const effectiveTargetFlag = compile || upload || monitor ? "arduino" : targetFlag;
-  const target: TargetProfile =
-    effectiveTargetFlag === "arduino" || effectiveTargetFlag === "generic" ? effectiveTargetFlag : "generic";
-
-  const platformContext: PlatformContext = { arduino: { fqbn } };
-
-  // Validate flag combinations
-  // Note: --compile without --fqbn is now allowed when typecode.config.ts provides fqbn
-  if (upload && !compile) {
-    throw new Error("--upload requires --compile.");
-  }
-  if (upload && !port) {
-    throw new Error("--upload requires --port <port>.");
-  }
-  if (monitor && !port) {
-    throw new Error("--monitor requires --port <port>.");
-  }
-  if (watch && monitor) {
-    throw new Error("--watch and --monitor cannot be used together (monitor blocks the process).");
-  }
-
-  const treeShaking: TreeShakingOptions = {
-    enabled: !noTreeShake,
-    keepUnusedEnums,
-    keepUnusedClasses,
-    keepUnusedTypeAliases: keepUnusedTypes,
-    keepUnusedVariables,
-    reportUnused: false,
-    entryPoints: entryPoints.length > 0 ? entryPoints : undefined,
-  };
-
-  return {
-    command: "default",
-    inputFile: inputFile ? path.resolve(process.cwd(), inputFile) : undefined,
-    emitMode,
-    target,
-    outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
-    emitMaps,
-    noTranspile,
-    compile,
-    upload,
-    monitor,
-    watch,
-    port,
-    baud,
-    platformContext,
-    treeShaking,
-    debug,
-    force,
-    skipTypeCheck,
-    expect,
-    expectFile,
-  };
+  return parsePipelineCommand(argv, "default", inputFile);
 }

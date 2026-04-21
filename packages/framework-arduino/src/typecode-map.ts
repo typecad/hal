@@ -890,10 +890,10 @@ export function tryRenderTypecodeCallStatement(
       return `detachInterrupt(digitalPinToInterrupt(${pin}))`;
     }
 
-    // Fall through to general pin method handling
-    let kind = inferKindByName(receiver);
+    // Fall through to general pin method handling only for recognised Typecode symbols
+    const kind = inferKindByName(receiver);
     if (kind === 'unknown') {
-      kind = 'digital';
+      return undefined;
     }
     return renderArduinoBuiltin(receiver, kind, method, args, renderArg, boardConstants);
   } else if (parts.length === 3 && (parts[0] === 'Board' || parts[0] === 'Pins')) {

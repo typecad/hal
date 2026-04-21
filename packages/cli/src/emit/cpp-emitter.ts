@@ -1125,6 +1125,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   const headerLines: string[] = ["#pragma once", ""];
   let sourceLines: string[] = [];
+  let cArrayVarNames: Set<string> = new Set();
   const sourceMapEntries: SourceMapEntry[] = [];
   const headerMapEntries: SourceMapEntry[] = [];
 
@@ -1224,6 +1225,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         pointerVarTypes: rendererPointerVarTypes,
         pointerStructFields,
         stringVarNames: _stringVarTypes,
+        cArrayVarNames,
         namespaceNames: _namespaceNames,
         varAccessorNames: _varAccessorNames,
       });
@@ -2437,7 +2439,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine("");
     }
     
-    appendSourceLine("} // namespace ${ns.name}");
+    appendSourceLine(`} // namespace ${ns.name}`);
     emitCommentLines(ns.trailingComments, "", (line) => appendSourceLine(line));
     appendSourceLine("");
   }
@@ -2502,11 +2504,20 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // Track string-typed variables for snprintf %s detection
   const stringVarTypes = new Set<string>();
+  cArrayVarNames = new Set<string>();
   for (const stmt of program.topLevelStatements) {
     if (stmt.kind === "var_decl") {
       const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
       if (normalizedType === "const char*" || normalizedType === "char*") {
         stringVarTypes.add(stmt.name);
+      }
+      if (stmt.initializer?.kind === "array") {
+        if (!normalizedType.startsWith("std::vector<") || !strategy.needsStdVector()) {
+          cArrayVarNames.add(stmt.name);
+        }
+      }
+      if (stmt.initializer?.kind === "spread_array") {
+        cArrayVarNames.add(stmt.name);
       }
     }
   }
@@ -2516,6 +2527,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
         if (normalizedType === "const char*" || normalizedType === "char*") {
           stringVarTypes.add(stmt.name);
+        }
+        if (stmt.initializer?.kind === "array") {
+          if (!normalizedType.startsWith("std::vector<") || !strategy.needsStdVector()) {
+            cArrayVarNames.add(stmt.name);
+          }
+        }
+        if (stmt.initializer?.kind === "spread_array") {
+          cArrayVarNames.add(stmt.name);
         }
       }
     }

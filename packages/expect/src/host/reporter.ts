@@ -81,8 +81,38 @@ export function reportResults(
 
   // Summary
   console.log();
-  reportSummary(result, board, port);
+  reportSummarySection(result, board, port);
   console.log();
+}
+
+/**
+ * Print a single test file's results immediately.
+ */
+export function reportFileResult(
+  file: FileResult,
+  options: { verbose?: boolean } = {},
+): void {
+  const verbose = options.verbose ?? false;
+  reportFile(file, verbose);
+
+  const failures = collectFailuresForFile(file);
+  if (failures.length > 0) {
+    console.log(`${BOLD}${RED} FAILURES${RESET}`);
+    console.log();
+    for (const f of failures) {
+      reportFailure(f);
+    }
+  }
+
+  console.log();
+}
+
+export function reportSummary(
+  result: RunResult,
+  options: { board?: string; port?: string } = {},
+): void {
+  const { board, port } = options;
+  reportSummarySection(result, board, port);
 }
 
 // ---------------------------------------------------------------------------
@@ -183,11 +213,34 @@ function reportFailure(f: FailureInfo): void {
   console.log();
 }
 
+function collectFailuresForFile(file: FileResult): FailureInfo[] {
+  const failures: FailureInfo[] = [];
+  if (file.error) {
+    return failures;
+  }
+
+  for (const desc of file.describes) {
+    for (const test of desc.tests) {
+      for (const assertion of test.assertions) {
+        if (!assertion.passed) {
+          failures.push({
+            describeName: desc.name,
+            testName: test.name,
+            assertion,
+          });
+        }
+      }
+    }
+  }
+
+  return failures;
+}
+
 // ---------------------------------------------------------------------------
 // Internal — Summary
 // ---------------------------------------------------------------------------
 
-function reportSummary(
+function reportSummarySection(
   result: RunResult,
   board?: string,
   port?: string,

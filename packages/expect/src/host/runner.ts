@@ -13,7 +13,7 @@ import { preprocess } from './preprocessor';
 import { transpileTestFile, compileSketch, uploadSketch } from './compiler';
 import { readSerialOutput } from './serial';
 import { parseProtocolLines } from './parser';
-import { reportResults } from './reporter';
+import { reportFileResult, reportResults, reportSummary } from './reporter';
 
 // ---------------------------------------------------------------------------
 // ANSI codes (for inline progress messages)
@@ -59,13 +59,14 @@ export async function run(config: ResolvedConfig): Promise<number> {
   for (const filePath of testFiles) {
     const result = await processTestFile(filePath, config);
     fileResults.push(result);
+    reportFileResult(result);
   }
 
   // 3. Aggregate results
   const runResult = aggregateResults(fileResults, Date.now() - startTime);
 
-  // 4. Report
-  reportResults(runResult, {
+  // 4. Final summary
+  reportSummary(runResult, {
     board: config.board,
     port: config.test.port,
   });

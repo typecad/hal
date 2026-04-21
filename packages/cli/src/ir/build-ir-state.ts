@@ -57,6 +57,11 @@ export const activeBusAliases = new Map<string, { receiver: string; kind: Typeco
 // .length should become sizeof(arr)/sizeof(arr[0]) instead of arr.size().
 export const activeCArrayVars = new Set<string>();
 
+// Module-level array literal tracker for the current buildProgramIR invocation.
+// Tracks variable names initialized from array literals or spread arrays.
+// For these variables, .length should become sizeof(...)/sizeof(...[0]).
+export const activeArrayLiteralVars = new Set<string>();
+
 // Module-level string variable tracker for the current buildProgramIR invocation.
 // Tracks variable names whose inferred type is C-style string pointers.
 // For these variables, .length should become strlen() instead of .size().
@@ -100,6 +105,7 @@ export function resetBuildState(): void {
 /** Clear state that should be scoped to a single function body. */
 export function resetFunctionScopeState(): void {
   activeCArrayVars.clear();
+  activeArrayLiteralVars.clear();
   activeStringVars.clear();
   mutableArrayVars.clear();
   arrayLiteralSizes.clear();

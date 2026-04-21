@@ -4,7 +4,7 @@ import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { inferKindByName } from "./typecode-symbols";
 import { parsePinNumber } from "./peripheral-usage";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement } from "./statement-to-ir";
 import { escapeCppKeyword } from "../utils/strings";
@@ -47,6 +47,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
+    if (ts.isIdentifier(receiverNode) && activeArrayLiteralVars.has(receiverNode.text)) {
+      return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
+    }
+    if (ts.isIdentifier(receiverNode) && activeLocalTypes.get(receiverNode.text) === "auto") {
+      return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
+    }
     if (ts.isCallExpression(receiverNode)) {
       return `strlen(${safeText})`;
     }
@@ -56,7 +62,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // const char* / char* variables → strlen()
     if (ts.isIdentifier(receiverNode)) {
       const varType = activeLocalTypes.get(receiverNode.text);
-      if (varType === "const char*" || varType === "char*") {
+      if (varType === "const char*" || varType === "char*" || varType === "std::string") {
         return `strlen(${safeText})`;
       }
     }
@@ -213,7 +219,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   // flow through the same snprintf / std::string pipeline that template literals use.
   function isStringBearingConcatChain(e: ts.Expression): boolean {
     if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) || ts.isTemplateExpression(e)) return true;
-    if (ts.isIdentifier(e) && activeStringVars.has(e.text)) return true;
+    if (ts.isIdentifier(e) && (activeStringVars.has(e.text) || activeLocalTypes.get(e.text) === "std::string")) return true;
     if (
       ts.isBinaryExpression(e) &&
       e.operatorToken.kind === ts.SyntaxKind.PlusToken
@@ -672,7 +678,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           }
         }
 
-        if (kind !== 'unknown' || pinMethodCandidates.has(fullMethod)) {
+        if (kind !== 'unknown') {
           return {
             kind: "typecode-call",
             receiver: chainInfo.root,
