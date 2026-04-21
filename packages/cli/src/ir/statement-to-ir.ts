@@ -2086,17 +2086,26 @@ export function variableStatementToIR(
     if (initIR?.kind === 'typecode-call' &&
         typeof initIR.method === 'string' &&
         (initIR.method === 'asOutput' || initIR.method === 'asInput' || initIR.method === 'asInputPullUp')) {
-      activePinAliases.set(declaration.name.text, initIR.receiver);
+      const aliasTarget = initIR.receiver;
+      const aliasKind = inferKindByName(aliasTarget);
+      activePinAliases.set(declaration.name.text, aliasTarget);
+      if (aliasKind === 'unknown') {
+        loweredDeclaration.initializer = { kind: "raw", value: aliasTarget };
+        lowered.push(loweredDeclaration);
+      }
       lowered.push({
         kind: "typecode-call",
         sourceSpan: loweredDeclaration.sourceSpan,
         leadingComments: loweredDeclaration.leadingComments,
         trailingComments: loweredDeclaration.trailingComments,
-        receiver: initIR.receiver,
+        receiver: aliasTarget,
         receiverKind: initIR.receiverKind,
         method: initIR.method,
         args: initIR.args || [],
       });
+      if (aliasKind !== 'unknown') {
+        continue;
+      }
       continue;
     }
 
@@ -2347,11 +2356,15 @@ export function variableStatementToIR(
       // These are emitted as C arrays (int arr[] = {...}), not std::vector,
       // regardless of what resolveDeclarationType reports. Fix the cppType to match.
       if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
-        activeArrayLiteralVars.add(varName);
-        // Preserve std::vector typing when inferred; fall back to C arrays otherwise.
-        // Extract element type from std::vector<T> or use "auto"
-        const vecMatch = varCppType.match(/^std::vector<(.+)>$/);
-        if (!vecMatch) {
+        const vecMatch = varCppType.startsWith("std::vector<");
+        const inferredVecMatch = declarationType.inferredType.startsWith("std::vector<");
+        if (!vecMatch && inferredVecMatch) {
+          activeArrayLiteralVars.add(varName);
+          loweredDeclaration.cppType = "auto" as any;
+          localVariableTypes.set(varName, declarationType.inferredType);
+          activeLocalTypes.set(varName, declarationType.inferredType);
+        } else if (!vecMatch) {
+          activeArrayLiteralVars.add(varName);
           activeCArrayVars.add(varName);
           loweredDeclaration.cppType = "auto" as any;
           localVariableTypes.set(varName, "auto");

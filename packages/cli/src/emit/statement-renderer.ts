@@ -392,14 +392,29 @@ export class StatementRenderer {
       // Handle array initializers
       if (statement.initializer.kind === "array") {
         const elements = statement.initializer.elements.map((e) => this.expressionRenderer.render(e)).join(", ");
-        if (declaredType.startsWith("std::vector<") && this.strategy.needsStdVector()) {
+        const safeArrName = escapeCppKeyword(statement.name);
+        const rawType = statement.cppType;
+
+        if (this.strategy.needsStdVector() && (rawType.startsWith("std::vector<") || rawType === "auto")) {
           return forHeader
             ? `${declaration} = { ${elements} }`
             : `${declaration} = { ${elements} };`;
         }
+
+        if (!this.strategy.needsStdVector() && (rawType.startsWith("std::vector<") || rawType === "auto")) {
+          const vectorTypeMatch = rawType.startsWith("std::vector<")
+            ? rawType.slice("std::vector<".length, -1)
+            : null;
+          const elementType = vectorTypeMatch || (statement.initializer.elementType === "auto" ? "int" : statement.initializer.elementType);
+          const arraySize = statement.initializer.elements.length;
+          const arrayType = `StaticArray<${elementType}, ${arraySize}>`;
+          return forHeader
+            ? `${arrayType} ${safeArrName} = { { ${elements} }, ${arraySize} }`
+            : `${arrayType} ${safeArrName} = { { ${elements} }, ${arraySize} };`;
+        }
+
         // Use "int" for "auto" element type since C arrays need explicit types
         const arrayType = statement.initializer.elementType === "auto" ? "int" : statement.initializer.elementType;
-        const safeArrName = escapeCppKeyword(statement.name);
         return forHeader
           ? `${arrayType} ${safeArrName}[] = { ${elements} }`
           : `${arrayType} ${safeArrName}[] = { ${elements} };`;

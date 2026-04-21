@@ -28,7 +28,7 @@ export class SimAnalogPin extends SimDigitalPin implements AnalogPin {
 
   /** Convenience: set pin to analog input mode. */
   analog(): void {
-    this.input();
+    this.asInput();
   }
 
   readAnalog(): AnalogValue {

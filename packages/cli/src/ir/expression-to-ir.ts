@@ -44,10 +44,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isIdentifier(receiverNode) && mutableArrayVars.has(receiverNode.text)) {
       return `${safeText}.size()`;
     }
-    if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
+    if (ts.isIdentifier(receiverNode) && activeArrayLiteralVars.has(receiverNode.text)) {
+      const varType = activeLocalTypes.get(receiverNode.text);
+      if (typeof varType === 'string' && (varType.startsWith('std::vector<') || varType.startsWith('StaticArray<'))) {
+        return `${safeText}.size()`;
+      }
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
-    if (ts.isIdentifier(receiverNode) && activeArrayLiteralVars.has(receiverNode.text)) {
+    if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
     if (ts.isIdentifier(receiverNode) && activeLocalTypes.get(receiverNode.text) === "auto") {
@@ -62,8 +66,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // const char* / char* variables → strlen()
     if (ts.isIdentifier(receiverNode)) {
       const varType = activeLocalTypes.get(receiverNode.text);
-      if (varType === "const char*" || varType === "char*" || varType === "std::string") {
+      if (varType === "const char*" || varType === "char*") {
         return `strlen(${safeText})`;
+      }
+      if (varType === "std::string") {
+        return `${safeText}.size()`;
       }
     }
     // Handle this->field.length where field is a string (const char*)
@@ -666,8 +673,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         // Pin alias resolution: led.toggle() → LED.toggle()
         const aliasTarget = activePinAliases.get(chainInfo.root);
         if (aliasTarget) {
-          const aliasKind = inferKindByName(aliasTarget);
-          if (aliasKind !== 'unknown') {
+          const originalAliasKind = inferKindByName(aliasTarget);
+          let aliasKind = originalAliasKind;
+          if (aliasKind === 'unknown' && pinMethodCandidates.has(fullMethod)) {
+            aliasKind = 'digital';
+          }
+          if (originalAliasKind !== 'unknown') {
             return {
               kind: "typecode-call",
               receiver: aliasTarget,
@@ -676,6 +687,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
               args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
             };
           }
+          return {
+            kind: "typecode-call",
+            receiver: chainInfo.root,
+            receiverKind: aliasKind,
+            method: fullMethod,
+            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
         }
 
         if (kind !== 'unknown') {
@@ -683,6 +701,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             kind: "typecode-call",
             receiver: chainInfo.root,
             receiverKind: kind,
+            method: fullMethod,
+            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
+        }
+
+        if (pinMethodCandidates.has(fullMethod)) {
+          return {
+            kind: "typecode-call",
+            receiver: chainInfo.root,
+            receiverKind: 'digital',
             method: fullMethod,
             args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
           };
@@ -749,7 +777,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             if (aliasKind !== 'unknown') {
               return {
                 kind: "typecode-call",
-                receiver: pinAlias,
+                receiver: rootName,
                 receiverKind: aliasKind,
                 method: `device.${outerMethod}`,
                 args: [
@@ -928,6 +956,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   if (ts.isIdentifier(expr)) {
     const pinAlias = activePinAliases.get(expr.text);
     if (pinAlias) {
+      const aliasKind = inferKindByName(pinAlias);
+      if (aliasKind === 'unknown') {
+        return { kind: "identifier", value: expr.text };
+      }
       return { kind: "identifier", value: pinAlias };
     }
     const busAlias = activeBusAliases.get(expr.text);

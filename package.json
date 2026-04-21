@@ -7,10 +7,13 @@
     "packages/framework-arduino",
     "packages/board-arduino-uno",
     "packages/cli",
-    "packages/expect"
+    "packages/expect",
+    "packages/simulator"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
+    "typecheck": "tsc -b",
+    "ci": "npm test && npm run build --workspaces",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:hw": "typecode-test"
