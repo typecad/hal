@@ -242,6 +242,9 @@ export interface PlatformStrategy {
   /** Whether <stdexcept> should be included. */
   needsStdExcept(): boolean;
 
+  /** Whether <functional> should be included. */
+  needsStdFunction(): boolean;
+
   /** Math header name ("<cmath>" or "<math.h>"). */
   mathHeader(): string;
 

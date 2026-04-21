@@ -1374,6 +1374,28 @@ function hoistNestedClass(
             isRest: false,
             ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
           });
+
+          // TypeScript parameter property shorthand: constructor(public x: number)
+          const hasVisibility = param.modifiers?.some(m =>
+            m.kind === ts.SyntaxKind.PublicKeyword ||
+            m.kind === ts.SyntaxKind.PrivateKeyword ||
+            m.kind === ts.SyntaxKind.ProtectedKeyword
+          );
+          if (hasVisibility) {
+            const visibility: "public" | "private" | "protected" = param.modifiers!.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+              ? "private"
+              : param.modifiers!.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+                ? "protected"
+                : "public";
+            fields.push({
+              name: param.name.text,
+              cppType: (paramType === "void" ? "auto" : paramType) as CppType,
+              visibility,
+              initializer: param.initializer
+                ? expressionToIR(param.initializer, sourceText, diagnostics)
+                : undefined,
+            });
+          }
         }
       }
       const ctorBody = member.body
@@ -2119,8 +2141,8 @@ export function variableStatementToIR(
     localVariableTypes.set(declaration.name.text, declarationType.resolvedType);
     activeLocalTypes.set(declaration.name.text, declarationType.resolvedType);
 
-    // Track string-typed variables for .length → strlen() conversion
-    if (declarationType.resolvedType === "std::string") {
+    // Track C-string variables for .length → strlen() conversion
+    if (declarationType.resolvedType === "const char*" || declarationType.resolvedType === "char*") {
       activeStringVars.add(declaration.name.text);
     }
 
@@ -2325,10 +2347,11 @@ export function variableStatementToIR(
       // These are emitted as C arrays (int arr[] = {...}), not std::vector,
       // regardless of what resolveDeclarationType reports. Fix the cppType to match.
       if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
-        activeCArrayVars.add(varName);
+        // Preserve std::vector typing when inferred; fall back to C arrays otherwise.
         // Extract element type from std::vector<T> or use "auto"
         const vecMatch = varCppType.match(/^std::vector<(.+)>$/);
-        if (vecMatch) {
+        if (!vecMatch) {
+          activeCArrayVars.add(varName);
           loweredDeclaration.cppType = "auto" as any;
           localVariableTypes.set(varName, "auto");
           activeLocalTypes.set(varName, "auto");

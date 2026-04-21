@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { CppType } from "./model";
+import { topLevelClasses } from "./build-ir-state";
 
 export type CppTypeHint =
   | "int"
@@ -194,6 +195,10 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   // return the original type reference name as the C++ struct type.
   if (ts.isTypeLiteralNode(resolvedNode) && ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
     return node.typeName.text as CppTypeHint;
+  }
+
+  if (ts.isParenthesizedTypeNode(resolvedNode)) {
+    return typeNodeToCppType(resolvedNode.type, typeAliases);
   }
 
   if (ts.isUnionTypeNode(resolvedNode)) {
@@ -440,10 +445,42 @@ export function inferExprCppType(
     return "bool";
   }
 
-  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
-    const fnReturnType = functionReturnTypes.get(expr.expression.text);
-    if (fnReturnType && fnReturnType !== "auto") {
-      return fnReturnType;
+  if (ts.isCallExpression(expr)) {
+    if (ts.isIdentifier(expr.expression)) {
+      const fnReturnType = functionReturnTypes.get(expr.expression.text);
+      if (fnReturnType && fnReturnType !== "auto") {
+        return fnReturnType;
+      }
+    }
+    if (ts.isPropertyAccessExpression(expr.expression)) {
+      if (ts.isIdentifier(expr.expression.expression)) {
+        const className = expr.expression.expression.text;
+        const classDef = topLevelClasses.get(className);
+        if (classDef) {
+          const method = expr.expression.name.text;
+          const classMethod = classDef.methods.find((m) => m.name === method);
+          if (classMethod) {
+            return classMethod.returnType as CppTypeHint;
+          }
+        }
+      }
+
+      const receiverType = inferExprCppType(expr.expression.expression, functionReturnTypes, localVariableTypes, sourceText);
+      let receiverClassName = receiverType as string;
+      if (receiverClassName.endsWith("*")) {
+        receiverClassName = receiverClassName.slice(0, -1);
+      }
+      if (receiverClassName.startsWith("const ")) {
+        receiverClassName = receiverClassName.slice("const ".length);
+      }
+      const classDef = topLevelClasses.get(receiverClassName);
+      if (classDef) {
+        const method = expr.expression.name.text;
+        const classMethod = classDef.methods.find((m) => m.name === method);
+        if (classMethod) {
+          return classMethod.returnType as CppTypeHint;
+        }
+      }
     }
   }
 

@@ -7,7 +7,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, activeNamespaceNames, resetBuildState } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, activeNamespaceNames, topLevelClassNames, topLevelClasses, resetBuildState } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR } from "./statement-to-ir";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
@@ -168,6 +168,8 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       const classIR = classDeclarationToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, registerClasses);
       if (classIR) {
         classes.push(classIR);
+        topLevelClassNames.add(classIR.name);
+        topLevelClasses.set(classIR.name, classIR);
       }
       return;
     }
@@ -242,6 +244,11 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
   // Collect any nested enums that were hoisted during IR building
   enums.push(...hoistedNestedEnums);
+
+  // Populate top-level class names for :: static method rendering
+  for (const cls of classes) {
+    topLevelClassNames.add(cls.name);
+  }
 
   // Resolve board-definition constants from the actual board package file.
   // This replaces the old hard-coded ARDUINO_BOARD_METADATA table in

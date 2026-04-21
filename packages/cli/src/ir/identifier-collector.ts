@@ -143,6 +143,20 @@ export function collectExpressionIdentifiers(expr: ExpressionIR | null | undefin
       }
       break;
 
+    case "method-call": {
+      // Extract identifiers from callee (e.g., "Button::start" -> "Button", "start")
+      const calleeParts = expr.callee.split(/::|\./);
+      for (const part of calleeParts) {
+        identifiers.add(part);
+      }
+      for (const arg of expr.args) {
+        for (const id of collectExpressionIdentifiers(arg)) {
+          identifiers.add(id);
+        }
+      }
+      break;
+    }
+
     // number, string, boolean have no identifiers
   }
 

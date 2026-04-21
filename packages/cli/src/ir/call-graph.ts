@@ -201,6 +201,7 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
       if (statement.initializer) {
         for (const id of collectExpressionIdentifiers(statement.initializer)) {
           varDeps.add(id);
+          topLevelDependencies.add(id);
         }
       }
       nodes.set(statement.name, {

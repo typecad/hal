@@ -120,57 +120,83 @@ export class ExpressionRenderer {
       return "/* invalid expression */";
     }
     
+    let rendered: string;
     switch (expr.kind) {
       case "number": {
         if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
           const str = `${expr.value}`;
-          return str.includes('.') || str.includes('e') || str.includes('E')
+          rendered = str.includes('.') || str.includes('e') || str.includes('E')
             ? `${str}f`
             : `${str}.0f`;
+          break;
         }
-        return `${expr.value}`;
+        rendered = `${expr.value}`;
+        break;
       }
       case "string":
-        return `"${expr.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")}"`;
+        rendered = `"${expr.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")}"`;
+        break;
       case "boolean":
-        return expr.value ? "true" : "false";
+        rendered = expr.value ? "true" : "false";
+        break;
       case "identifier":
-        return this.renderIdentifier(expr.value);
+        rendered = this.renderIdentifier(expr.value);
+        break;
       case "raw":
-        return this.renderRaw(expr.value, exprTransformer);
+        rendered = this.renderRaw(expr.value, exprTransformer);
+        break;
       case "await":
-        return this.render(expr.value, exprTransformer);
+        rendered = this.render(expr.value, exprTransformer);
+        break;
       case "ternary":
-        return this.renderTernary(expr, exprTransformer);
+        rendered = this.renderTernary(expr, exprTransformer);
+        break;
       case "string_concat":
-        return this.renderStringConcat(expr, exprTransformer);
+        rendered = this.renderStringConcat(expr, exprTransformer);
+        break;
       case "template_string":
-        return this.renderTemplateString(expr, exprTransformer);
+        rendered = this.renderTemplateString(expr, exprTransformer);
+        break;
       case "array":
-        return this.renderArray(expr, exprTransformer);
+        rendered = this.renderArray(expr, exprTransformer);
+        break;
       case "object":
-        return this.renderObject(expr, exprTransformer);
+        rendered = this.renderObject(expr, exprTransformer);
+        break;
       case "instanceof":
-        return this.renderInstanceof(expr, exprTransformer);
+        rendered = this.renderInstanceof(expr, exprTransformer);
+        break;
       case "spread_array":
-        return `/* spread_array: see variable declaration */`;
+        rendered = `/* spread_array: see variable declaration */`;
+        break;
       case "paren":
-        return `(${this.render(expr.inner, exprTransformer)})`;
+        rendered = `(${this.render(expr.inner, exprTransformer)})`;
+        break;
       case "binary":
-        return this.renderBinary(expr, exprTransformer);
+        rendered = this.renderBinary(expr, exprTransformer);
+        break;
       case "unary":
-        return this.renderUnary(expr, exprTransformer);
+        rendered = this.renderUnary(expr, exprTransformer);
+        break;
       case "property-access":
-        return this.renderPropertyAccess(expr, exprTransformer);
+        rendered = this.renderPropertyAccess(expr, exprTransformer);
+        break;
       case "typecode-call":
-        return this.renderTypecodeCall(expr, exprTransformer);
+        rendered = this.renderTypecodeCall(expr, exprTransformer);
+        break;
       case "callback":
-        return this.renderCallback(expr);
+        rendered = this.renderCallback(expr);
+        break;
       case "lambda":
-        return this.renderLambda(expr, exprTransformer);
+        rendered = this.renderLambda(expr, exprTransformer);
+        break;
+      case "method-call":
+        rendered = this.renderMethodCall(expr, exprTransformer);
+        break;
       default:
-        return "0 /* unsupported_expr */";
+        rendered = "0 /* unsupported_expr */";
     }
+    return this.fixPointerAccess(rendered);
   }
 
   private renderIdentifier(value: string): string {
@@ -189,6 +215,7 @@ export class ExpressionRenderer {
     let result = exprTransformer
       ? normalizeRawExpression(exprTransformer(value), this.strategy, effectiveClassNameMap)
       : normalizeRawExpression(value, this.strategy, effectiveClassNameMap);
+    result = this.fixPointerAccess(result);
     // Rewrite getter property access: s->reading → s->getReading()
     for (const [varName, accessors] of this.varAccessorNames) {
       for (const [propName, kind] of accessors) {
@@ -406,7 +433,8 @@ export class ExpressionRenderer {
     if (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value)) {
       return `${objStr}::${expr.property}`;
     }
-    return `${objStr}.${expr.property}`;
+    const rendered = `${objStr}.${expr.property}`;
+    return this.fixPointerAccess(rendered);
   }
 
   private renderTypecodeCall(expr: Extract<ExpressionIR, { kind: "typecode-call" }>, exprTransformer?: (expr: string) => string): string {
@@ -438,6 +466,23 @@ export class ExpressionRenderer {
       return `[=](${params})${ret} { return ${this.render((expr.body[0] as any).value, exprTransformer)}; }`;
     }
     return `[=](${params})${ret} { /* body */ }`;
+  }
+
+  private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {
+    const argsText = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
+    const callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
+    return this.fixPointerAccess(`${callee}(${argsText})`);
+  }
+
+  private fixPointerAccess(code: string): string {
+    if (this.pointerVarTypes) {
+      for (const [varName, varType] of this.pointerVarTypes) {
+        if (varType.endsWith("*")) {
+          code = code.replace(new RegExp(`\\b${varName}\\.`, "g"), `${varName}->`);
+        }
+      }
+    }
+    return code;
   }
 }
 

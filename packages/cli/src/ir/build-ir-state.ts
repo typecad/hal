@@ -1,4 +1,7 @@
 import type { FunctionIR, ClassIR, EnumIR } from "./model";
+
+// Module-level map of top-level class names to their IR for static method return type lookup.
+export const topLevelClasses = new Map<string, ClassIR>();
 import type { TypecodeReceiverKind } from "./typecode-symbols";
 
 // Track variables that are pointers (from 'new' expressions)
@@ -55,8 +58,8 @@ export const activeBusAliases = new Map<string, { receiver: string; kind: Typeco
 export const activeCArrayVars = new Set<string>();
 
 // Module-level string variable tracker for the current buildProgramIR invocation.
-// Tracks variable names whose inferred type is std::string (string literals, template
-// literals, etc.). For these variables, .length should become strlen() instead of .size().
+// Tracks variable names whose inferred type is C-style string pointers.
+// For these variables, .length should become strlen() instead of .size().
 export const activeStringVars = new Set<string>();
 
 // Track array variables that need StaticArray (push, pop, indexOf).
@@ -72,6 +75,10 @@ export const filteredArrayLengthVars = new Map<string, string>();
 // Tracks namespace identifiers so property access like Foo.bar renders as Foo::bar.
 export const activeNamespaceNames = new Set<string>();
 
+// Module-level set of top-level class names for the current buildProgramIR invocation.
+// Used to emit :: for static method calls on top-level classes (not just hoisted nested ones).
+export const topLevelClassNames = new Set<string>();
+
 // Module-level local variable type tracker for typeof resolution.
 // Maps variable name → inferred C++ type string (e.g., "int", "std::string").
 export const activeLocalTypes = new Map<string, string>();
@@ -86,6 +93,8 @@ export function resetBuildState(): void {
   activeBusAliases.clear();
   resetFunctionScopeState();
   activeNamespaceNames.clear();
+  topLevelClassNames.clear();
+  topLevelClasses.clear();
 }
 
 /** Clear state that should be scoped to a single function body. */

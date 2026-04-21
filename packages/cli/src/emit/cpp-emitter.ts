@@ -408,6 +408,11 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       return `${expr.operator}${renderExpression(expr.operand, exprTransformer, strategy)}`;
     case "paren":
       return `(${renderExpression(expr.inner, exprTransformer, strategy)})`;
+    case "method-call": {
+      const argsText = expr.args.map(a => renderExpression(a, exprTransformer, strategy)).join(", ");
+      const callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
+      return `${callee}(${argsText})`;
+    }
     case "property-access": {
       const chain = extractPropertyChain(expr);
       if (chain) {
@@ -1119,7 +1124,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   const headerLines: string[] = ["#pragma once", ""];
-  const sourceLines: string[] = [];
+  let sourceLines: string[] = [];
   const sourceMapEntries: SourceMapEntry[] = [];
   const headerMapEntries: SourceMapEntry[] = [];
 
@@ -1648,7 +1653,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   if (strategy.needsStdVector() && programAnalysis.hasArrayInObjectLiteral) {
     includes.push("<vector>");
   }
-  if (programAnalysis.usesStdFunction) {
+  if (programAnalysis.usesStdFunction && strategy.needsStdFunction()) {
     includes.push("<functional>");
   }
   if (programAnalysis.hasThrowStatements && strategy.needsStdExcept()) {
@@ -1833,19 +1838,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     for (const stmt of statements) {
       if (stmt.kind === "call" || stmt.kind === "typecode-call") {
         for (const arg of stmt.args) {
-          if (arg.kind === "callback") {
-            const callbackName = `isr_${callbackCounter++}`;
-            callbackFunctions.push({
-              name: callbackName,
-              params: arg.params,
-              statements: arg.statements,
-              debounceMs: arg.debounceMs,
-            });
-            // Mutate the arg to replace with the callback name
-            (arg as any).kind = "identifier";
-            (arg as any).value = callbackName;
-          }
+          collectCallbackFromExpression(arg);
         }
+      }
+      // Scan var_decl initializers for callbacks in method-call expressions
+      if (stmt.kind === "var_decl" && stmt.initializer) {
+        collectCallbackFromExpression(stmt.initializer);
       }
       // Recurse into nested statements
       if ("body" in stmt && Array.isArray(stmt.body)) {
@@ -1862,12 +1860,150 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           collectCallbacks(c.body);
         }
       }
+      if ("value" in stmt && stmt.value) {
+        collectCallbackFromExpression(stmt.value);
+      }
+    }
+  }
+
+  function collectCallbackFromExpression(expr: ExpressionIR): void {
+    // Handle top-level callback (e.g., in call statement args directly)
+    if (expr.kind === "callback") {
+      const callbackName = `isr_${callbackCounter++}`;
+      callbackFunctions.push({
+        name: callbackName,
+        params: expr.params,
+        statements: expr.statements,
+        debounceMs: expr.debounceMs,
+      });
+      (expr as any).kind = "identifier";
+      (expr as any).value = callbackName;
+      return;
+    }
+    if (expr.kind === "method-call") {
+      for (const arg of expr.args) {
+        if (arg.kind === "callback") {
+          const callbackName = `isr_${callbackCounter++}`;
+          callbackFunctions.push({
+            name: callbackName,
+            params: arg.params,
+            statements: arg.statements,
+            debounceMs: arg.debounceMs,
+          });
+          (arg as any).kind = "identifier";
+          (arg as any).value = callbackName;
+        } else {
+          collectCallbackFromExpression(arg);
+        }
+      }
+    }
+    // Recurse into other expression kinds that may contain nested method-calls
+    if (expr.kind === "raw") return;
+    if ("args" in expr && Array.isArray(expr.args)) {
+      for (const arg of expr.args) { collectCallbackFromExpression(arg); }
+    }
+    if ("initializer" in expr && expr.initializer) { collectCallbackFromExpression(expr.initializer as ExpressionIR); }
+    if ("value" in expr && expr.value && typeof expr.value === "object") { collectCallbackFromExpression(expr.value); }
+    if ("left" in expr) { collectCallbackFromExpression(expr.left); }
+    if ("right" in expr) { collectCallbackFromExpression(expr.right); }
+    if ("condition" in expr && typeof expr.condition === "object") { collectCallbackFromExpression(expr.condition); }
+    if ("whenTrue" in expr) { collectCallbackFromExpression(expr.whenTrue); }
+    if ("whenFalse" in expr) { collectCallbackFromExpression(expr.whenFalse); }
+    if ("inner" in expr) { collectCallbackFromExpression(expr.inner); }
+    if ("object" in expr && typeof expr.object === "object" && expr.kind !== "instanceof") { collectCallbackFromExpression(expr.object); }
+    if ("elements" in expr && Array.isArray(expr.elements)) {
+      for (const e of expr.elements) { collectCallbackFromExpression(e); }
     }
   }
   
   collectCallbacks(filteredTopLevelExecutables);
   for (const fn of mappedFunctions) {
     collectCallbacks(fn.statements);
+  }
+
+  // Also scan class method statements for callbacks
+  for (const cls of program.classes) {
+    if (cls.constructor) {
+      collectCallbacks(cls.constructor.statements);
+    }
+    for (const method of cls.methods) {
+      collectCallbacks(method.statements);
+    }
+    for (const getter of cls.getters) {
+      collectCallbacks(getter.statements);
+    }
+    for (const setter of cls.setters) {
+      collectCallbacks(setter.statements);
+    }
+  }
+
+  // Promote runtime var_decls that are referenced in ISR callbacks to file scope.
+  // ISRs are emitted as file-scope free functions, so they can't access setup()-local variables.
+  // We emit a forward declaration at file scope and convert the var_decl to an assignment in setup().
+  function collectIdentifierNames(statements: StatementIR[]): Set<string> {
+    const names = new Set<string>();
+    function scanStmt(stmt: StatementIR) {
+      if (stmt.kind === "var_decl") { names.add(stmt.name); }
+      if ("target" in stmt && typeof stmt.target === "string") {
+        // extract identifiers from target like "this->field"
+      }
+      if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) scanStmt(s); }
+      if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) scanStmt(s); }
+      if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) { for (const s of stmt.elseBranch) scanStmt(s); }
+      if ("cases" in stmt && Array.isArray(stmt.cases)) { for (const c of stmt.cases) for (const s of c.body) scanStmt(s); }
+      if ("value" in stmt && stmt.value && typeof stmt.value === "object") { scanExpr(stmt.value); }
+      if ("callee" in stmt && typeof stmt.callee === "string") {
+        // extract identifiers from callee like "btn->check"
+        const parts = stmt.callee.split(/[\.\-\>]/);
+        for (const p of parts) { if (/^[a-zA-Z_]\w*$/.test(p)) names.add(p); }
+      }
+      if ("args" in stmt && Array.isArray(stmt.args)) { for (const a of stmt.args) scanExpr(a); }
+    }
+    function scanExpr(expr: ExpressionIR) {
+      if (expr.kind === "identifier") { names.add(expr.value); }
+      if ("left" in expr) { scanExpr(expr.left); }
+      if ("right" in expr) { scanExpr(expr.right); }
+      if ("value" in expr && expr.value && typeof expr.value === "object") { scanExpr(expr.value); }
+      if ("elements" in expr && Array.isArray(expr.elements)) { for (const e of expr.elements) scanExpr(e); }
+      if ("args" in expr && Array.isArray(expr.args)) { for (const a of expr.args) scanExpr(a); }
+      if ("initializer" in expr && expr.initializer) { scanExpr(expr.initializer as ExpressionIR); }
+      if ("condition" in expr && typeof expr.condition === "object") { scanExpr(expr.condition); }
+      if ("whenTrue" in expr) { scanExpr(expr.whenTrue); }
+      if ("whenFalse" in expr) { scanExpr(expr.whenFalse); }
+      if ("inner" in expr) { scanExpr(expr.inner); }
+      if ("object" in expr && typeof expr.object === "object" && expr.kind !== "instanceof") { scanExpr(expr.object); }
+    }
+    for (const stmt of statements) { scanStmt(stmt); }
+    return names;
+  }
+
+  const promotedVarDecls = new Map<string, { cppType: string; index: number }>();
+  if (callbackFunctions.length > 0 && filteredTopLevelExecutables.length > 0) {
+    // Collect all identifiers referenced inside ISR callback bodies
+    const isrIdentifiers = new Set<string>();
+    for (const cb of callbackFunctions) {
+      for (const id of collectIdentifierNames(cb.statements)) {
+        isrIdentifiers.add(id);
+      }
+    }
+    // Find runtime var_decls that are referenced in ISR callbacks
+    for (let i = 0; i < filteredTopLevelExecutables.length; i++) {
+      const stmt = filteredTopLevelExecutables[i];
+      if (stmt.kind === "var_decl" && isrIdentifiers.has(stmt.name)) {
+        const varType = normalizeCppTypeForTarget(stmt.cppType, strategy);
+        promotedVarDecls.set(stmt.name, { cppType: varType, index: i });
+        // Convert var_decl to assignment statement (remove type declaration)
+        (filteredTopLevelExecutables[i] as any) = {
+          kind: "assign",
+          sourceSpan: stmt.sourceSpan,
+          leadingComments: stmt.leadingComments,
+          trailingComments: stmt.trailingComments,
+          target: stmt.name,
+          operator: "=",
+          value: stmt.initializer,
+        };
+      }
+    }
   }
 
   // Collect struct field types that are pointers - needed for correct -> access
@@ -2125,7 +2261,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("");
   }
 
-
   // Emit namespaces
   for (const ns of program.namespaces) {
     emitCommentLines(ns.leadingComments, "", (line) => appendSourceLine(line));
@@ -2194,8 +2329,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const protectedMethods = classDef.methods.filter(m => m.visibility === "protected");
       
       // Public section
-      if (publicFields.length > 0 || publicMethods.length > 0 || classDef.constructor) {
+      const needsPublicSection = publicFields.length > 0 || publicMethods.length > 0 || classDef.constructor || callbackFunctions.length > 0;
+      if (needsPublicSection) {
         appendSourceLine("  public:");
+        if (callbackFunctions.length > 0) {
+          for (const callback of callbackFunctions) {
+            appendSourceLine(`    friend void ${callback.name}();`);
+          }
+          appendSourceLine("");
+        }
         
         if (classDef.constructor) {
           const ctorParams = renderParameters(classDef.constructor.parameters, strategy);
@@ -2298,6 +2440,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("} // namespace ${ns.name}");
     emitCommentLines(ns.trailingComments, "", (line) => appendSourceLine(line));
     appendSourceLine("");
+  }
+
+  if (effectiveEmitMode !== "split") {
+    for (const callback of callbackFunctions) {
+      appendSourceLine(`void ${callback.name}();`);
+    }
+    if (callbackFunctions.length > 0) {
+      appendSourceLine("");
+    }
   }
 
   // Emit classes
@@ -2446,9 +2597,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     const protectedGetters = classDef.getters.filter(g => g.visibility === "protected");
     const protectedSetters = classDef.setters.filter(s => s.visibility === "protected");
 
+    const needsPublicSection = publicFields.length > 0 || publicMethods.length > 0 || publicGetters.length > 0 || publicSetters.length > 0 || classDef.constructor || callbackFunctions.length > 0;
     // Emit public section
-    if (publicFields.length > 0 || publicMethods.length > 0 || publicGetters.length > 0 || publicSetters.length > 0 || classDef.constructor) {
+    if (needsPublicSection) {
       appendSourceLine("public:");
+      if (callbackFunctions.length > 0) {
+        for (const callback of callbackFunctions) {
+          appendSourceLine(`  friend void ${callback.name}();`);
+        }
+        appendSourceLine("");
+      }
       
       // Constructor
       if (classDef.constructor) {
@@ -2649,6 +2807,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendRenderedStatement(statement, "", globalPointerVarTypes, runtimeTopLevelScope);
       }
     }
+  }
+
+  // Emit forward declarations for promoted runtime var_decls (referenced in ISR callbacks).
+  // These need file-scope visibility so ISR free functions can access them.
+  // Must come AFTER class definitions so the type is known.
+  if (promotedVarDecls.size > 0) {
+    for (const [varName, info] of promotedVarDecls) {
+      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName)} = nullptr;`);
+    }
+    appendSourceLine("");
   }
 
   // Emit object literal struct definitions (after classes so they can reference class types)
@@ -2892,6 +3060,23 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Non-entry Arduino files are emitted as header-only .h files
   if (sourceExtension === "h" && !isNpmPackage) {
     sourceLines.unshift("#pragma once", "");
+  }
+
+  // Post-process the final source for any remaining pointer member access
+  // patterns that were not transformed earlier in the emitter.
+  if (typeof globalPointerVarTypes !== "undefined" && globalPointerVarTypes.size > 0) {
+    const pointerNames = Array.from(globalPointerVarTypes.keys()).filter((varName) => {
+      const varType = globalPointerVarTypes.get(varName);
+      return typeof varType === "string" && varType.trim().endsWith("*");
+    });
+    if (pointerNames.length > 0) {
+      const sourceText = sourceLines.join("\n");
+      const fixedSource = pointerNames.reduce((text, varName) => {
+        const pattern = new RegExp(`\\b${varName}\\.`, "g");
+        return text.replace(pattern, `${varName}->`);
+      }, sourceText);
+      sourceLines = fixedSource.split("\n");
+    }
   }
 
   writeText(sourcePath, sourceLines.join("\n").trimEnd() + "\n");

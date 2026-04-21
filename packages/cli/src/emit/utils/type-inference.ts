@@ -631,7 +631,10 @@ export function isRuntimeExpression(expr: ExpressionIR): boolean {
 
     case "unary":
       return isRuntimeExpression(expr.operand);
-    
+
+    case "method-call":
+      return true;
+
     case "instanceof":
       // instanceof requires RTTI and runtime evaluation
       return true;
@@ -677,6 +680,11 @@ export function collectPointerVarTypes(
   
   for (const statement of statements) {
     if (statement.kind === "var_decl" && statement.initializer) {
+      const declaredType = statement.cppType;
+      if (declaredType.endsWith("*")) {
+        pointerVarTypes.set(statement.name, declaredType);
+        continue;
+      }
       const init = statement.initializer;
       // Check for raw expression containing 'new'
       if (init.kind === "raw" && init.value.startsWith("new ")) {

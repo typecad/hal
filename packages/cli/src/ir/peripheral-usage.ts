@@ -370,7 +370,7 @@ function analyzeExpression(expr: ExpressionIR | undefined, usage: PeripheralUsag
 /**
  * Parse pin number from receiver string (D13 -> 13, A0 -> 14, LED -> 13)
  */
-function parsePinNumber(receiver: string): number | null {
+export function parsePinNumber(receiver: string): number | null {
   if (receiver === 'LED') return 13;
   if (receiver === 'SDA') return 18;
   if (receiver === 'SCL') return 19;

@@ -130,135 +130,141 @@ export class StatementRenderer {
    * @returns The C++ code string
    */
   render(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string): string {
-    if (statement.kind === "typecode-call") {
-      return this.renderTypecodeCallStatement(statement, forHeader);
-    }
+    const rendered = (() => {
+      if (statement.kind === "typecode-call") {
+        return this.renderTypecodeCallStatement(statement, forHeader);
+      }
 
-    if (statement.kind === "call") {
-      return this.renderCall(statement, forHeader, calleeTransformer);
-    }
+      if (statement.kind === "call") {
+        return this.renderCall(statement, forHeader, calleeTransformer);
+      }
 
-    if (statement.kind === "assign") {
-      const target = escapeCppKeyword(statement.target);
-      // Rewrite setter assignments: c->count = val → c->setCount(val)
-      if (statement.operator === "=" || statement.operator === "+=" || statement.operator === "-=") {
-        const setterMatch = target.match(/^(.+?)(->|\.)(\w+)$/);
-        if (setterMatch) {
-          const [, objStr, sep, propName] = setterMatch;
-          const varName = objStr.trim();
-          const accessors = this.varAccessorNames.get(varName);
-          if (accessors?.has(propName)) {
-            const kind = accessors.get(propName)!;
-            if (kind === "setter" || kind === "both") {
-              const setterName = accessorSetterName(propName);
-              const renderedValue = this.expressionRenderer.render(statement.value);
-              if (statement.operator === "=") {
+      if (statement.kind === "assign") {
+        let target = escapeCppKeyword(statement.target);
+        target = this.fixPointerFieldAccess(target);
+        // Rewrite setter assignments: c->count = val → c->setCount(val)
+        if (statement.operator === "=" || statement.operator === "+=" || statement.operator === "-=") {
+          const setterMatch = target.match(/^(.+?)(->|\.)(\w+)$/);
+          if (setterMatch) {
+            const [, objStr, sep, propName] = setterMatch;
+            const varName = objStr.trim();
+            const accessors = this.varAccessorNames.get(varName);
+            if (accessors?.has(propName)) {
+              const kind = accessors.get(propName)!;
+              if (kind === "setter" || kind === "both") {
+                const setterName = accessorSetterName(propName);
+                const renderedValue = this.expressionRenderer.render(statement.value);
+                if (statement.operator === "=") {
+                  return forHeader
+                    ? `${varName}${sep}${setterName}(${renderedValue})`
+                    : `${varName}${sep}${setterName}(${renderedValue});`;
+                }
+                const getterName = accessorGetterName(propName);
+                const op = statement.operator.replace("=", "");
                 return forHeader
-                  ? `${varName}${sep}${setterName}(${renderedValue})`
-                  : `${varName}${sep}${setterName}(${renderedValue});`;
+                  ? `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue})`
+                  : `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue});`;
               }
-              const getterName = accessorGetterName(propName);
-              const op = statement.operator.replace("=", "");
-              return forHeader
-                ? `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue})`
-                : `${varName}${sep}${setterName}(${varName}${sep}${getterName}() ${op} ${renderedValue});`;
             }
           }
         }
+        return forHeader
+          ? `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)}`
+          : `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)};`;
       }
-      return forHeader
-        ? `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)}`
-        : `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)};`;
-    }
 
-    if (statement.kind === "update") {
-      const target = escapeCppKeyword(statement.target);
-      return statement.prefix
-        ? `${statement.operator}${target}${forHeader ? "" : ";"}`
-        : `${target}${statement.operator}${forHeader ? "" : ";"}`;
-    }
-
-    if (statement.kind === "return") {
-      return statement.value ? `return ${this.expressionRenderer.render(statement.value)};` : "return;";
-    }
-
-    if (statement.kind === "while") {
-      return `while (${this.expressionRenderer.render(statement.condition)})`;
-    }
-
-    if (statement.kind === "if") {
-      return `if (${this.expressionRenderer.render(statement.condition)})`;
-    }
-
-    if (statement.kind === "for") {
-      const init = statement.initializer ? this.render(statement.initializer, true) : "";
-      const cond = statement.condition ? this.expressionRenderer.render(statement.condition) : "";
-      const incr = statement.increment ? this.render(statement.increment, true) : "";
-      return `for (${init}; ${cond}; ${incr})`;
-    }
-
-    if (statement.kind === "for_of") {
-      const varDecl = statement.variable;
-      if (varDecl.kind === "var_decl") {
-        return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.iterable)})`;
+      if (statement.kind === "update") {
+        let target = escapeCppKeyword(statement.target);
+        target = this.fixPointerFieldAccess(target);
+        return statement.prefix
+          ? `${statement.operator}${target}${forHeader ? "" : ";"}`
+          : `${target}${statement.operator}${forHeader ? "" : ";"}`;
       }
-      return `for (auto item : ${this.expressionRenderer.render(statement.iterable)})`;
-    }
 
-    if (statement.kind === "for_in") {
-      if (statement.keys && statement.keys.length > 0) {
-        const keysArr = statement.keys.map(k => `"${k}"`).join(", ");
-        const objName = statement.object.kind === "identifier" ? statement.object.value : "_obj";
-        const idxVar = `_ki_${objName}`;
-        this.expressionRenderer.pushPrelude([
-          `const char* ${idxVar}_keys[] = { ${keysArr} };`,
-        ]);
-        return `for (int ${idxVar} = 0; ${idxVar} < ${statement.keys.length}; ${idxVar}++)`;
+      if (statement.kind === "return") {
+        return statement.value ? `return ${this.expressionRenderer.render(statement.value)};` : "return;";
       }
-      const varDecl = statement.variable;
-      if (varDecl.kind === "var_decl") {
-        return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.object)})`;
+
+      if (statement.kind === "while") {
+        return `while (${this.expressionRenderer.render(statement.condition)})`;
       }
-      return `for (auto key : ${this.expressionRenderer.render(statement.object)})`;
-    }
 
-    if (statement.kind === "break") {
-      return "break;";
-    }
+      if (statement.kind === "if") {
+        return `if (${this.expressionRenderer.render(statement.condition)})`;
+      }
 
-    if (statement.kind === "continue") {
-      return "continue;";
-    }
+      if (statement.kind === "for") {
+        const init = statement.initializer ? this.render(statement.initializer, true) : "";
+        const cond = statement.condition ? this.expressionRenderer.render(statement.condition) : "";
+        const incr = statement.increment ? this.render(statement.increment, true) : "";
+        return `for (${init}; ${cond}; ${incr})`;
+      }
 
-    if (statement.kind === "do_while") {
-      return `do`;
-    }
+      if (statement.kind === "for_of") {
+        const varDecl = statement.variable;
+        if (varDecl.kind === "var_decl") {
+          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.iterable)})`;
+        }
+        return `for (auto item : ${this.expressionRenderer.render(statement.iterable)})`;
+      }
 
-    if (statement.kind === "switch") {
-      return `switch (${this.expressionRenderer.render(statement.expression)})`;
-    }
+      if (statement.kind === "for_in") {
+        if (statement.keys && statement.keys.length > 0) {
+          const keysArr = statement.keys.map(k => `"${k}"`).join(", ");
+          const objName = statement.object.kind === "identifier" ? statement.object.value : "_obj";
+          const idxVar = `_ki_${objName}`;
+          this.expressionRenderer.pushPrelude([
+            `const char* ${idxVar}_keys[] = { ${keysArr} };`,
+          ]);
+          return `for (int ${idxVar} = 0; ${idxVar} < ${statement.keys.length}; ${idxVar}++)`;
+        }
+        const varDecl = statement.variable;
+        if (varDecl.kind === "var_decl") {
+          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.object)})`;
+        }
+        return `for (auto key : ${this.expressionRenderer.render(statement.object)})`;
+      }
 
-    if (statement.kind === "try") {
-      return "try";
-    }
+      if (statement.kind === "break") {
+        return "break;";
+      }
 
-    if (statement.kind === "throw") {
-      return this.strategy.renderThrow(this.expressionRenderer.render(statement.value));
-    }
+      if (statement.kind === "continue") {
+        return "continue;";
+      }
 
-    if (statement.kind === "labeled") {
-      return `${statement.label}:`;
-    }
+      if (statement.kind === "do_while") {
+        return `do`;
+      }
 
-    if (statement.kind === "block") {
-      return `{`;
-    }
+      if (statement.kind === "switch") {
+        return `switch (${this.expressionRenderer.render(statement.expression)})`;
+      }
 
-    if (statement.kind !== "var_decl") {
-      return "/* unsupported_statement */";
-    }
+      if (statement.kind === "try") {
+        return "try";
+      }
 
-    return this.renderVarDecl(statement, forHeader, calleeTransformer);
+      if (statement.kind === "throw") {
+        return this.strategy.renderThrow(this.expressionRenderer.render(statement.value));
+      }
+
+      if (statement.kind === "labeled") {
+        return `${statement.label}:`;
+      }
+
+      if (statement.kind === "block") {
+        return `{`;
+      }
+
+      if (statement.kind !== "var_decl") {
+        return "/* unsupported_statement */";
+      }
+
+      return this.renderVarDecl(statement, forHeader, calleeTransformer);
+    })();
+
+    return this.fixPointerFieldAccess(rendered);
   }
 
   private renderTypecodeCallStatement(statement: Extract<StatementIR, { kind: "typecode-call" }>, forHeader: boolean): string {

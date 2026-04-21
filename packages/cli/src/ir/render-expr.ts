@@ -56,6 +56,14 @@ export function renderExprAsText(expr: ExpressionIR): string {
       // Fallback text rendering used inside build-ir.ts only.
       // The real Arduino translation happens in renderExpression (cpp-emitter.ts).
       return `${expr.receiver}.${expr.method}(${expr.args.map(renderExprAsText).join(', ')})`;
+    case "callback":
+      return `/* __callback__ */`;
+    case "lambda":
+      return `/* __lambda__ */`;
+    case "method-call": {
+      const argsText = expr.args.map(a => renderExprAsText(a)).join(", ");
+      return `${expr.callee}(${argsText})`;
+    }
     default:
       return "0 /* unsupported_expr */";
   }

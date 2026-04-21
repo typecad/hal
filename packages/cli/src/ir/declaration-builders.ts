@@ -87,6 +87,7 @@ export function classDeclarationToIR(
     if (ts.isConstructorDeclaration(member)) {
       const ctorParams: ParameterIR[] = [];
       const ctorLocalTypes = new Map<string, CppTypeHint>();
+      const paramPropertyNames: string[] = [];
 
       for (const param of member.parameters) {
         if (ts.isIdentifier(param.name)) {
@@ -102,6 +103,30 @@ export function classDeclarationToIR(
             isRest: false,
             ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
           });
+
+          // TypeScript parameter property shorthand: constructor(public x: number)
+          // Synthesize a class field for parameters with visibility modifiers.
+          const hasVisibility = param.modifiers?.some(m =>
+            m.kind === ts.SyntaxKind.PublicKeyword ||
+            m.kind === ts.SyntaxKind.PrivateKeyword ||
+            m.kind === ts.SyntaxKind.ProtectedKeyword
+          );
+          if (hasVisibility) {
+            const visibility: "public" | "private" | "protected" = param.modifiers!.some(m => m.kind === ts.SyntaxKind.PrivateKeyword)
+              ? "private"
+              : param.modifiers!.some(m => m.kind === ts.SyntaxKind.ProtectedKeyword)
+                ? "protected"
+                : "public";
+            fields.push({
+              name: param.name.text,
+              cppType: (paramType === "void" ? "auto" : paramType) as CppType,
+              visibility,
+              initializer: param.initializer
+                ? expressionToIR(param.initializer, sourceText, diagnostics)
+                : undefined,
+            });
+            paramPropertyNames.push(param.name.text);
+          }
         }
       }
 
@@ -118,7 +143,17 @@ export function classDeclarationToIR(
           )
         : [];
 
-      ctor = { parameters: ctorParams, statements: ctorBody };
+      // Synthesize this->field = param assignments for parameter properties
+      const syntheticSpan = { filePath: fileName, startOffset: 0, endOffset: 0, startLine: 0, startColumn: 0, endLine: 0, endColumn: 0 };
+      const paramPropertyAssignments: StatementIR[] = paramPropertyNames.map(name => ({
+        kind: "assign" as const,
+        sourceSpan: syntheticSpan,
+        target: `this->${name}`,
+        operator: "=" as const,
+        value: { kind: "identifier" as const, value: name },
+      }));
+
+      ctor = { parameters: ctorParams, statements: [...paramPropertyAssignments, ...ctorBody] };
       continue;
     }
 

@@ -13,6 +13,9 @@ export function extractRootAndChain(node: ts.Expression): { root: string; chain:
     return { root: node.text, chain: [] };
   }
   if (ts.isPropertyAccessExpression(node)) {
+    if (node.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      return { root: `this->${node.name.text}`, chain: [] };
+    }
     const inner = extractRootAndChain(node.expression);
     if (inner) {
       return { root: inner.root, chain: [...inner.chain, node.name.text] };

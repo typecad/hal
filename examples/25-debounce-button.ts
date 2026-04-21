@@ -1,3 +1,16 @@
+// ---------------------------------------------------------------------------
+// Example 25 — Debounced Button with Class Pattern
+//
+// A reusable Button class using hardware interrupts with software debounce.
+// Demonstrates TypeScript features the transpiler supports for classes:
+//   - Static factory method (Button.start)
+//   - Private constructor + private fields
+//   - Method chaining with `this` return type
+//   - Get accessor (-> bool isHeld() const in C++)
+//   - Type aliases, readonly, default parameters
+//   - Structural typing on the pin parameter (interrupt pins only)
+// ---------------------------------------------------------------------------
+
 import { D2, LED, millis } from '@typecode';
 import type { IInputModePin, InterruptHandler } from '@typecode/core';
 

@@ -162,11 +162,11 @@ while (true) {
 ```typescript
 import { A0, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
+const serial = UART0.begin(9600);
 
 while (true) {
   const value = A0.readAnalog();
-  UART0.println(value.toString());
+  serial.println(value.toString());
   delay(500);
 }
 ```
@@ -218,7 +218,7 @@ D2.onFalling(() => {
 ```typescript
 import { I2C0, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
+const serial = UART0.begin(9600);
 const i2c = I2C0.begin();
 
 const BME280_ADDR = 0x76;
@@ -260,12 +260,12 @@ while (true) {
 ```typescript
 import { Board, LOW } from '@typecode';
 
-Board.UART0.begin(115200);
+const serial = Board.UART0.begin(115200);
 Board.LED.output(LOW);
 
-Board.UART0.println("Arduino Uno booted");
-Board.UART0.println("MCU: " + Board.definition.mcu);
-Board.UART0.println("Flash: " + Board.definition.memory.flash + " bytes");
+serial.println("Arduino Uno booted");
+serial.println("MCU: " + Board.definition.mcu);
+serial.println("Flash: " + Board.definition.memory.flash + " bytes");
 
 while (true) {
   const sensor = Board.A0.readAnalog();
@@ -282,17 +282,17 @@ while (true) {
 import { UART0 } from '@typecode';
 
 // Initialize with baud rate
-UART0.begin(9600);
+const serial = UART0.begin(9600);
 
 // Write operations
-UART0.println("Hello, World!");
-UART0.print("Value: ");
-UART0.printf("Number: %d", 42);
+serial.println("Hello, World!");
+serial.print("Value: ");
+serial.printf("Number: %d", 42);
 
 // Read operations
-if (UART0.available() > 0) {
-  const byte = UART0.read();
-  UART0.println(byte);
+if (serial.available() > 0) {
+  const byte = serial.read();
+  serial.println(byte);
 }
 ```
 

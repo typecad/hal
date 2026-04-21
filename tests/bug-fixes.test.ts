@@ -46,7 +46,7 @@ describe("Bug 1: this.x = val assignments in constructor/method bodies", () => {
     `);
 
     // The key fix: the assignment is emitted at all (previously silently dropped)
-    expectCppContains(result, ["s.value = 42"]);
+    expectCppContains(result, ["s->value = 42"]);
   });
 });
 

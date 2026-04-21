@@ -152,6 +152,7 @@ export class GenericStrategy implements PlatformStrategy {
   needsStdString(): boolean { return true; }
   needsStdVector(): boolean { return true; }
   needsStdExcept(): boolean { return true; }
+  needsStdFunction(): boolean { return true; }
   mathHeader(): string { return "<cmath>"; }
   needsVectorOverload(): boolean { return true; }
 

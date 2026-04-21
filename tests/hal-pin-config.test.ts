@@ -150,6 +150,42 @@ describe('Pin Config - Interrupt Attach', () => {
     expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*isr_\d+,\s*FALLING\)/);
   });
 
+  it('transpiles an interrupt callback capturing a global pointer variable and emits pointer access correctly', () => {
+    const result = transpile(`
+      import { D2 } from '@typecode/board-arduino-uno';
+
+      type Handler = () => void;
+
+      class Button {
+        private lastPress = 0;
+        private handler: Handler | null = null;
+
+        static start(pin: { asInputPullUp(): any; onFalling(handler: () => void): void }): Button {
+          const btn = new Button();
+          pin.onFalling(() => {
+            btn.lastPress = 1;
+            if (btn.handler !== null) {
+              btn.handler();
+            }
+          });
+          return btn;
+        }
+
+        onPress(handler: Handler): this {
+          this.handler = handler;
+          return this;
+        }
+      }
+
+      const btn = Button.start(D2).onPress(() => {});
+    `, { target: 'arduino' });
+
+    expect(result.cpp).not.toContain('btn.handler');
+    expect(result.cpp).toContain('btn->lastPress');
+    expect(result.cpp).toContain('btn->handler');
+    expect(result.cpp).toMatch(/friend void isr_\d+\(\);/);
+  });
+
   it('transpiles D2.onRising(callback)', () => {
     const result = transpile(`
       import { D2 } from '@typecode/board-arduino-uno';

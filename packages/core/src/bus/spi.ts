@@ -127,8 +127,8 @@ export interface ISPIBus {
   endTransaction(): void;
 
   // --- Device accessor (automatic CS) ---
-  /** Get a device handle for the given chip-select pin. CS is managed automatically. */
-  device(chipSelect: any): ISPIDevice;
+  /** Get a device handle for the given chip-select pin alias from the board package. CS is managed automatically. */
+  device(chipSelect: BasePin): ISPIDevice;
 
   // --- Error handling ---
   /** Register a global error handler for all operations. */

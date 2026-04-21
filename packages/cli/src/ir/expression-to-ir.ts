@@ -3,7 +3,8 @@ import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { inferKindByName } from "./typecode-symbols";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes } from "./build-ir-state";
+import { parsePinNumber } from "./peripheral-usage";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement } from "./statement-to-ir";
 import { escapeCppKeyword } from "../utils/strings";
@@ -640,28 +641,27 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // Also handles nested chains like UART0.write.line() -> receiver: "UART0", method: "write.line"
       const chainInfo = extractRootAndChain(expr.expression);
       if (chainInfo) {
+        const fullMethod = chainInfo.chain.length > 0
+          ? chainInfo.chain.join('.')
+          : method;
         const kind = inferKindByName(chainInfo.root);
-        if (kind !== 'unknown') {
-          // Build the full method path (e.g., "write.line" from UART0.write.line)
-          const fullMethod = chainInfo.chain.length > 0
-            ? chainInfo.chain.join('.')
-            : method;
-          return {
-            kind: "typecode-call",
-            receiver: chainInfo.root,
-            receiverKind: kind,
-            method: fullMethod,
-            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-          };
-        }
-        // Pin alias resolution: led.toggle() â†’ LED.toggle()
+        const pinMethodCandidates = new Set([
+          'asInput', 'asInputPullUp', 'asOutput',
+          'pullup', 'pulldown', 'float',
+          'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh',
+          'offFalling', 'offRising', 'offChange', 'offAll',
+          'read', 'high', 'low', 'toggle', 'write', 'pulse',
+          'isHigh', 'isLow', 'getMode', 'setMode', 'inputPullUp', 'inputPullDown',
+          'tone', 'toneFor', 'noTone',
+          'readAnalog', 'readVoltage', 'getResolution', 'setReference',
+          'setDutyCycle', 'setFrequency',
+        ]);
+
+        // Pin alias resolution: led.toggle() → LED.toggle()
         const aliasTarget = activePinAliases.get(chainInfo.root);
         if (aliasTarget) {
           const aliasKind = inferKindByName(aliasTarget);
           if (aliasKind !== 'unknown') {
-            const fullMethod = chainInfo.chain.length > 0
-              ? chainInfo.chain.join('.')
-              : method;
             return {
               kind: "typecode-call",
               receiver: aliasTarget,
@@ -670,6 +670,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
               args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
             };
           }
+        }
+
+        if (kind !== 'unknown' || pinMethodCandidates.has(fullMethod)) {
+          return {
+            kind: "typecode-call",
+            receiver: chainInfo.root,
+            receiverKind: kind,
+            method: fullMethod,
+            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
         }
         // Bus alias resolution: i2c.device() â†’ I2C0.device()
         const busAlias = activeBusAliases.get(chainInfo.root);
@@ -763,8 +773,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         calleeText = `this->${methodName}`;
       } else if (ts.isIdentifier(receiver) && receiver.text === "Math") {
         calleeText = `std::${methodName}`;
-      } else if (ts.isIdentifier(receiver) && (hoistedNestedClasses.some(c => c.name === receiver.text) || nestedClassAliases.has(receiver.text))) {
-        // Static method call on a hoisted class: use :: with mangled name
+      } else if (ts.isIdentifier(receiver) && (hoistedNestedClasses.some(c => c.name === receiver.text) || nestedClassAliases.has(receiver.text) || topLevelClassNames.has(receiver.text))) {
+        // Static method call on a hoisted or top-level class: use :: with resolved name
         const resolvedName = nestedClassAliases.get(receiver.text) ?? receiver.text;
         calleeText = `${resolvedName}::${methodName}`;
       } else if (ts.isIdentifier(receiver) && activeNamespaceNames.has(receiver.text)) {
@@ -788,6 +798,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             if (chainMethod && (chainMethod.returnType as string).endsWith("*")) {
               accessor = "->";
             }
+          } else if (ts.isIdentifier(innerReceiver) && topLevelClassNames.has(innerReceiver.text)) {
+            // Static method call on a top-level class returning a pointer
+            const cls = topLevelClasses.get(innerReceiver.text);
+            const chainMethod = cls?.methods.find(m => m.name === innerMethodName);
+            if (chainMethod && ((chainMethod.returnType as string).endsWith("*") || (chainMethod.returnType as string) === innerReceiver.text)) {
+              accessor = "->";
+            }
           }
         }
         calleeText = `${objText}${accessor}${methodName}`;
@@ -796,7 +813,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const rawText = expr.expression.getText();
       calleeText = nestedFunctionAliases.get(rawText) ?? rawText;
     }
-    const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
+    const argIRs = expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars));
+    // Preserve structured IR when args contain callbacks/lambdas so the emitter can hoist them
+    if (argIRs.some(arg => arg.kind === "callback" || arg.kind === "lambda")) {
+      return { kind: "method-call", callee: calleeText, args: argIRs } as any;
+    }
+    const argsText = argIRs.map(arg => renderExprAsText(arg)).join(", ");
     return { kind: "raw", value: `${calleeText}(${argsText})` };
   }
 
@@ -892,6 +914,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return { kind: "boolean", value: expr.kind === ts.SyntaxKind.TrueKeyword };
   }
 
+  // Handle null keyword
+  if (expr.kind === ts.SyntaxKind.NullKeyword) {
+    return { kind: "raw", value: "nullptr" };
+  }
+
   if (ts.isIdentifier(expr)) {
     const pinAlias = activePinAliases.get(expr.text);
     if (pinAlias) {
@@ -900,6 +927,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     const busAlias = activeBusAliases.get(expr.text);
     if (busAlias) {
       return { kind: "identifier", value: busAlias.receiver };
+    }
+    // Resolve typecode pin identifiers to their numeric values when used as plain values
+    const kind = inferKindByName(expr.text);
+    if (kind === 'digital' || kind === 'interrupt' || kind === 'pwm' || kind === 'analog-input') {
+      const pinNum = parsePinNumber(expr.text);
+      if (pinNum !== null) {
+        return { kind: "number", value: pinNum };
+      }
     }
     return { kind: "identifier", value: expr.text };
   }

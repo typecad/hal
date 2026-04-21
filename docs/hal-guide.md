@@ -87,11 +87,11 @@ Analog pins read continuous voltage values (0-1023 on 10-bit ADC).
 ```typescript
 import { A0, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
+const serial = UART0.begin(9600);
 
 while (true) {
   const value = A0.readAnalog();  // 0-1023 on Uno
-  UART0.println(value.toString());
+  serial.println(value.toString());
   delay(500);
 }
 ```
@@ -155,13 +155,13 @@ UART provides serial communication for debugging and data transfer.
 import { UART0, delay } from '@typecode';
 
 // Begin serial at 9600 baud
-UART0.begin(9600);
+const serial = UART0.begin(9600);
 
 let counter = 0;
 
 while (true) {
-  UART0.print("Count: ");
-  UART0.println(counter.toString());
+  serial.print("Count: ");
+  serial.println(counter.toString());
   counter++;
   delay(1000);
 }
@@ -172,12 +172,12 @@ while (true) {
 ```typescript
 import { UART0 } from '@typecode';
 
-UART0.begin(9600);
+const serial = UART0.begin(9600);
 
 while (true) {
-  if (UART0.available() > 0) {
-    const byte = UART0.read();  // Read single byte
-    UART0.write(byte);          // Echo back
+  if (serial.available() > 0) {
+    const byte = serial.read();  // Read single byte
+    serial.write(byte);          // Echo back
   }
 }
 ```
@@ -206,7 +206,7 @@ I2C is a two-wire protocol for communicating with sensors and other devices.
 import { I2C0 } from '@typecode';
 
 // Initialize I2C as master
-I2C0.begin();
+const i2c = I2C0.begin();
 ```
 
 ### Reading from a Sensor
@@ -214,14 +214,14 @@ I2C0.begin();
 ```typescript
 import { I2C0, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
-I2C0.begin();
+const serial = UART0.begin(9600);
+const i2c = I2C0.begin();
 
 const SENSOR_ADDR = 0x76;
 
 while (true) {
   // Read 2 bytes from register 0xFA
-  const data = I2C0.device(SENSOR_ADDR).readBytes(0xFA, 2);
+  const data = i2c.device(SENSOR_ADDR).readBytes(0xFA, 2);
   
   const msb = data[0];
   const lsb = data[1];
@@ -249,15 +249,15 @@ if (bus) {
 ```typescript
 import { I2C0 } from '@typecode';
 
-I2C0.begin();
+const i2c = I2C0.begin();
 
 const DEVICE_ADDR = 0x40;
 
 // Write single byte to register
-I2C0.device(DEVICE_ADDR).writeByte(0x01, 0x00);
+i2c.device(DEVICE_ADDR).writeByte(0x01, 0x00);
 
 // Write multiple bytes
-I2C0.device(DEVICE_ADDR).writeBytes(0x02, new Uint8Array([0x10, 0x20, 0x30]));
+i2c.device(DEVICE_ADDR).writeBytes(0x02, new Uint8Array([0x10, 0x20, 0x30]));
 ```
 
 ---
@@ -287,7 +287,7 @@ const chipSelect = D10.asOutput(true);
 ```typescript
 import { SPI0, D10, UART0, delay } from '@typecode';
 
-UART0.begin(9600);
+const serial = UART0.begin(9600);
 const spi = SPI0.begin();
 spi.setFrequency(1_000_000);
 spi.setMode(0);
@@ -296,7 +296,7 @@ const chipSelect = D10.asOutput(true);
 
 while (true) {
   const response = spi.device(chipSelect).transfer(0xAA);
-  UART0.println(`Received: 0x${response.toString(16)}`);
+  serial.println(`Received: 0x${response.toString(16)}`);
   delay(1000);
 }
 ```
@@ -374,7 +374,7 @@ while (true) {
 ```typescript
 import { UART0, millis, delay } from '@typecode';
 
-UART0.begin(9600);
+const serial = UART0.begin(9600);
 
 const startTime = millis();
 
@@ -394,8 +394,8 @@ while (true) {
 | Digital I/O | `D2, LED, HIGH, LOW` | `.asOutput()`, `.asInput()`, `.asInputPullUp()`, `.read()`, `.high()`, `.low()`, `.toggle()` |
 | Analog | `A0` | `.readAnalog()`, `.readVoltage()` |
 | PWM | `D9` (PWM pin) | `.asOutput()`, `.pwm(percent)` |
-| UART | `UART0` | `.begin(baud)`, `.end()`, `.print()`, `.println()`, `.read()`, `.available()`, `.take()`, `.release()` |
-| I2C | `I2C0` | `.begin()`, `.end()`, `.device(addr).readBytes()`, `.device(addr).writeBytes()`, `.take()`, `.release()` |
+| UART | `UART0` | `const serial = UART0.begin(baud)`, `.end()`, `.print()`, `.println()`, `.read()`, `.available()`, `.take()`, `.release()` |
+| I2C | `I2C0` | `const i2c = I2C0.begin()`, `.end()`, `.device(addr).readBytes()`, `.device(addr).writeBytes()`, `.take()`, `.release()` |
 | SPI | `SPI0, D10` | `const spi = SPI0.begin()`, `.setFrequency()`, `.setMode()`, `.device(cs).transfer()`, `.take()`, `.release()` |
 | Interrupts | `D2` (interrupt pin) | `.asInputPullUp()`, `.onRising()`, `.onFalling()`, `.onChange()` |
 

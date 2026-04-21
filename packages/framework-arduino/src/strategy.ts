@@ -187,6 +187,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   normalizeCppType(typeName: string): string {
     if (typeName === "auto") return "int";
     if (typeName === "std::string") return "const char*";
+    if (typeName === "IInputModePin" || typeName === "IOutputModePin" || typeName === "IPin") return "int";
     const fnTypeMatch = typeName.match(/^std::function<\s*([^()<>]+)\((.*)\)\s*>$/);
     if (fnTypeMatch) {
       const returnType = fnTypeMatch[1].trim();
@@ -392,6 +393,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   needsStdString(): boolean { return false; }
   needsStdVector(): boolean { return false; }
   needsStdExcept(): boolean { return false; }
+  needsStdFunction(): boolean { return false; }
   mathHeader(): string { return "<math.h>"; }
   needsVectorOverload(): boolean { return false; }
 

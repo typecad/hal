@@ -84,6 +84,8 @@ export type ExpressionIR =
   | { kind: "callback"; params: string[]; statements: StatementIR[]; sourceSpan: SourceSpan; debounceMs?: number; isInterruptHandler?: boolean }
   /** Arrow function or lambda expression: (params) => expression | { statements } */
   | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean }
+  /** A general method call with structured argument IR (preserves callbacks/lambdas). */
+  | { kind: "method-call"; callee: string; args: ExpressionIR[] }
   /** Parenthesized expression: preserves explicit grouping from TS source (e.g. `(2+3)*4`). */
   | { kind: "paren"; inner: ExpressionIR };
 

@@ -98,6 +98,25 @@ describe('GPIO Object-Creation Pattern', () => {
         'digitalRead(3)',
       ]);
     });
+
+    it('emits pinMode INPUT_PULLUP for a pin parameter and resolves alias for btn.read()', () => {
+      const result = transpile(`
+        import { D2 } from '@typecode/board-arduino-uno/arduino';
+        function startButton(pin: { asInputPullUp(): any; onFalling(handler: () => void): void }) {
+          const btn = pin.asInputPullUp();
+          pin.onFalling(() => {});
+          const val = btn.read();
+          return val;
+        }
+        startButton(D2);
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(pin, INPUT_PULLUP)',
+        'attachInterrupt(digitalPinToInterrupt(pin)',
+        'digitalRead(btn)',
+      ]);
+    });
   });
 
   describe('Multiple pins with aliases', () => {

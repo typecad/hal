@@ -849,28 +849,27 @@ export function tryRenderTypecodeCallStatement(
 
     // Handle direct pin configuration methods
     if (method === 'pullup') {
-      const kind = inferKindByName(receiver);
-      if (kind === 'unknown') return undefined;
       const pin = pinArg(receiver, boardConstants);
       return `pinMode(${pin}, INPUT_PULLUP)`;
     }
     if (method === 'pulldown') {
-      const kind = inferKindByName(receiver);
-      if (kind === 'unknown') return undefined;
       const pin = pinArg(receiver, boardConstants);
       return `pinMode(${pin}, INPUT_PULLDOWN)`;
     }
     if (method === 'float') {
-      const kind = inferKindByName(receiver);
-      if (kind === 'unknown') return undefined;
       const pin = pinArg(receiver, boardConstants);
       return `pinMode(${pin}, INPUT)`;
+    }
+
+    if (method === 'asInput' || method === 'asInputPullUp' || method === 'asOutput') {
+      const kind = inferKindByName(receiver) === 'unknown' ? 'digital' : inferKindByName(receiver);
+      return renderArduinoBuiltin(receiver, kind, method, args, renderArg, boardConstants);
     }
 
     // Handle flat interrupt API
     if (method === 'onFalling' || method === 'onRising' || method === 'onChange' || method === 'onLow' || method === 'onHigh') {
       const kind = inferKindByName(receiver);
-      if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt') return undefined;
+      if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt' && kind !== 'unknown') return undefined;
       const pin = pinArg(receiver, boardConstants);
       const handler = args[0] ? renderArg(args[0]) : '';
       const modeMap: Record<string, string> = {
@@ -886,14 +885,16 @@ export function tryRenderTypecodeCallStatement(
 
     if (method === 'offRising' || method === 'offFalling' || method === 'offChange' || method === 'offAll') {
       const kind = inferKindByName(receiver);
-      if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt') return undefined;
+      if (kind !== 'digital' && kind !== 'pwm' && kind !== 'interrupt' && kind !== 'unknown') return undefined;
       const pin = pinArg(receiver, boardConstants);
       return `detachInterrupt(digitalPinToInterrupt(${pin}))`;
     }
 
     // Fall through to general pin method handling
-    const kind = inferKindByName(receiver);
-    if (kind === 'unknown') return undefined;
+    let kind = inferKindByName(receiver);
+    if (kind === 'unknown') {
+      kind = 'digital';
+    }
     return renderArduinoBuiltin(receiver, kind, method, args, renderArg, boardConstants);
   } else if (parts.length === 3 && (parts[0] === 'Board' || parts[0] === 'Pins')) {
     // e.g. "Board.A0.read"  "Pins.D13.high"
