@@ -327,7 +327,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
           expr,
           strategy,
           _currentScopeState,
-          (expression) => renderExpression(expression, undefined, strategy),
+          (expression: unknown) => renderExpression(expression as ExpressionIR, undefined, strategy),
           _currentPointerVarTypes,
           _currentKnownFunctionReturnTypes,
         );
@@ -366,7 +366,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
           expr.expression,
           strategy,
           _currentScopeState,
-          (expression) => renderExpression(expression, undefined, strategy),
+          (expression: unknown) => renderExpression(expression as ExpressionIR, undefined, strategy),
           _currentPointerVarTypes,
           _currentKnownFunctionReturnTypes,
         );
@@ -628,7 +628,7 @@ function transformConsoleCall(
         firstArg,
         strategy,
         scopeState,
-        (expression) => renderExpression(expression, undefined, strategy),
+        (expression: unknown) => renderExpression(expression as ExpressionIR, undefined, strategy),
         pointerVarTypes,
         knownFunctionReturnTypes,
       );
@@ -1237,11 +1237,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         statement.initializer,
         strategy,
         scopeState,
-        (expression) => renderExpression(expression, undefined, strategy),
+        (expression: unknown) => renderExpression(expression as ExpressionIR, undefined, strategy),
         pointerVarTypes,
         knownFunctionReturnTypes,
       );
-
       if (snprintfRender) {
         emitSnprintfLines(statement.name, snprintfRender, { declareBuffer: true });
         recordVariableType(statement, scopeState);
@@ -1262,7 +1261,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         statement.value,
         strategy,
         scopeState,
-        (expression) => renderExpression(expression, undefined, strategy),
+        (expression: unknown) => renderExpression(expression as ExpressionIR, undefined, strategy),
         pointerVarTypes,
         knownFunctionReturnTypes,
       );
@@ -1282,7 +1281,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           firstArg,
           strategy,
           scopeState,
-          (expression) => renderExpression(expression, undefined, strategy),
+          (expression: unknown) => renderExpression(expression as ExpressionIR, undefined, strategy),
           pointerVarTypes,
           knownFunctionReturnTypes,
         );
@@ -1314,7 +1313,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
             firstArg,
             strategy,
             scopeState,
-            (expression) => renderExpression(expression, undefined, strategy),
+            (expression: unknown) => renderExpression(expression as ExpressionIR, undefined, strategy),
             pointerVarTypes,
             knownFunctionReturnTypes,
           );

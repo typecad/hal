@@ -57,10 +57,14 @@
     "chalk": "^4.1.2",
     "typescript": "^5.7.3",
     "@typecode/core": "^0.1.0",
-    "@typecode/framework-arduino": "^0.1.0",
+    "@typecode/hal": "^0.1.0",
     "@typecode/expect": "^0.1.0"
   },
+  "peerDependencies": {
+    "@typecode/framework-arduino": "^0.1.0"
+  },
   "devDependencies": {
+    "@typecode/framework-arduino": "^0.1.0",
     "@types/node": "^22.10.7"
   },
   "license": "MIT"

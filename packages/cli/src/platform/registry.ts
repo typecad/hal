@@ -12,12 +12,26 @@ import { ArduinoStrategy } from "./arduino-strategy";
 
 // Store references to strategy instances for cache management
 const _genericStrategy = new GenericStrategy();
-const _arduinoStrategy = new ArduinoStrategy();
+let _arduinoStrategy: PlatformStrategy | undefined;
+let _arduinoStrategyLoaded = false;
 
 const _registry = new Map<string, PlatformStrategy>([
   ["generic", _genericStrategy],
-  ["arduino", _arduinoStrategy],
 ]);
+
+function ensureArduinoStrategy(): void {
+  if (_arduinoStrategyLoaded) return;
+  _arduinoStrategyLoaded = true;
+
+  try {
+    const strategy = new ArduinoStrategy();
+    _arduinoStrategy = strategy;
+    _registry.set("arduino", strategy);
+  } catch {
+    // Arduino framework package not installed or unavailable.
+    // Fallback to generic strategy for generic targets.
+  }
+}
 
 /**
  * Register a custom platform strategy.  Board packages call this from
@@ -37,6 +51,9 @@ export function registerPlatformStrategy(strategy: PlatformStrategy): void {
  * Falls back to the "generic" strategy if no match is found.
  */
 export function resolveStrategy(target: string): PlatformStrategy {
+  if (target === "arduino") {
+    ensureArduinoStrategy();
+  }
   return _registry.get(target) ?? _registry.get("generic")!;
 }
 
@@ -45,5 +62,7 @@ export function resolveStrategy(target: string): PlatformStrategy {
  * Should be called between transpilations to ensure fresh profile resolution.
  */
 export function clearArduinoProfileCache(): void {
-  _arduinoStrategy.clearProfileCache();
+  if (_arduinoStrategy && typeof (_arduinoStrategy as any).clearProfileCache === "function") {
+    (_arduinoStrategy as any).clearProfileCache();
+  }
 }

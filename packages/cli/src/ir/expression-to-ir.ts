@@ -114,7 +114,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         }
       }
     }
-    if (memberName === "length") {
+    if (memberName === "length" || memberName === "size") {
       const resolved = resolveLengthProperty(receiverNode, objectText);
       // Filtered length vars use a special prefix — extract the variable name
       if (resolved.startsWith("__FILTERED_LEN__")) {
@@ -706,7 +706,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           };
         }
 
-        if (pinMethodCandidates.has(fullMethod)) {
+        // Unknown symbols may still represent a pin-like object that is passed in
+        // as a parameter. Recognize the pin configuration and interrupt APIs
+        // even when the identifier cannot be resolved statically.
+        const safePinMethods = new Set([
+          'asInput', 'asInputPullUp', 'asOutput',
+          'pullup', 'pulldown', 'float',
+          'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh',
+          'offFalling', 'offRising', 'offChange', 'offAll',
+        ]);
+        if (safePinMethods.has(fullMethod)) {
           return {
             kind: "typecode-call",
             receiver: chainInfo.root,
@@ -715,7 +724,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
           };
         }
-        // Bus alias resolution: i2c.device() â†’ I2C0.device()
+
+        // Do not assume unknown symbols with pin-like method names are digital pins.
+        // This prevents class/static methods like AddrLib.read() from being miscompiled.
+        // Bus alias resolution: i2c.device() → I2C0.device()
         const busAlias = activeBusAliases.get(chainInfo.root);
         if (busAlias) {
           const fullMethod = chainInfo.chain.length > 0

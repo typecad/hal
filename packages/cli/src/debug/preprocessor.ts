@@ -10,12 +10,38 @@ import ts from 'typescript';
 import path from 'node:path';
 import type { BreakpointMap, CapturedVariable, RichBreakpoint } from './types';
 import { getBreakpointsForFile } from './breakpoint-loader';
-import {
-  generateSerialInitCode,
-  generateBreakpointCode as generateArduinoBreakpointCode,
-  generateLogpointCode as generateArduinoLogpointCode,
-  type LogMessagePart,
-} from '@typecode/framework-arduino';
+import { loadFrameworkPackage } from '../framework-package';
+
+type LogMessagePart = { type: 'text' | 'variable'; value: string };
+
+const DEBUG_FRAMEWORK_PACKAGE = '@typecode/framework-arduino';
+
+function getArduinoDebugPackage(): any {
+  return loadFrameworkPackage(DEBUG_FRAMEWORK_PACKAGE, process.cwd());
+}
+
+function generateSerialInitCode(): string[] {
+  return getArduinoDebugPackage().generateSerialInitCode();
+}
+
+function generateArduinoBreakpointCode(
+  fileName: string,
+  lineNum: number,
+  originalLine: string,
+  variables: CapturedVariable[],
+  breakpoint: RichBreakpoint,
+): string[] {
+  return getArduinoDebugPackage().generateBreakpointCode(fileName, lineNum, originalLine, variables, breakpoint);
+}
+
+function generateArduinoLogpointCode(
+  fileName: string,
+  lineNum: number,
+  parts: LogMessagePart[],
+  variables: CapturedVariable[],
+): string[] {
+  return getArduinoDebugPackage().generateLogpointCode(fileName, lineNum, parts, variables);
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -128,7 +154,7 @@ function generateBreakpointCode(
   // Normalize condition for C++ (convert === to ==, strip semicolons, etc.)
   const normalizedCondition = bp.condition ? normalizeCondition(bp.condition) : undefined;
 
-  return generateArduinoBreakpointCode(fileName, lineNum, originalLine, variables, normalizedCondition);
+  return generateArduinoBreakpointCode(fileName, lineNum, originalLine, variables, bp);
 }
 
 /**

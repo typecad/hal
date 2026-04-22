@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "toolchainFingerprint": "3102d8f1bbed84f4",
+  "toolchainFingerprint": "47224e8e70489881",
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
     "C:\\typecad\\typecode\\demo\\src\\sketch.ts": {
@@ -17,6 +17,6 @@
       ]
     }
   },
-  "createdAt": 1776781125711,
-  "updatedAt": 1776781127154
+  "createdAt": 1776827290822,
+  "updatedAt": 1776827292036
 }

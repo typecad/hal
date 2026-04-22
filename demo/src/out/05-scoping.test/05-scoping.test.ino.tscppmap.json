@@ -4,9 +4,9 @@
   "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
   "entries": [
     {
-      "generatedStartLine": 5,
+      "generatedStartLine": 12,
       "generatedStartColumn": 1,
-      "generatedEndLine": 5,
+      "generatedEndLine": 12,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -21,9 +21,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 6,
+      "generatedStartLine": 13,
       "generatedStartColumn": 1,
-      "generatedEndLine": 6,
+      "generatedEndLine": 13,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -38,9 +38,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 7,
+      "generatedStartLine": 14,
       "generatedStartColumn": 1,
-      "generatedEndLine": 7,
+      "generatedEndLine": 14,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -55,9 +55,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 8,
+      "generatedStartLine": 15,
       "generatedStartColumn": 1,
-      "generatedEndLine": 8,
+      "generatedEndLine": 15,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -72,9 +72,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 9,
+      "generatedStartLine": 16,
       "generatedStartColumn": 1,
-      "generatedEndLine": 9,
+      "generatedEndLine": 16,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -89,9 +89,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 12,
+      "generatedStartLine": 19,
       "generatedStartColumn": 1,
-      "generatedEndLine": 12,
+      "generatedEndLine": 19,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -106,9 +106,9 @@
       "symbolName": "setup"
     },
     {
-      "generatedStartLine": 14,
+      "generatedStartLine": 21,
       "generatedStartColumn": 1,
-      "generatedEndLine": 14,
+      "generatedEndLine": 21,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -122,9 +122,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 15,
+      "generatedStartLine": 22,
       "generatedStartColumn": 1,
-      "generatedEndLine": 15,
+      "generatedEndLine": 22,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -138,9 +138,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 16,
+      "generatedStartLine": 23,
       "generatedStartColumn": 1,
-      "generatedEndLine": 16,
+      "generatedEndLine": 23,
       "generatedEndColumn": 57,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -154,9 +154,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 17,
+      "generatedStartLine": 24,
       "generatedStartColumn": 1,
-      "generatedEndLine": 17,
+      "generatedEndLine": 24,
       "generatedEndColumn": 54,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -170,9 +170,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 18,
+      "generatedStartLine": 25,
       "generatedStartColumn": 1,
-      "generatedEndLine": 18,
+      "generatedEndLine": 25,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -186,9 +186,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 19,
+      "generatedStartLine": 26,
       "generatedStartColumn": 1,
-      "generatedEndLine": 19,
+      "generatedEndLine": 26,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -202,9 +202,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 20,
+      "generatedStartLine": 27,
       "generatedStartColumn": 1,
-      "generatedEndLine": 20,
+      "generatedEndLine": 27,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -218,9 +218,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 21,
+      "generatedStartLine": 28,
       "generatedStartColumn": 1,
-      "generatedEndLine": 21,
+      "generatedEndLine": 28,
       "generatedEndColumn": 55,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -234,9 +234,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 22,
+      "generatedStartLine": 29,
       "generatedStartColumn": 1,
-      "generatedEndLine": 22,
+      "generatedEndLine": 29,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -250,9 +250,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 23,
+      "generatedStartLine": 30,
       "generatedStartColumn": 1,
-      "generatedEndLine": 23,
+      "generatedEndLine": 30,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -266,9 +266,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 24,
+      "generatedStartLine": 31,
       "generatedStartColumn": 1,
-      "generatedEndLine": 24,
+      "generatedEndLine": 31,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -282,9 +282,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 25,
+      "generatedStartLine": 32,
       "generatedStartColumn": 1,
-      "generatedEndLine": 25,
+      "generatedEndLine": 32,
       "generatedEndColumn": 63,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -298,9 +298,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 26,
+      "generatedStartLine": 33,
       "generatedStartColumn": 1,
-      "generatedEndLine": 26,
+      "generatedEndLine": 33,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -314,9 +314,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 27,
+      "generatedStartLine": 34,
       "generatedStartColumn": 1,
-      "generatedEndLine": 27,
+      "generatedEndLine": 34,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -330,9 +330,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 28,
+      "generatedStartLine": 35,
       "generatedStartColumn": 1,
-      "generatedEndLine": 28,
+      "generatedEndLine": 35,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -346,9 +346,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 29,
+      "generatedStartLine": 36,
       "generatedStartColumn": 1,
-      "generatedEndLine": 29,
+      "generatedEndLine": 36,
       "generatedEndColumn": 57,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -362,9 +362,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 30,
+      "generatedStartLine": 37,
       "generatedStartColumn": 1,
-      "generatedEndLine": 30,
+      "generatedEndLine": 37,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -378,9 +378,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 31,
+      "generatedStartLine": 38,
       "generatedStartColumn": 1,
-      "generatedEndLine": 31,
+      "generatedEndLine": 38,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -394,9 +394,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 32,
+      "generatedStartLine": 39,
       "generatedStartColumn": 1,
-      "generatedEndLine": 32,
+      "generatedEndLine": 39,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -410,9 +410,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 33,
+      "generatedStartLine": 40,
       "generatedStartColumn": 1,
-      "generatedEndLine": 33,
+      "generatedEndLine": 40,
       "generatedEndColumn": 59,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -426,9 +426,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 34,
+      "generatedStartLine": 41,
       "generatedStartColumn": 1,
-      "generatedEndLine": 34,
+      "generatedEndLine": 41,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -442,9 +442,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 35,
+      "generatedStartLine": 42,
       "generatedStartColumn": 1,
-      "generatedEndLine": 35,
+      "generatedEndLine": 42,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -458,9 +458,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 36,
+      "generatedStartLine": 43,
       "generatedStartColumn": 1,
-      "generatedEndLine": 36,
+      "generatedEndLine": 43,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -474,9 +474,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 37,
+      "generatedStartLine": 44,
       "generatedStartColumn": 1,
-      "generatedEndLine": 37,
+      "generatedEndLine": 44,
       "generatedEndColumn": 36,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -490,9 +490,9 @@
       "nodeKind": "typecode-call"
     },
     {
-      "generatedStartLine": 38,
+      "generatedStartLine": 45,
       "generatedStartColumn": 1,
-      "generatedEndLine": 38,
+      "generatedEndLine": 45,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -506,9 +506,9 @@
       "nodeKind": "while"
     },
     {
-      "generatedStartLine": 40,
+      "generatedStartLine": 47,
       "generatedStartColumn": 1,
-      "generatedEndLine": 40,
+      "generatedEndLine": 47,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -522,9 +522,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 44,
+      "generatedStartLine": 51,
       "generatedStartColumn": 1,
-      "generatedEndLine": 44,
+      "generatedEndLine": 51,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -539,9 +539,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 46,
+      "generatedStartLine": 53,
       "generatedStartColumn": 1,
-      "generatedEndLine": 46,
+      "generatedEndLine": 53,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -555,9 +555,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 47,
+      "generatedStartLine": 54,
       "generatedStartColumn": 1,
-      "generatedEndLine": 47,
+      "generatedEndLine": 54,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -571,9 +571,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 48,
+      "generatedStartLine": 55,
       "generatedStartColumn": 1,
-      "generatedEndLine": 48,
+      "generatedEndLine": 55,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -587,9 +587,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 49,
+      "generatedStartLine": 56,
       "generatedStartColumn": 1,
-      "generatedEndLine": 49,
+      "generatedEndLine": 56,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -603,9 +603,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 52,
+      "generatedStartLine": 59,
       "generatedStartColumn": 1,
-      "generatedEndLine": 52,
+      "generatedEndLine": 59,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -620,9 +620,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 54,
+      "generatedStartLine": 61,
       "generatedStartColumn": 1,
-      "generatedEndLine": 54,
+      "generatedEndLine": 61,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -636,9 +636,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 55,
+      "generatedStartLine": 62,
       "generatedStartColumn": 1,
-      "generatedEndLine": 55,
+      "generatedEndLine": 62,
       "generatedEndColumn": 4,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -652,9 +652,9 @@
       "nodeKind": "block"
     },
     {
-      "generatedStartLine": 56,
+      "generatedStartLine": 63,
       "generatedStartColumn": 1,
-      "generatedEndLine": 56,
+      "generatedEndLine": 63,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -668,9 +668,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 59,
+      "generatedStartLine": 66,
       "generatedStartColumn": 1,
-      "generatedEndLine": 59,
+      "generatedEndLine": 66,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -684,9 +684,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 62,
+      "generatedStartLine": 69,
       "generatedStartColumn": 1,
-      "generatedEndLine": 62,
+      "generatedEndLine": 69,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -701,9 +701,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 64,
+      "generatedStartLine": 71,
       "generatedStartColumn": 1,
-      "generatedEndLine": 64,
+      "generatedEndLine": 71,
       "generatedEndColumn": 71,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -717,9 +717,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 65,
+      "generatedStartLine": 72,
       "generatedStartColumn": 1,
-      "generatedEndLine": 65,
+      "generatedEndLine": 72,
       "generatedEndColumn": 30,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -733,9 +733,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 66,
+      "generatedStartLine": 73,
       "generatedStartColumn": 1,
-      "generatedEndLine": 66,
+      "generatedEndLine": 73,
       "generatedEndColumn": 30,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -749,9 +749,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 67,
+      "generatedStartLine": 74,
       "generatedStartColumn": 1,
-      "generatedEndLine": 67,
+      "generatedEndLine": 74,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -765,9 +765,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 70,
+      "generatedStartLine": 77,
       "generatedStartColumn": 1,
-      "generatedEndLine": 70,
+      "generatedEndLine": 77,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -782,9 +782,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 72,
+      "generatedStartLine": 79,
       "generatedStartColumn": 1,
-      "generatedEndLine": 72,
+      "generatedEndLine": 79,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -798,9 +798,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 73,
+      "generatedStartLine": 80,
       "generatedStartColumn": 1,
-      "generatedEndLine": 73,
+      "generatedEndLine": 80,
       "generatedEndColumn": 60,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -814,9 +814,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 74,
+      "generatedStartLine": 81,
       "generatedStartColumn": 1,
-      "generatedEndLine": 74,
+      "generatedEndLine": 81,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -830,9 +830,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 75,
+      "generatedStartLine": 82,
       "generatedStartColumn": 1,
-      "generatedEndLine": 75,
+      "generatedEndLine": 82,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -846,9 +846,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 78,
+      "generatedStartLine": 85,
       "generatedStartColumn": 1,
-      "generatedEndLine": 78,
+      "generatedEndLine": 85,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -863,9 +863,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 80,
+      "generatedStartLine": 87,
       "generatedStartColumn": 1,
-      "generatedEndLine": 80,
+      "generatedEndLine": 87,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -879,9 +879,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 81,
+      "generatedStartLine": 88,
       "generatedStartColumn": 1,
-      "generatedEndLine": 81,
+      "generatedEndLine": 88,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -895,10 +895,10 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 82,
+      "generatedStartLine": 89,
       "generatedStartColumn": 1,
-      "generatedEndLine": 82,
-      "generatedEndColumn": 27,
+      "generatedEndLine": 89,
+      "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
         "startOffset": 694,
@@ -911,9 +911,73 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 83,
+      "generatedStartLine": 90,
       "generatedStartColumn": 1,
-      "generatedEndLine": 83,
+      "generatedEndLine": 90,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
+        "startOffset": 694,
+        "endOffset": 701,
+        "startLine": 27,
+        "startColumn": 31,
+        "endLine": 27,
+        "endColumn": 38
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 91,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 91,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
+        "startOffset": 694,
+        "endOffset": 701,
+        "startLine": 27,
+        "startColumn": 31,
+        "endLine": 27,
+        "endColumn": 38
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 92,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 92,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
+        "startOffset": 694,
+        "endOffset": 701,
+        "startLine": 27,
+        "startColumn": 31,
+        "endLine": 27,
+        "endColumn": 38
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 93,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 93,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
+        "startOffset": 694,
+        "endOffset": 701,
+        "startLine": 27,
+        "startColumn": 31,
+        "endLine": 27,
+        "endColumn": 38
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 94,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 94,
       "generatedEndColumn": 43,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",
@@ -927,9 +991,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 86,
+      "generatedStartLine": 97,
       "generatedStartColumn": 1,
-      "generatedEndLine": 86,
+      "generatedEndLine": 97,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\05-scoping.test.ts",

@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "packages/core",
+    "packages/hal",
     "packages/framework-avr",
     "packages/framework-arduino",
     "packages/board-arduino-uno",

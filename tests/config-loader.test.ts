@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { findConfigFile, parseConfigFile, loadTypecodeConfig } from "../packages/cli/src/config-loader";
+import { findConfigFile, parseConfigFile, loadTypecodeConfig, generateVirtualTypeDeclaration } from "../packages/cli/src/config-loader";
 
 const tempDirs: string[] = [];
 
@@ -163,6 +163,32 @@ describe("config-loader", () => {
       const result = loadTypecodeConfig(dir);
       expect(result).toBeDefined();
       expect(result!.board).toBe("@typecode/board-arduino-uno");
+    });
+
+    it("generates typecode-env.d.ts with volatile helper declaration", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+      tempDirs.push(dir);
+
+      const configPath = path.join(dir, "typecode.config.ts");
+      fs.writeFileSync(
+        configPath,
+        [
+          "const config = {",
+          "  board: '@typecode/board-arduino-uno',",
+          "  fqbn: 'arduino:avr:uno',",
+          "};",
+          "export default config;",
+        ].join("\n"),
+        "utf-8",
+      );
+
+      const config = parseConfigFile(configPath);
+      expect(config).toBeDefined();
+      generateVirtualTypeDeclaration(config!);
+
+      const envPath = path.join(dir, "typecode-env.d.ts");
+      const envContent = fs.readFileSync(envPath, "utf-8");
+      expect(envContent).toContain("declare function volatile<T>(value: T): T;");
     });
 
     it("returns undefined when no config file exists", () => {

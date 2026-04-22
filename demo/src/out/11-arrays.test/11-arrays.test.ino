@@ -170,25 +170,46 @@ void setup()
 
 int __tc_fn1()
 {
-  int arr[] = { 10, 20, 30 };
+  StaticArray<int, 3> arr;
+  arr.data[0] = 10;
+  arr.data[1] = 20;
+  arr.data[2] = 30;
+  arr.length = 3;
+  
   return arr[0];
 }
 
 int __tc_fn2()
 {
-  int arr[] = { 10, 20, 30 };
+  StaticArray<int, 3> arr;
+  arr.data[0] = 10;
+  arr.data[1] = 20;
+  arr.data[2] = 30;
+  arr.length = 3;
+  
   return arr[2];
 }
 
 int __tc_fn3()
 {
-  int arr[] = { 10, 20, 30, 40 };
-  return (sizeof(arr) / sizeof(arr[0]));
+  StaticArray<int, 4> arr;
+  arr.data[0] = 10;
+  arr.data[1] = 20;
+  arr.data[2] = 30;
+  arr.data[3] = 40;
+  arr.length = 4;
+  
+  return arr.size();
 }
 
 int __tc_fn4()
 {
-  int arr[] = { 10, 20, 30 };
+  StaticArray<int, 3> arr;
+  arr.data[0] = 10;
+  arr.data[1] = 20;
+  arr.data[2] = 30;
+  arr.length = 3;
+  
   arr[1] = 99;
   return arr[1];
 }
@@ -254,21 +275,46 @@ int __tc_fn10()
 
 int __tc_fn11()
 {
-  int a[] = { 1, 2 };
-  int b[] = { a[0], a[1], 3, 4 };
-  return (sizeof(b) / sizeof(b[0]));
+  StaticArray<int, 2> a;
+  a.data[0] = 1;
+  a.data[1] = 2;
+  a.length = 2;
+  
+  StaticArray<int, 4> b;
+  b.data[0] = a[0];
+  b.data[1] = a[1];
+  b.data[2] = 3;
+  b.data[3] = 4;
+  b.length = 4;
+  
+  return b.size();
 }
 
 int __tc_fn12()
 {
-  int a[] = { 1, 2 };
-  int b[] = { a[0], a[1], 3, 4 };
+  StaticArray<int, 2> a;
+  a.data[0] = 1;
+  a.data[1] = 2;
+  a.length = 2;
+  
+  StaticArray<int, 4> b;
+  b.data[0] = a[0];
+  b.data[1] = a[1];
+  b.data[2] = 3;
+  b.data[3] = 4;
+  b.length = 4;
+  
   return b[2];
 }
 
 int __tc_fn13()
 {
-  int data[] = { 5, 10, 15 };
+  StaticArray<int, 3> data;
+  data.data[0] = 5;
+  data.data[1] = 10;
+  data.data[2] = 15;
+  data.length = 3;
+  
   int sum = 0;
   for (const int v : data)
   {
@@ -279,7 +325,12 @@ int __tc_fn13()
 
 int __tc_fn14()
 {
-  int arr[] = { 1, 2, 3 };
+  StaticArray<int, 3> arr;
+  arr.data[0] = 1;
+  arr.data[1] = 2;
+  arr.data[2] = 3;
+  arr.length = 3;
+  
   int doubled[] = { 0, 0, 0 };
   for (int __tc_i = 0; __tc_i < 3; __tc_i++)
   {
@@ -291,7 +342,12 @@ int __tc_fn14()
 
 int __tc_fn15()
 {
-  int arr[] = { 1, 2, 3 };
+  StaticArray<int, 3> arr;
+  arr.data[0] = 1;
+  arr.data[1] = 2;
+  arr.data[2] = 3;
+  arr.length = 3;
+  
   int doubled[] = { 0, 0, 0 };
   for (int __tc_i = 0; __tc_i < 3; __tc_i++)
   {
@@ -303,7 +359,14 @@ int __tc_fn15()
 
 int __tc_fn16()
 {
-  int arr[] = { 1, 2, 3, 4, 5 };
+  StaticArray<int, 5> arr;
+  arr.data[0] = 1;
+  arr.data[1] = 2;
+  arr.data[2] = 3;
+  arr.data[3] = 4;
+  arr.data[4] = 5;
+  arr.length = 5;
+  
   int evens[] = { 0, 0, 0, 0, 0 };
   int evens__len = 0;
   for (int __tc_i = 0; __tc_i < 5; __tc_i++)
@@ -320,7 +383,14 @@ int __tc_fn16()
 
 int __tc_fn17()
 {
-  int arr[] = { 1, 2, 3, 4, 5 };
+  StaticArray<int, 5> arr;
+  arr.data[0] = 1;
+  arr.data[1] = 2;
+  arr.data[2] = 3;
+  arr.data[3] = 4;
+  arr.data[4] = 5;
+  arr.length = 5;
+  
   int evens[] = { 0, 0, 0, 0, 0 };
   int evens__len = 0;
   for (int __tc_i = 0; __tc_i < 5; __tc_i++)
@@ -337,7 +407,13 @@ int __tc_fn17()
 
 int __tc_fn18()
 {
-  int arr[] = { 1, 2, 3, 4 };
+  StaticArray<int, 4> arr;
+  arr.data[0] = 1;
+  arr.data[1] = 2;
+  arr.data[2] = 3;
+  arr.data[3] = 4;
+  arr.length = 4;
+  
   int sum = 0;
   for (int __tc_i = 0; __tc_i < 4; __tc_i++)
   {

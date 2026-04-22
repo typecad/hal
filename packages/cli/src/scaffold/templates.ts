@@ -46,7 +46,8 @@ export function generatePackageJson(options: BoardTemplateOptions): string {
     "build": "tsc"
   },
   "dependencies": {
-    "@typecode/core": "^0.1.0"
+    "@typecode/core": "^0.1.0",
+    "@typecode/hal": "^0.1.0"
   },
   "peerDependencies": {
     "typecode": "^0.1.0"
@@ -100,7 +101,7 @@ export function generateIndexTs(options: BoardTemplateOptions): string {
 // @typecode/board-${name} — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typecode/core';
+import type { BoardDefinition } from '@typecode/hal';
 
 // Re-export the platform strategy so the CLI can resolve it automatically
 export { BoardStrategy } from './strategy';
@@ -269,7 +270,7 @@ import type {
   AnalogPin,
   InterruptPin,
 } from '@typecode/core';
-import { pinNumber } from '@typecode/core';
+import { pinNumber } from '@typecode/hal';
 
 // ---------------------------------------------------------------------------
 // Internal stub factories (no-op at runtime; consumed by transpiler)

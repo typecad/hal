@@ -27,8 +27,9 @@ public:
   }
 
   static Button* start(int pin, int debounceMs = 50) {
+    const int input = pin;
     pinMode(pin, INPUT_PULLUP);
-    const Button* btn = new Button(pin, debounceMs);
+    const Button* btn = new Button(input, debounceMs);
     attachInterrupt(digitalPinToInterrupt(pin), isr_1, FALLING);
     return btn;
   }

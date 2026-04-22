@@ -6,18 +6,30 @@
 // generator functions, since the generated C++ is platform-specific.
 // ---------------------------------------------------------------------------
 
-import { PolyfillDefinition, PolyfillContext, PolyfillNeed, RuntimePolyfillIR, getStdLibSupport } from "../types";
+import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
+import { getStdLibSupport } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import {
-  generateStdStringPolyfill,
-  generateStaticStringPolyfill,
-} from "@typecode/framework-arduino";
+import { loadFrameworkPackage } from "../../framework-package";
+
+const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+
+function getArduinoFramework(): any {
+  return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
+}
+
+function generateStdStringPolyfill(methods: Set<string>): RuntimePolyfillIR {
+  return getArduinoFramework().generateStdStringPolyfill(methods);
+}
+
+function generateStaticStringPolyfill(methods: Set<string>, maxLen: number): RuntimePolyfillIR {
+  return getArduinoFramework().generateStaticStringPolyfill(methods, maxLen);
+}
 
 export const stringMethodsPolyfill: PolyfillDefinition = {
   id: "string_methods",
   name: "String Methods",
   description: "Maps string.toUpperCase/etc to C++ equivalents",
-  domains: ["standard", "arduino", "embedded"],
+  domains: ["standard", "arduino", "embedded"] as PolyfillDomain[],
 
   detect(program: ProgramIR, context: PolyfillContext): PolyfillNeed[] {
     const needs: PolyfillNeed[] = [];

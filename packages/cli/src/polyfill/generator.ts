@@ -100,6 +100,20 @@ export class PolyfillGenerator {
         }
       }
 
+      if (stmt.kind === "var_decl" && typeof stmt.cppType === "string" && stmt.cppType.startsWith("StaticArray<")) {
+        trackNeed("static_array", {
+          maxSize: this.config.arrays?.staticMaxSize ?? this.capabilities.recommendedStaticArraySize,
+        });
+        return;
+      }
+
+      if (stmt.kind === "for_of" && stmt.iterable?.kind === "array") {
+        trackNeed("static_array", {
+          maxSize: this.config.arrays?.staticMaxSize ?? this.capabilities.recommendedStaticArraySize,
+        });
+        return;
+      }
+
       // Recursively check nested statements
       if (stmt.body) this.forEachStatement(stmt.body, checkStatement);
       if (stmt.thenBranch) this.forEachStatement(stmt.thenBranch, checkStatement);

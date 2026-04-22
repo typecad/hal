@@ -1611,7 +1611,7 @@
       "generatedStartLine": 119,
       "generatedStartColumn": 1,
       "generatedEndLine": 119,
-      "generatedEndColumn": 30,
+      "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 100,
@@ -1627,6 +1627,86 @@
       "generatedStartLine": 120,
       "generatedStartColumn": 1,
       "generatedEndLine": 120,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 100,
+        "endOffset": 118,
+        "startLine": 4,
+        "startColumn": 13,
+        "endLine": 4,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 121,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 121,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 100,
+        "endOffset": 118,
+        "startLine": 4,
+        "startColumn": 13,
+        "endLine": 4,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 122,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 122,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 100,
+        "endOffset": 118,
+        "startLine": 4,
+        "startColumn": 13,
+        "endLine": 4,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 123,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 123,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 100,
+        "endOffset": 118,
+        "startLine": 4,
+        "startColumn": 13,
+        "endLine": 4,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 124,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 124,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 100,
+        "endOffset": 118,
+        "startLine": 4,
+        "startColumn": 13,
+        "endLine": 4,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 125,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 125,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1640,9 +1720,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 123,
+      "generatedStartLine": 128,
       "generatedStartColumn": 1,
-      "generatedEndLine": 123,
+      "generatedEndLine": 128,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1657,10 +1737,10 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 125,
+      "generatedStartLine": 130,
       "generatedStartColumn": 1,
-      "generatedEndLine": 125,
-      "generatedEndColumn": 30,
+      "generatedEndLine": 130,
+      "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 189,
@@ -1673,9 +1753,89 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 126,
+      "generatedStartLine": 131,
       "generatedStartColumn": 1,
-      "generatedEndLine": 126,
+      "generatedEndLine": 131,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 189,
+        "endOffset": 207,
+        "startLine": 8,
+        "startColumn": 13,
+        "endLine": 8,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 132,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 132,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 189,
+        "endOffset": 207,
+        "startLine": 8,
+        "startColumn": 13,
+        "endLine": 8,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 133,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 133,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 189,
+        "endOffset": 207,
+        "startLine": 8,
+        "startColumn": 13,
+        "endLine": 8,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 134,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 134,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 189,
+        "endOffset": 207,
+        "startLine": 8,
+        "startColumn": 13,
+        "endLine": 8,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 135,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 135,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 189,
+        "endOffset": 207,
+        "startLine": 8,
+        "startColumn": 13,
+        "endLine": 8,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 136,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 136,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1689,9 +1849,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 129,
+      "generatedStartLine": 139,
       "generatedStartColumn": 1,
-      "generatedEndLine": 129,
+      "generatedEndLine": 139,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1706,10 +1866,10 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 131,
+      "generatedStartLine": 141,
       "generatedStartColumn": 1,
-      "generatedEndLine": 131,
-      "generatedEndColumn": 34,
+      "generatedEndLine": 141,
+      "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 278,
@@ -1722,10 +1882,106 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 132,
+      "generatedStartLine": 142,
       "generatedStartColumn": 1,
-      "generatedEndLine": 132,
-      "generatedEndColumn": 41,
+      "generatedEndLine": 142,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 278,
+        "endOffset": 300,
+        "startLine": 12,
+        "startColumn": 13,
+        "endLine": 12,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 143,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 143,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 278,
+        "endOffset": 300,
+        "startLine": 12,
+        "startColumn": 13,
+        "endLine": 12,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 144,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 144,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 278,
+        "endOffset": 300,
+        "startLine": 12,
+        "startColumn": 13,
+        "endLine": 12,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 145,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 145,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 278,
+        "endOffset": 300,
+        "startLine": 12,
+        "startColumn": 13,
+        "endLine": 12,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 146,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 146,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 278,
+        "endOffset": 300,
+        "startLine": 12,
+        "startColumn": 13,
+        "endLine": 12,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 147,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 147,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 278,
+        "endOffset": 300,
+        "startLine": 12,
+        "startColumn": 13,
+        "endLine": 12,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 148,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 148,
+      "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 308,
@@ -1738,9 +1994,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 135,
+      "generatedStartLine": 151,
       "generatedStartColumn": 1,
-      "generatedEndLine": 135,
+      "generatedEndLine": 151,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1755,10 +2011,10 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 137,
+      "generatedStartLine": 153,
       "generatedStartColumn": 1,
-      "generatedEndLine": 137,
-      "generatedEndColumn": 30,
+      "generatedEndLine": 153,
+      "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 375,
@@ -1771,9 +2027,89 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 138,
+      "generatedStartLine": 154,
       "generatedStartColumn": 1,
-      "generatedEndLine": 138,
+      "generatedEndLine": 154,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 375,
+        "endOffset": 393,
+        "startLine": 16,
+        "startColumn": 13,
+        "endLine": 16,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 155,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 155,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 375,
+        "endOffset": 393,
+        "startLine": 16,
+        "startColumn": 13,
+        "endLine": 16,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 156,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 156,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 375,
+        "endOffset": 393,
+        "startLine": 16,
+        "startColumn": 13,
+        "endLine": 16,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 157,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 157,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 375,
+        "endOffset": 393,
+        "startLine": 16,
+        "startColumn": 13,
+        "endLine": 16,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 158,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 158,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 375,
+        "endOffset": 393,
+        "startLine": 16,
+        "startColumn": 13,
+        "endLine": 16,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 159,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 159,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1787,9 +2123,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 139,
+      "generatedStartLine": 160,
       "generatedStartColumn": 1,
-      "generatedEndLine": 139,
+      "generatedEndLine": 160,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1803,9 +2139,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 142,
+      "generatedStartLine": 163,
       "generatedStartColumn": 1,
-      "generatedEndLine": 142,
+      "generatedEndLine": 163,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1820,9 +2156,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 144,
+      "generatedStartLine": 165,
       "generatedStartColumn": 1,
-      "generatedEndLine": 144,
+      "generatedEndLine": 165,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1836,9 +2172,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 145,
+      "generatedStartLine": 166,
       "generatedStartColumn": 1,
-      "generatedEndLine": 145,
+      "generatedEndLine": 166,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1852,9 +2188,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 146,
+      "generatedStartLine": 167,
       "generatedStartColumn": 1,
-      "generatedEndLine": 146,
+      "generatedEndLine": 167,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1868,9 +2204,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 147,
+      "generatedStartLine": 168,
       "generatedStartColumn": 1,
-      "generatedEndLine": 147,
+      "generatedEndLine": 168,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1884,9 +2220,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 148,
+      "generatedStartLine": 169,
       "generatedStartColumn": 1,
-      "generatedEndLine": 148,
+      "generatedEndLine": 169,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1900,9 +2236,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 149,
+      "generatedStartLine": 170,
       "generatedStartColumn": 1,
-      "generatedEndLine": 149,
+      "generatedEndLine": 170,
       "generatedEndColumn": 36,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1916,9 +2252,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 150,
+      "generatedStartLine": 171,
       "generatedStartColumn": 1,
-      "generatedEndLine": 150,
+      "generatedEndLine": 171,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1932,9 +2268,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 153,
+      "generatedStartLine": 174,
       "generatedStartColumn": 1,
-      "generatedEndLine": 153,
+      "generatedEndLine": 174,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1949,9 +2285,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 155,
+      "generatedStartLine": 176,
       "generatedStartColumn": 1,
-      "generatedEndLine": 155,
+      "generatedEndLine": 176,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1965,9 +2301,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 156,
+      "generatedStartLine": 177,
       "generatedStartColumn": 1,
-      "generatedEndLine": 156,
+      "generatedEndLine": 177,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1981,9 +2317,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 157,
+      "generatedStartLine": 178,
       "generatedStartColumn": 1,
-      "generatedEndLine": 157,
+      "generatedEndLine": 178,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -1997,9 +2333,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 158,
+      "generatedStartLine": 179,
       "generatedStartColumn": 1,
-      "generatedEndLine": 158,
+      "generatedEndLine": 179,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2013,9 +2349,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 159,
+      "generatedStartLine": 180,
       "generatedStartColumn": 1,
-      "generatedEndLine": 159,
+      "generatedEndLine": 180,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2029,9 +2365,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 160,
+      "generatedStartLine": 181,
       "generatedStartColumn": 1,
-      "generatedEndLine": 160,
+      "generatedEndLine": 181,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2045,9 +2381,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 163,
+      "generatedStartLine": 184,
       "generatedStartColumn": 1,
-      "generatedEndLine": 163,
+      "generatedEndLine": 184,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2062,9 +2398,9 @@
       "symbolName": "__tc_fn7"
     },
     {
-      "generatedStartLine": 165,
+      "generatedStartLine": 186,
       "generatedStartColumn": 1,
-      "generatedEndLine": 165,
+      "generatedEndLine": 186,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2078,9 +2414,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 166,
+      "generatedStartLine": 187,
       "generatedStartColumn": 1,
-      "generatedEndLine": 166,
+      "generatedEndLine": 187,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2094,9 +2430,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 167,
+      "generatedStartLine": 188,
       "generatedStartColumn": 1,
-      "generatedEndLine": 167,
+      "generatedEndLine": 188,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2110,9 +2446,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 168,
+      "generatedStartLine": 189,
       "generatedStartColumn": 1,
-      "generatedEndLine": 168,
+      "generatedEndLine": 189,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2126,9 +2462,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 169,
+      "generatedStartLine": 190,
       "generatedStartColumn": 1,
-      "generatedEndLine": 169,
+      "generatedEndLine": 190,
       "generatedEndColumn": 35,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2142,9 +2478,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 170,
+      "generatedStartLine": 191,
       "generatedStartColumn": 1,
-      "generatedEndLine": 170,
+      "generatedEndLine": 191,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2158,9 +2494,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 173,
+      "generatedStartLine": 194,
       "generatedStartColumn": 1,
-      "generatedEndLine": 173,
+      "generatedEndLine": 194,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2175,9 +2511,9 @@
       "symbolName": "__tc_fn8"
     },
     {
-      "generatedStartLine": 175,
+      "generatedStartLine": 196,
       "generatedStartColumn": 1,
-      "generatedEndLine": 175,
+      "generatedEndLine": 196,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2191,9 +2527,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 176,
+      "generatedStartLine": 197,
       "generatedStartColumn": 1,
-      "generatedEndLine": 176,
+      "generatedEndLine": 197,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2207,9 +2543,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 177,
+      "generatedStartLine": 198,
       "generatedStartColumn": 1,
-      "generatedEndLine": 177,
+      "generatedEndLine": 198,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2223,9 +2559,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 178,
+      "generatedStartLine": 199,
       "generatedStartColumn": 1,
-      "generatedEndLine": 178,
+      "generatedEndLine": 199,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2239,9 +2575,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 179,
+      "generatedStartLine": 200,
       "generatedStartColumn": 1,
-      "generatedEndLine": 179,
+      "generatedEndLine": 200,
       "generatedEndColumn": 18,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2255,9 +2591,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 180,
+      "generatedStartLine": 201,
       "generatedStartColumn": 1,
-      "generatedEndLine": 180,
+      "generatedEndLine": 201,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2271,9 +2607,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 183,
+      "generatedStartLine": 204,
       "generatedStartColumn": 1,
-      "generatedEndLine": 183,
+      "generatedEndLine": 204,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2288,9 +2624,9 @@
       "symbolName": "__tc_fn9"
     },
     {
-      "generatedStartLine": 185,
+      "generatedStartLine": 206,
       "generatedStartColumn": 1,
-      "generatedEndLine": 185,
+      "generatedEndLine": 206,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2304,9 +2640,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 186,
+      "generatedStartLine": 207,
       "generatedStartColumn": 1,
-      "generatedEndLine": 186,
+      "generatedEndLine": 207,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2320,9 +2656,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 187,
+      "generatedStartLine": 208,
       "generatedStartColumn": 1,
-      "generatedEndLine": 187,
+      "generatedEndLine": 208,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2336,9 +2672,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 188,
+      "generatedStartLine": 209,
       "generatedStartColumn": 1,
-      "generatedEndLine": 188,
+      "generatedEndLine": 209,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2352,9 +2688,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 189,
+      "generatedStartLine": 210,
       "generatedStartColumn": 1,
-      "generatedEndLine": 189,
+      "generatedEndLine": 210,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2368,9 +2704,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 192,
+      "generatedStartLine": 213,
       "generatedStartColumn": 1,
-      "generatedEndLine": 192,
+      "generatedEndLine": 213,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2385,9 +2721,9 @@
       "symbolName": "__tc_fn10"
     },
     {
-      "generatedStartLine": 194,
+      "generatedStartLine": 215,
       "generatedStartColumn": 1,
-      "generatedEndLine": 194,
+      "generatedEndLine": 215,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2401,9 +2737,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 195,
+      "generatedStartLine": 216,
       "generatedStartColumn": 1,
-      "generatedEndLine": 195,
+      "generatedEndLine": 216,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2417,9 +2753,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 196,
+      "generatedStartLine": 217,
       "generatedStartColumn": 1,
-      "generatedEndLine": 196,
+      "generatedEndLine": 217,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2433,9 +2769,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 197,
+      "generatedStartLine": 218,
       "generatedStartColumn": 1,
-      "generatedEndLine": 197,
+      "generatedEndLine": 218,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2449,9 +2785,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 198,
+      "generatedStartLine": 219,
       "generatedStartColumn": 1,
-      "generatedEndLine": 198,
+      "generatedEndLine": 219,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2465,9 +2801,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 201,
+      "generatedStartLine": 222,
       "generatedStartColumn": 1,
-      "generatedEndLine": 201,
+      "generatedEndLine": 222,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2482,10 +2818,10 @@
       "symbolName": "__tc_fn11"
     },
     {
-      "generatedStartLine": 203,
+      "generatedStartLine": 224,
       "generatedStartColumn": 1,
-      "generatedEndLine": 203,
-      "generatedEndColumn": 22,
+      "generatedEndLine": 224,
+      "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 2546,
@@ -2498,10 +2834,74 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 204,
+      "generatedStartLine": 225,
       "generatedStartColumn": 1,
-      "generatedEndLine": 204,
-      "generatedEndColumn": 34,
+      "generatedEndLine": 225,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2546,
+        "endOffset": 2556,
+        "startLine": 89,
+        "startColumn": 13,
+        "endLine": 89,
+        "endColumn": 23
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 226,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 226,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2546,
+        "endOffset": 2556,
+        "startLine": 89,
+        "startColumn": 13,
+        "endLine": 89,
+        "endColumn": 23
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 227,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 227,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2546,
+        "endOffset": 2556,
+        "startLine": 89,
+        "startColumn": 13,
+        "endLine": 89,
+        "endColumn": 23
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 228,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 228,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2546,
+        "endOffset": 2556,
+        "startLine": 89,
+        "startColumn": 13,
+        "endLine": 89,
+        "endColumn": 23
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 229,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 229,
+      "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 2570,
@@ -2514,10 +2914,106 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 205,
+      "generatedStartLine": 230,
       "generatedStartColumn": 1,
-      "generatedEndLine": 205,
-      "generatedEndColumn": 37,
+      "generatedEndLine": 230,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2570,
+        "endOffset": 2586,
+        "startLine": 90,
+        "startColumn": 13,
+        "endLine": 90,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 231,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 231,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2570,
+        "endOffset": 2586,
+        "startLine": 90,
+        "startColumn": 13,
+        "endLine": 90,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 232,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 232,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2570,
+        "endOffset": 2586,
+        "startLine": 90,
+        "startColumn": 13,
+        "endLine": 90,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 233,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 233,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2570,
+        "endOffset": 2586,
+        "startLine": 90,
+        "startColumn": 13,
+        "endLine": 90,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 234,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 234,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2570,
+        "endOffset": 2586,
+        "startLine": 90,
+        "startColumn": 13,
+        "endLine": 90,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 235,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 235,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2570,
+        "endOffset": 2586,
+        "startLine": 90,
+        "startColumn": 13,
+        "endLine": 90,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 236,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 236,
+      "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 2594,
@@ -2530,9 +3026,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 208,
+      "generatedStartLine": 239,
       "generatedStartColumn": 1,
-      "generatedEndLine": 208,
+      "generatedEndLine": 239,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2547,10 +3043,10 @@
       "symbolName": "__tc_fn12"
     },
     {
-      "generatedStartLine": 210,
+      "generatedStartLine": 241,
       "generatedStartColumn": 1,
-      "generatedEndLine": 210,
-      "generatedEndColumn": 22,
+      "generatedEndLine": 241,
+      "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 2660,
@@ -2563,10 +3059,74 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 211,
+      "generatedStartLine": 242,
       "generatedStartColumn": 1,
-      "generatedEndLine": 211,
-      "generatedEndColumn": 34,
+      "generatedEndLine": 242,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2660,
+        "endOffset": 2670,
+        "startLine": 94,
+        "startColumn": 13,
+        "endLine": 94,
+        "endColumn": 23
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 243,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 243,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2660,
+        "endOffset": 2670,
+        "startLine": 94,
+        "startColumn": 13,
+        "endLine": 94,
+        "endColumn": 23
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 244,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 244,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2660,
+        "endOffset": 2670,
+        "startLine": 94,
+        "startColumn": 13,
+        "endLine": 94,
+        "endColumn": 23
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 245,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 245,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2660,
+        "endOffset": 2670,
+        "startLine": 94,
+        "startColumn": 13,
+        "endLine": 94,
+        "endColumn": 23
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 246,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 246,
+      "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 2684,
@@ -2579,9 +3139,105 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 212,
+      "generatedStartLine": 247,
       "generatedStartColumn": 1,
-      "generatedEndLine": 212,
+      "generatedEndLine": 247,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2684,
+        "endOffset": 2700,
+        "startLine": 95,
+        "startColumn": 13,
+        "endLine": 95,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 248,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 248,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2684,
+        "endOffset": 2700,
+        "startLine": 95,
+        "startColumn": 13,
+        "endLine": 95,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 249,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 249,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2684,
+        "endOffset": 2700,
+        "startLine": 95,
+        "startColumn": 13,
+        "endLine": 95,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 250,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 250,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2684,
+        "endOffset": 2700,
+        "startLine": 95,
+        "startColumn": 13,
+        "endLine": 95,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 251,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 251,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2684,
+        "endOffset": 2700,
+        "startLine": 95,
+        "startColumn": 13,
+        "endLine": 95,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 252,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 252,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 2684,
+        "endOffset": 2700,
+        "startLine": 95,
+        "startColumn": 13,
+        "endLine": 95,
+        "endColumn": 29
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 253,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 253,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2595,9 +3251,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 215,
+      "generatedStartLine": 256,
       "generatedStartColumn": 1,
-      "generatedEndLine": 215,
+      "generatedEndLine": 256,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2612,10 +3268,10 @@
       "symbolName": "__tc_fn13"
     },
     {
-      "generatedStartLine": 217,
+      "generatedStartLine": 258,
       "generatedStartColumn": 1,
-      "generatedEndLine": 217,
-      "generatedEndColumn": 30,
+      "generatedEndLine": 258,
+      "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 3033,
@@ -2628,9 +3284,89 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 218,
+      "generatedStartLine": 259,
       "generatedStartColumn": 1,
-      "generatedEndLine": 218,
+      "generatedEndLine": 259,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3033,
+        "endOffset": 3074,
+        "startLine": 107,
+        "startColumn": 13,
+        "endLine": 107,
+        "endColumn": 54
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 260,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 260,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3033,
+        "endOffset": 3074,
+        "startLine": 107,
+        "startColumn": 13,
+        "endLine": 107,
+        "endColumn": 54
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 261,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 261,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3033,
+        "endOffset": 3074,
+        "startLine": 107,
+        "startColumn": 13,
+        "endLine": 107,
+        "endColumn": 54
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 262,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 262,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3033,
+        "endOffset": 3074,
+        "startLine": 107,
+        "startColumn": 13,
+        "endLine": 107,
+        "endColumn": 54
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 263,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 263,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3033,
+        "endOffset": 3074,
+        "startLine": 107,
+        "startColumn": 13,
+        "endLine": 107,
+        "endColumn": 54
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 264,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 264,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2644,9 +3380,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 219,
+      "generatedStartLine": 265,
       "generatedStartColumn": 1,
-      "generatedEndLine": 219,
+      "generatedEndLine": 265,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2660,9 +3396,9 @@
       "nodeKind": "for_of"
     },
     {
-      "generatedStartLine": 221,
+      "generatedStartLine": 267,
       "generatedStartColumn": 1,
-      "generatedEndLine": 221,
+      "generatedEndLine": 267,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2676,9 +3412,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 223,
+      "generatedStartLine": 269,
       "generatedStartColumn": 1,
-      "generatedEndLine": 223,
+      "generatedEndLine": 269,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2692,9 +3428,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 226,
+      "generatedStartLine": 272,
       "generatedStartColumn": 1,
-      "generatedEndLine": 226,
+      "generatedEndLine": 272,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2709,9 +3445,9 @@
       "symbolName": "__tc_fn14"
     },
     {
-      "generatedStartLine": 228,
+      "generatedStartLine": 274,
       "generatedStartColumn": 1,
-      "generatedEndLine": 228,
+      "generatedEndLine": 274,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2725,9 +3461,89 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 229,
+      "generatedStartLine": 275,
       "generatedStartColumn": 1,
-      "generatedEndLine": 229,
+      "generatedEndLine": 275,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3402,
+        "endOffset": 3417,
+        "startLine": 120,
+        "startColumn": 13,
+        "endLine": 120,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 276,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 276,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3402,
+        "endOffset": 3417,
+        "startLine": 120,
+        "startColumn": 13,
+        "endLine": 120,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 277,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 277,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3402,
+        "endOffset": 3417,
+        "startLine": 120,
+        "startColumn": 13,
+        "endLine": 120,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 278,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 278,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3402,
+        "endOffset": 3417,
+        "startLine": 120,
+        "startColumn": 13,
+        "endLine": 120,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 279,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 279,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3402,
+        "endOffset": 3417,
+        "startLine": 120,
+        "startColumn": 13,
+        "endLine": 120,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 280,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 280,
       "generatedEndColumn": 31,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2741,9 +3557,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 230,
+      "generatedStartLine": 281,
       "generatedStartColumn": 1,
-      "generatedEndLine": 230,
+      "generatedEndLine": 281,
       "generatedEndColumn": 45,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2757,9 +3573,9 @@
       "nodeKind": "for"
     },
     {
-      "generatedStartLine": 232,
+      "generatedStartLine": 283,
       "generatedStartColumn": 1,
-      "generatedEndLine": 232,
+      "generatedEndLine": 283,
       "generatedEndColumn": 31,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2773,9 +3589,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 233,
+      "generatedStartLine": 284,
       "generatedStartColumn": 1,
-      "generatedEndLine": 233,
+      "generatedEndLine": 284,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2789,9 +3605,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 235,
+      "generatedStartLine": 286,
       "generatedStartColumn": 1,
-      "generatedEndLine": 235,
+      "generatedEndLine": 286,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2805,9 +3621,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 238,
+      "generatedStartLine": 289,
       "generatedStartColumn": 1,
-      "generatedEndLine": 238,
+      "generatedEndLine": 289,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2822,9 +3638,9 @@
       "symbolName": "__tc_fn15"
     },
     {
-      "generatedStartLine": 240,
+      "generatedStartLine": 291,
       "generatedStartColumn": 1,
-      "generatedEndLine": 240,
+      "generatedEndLine": 291,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2838,9 +3654,89 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 241,
+      "generatedStartLine": 292,
       "generatedStartColumn": 1,
-      "generatedEndLine": 241,
+      "generatedEndLine": 292,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3554,
+        "endOffset": 3569,
+        "startLine": 125,
+        "startColumn": 13,
+        "endLine": 125,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 293,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 293,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3554,
+        "endOffset": 3569,
+        "startLine": 125,
+        "startColumn": 13,
+        "endLine": 125,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 294,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 294,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3554,
+        "endOffset": 3569,
+        "startLine": 125,
+        "startColumn": 13,
+        "endLine": 125,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 295,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 295,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3554,
+        "endOffset": 3569,
+        "startLine": 125,
+        "startColumn": 13,
+        "endLine": 125,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 296,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 296,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3554,
+        "endOffset": 3569,
+        "startLine": 125,
+        "startColumn": 13,
+        "endLine": 125,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 297,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 297,
       "generatedEndColumn": 31,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2854,9 +3750,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 242,
+      "generatedStartLine": 298,
       "generatedStartColumn": 1,
-      "generatedEndLine": 242,
+      "generatedEndLine": 298,
       "generatedEndColumn": 45,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2870,9 +3766,9 @@
       "nodeKind": "for"
     },
     {
-      "generatedStartLine": 244,
+      "generatedStartLine": 300,
       "generatedStartColumn": 1,
-      "generatedEndLine": 244,
+      "generatedEndLine": 300,
       "generatedEndColumn": 31,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2886,9 +3782,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 245,
+      "generatedStartLine": 301,
       "generatedStartColumn": 1,
-      "generatedEndLine": 245,
+      "generatedEndLine": 301,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2902,9 +3798,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 247,
+      "generatedStartLine": 303,
       "generatedStartColumn": 1,
-      "generatedEndLine": 247,
+      "generatedEndLine": 303,
       "generatedEndColumn": 49,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2918,9 +3814,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 250,
+      "generatedStartLine": 306,
       "generatedStartColumn": 1,
-      "generatedEndLine": 250,
+      "generatedEndLine": 306,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2935,10 +3831,10 @@
       "symbolName": "__tc_fn16"
     },
     {
-      "generatedStartLine": 252,
+      "generatedStartLine": 308,
       "generatedStartColumn": 1,
-      "generatedEndLine": 252,
-      "generatedEndColumn": 33,
+      "generatedEndLine": 308,
+      "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 3972,
@@ -2951,9 +3847,121 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 253,
+      "generatedStartLine": 309,
       "generatedStartColumn": 1,
-      "generatedEndLine": 253,
+      "generatedEndLine": 309,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3972,
+        "endOffset": 3993,
+        "startLine": 138,
+        "startColumn": 13,
+        "endLine": 138,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 310,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 310,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3972,
+        "endOffset": 3993,
+        "startLine": 138,
+        "startColumn": 13,
+        "endLine": 138,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 311,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 311,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3972,
+        "endOffset": 3993,
+        "startLine": 138,
+        "startColumn": 13,
+        "endLine": 138,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 312,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 312,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3972,
+        "endOffset": 3993,
+        "startLine": 138,
+        "startColumn": 13,
+        "endLine": 138,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 313,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 313,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3972,
+        "endOffset": 3993,
+        "startLine": 138,
+        "startColumn": 13,
+        "endLine": 138,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 314,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 314,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3972,
+        "endOffset": 3993,
+        "startLine": 138,
+        "startColumn": 13,
+        "endLine": 138,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 315,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 315,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 3972,
+        "endOffset": 3993,
+        "startLine": 138,
+        "startColumn": 13,
+        "endLine": 138,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 316,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 316,
       "generatedEndColumn": 35,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2967,9 +3975,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 254,
+      "generatedStartLine": 317,
       "generatedStartColumn": 1,
-      "generatedEndLine": 254,
+      "generatedEndLine": 317,
       "generatedEndColumn": 22,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2983,9 +3991,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 255,
+      "generatedStartLine": 318,
       "generatedStartColumn": 1,
-      "generatedEndLine": 255,
+      "generatedEndLine": 318,
       "generatedEndColumn": 45,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -2999,9 +4007,9 @@
       "nodeKind": "for"
     },
     {
-      "generatedStartLine": 257,
+      "generatedStartLine": 320,
       "generatedStartColumn": 1,
-      "generatedEndLine": 257,
+      "generatedEndLine": 320,
       "generatedEndColumn": 31,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3015,9 +4023,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 258,
+      "generatedStartLine": 321,
       "generatedStartColumn": 1,
-      "generatedEndLine": 258,
+      "generatedEndLine": 321,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3031,9 +4039,9 @@
       "nodeKind": "if"
     },
     {
-      "generatedStartLine": 260,
+      "generatedStartLine": 323,
       "generatedStartColumn": 1,
-      "generatedEndLine": 260,
+      "generatedEndLine": 323,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3047,9 +4055,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 261,
+      "generatedStartLine": 324,
       "generatedStartColumn": 1,
-      "generatedEndLine": 261,
+      "generatedEndLine": 324,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3063,9 +4071,9 @@
       "nodeKind": "update"
     },
     {
-      "generatedStartLine": 264,
+      "generatedStartLine": 327,
       "generatedStartColumn": 1,
-      "generatedEndLine": 264,
+      "generatedEndLine": 327,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3079,9 +4087,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 267,
+      "generatedStartLine": 330,
       "generatedStartColumn": 1,
-      "generatedEndLine": 267,
+      "generatedEndLine": 330,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3096,10 +4104,10 @@
       "symbolName": "__tc_fn17"
     },
     {
-      "generatedStartLine": 269,
+      "generatedStartLine": 332,
       "generatedStartColumn": 1,
-      "generatedEndLine": 269,
-      "generatedEndColumn": 33,
+      "generatedEndLine": 332,
+      "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 4140,
@@ -3112,9 +4120,121 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 270,
+      "generatedStartLine": 333,
       "generatedStartColumn": 1,
-      "generatedEndLine": 270,
+      "generatedEndLine": 333,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4140,
+        "endOffset": 4161,
+        "startLine": 143,
+        "startColumn": 13,
+        "endLine": 143,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 334,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 334,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4140,
+        "endOffset": 4161,
+        "startLine": 143,
+        "startColumn": 13,
+        "endLine": 143,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 335,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 335,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4140,
+        "endOffset": 4161,
+        "startLine": 143,
+        "startColumn": 13,
+        "endLine": 143,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 336,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 336,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4140,
+        "endOffset": 4161,
+        "startLine": 143,
+        "startColumn": 13,
+        "endLine": 143,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 337,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 337,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4140,
+        "endOffset": 4161,
+        "startLine": 143,
+        "startColumn": 13,
+        "endLine": 143,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 338,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 338,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4140,
+        "endOffset": 4161,
+        "startLine": 143,
+        "startColumn": 13,
+        "endLine": 143,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 339,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 339,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4140,
+        "endOffset": 4161,
+        "startLine": 143,
+        "startColumn": 13,
+        "endLine": 143,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 340,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 340,
       "generatedEndColumn": 35,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3128,9 +4248,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 271,
+      "generatedStartLine": 341,
       "generatedStartColumn": 1,
-      "generatedEndLine": 271,
+      "generatedEndLine": 341,
       "generatedEndColumn": 22,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3144,9 +4264,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 272,
+      "generatedStartLine": 342,
       "generatedStartColumn": 1,
-      "generatedEndLine": 272,
+      "generatedEndLine": 342,
       "generatedEndColumn": 45,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3160,9 +4280,9 @@
       "nodeKind": "for"
     },
     {
-      "generatedStartLine": 274,
+      "generatedStartLine": 344,
       "generatedStartColumn": 1,
-      "generatedEndLine": 274,
+      "generatedEndLine": 344,
       "generatedEndColumn": 31,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3176,9 +4296,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 275,
+      "generatedStartLine": 345,
       "generatedStartColumn": 1,
-      "generatedEndLine": 275,
+      "generatedEndLine": 345,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3192,9 +4312,9 @@
       "nodeKind": "if"
     },
     {
-      "generatedStartLine": 277,
+      "generatedStartLine": 347,
       "generatedStartColumn": 1,
-      "generatedEndLine": 277,
+      "generatedEndLine": 347,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3208,9 +4328,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 278,
+      "generatedStartLine": 348,
       "generatedStartColumn": 1,
-      "generatedEndLine": 278,
+      "generatedEndLine": 348,
       "generatedEndColumn": 20,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3224,9 +4344,9 @@
       "nodeKind": "update"
     },
     {
-      "generatedStartLine": 281,
+      "generatedStartLine": 351,
       "generatedStartColumn": 1,
-      "generatedEndLine": 281,
+      "generatedEndLine": 351,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3240,9 +4360,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 284,
+      "generatedStartLine": 354,
       "generatedStartColumn": 1,
-      "generatedEndLine": 284,
+      "generatedEndLine": 354,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3257,10 +4377,10 @@
       "symbolName": "__tc_fn18"
     },
     {
-      "generatedStartLine": 286,
+      "generatedStartLine": 356,
       "generatedStartColumn": 1,
-      "generatedEndLine": 286,
-      "generatedEndColumn": 30,
+      "generatedEndLine": 356,
+      "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
         "startOffset": 4569,
@@ -3273,9 +4393,105 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 287,
+      "generatedStartLine": 357,
       "generatedStartColumn": 1,
-      "generatedEndLine": 287,
+      "generatedEndLine": 357,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4569,
+        "endOffset": 4587,
+        "startLine": 156,
+        "startColumn": 13,
+        "endLine": 156,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 358,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 358,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4569,
+        "endOffset": 4587,
+        "startLine": 156,
+        "startColumn": 13,
+        "endLine": 156,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 359,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 359,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4569,
+        "endOffset": 4587,
+        "startLine": 156,
+        "startColumn": 13,
+        "endLine": 156,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 360,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 360,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4569,
+        "endOffset": 4587,
+        "startLine": 156,
+        "startColumn": 13,
+        "endLine": 156,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 361,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 361,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4569,
+        "endOffset": 4587,
+        "startLine": 156,
+        "startColumn": 13,
+        "endLine": 156,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 362,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 362,
+      "generatedEndColumn": 3,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
+        "startOffset": 4569,
+        "endOffset": 4587,
+        "startLine": 156,
+        "startColumn": 13,
+        "endLine": 156,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 363,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 363,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3289,9 +4505,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 288,
+      "generatedStartLine": 364,
       "generatedStartColumn": 1,
-      "generatedEndLine": 288,
+      "generatedEndLine": 364,
       "generatedEndColumn": 45,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3305,9 +4521,9 @@
       "nodeKind": "for"
     },
     {
-      "generatedStartLine": 290,
+      "generatedStartLine": 366,
       "generatedStartColumn": 1,
-      "generatedEndLine": 290,
+      "generatedEndLine": 366,
       "generatedEndColumn": 33,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3321,9 +4537,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 291,
+      "generatedStartLine": 367,
       "generatedStartColumn": 1,
-      "generatedEndLine": 291,
+      "generatedEndLine": 367,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3337,9 +4553,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 292,
+      "generatedStartLine": 368,
       "generatedStartColumn": 1,
-      "generatedEndLine": 292,
+      "generatedEndLine": 368,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3353,9 +4569,9 @@
       "nodeKind": "assign"
     },
     {
-      "generatedStartLine": 294,
+      "generatedStartLine": 370,
       "generatedStartColumn": 1,
-      "generatedEndLine": 294,
+      "generatedEndLine": 370,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",
@@ -3369,9 +4585,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 297,
+      "generatedStartLine": 373,
       "generatedStartColumn": 1,
-      "generatedEndLine": 297,
+      "generatedEndLine": 373,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\11-arrays.test.ts",

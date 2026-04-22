@@ -6,18 +6,29 @@
 // generator functions, since the generated C++ is platform-specific.
 // ---------------------------------------------------------------------------
 
-import { PolyfillDefinition, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
+import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import {
-  generateArduinoConsolePolyfill,
-  generateGenericConsolePolyfill,
-} from "@typecode/framework-arduino";
+import { loadFrameworkPackage } from "../../framework-package";
+
+const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+
+function getArduinoFramework(): any {
+  return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
+}
+
+function generateArduinoConsolePolyfill(methods: Set<string>, isAvr: boolean, useFlashStrings: boolean, baudRate: number, autoInject: boolean, usedIdentifiers: Set<string>, isArduino: boolean): RuntimePolyfillIR {
+  return getArduinoFramework().generateArduinoConsolePolyfill(methods, isAvr, useFlashStrings, baudRate, autoInject, usedIdentifiers, isArduino);
+}
+
+function generateGenericConsolePolyfill(methods: Set<string>): RuntimePolyfillIR {
+  return getArduinoFramework().generateGenericConsolePolyfill(methods);
+}
 
 export const consolePolyfill: PolyfillDefinition = {
   id: "console",
   name: "Console Output",
   description: "Maps console.log/error/warn to appropriate output stream",
-  domains: ["standard", "arduino", "embedded"],
+  domains: ["standard", "arduino", "embedded"] as PolyfillDomain[],
 
   detect(program: ProgramIR, context: PolyfillContext): PolyfillNeed[] {
     const needs: PolyfillNeed[] = [];

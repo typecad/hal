@@ -49,12 +49,27 @@ export async function readSerialOutput(
   return new Promise<SerialReadResult>((resolve) => {
     let resolved = false;
 
+    const cleanup = (callback: () => void) => {
+      parser.removeAllListeners();
+      sp.removeAllListeners();
+
+      if (sp.isOpen) {
+        sp.close(() => callback());
+      } else {
+        try {
+          sp.close();
+        } catch {
+          // ignore close errors for unopened ports
+        }
+        callback();
+      }
+    };
+
     const finish = (error?: string) => {
       if (resolved) return;
       resolved = true;
-      try { sp.close(); } catch { /* ignore close errors */ }
       clearTimeout(timer);
-      resolve({ protocolLines, debugLines, completed, error });
+      cleanup(() => resolve({ protocolLines, debugLines, completed, error }));
     };
 
     // Open serial port

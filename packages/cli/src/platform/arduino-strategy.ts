@@ -1,8 +1,27 @@
-// ---------------------------------------------------------------------------
-// ArduinoStrategy — Re-export from @typecode/framework-arduino
-//
-// The ArduinoStrategy implementation lives in the framework-arduino package.
-// Static import works now that packages are properly self-contained.
-// ---------------------------------------------------------------------------
+import { loadFrameworkPackage } from "../framework-package";
 
-export { ArduinoStrategy } from "@typecode/framework-arduino";
+const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+
+function loadArduinoStrategyClass(): any {
+  const pkg = loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
+  if (!pkg || !pkg.ArduinoStrategy) {
+    throw new Error(
+      `Unable to load ArduinoStrategy from ${FRAMEWORK_PACKAGE}. ` +
+      `Install the framework package or configure a different framework package in your project.`,
+    );
+  }
+  return pkg.ArduinoStrategy;
+}
+
+const ArduinoStrategy = new Proxy(function () {}, {
+  construct(_target, args) {
+    const StrategyClass = loadArduinoStrategyClass();
+    return new StrategyClass(...args);
+  },
+  get(_target, property) {
+    const StrategyClass = loadArduinoStrategyClass();
+    return (StrategyClass as any)[property];
+  },
+}) as any;
+
+export { ArduinoStrategy };

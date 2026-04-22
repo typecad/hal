@@ -117,6 +117,36 @@ describe('GPIO Object-Creation Pattern', () => {
         'digitalRead(btn)',
       ]);
     });
+
+    it('propagates pin aliases through this.field assignment and handles this.pin.read()', () => {
+      const result = transpile(`
+        import { D2 } from '@typecode/board-arduino-uno/arduino';
+
+        class Button {
+          private pin: any;
+
+          constructor(input: any) {
+            this.pin = input;
+          }
+
+          isHeld(): boolean {
+            return this.pin.read() === false;
+          }
+        }
+
+        function startButton(pin: { asInputPullUp(): any; onFalling(handler: () => void): void }) {
+          const input = pin.asInputPullUp();
+          return new Button(input);
+        }
+
+        const btn = startButton(D2);
+      `, { target: 'arduino' });
+
+      expectCppContains(result, [
+        'pinMode(pin, INPUT_PULLUP)',
+        'digitalRead(this->pin)',
+      ]);
+    });
   });
 
   describe('Multiple pins with aliases', () => {

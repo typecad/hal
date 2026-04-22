@@ -1,5 +1,56 @@
 #include <Arduino.h>
 
+// Array methods using StaticArray
+// Note: arr.push(x) → arr.push_back(x)
+// Note: arr.pop() → arr.pop_back()
+// Note: arr.length → arr.size()
+
+// Polyfill: StaticArray for platforms without std::vector
+template<typename T, size_t MaxSize = 32>
+struct StaticArray {
+    T data[MaxSize];
+    size_t length = 0;
+    
+    void push_back(const T& value) {
+        if (length < MaxSize) {
+            data[length++] = value;
+        }
+    }
+    
+    T pop_back() {
+        if (length > 0) {
+            return data[--length];
+        }
+        return T();
+    }
+    
+    T& operator[](size_t index) {
+        return data[index];
+    }
+    
+    const T& operator[](size_t index) const {
+        return data[index];
+    }
+    
+    size_t size() const { return length; }
+    bool empty() const { return length == 0; }
+    bool full() const { return length >= MaxSize; }
+    
+    T* begin() { return data; }
+    T* end() { return data + length; }
+    const T* begin() const { return data; }
+    const T* end() const { return data + length; }
+    
+    void clear() { length = 0; }
+
+    size_t indexOf(const T& value) const {
+        for (size_t i = 0; i < length; i++) {
+            if (data[i] == value) return i;
+        }
+        return (size_t)-1;
+    }
+};
+
 // Arduino string method polyfills
 const char* __tc_toUpperCase(const char* s) { static char buf[64]; strncpy(buf, s, 63); buf[63] = '\0'; for (char* p = buf; *p; p++) *p = toupper(*p); return buf; }
 const char* __tc_toLowerCase(const char* s) { static char buf[64]; strncpy(buf, s, 63); buf[63] = '\0'; for (char* p = buf; *p; p++) *p = tolower(*p); return buf; }
@@ -89,7 +140,11 @@ int __tc_fn5()
 {
   const int first = 10;
   const int second = 20;
-  int rest[] = { 30, 40 };
+  StaticArray<int, 2> rest;
+  rest.data[0] = 30;
+  rest.data[1] = 40;
+  rest.length = 2;
+  
   return (sizeof(rest) / sizeof(rest[0]));
 }
 

@@ -42,6 +42,28 @@ export function callToStatement(
         };
       }
       // Pin alias resolution at statement level: led.toggle() â†’ LED.toggle()
+      // Unknown symbols may still represent a pin-like object that is passed in
+      // as a function parameter. Recognize pin configuration and interrupt API
+      // methods for these values even when the receiver identifier cannot be
+      // resolved statically.
+      const safePinMethods = new Set([
+        'asInput', 'asInputPullUp', 'asOutput',
+        'pullup', 'pulldown', 'float',
+        'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh',
+        'offFalling', 'offRising', 'offChange', 'offAll',
+      ]);
+      const fullMethod = chainInfo.chain.join('.');
+      if (safePinMethods.has(fullMethod)) {
+        return {
+          kind: "typecode-call",
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+          receiver: chainInfo.root,
+          receiverKind: 'digital',
+          method: fullMethod,
+          args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+        };
+      }
+
       const aliasTarget = activePinAliases.get(chainInfo.root);
       if (aliasTarget) {
         const aliasKind = inferKindByName(aliasTarget);
@@ -523,6 +545,16 @@ export function expressionStatementToIR(
     if (operator) {
       const targetIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
       const targetText = renderExprAsText(targetIR);
+
+      // Propagate pin aliases through assignments to `this` fields.
+      // Example: this.pin = input; where `input` is an alias for D2.
+      if (expr.left.expression.kind === ts.SyntaxKind.ThisKeyword && ts.isIdentifier(expr.right)) {
+        const fieldName = expr.left.name.text;
+        if (fieldName === 'pin' || fieldName.toLowerCase().endsWith('pin')) {
+          activePinAliases.set(targetText, expr.right.text);
+        }
+      }
+
       const comments = extractNodeComments(statement, sourceText);
       return {
         kind: "assign",

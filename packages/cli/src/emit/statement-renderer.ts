@@ -395,22 +395,27 @@ export class StatementRenderer {
         const safeArrName = escapeCppKeyword(statement.name);
         const rawType = statement.cppType;
 
-        if (this.strategy.needsStdVector() && (rawType.startsWith("std::vector<") || rawType === "auto")) {
+        if (this.strategy.needsStdVector() && rawType.startsWith("std::vector<")) {
           return forHeader
             ? `${declaration} = { ${elements} }`
             : `${declaration} = { ${elements} };`;
         }
 
-        if (!this.strategy.needsStdVector() && (rawType.startsWith("std::vector<") || rawType === "auto")) {
+        if (!this.strategy.needsStdVector() && rawType.startsWith("std::vector<")) {
           const vectorTypeMatch = rawType.startsWith("std::vector<")
             ? rawType.slice("std::vector<".length, -1)
             : null;
           const elementType = vectorTypeMatch || (statement.initializer.elementType === "auto" ? "int" : statement.initializer.elementType);
           const arraySize = statement.initializer.elements.length;
           const arrayType = `StaticArray<${elementType}, ${arraySize}>`;
-          return forHeader
-            ? `${arrayType} ${safeArrName} = { { ${elements} }, ${arraySize} }`
-            : `${arrayType} ${safeArrName} = { { ${elements} }, ${arraySize} };`;
+          const renderedElements = statement.initializer.elements.map(e => this.expressionRenderer.render(e));
+          const preludeLines = [`${arrayType} ${safeArrName};`];
+          renderedElements.forEach((value, index) => {
+            preludeLines.push(`${safeArrName}.data[${index}] = ${value};`);
+          });
+          preludeLines.push(`${safeArrName}.length = ${arraySize};`);
+          this.expressionRenderer.pushPrelude(preludeLines);
+          return "";
         }
 
         // Use "int" for "auto" element type since C arrays need explicit types

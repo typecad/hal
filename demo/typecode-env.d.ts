@@ -22,6 +22,10 @@ declare global {
   type size_t = number;
   type float = number;
   type double = number;
+
+  // Convenience helper for volatile variables in TypeCode programs.
+  // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
+  declare function volatile<T>(value: T): T;
 }
 
 declare module '@typecode' {

@@ -20,6 +20,7 @@ export { resolveArduinoProfile } from './profile';
 export type { ResolvedArduinoProfile } from './profile';
 export { loadArduinoCliMetadata } from './cli-metadata';
 export type { ArduinoCliMetadata } from './cli-metadata';
+export type { ArduinoCompileResult, ArduinoUploadResult } from './arduino-compile';
 
 // Arduino library discovery and .d.ts generation
 export {

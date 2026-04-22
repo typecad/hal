@@ -6,59 +6,141 @@
 // generator functions, since the generated C++ is platform-specific.
 // ---------------------------------------------------------------------------
 
-import { PolyfillDefinition, PolyfillContext, PolyfillNeed, RuntimePolyfillIR, getStdLibSupport } from "../types";
+import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
+import { getStdLibSupport } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import {
-  generateStdVectorArrayPolyfill,
-  generateStaticArrayPolyfill,
-} from "@typecode/framework-arduino";
+import { loadFrameworkPackage } from "../../framework-package";
+
+const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+
+function getArduinoFramework(): any {
+  return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
+}
+
+function generateStdVectorArrayPolyfill(methods: Set<string>): RuntimePolyfillIR {
+  return getArduinoFramework().generateStdVectorArrayPolyfill(methods);
+}
+
+function generateStaticArrayPolyfill(methods: Set<string>, maxSize: number): RuntimePolyfillIR {
+  return getArduinoFramework().generateStaticArrayPolyfill(methods, maxSize);
+}
 
 export const arrayMethodsPolyfill: PolyfillDefinition = {
   id: "array_methods",
   name: "Array Methods",
   description: "Maps array.push/pop/etc to C++ equivalents",
-  domains: ["standard", "arduino", "embedded"],
+  domains: ["standard", "arduino", "embedded"] as PolyfillDomain[],
 
   detect(program: ProgramIR, context: PolyfillContext): PolyfillNeed[] {
     const needs: PolyfillNeed[] = [];
     const seen = new Set<string>();
-    
-    // Look for array method calls like arr.push(), arr.pop(), arr.length
+    let needsStaticArray = false;
+
+    const scanStatement = (stmt: StatementIR): void => {
+      if (!needsStaticArray && isStaticArrayCandidate(stmt)) {
+        needsStaticArray = true;
+      }
+      detectArrayMethodsInStatement(stmt, needs, seen);
+
+      if (stmt.kind === "block" || stmt.kind === "labeled") {
+        for (const nested of stmt.body) {
+          scanStatement(nested);
+        }
+      }
+
+      if (stmt.kind === "while" || stmt.kind === "do_while") {
+        for (const nested of stmt.body) {
+          scanStatement(nested);
+        }
+      }
+      if (stmt.kind === "for" || stmt.kind === "for_of" || stmt.kind === "for_in") {
+        for (const nested of stmt.body) {
+          scanStatement(nested);
+        }
+      }
+      if (stmt.kind === "if") {
+        for (const nested of stmt.thenBranch) {
+          scanStatement(nested);
+        }
+        if (stmt.elseBranch) {
+          for (const nested of stmt.elseBranch) {
+            scanStatement(nested);
+          }
+        }
+      }
+      if (stmt.kind === "switch") {
+        for (const caseClause of stmt.cases) {
+          for (const nested of caseClause.body) {
+            scanStatement(nested);
+          }
+        }
+      }
+      if (stmt.kind === "try") {
+        for (const nested of stmt.tryBlock) {
+          scanStatement(nested);
+        }
+        if (stmt.catchBlock) {
+          for (const nested of stmt.catchBlock) {
+            scanStatement(nested);
+          }
+        }
+      }
+    };
+
     for (const fn of program.functions) {
       for (const stmt of fn.statements) {
-        detectArrayMethodsInStatement(stmt, needs, seen);
+        scanStatement(stmt);
       }
     }
-    
+
     for (const stmt of program.topLevelStatements) {
-      detectArrayMethodsInStatement(stmt, needs, seen);
+      scanStatement(stmt);
     }
 
     for (const cls of program.classes) {
       for (const method of cls.methods) {
         for (const stmt of method.statements) {
-          detectArrayMethodsInStatement(stmt, needs, seen);
+          scanStatement(stmt);
+        }
+      }
+      if (cls.constructor) {
+        for (const stmt of cls.constructor.statements) {
+          scanStatement(stmt);
         }
       }
     }
-    
+
+    // If we will use static arrays on this platform, emit the StaticArray helper
+    // whenever a std::vector-backed array literal is used without std::vector support.
+    const stdLib = getStdLibSupport(context.architecture);
+    const impl = context.config?.arrays?.prefer === "std_vector"
+      ? "std_vector"
+      : context.config?.arrays?.prefer === "static_array"
+        ? "static_array"
+        : stdLib.recommendedArrayImpl;
+    if (impl === "static_array" && needsStaticArray && !seen.has("array_static")) {
+      seen.add("array_static");
+      needs.push({
+        id: "array_static",
+        sourceSpan: program.topLevelStatements[0]?.sourceSpan ?? { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+        details: { method: "static_array" },
+      });
+    }
+
     return needs;
   },
 
   generate(needs: PolyfillNeed[], context: PolyfillContext): RuntimePolyfillIR {
     const methods = new Set(needs.map(n => n.details.method));
     const stdLib = getStdLibSupport(context.architecture);
-    
-    // Determine implementation type
+
     let impl: "std_vector" | "static_array";
-    
     if (context.config?.arrays?.prefer && context.config.arrays.prefer !== "auto") {
       impl = context.config.arrays.prefer === "std_vector" ? "std_vector" : "static_array";
     } else {
       impl = stdLib.recommendedArrayImpl;
     }
 
-    // Delegate to framework package for C++ generation
     if (impl === "std_vector") {
       return generateStdVectorArrayPolyfill(methods);
     } else {
@@ -66,6 +148,22 @@ export const arrayMethodsPolyfill: PolyfillDefinition = {
     }
   },
 };
+
+function isStaticArrayCandidate(stmt: StatementIR): boolean {
+  if (stmt.kind === "var_decl" && typeof stmt.cppType === "string") {
+    const cppType = stmt.cppType;
+    if (cppType.startsWith("std::vector<") && stmt.initializer?.kind === "array") {
+      return true;
+    }
+    if (cppType === "auto" && stmt.initializer?.kind === "array") {
+      return true;
+    }
+    if (cppType.startsWith("StaticArray<")) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function detectArrayMethodsInStatement(
   stmt: StatementIR,

@@ -2,7 +2,7 @@
 // @typecode/board-arduino-uno — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typecode/core';
+import type { BoardDefinition } from '@typecode/hal';
 
 // NOTE: Platform strategy is now provided by framework packages:
 //   - @typecode/framework-arduino for Arduino framework (digitalWrite, etc.)

@@ -220,6 +220,13 @@ export class ExpressionRenderer {
       ? normalizeRawExpression(exprTransformer(value), this.strategy, effectiveClassNameMap)
       : normalizeRawExpression(value, this.strategy, effectiveClassNameMap);
     result = this.fixPointerAccess(result);
+    const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name)));
+    const stringVarNames = this.stringVarNames ?? new Set();
+    result = result.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)(?:\(\))?/g, (match, varName) => {
+      return stringVarNames.has(varName) || escapedStringVarNames.has(varName)
+        ? `strlen(${varName})`
+        : match;
+    });
     // Rewrite getter property access: s->reading → s->getReading()
     for (const [varName, accessors] of this.varAccessorNames) {
       for (const [propName, kind] of accessors) {
@@ -445,6 +452,11 @@ export class ExpressionRenderer {
     if (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value)) {
       return `${objStr}::${expr.property}`;
     }
+    if (expr.property === "size" || expr.property === "length") {
+      if (expr.object.kind === "identifier" && this.stringVarNames?.has(expr.object.value)) {
+        return `strlen(${objStr})`;
+      }
+    }
     const rendered = `${objStr}.${expr.property}`;
     return this.fixPointerAccess(rendered);
   }
@@ -482,7 +494,15 @@ export class ExpressionRenderer {
 
   private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {
     const argsText = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
-    const callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
+    let callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
+    const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name)));
+    const stringVarNames = this.stringVarNames ?? new Set();
+    callee = callee.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g, (match, varName) => {
+      return stringVarNames.has(varName) || escapedStringVarNames.has(varName) ? `strlen(${varName})` : match;
+    });
+    if (/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g.test(callee)) {
+      return callee;
+    }
     return this.fixPointerAccess(`${callee}(${argsText})`);
   }
 
