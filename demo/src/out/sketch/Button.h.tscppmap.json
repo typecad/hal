@@ -1,0 +1,247 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\Button.h",
+  "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+  "entries": [
+    {
+      "generatedStartLine": 14,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 14,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 608,
+        "endOffset": 623,
+        "startLine": 18,
+        "startColumn": 5,
+        "endLine": 18,
+        "endColumn": 20
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 15,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 15,
+      "generatedEndColumn": 35,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 629,
+        "endOffset": 658,
+        "startLine": 19,
+        "startColumn": 5,
+        "endLine": 19,
+        "endColumn": 34
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 19,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 19,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 833,
+        "endOffset": 860,
+        "startLine": 26,
+        "startColumn": 11,
+        "endLine": 26,
+        "endColumn": 38
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 20,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 20,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 833,
+        "endOffset": 860,
+        "startLine": 26,
+        "startColumn": 11,
+        "endLine": 26,
+        "endColumn": 38
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 21,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 21,
+      "generatedEndColumn": 41,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 873,
+        "endOffset": 908,
+        "startLine": 27,
+        "startColumn": 11,
+        "endLine": 27,
+        "endColumn": 46
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 22,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 22,
+      "generatedEndColumn": 72,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 917,
+        "endOffset": 1142,
+        "startLine": 29,
+        "startColumn": 5,
+        "endLine": 37,
+        "endColumn": 7
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 23,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 23,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 1151,
+        "endOffset": 1162,
+        "startLine": 39,
+        "startColumn": 5,
+        "endLine": 39,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 27,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 27,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 1217,
+        "endOffset": 1240,
+        "startLine": 43,
+        "startColumn": 5,
+        "endLine": 43,
+        "endColumn": 28
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 28,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 28,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 1246,
+        "endOffset": 1258,
+        "startLine": 44,
+        "startColumn": 5,
+        "endLine": 44,
+        "endColumn": 17
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 32,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 32,
+      "generatedEndColumn": 44,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\Button.ts",
+        "startOffset": 1298,
+        "endOffset": 1331,
+        "startLine": 48,
+        "startColumn": 5,
+        "endLine": 48,
+        "endColumn": 38
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 46,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 46,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "",
+        "startOffset": 952,
+        "endOffset": 966,
+        "startLine": 30,
+        "startColumn": 13,
+        "endLine": 30,
+        "endColumn": 27
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 47,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 47,
+      "generatedEndColumn": 49,
+      "tsSpan": {
+        "filePath": "",
+        "startOffset": 975,
+        "endOffset": 1134,
+        "startLine": 31,
+        "startColumn": 7,
+        "endLine": 36,
+        "endColumn": 8
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 49,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 49,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "",
+        "startOffset": 1031,
+        "endOffset": 1051,
+        "startLine": 32,
+        "startColumn": 9,
+        "endLine": 32,
+        "endColumn": 29
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 50,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 50,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "",
+        "startOffset": 1061,
+        "endOffset": 1125,
+        "startLine": 33,
+        "startColumn": 9,
+        "endLine": 35,
+        "endColumn": 10
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 52,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 52,
+      "generatedEndColumn": 22,
+      "tsSpan": {
+        "filePath": "",
+        "startOffset": 1100,
+        "endOffset": 1113,
+        "startLine": 34,
+        "startColumn": 11,
+        "endLine": 34,
+        "endColumn": 24
+      },
+      "nodeKind": "call"
+    }
+  ]
+}

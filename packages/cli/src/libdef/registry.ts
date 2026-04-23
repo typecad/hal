@@ -5,7 +5,7 @@ import { listFiles, readText } from "../utils/fs";
 import { toModuleKey, toPascalCase } from "../utils/strings";
 import { toArchitectureFromFqbn } from "../utils/toolchain";
 import { ImportIR } from "../ir/model";
-import { getArduinoLibraryHeaderName, isArduinoLibraryImport } from "../arduino-libs";
+import { getArduinoLibraryHeaderName, isArduinoLibraryImport } from "@typecode/framework-arduino";
 
 export interface ResolvedImport {
   include: string;

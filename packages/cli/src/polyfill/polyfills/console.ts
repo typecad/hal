@@ -8,21 +8,7 @@
 
 import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import { loadFrameworkPackage } from "../../framework-package";
-
-const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
-
-function getArduinoFramework(): any {
-  return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
-}
-
-function generateArduinoConsolePolyfill(methods: Set<string>, isAvr: boolean, useFlashStrings: boolean, baudRate: number, autoInject: boolean, usedIdentifiers: Set<string>, isArduino: boolean): RuntimePolyfillIR {
-  return getArduinoFramework().generateArduinoConsolePolyfill(methods, isAvr, useFlashStrings, baudRate, autoInject, usedIdentifiers, isArduino);
-}
-
-function generateGenericConsolePolyfill(methods: Set<string>): RuntimePolyfillIR {
-  return getArduinoFramework().generateGenericConsolePolyfill(methods);
-}
+import { generateArduinoConsolePolyfill, generateGenericConsolePolyfill } from "@typecode/framework-arduino";
 
 export const consolePolyfill: PolyfillDefinition = {
   id: "console",

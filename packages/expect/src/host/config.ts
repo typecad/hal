@@ -19,6 +19,7 @@ const DEFAULT_TEST_CONFIG: TestConfig = {
   port: '',  // Must be provided by user or CLI flag
   baudRate: 115200,
   timeout: 30000,
+  serialOpenDelay: 500,
 };
 
 // ---------------------------------------------------------------------------
@@ -55,8 +56,10 @@ export function loadConfig(
     port: overrides.port ?? testFromFile.port ?? DEFAULT_TEST_CONFIG.port,
     baudRate: overrides.baudRate ?? testFromFile.baudRate ?? DEFAULT_TEST_CONFIG.baudRate,
     timeout: overrides.timeout ?? testFromFile.timeout ?? DEFAULT_TEST_CONFIG.timeout,
+    serialOpenDelay: overrides.serialOpenDelay ?? testFromFile.serialOpenDelay ?? DEFAULT_TEST_CONFIG.serialOpenDelay,
     fqbn: overrides.fqbn ?? testFromFile.fqbn,
     board: overrides.board ?? testFromFile.board,
+    verbose: overrides.verbose ?? testFromFile.verbose,
   };
 
   return {
@@ -88,14 +91,23 @@ function findConfigFile(projectRoot: string): string | undefined {
 // but also extracts the `test` section.
 // ---------------------------------------------------------------------------
 
-interface RawConfig {
+export interface RawConfig {
   target?: string;
   board?: string;
   fqbn?: string;
+  framework?: string;
   test?: Partial<TestConfig>;
+  output?: {
+    framework?: string;
+    optimize?: string;
+    outDir?: string;
+  };
+  console?: {
+    baudRate?: number;
+  };
 }
 
-function parseConfigAST(configPath: string): RawConfig {
+export function parseConfigAST(configPath: string): RawConfig {
   const text = fs.readFileSync(configPath, 'utf8');
   const sf = ts.createSourceFile(configPath, text, ts.ScriptTarget.Latest, true);
 
@@ -136,9 +148,22 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
       case 'fqbn':
         if (ts.isStringLiteral(prop.initializer)) out.fqbn = prop.initializer.text;
         break;
+      case 'framework':
+        if (ts.isStringLiteral(prop.initializer)) out.framework = prop.initializer.text;
+        break;
       case 'test':
         if (ts.isObjectLiteralExpression(prop.initializer)) {
           out.test = extractTestConfig(prop.initializer);
+        }
+        break;
+      case 'output':
+        if (ts.isObjectLiteralExpression(prop.initializer)) {
+          out.output = extractOutputConfig(prop.initializer);
+        }
+        break;
+      case 'console':
+        if (ts.isObjectLiteralExpression(prop.initializer)) {
+          out.console = extractConsoleConfig(prop.initializer);
         }
         break;
     }
@@ -179,5 +204,28 @@ function extractTestConfig(obj: ts.ObjectLiteralExpression): Partial<TestConfig>
     }
   }
 
+  return result;
+}
+
+function extractOutputConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawConfig['output']> {
+  const result: NonNullable<RawConfig['output']> = {};
+  for (const prop of obj.properties) {
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+    const name = prop.name.text;
+    if (name === 'framework' && ts.isStringLiteral(prop.initializer)) result.framework = prop.initializer.text;
+    if (name === 'optimize' && ts.isStringLiteral(prop.initializer)) result.optimize = prop.initializer.text;
+    if (name === 'outDir' && ts.isStringLiteral(prop.initializer)) result.outDir = prop.initializer.text;
+  }
+  return result;
+}
+
+function extractConsoleConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawConfig['console']> {
+  const result: NonNullable<RawConfig['console']> = {};
+  for (const prop of obj.properties) {
+    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+    if (prop.name.text === 'baudRate' && ts.isNumericLiteral(prop.initializer)) {
+      result.baudRate = parseInt(prop.initializer.text, 10);
+    }
+  }
   return result;
 }

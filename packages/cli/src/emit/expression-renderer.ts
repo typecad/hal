@@ -8,9 +8,10 @@ import type { ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
-import { extractPropertyChain } from "../platform/typecode-map";
+import { extractPropertyChain } from "@typecode/framework-arduino";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
+import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
 
 /**
  * Context needed for expression rendering.
@@ -38,6 +39,8 @@ export interface ExpressionRendererContext {
   namespaceNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
   varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
+  /** Imported class names from other transpiled modules */
+  crossModuleClassNames?: Set<string>;
   /** Optional transformer for expression values */
   exprTransformer?: (expr: string) => string;
 }
@@ -57,6 +60,7 @@ export class ExpressionRenderer {
   private readonly cArrayVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
+  private readonly crossModuleClassNames?: Set<string>;
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
   private _preludeLines: string[] = [];
@@ -75,6 +79,7 @@ export class ExpressionRenderer {
     this.cArrayVarNames = context.cArrayVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
+    this.crossModuleClassNames = context.crossModuleClassNames;
   }
 
   /**
@@ -457,8 +462,27 @@ export class ExpressionRenderer {
         return `strlen(${objStr})`;
       }
     }
+
+    if (
+      expr.object.kind === "method-call" &&
+      this.expressionReturnsPointer(expr.object)
+    ) {
+      return `${objStr}->${expr.property}`;
+    }
+
     const rendered = `${objStr}.${expr.property}`;
     return this.fixPointerAccess(rendered);
+  }
+
+  private expressionReturnsPointer(expr: ExpressionIR): boolean {
+    if (!this.knownFunctionReturnTypes) {
+      return false;
+    }
+    if (expr.kind === "method-call") {
+      const returnType = this.knownFunctionReturnTypes.get(expr.callee);
+      return returnType?.endsWith("*") ?? false;
+    }
+    return false;
   }
 
   private renderTypecodeCall(expr: Extract<ExpressionIR, { kind: "typecode-call" }>, exprTransformer?: (expr: string) => string): string {
@@ -473,8 +497,18 @@ export class ExpressionRenderer {
       expr.interruptMode
     );
     if (translated !== undefined) return translated;
-    // Fallback: render as plain method call
-    return `${expr.receiver}.${expr.method}(${expr.args.map(renderA).join(", ")})`;
+
+    const argsText = expr.args.map(renderA).join(", ");
+    const receiverMethod = `${expr.receiver}.${expr.method}`;
+    if (this.knownFunctionReturnTypes?.has(receiverMethod)) {
+      return this.fixPointerAccess(`${expr.receiver}::${expr.method}(${argsText})`);
+    }
+    if (this.crossModuleClassNames?.has(expr.receiver)) {
+      return this.fixPointerAccess(`${expr.receiver}::${expr.method}(${argsText})`);
+    }
+
+    // Fallback: render as plain method call and fix pointer access for call-chain receivers
+    return this.fixPointerAccess(`${expr.receiver}.${expr.method}(${argsText})`);
   }
 
   private renderCallback(expr: Extract<ExpressionIR, { kind: "callback" }>): string {
@@ -503,6 +537,33 @@ export class ExpressionRenderer {
     if (/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g.test(callee)) {
       return callee;
     }
+
+    const lastDot = callee.lastIndexOf(".");
+    if (lastDot !== -1) {
+      const receiverCallee = callee.slice(0, lastDot);
+      const memberName = callee.slice(lastDot + 1);
+      const receiverMatch = receiverCallee.match(/^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(/);
+      if (receiverMatch) {
+        const receiverCallName = receiverMatch[1];
+        const receiverClassName = receiverCallName.split(".")[0];
+        let callPrefix = receiverCallee;
+        const hasKnown = this.knownFunctionReturnTypes?.has(receiverCallName);
+        const returnType = this.knownFunctionReturnTypes?.get(receiverCallName);
+        const isCrossModuleClass = this.crossModuleClassNames?.has(receiverClassName);
+        if (hasKnown || isCrossModuleClass) {
+          callPrefix = receiverCallee.replace(
+            new RegExp(`^${receiverCallName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\s*\\(`),
+            `${receiverCallName.replace(/\./g, "::")}(`,
+          );
+        }
+        if (returnType?.endsWith("*") || isCrossModuleClass) {
+          callee = `${callPrefix}->${memberName}`;
+        } else {
+          callee = `${callPrefix}.${memberName}`;
+        }
+      }
+    }
+
     return this.fixPointerAccess(`${callee}(${argsText})`);
   }
 
@@ -512,6 +573,16 @@ export class ExpressionRenderer {
         if (varType.endsWith("*")) {
           code = code.replace(new RegExp(`\\b${varName}\\.`, "g"), `${varName}->`);
         }
+      }
+    }
+    if (this.knownFunctionReturnTypes) {
+      for (const [funcName, returnType] of this.knownFunctionReturnTypes) {
+        if (!returnType.endsWith("*")) {
+          continue;
+        }
+        const escapedFuncName = funcName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+        const pattern = new RegExp(`(\\b${escapedFuncName}(?:\\.|::)\\s*\\([^)]*\\))\\.`, "g");
+        code = code.replace(pattern, (_, callExpr) => `${callExpr}->`);
       }
     }
     return code;
@@ -589,90 +660,6 @@ export function normalizeRawExpression(value: string, strategy: PlatformStrategy
   }
 
   return normalized;
-}
-
-/**
- * Render peripheral stub property access to appropriate C++ values.
- * TypeScript peripheral stubs (I2C0, SPI0, UART0) have properties like isInitialized,
- * busNumber, speed that don't exist in C++. We map them to appropriate values.
- * 
- * @param chain Property access chain (e.g., ["I2C0", "isInitialized"])
- * @returns C++ value string or undefined if not a peripheral property
- */
-function renderPeripheralProperty(chain: string[]): string | undefined {
-  // Must have exactly 2 parts: peripheral name and property
-  if (chain.length !== 2) return undefined;
-  
-  const [peripheral, property] = chain;
-  
-  // Resolve peripheral name to C++ equivalent
-  let cppPeripheral: string | undefined;
-  
-  // I2C buses: I2C0 -> Wire, I2C1 -> Wire1, I2C2 -> Wire2
-  if (/^I2C\d+$/.test(peripheral)) {
-    const num = peripheral.slice(3);
-    cppPeripheral = num === '0' ? 'Wire' : `Wire${num}`;
-  }
-  // SPI buses: SPI0 -> SPI, SPI1 -> SPI1, SPI2 -> SPI2
-  else if (/^SPI\d+$/.test(peripheral)) {
-    const num = peripheral.slice(3);
-    cppPeripheral = num === '0' ? 'SPI' : `SPI${num}`;
-  }
-  // UART ports: UART0 -> Serial, UART1 -> Serial1, UART2 -> Serial2
-  else if (/^UART\d+$/.test(peripheral)) {
-    const num = peripheral.slice(4);
-    cppPeripheral = num === '0' ? 'Serial' : `Serial${num}`;
-  }
-  // Serial ports: Serial -> Serial, Serial1 -> Serial1, Serial2 -> Serial2
-  else if (/^Serial\d*$/.test(peripheral)) {
-    cppPeripheral = peripheral;
-  }
-  
-  // Check if this is a known peripheral
-  if (!cppPeripheral) return undefined;
-  
-  // Properties that exist on the C++ objects
-  // For these, we can access them directly
-  const directProperties = new Set(["available"]);
-  
-  // Properties that are compile-time stubs in TypeScript but don't exist in C++
-  // These should return true (since the peripheral is initialized in setup())
-  const stubProperties = new Set([
-    "isInitialized", 
-    "isConnected",
-  ]);
-  
-  // Properties that are numeric constants in TypeScript
-  const numericProperties = new Set([
-    "busNumber", 
-    "uartNumber",
-  ]);
-  
-  if (directProperties.has(property)) {
-    // These exist on the C++ object
-    return `${cppPeripheral}.${property}`;
-  }
-  
-  if (stubProperties.has(property)) {
-    // These are runtime state - return true since we initialize in setup()
-    // A more sophisticated solution would track initialization state
-    return "true";
-  }
-  
-  if (numericProperties.has(property)) {
-    // busNumber is always 0 for the main peripheral
-    if (property === "busNumber" || property === "uartNumber") {
-      return "0";
-    }
-  }
-  
-  // For speed, we could return Wire.getClock() or similar, but it's runtime
-  // For now, return a default standard speed
-  if (property === "speed") {
-    return "100000"; // 100kHz standard speed
-  }
-  
-  return undefined;
 }
 
 /**

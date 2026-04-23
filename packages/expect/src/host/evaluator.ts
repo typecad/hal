@@ -69,9 +69,10 @@ export function evaluate(matcher: MatcherName, expected: string, actual: string)
     case 'toHaveLength':
       return actual.length === parseInt(expected, 10);
 
-    default:
-      // Unknown matcher — fail safe
+    default: {
+      const _exhaustive: never = matcher;
       return false;
+    }
   }
 }
 
@@ -103,7 +104,10 @@ export function describeExpected(matcher: MatcherName, expected: string): string
     case 'toBeFalsy':         return 'to be falsy (= 0)';
     case 'toContain':         return `to contain "${expected}"`;
     case 'toHaveLength':      return `to have length ${expected}`;
-    default:                  return `${matcher}(${expected})`;
+    default: {
+      const _exhaustive: never = matcher;
+      return `${matcher}(${expected})`;
+    }
   }
 }
 

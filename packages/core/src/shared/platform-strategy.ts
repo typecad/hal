@@ -4,22 +4,24 @@
 // Every `target === "arduino"` branch in cpp-emitter.ts is captured here as
 // a strategy method.  Board packages provide concrete implementations so the
 // emitter stays target-agnostic.
+//
+// The full interface is composed from six focused sub-interfaces so that
+// call-sites can accept a narrower type when they only need a subset of the
+// strategy.  All existing implementations automatically satisfy every sub-interface
+// since they already implement the full PlatformStrategy.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, ProgramIR, StatementIR } from './ir';
+import type { ExpressionIR, ProgramIR } from './ir';
 import type { Diagnostic, PlatformContext } from './types';
 import type { BoardConstants } from './board-resolver';
 import type { TypecodeReceiverKind } from './typecode-symbols';
 import type { RuntimePolyfillIR } from './polyfill-types';
 
 // ---------------------------------------------------------------------------
-// Interface
+// Sub-interface 1 — Profile, file shape & includes
 // ---------------------------------------------------------------------------
 
-export interface PlatformStrategy {
-  /** Unique identifier for this strategy (e.g. "arduino", "generic"). */
-  readonly id: string;
-
+export interface PlatformProfileStrategy {
   // ── Profile / includes ──────────────────────────────────────────────────
 
   /** System #include headers forced at the top of every emitted file. */
@@ -33,25 +35,6 @@ export interface PlatformStrategy {
 
   /** Diagnostics produced during profile resolution. */
   profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[];
-
-  // ── Polyfill overrides ──────────────────────────────────────────────────
-
-  /**
-   * Returns a set of polyfill IDs that this strategy handles natively.
-   * The emitter will skip emitting these polyfills from the global system.
-   *
-   * For example, a native board package might return new Set(['console'])
-   * to indicate it provides its own console.log implementation.
-   */
-  nativePolyfills?(): Set<string>;
-
-  /**
-   * Returns polyfill IR for polyfills that this strategy provides natively.
-   * This allows board packages to provide their own console.log, etc.
-   *
-   * The returned polyfills will be emitted instead of the global polyfills.
-   */
-  generateNativePolyfills?(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[];
 
   // ── File shape ──────────────────────────────────────────────────────────
 
@@ -76,8 +59,61 @@ export interface PlatformStrategy {
   /** Effective emit mode – Arduino forces "cpp", generic uses the user's choice. */
   effectiveEmitMode(requestedMode: string, isNpmPackage: boolean): string;
 
-  // ── Type normalisation ──────────────────────────────────────────────────
+  // ── Include flags ───────────────────────────────────────────────────────
 
+  /** Whether <iostream> should be included (for std::cout). */
+  needsIostream(): boolean;
+
+  /** Whether <string> should be included. */
+  needsStdString(): boolean;
+
+  /** Whether <vector> should be included. */
+  needsStdVector(): boolean;
+
+  /** Whether <stdexcept> should be included. */
+  needsStdExcept(): boolean;
+
+  /** Whether <functional> should be included. */
+  needsStdFunction(): boolean;
+
+  /** Math header name ("<cmath>" or "<math.h>"). */
+  mathHeader(): string;
+
+  /** Whether the vector operator<< overload should be emitted. */
+  needsVectorOverload(): boolean;
+
+  /** Whether a large enum needs an explicit underlying type. */
+  needsLargeEnumUnderlying(): boolean;
+
+  /** Whether to skip a type alias for this platform (e.g. std::string on Arduino). */
+  shouldSkipTypeAlias(cppType: string): boolean;
+
+  /** Extra diagnostics to add during emit (e.g. Arduino split-mode ignored). */
+  emitDiagnostics(emitMode: string): Diagnostic[];
+}
+
+// ---------------------------------------------------------------------------
+// Sub-interface 2 — Polyfill overrides
+// ---------------------------------------------------------------------------
+
+export interface PlatformPolyfillStrategy {
+  /**
+   * Returns a set of polyfill IDs that this strategy handles natively.
+   * The emitter will skip emitting these polyfills from the global system.
+   */
+  nativePolyfills?(): Set<string>;
+
+  /**
+   * Returns polyfill IR for polyfills that this strategy provides natively.
+   */
+  generateNativePolyfills?(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[];
+}
+
+// ---------------------------------------------------------------------------
+// Sub-interface 3 — Type normalisation and renaming
+// ---------------------------------------------------------------------------
+
+export interface PlatformTypeStrategy {
   /** Map a C++ type string to the platform-safe equivalent. */
   normalizeCppType(typeName: string): string;
 
@@ -87,8 +123,37 @@ export interface PlatformStrategy {
   /** Map a function name to the platform entrypoint (e.g. void/__arduino_setup__ → setup). */
   mapFunctionName(originalName: string): string;
 
-  // ── Expression rendering ────────────────────────────────────────────────
+  /**
+   * Prefix an enum member name if it conflicts with a platform macro.
+   * Return the original name if no rename is needed.
+   */
+  renameEnumMember(enumName: string, memberName: string): string;
 
+  /**
+   * Whether enum member access should be wrapped in static_cast<int/long>.
+   * Returns the cast type ("int", "long") or undefined for no cast.
+   */
+  enumCastType(enumName: string): string | undefined;
+
+  /** Rename a struct field if it conflicts with platform-reserved names. */
+  renameStructField(fieldName: string): string;
+
+  /**
+   * Override how a struct initializer field renders its value.
+   * Return undefined to use default rendering.
+   */
+  structFieldInitializer(
+    fieldValue: ExpressionIR,
+    compiletimeVarNames: Set<string>,
+    renderExpr: (e: ExpressionIR) => string,
+  ): string | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-interface 4 — Expression rendering
+// ---------------------------------------------------------------------------
+
+export interface PlatformExpressionStrategy {
   /**
    * Platform-specific normalisation of raw expression strings.
    * Applied after the common === → == and !== → != transforms.
@@ -111,38 +176,18 @@ export interface PlatformStrategy {
   /**
    * Whether string concat / template interpolation should use snprintf()
    * instead of Arduino String() objects.
-   * When true, the emitter generates char[] buffers + snprintf() calls.
    */
   useSnprintfForStrings(): boolean;
 
   /**
    * Convert a float expression to an snprintf-compatible argument.
-   * When implemented, the strategy returns a format specifier, a rendered arg
-   * string, an estimated buffer length, and any prelude lines needed before
-   * the snprintf call (e.g. dtostrf on Arduino).
    * Return undefined to let the emitter use generic %g / %.Nf formatting.
-   *
-   * @param renderedExpr The already-rendered C++ expression string.
-   * @param precision    Decimal precision hint from the source literal, or undefined.
-   * @param tempId       A unique integer for naming temporaries.
    */
   floatToSnprintfArg?(
     renderedExpr: string,
     precision: number | undefined,
     tempId: number,
   ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } | undefined;
-
-  /**
-   * Prefix an enum member name if it conflicts with a platform macro.
-   * Return the original name if no rename is needed.
-   */
-  renameEnumMember(enumName: string, memberName: string): string;
-
-  /**
-   * Whether enum member access should be wrapped in static_cast<int/long>.
-   * Returns the cast type ("int", "long") or undefined for no cast.
-   */
-  enumCastType(enumName: string): string | undefined;
 
   /**
    * Try to render a typecode SDK call expression (pin.read, Serial.print …).
@@ -166,9 +211,13 @@ export interface PlatformStrategy {
     chain: string[],
     boardConstants?: BoardConstants,
   ): string | undefined;
+}
 
-  // ── Statement rendering ─────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Sub-interface 5 — Statement rendering
+// ---------------------------------------------------------------------------
 
+export interface PlatformStatementStrategy {
   /**
    * Try to render a call statement as a platform string.
    * Return `undefined` to fall back to default rendering.
@@ -208,8 +257,23 @@ export interface PlatformStrategy {
    */
   overrideClassFieldType(fieldName: string, normalizedType: string): string;
 
-  // ── Name guards ─────────────────────────────────────────────────────────
+  /**
+   * Lines to inject into the loop/run function body to drive async tasks.
+   */
+  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean): string[];
 
+  /**
+   * The function name where microtask pumping and async task driving happens.
+   * Arduino: "loop"; Generic: "main".
+   */
+  asyncDriverFunctionName(): string;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-interface 6 — Safety: name guards & interrupt analysis
+// ---------------------------------------------------------------------------
+
+export interface PlatformSafetyStrategy {
   /**
    * Names that must not be re-declared because the platform already defines them
    * (e.g. Arduino macros: HIGH, LOW, Serial, A0 …).
@@ -228,78 +292,31 @@ export interface PlatformStrategy {
    */
   apiReservedEnumGuard(): string;
 
-  // ── Includes ────────────────────────────────────────────────────────────
-
-  /** Whether <iostream> should be included (for std::cout). */
-  needsIostream(): boolean;
-
-  /** Whether <string> should be included. */
-  needsStdString(): boolean;
-
-  /** Whether <vector> should be included. */
-  needsStdVector(): boolean;
-
-  /** Whether <stdexcept> should be included. */
-  needsStdExcept(): boolean;
-
-  /** Whether <functional> should be included. */
-  needsStdFunction(): boolean;
-
-  /** Math header name ("<cmath>" or "<math.h>"). */
-  mathHeader(): string;
-
-  /** Whether the vector operator<< overload should be emitted. */
-  needsVectorOverload(): boolean;
-
-  // ── Enum underlying type ────────────────────────────────────────────────
-
-  /** Whether a large enum needs an explicit underlying type. */
-  needsLargeEnumUnderlying(): boolean;
-
-  // ── Struct field handling ───────────────────────────────────────────────
-
-  /** Rename a struct field if it conflicts with platform-reserved names. */
-  renameStructField(fieldName: string): string;
-
-  /**
-   * Override how a struct initializer field renders its value.
-   * Return undefined to use default rendering.
-   */
-  structFieldInitializer(
-    fieldValue: ExpressionIR,
-    compiletimeVarNames: Set<string>,
-    renderExpr: (e: ExpressionIR) => string,
-  ): string | undefined;
-
-  // ── Async / cooperative scheduling ──────────────────────────────────────
-
-  /**
-   * Lines to inject into the loop/run function body to drive async tasks.
-   */
-  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean): string[];
-
-  /**
-   * The function name where microtask pumping and async task driving happens.
-   * Arduino: "loop"; Generic: "main".
-   */
-  asyncDriverFunctionName(): string;
-
-  // ── Type aliases ────────────────────────────────────────────────────────
-
-  /** Whether to skip a type alias for this platform (e.g. std::string on Arduino). */
-  shouldSkipTypeAlias(cppType: string): boolean;
-
-  // ── Split-mode diagnostic ───────────────────────────────────────────────
-
-  /** Extra diagnostics to add during emit (e.g. Arduino split-mode ignored). */
-  emitDiagnostics(emitMode: string): Diagnostic[];
-
-  // ── Interrupt safety ────────────────────────────────────────────────────
-
   /**
    * Operations that are unsafe to use inside interrupt handlers.
    * Returns a map of operation name/prefix → { reason, severity }.
-   * The analyzer uses prefix matching for entries like "I2C0" (matches I2C0.write, etc.).
    */
   isrUnsafeOperations?(): Map<string, { reason: string; severity: 'warning' | 'info' }>;
+}
+
+// ---------------------------------------------------------------------------
+// Composed interface — backward-compatible aggregate of all six sub-interfaces
+// ---------------------------------------------------------------------------
+
+/**
+ * Full platform strategy composed from six focused sub-interfaces.
+ *
+ * Existing implementations that implement PlatformStrategy automatically
+ * satisfy every sub-interface.  New code that only needs a subset can accept
+ * e.g. `PlatformExpressionStrategy` instead of the full interface.
+ */
+export interface PlatformStrategy
+  extends PlatformProfileStrategy,
+    PlatformPolyfillStrategy,
+    PlatformTypeStrategy,
+    PlatformExpressionStrategy,
+    PlatformStatementStrategy,
+    PlatformSafetyStrategy {
+  /** Unique identifier for this strategy (e.g. "arduino", "generic"). */
+  readonly id: string;
 }

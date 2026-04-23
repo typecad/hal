@@ -9,21 +9,7 @@
 import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { getStdLibSupport } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import { loadFrameworkPackage } from "../../framework-package";
-
-const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
-
-function getArduinoFramework(): any {
-  return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
-}
-
-function generateStdStringPolyfill(methods: Set<string>): RuntimePolyfillIR {
-  return getArduinoFramework().generateStdStringPolyfill(methods);
-}
-
-function generateStaticStringPolyfill(methods: Set<string>, maxLen: number): RuntimePolyfillIR {
-  return getArduinoFramework().generateStaticStringPolyfill(methods, maxLen);
-}
+import { generateStdStringPolyfill, generateStaticStringPolyfill } from "@typecode/framework-arduino";
 
 export const stringMethodsPolyfill: PolyfillDefinition = {
   id: "string_methods",

@@ -11,6 +11,7 @@ import { ExpressionRenderer, transformTypeName } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
+import { mapPeripheralName } from "../mapping/peripheral-names";
 
 /**
  * Context needed for statement rendering.
@@ -40,6 +41,8 @@ export interface StatementRendererContext {
   namespaceNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
   varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
+  /** Imported class names from other transpiled modules */
+  crossModuleClassNames?: Set<string>;
 }
 
 /**
@@ -71,6 +74,7 @@ export class StatementRenderer {
   private readonly pointerStructFields?: Set<string>;
   private readonly arduinoClassNameMap?: Map<string, string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
+  private readonly crossModuleClassNames?: Set<string>;
 
   constructor(context: StatementRendererContext) {
     this.strategy = context.strategy;
@@ -93,6 +97,7 @@ export class StatementRenderer {
       cArrayVarNames: context.cArrayVarNames,
       namespaceNames: context.namespaceNames,
       varAccessorNames: context.varAccessorNames,
+      crossModuleClassNames: context.crossModuleClassNames,
     });
   }
 
@@ -357,7 +362,7 @@ export class StatementRenderer {
           const addr = renderA(initCall.args[0]);
           const reg = renderA(initCall.args[1]);
           const wireNum = initCall.receiver.slice(3); // strip leading "I2C"
-          const wire = wireNum === '0' ? 'Wire' : `Wire${wireNum}`;
+          const wire = mapPeripheralName(initCall.receiver) ?? `Wire${wireNum}`;
 
           if (initCall.method === "device.readByte") {
             // Emit Wire setup as prelude, keep Wire.read() as the variable initializer.
@@ -402,20 +407,14 @@ export class StatementRenderer {
         }
 
         if (!this.strategy.needsStdVector() && rawType.startsWith("std::vector<")) {
-          const vectorTypeMatch = rawType.startsWith("std::vector<")
-            ? rawType.slice("std::vector<".length, -1)
-            : null;
-          const elementType = vectorTypeMatch || (statement.initializer.elementType === "auto" ? "int" : statement.initializer.elementType);
-          const arraySize = statement.initializer.elements.length;
-          const arrayType = `StaticArray<${elementType}, ${arraySize}>`;
-          const renderedElements = statement.initializer.elements.map(e => this.expressionRenderer.render(e));
-          const preludeLines = [`${arrayType} ${safeArrName};`];
-          renderedElements.forEach((value, index) => {
-            preludeLines.push(`${safeArrName}.data[${index}] = ${value};`);
-          });
-          preludeLines.push(`${safeArrName}.length = ${arraySize};`);
-          this.expressionRenderer.pushPrelude(preludeLines);
-          return "";
+          // Non-mutable arrays annotated as Array<T> or ReadonlyArray<T> on platforms
+          // that don't support std::vector → emit as a plain C-style array.
+          // Mutable arrays (.push/.pop/.indexOf) are rewritten to StaticArray<int> in
+          // the IR builder (via mutableArrayVars) and never reach this branch.
+          const elementType = rawType.slice("std::vector<".length, -1) || "int";
+          return forHeader
+            ? `${elementType} ${safeArrName}[] = { ${elements} }`
+            : `${elementType} ${safeArrName}[] = { ${elements} };`;
         }
 
         // Use "int" for "auto" element type since C arrays need explicit types

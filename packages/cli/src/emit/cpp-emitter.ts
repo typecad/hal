@@ -10,14 +10,14 @@ import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
 import { ResolvedNpmPackage } from "../transpile";
-import { extractPropertyChain } from "../platform/typecode-map";
+import { extractPropertyChain, buildArduinoClassNameMap } from "@typecode/framework-arduino";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import { resolveStrategy } from "../platform/registry";
-import { ArduinoStrategy } from "../platform/arduino-strategy";
-import { buildArduinoClassNameMap } from "./arduino-class-map";
+import { ArduinoStrategy } from "@typecode/framework-arduino";
 import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
 import { normalizeRawExpression, transformTypeName } from "./expression-renderer";
+import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
 import { StatementRenderer } from "./statement-renderer";
 import {
@@ -50,9 +50,6 @@ const DOUBLE_QUOTE_ESCAPE_PATTERN = /"/g;
 const JS_EXTENSION_PATTERN = /\.js$/;
 const MJS_EXTENSION_PATTERN = /\.mjs$/;
 const FILE_EXTENSION_PATTERN = /\.[^.]+$/;
-const I2C_PERIPHERAL_PATTERN = /^I2C\d+$/;
-const SPI_PERIPHERAL_PATTERN = /^SPI\d+$/;
-const UART_PERIPHERAL_PATTERN = /^UART\d+$/;
 
 // ---------------------------------------------------------------------------
 // Emit-time context
@@ -130,6 +127,9 @@ let _classAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> 
 // Variable name → accessor map for instances of classes with getters/setters.
 let _varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> = new Map();
 
+// Cross-module class names for imported types in other transpiled modules.
+let _crossModuleClassNames: Set<string> | undefined;
+
 interface EmitterOptions {
   outDir: string;
   emitMode: EmitMode;
@@ -167,91 +167,6 @@ let _currentScopeState: EmissionScopeState | undefined;
 let _currentPointerVarTypes: Map<string, string> | undefined;
 let _currentKnownFunctionReturnTypes: Map<string, string> | undefined;
 
-/**
- * Render peripheral stub property access to appropriate C++ values.
- * TypeScript peripheral stubs (I2C0, SPI0, UART0) have properties like isInitialized,
- * busNumber, speed that don't exist in C++. We map them to appropriate values.
- * 
- * @param chain Property access chain (e.g., ["I2C0", "isInitialized"])
- * @returns C++ value string or undefined if not a peripheral property
- */
-function renderPeripheralProperty(chain: string[]): string | undefined {
-  // Must have exactly 2 parts: peripheral name and property
-  if (chain.length !== 2) return undefined;
-  
-  const [peripheral, property] = chain;
-  
-  // Resolve peripheral name to C++ equivalent
-  let cppPeripheral: string | undefined;
-  
-  // I2C buses: I2C0 -> Wire, I2C1 -> Wire1, I2C2 -> Wire2
-  if (/^I2C\d+$/.test(peripheral)) {
-    const num = peripheral.slice(3);
-    cppPeripheral = num === '0' ? 'Wire' : `Wire${num}`;
-  }
-  // SPI buses: SPI0 -> SPI, SPI1 -> SPI1, SPI2 -> SPI2
-  else if (/^SPI\d+$/.test(peripheral)) {
-    const num = peripheral.slice(3);
-    cppPeripheral = num === '0' ? 'SPI' : `SPI${num}`;
-  }
-  // UART ports: UART0 -> Serial, UART1 -> Serial1, UART2 -> Serial2
-  else if (/^UART\d+$/.test(peripheral)) {
-    const num = peripheral.slice(4);
-    cppPeripheral = num === '0' ? 'Serial' : `Serial${num}`;
-  }
-  // Serial ports: Serial -> Serial, Serial1 -> Serial1, Serial2 -> Serial2
-  else if (/^Serial\d*$/.test(peripheral)) {
-    cppPeripheral = peripheral;
-  }
-  
-  // Check if this is a known peripheral
-  if (!cppPeripheral) return undefined;
-  
-  // Properties that exist on the C++ objects
-  // For these, we can access them directly
-  const directProperties = new Set(["available"]);
-  
-  // Properties that are compile-time stubs in TypeScript but don't exist in C++
-  // These should return true (since the peripheral is initialized in setup())
-  const stubProperties = new Set([
-    "isInitialized", 
-    "isConnected",
-  ]);
-  
-  // Properties that are numeric constants in TypeScript
-  const numericProperties = new Set([
-    "busNumber", 
-    "uartNumber",
-  ]);
-  
-  if (directProperties.has(property)) {
-    // These exist on the C++ object
-    return `${cppPeripheral}.${property}`;
-  }
-  
-  if (stubProperties.has(property)) {
-    // These are runtime state - return true since we initialize in setup()
-    // A more sophisticated solution would track initialization state
-    return "true";
-  }
-  
-  if (numericProperties.has(property)) {
-    // busNumber is always 0 for the main peripheral
-    if (property === "busNumber" || property === "uartNumber") {
-      return "0";
-    }
-  }
-  
-  // For speed, we could return Wire.getClock() or similar, but it's runtime
-  // For now, return a default standard speed
-  if (property === "speed") {
-    return "100000"; // 100kHz standard speed
-  }
-  
-  return undefined;
-}
-
-
 function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) => string, strategy: PlatformStrategy = _defaultStrategy, classNameMap?: Map<string, string>): string {
   // Safety check
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -278,21 +193,9 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       if (nullVal && (expr.value === "null" || expr.value === "undefined")) {
         return nullVal;
       }
-      // Map peripheral identifiers to Arduino equivalents
-      // I2C0 -> Wire, I2C1 -> Wire1, SPI0 -> SPI, UART0 -> Serial
-      const peripheralName = expr.value;
-      if (I2C_PERIPHERAL_PATTERN.test(peripheralName)) {
-        const num = peripheralName.slice(3);
-        return num === '0' ? 'Wire' : `Wire${num}`;
-      }
-      if (SPI_PERIPHERAL_PATTERN.test(peripheralName)) {
-        const num = peripheralName.slice(3);
-        return num === '0' ? 'SPI' : `SPI${num}`;
-      }
-      if (UART_PERIPHERAL_PATTERN.test(peripheralName)) {
-        const num = peripheralName.slice(4);
-        return num === '0' ? 'Serial' : `Serial${num}`;
-      }
+      // Map peripheral identifiers to Arduino equivalents (I2C0→Wire, SPI0→SPI, UART0→Serial)
+      const mapped = mapPeripheralName(expr.value);
+      if (mapped !== undefined) return mapped;
       return escapeCppKeyword(expr.value);
     }
     case "raw": {
@@ -937,6 +840,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // Build class name mapping for Arduino library imports (for namespace resolution)
   _arduinoClassNameMap = buildArduinoClassNameMap(program.imports);
+  _crossModuleClassNames = options.crossModuleClasses;
 
   // Perform single-pass program analysis to replace multiple traversals
   const programAnalysis = analyzeProgram(program);
@@ -1104,6 +1008,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   for (const fn of program.functions) {
     knownFunctionReturnTypes.set(fn.originalName, mapReturnType(mapFunctionName(fn.originalName, strategy), fn.returnType, strategy));
   }
+  for (const cls of program.classes) {
+    for (const method of cls.methods) {
+      if (method.returnType) {
+        knownFunctionReturnTypes.set(
+          `${cls.name}.${method.name}`,
+          mapReturnType(mapFunctionName(`${cls.name}.${method.name}`, strategy), method.returnType, strategy),
+        );
+      }
+    }
+  }
 
   // Pre-build state machine class strings for every async function.
   // These are emitted into the source file after the polyfill runtime definitions.
@@ -1228,6 +1142,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         cArrayVarNames,
         namespaceNames: _namespaceNames,
         varAccessorNames: _varAccessorNames,
+        crossModuleClassNames: _crossModuleClassNames,
       });
       return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
     };
@@ -1833,6 +1748,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // Collect callback functions from call arguments (e.g., attachInterrupt handlers)
   const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[] = [];
+  const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9_]/g, "_");
+  const callbackNamePrefix = `${sanitizedBaseName}_isr_`;
   let callbackCounter = 0;
   
   function collectCallbacks(statements: StatementIR[]): void {
@@ -1870,7 +1787,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   function collectCallbackFromExpression(expr: ExpressionIR): void {
     // Handle top-level callback (e.g., in call statement args directly)
     if (expr.kind === "callback") {
-      const callbackName = `isr_${callbackCounter++}`;
+      const callbackName = `${callbackNamePrefix}${callbackCounter++}`;
       callbackFunctions.push({
         name: callbackName,
         params: expr.params,
@@ -1884,7 +1801,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (expr.kind === "method-call") {
       for (const arg of expr.args) {
         if (arg.kind === "callback") {
-          const callbackName = `isr_${callbackCounter++}`;
+          const callbackName = `${callbackNamePrefix}${callbackCounter++}`;
           callbackFunctions.push({
             name: callbackName,
             params: arg.params,
@@ -1978,8 +1895,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     return names;
   }
 
-  const promotedVarDecls = new Map<string, { cppType: string; index: number }>();
-  if (callbackFunctions.length > 0 && filteredTopLevelExecutables.length > 0) {
+  const promotedVarDecls = new Map<string, { cppType: string }>();
+  if (callbackFunctions.length > 0) {
     // Collect all identifiers referenced inside ISR callback bodies
     const isrIdentifiers = new Set<string>();
     for (const cb of callbackFunctions) {
@@ -1987,22 +1904,59 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         isrIdentifiers.add(id);
       }
     }
-    // Find runtime var_decls that are referenced in ISR callbacks
-    for (let i = 0; i < filteredTopLevelExecutables.length; i++) {
-      const stmt = filteredTopLevelExecutables[i];
-      if (stmt.kind === "var_decl" && isrIdentifiers.has(stmt.name)) {
-        const varType = normalizeCppTypeForTarget(stmt.cppType, strategy);
-        promotedVarDecls.set(stmt.name, { cppType: varType, index: i });
-        // Convert var_decl to assignment statement (remove type declaration)
-        (filteredTopLevelExecutables[i] as any) = {
-          kind: "assign",
-          sourceSpan: stmt.sourceSpan,
-          leadingComments: stmt.leadingComments,
-          trailingComments: stmt.trailingComments,
-          target: stmt.name,
-          operator: "=",
-          value: stmt.initializer,
-        };
+
+    function promoteVarDecls(statements: StatementIR[]): void {
+      for (let i = 0; i < statements.length; i++) {
+        const stmt = statements[i];
+        if (stmt.kind === "var_decl" && stmt.initializer && isrIdentifiers.has(stmt.name)) {
+          const varType = normalizeCppTypeForTarget(stmt.cppType, strategy);
+          if (!promotedVarDecls.has(stmt.name)) {
+            promotedVarDecls.set(stmt.name, { cppType: varType });
+          }
+          statements[i] = {
+            kind: "assign",
+            sourceSpan: stmt.sourceSpan,
+            leadingComments: stmt.leadingComments,
+            trailingComments: stmt.trailingComments,
+            target: stmt.name,
+            operator: "=",
+            value: stmt.initializer,
+          } as StatementIR;
+        }
+
+        if ("body" in stmt && Array.isArray(stmt.body)) {
+          promoteVarDecls(stmt.body);
+        }
+        if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) {
+          promoteVarDecls(stmt.thenBranch);
+        }
+        if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) {
+          promoteVarDecls(stmt.elseBranch);
+        }
+        if ("cases" in stmt && Array.isArray(stmt.cases)) {
+          for (const c of stmt.cases) {
+            promoteVarDecls(c.body);
+          }
+        }
+      }
+    }
+
+    promoteVarDecls(filteredTopLevelExecutables);
+    for (const fn of mappedFunctions) {
+      promoteVarDecls(fn.statements);
+    }
+    for (const cls of program.classes) {
+      if (cls.constructor) {
+        promoteVarDecls(cls.constructor.statements);
+      }
+      for (const method of cls.methods) {
+        promoteVarDecls(method.statements);
+      }
+      for (const getter of cls.getters) {
+        promoteVarDecls(getter.statements);
+      }
+      for (const setter of cls.setters) {
+        promoteVarDecls(setter.statements);
       }
     }
   }
@@ -2452,6 +2406,28 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
+  // Emit global declarations for promoted callback-captured variables.
+  // These may be referenced inside class method bodies defined inline.
+  if (promotedVarDecls.size > 0) {
+    const forwardDecls = new Set<string>();
+    for (const info of promotedVarDecls.values()) {
+      const typeNameMatch = info.cppType.replace(/^const\s+/, "").replace(/\s*\*$/, "").trim().match(/^([A-Za-z_][A-Za-z0-9_]*)$/);
+      if (typeNameMatch) {
+        forwardDecls.add(typeNameMatch[1]);
+      }
+    }
+    for (const typeName of forwardDecls) {
+      appendSourceLine(`class ${typeName};`);
+    }
+    for (const [varName, info] of promotedVarDecls) {
+      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName)};`);
+      if (info.cppType.trim().endsWith("*")) {
+        globalPointerVarTypes.set(varName, info.cppType);
+      }
+    }
+    appendSourceLine("");
+  }
+
   // Emit classes
   // Forward-declare classes that are used as base classes so the compiler
   // knows they exist before the derived class definition.
@@ -2825,16 +2801,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendRenderedStatement(statement, "", globalPointerVarTypes, runtimeTopLevelScope);
       }
     }
-  }
-
-  // Emit forward declarations for promoted runtime var_decls (referenced in ISR callbacks).
-  // These need file-scope visibility so ISR free functions can access them.
-  // Must come AFTER class definitions so the type is known.
-  if (promotedVarDecls.size > 0) {
-    for (const [varName, info] of promotedVarDecls) {
-      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName)} = nullptr;`);
-    }
-    appendSourceLine("");
   }
 
   // Emit object literal struct definitions (after classes so they can reference class types)

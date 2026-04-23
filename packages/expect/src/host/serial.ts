@@ -37,6 +37,7 @@ export async function readSerialOutput(
   port: string,
   baudRate: number,
   timeoutMs: number,
+  serialOpenDelay = 500,
 ): Promise<SerialReadResult> {
   // Dynamic import — serialport is a native dependency
   const { SerialPort } = await import('serialport');
@@ -106,6 +107,6 @@ export async function readSerialOutput(
           finish(`Failed to open ${port}: ${err.message}`);
         }
       });
-    }, 500);
+    }, serialOpenDelay);
   });
 }

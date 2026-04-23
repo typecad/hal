@@ -139,7 +139,7 @@ import { filterProgramIR } from "./ir/filter";
 import { flattenGeneratedModulesIntoSketch } from "./platform/arduino-compile";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
-import { tryGenerateArduinoLibDecl } from "./arduino-libs";
+import { tryGenerateArduinoLibDecl } from "@typecode/framework-arduino";
 import { initProfiler, getProfiler } from "./profiler";
 import {
   ResolvedNpmPackage,
@@ -593,7 +593,7 @@ function applyTreeShaking(
 }
 
 import type { PlatformStrategy } from "./platform/platform-strategy";
-import { ArduinoStrategy } from "./platform/arduino-strategy";
+import { ArduinoStrategy } from "@typecode/framework-arduino";
 
 /**
  * Try to load a PlatformStrategy from a framework package.

@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { BasePin } from '../types/pin';
+import type { ErrorPolicy } from './error-policy';
 
 /**
  * SPI mode (combination of CPOL and CPHA)
@@ -39,7 +40,7 @@ export enum SPIStatus {
  * - 'callback': Calls registered onError handlers
  * - 'silent': Returns status codes only (good for production)
  */
-export type ErrorPolicy = 'throw' | 'callback' | 'silent';
+export type { ErrorPolicy } from './error-policy';
 
 /**
  * SPI settings for transaction

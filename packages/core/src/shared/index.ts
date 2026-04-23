@@ -73,7 +73,15 @@ export type {
 export { DEFAULT_POLYFILL_CONFIG, STDLIB_SUPPORT, getStdLibSupport } from './polyfill-types';
 
 // Platform strategy
-export type { PlatformStrategy } from './platform-strategy';
+export type {
+  PlatformStrategy,
+  PlatformProfileStrategy,
+  PlatformPolyfillStrategy,
+  PlatformTypeStrategy,
+  PlatformExpressionStrategy,
+  PlatformStatementStrategy,
+  PlatformSafetyStrategy,
+} from './platform-strategy';
 
 // Toolchain types
 export type { CompileError, ArduinoCompileResult, ArduinoUploadResult } from './toolchain-types';

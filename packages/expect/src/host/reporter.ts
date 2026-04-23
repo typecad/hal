@@ -51,41 +51,6 @@ const FAIL_ICON = `${RED}✗${RESET}`;
 // ---------------------------------------------------------------------------
 
 /**
- * Print the complete test run result to stdout.
- */
-export function reportResults(
-  result: RunResult,
-  options: { board?: string; port?: string; verbose?: boolean } = {},
-): void {
-  const { board, port, verbose } = options;
-
-  // Header
-  console.log();
-  console.log(`${BOLD}${CYAN} typecode-test ${DIM}v0.1.0${RESET}`);
-  console.log();
-
-  // Per-file results
-  for (const file of result.files) {
-    reportFile(file, verbose ?? false);
-  }
-
-  // Failures detail
-  const failures = collectFailures(result);
-  if (failures.length > 0) {
-    console.log(`${BOLD}${RED} FAILURES${RESET}`);
-    console.log();
-    for (const f of failures) {
-      reportFailure(f);
-    }
-  }
-
-  // Summary
-  console.log();
-  reportSummarySection(result, board, port);
-  console.log();
-}
-
-/**
  * Print a single test file's results immediately.
  */
 export function reportFileResult(
@@ -95,7 +60,7 @@ export function reportFileResult(
   const verbose = options.verbose ?? false;
   reportFile(file, verbose);
 
-  const failures = collectFailuresForFile(file);
+  const failures = collectFailuresFromFile(file);
   if (failures.length > 0) {
     console.log(`${BOLD}${RED} FAILURES${RESET}`);
     console.log();
@@ -183,23 +148,26 @@ interface FailureInfo {
   assertion: AssertionResult;
 }
 
-function collectFailures(result: RunResult): FailureInfo[] {
+function collectFailuresFromFile(file: FileResult): FailureInfo[] {
   const failures: FailureInfo[] = [];
-  for (const file of result.files) {
-    for (const desc of file.describes) {
-      for (const test of desc.tests) {
-        for (const assertion of test.assertions) {
-          if (!assertion.passed) {
-            failures.push({
-              describeName: desc.name,
-              testName: test.name,
-              assertion,
-            });
-          }
+  if (file.error) {
+    return failures;
+  }
+
+  for (const desc of file.describes) {
+    for (const test of desc.tests) {
+      for (const assertion of test.assertions) {
+        if (!assertion.passed) {
+          failures.push({
+            describeName: desc.name,
+            testName: test.name,
+            assertion,
+          });
         }
       }
     }
   }
+
   return failures;
 }
 
@@ -257,6 +225,11 @@ function reportSummarySection(
   const total = result.totalTests;
   console.log(` ${BOLD}Tests${RESET}   ${parts} ${DIM}(${total})${RESET}`);
 
+  // Errors line (compile/upload failures)
+  if (result.totalErrors > 0) {
+    console.log(` ${BOLD}Errors${RESET}  ${RED}${BOLD}${result.totalErrors} file${result.totalErrors !== 1 ? 's' : ''} failed to build${RESET}`);
+  }
+
   // Board line
   if (board || port) {
     const boardPart = board ?? 'unknown';
@@ -269,9 +242,12 @@ function reportSummarySection(
   console.log(` ${BOLD}Time${RESET}    ${seconds}s`);
 
   // Final status bar
-  if (result.totalFailed > 0) {
+  if (result.totalFailed > 0 || result.totalErrors > 0) {
     console.log();
-    console.log(`${RED_BG}${WHITE}${BOLD} FAIL ${RESET} ${RED}${result.totalFailed} test${result.totalFailed !== 1 ? 's' : ''} failed${RESET}`);
+    const failParts: string[] = [];
+    if (result.totalFailed > 0) failParts.push(`${result.totalFailed} test${result.totalFailed !== 1 ? 's' : ''} failed`);
+    if (result.totalErrors > 0) failParts.push(`${result.totalErrors} build error${result.totalErrors !== 1 ? 's' : ''}`);
+    console.log(`${RED_BG}${WHITE}${BOLD} FAIL ${RESET} ${RED}${failParts.join(', ')}${RESET}`);
   } else {
     console.log();
     console.log(`${GREEN_BG}${WHITE}${BOLD} PASS ${RESET} ${GREEN}All tests passed${RESET}`);

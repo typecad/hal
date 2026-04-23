@@ -58,13 +58,27 @@ function parseArgs(argv: string[]): CLIArgs {
       case '--fqbn':
         result.fqbn = args[++i];
         break;
-      case '--baud':
-        result.baudRate = parseInt(args[++i], 10);
+      case '--baud': {
+        const val = args[++i];
+        const num = parseInt(val, 10);
+        if (isNaN(num)) {
+          console.error(`--baud requires a number, got "${val}"`);
+          process.exit(2);
+        }
+        result.baudRate = num;
         break;
+      }
       case '--timeout':
-      case '-t':
-        result.timeout = parseInt(args[++i], 10);
+      case '-t': {
+        const val = args[++i];
+        const num = parseInt(val, 10);
+        if (isNaN(num)) {
+          console.error(`--timeout requires a number, got "${val}"`);
+          process.exit(2);
+        }
+        result.timeout = num;
         break;
+      }
       case '--include':
       case '-i':
         if (!result.include) result.include = [];
@@ -152,6 +166,7 @@ async function main(): Promise<void> {
   if (args.fqbn) overrides.fqbn = args.fqbn;
   if (args.baudRate) overrides.baudRate = args.baudRate;
   if (args.timeout) overrides.timeout = args.timeout;
+  if (args.verbose) overrides.verbose = args.verbose;
 
   // If files are specified directly, use them as include patterns
   if (args.files.length > 0) {

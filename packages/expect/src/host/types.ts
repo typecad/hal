@@ -116,6 +116,8 @@ export interface RunResult {
   totalTests: number;
   totalPassed: number;
   totalFailed: number;
+  /** Pipeline errors (compile/upload failures) — tracked separately from test failures. */
+  totalErrors: number;
   durationMs: number;
 }
 
@@ -135,10 +137,14 @@ export interface TestConfig {
   baudRate: number;
   /** Timeout in ms waiting for SUITE_END. Default: `30000`. */
   timeout: number;
+  /** Delay in ms before opening serial port (after board reset). Default: `500`. */
+  serialOpenDelay?: number;
   /** Fully Qualified Board Name override (e.g. `'arduino:avr:uno'`). */
   fqbn?: string;
   /** Board package override. */
   board?: string;
+  /** Show debug serial output and passing assertion details. */
+  verbose?: boolean;
 }
 
 /**

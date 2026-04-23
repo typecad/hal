@@ -4,7 +4,7 @@ import type { PolyfillPlugin, PluginLogger } from "./plugin";
 
 // Import all polyfill definitions
 import { consolePolyfill } from "./polyfills/console";
-import { arduinoAsyncPolyfill } from "./polyfills/async-arduino";
+import { arduinoAsyncPolyfill } from "@typecode/framework-arduino";
 import { arrayMethodsPolyfill } from "./polyfills/array-methods";
 import { stringMethodsPolyfill } from "./polyfills/string-methods";
 

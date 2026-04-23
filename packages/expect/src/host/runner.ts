@@ -13,7 +13,7 @@ import { preprocess } from './preprocessor';
 import { transpileTestFile, compileSketch, uploadSketch } from './compiler';
 import { readSerialOutput } from './serial';
 import { parseProtocolLines } from './parser';
-import { reportFileResult, reportResults, reportSummary } from './reporter';
+import { reportFileResult, reportSummary } from './reporter';
 
 // ---------------------------------------------------------------------------
 // ANSI codes (for inline progress messages)
@@ -59,7 +59,7 @@ export async function run(config: ResolvedConfig): Promise<number> {
   for (const filePath of testFiles) {
     const result = await processTestFile(filePath, config);
     fileResults.push(result);
-    reportFileResult(result);
+    reportFileResult(result, { verbose: config.test.verbose });
   }
 
   // 3. Aggregate results
@@ -71,7 +71,7 @@ export async function run(config: ResolvedConfig): Promise<number> {
     port: config.test.port,
   });
 
-  return runResult.totalFailed > 0 ? 1 : 0;
+  return (runResult.totalFailed > 0 || runResult.totalErrors > 0) ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +142,7 @@ async function processTestFile(
     config.test.port,
     config.test.baudRate,
     config.test.timeout,
+    config.test.serialOpenDelay,
   );
 
   if (serialResult.error && !serialResult.completed) {
@@ -182,6 +183,7 @@ function aggregateResults(files: FileResult[], durationMs: number): RunResult {
   let totalTests = 0;
   let totalPassed = 0;
   let totalFailed = 0;
+  let totalErrors = 0;
 
   for (const file of files) {
     for (const desc of file.describes) {
@@ -191,10 +193,8 @@ function aggregateResults(files: FileResult[], durationMs: number): RunResult {
         else totalFailed++;
       }
     }
-    // Count error files as failures
     if (file.error) {
-      totalTests++;
-      totalFailed++;
+      totalErrors++;
     }
   }
 
@@ -203,6 +203,7 @@ function aggregateResults(files: FileResult[], durationMs: number): RunResult {
     totalTests,
     totalPassed,
     totalFailed,
+    totalErrors,
     durationMs,
   };
 }

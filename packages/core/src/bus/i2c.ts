@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import type { BasePin } from '../types/pin';
+import type { ErrorPolicy } from './error-policy';
 
 // ---------------------------------------------------------------------------
 // Address type
@@ -42,7 +43,7 @@ export enum I2CStatus {
  * - 'callback': Calls registered onError handlers
  * - 'silent': Returns status codes only (good for production)
  */
-export type ErrorPolicy = 'throw' | 'callback' | 'silent';
+export type { ErrorPolicy } from './error-policy';
 
 // ---------------------------------------------------------------------------
 // Branded types for initialization state

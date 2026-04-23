@@ -8,7 +8,7 @@
 
 import type { PlatformStrategy } from "./platform-strategy";
 import { GenericStrategy } from "./generic-strategy";
-import { ArduinoStrategy } from "./arduino-strategy";
+import { ArduinoStrategy } from "@typecode/framework-arduino";
 
 // Store references to strategy instances for cache management
 const _genericStrategy = new GenericStrategy();

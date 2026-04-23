@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "Button.h"
 
 // Arduino string method polyfills
 const char* __tc_toUpperCase(const char* s) { static char buf[64]; strncpy(buf, s, 63); buf[63] = '\0'; for (char* p = buf; *p; p++) *p = toupper(*p); return buf; }
@@ -12,64 +13,12 @@ const char* __tc_replace(const char* s, const char* old, const char* repl) { sta
 const char* __tc_charAt(const char* s, int idx) { static char buf[2]; buf[0] = s[idx]; buf[1] = '\0'; return buf; }
 int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx]; }
 
-void isr_0();
-void isr_1();
+void sketch_isr_0();
 
-// ── Button class ──────────────────────────────────────────────────────────
-class Button {
-public:
-  friend void isr_0();
-  friend void isr_1();
+void sketch_isr_0();
 
-  Button(int pin, int debounceMs) {
-    this->pin = pin;
-    this->debounceMs = debounceMs;
-  }
-
-  static Button* start(int pin, int debounceMs = 50) {
-    const int input = pin;
-    pinMode(pin, INPUT_PULLUP);
-    const Button* btn = new Button(input, debounceMs);
-    attachInterrupt(digitalPinToInterrupt(pin), isr_1, FALLING);
-    return btn;
-  }
-
-  Button* onPress(void (*handler)()) {
-    this->handler = handler;
-    return this;
-  }
-
-  bool getIsHeld() const {
-    return digitalRead(this->pin) == false;
-  }
-
-private:
-  int pin;
-  int debounceMs;
-  int lastPress = 0;
-  void (*handler)() = nullptr;
-
-};
-
-Button* btn = nullptr;
-
-void isr_0();
-void isr_1();
-
-void isr_0() {
+void sketch_isr_0() {
   digitalWrite(13, !digitalRead(13));
-}
-
-void isr_1() {
-  const int now = millis();
-  if ((now - btn->lastPress) >= btn->debounceMs)
-  {
-    btn->lastPress = now;
-    if (btn->handler != nullptr)
-    {
-      btn->handler();
-    }
-  }
 }
 
 // Auto-generated setup() for top-level statements
@@ -77,7 +26,7 @@ void setup()
 {
   // ── Usage ─────────────────────────────────────────────────────────────────
   pinMode(13, OUTPUT); digitalWrite(13, false);
-  btn = Button::start(2, 50)->onPress(isr_0);
+  const int btn = Button::start(2, 50)->onPress(sketch_isr_0);
 }
 
 void loop()
