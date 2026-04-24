@@ -56,7 +56,7 @@ const safe = Num.clamp(pwmValue)
 // ---------------------------------------------------------------------------
 
 export function setup() {
-  D13.output(false);
+  D13.asOutput(false);
 }
 
 export function loop() {

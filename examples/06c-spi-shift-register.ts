@@ -11,7 +11,7 @@ const serial = UART0.begin(9600);
 
 // Chip select (latch pin on 74HC595)
 const LATCH = D10;
-LATCH.output(true);  // true (data not latched)
+LATCH.asOutput(true);  // true (data not latched)
 
 // Initialize SPI with configuration
 const spi = SPI0.begin();

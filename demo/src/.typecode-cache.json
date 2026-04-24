@@ -1,28 +1,14 @@
 {
   "version": 1,
-  "toolchainFingerprint": "67b7366da8524ec8",
+  "toolchainFingerprint": "621ec2e1e3246cac",
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
-    "C:\\typecad\\typecode\\demo\\src\\Button.ts": {
-      "hash": "427d2c1bd4306d10",
-      "mtime": 1776915484832.9446,
-      "size": 1579,
-      "dependencies": [
-        "C:\\typecad\\typecode\\node_modules\\@typecode\\board-arduino-uno\\src\\index.ts",
-        "C:\\typecad\\typecode\\node_modules\\@typecode\\core\\src\\index.ts"
-      ],
-      "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\Button.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\Button.h.tscppmap.json"
-      ]
-    },
     "C:\\typecad\\typecode\\demo\\src\\sketch.ts": {
-      "hash": "3603201add46179c",
-      "mtime": 1776915490620.7283,
-      "size": 396,
+      "hash": "2f6b4b4fcebccd26",
+      "mtime": 1776969506284.2478,
+      "size": 238,
       "dependencies": [
-        "C:\\typecad\\typecode\\node_modules\\@typecode\\board-arduino-uno\\src\\index.ts",
-        "C:\\typecad\\typecode\\demo\\src\\Button.ts"
+        "C:\\typecad\\typecode\\node_modules\\@typecode\\board-esp32-devkit\\src\\index.ts"
       ],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\sketch.ino",
@@ -30,6 +16,6 @@
       ]
     }
   },
-  "createdAt": 1776917982798,
-  "updatedAt": 1776917984478
+  "createdAt": 1776969630810,
+  "updatedAt": 1776969631992
 }

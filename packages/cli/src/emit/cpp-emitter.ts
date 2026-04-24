@@ -554,6 +554,40 @@ function transformConsoleCall(
 }
 
 
+function fixCrossModuleMethodCall(callee: string, knownFunctionReturnTypes?: Map<string, string>): string {
+  const lastDot = callee.lastIndexOf(".");
+  if (lastDot === -1) {
+    return callee;
+  }
+
+  const receiverCallee = callee.slice(0, lastDot);
+  const memberName = callee.slice(lastDot + 1);
+  const receiverMatch = receiverCallee.match(/^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(/);
+  if (!receiverMatch) {
+    return callee;
+  }
+
+  const receiverCallName = receiverMatch[1];
+  const receiverClassName = receiverCallName.split(".")[0];
+  const hasKnown = knownFunctionReturnTypes?.has(receiverCallName);
+  const returnType = knownFunctionReturnTypes?.get(receiverCallName);
+  const isCrossModuleClass = _crossModuleClassNames?.has(receiverClassName);
+  if (!hasKnown && !isCrossModuleClass) {
+    return callee;
+  }
+
+  const callPrefix = receiverCallee.replace(
+    new RegExp(`^${receiverCallName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\s*\\(`),
+    `${receiverCallName.replace(/\./g, "::")}(`,
+  );
+
+  if (returnType?.endsWith("*") || isCrossModuleClass) {
+    return `${callPrefix}->${memberName}`;
+  }
+
+  return `${callPrefix}.${memberName}`;
+}
+
 function renderStatement(
   statement: StatementIR,
   forHeader: boolean = false,
@@ -606,6 +640,7 @@ function renderStatement(
     if (calleeTransformer) {
       callee = calleeTransformer(callee);
     }
+    callee = fixCrossModuleMethodCall(callee, knownFunctionReturnTypes);
     callee = normalizeRawExpression(callee, strategy);
     const renderedArgs = statement.args.map((arg) => renderExpression(arg, undefined, strategy)).join(", ");
     return forHeader ? `${callee}(${renderedArgs})` : `${callee}(${renderedArgs});`;

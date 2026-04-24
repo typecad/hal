@@ -54,6 +54,15 @@ export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = [
     fqbn: 'arduino:avr:uno',
     mcu: 'ATmega328P',
   },
+  {
+    id: 'esp32-devkit',
+    displayName: 'ESP32 DevKit',
+    architecture: 'esp32',
+    boardPackage: '@typecode/board-esp32-devkit',
+    frameworkPackage: '@typecode/framework-arduino',
+    fqbn: 'esp32:esp32:esp32',
+    mcu: 'ESP32-WROOM-32',
+  },
 ];
 
 // ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ const serial = UART0.begin(9600);
 
 // Chip select pin
 const CS = D10;
-CS.output(true);  // true (deselected)
+CS.asOutput(true);  // true (deselected)
 
 // Initialize SPI with default settings
 const spi = SPI0.begin();

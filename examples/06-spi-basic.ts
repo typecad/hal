@@ -17,7 +17,7 @@ spi.setBitOrder('msb');
 
 // Chip select pin
 const CS = D10;
-CS.output(true);  // true (deselected)
+CS.asOutput(true);  // true (deselected)
 
 serial.println("SPI Basic Example");
 

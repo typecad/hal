@@ -51,7 +51,7 @@ describe('Uno showcase correctness')
   .it('returns enum-backed values correctly')
     .expect(chooseMode(true)).toBe(1)
   .it('can read the LED pin state after driving it high')
-    .expect(LED.read()).toBeTruthy()
+    .expect(LED.read() ? 1 : 0).toBeTruthy()
   .it('keeps the analog input in the Uno ADC range')
     .expect(A0.readAnalog()).toBeWithinRange(0, 1023);
 

@@ -7,8 +7,8 @@
     "build": "node ../packages/cli/dist/cli.js ./src/sketch.ts",
     "build:watch": "node ../packages/cli/dist/cli.js build --watch",
     "compile": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile",
-    "upload": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --port COM6",
-    "debug": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --debug --monitor --port COM6",
+    "upload": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --port COM5",
+    "debug": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --debug --monitor --port COM5",
     "test:hw": "node ../packages/cli/dist/cli.js --expect",
     "test:hw-11": "node ../packages/cli/dist/cli.js --expect ./src/11-arrays.test.ts"
   },

@@ -12,13 +12,14 @@ The examples are ordered as a progression, not a grab bag. Earlier files show ba
 - `21-bus-ownership.ts`: the clearest reference for `take()` / `release()` on I2C, SPI, and UART.
 - `23-transpiler-showcase.ts`: a stock-Uno-friendly runtime validation sketch that prints labeled results over serial.
 - `24-uno-validation.test.ts`: a companion `@typecode/expect` hardware test for the same core transpiler behaviors.
+- `25-debounce-button.ts`: an advanced class-based button debounce example that demonstrates modern TypeScript patterns.
 
 ## Example groups
 
 - `01` to `04`: basic GPIO, analog, PWM, and interrupts.
 - `05` to `06c`: I2C and SPI usage patterns, including device accessors and transactions.
 - `07` to `19`: board features, testing, native integration, utilities, validation, register mapping, and units.
-- `20` to `24`: current recommended patterns for GPIO objects, bus ownership, Uno validation, and hardware correctness testing.
+- `20` to `25`: current recommended patterns for GPIO objects, bus ownership, Uno validation, advanced class-based patterns, and hardware correctness testing.
 
 ## Notes on API style
 

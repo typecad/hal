@@ -25,7 +25,9 @@ const serial = UART0.begin(9600);
 const sensor = I2C0.begin();
 
 // Enable debug output for I2C errors
-sensor.debugOnError = true;
+sensor.onError((status, address, operation) => {
+  serial.println(`I2C error ${status} at 0x${address.toString(16)} during ${operation}`);
+});
 
 // Read device ID to verify connection
 const device = sensor.device(BME280_ADDR);

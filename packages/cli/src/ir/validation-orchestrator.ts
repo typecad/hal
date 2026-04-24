@@ -15,11 +15,13 @@ import { validateTimer0PWMTimingConflict } from "./timer0-pwm-timing-conflict";
 import { validateTryCatch } from "./try-catch-validation";
 import { validateUnitSuspicion } from "./unit-suspicion-validation";
 import { validateOwnership } from "./ownership-analysis";
+import { validatePinCapabilities } from "./pin-capability-validation";
 
 export function runProgramValidations(program: ProgramIR): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const peripheralUsage = (program.peripheralUsage as PeripheralUsage | undefined) ?? createEmptyPeripheralUsage();
 
+  diagnostics.push(...validatePinCapabilities(program));
   diagnostics.push(...validatePeripherals(peripheralUsage, program.boardConstants));
   diagnostics.push(...validateUnsafePins(peripheralUsage, program.boardConstants));
   diagnostics.push(...validatePeripheralPinConflicts(peripheralUsage, program.boardConstants));

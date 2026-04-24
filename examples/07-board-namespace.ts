@@ -8,7 +8,7 @@
 import { Board } from '@typecode';
 
 const serial = Board.UART0.begin(115200);
-Board.LED.output(false);
+Board.LED.asOutput(false);
 
 serial.println("Arduino Uno booted");
 serial.println(`MCU: ${Board.definition.mcu}`);

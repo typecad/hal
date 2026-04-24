@@ -83,6 +83,7 @@ export class StatementRenderer {
     this.pointerStructFields = context.pointerStructFields;
     this.arduinoClassNameMap = context.arduinoClassNameMap;
     this.varAccessorNames = context.varAccessorNames ?? new Map();
+    this.crossModuleClassNames = context.crossModuleClassNames;
 
     // Create expression renderer with shared context
     this.expressionRenderer = new ExpressionRenderer({
@@ -295,6 +296,40 @@ export class StatementRenderer {
       : `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")});`;
   }
 
+  private fixCrossModuleMethodCall(callee: string): string {
+    const lastDot = callee.lastIndexOf(".");
+    if (lastDot === -1) {
+      return callee;
+    }
+
+    const receiverCallee = callee.slice(0, lastDot);
+    const memberName = callee.slice(lastDot + 1);
+    const receiverMatch = receiverCallee.match(/^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(/);
+    if (!receiverMatch) {
+      return callee;
+    }
+
+    const receiverCallName = receiverMatch[1];
+    const receiverClassName = receiverCallName.split(".")[0];
+    const hasKnown = this.knownFunctionReturnTypes?.has(receiverCallName);
+    const returnType = this.knownFunctionReturnTypes?.get(receiverCallName);
+    const isCrossModuleClass = this.crossModuleClassNames?.has(receiverClassName);
+    if (!hasKnown && !isCrossModuleClass) {
+      return callee;
+    }
+
+    const callPrefix = receiverCallee.replace(
+      new RegExp(`^${receiverCallName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\s*\\(`),
+      `${receiverCallName.replace(/\./g, "::")}(`,
+    );
+
+    if (returnType?.endsWith("*") || isCrossModuleClass) {
+      return `${callPrefix}->${memberName}`;
+    }
+
+    return `${callPrefix}.${memberName}`;
+  }
+
   private renderCall(statement: Extract<StatementIR, { kind: "call" }>, forHeader: boolean, calleeTransformer?: (callee: string) => string): string {
     // Handle raw statements from setupInitCode
     if (statement.callee.startsWith('__RAW_STMT__')) {
@@ -323,6 +358,7 @@ export class StatementRenderer {
     if (calleeTransformer) {
       callee = calleeTransformer(callee);
     }
+    callee = this.fixCrossModuleMethodCall(callee);
     callee = this.fixPointerFieldAccess(callee);
     const renderedArgs = statement.args.map((arg) => this.expressionRenderer.render(arg)).join(", ");
     return forHeader ? `${callee}(${renderedArgs})` : `${callee}(${renderedArgs});`;

@@ -92,6 +92,12 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   DAC1: 'pwm',            // D25 on ESP32 (DAC channel 1)
   DAC2: 'pwm',            // D26 on ESP32 (DAC channel 2)
 
+  // ---- ESP32 DevKit input-only analog pins --------------------------------
+  D34: 'analog-input',
+  D35: 'analog-input',
+  D36: 'analog-input',
+  D39: 'analog-input',
+
   // ---- NANO 33 IoT additional analog pins (A6, A7) ----------------------
   A6:  'analog-input',
   A7:  'analog-input',
@@ -104,7 +110,8 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   I2C2:    'i2c',
   SPI0:    'spi',
   SPI1:    'spi',
-  
+  UART2:   'serial',
+
   // ---- Utility namespaces ----------------------------------------------
   Pulse:   'pulse',
   Shift:   'shift',

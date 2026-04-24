@@ -55,7 +55,7 @@ export type {
 
 // Typecode symbols
 export type { TypecodeReceiverKind } from './typecode-symbols';
-export { inferKindByName } from './typecode-symbols';
+export { inferKindByName, pinsWithKind } from './typecode-symbols';
 
 // Board resolver
 export type { BoardConstants } from './board-resolver';

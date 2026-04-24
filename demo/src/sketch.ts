@@ -1,10 +1,13 @@
-import { D2, LED, millis } from '@typecode';
-import { Button } from './Button';
+import { HIGH, LED, delay } from '@typecode';
 
-// ── Usage ─────────────────────────────────────────────────────────────────
+// Recommended pattern: alias-based GPIO usage.
+const led = LED.asOutput(HIGH);
 
-const led = LED.asOutput(false);
+async function blink() {
+    while (true) {
+        led.toggle();
+        await delay(1000);
+    }
+}
 
-const btn = Button.start(D2, 50).onPress(() => {
-  led.toggle();
-});
+blink();

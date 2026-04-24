@@ -8,7 +8,7 @@ import { SPI0, SS, delay } from '@typecode';
 
 const spi = SPI0.begin();
 spi.setFrequency(1_000_000);
-SS.output(false);
+SS.asOutput(false);
 
 let pattern = 0b00000001;
 

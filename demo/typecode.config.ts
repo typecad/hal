@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// demo/typecode.config.ts - Demo Project Configuration for Arduino Uno
+// demo/typecode.config.ts - Demo Project Configuration for ESP32 DevKit
 // ---------------------------------------------------------------------------
 
 import type { TypecodeConfig } from '@typecode/core';
@@ -8,19 +8,17 @@ const config: TypecodeConfig = {
   // Entry point — the main TypeScript file to transpile
   entry: './src/sketch.ts',
 
-  // Target architecture (AVR for ATmega328P)
-  target: 'avr',
+  // Target architecture (ESP32 for ESP32-WROOM-32)
+  target: 'esp32',
 
   // Board package - provides pin definitions and board constants
-  board: '@typecode/board-arduino-uno',
+  board: '@typecode/board-esp32-devkit',
 
   // Framework package - controls code generation strategy
-  // Options: '@typecode/framework-arduino' (digitalWrite, etc.)
-  //          '@typecode/framework-avr' (native registers: PORTB, etc.)
   framework: '@typecode/framework-arduino',
 
   // Fully-Qualified Board Name for arduino-cli
-  fqbn: 'arduino:avr:uno',
+  fqbn: 'esp32:esp32:esp32',
 
   // Output / build options
   output: {

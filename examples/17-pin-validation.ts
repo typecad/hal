@@ -64,7 +64,7 @@ function fadeLED(pin: PWMPin) {
 }
 
 // Main program
-LED.output(false);
+LED.asOutput(false);
 D3.pwm(0);
 
 serial.println("Starting main loop...");

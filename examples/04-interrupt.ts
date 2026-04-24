@@ -1,4 +1,4 @@
-import { D2, LED } from '@typecode';
+import { D2, LED, delay } from '@typecode';
 
 const led = LED.asOutput(false);
 let ledState = false;
@@ -11,3 +11,7 @@ D2.onChange(() => {
     led.low();
   }
 });
+
+while (true) {
+  delay(1000);
+}

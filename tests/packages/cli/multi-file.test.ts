@@ -468,6 +468,57 @@ describe("forward declarations", () => {
     expect(sketchText).not.toContain("void isr_0()");
     expect(buttonHeader).not.toContain("void isr_0()");
   });
+
+  it("emits valid C++ for standalone cross-module fluent API calls", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    tempDirs.push(workspaceDir);
+
+    const entryPath = path.join(workspaceDir, "sketch.ts");
+    const buttonPath = path.join(workspaceDir, "Button.ts");
+
+    fs.writeFileSync(
+      buttonPath,
+      [
+        "export class Button {",
+        "  static start(pin: number, debounceMs: number): Button {",
+        "    return null as any;",
+        "  }",
+        "",
+        "  onPress(handler: () => void): this {",
+        "    return this;",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    fs.writeFileSync(
+      entryPath,
+      [
+        "import { D2 } from '@typecode';",
+        "import { Button } from './Button';",
+        "",
+        "Button.start(D2, 50).onPress(() => {",
+        "  // noop",
+        "});",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await transpileFile({
+      inputFile: entryPath,
+      emitMode: "split",
+      target: "arduino",
+      emitMaps: false,
+      skipTypeCheck: true,
+    });
+
+    const sketchText = fs.readFileSync(result.sourcePath, "utf8");
+    expect(sketchText).toContain("Button::start(2, 50)->onPress");
+    expect(sketchText).not.toContain("Button.start(2, 50).onPress");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -52,7 +52,7 @@ export function printStep(message: string): void {
  * Print transpiling step
  */
 export function printTranspiling(): void {
-  console.log(chalk.cyan(`${ICON_COMPILE} Transpiling...`));
+  console.log(chalk.cyan(`${ICON_TYPECODE} Transpiling...`));
 }
 
 /**
