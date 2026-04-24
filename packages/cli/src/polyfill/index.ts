@@ -12,7 +12,6 @@ export { STATIC_ARRAY_TEMPLATE, STATIC_STRING_TEMPLATE, CONSOLE_TEMPLATE } from 
 
 // Re-export polyfill definitions for direct access
 export { consolePolyfill } from "./polyfills/console";
-export { arduinoAsyncPolyfill } from "@typecode/framework-arduino";
 export { arrayMethodsPolyfill } from "./polyfills/array-methods";
 export { stringMethodsPolyfill } from "./polyfills/string-methods";
 

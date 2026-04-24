@@ -1,32 +1,8 @@
 import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } from "@typecode/core/shared";
 import type { PlatformStrategy } from "@typecode/core/shared";
+import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "@typecode/core/shared";
 
-export interface KnownVariableInfo {
-  cppType: string;
-  floatPrecision?: number;
-}
-
-export interface SnprintfArgRenderResult {
-  format: string;
-  arg: string;
-  estimatedLength: number;
-  preludeLines: string[];
-}
-
-export interface SnprintfRenderResult {
-  formatString: string;
-  args: string[];
-  estimatedLength: number;
-  preludeLines: string[];
-}
-
-export interface EmissionScopeState {
-  readonly knownVariableTypes: Map<string, KnownVariableInfo>;
-  readonly snprintfBuffers: Set<string>;
-  nextSnprintfTempId: number;
-}
-
-export type SnprintfExpressionRenderer = (expr: ExpressionIR) => string;
+export type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "@typecode/core/shared";
 
 export function createEmissionScopeState(initialTypes?: Map<string, KnownVariableInfo>): EmissionScopeState {
   return {

@@ -1,19 +1,20 @@
 import { PolyfillDefinition, PolyfillContext, PolyfillNeed, RuntimePolyfillIR, DEFAULT_POLYFILL_CONFIG, PolyfillConfig } from "./types";
 import { ProgramIR } from "../ir/model";
 import type { PolyfillPlugin, PluginLogger } from "./plugin";
+import { hasFrameworkApi, getFrameworkApi } from "../framework-api";
 
-// Import all polyfill definitions
+// Import all polyfill definitions (framework-agnostic detection only)
 import { consolePolyfill } from "./polyfills/console";
-import { arduinoAsyncPolyfill } from "@typecode/framework-arduino";
 import { arrayMethodsPolyfill } from "./polyfills/array-methods";
 import { stringMethodsPolyfill } from "./polyfills/string-methods";
 
 /**
- * Registry of all built-in polyfills
+ * Registry of all built-in polyfills (framework-agnostic).
+ * Framework-specific polyfills (e.g. arduinoAsyncPolyfill) are registered
+ * dynamically when the framework is loaded.
  */
 const BUILTIN_POLYFILLS: PolyfillDefinition[] = [
   consolePolyfill,
-  arduinoAsyncPolyfill,
   arrayMethodsPolyfill,
   stringMethodsPolyfill,
 ];
@@ -34,10 +35,22 @@ export class PolyfillRegistry {
     this.plugins = new Map();
     this.config = { ...DEFAULT_POLYFILL_CONFIG, ...config };
     this.logger = logger ?? console;
-    
+
     // Register all built-in polyfills
     for (const polyfill of BUILTIN_POLYFILLS) {
       this.polyfills.set(polyfill.id, polyfill);
+    }
+
+    // Register framework-specific polyfills when a framework is loaded
+    if (hasFrameworkApi()) {
+      try {
+        const api = getFrameworkApi();
+        if (api.arduinoAsyncPolyfill) {
+          this.polyfills.set(api.arduinoAsyncPolyfill.id, api.arduinoAsyncPolyfill);
+        }
+      } catch {
+        // Framework not available — skip framework-specific polyfills
+      }
     }
   }
 

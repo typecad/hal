@@ -1,21 +1,20 @@
 {
-  "name": "typecode-demo-arduino-uno",
+  "name": "typecode-demo",
   "version": "1.0.0",
-  "description": "TypeCode demo project for Arduino Uno",
+  "description": "TypeCode demo project for ESP32 DevKit",
   "private": true,
   "scripts": {
-    "build": "node ../packages/cli/dist/cli.js ./src/sketch.ts",
-    "build:watch": "node ../packages/cli/dist/cli.js build --watch",
-    "compile": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile",
-    "upload": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --port COM5",
-    "debug": "node ../packages/cli/dist/cli.js ./src/sketch.ts --compile --upload --debug --monitor --port COM5",
-    "test:hw": "node ../packages/cli/dist/cli.js --expect",
-    "test:hw-11": "node ../packages/cli/dist/cli.js --expect ./src/11-arrays.test.ts"
+    "build": "typecode ./src/sketch.ts",
+    "build:watch": "typecode build --watch",
+    "compile": "typecode ./src/sketch.ts --compile",
+    "upload": "typecode ./src/sketch.ts --compile --upload --port COM6",
+    "debug": "typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM6",
+    "test:hw": "typecode-test",
+    "test:hw-11": "typecode-test ./src/11-arrays.test.ts"
   },
   "dependencies": {
     "@typecode/core": "*",
-    "@typecode/board-arduino-uno": "*",
-    "@typecode/framework-avr": "*",
+    "@typecode/board-esp32-devkit": "*",
     "@typecode/framework-arduino": "*",
     "@typecode/expect": "*"
   }

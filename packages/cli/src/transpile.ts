@@ -139,7 +139,8 @@ import { filterProgramIR } from "./ir/filter";
 import { flattenGeneratedModulesIntoSketch } from "./platform/arduino-compile";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
-import { tryGenerateArduinoLibDecl } from "@typecode/framework-arduino";
+import { getFrameworkApi, setFrameworkApi, hasFrameworkApi } from "./framework-api";
+import { DEFAULT_FRAMEWORK_PACKAGE } from "./framework-package";
 import { initProfiler, getProfiler } from "./profiler";
 import {
   ResolvedNpmPackage,
@@ -211,7 +212,7 @@ function autoGenerateMissingDecls(
     } else {
       // Try Arduino library for bare module imports
       for (const file of files) {
-        const declPath = tryGenerateArduinoLibDecl(modulePath, file);
+        const declPath = getFrameworkApi().tryGenerateArduinoLibDecl(modulePath, file);
         if (declPath) {
           generated.push(declPath);
           break;
@@ -593,7 +594,6 @@ function applyTreeShaking(
 }
 
 import type { PlatformStrategy } from "./platform/platform-strategy";
-import { ArduinoStrategy } from "@typecode/framework-arduino";
 
 /**
  * Try to load a PlatformStrategy from a framework package.
@@ -605,12 +605,15 @@ import { ArduinoStrategy } from "@typecode/framework-arduino";
  */
 function loadPackageStrategy(packageName: string | undefined, fromDir: string, debug?: boolean): PlatformStrategy | undefined {
   if (!packageName) return undefined;
-  
+
   try {
     // Resolve from the input file's directory to handle monorepo workspaces
     const packagePath = require.resolve(packageName, { paths: [fromDir] });
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const pkg = require(packagePath);
+    // Populate the framework API registry so other modules (polyfills, emitters)
+    // can access framework functions without a static import.
+    setFrameworkApi(pkg);
     if (pkg.FrameworkStrategy) {
       if (debug) {
         logDebug(`Loaded FrameworkStrategy from ${packageName}`, true);
@@ -649,6 +652,11 @@ function loadPlatformStrategy(
   if (frameworkPackage) {
     const strategy = loadPackageStrategy(frameworkPackage, fromDir, debug);
     if (strategy) return strategy;
+  }
+
+  // Try loading the default framework package so the API registry is populated
+  if (!hasFrameworkApi()) {
+    loadPackageStrategy(DEFAULT_FRAMEWORK_PACKAGE, fromDir, debug);
   }
   
   // Return undefined to let emitCpp resolve based on target option

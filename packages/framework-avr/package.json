@@ -18,8 +18,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typecode/core": "^0.1.0",
-    "@typecode/framework-arduino": "^0.1.0"
+    "@typecode/core": "*",
+    "@typecode/framework-arduino": "*"
   },
   "license": "MIT",
   "publishConfig": {

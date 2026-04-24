@@ -3,9 +3,15 @@ import { analyzePeripheralUsage } from "../packages/cli/src/ir/peripheral-usage"
 import { emitCpp } from "../packages/cli/src/emit/cpp-emitter";
 import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/cli/src/types";
 import { createPolyfillRegistry } from "../packages/cli/src/polyfill";
+import { setFrameworkApi } from "../packages/cli/src/framework-api";
 import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+
+// Load the default framework package so polyfill generators and emitters
+// can access framework functions without going through transpileFile().
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+setFrameworkApi(require("../packages/framework-arduino"));
 
 // Ensure output directory exists
 const testOutDir = ".build/tests";

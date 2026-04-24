@@ -9,6 +9,7 @@ export default defineConfig({
     // (TypeCode fluent describe/it/expect API), not Vitest. They run on real Arduino
     // hardware via `typecode build`. Excluding them prevents spurious Vitest load errors.
     exclude: ["node_modules", "dist"],
+    setupFiles: ["tests/setup-framework.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],

@@ -8,7 +8,7 @@ import type { ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
-import { extractPropertyChain } from "@typecode/framework-arduino";
+import { getFrameworkApi } from "../framework-api";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
 import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
@@ -424,7 +424,7 @@ export class ExpressionRenderer {
   }
 
   private renderPropertyAccess(expr: Extract<ExpressionIR, { kind: "property-access" }>, exprTransformer?: (expr: string) => string): string {
-    const chain = extractPropertyChain(expr);
+    const chain = getFrameworkApi().extractPropertyChain(expr);
     if (chain) {
       // Check for Board.definition.* access first
       const boardDef = this.strategy.renderBoardDefinitionAccess(chain, this.boardConstants);

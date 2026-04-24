@@ -1,13 +1,8 @@
-<h1 align="center">TypeCode</h1>
+TypeCode<
 
-<p align="center">
-  <strong>Write firmware in TypeScript. Ship it as C++.</strong>
-</p>
+- Write firmware in TypeScript. Ship it as C++.
+- Type-safe, board-aware embedded development that catches hardware bugs before you flash — not after a 30-second upload cycle.
 
-<p align="center">
-  Type-safe, board-aware embedded development that catches hardware bugs<br>
-  before you flash — not after a 30-second upload cycle.
-</p>
 
 ---
 
@@ -181,6 +176,24 @@ Tree-shaking is on by default. Only code reachable from your entry points (`setu
 
 ## Quick start
 
+Scaffold a new project in one command — no global install needed:
+
+```bash
+npx @typecode/create my-project --board arduino-uno
+cd my-project
+npm install
+```
+
+This creates a complete project with `typecode.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: `arduino-uno`, `esp32-devkit`.
+
+Or launch an interactive wizard:
+
+```bash
+npx @typecode/create
+```
+
+### Manual setup
+
 ```bash
 npm install typecode @typecode/board-arduino-uno
 ```
@@ -224,10 +237,30 @@ npx typecode sketch.ts --compile --upload --port COM4
 ## CLI reference
 
 ```bash
+npx @typecode/create [project-name] [options]   # scaffold a new project
+typecode init [project-name] [options]           # scaffold via the full CLI
 typecode <input.ts> [options]
+typecode build                                  # use entry from typecode.config.ts
 typecode gen-libdefs <input.ts>
 typecode map-error <mapFile> [options]
+typecode create-board <name>                    # scaffold a new board package
 ```
+
+### Project scaffolding (`@typecode/create`)
+
+The `@typecode/create` package is standalone — it only depends on `chalk` and Node built-ins, so `npx` downloads it instantly without pulling in the transpiler toolchain.
+
+| Flag | Description |
+|---|---|
+| `[project-name]` | Project name (default: interactive prompt) |
+| `--board, -b <id>` | Board to target (`arduino-uno`, `esp32-devkit`). Skips interactive wizard. |
+| `--framework, -f <id>` | Framework (`arduino`, `avr`). Default: `arduino`. |
+| `--baud <rate>` | Serial baud rate (default: `9600`). |
+| `--no-sketch` | Skip generating the starter blink sketch. |
+| `--outDir, -o <dir>` | Output directory (default: `./<project-name>`). |
+| `--help, -h` | Show help. |
+
+The `typecode init` command delegates to `@typecode/create` and accepts the same flags.
 
 ### Transpile options
 
@@ -260,3 +293,36 @@ typecode map-error <mapFile> [options]
 | `--keep-unused-variables` | Keep all top-level variables even if unreferenced |
 | `--no-report-unused` | Suppress diagnostics for removed code |
 | `--entry-point <name>` | Add a custom entry point (repeatable) |
+
+---
+
+## Monorepo scripts
+
+| Script | Description |
+|---|---|
+| `npm run build` | Build all packages |
+| `npm run typecheck` | Type-check all packages (`tsc -b`) |
+| `npm test` | Run all tests (Vitest) |
+| `npm run ci` | Run tests then build all packages |
+
+### Version management (Changesets)
+
+All packages share a fixed version via [Changesets](https://github.com/changesets/changesets).
+
+1. **Create a changeset** — run after making changes:
+   ```bash
+   npm run changeset
+   ```
+   Select which packages changed and the bump type (`patch` / `minor` / `major`). This creates a file in `.changeset/` describing the change.
+
+2. **Bump versions** — before publishing, consume all pending changesets:
+   ```bash
+   npm run version
+   ```
+   This bumps `package.json` versions, updates internal dependency ranges, and generates changelogs. With fixed versioning, all packages get the same version number.
+
+3. **Publish** — push packages to the registry:
+   ```bash
+   npm run publish:all
+   ```
+   Publishes `core`, `hal`, `cli`, `create`, and `expect` in dependency order to npm. Individual packages can be published with `npm run publish:core`, `npm run publish:cli`, `npm run publish:create`, etc. For a private registry, use `npm run publish:private`.

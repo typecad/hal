@@ -9,7 +9,7 @@
 import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { getStdLibSupport } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import { generateStdStringPolyfill, generateStaticStringPolyfill } from "@typecode/framework-arduino";
+import { getFrameworkApi } from "../../framework-api";
 
 export const stringMethodsPolyfill: PolyfillDefinition = {
   id: "string_methods",
@@ -55,10 +55,11 @@ export const stringMethodsPolyfill: PolyfillDefinition = {
     }
 
     // Delegate to framework package for C++ generation
+    const api = getFrameworkApi();
     if (impl === "std_string") {
-      return generateStdStringPolyfill(methods);
+      return api.generateStdStringPolyfill(methods);
     } else {
-      return generateStaticStringPolyfill(methods, context.config?.strings?.staticMaxLen ?? 64);
+      return api.generateStaticStringPolyfill(methods, context.config?.strings?.staticMaxLen ?? 64);
     }
   },
 };

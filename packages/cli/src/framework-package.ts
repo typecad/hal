@@ -1,4 +1,6 @@
 import path from "node:path";
+import { setFrameworkApi, clearFrameworkApi } from "./framework-api";
+import type { FrameworkApi } from "./framework-api";
 
 export const DEFAULT_FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
 
@@ -17,7 +19,7 @@ export function resolveFrameworkPackage(
 export function loadFrameworkPackage(
   packageName = DEFAULT_FRAMEWORK_PACKAGE,
   fromDir = process.cwd(),
-): any {
+): FrameworkApi {
   const packagePath = resolveFrameworkPackage(packageName, fromDir);
   if (!packagePath) {
     throw new Error(
@@ -26,15 +28,23 @@ export function loadFrameworkPackage(
     );
   }
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  return require(packagePath);
+  const mod = require(packagePath) as FrameworkApi;
+  setFrameworkApi(mod);
+  return mod;
 }
 
 export function loadOptionalFrameworkPackage(
   packageName = DEFAULT_FRAMEWORK_PACKAGE,
   fromDir = process.cwd(),
-): any | undefined {
+): FrameworkApi | undefined {
   const packagePath = resolveFrameworkPackage(packageName, fromDir);
   if (!packagePath) return undefined;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  return require(packagePath);
+  const mod = require(packagePath) as FrameworkApi;
+  setFrameworkApi(mod);
+  return mod;
+}
+
+export function resetFrameworkPackage(): void {
+  clearFrameworkApi();
 }

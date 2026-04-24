@@ -86,3 +86,12 @@ export type {
 // Toolchain types
 export type { CompileError, ArduinoCompileResult, ArduinoUploadResult } from './toolchain-types';
 export { parseCompileErrors, collectCppFiles, toArchitectureFromFqbn } from './toolchain-types';
+
+// Snprintf types
+export type {
+  KnownVariableInfo,
+  SnprintfArgRenderResult,
+  SnprintfRenderResult,
+  EmissionScopeState,
+  SnprintfExpressionRenderer,
+} from './snprintf-types';

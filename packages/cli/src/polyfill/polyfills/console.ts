@@ -8,7 +8,7 @@
 
 import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import { generateArduinoConsolePolyfill, generateGenericConsolePolyfill } from "@typecode/framework-arduino";
+import { getFrameworkApi } from "../../framework-api";
 
 export const consolePolyfill: PolyfillDefinition = {
   id: "console",
@@ -88,12 +88,13 @@ export const consolePolyfill: PolyfillDefinition = {
     }
 
     // Delegate to framework package for C++ generation
+    const api = getFrameworkApi();
     if (impl === "serial") {
       const baudRate = context.config?.console?.baudRate ?? 9600;
       const autoInject = context.config?.console?.autoInjectSerialBegin ?? true;
-      return generateArduinoConsolePolyfill(methods, isAvr, context.config?.console?.useFlashStrings ?? true, baudRate, autoInject, context.usedIdentifiers, isArduino);
+      return api.generateArduinoConsolePolyfill(methods, isAvr, context.config?.console?.useFlashStrings ?? true, baudRate, autoInject, context.usedIdentifiers, isArduino);
     } else {
-      return generateGenericConsolePolyfill(methods);
+      return api.generateGenericConsolePolyfill(methods);
     }
   },
 };

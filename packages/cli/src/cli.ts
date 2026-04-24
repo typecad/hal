@@ -9,8 +9,6 @@ import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from 
 import { loadTypecodeConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
-import { scaffoldProject, printInitNextSteps, KNOWN_BOARDS } from "./scaffold/init-scaffold";
-import { runInitWizard } from "./scaffold/init-wizard";
 import { runWatch, discoverWatchDirs } from "./watch";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils";
 import * as ui from "./utils/ui";
@@ -25,77 +23,32 @@ async function main(): Promise<void> {
       return;
     }
 
-    // Handle init command
+    // Handle init command — delegate to @typecode/create if available
     if (options.command === "init") {
       const initOptions = options as import("./types").InitCommandOptions;
 
       try {
-        // Check if we have enough flags for non-interactive mode
-        const hasBoard = !!initOptions.board;
+        // Build the argument list for @typecode/create
+        const createArgs: string[] = ["node", "create"];
+        if (initOptions.projectName) createArgs.push(initOptions.projectName);
+        if (initOptions.board) { createArgs.push("--board", initOptions.board); }
+        if (initOptions.framework) { createArgs.push("--framework", initOptions.framework); }
+        if (initOptions.baud) { createArgs.push("--baud", String(initOptions.baud)); }
+        if (initOptions.noSketch) { createArgs.push("--no-sketch"); }
+        if (initOptions.outDir) { createArgs.push("--outDir", initOptions.outDir); }
 
-        if (hasBoard) {
-          // Non-interactive mode: resolve board from registry
-          const board = KNOWN_BOARDS.find(b => b.id === initOptions.board);
-          if (!board) {
-            const available = KNOWN_BOARDS.map(b => `  - ${b.id} (${b.displayName})`).join("\n");
+        try {
+          const create = await import("@typecode/create");
+          await create.runCreate(createArgs);
+        } catch (importError: any) {
+          if (importError.code === 'MODULE_NOT_FOUND') {
             throw new Error(
-              `Unknown board '${initOptions.board}'. Available boards:\n${available}`,
+              "The '@typecode/create' package is required for 'typecode init'.\n" +
+              "Install it with: npm install -g @typecode/create\n" +
+              "Or use: npx @typecode/create",
             );
           }
-
-          const framework: 'arduino' | 'avr' = initOptions.framework === 'avr' ? 'avr' : 'arduino';
-          const frameworkPackage = framework === 'avr'
-            ? '@typecode/framework-avr'
-            : '@typecode/framework-arduino';
-
-          const projectName = initOptions.projectName || 'my-project';
-
-          const result = scaffoldProject({
-            projectName,
-            boardId: board.id,
-            boardDisplayName: board.displayName,
-            architecture: board.architecture,
-            boardPackage: board.boardPackage,
-            frameworkPackage,
-            framework,
-            fqbn: board.fqbn,
-            mcu: board.mcu,
-            baudRate: initOptions.baud ?? 9600,
-            includeSketch: !initOptions.noSketch,
-          }, initOptions.outDir);
-
-          console.log("\nCreated project files:");
-          for (const file of result.createdFiles) {
-            const relative = path.relative(process.cwd(), file);
-            console.log(`  ${relative || file}`);
-          }
-
-          printInitNextSteps(result.options, result.outDir);
-        } else {
-          // Interactive mode: launch wizard
-          console.log("Launching interactive project setup...\n");
-          const wizardResult = await runInitWizard({
-            projectName: initOptions.projectName,
-            board: initOptions.board,
-            framework: initOptions.framework,
-            baud: initOptions.baud,
-            noSketch: initOptions.noSketch,
-          });
-
-          if (!wizardResult) {
-            console.log("Project setup cancelled.");
-            return;
-          }
-
-          const result = scaffoldProject(wizardResult, initOptions.outDir);
-
-          console.log("\nCreated project files:");
-          for (const file of result.createdFiles) {
-            const relative = path.relative(process.cwd(), file);
-            console.log(`  ${relative || file}`);
-          }
-
-          printInitNextSteps(result.options, result.outDir);
+          throw importError;
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";

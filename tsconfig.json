@@ -2,8 +2,8 @@
   "files": [],
   "compilerOptions": {
     "target": "ES2021",
-    "module": "NodeNext",
-    "moduleResolution": "nodenext",
+    "module": "Node16",
+    "moduleResolution": "Node16",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,9 +12,11 @@
   },
   "references": [
     { "path": "packages/core" },
+    { "path": "packages/hal" },
     { "path": "packages/framework-avr" },
     { "path": "packages/framework-arduino" },
     { "path": "packages/board-arduino-uno" },
+    { "path": "packages/board-esp32-devkit" },
     { "path": "packages/cli" },
     { "path": "packages/expect" },
     { "path": "packages/simulator" }

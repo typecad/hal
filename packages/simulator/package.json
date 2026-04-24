@@ -14,12 +14,15 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc"
   },
   "dependencies": {
     "typescript": "^5.7.3",
-    "@typecode/core": "^0.1.0"
+    "@typecode/core": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.7"

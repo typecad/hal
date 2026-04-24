@@ -9,7 +9,7 @@
 import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { getStdLibSupport } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import { generateStdVectorArrayPolyfill, generateStaticArrayPolyfill } from "@typecode/framework-arduino";
+import { getFrameworkApi } from "../../framework-api";
 
 export const arrayMethodsPolyfill: PolyfillDefinition = {
   id: "array_methods",
@@ -128,9 +128,9 @@ export const arrayMethodsPolyfill: PolyfillDefinition = {
     }
 
     if (impl === "std_vector") {
-      return generateStdVectorArrayPolyfill(methods);
+      return getFrameworkApi().generateStdVectorArrayPolyfill(methods);
     } else {
-      return generateStaticArrayPolyfill(methods, context.config?.arrays?.staticMaxSize ?? 32);
+      return getFrameworkApi().generateStaticArrayPolyfill(methods, context.config?.arrays?.staticMaxSize ?? 32);
     }
   },
 };

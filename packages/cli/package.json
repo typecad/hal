@@ -1,5 +1,5 @@
 {
-  "name": "typecode",
+  "name": "@typecode/cli",
   "version": "0.1.0",
   "description": "TypeCode CLI - TypeScript to C++ transpiler for embedded development",
   "type": "commonjs",
@@ -49,6 +49,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli.js"
@@ -56,15 +59,23 @@
   "dependencies": {
     "chalk": "^4.1.2",
     "typescript": "^5.7.3",
-    "@typecode/core": "^0.1.0",
-    "@typecode/hal": "^0.1.0",
-    "@typecode/expect": "^0.1.0"
+    "@typecode/core": "*",
+    "@typecode/hal": "*",
+    "@typecode/expect": "*"
   },
   "peerDependencies": {
-    "@typecode/framework-arduino": "^0.1.0"
+    "@typecode/framework-arduino": "*"
+  },
+  "peerDependenciesMeta": {
+    "@typecode/framework-arduino": {
+      "optional": true
+    }
+  },
+  "optionalDependencies": {
+    "@typecode/create": "*"
   },
   "devDependencies": {
-    "@typecode/framework-arduino": "^0.1.0",
+    "@typecode/framework-arduino": "*",
     "@types/node": "^22.10.7"
   },
   "license": "MIT"

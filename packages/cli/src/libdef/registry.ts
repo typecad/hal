@@ -5,7 +5,7 @@ import { listFiles, readText } from "../utils/fs";
 import { toModuleKey, toPascalCase } from "../utils/strings";
 import { toArchitectureFromFqbn } from "../utils/toolchain";
 import { ImportIR } from "../ir/model";
-import { getArduinoLibraryHeaderName, isArduinoLibraryImport } from "@typecode/framework-arduino";
+import { getFrameworkApi } from "../framework-api";
 
 export interface ResolvedImport {
   include: string;
@@ -30,8 +30,9 @@ export function loadLibraryDefinitions(definitionsDir: string): Map<string, Libr
 
 function fallbackInclude(moduleSpecifier: string): string {
   // For Arduino library imports, try to get the actual header file name
-  if (isArduinoLibraryImport(moduleSpecifier)) {
-    const actualHeader = getArduinoLibraryHeaderName(moduleSpecifier);
+  const api = getFrameworkApi();
+  if (api.isArduinoLibraryImport(moduleSpecifier)) {
+    const actualHeader = api.getArduinoLibraryHeaderName(moduleSpecifier);
     if (actualHeader) {
       return `<${actualHeader}>`;
     }

@@ -22,8 +22,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typecode/core": "^0.1.0",
-    "@typecode/hal": "^0.1.0"
+    "@typecode/core": "*",
+    "@typecode/hal": "*"
   },
   "license": "MIT",
   "publishConfig": {

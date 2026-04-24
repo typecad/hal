@@ -9,8 +9,10 @@
     "packages/board-arduino-uno",
     "packages/board-esp32-devkit",
     "packages/cli",
+    "packages/create",
     "packages/expect",
-    "packages/simulator"
+    "packages/simulator",
+    "demo"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
@@ -18,10 +20,19 @@
     "ci": "npm test && npm run build --workspaces",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:hw": "typecode-test"
+    "test:hw": "typecode-test",
+    "publish:core": "npm publish --workspace @typecode/core --access public",
+    "publish:cli": "npm publish --workspace @typecode/cli --access public",
+    "publish:create": "npm publish --workspace @typecode/create --access public",
+    "publish:hal": "npm publish --workspace @typecode/hal --access public",
+    "publish:expect": "npm publish --workspace @typecode/expect --access public",
+    "publish:all": "npm run publish:core && npm run publish:hal && npm run publish:cli && npm run publish:expect",
+    "publish:private": "npm run publish:core -- --registry http://192.168.2.207:4873/ && npm run publish:hal -- --registry http://192.168.2.207:4873/ && npm run publish:cli -- --registry http://192.168.2.207:4873/ && npm run publish:expect -- --registry http://192.168.2.207:4873/",
+    "changeset": "changeset",
+    "version": "changeset version"
   },
   "devDependencies": {
-    "ts-node": "^10.9.2",
+    "@changesets/cli": "^2.31.0",
     "vitest": "^4.0.18"
   }
 }

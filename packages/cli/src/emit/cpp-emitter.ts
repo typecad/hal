@@ -10,11 +10,10 @@ import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
 import { ResolvedNpmPackage } from "../transpile";
-import { extractPropertyChain, buildArduinoClassNameMap } from "@typecode/framework-arduino";
+import { getFrameworkApi } from "../framework-api";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import { resolveStrategy } from "../platform/registry";
-import { ArduinoStrategy } from "@typecode/framework-arduino";
 import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
 import { normalizeRawExpression, transformTypeName } from "./expression-renderer";
 import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
@@ -317,7 +316,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       return `${callee}(${argsText})`;
     }
     case "property-access": {
-      const chain = extractPropertyChain(expr);
+      const chain = getFrameworkApi().extractPropertyChain(expr);
       if (chain) {
         // Check for Board.definition.* access first
         const boardDef = strategy.renderBoardDefinitionAccess(chain, _emitBoardConstants);
@@ -874,7 +873,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   ensureDir(options.outDir);
 
   // Build class name mapping for Arduino library imports (for namespace resolution)
-  _arduinoClassNameMap = buildArduinoClassNameMap(program.imports);
+  _arduinoClassNameMap = getFrameworkApi().buildArduinoClassNameMap(program.imports);
   _crossModuleClassNames = options.crossModuleClasses;
 
   // Perform single-pass program analysis to replace multiple traversals
