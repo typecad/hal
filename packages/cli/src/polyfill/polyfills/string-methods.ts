@@ -9,7 +9,21 @@
 import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { getStdLibSupport } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import { getFrameworkApi } from "../../framework-api";
+import { loadFrameworkPackage } from "../../framework-package";
+
+const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+
+function getArduinoFramework(): any {
+  return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
+}
+
+function generateStdStringPolyfill(methods: Set<string>): RuntimePolyfillIR {
+  return getArduinoFramework().generateStdStringPolyfill(methods);
+}
+
+function generateStaticStringPolyfill(methods: Set<string>, maxLen: number): RuntimePolyfillIR {
+  return getArduinoFramework().generateStaticStringPolyfill(methods, maxLen);
+}
 
 export const stringMethodsPolyfill: PolyfillDefinition = {
   id: "string_methods",
@@ -55,11 +69,10 @@ export const stringMethodsPolyfill: PolyfillDefinition = {
     }
 
     // Delegate to framework package for C++ generation
-    const api = getFrameworkApi();
     if (impl === "std_string") {
-      return api.generateStdStringPolyfill(methods);
+      return generateStdStringPolyfill(methods);
     } else {
-      return api.generateStaticStringPolyfill(methods, context.config?.strings?.staticMaxLen ?? 64);
+      return generateStaticStringPolyfill(methods, context.config?.strings?.staticMaxLen ?? 64);
     }
   },
 };

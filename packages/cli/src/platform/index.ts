@@ -2,10 +2,11 @@
 // Platform strategy exports
 //
 // Re-exports platform strategies for use within the CLI and by consumers.
-// Framework strategies (Arduino, AVR, etc.) are loaded dynamically at runtime.
+// The ArduinoStrategy is now provided by @typecode/framework-arduino.
 // ---------------------------------------------------------------------------
 
 export { PlatformStrategy } from './platform-strategy';
 export { GenericStrategy } from './generic-strategy';
+export { ArduinoStrategy } from './arduino-strategy';
 export { resolveStrategy, registerPlatformStrategy } from './registry';
 export type { RuntimePolyfillIR } from '../polyfill/types';

@@ -77,6 +77,6 @@ function expandPattern(projectRoot: string, pattern: string): string[] {
 function globToRegex(glob: string): RegExp {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&');
   // **/ matches zero or more path segments, * matches within a single segment
-  const pattern = escaped.replace(/\*\*\//g, '(.+/)?').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]');
+  const pattern = escaped.replace(/\?/g, '[^/]').replace(/\*\*\//g, '(.+/)?').replace(/\*/g, '[^/]*');
   return new RegExp(`^${pattern}$`);
 }

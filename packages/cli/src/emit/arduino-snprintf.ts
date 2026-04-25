@@ -1,36 +1,91 @@
-// ---------------------------------------------------------------------------
-// Snprintf helpers — delegates to the loaded framework package
-//
-// All snprintf functions live in the framework package (they are
-// platform-specific C++ rendering helpers).  This module re-exposes them
-// through the framework API registry so callers don't need a static import.
-// ---------------------------------------------------------------------------
+import { loadFrameworkPackage } from "../framework-package";
+import type {
+  KnownVariableInfo,
+  SnprintfArgRenderResult,
+  SnprintfRenderResult,
+  EmissionScopeState,
+  SnprintfExpressionRenderer,
+} from "@typecode/framework-arduino";
 
-import { getFrameworkApi } from "../framework-api";
+const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
 
-export type { EmissionScopeState, KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, SnprintfExpressionRenderer } from "@typecode/core";
+function getArduinoFramework(): any {
+  return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
+}
 
-export function createEmissionScopeState(...args: any[]): any {
-  return getFrameworkApi().createEmissionScopeState(...args);
+export function createEmissionScopeState(): EmissionScopeState {
+  return getArduinoFramework().createEmissionScopeState();
 }
-export function cloneEmissionScopeState(...args: any[]): any {
-  return getFrameworkApi().cloneEmissionScopeState(...args);
+
+export function cloneEmissionScopeState(state: EmissionScopeState): EmissionScopeState {
+  return getArduinoFramework().cloneEmissionScopeState(state);
 }
-export function createChildEmissionScope(...args: any[]): any {
-  return getFrameworkApi().createChildEmissionScope(...args);
+
+export function createChildEmissionScope(
+  parent: EmissionScopeState,
+  parameters?: readonly { name: string; cppType: string }[],
+): EmissionScopeState {
+  return getArduinoFramework().createChildEmissionScope(parent, parameters);
 }
-export function recordVariableType(...args: any[]): any {
-  return getFrameworkApi().recordVariableType(...args);
+
+export function recordVariableType(statement: unknown, scopeState: EmissionScopeState): void {
+  return getArduinoFramework().recordVariableType(statement, scopeState);
 }
-export function inferSnprintfArg(...args: any[]): any {
-  return getFrameworkApi().inferSnprintfArg(...args);
+
+export function inferSnprintfArg(
+  expr: unknown,
+  strategy: unknown,
+  scopeState: EmissionScopeState,
+  renderExpression: (expr: unknown) => string,
+  pointerVarTypes?: Map<string, string>,
+  knownFunctionReturnTypes?: Map<string, string>,
+): SnprintfArgRenderResult | undefined {
+  return getArduinoFramework().inferSnprintfArg(
+    expr,
+    strategy,
+    scopeState,
+    renderExpression,
+    pointerVarTypes,
+    knownFunctionReturnTypes,
+  );
 }
-export function buildSnprintfRenderResult(...args: any[]): any {
-  return getFrameworkApi().buildSnprintfRenderResult(...args);
+
+export function buildSnprintfRenderResult(
+  expr: unknown,
+  strategy: unknown,
+  scopeState: EmissionScopeState,
+  renderExpression: (expr: unknown) => string,
+  pointerVarTypes?: Map<string, string>,
+  knownFunctionReturnTypes?: Map<string, string>,
+): SnprintfRenderResult | undefined {
+  return getArduinoFramework().buildSnprintfRenderResult(
+    expr,
+    strategy,
+    scopeState,
+    renderExpression,
+    pointerVarTypes,
+    knownFunctionReturnTypes,
+  );
 }
-export function shouldUseSnprintfForArduinoString(...args: any[]): any {
-  return getFrameworkApi().shouldUseSnprintfForArduinoString(...args);
+
+export function shouldUseSnprintfForArduinoString(
+  statement: unknown,
+  strategy: unknown,
+): boolean {
+  return getArduinoFramework().shouldUseSnprintfForArduinoString(statement, strategy);
 }
-export function statementNeedsSnprintf(...args: any[]): any {
-  return getFrameworkApi().statementNeedsSnprintf(...args);
+
+export function statementNeedsSnprintf(
+  statement: unknown,
+  strategy: unknown,
+): boolean {
+  return getArduinoFramework().statementNeedsSnprintf(statement, strategy);
 }
+
+export type {
+  KnownVariableInfo,
+  SnprintfArgRenderResult,
+  SnprintfRenderResult,
+  EmissionScopeState,
+  SnprintfExpressionRenderer,
+};

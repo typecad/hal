@@ -8,14 +8,11 @@
     "build:watch": "typecode build --watch",
     "compile": "typecode ./src/sketch.ts --compile",
     "upload": "typecode ./src/sketch.ts --compile --upload --port COM6",
-    "debug": "typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM6",
-    "test:hw": "typecode-test",
-    "test:hw-11": "typecode-test ./src/11-arrays.test.ts"
+    "debug": "typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM6"
   },
   "dependencies": {
     "@typecode/core": "*",
     "@typecode/board-esp32-devkit": "*",
-    "@typecode/framework-arduino": "*",
-    "@typecode/expect": "*"
+    "@typecode/framework-arduino": "*"
   }
 }

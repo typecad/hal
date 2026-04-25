@@ -8,7 +8,21 @@
 
 import type { PolyfillDefinition, PolyfillDomain, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from "../types";
 import { ProgramIR, StatementIR } from "../../ir/model";
-import { getFrameworkApi } from "../../framework-api";
+import { loadFrameworkPackage } from "../../framework-package";
+
+const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+
+function getArduinoFramework(): any {
+  return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());
+}
+
+function generateArduinoConsolePolyfill(methods: Set<string>, isAvr: boolean, useFlashStrings: boolean, baudRate: number, autoInject: boolean, usedIdentifiers: Set<string>, isArduino: boolean): RuntimePolyfillIR {
+  return getArduinoFramework().generateArduinoConsolePolyfill(methods, isAvr, useFlashStrings, baudRate, autoInject, usedIdentifiers, isArduino);
+}
+
+function generateGenericConsolePolyfill(methods: Set<string>): RuntimePolyfillIR {
+  return getArduinoFramework().generateGenericConsolePolyfill(methods);
+}
 
 export const consolePolyfill: PolyfillDefinition = {
   id: "console",
@@ -88,13 +102,12 @@ export const consolePolyfill: PolyfillDefinition = {
     }
 
     // Delegate to framework package for C++ generation
-    const api = getFrameworkApi();
     if (impl === "serial") {
       const baudRate = context.config?.console?.baudRate ?? 9600;
       const autoInject = context.config?.console?.autoInjectSerialBegin ?? true;
-      return api.generateArduinoConsolePolyfill(methods, isAvr, context.config?.console?.useFlashStrings ?? true, baudRate, autoInject, context.usedIdentifiers, isArduino);
+      return generateArduinoConsolePolyfill(methods, isAvr, context.config?.console?.useFlashStrings ?? true, baudRate, autoInject, context.usedIdentifiers, isArduino);
     } else {
-      return api.generateGenericConsolePolyfill(methods);
+      return generateGenericConsolePolyfill(methods);
     }
   },
 };

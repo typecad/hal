@@ -7,6 +7,7 @@
 
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import chalk from "chalk";
 import type { InitProjectOptions } from "./init-templates";
 import type { ArchitectureIdentifier } from "./types";
 import { KNOWN_BOARDS, type KnownBoard } from "./init-scaffold";
@@ -43,13 +44,13 @@ async function promptText(
 ): Promise<string> {
   while (true) {
     const suffix = defaultValue ? ` (${defaultValue})` : "";
-    const answer = await rl.question(`? ${prompt}${suffix}: `);
+    const answer = await rl.question(`${chalk.cyan("?")} ${prompt}${suffix}: `);
     const value = (answer.trim() || (defaultValue ?? "")).trim();
 
     if (validate) {
       const error = validate(value);
       if (error) {
-        console.log(`  ✗ ${error}`);
+        console.log(`  ${chalk.red("✗")} ${error}`);
         continue;
       }
     }
@@ -62,9 +63,9 @@ async function promptSelect(
   prompt: string,
   options: Array<{ label: string; value: string }>,
 ): Promise<string> {
-  console.log(`? ${prompt}:`);
+  console.log(`${chalk.cyan("?")} ${prompt}:`);
   for (let i = 0; i < options.length; i++) {
-    console.log(`  ${i + 1}) ${options[i].label}`);
+    console.log(`  ${chalk.dim(`${i + 1})`)} ${options[i].label}`);
   }
 
   while (true) {
@@ -73,7 +74,7 @@ async function promptSelect(
     if (idx >= 0 && idx < options.length) {
       return options[idx].value;
     }
-    console.log(`  ✗ Please enter a number between 1 and ${options.length}.`);
+    console.log(`  ${chalk.red("✗")} Please enter a number between 1 and ${options.length}.`);
   }
 }
 
@@ -83,7 +84,7 @@ async function promptConfirm(
   defaultValue: boolean,
 ): Promise<boolean> {
   const suffix = defaultValue ? " (Y/n)" : " (y/N)";
-  const answer = await rl.question(`? ${prompt}${suffix}: `);
+  const answer = await rl.question(`${chalk.cyan("?")} ${prompt}${suffix}: `);
   const trimmed = answer.trim().toLowerCase();
   if (trimmed === "") return defaultValue;
   return trimmed === "y" || trimmed === "yes";
@@ -106,7 +107,7 @@ export async function runInitWizard(
 
   try {
     console.log();
-    console.log("⤳ typeCode — Project Setup");
+    console.log(chalk.cyan("⤳ typeCode") + chalk.dim(" — Project Setup"));
     console.log();
 
     // 1. Project name
@@ -124,9 +125,9 @@ export async function runInitWizard(
       const found = KNOWN_BOARDS.find((b: KnownBoard) => b.id === partialOptions.board);
       if (found) {
         boardId = found.id;
-        console.log(`? Board: ${found.displayName} (${partialOptions.board})`);
+        console.log(`${chalk.cyan("?")} Board: ${chalk.white(found.displayName)} (${chalk.dim(partialOptions.board)})`);
       } else {
-        console.log(`  Board '${partialOptions.board}' not found in registry. Available boards:`);
+        console.log(`  ${chalk.yellow("!")} Board '${chalk.white(partialOptions.board)}' not found. Available boards:`);
         boardId = await promptSelect(rl, "Board", boardOptions);
       }
     } else {
@@ -147,10 +148,10 @@ export async function runInitWizard(
     let framework: 'arduino' | 'avr';
     if (partialOptions?.framework) {
       framework = partialOptions.framework === 'avr' ? 'avr' : 'arduino';
-      console.log(`? Framework: ${framework}`);
+      console.log(`${chalk.cyan("?")} Framework: ${chalk.white(framework)}`);
     } else if (frameworkOptions.length === 1) {
       framework = frameworkOptions[0].value;
-      console.log(`? Framework: ${frameworkOptions[0].label}`);
+      console.log(`${chalk.cyan("?")} Framework: ${chalk.white(frameworkOptions[0].label)}`);
     } else {
       framework = await promptSelect(rl, "Framework", frameworkOptions) as 'arduino' | 'avr';
     }
@@ -163,13 +164,13 @@ export async function runInitWizard(
     let baudRate: number;
     if (partialOptions?.baud) {
       baudRate = partialOptions.baud;
-      console.log(`? Serial baud rate: ${baudRate}`);
+      console.log(`${chalk.cyan("?")} Serial baud rate: ${chalk.white(baudRate)}`);
     } else {
       const baudAnswer = await promptText(rl, "Serial baud rate", "9600");
       baudRate = parseInt(baudAnswer, 10);
       if (Number.isNaN(baudRate) || baudRate <= 0) {
         baudRate = 9600;
-        console.log("  Using default: 9600");
+        console.log(`  ${chalk.dim("Using default: 9600")}`);
       }
     }
 
@@ -177,10 +178,10 @@ export async function runInitWizard(
     let includeSketch: boolean;
     if (partialOptions?.noSketch) {
       includeSketch = false;
-      console.log("? Create starter sketch: no");
+      console.log(`${chalk.cyan("?")} Create starter sketch: ${chalk.dim("no")}`);
     } else if (partialOptions?.noSketch === false) {
       includeSketch = true;
-      console.log("? Create starter sketch: yes");
+      console.log(`${chalk.cyan("?")} Create starter sketch: ${chalk.green("yes")}`);
     } else {
       includeSketch = await promptConfirm(rl, "Create starter sketch?", true);
     }

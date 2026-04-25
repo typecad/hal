@@ -8,7 +8,7 @@ import type { ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
-import { getFrameworkApi } from "../framework-api";
+import { extractPropertyChain } from "@typecode/framework-arduino";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
 import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
@@ -37,10 +37,10 @@ export interface ExpressionRendererContext {
   cArrayVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) instead of (.) */
   namespaceNames?: Set<string>;
+  /** Cross-module class names recognized by the expression renderer. */
+  crossModuleClassNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
   varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
-  /** Imported class names from other transpiled modules */
-  crossModuleClassNames?: Set<string>;
   /** Optional transformer for expression values */
   exprTransformer?: (expr: string) => string;
 }
@@ -60,7 +60,6 @@ export class ExpressionRenderer {
   private readonly cArrayVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
-  private readonly crossModuleClassNames?: Set<string>;
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
   private _preludeLines: string[] = [];
@@ -79,7 +78,6 @@ export class ExpressionRenderer {
     this.cArrayVarNames = context.cArrayVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
-    this.crossModuleClassNames = context.crossModuleClassNames;
   }
 
   /**
@@ -424,7 +422,7 @@ export class ExpressionRenderer {
   }
 
   private renderPropertyAccess(expr: Extract<ExpressionIR, { kind: "property-access" }>, exprTransformer?: (expr: string) => string): string {
-    const chain = getFrameworkApi().extractPropertyChain(expr);
+    const chain = extractPropertyChain(expr);
     if (chain) {
       // Check for Board.definition.* access first
       const boardDef = this.strategy.renderBoardDefinitionAccess(chain, this.boardConstants);
@@ -462,27 +460,8 @@ export class ExpressionRenderer {
         return `strlen(${objStr})`;
       }
     }
-
-    if (
-      expr.object.kind === "method-call" &&
-      this.expressionReturnsPointer(expr.object)
-    ) {
-      return `${objStr}->${expr.property}`;
-    }
-
     const rendered = `${objStr}.${expr.property}`;
     return this.fixPointerAccess(rendered);
-  }
-
-  private expressionReturnsPointer(expr: ExpressionIR): boolean {
-    if (!this.knownFunctionReturnTypes) {
-      return false;
-    }
-    if (expr.kind === "method-call") {
-      const returnType = this.knownFunctionReturnTypes.get(expr.callee);
-      return returnType?.endsWith("*") ?? false;
-    }
-    return false;
   }
 
   private renderTypecodeCall(expr: Extract<ExpressionIR, { kind: "typecode-call" }>, exprTransformer?: (expr: string) => string): string {
@@ -497,18 +476,8 @@ export class ExpressionRenderer {
       expr.interruptMode
     );
     if (translated !== undefined) return translated;
-
-    const argsText = expr.args.map(renderA).join(", ");
-    const receiverMethod = `${expr.receiver}.${expr.method}`;
-    if (this.knownFunctionReturnTypes?.has(receiverMethod)) {
-      return this.fixPointerAccess(`${expr.receiver}::${expr.method}(${argsText})`);
-    }
-    if (this.crossModuleClassNames?.has(expr.receiver)) {
-      return this.fixPointerAccess(`${expr.receiver}::${expr.method}(${argsText})`);
-    }
-
-    // Fallback: render as plain method call and fix pointer access for call-chain receivers
-    return this.fixPointerAccess(`${expr.receiver}.${expr.method}(${argsText})`);
+    // Fallback: render as plain method call
+    return `${expr.receiver}.${expr.method}(${expr.args.map(renderA).join(", ")})`;
   }
 
   private renderCallback(expr: Extract<ExpressionIR, { kind: "callback" }>): string {
@@ -537,33 +506,6 @@ export class ExpressionRenderer {
     if (/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g.test(callee)) {
       return callee;
     }
-
-    const lastDot = callee.lastIndexOf(".");
-    if (lastDot !== -1) {
-      const receiverCallee = callee.slice(0, lastDot);
-      const memberName = callee.slice(lastDot + 1);
-      const receiverMatch = receiverCallee.match(/^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(/);
-      if (receiverMatch) {
-        const receiverCallName = receiverMatch[1];
-        const receiverClassName = receiverCallName.split(".")[0];
-        let callPrefix = receiverCallee;
-        const hasKnown = this.knownFunctionReturnTypes?.has(receiverCallName);
-        const returnType = this.knownFunctionReturnTypes?.get(receiverCallName);
-        const isCrossModuleClass = this.crossModuleClassNames?.has(receiverClassName);
-        if (hasKnown || isCrossModuleClass) {
-          callPrefix = receiverCallee.replace(
-            new RegExp(`^${receiverCallName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\s*\\(`),
-            `${receiverCallName.replace(/\./g, "::")}(`,
-          );
-        }
-        if (returnType?.endsWith("*") || isCrossModuleClass) {
-          callee = `${callPrefix}->${memberName}`;
-        } else {
-          callee = `${callPrefix}.${memberName}`;
-        }
-      }
-    }
-
     return this.fixPointerAccess(`${callee}(${argsText})`);
   }
 
@@ -573,16 +515,6 @@ export class ExpressionRenderer {
         if (varType.endsWith("*")) {
           code = code.replace(new RegExp(`\\b${varName}\\.`, "g"), `${varName}->`);
         }
-      }
-    }
-    if (this.knownFunctionReturnTypes) {
-      for (const [funcName, returnType] of this.knownFunctionReturnTypes) {
-        if (!returnType.endsWith("*")) {
-          continue;
-        }
-        const escapedFuncName = funcName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
-        const pattern = new RegExp(`(\\b${escapedFuncName}(?:\\.|::)\\s*\\([^)]*\\))\\.`, "g");
-        code = code.replace(pattern, (_, callExpr) => `${callExpr}->`);
       }
     }
     return code;

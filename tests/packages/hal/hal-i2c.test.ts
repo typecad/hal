@@ -313,6 +313,21 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
       expect(result.cpp).toMatch(/register_/);
       expect(result.cpp).not.toMatch(/\bregister\b[^_]/);
     });
+
+    it('escapes Arduino macro names min and max in function parameters', () => {
+      const result = transpileArduino(`
+        import { Pin } from '@typecode/board-arduino-uno/arduino';
+        function clamp(value: number, min: number, max: number): number {
+          return Math.max(min, Math.min(max, value));
+        }
+
+        const resultValue = clamp(2000, 0, 1023);
+      `);
+
+      expectCppContains(result, ['int min_', 'int max_']);
+      expectCppNotContains(result, ['int min,', 'int max,']);
+      expect(result.cpp).toContain('max(min_, min(max_, value))');
+    });
   
     it('maps Uint8Array parameter type to uint8_t*', () => {
       const result = transpileArduino(`

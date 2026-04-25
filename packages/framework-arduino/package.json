@@ -15,10 +15,14 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test:hw": "npm exec -- typecode-test",
+    "test:hw:single": "npm exec -- typecode-test"
   },
   "dependencies": {
-    "@typecode/core": "*"
+    "@typecode/core": "*",
+    "@typecode/expect": "*",
+    "@typecode/board-esp32-devkit": "*"
   },
   "license": "MIT",
   "publishConfig": {

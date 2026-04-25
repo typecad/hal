@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { ExpressionIR } from "./model";
 import { nestedFunctionAliases } from "./build-ir-state";
+import { escapeCppKeyword } from "../utils/strings";
 
 export function calleeToText(expr: ts.LeftHandSideExpression): string {
   if (ts.isIdentifier(expr)) {
@@ -31,7 +32,7 @@ export function renderExprAsText(expr: ExpressionIR): string {
     case "boolean":
       return expr.value ? "true" : "false";
     case "identifier":
-      return expr.value;
+      return escapeCppKeyword(expr.value);
     case "raw":
       return expr.value;
     case "await":

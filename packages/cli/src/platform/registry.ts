@@ -8,7 +8,7 @@
 
 import type { PlatformStrategy } from "./platform-strategy";
 import { GenericStrategy } from "./generic-strategy";
-import { getFrameworkApi, hasFrameworkApi } from "../framework-api";
+import { ArduinoStrategy } from "./arduino-strategy";
 
 // Store references to strategy instances for cache management
 const _genericStrategy = new GenericStrategy();
@@ -24,9 +24,7 @@ function ensureArduinoStrategy(): void {
   _arduinoStrategyLoaded = true;
 
   try {
-    if (!hasFrameworkApi()) return;
-    const api = getFrameworkApi();
-    const strategy = new api.FrameworkStrategy();
+    const strategy = new ArduinoStrategy();
     _arduinoStrategy = strategy;
     _registry.set("arduino", strategy);
   } catch {

@@ -34,6 +34,8 @@ const ARDUINO_RESERVED_NAMES: ReadonlySet<string> = new Set([
   "Serial", "Serial2",
   // Arduino.h analog reference macros
   "DEFAULT", "INTERNAL", "EXTERNAL",
+  // C++ math macros exposed by Arduino headers
+  "min", "max",
   // CMSIS / device-header macros (SAMD21 defines RTC as a register pointer)
   "RTC",
 ]);

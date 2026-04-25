@@ -44,14 +44,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isIdentifier(receiverNode) && mutableArrayVars.has(receiverNode.text)) {
       return `${safeText}.size()`;
     }
+    if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
+      return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
+    }
     if (ts.isIdentifier(receiverNode) && activeArrayLiteralVars.has(receiverNode.text)) {
       const varType = activeLocalTypes.get(receiverNode.text);
       if (typeof varType === 'string' && (varType.startsWith('std::vector<') || varType.startsWith('StaticArray<'))) {
         return `${safeText}.size()`;
       }
-      return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
-    }
-    if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
     if (ts.isIdentifier(receiverNode) && activeLocalTypes.get(receiverNode.text) === "auto") {
@@ -818,7 +818,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       if (receiver.kind === ts.SyntaxKind.ThisKeyword) {
         calleeText = `this->${methodName}`;
       } else if (ts.isIdentifier(receiver) && receiver.text === "Math") {
-        calleeText = `std::${methodName}`;
+        const mathMethod = expr.expression.name.text;
+        calleeText = `std::${mathMethod}`;
       } else if (ts.isIdentifier(receiver) && (hoistedNestedClasses.some(c => c.name === receiver.text) || nestedClassAliases.has(receiver.text) || topLevelClassNames.has(receiver.text))) {
         // Static method call on a hoisted or top-level class: use :: with resolved name
         const resolvedName = nestedClassAliases.get(receiver.text) ?? receiver.text;

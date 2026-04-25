@@ -20,7 +20,7 @@
     "ci": "npm test && npm run build --workspaces",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:hw": "typecode-test",
+    "test:hw": "npm exec -- typecode-test",
     "publish:core": "npm publish --workspace @typecode/core --access public",
     "publish:cli": "npm publish --workspace @typecode/cli --access public",
     "publish:create": "npm publish --workspace @typecode/create --access public",

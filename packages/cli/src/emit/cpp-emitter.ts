@@ -10,10 +10,11 @@ import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
 import { ResolvedNpmPackage } from "../transpile";
-import { getFrameworkApi } from "../framework-api";
+import { extractPropertyChain, buildArduinoClassNameMap } from "@typecode/framework-arduino";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import { resolveStrategy } from "../platform/registry";
+import { ArduinoStrategy } from "@typecode/framework-arduino";
 import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
 import { normalizeRawExpression, transformTypeName } from "./expression-renderer";
 import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
@@ -125,9 +126,6 @@ let _stringVarTypes: Set<string> = new Set();
 let _classAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> = new Map();
 // Variable name → accessor map for instances of classes with getters/setters.
 let _varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> = new Map();
-
-// Cross-module class names for imported types in other transpiled modules.
-let _crossModuleClassNames: Set<string> | undefined;
 
 interface EmitterOptions {
   outDir: string;
@@ -316,7 +314,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       return `${callee}(${argsText})`;
     }
     case "property-access": {
-      const chain = getFrameworkApi().extractPropertyChain(expr);
+      const chain = extractPropertyChain(expr);
       if (chain) {
         // Check for Board.definition.* access first
         const boardDef = strategy.renderBoardDefinitionAccess(chain, _emitBoardConstants);
@@ -553,40 +551,6 @@ function transformConsoleCall(
 }
 
 
-function fixCrossModuleMethodCall(callee: string, knownFunctionReturnTypes?: Map<string, string>): string {
-  const lastDot = callee.lastIndexOf(".");
-  if (lastDot === -1) {
-    return callee;
-  }
-
-  const receiverCallee = callee.slice(0, lastDot);
-  const memberName = callee.slice(lastDot + 1);
-  const receiverMatch = receiverCallee.match(/^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(/);
-  if (!receiverMatch) {
-    return callee;
-  }
-
-  const receiverCallName = receiverMatch[1];
-  const receiverClassName = receiverCallName.split(".")[0];
-  const hasKnown = knownFunctionReturnTypes?.has(receiverCallName);
-  const returnType = knownFunctionReturnTypes?.get(receiverCallName);
-  const isCrossModuleClass = _crossModuleClassNames?.has(receiverClassName);
-  if (!hasKnown && !isCrossModuleClass) {
-    return callee;
-  }
-
-  const callPrefix = receiverCallee.replace(
-    new RegExp(`^${receiverCallName.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\s*\\(`),
-    `${receiverCallName.replace(/\./g, "::")}(`,
-  );
-
-  if (returnType?.endsWith("*") || isCrossModuleClass) {
-    return `${callPrefix}->${memberName}`;
-  }
-
-  return `${callPrefix}.${memberName}`;
-}
-
 function renderStatement(
   statement: StatementIR,
   forHeader: boolean = false,
@@ -639,7 +603,6 @@ function renderStatement(
     if (calleeTransformer) {
       callee = calleeTransformer(callee);
     }
-    callee = fixCrossModuleMethodCall(callee, knownFunctionReturnTypes);
     callee = normalizeRawExpression(callee, strategy);
     const renderedArgs = statement.args.map((arg) => renderExpression(arg, undefined, strategy)).join(", ");
     return forHeader ? `${callee}(${renderedArgs})` : `${callee}(${renderedArgs});`;
@@ -873,8 +836,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   ensureDir(options.outDir);
 
   // Build class name mapping for Arduino library imports (for namespace resolution)
-  _arduinoClassNameMap = getFrameworkApi().buildArduinoClassNameMap(program.imports);
-  _crossModuleClassNames = options.crossModuleClasses;
+  _arduinoClassNameMap = buildArduinoClassNameMap(program.imports);
 
   // Perform single-pass program analysis to replace multiple traversals
   const programAnalysis = analyzeProgram(program);
@@ -1042,16 +1004,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   for (const fn of program.functions) {
     knownFunctionReturnTypes.set(fn.originalName, mapReturnType(mapFunctionName(fn.originalName, strategy), fn.returnType, strategy));
   }
-  for (const cls of program.classes) {
-    for (const method of cls.methods) {
-      if (method.returnType) {
-        knownFunctionReturnTypes.set(
-          `${cls.name}.${method.name}`,
-          mapReturnType(mapFunctionName(`${cls.name}.${method.name}`, strategy), method.returnType, strategy),
-        );
-      }
-    }
-  }
 
   // Pre-build state machine class strings for every async function.
   // These are emitted into the source file after the polyfill runtime definitions.
@@ -1176,7 +1128,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         cArrayVarNames,
         namespaceNames: _namespaceNames,
         varAccessorNames: _varAccessorNames,
-        crossModuleClassNames: _crossModuleClassNames,
       });
       return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
     };
@@ -1782,8 +1733,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // Collect callback functions from call arguments (e.g., attachInterrupt handlers)
   const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[] = [];
-  const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9_]/g, "_");
-  const callbackNamePrefix = `${sanitizedBaseName}_isr_`;
   let callbackCounter = 0;
   
   function collectCallbacks(statements: StatementIR[]): void {
@@ -1821,7 +1770,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   function collectCallbackFromExpression(expr: ExpressionIR): void {
     // Handle top-level callback (e.g., in call statement args directly)
     if (expr.kind === "callback") {
-      const callbackName = `${callbackNamePrefix}${callbackCounter++}`;
+      const callbackName = `isr_${callbackCounter++}`;
       callbackFunctions.push({
         name: callbackName,
         params: expr.params,
@@ -1835,7 +1784,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (expr.kind === "method-call") {
       for (const arg of expr.args) {
         if (arg.kind === "callback") {
-          const callbackName = `${callbackNamePrefix}${callbackCounter++}`;
+          const callbackName = `isr_${callbackCounter++}`;
           callbackFunctions.push({
             name: callbackName,
             params: arg.params,
@@ -1929,8 +1878,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     return names;
   }
 
-  const promotedVarDecls = new Map<string, { cppType: string }>();
-  if (callbackFunctions.length > 0) {
+  const promotedVarDecls = new Map<string, { cppType: string; index: number }>();
+  if (callbackFunctions.length > 0 && filteredTopLevelExecutables.length > 0) {
     // Collect all identifiers referenced inside ISR callback bodies
     const isrIdentifiers = new Set<string>();
     for (const cb of callbackFunctions) {
@@ -1938,59 +1887,22 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         isrIdentifiers.add(id);
       }
     }
-
-    function promoteVarDecls(statements: StatementIR[]): void {
-      for (let i = 0; i < statements.length; i++) {
-        const stmt = statements[i];
-        if (stmt.kind === "var_decl" && stmt.initializer && isrIdentifiers.has(stmt.name)) {
-          const varType = normalizeCppTypeForTarget(stmt.cppType, strategy);
-          if (!promotedVarDecls.has(stmt.name)) {
-            promotedVarDecls.set(stmt.name, { cppType: varType });
-          }
-          statements[i] = {
-            kind: "assign",
-            sourceSpan: stmt.sourceSpan,
-            leadingComments: stmt.leadingComments,
-            trailingComments: stmt.trailingComments,
-            target: stmt.name,
-            operator: "=",
-            value: stmt.initializer,
-          } as StatementIR;
-        }
-
-        if ("body" in stmt && Array.isArray(stmt.body)) {
-          promoteVarDecls(stmt.body);
-        }
-        if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) {
-          promoteVarDecls(stmt.thenBranch);
-        }
-        if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) {
-          promoteVarDecls(stmt.elseBranch);
-        }
-        if ("cases" in stmt && Array.isArray(stmt.cases)) {
-          for (const c of stmt.cases) {
-            promoteVarDecls(c.body);
-          }
-        }
-      }
-    }
-
-    promoteVarDecls(filteredTopLevelExecutables);
-    for (const fn of mappedFunctions) {
-      promoteVarDecls(fn.statements);
-    }
-    for (const cls of program.classes) {
-      if (cls.constructor) {
-        promoteVarDecls(cls.constructor.statements);
-      }
-      for (const method of cls.methods) {
-        promoteVarDecls(method.statements);
-      }
-      for (const getter of cls.getters) {
-        promoteVarDecls(getter.statements);
-      }
-      for (const setter of cls.setters) {
-        promoteVarDecls(setter.statements);
+    // Find runtime var_decls that are referenced in ISR callbacks
+    for (let i = 0; i < filteredTopLevelExecutables.length; i++) {
+      const stmt = filteredTopLevelExecutables[i];
+      if (stmt.kind === "var_decl" && isrIdentifiers.has(stmt.name)) {
+        const varType = normalizeCppTypeForTarget(stmt.cppType, strategy);
+        promotedVarDecls.set(stmt.name, { cppType: varType, index: i });
+        // Convert var_decl to assignment statement (remove type declaration)
+        (filteredTopLevelExecutables[i] as any) = {
+          kind: "assign",
+          sourceSpan: stmt.sourceSpan,
+          leadingComments: stmt.leadingComments,
+          trailingComments: stmt.trailingComments,
+          target: stmt.name,
+          operator: "=",
+          value: stmt.initializer,
+        };
       }
     }
   }
@@ -2440,28 +2352,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
-  // Emit global declarations for promoted callback-captured variables.
-  // These may be referenced inside class method bodies defined inline.
-  if (promotedVarDecls.size > 0) {
-    const forwardDecls = new Set<string>();
-    for (const info of promotedVarDecls.values()) {
-      const typeNameMatch = info.cppType.replace(/^const\s+/, "").replace(/\s*\*$/, "").trim().match(/^([A-Za-z_][A-Za-z0-9_]*)$/);
-      if (typeNameMatch) {
-        forwardDecls.add(typeNameMatch[1]);
-      }
-    }
-    for (const typeName of forwardDecls) {
-      appendSourceLine(`class ${typeName};`);
-    }
-    for (const [varName, info] of promotedVarDecls) {
-      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName)};`);
-      if (info.cppType.trim().endsWith("*")) {
-        globalPointerVarTypes.set(varName, info.cppType);
-      }
-    }
-    appendSourceLine("");
-  }
-
   // Emit classes
   // Forward-declare classes that are used as base classes so the compiler
   // knows they exist before the derived class definition.
@@ -2835,6 +2725,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendRenderedStatement(statement, "", globalPointerVarTypes, runtimeTopLevelScope);
       }
     }
+  }
+
+  // Emit forward declarations for promoted runtime var_decls (referenced in ISR callbacks).
+  // These need file-scope visibility so ISR free functions can access them.
+  // Must come AFTER class definitions so the type is known.
+  if (promotedVarDecls.size > 0) {
+    for (const [varName, info] of promotedVarDecls) {
+      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName)} = nullptr;`);
+    }
+    appendSourceLine("");
   }
 
   // Emit object literal struct definitions (after classes so they can reference class types)

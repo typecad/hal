@@ -67,6 +67,8 @@ function parseArgs(argv: string[]): CreateOptions {
 
 function printHelp(): void {
   console.log();
+  console.log(chalk.cyan("⤳ typeCode"));
+  console.log();
   console.log(`${chalk.cyan("Usage:")} npx @typecode/create [project-name] [options]`);
   console.log(`       npx @typecode/create init [project-name] [options]`);
   console.log();
@@ -80,10 +82,10 @@ function printHelp(): void {
   console.log();
   console.log(`${chalk.cyan("Boards:")}`);
   for (const board of KNOWN_BOARDS) {
-    console.log(`  ${board.id.padEnd(16)} ${board.displayName} (${board.architecture.toUpperCase()})`);
+    console.log(`  ${chalk.white(board.id.padEnd(16))} ${board.displayName} (${chalk.dim(board.architecture.toUpperCase())})`);
   }
   console.log();
-  console.log(`${chalk.gray("Without --board, launches an interactive wizard.")}`);
+  console.log(chalk.dim("Without --board, launches an interactive wizard."));
   console.log();
 }
 
@@ -134,16 +136,16 @@ export async function runCreate(argv?: string[]): Promise<void> {
         includeSketch: !options.noSketch,
       }, options.outDir);
 
-      console.log("\nCreated project files:");
+      console.log(`\n${chalk.green("✓")} Created project files:`);
       for (const file of result.createdFiles) {
         const relative = path.relative(process.cwd(), file);
-        console.log(`  ${relative || file}`);
+        console.log(`  ${chalk.dim(relative || file)}`);
       }
 
       printInitNextSteps(result.options, result.outDir);
     } else {
       // Interactive mode: launch wizard
-      console.log("Launching interactive project setup...\n");
+      console.log(chalk.cyan("⤳ typeCode") + chalk.dim(" — Launching interactive project setup...\n"));
       const wizardResult = await runInitWizard({
         projectName: options.projectName,
         board: options.board,
@@ -153,23 +155,23 @@ export async function runCreate(argv?: string[]): Promise<void> {
       });
 
       if (!wizardResult) {
-        console.log("Project setup cancelled.");
+        console.log(chalk.yellow("Project setup cancelled."));
         return;
       }
 
       const result = scaffoldProject(wizardResult, options.outDir);
 
-      console.log("\nCreated project files:");
+      console.log(`\n${chalk.green("✓")} Created project files:`);
       for (const file of result.createdFiles) {
         const relative = path.relative(process.cwd(), file);
-        console.log(`  ${relative || file}`);
+        console.log(`  ${chalk.dim(relative || file)}`);
       }
 
       printInitNextSteps(result.options, result.outDir);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error(`Error creating project: ${message}`);
+    console.error(`${chalk.red("✗")} Error creating project: ${message}`);
     process.exitCode = 1;
   }
 }

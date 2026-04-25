@@ -166,13 +166,15 @@ export function printInitNextSteps(options: InitProjectOptions, outDir: string):
   const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
 
   console.log();
-  console.log("Next steps:");
-  console.log(`  cd ${relativeDir}`);
-  console.log(`  npm install`);
-  console.log(`  npx typecode ./src/sketch.ts --compile --fqbn ${options.fqbn}`);
+  console.log(chalk.cyan(`⤳ typeCode`));
   console.log();
-  console.log("To upload to your board:");
-  console.log(`  npx typecode ./src/sketch.ts --compile --upload --port ${portHint}`);
+  console.log(chalk.bold.white("Next steps:"));
+  console.log(chalk.dim(`  cd ${relativeDir}`));
+  console.log(chalk.dim(`  npm install`));
+  console.log(`  ${chalk.cyan("npm run compile")}`);
   console.log();
-  console.log(chalk.gray("To use a different serial port, replace") + " " + chalk.white(portHint) + " " + chalk.gray("with your port."));
+  console.log(chalk.bold.white("To upload to your board:"));
+  console.log(`  ${chalk.cyan("npm run upload")}`);
+  console.log();
+  console.log(chalk.dim(`Edit ${chalk.white("package.json")} to change the serial port from ${chalk.white(portHint)} to your port.`));
 }
