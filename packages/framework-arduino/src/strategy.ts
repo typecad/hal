@@ -186,6 +186,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
 
   // ── Type normalisation ──────────────────────────────────────────────────
 
+  defaultNumericType(): string { return "int"; }
   normalizeCppType(typeName: string): string {
     if (typeName === "auto") return "int";
     if (typeName === "std::string") return "const char*";
@@ -208,6 +209,8 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   }
 
   // ── Expression rendering ────────────────────────────────────────────────
+
+  currentTimeMillis(): string { return "millis()"; }
 
   // Apply regex transformations to raw expression text.
   // NOTE: String method regexes (toUpperCase, includes, etc.) assume the receiver

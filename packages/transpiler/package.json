@@ -1,0 +1,82 @@
+{
+  "name": "@typecode/transpiler",
+  "version": "0.1.0",
+  "description": "TypeCode TypeScript to C++ transpiler for embedded development",
+  "type": "commonjs",
+  "main": "./dist/transpile.js",
+  "types": "./dist/transpile.d.ts",
+  "bin": {
+    "typecode": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/transpile.d.ts",
+      "default": "./dist/transpile.js"
+    },
+    "./platform": {
+      "types": "./dist/platform/index.d.ts",
+      "default": "./dist/platform/index.js"
+    },
+    "./platform/registry": {
+      "types": "./dist/platform/registry.d.ts",
+      "default": "./dist/platform/registry.js"
+    },
+    "./ir": {
+      "types": "./dist/ir/model.d.ts",
+      "default": "./dist/ir/model.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./board-resolver": {
+      "types": "./dist/ir/board-resolver.d.ts",
+      "default": "./dist/ir/board-resolver.js"
+    },
+    "./typecode-symbols": {
+      "types": "./dist/ir/typecode-symbols.d.ts",
+      "default": "./dist/ir/typecode-symbols.js"
+    },
+    "./utils/toolchain": {
+      "types": "./dist/utils/toolchain.d.ts",
+      "default": "./dist/utils/toolchain.js"
+    },
+    "./polyfill/types": {
+      "types": "./dist/polyfill/types.d.ts",
+      "default": "./dist/polyfill/types.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "typescript": "^5.7.3",
+    "@typecode/core": "*",
+    "@typecode/schema": "*",
+    "@typecode/expect": "*"
+  },
+  "peerDependencies": {
+    "@typecode/framework-arduino": "*"
+  },
+  "peerDependenciesMeta": {
+    "@typecode/framework-arduino": {
+      "optional": true
+    }
+  },
+  "optionalDependencies": {
+    "@typecode/create": "*"
+  },
+  "devDependencies": {
+    "@typecode/framework-arduino": "*",
+    "@types/node": "^22.10.7"
+  },
+  "license": "MIT"
+}

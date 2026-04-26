@@ -65,6 +65,8 @@ export interface PlatformStrategy {
     mapPeripheralIdentifier?(name: string): string | undefined;
     /** Whether string-literal + concatenation needs wrapping (Arduino: String(...)). */
     wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined;
+    /** Platform-specific expression for current time in milliseconds (e.g. "millis()" on Arduino). */
+    currentTimeMillis(): string;
     /**
      * Whether string concat / template interpolation should use snprintf()
      * instead of Arduino String() objects.
@@ -164,6 +166,8 @@ export interface PlatformStrategy {
     needsVectorOverload(): boolean;
     /** Whether a large enum needs an explicit underlying type. */
     needsLargeEnumUnderlying(): boolean;
+    /** Default numeric type for the platform (e.g. "int" on generic, "int32_t" on Arduino). */
+    defaultNumericType(): string;
     /** Rename a struct field if it conflicts with platform-reserved names. */
     renameStructField(fieldName: string): string;
     /**

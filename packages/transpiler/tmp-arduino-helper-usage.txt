@@ -1,0 +1,66 @@
+﻿C:\typecad\typecode\packages\cli\src\emit\arduino-class-map.ts:4:export { buildArduinoClassNameMap } from "@typecode/framework-arduino";
+C:\typecad\typecode\packages\cli\src\emit\arduino-snprintf.ts:5:createEmissionScopeState,
+C:\typecad\typecode\packages\cli\src\emit\arduino-snprintf.ts:6:cloneEmissionScopeState,
+C:\typecad\typecode\packages\cli\src\emit\arduino-snprintf.ts:7:createChildEmissionScope,
+C:\typecad\typecode\packages\cli\src\emit\arduino-snprintf.ts:9:inferSnprintfArg,
+C:\typecad\typecode\packages\cli\src\emit\arduino-snprintf.ts:10:buildSnprintfRenderResult,
+C:\typecad\typecode\packages\cli\src\emit\arduino-snprintf.ts:11:shouldUseSnprintfForArduinoString,
+C:\typecad\typecode\packages\cli\src\emit\arduino-snprintf.ts:12:statementNeedsSnprintf,
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:13:import { extractPropertyChain } from "../platform/typecode-map";
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:18:import { buildArduinoClassNameMap } from "./arduino-class-map";
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:19:import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:326:const snprintfRender = buildSnprintfRenderResult(
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:365:const arg = inferSnprintfArg(
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:417:const chain = extractPropertyChain(expr);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:420:const boardDef = strategy.renderBoardDefinitionAccess(chain, _emitBoardConstants);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:627:const snprintfRender = buildSnprintfRenderResult(
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:939:_arduinoClassNameMap = buildArduinoClassNameMap(program.imports);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1172:scopeState: EmissionScopeState = createEmissionScopeState(),
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1235:if (statement.kind === "var_decl" && shouldUseSnprintfForArduinoString(statement, strategy) && statement.initializer) {
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1236:const snprintfRender = buildSnprintfRenderResult(
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1259:shouldUseSnprintfForArduinoString(statement, strategy)
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1261:const snprintfRender = buildSnprintfRenderResult(
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1281:const snprintfRender = buildSnprintfRenderResult(
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1313:const snprintfRender = buildSnprintfRenderResult(
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1354:const whileScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1376:const thenScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1384:const elseScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1407:const forScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1429:const forOfScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1451:const forInScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1474:const doScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1503:const caseScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1522:const tryScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1532:const catchScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1537:const finallyScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1547:const finallyScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1584:const labeledScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1598:const blockScope = cloneEmissionScopeState(scopeState);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1668:program.topLevelStatements.some((statement) => statementNeedsSnprintf(statement, strategy)) ||
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1669:program.functions.some((fn) => fn.statements.some((statement) => statementNeedsSnprintf(statement, strategy))) ||
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1671:(classDef.constructor?.statements.some((statement) => statementNeedsSnprintf(statement, strategy)) ?? false) ||
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:1672:classDef.methods.some((method) => method.statements.some((statement) => statementNeedsSnprintf(statement, strategy)))
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2252:const topLevelScope = createEmissionScopeState();
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2347:const ctorScope = createChildEmissionScope(topLevelScope, classDef.constructor.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2376:const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2396:const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2415:const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2433:const namespaceFunctionScope = createChildEmissionScope(topLevelScope, fn.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2648:const ctorScope = createChildEmissionScope(topLevelScope, classDef.constructor.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2680:const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2694:const getterScope = createChildEmissionScope(topLevelScope, []);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2708:const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2732:const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2744:const getterScope = createChildEmissionScope(topLevelScope, []);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2756:const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2780:const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2792:const getterScope = createChildEmissionScope(topLevelScope, []);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2804:const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2823:const runtimeTopLevelScope = cloneEmissionScopeState(topLevelScope);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:2960:const callbackScope = createChildEmissionScope(topLevelScope);
+C:\typecad\typecode\packages\cli\src\emit\cpp-emitter.ts:3003:const functionScope = createChildEmissionScope(topLevelScope, fn.parameters);
+C:\typecad\typecode\packages\cli\src\emit\expression-renderer.ts:11:import { extractPropertyChain } from "../platform/typecode-map";
+C:\typecad\typecode\packages\cli\src\emit\expression-renderer.ts:415:const chain = extractPropertyChain(expr);
+C:\typecad\typecode\packages\cli\src\emit\expression-renderer.ts:418:const boardDef = this.strategy.renderBoardDefinitionAccess(chain, this.boardConstants);
+C:\typecad\typecode\packages\cli\src\platform\generic-strategy.ts:95:renderBoardDefinitionAccess(
+C:\typecad\typecode\packages\cli\src\platform\typecode-map.ts:4:export { extractPropertyChain, renderArduinoBuiltin, tryRenderTypecodeCallStatement, renderBoardDefinitionAccess } from "@typecode/framework-arduino";

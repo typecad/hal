@@ -1,6 +1,6 @@
 # Toolchain Documentation
 
-The TypeCode toolchain manages compilers, uploaders, and build tools for embedded development.
+The TypeCode toolchain manages compilers, uploaders, and build tools for embedded and desktop development.
 
 ## Documents
 
@@ -8,11 +8,12 @@ The TypeCode toolchain manages compilers, uploaders, and build tools for embedde
 
 ## Overview
 
-TypeCode uses **arduino-cli** as its toolchain backend for compilation and upload operations.
+TypeCode delegates compilation to the active framework's toolchain. Each framework provides its own compiler integration.
 
-| Toolchain | Description | Use Case |
-|-----------|-------------|----------|
-| Arduino CLI | Official Arduino command-line | Standard Arduino development |
+| Toolchain | Framework | Description | Use Case |
+|-----------|-----------|-------------|----------|
+| Arduino CLI | `@typecode/framework-arduino` | Official Arduino command-line | Microcontroller development |
+| Native (g++/clang++) | `@typecode/framework-native` | System C++ compiler | Desktop executables, testing |
 
 ## Installation
 
@@ -27,6 +28,20 @@ brew install arduino-cli
 
 # Linux
 curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+```
+
+### Native C++ Compiler
+
+The native toolchain auto-detects `g++` or `clang++` on your system. On Windows, it also checks MSYS2/MinGW paths.
+
+```bash
+# Windows — install MSYS2, then add C:\msys64\ucrt64\bin to PATH
+# macOS — Xcode Command Line Tools provide clang++
+xcode-select --install
+
+# Linux — install g++
+sudo apt install g++     # Debian/Ubuntu
+sudo dnf install gcc-c++ # Fedora
 ```
 
 ## Toolchain Registry
@@ -81,7 +96,7 @@ npx typecode sketch.ts --compile --upload --port COM4
 ### Via Configuration
 
 ```typescript
-// typecode.config.ts
+// typecode.config.ts — Arduino project
 const config: TypecodeConfig = {
   toolchain: {
     type: 'arduino-cli',
@@ -90,6 +105,24 @@ const config: TypecodeConfig = {
     },
   },
   // ... other options
+};
+```
+
+### Native (g++/clang++) Configuration
+
+For desktop C++ projects, customize the compiler through the `native` section:
+
+```typescript
+// typecode.config.ts — Native project
+const config: TypecodeConfig = {
+  framework: '@typecode/framework-native',
+  native: {
+    compiler: 'clang++',              // Override auto-detected compiler
+    cxxStandard: 'c++20',             // C++ standard
+    warnings: 'extra',                // Warning level
+    includePaths: ['./vendor/include'], // -I flags
+    libraries: ['curl'],              // -l flags
+  },
 };
 ```
 

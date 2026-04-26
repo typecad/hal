@@ -1,8 +1,0 @@
-[callExpr] text="Math.max(min, Math.min(max, value))"
-[callExpr] text="Math.min(max, value)"
-[rawResult] callee="std::min" args="max, value" raw="std::min(max, value)"
-[rawResult] callee="std::max" args="min, std::min(max, value)" raw="std::max(min, std::min(max, value))"
-[callExpr] text="Math.max(min, Math.min(max, value))"
-[callExpr] text="Math.min(max, value)"
-[rawResult] callee="std::min" args="max, value" raw="std::min(max, value)"
-[rawResult] callee="std::max" args="min, std::min(max, value)" raw="std::max(min, std::min(max, value))"

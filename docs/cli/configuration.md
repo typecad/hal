@@ -34,6 +34,9 @@ export default config;
 | `output` | object | No | Output configuration |
 | `include` | string[] | No | Additional include paths |
 | `define` | object | No | Preprocessor definitions |
+| `framework` | string | No | Framework package (e.g. `@typecode/framework-arduino`) |
+| `console` | object | No | Console polyfill settings (`{ baudRate: number }`) |
+| `native` | object | No | Native C++ compilation settings (see [Native Config](#native-configuration)) |
 
 ### Output Options
 
@@ -44,6 +47,8 @@ export default config;
 | `outDir` | string | `'./out'` | Output directory |
 | `emitMaps` | boolean | `true` | Generate source maps |
 | `emitMode` | `'cpp' \| 'split'` | `'split'` | Output file mode |
+| `extraFlags` | `string[]` | `[]` | Extra compiler flags passed verbatim |
+| `defines` | `Record<string, string>` | `{}` | Preprocessor definitions (`KEY=value`) |
 
 ## Target Architectures
 
@@ -144,6 +149,53 @@ const config: TypecodeConfig = {
 
 When set, `typecode build` resolves the entry file from the config and transpiles the full import graph. This enables multi-file project support — see [Multi-File Projects](../transpiler/README.md#multi-file-projects) for details.
 
+## Native Configuration
+
+When using `@typecode/framework-native`, the `native` section customizes how g++/clang++ compiles your generated C++:
+
+```typescript
+import type { TypecodeConfig } from '@typecode/core';
+
+const config: TypecodeConfig = {
+  target: 'avr' as any,
+  board: '' as any,
+  framework: '@typecode/framework-native',
+
+  output: {
+    framework: 'bare-metal' as any,
+    outDir: './out',
+    extraFlags: ['-fno-exceptions'],   // Passed verbatim to compiler
+    defines: { NDEBUG: '1' },          // Converted to -DNDEBUG=1
+  },
+
+  native: {
+    compiler: 'clang++',       // Override auto-detected compiler
+    cxxStandard: 'c++20',      // C++ standard (default: 'c++17')
+    warnings: 'extra',         // 'none', 'basic', 'all', 'extra', 'error'
+    staticLink: false,         // Default: true on Windows, false elsewhere
+    includePaths: ['./vendor/include'],  // -I flags
+    libraryPaths: ['./vendor/lib'],      // -L flags
+    libraries: ['curl', 'ssl'],          // -l flags
+  },
+};
+
+export default config;
+```
+
+### Native Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `compiler` | string | Auto-detected | Compiler command or path (e.g. `'clang++'`, `'g++-12'`) |
+| `cxxStandard` | string | `'c++17'` | C++ standard flag (e.g. `'c++17'`, `'c++20'`) |
+| `warnings` | string | `'basic'` | Warning level: `'none'`, `'basic'`, `'all'`, `'extra'`, `'error'` |
+| `staticLink` | boolean | `true` (Windows) | Static linking (`-static` flag) |
+| `includePaths` | `string[]` | `[]` | Include directories (`-I` flags) |
+| `libraryPaths` | `string[]` | `[]` | Library search directories (`-L` flags) |
+| `libraries` | `string[]` | `[]` | Libraries to link (`-l` flags, placed after source) |
+
+The typed `NativeCompileConfig` interface is exported from `@typecode/framework-native` for editor autocomplete.
+
 ## Complete Example
 
 ```typescript
@@ -153,23 +205,20 @@ const config: TypecodeConfig = {
   target: 'avr',
   board: '@typecode/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
-  
+
   output: {
     framework: 'arduino',
     optimize: 'size',
     outDir: './out',
     emitMaps: true,
     emitMode: 'split',
+    extraFlags: ['-Wall'],
+    defines: { F_CPU: '16000000UL', DEBUG: '1' },
   },
-  
+
   include: [
     './lib',
   ],
-  
-  define: {
-    F_CPU: '16000000UL',
-    DEBUG: '1',
-  },
 };
 
 export default config;

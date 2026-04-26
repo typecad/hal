@@ -6,13 +6,17 @@
     "packages/hal",
     "packages/framework-avr",
     "packages/framework-arduino",
+    "packages/framework-native",
     "packages/board-arduino-uno",
     "packages/board-esp32-devkit",
     "packages/cli",
+    "packages/transpiler",
+    "packages/schema",
     "packages/create",
     "packages/expect",
     "packages/simulator",
-    "demo"
+    "demo",
+    "native_demo"
   ],
   "scripts": {
     "build": "npm run build --workspaces",

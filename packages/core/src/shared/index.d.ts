@@ -6,6 +6,6 @@ export type { BoardConstants } from './board-resolver';
 export type { RuntimePolyfillIR, PolyfillDefinition, PolyfillContext, PolyfillNeed, PolyfillConfig, PolyfillDomain, StdLibSupport, } from './polyfill-types';
 export { DEFAULT_POLYFILL_CONFIG, STDLIB_SUPPORT, getStdLibSupport } from './polyfill-types';
 export type { PlatformStrategy } from './platform-strategy';
-export type { CompileError, ArduinoCompileResult, ArduinoUploadResult } from './toolchain-types';
+export type { CompileError, CompileResult, UploadResult, ToolchainOptions, ArduinoCompileResult, ArduinoUploadResult } from './toolchain-types';
 export { parseCompileErrors, collectCppFiles, toArchitectureFromFqbn } from './toolchain-types';
 //# sourceMappingURL=index.d.ts.map

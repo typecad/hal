@@ -113,6 +113,13 @@ export interface TypecodeConfig {
    * Controls Serial.begin() injection and default baud rate.
    */
   console?: TypecodeConsoleConfig;
+
+  /**
+   * Framework-specific configuration. Each framework reads its own section.
+   * For native C++ builds, use the `NativeCompileConfig` shape from
+   * `@typecode/framework-native`.
+   */
+  native?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------

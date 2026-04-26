@@ -35,21 +35,47 @@ export interface CompileError {
 }
 
 /**
- * Result of an Arduino sketch compilation
+ * Generic compile options bag. Each framework reads what it needs
+ * and ignores the rest. The CLI populates whichever fields are
+ * available from CLI flags and config.
  */
-export interface ArduinoCompileResult {
+export interface ToolchainOptions {
+  outputDir: string;
+  sourcePath: string;
+  fqbn?: string;
+  port?: string;
+  baud?: number;
+  optimize?: string;
+  extraFlags?: string[];
+  defines?: Record<string, string>;
+  /**
+   * Framework-specific config from `typecode.config.ts`.
+   * Each framework casts this to its own typed interface.
+   */
+  frameworkConfig?: Record<string, unknown>;
+}
+
+/**
+ * Generic compile result. All frameworks return this shape.
+ */
+export interface CompileResult {
   success: boolean;
   output: string;
   errors: CompileError[];
 }
 
 /**
- * Result of an Arduino sketch upload
+ * Generic upload result. All frameworks return this shape.
  */
-export interface ArduinoUploadResult {
+export interface UploadResult {
   success: boolean;
   output: string;
 }
+
+/** @deprecated Use CompileResult */
+export type ArduinoCompileResult = CompileResult;
+/** @deprecated Use UploadResult */
+export type ArduinoUploadResult = UploadResult;
 
 /**
  * Parse compile errors from output (GCC, Arduino, and Clang formats)

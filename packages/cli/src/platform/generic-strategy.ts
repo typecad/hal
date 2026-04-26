@@ -46,6 +46,7 @@ export class GenericStrategy implements PlatformStrategy {
 
   // ── Type normalisation ──────────────────────────────────────────────────
 
+  defaultNumericType(): string { return "int"; }
   normalizeCppType(typeName: string): string {
     if (typeName === "auto") return "int";
     return typeName;
@@ -61,6 +62,7 @@ export class GenericStrategy implements PlatformStrategy {
 
   // ── Expression rendering ────────────────────────────────────────────────
 
+  currentTimeMillis(): string { return 'millis()'; }
   normalizeRawExpression(value: string): string {
     return value;
   }

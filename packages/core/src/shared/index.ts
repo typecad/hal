@@ -84,7 +84,7 @@ export type {
 } from './platform-strategy';
 
 // Toolchain types
-export type { CompileError, ArduinoCompileResult, ArduinoUploadResult } from './toolchain-types';
+export type { CompileError, CompileResult, UploadResult, ToolchainOptions, ArduinoCompileResult, ArduinoUploadResult } from './toolchain-types';
 export { parseCompileErrors, collectCppFiles, toArchitectureFromFqbn } from './toolchain-types';
 
 // Snprintf types
