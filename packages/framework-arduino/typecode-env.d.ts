@@ -51,6 +51,24 @@ declare global {
     reset(): void;
     disable(): void;
   };
+
+  // Key-value non-volatile storage (EEPROM-backed on AVR, native Preferences.h on ESP32)
+  const Preferences: {
+    begin(name: string, readOnly?: boolean): void;
+    end(): void;
+    putInt(key: string, value: number): void;
+    getInt(key: string, defaultValue: number): number;
+    putUInt(key: string, value: number): void;
+    getUInt(key: string, defaultValue: number): number;
+    putBool(key: string, value: boolean): void;
+    getBool(key: string, defaultValue: boolean): boolean;
+    putFloat(key: string, value: number): void;
+    getFloat(key: string, defaultValue: number): number;
+    putString(key: string, value: string): void;
+    getString(key: string, defaultValue: string): string;
+    clear(): void;
+    remove(key: string): void;
+  };
 }
 
 declare module '@typecode' {

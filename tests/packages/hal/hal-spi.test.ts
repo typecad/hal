@@ -58,7 +58,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
         SPI0.setFrequency(1000000);
       `);
       
-      expect(result.cpp).toContain('SPI.setClockDivider(1000000)');
+      expect(result.cpp).toContain('SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0))');
     });
   });
 

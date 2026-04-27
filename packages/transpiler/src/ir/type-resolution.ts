@@ -261,7 +261,7 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   }
 
   if (resolvedNode.kind === ts.SyntaxKind.NumberKeyword) {
-    return "double";
+    return "int";
   }
 
   if (resolvedNode.kind === ts.SyntaxKind.BooleanKeyword) {

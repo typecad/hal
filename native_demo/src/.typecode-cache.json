@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "toolchainFingerprint": "f17d4d2d11ae9a44",
+  "toolchainFingerprint": "b236871bd5c552dd",
   "rootDir": "C:\\typecad\\typecode\\native_demo\\src",
   "files": {
     "C:\\typecad\\typecode\\native_demo\\src\\main.ts": {
       "hash": "d5c4eed5821da885",
-      "mtime": 1777265932095.6606,
+      "mtime": 1777298266214.2578,
       "size": 70,
       "dependencies": [],
       "outputs": [
@@ -16,6 +16,6 @@
       ]
     }
   },
-  "createdAt": 1777295580727,
-  "updatedAt": 1777295585209
+  "createdAt": 1777333274957,
+  "updatedAt": 1777333278265
 }

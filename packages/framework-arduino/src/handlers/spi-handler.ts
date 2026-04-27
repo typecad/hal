@@ -46,12 +46,14 @@ export function renderSPICall(
     case 'write':           return `${instance}.transfer(${a(0)})`;  // transfer ignoring return
     case 'write16':         return `${instance}.transfer16(${a(0)})`;
     case 'read':            return `${instance}.transfer(0xFF)`;      // read by sending dummy
-    case 'setFrequency':    return `${instance}.setClockDivider(${a(0)})`;
+    case 'setFrequency':    return `${instance}.beginTransaction(SPISettings(${a(0)}, MSBFIRST, SPI_MODE0))`;
     case 'setMode':         return `${instance}.setDataMode(${a(0)})`;
     case 'setBitOrder': {
       const order = a(0) === '"lsb"' ? 'LSBFIRST' : 'MSBFIRST';
       return `${instance}.setBitOrder(${order})`;
     }
+    case 'transferBuffer':
+    case 'writeBuffer':     return `${instance}.transfer(${a(0)}, ${a(1)})`;  // bulk transfer (modifies buffer in place)
     case 'beginTransaction': {
       const configArg = args[0];
       if (configArg && configArg.kind === 'object') {

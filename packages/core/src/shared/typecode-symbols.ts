@@ -24,6 +24,7 @@ export type TypecodeReceiverKind =
   | 'eeprom'        // EEPROM namespace - read/write/update/length
   | 'timing'        // Timing namespace - millis/micros/delay/delayMicroseconds
   | 'wdt'           // WDT namespace - enable/reset/disable
+  | 'preferences'   // Preferences namespace - key-value NVS (EEPROM-backed on AVR)
   | 'unknown';      // Not a typecode symbol
 
 /**
@@ -119,7 +120,8 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   // ---- Arduino peripheral namespaces ------------------------------------
   EEPROM:  'eeprom',
   Timing:  'timing',
-  WDT:     'wdt',
+  WDT:          'wdt',
+  Preferences:  'preferences',
 };
 
 /**

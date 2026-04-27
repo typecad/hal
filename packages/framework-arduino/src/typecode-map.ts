@@ -16,6 +16,7 @@ import { renderSerialCall } from './handlers/serial-handler';
 import { renderI2CCall } from './handlers/i2c-handler';
 import { renderSPICall } from './handlers/spi-handler';
 import { renderEEPROMCall } from './handlers/eeprom-handler';
+import { renderPreferencesCall } from './handlers/preferences-handler';
 import { renderWDTCall } from './handlers/wdt-handler';
 
 // ---------------------------------------------------------------------------
@@ -267,6 +268,7 @@ export function tryRenderTypecodeCallStatement(
   target: TargetProfile,
   renderArg: (e: ExpressionIR) => string,
   boardConstants?: BoardConstants,
+  architecture?: string,
 ): string | undefined {
   // Guard removed — caller (ArduinoStrategy) is responsible for gating on target.
 
@@ -294,6 +296,10 @@ export function tryRenderTypecodeCallStatement(
     return renderEEPROMCall(parts.slice(1).join('.'), args, renderArg);
   }
 
+  if (parts[0] === 'Preferences') {
+    return renderPreferencesCall(parts.slice(1).join('.'), args, renderArg);
+  }
+
   if (parts[0] === 'Timing') {
     const method = parts[1];
     const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '0');
@@ -307,7 +313,7 @@ export function tryRenderTypecodeCallStatement(
   }
 
   if (parts[0] === 'WDT') {
-    return renderWDTCall(parts.slice(1).join('.'), args, renderArg);
+    return renderWDTCall(parts.slice(1).join('.'), args, renderArg, architecture);
   }
 
   if (parts.length === 2) {

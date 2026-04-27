@@ -886,6 +886,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // For npm packages, always emit .h/.cpp (not .ino)
   const isNpmPackage = !!options.npmPackage;
   const isEntryFile = options.isEntryFile !== false;
+  const isrPrefix = isEntryFile ? 'main' : originalBaseName;
   const effectiveEmitMode: EmitMode = strategy.effectiveEmitMode(options.emitMode, isNpmPackage) as EmitMode;
   const sourceExtension = strategy.sourceExtension(isEntryFile, isNpmPackage);
   const headerPath = path.join(options.outDir, `${baseName}.h`);
@@ -1864,7 +1865,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   function collectCallbackFromExpression(expr: ExpressionIR): void {
     // Handle top-level callback (e.g., in call statement args directly)
     if (expr.kind === "callback") {
-      const callbackName = `isr_${callbackCounter++}`;
+      const callbackName = `${isrPrefix}_isr_${callbackCounter++}`;
       callbackFunctions.push({
         name: callbackName,
         params: expr.params,
@@ -1878,7 +1879,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (expr.kind === "method-call") {
       for (const arg of expr.args) {
         if (arg.kind === "callback") {
-          const callbackName = `isr_${callbackCounter++}`;
+          const callbackName = `${isrPrefix}_isr_${callbackCounter++}`;
           callbackFunctions.push({
             name: callbackName,
             params: arg.params,

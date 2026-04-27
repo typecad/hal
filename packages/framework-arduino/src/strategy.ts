@@ -8,6 +8,7 @@
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, TypecodeReceiverKind, RuntimePolyfillIR } from "@typecode/core/shared";
 import { resolveArduinoProfile } from "./profile";
 import { renderArduinoBuiltin, tryRenderTypecodeCallStatement } from "./typecode-map";
+import { renderDACCall } from "./handlers/dac-handler";
 
 // ---------------------------------------------------------------------------
 // Constant sets – previously module-level in cpp-emitter.ts
@@ -168,15 +169,15 @@ export class ArduinoStrategy implements PlatformStrategy {
 #endif
 // Arduino string method polyfills
 bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
-const char* __tc_toUpperCase(const char* s) { static char buf[TYPECODE_STR_BUF_SIZE]; strncpy(buf, s, TYPECODE_STR_BUF_SIZE - 1); buf[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; for (char* p = buf; *p; p++) *p = toupper(*p); return buf; }
-const char* __tc_toLowerCase(const char* s) { static char buf[TYPECODE_STR_BUF_SIZE]; strncpy(buf, s, TYPECODE_STR_BUF_SIZE - 1); buf[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; for (char* p = buf; *p; p++) *p = tolower(*p); return buf; }
-const char* __tc_trim(const char* s) { while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; static char buf[TYPECODE_STR_BUF_SIZE]; int cplen = len < TYPECODE_STR_BUF_SIZE - 1 ? len : TYPECODE_STR_BUF_SIZE - 1; strncpy(buf, s, cplen); buf[cplen] = '\\0'; return buf; }
-const char* __tc_substring2(const char* s, int start, int end) { int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; static char buf[TYPECODE_STR_BUF_SIZE]; int len = end - start; if (len >= TYPECODE_STR_BUF_SIZE) len = TYPECODE_STR_BUF_SIZE - 1; strncpy(buf, s + start, len); buf[len] = '\\0'; return buf; }
+const char* __tc_toUpperCase(const char* s) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPECODE_STR_BUF_SIZE - 1); b[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
+const char* __tc_toLowerCase(const char* s) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPECODE_STR_BUF_SIZE - 1); b[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
+const char* __tc_trim(const char* s) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < TYPECODE_STR_BUF_SIZE - 1 ? len : TYPECODE_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
+const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= TYPECODE_STR_BUF_SIZE) len = TYPECODE_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
 const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
 const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
 const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[TYPECODE_STR_BUF_SIZE]; const char* pos = strstr(s, old); if (!pos) { strncpy(buf, s, TYPECODE_STR_BUF_SIZE - 1); buf[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; return buf; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= TYPECODE_STR_BUF_SIZE) { strncpy(buf, s, TYPECODE_STR_BUF_SIZE - 1); buf[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; return buf; } memcpy(buf, s, beforeLen); memcpy(buf + beforeLen, repl, replLen); strcpy(buf + beforeLen + replLen, pos + oldLen); return buf; }
-const char* __tc_charAt(const char* s, int idx) { static char buf[2]; buf[0] = s[idx]; buf[1] = '\\0'; return buf; }
+const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, TYPECODE_STR_BUF_SIZE - 1); b[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= TYPECODE_STR_BUF_SIZE) { strncpy(b, s, TYPECODE_STR_BUF_SIZE - 1); b[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
+const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
 int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx]; }
 `],
       shimMacros: [],
@@ -342,13 +343,29 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     interruptMode?: "FALLING" | "RISING" | "CHANGE",
   ): string | undefined {
     // First try the standard pin/peripheral built-ins
+    // DAC1/DAC2 are mapped as 'pwm' by inferKindByName — intercept and route to DAC handler
+    if ((receiver === 'DAC1' || receiver === 'DAC2') && (method === 'write' || method === 'disable')) {
+      if (this._cachedArch === 'esp32') {
+        return renderDACCall(receiver, method, args, renderArg);
+      }
+      return `/* DAC output is not available on this architecture */`;
+    }
+    // Architecture-aware override: PWM setFrequency
+    if (receiverKind === 'pwm' && method === 'setFrequency') {
+      const pin = /^D(\d+)$/.test(receiver) ? receiver.slice(1) : receiver;
+      const freq = args[0] !== undefined ? renderArg(args[0]) : '0';
+      if (this._cachedArch === 'esp32') {
+        return `analogWriteFrequency(${pin}, ${freq})`;
+      }
+      return `/* setFrequency() not supported on this architecture (${receiver}) */`;
+    }
     const builtin = renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode);
     if (builtin !== undefined) return builtin;
 
     // Try the statement-level handler for all typecode calls
     // This handles config chains (D13.config.output), interrupts (D2.onFalling), etc.
     const callee = `${receiver}.${method}`;
-    const statementResult = tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants);
+    const statementResult = tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch);
     if (statementResult !== undefined) return statementResult;
 
     return undefined;
@@ -375,7 +392,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     renderArg: (e: ExpressionIR) => string,
     boardConstants?: BoardConstants,
   ): string | undefined {
-    return tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants) ?? undefined;
+    return tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch) ?? undefined;
   }
   renderThrow(_valueExpr: string): string {
     return "typecode_halt(\"PANIC\")";

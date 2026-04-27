@@ -853,9 +853,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           } else if (ts.isIdentifier(innerReceiver) && topLevelClassNames.has(innerReceiver.text)) {
             // Static method call on a top-level class returning a pointer
             const cls = topLevelClasses.get(innerReceiver.text);
-            const chainMethod = cls?.methods.find(m => m.name === innerMethodName);
-            if (chainMethod && ((chainMethod.returnType as string).endsWith("*") || (chainMethod.returnType as string) === innerReceiver.text)) {
+            if (!cls) {
+              // Cross-module class: factory methods typically return class instances (pointers)
               accessor = "->";
+            } else {
+              const chainMethod = cls.methods.find(m => m.name === innerMethodName);
+              if (chainMethod && ((chainMethod.returnType as string).endsWith("*") || (chainMethod.returnType as string) === innerReceiver.text)) {
+                accessor = "->";
+              }
             }
           }
         }

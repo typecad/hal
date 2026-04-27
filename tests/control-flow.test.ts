@@ -209,7 +209,7 @@ describe("Control Flow Transpilation", () => {
           } while (x < max);
         }
       `);
-      expect(result.cpp).toContain("while (x < max)");
+      expect(result.cpp).toContain("while (x < max_)");
     });
 
     it("transpiles do-while with break", () => {

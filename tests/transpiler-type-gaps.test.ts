@@ -387,7 +387,7 @@ describe('Transpiler Type Gaps', () => {
         }
       `);
 
-      expect(result.cpp).toContain('int clamp(int value, int min = 0, int max = 1023);');
+      expect(result.cpp).toContain('int clamp(int value, int min_ = 0, int max_ = 1023);');
     });
   });
 

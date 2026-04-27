@@ -74,6 +74,15 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           ...(defaultImportName ? { defaultImportName } : {}),
         });
       }
+      // Register PascalCase imports from relative modules as potential class names
+      // so that static method calls (e.g., Button.start()) use the :: operator.
+      if (moduleSpecifier.startsWith('./') || moduleSpecifier.startsWith('../')) {
+        for (const name of namedImports) {
+          if (/^[A-Z]/.test(name)) {
+            topLevelClassNames.add(name);
+          }
+        }
+      }
       return;
     }
 

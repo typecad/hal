@@ -362,6 +362,38 @@ const pwmValue = map(sensorReading, 0, 1023, 0, 255);
 const clamped = constrain(pwmValue, 0, 255);
 ```
 
+## Non-Volatile Storage
+
+### EEPROM (AVR only)
+
+Byte-addressable storage for raw data:
+
+```typescript
+EEPROM.write(0, 0xFF);
+const byte = EEPROM.read(0);
+const len = EEPROM.length();  // 1024 on Uno
+EEPROM.update(0, 0xFE);      // writes only if value differs
+```
+
+### Preferences (AVR + ESP32)
+
+Key-value storage with a unified API. On AVR, backed by an EEPROM compatibility layer; on ESP32, uses native NVS flash via `Preferences.h`.
+
+```typescript
+Preferences.begin("settings");
+Preferences.putInt("bootCount", 42);
+const count = Preferences.getInt("bootCount", 0);
+
+Preferences.putString("ssid", "mywifi");
+const ssid = Preferences.getString("ssid", "");
+
+Preferences.end();
+```
+
+Supported types: `int`, `uint`, `bool`, `float`, `string`.
+
+See the [Language Reference](../transpiler/language-reference.md#preferences) for the full API and AVR limitations.
+
 ## Board Definition Metadata
 
 The `Board.definition` (or `ArduinoUno` constant) exposes the full hardware manifest:

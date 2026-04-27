@@ -136,6 +136,10 @@ inline void typecode_pump_microtasks() {
   typecode_async::pumpMicrotasks();
 }
 
+#ifndef typecode_halt
+#define typecode_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
+#endif
+
 // Async state machine for blink
 class BlinkTask {
 public:

@@ -172,7 +172,7 @@ describe("TYPECODE_STR_BUF_SIZE macro in string polyfills", () => {
       }`,
       { target: "arduino", ...AVR_CTX },
     );
-    expect(result.cpp).toContain("buf[TYPECODE_STR_BUF_SIZE]");
+    expect(result.cpp).toContain("buf[2][TYPECODE_STR_BUF_SIZE]");
     // No raw 64 should appear without the macro (the macro definition itself is ok)
     const lines = result.cpp.split("\n").filter(
       l => l.includes("char buf[") && l.includes("64") && !l.includes("TYPECODE_STR_BUF_SIZE"),

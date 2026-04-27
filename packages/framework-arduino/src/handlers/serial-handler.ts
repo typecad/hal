@@ -50,7 +50,24 @@ export function renderSerialCall(
       const configArg = args[0];
       if (configArg) {
         const baudField = getObjectField(configArg, 'baudRate');
-        if (baudField) return `${instance}.begin(${renderArg(baudField)})`;
+        const parityField = getObjectField(configArg, 'parity');
+        const stopBitsField = getObjectField(configArg, 'stopBits');
+        const wordLengthField = getObjectField(configArg, 'wordLength');
+        const baud = baudField ? renderArg(baudField) : '9600';
+
+        // If any framing fields are present, build a SERIAL_xNy config constant
+        if (parityField || stopBitsField || wordLengthField) {
+          const parityRaw = parityField ? renderArg(parityField) : '';
+          const stopBitsRaw = stopBitsField ? renderArg(stopBitsField) : '';
+          const wordLengthRaw = wordLengthField ? renderArg(wordLengthField) : '';
+
+          const parityChar = parityRaw.includes('even') ? 'E' : parityRaw.includes('odd') ? 'O' : 'N';
+          const stopChar = stopBitsRaw.trim() === '2' ? '2' : '1';
+          const bits = /^[5-9]$/.test(wordLengthRaw.trim()) ? wordLengthRaw.trim() : '8';
+          return `${instance}.begin(${baud}, SERIAL_${bits}${parityChar}${stopChar})`;
+        }
+
+        if (baudField) return `${instance}.begin(${baud})`;
         return `${instance}.begin(${renderArg(configArg)})`;
       }
       return `${instance}.begin(9600)`;

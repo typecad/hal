@@ -102,15 +102,15 @@ export function renderNumNamespace(
   }
 
   if (parts.length === 4) {
-    // Num.map(value).from(fL, fH).to(tL, tH)
+    // Num.map(value).from(fL, fH).to(tL, tH) — all args arrive flat
     if (parts[1] === 'map' && parts[2] === 'from') {
-      if (parts[3] === 'to')        return `/* Num.map chain - requires chain tracking */`;
-      if (parts[3] === 'toPercent') return `/* Num.map().toPercent() chain */`;
-      if (parts[3] === 'toByte')    return `/* Num.map().toByte() chain */`;
+      if (parts[3] === 'to')        return `map(${a(0)}, ${a(1)}, ${a(2)}, ${a(3)}, ${a(4)})`;
+      if (parts[3] === 'toPercent') return `map(${a(0)}, ${a(1)}, ${a(2)}, 0, 100)`;
+      if (parts[3] === 'toByte')    return `map(${a(0)}, ${a(1)}, ${a(2)}, 0, 255)`;
     }
-    // Num.constrain(value).between(low, high)
+    // Num.constrain(value).between(low, high) — args arrive flat [value, low, high]
     if (parts[1] === 'constrain' && parts[2] === 'between') {
-      return `/* Num.constrain().between() chain */`;
+      return `constrain(${a(0)}, ${a(1)}, ${a(2)})`;
     }
   }
 

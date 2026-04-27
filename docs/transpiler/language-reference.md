@@ -533,6 +533,93 @@ console_log("Value: ", 42);
 console_error("Error occurred");
 ```
 
+## Built-in Namespaces
+
+TypeCode provides global namespace objects for common Arduino peripherals. These are available without imports.
+
+### Timing
+
+```typescript
+const ms = Timing.millis();
+const us = Timing.micros();
+Timing.delay(1000);
+Timing.delayMicroseconds(10);
+```
+
+Transpiles directly to `millis()`, `micros()`, `delay()`, `delayMicroseconds()`.
+
+### EEPROM
+
+Byte-addressable non-volatile storage. Available on AVR; on ESP32, address-based EEPROM access is not available (use `Preferences` instead).
+
+```typescript
+const len = EEPROM.length();
+EEPROM.write(0, 0xFF);
+const byte = EEPROM.read(0);
+EEPROM.update(0, 0xFE); // writes only if different
+EEPROM.put(10, myStruct);
+EEPROM.get(10, myStruct);
+```
+
+### WDT (Watchdog Timer)
+
+```typescript
+WDT.enable('250ms');
+WDT.reset();
+WDT.disable();
+```
+
+Timeout values: `'15ms' | '30ms' | '60ms' | '120ms' | '250ms' | '500ms' | '1s' | '2s' | '4s' | '8s'`.
+
+Transpiles to `wdt_enable(WDTO_*)`, `wdt_reset()`, `wdt_disable()`. AVR-only.
+
+### Preferences
+
+Key-value non-volatile storage with a unified API across AVR and ESP32:
+
+- **ESP32**: uses the native `Preferences.h` library (NVS flash)
+- **AVR**: uses a transparent EEPROM-backed compatibility shim (32 hash-indexed slots, strings up to 9 chars)
+
+```typescript
+Preferences.begin("myapp");       // open a namespace (required before get/put)
+Preferences.putInt("count", 42);
+const count = Preferences.getInt("count", 0);  // 42
+
+Preferences.putBool("flag", true);
+const flag = Preferences.getBool("flag", false);  // true
+
+Preferences.putFloat("temp", 23.5);
+const temp = Preferences.getFloat("temp", 0.0);
+
+Preferences.putString("label", "hello");
+const label = Preferences.getString("label", "");  // "hello"
+
+Preferences.remove("count");       // delete one key
+Preferences.clear();               // delete all keys
+Preferences.end();                 // close namespace
+```
+
+**Methods:**
+
+| Method | Signature |
+|--------|-----------|
+| `begin` | `(name: string, readOnly?: boolean): void` |
+| `end` | `(): void` |
+| `putInt` | `(key: string, value: number): void` |
+| `getInt` | `(key: string, defaultValue: number): number` |
+| `putUInt` | `(key: string, value: number): void` |
+| `getUInt` | `(key: string, defaultValue: number): number` |
+| `putBool` | `(key: string, value: boolean): void` |
+| `getBool` | `(key: string, defaultValue: boolean): boolean` |
+| `putFloat` | `(key: string, value: number): void` |
+| `getFloat` | `(key: string, defaultValue: number): number` |
+| `putString` | `(key: string, value: string): void` |
+| `getString` | `(key: string, defaultValue: string): string` |
+| `clear` | `(): void` |
+| `remove` | `(key: string): void` |
+
+**AVR limitations:** Keys are matched by 32-bit hash (collision risk is negligible for <32 keys). String values are limited to 9 characters. The `name` parameter to `begin()` is accepted but ignored (AVR has no namespace concept).
+
 ## Identifier Safety
 
 ### C++ Keyword Escaping
