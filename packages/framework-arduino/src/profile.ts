@@ -221,19 +221,119 @@ function collectTopLevelDeclarations(program: ProgramIR): Set<string> {
 function collectTypecodeReceiverKinds(program: ProgramIR): Set<TypecodeReceiverKind> {
   const kinds = new Set<TypecodeReceiverKind>();
 
-  const collectFromStatement = (statement: StatementIR): void => {
-    if (statement.kind === "typecode-call") {
-      kinds.add(statement.receiverKind);
-      return;
+  // Forward-declare so collectFromExpr and collectFromStatement can call each other
+  let collectFromStatement: (s: StatementIR) => void;
+
+  const collectFromExpr = (expr: ExpressionIR | undefined): void => {
+    if (!expr || typeof expr !== 'object') return;
+    switch (expr.kind) {
+      case "typecode-call":
+        kinds.add(expr.receiverKind);
+        break;
+      case "callback":
+        for (const s of (expr as any).statements ?? []) collectFromStatement(s as StatementIR);
+        break;
+      case "lambda":
+        for (const s of (expr as any).body ?? []) collectFromStatement(s as StatementIR);
+        break;
+      case "ternary":
+        collectFromExpr(expr.condition);
+        collectFromExpr(expr.whenTrue);
+        collectFromExpr(expr.whenFalse);
+        break;
+      case "binary":
+        collectFromExpr(expr.left);
+        collectFromExpr(expr.right);
+        break;
+      case "unary":
+        collectFromExpr(expr.operand);
+        break;
+      case "await":
+        collectFromExpr(expr.value);
+        break;
+      case "paren":
+        collectFromExpr(expr.inner);
+        break;
+      case "array":
+        for (const el of expr.elements) collectFromExpr(el);
+        break;
+      case "string_concat":
+        for (const p of expr.parts) collectFromExpr(p);
+        break;
+      case "template_string":
+        collectFromExpr(expr.expression);
+        break;
+      case "object":
+        for (const f of expr.fields) collectFromExpr(f.value);
+        break;
+      // Leaf kinds — nothing to recurse into
+      default:
+        break;
     }
-    if (statement.kind === "var_decl" && statement.initializer?.kind === "typecode-call") {
-      kinds.add((statement.initializer as Extract<ExpressionIR, { kind: "typecode-call" }>).receiverKind);
+  };
+
+  collectFromStatement = (statement: StatementIR): void => {
+    if (!statement || typeof statement !== 'object') return;
+    switch (statement.kind) {
+      case "typecode-call":
+        kinds.add(statement.receiverKind);
+        break;
+      case "var_decl":
+        collectFromExpr(statement.initializer);
+        break;
+      case "return":
+        collectFromExpr((statement as any).value);
+        break;
+      case "assign":
+        collectFromExpr((statement as any).value);
+        break;
+      case "if":
+        collectFromExpr((statement as any).condition);
+        for (const s of (statement as any).thenBranch ?? []) collectFromStatement(s);
+        for (const s of (statement as any).elseBranch ?? []) collectFromStatement(s);
+        break;
+      case "while":
+      case "do_while":
+        collectFromExpr((statement as any).condition);
+        for (const s of (statement as any).body ?? []) collectFromStatement(s);
+        break;
+      case "for":
+        collectFromStatement((statement as any).initializer as StatementIR);
+        collectFromExpr((statement as any).condition);
+        collectFromStatement((statement as any).increment as StatementIR);
+        for (const s of (statement as any).body ?? []) collectFromStatement(s);
+        break;
+      case "for_of":
+      case "for_in":
+        for (const s of (statement as any).body ?? []) collectFromStatement(s);
+        break;
+      case "block":
+        for (const s of (statement as any).statements ?? []) collectFromStatement(s);
+        break;
+      case "try":
+        for (const s of (statement as any).tryBlock ?? []) collectFromStatement(s);
+        for (const s of (statement as any).catchBlock ?? []) collectFromStatement(s);
+        for (const s of (statement as any).finallyBlock ?? []) collectFromStatement(s);
+        break;
+      case "call":
+        for (const arg of (statement as any).args ?? []) collectFromExpr(arg as ExpressionIR);
+        break;
+      default:
+        break;
     }
   };
 
   walkStatements(program.topLevelStatements, collectFromStatement);
   for (const fn of program.functions) {
     walkStatements(fn.statements, collectFromStatement);
+  }
+  for (const cls of program.classes ?? []) {
+    for (const method of cls.methods ?? []) {
+      walkStatements(method.statements, collectFromStatement);
+    }
+    if (cls.constructor) {
+      walkStatements(cls.constructor.statements, collectFromStatement);
+    }
   }
 
   return kinds;
@@ -379,6 +479,8 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
   const extraIncludes: string[] = [];
   if (receiverKinds.has('i2c')) extraIncludes.push('<Wire.h>');
   if (receiverKinds.has('spi')) extraIncludes.push('<SPI.h>');
+  if (receiverKinds.has('eeprom')) extraIncludes.push('<EEPROM.h>');
+  if (receiverKinds.has('wdt')) extraIncludes.push('<avr/wdt.h>');
 
   return {
     forcedIncludes: [...variant.forcedIncludes, ...extraIncludes],
