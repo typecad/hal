@@ -16,6 +16,18 @@
     "./preprocessor": {
       "types": "./dist/host/preprocessor.d.ts",
       "default": "./dist/host/preprocessor.js"
+    },
+    "./chain-collector": {
+      "types": "./dist/host/chain-collector.d.ts",
+      "default": "./dist/host/chain-collector.js"
+    },
+    "./parser": {
+      "types": "./dist/host/parser.d.ts",
+      "default": "./dist/host/parser.js"
+    },
+    "./types": {
+      "types": "./dist/host/types.d.ts",
+      "default": "./dist/host/types.js"
     }
   },
   "files": [

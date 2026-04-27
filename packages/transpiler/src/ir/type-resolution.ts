@@ -6,6 +6,7 @@ export type CppTypeHint =
   | "int"
   | "long long"
   | "float"
+  | "double"
   | "bool"
   | "auto"
   | "void"
@@ -112,7 +113,7 @@ export function resolveAliasedTypeNode(
 }
 
 function inferNumericCppType(literalText: string): CppTypeHint {
-  return /[.eE]/.test(literalText) ? "float" : "long long";
+  return /[.eE]/.test(literalText) ? "double" : "int";
 }
 
 function getDirectCppType(typeName: string): CppTypeHint | undefined {
@@ -160,7 +161,7 @@ function isKnownCompileTimeOnlyTypeName(typeName: string): boolean {
 
 function normalizeTypeHintForUse(typeHint: CppTypeHint): string {
   if (typeHint === "auto") {
-    return "long long";
+    return "double";
   }
   return typeHint;
 }
@@ -196,6 +197,24 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   // return the original type reference name as the C++ struct type.
   if (ts.isTypeLiteralNode(resolvedNode) && ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
     return node.typeName.text as CppTypeHint;
+  }
+
+  // Handle mapped types like { readonly [P in keyof SomeType]: SomeType[P] }
+  // These are type-level copies; in C++ they're equivalent to the source type.
+  // Resolve to the source type name since C++ doesn't have readonly.
+  if (ts.isMappedTypeNode(resolvedNode)) {
+    const constraint = resolvedNode.typeParameter?.constraint;
+    if (constraint && ts.isTypeOperatorNode(constraint) && constraint.operator === ts.SyntaxKind.KeyOfKeyword) {
+      const sourceType = constraint.type;
+      if (sourceType && ts.isTypeReferenceNode(sourceType) && ts.isIdentifier(sourceType.typeName)) {
+        // The mapped type mirrors the source type; resolve to the source type name
+        return sourceType.typeName.text as CppTypeHint;
+      }
+    }
+    // Generic mapped type fallback: use the outer type reference name
+    if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+      return node.typeName.text as CppTypeHint;
+    }
   }
 
   if (ts.isParenthesizedTypeNode(resolvedNode)) {
@@ -242,7 +261,7 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   }
 
   if (resolvedNode.kind === ts.SyntaxKind.NumberKeyword) {
-    return "long long";
+    return "double";
   }
 
   if (resolvedNode.kind === ts.SyntaxKind.BooleanKeyword) {
@@ -427,8 +446,8 @@ export function inferExprCppType(
       return "std::vector<int>";
     }
 
-    if (inferredElementTypes.includes("float")) {
-      return "std::vector<float>";
+    if (inferredElementTypes.includes("float") || inferredElementTypes.includes("double")) {
+      return "std::vector<double>";
     }
     if (inferredElementTypes.includes("std::string")) {
       return "std::vector<std::string>";
@@ -500,8 +519,8 @@ export function inferExprCppType(
     if (whenTrueType === "std::string" || whenFalseType === "std::string") {
       return "std::string";
     }
-    if (whenTrueType === "float" || whenFalseType === "float") {
-      return "float";
+    if (whenTrueType === "float" || whenFalseType === "float" || whenTrueType === "double" || whenFalseType === "double") {
+      return "double";
     }
     if ((whenTrueType === "int" || whenTrueType === "bool") && (whenFalseType === "int" || whenFalseType === "bool")) {
       return "int";
@@ -546,8 +565,8 @@ export function inferExprCppType(
       return "std::string";
     }
 
-    if (leftType === "float" || rightType === "float") {
-      return "float";
+    if (leftType === "float" || rightType === "float" || leftType === "double" || rightType === "double") {
+      return "double";
     }
 
     if ((leftType === "int" || leftType === "bool") && (rightType === "int" || rightType === "bool")) {
@@ -608,8 +627,8 @@ export function resolveDeclarationType(
   let resolvedType: CppTypeHint;
   if (explicitType === "auto") {
     resolvedType = inferredType;
-  } else if (explicitType === "int" && inferredType === "float") {
-    resolvedType = "float";
+  } else if (explicitType === "int" && (inferredType === "float" || inferredType === "double")) {
+    resolvedType = "double";
   } else {
     resolvedType = explicitType;
   }
@@ -689,8 +708,8 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
             const inferredTypes = returns
               .map((item) => inferExprCppType(item.expression as ts.Expression, result, locals, sourceText))
               .filter((item) => item !== "auto");
-            if (inferredTypes.includes("float")) {
-              result.set(fn.name.text, "float");
+            if (inferredTypes.includes("float") || inferredTypes.includes("double")) {
+              result.set(fn.name.text, "double");
               continue;
             }
             // Promote int → long when returning large enum values
@@ -718,8 +737,8 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
         continue;
       }
 
-      if (inferredTypes.includes("float")) {
-        result.set(fn.name.text, "float");
+      if (inferredTypes.includes("float") || inferredTypes.includes("double")) {
+        result.set(fn.name.text, "double");
       } else if (inferredTypes.includes("int")) {
         result.set(fn.name.text, "int");
       } else if (inferredTypes.includes("bool")) {

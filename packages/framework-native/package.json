@@ -15,10 +15,17 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
     "@typecode/core": "*"
+  },
+  "devDependencies": {
+    "@typecode/expect": "*",
+    "@typecode/cli": "*",
+    "typescript": "^5.7.3"
   },
   "license": "MIT",
   "publishConfig": {

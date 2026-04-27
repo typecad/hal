@@ -32,7 +32,7 @@ const config: TypecodeConfig = {
   },
 
   test: {
-    port: 'COM6',
+    port: 'COM7',
     baudRate: 115200,
     timeout: 30000,
     include: [

@@ -3,13 +3,13 @@ import { Diagnostic, SourceSpan } from "../types";
 import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "./model";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnlyMethodName } from "./compile-time-only";
-import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
+import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
-import { enumDeclarationToIR } from "./declaration-builders";
+import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { extractRootAndChain } from "./ast-patterns";
 
 export function callToStatement(
@@ -1272,6 +1272,16 @@ export function lowerStatement(
     }];
   }
 
+  // Local interface declarations are type-only; no runtime IR needed
+  if (ts.isInterfaceDeclaration(statement)) {
+    return [];
+  }
+
+  // Local type alias declarations are type-only; no runtime IR needed
+  if (ts.isTypeAliasDeclaration(statement)) {
+    return [];
+  }
+
   diagnostics.push(
     makeDiagnostic(
       sourceText,
@@ -1306,6 +1316,20 @@ function hoistNestedFunction(
   const returnType = statement.type
     ? typeNodeToCppType(statement.type, typeAliases)
     : "auto";
+
+  // Detect if the return type is a readonly mapped type (e.g. ReadonlyGuarded<T>)
+  // so the emitter can add `const` to the C++ return type.
+  const isReadonlyReturnType = statement.type
+    ? isReadonlyMappedType(statement.type, typeAliases)
+    : false;
+
+  // Register the nested function's return type so that inferExprCppType
+  // can resolve call expressions to this function later in the same scope.
+  // For template functions, callers should use auto (concrete type depends
+  // on template argument deduction which only the C++ compiler can do).
+  const hasTypeParams = !!(statement.typeParameters && statement.typeParameters.length > 0);
+  functionReturnTypes.set(originalName, (hasTypeParams ? "auto" : returnType) as CppTypeHint);
+  functionReturnTypes.set(mangledName, returnType as CppTypeHint);
 
   const localVariableTypes = new Map<string, CppTypeHint>();
   const parameters: ParameterIR[] = [];
@@ -1343,6 +1367,19 @@ function hoistNestedFunction(
     ? statement.typeParameters.map(tp => tp.name.text)
     : undefined;
 
+  // Capture generic type constraints as C++ static_assert expressions
+  const constraints = new Map<string, string>();
+  if (statement.typeParameters) {
+    for (const tp of statement.typeParameters) {
+      if (tp.constraint) {
+        const cppConstraint = typeConstraintToCppAssert(tp.name.text, tp.constraint);
+        if (cppConstraint) {
+          constraints.set(tp.name.text, cppConstraint);
+        }
+      }
+    }
+  }
+
   hoistedNestedFunctions.push({
     originalName: mangledName,
     isAsync: false,
@@ -1352,7 +1389,62 @@ function hoistNestedFunction(
     parameters,
     statements: bodyStatements,
     ...(typeParams && typeParams.length > 0 ? { typeParameters: typeParams } : {}),
+    ...(constraints.size > 0 ? { typeParameterConstraints: constraints } : {}),
+    ...(isReadonlyReturnType ? { isReadonlyReturnType: true } : {}),
   });
+}
+
+/** Convert a TS type constraint to a C++ static_assert expression. */
+function typeConstraintToCppAssert(paramName: string, constraint: ts.TypeNode): string | undefined {
+  // Handle union types: string | number → std::is_same_v<T, std::string> || std::is_arithmetic_v<T>
+  if (ts.isUnionTypeNode(constraint)) {
+    const parts = constraint.types
+      .map(t => singleConstraintToCpp(paramName, t))
+      .filter((s): s is string => !!s);
+    return parts.length > 0 ? parts.join(" || ") : undefined;
+  }
+  return singleConstraintToCpp(paramName, constraint);
+}
+
+function singleConstraintToCpp(paramName: string, constraint: ts.TypeNode): string | undefined {
+  if (constraint.kind === ts.SyntaxKind.StringKeyword) {
+    return `std::is_same_v<${paramName}, std::string>`;
+  }
+  if (constraint.kind === ts.SyntaxKind.NumberKeyword) {
+    return `std::is_arithmetic_v<${paramName}>`;
+  }
+  if (constraint.kind === ts.SyntaxKind.BooleanKeyword) {
+    return `std::is_same_v<${paramName}, bool>`;
+  }
+  return undefined;
+}
+
+/** Check if a type node resolves through a mapped type with readonly modifier. */
+function isReadonlyMappedType(node: ts.TypeNode, typeAliases?: Map<string, ts.TypeNode>): boolean {
+  if (!typeAliases) return false;
+
+  // Resolve through type aliases
+  const resolvedNode = resolveAliasedTypeNode(node, typeAliases) ?? node;
+
+  if (ts.isMappedTypeNode(resolvedNode)) {
+    // Check if the mapped type has a readonly modifier
+    const modifier = (resolvedNode as any).readonlyToken;
+    if (modifier) return true;
+    // Also check the modifier property (TS uses different representations)
+    if ((resolvedNode as any).modifier) return true;
+  }
+
+  // If the original node is a type reference, resolve the alias and check
+  if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+    const aliasNode = typeAliases.get(node.typeName.text);
+    if (aliasNode && ts.isMappedTypeNode(aliasNode)) {
+      const modifier = (aliasNode as any).readonlyToken;
+      if (modifier) return true;
+      if ((aliasNode as any).modifier) return true;
+    }
+  }
+
+  return false;
 }
 
 function hoistNestedClass(
@@ -1712,6 +1804,16 @@ export function lowerStatementList(
     }
   }
 
+  // Phase 1.5: Collect local type aliases into the shared map so that
+  // nested function return types can resolve generic mapped types etc.
+  if (typeAliases) {
+    for (const statement of statements) {
+      if (ts.isTypeAliasDeclaration(statement)) {
+        typeAliases.set(statement.name.text, statement.type);
+      }
+    }
+  }
+
   // Phase 2: Hoist nested functions (process their bodies).
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name) {
@@ -1748,6 +1850,27 @@ export function lowerStatementList(
       const enumIR = enumDeclarationToIR(statement, fileName, sourceText);
       if (enumIR && !hoistedNestedEnums.some(e => e.name === enumIR.name)) {
         hoistedNestedEnums.push(enumIR);
+      }
+    }
+  }
+
+  // Phase 2.6b: Hoist local interface and type alias declarations.
+  // These are type-only but needed for C++ struct generation when used as return types.
+  const scopeName = functionNameForDiagnostics
+    ? `${functionNameForDiagnostics.replace(/\./g, "_")}__types`
+    : undefined;
+  for (const statement of statements) {
+    if (ts.isInterfaceDeclaration(statement) && statement.name) {
+      const ifaceIR = interfaceDeclarationToIR(statement, fileName, sourceText, typeAliases ?? new Map());
+      if (ifaceIR && !hoistedNestedInterfaces.some(i => i.name === ifaceIR.name)) {
+        if (scopeName) ifaceIR.parentScope = scopeName;
+        hoistedNestedInterfaces.push(ifaceIR);
+      }
+    }
+    if (ts.isTypeAliasDeclaration(statement)) {
+      const aliasIR = typeAliasDeclarationToIR(statement, fileName, sourceText, typeAliases ?? new Map());
+      if (aliasIR && !hoistedNestedTypeAliases.some(a => a.name === aliasIR.name)) {
+        hoistedNestedTypeAliases.push(aliasIR);
       }
     }
   }

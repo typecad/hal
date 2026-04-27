@@ -69,6 +69,8 @@ export class ArduinoStrategy implements PlatformStrategy {
   // Cached profile to avoid repeated arduino-cli calls
   private _cachedProfile: ReturnType<typeof resolveArduinoProfile> | null = null;
   private _cachedProfileKey: string | null = null;
+  /** Architecture extracted from FQBN, used for ISR attribute emission. */
+  private _cachedArch: string = 'default';
 
   /**
    * Allows the emitter to inform this strategy which enums have large values
@@ -84,6 +86,7 @@ export class ArduinoStrategy implements PlatformStrategy {
   clearProfileCache(): void {
     this._cachedProfile = null;
     this._cachedProfileKey = null;
+    this._cachedArch = 'default';
   }
 
   /**
@@ -98,6 +101,14 @@ export class ArduinoStrategy implements PlatformStrategy {
 
     this._cachedProfile = resolveArduinoProfile(program, ctx);
     this._cachedProfileKey = key;
+    // Cache architecture for use by isrFunctionAttribute()
+    const fqbn = ctx?.arduino?.fqbn;
+    if (fqbn) {
+      const parts = fqbn.split(':');
+      this._cachedArch = parts.length >= 2 ? parts[1] : 'default';
+    } else {
+      this._cachedArch = 'default';
+    }
     return this._cachedProfile;
   }
 
@@ -123,7 +134,7 @@ export class ArduinoStrategy implements PlatformStrategy {
    * Board packages can override to provide native implementations.
    */
   nativePolyfills(): Set<string> {
-    return new Set(["string_methods"]);
+    return new Set(["string_methods", "typecode_halt"]);
   }
 
   /**
@@ -132,21 +143,39 @@ export class ArduinoStrategy implements PlatformStrategy {
   generateNativePolyfills(_program: ProgramIR, _ctx?: PlatformContext): RuntimePolyfillIR[] {
     return [{
       kind: "polyfill",
+      id: "typecode_halt",
+      domain: "arduino",
+      requiredIncludes: [],
+      forwardDeclarations: [],
+      helperStructs: [],
+      helperFunctions: [
+        `#ifndef typecode_halt
+#define typecode_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
+#endif`,
+      ],
+      shimMacros: [],
+      dependencies: [],
+    }, {
+      kind: "polyfill",
       id: "string_methods",
       domain: "arduino",
       requiredIncludes: [],
       forwardDeclarations: [],
       helperStructs: [],
       helperFunctions: [
-        `// Arduino string method polyfills
-const char* __tc_toUpperCase(const char* s) { static char buf[64]; strncpy(buf, s, 63); buf[63] = '\\0'; for (char* p = buf; *p; p++) *p = toupper(*p); return buf; }
-const char* __tc_toLowerCase(const char* s) { static char buf[64]; strncpy(buf, s, 63); buf[63] = '\\0'; for (char* p = buf; *p; p++) *p = tolower(*p); return buf; }
-const char* __tc_trim(const char* s) { while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; static char buf[64]; strncpy(buf, s, len); buf[len] = '\\0'; return buf; }
-const char* __tc_substring2(const char* s, int start, int end) { int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; static char buf[64]; int len = end - start; strncpy(buf, s + start, len); buf[len] = '\\0'; return buf; }
+        `#ifndef TYPECODE_STR_BUF_SIZE
+#define TYPECODE_STR_BUF_SIZE 64
+#endif
+// Arduino string method polyfills
+bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
+const char* __tc_toUpperCase(const char* s) { static char buf[TYPECODE_STR_BUF_SIZE]; strncpy(buf, s, TYPECODE_STR_BUF_SIZE - 1); buf[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; for (char* p = buf; *p; p++) *p = toupper(*p); return buf; }
+const char* __tc_toLowerCase(const char* s) { static char buf[TYPECODE_STR_BUF_SIZE]; strncpy(buf, s, TYPECODE_STR_BUF_SIZE - 1); buf[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; for (char* p = buf; *p; p++) *p = tolower(*p); return buf; }
+const char* __tc_trim(const char* s) { while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; static char buf[TYPECODE_STR_BUF_SIZE]; int cplen = len < TYPECODE_STR_BUF_SIZE - 1 ? len : TYPECODE_STR_BUF_SIZE - 1; strncpy(buf, s, cplen); buf[cplen] = '\\0'; return buf; }
+const char* __tc_substring2(const char* s, int start, int end) { int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; static char buf[TYPECODE_STR_BUF_SIZE]; int len = end - start; if (len >= TYPECODE_STR_BUF_SIZE) len = TYPECODE_STR_BUF_SIZE - 1; strncpy(buf, s + start, len); buf[len] = '\\0'; return buf; }
 const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
 const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
 const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[64]; const char* pos = strstr(s, old); if (!pos) { strncpy(buf, s, 63); buf[63] = '\\0'; return buf; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= 64) { strncpy(buf, s, 63); buf[63] = '\\0'; return buf; } memcpy(buf, s, beforeLen); memcpy(buf + beforeLen, repl, replLen); strcpy(buf + beforeLen + replLen, pos + oldLen); return buf; }
+const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[TYPECODE_STR_BUF_SIZE]; const char* pos = strstr(s, old); if (!pos) { strncpy(buf, s, TYPECODE_STR_BUF_SIZE - 1); buf[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; return buf; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= TYPECODE_STR_BUF_SIZE) { strncpy(buf, s, TYPECODE_STR_BUF_SIZE - 1); buf[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; return buf; } memcpy(buf, s, beforeLen); memcpy(buf + beforeLen, repl, replLen); strcpy(buf + beforeLen + replLen, pos + oldLen); return buf; }
 const char* __tc_charAt(const char* s, int idx) { static char buf[2]; buf[0] = s[idx]; buf[1] = '\\0'; return buf; }
 int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx]; }
 `],
@@ -234,9 +263,9 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     v = v.replace(/(\w+)\.toUpperCase\(\)/g, "__tc_toUpperCase($1)");
     v = v.replace(/(\w+)\.toLowerCase\(\)/g, "__tc_toLowerCase($1)");
     v = v.replace(/(\w+)\.trim\(\)/g, "__tc_trim($1)");
-    v = v.replace(/(\w+)\.includes\(([^)]+)\)/g, "(String($1).indexOf($2) >= 0)");
-    v = v.replace(/(\w+)\.startsWith\(([^)]+)\)/g, "String($1).startsWith($2)");
-    v = v.replace(/(\w+)\.endsWith\(([^)]+)\)/g, "String($1).endsWith($2)");
+    v = v.replace(/(\w+)\.includes\(([^)]+)\)/g, "(strstr($1, $2) != NULL)");
+    v = v.replace(/(\w+)\.startsWith\(([^)]+)\)/g, "(strncmp($1, $2, strlen($2)) == 0)");
+    v = v.replace(/(\w+)\.endsWith\(([^)]+)\)/g, "__tc_endsWith($1, $2)");
     v = v.replace(/(\w+)\.substring\(([^,]+),\s*([^)]+)\)/g, "__tc_substring2($1, $2, $3)");
     v = v.replace(/(\w+)\.substring\(([^)]+)\)/g, "__tc_substring1($1, $2)");
     v = v.replace(/(\w+)\.slice\(([^,]+),\s*([^)]+)\)/g, "__tc_slice2($1, $2, $3)");
@@ -349,23 +378,26 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     return tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants) ?? undefined;
   }
   renderThrow(_valueExpr: string): string {
-    return "for (;;) {}";
+    return "typecode_halt(\"PANIC\")";
   }
   transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? "" : ";";
+    // Wrap bare string literals with F() to store them in program memory
+    const isBareLiteral = /^"[^"]*"$/.test(renderedArgs);
+    const safeArgs = isBareLiteral ? `F(${renderedArgs})` : renderedArgs;
     switch (method) {
       case "log":
-        return `Serial.println(${renderedArgs})${semi}`;
+        return `Serial.println(${safeArgs})${semi}`;
       case "error":
-        return `Serial.print("[ERROR] "); Serial.println(${renderedArgs})${semi}`;
+        return `Serial.print(F("[ERROR] ")); Serial.println(${safeArgs})${semi}`;
       case "warn":
-        return `Serial.print("[WARN] "); Serial.println(${renderedArgs})${semi}`;
+        return `Serial.print(F("[WARN] ")); Serial.println(${safeArgs})${semi}`;
       case "info":
-        return `Serial.print("[INFO] "); Serial.println(${renderedArgs})${semi}`;
+        return `Serial.print(F("[INFO] ")); Serial.println(${safeArgs})${semi}`;
       case "debug":
-        return `Serial.print("[DEBUG] "); Serial.println(${renderedArgs})${semi}`;
+        return `Serial.print(F("[DEBUG] ")); Serial.println(${safeArgs})${semi}`;
       default:
-        return `Serial.println(${renderedArgs})${semi}`;
+        return `Serial.println(${safeArgs})${semi}`;
     }
   }
   objectFieldInitializer(fieldValue: ExpressionIR, _renderExpr: (e: ExpressionIR) => string): string | undefined {
@@ -436,6 +468,15 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     return lines;
   }
   asyncDriverFunctionName(): string { return "loop"; }
+
+  /**
+   * On ESP32 (Xtensa LX6/LX7), ISR functions must be placed in IRAM so they
+   * can execute while the SPI flash cache is busy.  Other architectures don't
+   * need this attribute.
+   */
+  isrFunctionAttribute(): string {
+    return this._cachedArch === 'esp32' ? 'IRAM_ATTR ' : '';
+  }
 
   // ── Type aliases ────────────────────────────────────────────────────────
 

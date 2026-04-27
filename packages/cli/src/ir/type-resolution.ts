@@ -197,6 +197,24 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     return node.typeName.text as CppTypeHint;
   }
 
+  // Handle mapped types like { readonly [P in keyof SomeType]: SomeType[P] }
+  // These are type-level copies; in C++ they're equivalent to the source type.
+  // Resolve to the source type name since C++ doesn't have readonly.
+  if (ts.isMappedTypeNode(resolvedNode)) {
+    const constraint = resolvedNode.typeParameter?.constraint;
+    if (constraint && ts.isTypeOperatorNode(constraint) && constraint.operator === ts.SyntaxKind.KeyOfKeyword) {
+      const sourceType = constraint.type;
+      if (sourceType && ts.isTypeReferenceNode(sourceType) && ts.isIdentifier(sourceType.typeName)) {
+        // The mapped type mirrors the source type; resolve to the source type name
+        return sourceType.typeName.text as CppTypeHint;
+      }
+    }
+    // Generic mapped type fallback: use the outer type reference name
+    if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+      return node.typeName.text as CppTypeHint;
+    }
+  }
+
   if (ts.isParenthesizedTypeNode(resolvedNode)) {
     return typeNodeToCppType(resolvedNode.type, typeAliases);
   }

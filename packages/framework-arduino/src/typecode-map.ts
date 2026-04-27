@@ -15,6 +15,8 @@ import { renderRandomCall } from './handlers/random-handler';
 import { renderSerialCall } from './handlers/serial-handler';
 import { renderI2CCall } from './handlers/i2c-handler';
 import { renderSPICall } from './handlers/spi-handler';
+import { renderEEPROMCall } from './handlers/eeprom-handler';
+import { renderWDTCall } from './handlers/wdt-handler';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -286,6 +288,26 @@ export function tryRenderTypecodeCallStatement(
   }
   if (parts[0] === 'Num') {
     return renderNumNamespace(parts, args, renderArg);
+  }
+
+  if (parts[0] === 'EEPROM') {
+    return renderEEPROMCall(parts.slice(1).join('.'), args, renderArg);
+  }
+
+  if (parts[0] === 'Timing') {
+    const method = parts[1];
+    const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '0');
+    switch (method) {
+      case 'millis':            return 'millis()';
+      case 'micros':            return 'micros()';
+      case 'delay':             return `delay(${a(0)})`;
+      case 'delayMicroseconds': return `delayMicroseconds(${a(0)})`;
+      default: return undefined;
+    }
+  }
+
+  if (parts[0] === 'WDT') {
+    return renderWDTCall(parts.slice(1).join('.'), args, renderArg);
   }
 
   if (parts.length === 2) {

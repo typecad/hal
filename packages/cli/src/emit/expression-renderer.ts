@@ -225,10 +225,11 @@ export class ExpressionRenderer {
     result = this.fixPointerAccess(result);
     const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name)));
     const stringVarNames = this.stringVarNames ?? new Set();
+    const cArrayNames = this.cArrayVarNames ?? new Set();
     result = result.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)(?:\(\))?/g, (match, varName) => {
-      return stringVarNames.has(varName) || escapedStringVarNames.has(varName)
-        ? `strlen(${varName})`
-        : match;
+      if (stringVarNames.has(varName) || escapedStringVarNames.has(varName)) return `strlen(${varName})`;
+      if (cArrayNames.has(varName)) return `(sizeof(${varName}) / sizeof(${varName}[0]))`;
+      return match;
     });
     // Rewrite getter property access: s->reading → s->getReading()
     for (const [varName, accessors] of this.varAccessorNames) {
@@ -500,8 +501,11 @@ export class ExpressionRenderer {
     let callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
     const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name)));
     const stringVarNames = this.stringVarNames ?? new Set();
+    const cArrayNames = this.cArrayVarNames ?? new Set();
     callee = callee.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g, (match, varName) => {
-      return stringVarNames.has(varName) || escapedStringVarNames.has(varName) ? `strlen(${varName})` : match;
+      if (stringVarNames.has(varName) || escapedStringVarNames.has(varName)) return `strlen(${varName})`;
+      if (cArrayNames.has(varName)) return `(sizeof(${varName}) / sizeof(${varName}[0]))`;
+      return match;
     });
     if (/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g.test(callee)) {
       return callee;

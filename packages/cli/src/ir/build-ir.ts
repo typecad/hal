@@ -7,7 +7,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, activeNamespaceNames, topLevelClassNames, topLevelClasses, resetBuildState } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, topLevelClassNames, topLevelClasses, resetBuildState } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR } from "./statement-to-ir";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
@@ -244,6 +244,20 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
   // Collect any nested enums that were hoisted during IR building
   enums.push(...hoistedNestedEnums);
+
+  // Collect any local interface declarations that were hoisted during IR building
+  for (const iface of hoistedNestedInterfaces) {
+    if (!interfaces.some(i => i.name === iface.name)) {
+      interfaces.push(iface);
+    }
+  }
+
+  // Collect any local type alias declarations that were hoisted during IR building
+  for (const alias of hoistedNestedTypeAliases) {
+    if (!typeAliases.some(a => a.name === alias.name)) {
+      typeAliases.push(alias);
+    }
+  }
 
   // Populate top-level class names for :: static method rendering
   for (const cls of classes) {

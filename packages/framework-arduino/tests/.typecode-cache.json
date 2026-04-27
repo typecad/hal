@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "toolchainFingerprint": "fafd7f0ce7511add",
+  "rootDir": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests",
+  "files": {
+    "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\11-arrays.test.ts": {
+      "hash": "4838f48dce7855c0",
+      "mtime": 1777097228231.1372,
+      "size": 3114,
+      "dependencies": [],
+      "outputs": [
+        "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\out\\11-arrays.test\\11-arrays.test.ino",
+        "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\out\\11-arrays.test\\11-arrays.test.ino.tscppmap.json"
+      ]
+    }
+  },
+  "createdAt": 1777300643203,
+  "updatedAt": 1777300644130
+}

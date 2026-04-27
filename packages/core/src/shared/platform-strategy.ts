@@ -273,6 +273,18 @@ export interface PlatformStatementStrategy {
    * Arduino: "loop"; Generic: "main".
    */
   asyncDriverFunctionName(): string;
+
+  /**
+   * Optional attribute prefix placed before ISR function declarations and
+   * definitions.  Required on ESP32/Xtensa to place ISR code in IRAM so it
+   * can execute while flash is being accessed.
+   *
+   * Returns an empty string on platforms that do not need an attribute
+   * (e.g. AVR).  Includes a trailing space when non-empty.
+   *
+   * Example: `"IRAM_ATTR "` (note the trailing space).
+   */
+  isrFunctionAttribute?(): string;
 }
 
 // ---------------------------------------------------------------------------

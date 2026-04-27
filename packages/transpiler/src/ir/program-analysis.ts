@@ -7,6 +7,7 @@
  */
 
 import { ProgramIR, StatementIR, ExpressionIR } from "./model";
+import { POLYFILL_HELPER_MAP } from "@typecode/core/shared";
 
 export interface ProgramAnalysisResult {
   hasConsoleCalls: boolean;
@@ -17,6 +18,10 @@ export interface ProgramAnalysisResult {
   usesStdString: boolean;
   usesStdFunction: boolean;
   declaredTypes: string[];
+  usedPolyfillHelpers: Set<string>;
+  usesStringConversion: boolean;
+  usesDateNow: boolean;
+  usesMillis: boolean;
 }
 
 // Regex for std:: math calls
@@ -27,7 +32,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes'>
+  result: Pick<ProgramAnalysisResult, 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis'>
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
     return;
@@ -37,6 +42,22 @@ function analyzeExpression(
     case "raw":
       if (MATH_PATTERN.test(expr.value)) {
         result.hasStdMathCalls = true;
+      }
+      for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+        if (expr.value.includes(pattern)) {
+          for (const name of helperNames) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+      }
+      if (/\bString\s*\(/.test(expr.value)) {
+        result.usesStringConversion = true;
+      }
+      if (/Date\.now\s*\(/.test(expr.value) || /Date::now\s*\(/.test(expr.value)) {
+        result.usesDateNow = true;
+      }
+      if (/\bmillis\s*\(/.test(expr.value)) {
+        result.usesMillis = true;
       }
       break;
 
@@ -272,6 +293,10 @@ export function analyzeProgram(program: ProgramIR): ProgramAnalysisResult {
     usesStdString: false,
     usesStdFunction: false,
     declaredTypes: [],
+    usedPolyfillHelpers: new Set(),
+    usesStringConversion: false,
+    usesDateNow: false,
+    usesMillis: false,
   };
 
   // Analyze type aliases

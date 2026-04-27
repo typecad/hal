@@ -9,6 +9,7 @@ import { LibraryDefinition } from "../types";
 import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { RuntimePolyfillIR } from "../polyfill/types";
 import { emitPolyfillBoilerplate } from "../polyfill/emitter";
+import { filterPolyfillHelpers } from "@typecode/core/shared";
 import { ResolvedNpmPackage } from "../transpile";
 import { buildArduinoClassNameMap } from "@typecode/framework-arduino";
 import { extractPropertyChain } from "../ir/extract-property-chain";
@@ -126,6 +127,7 @@ let _stringVarTypes: Set<string> = new Set();
 let _classAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> = new Map();
 // Variable name → accessor map for instances of classes with getters/setters.
 let _varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">> = new Map();
+let _cArrayVarNames: Set<string> = new Set();
 
 interface EmitterOptions {
   outDir: string;
@@ -201,6 +203,12 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       const effectiveClassNameMap = classNameMap ?? _arduinoClassNameMap;
       let rawValue = exprTransformer ? exprTransformer(expr.value) : expr.value;
       let result = normalizeRawExpression(rawValue, strategy, effectiveClassNameMap);
+      // Replace .size() with sizeof() for C-array variables
+      result = result.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)(?:\(\))?/g, (match, varName) => {
+        if (_stringVarTypes.has(varName)) return `strlen(${varName})`;
+        if (_cArrayVarNames.has(varName)) return `(sizeof(${varName}) / sizeof(${varName}[0]))`;
+        return match;
+      });
       // Rewrite getter property access: s->reading → s->getReading()
       for (const [varName, accessors] of _varAccessorNames) {
         for (const [propName, kind] of accessors) {
@@ -419,6 +427,21 @@ function renderTypedName(cppType: string, name: string, strategy: PlatformStrate
 
 function mapReturnType(functionName: string, returnType: string, strategy: PlatformStrategy): string {
   return strategy.mapReturnType(functionName, returnType);
+}
+
+function resolveTemplateReturnType(
+  returnType: string,
+  typeParameters: string[] | undefined,
+  templateInterfaceNames: Set<string>,
+  interfaceNamespaceMap: Map<string, string>,
+): string {
+  if (!typeParameters || typeParameters.length === 0) return returnType;
+  if (templateInterfaceNames.has(returnType) && !returnType.includes("<")) {
+    const ns = interfaceNamespaceMap.get(returnType);
+    const qualified = ns ? `${ns}::${returnType}` : returnType;
+    return `${qualified}<${typeParameters.join(", ")}>`;
+  }
+  return returnType;
 }
 
 
@@ -887,8 +910,17 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     ? (strategy.generateNativePolyfills?.(program, options.platformContext) ?? [])
     : [];
 
+  // Filter native polyfill helpers to only those actually used by the program
+  const filteredNativePolyfills = filterPolyfillHelpers(nativePolyfills, programAnalysis.usedPolyfillHelpers);
+
   // Merge filtered and native polyfills, then emit
-  const allPolyfills = [...filteredPolyfills, ...nativePolyfills];
+  // Filter out polyfill groups with no remaining helpers to avoid pulling in
+  // unnecessary includes from unused polyfill categories
+  const allPolyfills = [...filteredPolyfills, ...filteredNativePolyfills].filter(
+    p => (p.helperFunctions && p.helperFunctions.length > 0) ||
+         (p.helperStructs && p.helperStructs.length > 0) ||
+         (p.forwardDeclarations && p.forwardDeclarations.length > 0)
+  );
   const emittedPolyfills = allPolyfills.length > 0
     ? emitPolyfillBoilerplate(allPolyfills)
     : undefined;
@@ -903,6 +935,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     includes.push(...strategy.forcedIncludes(program, options.platformContext));
     Object.assign(symbolMap, strategy.symbolAliases(program, options.platformContext));
     shimLines = [...strategy.shimLines(program, options.platformContext)];
+    // Filter shim lines for unused utilities
+    if (!programAnalysis.usesStringConversion) {
+      shimLines = shimLines.filter(l => !l.includes('std::string String('));
+    }
+    if (!programAnalysis.usesDateNow) {
+      shimLines = shimLines.filter(l => !l.includes('namespace Date'));
+    }
+    if (!programAnalysis.usesMillis) {
+      shimLines = shimLines.filter(l => !l.includes('millis()'));
+    }
     profileDiagnostics = [...strategy.profileDiagnostics(program, options.platformContext)];
   }
 
@@ -987,15 +1029,37 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     program.functions.filter((fn) => fn.isAsync).map((fn) => mapFunctionName(fn.originalName, strategy))
   );
 
+  // Pre-scan interfaces to detect template struct names and namespace scopes
+  const templateInterfaceNames = new Set<string>();
+  const interfaceNamespaceMap = new Map<string, string>();
+  for (const iface of program.interfaces) {
+    if (iface.parentScope) {
+      interfaceNamespaceMap.set(iface.name, iface.parentScope);
+    }
+    for (const field of iface.fields) {
+      if (/^[A-Z]$/.test(field.cppType)) {
+        templateInterfaceNames.add(iface.name);
+        break;
+      }
+    }
+  }
+
   const mappedFunctions = program.functions.map((fn) => ({
     name: mapFunctionName(fn.originalName, strategy),
-    returnType: mapReturnType(mapFunctionName(fn.originalName, strategy), fn.returnType, strategy),
+    returnType: resolveTemplateReturnType(
+      mapReturnType(mapFunctionName(fn.originalName, strategy), fn.returnType, strategy),
+      fn.typeParameters,
+      templateInterfaceNames,
+      interfaceNamespaceMap,
+    ),
     sourceSpan: fn.sourceSpan,
     leadingComments: fn.leadingComments,
     trailingComments: fn.trailingComments,
     parameters: fn.parameters,
     isAsync: fn.isAsync,
     typeParameters: fn.typeParameters,
+    typeParameterConstraints: fn.typeParameterConstraints,
+    isReadonlyReturnType: fn.isReadonlyReturnType,
     statements: fn.statements.map((stmt) => {
       if (stmt.kind === "call") {
         return {
@@ -1586,6 +1650,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   if (programAnalysis.hasThrowStatements && strategy.needsStdExcept()) {
     includes.push("<stdexcept>");
   }
+  // <type_traits> needed for static_assert on constrained type parameters
+  if (program.functions.some(fn => fn.typeParameterConstraints && fn.typeParameterConstraints.size > 0)) {
+    includes.push("<type_traits>");
+  }
   if (programAnalysis.hasStdMathCalls) {
     includes.push(strategy.mathHeader());
   }
@@ -2049,6 +2117,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       parameters: [],
       isAsync: false,
       typeParameters: undefined,
+      typeParameterConstraints: undefined,
+      isReadonlyReturnType: false,
       statements: stmts,
     };
     if (isMain) {
@@ -2069,6 +2139,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       parameters: [],
       isAsync: false,
       typeParameters: undefined,
+      typeParameterConstraints: undefined,
+      isReadonlyReturnType: false,
       statements: [],
     });
   }
@@ -2084,6 +2156,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       parameters: [],
       isAsync: false,
       typeParameters: undefined,
+      typeParameterConstraints: undefined,
+      isReadonlyReturnType: false,
       statements: [{ kind: "return", sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number", value: 0 } }],
     });
   }
@@ -2167,6 +2241,40 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
     appendLine(`using ${typeAlias.name} = ${cppType};`);
     emitCommentLines(typeAlias.trailingComments, "", (line) => appendLine(line));
+    appendLine("");
+  }
+
+  // Emit interfaces as C++ structs
+  for (const iface of program.interfaces) {
+    const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
+    emitCommentLines(iface.leadingComments, "", (line) => appendLine(line));
+    if (iface.fields.length > 0) {
+      if (iface.parentScope) {
+        appendLine(`namespace ${iface.parentScope} {`);
+        interfaceNamespaceMap.set(iface.name, iface.parentScope);
+      }
+      // Detect type parameter names (single uppercase letters used as field types)
+      const typeParams = new Set<string>();
+      for (const field of iface.fields) {
+        const rawType = field.cppType;
+        if (/^[A-Z]$/.test(rawType)) {
+          typeParams.add(rawType);
+        }
+      }
+      if (typeParams.size > 0) {
+        appendLine(`template<typename ${Array.from(typeParams).join(", typename ")}>`);
+      }
+      appendLine(`struct ${iface.name} {`);
+      for (const field of iface.fields) {
+        const fieldType = normalizeCppTypeForTarget(field.cppType, strategy);
+        appendLine(`  ${fieldType} ${field.name};`);
+      }
+      appendLine("};");
+      if (iface.parentScope) {
+        appendLine("}");
+      }
+    }
+    emitCommentLines(iface.trailingComments, "", (line) => appendLine(line));
     appendLine("");
   }
 
@@ -2371,7 +2479,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   if (effectiveEmitMode !== "split") {
     for (const callback of callbackFunctions) {
-      appendSourceLine(`void ${callback.name}();`);
+      appendSourceLine(`${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}();`);
     }
     if (callbackFunctions.length > 0) {
       appendSourceLine("");
@@ -2430,6 +2538,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Track string-typed variables for snprintf %s detection
   const stringVarTypes = new Set<string>();
   cArrayVarNames = new Set<string>();
+  // Build per-function C-array variable tracking to avoid name collisions
+  // across functions (e.g., `arr` can be a C array in one function and a
+  // StaticArray in another).
+  const fnCArrayVarNames = new Map<string, Set<string>>();
+  const addCArrayIfNotMutable = (name: string, normalizedType: string, target: Set<string>) => {
+    if (!normalizedType.startsWith("StaticArray<")) {
+      target.add(name);
+    }
+  };
   for (const stmt of program.topLevelStatements) {
     if (stmt.kind === "var_decl") {
       const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
@@ -2438,15 +2555,17 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       }
       if (stmt.initializer?.kind === "array") {
         if (!normalizedType.startsWith("std::vector<") || !strategy.needsStdVector()) {
-          cArrayVarNames.add(stmt.name);
+          addCArrayIfNotMutable(stmt.name, normalizedType, cArrayVarNames);
         }
       }
       if (stmt.initializer?.kind === "spread_array") {
-        cArrayVarNames.add(stmt.name);
+        addCArrayIfNotMutable(stmt.name, normalizedType, cArrayVarNames);
       }
     }
   }
-  for (const fn of program.functions) {
+  for (let fi = 0; fi < mappedFunctions.length; fi++) {
+    const fn = mappedFunctions[fi];
+    const fnSet = new Set<string>();
     for (const stmt of fn.statements) {
       if (stmt.kind === "var_decl") {
         const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
@@ -2455,14 +2574,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
         if (stmt.initializer?.kind === "array") {
           if (!normalizedType.startsWith("std::vector<") || !strategy.needsStdVector()) {
-            cArrayVarNames.add(stmt.name);
+            addCArrayIfNotMutable(stmt.name, normalizedType, fnSet);
           }
         }
         if (stmt.initializer?.kind === "spread_array") {
-          cArrayVarNames.add(stmt.name);
+          addCArrayIfNotMutable(stmt.name, normalizedType, fnSet);
         }
       }
     }
+    fnCArrayVarNames.set(String(fi), fnSet);
   }
 
   // Populate module-level tracking for renderExpression
@@ -2842,7 +2962,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   if (effectiveEmitMode !== "split") {
     for (const callback of callbackFunctions) {
-      appendSourceLine(`void ${callback.name}();`);
+      appendSourceLine(`${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}();`);
     }
     for (const fn of mappedFunctions) {
       if (fn.name === "setup" || fn.name === "loop" || fn.name === "main") {
@@ -2873,7 +2993,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine("");
     }
     
-    appendSourceLine(`void ${callback.name}() {`);
+    appendSourceLine(`${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}() {`);
     
     // Add debounce check if configured
     if (callback.debounceMs !== undefined && callback.debounceMs > 0) {
@@ -2890,15 +3010,17 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("");
   }
 
-  for (const fn of mappedFunctions) {
+  for (let fi = 0; fi < mappedFunctions.length; fi++) {
+    const fn = mappedFunctions[fi];
     const declarationParameterList = renderParameters(fn.parameters, strategy, true);
     const definitionParameterList = renderParameters(fn.parameters, strategy, false);
+    const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
     if (effectiveEmitMode === "split") {
       emitCommentLines(fn.leadingComments, "", (line) => appendHeaderLine(line));
       if (fn.typeParameters && fn.typeParameters.length > 0) {
         appendHeaderLine(`template<typename ${fn.typeParameters.join(", typename ")}>`);
       }
-      appendHeaderLine(`${fn.returnType} ${fn.name}(${declarationParameterList});`, {
+      appendHeaderLine(`${readonlyPrefix}${fn.returnType} ${fn.name}(${declarationParameterList});`, {
         tsSpan: fn.sourceSpan,
         nodeKind: "function_declaration",
         symbolName: fn.name,
@@ -2910,7 +3032,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (fn.typeParameters && fn.typeParameters.length > 0) {
       appendSourceLine(`template<typename ${fn.typeParameters.join(", typename ")}>`);
     }
-    appendSourceLine(`${fn.returnType} ${fn.name}(${definitionParameterList})`, {
+    appendSourceLine(`${readonlyPrefix}${fn.returnType} ${fn.name}(${definitionParameterList})`, {
       tsSpan: fn.sourceSpan,
       nodeKind: "function_definition",
       symbolName: fn.name,
@@ -2925,7 +3047,21 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (fn.isAsync && hasAsyncRuntime) {
       appendSourceLine(`  // driven as cooperative task in ${asyncDriverFn}()`);
     } else {
+      // Emit static_assert for constrained type parameters
+      if (fn.typeParameterConstraints) {
+        for (const [param, expr] of fn.typeParameterConstraints) {
+          appendSourceLine(`  static_assert(${expr}, "${param} constraint violated");`);
+        }
+      }
       const functionScope = createChildEmissionScope(topLevelScope, fn.parameters);
+
+      // Switch to this function's C-array variable set (avoids name collisions
+      // across functions where the same variable name can be a C array in one
+      // function and a StaticArray in another).
+      const prevCArrayVarNames = cArrayVarNames;
+      const prevModuleCArrayVarNames = _cArrayVarNames;
+      cArrayVarNames = fnCArrayVarNames.get(String(fi)) ?? new Set();
+      _cArrayVarNames = cArrayVarNames;
 
       // For the async driver function, emit async injection before the last return statement
       // so that the injection (e.g., thread spawn) is reachable.
@@ -2955,6 +3091,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       if (shouldInjectAsync && lastIsReturn) {
         appendRenderedStatement(lastStmt, "  ", globalPointerVarTypes, functionScope);
       }
+      cArrayVarNames = prevCArrayVarNames;
+      _cArrayVarNames = prevModuleCArrayVarNames;
     }
     appendSourceLine("}");
     emitCommentLines(fn.trailingComments, "", (line) => appendSourceLine(line));

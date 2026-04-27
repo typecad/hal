@@ -1,0 +1,1203 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\out\\23-set-map.test\\23-set-map.test.ino",
+  "sourceFilePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+  "entries": [
+    {
+      "generatedStartLine": 12,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 12,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 58,
+        "endOffset": 307,
+        "startLine": 3,
+        "startColumn": 1,
+        "endLine": 13,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn1"
+    },
+    {
+      "generatedStartLine": 13,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 13,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 308,
+        "endOffset": 558,
+        "startLine": 14,
+        "startColumn": 1,
+        "endLine": 24,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn2"
+    },
+    {
+      "generatedStartLine": 14,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 14,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 559,
+        "endOffset": 835,
+        "startLine": 25,
+        "startColumn": 1,
+        "endLine": 36,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn3"
+    },
+    {
+      "generatedStartLine": 15,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 15,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 836,
+        "endOffset": 1133,
+        "startLine": 37,
+        "startColumn": 1,
+        "endLine": 49,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn4"
+    },
+    {
+      "generatedStartLine": 16,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 16,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1134,
+        "endOffset": 1361,
+        "startLine": 50,
+        "startColumn": 1,
+        "endLine": 59,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn5"
+    },
+    {
+      "generatedStartLine": 19,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 19,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "setup"
+    },
+    {
+      "generatedStartLine": 21,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 21,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 0,
+        "endOffset": 20,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 21
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 22,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 22,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 22,
+        "endOffset": 56,
+        "startLine": 2,
+        "startColumn": 1,
+        "endLine": 2,
+        "endColumn": 35
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 23,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 23,
+      "generatedEndColumn": 56,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1362,
+        "endOffset": 1414,
+        "startLine": 60,
+        "startColumn": 1,
+        "endLine": 60,
+        "endColumn": 53
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 24,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 24,
+      "generatedEndColumn": 58,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1416,
+        "endOffset": 1470,
+        "startLine": 61,
+        "startColumn": 1,
+        "endLine": 61,
+        "endColumn": 55
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 25,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 25,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1472,
+        "endOffset": 1506,
+        "startLine": 62,
+        "startColumn": 1,
+        "endLine": 62,
+        "endColumn": 35
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 26,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 26,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1508,
+        "endOffset": 1532,
+        "startLine": 63,
+        "startColumn": 1,
+        "endLine": 63,
+        "endColumn": 25
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 27,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 27,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1534,
+        "endOffset": 1553,
+        "startLine": 64,
+        "startColumn": 1,
+        "endLine": 64,
+        "endColumn": 20
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 28,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 28,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1555,
+        "endOffset": 1589,
+        "startLine": 65,
+        "startColumn": 1,
+        "endLine": 65,
+        "endColumn": 35
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 29,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 29,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1591,
+        "endOffset": 1615,
+        "startLine": 66,
+        "startColumn": 1,
+        "endLine": 66,
+        "endColumn": 25
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 30,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 30,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1617,
+        "endOffset": 1636,
+        "startLine": 67,
+        "startColumn": 1,
+        "endLine": 67,
+        "endColumn": 20
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 31,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 31,
+      "generatedEndColumn": 66,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1638,
+        "endOffset": 1700,
+        "startLine": 68,
+        "startColumn": 1,
+        "endLine": 68,
+        "endColumn": 63
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 32,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 32,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1702,
+        "endOffset": 1738,
+        "startLine": 69,
+        "startColumn": 1,
+        "endLine": 69,
+        "endColumn": 37
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 33,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 33,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1740,
+        "endOffset": 1764,
+        "startLine": 70,
+        "startColumn": 1,
+        "endLine": 70,
+        "endColumn": 25
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 34,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 34,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1766,
+        "endOffset": 1785,
+        "startLine": 71,
+        "startColumn": 1,
+        "endLine": 71,
+        "endColumn": 20
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 35,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 35,
+      "generatedEndColumn": 51,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1787,
+        "endOffset": 1834,
+        "startLine": 72,
+        "startColumn": 1,
+        "endLine": 72,
+        "endColumn": 48
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 36,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 36,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1836,
+        "endOffset": 1872,
+        "startLine": 73,
+        "startColumn": 1,
+        "endLine": 73,
+        "endColumn": 37
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 37,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 37,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1874,
+        "endOffset": 1898,
+        "startLine": 74,
+        "startColumn": 1,
+        "endLine": 74,
+        "endColumn": 25
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 38,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 38,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1900,
+        "endOffset": 1919,
+        "startLine": 75,
+        "startColumn": 1,
+        "endLine": 75,
+        "endColumn": 20
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 39,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 39,
+      "generatedEndColumn": 50,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1921,
+        "endOffset": 1967,
+        "startLine": 76,
+        "startColumn": 1,
+        "endLine": 76,
+        "endColumn": 47
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 40,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 40,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1969,
+        "endOffset": 2003,
+        "startLine": 77,
+        "startColumn": 1,
+        "endLine": 77,
+        "endColumn": 35
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 41,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 41,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 2005,
+        "endOffset": 2029,
+        "startLine": 78,
+        "startColumn": 1,
+        "endLine": 78,
+        "endColumn": 25
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 42,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 42,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 2031,
+        "endOffset": 2050,
+        "startLine": 79,
+        "startColumn": 1,
+        "endLine": 79,
+        "endColumn": 20
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 43,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 43,
+      "generatedEndColumn": 36,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 2052,
+        "endOffset": 2084,
+        "startLine": 80,
+        "startColumn": 1,
+        "endLine": 80,
+        "endColumn": 33
+      },
+      "nodeKind": "typecode-call"
+    },
+    {
+      "generatedStartLine": 44,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 44,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 2086,
+        "endOffset": 2115,
+        "startLine": 81,
+        "startColumn": 1,
+        "endLine": 81,
+        "endColumn": 30
+      },
+      "nodeKind": "while"
+    },
+    {
+      "generatedStartLine": 46,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 46,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 2101,
+        "endOffset": 2112,
+        "startLine": 81,
+        "startColumn": 16,
+        "endLine": 81,
+        "endColumn": 27
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 50,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 50,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 58,
+        "endOffset": 307,
+        "startLine": 3,
+        "startColumn": 1,
+        "endLine": 13,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn1"
+    },
+    {
+      "generatedStartLine": 52,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 52,
+      "generatedEndColumn": 37,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 100,
+        "endOffset": 137,
+        "startLine": 4,
+        "startColumn": 13,
+        "endLine": 4,
+        "endColumn": 50
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 53,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 53,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 149,
+        "endOffset": 158,
+        "startLine": 5,
+        "startColumn": 11,
+        "endLine": 5,
+        "endColumn": 20
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 54,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 54,
+      "generatedEndColumn": 30,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 166,
+        "endOffset": 281,
+        "startLine": 6,
+        "startColumn": 7,
+        "endLine": 11,
+        "endColumn": 8
+      },
+      "nodeKind": "for"
+    },
+    {
+      "generatedStartLine": 56,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 56,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 204,
+        "endOffset": 273,
+        "startLine": 7,
+        "startColumn": 9,
+        "endLine": 10,
+        "endColumn": 10
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 58,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 58,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 236,
+        "endOffset": 246,
+        "startLine": 8,
+        "startColumn": 11,
+        "endLine": 8,
+        "endColumn": 21
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 59,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 59,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 257,
+        "endOffset": 263,
+        "startLine": 9,
+        "startColumn": 11,
+        "endLine": 9,
+        "endColumn": 17
+      },
+      "nodeKind": "break"
+    },
+    {
+      "generatedStartLine": 62,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 62,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 288,
+        "endOffset": 301,
+        "startLine": 12,
+        "startColumn": 7,
+        "endLine": 12,
+        "endColumn": 20
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 65,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 65,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 308,
+        "endOffset": 558,
+        "startLine": 14,
+        "startColumn": 1,
+        "endLine": 24,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn2"
+    },
+    {
+      "generatedStartLine": 67,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 67,
+      "generatedEndColumn": 37,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 350,
+        "endOffset": 387,
+        "startLine": 15,
+        "startColumn": 13,
+        "endLine": 15,
+        "endColumn": 50
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 68,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 68,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 399,
+        "endOffset": 408,
+        "startLine": 16,
+        "startColumn": 11,
+        "endLine": 16,
+        "endColumn": 20
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 69,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 69,
+      "generatedEndColumn": 30,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 416,
+        "endOffset": 532,
+        "startLine": 17,
+        "startColumn": 7,
+        "endLine": 22,
+        "endColumn": 8
+      },
+      "nodeKind": "for"
+    },
+    {
+      "generatedStartLine": 71,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 71,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 454,
+        "endOffset": 524,
+        "startLine": 18,
+        "startColumn": 9,
+        "endLine": 21,
+        "endColumn": 10
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 73,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 73,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 487,
+        "endOffset": 497,
+        "startLine": 19,
+        "startColumn": 11,
+        "endLine": 19,
+        "endColumn": 21
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 74,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 74,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 508,
+        "endOffset": 514,
+        "startLine": 20,
+        "startColumn": 11,
+        "endLine": 20,
+        "endColumn": 17
+      },
+      "nodeKind": "break"
+    },
+    {
+      "generatedStartLine": 77,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 77,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 539,
+        "endOffset": 552,
+        "startLine": 23,
+        "startColumn": 7,
+        "endLine": 23,
+        "endColumn": 20
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 80,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 80,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 559,
+        "endOffset": 835,
+        "startLine": 25,
+        "startColumn": 1,
+        "endLine": 36,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn3"
+    },
+    {
+      "generatedStartLine": 82,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 82,
+      "generatedEndColumn": 31,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 601,
+        "endOffset": 620,
+        "startLine": 26,
+        "startColumn": 13,
+        "endLine": 26,
+        "endColumn": 32
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 83,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 83,
+      "generatedEndColumn": 34,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 634,
+        "endOffset": 656,
+        "startLine": 27,
+        "startColumn": 13,
+        "endLine": 27,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 84,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 84,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 668,
+        "endOffset": 678,
+        "startLine": 28,
+        "startColumn": 11,
+        "endLine": 28,
+        "endColumn": 21
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 85,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 85,
+      "generatedEndColumn": 30,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 686,
+        "endOffset": 808,
+        "startLine": 29,
+        "startColumn": 7,
+        "endLine": 34,
+        "endColumn": 8
+      },
+      "nodeKind": "for"
+    },
+    {
+      "generatedStartLine": 87,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 87,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 724,
+        "endOffset": 800,
+        "startLine": 30,
+        "startColumn": 9,
+        "endLine": 33,
+        "endColumn": 10
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 89,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 89,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 756,
+        "endOffset": 773,
+        "startLine": 31,
+        "startColumn": 11,
+        "endLine": 31,
+        "endColumn": 28
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 90,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 90,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 784,
+        "endOffset": 790,
+        "startLine": 32,
+        "startColumn": 11,
+        "endLine": 32,
+        "endColumn": 17
+      },
+      "nodeKind": "break"
+    },
+    {
+      "generatedStartLine": 93,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 93,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 815,
+        "endOffset": 829,
+        "startLine": 35,
+        "startColumn": 7,
+        "endLine": 35,
+        "endColumn": 21
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 96,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 96,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 836,
+        "endOffset": 1133,
+        "startLine": 37,
+        "startColumn": 1,
+        "endLine": 49,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn4"
+    },
+    {
+      "generatedStartLine": 98,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 98,
+      "generatedEndColumn": 31,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 878,
+        "endOffset": 897,
+        "startLine": 38,
+        "startColumn": 13,
+        "endLine": 38,
+        "endColumn": 32
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 99,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 99,
+      "generatedEndColumn": 34,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 911,
+        "endOffset": 933,
+        "startLine": 39,
+        "startColumn": 13,
+        "endLine": 39,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 100,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 100,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 941,
+        "endOffset": 955,
+        "startLine": 40,
+        "startColumn": 7,
+        "endLine": 40,
+        "endColumn": 21
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 101,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 101,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 966,
+        "endOffset": 976,
+        "startLine": 41,
+        "startColumn": 11,
+        "endLine": 41,
+        "endColumn": 21
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 102,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 102,
+      "generatedEndColumn": 30,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 984,
+        "endOffset": 1106,
+        "startLine": 42,
+        "startColumn": 7,
+        "endLine": 47,
+        "endColumn": 8
+      },
+      "nodeKind": "for"
+    },
+    {
+      "generatedStartLine": 104,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 104,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1022,
+        "endOffset": 1098,
+        "startLine": 43,
+        "startColumn": 9,
+        "endLine": 46,
+        "endColumn": 10
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 106,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 106,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1054,
+        "endOffset": 1071,
+        "startLine": 44,
+        "startColumn": 11,
+        "endLine": 44,
+        "endColumn": 28
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 107,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 107,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1082,
+        "endOffset": 1088,
+        "startLine": 45,
+        "startColumn": 11,
+        "endLine": 45,
+        "endColumn": 17
+      },
+      "nodeKind": "break"
+    },
+    {
+      "generatedStartLine": 110,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 110,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1113,
+        "endOffset": 1127,
+        "startLine": 48,
+        "startColumn": 7,
+        "endLine": 48,
+        "endColumn": 21
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 113,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 113,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1134,
+        "endOffset": 1361,
+        "startLine": 50,
+        "startColumn": 1,
+        "endLine": 59,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn5"
+    },
+    {
+      "generatedStartLine": 115,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 115,
+      "generatedEndColumn": 37,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1176,
+        "endOffset": 1201,
+        "startLine": 51,
+        "startColumn": 13,
+        "endLine": 51,
+        "endColumn": 38
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 116,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 116,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1213,
+        "endOffset": 1222,
+        "startLine": 52,
+        "startColumn": 11,
+        "endLine": 52,
+        "endColumn": 20
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 117,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 117,
+      "generatedEndColumn": 61,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1230,
+        "endOffset": 1335,
+        "startLine": 53,
+        "startColumn": 7,
+        "endLine": 57,
+        "endColumn": 8
+      },
+      "nodeKind": "for"
+    },
+    {
+      "generatedStartLine": 119,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 119,
+      "generatedEndColumn": 22,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1278,
+        "endOffset": 1327,
+        "startLine": 54,
+        "startColumn": 9,
+        "endLine": 56,
+        "endColumn": 10
+      },
+      "nodeKind": "if"
+    },
+    {
+      "generatedStartLine": 121,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 121,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1309,
+        "endOffset": 1317,
+        "startLine": 55,
+        "startColumn": 11,
+        "endLine": 55,
+        "endColumn": 19
+      },
+      "nodeKind": "update"
+    },
+    {
+      "generatedStartLine": 124,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 124,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 1342,
+        "endOffset": 1355,
+        "startLine": 58,
+        "startColumn": 7,
+        "endLine": 58,
+        "endColumn": 20
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 127,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 127,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\23-set-map.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "loop"
+    }
+  ]
+}

@@ -21,6 +21,9 @@ export type TypecodeReceiverKind =
   | 'shift'         // Shift namespace - shiftIn/shiftOut
   | 'random'        // Random namespace - random/randomSeed
   | 'num'           // Num namespace - map/constrain/abs/min/max
+  | 'eeprom'        // EEPROM namespace - read/write/update/length
+  | 'timing'        // Timing namespace - millis/micros/delay/delayMicroseconds
+  | 'wdt'           // WDT namespace - enable/reset/disable
   | 'unknown';      // Not a typecode symbol
 
 /**
@@ -112,6 +115,11 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
   Shift:   'shift',
   Random:  'random',
   Num:     'num',
+
+  // ---- Arduino peripheral namespaces ------------------------------------
+  EEPROM:  'eeprom',
+  Timing:  'timing',
+  WDT:     'wdt',
 };
 
 /**

@@ -6,10 +6,10 @@ import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnl
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typecode-symbols";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
-import { enumDeclarationToIR } from "./declaration-builders";
+import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { extractRootAndChain } from "./ast-patterns";
 
 export function callToStatement(
@@ -1272,6 +1272,16 @@ export function lowerStatement(
     }];
   }
 
+  // Local interface declarations are type-only; no runtime IR needed
+  if (ts.isInterfaceDeclaration(statement)) {
+    return [];
+  }
+
+  // Local type alias declarations are type-only; no runtime IR needed
+  if (ts.isTypeAliasDeclaration(statement)) {
+    return [];
+  }
+
   diagnostics.push(
     makeDiagnostic(
       sourceText,
@@ -1306,6 +1316,14 @@ function hoistNestedFunction(
   const returnType = statement.type
     ? typeNodeToCppType(statement.type, typeAliases)
     : "auto";
+
+  // Register the nested function's return type so that inferExprCppType
+  // can resolve call expressions to this function later in the same scope.
+  // For template functions, callers should use auto (concrete type depends
+  // on template argument deduction which only the C++ compiler can do).
+  const hasTypeParams = !!(statement.typeParameters && statement.typeParameters.length > 0);
+  functionReturnTypes.set(originalName, (hasTypeParams ? "auto" : returnType) as CppTypeHint);
+  functionReturnTypes.set(mangledName, returnType as CppTypeHint);
 
   const localVariableTypes = new Map<string, CppTypeHint>();
   const parameters: ParameterIR[] = [];
@@ -1712,6 +1730,16 @@ export function lowerStatementList(
     }
   }
 
+  // Phase 1.5: Collect local type aliases into the shared map so that
+  // nested function return types can resolve generic mapped types etc.
+  if (typeAliases) {
+    for (const statement of statements) {
+      if (ts.isTypeAliasDeclaration(statement)) {
+        typeAliases.set(statement.name.text, statement.type);
+      }
+    }
+  }
+
   // Phase 2: Hoist nested functions (process their bodies).
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name) {
@@ -1748,6 +1776,23 @@ export function lowerStatementList(
       const enumIR = enumDeclarationToIR(statement, fileName, sourceText);
       if (enumIR && !hoistedNestedEnums.some(e => e.name === enumIR.name)) {
         hoistedNestedEnums.push(enumIR);
+      }
+    }
+  }
+
+  // Phase 2.6b: Hoist local interface and type alias declarations.
+  // These are type-only but needed for C++ struct generation when used as return types.
+  for (const statement of statements) {
+    if (ts.isInterfaceDeclaration(statement) && statement.name) {
+      const ifaceIR = interfaceDeclarationToIR(statement, fileName, sourceText, typeAliases ?? new Map());
+      if (ifaceIR && !hoistedNestedInterfaces.some(i => i.name === ifaceIR.name)) {
+        hoistedNestedInterfaces.push(ifaceIR);
+      }
+    }
+    if (ts.isTypeAliasDeclaration(statement)) {
+      const aliasIR = typeAliasDeclarationToIR(statement, fileName, sourceText, typeAliases ?? new Map());
+      if (aliasIR && !hoistedNestedTypeAliases.some(a => a.name === aliasIR.name)) {
+        hoistedNestedTypeAliases.push(aliasIR);
       }
     }
   }

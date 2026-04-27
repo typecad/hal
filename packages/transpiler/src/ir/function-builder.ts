@@ -174,20 +174,20 @@ export function variableAsFunctionToIR(
       resolvedReturnType = signatureFromAlias.returnType;
     }
 
-    // Promote int → float when the function body returns float expressions
+    // Promote int → double when the function body returns double/float expressions
     if (resolvedReturnType === "int") {
       if (ts.isBlock(fnExpression.body)) {
         const returnTypes = collectReturns(fnExpression.body)
           .filter((item) => item.expression)
           .map((item) => inferExprCppType(item.expression as ts.Expression, functionReturnTypes, localVariableTypes, sourceText))
           .filter((item) => item !== "auto");
-        if (returnTypes.includes("float")) {
-          resolvedReturnType = "float";
+        if (returnTypes.includes("float") || returnTypes.includes("double")) {
+          resolvedReturnType = "double";
         }
       } else {
         const inferredBodyType = inferExprCppType(fnExpression.body, functionReturnTypes, localVariableTypes, sourceText);
-        if (inferredBodyType === "float") {
-          resolvedReturnType = "float";
+        if (inferredBodyType === "float" || inferredBodyType === "double") {
+          resolvedReturnType = "double";
         }
       }
     }
@@ -199,8 +199,8 @@ export function variableAsFunctionToIR(
           .map((item) => inferExprCppType(item.expression as ts.Expression, functionReturnTypes, localVariableTypes, sourceText))
           .filter((item) => item !== "auto");
 
-        if (returnTypes.includes("float")) {
-          resolvedReturnType = "float";
+        if (returnTypes.includes("float") || returnTypes.includes("double")) {
+          resolvedReturnType = "double";
         } else if (returnTypes.includes("int")) {
           resolvedReturnType = "int";
         } else if (returnTypes.includes("bool")) {

@@ -95,3 +95,6 @@ export type {
   EmissionScopeState,
   SnprintfExpressionRenderer,
 } from './snprintf-types';
+
+// Polyfill helper registry
+export { POLYFILL_HELPER_MAP, extractHelperFunctionName, filterPolyfillHelpers } from './polyfill-helper-registry';

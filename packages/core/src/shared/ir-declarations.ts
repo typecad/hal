@@ -25,6 +25,10 @@ export interface FunctionIR {
   statements: StatementIR[];
   /** Generic type parameters (e.g. `["T"]` for `function clamp<T>(...)`). */
   typeParameters?: string[];
+  /** C++ static_assert expressions for constrained type parameters (e.g. `"T" → "std::is_arithmetic_v<T>"`). */
+  typeParameterConstraints?: Map<string, string>;
+  /** True when the return type is a readonly mapped type — emitter adds `const`. */
+  isReadonlyReturnType?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +120,8 @@ export interface InterfaceIR {
   extendsInterfaces?: string[];
   fields: { name: string; cppType: CppType; isOptional: boolean }[];
   methods: { name: string; returnType: CppType; parameters: ParameterIR[] }[];
+  /** Namespace scope for hoisted interfaces (e.g. "test_complex_types__types"). */
+  parentScope?: string;
 }
 
 // ---------------------------------------------------------------------------

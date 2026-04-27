@@ -1,4 +1,4 @@
-import type { FunctionIR, ClassIR, EnumIR } from "./model";
+import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR } from "./model";
 
 // Module-level map of top-level class names to their IR for static method return type lookup.
 export const topLevelClasses = new Map<string, ClassIR>();
@@ -40,6 +40,8 @@ export const registerFieldMap = new Map<string, Map<string, { hi: number; lo: nu
 export const hoistedNestedFunctions: FunctionIR[] = [];
 export const hoistedNestedClasses: ClassIR[] = [];
 export const hoistedNestedEnums: EnumIR[] = [];
+export const hoistedNestedInterfaces: InterfaceIR[] = [];
+export const hoistedNestedTypeAliases: TypeAliasIR[] = [];
 export const nestedFunctionAliases = new Map<string, string>();
 export const nestedClassAliases = new Map<string, string>();
 
@@ -92,6 +94,8 @@ export function resetBuildState(): void {
   hoistedNestedFunctions.length = 0;
   hoistedNestedClasses.length = 0;
   hoistedNestedEnums.length = 0;
+  hoistedNestedInterfaces.length = 0;
+  hoistedNestedTypeAliases.length = 0;
   nestedFunctionAliases.clear();
   nestedClassAliases.clear();
   activePinAliases.clear();
