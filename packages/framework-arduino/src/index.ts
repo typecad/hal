@@ -72,12 +72,6 @@ export {
   monitorArduinoSketch,
 } from './arduino-compile';
 
-// Arduino polyfills
-export { arduinoAsyncPolyfill, findAwaitPoints } from './polyfills/async-arduino';
-export { detectSerialBeginCall, generateArduinoConsolePolyfill, generateGenericConsolePolyfill } from './polyfills/arduino-console';
-export { generateStdVectorArrayPolyfill, generateStaticArrayPolyfill } from './polyfills/arduino-array';
-export { generateStdStringPolyfill, generateStaticStringPolyfill } from './polyfills/arduino-string';
-
 // Arduino debug code generation
 export {
   generateSerialInitCode,

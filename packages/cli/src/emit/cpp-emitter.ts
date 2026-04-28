@@ -7,8 +7,8 @@ import { escapeCppKeyword } from "../utils/strings";
 import { resolveImport } from "../libdef/registry";
 import { LibraryDefinition } from "../types";
 import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
-import { RuntimePolyfillIR } from "../polyfill/types";
-import { emitPolyfillBoilerplate } from "../polyfill/emitter";
+import { RuntimePolyfillIR } from "@typecode/core/shared";
+import { emitPolyfillBoilerplate } from "./native-helpers-emitter";
 import { filterPolyfillHelpers } from "@typecode/core/shared";
 import { ResolvedNpmPackage } from "../transpile";
 import { extractPropertyChain, buildArduinoClassNameMap } from "@typecode/framework-arduino";
@@ -136,7 +136,6 @@ interface EmitterOptions {
   libdefs: Map<string, LibraryDefinition>;
   emitMaps: boolean;
   platformContext?: PlatformContext;
-  polyfills?: RuntimePolyfillIR[];
   /** Info about the npm package being transpiled (if this file is from an npm package) */
   npmPackage?: ResolvedNpmPackage;
   /** Map of all npm packages being transpiled (source path -> package info) */
@@ -884,14 +883,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   let shimLines: string[] = [];
   
   // Get polyfills that the strategy handles natively
-  const nativePolyfillIds = strategy.nativePolyfills?.() ?? new Set<string>();
+  // (nativePolyfills() no longer used - all helpers go through generateNativePolyfills)
   
-  // Filter out polyfills that are handled natively by the strategy
-  const filteredPolyfills = (options.polyfills ?? []).filter(
-    (polyfill) => !nativePolyfillIds.has(polyfill.id)
-  );
-  
-  // Get native polyfill implementations from the strategy
+  // Get native helper implementations from the strategy
   // Skip for non-entry files — they're emitted in the entry .ino and shared via includes
   const nativePolyfills = isEntryFile
     ? (strategy.generateNativePolyfills?.(program, options.platformContext) ?? [])
@@ -900,16 +894,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Filter native polyfill helpers to only those actually used by the program
   const filteredNativePolyfills = filterPolyfillHelpers(nativePolyfills, programAnalysis.usedPolyfillHelpers);
 
-  // Merge filtered and native polyfills, then emit
-  const allPolyfills = [...filteredPolyfills, ...filteredNativePolyfills];
+  // Emit native helpers
+  const allPolyfills = filteredNativePolyfills;
   const emittedPolyfills = allPolyfills.length > 0
     ? emitPolyfillBoilerplate(allPolyfills)
     : undefined;
-  const hasAsyncRuntime = filteredPolyfills.some((polyfill) => polyfill.id === "async_arduino");
+  const hasAsyncRuntime = program.functions.some(fn => fn.isAsync);
   // True only when the Promise/MicrotaskQueue runtime was emitted (requires C++ stdlib).
-  // On AVR this is false; ts2cpp_pump_microtasks() must NOT be called.
-  const hasPromiseRuntime = filteredPolyfills.some(
-    (polyfill) => polyfill.id === "async_arduino" && (polyfill as any).hasPromiseRuntime === true
+  // On AVR this is false; typecode_pump_microtasks() must NOT be called.
+  const hasPromiseRuntime = nativePolyfills.some(
+    (p) => p.id === "async_runtime" && (p as any).hasPromiseRuntime === true
   );
 
   if (!isNpmPackage) {
@@ -1994,22 +1988,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
     }));
 
-    // Collect setup statements from polyfills (e.g., Serial.begin for console)
-    const polyfillSetupLines: string[] = [];
-    for (const polyfill of options.polyfills ?? []) {
-      if (polyfill.setupStatements) {
-        polyfillSetupLines.push(...polyfill.setupStatements);
-      }
-    }
-    const polyfillSetupStmts: StatementIR[] = polyfillSetupLines.map(line => ({
-      kind: "call" as const,
-      callee: `__RAW_STMT__${line}`,
-      args: [],
-      sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
-    }));
-
-    // Combine platform setup init + polyfill setup statements
-    const allSetupInitStmts = [...setupInitStmts, ...polyfillSetupStmts];
+    // Combine platform setup init code
+    const allSetupInitStmts = [...setupInitStmts];
     
     if (existingEp) {
       existingEp.statements = [...allSetupInitStmts, ...filteredTopLevelExecutables, ...existingEp.statements];

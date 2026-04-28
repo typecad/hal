@@ -30,15 +30,6 @@ export interface FrameworkApi {
   getArduinoLibraryHeaderName(moduleSpecifier: string): string | undefined;
   tryGenerateArduinoLibDecl(moduleSpecifier: string, fromFile: string): string | undefined;
 
-  // ── Polyfill generators ──────────────────────────────────────────────────
-  generateArduinoConsolePolyfill: (...args: any[]) => any;
-  generateGenericConsolePolyfill: (...args: any[]) => any;
-  generateStdVectorArrayPolyfill: (...args: any[]) => any;
-  generateStaticArrayPolyfill: (...args: any[]) => any;
-  generateStdStringPolyfill: (...args: any[]) => any;
-  generateStaticStringPolyfill: (...args: any[]) => any;
-  arduinoAsyncPolyfill: any;
-
   // ── Snprintf helpers ────────────────────────────────────────────────────
   createEmissionScopeState: (...args: any[]) => any;
   cloneEmissionScopeState: (...args: any[]) => any;

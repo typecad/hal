@@ -63,14 +63,10 @@ export type { BoardConstants } from './board-resolver';
 // Polyfill types
 export type {
   RuntimePolyfillIR,
-  PolyfillDefinition,
-  PolyfillContext,
-  PolyfillNeed,
-  PolyfillConfig,
   PolyfillDomain,
   StdLibSupport,
 } from './polyfill-types';
-export { DEFAULT_POLYFILL_CONFIG, STDLIB_SUPPORT, getStdLibSupport } from './polyfill-types';
+export { STDLIB_SUPPORT, getStdLibSupport } from './polyfill-types';
 
 // Platform strategy
 export type {

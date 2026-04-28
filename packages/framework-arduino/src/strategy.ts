@@ -6,6 +6,8 @@
 // ---------------------------------------------------------------------------
 
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, TypecodeReceiverKind, RuntimePolyfillIR } from "@typecode/core/shared";
+import { getStdLibSupport } from "@typecode/core/shared";
+import type { StatementIR } from "@typecode/core/shared";
 import { resolveArduinoProfile } from "./profile";
 import { renderArduinoBuiltin, tryRenderTypecodeCallStatement } from "./typecode-map";
 import { renderDACCall } from "./handlers/dac-handler";
@@ -139,10 +141,11 @@ export class ArduinoStrategy implements PlatformStrategy {
   }
 
   /**
-   * Generate native Arduino string method polyfills using Arduino's String class.
+   * Generate native helpers: typecode_halt macro, Arduino string helpers,
+   * and (when stdlib supports it) the cooperative async Promise runtime.
    */
-  generateNativePolyfills(_program: ProgramIR, _ctx?: PlatformContext): RuntimePolyfillIR[] {
-    return [{
+  generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
+    const helpers: RuntimePolyfillIR[] = [{
       kind: "polyfill",
       id: "typecode_halt",
       domain: "arduino",
@@ -183,14 +186,42 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       shimMacros: [],
       dependencies: [],
     }];
+
+    // Add async Promise runtime if program has async functions and stdlib supports it
+    const hasAsync = program.functions.some(fn => fn.isAsync);
+    if (hasAsync) {
+      const architecture = ctx?.arduino?.fqbn?.split(":")?.[1]?.toLowerCase();
+      const stdlib = getStdLibSupport(architecture);
+      if (stdlib.hasVector && stdlib.hasString) {
+        helpers.push({
+          kind: "polyfill",
+          id: "async_runtime",
+          domain: "arduino",
+          requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
+          forwardDeclarations: [],
+          helperStructs: [generatePromiseRuntime(ctx?.arduino?.fqbn?.split(":")?.[0] === "arduino" ? "arduino" : "generic")],
+          helperFunctions: [],
+          shimMacros: [],
+          dependencies: [],
+          hasPromiseRuntime: true,
+        } as RuntimePolyfillIR & { hasPromiseRuntime: boolean });
+      }
+    }
+
+    return helpers;
   }
 
   /**
-   * Default implementation returns empty array.
-   * Board packages can override to provide setup initialization code.
+   * Injects Serial.begin(baudRate) at the top of setup() when the program uses
+   * console.* calls and has a baudRate configured, and no explicit .begin() call
+   * is already present.
    */
-  setupInitCode(_program: ProgramIR, _ctx?: PlatformContext): string[] {
-    return [];
+  setupInitCode(program: ProgramIR, ctx?: PlatformContext): string[] {
+    const baudRate = ctx?.console?.baudRate;
+    if (!baudRate) return [];
+    if (!detectConsoleUsage(program)) return [];
+    if (detectSerialBeginCall(program)) return [];
+    return [`Serial.begin(${baudRate});`];
   }
 
   // ── File shape ──────────────────────────────────────────────────────────
@@ -524,4 +555,191 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       ['SPI1', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
     ]);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers used by ArduinoStrategy
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect whether the program uses console.* calls.
+ */
+function detectConsoleUsage(program: ProgramIR): boolean {
+  const consolePrefixes = ["console.log", "console.error", "console.warn", "console.info", "console.debug"];
+  const checkStmts = (stmts: StatementIR[]): boolean => {
+    for (const stmt of stmts) {
+      if (stmt.kind === "call" && consolePrefixes.some(p => stmt.callee.startsWith(p))) return true;
+      if ("body" in stmt && Array.isArray(stmt.body) && checkStmts(stmt.body)) return true;
+      if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch) && checkStmts(stmt.thenBranch)) return true;
+      if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch) && checkStmts(stmt.elseBranch)) return true;
+      if ("cases" in stmt && Array.isArray((stmt as any).cases)) {
+        for (const c of (stmt as any).cases) { if (checkStmts(c.body)) return true; }
+      }
+      if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock) && checkStmts(stmt.tryBlock)) return true;
+      if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock) && checkStmts(stmt.catchBlock)) return true;
+    }
+    return false;
+  };
+  for (const fn of program.functions) { if (checkStmts(fn.statements)) return true; }
+  if (checkStmts(program.topLevelStatements)) return true;
+  for (const cls of program.classes) {
+    for (const m of cls.methods) { if (checkStmts(m.statements)) return true; }
+    if (cls.constructor && checkStmts(cls.constructor.statements)) return true;
+  }
+  return false;
+}
+
+/**
+ * Detect whether the program already calls Serial.begin (or similar .begin()).
+ */
+function detectSerialBeginCall(program: ProgramIR): boolean {
+  const checkStmt = (stmt: StatementIR): boolean => {
+    if (stmt.kind === "call" && (stmt.callee === "Serial.begin" || stmt.callee.endsWith(".begin"))) return true;
+    if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) { if (checkStmt(s)) return true; } }
+    if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) { if (checkStmt(s)) return true; } }
+    if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) { for (const s of stmt.elseBranch) { if (checkStmt(s)) return true; } }
+    if ("cases" in stmt && Array.isArray((stmt as any).cases)) {
+      for (const c of (stmt as any).cases) { for (const s of c.body) { if (checkStmt(s)) return true; } }
+    }
+    if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) { for (const s of stmt.tryBlock) { if (checkStmt(s)) return true; } }
+    if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) { for (const s of stmt.catchBlock) { if (checkStmt(s)) return true; } }
+    return false;
+  };
+  for (const fn of program.functions) { for (const s of fn.statements) { if (checkStmt(s)) return true; } }
+  for (const s of program.topLevelStatements) { if (checkStmt(s)) return true; }
+  for (const cls of program.classes) {
+    for (const m of cls.methods) { for (const s of m.statements) { if (checkStmt(s)) return true; } }
+    if (cls.constructor) { for (const s of cls.constructor.statements) { if (checkStmt(s)) return true; } }
+  }
+  return false;
+}
+
+/**
+ * Generate the cooperative microtask queue + Promise runtime C++ code.
+ */
+function generatePromiseRuntime(target: string): string {
+  const queueCapacity = target === "arduino" ? 32 : 256;
+  return `
+// Polyfill: cooperative microtask queue + minimal Promise runtime
+namespace typecode_async {
+  using Microtask = std::function<void()>;
+
+  class MicrotaskQueue {
+  public:
+    static MicrotaskQueue& instance() {
+      static MicrotaskQueue queue;
+      return queue;
+    }
+
+    bool enqueue(Microtask task) {
+      if (_queue.size() >= ${queueCapacity}) {
+        return false;
+      }
+      _queue.push_back(std::move(task));
+      return true;
+    }
+
+    void pump() {
+      const size_t total = _queue.size();
+      for (size_t i = 0; i < total; ++i) {
+        Microtask task = std::move(_queue[i]);
+        task();
+      }
+      if (total > 0) {
+        _queue.erase(_queue.begin(), _queue.begin() + static_cast<long long>(total));
+      }
+    }
+
+  private:
+    std::vector<Microtask> _queue;
+  };
+
+  inline void enqueueMicrotask(Microtask task) {
+    MicrotaskQueue::instance().enqueue(std::move(task));
+  }
+
+  inline void pumpMicrotasks() {
+    MicrotaskQueue::instance().pump();
+  }
+
+  template <typename T>
+  class Promise {
+  public:
+    enum class State { Pending, Fulfilled, Rejected };
+
+    Promise() : _state(State::Pending), _value{}, _error{} {}
+
+    explicit Promise(std::function<void(std::function<void(const T&)>, std::function<void(const std::string&)>)> executor)
+      : _state(State::Pending), _value{}, _error{} {
+      executor(
+        [this](const T& value) { this->resolve(value); },
+        [this](const std::string& error) { this->reject(error); }
+      );
+    }
+
+    static Promise<T> resolveValue(const T& value) {
+      Promise<T> promise;
+      promise.resolve(value);
+      return promise;
+    }
+
+    static Promise<T> rejectValue(const std::string& error) {
+      Promise<T> promise;
+      promise.reject(error);
+      return promise;
+    }
+
+    void resolve(const T& value) {
+      if (_state != State::Pending) return;
+      _state = State::Fulfilled;
+      _value = value;
+      auto callbacks = _onFulfilled;
+      enqueueMicrotask([callbacks, value]() mutable {
+        for (auto& callback : callbacks) { callback(value); }
+      });
+    }
+
+    void reject(const std::string& error) {
+      if (_state != State::Pending) return;
+      _state = State::Rejected;
+      _error = error;
+      auto callbacks = _onRejected;
+      enqueueMicrotask([callbacks, error]() mutable {
+        for (auto& callback : callbacks) { callback(error); }
+      });
+    }
+
+    Promise<T>& then(std::function<void(const T&)> onFulfilled) {
+      if (_state == State::Fulfilled) {
+        const T value = _value;
+        enqueueMicrotask([onFulfilled, value]() mutable { onFulfilled(value); });
+      } else if (_state == State::Pending) {
+        _onFulfilled.push_back(std::move(onFulfilled));
+      }
+      return *this;
+    }
+
+    Promise<T>& catchError(std::function<void(const std::string&)> onRejected) {
+      if (_state == State::Rejected) {
+        const std::string error = _error;
+        enqueueMicrotask([onRejected, error]() mutable { onRejected(error); });
+      } else if (_state == State::Pending) {
+        _onRejected.push_back(std::move(onRejected));
+      }
+      return *this;
+    }
+
+  private:
+    State _state;
+    T _value;
+    std::string _error;
+    std::vector<std::function<void(const T&)>> _onFulfilled;
+    std::vector<std::function<void(const std::string&)>> _onRejected;
+  };
+}
+
+inline void typecode_pump_microtasks() {
+  typecode_async::pumpMicrotasks();
+}
+`;
 }

@@ -2,7 +2,6 @@ import { buildProgramIR } from "../packages/cli/src/ir/build-ir";
 import { analyzePeripheralUsage } from "../packages/cli/src/ir/peripheral-usage";
 import { emitCpp } from "../packages/cli/src/emit/cpp-emitter";
 import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/cli/src/types";
-import { createPolyfillRegistry } from "../packages/cli/src/polyfill";
 import { setFrameworkApi } from "../packages/cli/src/framework-api";
 import { expect } from "vitest";
 import * as fs from "fs";
@@ -55,13 +54,6 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   
   const programIR = buildProgramIR(fileName, tsCode);
   const libdefs = new Map();
-  const registry = createPolyfillRegistry();
-  const polyfills = registry.detectAndGenerate(programIR, {
-    target,
-    architecture: platformContext?.arduino?.fqbn,
-    usedIdentifiers: new Set<string>(),
-  });
-  
   const result = emitCpp(programIR, {
     outDir: uniqueOutDir,
     emitMode,
@@ -69,7 +61,6 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
     libdefs,
     emitMaps: false,
     platformContext,
-    polyfills,
   });
 
   let cpp = "";

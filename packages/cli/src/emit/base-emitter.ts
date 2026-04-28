@@ -8,7 +8,6 @@ import type { ProgramIR, StatementIR, FunctionIR, ClassIR, EnumIR } from "../ir/
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { ResolvedNpmPackage } from "../transpile";
-import type { PolyfillDefinition } from "../polyfill/types";
 // CppClass type is internal to arduino-libs - we use any for flexibility
 import { StatementRenderer } from "./statement-renderer";
 import {
@@ -34,8 +33,6 @@ export interface EmitterContext {
   arduinoClassNameMap?: Map<string, string>;
   /** Map of source file paths to npm package info */
   npmPackages?: Map<string, ResolvedNpmPackage>;
-  /** Polyfill definitions */
-  polyfills?: Map<string, PolyfillDefinition>;
   /** Arduino library classes */
   arduinoClasses?: Map<string, any>;
   /** Arduino library functions */
@@ -63,7 +60,6 @@ export abstract class BaseEmitter {
   protected readonly boardConstants?: BoardConstants;
   protected readonly arduinoClassNameMap?: Map<string, string>;
   protected readonly npmPackages?: Map<string, ResolvedNpmPackage>;
-  protected readonly polyfills?: Map<string, PolyfillDefinition>;
   protected readonly arduinoClasses?: Map<string, any>;
   protected readonly arduinoFunctions?: Map<string, any>;
 
@@ -80,7 +76,6 @@ export abstract class BaseEmitter {
     this.boardConstants = context.boardConstants;
     this.arduinoClassNameMap = context.arduinoClassNameMap;
     this.npmPackages = context.npmPackages;
-    this.polyfills = context.polyfills;
     this.arduinoClasses = context.arduinoClasses;
     this.arduinoFunctions = context.arduinoFunctions;
   }
@@ -404,15 +399,6 @@ export abstract class BaseEmitter {
       if (this.arduinoClasses?.has(imp.moduleSpecifier) || this.arduinoFunctions?.has(imp.moduleSpecifier)) {
         // Arduino libraries are typically included via the platform
         continue;
-      }
-    }
-
-    // Add polyfill includes
-    if (this.polyfills) {
-      for (const [, polyfill] of this.polyfills) {
-        if ((polyfill as any).include) {
-          includes.push(normalizeInclude((polyfill as any).include));
-        }
       }
     }
 

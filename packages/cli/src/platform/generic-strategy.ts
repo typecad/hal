@@ -7,6 +7,8 @@ import type { ExpressionIR, ProgramIR } from "../ir/model";
 import type { Diagnostic, PlatformContext } from "../types";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
+import type { RuntimePolyfillIR } from "@typecode/core/shared";
+import { buildAsyncRuntimePolyfill } from "./async-runtime";
 
 export class GenericStrategy implements PlatformStrategy {
   readonly id = "generic";
@@ -174,6 +176,13 @@ export class GenericStrategy implements PlatformStrategy {
   }
 
   // ── Async ───────────────────────────────────────────────────────────────
+
+  generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
+    const helpers: RuntimePolyfillIR[] = [];
+    const asyncRuntime = buildAsyncRuntimePolyfill(program, ctx, "generic");
+    if (asyncRuntime) helpers.push(asyncRuntime);
+    return helpers;
+  }
 
   asyncLoopInjection(_taskVarNames: string[], hasPromiseRuntime: boolean): string[] {
     const lines: string[] = [];

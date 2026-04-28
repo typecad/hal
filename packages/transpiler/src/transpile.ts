@@ -111,10 +111,8 @@ import { GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingO
 import { readText } from "./utils/fs";
 import { debug as logDebug, info } from "./utils/logger";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry";
-import { createPolyfillRegistry, PolyfillContext } from "./polyfill";
 import { ProgramIR } from "./ir/model";
 import { buildCallGraph } from "./ir/call-graph";
-import { collectUsedIdentifiers } from "./ir/identifier-collector";
 import {
   clearCaches,
   getCachedNpmPackage,
@@ -719,7 +717,6 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const npmPackages = graphResult.npmPackages;
 
   const definitions = loadLibraryDefinitions(sourceDir);
-  const polyfillRegistry = createPolyfillRegistry();
 
   let entryOutputs: GeneratedOutputs | undefined;
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
@@ -734,7 +731,6 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   type PreBuiltFile = {
     filePath: string;
     programIR: ProgramIR;
-    polyfills: ReturnType<typeof polyfillRegistry.detectAndGenerate>;
     npmPackage: ReturnType<typeof npmPackages.get>;
   };
 
@@ -908,25 +904,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
     profiler.endTimer(`tree-shake:${fileBasename}`);
 
-    profiler.startTimer(`polyfill:${fileBasename}`);
-    const polyfillContext: PolyfillContext = {
-      target: options.target,
-      architecture: options.platformContext?.arduino?.fqbn?.split(":")[1]?.toLowerCase(),
-      usedIdentifiers: collectUsedIdentifiers(programIR),
-      config: {
-        console: {
-          enabled: true,
-          target: "auto",
-          useFlashStrings: true,
-          baudRate: options.platformContext?.console?.baudRate ?? 9600,
-          autoInjectSerialBegin: true,
-        },
-      },
-    };
-    const polyfills = polyfillRegistry.detectAndGenerate(programIR, polyfillContext);
-    profiler.endTimer(`polyfill:${fileBasename}`);
-
-    preBuiltArray.push({ filePath, programIR, polyfills, npmPackage });
+    preBuiltArray.push({ filePath, programIR, npmPackage });
   }
 
   const preBuilt = new Map<string, PreBuiltFile>();
@@ -961,7 +939,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // ── Pass 2: emit (only for files that needed retranspilation) ─────────────
   profiler.startTimer("emit:all");
   profiler.captureMemorySnapshot("emit:pre");
-  for (const [filePath, { programIR, polyfills, npmPackage }] of preBuilt) {
+  for (const [filePath, { programIR, npmPackage }] of preBuilt) {
     const fileBasename = path.basename(filePath);
     profiler.startTimer(`emit:file:${fileBasename}`);
 
@@ -972,7 +950,6 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       libdefs: definitions,
       emitMaps: options.emitMaps,
       platformContext: options.platformContext,
-      polyfills,
       npmPackage,
       npmPackages,
       isEntryFile: filePath === entryFile,

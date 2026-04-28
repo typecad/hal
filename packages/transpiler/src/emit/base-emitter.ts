@@ -8,7 +8,6 @@ import type { ProgramIR, StatementIR, FunctionIR, ClassIR, EnumIR } from "../ir/
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { ResolvedNpmPackage } from "../transpile";
-import type { PolyfillDefinition } from "../polyfill/types";
 // CppClass type is internal to arduino-libs - we use any for flexibility
 import { StatementRenderer } from "./statement-renderer";
 import {
@@ -34,8 +33,6 @@ export interface EmitterContext {
   arduinoClassNameMap?: Map<string, string>;
   /** Map of source file paths to npm package info */
   npmPackages?: Map<string, ResolvedNpmPackage>;
-  /** Polyfill definitions */
-  polyfills?: Map<string, PolyfillDefinition>;
   /** Arduino library classes */
   arduinoClasses?: Map<string, any>;
   /** Arduino library functions */
