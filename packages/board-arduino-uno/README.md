@@ -1,21 +1,21 @@
-# @typecode/board-arduino-uno
+# @typehal/board-arduino-uno
 
-Arduino Uno board definition package for TypeCode.
+Arduino Uno board definition package for TypeHAL.
 
 ## Overview
 
-`@typecode/board-arduino-uno` provides a fully-typed TypeScript SDK for the Arduino Uno (ATmega328P). It exports pins, peripherals, timing utilities, and board metadata so TypeCode can perform board-aware transpilation and catch hardware mistakes early.
+`@typehal/board-arduino-uno` provides a fully-typed TypeScript SDK for the Arduino Uno (ATmega328P). It exports pins, peripherals, timing utilities, and board metadata so TypeHAL can perform board-aware transpilation and catch hardware mistakes early.
 
 ## Quick start
 
-Add or reference this board in `typecode.config.ts`:
+Add or reference this board in `typehal.config.ts`:
 
 ```ts
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
   output: { framework: 'arduino', optimize: 'size' },
 };
@@ -26,7 +26,7 @@ export default config;
 Transpile and compile:
 
 ```bash
-npx typecode src/main.ts --compile --upload --port COM3
+npx typehal src/main.ts --compile --upload --port COM3
 ```
 
 ## How to use
@@ -38,15 +38,15 @@ There are several import styles:
 #### Individual imports
 
 ```ts
-import { D13, A0 } from '@typecode/board-arduino-uno/pins';
-import { UART0 } from '@typecode/board-arduino-uno/peripherals';
-import { delay, millis } from '@typecode/board-arduino-uno/timing';
+import { D13, A0 } from '@typehal/board-arduino-uno/pins';
+import { UART0 } from '@typehal/board-arduino-uno/peripherals';
+import { delay, millis } from '@typehal/board-arduino-uno/timing';
 ```
 
 #### Board namespace
 
 ```ts
-import { Board } from '@typecode/board-arduino-uno/board';
+import { Board } from '@typehal/board-arduino-uno/board';
 
 Board.D13.high();
 Board.UART0.println('Hello');
@@ -58,13 +58,13 @@ Board.UART0.println('Hello');
 import {
   D13, A0, LED, UART0, delay, millis,
   I2C0, SPI0, Board,
-} from '@typecode/board-arduino-uno';
+} from '@typehal/board-arduino-uno';
 ```
 
-#### Virtual `@typecode` import (recommended)
+#### Virtual `@typehal` import (recommended)
 
 ```ts
-import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typecode';
+import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typehal';
 ```
 
 ### Pin and peripheral exports
@@ -85,7 +85,7 @@ The package exports full Uno pin definitions plus convenience aliases:
 
 ### Pin safety
 
-The Arduino Uno pin package exposes peripheral pin mappings and capability information that TypeCode uses to warn about unsafe pin usage. Key reserved pin groups include:
+The Arduino Uno pin package exposes peripheral pin mappings and capability information that TypeHAL uses to warn about unsafe pin usage. Key reserved pin groups include:
 
 - `D0` / `D1` — UART0 RX/TX
 - `A4` / `A5` — I2C0 SDA/SCL
@@ -94,7 +94,7 @@ The Arduino Uno pin package exposes peripheral pin mappings and capability infor
 ### Example
 
 ```ts
-import { LED, delay, HIGH } from '@typecode';
+import { LED, delay, HIGH } from '@typehal';
 
 LED.output(HIGH);
 
@@ -104,4 +104,4 @@ while (true) {
 }
 ```
 
-This package is intended to be used through the virtual `@typecode` import resolver in TypeCode, but direct imports from `@typecode/board-arduino-uno` are also supported when you want explicit board package references.
+This package is intended to be used through the virtual `@typehal` import resolver in TypeHAL, but direct imports from `@typehal/board-arduino-uno` are also supported when you want explicit board package references.

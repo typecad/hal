@@ -1,6 +1,6 @@
 # Intermediate Representation (IR) Model
 
-The TypeCode IR is the intermediate representation between TypeScript AST and C++ emission.
+The TypeHAL IR is the intermediate representation between TypeScript AST and C++ emission.
 
 ## Overview
 
@@ -184,15 +184,15 @@ interface CallExpressionIR {
 }
 ```
 
-### Typecode-Call Expression (Direct Peripheral APIs)
+### Typehal-Call Expression (Direct Peripheral APIs)
 
 **CRITICAL for UART/I2C/SPI transpilation.**
 
-The `typecode-call` IR node represents calls to TypeCode SDK symbols that must be translated to Arduino APIs. This includes direct method calls on peripheral objects.
+The `typehal-call` IR node represents calls to TypeHAL SDK symbols that must be translated to Arduino APIs. This includes direct method calls on peripheral objects.
 
 ```typescript
-interface TypecodeCallIR {
-  kind: 'typecode-call';
+interface TypehalCallIR {
+  kind: 'typehal-call';
   receiver: string;        // e.g., "UART0", "I2C0", "SPI0", "D13", "A0"
   receiverKind: string;    // e.g., "serial", "i2c", "spi", "digital", "analog"
   method: string;          // e.g., "begin", "println", "output", "pwm"
@@ -220,7 +220,7 @@ interface TypecodeCallIR {
 
 #### Implementation Notes
 
-The IR builder (`build-ir.ts`) uses `extractRootAndChain()` to detect nested property access chains and generate `typecode-call` IR nodes. The C++ emitter (`cpp-emitter.ts`) translates these via the platform strategy's `tryRenderTypecodeCall()` method, which delegates to `renderArduinoBuiltin()` for pin/peripheral translation.
+The IR builder (`build-ir.ts`) uses `extractRootAndChain()` to detect nested property access chains and generate `typehal-call` IR nodes. The C++ emitter (`cpp-emitter.ts`) translates these via the platform strategy's `tryRenderTypehalCall()` method, which delegates to `renderArduinoBuiltin()` for pin/peripheral translation.
 
 ## Type IR
 
@@ -345,7 +345,7 @@ Custom entry points can be added via CLI flags.
 The IR is available during transpilation:
 
 ```typescript
-import { buildIR } from 'typecode/ir';
+import { buildIR } from 'typehal/ir';
 
 const program = ts.createProgram(['sketch.ts'], {});
 const sourceFile = program.getSourceFile('sketch.ts')!;

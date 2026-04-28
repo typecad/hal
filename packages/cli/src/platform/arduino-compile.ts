@@ -1,8 +1,8 @@
 import path from "node:path";
-import type { ArduinoCompileResult, ArduinoUploadResult } from "@typecode/framework-arduino";
+import type { ArduinoCompileResult, ArduinoUploadResult } from "@typehal/framework-arduino";
 import { loadFrameworkPackage } from "../framework-package";
 
-const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+const FRAMEWORK_PACKAGE = "@typehal/framework-arduino";
 
 function getArduinoFramework(fromDir: string): any {
   return loadFrameworkPackage(FRAMEWORK_PACKAGE, fromDir);

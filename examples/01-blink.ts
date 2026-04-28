@@ -6,7 +6,7 @@
 // returns a type-narrowed alias for subsequent calls.
 // ---------------------------------------------------------------------------
 
-import { HIGH, LED, delay } from '@typecode';
+import { HIGH, LED, delay } from '@typehal';
 
 const led = LED.asOutput(HIGH);
 

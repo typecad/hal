@@ -1,9 +1,9 @@
 # Expect Documentation
 
-Hardware test runner for TypeCode. Write vitest-style assertions in TypeScript; the framework compiles them to firmware, uploads to your board, reads the results over serial, and reports pass/fail — all in one command.
+Hardware test runner for TypeHAL. Write vitest-style assertions in TypeScript; the framework compiles them to firmware, uploads to your board, reads the results over serial, and reports pass/fail — all in one command.
 
 ```
- typecode-test v0.1.0
+ typehal-test v0.1.0
 
  ✓ A0 analog read (2 tests)
    ✓ reads a value in valid ADC range
@@ -15,7 +15,7 @@ Hardware test runner for TypeCode. Write vitest-style assertions in TypeScript; 
 
 
  Tests   4 passed (4)
- Board   @typecode/board-arduino-uno @ COM4
+ Board   @typehal/board-arduino-uno @ COM4
  Time    18.97s
 
  PASS  All tests passed
@@ -29,7 +29,7 @@ Hardware test runner for TypeCode. Write vitest-style assertions in TypeScript; 
 ## How it works
 
 1. **Preprocess** — an AST transform rewrites the fluent test syntax into `Serial.print()` calls.
-2. **Transpile** — the typecode compiler converts the rewritten TypeScript to a C++ Arduino sketch.
+2. **Transpile** — the typehal compiler converts the rewritten TypeScript to a C++ Arduino sketch.
 3. **Compile** — `arduino-cli compile` builds the sketch for the target board.
 4. **Upload** — `arduino-cli upload` flashes the firmware over serial.
 5. **Capture** — the host reads structured protocol lines from the serial port.
@@ -38,7 +38,7 @@ Hardware test runner for TypeCode. Write vitest-style assertions in TypeScript; 
 
 ## Installation
 
-`@typecode/expect` is included in the TypeCode monorepo. No separate install step is needed within the workspace.
+`@typehal/expect` is included in the TypeHAL monorepo. No separate install step is needed within the workspace.
 
 **Prerequisites:**
 
@@ -50,8 +50,8 @@ Hardware test runner for TypeCode. Write vitest-style assertions in TypeScript; 
 
 ```typescript
 // examples/my-sensor.test.ts
-import { describe, done } from '@typecode/expect';
-import { A0 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0 } from '@typehal';
 
 describe("A0 analog read")
   .it("reads a value in valid ADC range")
@@ -65,7 +65,7 @@ done();
 Run the test:
 
 ```bash
-npx typecode-test examples/my-sensor.test.ts --port COM4
+npx typehal-test examples/my-sensor.test.ts --port COM4
 ```
 
 ## Pipeline Overview
@@ -79,7 +79,7 @@ npx typecode-test examples/my-sensor.test.ts --port COM4
 ┌─────────────────┐
 │ rewritten .ts   │  (Serial.print calls, hoisted hardware vars)
 └────────┬────────┘
-         │  typecode transpiler
+         │  typehal transpiler
          ▼
 ┌─────────────────┐
 │  .ino sketch    │  (Arduino C++)
@@ -103,8 +103,8 @@ npx typecode-test examples/my-sensor.test.ts --port COM4
 
 ## Limitations
 
-- **No arrow function callbacks** — the TypeCode transpiler does not support inline arrow functions as arguments. Groups and cases are defined by fluent chaining, not by `describe("name", () => { ... })`.
+- **No arrow function callbacks** — the TypeHAL transpiler does not support inline arrow functions as arguments. Groups and cases are defined by fluent chaining, not by `describe("name", () => { ... })`.
 - **No async tests** — all timing is implicit (the board executes sequentially, the host waits on serial output).
 - **Sequential execution only** — all describes in a file run once, in order, inside `setup()`. There is no `beforeEach`/`afterEach`.
 - **One file per upload** — each test file produces one sketch and one upload cycle. Multiple test files run as separate upload+execute passes.
-- **Number types only for hardware values** — the TypeCode type system maps all numeric hardware readings to `int`/`float`. String expectations are for software string variables, not raw hardware reads.
+- **Number types only for hardware values** — the TypeHAL type system maps all numeric hardware readings to `int`/`float`. String expectations are for software string variables, not raw hardware reads.

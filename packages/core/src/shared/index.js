@@ -6,8 +6,8 @@
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.toArchitectureFromFqbn = exports.collectCppFiles = exports.parseCompileErrors = exports.getStdLibSupport = exports.STDLIB_SUPPORT = exports.DEFAULT_POLYFILL_CONFIG = exports.inferKindByName = void 0;
-var typecode_symbols_1 = require("./typecode-symbols");
-Object.defineProperty(exports, "inferKindByName", { enumerable: true, get: function () { return typecode_symbols_1.inferKindByName; } });
+var typehal_symbols_1 = require("./typehal-symbols");
+Object.defineProperty(exports, "inferKindByName", { enumerable: true, get: function () { return typehal_symbols_1.inferKindByName; } });
 var polyfill_types_1 = require("./polyfill-types");
 Object.defineProperty(exports, "DEFAULT_POLYFILL_CONFIG", { enumerable: true, get: function () { return polyfill_types_1.DEFAULT_POLYFILL_CONFIG; } });
 Object.defineProperty(exports, "STDLIB_SUPPORT", { enumerable: true, get: function () { return polyfill_types_1.STDLIB_SUPPORT; } });

@@ -5,7 +5,7 @@ describe('Pulse utilities', () => {
   describe('Direct functions', () => {
     it('transpiles Pulse.in(pin, true) -> pulseIn(pin, HIGH)', async () => {
       const result = transpile(`
-        import { D2, Pulse } from '@typecode/board-arduino-uno';
+        import { D2, Pulse } from '@typehal/board-arduino-uno';
         const d = Pulse.in(D2, true);
       `, { target: 'arduino' });
 
@@ -14,7 +14,7 @@ describe('Pulse utilities', () => {
 
     it('transpiles Pulse.in(pin, true, timeout)', async () => {
       const result = transpile(`
-        import { D2, Pulse } from '@typecode/board-arduino-uno';
+        import { D2, Pulse } from '@typehal/board-arduino-uno';
         const d = Pulse.in(D2, true, 1000000);
       `, { target: 'arduino' });
 
@@ -23,7 +23,7 @@ describe('Pulse utilities', () => {
 
     it('transpiles Pulse.long(pin, false) -> pulseInLong(pin, LOW)', async () => {
       const result = transpile(`
-        import { D2, Pulse } from '@typecode/board-arduino-uno';
+        import { D2, Pulse } from '@typehal/board-arduino-uno';
         const d = Pulse.long(D2, false);
       `, { target: 'arduino' });
 
@@ -32,7 +32,7 @@ describe('Pulse utilities', () => {
 
     it('transpiles Pulse.in(pin, false) -> pulseIn(pin, LOW)', async () => {
       const result = transpile(`
-        import { D2, Pulse } from '@typecode/board-arduino-uno';
+        import { D2, Pulse } from '@typehal/board-arduino-uno';
         const d = Pulse.in(D2, false);
       `, { target: 'arduino' });
 

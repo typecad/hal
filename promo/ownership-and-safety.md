@@ -2,7 +2,7 @@
 
 [← Home](index.md)
 
-TypeCode brings Rust's ownership and safety ideas to embedded firmware — without requiring you to write Rust. Bus ownership, ISR-safety analysis, and peripheral conflict detection are enforced at transpile time. Mistakes that used to cause mysterious hangs or data corruption become compile-time errors.
+TypeHAL brings Rust's ownership and safety ideas to embedded firmware — without requiring you to write Rust. Bus ownership, ISR-safety analysis, and peripheral conflict detection are enforced at transpile time. Mistakes that used to cause mysterious hangs or data corruption become compile-time errors.
 
 ---
 
@@ -12,10 +12,10 @@ TypeCode brings Rust's ownership and safety ideas to embedded firmware — witho
 
 In bare-metal C++ there's nothing stopping you from accessing a shared I2C bus from multiple code paths without coordination. On single-threaded Arduino that causes bus corruption. On multi-threaded ESP32 it causes race conditions and undefined behavior.
 
-### The TypeCode solution
+### The TypeHAL solution
 
 ```typescript
-import { I2C0, delay } from '@typecode';
+import { I2C0, delay } from '@typehal';
 
 // Claim exclusive access
 const bus = I2C0.take();
@@ -63,7 +63,7 @@ On ESP32 (FreeRTOS), `take()` and `release()` emit as mutex acquisition and rele
 When you mix peripheral setup with GPIO usage on the same physical pin, the transpiler catches it:
 
 ```typescript
-import { SPI0, D11, D12, D13 } from '@typecode';
+import { SPI0, D11, D12, D13 } from '@typehal';
 
 SPI0.begin();
 
@@ -78,10 +78,10 @@ This works for I2C, SPI, UART, and any peripheral registered in the board defini
 
 ## ISR safety analysis
 
-Certain operations are unsafe inside an interrupt service routine. TypeCode analyzes your interrupt handlers and warns when you use them:
+Certain operations are unsafe inside an interrupt service routine. TypeHAL analyzes your interrupt handlers and warns when you use them:
 
 ```typescript
-import { D2, UART0 } from '@typecode';
+import { D2, UART0 } from '@typehal';
 
 const serial = UART0.begin(9600);
 
@@ -96,7 +96,7 @@ The set of unsafe operations is parameterized per platform — AVR, ESP32, and o
 Safe patterns inside ISRs:
 
 ```typescript
-import { D2, LED } from '@typecode';
+import { D2, LED } from '@typehal';
 
 let triggered = false;
 
@@ -120,7 +120,7 @@ while (true) {
 ## Ownership with SPI
 
 ```typescript
-import { SPI0 } from '@typecode';
+import { SPI0 } from '@typehal';
 
 const spi = SPI0.take();
 if (spi) {
@@ -136,7 +136,7 @@ if (spi) {
 ## Ownership with UART
 
 ```typescript
-import { UART0 } from '@typecode';
+import { UART0 } from '@typehal';
 
 const uart = UART0.take();
 if (uart) {

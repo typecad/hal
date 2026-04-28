@@ -1,6 +1,6 @@
 # CLI Documentation
 
-The TypeCode CLI (`@typecode/cli`) is the command-line interface for transpiling TypeScript to C++/Arduino code.
+The TypeHAL CLI (`@typehal/cli`) is the command-line interface for transpiling TypeScript to C++/Arduino code.
 
 ## Documents
 
@@ -10,23 +10,23 @@ The TypeCode CLI (`@typecode/cli`) is the command-line interface for transpiling
 ## Installation
 
 ```bash
-npm install typecode
+npm install typehal
 ```
 
 ## Quick Start
 
 ```bash
 # Transpile only
-npx typecode sketch.ts
+npx typehal sketch.ts
 
 # Transpile + compile
-npx typecode sketch.ts --compile
+npx typehal sketch.ts --compile
 
 # Transpile + compile + upload
-npx typecode sketch.ts --compile --upload --port COM4
+npx typehal sketch.ts --compile --upload --port COM4
 
 # Full chain with serial monitor
-npx typecode sketch.ts --compile --upload --monitor --port COM4 --baud 115200
+npx typehal sketch.ts --compile --upload --monitor --port COM4 --baud 115200
 ```
 
 ## Architecture
@@ -37,7 +37,7 @@ The CLI package contains:
 packages/cli/
 ├── src/
 │   ├── cli.ts           # Entry point, command parsing
-│   ├── config-loader.ts # typecode.config.ts loading
+│   ├── config-loader.ts # typehal.config.ts loading
 │   ├── transpile.ts     # Main transpilation orchestration
 │   ├── types.ts         # Shared type definitions
 │   ├── ast/
@@ -79,7 +79,7 @@ TypeScript Source (sketch.ts)
          │
          ▼
 ┌─────────────────────┐
-│   Config Loading    │  typecode.config.ts
+│   Config Loading    │  typehal.config.ts
 │   (config-loader)   │
 └─────────────────────┘
          │
@@ -91,7 +91,7 @@ TypeScript Source (sketch.ts)
          │
          ▼
 ┌─────────────────────┐
-│    IR Building      │  TypeCode Intermediate Representation
+│    IR Building      │  TypeHAL Intermediate Representation
 │   (ir/build-ir.ts)  │
 └─────────────────────┘
          │
@@ -121,10 +121,10 @@ Generated C++/Arduino (.ino/.cpp)
 
 ### config-loader.ts
 
-Loads `typecode.config.ts` and resolves board packages:
+Loads `typehal.config.ts` and resolves board packages:
 
 ```typescript
-export function loadConfig(configPath: string): TypecodeConfig;
+export function loadConfig(configPath: string): TypehalConfig;
 export function resolveBoardPackage(boardName: string): BoardPackage;
 ```
 
@@ -176,7 +176,7 @@ The CLI provides source-mapped error messages:
 
 ```bash
 # Map C++ error back to TypeScript
-npx typecode map-error out/sketch/sketch.ino.tscppmap.json --line 42 --column 5
+npx typehal map-error out/sketch/sketch.ino.thcppmap.json --line 42 --column 5
 ```
 
 ## Library Definitions
@@ -184,7 +184,7 @@ npx typecode map-error out/sketch/sketch.ino.tscppmap.json --line 42 --column 5
 Generate library definition stubs for third-party imports:
 
 ```bash
-npx typecode gen-libdefs src/sensor.ts
+npx typehal gen-libdefs src/sensor.ts
 ```
 
 This creates `<module>.libdef.json` files that map TypeScript imports to C++ includes.

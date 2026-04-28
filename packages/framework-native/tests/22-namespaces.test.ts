@@ -1,4 +1,4 @@
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 
 namespace SensorLib {
   export const BASE = 42;

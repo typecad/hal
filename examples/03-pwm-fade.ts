@@ -6,7 +6,7 @@
 // A non-PWM pin like D4 would produce a compile error.
 // ---------------------------------------------------------------------------
 
-import { D9, delay } from '@typecode';
+import { D9, delay } from '@typehal';
 
 D9.asOutput(false);
 

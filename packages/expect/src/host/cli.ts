@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // ---------------------------------------------------------------------------
-// @typecode/expect — CLI entry point
+// @typehal/expect — CLI entry point
 //
 // Usage:
-//   typecode-test [options] [files...]
+//   typehal-test [options] [files...]
 //
 // Options:
 //   --port <port>       Serial port (e.g. COM3, /dev/ttyACM0)
@@ -110,10 +110,10 @@ function parseArgs(argv: string[]): CLIArgs {
 // ---------------------------------------------------------------------------
 
 const HELP = `
-\x1b[1m\x1b[36m typecode-test\x1b[0m — Hardware test runner for TypeCode
+\x1b[1m\x1b[36m typehal-test\x1b[0m — Hardware test runner for TypeHAL
 
 \x1b[1mUsage:\x1b[0m
-  typecode-test [options] [files...]
+  typehal-test [options] [files...]
 
 \x1b[1mOptions:\x1b[0m
   --port, -p <port>     Serial port (e.g. COM4, /dev/ttyACM0)
@@ -126,15 +126,15 @@ const HELP = `
   --help, -h            Show this help
 
 \x1b[1mExamples:\x1b[0m
-  typecode-test --port COM4
-  typecode-test --port /dev/ttyACM0 tests/my-test.test.ts
-  typecode-test -p COM4 -v
+  typehal-test --port COM4
+  typehal-test --port /dev/ttyACM0 tests/my-test.test.ts
+  typehal-test -p COM4 -v
 
 \x1b[1mConfiguration:\x1b[0m
-  Add a \`test\` section to your typecode.config.ts:
+  Add a \`test\` section to your typehal.config.ts:
 
     const config = {
-      board: '@typecode/board-arduino-uno',
+      board: '@typehal/board-arduino-uno',
       fqbn: 'arduino:avr:uno',
       test: {
         port: 'COM4',

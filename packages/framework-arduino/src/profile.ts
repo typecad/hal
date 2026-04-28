@@ -4,7 +4,7 @@
 // Resolves Arduino-specific profile settings based on FQBN and program IR.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext, ArduinoPlatformContext, TypecodeReceiverKind } from "@typecode/core/shared";
+import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext, ArduinoPlatformContext, TypehalReceiverKind } from "@typehal/core/shared";
 import type { ArduinoCliMetadata } from "./cli-metadata";
 import { loadArduinoCliMetadata } from "./cli-metadata";
 
@@ -218,8 +218,8 @@ function collectTopLevelDeclarations(program: ProgramIR): Set<string> {
   return declared;
 }
 
-function collectTypecodeReceiverKinds(program: ProgramIR): Set<TypecodeReceiverKind> {
-  const kinds = new Set<TypecodeReceiverKind>();
+function collectTypehalReceiverKinds(program: ProgramIR): Set<TypehalReceiverKind> {
+  const kinds = new Set<TypehalReceiverKind>();
 
   // Forward-declare so collectFromExpr and collectFromStatement can call each other
   let collectFromStatement: (s: StatementIR) => void;
@@ -227,7 +227,7 @@ function collectTypecodeReceiverKinds(program: ProgramIR): Set<TypecodeReceiverK
   const collectFromExpr = (expr: ExpressionIR | undefined): void => {
     if (!expr || typeof expr !== 'object') return;
     switch (expr.kind) {
-      case "typecode-call":
+      case "typehal-call":
         kinds.add(expr.receiverKind);
         break;
       case "callback":
@@ -275,7 +275,7 @@ function collectTypecodeReceiverKinds(program: ProgramIR): Set<TypecodeReceiverK
   collectFromStatement = (statement: StatementIR): void => {
     if (!statement || typeof statement !== 'object') return;
     switch (statement.kind) {
-      case "typecode-call":
+      case "typehal-call":
         kinds.add(statement.receiverKind);
         break;
       case "var_decl":
@@ -606,7 +606,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
   const used = collectUsedIdentifiers(program);
   const calledFunctions = collectCalledFunctions(program);
   const declared = collectTopLevelDeclarations(program);
-  const receiverKinds = collectTypecodeReceiverKinds(program);
+  const receiverKinds = collectTypehalReceiverKinds(program);
   const shimLines: string[] = [];
 
   for (const functionName of calledFunctions) {
@@ -617,7 +617,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     if (!capabilities.builtinFunctions.has(functionName)) {
       diagnostics.push({
         severity: "warning",
-        code: "TYPECODE_ARDUINO_FUNC_UNKNOWN",
+        code: "TYPEHAL_ARDUINO_FUNC_UNKNOWN",
         message: `Function '${functionName}' is not in the known Arduino built-in function set for architecture '${capabilities.architecture}'.`,
       });
     }
@@ -640,7 +640,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
       if (!capabilities.builtinGlobals.has(identifier)) {
         diagnostics.push({
           severity: "warning",
-          code: "TYPECODE_ARDUINO_GLOBAL_UNKNOWN",
+          code: "TYPEHAL_ARDUINO_GLOBAL_UNKNOWN",
           message: `Global '${identifier}' is not in the known Arduino built-in set for architecture '${capabilities.architecture}'.`,
         });
       }
@@ -655,7 +655,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     shimLines.push("#ifndef HIGH", "#define HIGH 0x1", "#endif");
     diagnostics.push({
       severity: "warning",
-      code: "TYPECODE_ARDUINO_SHIM_HIGH",
+      code: "TYPEHAL_ARDUINO_SHIM_HIGH",
       message: "Injected fallback HIGH shim. Verify platform-specific value if your core overrides it.",
     });
   }
@@ -664,7 +664,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     shimLines.push("#ifndef LOW", "#define LOW 0x0", "#endif");
     diagnostics.push({
       severity: "warning",
-      code: "TYPECODE_ARDUINO_SHIM_LOW",
+      code: "TYPEHAL_ARDUINO_SHIM_LOW",
       message: "Injected fallback LOW shim. Verify platform-specific value if your core overrides it.",
     });
   }
@@ -674,7 +674,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     shimLines.push("#ifndef A0", `#define A0 ${a0Fallback}`, "#endif");
     diagnostics.push({
       severity: "warning",
-      code: "TYPECODE_ARDUINO_SHIM_A0",
+      code: "TYPEHAL_ARDUINO_SHIM_A0",
       message: `Injected fallback A0 shim as '${a0Fallback}'. Board-specific analog pin mapping may differ; set --fqbn for accurate pin mapping.`,
     });
   }

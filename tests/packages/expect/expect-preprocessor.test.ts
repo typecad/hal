@@ -1,35 +1,35 @@
 // ---------------------------------------------------------------------------
-// Unit tests for @typecode/expect — Preprocessor
+// Unit tests for @typehal/expect — Preprocessor
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
 import { preprocess } from '../../../packages/expect/src/host/preprocessor';
 
 describe('preprocessor', () => {
-  it('strips @typecode/expect imports', () => {
+  it('strips @typehal/expect imports', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
-import { A0 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0 } from '@typehal';
 done();
 `;
     const result = preprocess(source);
-    expect(result).not.toContain("@typecode/expect");
-    expect(result).toContain("@typecode");
+    expect(result).not.toContain("@typehal/expect");
+    expect(result).toContain("@typehal");
   });
 
   it('preserves non-expect imports', () => {
     const source = `
-import { A0 } from '@typecode';
-import { describe, done } from '@typecode/expect';
+import { A0 } from '@typehal';
+import { describe, done } from '@typehal/expect';
 done();
 `;
     const result = preprocess(source);
-    expect(result).toContain("import { A0 } from '@typecode'");
+    expect(result).toContain("import { A0 } from '@typehal'");
   });
 
   it('emits Serial.initialize preamble', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 done();
 `;
     const result = preprocess(source);
@@ -39,7 +39,7 @@ done();
 
   it('transforms describe() to protocol line', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("A0 analog read")
   .it("reads zero")
     .expect(0).toBe(0);
@@ -51,7 +51,7 @@ done();
 
   it('transforms .it() to protocol line', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test name")
     .expect(42).toBe(42);
@@ -63,7 +63,7 @@ done();
 
   it('transforms .expect(value).toBe(expected) to protocol lines', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test")
     .expect(42).toBe(0);
@@ -76,8 +76,8 @@ done();
 
   it('hoists complex expressions into const declarations', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
-import { A0 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0 } from '@typehal';
 describe("analog")
   .it("reads")
     .expect(A0.read()).toBe(0);
@@ -92,7 +92,7 @@ done();
 
   it('does not hoist simple expressions', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test")
     .expect(42).toBe(42);
@@ -106,7 +106,7 @@ done();
 
   it('transforms done() to SUITE_END + idle loop', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 done();
 `;
     const result = preprocess(source);
@@ -116,7 +116,7 @@ done();
 
   it('handles multiple describe chains', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group1")
   .it("test1").expect(1).toBe(1);
 describe("group2")
@@ -132,7 +132,7 @@ done();
 
   it('handles multiple it() calls in one chain', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("first").expect(1).toBe(1)
   .it("second").expect(2).toBe(2);
@@ -145,7 +145,7 @@ done();
 
   it('transforms toBeLessThan matcher', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test").expect(10).toBeLessThan(100);
 done();
@@ -156,7 +156,7 @@ done();
 
   it('transforms toBeGreaterThan matcher', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test").expect(50).toBeGreaterThan(10);
 done();
@@ -167,7 +167,7 @@ done();
 
   it('transforms toBeWithinRange matcher with two args', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test").expect(25).toBeWithinRange(20, 30);
 done();
@@ -178,7 +178,7 @@ done();
 
   it('transforms toBeTruthy matcher (no args)', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test").expect(1).toBeTruthy();
 done();
@@ -189,8 +189,8 @@ done();
 
   it('preserves non-test statements', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
-import { A0 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0 } from '@typehal';
 const x: number = 42;
 describe("group")
   .it("test").expect(x).toBe(42);
@@ -202,7 +202,7 @@ done();
 
   it('handles toBeCloseTo with precision', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test").expect(3).toBeCloseTo(3, 2);
 done();
@@ -213,7 +213,7 @@ done();
 
   it('extracts arrow function with block body from expect()', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("Variables and Scoping")
   .it("const and let assignment")
     .expect(() => {
@@ -239,7 +239,7 @@ done();
 
   it('extracts arrow function with expression body from expect()', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test")
     .expect(() => 1 + 2).toBe(3);
@@ -253,7 +253,7 @@ done();
 
   it('extracts function expression from expect()', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("group")
   .it("test")
     .expect(function () { const x = 5; return x * 2; }).toBe(10);
@@ -268,7 +268,7 @@ done();
 
   it('extracts IIFE arrow function from expect()', () => {
     const source = `
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 describe("Variables and Scoping")
   .it("const and let assignment")
     .expect(

@@ -1,7 +1,7 @@
 {
-  "name": "@typecode/framework-native",
+  "name": "@typehal/framework-native",
   "version": "0.1.0",
-  "description": "TypeCode framework package for native C++ code generation (Windows/Linux executables)",
+  "description": "TypeHAL framework package for native C++ code generation (Windows/Linux executables)",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,11 +20,11 @@
     "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
-    "@typecode/core": "*"
+    "@typehal/core": "*"
   },
   "devDependencies": {
-    "@typecode/expect": "*",
-    "@typecode/cli": "*",
+    "@typehal/expect": "*",
+    "@typehal/cli": "*",
     "typescript": "^5.7.3"
   },
   "license": "MIT",

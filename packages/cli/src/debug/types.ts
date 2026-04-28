@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// @typecode/debug — Debug Types
+// @typehal/debug — Debug Types
 //
-// Type definitions for the TypeCode debugger breakpoint system.
+// Type definitions for the TypeHAL debugger breakpoint system.
 // ---------------------------------------------------------------------------
 
 /**
@@ -40,7 +40,7 @@ export interface RichBreakpoint {
 
 /**
  * Map of file paths to arrays of rich breakpoints.
- * Loaded from .typecode/breakpoints.json.
+ * Loaded from .typehal/breakpoints.json.
  */
 export type BreakpointMap = Record<string, RichBreakpoint[]>;
 

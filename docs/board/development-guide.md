@@ -1,19 +1,19 @@
 # Board Package Development Guide
 
-> **Audience**: This document is designed for LLM/AI agents to understand how to create and configure board packages for the TypeCode transpiler.
+> **Audience**: This document is designed for LLM/AI agents to understand how to create and configure board packages for the TypeHAL transpiler.
 
 ## Overview
 
-TypeCode uses a **two-tier package organization** that separates architecture concerns from board specifics:
+TypeHAL uses a **two-tier package organization** that separates architecture concerns from board specifics:
 
-### Architecture Packages (`@typecode/arch-*`)
+### Architecture Packages (`@typehal/arch-*`)
 Define how code is generated for a CPU family (AVR, ARM, ESP32, etc.):
 - Register definitions and memory layouts
 - Code generation strategy (native vs. Arduino framework)
 - Peripheral access patterns
 - Architecture-specific optimizations
 
-### Board Packages (`@typecode/board-*`)
+### Board Packages (`@typehal/board-*`)
 Define a specific board's capabilities and pin mappings:
 - Pin names and numbers (D13, A0, LED, etc.)
 - Which peripherals are available and their pins
@@ -99,7 +99,7 @@ interface PlatformStrategy {
   
   // === Expression/Statement Rendering ===
   tryRenderCallStatement(callee, args, renderArg, boardConstants): string | undefined;
-  tryRenderTypecodeCall(receiver, receiverKind, method, args, ...): string | undefined;
+  tryRenderTypehalCall(receiver, receiverKind, method, args, ...): string | undefined;
   transformConsoleCall(method, renderedArgs, forHeader): string;
   
   // === Reserved Names ===
@@ -112,7 +112,7 @@ interface PlatformStrategy {
 Most board packages should extend [`ArduinoStrategy`](packages/cli/src/platform/arduino-strategy.ts):
 
 ```typescript
-import { ArduinoStrategy } from 'typecode/platform';
+import { ArduinoStrategy } from 'typehal/platform';
 
 export class MyBoardStrategy extends ArduinoStrategy {
   override readonly id = "arduino";  // Keep "arduino" to use Arduino toolchain
@@ -130,7 +130,7 @@ Board packages must export their strategy as `BoardStrategy`:
 
 ```typescript
 // src/index.ts
-import { registerPlatformStrategy } from 'typecode/platform/registry';
+import { registerPlatformStrategy } from 'typehal/platform/registry';
 import { MyBoardStrategy } from './strategy';
 
 // Export for CLI to load
@@ -399,7 +399,7 @@ export function getPinMask(pin: number): number | undefined {
 Export a `BoardDefinition` in `index.ts`:
 
 ```typescript
-import type { BoardDefinition } from '@typecode/core';
+import type { BoardDefinition } from '@typehal/core';
 
 export const Board: BoardDefinition = {
   name: 'ATmega328P Native',
@@ -452,14 +452,14 @@ The code still compiles, but the warning alerts users to potential issues.
 
 ## Configuration
 
-Users configure the board in `typecode.config.ts`:
+Users configure the board in `typehal.config.ts`:
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-native-atmega328p',
+  board: '@typehal/board-native-atmega328p',
   fqbn: 'arduino:avr:uno',
   output: {
     framework: 'arduino',
@@ -481,7 +481,7 @@ npm run build
 
 # Test with an example
 cd ../..
-npx typecode example.ts --compile
+npx typehal example.ts --compile
 ```
 
 ## Architecture vs Board Package Relationship
@@ -503,14 +503,14 @@ npx typecode example.ts --compile
 ```typescript
 // Board package (board-arduino-uno) re-exports architecture strategy
 // src/index.ts
-export { PlatformStrategy as BoardStrategy } from '@typecode/arch-avr-native';
+export { PlatformStrategy as BoardStrategy } from '@typehal/arch-avr-native';
 
 // Board package provides pin mappings
 export const LED: IDigitalPin = createDigitalPin(13, 5);
 export const D13: IDigitalPin = LED;
 
 // User code imports from board package
-import { LED, BoardStrategy } from '@typecode/board-arduino-uno';
+import { LED, BoardStrategy } from '@typehal/board-arduino-uno';
 LED.high();  // Architecture strategy generates: PORTB |= (1 << PB5)
 ```
 
@@ -543,7 +543,7 @@ Key files:
 Ensure the package:
 1. Exports `BoardStrategy` class
 2. Calls `registerPlatformStrategy()` in `index.ts`
-3. Is listed in `typecode.config.ts` → `board` field
+3. Is listed in `typehal.config.ts` → `board` field
 
 ### Polyfills Not Replaced
 
@@ -672,7 +672,7 @@ Peripheral definitions (I2C, SPI, Serial) use object literals with type assertio
 
 ```typescript
 // In peripherals.ts
-import type { II2CBus, ISPIBus, ISerialPort } from '@typecode/core';
+import type { II2CBus, ISPIBus, ISerialPort } from '@typehal/core';
 
 // Object literal with type assertion - recognized as compile-time stub
 export const I2C0: II2CBus = {
@@ -772,7 +772,7 @@ If you see `TS2CPP_RAW_EXPR` warnings:
 import type { 
   IDigitalPin, IDigitalInput, IDigitalOutput,
   IPWMPin, IAnalogInput, IInterruptPin 
-} from '@typecode/core';
+} from '@typehal/core';
 import { createDigitalPin, createPWMPin, createAnalogPin } from './factory';
 
 // Digital-only pins

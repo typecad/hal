@@ -8,8 +8,8 @@
 
 import type { ProgramIR, ExpressionIR, StatementIR } from './model';
 import type { Diagnostic } from '../types';
-import type { TypecodeReceiverKind } from '@typecode/core';
-import { pinsWithKind } from '@typecode/core';
+import type { TypehalReceiverKind } from '@typehal/core';
+import { pinsWithKind } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // Method-to-capability mapping
@@ -21,7 +21,7 @@ const INTERRUPT_METHODS = new Set(['onRising', 'onFalling', 'onChange', 'offInte
 
 interface CapabilityRule {
   methods: Set<string>;
-  requiredKind: TypecodeReceiverKind;
+  requiredKind: TypehalReceiverKind;
   label: string;
   description: (method: string) => string;
 }
@@ -47,7 +47,7 @@ const RULES: CapabilityRule[] = [
   },
 ];
 
-function describeKind(kind: TypecodeReceiverKind): string {
+function describeKind(kind: TypehalReceiverKind): string {
   switch (kind) {
   case 'digital': return 'digital-only';
   case 'pwm': return 'PWM-capable';
@@ -61,7 +61,7 @@ function describeKind(kind: TypecodeReceiverKind): string {
 // IR walker — mirrors the pattern in adc-range-validation.ts
 // ---------------------------------------------------------------------------
 
-function checkTypecodeCall(
+function checkTypehalCall(
   receiver: string,
   receiverKind: string,
   method: string,
@@ -76,7 +76,7 @@ function checkTypecodeCall(
     diagnostics.push({
       severity: 'error',
       code: 'pin-capability-mismatch',
-      message: `${receiver}.${method}() — ${rule.description(method)}, but ${receiver} is a ${describeKind(receiverKind as TypecodeReceiverKind)} pin.`,
+      message: `${receiver}.${method}() — ${rule.description(method)}, but ${receiver} is a ${describeKind(receiverKind as TypehalReceiverKind)} pin.`,
       hint: `Use a pin that supports ${rule.label}: ${pinsWithKind(rule.requiredKind).join(', ')}.`,
       source: 'pin-capability-validation',
       line: sourceLine,
@@ -88,9 +88,9 @@ function checkTypecodeCall(
 function scanExpression(expr: ExpressionIR, parentLine: number | undefined, parentCol: number | undefined, diagnostics: Diagnostic[]): void {
   if (!expr || typeof expr !== 'object') return;
 
-  if (expr.kind === 'typecode-call') {
+  if (expr.kind === 'typehal-call') {
     const tc = expr as any;
-    checkTypecodeCall(tc.receiver, tc.receiverKind, tc.method, parentLine, parentCol, diagnostics);
+    checkTypehalCall(tc.receiver, tc.receiverKind, tc.method, parentLine, parentCol, diagnostics);
     if (tc.args) {
       for (const arg of tc.args) {
         scanExpression(arg, parentLine, parentCol, diagnostics);
@@ -121,9 +121,9 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   const col = (stmt as any).sourceSpan?.startColumn as number | undefined;
 
   switch (stmt.kind) {
-  case 'typecode-call': {
+  case 'typehal-call': {
     const tc = stmt as any;
-    checkTypecodeCall(tc.receiver, tc.receiverKind, tc.method, line, col, diagnostics);
+    checkTypehalCall(tc.receiver, tc.receiverKind, tc.method, line, col, diagnostics);
     if (tc.args) {
       for (const arg of tc.args) {
         scanExpression(arg, line, col, diagnostics);

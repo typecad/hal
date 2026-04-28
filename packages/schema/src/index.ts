@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/schema — Board definition schema and metadata exports
+// @typehal/schema — Board definition schema and metadata exports
 // ---------------------------------------------------------------------------
 
 export type {

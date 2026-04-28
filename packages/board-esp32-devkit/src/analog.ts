@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Analog helpers
+// @typehal/board-esp32-devkit — Analog helpers
 //
 // Typed wrappers around the ESP32 ADC subsystem.
 // ---------------------------------------------------------------------------

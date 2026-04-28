@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Pulse measurement utilities
+// @typehal/board-esp32-devkit — Pulse measurement utilities
 // ---------------------------------------------------------------------------
 
-import type { IPulseNamespace } from '@typecode/core';
+import type { IPulseNamespace } from '@typehal/core';
 
 /** Measure pulse length in microseconds. Maps to Arduino `pulseIn()`. */
 export declare function pulseIn(pin: number, value: number, timeout?: number): number;

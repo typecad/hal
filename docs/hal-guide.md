@@ -1,8 +1,8 @@
-# TypeCode HAL Guide
+# TypeHAL HAL Guide
 
-This guide covers the major Hardware Abstraction Layer (HAL) systems in TypeCode with simple, practical examples.
+This guide covers the major Hardware Abstraction Layer (HAL) systems in TypeHAL with simple, practical examples.
 
-TypeCode currently supports two styles of hardware access:
+TypeHAL currently supports two styles of hardware access:
 
 - Recommended: object-style configuration such as `LED.asOutput()` and explicit bus ownership via `I2C0.take()`.
 - Direct pin methods such as `D2.inputPullUp()` for pull-up configuration.
@@ -31,7 +31,7 @@ Digital pins can be configured as inputs or outputs and read/write HIGH or LOW v
 ### Recommended Output Pattern
 
 ```typescript
-import { LED, delay } from '@typecode';
+import { LED, delay } from '@typehal';
 
 // Configure LED pin as an output and return a typed alias.
 const led = LED.asOutput(true);
@@ -45,7 +45,7 @@ while (true) {
 ### Recommended Input with Pull-up
 
 ```typescript
-import { D2, LED } from '@typecode';
+import { D2, LED } from '@typehal';
 
 const button = D2.asInputPullUp();
 const led = LED.asOutput();
@@ -62,7 +62,7 @@ while (true) {
 ### Direct Pin API
 
 ```typescript
-import { D2, LED, LOW } from '@typecode';
+import { D2, LED, LOW } from '@typehal';
 
 D2.inputPullUp();
 const led = LED.asOutput();
@@ -85,7 +85,7 @@ Analog pins read continuous voltage values (0-1023 on 10-bit ADC).
 ### Reading Analog Values
 
 ```typescript
-import { A0, UART0, delay } from '@typecode';
+import { A0, UART0, delay } from '@typehal';
 
 const serial = UART0.begin(9600);
 
@@ -105,7 +105,7 @@ PWM pins can output analog-like values by varying duty cycle (0-255).
 ### LED Fading
 
 ```typescript
-import { D9, delay } from '@typecode';
+import { D9, delay } from '@typehal';
 
 // D9 must be a PWM-capable pin.
 const led = D9.asOutput(false);
@@ -127,7 +127,7 @@ while (true) {
 ### PWM Duty Cycle
 
 ```typescript
-import { D9 } from '@typecode';
+import { D9 } from '@typehal';
 
 const pwmPin = D9.asOutput();
 pwmPin.pwm(50);
@@ -141,7 +141,7 @@ PWM outputs are not always independent. On Uno, these pins share hardware timers
 - `D9` and `D10` share `timer1`
 - `D3` and `D11` share `timer2`
 
-TypeCode now emits an informational diagnostic when your program uses multiple PWM pins from the same timer group. That is not automatically wrong, but it matters whenever the target framework or board ties PWM configuration to timer-wide state.
+TypeHAL now emits an informational diagnostic when your program uses multiple PWM pins from the same timer group. That is not automatically wrong, but it matters whenever the target framework or board ties PWM configuration to timer-wide state.
 
 ---
 
@@ -152,7 +152,7 @@ UART provides serial communication for debugging and data transfer.
 ### Basic Serial Output
 
 ```typescript
-import { UART0, delay } from '@typecode';
+import { UART0, delay } from '@typehal';
 
 // Begin serial at 9600 baud
 const serial = UART0.begin(9600);
@@ -170,7 +170,7 @@ while (true) {
 ### Reading Serial Data
 
 ```typescript
-import { UART0 } from '@typecode';
+import { UART0 } from '@typehal';
 
 const serial = UART0.begin(9600);
 
@@ -185,7 +185,7 @@ while (true) {
 ### Ownership Pattern for Shared UART Access
 
 ```typescript
-import { UART0 } from '@typecode';
+import { UART0 } from '@typehal';
 
 const uart = UART0.take();
 if (uart) {
@@ -203,7 +203,7 @@ I2C is a two-wire protocol for communicating with sensors and other devices.
 ### Basic I2C Setup
 
 ```typescript
-import { I2C0 } from '@typecode';
+import { I2C0 } from '@typehal';
 
 // Initialize I2C as master
 const i2c = I2C0.begin();
@@ -212,7 +212,7 @@ const i2c = I2C0.begin();
 ### Reading from a Sensor
 
 ```typescript
-import { I2C0, UART0, delay } from '@typecode';
+import { I2C0, UART0, delay } from '@typehal';
 
 const serial = UART0.begin(9600);
 const i2c = I2C0.begin();
@@ -235,7 +235,7 @@ while (true) {
 ### Recommended Ownership Pattern
 
 ```typescript
-import { I2C0 } from '@typecode';
+import { I2C0 } from '@typehal';
 
 const bus = I2C0.take();
 if (bus) {
@@ -247,7 +247,7 @@ if (bus) {
 ### Writing to a Device
 
 ```typescript
-import { I2C0 } from '@typecode';
+import { I2C0 } from '@typehal';
 
 const i2c = I2C0.begin();
 
@@ -269,7 +269,7 @@ SPI is a high-speed serial protocol for communicating with devices like sensors,
 ### Basic SPI Setup
 
 ```typescript
-import { SPI0, D10 } from '@typecode';
+import { SPI0, D10 } from '@typehal';
 
 const spi = SPI0.begin();
 
@@ -285,7 +285,7 @@ const chipSelect = D10.asOutput(true);
 ### Single Byte Transfer
 
 ```typescript
-import { SPI0, D10, UART0, delay } from '@typecode';
+import { SPI0, D10, UART0, delay } from '@typehal';
 
 const serial = UART0.begin(9600);
 const spi = SPI0.begin();
@@ -304,7 +304,7 @@ while (true) {
 ### Multi-Byte Transfer
 
 ```typescript
-import { SPI0, D10 } from '@typecode';
+import { SPI0, D10 } from '@typehal';
 
 const spi = SPI0.begin();
 spi.setFrequency(1_000_000);
@@ -326,7 +326,7 @@ Interrupts allow immediate response to external events without polling.
 ### Button Interrupt
 
 ```typescript
-import { D2, LED } from '@typecode';
+import { D2, LED } from '@typehal';
 
 const led = LED.asOutput(false);
 const button = D2.asInputPullUp();
@@ -340,7 +340,7 @@ button.onFalling(() => {
 ### Interrupt Trigger Options
 
 ```typescript
-import { D2 } from '@typecode';
+import { D2 } from '@typehal';
 
 const button = D2.asInputPullUp();
 
@@ -354,12 +354,12 @@ button.onChange(() => { /* called on any change */ });
 
 ## Timing
 
-TypeCode provides timing functions for delays and measuring elapsed time.
+TypeHAL provides timing functions for delays and measuring elapsed time.
 
 ### Delay
 
 ```typescript
-import { LED, delay } from '@typecode';
+import { LED, delay } from '@typehal';
 
 const led = LED.asOutput();
 
@@ -372,7 +372,7 @@ while (true) {
 ### Millis (Elapsed Time)
 
 ```typescript
-import { UART0, millis, delay } from '@typecode';
+import { UART0, millis, delay } from '@typehal';
 
 const serial = UART0.begin(9600);
 
@@ -401,7 +401,7 @@ while (true) {
 
 ## Board-aware constraints
 
-TypeCode's HAL is designed around board knowledge, not generic GPIO optimism. The transpiler can already tell you about conflicts such as:
+TypeHAL's HAL is designed around board knowledge, not generic GPIO optimism. The transpiler can already tell you about conflicts such as:
 
 - using `D0` or `D1` as general GPIO on Uno while serial is active
 - using `A4` or `A5` as GPIO while `I2C0` is enabled

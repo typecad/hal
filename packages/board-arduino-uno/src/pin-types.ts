@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Board-specific pin type overrides
+// @typehal/board-arduino-uno — Board-specific pin type overrides
 //
 // AVR (ATmega328P) has no hardware pulldown, so we exclude `inputPullDown()`.
 // Capability-specific methods (analog, PWM, interrupt) are omitted from pin
@@ -7,7 +7,7 @@
 // does not exist" instead of the unhelpful "Object is possibly undefined".
 // ---------------------------------------------------------------------------
 
-import type { BasePin, IOutputModePin, IInputModePin, PWMPin, AnalogPin, InterruptPin } from '@typecode/core';
+import type { BasePin, IOutputModePin, IInputModePin, PWMPin, AnalogPin, InterruptPin } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // Method groups — used to cleanly Omit capability methods from pin types

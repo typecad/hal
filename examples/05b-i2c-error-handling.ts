@@ -5,7 +5,7 @@
 // Shows: Device accessor API, error checking patterns, bus recovery
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0, delay } from '@typecode';
+import { I2C0, UART0, delay } from '@typehal';
 
 // Initialize UART0 for debug output
 const serial = UART0.begin(9600);

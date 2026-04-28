@@ -1,4 +1,4 @@
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 
 describe("Comparison via ternary")
   .it("equality and inequality")

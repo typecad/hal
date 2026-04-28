@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/hal — Hardware abstraction layer types and board metadata exports
+// @typehal/hal — Hardware abstraction layer types and board metadata exports
 // ---------------------------------------------------------------------------
 
 export type {

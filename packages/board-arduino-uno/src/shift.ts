@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Shift register utilities
+// @typehal/board-arduino-uno — Shift register utilities
 // ---------------------------------------------------------------------------
 
-import type { IShiftNamespace, ShiftBitOrder } from '@typecode/core';
+import type { IShiftNamespace, ShiftBitOrder } from '@typehal/core';
 
 /** Bit order type */
-export type { ShiftBitOrder } from '@typecode/core';
+export type { ShiftBitOrder } from '@typehal/core';
 
 /** Shift data in from a pin. */
 export declare function shiftIn(dataPin: number, clockPin: number, bitOrder: ShiftBitOrder): number;

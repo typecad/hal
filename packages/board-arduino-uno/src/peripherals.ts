@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Peripheral instances
+// @typehal/board-arduino-uno — Peripheral instances
 //
 // Ambient declarations for the board's built-in peripheral buses.
 // These carry full type information at design-time so TypeScript prevents
@@ -22,7 +22,7 @@ import type {
   IUninitializedI2CBus,
   IUninitializedSPIBus,
   IUninitializedUARTBus,
-} from '@typecode/core';
+} from '@typehal/core';
 
 /** I2C bus 0 (Wire library, pins A4=SDA / A5=SCL). Starts uninitialized. */
 export declare const I2C0: IUninitializedI2CBus;

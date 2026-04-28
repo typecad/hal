@@ -28,7 +28,7 @@ export {
 
 // Include resolution utilities
 export {
-  isTypecodeSDKImport,
+  isTypehalSDKImport,
   normalizeInclude,
   dedupe,
   resolveTranspiledModuleInclude,

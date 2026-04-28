@@ -5,10 +5,10 @@ import { transpile } from "./setup";
 // AVR / Arduino safety feature tests
 //
 // Covers the AVR-targeted improvements to the framework-arduino strategy:
-//   1. typecode_halt panic handler (renderThrow + polyfill)
+//   1. typehal_halt panic handler (renderThrow + polyfill)
 //   2. F()-wrapped console.log strings (flash storage, no heap)
 //   3. String predicates using C stdlib (strstr / strncmp / __tc_endsWith)
-//   4. TYPECODE_STR_BUF_SIZE macro in string polyfills
+//   4. TYPEHAL_STR_BUF_SIZE macro in string polyfills
 //   5. Heap-allocation validator (blocks `new ClassName()` on AVR)
 //   6. EEPROM namespace dispatch
 //   7. Timing namespace dispatch
@@ -20,32 +20,32 @@ const AVR_CTX = { platformContext: { arduino: { fqbn: "arduino:avr:uno" } } };
 const ESP32_CTX = { platformContext: { arduino: { fqbn: "esp32:esp32:esp32" } } };
 
 // ---------------------------------------------------------------------------
-// 1. typecode_halt panic handler
+// 1. typehal_halt panic handler
 // ---------------------------------------------------------------------------
 
-describe("typecode_halt panic handler", () => {
-  it("emits typecode_halt macro definition in string_methods polyfill", () => {
+describe("typehal_halt panic handler", () => {
+  it("emits typehal_halt macro definition in string_methods polyfill", () => {
     const result = transpile(
       `function setup(): void { throw new Error("bad"); }`,
       { target: "arduino", ...AVR_CTX },
     );
-    expect(result.cpp).toContain("typecode_halt");
+    expect(result.cpp).toContain("typehal_halt");
     expect(result.cpp).toContain("Serial.println");
     expect(result.cpp).toContain("for (;;)");
   });
 
-  it("renderThrow emits typecode_halt(\"PANIC\") not a bare for(;;) in setup body", () => {
+  it("renderThrow emits typehal_halt(\"PANIC\") not a bare for(;;) in setup body", () => {
     const result = transpile(
       `function setup(): void { throw new Error("oops"); }`,
       { target: "arduino", ...AVR_CTX },
     );
-    // Should use typecode_halt macro call, not a bare infinite-loop in the function body
-    expect(result.cpp).toContain('typecode_halt("PANIC")');
+    // Should use typehal_halt macro call, not a bare infinite-loop in the function body
+    expect(result.cpp).toContain('typehal_halt("PANIC")');
     // The macro definition legitimately contains for(;;); verify setup() body uses the macro call
     expect(result.cpp).toContain('void setup()');
   });
 
-  it("typecode_halt macro uses F() for flash storage", () => {
+  it("typehal_halt macro uses F() for flash storage", () => {
     const result = transpile(
       `function setup(): void { throw new Error("err"); }`,
       { target: "arduino", ...AVR_CTX },
@@ -54,12 +54,12 @@ describe("typecode_halt panic handler", () => {
     expect(result.cpp).toContain("F(msg)");
   });
 
-  it("typecode_halt macro is guarded with #ifndef", () => {
+  it("typehal_halt macro is guarded with #ifndef", () => {
     const result = transpile(
       `function setup(): void { throw new Error(""); }`,
       { target: "arduino", ...AVR_CTX },
     );
-    expect(result.cpp).toContain("#ifndef typecode_halt");
+    expect(result.cpp).toContain("#ifndef typehal_halt");
   });
 });
 
@@ -103,7 +103,7 @@ describe("F() string wrapping for Arduino Serial output", () => {
     );
     // Variable reference — no F() wrapping in the Serial.println call itself
     expect(result.cpp).toContain("Serial.println(msg)");
-    // The typecode_halt macro body contains Serial.println(F(msg)) — but the variable call is unwrapped
+    // The typehal_halt macro body contains Serial.println(F(msg)) — but the variable call is unwrapped
   });
 });
 
@@ -147,11 +147,11 @@ describe("String predicates use C stdlib (no heap String allocation)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. TYPECODE_STR_BUF_SIZE macro in polyfill header
+// 4. TYPEHAL_STR_BUF_SIZE macro in polyfill header
 // ---------------------------------------------------------------------------
 
-describe("TYPECODE_STR_BUF_SIZE macro in string polyfills", () => {
-  it("emits the TYPECODE_STR_BUF_SIZE guard before polyfill helpers", () => {
+describe("TYPEHAL_STR_BUF_SIZE macro in string polyfills", () => {
+  it("emits the TYPEHAL_STR_BUF_SIZE guard before polyfill helpers", () => {
     const result = transpile(
       `function setup(): void {
         const msg = "hello";
@@ -159,12 +159,12 @@ describe("TYPECODE_STR_BUF_SIZE macro in string polyfills", () => {
       }`,
       { target: "arduino", ...AVR_CTX },
     );
-    expect(result.cpp).toContain("TYPECODE_STR_BUF_SIZE");
-    expect(result.cpp).toContain("#ifndef TYPECODE_STR_BUF_SIZE");
-    expect(result.cpp).toContain("#define TYPECODE_STR_BUF_SIZE 64");
+    expect(result.cpp).toContain("TYPEHAL_STR_BUF_SIZE");
+    expect(result.cpp).toContain("#ifndef TYPEHAL_STR_BUF_SIZE");
+    expect(result.cpp).toContain("#define TYPEHAL_STR_BUF_SIZE 64");
   });
 
-  it("static buffers in helpers reference TYPECODE_STR_BUF_SIZE not a magic number", () => {
+  it("static buffers in helpers reference TYPEHAL_STR_BUF_SIZE not a magic number", () => {
     const result = transpile(
       `function setup(): void {
         const s = "test";
@@ -172,10 +172,10 @@ describe("TYPECODE_STR_BUF_SIZE macro in string polyfills", () => {
       }`,
       { target: "arduino", ...AVR_CTX },
     );
-    expect(result.cpp).toContain("buf[2][TYPECODE_STR_BUF_SIZE]");
+    expect(result.cpp).toContain("buf[2][TYPEHAL_STR_BUF_SIZE]");
     // No raw 64 should appear without the macro (the macro definition itself is ok)
     const lines = result.cpp.split("\n").filter(
-      l => l.includes("char buf[") && l.includes("64") && !l.includes("TYPECODE_STR_BUF_SIZE"),
+      l => l.includes("char buf[") && l.includes("64") && !l.includes("TYPEHAL_STR_BUF_SIZE"),
     );
     expect(lines).toHaveLength(0);
   });
@@ -190,7 +190,7 @@ describe("Heap-allocation validator (AVR)", () => {
     // Board import is required to resolve boardConstants (architecture = 'avr');
     // without it the validator has no arch info and returns no diagnostics.
     const result = transpile(
-      `import { D13 } from '@typecode/board-arduino-uno';
+      `import { D13 } from '@typehal/board-arduino-uno';
        class Foo { constructor(x: int) {} }
        function setup(): void {
          const led = D13;
@@ -356,7 +356,7 @@ describe("WDT namespace dispatch", () => {
 describe("IRAM_ATTR attribute for ESP32 ISR functions", () => {
   it("does NOT emit IRAM_ATTR on AVR targets", () => {
     const result = transpile(
-      `import { D2 } from '@typecode/board-arduino-uno';
+      `import { D2 } from '@typehal/board-arduino-uno';
        function setup(): void {
          D2.onFalling(() => {});
        }`,
@@ -367,7 +367,7 @@ describe("IRAM_ATTR attribute for ESP32 ISR functions", () => {
 
   it("emits IRAM_ATTR on ESP32 ISR forward declarations", () => {
     const result = transpile(
-      `import { D2 } from '@typecode/board-arduino-uno';
+      `import { D2 } from '@typehal/board-arduino-uno';
        function setup(): void {
          D2.onFalling(() => {});
        }`,
@@ -378,7 +378,7 @@ describe("IRAM_ATTR attribute for ESP32 ISR functions", () => {
 
   it("emits IRAM_ATTR on ESP32 ISR function definition", () => {
     const result = transpile(
-      `import { D2 } from '@typecode/board-arduino-uno';
+      `import { D2 } from '@typehal/board-arduino-uno';
        function setup(): void {
          D2.onFalling(() => {});
        }`,

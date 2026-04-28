@@ -5,7 +5,7 @@
 // access instead of the Arduino Serial library.
 // ---------------------------------------------------------------------------
 
-import { UART0, A0, delay } from '@typecode';
+import { UART0, A0, delay } from '@typehal';
 
 // Initialize UART0 at 9600 baud
 const serial = UART0.begin(9600);

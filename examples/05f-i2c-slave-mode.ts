@@ -5,8 +5,8 @@
 // requests. Shows: begin(address), onReceive(), onRequest().
 // ---------------------------------------------------------------------------
 
-import { I2C0 } from '@typecode/board-arduino-uno/arduino';
-import { UART0, LED, delay } from '@typecode';
+import { I2C0 } from '@typehal/board-arduino-uno/arduino';
+import { UART0, LED, delay } from '@typehal';
 
 const serial = UART0.begin(9600);
 const SLAVE_ADDR = 0x08;

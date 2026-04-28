@@ -10,7 +10,7 @@ import { stdin as input, stdout as output } from "node:process";
 // The promises-based readline returns an Interface with async question()
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 import type { BoardTemplateOptions } from "./templates";
-import type { ArchitectureIdentifier } from "@typecode/core";
+import type { ArchitectureIdentifier } from "@typehal/core";
 
 // Valid architectures with descriptions
 const ARCHITECTURES: Array<{ id: ArchitectureIdentifier; name: string; description: string }> = [
@@ -163,7 +163,7 @@ export async function runBoardWizard(): Promise<WizardResult | null> {
   
   try {
     console.log("\n╔════════════════════════════════════════════════════════════╗");
-    console.log("║        TypeCode Board Package Creation Wizard              ║");
+    console.log("║        TypeHAL Board Package Creation Wizard              ║");
     console.log("║                                                            ║");
     console.log("║  This wizard will guide you through creating a new board   ║");
     console.log("║  package with all pins, peripherals, and capabilities.     ║");
@@ -322,7 +322,7 @@ export async function runBoardWizard(): Promise<WizardResult | null> {
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
     console.log(`  Board Name:     ${displayName}`);
-    console.log(`  Package:        @typecode/board-${name}`);
+    console.log(`  Package:        @typehal/board-${name}`);
     console.log(`  Vendor:         ${vendor}`);
     console.log(`  Architecture:   ${architecture}`);
     console.log(`  MCU:            ${mcu}`);

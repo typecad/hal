@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Analog helpers
+// @typehal/board-arduino-uno — Analog helpers
 //
 // Typed wrappers around the Arduino ADC subsystem.
 // ---------------------------------------------------------------------------

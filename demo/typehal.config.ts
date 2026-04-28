@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
-// demo/typecode.config.ts - Demo Project Configuration for ESP32 DevKit
+// demo/typehal.config.ts - Demo Project Configuration for ESP32 DevKit
 // ---------------------------------------------------------------------------
 
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   // Entry point — the main TypeScript file to transpile
   entry: './src/sketch.ts',
 
@@ -12,10 +12,10 @@ const config: TypecodeConfig = {
   target: 'esp32',
 
   // Board package - provides pin definitions and board constants
-  board: '@typecode/board-esp32-devkit',
+  board: '@typehal/board-esp32-devkit',
 
   // Framework package - controls code generation strategy
-  framework: '@typecode/framework-arduino',
+  framework: '@typehal/framework-arduino',
 
   // Fully-Qualified Board Name for arduino-cli
   fqbn: 'esp32:esp32:esp32',
@@ -40,7 +40,7 @@ const config: TypecodeConfig = {
     baudRate: 115200,
   },
 
-  // Hardware test configuration (used by typecode-test / @typecode/expect)
+  // Hardware test configuration (used by typehal-test / @typehal/expect)
   test: {
     port: 'COM6',
     baudRate: 115200,

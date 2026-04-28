@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// @typecode/framework-arduino — SPI Handler
+// @typehal/framework-arduino — SPI Handler
 //
-// Renders TypeCode SPI peripheral calls to Arduino C++.
+// Renders TypeHAL SPI peripheral calls to Arduino C++.
 // Handles: SPI0 → SPI, SPI1 → SPI1, etc.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, BoardConstants } from '@typecode/core/shared';
+import type { ExpressionIR, BoardConstants } from '@typehal/core/shared';
 import { getObjectField, pinLikeArgValue } from './handler-utils';
 
 // ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@ import { getObjectField, pinLikeArgValue } from './handler-utils';
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the Arduino SPI instance name from a TypeCode receiver.
+ * Resolve the Arduino SPI instance name from a TypeHAL receiver.
  * SPI0 → SPI, SPI1 → SPI1, etc.
  */
 export function resolveSPIInstance(receiver: string): string {
@@ -71,7 +71,7 @@ export function renderSPICall(
     case 'device.transfer': {
       const cs = pinLikeArgValue(a(0), boardConstants);
       const value = a(1);
-      return `({ digitalWrite(${cs}, LOW); uint8_t __typecode_spi_result = ${instance}.transfer(${value}); digitalWrite(${cs}, HIGH); __typecode_spi_result; })`;
+      return `({ digitalWrite(${cs}, LOW); uint8_t __typehal_spi_result = ${instance}.transfer(${value}); digitalWrite(${cs}, HIGH); __typehal_spi_result; })`;
     }
     case 'device.write': {
       const cs = pinLikeArgValue(a(0), boardConstants);

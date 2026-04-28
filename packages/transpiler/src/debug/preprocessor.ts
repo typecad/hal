@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/debug — Debug Preprocessor
+// @typehal/debug — Debug Preprocessor
 //
 // Transforms TypeScript source by injecting Serial debug code at breakpoint
 // locations. The injected code prints variable values and waits for user
@@ -22,7 +22,7 @@ type LogMessagePart = { type: 'text' | 'variable'; value: string };
 export interface PreprocessOptions {
   /** The source file path (for line number calculation) */
   fileName: string;
-  /** The breakpoint map loaded from .typecode/breakpoints.json */
+  /** The breakpoint map loaded from .typehal/breakpoints.json */
   breakpoints: BreakpointMap;
   /** The source text to transform */
   source: string;
@@ -143,7 +143,7 @@ function generateSerialInitCode(): string[] {
     `while (!Serial) {`,
     `  delay(10);`,
     `}`,
-    `Serial.println("🔧 TypeCode Debug Mode Active");`,
+    `Serial.println("🔧 TypeHAL Debug Mode Active");`,
     `Serial.println("");`,
     `// === END DEBUG INIT ===`,
     ``,

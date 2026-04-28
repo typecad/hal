@@ -1,4 +1,4 @@
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 
 describe("Bit mask constants")
   .it("named bit flags combined with OR")

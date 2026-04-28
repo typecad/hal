@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PlatformStrategy } from "./platform/platform-strategy";
-import type { CompileResult, UploadResult, ToolchainOptions } from "@typecode/core/shared";
+import type { CompileResult, UploadResult, ToolchainOptions } from "@typehal/core/shared";
 
 /**
  * Components loaded from a framework package.

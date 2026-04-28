@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Barrel re-export
+// @typehal/core — Barrel re-export
 // ---------------------------------------------------------------------------
 
 // --- Pin types -------------------------------------------------------------
@@ -209,13 +209,13 @@ export { ArchitectureIdentifier } from './board/types';
 export {
   OutputFramework,
   OptimizationLevel,
-  TypecodeOutputConfig,
-  TypecodeConfig,
+  TypehalOutputConfig,
+  TypehalConfig,
   ToolchainType,
   ArduinoCliOptions,
-  TypecodeToolchainConfig,
-  TypecodeTestConfig,
-  TypecodeConsoleConfig,
+  TypehalToolchainConfig,
+  TypehalTestConfig,
+  TypehalConsoleConfig,
 } from './config';
 
 // --- Ownership & Borrowing Safety -------------------------------------------

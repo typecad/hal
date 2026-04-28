@@ -44,7 +44,7 @@ function getADCConfig(boardConstants: BoardConstants | undefined): ADCConfig | n
 function isAnalogRead(expr: ExpressionIR): boolean {
   if (!expr || typeof expr !== 'object') return false;
 
-  if (expr.kind === 'typecode-call') {
+  if (expr.kind === 'typehal-call') {
     const tc = expr as any;
     // Check if it's an analog pin read
     if (tc.receiverKind === 'analog-input' && tc.method === 'read') {
@@ -140,8 +140,8 @@ function scanExpressionForADCRange(
     scanExpressionForADCRange(ternary.alternate, adcConfig, diagnostics);
   }
 
-  // Check nested typecode calls
-  if (expr.kind === 'typecode-call') {
+  // Check nested typehal calls
+  if (expr.kind === 'typehal-call') {
     const call = expr as any;
     if (call.args) {
       for (const arg of call.args) {
@@ -237,7 +237,7 @@ function scanStatementForADCRange(
   }
 
   case 'call':
-  case 'typecode-call': {
+  case 'typehal-call': {
     const call = stmt as any;
     if (call.args) {
       for (const arg of call.args) {

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Protocol parser
+// @typehal/expect — Protocol parser
 //
 // Parses protocol lines from serial output into structured test results.
 //

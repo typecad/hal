@@ -9,7 +9,7 @@ describe('Interrupt Safety Analysis', () => {
   describe('Duplicate Interrupt Handler Detection', () => {
     it('generates warning when multiple handlers attached to same pin', () => {
       const result = transpile(`
-        import { D2 } from '@typecode/board-arduino-uno';
+        import { D2 } from '@typehal/board-arduino-uno';
         D2.attachInterrupt(() => {}, 'RISING');
         D2.attachInterrupt(() => {}, 'FALLING');
       `, { target: 'arduino' });
@@ -25,7 +25,7 @@ describe('Interrupt Safety Analysis', () => {
 
     it('does not generate warning for different pins', () => {
       const result = transpile(`
-        import { D2, D3 } from '@typecode/board-arduino-uno';
+        import { D2, D3 } from '@typehal/board-arduino-uno';
         D2.attachInterrupt(() => {}, 'RISING');
         D3.attachInterrupt(() => {}, 'RISING');
       `, { target: 'arduino' });
@@ -39,7 +39,7 @@ describe('Interrupt Safety Analysis', () => {
 
     it('generates warning for D2.onFalling + D2.onRising on the same pin (flat API)', () => {
       const result = transpile(`
-        import { D2 } from '@typecode/board-arduino-uno';
+        import { D2 } from '@typehal/board-arduino-uno';
         D2.onFalling(() => {});
         D2.onRising(() => {});
       `, { target: 'arduino' });
@@ -55,7 +55,7 @@ describe('Interrupt Safety Analysis', () => {
 
     it('does not warn for onFalling on D2 and onRising on D3 (different pins, flat API)', () => {
       const result = transpile(`
-        import { D2, D3 } from '@typecode/board-arduino-uno';
+        import { D2, D3 } from '@typehal/board-arduino-uno';
         D2.onFalling(() => {});
         D3.onRising(() => {});
       `, { target: 'arduino' });
@@ -71,7 +71,7 @@ describe('Interrupt Safety Analysis', () => {
   describe('Unsafe Operations in ISR', () => {
     it('generates warning for delay() in interrupt handler', () => {
       const result = transpile(`
-        import { D2, delay } from '@typecode/board-arduino-uno';
+        import { D2, delay } from '@typehal/board-arduino-uno';
         D2.attachInterrupt(() => {
           delay(100);
         }, 'RISING');
@@ -88,7 +88,7 @@ describe('Interrupt Safety Analysis', () => {
 
     it('generates info for Serial.print() in interrupt handler', () => {
       const result = transpile(`
-        import { D2, Serial } from '@typecode/board-arduino-uno';
+        import { D2, Serial } from '@typehal/board-arduino-uno';
         D2.attachInterrupt(() => {
           Serial.println("ISR triggered");
         }, 'RISING');
@@ -104,7 +104,7 @@ describe('Interrupt Safety Analysis', () => {
 
     it('does not generate warning for safe operations in ISR', () => {
       const result = transpile(`
-        import { D2, D13 } from '@typecode/board-arduino-uno';
+        import { D2, D13 } from '@typehal/board-arduino-uno';
         let counter = 0;
         D2.attachInterrupt(() => {
           counter++;
@@ -121,7 +121,7 @@ describe('Interrupt Safety Analysis', () => {
 
     it('does not generate warning for delay() outside ISR', () => {
       const result = transpile(`
-        import { delay } from '@typecode/board-arduino-uno';
+        import { delay } from '@typehal/board-arduino-uno';
         delay(1000);
       `, { target: 'arduino' });
 

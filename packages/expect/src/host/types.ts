@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Host-side types
+// @typehal/expect — Host-side types
 //
 // Internal type definitions used by the host runner (Node.js process) to
 // represent parsed serial output, assertion results, and test reports.
@@ -126,7 +126,7 @@ export interface RunResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Test-specific configuration — the `test` section of `typecode.config.ts`.
+ * Test-specific configuration — the `test` section of `typehal.config.ts`.
  */
 export interface TestConfig {
   /** Glob patterns for test files. Default: `['tests/**\/*.test.ts']`. */
@@ -152,7 +152,7 @@ export interface TestConfig {
  */
 export interface ResolvedConfig {
   test: TestConfig;
-  /** From typecode.config.ts root. */
+  /** From typehal.config.ts root. */
   fqbn: string;
   board: string;
   target: string;

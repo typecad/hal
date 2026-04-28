@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Pin capability flags and narrowed capability types
+// @typehal/core — Pin capability flags and narrowed capability types
 // ---------------------------------------------------------------------------
 
 /**

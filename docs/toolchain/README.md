@@ -1,6 +1,6 @@
 # Toolchain Documentation
 
-The TypeCode toolchain manages compilers, uploaders, and build tools for embedded and desktop development.
+The TypeHAL toolchain manages compilers, uploaders, and build tools for embedded and desktop development.
 
 ## Documents
 
@@ -8,12 +8,12 @@ The TypeCode toolchain manages compilers, uploaders, and build tools for embedde
 
 ## Overview
 
-TypeCode delegates compilation to the active framework's toolchain. Each framework provides its own compiler integration.
+TypeHAL delegates compilation to the active framework's toolchain. Each framework provides its own compiler integration.
 
 | Toolchain | Framework | Description | Use Case |
 |-----------|-----------|-------------|----------|
-| Arduino CLI | `@typecode/framework-arduino` | Official Arduino command-line | Microcontroller development |
-| Native (g++/clang++) | `@typecode/framework-native` | System C++ compiler | Desktop executables, testing |
+| Arduino CLI | `@typehal/framework-arduino` | Official Arduino command-line | Microcontroller development |
+| Native (g++/clang++) | `@typehal/framework-native` | System C++ compiler | Desktop executables, testing |
 
 ## Installation
 
@@ -90,14 +90,14 @@ interface Toolchain {
 ### Via CLI
 
 ```bash
-npx typecode sketch.ts --compile --upload --port COM4
+npx typehal sketch.ts --compile --upload --port COM4
 ```
 
 ### Via Configuration
 
 ```typescript
-// typecode.config.ts — Arduino project
-const config: TypecodeConfig = {
+// typehal.config.ts — Arduino project
+const config: TypehalConfig = {
   toolchain: {
     type: 'arduino-cli',
     arduinoCli: {
@@ -113,9 +113,9 @@ const config: TypecodeConfig = {
 For desktop C++ projects, customize the compiler through the `native` section:
 
 ```typescript
-// typecode.config.ts — Native project
-const config: TypecodeConfig = {
-  framework: '@typecode/framework-native',
+// typehal.config.ts — Native project
+const config: TypehalConfig = {
+  framework: '@typehal/framework-native',
   native: {
     compiler: 'clang++',              // Override auto-detected compiler
     cxxStandard: 'c++20',             // C++ standard
@@ -154,7 +154,7 @@ interface UploadOptions {
 List connected boards:
 
 ```bash
-npx typecode list-boards
+npx typehal list-boards
 ```
 
 Output:
@@ -171,10 +171,10 @@ Install Arduino cores:
 
 ```bash
 # Install AVR core
-npx typecode install-core arduino:avr
+npx typehal install-core arduino:avr
 
 # Install ESP32 core
-npx typecode install-core esp32:esp32
+npx typehal install-core esp32:esp32
 ```
 
 ## Library Management
@@ -183,10 +183,10 @@ Install libraries:
 
 ```bash
 # Install library
-npx typecode install-library Servo
+npx typehal install-library Servo
 
 # Install specific version
-npx typecode install-library Servo@1.1.8
+npx typehal install-library Servo@1.1.8
 ```
 
 ## Troubleshooting

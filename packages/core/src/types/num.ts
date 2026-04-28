@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Fluent number utilities
+// @typehal/core — Fluent number utilities
 //
 // Direct functions and fluent chainable API.
 // ---------------------------------------------------------------------------

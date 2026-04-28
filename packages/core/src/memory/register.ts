@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Register-mapped struct decorators
+// @typehal/core — Register-mapped struct decorators
 //
 // Compile-time markers for MMIO register definitions.  At runtime they attach
 // metadata via WeakMap; the transpiler reads the metadata when emitting C++.

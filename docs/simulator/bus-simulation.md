@@ -53,7 +53,7 @@ uart.begin(9600);
 ### Example: Testing Serial Output
 
 ```typescript
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 
 const board = createSimBoard({ boardType: 'arduino-uno' });
 const uart = board.serial(0);
@@ -172,8 +172,8 @@ interface I2COperationLog {
 ### Example: BME280 Sensor Mock
 
 ```typescript
-import { createSimBoard } from '@typecode/simulator';
-import type { ISimI2CDevice } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
+import type { ISimI2CDevice } from '@typehal/simulator';
 
 const board = createSimBoard({ boardType: 'arduino-uno' });
 const i2c = board.i2c(0);
@@ -293,8 +293,8 @@ interface SPIOperationLog {
 ### Example: SPI Sensor Mock
 
 ```typescript
-import { createSimBoard } from '@typecode/simulator';
-import type { ISimSPIDevice } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
+import type { ISimSPIDevice } from '@typehal/simulator';
 
 const board = createSimBoard({ boardType: 'arduino-uno' });
 const spi = board.spi(0);

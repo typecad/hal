@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/framework-arduino — Arduino Library Utilities
+// @typehal/framework-arduino — Arduino Library Utilities
 //
 // Thin re-export barrel. Implementation is split across:
 //   - lib-discovery.ts    — finding installed libraries via arduino-cli

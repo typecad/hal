@@ -5,9 +5,9 @@ import type {
   SnprintfRenderResult,
   EmissionScopeState,
   SnprintfExpressionRenderer,
-} from "@typecode/framework-arduino";
+} from "@typehal/framework-arduino";
 
-const FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+const FRAMEWORK_PACKAGE = "@typehal/framework-arduino";
 
 function getArduinoFramework(): any {
   return loadFrameworkPackage(FRAMEWORK_PACKAGE, process.cwd());

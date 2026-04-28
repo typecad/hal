@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Timing utilities
+// @typehal/board-esp32-devkit — Timing utilities
 //
 // These map 1-to-1 to the Arduino/ESP32 built-in timing functions.
 // The transpiler replaces calls with the C++ equivalents.

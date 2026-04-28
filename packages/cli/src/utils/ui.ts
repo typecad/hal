@@ -3,7 +3,7 @@ import chalk from "chalk";
 const VERSION = "0.1.0";
 
 // Icons
-const ICON_TYPECODE = "⤳";
+const ICON_TYPEHAL = "⤳";
 const ICON_COMPILE = "⇉";
 const ICON_UPLOAD = "↱";
 const ICON_SUCCESS = "✓";
@@ -11,11 +11,11 @@ const ICON_ERROR = "✗";
 const ICON_INFO = "•";
 
 /**
- * Print the typeCode branded header
+ * Print the typeHAL branded header
  */
 export function printHeader(): void {
   console.log();
-  console.log(chalk.cyan(`${ICON_TYPECODE} typeCode`) + chalk.gray(` v${VERSION}`));
+  console.log(chalk.cyan(`${ICON_TYPEHAL} typeHAL`) + chalk.gray(` v${VERSION}`));
   console.log();
 }
 
@@ -52,7 +52,7 @@ export function printStep(message: string): void {
  * Print transpiling step
  */
 export function printTranspiling(): void {
-  console.log(chalk.cyan(`${ICON_TYPECODE} Transpiling...`));
+  console.log(chalk.cyan(`${ICON_TYPEHAL} Transpiling...`));
 }
 
 /**
@@ -117,5 +117,5 @@ export function printFileCreated(filePath: string): void {
  */
 export function printSection(title: string): void {
   console.log();
-  console.log(chalk.cyan(`${ICON_TYPECODE} ${title}`));
+  console.log(chalk.cyan(`${ICON_TYPEHAL} ${title}`));
 }

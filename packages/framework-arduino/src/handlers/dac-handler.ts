@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// DAC (Digital-to-Analog Converter) handler — maps TypeCode DAC1/DAC2 calls
+// DAC (Digital-to-Analog Converter) handler — maps TypeHAL DAC1/DAC2 calls
 // to ESP32 dacWrite() / dacDisable() C++.
 //
 // DAC1 → GPIO 25, DAC2 → GPIO 26 (ESP32-specific hardware pins).
@@ -8,9 +8,9 @@
 // Requires: #include <driver/dac.h>   (injected by profile.ts for ESP32)
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
 
-/** Maps TypeCode DAC receiver names to their ESP32 GPIO numbers. */
+/** Maps TypeHAL DAC receiver names to their ESP32 GPIO numbers. */
 const DAC_PIN_MAP: Record<string, string> = {
   DAC1: '25',
   DAC2: '26',

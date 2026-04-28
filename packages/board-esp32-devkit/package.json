@@ -1,7 +1,7 @@
 {
-  "name": "@typecode/board-esp32-devkit",
+  "name": "@typehal/board-esp32-devkit",
   "version": "0.1.0",
-  "description": "TypeCode ESP32 DevKit (WROOM-32) board definition with typed pins and peripherals",
+  "description": "TypeHAL ESP32 DevKit (WROOM-32) board definition with typed pins and peripherals",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,8 +22,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typecode/core": "*",
-    "@typecode/hal": "*"
+    "@typehal/core": "*",
+    "@typehal/hal": "*"
   },
   "license": "MIT",
   "publishConfig": {

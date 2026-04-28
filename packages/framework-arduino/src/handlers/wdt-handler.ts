@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// WDT (Watchdog Timer) namespace handler — maps TypeCode WDT.* calls to
+// WDT (Watchdog Timer) namespace handler — maps TypeHAL WDT.* calls to
 // Arduino/AVR or ESP32 C++.
 //
 // The watchdog timer is used to automatically reset the microcontroller if
@@ -8,7 +8,7 @@
 // (<esp_task_wdt.h>).
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
 
 /**
  * Watchdog timeout constants.  These map to the wdt_enable() timeout flags

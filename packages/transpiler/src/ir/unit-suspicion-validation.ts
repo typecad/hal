@@ -145,14 +145,14 @@ function checkSPIFrequency(value: number): string | undefined {
 }
 
 /**
- * Scan a typecode-call statement for suspicious peripheral config values.
+ * Scan a typehal-call statement for suspicious peripheral config values.
  */
-function scanTypecodeCall(
+function scanTypehalCall(
   stmt: StatementIR,
   diagnostics: Diagnostic[],
 ): void {
   const tc = stmt as any;
-  if (tc.kind !== 'typecode-call') return;
+  if (tc.kind !== 'typehal-call') return;
 
   const rawMethod = tc.method as string | undefined;
   const method = rawMethod === 'configBegin'
@@ -217,7 +217,7 @@ function scanTypecodeCall(
 function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   if (!stmt || typeof stmt !== 'object') return;
 
-  scanTypecodeCall(stmt, diagnostics);
+  scanTypehalCall(stmt, diagnostics);
 
   // Recurse into nested statements
   const s = stmt as any;
@@ -247,7 +247,7 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
 /**
  * Validate peripheral config values for common unit mistakes.
  *
- * Scans the program IR for typecode-call nodes that configure peripherals
+ * Scans the program IR for typehal-call nodes that configure peripherals
  * with bare numbers and emits warnings when values look suspicious.
  *
  * @param program - The program IR to validate

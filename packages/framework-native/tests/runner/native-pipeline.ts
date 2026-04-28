@@ -9,8 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { nativePreprocess } from './native-preprocessor';
-import { parseProtocolLines } from '@typecode/expect/parser';
-import type { DescribeResult } from '@typecode/expect/types';
+import { parseProtocolLines } from '@typehal/expect/parser';
+import type { DescribeResult } from '@typehal/expect/types';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -64,7 +64,7 @@ export function runNativeTest(fixturePath: string): NativeTestResult {
   // Always write config so the CLI discovers framework-native
   writeBuildConfig(buildDir, baseName);
 
-  // 4. Transpile via typecode CLI (always use build mode for config discovery)
+  // 4. Transpile via typehal CLI (always use build mode for config discovery)
   const cliPath = path.resolve(packageRoot, '..', '..', 'packages', 'cli', 'dist', 'cli.js');
 
   const transpileResult = spawnSync(
@@ -164,20 +164,20 @@ function patchGeneratedCpp(cppPath: string): void {
   src = src.replace(/\bdouble\s+main\s*\(\)/g, 'int main()');
   src = src.replace(/\blong\s+main\s*\(\)/g, 'int main()');
 
-  // Replace bare 'undefined' with TYPECODE_UNDEFINED sentinel
-  src = src.replace(/\bundefined\b/g, 'TYPECODE_UNDEFINED');
+  // Replace bare 'undefined' with TYPEHAL_UNDEFINED sentinel
+  src = src.replace(/\bundefined\b/g, 'TYPEHAL_UNDEFINED');
 
   // Fix ||= and ??= patterns: when a variable is initialized to 0 but the next
-  // statement checks it against TYPECODE_UNDEFINED, the initial value was undefined.
-  // Pattern: 'double x = 0;\n  x = (x == TYPECODE_UNDEFINED ? ...' -> change 0 to TYPECODE_UNDEFINED
+  // statement checks it against TYPEHAL_UNDEFINED, the initial value was undefined.
+  // Pattern: 'double x = 0;\n  x = (x == TYPEHAL_UNDEFINED ? ...' -> change 0 to TYPEHAL_UNDEFINED
   src = src.replace(
-    /(\b\w+\s+)(\w+)\s*=\s*0;\s*\n\s*\2\s*=\s*\(\s*\2\s*==\s*TYPECODE_UNDEFINED/g,
-    '$1$2 = TYPECODE_UNDEFINED;\n  $2 = ($2 == TYPECODE_UNDEFINED',
+    /(\b\w+\s+)(\w+)\s*=\s*0;\s*\n\s*\2\s*=\s*\(\s*\2\s*==\s*TYPEHAL_UNDEFINED/g,
+    '$1$2 = TYPEHAL_UNDEFINED;\n  $2 = ($2 == TYPEHAL_UNDEFINED',
   );
 
   // Fix struct initializers for nullish coalescing: when a struct field has value 0
-  // in the initializer but is later used with typecode_nullish(), it means the original
-  // value was 'undefined' which the transpiler converted to 0. Replace with TYPECODE_UNDEFINED.
+  // in the initializer but is later used with typehal_nullish(), it means the original
+  // value was 'undefined' which the transpiler converted to 0. Replace with TYPEHAL_UNDEFINED.
   src = fixNullishStructInitializers(src);
 
   // Fix polyfill helper functions: emitter converts . to -> in function bodies.
@@ -248,10 +248,10 @@ function patchGeneratedCpp(cppPath: string): void {
 
 function fixNullishStructInitializers(src: string): string {
   // Find struct declarations with initializers where a field initialized to 0 is
-  // later used with typecode_nullish(). Pattern:
+  // later used with typehal_nullish(). Pattern:
   //   struct _config_t { int low; int high; int timeout; } config = { 150, 700, 0 };
-  //   ... typecode_nullish(config.timeout, 500);
-  // The 0 for 'timeout' should be TYPECODE_UNDEFINED since it was originally 'undefined'.
+  //   ... typehal_nullish(config.timeout, 500);
+  // The 0 for 'timeout' should be TYPEHAL_UNDEFINED since it was originally 'undefined'.
 
   let result = src;
   const structPattern = /struct\s+(\w+)\s*\{([^}]+)\}\s*(\w+)\s*=\s*\{([^}]+)\}/g;
@@ -269,8 +269,8 @@ function fixNullishStructInitializers(src: string): string {
       if (!fieldName) continue;
       // Only consider fields initialized to 0
       if (values[i] !== '0') continue;
-      // Check if this field is used with typecode_nullish
-      if (new RegExp(`typecode_nullish\\(\\s*${varName}\\s*\\.\\s*${fieldName}\\s*,`).test(src)) {
+      // Check if this field is used with typehal_nullish
+      if (new RegExp(`typehal_nullish\\(\\s*${varName}\\s*\\.\\s*${fieldName}\\s*,`).test(src)) {
         replacements.push({ fieldIndex: i });
       }
     }
@@ -280,7 +280,7 @@ function fixNullishStructInitializers(src: string): string {
     // Apply replacements to the initializer
     const newValues = [...values];
     for (const r of replacements) {
-      newValues[r.fieldIndex] = 'TYPECODE_UNDEFINED';
+      newValues[r.fieldIndex] = 'TYPEHAL_UNDEFINED';
     }
     const newInit = newValues.join(', ');
     const oldInit = values.join(', ');
@@ -672,15 +672,15 @@ function rewriteRelativeImports(source: string, originalFilePath: string, buildD
 }
 
 function writeBuildConfig(buildDir: string, entryFileName: string): void {
-  const configPath = path.join(buildDir, 'typecode.config.ts');
+  const configPath = path.join(buildDir, 'typehal.config.ts');
   fs.writeFileSync(
     configPath,
     [
-      `import type { TypecodeConfig } from '@typecode/core';`,
+      `import type { TypehalConfig } from '@typehal/core';`,
       '',
-      'const config: TypecodeConfig = {',
+      'const config: TypehalConfig = {',
       `  entry: './${entryFileName}.ts',`,
-      `  framework: '@typecode/framework-native',`,
+      `  framework: '@typehal/framework-native',`,
       `  target: 'generic',`,
       '  output: {',
       `    outDir: './out',`,

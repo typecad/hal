@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// @typecode/debug — Breakpoint Loader
+// @typehal/debug — Breakpoint Loader
 //
-// Loads breakpoint data from .typecode/breakpoints.json, which is written
+// Loads breakpoint data from .typehal/breakpoints.json, which is written
 // by the VS Code extension when users set breakpoints.
 // ---------------------------------------------------------------------------
 
@@ -10,9 +10,9 @@ import path from 'node:path';
 import type { BreakpointMap, RichBreakpoint, LegacyBreakpointMap } from './types';
 
 /**
- * Default directory for TypeCode debug files.
+ * Default directory for TypeHAL debug files.
  */
-export const TYPECODE_DIR = '.typecode';
+export const TYPEHAL_DIR = '.typehal';
 
 /**
  * Default filename for breakpoint data.
@@ -20,41 +20,41 @@ export const TYPECODE_DIR = '.typecode';
 export const BREAKPOINTS_FILE = 'breakpoints.json';
 
 /**
- * Find the .typecode directory by walking up from the given directory.
+ * Find the .typehal directory by walking up from the given directory.
  */
-export function findTypecodeDir(startDir: string): string | undefined {
+export function findTypehalDir(startDir: string): string | undefined {
   let currentDir = path.resolve(startDir);
   
   while (currentDir !== path.dirname(currentDir)) {
-    const typecodeDir = path.join(currentDir, TYPECODE_DIR);
-    if (fs.existsSync(typecodeDir) && fs.statSync(typecodeDir).isDirectory()) {
-      return typecodeDir;
+    const typehalDir = path.join(currentDir, TYPEHAL_DIR);
+    if (fs.existsSync(typehalDir) && fs.statSync(typehalDir).isDirectory()) {
+      return typehalDir;
     }
     currentDir = path.dirname(currentDir);
   }
   
   // Check root level
-  const rootTypecodeDir = path.join(currentDir, TYPECODE_DIR);
-  if (fs.existsSync(rootTypecodeDir) && fs.statSync(rootTypecodeDir).isDirectory()) {
-    return rootTypecodeDir;
+  const rootTypehalDir = path.join(currentDir, TYPEHAL_DIR);
+  if (fs.existsSync(rootTypehalDir) && fs.statSync(rootTypehalDir).isDirectory()) {
+    return rootTypehalDir;
   }
   
   return undefined;
 }
 
 /**
- * Load breakpoints from .typecode/breakpoints.json.
+ * Load breakpoints from .typehal/breakpoints.json.
  * 
  * @param sourceDir The directory containing the source file (or any directory in the project)
  * @returns BreakpointMap or undefined if no breakpoints file exists
  */
 export function loadBreakpoints(sourceDir: string): BreakpointMap | undefined {
-  const typecodeDir = findTypecodeDir(sourceDir);
-  if (!typecodeDir) {
+  const typehalDir = findTypehalDir(sourceDir);
+  if (!typehalDir) {
     return undefined;
   }
   
-  const breakpointsPath = path.join(typecodeDir, BREAKPOINTS_FILE);
+  const breakpointsPath = path.join(typehalDir, BREAKPOINTS_FILE);
   if (!fs.existsSync(breakpointsPath)) {
     return undefined;
   }

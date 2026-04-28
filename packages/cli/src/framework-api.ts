@@ -13,7 +13,7 @@ import type { ExpressionIR } from "./ir/model";
 
 /**
  * Shape of a framework package's public API.
- * Covers everything the CLI currently imports from @typecode/framework-arduino.
+ * Covers everything the CLI currently imports from @typehal/framework-arduino.
  */
 export interface FrameworkApi {
   // ── Strategy ────────────────────────────────────────────────────────────

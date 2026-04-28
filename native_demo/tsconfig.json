@@ -9,9 +9,9 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "paths": {
-      "@typecode/core": ["../packages/core/src/index.ts"]
+      "@typehal/core": ["../packages/core/src/index.ts"]
     },
     "typeRoots": ["./node_modules/@types"]
   },
-  "include": ["src/**/*.ts", "typecode.config.ts"]
+  "include": ["src/**/*.ts", "typehal.config.ts"]
 }

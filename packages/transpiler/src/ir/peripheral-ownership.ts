@@ -55,14 +55,14 @@ export function validatePeripheralOwnership(program: ProgramIR): Diagnostic[] {
   const busesWithOwnership = new Set<string>();
   const quickScan = (stmts: StatementIR[]): void => {
     for (const stmt of stmts) {
-      if (stmt.kind === 'typecode-call') {
+      if (stmt.kind === 'typehal-call') {
         const tc = stmt as any;
         if ((tc.method === 'take' || tc.method === 'release') && tc.receiver) {
           busesWithOwnership.add(tc.receiver);
         }
       }
       scanNestedStatements(stmt, (s) => {
-        if (s.kind === 'typecode-call') {
+        if (s.kind === 'typehal-call') {
           const tc = s as any;
           if ((tc.method === 'take' || tc.method === 'release') && tc.receiver) {
             busesWithOwnership.add(tc.receiver);
@@ -79,7 +79,7 @@ export function validatePeripheralOwnership(program: ProgramIR): Diagnostic[] {
   // If no bus uses the ownership pattern, skip validation entirely
   if (busesWithOwnership.size === 0) return diagnostics;
 
-  const checkTypecodeCall = (receiver: string, receiverKind: string | undefined, method: string): void => {
+  const checkTypehalCall = (receiver: string, receiverKind: string | undefined, method: string): void => {
     if (!receiverKind || !BUS_RECEIVER_KINDS.has(receiverKind)) return;
 
     if (method === 'take') {
@@ -118,21 +118,21 @@ export function validatePeripheralOwnership(program: ProgramIR): Diagnostic[] {
     }
   };
 
-  /** Scan an expression for typecode calls. */
+  /** Scan an expression for typehal calls. */
   const scanExpression = (expr: ExpressionIR | undefined): void => {
     if (!expr || typeof expr !== 'object') return;
 
-    if (expr.kind === 'typecode-call') {
+    if (expr.kind === 'typehal-call') {
       const tc = expr as any;
       if (tc.receiver && tc.method) {
-        checkTypecodeCall(tc.receiver, tc.receiverKind, tc.method);
+        checkTypehalCall(tc.receiver, tc.receiverKind, tc.method);
       }
       if (tc.args && Array.isArray(tc.args)) {
         for (const arg of tc.args) scanExpression(arg);
       }
     }
 
-    // Scan callback bodies for nested typecode-calls
+    // Scan callback bodies for nested typehal-calls
     if (expr.kind === 'callback') {
       const e = expr as any;
       if (e.statements && Array.isArray(e.statements)) {
@@ -141,16 +141,16 @@ export function validatePeripheralOwnership(program: ProgramIR): Diagnostic[] {
     }
   };
 
-  /** Scan a statement for typecode calls. */
+  /** Scan a statement for typehal calls. */
   const checkStatement = (stmt: StatementIR): void => {
     if (!stmt || typeof stmt !== 'object') return;
 
-    if (stmt.kind === 'typecode-call') {
+    if (stmt.kind === 'typehal-call') {
       const tc = stmt as any;
       if (tc.receiver && tc.method) {
-        checkTypecodeCall(tc.receiver, tc.receiverKind, tc.method);
+        checkTypehalCall(tc.receiver, tc.receiverKind, tc.method);
       }
-      // Scan args for nested typecode-call expressions
+      // Scan args for nested typehal-call expressions
       if (tc.args && Array.isArray(tc.args)) {
         for (const arg of tc.args) scanExpression(arg);
       }

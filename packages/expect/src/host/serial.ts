@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Serial reader
+// @typehal/expect — Serial reader
 //
 // Opens a serial port after firmware upload, reads lines until [TC:SUITE_END]
 // or timeout.  Filters protocol lines from debug output.

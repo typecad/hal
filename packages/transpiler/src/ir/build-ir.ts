@@ -275,7 +275,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
   // Resolve board-definition constants from the actual board package file.
   // This replaces the old hard-coded ARDUINO_BOARD_METADATA table in
-  // typecode-map.ts so that Board.definition.* folds to the real values.
+  // typehal-map.ts so that Board.definition.* folds to the real values.
   let boardConstants: BoardConstants | undefined;
   for (const imp of imports) {
     const boardFile = tryResolveBoardDefFile(fileName, imp.moduleSpecifier, boardPackage);

@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
-// @typecode/simulator — Interrupt simulation
+// @typehal/simulator — Interrupt simulation
 // ---------------------------------------------------------------------------
 
 import type {
   InterruptPin,
   InterruptHandler,
   InterruptOptions,
-} from '@typecode/core';
+} from '@typehal/core';
 import { SimDigitalPin } from './digital-pin-sim';
 
 type InterruptMode = 'rising' | 'falling' | 'change';

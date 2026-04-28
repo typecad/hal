@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Architecture identifier type used by project configuration.
+// @typehal/core — Architecture identifier type used by project configuration.
 // ---------------------------------------------------------------------------
 
 export type ArchitectureIdentifier =

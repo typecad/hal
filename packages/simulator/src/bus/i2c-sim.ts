@@ -1,16 +1,16 @@
 // ---------------------------------------------------------------------------
-// @typecode/simulator — I2C bus simulation
+// @typehal/simulator — I2C bus simulation
 // ---------------------------------------------------------------------------
 
 import {
   I2CStatus,
-} from '@typecode/core';
+} from '@typehal/core';
 import type {
   II2CBus,
   II2CDeviceAccessor,
   I2CAddress,
   I2CErrorPolicy,
-} from '@typecode/core';
+} from '@typehal/core';
 import type { ISimI2CDevice } from '../types';
 
 // ---------------------------------------------------------------------------

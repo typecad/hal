@@ -6,7 +6,7 @@
 // opening the serial monitor at 115200 baud.
 // ---------------------------------------------------------------------------
 
-import { A0, LED, UART0, delay } from '@typecode';
+import { A0, LED, UART0, delay } from '@typehal';
 
 enum SystemMode {
   Idle = 0,
@@ -90,7 +90,7 @@ const serial = UART0.begin(115200);
 
 A0.asInput();
 
-serial.println('TypeCode Uno validation showcase');
+serial.println('TypeHAL Uno validation showcase');
 serial.println('Watch the lines below to confirm the transpiled output.');
 
 while (true) {

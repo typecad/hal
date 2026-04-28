@@ -9,13 +9,13 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import type { ArduinoPlatformContext, Diagnostic } from "@typecode/core/shared";
+import type { ArduinoPlatformContext, Diagnostic } from "@typehal/core/shared";
 
 // ---------------------------------------------------------------------------
 // Disk cache for arduino-cli metadata
 // ---------------------------------------------------------------------------
 
-const CACHE_DIR = path.join(os.homedir(), ".typecode", "cache");
+const CACHE_DIR = path.join(os.homedir(), ".typehal", "cache");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface CachedMetadata {

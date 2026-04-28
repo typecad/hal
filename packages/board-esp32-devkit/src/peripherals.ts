@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Peripheral instances
+// @typehal/board-esp32-devkit — Peripheral instances
 //
 // Ambient declarations for the board's built-in peripheral buses.
 // These carry full type information at design-time so TypeScript prevents
@@ -23,7 +23,7 @@ import type {
   IUninitializedI2CBus,
   IUninitializedSPIBus,
   IUninitializedUARTBus,
-} from '@typecode/core';
+} from '@typehal/core';
 
 /** I2C bus 0 (Wire library, pins D21=SDA / D22=SCL). Starts uninitialized. */
 export declare const I2C0: IUninitializedI2CBus;

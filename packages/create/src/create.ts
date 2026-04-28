@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // ---------------------------------------------------------------------------
-// @typecode/create — Standalone project scaffolding entry point
+// @typehal/create — Standalone project scaffolding entry point
 //
-// Usage: npx @typecode/create [project-name] [options]
-//        npx @typecode/create init [project-name] [options]
+// Usage: npx @typehal/create [project-name] [options]
+//        npx @typehal/create init [project-name] [options]
 //
-// This is a lightweight alternative to `typecode init` that doesn't require
+// This is a lightweight alternative to `typehal init` that doesn't require
 // the full transpiler toolchain. Only depends on chalk + node built-ins.
 // ---------------------------------------------------------------------------
 
@@ -50,7 +50,7 @@ function parseArgs(argv: string[]): CreateOptions {
     } else if (arg === '--outDir' || arg === '-o') {
       options.outDir = args[++i];
     } else if (arg === 'init') {
-      // Allow "npx @typecode/create init ..." — skip the subcommand
+      // Allow "npx @typehal/create init ..." — skip the subcommand
     } else if (!arg.startsWith('-')) {
       options.projectName = arg;
     }
@@ -67,10 +67,10 @@ function parseArgs(argv: string[]): CreateOptions {
 
 function printHelp(): void {
   console.log();
-  console.log(chalk.cyan("⤳ typeCode"));
+  console.log(chalk.cyan("⤳ typeHAL"));
   console.log();
-  console.log(`${chalk.cyan("Usage:")} npx @typecode/create [project-name] [options]`);
-  console.log(`       npx @typecode/create init [project-name] [options]`);
+  console.log(`${chalk.cyan("Usage:")} npx @typehal/create [project-name] [options]`);
+  console.log(`       npx @typehal/create init [project-name] [options]`);
   console.log();
   console.log(`${chalk.cyan("Options:")}`);
   console.log(`  --board, -b <id>       Board (arduino-uno, esp32-devkit). Skips wizard.`);
@@ -117,8 +117,8 @@ export async function runCreate(argv?: string[]): Promise<void> {
 
       const framework: 'arduino' | 'avr' = options.framework === 'avr' ? 'avr' : 'arduino';
       const frameworkPackage = framework === 'avr'
-        ? '@typecode/framework-avr'
-        : '@typecode/framework-arduino';
+        ? '@typehal/framework-avr'
+        : '@typehal/framework-arduino';
 
       const projectName = options.projectName || 'my-project';
 
@@ -145,7 +145,7 @@ export async function runCreate(argv?: string[]): Promise<void> {
       printInitNextSteps(result.options, result.outDir);
     } else {
       // Interactive mode: launch wizard
-      console.log(chalk.cyan("⤳ typeCode") + chalk.dim(" — Launching interactive project setup...\n"));
+      console.log(chalk.cyan("⤳ typeHAL") + chalk.dim(" — Launching interactive project setup...\n"));
       const wizardResult = await runInitWizard({
         projectName: options.projectName,
         board: options.board,

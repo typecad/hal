@@ -2,7 +2,7 @@
  * C++ to TypeScript Declaration Generator
  * 
  * Parses simple C++ class definitions and generates .d.ts declaration files
- * for use with TypeCode's native module support.
+ * for use with TypeHAL's native module support.
  */
 
 import fs from "node:fs";

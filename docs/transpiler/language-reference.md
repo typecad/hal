@@ -1,6 +1,6 @@
 # Language Reference
 
-TypeScript to C++ language mapping for TypeCode.
+TypeScript to C++ language mapping for TypeHAL.
 
 ## Types
 
@@ -535,7 +535,7 @@ console_error("Error occurred");
 
 ## Built-in Namespaces
 
-TypeCode provides global namespace objects for common Arduino peripherals. These are available without imports.
+TypeHAL provides global namespace objects for common Arduino peripherals. These are available without imports.
 
 ### Timing
 

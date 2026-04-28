@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — UART/Serial Arduino-compatible API interface
+// @typehal/core — UART/Serial Arduino-compatible API interface
 //
 // This interface provides Arduino Serial-compatible methods for UART communication.
-// Import from '@typecode/core/arduino' or '@typecode/board-arduino-uno/arduino'
+// Import from '@typehal/core/arduino' or '@typehal/board-arduino-uno/arduino'
 // to use this API style.
 // ---------------------------------------------------------------------------
 
@@ -15,7 +15,7 @@
  * 
  * Usage:
  * ```typescript
- * import { Serial } from '@typecode/board-arduino-uno/arduino';
+ * import { Serial } from '@typehal/board-arduino-uno/arduino';
  * 
  * Serial.begin(9600);
  * Serial.println("Hello, World!");

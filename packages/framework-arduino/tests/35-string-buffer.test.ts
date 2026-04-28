@@ -1,4 +1,4 @@
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 
 describe("String buffer non-aliasing")
   .it("trim called twice in same concat does not alias")

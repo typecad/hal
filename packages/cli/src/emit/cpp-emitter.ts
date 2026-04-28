@@ -7,22 +7,22 @@ import { escapeCppKeyword } from "../utils/strings";
 import { resolveImport } from "../libdef/registry";
 import { LibraryDefinition } from "../types";
 import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
-import { RuntimePolyfillIR } from "@typecode/core/shared";
+import { RuntimePolyfillIR } from "@typehal/core/shared";
 import { emitPolyfillBoilerplate } from "./native-helpers-emitter";
-import { filterPolyfillHelpers } from "@typecode/core/shared";
+import { filterPolyfillHelpers } from "@typehal/core/shared";
 import { ResolvedNpmPackage } from "../transpile";
-import { extractPropertyChain, buildArduinoClassNameMap } from "@typecode/framework-arduino";
+import { extractPropertyChain, buildArduinoClassNameMap } from "@typehal/framework-arduino";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import { resolveStrategy } from "../platform/registry";
-import { ArduinoStrategy } from "@typecode/framework-arduino";
+import { ArduinoStrategy } from "@typehal/framework-arduino";
 import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
 import { normalizeRawExpression, transformTypeName } from "./expression-renderer";
 import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
 import { StatementRenderer } from "./statement-renderer";
 import {
-  isTypecodeSDKImport,
+  isTypehalSDKImport,
   normalizeComment,
   emitCommentLines,
   isConsoleCall,
@@ -78,7 +78,7 @@ let _arduinoClassNameMap: Map<string, string> | undefined;
 // Accumulates enum class names across all files compiled in one transpilation
 // run so that renderExpression can use `::` instead of `.` for enum member
 // access (e.g. I2CSpeed.STANDARD → I2CSpeed::STANDARD) even when the enum
-// type is defined in a different source file (imported from @typecode/core).
+// type is defined in a different source file (imported from @typehal/core).
 const _emitEnumNames: Set<string> = new Set();
 
 // DEPRECATED: Module-level mutable state (same as _emitBoardConstants above).
@@ -239,7 +239,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
           _currentKnownFunctionReturnTypes,
         );
         if (snprintfRender) {
-          const bufferName = `__typecode_str_${++_currentScopeState.nextSnprintfTempId}`;
+          const bufferName = `__typehal_str_${++_currentScopeState.nextSnprintfTempId}`;
           _pendingSnprintfLines.push(
             ...snprintfRender.preludeLines,
             `char ${bufferName}[${snprintfRender.estimatedLength}];`,
@@ -278,7 +278,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
           _currentKnownFunctionReturnTypes,
         );
         if (arg) {
-          const bufferName = `__typecode_str_${++_currentScopeState.nextSnprintfTempId}`;
+          const bufferName = `__typehal_str_${++_currentScopeState.nextSnprintfTempId}`;
           const estimatedLength = Math.max(arg.estimatedLength + 1, 16);
           _pendingSnprintfLines.push(
             ...arg.preludeLines,
@@ -366,9 +366,9 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       }
       return `${objStr}.${expr.property}`;
     }
-    case "typecode-call": {
+    case "typehal-call": {
       const renderA = (e: ExpressionIR) => renderExpression(e, exprTransformer, strategy);
-      const translated = strategy.tryRenderTypecodeCall(expr.receiver, expr.receiverKind, expr.method, expr.args, renderA, _emitBoardConstants, expr.interruptMode);
+      const translated = strategy.tryRenderTypehalCall(expr.receiver, expr.receiverKind, expr.method, expr.args, renderA, _emitBoardConstants, expr.interruptMode);
       if (translated !== undefined) return translated;
       // Fallback: render as plain method call
       return `${expr.receiver}.${expr.method}(${expr.args.map(renderA).join(", ")})`;
@@ -446,32 +446,32 @@ function renderBoilerplate(program: ProgramIR): string {
 
   const serializedProgram = JSON.stringify(program);
 
-  const hasExistsHelper = serializedProgram.includes('typecode_exists(');
+  const hasExistsHelper = serializedProgram.includes('typehal_exists(');
   if (hasExistsHelper) {
     chunks.push([
       'template <typename T>',
-      'inline bool typecode_exists(T* value) {',
+      'inline bool typehal_exists(T* value) {',
       '  return value != nullptr;',
       '}',
       '',
       'template <typename T>',
-      'inline bool typecode_exists(const T&) {',
+      'inline bool typehal_exists(const T&) {',
       '  return true;',
       '}',
       ''
     ].join('\n'));
   }
 
-  const hasUndefinedSentinel = serializedProgram.includes('TYPECODE_UNDEFINED');
-  const hasNullishHelper = serializedProgram.includes('typecode_nullish(');
+  const hasUndefinedSentinel = serializedProgram.includes('TYPEHAL_UNDEFINED');
+  const hasNullishHelper = serializedProgram.includes('typehal_nullish(');
   if (hasUndefinedSentinel || hasNullishHelper) {
     chunks.push([
       '// Sentinel value representing JS undefined for integer types.',
       '// Uses INT_MIN from <limits.h> so it is correct for the target',
       '// platform (16-bit int on AVR, 32-bit int on ARM/ESP32, etc.).',
       '#include <limits.h>',
-      '#ifndef TYPECODE_UNDEFINED',
-      '#define TYPECODE_UNDEFINED INT_MIN',
+      '#ifndef TYPEHAL_UNDEFINED',
+      '#define TYPEHAL_UNDEFINED INT_MIN',
       '#endif',
       '',
     ].join('\n'));
@@ -479,12 +479,12 @@ function renderBoilerplate(program: ProgramIR): string {
   if (hasNullishHelper) {
     chunks.push([
       'template <typename T, typename U>',
-      'inline T typecode_nullish(T value, U fallback) {',
-      '  return (value == TYPECODE_UNDEFINED) ? fallback : value;',
+      'inline T typehal_nullish(T value, U fallback) {',
+      '  return (value == TYPEHAL_UNDEFINED) ? fallback : value;',
       '}',
       '',
       'template <typename T>',
-      'inline T* typecode_nullish(T* value, T* fallback) {',
+      'inline T* typehal_nullish(T* value, T* fallback) {',
       '  return value != nullptr ? value : fallback;',
       '}',
       ''
@@ -554,7 +554,7 @@ function transformConsoleCall(
 
       if (snprintfRender) {
         // Generate a temporary buffer for snprintf
-        const bufferName = `__typecode_println_${++scopeState.nextSnprintfTempId}`;
+        const bufferName = `__typehal_println_${++scopeState.nextSnprintfTempId}`;
         const prelude = snprintfRender.preludeLines.length > 0
           ? snprintfRender.preludeLines.join(" ") + " "
           : "";
@@ -578,10 +578,10 @@ function renderStatement(
   calleeTransformer?: (callee: string) => string,
   knownFunctionReturnTypes?: Map<string, string>,
 ): string {
-  if (statement.kind === "typecode-call") {
-    // Handle typecode-call statements (from fluent chains like UART0.config.baudRate(115200).begin())
+  if (statement.kind === "typehal-call") {
+    // Handle typehal-call statements (from fluent chains like UART0.config.baudRate(115200).begin())
     const renderA = (e: ExpressionIR) => renderExpression(e, undefined, strategy);
-    const translated = strategy.tryRenderTypecodeCall(
+    const translated = strategy.tryRenderTypehalCall(
       statement.receiver,
       statement.receiverKind,
       statement.method,
@@ -609,7 +609,7 @@ function renderStatement(
     if (isConsoleCall(statement.callee)) {
       return transformConsoleCall(statement.callee, statement.args, strategy, forHeader);
     }
-    // Handle typecode SDK calls via strategy (pin/serial/i2c/spi)
+    // Handle typehal SDK calls via strategy (pin/serial/i2c/spi)
     const renderA = (e: ExpressionIR) => renderExpression(e, undefined, strategy);
     const translated = strategy.tryRenderCallStatement(statement.callee, statement.args, renderA, _emitBoardConstants);
     if (translated !== undefined) {
@@ -901,7 +901,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     : undefined;
   const hasAsyncRuntime = program.functions.some(fn => fn.isAsync);
   // True only when the Promise/MicrotaskQueue runtime was emitted (requires C++ stdlib).
-  // On AVR this is false; typecode_pump_microtasks() must NOT be called.
+  // On AVR this is false; typehal_pump_microtasks() must NOT be called.
   const hasPromiseRuntime = nativePolyfills.some(
     (p) => p.id === "async_runtime" && (p as any).hasPromiseRuntime === true
   );
@@ -924,9 +924,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   for (const imported of program.imports) {
-    // Skip imports from typecode SDK modules — the symbols they export
+    // Skip imports from typehal SDK modules — the symbols they export
     // (pin names like A0, D13, LED) are already provided by <Arduino.h>.
-    if (isTypecodeSDKImport(imported.moduleSpecifier, program.fileName)) {
+    if (isTypehalSDKImport(imported.moduleSpecifier, program.fileName)) {
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
       }
@@ -1215,7 +1215,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         );
 
         if (snprintfRender) {
-          const bufferName = `__typecode_println_${++scopeState.nextSnprintfTempId}`;
+          const bufferName = `__typehal_println_${++scopeState.nextSnprintfTempId}`;
           const method = getConsoleMethod(statement.callee);
           const serialCall = strategy.transformConsoleCall(method, bufferName, false);
           emitSnprintfLines(bufferName, snprintfRender, {
@@ -1228,8 +1228,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       }
     }
 
-    // Handle typecode-call for serial println/print with snprintf for Arduino
-    if (statement.kind === "typecode-call" && strategy.useSnprintfForStrings() && statement.args.length > 0) {
+    // Handle typehal-call for serial println/print with snprintf for Arduino
+    if (statement.kind === "typehal-call" && strategy.useSnprintfForStrings() && statement.args.length > 0) {
       const isSerialPrint = (statement.method === "println" || statement.method === "print") &&
         (statement.receiver === "UART0" || statement.receiver === "Serial" ||
          statement.receiver.startsWith("UART") || statement.receiver.startsWith("Serial"));
@@ -1247,7 +1247,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           );
 
           if (snprintfRender) {
-            const bufferName = `__typecode_println_${++scopeState.nextSnprintfTempId}`;
+            const bufferName = `__typehal_println_${++scopeState.nextSnprintfTempId}`;
             const serialInstance = statement.receiver.startsWith("UART")
               ? statement.receiver.slice(4) === "0" ? "Serial" : `Serial${statement.receiver.slice(4)}`
               : statement.receiver.startsWith("Serial")
@@ -1765,7 +1765,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   
   function collectCallbacks(statements: StatementIR[]): void {
     for (const stmt of statements) {
-      if (stmt.kind === "call" || stmt.kind === "typecode-call") {
+      if (stmt.kind === "call" || stmt.kind === "typehal-call") {
         for (const arg of stmt.args) {
           collectCallbackFromExpression(arg);
         }
@@ -2957,7 +2957,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     // Inject microtask pumping into the async driver function
     const asyncDriverFn = strategy.asyncDriverFunctionName();
     if (hasPromiseRuntime && fn.name === asyncDriverFn) {
-      appendSourceLine("  typecode_pump_microtasks();");
+      appendSourceLine("  typehal_pump_microtasks();");
     }
     // Async tasks are driven by their state machine; don't emit the blocking body.
     if (fn.isAsync && hasAsyncRuntime) {

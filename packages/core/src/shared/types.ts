@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Shared types for TypeCode platform infrastructure
+// Shared types for TypeHAL platform infrastructure
 //
 // These types are used by both the CLI and framework packages.
 // ---------------------------------------------------------------------------

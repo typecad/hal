@@ -5,12 +5,12 @@
 // platforms whose C++ runtime lacks std::string (e.g. AVR).
 //
 // All logic lives in the CLI; no framework package dependency.
-// Types are imported from @typecode/core/shared.
+// Types are imported from @typehal/core/shared.
 // ---------------------------------------------------------------------------
 
-import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } from "@typecode/core/shared";
-import type { PlatformStrategy } from "@typecode/core/shared";
-import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "@typecode/core/shared";
+import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } from "@typehal/core/shared";
+import type { PlatformStrategy } from "@typehal/core/shared";
+import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "@typehal/core/shared";
 
 export type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer };
 
@@ -198,7 +198,7 @@ export function inferSnprintfArg(
     case "binary":
     case "unary":
     case "ternary":
-    case "typecode-call":
+    case "typehal-call":
       return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
     default:
       return undefined;
@@ -287,7 +287,7 @@ export function statementNeedsSnprintf(statement: StatementIR, strategy: Platfor
     return true;
   }
 
-  if ((statement.kind === "call" || statement.kind === "typecode-call") && statement.args.length > 0) {
+  if ((statement.kind === "call" || statement.kind === "typehal-call") && statement.args.length > 0) {
     if (statement.args.some((arg) => arg.kind === "string_concat")) {
       return true;
     }

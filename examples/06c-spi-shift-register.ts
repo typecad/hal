@@ -5,7 +5,7 @@
 // Shows: write(), transfer() with Uint8Array, simple data output
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, D10, delay } from '@typecode';
+import { SPI0, UART0, D10, delay } from '@typehal';
 
 const serial = UART0.begin(9600);
 

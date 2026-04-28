@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit/arduino — Arduino-compatible API implementations
+// @typehal/board-esp32-devkit/arduino — Arduino-compatible API implementations
 //
-// Import from '@typecode/board-esp32-devkit/arduino' to use Arduino-style APIs:
+// Import from '@typehal/board-esp32-devkit/arduino' to use Arduino-style APIs:
 // - I2C0.begin(), I2C1.begin(), etc.
 // - SPI0.begin(), SPI1.begin(), etc.
 // - UART0.begin(), UART2.begin(), etc.
@@ -15,7 +15,7 @@ import type {
   SPIMode,
   SPIBitOrder,
   SPISettings,
-} from '@typecode/core/arduino';
+} from '@typehal/core/arduino';
 
 // ---------------------------------------------------------------------------
 // I2C — Wire (bus 0) - Arduino API

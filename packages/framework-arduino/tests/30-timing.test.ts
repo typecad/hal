@@ -1,4 +1,4 @@
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 
 describe("Timing namespace")
   .it("Timing.millis() returns a non-negative value")

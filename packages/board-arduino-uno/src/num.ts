@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Number utilities
+// @typehal/board-arduino-uno — Number utilities
 //
 // Fluent chainable API for map, constrain, min, max, abs.
 // The transpiler replaces calls with Arduino C++ equivalents.
 // ---------------------------------------------------------------------------
 
-import type { INumNamespace } from '@typecode/core';
+import type { INumNamespace } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // Direct Functions (Arduino-compatible)

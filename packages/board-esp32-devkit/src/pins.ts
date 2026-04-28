@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Typed pin exports
+// @typehal/board-esp32-devkit — Typed pin exports
 //
 // Each pin is exported with the narrowest interface that matches its
 // capabilities so that TypeScript prevents invalid operations at compile
@@ -14,7 +14,7 @@
 //   Flash-connected (unusable): 6-11
 // ---------------------------------------------------------------------------
 
-import type { PinCapabilityFlags } from '@typecode/core';
+import type { PinCapabilityFlags } from '@typehal/core';
 import type {
   IESP32FullGPIOPin,
   IESP32InputOnlyPin,

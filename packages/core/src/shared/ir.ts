@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Intermediate Representation (IR) types
 //
 // This file defines the top-level program container (ProgramIR) and
@@ -38,7 +38,7 @@ export type {
   ThrowIR,
   LabeledIR,
   BlockIR,
-  TypecodeCallStatementIR,
+  TypehalCallStatementIR,
   StatementIR,
 } from './ir-core';
 

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Test runner pipeline
+// @typehal/expect — Test runner pipeline
 //
 // Orchestrates the full test cycle:
 //   discover → preprocess → transpile → compile → upload → serial → parse → evaluate → report
@@ -49,7 +49,7 @@ export async function run(config: ResolvedConfig): Promise<number> {
 
   // Validate port
   if (!config.test.port) {
-    console.error('Error: No serial port specified. Use --port <port> or set test.port in typecode.config.ts');
+    console.error('Error: No serial port specified. Use --port <port> or set test.port in typehal.config.ts');
     return 2;
   }
 

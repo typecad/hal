@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Unified Pin Interface
+// @typehal/core — Unified Pin Interface
 //
 // Single flattened interface with compile-time mode safety and capability
 // checking. All methods are visible in autocomplete, and invalid operations

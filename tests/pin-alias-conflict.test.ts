@@ -4,7 +4,7 @@ import { transpile } from './setup';
 describe('Pin Alias Conflict Validation', () => {
   it('generates warning when the same physical pin is used through multiple names', () => {
     const result = transpile(`
-      import { D13, LED } from '@typecode/board-arduino-uno';
+      import { D13, LED } from '@typehal/board-arduino-uno';
       D13.asOutput();
       LED.high();
     `, { target: 'arduino' });
@@ -21,7 +21,7 @@ describe('Pin Alias Conflict Validation', () => {
 
   it('does not generate warning when a pin is used through only one name', () => {
     const result = transpile(`
-      import { LED } from '@typecode/board-arduino-uno';
+      import { LED } from '@typehal/board-arduino-uno';
       LED.asOutput();
       LED.high();
     `, { target: 'arduino' });

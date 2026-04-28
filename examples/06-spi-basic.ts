@@ -5,7 +5,7 @@
 // Shows: begin(), transfer(), setMode(), setBitOrder(), setFrequency()
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, delay, D10 } from '@typecode';
+import { SPI0, UART0, delay, D10 } from '@typehal';
 
 const serial = UART0.begin(9600);
 

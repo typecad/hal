@@ -140,8 +140,8 @@ export class StatementRenderer {
    */
   render(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string): string {
     const rendered = (() => {
-      if (statement.kind === "typecode-call") {
-        return this.renderTypecodeCallStatement(statement, forHeader);
+      if (statement.kind === "typehal-call") {
+        return this.renderTypehalCallStatement(statement, forHeader);
       }
 
       if (statement.kind === "call") {
@@ -276,9 +276,9 @@ export class StatementRenderer {
     return this.fixPointerFieldAccess(rendered);
   }
 
-  private renderTypecodeCallStatement(statement: Extract<StatementIR, { kind: "typecode-call" }>, forHeader: boolean): string {
+  private renderTypehalCallStatement(statement: Extract<StatementIR, { kind: "typehal-call" }>, forHeader: boolean): string {
     const renderA = (e: ExpressionIR) => this.expressionRenderer.render(e);
-    const translated = this.strategy.tryRenderTypecodeCall(
+    const translated = this.strategy.tryRenderTypehalCall(
       statement.receiver,
       statement.receiverKind,
       statement.method,
@@ -340,7 +340,7 @@ export class StatementRenderer {
     if (isConsoleCall(statement.callee)) {
       return this.transformConsoleCall(statement.callee, statement.args, forHeader);
     }
-    // Handle typecode SDK calls via strategy (pin/serial/i2c/spi)
+    // Handle typehal SDK calls via strategy (pin/serial/i2c/spi)
     const renderA = (e: ExpressionIR) => this.expressionRenderer.render(e);
     const translated = this.strategy.tryRenderCallStatement(
       statement.callee, 
@@ -391,8 +391,8 @@ export class StatementRenderer {
       }
       // Handle device.readByte / device.readBytes — multi-statement Wire expansions
       // that cannot be used as a C++ r-value expression.
-      if (statement.initializer.kind === "typecode-call") {
-        const initCall = statement.initializer as Extract<ExpressionIR, { kind: "typecode-call" }>;
+      if (statement.initializer.kind === "typehal-call") {
+        const initCall = statement.initializer as Extract<ExpressionIR, { kind: "typehal-call" }>;
         if (initCall.method === "device.readByte" || initCall.method === "device.readBytes") {
           const renderA = (e: ExpressionIR) => this.expressionRenderer.render(e);
           const addr = renderA(initCall.args[0]);

@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — SPI Arduino-compatible API interface
+// @typehal/core — SPI Arduino-compatible API interface
 //
 // This interface provides Arduino SPI-compatible methods for SPI communication.
-// Import from '@typecode/core/arduino' or '@typecode/board-arduino-uno/arduino'
+// Import from '@typehal/core/arduino' or '@typehal/board-arduino-uno/arduino'
 // to use this API style.
 // ---------------------------------------------------------------------------
 
@@ -17,7 +17,7 @@ import type { SPIMode, SPIBitOrder, SPISettings } from './spi';
  * 
  * Usage:
  * ```typescript
- * import { SPI0 } from '@typecode/board-arduino-uno/arduino';
+ * import { SPI0 } from '@typehal/board-arduino-uno/arduino';
  * 
  * SPI0.begin();
  * SPI0.setMode(0);

@@ -1,10 +1,10 @@
-# @typecode/schema
+# @typehal/schema
 
-Board definition schema and metadata builders for TypeCode.
+Board definition schema and metadata builders for TypeHAL.
 
 ## Overview
 
-`@typecode/schema` defines the core board metadata types and definition helpers used by TypeCode board packages and the transpiler. It provides the data model for pins, peripherals, feature flags, memory, and board capabilities.
+`@typehal/schema` defines the core board metadata types and definition helpers used by TypeHAL board packages and the transpiler. It provides the data model for pins, peripherals, feature flags, memory, and board capabilities.
 
 ## Quick start
 
@@ -17,7 +17,7 @@ import {
   PeripheralBuilder,
   BoardDefinitionBuilder,
   validateBoardDefinition,
-} from '@typecode/schema';
+} from '@typehal/schema';
 
 const board = new BoardDefinitionBuilder('custom-board')
   .addPin(new PinBuilder('D0').setCapabilities(GPIO.digital()).build())
@@ -31,7 +31,7 @@ validateBoardDefinition(board);
 
 ### Board metadata
 
-`@typecode/schema` exports the core metadata types for board definitions:
+`@typehal/schema` exports the core metadata types for board definitions:
 
 - `BoardDefinition`
 - `PinDefinition`
@@ -52,4 +52,4 @@ Use the builder utilities to construct and validate board packages:
 
 ### Typical usage
 
-A board package can use `@typecode/schema` to describe which pins exist, what peripherals are available, and which features are supported. The CLI and framework packages consume this metadata to drive safe hardware code generation and diagnostics.
+A board package can use `@typehal/schema` to describe which pins exist, what peripherals are available, and which features are supported. The CLI and framework packages consume this metadata to drive safe hardware code generation and diagnostics.

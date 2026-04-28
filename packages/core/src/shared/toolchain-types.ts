@@ -49,7 +49,7 @@ export interface ToolchainOptions {
   extraFlags?: string[];
   defines?: Record<string, string>;
   /**
-   * Framework-specific config from `typecode.config.ts`.
+   * Framework-specific config from `typehal.config.ts`.
    * Each framework casts this to its own typed interface.
    */
   frameworkConfig?: Record<string, unknown>;

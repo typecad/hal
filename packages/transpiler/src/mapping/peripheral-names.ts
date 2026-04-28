@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Maps a TypeCode peripheral identifier to its Arduino C++ name.
+ * Maps a TypeHAL peripheral identifier to its Arduino C++ name.
  *
  * Returns `undefined` if the name is not a recognized peripheral identifier.
  *

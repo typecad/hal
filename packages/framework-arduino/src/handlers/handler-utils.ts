@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// @typecode/framework-arduino — Handler Utilities
+// @typehal/framework-arduino — Handler Utilities
 //
 // Shared helper functions used by all peripheral handler modules.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
-import type { BoardConstants } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
+import type { BoardConstants } from '@typehal/core/shared';
 
 // ---------------------------------------------------------------------------
 // Object field extraction

@@ -1,4 +1,4 @@
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 import { clampToWindow, RollingCounter } from './transpiler-support';
 
 describe("Modules and imports")

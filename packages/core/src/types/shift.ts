@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Shift register utilities
+// @typehal/core — Shift register utilities
 // ---------------------------------------------------------------------------
 
 import type { BasePin } from './pin';

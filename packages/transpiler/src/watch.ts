@@ -14,7 +14,7 @@ const DEBOUNCE_MS = 150;
 export interface WatchOptions {
   /** Directories to watch recursively. */
   watchDirs: string[];
-  /** Path to typecode.config.ts (if any) — watched for changes. */
+  /** Path to typehal.config.ts (if any) — watched for changes. */
   configPath?: string;
   /** Directory containing the entry file — used for relevance filtering. */
   entryDir: string;
@@ -47,7 +47,7 @@ export function discoverWatchDirs(entryFile: string, configPath?: string): strin
  * rebuild.
  *
  * A change is relevant when the file is:
- * - The `typecode.config.ts` file, OR
+ * - The `typehal.config.ts` file, OR
  * - A `.ts` file (but NOT a `.d.ts` declaration) that is NOT inside
  *   `node_modules`
  */

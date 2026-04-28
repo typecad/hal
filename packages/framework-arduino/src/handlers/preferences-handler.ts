@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Preferences namespace handler — maps TypeCode Preferences.* calls to
+// Preferences namespace handler — maps TypeHAL Preferences.* calls to
 // Arduino C++ via a global __tc_prefs object.
 //
 // On ESP32: __tc_prefs is a native Preferences object (#include <Preferences.h>)
@@ -8,7 +8,7 @@
 // The handler is architecture-agnostic; the profile layer handles the split.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
 
 /**
  * Render Preferences namespace calls to Arduino C++.

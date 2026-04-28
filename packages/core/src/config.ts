@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Project configuration types
+// @typehal/core — Project configuration types
 //
-// A `typecode.config.ts` file lives at the root of a user project and tells
+// A `typehal.config.ts` file lives at the root of a user project and tells
 // the transpiler which board, architecture, and build options to use.
 // ---------------------------------------------------------------------------
 
@@ -24,7 +24,7 @@ export type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
 /**
  * Output section — controls how generated C++ is laid out.
  */
-export interface TypecodeOutputConfig {
+export interface TypehalOutputConfig {
   /** Target build framework. */
   framework: OutputFramework;
   /** Optimization level. */
@@ -38,16 +38,16 @@ export interface TypecodeOutputConfig {
 }
 
 /**
- * Root configuration object exported from `typecode.config.ts`.
+ * Root configuration object exported from `typehal.config.ts`.
  *
  * @example
  * ```ts
- * // typecode.config.ts
- * import type { TypecodeConfig } from './code/core';
+ * // typehal.config.ts
+ * import type { TypehalConfig } from './code/core';
  *
- * const config: TypecodeConfig = {
+ * const config: TypehalConfig = {
  *   target: 'avr',
- *   board: '@typecode/board-arduino-uno',
+ *   board: '@typehal/board-arduino-uno',
  *   output: {
  *     framework: 'arduino',
  *     optimize: 'size',
@@ -57,7 +57,7 @@ export interface TypecodeOutputConfig {
  * export default config;
  * ```
  */
-export interface TypecodeConfig {
+export interface TypehalConfig {
   /** Entry point TypeScript file (relative to config file directory). */
   entry?: string;
 
@@ -66,7 +66,7 @@ export interface TypecodeConfig {
 
   /**
    * Board package to use.  Can be:
-   *   - a bare identifier  `'@typecode/board-arduino-uno'`
+   *   - a bare identifier  `'@typehal/board-arduino-uno'`
    *   - a relative path     `'./boards/my-custom-board'`
    */
   board: string;
@@ -74,15 +74,15 @@ export interface TypecodeConfig {
   /**
    * Framework package for code generation strategy.
    * Can be:
-   *   - '@typecode/framework-arduino' - Arduino framework (digitalWrite, etc.)
-   *   - '@typecode/framework-avr' - Native AVR registers (PORTB, etc.)
+   *   - '@typehal/framework-arduino' - Arduino framework (digitalWrite, etc.)
+   *   - '@typehal/framework-avr' - Native AVR registers (PORTB, etc.)
    *   - a relative path to a custom framework package
-   * Defaults to '@typecode/framework-arduino' if not specified.
+   * Defaults to '@typehal/framework-arduino' if not specified.
    */
   framework?: string;
 
   /** Output / build options. */
-  output?: TypecodeOutputConfig;
+  output?: TypehalOutputConfig;
 
   /**
    * Fully-Qualified Board Name used by the Arduino CLI (e.g.
@@ -97,27 +97,27 @@ export interface TypecodeConfig {
   exclude?: string[];
 
   /**
-   * Hardware test runner configuration (`@typecode/expect`).
-   * Defines how `typecode-test` discovers files and communicates with the board.
+   * Hardware test runner configuration (`@typehal/expect`).
+   * Defines how `typehal-test` discovers files and communicates with the board.
    */
-  test?: TypecodeTestConfig;
+  test?: TypehalTestConfig;
 
   /**
    * Toolchain configuration for compile/upload operations.
    * Uses arduino-cli as the backend.
    */
-  toolchain?: TypecodeToolchainConfig;
+  toolchain?: TypehalToolchainConfig;
 
   /**
    * Console polyfill configuration for Arduino.
    * Controls Serial.begin() injection and default baud rate.
    */
-  console?: TypecodeConsoleConfig;
+  console?: TypehalConsoleConfig;
 
   /**
    * Framework-specific configuration. Each framework reads its own section.
    * For native C++ builds, use the `NativeCompileConfig` shape from
-   * `@typecode/framework-native`.
+   * `@typehal/framework-native`.
    */
   native?: Record<string, unknown>;
 }
@@ -143,7 +143,7 @@ export interface ArduinoCliOptions {
  * Toolchain configuration for compile and upload operations.
  * Uses arduino-cli as the backend.
  */
-export interface TypecodeToolchainConfig {
+export interface TypehalToolchainConfig {
   /** Toolchain type: 'arduino-cli'. Default: 'arduino-cli' */
   type?: ToolchainType;
   /** Arduino CLI specific options. */
@@ -154,23 +154,23 @@ export interface TypecodeToolchainConfig {
  * Console polyfill configuration for Arduino.
  * Controls Serial.begin() injection and default baud rate.
  */
-export interface TypecodeConsoleConfig {
+export interface TypehalConsoleConfig {
   /** Default baud rate for Serial.begin() when auto-injected. Default: 9600 */
   baudRate?: number;
 }
 
 // ---------------------------------------------------------------------------
-// Test configuration (@typecode/expect)
+// Test configuration (@typehal/expect)
 // ---------------------------------------------------------------------------
 
 /**
- * Configuration for the `typecode-test` hardware test runner.
- * Add this section to your `typecode.config.ts` when using `@typecode/expect`.
+ * Configuration for the `typehal-test` hardware test runner.
+ * Add this section to your `typehal.config.ts` when using `@typehal/expect`.
  *
  * @example
  * ```ts
- * const config: TypecodeConfig = {
- *   board: '@typecode/board-arduino-uno',
+ * const config: TypehalConfig = {
+ *   board: '@typehal/board-arduino-uno',
  *   fqbn: 'arduino:avr:uno',
  *   test: {
  *     port: 'COM4',
@@ -179,7 +179,7 @@ export interface TypecodeConsoleConfig {
  * };
  * ```
  */
-export interface TypecodeTestConfig {
+export interface TypehalTestConfig {
   /** Glob patterns for hardware test files. Default: `['tests/**\/*.test.ts']`. */
   include?: string[];
 

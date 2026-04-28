@@ -11,8 +11,8 @@
 //   - Structural typing on the pin parameter (interrupt pins only)
 // ---------------------------------------------------------------------------
 
-import { D2, LED, millis } from '@typecode';
-import type { IInputModePin, InterruptHandler } from '@typecode/core';
+import { D2, LED, millis } from '@typehal';
+import type { IInputModePin, InterruptHandler } from '@typehal/core';
 
 // ── Domain types ──────────────────────────────────────────────────────────
 

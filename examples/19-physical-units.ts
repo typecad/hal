@@ -4,8 +4,8 @@
 // Demonstrates configuring peripherals using enum shorthand and bare numbers.
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0 } from '@typecode/board-arduino-uno';
-import { BaudRate, I2CSpeed } from '@typecode/core';
+import { I2C0, UART0 } from '@typehal/board-arduino-uno';
+import { BaudRate, I2CSpeed } from '@typehal/core';
 
 // Use enum values for standard peripheral configurations
 const serial = UART0.begin(BaudRate.B115200);

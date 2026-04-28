@@ -1,18 +1,18 @@
 // ---------------------------------------------------------------------------
-// Example: Hardware test file for @typecode/expect
+// Example: Hardware test file for @typehal/expect
 //
 // This file demonstrates the full user-facing API.  It reads analog pin A0
 // and asserts the value using vitest-style fluent chaining.
 //
 // Run with:
-//   npx typecode-test --port COM4 examples/09-expect-demo.test.ts
+//   npx typehal-test --port COM4 examples/09-expect-demo.test.ts
 //
 // Or via npm script:
 //   npm run test:hw -- --port COM4
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecode/expect';
-import { A0, A1 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0, A1 } from '@typehal';
 
 // ── Analog reads ──────────────────────────────────────────────────────────
 describe("A0 analog read")

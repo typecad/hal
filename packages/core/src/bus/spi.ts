@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core - SPI Bus Interfaces
+// @typehal/core - SPI Bus Interfaces
 //
 // Modern API: SPI0.enable(), SPI0.device(CS).transfer(data)
 // CS is managed automatically by .device().

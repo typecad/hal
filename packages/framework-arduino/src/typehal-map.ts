@@ -1,13 +1,13 @@
 // ---------------------------------------------------------------------------
-// Typecode → Arduino C++ translation map
+// Typehal → Arduino C++ translation map
 //
-// Converts structured typecode ir call nodes to the correct Arduino C++
+// Converts structured typehal ir call nodes to the correct Arduino C++
 // built-in expressions.  All translations are centralised here so that
 // the rest of the emitter stays regex-free.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, TypecodeReceiverKind, BoardConstants, TargetProfile } from '@typecode/core/shared';
-import { inferKindByName } from '@typecode/core/shared';
+import type { ExpressionIR, TypehalReceiverKind, BoardConstants, TargetProfile } from '@typehal/core/shared';
+import { inferKindByName } from '@typehal/core/shared';
 import { renderNumNamespace } from './handlers/num-handler';
 import { renderPulseCall } from './handlers/pulse-handler';
 import { renderShiftCall } from './handlers/shift-handler';
@@ -96,7 +96,7 @@ export function renderBoardDefinitionAccess(
 // ---------------------------------------------------------------------------
 
 /**
- * Translate a typecode method call to an Arduino C++ expression string.
+ * Translate a typehal method call to an Arduino C++ expression string.
  *
  * @param receiver     Symbol name, e.g. "A0", "D13", "Serial", "I2C0"
  * @param receiverKind Category inferred from the symbol name
@@ -108,7 +108,7 @@ export function renderBoardDefinitionAccess(
  */
 export function renderArduinoBuiltin(
   receiver: string,
-  receiverKind: TypecodeReceiverKind,
+  receiverKind: TypehalReceiverKind,
   method: string,
   args: ReadonlyArray<ExpressionIR>,
   renderArg: (e: ExpressionIR) => string,
@@ -256,13 +256,13 @@ export function renderArduinoBuiltin(
 // ---------------------------------------------------------------------------
 
 /**
- * Try to translate a statement-level typecode callee string (e.g. "D13.high",
+ * Try to translate a statement-level typehal callee string (e.g. "D13.high",
  * "Serial.println", "Board.A0.read") to its Arduino C++ equivalent.
  *
  * Returns the complete rendered C++ expression string (without a trailing
- * semicolon), or `undefined` if the callee is not a typecode call.
+ * semicolon), or `undefined` if the callee is not a typehal call.
  */
-export function tryRenderTypecodeCallStatement(
+export function tryRenderTypehalCallStatement(
   callee: string,
   args: ReadonlyArray<ExpressionIR>,
   target: TargetProfile,
@@ -365,7 +365,7 @@ export function tryRenderTypecodeCallStatement(
       return `detachInterrupt(digitalPinToInterrupt(${pin}))`;
     }
 
-    // Fall through to general pin method handling only for recognised Typecode symbols
+    // Fall through to general pin method handling only for recognised Typehal symbols
     const kind = inferKindByName(receiver);
     if (kind === 'unknown') return undefined;
     return renderArduinoBuiltin(receiver, kind, method, args, renderArg, boardConstants);

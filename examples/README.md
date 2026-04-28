@@ -1,4 +1,4 @@
-# TypeCode Examples
+# TypeHAL Examples
 
 This directory is the quickest way to see how the public API is intended to be used.
 
@@ -11,7 +11,7 @@ The examples are ordered as a progression, not a grab bag. Earlier files show ba
 - `20-gpio-object-pattern.ts`: the clearest reference for modern GPIO configuration.
 - `21-bus-ownership.ts`: the clearest reference for `take()` / `release()` on I2C, SPI, and UART.
 - `23-transpiler-showcase.ts`: a stock-Uno-friendly runtime validation sketch that prints labeled results over serial.
-- `24-uno-validation.test.ts`: a companion `@typecode/expect` hardware test for the same core transpiler behaviors.
+- `24-uno-validation.test.ts`: a companion `@typehal/expect` hardware test for the same core transpiler behaviors.
 - `25-debounce-button.ts`: an advanced class-based button debounce example that demonstrates modern TypeScript patterns.
 
 ## Example groups
@@ -30,7 +30,7 @@ The examples are ordered as a progression, not a grab bag. Earlier files show ba
 
 ## Hardware test example
 
-`09-expect-demo.test.ts` is intentionally both an example and a hardware test artifact. It demonstrates the user-facing `@typecode/expect` fluent API and is meant to be run as a hardware test, not as part of the Vitest unit suite.
+`09-expect-demo.test.ts` is intentionally both an example and a hardware test artifact. It demonstrates the user-facing `@typehal/expect` fluent API and is meant to be run as a hardware test, not as part of the Vitest unit suite.
 
 ## Related references
 

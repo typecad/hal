@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Peripheral configuration enums
+// @typehal/core — Peripheral configuration enums
 //
 // Common preset values for peripheral bus configuration.
 // ---------------------------------------------------------------------------

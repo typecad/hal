@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// Random namespace handler — maps TypeCode Random.* calls to Arduino C++
+// Random namespace handler — maps TypeHAL Random.* calls to Arduino C++
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
 
 /**
  * Render Random namespace calls to Arduino C++.

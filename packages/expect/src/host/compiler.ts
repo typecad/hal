@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Compiler
+// @typehal/expect — Compiler
 //
-// Wraps the typecode transpiler + arduino-cli compile/upload cycle.
+// Wraps the typehal transpiler + arduino-cli compile/upload cycle.
 // Takes preprocessed TypeScript source, transpiles to C++, compiles, uploads.
 // ---------------------------------------------------------------------------
 
@@ -31,7 +31,7 @@ export interface UploadResult {
 /**
  * Transpile preprocessed TypeScript source to a C++ Arduino sketch.
  *
- * Writes the preprocessed source to a temp file, invokes the typecode
+ * Writes the preprocessed source to a temp file, invokes the typehal
  * transpiler, and returns the path to the generated .ino file.
  */
 export function transpileTestFile(
@@ -57,9 +57,9 @@ export function transpileTestFile(
   const tsPath = path.join(buildDir, `${baseName}.ts`);
   fs.writeFileSync(tsPath, rewrittenSource, 'utf8');
 
-  // Invoke the typecode transpiler
+  // Invoke the typehal transpiler
   // We call it as a CLI command rather than importing to avoid coupling
-  const typecodeCmd = resolveTypecodeCmd(projectRoot);
+  const typehalCmd = resolveTypehalCmd(projectRoot);
   const useBuildMode = hasRelativeImports(rewrittenSource);
 
   if (useBuildMode) {
@@ -69,8 +69,8 @@ export function transpileTestFile(
   const result = spawnSync(
     process.execPath,
     useBuildMode
-      ? [typecodeCmd, 'build', '--skip-type-check', '--force']
-      : [typecodeCmd, tsPath, '--skip-type-check', '--force'],
+      ? [typehalCmd, 'build', '--skip-type-check', '--force']
+      : [typehalCmd, tsPath, '--skip-type-check', '--force'],
     {
       encoding: 'utf8',
       cwd: useBuildMode ? buildDir : projectRoot,
@@ -161,14 +161,14 @@ export function uploadSketch(
 // Internal
 // ---------------------------------------------------------------------------
 
-function resolveTypecodeCmd(projectRoot: string): string {
-  // Try to find typecode CLI in the monorepo (current dir and parent dirs)
+function resolveTypehalCmd(projectRoot: string): string {
+  // Try to find typehal CLI in the monorepo (current dir and parent dirs)
   let searchDir = projectRoot;
   for (let i = 0; i < 5; i++) {
     const candidates = [
       path.join(searchDir, 'packages', 'cli', 'dist', 'cli.js'),
-      path.join(searchDir, 'node_modules', '.bin', 'typecode'),
-      path.join(searchDir, 'node_modules', 'typecode', 'dist', 'cli.js'),
+      path.join(searchDir, 'node_modules', '.bin', 'typehal'),
+      path.join(searchDir, 'node_modules', 'typehal', 'dist', 'cli.js'),
     ];
 
     for (const c of candidates) {
@@ -181,11 +181,11 @@ function resolveTypecodeCmd(projectRoot: string): string {
   }
 
   // Fallback: assume it's on PATH
-  return 'typecode';
+  return 'typehal';
 }
 
 function findOutputDir(buildDir: string, baseName: string, projectRoot: string): string {
-  // The typecode transpiler writes output next to the source by default,
+  // The typehal transpiler writes output next to the source by default,
   // or to the configured outDir.  Check common locations.
   const candidates = [
     buildDir,
@@ -254,17 +254,17 @@ function rewriteRelativeImports(source: string, originalFilePath: string, buildD
 }
 
 function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: string, fqbn: string): void {
-  const baseConfigPath = path.join(projectRoot, 'typecode.config.ts');
-  const buildConfigPath = path.join(buildDir, 'typecode.config.ts');
+  const baseConfigPath = path.join(projectRoot, 'typehal.config.ts');
+  const buildConfigPath = path.join(buildDir, 'typehal.config.ts');
 
   if (fs.existsSync(baseConfigPath)) {
     // Parse base config via AST to extract scalar values, then inline them.
     // This avoids spreads (...baseConfig) which the config loader cannot evaluate.
     const baseValues = parseConfigAST(baseConfigPath);
     const lines = [
-      `import type { TypecodeConfig } from '@typecode/core';`,
+      `import type { TypehalConfig } from '@typehal/core';`,
       '',
-      'const config: TypecodeConfig = {',
+      'const config: TypehalConfig = {',
       `  entry: './${entryFileName}',`,
     ];
     if (baseValues.target) lines.push(`  target: '${baseValues.target}',`);
@@ -296,9 +296,9 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
   fs.writeFileSync(
     buildConfigPath,
     [
-      `import type { TypecodeConfig } from '@typecode/core';`,
+      `import type { TypehalConfig } from '@typehal/core';`,
       '',
-      'const config: TypecodeConfig = {',
+      'const config: TypehalConfig = {',
       `  entry: './${entryFileName}',`,
       `  target: 'avr',`,
       `  fqbn: '${fqbn}',`,

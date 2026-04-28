@@ -1,6 +1,6 @@
 # Architecture Package Documentation
 
-Architecture packages (`@typecode/arch-<cpu>-<hal>`) define how code is generated for a CPU family with a specific HAL/framework.
+Architecture packages (`@typehal/arch-<cpu>-<hal>`) define how code is generated for a CPU family with a specific HAL/framework.
 
 ## Documents
 
@@ -9,7 +9,7 @@ Architecture packages (`@typecode/arch-<cpu>-<hal>`) define how code is generate
 
 ## Naming Convention
 
-Architecture packages follow the pattern: `@typecode/arch-<cpu>-<hal>`
+Architecture packages follow the pattern: `@typehal/arch-<cpu>-<hal>`
 
 | Component | Description | Examples |
 |-----------|-------------|----------|
@@ -20,11 +20,11 @@ Architecture packages follow the pattern: `@typecode/arch-<cpu>-<hal>`
 
 | Package | CPU | HAL | Description |
 |---------|-----|-----|-------------|
-| `@typecode/arch-avr-native` | AVR | Native | Direct register access, no framework |
-| `@typecode/arch-avr-arduino` | AVR | Arduino | Arduino framework API calls |
-| `@typecode/arch-esp32-arduino` | ESP32 | Arduino | Arduino ESP32 core |
-| `@typecode/arch-esp32-espidf` | ESP32 | ESP-IDF | ESP-IDF FreeRTOS |
-| `@typecode/arch-arm-zephyr` | ARM | Zephyr | Zephyr RTOS |
+| `@typehal/arch-avr-native` | AVR | Native | Direct register access, no framework |
+| `@typehal/arch-avr-arduino` | AVR | Arduino | Arduino framework API calls |
+| `@typehal/arch-esp32-arduino` | ESP32 | Arduino | Arduino ESP32 core |
+| `@typehal/arch-esp32-espidf` | ESP32 | ESP-IDF | ESP-IDF FreeRTOS |
+| `@typehal/arch-arm-zephyr` | ARM | Zephyr | Zephyr RTOS |
 
 ## Purpose
 
@@ -38,10 +38,10 @@ Architecture packages handle:
 ## Relationship to Board Packages
 
 ```
-@typecode/arch-avr-native (strategy + registers)
+@typehal/arch-avr-native (strategy + registers)
             │
             ▼
-@typecode/board-arduino-uno (pins + constants)
+@typehal/board-arduino-uno (pins + constants)
             │
             ▼
         User Code
@@ -78,7 +78,7 @@ Architecture packages export a `PlatformStrategy` implementation:
 
 ```typescript
 // src/strategy.ts
-import { PlatformStrategy } from 'typecode/platform';
+import { PlatformStrategy } from 'typehal/platform';
 
 export class NativeAVRStrategy extends PlatformStrategy {
   readonly id = 'avr-native';

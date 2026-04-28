@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// Shift namespace handler — maps TypeCode Shift.* calls to Arduino C++
+// Shift namespace handler — maps TypeHAL Shift.* calls to Arduino C++
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, BoardConstants } from '@typecode/core/shared';
+import type { ExpressionIR, BoardConstants } from '@typehal/core/shared';
 
 /** Convert a pin name to a raw Arduino integer (D2 → 2, A0 → A0). */
 function pinArgRaw(rawPin: string): string {

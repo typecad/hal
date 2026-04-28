@@ -1,6 +1,6 @@
 // Test compile-time peripheral initialization analysis
 // This should generate ADC initialization in setup() and optimized analog reads
-import { A0, D9, delay, map } from '@typecode';
+import { A0, D9, delay, map } from '@typehal';
 
 D9.asOutput(false);
 

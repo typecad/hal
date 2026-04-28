@@ -1,6 +1,6 @@
 # Board Package Documentation
 
-Board packages (`@typecode/board-<vendor>-<model>[-<hal>]`) define a specific board's capabilities and pin mappings.
+Board packages (`@typehal/board-<vendor>-<model>[-<hal>]`) define a specific board's capabilities and pin mappings.
 
 ## Documents
 
@@ -9,7 +9,7 @@ Board packages (`@typecode/board-<vendor>-<model>[-<hal>]`) define a specific bo
 
 ## Naming Convention
 
-Board packages follow the pattern: `@typecode/board-<vendor>-<model>[-<hal>]`
+Board packages follow the pattern: `@typehal/board-<vendor>-<model>[-<hal>]`
 
 | Component | Description | Examples |
 |-----------|-------------|----------|
@@ -21,24 +21,24 @@ Board packages follow the pattern: `@typecode/board-<vendor>-<model>[-<hal>]`
 
 | Package | Vendor | Model | HAL | Description |
 |---------|--------|-------|-----|-------------|
-| `@typecode/board-arduino-uno` | Arduino | Uno | arduino (default) | Arduino Uno with Arduino framework |
-| `@typecode/board-arduino-uno-native` | Arduino | Uno | native | Arduino Uno with native AVR codegen |
-| `@typecode/board-esp-esp32-devkit` | ESP | ESP32-DevKit | arduino (default) | ESP32 with Arduino framework |
-| `@typecode/board-esp-esp32-devkit-espidf` | ESP | ESP32-DevKit | espidf | ESP32 with ESP-IDF FreeRTOS |
+| `@typehal/board-arduino-uno` | Arduino | Uno | arduino (default) | Arduino Uno with Arduino framework |
+| `@typehal/board-arduino-uno-native` | Arduino | Uno | native | Arduino Uno with native AVR codegen |
+| `@typehal/board-esp-esp32-devkit` | ESP | ESP32-DevKit | arduino (default) | ESP32 with Arduino framework |
+| `@typehal/board-esp-esp32-devkit-espidf` | ESP | ESP32-DevKit | espidf | ESP32 with ESP-IDF FreeRTOS |
 
 ## Available Board Packages
 
 | Package | FQBN | Target | MCU |
 |---------|------|--------|-----|
-| `@typecode/board-arduino-uno` | `arduino:avr:uno` | `avr` | ATmega328P |
-| `@typecode/board-arduino-uno-native` | `arduino:avr:uno` | `avr` | ATmega328P (native codegen) |
-| `@typecode/board-arduino-nano33iot` | `arduino:samd:nano_33_iot` | `samd` | SAMD21 |
-| `@typecode/board-esp32-devkit` | `esp32:esp32:esp32doit-devkit-v1` | `esp32` | ESP32 |
+| `@typehal/board-arduino-uno` | `arduino:avr:uno` | `avr` | ATmega328P |
+| `@typehal/board-arduino-uno-native` | `arduino:avr:uno` | `avr` | ATmega328P (native codegen) |
+| `@typehal/board-arduino-nano33iot` | `arduino:samd:nano_33_iot` | `samd` | SAMD21 |
+| `@typehal/board-esp32-devkit` | `esp32:esp32:esp32doit-devkit-v1` | `esp32` | ESP32 |
 
 ## Quick Start
 
 ```typescript
-import { LED, delay, HIGH } from '@typecode';
+import { LED, delay, HIGH } from '@typehal';
 
 LED.output(HIGH);
 
@@ -69,10 +69,10 @@ packages/board-<name>/
 Board packages import and re-export architecture strategies:
 
 ```
-@typecode/arch-avr-native (strategy + registers)
+@typehal/arch-avr-native (strategy + registers)
             │
             ▼
-@typecode/board-arduino-uno (pins + constants)
+@typehal/board-arduino-uno (pins + constants)
             │
             ▼
         User Code

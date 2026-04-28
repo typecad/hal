@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Fixed-size buffer types
+// @typehal/core — Fixed-size buffer types
 //
 // These are TypeScript-level abstractions that the transpiler maps to
 // stack-allocated C++ containers (no heap).

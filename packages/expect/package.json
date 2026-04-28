@@ -1,12 +1,12 @@
 {
-  "name": "@typecode/expect",
+  "name": "@typehal/expect",
   "version": "0.1.0",
-  "description": "Hardware test framework for TypeCode — vitest-style assertions over serial",
+  "description": "Hardware test framework for TypeHAL — vitest-style assertions over serial",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "typecode-test": "./dist/host/cli.js"
+    "typehal-test": "./dist/host/cli.js"
   },
   "exports": {
     ".": {
@@ -38,7 +38,7 @@
   },
   "dependencies": {
     "typescript": "^5.7.3",
-    "@typecode/core": "*",
+    "@typehal/core": "*",
     "serialport": "^12.0.0"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Scheduler and timer interfaces
+// @typehal/core — Scheduler and timer interfaces
 // ---------------------------------------------------------------------------
 
 import type { ITaskHandle } from './task';

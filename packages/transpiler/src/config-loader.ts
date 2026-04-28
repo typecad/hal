@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// Config loader — reads and parses typecode.config.ts
+// Config loader — reads and parses typehal.config.ts
 //
-// Walks up from a given directory to locate `typecode.config.ts`, then parses
+// Walks up from a given directory to locate `typehal.config.ts`, then parses
 // it with the TypeScript compiler API to extract the scalar config values.
 // This mirrors the AST-based approach used by board-resolver.ts so we avoid
 // any runtime evaluation (no ts-node / dynamic import needed).
@@ -12,17 +12,17 @@ import fs from "node:fs";
 import ts from "typescript";
 
 /** The filename we search for when walking up directories. */
-const CONFIG_FILENAME = "typecode.config.ts";
+const CONFIG_FILENAME = "typehal.config.ts";
 
 /**
- * Resolved configuration values extracted from `typecode.config.ts`.
+ * Resolved configuration values extracted from `typehal.config.ts`.
  * Only the fields relevant to the transpiler are included — complex
  * nested objects (like `output`) are flattened into simple scalars.
  */
-export interface ResolvedTypecodeConfig {
+export interface ResolvedTypehalConfig {
   /** Target architecture (e.g. 'avr', 'esp32', 'samd'). */
   target?: string;
-  /** Board package specifier (e.g. '@typecode/board-arduino-uno'). */
+  /** Board package specifier (e.g. '@typehal/board-arduino-uno'). */
   board?: string;
   /** Fully Qualified Board Name (e.g. 'arduino:avr:uno'). */
   fqbn?: string;
@@ -34,7 +34,7 @@ export interface ResolvedTypecodeConfig {
   outputOutDir?: string;
   /**
    * Framework package for code generation strategy.
-   * Can be '@typecode/framework-arduino', '@typecode/framework-avr', or a custom path.
+   * Can be '@typehal/framework-arduino', '@typehal/framework-avr', or a custom path.
    */
   framework?: string;
   /** Entry point TypeScript file (relative to config file directory). */
@@ -54,7 +54,7 @@ export interface ResolvedTypecodeConfig {
 }
 
 /**
- * Search upward from `startDir` for a file named `typecode.config.ts`.
+ * Search upward from `startDir` for a file named `typehal.config.ts`.
  * Returns the absolute path on success, `undefined` if none is found.
  */
 export function findConfigFile(startDir: string): string | undefined {
@@ -264,11 +264,11 @@ function extractFrameworkSection(
  * The file must have a default export whose initializer is an object literal.
  * We find it by looking for:
  *   1. `export default <object>` — an ExportAssignment referencing a variable
- *   2. `const config: TypecodeConfig = { ... };` followed by `export default config;`
+ *   2. `const config: TypehalConfig = { ... };` followed by `export default config;`
  *
  * Returns `undefined` if the file cannot be parsed or has no recognizable config.
  */
-export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | undefined {
+export function parseConfigFile(configPath: string): ResolvedTypehalConfig | undefined {
   const sourceText = fs.readFileSync(configPath, "utf-8");
   const sourceFile = ts.createSourceFile(
     configPath,
@@ -322,7 +322,7 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
   walkObjectLiteral(configObject, "", flat);
 
   // Map flat keys to the resolved config shape.
-  const resolved: ResolvedTypecodeConfig = { configPath };
+  const resolved: ResolvedTypehalConfig = { configPath };
 
   const entry = flat.get("entry");
   if (typeof entry === "string") resolved.entry = entry;
@@ -368,27 +368,27 @@ export function parseConfigFile(configPath: string): ResolvedTypecodeConfig | un
 }
 
 /**
- * Generates (or updates) a `typecode-env.d.ts` file next to the config file.
+ * Generates (or updates) a `typehal-env.d.ts` file next to the config file.
  *
- * The file declares an ambient `@typecode` module that simply re-exports
+ * The file declares an ambient `@typehal` module that simply re-exports
  * everything from the concrete board package.  This lets the TypeScript
- * language server resolve `import { ... } from '@typecode'` in user files.
+ * language server resolve `import { ... } from '@typehal'` in user files.
  *
  * The file is regenerated on every transpiler run so it stays in sync when
- * the board changes in `typecode.config.ts`.
+ * the board changes in `typehal.config.ts`.
  */
-export function generateVirtualTypeDeclaration(config: ResolvedTypecodeConfig): void {
+export function generateVirtualTypeDeclaration(config: ResolvedTypehalConfig): void {
   if (!config.board) return;
 
   const configDir = path.dirname(config.configPath);
-  const outPath = path.join(configDir, "typecode-env.d.ts");
+  const outPath = path.join(configDir, "typehal-env.d.ts");
 
   const content = [
     "// ---------------------------------------------------------------------------",
-    "// typecode-env.d.ts — Virtual module declaration for '@typecode'",
+    "// typehal-env.d.ts — Virtual module declaration for '@typehal'",
     "//",
-    "// Auto-generated by the typecode transpiler. Do not edit manually.",
-    "// To change the board, update typecode.config.ts and re-run the transpiler.",
+    "// Auto-generated by the typehal transpiler. Do not edit manually.",
+    "// To change the board, update typehal.config.ts and re-run the transpiler.",
     "//",
     `// Board: ${config.board}`,
     "// ---------------------------------------------------------------------------",
@@ -409,7 +409,7 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypecodeConfig): 
     "  type float = number;",
     "  type double = number;",
     "",
-    "  // Convenience helper for volatile variables in TypeCode programs.",
+    "  // Convenience helper for volatile variables in TypeHAL programs.",
     "  // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.",
     "  declare function volatile<T>(value: T): T;",
     "",
@@ -457,7 +457,7 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypecodeConfig): 
     "  };",
     "}",
     "",
-    "declare module '@typecode' {",
+    "declare module '@typehal' {",
     `  export * from '${config.board}';`,
     "}",
     "",
@@ -471,7 +471,7 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypecodeConfig): 
 /**
  * Validate that a board package exists.
  * 
- * Checks both relative paths (packages/board-*) and npm packages (@typecode/board-*).
+ * Checks both relative paths (packages/board-*) and npm packages (@typehal/board-*).
  * Returns an error message if validation fails, or undefined if valid.
  */
 export function validateBoardPackage(board: string, configPath: string): string | undefined {
@@ -495,7 +495,7 @@ export function validateBoardPackage(board: string, configPath: string): string 
     return undefined; // Valid
   }
   
-  // Check if it's an npm package (@typecode/board-* or similar)
+  // Check if it's an npm package (@typehal/board-* or similar)
   if (board.startsWith('@')) {
     try {
       const resolvedPath = require.resolve(board);
@@ -522,13 +522,13 @@ export function validateBoardPackage(board: string, configPath: string): string 
 }
 
 /**
- * High-level entry point: find and load `typecode.config.ts` starting from
+ * High-level entry point: find and load `typehal.config.ts` starting from
  * the given directory (typically the directory of the input .ts file).
  *
  * Returns `undefined` when no config file is found — the caller should
  * fall back to legacy behaviour (board determined by imports).
  */
-export function loadTypecodeConfig(startDir: string): ResolvedTypecodeConfig | undefined {
+export function loadTypehalConfig(startDir: string): ResolvedTypehalConfig | undefined {
   const configPath = findConfigFile(startDir);
   if (!configPath) return undefined;
   return parseConfigFile(configPath);

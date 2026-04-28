@@ -2,13 +2,13 @@
 
 [← Home](index.md)
 
-The classic embedded development loop: write code, compile, flash, wait 30 seconds, discover the wrong pin, repeat. TypeCode breaks that loop. If something is wrong with your hardware usage, you see a red squiggle in your editor — before you ever hit upload.
+The classic embedded development loop: write code, compile, flash, wait 30 seconds, discover the wrong pin, repeat. TypeHAL breaks that loop. If something is wrong with your hardware usage, you see a red squiggle in your editor — before you ever hit upload.
 
 ---
 
 ## How it works
 
-TypeCode knows your board. When you install a board package like `@typecode/board-arduino-uno`, you get a complete machine-readable map of every pin's capabilities: which pins support PWM, which are analog-only, which are claimed by I2C or SPI, which can trigger interrupts.
+TypeHAL knows your board. When you install a board package like `@typehal/board-arduino-uno`, you get a complete machine-readable map of every pin's capabilities: which pins support PWM, which are analog-only, which are claimed by I2C or SPI, which can trigger interrupts.
 
 The TypeScript type system uses this data to narrow every pin to exactly what it can do. A function that takes a `PWMPin` won't accept `D4` on an Arduino Uno — because `D4` isn't a PWM pin on that board.
 
@@ -17,7 +17,7 @@ The TypeScript type system uses this data to narrow every pin to exactly what it
 ## Pin capability checks
 
 ```typescript
-import { D4, D9, A0, A1 } from '@typecode';
+import { D4, D9, A0, A1 } from '@typehal';
 
 // PWM
 D4.pwm(50);       // ❌ Error: D4 does not support PWM on Arduino Uno
@@ -38,7 +38,7 @@ These are not runtime checks. The type narrowing happens at the TypeScript level
 ## Uninitialized peripheral detection
 
 ```typescript
-import { I2C0 } from '@typecode';
+import { I2C0 } from '@typehal';
 
 // Without begin():
 I2C0.device(0x76).readByte(0xFA);
@@ -59,7 +59,7 @@ The same pattern applies to SPI and UART — the type system tracks initializati
 When you initialize I2C on an Arduino Uno, pins A4 (SDA) and A5 (SCL) are claimed. If your code tries to use them as GPIO after that, the transpiler warns you:
 
 ```typescript
-import { I2C0, A4, A5 } from '@typecode';
+import { I2C0, A4, A5 } from '@typehal';
 
 I2C0.begin();
 
@@ -87,11 +87,11 @@ if (raw > 2000) {  // ⚠️ Warning: comparison always false (max is 1023)
 
 ## Type guards and assertions at runtime
 
-For cases where pin capability isn't known until runtime, TypeCode provides runtime type guards that narrow the type and produce compile-safe code:
+For cases where pin capability isn't known until runtime, TypeHAL provides runtime type guards that narrow the type and produce compile-safe code:
 
 ```typescript
-import { isPWMPin, isAnalogPin, assertPWM } from '@typecode/core';
-import type { PWMPin } from '@typecode/core';
+import { isPWMPin, isAnalogPin, assertPWM } from '@typehal/core';
+import type { PWMPin } from '@typehal/core';
 
 function safeWrite(pin: unknown, value: number) {
   if (isPWMPin(pin)) {
@@ -110,7 +110,7 @@ assertPWM(D3, 'D3 must support PWM');
 You can write functions that only accept the right kind of pin — the compiler enforces it:
 
 ```typescript
-import type { PWMPin } from '@typecode/core';
+import type { PWMPin } from '@typehal/core';
 
 function fadeLED(pin: PWMPin, durationMs: number) {
   for (let i = 0; i <= 100; i++) {
@@ -128,7 +128,7 @@ fadeLED(D4, 500);   // ❌ Argument of type 'D4Pin' is not assignable to 'PWMPin
 ## Interrupt pin safety
 
 ```typescript
-import { D2, D3, D4 } from '@typecode';
+import { D2, D3, D4 } from '@typehal';
 
 D2.onChange(() => { /* handler */ });  // ✅ D2 is an interrupt pin on Uno
 D3.onFalling(() => { /* handler */ }); // ✅ D3 is an interrupt pin on Uno
@@ -141,8 +141,8 @@ D4.onChange(() => { /* handler */ });  // ❌ Error: D4 does not support interru
 
 Diagnostics appear in three places simultaneously:
 
-1. **VS Code squiggles** — red/yellow underlines as you type, via the `typecode-env.d.ts` type definitions the transpiler auto-generates
-2. **Transpiler output** — `npx typecode build` prints every diagnostic with code, message, and source location
+1. **VS Code squiggles** — red/yellow underlines as you type, via the `typehal-env.d.ts` type definitions the transpiler auto-generates
+2. **Transpiler output** — `npx typehal build` prints every diagnostic with code, message, and source location
 3. **CI** — diagnostics with severity `error` exit non-zero, blocking your build pipeline
 
 ---

@@ -9,9 +9,9 @@
  * before using features that require specific capabilities.
  */
 
-import { D2, D3, A0, LED, delay, UART0 } from '@typecode';
-import { isPWMPin, isAnalogPin, isInterruptPin, assertPWM } from '@typecode/core';
-import type { PWMPin } from '@typecode/core';
+import { D2, D3, A0, LED, delay, UART0 } from '@typehal';
+import { isPWMPin, isAnalogPin, isInterruptPin, assertPWM } from '@typehal/core';
+import type { PWMPin } from '@typehal/core';
 
 // Initialize serial for output
 const serial = UART0.begin(9600);

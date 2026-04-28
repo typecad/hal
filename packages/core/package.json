@@ -1,7 +1,7 @@
 {
-  "name": "@typecode/core",
+  "name": "@typehal/core",
   "version": "0.1.0",
-  "description": "TypeCode core types and interfaces for embedded development",
+  "description": "TypeHAL core types and interfaces for embedded development",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

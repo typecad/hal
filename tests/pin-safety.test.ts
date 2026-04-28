@@ -8,7 +8,7 @@ import { transpile } from './setup';
 describe('Pin Safety Validation', () => {
   it('generates warning when unsafe pin D0 is used', () => {
     const result = transpile(`
-      import { D0 } from '@typecode/board-arduino-uno';
+      import { D0 } from '@typehal/board-arduino-uno';
       D0.asOutput();
       D0.high();
     `, { target: 'arduino' });
@@ -25,7 +25,7 @@ describe('Pin Safety Validation', () => {
 
   it('generates warning when unsafe pin D1 is used', () => {
     const result = transpile(`
-      import { D1 } from '@typecode/board-arduino-uno';
+      import { D1 } from '@typehal/board-arduino-uno';
       D1.asOutput();
       D1.high();
     `, { target: 'arduino' });
@@ -40,7 +40,7 @@ describe('Pin Safety Validation', () => {
 
   it('generates warning when unsafe pin alias TX is used', () => {
     const result = transpile(`
-      import { TX } from '@typecode/board-arduino-uno';
+      import { TX } from '@typehal/board-arduino-uno';
       TX.asOutput();
       TX.high();
     `, { target: 'arduino' });
@@ -56,7 +56,7 @@ describe('Pin Safety Validation', () => {
 
   it('does not generate warning for safe pins', () => {
     const result = transpile(`
-      import { D13 } from '@typecode/board-arduino-uno';
+      import { D13 } from '@typehal/board-arduino-uno';
       D13.asOutput();
       D13.high();
     `, { target: 'arduino' });
@@ -70,7 +70,7 @@ describe('Pin Safety Validation', () => {
 
   it('does not generate warning for PWM pins that are not unsafe', () => {
     const result = transpile(`
-      import { D9 } from '@typecode/board-arduino-uno';
+      import { D9 } from '@typehal/board-arduino-uno';
       D9.pwm();
       D9.pwm(128);
     `, { target: 'arduino' });

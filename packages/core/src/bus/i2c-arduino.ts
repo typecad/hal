@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — I2C Arduino-compatible API interface
+// @typehal/core — I2C Arduino-compatible API interface
 //
 // This interface provides Arduino Wire-compatible methods for I2C communication.
-// Import from '@typecode/core/arduino' or '@typecode/board-arduino-uno/arduino'
+// Import from '@typehal/core/arduino' or '@typehal/board-arduino-uno/arduino'
 // to use this API style.
 // ---------------------------------------------------------------------------
 
@@ -17,7 +17,7 @@ import type { I2CAddress, I2CStatus } from './i2c';
  * 
  * Usage:
  * ```typescript
- * import { I2C0 } from '@typecode/board-arduino-uno/arduino';
+ * import { I2C0 } from '@typehal/board-arduino-uno/arduino';
  * 
  * I2C0.begin();
  * I2C0.setClock(400000);

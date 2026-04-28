@@ -109,7 +109,7 @@ export function collectExpressionIdentifiers(expr: ExpressionIR | null | undefin
       }
       break;
 
-    case "typecode-call":
+    case "typehal-call":
       for (const id of collectExpressionIdentifiers({ kind: "identifier", value: expr.receiver } as ExpressionIR)) {
         identifiers.add(id);
       }
@@ -189,7 +189,7 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
       }
       break;
 
-    case "typecode-call":
+    case "typehal-call":
       identifiers.add(statement.receiver);
       for (const arg of statement.args) {
         for (const id of collectExpressionIdentifiers(arg)) {

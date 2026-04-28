@@ -1,7 +1,7 @@
 import type { ExpressionIR, ProgramIR } from './ir';
 import type { Diagnostic, PlatformContext } from './types';
 import type { BoardConstants } from './board-resolver';
-import type { TypecodeReceiverKind } from './typecode-symbols';
+import type { TypehalReceiverKind } from './typehal-symbols';
 import type { RuntimePolyfillIR } from './polyfill-types';
 export interface PlatformStrategy {
     /** Unique identifier for this strategy (e.g. "arduino", "generic"). */
@@ -101,10 +101,10 @@ export interface PlatformStrategy {
      */
     enumCastType(enumName: string): string | undefined;
     /**
-     * Try to render a typecode SDK call expression (pin.read, Serial.print …).
+     * Try to render a typehal SDK call expression (pin.read, Serial.print …).
      * Return `undefined` to fall back to default rendering.
      */
-    tryRenderTypecodeCall(receiver: string, receiverKind: TypecodeReceiverKind, method: string, args: ReadonlyArray<ExpressionIR>, renderArg: (e: ExpressionIR) => string, boardConstants?: BoardConstants, interruptMode?: "FALLING" | "RISING" | "CHANGE" | "ALL"): string | undefined;
+    tryRenderTypehalCall(receiver: string, receiverKind: TypehalReceiverKind, method: string, args: ReadonlyArray<ExpressionIR>, renderArg: (e: ExpressionIR) => string, boardConstants?: BoardConstants, interruptMode?: "FALLING" | "RISING" | "CHANGE" | "ALL"): string | undefined;
     /**
      * Try to render a Board.definition.* property access.
      * Return `undefined` to fall back to default rendering.

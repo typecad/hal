@@ -14,7 +14,7 @@ import {
   hasStdMathCalls,
   hasConsoleCalls,
   generateAsyncTaskClass,
-  isTypecodeSDKImport,
+  isTypehalSDKImport,
   normalizeInclude,
   dedupe,
   resolveTranspiledModuleInclude,
@@ -383,8 +383,8 @@ export abstract class BaseEmitter {
 
     // Add includes from imports
     for (const imp of program.imports) {
-      // Skip typecode SDK imports (they're type-level only)
-      if (isTypecodeSDKImport(imp.moduleSpecifier, filePath)) {
+      // Skip typehal SDK imports (they're type-level only)
+      if (isTypehalSDKImport(imp.moduleSpecifier, filePath)) {
         continue;
       }
 

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Shared operation result types
+// @typehal/core — Shared operation result types
 //
 // Simplified: bus operations return raw values directly. Error handling
 // is done via bus-level onError() callbacks rather than per-operation

@@ -4,7 +4,7 @@ import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, Cpp
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnlyMethodName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
-import { inferKindByName } from "./typecode-symbols";
+import { inferKindByName } from "./typehal-symbols";
 import { escapeCppKeyword } from "../utils/strings";
 import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
@@ -22,9 +22,9 @@ export function callToStatement(
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
   
-  // ---- Typecode call detection at statement level -------------------------
+  // ---- Typehal call detection at statement level -------------------------
   // Handle D13.asOutput(), D9.pwm(), D2.pullup(), etc.
-  // These need to be detected as typecode-call IR nodes for proper transpilation.
+  // These need to be detected as typehal-call IR nodes for proper transpilation.
   if (ts.isPropertyAccessExpression(call.expression)) {
     const chainInfo = extractRootAndChain(call.expression);
     if (chainInfo) {
@@ -33,7 +33,7 @@ export function callToStatement(
         // Build the full method path (e.g., "config.output" from D13.config.output)
         const fullMethod = chainInfo.chain.join('.');
         return {
-          kind: "typecode-call",
+          kind: "typehal-call",
           sourceSpan: makeSourceSpan(call, fileName, sourceText),
           receiver: chainInfo.root,
           receiverKind: kind,
@@ -55,7 +55,7 @@ export function callToStatement(
       const fullMethod = chainInfo.chain.join('.');
       if (safePinMethods.has(fullMethod)) {
         return {
-          kind: "typecode-call",
+          kind: "typehal-call",
           sourceSpan: makeSourceSpan(call, fileName, sourceText),
           receiver: chainInfo.root,
           receiverKind: 'digital',
@@ -70,7 +70,7 @@ export function callToStatement(
         if (aliasKind !== 'unknown') {
           const fullMethod = chainInfo.chain.join('.');
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
             receiver: aliasTarget,
             receiverKind: aliasKind,
@@ -84,7 +84,7 @@ export function callToStatement(
       if (busAlias) {
         const fullMethod = chainInfo.chain.join('.');
         return {
-          kind: "typecode-call",
+          kind: "typehal-call",
           sourceSpan: makeSourceSpan(call, fileName, sourceText),
           receiver: busAlias.receiver,
           receiverKind: busAlias.kind,
@@ -110,7 +110,7 @@ export function callToStatement(
         const kind = inferKindByName(rootName);
         if (kind !== 'unknown') {
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
             receiver: rootName,
             receiverKind: kind,
@@ -125,7 +125,7 @@ export function callToStatement(
         const busAlias = activeBusAliases.get(rootName);
         if (busAlias) {
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
             receiver: busAlias.receiver,
             receiverKind: busAlias.kind,
@@ -142,7 +142,7 @@ export function callToStatement(
           const aliasKind = inferKindByName(pinAlias);
           if (aliasKind !== 'unknown') {
             return {
-              kind: "typecode-call",
+              kind: "typehal-call",
               sourceSpan: makeSourceSpan(call, fileName, sourceText),
               receiver: pinAlias,
               receiverKind: aliasKind,
@@ -187,7 +187,7 @@ export function callToStatement(
               : undefined;
             
             return {
-              kind: "typecode-call",
+              kind: "typehal-call",
               sourceSpan: makeSourceSpan(call, fileName, sourceText),
               receiver: peripheralName,
               receiverKind: kind,
@@ -600,7 +600,7 @@ export function expressionStatementToIR(
   }
 
   if (ts.isBinaryExpression(expr) && ts.isIdentifier(expr.left)) {
-    // Handle ||= operator: x ||= val → x = (x == TYPECODE_UNDEFINED) ? val : x;
+    // Handle ||= operator: x ||= val → x = (x == TYPEHAL_UNDEFINED) ? val : x;
     if (expr.operatorToken.kind === ts.SyntaxKind.BarBarEqualsToken) {
       const comments = extractNodeComments(statement, sourceText);
       const varName = expr.left.text;
@@ -618,7 +618,7 @@ export function expressionStatementToIR(
             kind: "binary",
             operator: "==",
             left: { kind: "identifier", value: varName },
-            right: { kind: "identifier", value: "TYPECODE_UNDEFINED" },
+            right: { kind: "identifier", value: "TYPEHAL_UNDEFINED" },
           },
           whenTrue: valIR,
           whenFalse: { kind: "identifier", value: varName },
@@ -1931,7 +1931,7 @@ export function variableStatementToIR(
               }
               const propAccess: ExpressionIR = { kind: "raw", value: `${nestedObjText}.${nPropName}` };
               const initializer = nestedElement.initializer
-                ? { kind: "raw" as const, value: `typecode_nullish(${renderExprAsText(propAccess)}, ${renderExprAsText(expressionToIR(nestedElement.initializer, sourceText, diagnostics))})` }
+                ? { kind: "raw" as const, value: `typehal_nullish(${renderExprAsText(propAccess)}, ${renderExprAsText(expressionToIR(nestedElement.initializer, sourceText, diagnostics))})` }
                 : propAccess;
               lowered.push({
                 kind: "var_decl",
@@ -1967,7 +1967,7 @@ export function variableStatementToIR(
         const initializer = element.initializer
           ? {
               kind: "raw" as const,
-              value: `typecode_nullish(${renderExprAsText(propAccess)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
+              value: `typehal_nullish(${renderExprAsText(propAccess)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
             }
           : propAccess;
 
@@ -2055,7 +2055,7 @@ export function variableStatementToIR(
         if (element.initializer) {
           initializer = {
             kind: "raw" as const,
-            value: `typecode_nullish(${renderExprAsText(initializer)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
+            value: `typehal_nullish(${renderExprAsText(initializer)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
           };
         }
 
@@ -2169,10 +2169,10 @@ export function variableStatementToIR(
     // â”€â”€ Pin alias detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Handle: const led = LED.asOutput() or const btn = D2.asInput()
     // These create compile-time-only aliases â€” no C++ variable is emitted.
-    // The typecode-call (pinMode) is emitted as a standalone statement,
+    // The typehal-call (pinMode) is emitted as a standalone statement,
     // and the variable name is recorded for alias resolution in subsequent calls.
     const initIR = loweredDeclaration.initializer as any;
-    if (initIR?.kind === 'typecode-call' &&
+    if (initIR?.kind === 'typehal-call' &&
         typeof initIR.method === 'string' &&
         (initIR.method === 'asOutput' || initIR.method === 'asInput' || initIR.method === 'asInputPullUp')) {
       const aliasTarget = initIR.receiver;
@@ -2183,7 +2183,7 @@ export function variableStatementToIR(
         lowered.push(loweredDeclaration);
       }
       lowered.push({
-        kind: "typecode-call",
+        kind: "typehal-call",
         sourceSpan: loweredDeclaration.sourceSpan,
         leadingComments: loweredDeclaration.leadingComments,
         trailingComments: loweredDeclaration.trailingComments,
@@ -2202,13 +2202,13 @@ export function variableStatementToIR(
     // Handle: const bus = I2C0.take() / SPI0.take() / UART0.take()
     // These are compile-time aliases for ownership analysis, and the emitted
     // statement remains the underlying take() call.
-    if (initIR?.kind === 'typecode-call' &&
+    if (initIR?.kind === 'typehal-call' &&
         typeof initIR.method === 'string' &&
         (initIR.method === 'take' || initIR.method === 'begin' || initIR.method === 'configBegin') &&
         (initIR.receiverKind === 'i2c' || initIR.receiverKind === 'spi' || initIR.receiverKind === 'serial')) {
       activeBusAliases.set(declaration.name.text, { receiver: initIR.receiver, kind: initIR.receiverKind });
       lowered.push({
-        kind: "typecode-call",
+        kind: "typehal-call",
         sourceSpan: loweredDeclaration.sourceSpan,
         leadingComments: loweredDeclaration.leadingComments,
         trailingComments: loweredDeclaration.trailingComments,

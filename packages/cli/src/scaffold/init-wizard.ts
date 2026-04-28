@@ -1,14 +1,14 @@
 // ---------------------------------------------------------------------------
 // Interactive project init wizard
 //
-// Walks the user through creating a new TypeCode project.
+// Walks the user through creating a new TypeHAL project.
 // Uses node:readline/promises — same pattern as wizard.ts for create-board.
 // ---------------------------------------------------------------------------
 
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import type { InitProjectOptions } from "./init-templates";
-import type { ArchitectureIdentifier } from "@typecode/core";
+import type { ArchitectureIdentifier } from "@typehal/core";
 import { KNOWN_BOARDS, type KnownBoard } from "./init-scaffold";
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
@@ -106,7 +106,7 @@ export async function runInitWizard(
 
   try {
     console.log();
-    console.log("⤳ typeCode — Project Setup");
+    console.log("⤳ typeHAL — Project Setup");
     console.log();
 
     // 1. Project name
@@ -156,8 +156,8 @@ export async function runInitWizard(
     }
 
     const frameworkPackage = framework === 'avr'
-      ? '@typecode/framework-avr'
-      : '@typecode/framework-arduino';
+      ? '@typehal/framework-avr'
+      : '@typehal/framework-arduino';
 
     // 4. Baud rate
     let baudRate: number;

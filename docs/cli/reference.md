@@ -1,27 +1,27 @@
 # CLI Reference
 
-Complete command reference for the TypeCode CLI.
+Complete command reference for the TypeHAL CLI.
 
 ## Commands
 
 ```
-typecode <input.ts> [options]
-typecode build [options]
-typecode gen-decls <input.cpp>
-typecode gen-decls --scan-dir <directory>
-typecode gen-libdefs <input.ts>
-typecode map-error <mapFile> [options]
+typehal <input.ts> [options]
+typehal build [options]
+typehal gen-decls <input.cpp>
+typehal gen-decls --scan-dir <directory>
+typehal gen-libdefs <input.ts>
+typehal map-error <mapFile> [options]
 ```
 
 ## Build Command
 
-Builds a project using the entry point from `typecode.config.ts`. Requires the `entry` field in the config file.
+Builds a project using the entry point from `typehal.config.ts`. Requires the `entry` field in the config file.
 
 ```bash
-npx typecode build [options]
+npx typehal build [options]
 ```
 
-This resolves the entry file from `typecode.config.ts`, discovers the full import graph, and transpiles all TypeScript files in dependency order. It supports all the same options as the transpile command.
+This resolves the entry file from `typehal.config.ts`, discovers the full import graph, and transpiles all TypeScript files in dependency order. It supports all the same options as the transpile command.
 
 ### Options
 
@@ -41,13 +41,13 @@ The build command accepts all [Transpile Options](#options) plus:
 
 ```bash
 # Build and compile
-npx typecode build --compile
+npx typehal build --compile
 
 # Build, compile, and upload
-npx typecode build --compile --upload --port COM4
+npx typehal build --compile --upload --port COM4
 
 # Build with watch mode
-npx typecode build --watch
+npx typehal build --watch
 ```
 
 See [Multi-File Projects](../transpiler/README.md#multi-file-projects) for details on project structure.
@@ -57,7 +57,7 @@ See [Multi-File Projects](../transpiler/README.md#multi-file-projects) for detai
 ### Basic Usage
 
 ```bash
-npx typecode sketch.ts [options]
+npx typehal sketch.ts [options]
 ```
 
 ### Options
@@ -67,7 +67,7 @@ npx typecode sketch.ts [options]
 | `--emit cpp\|split` | `split` | `split`: separate `.cpp`+`.h`; Arduino target always emits a single `.ino` |
 | `--target arduino\|generic` | `generic` | Auto-set to `arduino` when `--compile`, `--upload`, or `--monitor` is used |
 | `--outDir <path>` | input file directory | Output directory for generated files |
-| `--emit-maps true\|false` | `true` | Write `.tscppmap.json` source map sidecars |
+| `--emit-maps true\|false` | `true` | Write `.thcppmap.json` source map sidecars |
 | `--fqbn <package:arch:board>` | *(from config)* | Fully Qualified Board Name; required for `--compile` when no config file is present |
 
 ### Arduino Chaining Options
@@ -79,7 +79,7 @@ npx typecode sketch.ts [options]
 | `--monitor` | `--port` | Open serial monitor after upload |
 | `--port <port>` | — | Serial port, e.g. `COM4` or `/dev/ttyACM0` |
 | `--baud <rate>` | `9600` | Baud rate for `--monitor` |
-| `--debug` | — | Enable debug mode; injects breakpoint instrumentation from `.typecode/breakpoints.json` |
+| `--debug` | — | Enable debug mode; injects breakpoint instrumentation from `.typehal/breakpoints.json` |
 
 ### Tree-Shaking Options
 
@@ -100,7 +100,7 @@ Default entry points: `setup`/`loop` (Arduino target), `main` (generic target).
 ### Transpile Only
 
 ```bash
-npx typecode sketch.ts
+npx typehal sketch.ts
 ```
 
 Output: `sketch.ino` (or `sketch.cpp` + `sketch.h`)
@@ -108,33 +108,33 @@ Output: `sketch.ino` (or `sketch.cpp` + `sketch.h`)
 ### Transpile with Custom Output Directory
 
 ```bash
-npx typecode sketch.ts --outDir ./build
+npx typehal sketch.ts --outDir ./build
 ```
 
 ### Transpile + Compile
 
 ```bash
-npx typecode sketch.ts --compile
+npx typehal sketch.ts --compile
 ```
 
-Requires `fqbn` in `typecode.config.ts` or via `--fqbn` flag.
+Requires `fqbn` in `typehal.config.ts` or via `--fqbn` flag.
 
 ### Transpile + Compile + Upload
 
 ```bash
-npx typecode sketch.ts --compile --upload --port COM4
+npx typehal sketch.ts --compile --upload --port COM4
 ```
 
 ### Full Chain with Serial Monitor
 
 ```bash
-npx typecode sketch.ts --compile --upload --monitor --port COM4 --baud 115200
+npx typehal sketch.ts --compile --upload --monitor --port COM4 --baud 115200
 ```
 
 ### Debug with Breakpoints
 
 ```bash
-npx typecode sketch.ts --compile --upload --monitor --port COM4 --debug
+npx typehal sketch.ts --compile --upload --monitor --port COM4 --debug
 ```
 
 See [Debug](../debug/) for breakpoint-based debugging documentation.
@@ -142,13 +142,13 @@ See [Debug](../debug/) for breakpoint-based debugging documentation.
 ### Disable Tree-Shaking
 
 ```bash
-npx typecode sketch.ts --no-tree-shake
+npx typehal sketch.ts --no-tree-shake
 ```
 
 ### Keep Unused Enums
 
 ```bash
-npx typecode sketch.ts --keep-unused-enums
+npx typehal sketch.ts --keep-unused-enums
 ```
 
 ## gen-libdefs Command
@@ -156,7 +156,7 @@ npx typecode sketch.ts --keep-unused-enums
 Generate library definition stubs for third-party imports:
 
 ```bash
-npx typecode gen-libdefs src/sensor.ts
+npx typehal gen-libdefs src/sensor.ts
 ```
 
 Creates `<module>.libdef.json` files alongside the source:
@@ -191,10 +191,10 @@ Generate TypeScript declaration files (`.d.ts`) from C++ source files:
 
 ```bash
 # Generate for a single C++ file
-npx typecode gen-decls lib/sensor.cpp
+npx typehal gen-decls lib/sensor.cpp
 
 # Scan a directory and generate for all C++ files missing declarations
-npx typecode gen-decls --scan-dir src/lib
+npx typehal gen-decls --scan-dir src/lib
 ```
 
 ### How It Works
@@ -250,17 +250,17 @@ The CLI automatically generates declaration files when:
 
 ### VSCode Integration
 
-The TypeCode VSCode extension provides:
+The TypeHAL VSCode extension provides:
 
 - **Auto-generation on save**: When you save a `.cpp` file without a corresponding `.d.ts`
-- **Command Palette**: "TypeCode: Generate Declaration" command for manual generation
+- **Command Palette**: "TypeHAL: Generate Declaration" command for manual generation
 
 ## map-error Command
 
 Map C++ compiler errors back to TypeScript source:
 
 ```bash
-npx typecode map-error out/sketch/sketch.ino.tscppmap.json --line 42 --column 5 --message "undefined reference"
+npx typehal map-error out/sketch/sketch.ino.thcppmap.json --line 42 --column 5 --message "undefined reference"
 ```
 
 ### Options
@@ -282,14 +282,14 @@ Context: myFunction()
 
 ## Configuration File
 
-The CLI reads configuration from `typecode.config.ts` in the same directory as the input file:
+The CLI reads configuration from `typehal.config.ts` in the same directory as the input file:
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
   output: {
     framework: 'arduino',
@@ -307,7 +307,7 @@ See [Configuration](./configuration.md) for complete options.
 
 | Variable | Description |
 |----------|-------------|
-| `TYPECODE_DEBUG` | Enable debug logging |
+| `TYPEHAL_DEBUG` | Enable debug logging |
 | `ARDUINO_CLI_PATH` | Path to arduino-cli binary |
 | `PLATFORMIO_CORE_DIR` | PlatformIO core directory |
 

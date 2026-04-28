@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/debug — Debug Preprocessor
+// @typehal/debug — Debug Preprocessor
 //
 // Transforms TypeScript source by injecting Serial debug code at breakpoint
 // locations. The injected code prints variable values and waits for user
@@ -14,7 +14,7 @@ import { loadFrameworkPackage } from '../framework-package';
 
 type LogMessagePart = { type: 'text' | 'variable'; value: string };
 
-const DEBUG_FRAMEWORK_PACKAGE = '@typecode/framework-arduino';
+const DEBUG_FRAMEWORK_PACKAGE = '@typehal/framework-arduino';
 
 function getArduinoDebugPackage(): any {
   return loadFrameworkPackage(DEBUG_FRAMEWORK_PACKAGE, process.cwd());
@@ -50,7 +50,7 @@ function generateArduinoLogpointCode(
 export interface PreprocessOptions {
   /** The source file path (for line number calculation) */
   fileName: string;
-  /** The breakpoint map loaded from .typecode/breakpoints.json */
+  /** The breakpoint map loaded from .typehal/breakpoints.json */
   breakpoints: BreakpointMap;
   /** The source text to transform */
   source: string;

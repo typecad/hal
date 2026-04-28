@@ -1,14 +1,14 @@
 # Writing Tests
 
-How to write hardware tests using the TypeCode expect framework.
+How to write hardware tests using the TypeHAL expect framework.
 
 ## Test File Structure
 
 Every test file follows this pattern:
 
 ```typescript
-import { describe, done } from '@typecode/expect';
-import { A0, D2 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0, D2 } from '@typehal';
 
 // Test suites
 describe("Suite name")
@@ -51,7 +51,7 @@ describe("GPIO pins")
 
 ### expect(value: number): Expectation
 
-Captures a hardware value to be asserted. The argument must be a TypeCode hardware expression (e.g. `A0.readAnalog()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
+Captures a hardware value to be asserted. The argument must be a TypeHAL hardware expression (e.g. `A0.readAnalog()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
 
 ```typescript
 describe("Analog pins")
@@ -150,8 +150,8 @@ done();
 You can have multiple `describe` blocks in a single file:
 
 ```typescript
-import { describe, done } from '@typecode/expect';
-import { A0, A1, D2, D3 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0, A1, D2, D3 } from '@typehal';
 
 describe("Analog inputs")
   .it("A0 reads valid range")

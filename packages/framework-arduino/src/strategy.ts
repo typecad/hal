@@ -2,14 +2,14 @@
 // ArduinoStrategy — Arduino framework target (setup/loop, Serial, .ino …)
 //
 // Absorbs all Arduino-specific emit logic previously scattered across
-// cpp-emitter.ts, typecode-map.ts, and arduino-profile.ts.
+// cpp-emitter.ts, typehal-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, TypecodeReceiverKind, RuntimePolyfillIR } from "@typecode/core/shared";
-import { getStdLibSupport } from "@typecode/core/shared";
-import type { StatementIR } from "@typecode/core/shared";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, TypehalReceiverKind, RuntimePolyfillIR } from "@typehal/core/shared";
+import { getStdLibSupport } from "@typehal/core/shared";
+import type { StatementIR } from "@typehal/core/shared";
 import { resolveArduinoProfile } from "./profile";
-import { renderArduinoBuiltin, tryRenderTypecodeCallStatement } from "./typecode-map";
+import { renderArduinoBuiltin, tryRenderTypehalCallStatement } from "./typehal-map";
 import { renderDACCall } from "./handlers/dac-handler";
 
 // ---------------------------------------------------------------------------
@@ -137,24 +137,24 @@ export class ArduinoStrategy implements PlatformStrategy {
    * Board packages can override to provide native implementations.
    */
   nativePolyfills(): Set<string> {
-    return new Set(["string_methods", "typecode_halt"]);
+    return new Set(["string_methods", "typehal_halt"]);
   }
 
   /**
-   * Generate native helpers: typecode_halt macro, Arduino string helpers,
+   * Generate native helpers: typehal_halt macro, Arduino string helpers,
    * and (when stdlib supports it) the cooperative async Promise runtime.
    */
   generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
     const helpers: RuntimePolyfillIR[] = [{
       kind: "polyfill",
-      id: "typecode_halt",
+      id: "typehal_halt",
       domain: "arduino",
       requiredIncludes: [],
       forwardDeclarations: [],
       helperStructs: [],
       helperFunctions: [
-        `#ifndef typecode_halt
-#define typecode_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
+        `#ifndef typehal_halt
+#define typehal_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
 #endif`,
       ],
       shimMacros: [],
@@ -167,19 +167,19 @@ export class ArduinoStrategy implements PlatformStrategy {
       forwardDeclarations: [],
       helperStructs: [],
       helperFunctions: [
-        `#ifndef TYPECODE_STR_BUF_SIZE
-#define TYPECODE_STR_BUF_SIZE 64
+        `#ifndef TYPEHAL_STR_BUF_SIZE
+#define TYPEHAL_STR_BUF_SIZE 64
 #endif
 // Arduino string method polyfills
 bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
-const char* __tc_toUpperCase(const char* s) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPECODE_STR_BUF_SIZE - 1); b[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
-const char* __tc_toLowerCase(const char* s) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPECODE_STR_BUF_SIZE - 1); b[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
-const char* __tc_trim(const char* s) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < TYPECODE_STR_BUF_SIZE - 1 ? len : TYPECODE_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
-const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= TYPECODE_STR_BUF_SIZE) len = TYPECODE_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
+const char* __tc_toUpperCase(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
+const char* __tc_toLowerCase(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
+const char* __tc_trim(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < TYPEHAL_STR_BUF_SIZE - 1 ? len : TYPEHAL_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
+const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= TYPEHAL_STR_BUF_SIZE) len = TYPEHAL_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
 const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
 const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
 const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][TYPECODE_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, TYPECODE_STR_BUF_SIZE - 1); b[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= TYPECODE_STR_BUF_SIZE) { strncpy(b, s, TYPECODE_STR_BUF_SIZE - 1); b[TYPECODE_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
+const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= TYPEHAL_STR_BUF_SIZE) { strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
 const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
 int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx]; }
 `],
@@ -287,8 +287,8 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       "$1",
     );
     v = v.replace(/\bDate\.now\(\)/g, "millis()");
-    v = v.replace(/\bundefined\b/g, "TYPECODE_UNDEFINED");
-    v = v.replace(/\bnull\b/g, "TYPECODE_UNDEFINED");
+    v = v.replace(/\bundefined\b/g, "TYPEHAL_UNDEFINED");
+    v = v.replace(/\bnull\b/g, "TYPEHAL_UNDEFINED");
 
     // String method transformations for Arduino (const char* → String wrapper calls)
     // Mutating methods that return void in Arduino are wrapped in helper functions
@@ -309,7 +309,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     return v;
   }
   nullValue(): string {
-    return "TYPECODE_UNDEFINED";
+    return "TYPEHAL_UNDEFINED";
   }
   mapPeripheralIdentifier(name: string): string | undefined {
     if (/^I2C\d+$/.test(name)) {
@@ -346,7 +346,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     tempId: number,
   ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } {
     const effectivePrecision = precision ?? 6;
-    const bufferName = `__typecode_float_${tempId}`;
+    const bufferName = `__typehal_float_${tempId}`;
     const estimatedLength = Math.max(16, effectivePrecision + 8);
     return {
       format: "%s",
@@ -364,9 +364,9 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   enumCastType(enumName: string): string | undefined {
     return _largeEnumNames.has(enumName) ? "long" : "int";
   }
-  tryRenderTypecodeCall(
+  tryRenderTypehalCall(
     receiver: string,
-    receiverKind: TypecodeReceiverKind,
+    receiverKind: TypehalReceiverKind,
     method: string,
     args: ReadonlyArray<ExpressionIR>,
     renderArg: (e: ExpressionIR) => string,
@@ -393,10 +393,10 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     const builtin = renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode);
     if (builtin !== undefined) return builtin;
 
-    // Try the statement-level handler for all typecode calls
+    // Try the statement-level handler for all typehal calls
     // This handles config chains (D13.config.output), interrupts (D2.onFalling), etc.
     const callee = `${receiver}.${method}`;
-    const statementResult = tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch);
+    const statementResult = tryRenderTypehalCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch);
     if (statementResult !== undefined) return statementResult;
 
     return undefined;
@@ -423,10 +423,10 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     renderArg: (e: ExpressionIR) => string,
     boardConstants?: BoardConstants,
   ): string | undefined {
-    return tryRenderTypecodeCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch) ?? undefined;
+    return tryRenderTypehalCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch) ?? undefined;
   }
   renderThrow(_valueExpr: string): string {
-    return "typecode_halt(\"PANIC\")";
+    return "typehal_halt(\"PANIC\")";
   }
   transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? "" : ";";
@@ -512,7 +512,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     for (const n of taskVarNames) {
       lines.push(`  ${n}.run();`);
     }
-    if (hasPromiseRuntime) lines.push("  typecode_pump_microtasks();");
+    if (hasPromiseRuntime) lines.push("  typehal_pump_microtasks();");
     return lines;
   }
   asyncDriverFunctionName(): string { return "loop"; }
@@ -621,7 +621,7 @@ function generatePromiseRuntime(target: string): string {
   const queueCapacity = target === "arduino" ? 32 : 256;
   return `
 // Polyfill: cooperative microtask queue + minimal Promise runtime
-namespace typecode_async {
+namespace typehal_async {
   using Microtask = std::function<void()>;
 
   class MicrotaskQueue {
@@ -738,8 +738,8 @@ namespace typecode_async {
   };
 }
 
-inline void typecode_pump_microtasks() {
-  typecode_async::pumpMicrotasks();
+inline void typehal_pump_microtasks() {
+  typehal_async::pumpMicrotasks();
 }
 `;
 }

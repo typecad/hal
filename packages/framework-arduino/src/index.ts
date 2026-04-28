@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/framework-arduino — Arduino framework strategy
+// @typehal/framework-arduino — Arduino framework strategy
 //
 // Provides the ArduinoStrategy implementation for Arduino framework code
 // generation. This is the main entry point for the framework-arduino package.
@@ -12,10 +12,10 @@ export { ArduinoStrategy } from './strategy';
 export { ArduinoStrategy as FrameworkStrategy } from './strategy';
 
 // Re-export types that consumers may need
-export type { PlatformStrategy } from '@typecode/core/shared';
+export type { PlatformStrategy } from '@typehal/core/shared';
 
 // Export utility functions for advanced use cases
-export { renderArduinoBuiltin, tryRenderTypecodeCallStatement, extractPropertyChain, renderBoardDefinitionAccess } from './typecode-map';
+export { renderArduinoBuiltin, tryRenderTypehalCallStatement, extractPropertyChain, renderBoardDefinitionAccess } from './typehal-map';
 export { resolveArduinoProfile } from './profile';
 export type { ResolvedArduinoProfile } from './profile';
 export { loadArduinoCliMetadata } from './cli-metadata';

@@ -14,7 +14,7 @@
 import type { ExpressionIR, ProgramIR } from './ir';
 import type { Diagnostic, PlatformContext } from './types';
 import type { BoardConstants } from './board-resolver';
-import type { TypecodeReceiverKind } from './typecode-symbols';
+import type { TypehalReceiverKind } from './typehal-symbols';
 import type { RuntimePolyfillIR } from './polyfill-types';
 
 // ---------------------------------------------------------------------------
@@ -196,12 +196,12 @@ export interface PlatformExpressionStrategy {
   ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } | undefined;
 
   /**
-   * Try to render a typecode SDK call expression (pin.read, Serial.print …).
+   * Try to render a typehal SDK call expression (pin.read, Serial.print …).
    * Return `undefined` to fall back to default rendering.
    */
-  tryRenderTypecodeCall(
+  tryRenderTypehalCall(
     receiver: string,
-    receiverKind: TypecodeReceiverKind,
+    receiverKind: TypehalReceiverKind,
     method: string,
     args: ReadonlyArray<ExpressionIR>,
     renderArg: (e: ExpressionIR) => string,

@@ -239,7 +239,7 @@ export function resolveImport(
   boardPackage?: string,
 ): { sourcePath: string; npmPackage?: ResolvedNpmPackage } | undefined {
   let effectiveSpecifier = moduleSpecifier;
-  if (moduleSpecifier === "@typecode" && boardPackage) {
+  if (moduleSpecifier === "@typehal" && boardPackage) {
     effectiveSpecifier = boardPackage;
   }
 
@@ -333,15 +333,15 @@ export function detectNativeCppModule(fromFile: string, moduleSpecifier: string)
   return undefined;
 }
 
-export function isTypecodeSDKPath(filePath: string): boolean {
+export function isTypehalSDKPath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/");
   return (
     /\/code\/core\//.test(normalized) ||
     /\/code\/board-/.test(normalized) ||
     /\/packages\/board-/.test(normalized) ||
     /\/packages\/expect\//.test(normalized) ||
-    /\/node_modules\/@typecode\/board-/.test(normalized) ||
-    /\/node_modules\/@typecode\/core\//.test(normalized) ||
-    /\/node_modules\/@typecode\/expect\//.test(normalized)
+    /\/node_modules\/@typehal\/board-/.test(normalized) ||
+    /\/node_modules\/@typehal\/core\//.test(normalized) ||
+    /\/node_modules\/@typehal\/expect\//.test(normalized)
   );
 }

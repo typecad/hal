@@ -1,18 +1,18 @@
 # Expect CLI Reference
 
-Command-line options for the TypeCode test runner.
+Command-line options for the TypeHAL test runner.
 
 ## Usage
 
 ```bash
 # Run a specific test file
-npx typecode-test examples/my-sensor.test.ts
+npx typehal-test examples/my-sensor.test.ts
 
 # Run all tests matching config patterns
-npx typecode-test
+npx typehal-test
 
 # Run with port override
-npx typecode-test --port COM4 examples/my-sensor.test.ts
+npx typehal-test --port COM4 examples/my-sensor.test.ts
 ```
 
 ## CLI Flags
@@ -30,14 +30,14 @@ npx typecode-test --port COM4 examples/my-sensor.test.ts
 
 ## Configuration
 
-Add a `test` section to `typecode.config.ts`:
+Add a `test` section to `typehal.config.ts`:
 
 ```typescript
-// typecode.config.ts
-import { defineConfig } from '@typecode/core';
+// typehal.config.ts
+import { defineConfig } from '@typehal/core';
 
 export default defineConfig({
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
 
   test: {
     port: 'COM4',           // serial port of the connected board
@@ -68,31 +68,31 @@ All `test` fields are optional and can be overridden by CLI flags.
 ### Run Single Test File
 
 ```bash
-npx typecode-test examples/sensor.test.ts
+npx typehal-test examples/sensor.test.ts
 ```
 
 ### Run All Tests
 
 ```bash
-npx typecode-test
+npx typehal-test
 ```
 
 ### Override Port
 
 ```bash
-npx typecode-test --port /dev/ttyACM0 examples/sensor.test.ts
+npx typehal-test --port /dev/ttyACM0 examples/sensor.test.ts
 ```
 
 ### Multiple Include Patterns
 
 ```bash
-npx typecode-test -i "tests/**/*.test.ts" -i "examples/**/*.test.ts"
+npx typehal-test -i "tests/**/*.test.ts" -i "examples/**/*.test.ts"
 ```
 
 ### Verbose Output
 
 ```bash
-npx typecode-test -v examples/sensor.test.ts
+npx typehal-test -v examples/sensor.test.ts
 ```
 
 Verbose output includes:
@@ -105,7 +105,7 @@ Verbose output includes:
 For slow boards or long test suites:
 
 ```bash
-npx typecode-test --timeout 60000 examples/slow-test.test.ts
+npx typehal-test --timeout 60000 examples/slow-test.test.ts
 ```
 
 ## Serial Protocol
@@ -147,7 +147,7 @@ Error: Serial port COM4 not found
 Solutions:
 1. Check the board is connected
 2. Check drivers are installed (CH340 for clones)
-3. List available ports: `npx typecode-test --verbose`
+3. List available ports: `npx typehal-test --verbose`
 
 ### Timeout
 

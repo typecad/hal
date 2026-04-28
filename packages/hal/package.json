@@ -1,7 +1,7 @@
 {
-  "name": "@typecode/hal",
+  "name": "@typehal/hal",
   "version": "0.1.0",
-  "description": "TypeCode hardware abstraction layer types and board metadata exports",
+  "description": "TypeHAL hardware abstraction layer types and board metadata exports",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,7 +18,7 @@
       "build": "tsc"
   },
   "dependencies": {
-    "@typecode/core": "*"
+    "@typehal/core": "*"
   },
   "license": "MIT",
   "publishConfig": {

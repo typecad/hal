@@ -2,7 +2,7 @@ import ts from "typescript";
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { inferKindByName } from "./typecode-symbols";
+import { inferKindByName } from "./typehal-symbols";
 import { parsePinNumber } from "./peripheral-usage";
 import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
@@ -127,7 +127,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   function renderOptionalGuardedAccess(receiverNode: ts.Expression, accessText: string): string {
     const receiverText = formatExpressionText(receiverNode);
-    return `(typecode_exists(${receiverText}) ? ${accessText} : 0)`;
+    return `(typehal_exists(${receiverText}) ? ${accessText} : 0)`;
   }
 
   const formatExpressionText = (node: ts.Expression): string => {
@@ -178,7 +178,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         // are valid values in TypeScript. Emit a helper call instead.
         const left = formatExpressionText(node.left);
         const right = formatExpressionText(node.right);
-        return `typecode_nullish(${left}, ${right})`;
+        return `typehal_nullish(${left}, ${right})`;
       }
       return `${formatExpressionText(node.left)} ${operator} ${formatExpressionText(node.right)}`;
     }
@@ -273,7 +273,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
     const left = renderExprAsText(expressionToIR(expr.left, sourceText, diagnostics, pointerVars));
     const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
-    return { kind: "raw", value: `typecode_nullish(${left}, ${right})` };
+    return { kind: "raw", value: `typehal_nullish(${left}, ${right})` };
   }
 
   // Handle typeof expressions — at transpile time, typeof on a known variable
@@ -301,7 +301,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return { kind: "raw", value: `/* typeof */` };
   }
 
-  // Recurse into binary expressions so nested typecode calls are translated correctly.
+  // Recurse into binary expressions so nested typehal calls are translated correctly.
   if (ts.isBinaryExpression(expr)) {
     let operator = ts.tokenToString(expr.operatorToken.kind) ?? expr.operatorToken.getText();
     if (operator === "===") operator = "==";
@@ -320,7 +320,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return { kind: "paren", inner: expressionToIR(expr.expression, sourceText, diagnostics, pointerVars) };
   }
 
-  // Recurse into prefix unary so nested typecode calls are translated correctly.
+  // Recurse into prefix unary so nested typehal calls are translated correctly.
   if (ts.isPrefixUnaryExpression(expr)) {
     const operator = ts.tokenToString(expr.operator) ?? "";
     return {
@@ -380,8 +380,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // Process the inner call (the interrupt attachment with callback)
       const innerResult = expressionToIR(innerCall, sourceText, diagnostics, pointerVars);
       
-      // If the inner result is a typecode-call with a callback argument, attach debounce
-      if (innerResult.kind === "typecode-call") {
+      // If the inner result is a typehal-call with a callback argument, attach debounce
+      if (innerResult.kind === "typehal-call") {
         for (const arg of innerResult.args) {
           if (arg.kind === "callback" && debounceMs !== undefined) {
             arg.debounceMs = debounceMs;
@@ -432,9 +432,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
                 ? expressionToIR(innerCall.arguments[0], sourceText, diagnostics, pointerVars)
                 : undefined;
               
-              // Return a typecode-call with the config value passed to begin
+              // Return a typehal-call with the config value passed to begin
               return {
-                kind: "typecode-call",
+                kind: "typehal-call",
                 receiver: peripheralName,
                 receiverKind: kind,
                 method: "configBegin",  // Special method that handles config + begin
@@ -468,10 +468,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         
         // Allow tone on digital, pwm, and interrupt pins
         if (kind === 'pwm' || kind === 'digital' || kind === 'interrupt') {
-          // Build a typecode-call with toneFor method that includes duration
+          // Build a typehal-call with toneFor method that includes duration
           const frequencyArg = innerCall.arguments[0];
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             receiver: pinName,
             receiverKind: kind,
             method: "toneFor",  // Special method that emits tone(pin, freq, duration)
@@ -536,9 +536,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return { kind: "raw", value: `String(${varName}).indexOf(${argsText})` };
     }
 
-    // ---- Typecode SDK method call detection (expression context) -----------
+    // ---- Typehal SDK method call detection (expression context) -----------
     // Detects A0.read(), D13.high(), Serial.println(), Board.A0.read(), etc.
-    // and emits a structured `typecode-call` IR node instead of a raw string.
+    // and emits a structured `typehal-call` IR node instead of a raw string.
     // The emitter translates these to Arduino built-ins without regex.
     if (ts.isPropertyAccessExpression(expr.expression)) {
       const method = expr.expression.name.text;
@@ -561,7 +561,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
         if (resolvedReceiver && resolvedKind) {
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             receiver: resolvedReceiver,
             receiverKind: resolvedKind,
             method: `device.${method}`,
@@ -586,7 +586,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
               onChange: 'CHANGE',
             };
             return {
-              kind: "typecode-call",
+              kind: "typehal-call",
               receiver: pinName,
               receiverKind: kind,
               method: `attachInterrupt`,
@@ -604,7 +604,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           const kind = inferKindByName(pinName);
           if (kind !== 'unknown') {
             return {
-              kind: "typecode-call",
+              kind: "typehal-call",
               receiver: pinName,
               receiverKind: kind,
               method: `detachInterrupt`,
@@ -625,7 +625,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         const kind = inferKindByName(pinName);
         if (kind !== 'unknown') {
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             receiver: pinName,
             receiverKind: kind,
             method,
@@ -645,12 +645,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       //   - I2C0.device(addr).read() â†’ would emit raw "I2C0.device(addr).read()"
       //   - SPI0.config.frequency().begin() â†’ would emit raw chain
       //
-      // The correct behavior generates a `typecode-call` IR node that the emitter
+      // The correct behavior generates a `typehal-call` IR node that the emitter
       // translates to Arduino APIs (Serial.println, Wire.begin, etc.)
       //
-      // See: docs/transpiler/ir-model.md - Typecode-Call IR Node
+      // See: docs/transpiler/ir-model.md - Typehal-Call IR Node
       // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // symbol.method() â€” direct typecode symbol (A0.read(), Serial.println(), etc.)
+      // symbol.method() â€” direct typehal symbol (A0.read(), Serial.println(), etc.)
       // Also handles nested chains like UART0.write.line() -> receiver: "UART0", method: "write.line"
       const chainInfo = extractRootAndChain(expr.expression);
       if (chainInfo) {
@@ -680,7 +680,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           }
           if (originalAliasKind !== 'unknown') {
             return {
-              kind: "typecode-call",
+              kind: "typehal-call",
               receiver: aliasTarget,
               receiverKind: aliasKind,
               method: fullMethod,
@@ -688,7 +688,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             };
           }
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             receiver: chainInfo.root,
             receiverKind: aliasKind,
             method: fullMethod,
@@ -698,7 +698,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
         if (kind !== 'unknown') {
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             receiver: chainInfo.root,
             receiverKind: kind,
             method: fullMethod,
@@ -717,7 +717,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         ]);
         if (safePinMethods.has(fullMethod)) {
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             receiver: chainInfo.root,
             receiverKind: 'digital',
             method: fullMethod,
@@ -734,7 +734,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             ? chainInfo.chain.join('.')
             : method;
           return {
-            kind: "typecode-call",
+            kind: "typehal-call",
             receiver: busAlias.receiver,
             receiverKind: busAlias.kind,
             method: fullMethod,
@@ -758,7 +758,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           const kind = inferKindByName(rootName);
           if (kind !== 'unknown') {
             return {
-              kind: "typecode-call",
+              kind: "typehal-call",
               receiver: rootName,
               receiverKind: kind,
               method: `device.${outerMethod}`,
@@ -772,7 +772,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           const busAlias = activeBusAliases.get(rootName);
           if (busAlias) {
             return {
-              kind: "typecode-call",
+              kind: "typehal-call",
               receiver: busAlias.receiver,
               receiverKind: busAlias.kind,
               method: `device.${outerMethod}`,
@@ -788,7 +788,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             const aliasKind = inferKindByName(pinAlias);
             if (aliasKind !== 'unknown') {
               return {
-                kind: "typecode-call",
+                kind: "typehal-call",
                 receiver: rootName,
                 receiverKind: aliasKind,
                 method: `device.${outerMethod}`,
@@ -802,7 +802,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         }
       }
     }
-    // ---- end typecode detection -----------------------------------------
+    // ---- end typehal detection -----------------------------------------
 
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "defineBoardManifest" && expr.arguments.length === 1) {
       return expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
@@ -984,7 +984,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (busAlias) {
       return { kind: "identifier", value: busAlias.receiver };
     }
-    // Resolve typecode pin identifiers to their numeric values when used as plain values
+    // Resolve typehal pin identifiers to their numeric values when used as plain values
     const kind = inferKindByName(expr.text);
     if (kind === 'digital' || kind === 'interrupt' || kind === 'pwm' || kind === 'analog-input') {
       const pinNum = parsePinNumber(expr.text);

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// @typecode/core/arduino — Arduino-compatible API interfaces
+// @typehal/core/arduino — Arduino-compatible API interfaces
 //
-// Import from '@typecode/core/arduino' to use Arduino-style APIs:
+// Import from '@typehal/core/arduino' to use Arduino-style APIs:
 // - I2C: begin(), beginTransmission(), write(), endTransmission(), requestFrom(), read()
 // - SPI: begin(), transfer(), setMode(), setBitOrder(), setFrequency()
 // - Serial: begin(), read(), write(), print(), println(), available()

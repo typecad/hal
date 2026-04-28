@@ -1,25 +1,25 @@
 # Board Package Usage Guide
 
-This guide explains how to use board packages in your TypeCode projects.
+This guide explains how to use board packages in your TypeHAL projects.
 
 ## Installation
 
-Board packages are typically installed as dependencies of the main `typecode` package. You can also install them explicitly:
+Board packages are typically installed as dependencies of the main `typehal` package. You can also install them explicitly:
 
 ```bash
-npm install @typecode/board-arduino-uno
+npm install @typehal/board-arduino-uno
 ```
 
 ## Configuration
 
-Configure your board in `typecode.config.ts`:
+Configure your board in `typehal.config.ts`:
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
   output: { framework: 'arduino', optimize: 'size', outDir: './out' },
 };
@@ -31,34 +31,34 @@ export default config;
 
 | Package | FQBN | Target | MCU |
 |---------|------|--------|-----|
-| `@typecode/board-arduino-uno` | `arduino:avr:uno` | `avr` | ATmega328P |
-| `@typecode/board-arduino-nano33iot` | `arduino:samd:nano_33_iot` | `samd` | SAMD21 |
-| `@typecode/board-esp32-devkit` | `esp32:esp32:esp32doit-devkit-v1` | `esp32` | ESP32 |
+| `@typehal/board-arduino-uno` | `arduino:avr:uno` | `avr` | ATmega328P |
+| `@typehal/board-arduino-nano33iot` | `arduino:samd:nano_33_iot` | `samd` | SAMD21 |
+| `@typehal/board-esp32-devkit` | `esp32:esp32:esp32doit-devkit-v1` | `esp32` | ESP32 |
 
 ## Importing
 
 There are three import styles — pick whichever you prefer.
 
-### Style 1: Virtual `@typecode` Import (Recommended)
+### Style 1: Virtual `@typehal` Import (Recommended)
 
-The transpiler resolves `@typecode` to your configured board package:
+The transpiler resolves `@typehal` to your configured board package:
 
 ```typescript
-import { Board, delay, LED } from '@typecode';
+import { Board, delay, LED } from '@typehal';
 ```
 
 ### Style 2: Individual imports (tree-shakeable)
 
 ```typescript
-import { D13, A0 }        from '@typecode/board-arduino-uno/pins';
-import { Serial }         from '@typecode/board-arduino-uno/peripherals';
-import { delay, millis }  from '@typecode/board-arduino-uno/timing';
+import { D13, A0 }        from '@typehal/board-arduino-uno/pins';
+import { Serial }         from '@typehal/board-arduino-uno/peripherals';
+import { delay, millis }  from '@typehal/board-arduino-uno/timing';
 ```
 
 ### Style 3: Unified `Board` namespace
 
 ```typescript
-import { Board } from '@typecode/board-arduino-uno/board';
+import { Board } from '@typehal/board-arduino-uno/board';
 
 Board.D13.high();
 Board.Serial.println("Hello");
@@ -70,7 +70,7 @@ Board.Serial.println("Hello");
 import {
   D13, A0, LED, Serial, delay, millis,
   I2C0, SPI0, Board,
-} from '@typecode/board-arduino-uno';
+} from '@typehal/board-arduino-uno';
 ```
 
 ## Pin System
@@ -105,7 +105,7 @@ import {
 ### Type Safety
 
 ```typescript
-import { D4, A0, D5 } from '@typecode';
+import { D4, A0, D5 } from '@typehal';
 
 // ✅ OK  — D4 is IDigitalPin, supports .high()
 D4.high();
@@ -125,7 +125,7 @@ D5.pwm(50);
 
 ### Board-aware pin rules
 
-Board packages carry conflict metadata, not just names. On Uno, TypeCode can tell you about these constraints before code generation:
+Board packages carry conflict metadata, not just names. On Uno, TypeHAL can tell you about these constraints before code generation:
 
 | Pins | Reserved by | Why it matters |
 |------|-------------|----------------|
@@ -133,21 +133,21 @@ Board packages carry conflict metadata, not just names. On Uno, TypeCode can tel
 | `A4`, `A5` | `I2C0` | Using them as GPIO conflicts with SDA/SCL |
 | `D11`, `D12`, `D13` | `SPI0` | Using them as GPIO conflicts with MOSI/MISO/SCK |
 
-This is a core TypeCode design goal: board metadata should make misuse obvious without forcing you to memorize the schematic.
+This is a core TypeHAL design goal: board metadata should make misuse obvious without forcing you to memorize the schematic.
 
 The same metadata also helps with softer resource coupling:
 
 - pin aliases such as `LED` and `D13` refer to the same physical pin, so mixing both names makes diagnostics harder to read
 - PWM pins are grouped by timer on Uno: `D5/D6`, `D9/D10`, and `D3/D11`
 
-When TypeCode warns about alias mixing or shared PWM timers, it is pointing at places where the board schematic leaks into behavior.
+When TypeHAL warns about alias mixing or shared PWM timers, it is pointing at places where the board schematic leaks into behavior.
 
 ## Examples
 
 ### 1. Blink (Hello World)
 
 ```typescript
-import { LED, delay, HIGH } from '@typecode';
+import { LED, delay, HIGH } from '@typehal';
 
 LED.output(HIGH);
 
@@ -160,7 +160,7 @@ while (true) {
 ### 2. Analog Read → Serial
 
 ```typescript
-import { A0, UART0, delay } from '@typecode';
+import { A0, UART0, delay } from '@typehal';
 
 const serial = UART0.begin(9600);
 
@@ -174,7 +174,7 @@ while (true) {
 ### 3. PWM Fade
 
 ```typescript
-import { D9, delay, LOW } from '@typecode';
+import { D9, delay, LOW } from '@typehal';
 
 D9.output(LOW);
 
@@ -196,7 +196,7 @@ PWM timer note: on Uno, `D9` shares its timer with `D10`, so choose pins from di
 ### 4. External Interrupt (Button)
 
 ```typescript
-import { D2, LED, LOW } from '@typecode';
+import { D2, LED, LOW } from '@typehal';
 
 LED.output(LOW);
 D2.inputPullUp();
@@ -216,7 +216,7 @@ D2.onFalling(() => {
 ### 5. I2C — Read From a Sensor
 
 ```typescript
-import { I2C0, UART0, delay } from '@typecode';
+import { I2C0, UART0, delay } from '@typehal';
 
 const serial = UART0.begin(9600);
 const i2c = I2C0.begin();
@@ -238,7 +238,7 @@ while (true) {
 ### 6. SPI — Write to a Shift Register
 
 ```typescript
-import { SPI0, SS, delay, LOW } from '@typecode';
+import { SPI0, SS, delay, LOW } from '@typehal';
 
 const spi = SPI0.begin();
 spi.setFrequency(1_000_000);
@@ -258,7 +258,7 @@ while (true) {
 ### 7. Board Namespace (All-In-One)
 
 ```typescript
-import { Board, LOW } from '@typecode';
+import { Board, LOW } from '@typehal';
 
 const serial = Board.UART0.begin(115200);
 Board.LED.output(LOW);
@@ -279,7 +279,7 @@ while (true) {
 ### Serial (UART 0)
 
 ```typescript
-import { UART0 } from '@typecode';
+import { UART0 } from '@typehal';
 
 // Initialize with baud rate
 const serial = UART0.begin(9600);
@@ -299,7 +299,7 @@ if (serial.available() > 0) {
 ### I2C0 (Wire)
 
 ```typescript
-import { I2C0 } from '@typecode';
+import { I2C0 } from '@typehal';
 
 // Initialize with optional clock speed
 const i2c = I2C0.begin();  // 100 kHz default
@@ -319,7 +319,7 @@ device.writeByte(0x6B, 0x00);  // Wake MPU-6050
 ### SPI0
 
 ```typescript
-import { SPI0, D10, HIGH } from '@typecode';
+import { SPI0, D10, HIGH } from '@typehal';
 
 const CS = D10;
 
@@ -341,7 +341,7 @@ const rx = spi.device(CS).transfer(new Uint8Array([0x80, 0x00]));
 ## Timing Functions
 
 ```typescript
-import { delay, millis, micros, delayMicroseconds } from '@typecode';
+import { delay, millis, micros, delayMicroseconds } from '@typehal';
 
 delay(1000);             // block 1 second
 delayMicroseconds(10);   // block 10 µs
@@ -353,7 +353,7 @@ const us = micros();     // µs since reset
 ## Utility Functions
 
 ```typescript
-import { map, constrain } from '@typecode';
+import { map, constrain } from '@typehal';
 
 // Re-map a 10-bit ADC reading (0–1023) to an 8-bit PWM range (0–255)
 const pwmValue = map(sensorReading, 0, 1023, 0, 255);
@@ -399,7 +399,7 @@ See the [Language Reference](../transpiler/language-reference.md#preferences) fo
 The `Board.definition` (or `ArduinoUno` constant) exposes the full hardware manifest:
 
 ```typescript
-import { Board } from '@typecode';
+import { Board } from '@typehal';
 
 console.log(Board.definition.name);             // "Arduino Uno"
 console.log(Board.definition.mcu);              // "ATmega328P"
@@ -416,7 +416,7 @@ console.log(Board.definition.build.arduino);    // "arduino:avr:uno"
 
 ```
 my-project/
-├── typecode.config.ts           ← board + target selection
+├── typehal.config.ts           ← board + target selection
 ├── main.ts                      ← your firmware
 ├── lib/
 │   └── bme280.ts                ← reusable driver (uses core interfaces)

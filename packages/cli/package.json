@@ -1,12 +1,12 @@
 {
-  "name": "@typecode/cli",
+  "name": "@typehal/cli",
   "version": "0.1.0",
-  "description": "TypeCode CLI - TypeScript to C++ transpiler for embedded development",
+  "description": "TypeHAL CLI - TypeScript to C++ transpiler for embedded development",
   "type": "commonjs",
   "main": "./dist/transpile.js",
   "types": "./dist/transpile.d.ts",
   "bin": {
-    "typecode": "./dist/cli.js"
+    "typehal": "./dist/cli.js"
   },
   "exports": {
     ".": {
@@ -33,9 +33,9 @@
       "types": "./dist/ir/board-resolver.d.ts",
       "default": "./dist/ir/board-resolver.js"
     },
-    "./typecode-symbols": {
-      "types": "./dist/ir/typecode-symbols.d.ts",
-      "default": "./dist/ir/typecode-symbols.js"
+    "./typehal-symbols": {
+      "types": "./dist/ir/typehal-symbols.d.ts",
+      "default": "./dist/ir/typehal-symbols.js"
     },
     "./utils/toolchain": {
       "types": "./dist/utils/toolchain.d.ts",
@@ -59,23 +59,23 @@
   "dependencies": {
     "chalk": "^4.1.2",
     "typescript": "^5.7.3",
-    "@typecode/core": "*",
-    "@typecode/hal": "*",
-    "@typecode/expect": "*"
+    "@typehal/core": "*",
+    "@typehal/hal": "*",
+    "@typehal/expect": "*"
   },
   "peerDependencies": {
-    "@typecode/framework-arduino": "*"
+    "@typehal/framework-arduino": "*"
   },
   "peerDependenciesMeta": {
-    "@typecode/framework-arduino": {
+    "@typehal/framework-arduino": {
       "optional": true
     }
   },
   "optionalDependencies": {
-    "@typecode/create": "*"
+    "@typehal/create": "*"
   },
   "devDependencies": {
-    "@typecode/framework-arduino": "*",
+    "@typehal/framework-arduino": "*",
     "@types/node": "^22.10.7"
   },
   "license": "MIT"

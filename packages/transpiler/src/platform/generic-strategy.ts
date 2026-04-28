@@ -6,8 +6,8 @@ import type { PlatformStrategy } from "./platform-strategy";
 import type { ExpressionIR, ProgramIR } from "../ir/model";
 import type { Diagnostic, PlatformContext } from "../types";
 import type { BoardConstants } from "../ir/board-resolver";
-import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
-import type { RuntimePolyfillIR } from "@typecode/core/shared";
+import type { TypehalReceiverKind } from "../ir/typehal-symbols";
+import type { RuntimePolyfillIR } from "@typehal/core/shared";
 import { buildAsyncRuntimePolyfill } from "./async-runtime";
 
 export class GenericStrategy implements PlatformStrategy {
@@ -84,9 +84,9 @@ export class GenericStrategy implements PlatformStrategy {
   enumCastType(_enumName: string): string | undefined {
     return undefined;
   }
-  tryRenderTypecodeCall(
+  tryRenderTypehalCall(
     _receiver: string,
-    _receiverKind: TypecodeReceiverKind,
+    _receiverKind: TypehalReceiverKind,
     _method: string,
     _args: ReadonlyArray<ExpressionIR>,
     _renderArg: (e: ExpressionIR) => string,
@@ -185,7 +185,7 @@ export class GenericStrategy implements PlatformStrategy {
 
   asyncLoopInjection(_taskVarNames: string[], hasPromiseRuntime: boolean): string[] {
     const lines: string[] = [];
-    if (hasPromiseRuntime) lines.push("  typecode_pump_microtasks();");
+    if (hasPromiseRuntime) lines.push("  typehal_pump_microtasks();");
     return lines;
   }
   asyncDriverFunctionName(): string { return "main"; }

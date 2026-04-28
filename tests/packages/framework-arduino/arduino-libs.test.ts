@@ -39,7 +39,7 @@ describe('Arduino Library Import Detection', () => {
     expect(isArduinoLibraryImport('../parent-module')).toBe(false);
     
     // NPM-style imports
-    expect(isArduinoLibraryImport('@typecode/core')).toBe(false);
+    expect(isArduinoLibraryImport('@typehal/core')).toBe(false);
     expect(isArduinoLibraryImport('typescript')).toBe(false);
     expect(isArduinoLibraryImport('node/fs')).toBe(false);
     
@@ -263,7 +263,7 @@ describe('Usage Documentation Generation', () => {
     
     const doc = generateUsageDocumentation(parsed, 'TestSensor', mockLibrary);
     
-    expect(doc).toContain('# TestSensor - TypeCode Usage Guide');
+    expect(doc).toContain('# TestSensor - TypeHAL Usage Guide');
     expect(doc).toContain('Test Author');
     expect(doc).toContain('A test sensor library');
   });
@@ -348,7 +348,7 @@ describe('Usage Documentation Generation', () => {
     
     const doc = generateUsageDocumentation(parsed, 'Sensor');
     
-    expect(doc).toContain("import { I2C0 } from '@typecode'");
+    expect(doc).toContain("import { I2C0 } from '@typehal'");
   });
 
   it('includes editing instructions', () => {

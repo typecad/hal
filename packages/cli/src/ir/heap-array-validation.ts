@@ -8,7 +8,7 @@
 // detected in a variable initializer so the developer gets an early,
 // actionable message rather than a silent runtime crash.
 //
-// Arrays and class instances that are managed by the TypeCode framework
+// Arrays and class instances that are managed by the TypeHAL framework
 // (StaticArray, peripheral objects created by board-init, compile-time-only
 // strategy instances) are intentionally excluded from this check.
 // ---------------------------------------------------------------------------

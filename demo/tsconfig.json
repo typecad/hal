@@ -9,12 +9,12 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "paths": {
-      "@typecode": ["../packages/board-esp32-devkit/src/index.ts"],
-      "@typecode/core": ["../packages/core/src/index.ts"],
-      "@typecode/board-esp32-devkit": ["../packages/board-esp32-devkit/src/index.ts"],
-      "@typecode/expect": ["../packages/expect/src/index.ts"]
+      "@typehal": ["../packages/board-esp32-devkit/src/index.ts"],
+      "@typehal/core": ["../packages/core/src/index.ts"],
+      "@typehal/board-esp32-devkit": ["../packages/board-esp32-devkit/src/index.ts"],
+      "@typehal/expect": ["../packages/expect/src/index.ts"]
     },
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "typecode.config.ts", "typecode-env.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "typehal.config.ts", "typehal-env.d.ts"]
 }

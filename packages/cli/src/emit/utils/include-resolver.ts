@@ -9,22 +9,22 @@ import fs from "node:fs";
 import type { ResolvedNpmPackage } from "../../transpile";
 
 /**
- * Checks if a module specifier resolves to a typecode SDK path.
- * Typecode SDK files (code/core/*, code/board-*, @typecode/* packages) are 
+ * Checks if a module specifier resolves to a typehal SDK path.
+ * Typehal SDK files (code/core/*, code/board-*, @typehal/* packages) are 
  * type-level only and should produce no C++ output or #include directives.
  * 
- * @param moduleSpecifier The import specifier (e.g., "@typecode/core" or "./pins")
+ * @param moduleSpecifier The import specifier (e.g., "@typehal/core" or "./pins")
  * @param fromFile The file path from which the import originates
- * @returns true if this is a typecode SDK import
+ * @returns true if this is a typehal SDK import
  */
-export function isTypecodeSDKImport(moduleSpecifier: string, fromFile: string): boolean {
-  // Check for @typecode/* npm package imports
-  if (moduleSpecifier.startsWith("@typecode/")) {
+export function isTypehalSDKImport(moduleSpecifier: string, fromFile: string): boolean {
+  // Check for @typehal/* npm package imports
+  if (moduleSpecifier.startsWith("@typehal/")) {
     return true;
   }
 
-  // Check for bare "@typecode" virtual import (resolved via typecode.config.ts)
-  if (moduleSpecifier === "@typecode") {
+  // Check for bare "@typehal" virtual import (resolved via typehal.config.ts)
+  if (moduleSpecifier === "@typehal") {
     return true;
   }
   
@@ -155,7 +155,7 @@ export function resolveTranspiledModuleInclude(
   // Look for a matching npm package in our transpiled modules
   // The npmPackages map is keyed by source path, so we need to iterate
   for (const [sourcePath, pkg] of npmPackages) {
-    // Match by package name (e.g., "@typecode/core" or "typecode-implementation")
+    // Match by package name (e.g., "@typehal/core" or "typehal-implementation")
     if (pkg.packageName === packageName) {
       // Use the moduleKey from the package info, which is already computed
       const headerName = `${pkg.moduleKey}.h`;

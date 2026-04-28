@@ -1,7 +1,7 @@
 {
-  "name": "@typecode/framework-arduino",
+  "name": "@typehal/framework-arduino",
   "version": "0.1.0",
-  "description": "TypeCode framework package for Arduino framework code generation",
+  "description": "TypeHAL framework package for Arduino framework code generation",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,13 +16,13 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test:hw": "npm exec -- typecode-test",
-    "test:hw:single": "npm exec -- typecode-test"
+    "test:hw": "npm exec -- typehal-test",
+    "test:hw:single": "npm exec -- typehal-test"
   },
   "dependencies": {
-    "@typecode/core": "*",
-    "@typecode/expect": "*",
-    "@typecode/board-esp32-devkit": "*"
+    "@typehal/core": "*",
+    "@typehal/expect": "*",
+    "@typehal/board-esp32-devkit": "*"
   },
   "license": "MIT",
   "publishConfig": {

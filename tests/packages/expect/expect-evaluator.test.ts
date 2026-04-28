@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Unit tests for @typecode/expect — Assertion evaluator
+// Unit tests for @typehal/expect — Assertion evaluator
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';

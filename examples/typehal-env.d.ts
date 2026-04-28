@@ -14,7 +14,7 @@ declare global {
   type float = number;
   type double = number;
 
-  // Convenience helper for volatile variables in TypeCode programs.
+  // Convenience helper for volatile variables in TypeHAL programs.
   // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
   declare function volatile<T>(value: T): T;
 
@@ -62,8 +62,8 @@ declare global {
   };
 }
 
-declare module '@typecode' {
-  export * from '@typecode/board-arduino-uno';
+declare module '@typehal' {
+  export * from '@typehal/board-arduino-uno';
 }
 
 export {};

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Assertion evaluator
+// @typehal/expect — Assertion evaluator
 //
 // All assertion logic runs on the host (computer) side.  The firmware only
 // sends raw actual/expected values over serial — the host does the math.

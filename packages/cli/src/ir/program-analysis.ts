@@ -7,7 +7,7 @@
  */
 
 import { ProgramIR, StatementIR, ExpressionIR } from "./model";
-import { POLYFILL_HELPER_MAP } from "@typecode/core/shared";
+import { POLYFILL_HELPER_MAP } from "@typehal/core/shared";
 
 export interface ProgramAnalysisResult {
   hasConsoleCalls: boolean;
@@ -108,7 +108,7 @@ function analyzeExpression(
       analyzeExpression(expr.object, result);
       break;
 
-    case "typecode-call":
+    case "typehal-call":
       for (const arg of expr.args) {
         analyzeExpression(arg, result);
       }
@@ -247,7 +247,7 @@ function analyzeStatement(
       }
       break;
 
-    case "typecode-call":
+    case "typehal-call":
       for (const arg of statement.args) {
         analyzeExpression(arg, result);
       }

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — I2C bus interface
+// @typehal/core — I2C bus interface
 //
 // Modern API: I2C0.begin(), I2C0.device(addr).readByte(reg), etc.
 //

@@ -2,16 +2,16 @@
 
 [← Home](index.md)
 
-Most embedded firmware frameworks give you one way to validate behavior: flash it and see what happens. TypeCode gives you three: an in-memory simulator for logic, a fluent assertion library that runs on real hardware over serial, and a VS Code debug bridge that maps C++ compiler errors back to your TypeScript source.
+Most embedded firmware frameworks give you one way to validate behavior: flash it and see what happens. TypeHAL gives you three: an in-memory simulator for logic, a fluent assertion library that runs on real hardware over serial, and a VS Code debug bridge that maps C++ compiler errors back to your TypeScript source.
 
 ---
 
 ## In-memory simulation
 
-The `@typecode/simulator` package lets you run your firmware logic in Node.js — register fake I2C/SPI devices, inject data, and assert on the bus traffic, all without a physical board.
+The `@typehal/simulator` package lets you run your firmware logic in Node.js — register fake I2C/SPI devices, inject data, and assert on the bus traffic, all without a physical board.
 
 ```typescript
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 
 const board = createSimBoard();
 
@@ -37,13 +37,13 @@ Use the simulator for:
 
 ---
 
-## Hardware assertions with `@typecode/expect`
+## Hardware assertions with `@typehal/expect`
 
-When you're ready to validate real behavior, `@typecode/expect` gives you a vitest-style fluent API that compiles into your sketch and reports pass/fail over serial.
+When you're ready to validate real behavior, `@typehal/expect` gives you a vitest-style fluent API that compiles into your sketch and reports pass/fail over serial.
 
 ```typescript
-import { describe, done } from '@typecode/expect';
-import { A0, A1 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0, A1 } from '@typehal';
 
 describe("ADC sanity")
   .it("A0 reads within valid 10-bit range")
@@ -61,7 +61,7 @@ done();
 Run it:
 
 ```bash
-npx typecode-test --port COM4 tests/adc.test.ts
+npx typehal-test --port COM4 tests/adc.test.ts
 ```
 
 The host-side runner reads pass/fail from real pin states over serial. No mocks. No stubs. Actual hardware behavior.
@@ -86,19 +86,19 @@ Set breakpoints in your `.ts` source files. The transpiler injects serial instru
 To enable:
 
 ```bash
-npx typecode sketch.ts --debug --compile --upload --port COM4
+npx typehal sketch.ts --debug --compile --upload --port COM4
 ```
 
-Then use the VS Code debug panel with the TypeCode debug extension to attach and step through your firmware.
+Then use the VS Code debug panel with the TypeHAL debug extension to attach and step through your firmware.
 
 ---
 
 ## Source maps for compiler errors
 
-When `arduino-cli` rejects the emitted C++, TypeCode maps the error back to your TypeScript source:
+When `arduino-cli` rejects the emitted C++, TypeHAL maps the error back to your TypeScript source:
 
 ```bash
-npx typecode map-error out/sketch/sketch.ino.tscppmap.json --line 42 --col 5
+npx typehal map-error out/sketch/sketch.ino.thcppmap.json --line 42 --col 5
 ```
 
 Output:
@@ -114,12 +114,12 @@ You see the TypeScript file, line, and column — not the generated C++ that no 
 
 ## CI integration
 
-Because TypeCode builds are deterministic and source-mapped, you can run the full pipeline in CI:
+Because TypeHAL builds are deterministic and source-mapped, you can run the full pipeline in CI:
 
 ```yaml
 # GitHub Actions example
 - name: Transpile and compile
-  run: npx typecode build --compile
+  run: npx typehal build --compile
   # Exits non-zero on any error-level diagnostic
 ```
 

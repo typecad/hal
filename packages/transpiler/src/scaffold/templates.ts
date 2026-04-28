@@ -2,7 +2,7 @@
 // Board package templates for scaffolding
 // ---------------------------------------------------------------------------
 
-import type { ArchitectureIdentifier } from '@typecode/core';
+import type { ArchitectureIdentifier } from '@typehal/core';
 import { toPascalCase } from '../utils/strings';
 
 export interface BoardTemplateOptions {
@@ -27,9 +27,9 @@ export function generatePackageJson(options: BoardTemplateOptions): string {
   const { name, displayName, vendor } = options;
   
   return `{
-  "name": "@typecode/board-${name}",
+  "name": "@typehal/board-${name}",
   "version": "0.1.0",
-  "description": "TypeCode ${displayName} board definition",
+  "description": "TypeHAL ${displayName} board definition",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -46,11 +46,11 @@ export function generatePackageJson(options: BoardTemplateOptions): string {
     "build": "tsc"
   },
   "dependencies": {
-    "@typecode/core": "^0.1.0",
-    "@typecode/schema": "^0.1.0"
+    "@typehal/core": "^0.1.0",
+    "@typehal/schema": "^0.1.0"
   },
   "peerDependencies": {
-    "typecode": "^0.1.0"
+    "typehal": "^0.1.0"
   },
   "license": "MIT",
   "publishConfig": {
@@ -98,10 +98,10 @@ export function generateIndexTs(options: BoardTemplateOptions): string {
   const className = toPascalCase(name);
   
   return `// ---------------------------------------------------------------------------
-// @typecode/board-${name} — Board definition manifest
+// @typehal/board-${name} — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typecode/schema';
+import type { BoardDefinition } from '@typehal/schema';
 
 // Re-export the platform strategy so the CLI can resolve it automatically
 export { BoardStrategy } from './strategy';
@@ -226,7 +226,7 @@ export {
 } from './pins';
 
 // Re-export HIGH/LOW constants from core
-export { HIGH, LOW } from '@typecode/core';
+export { HIGH, LOW } from '@typehal/core';
 
 // Peripheral bus instances
 export { I2C0, SPI0, UART0 } from './peripherals';
@@ -254,7 +254,7 @@ export function generatePinsTs(options: BoardTemplateOptions): string {
   const { name } = options;
   
   return `// ---------------------------------------------------------------------------
-// @typecode/board-${name} — Typed pin exports
+// @typehal/board-${name} — Typed pin exports
 //
 // Each pin is exported with the narrowest interface that matches its
 // capabilities so that TypeScript prevents invalid operations at compile
@@ -269,8 +269,8 @@ import type {
   PWMPin,
   AnalogPin,
   InterruptPin,
-} from '@typecode/core';
-import { pinNumber } from '@typecode/schema';
+} from '@typehal/core';
+import { pinNumber } from '@typehal/schema';
 
 // ---------------------------------------------------------------------------
 // Internal stub factories (no-op at runtime; consumed by transpiler)
@@ -345,7 +345,7 @@ export function generatePeripheralsTs(options: BoardTemplateOptions): string {
   const { name } = options;
   
   return `// ---------------------------------------------------------------------------
-// @typecode/board-${name} — Peripheral instances (Fluent API only)
+// @typehal/board-${name} — Peripheral instances (Fluent API only)
 //
 // Stub objects representing the board's built-in peripheral buses.
 // These carry full type information at design-time so TypeScript prevents
@@ -363,8 +363,8 @@ import type {
   II2CWriteResult,
   I2CAddress,
   I2CStatus,
-} from '@typecode/core';
-import type { BasePin } from '@typecode/core';
+} from '@typehal/core';
+import type { BasePin } from '@typehal/core';
 import type {
   ISPIBus,
   ISPIFluentConfig,
@@ -376,8 +376,8 @@ import type {
   ISPIReadResult,
   ISPITransferResult,
   BasePin,
-} from '@typecode/core';
-import { SPIMode, SPIBitOrder, SPIStatus } from '@typecode/core';
+} from '@typehal/core';
+import { SPIMode, SPIBitOrder, SPIStatus } from '@typehal/core';
 import type {
   ISerialPort,
   UARTStatusInfo,
@@ -386,8 +386,8 @@ import type {
   IUARTFluentWrite,
   IUARTReadResult,
   IUARTWriteResult,
-} from '@typecode/core';
-import { UARTStatus, UARTParity, UARTStopBits, UARTFlowControl } from '@typecode/core';
+} from '@typehal/core';
+import { UARTStatus, UARTParity, UARTStopBits, UARTFlowControl } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // I2C — Wire (bus 0) - Fluent API only
@@ -757,7 +757,7 @@ export function generateInterruptsTs(): string {
 // Typed wrappers around Arduino interrupt functions.
 // ---------------------------------------------------------------------------
 
-import type { InterruptHandler, InterruptMode } from '@typecode/core';
+import type { InterruptHandler, InterruptMode } from '@typehal/core';
 
 /** Disable all interrupts. Maps to \`noInterrupts()\`. */
 export declare function noInterrupts(): void;
@@ -783,7 +783,7 @@ export function generateStrategyTs(): string {
 //
 // Board packages do NOT need to export a strategy. The CLI loads the
 // platform strategy exclusively from the framework package configured in
-// typecode.config.ts (frameworkPackage field).
+// typehal.config.ts (frameworkPackage field).
 //
 // Only create a custom strategy here if this board requires emit behaviour
 // that differs from the base ArduinoStrategy. In that case, extend
@@ -791,7 +791,7 @@ export function generateStrategyTs(): string {
 // FrameworkStrategy so the CLI can load it.
 // ---------------------------------------------------------------------------
 
-// import { ArduinoStrategy } from '@typecode/framework-arduino';
+// import { ArduinoStrategy } from '@typehal/framework-arduino';
 // export class BoardStrategy extends ArduinoStrategy { ... }
 // export { BoardStrategy as FrameworkStrategy };
 `;
@@ -811,7 +811,7 @@ export function generateBoardTs(options: BoardTemplateOptions): string {
 // Single-import entry point that exposes every board feature under one
 // namespace.  User code can simply write:
 //
-//   import { Board } from '@typecode/board-${name}';
+//   import { Board } from '@typehal/board-${name}';
 //   Board.LED.high();
 //   const serial = Board.UART0.begin(115200);
 //   serial.println("Hello");
@@ -827,7 +827,7 @@ import type {
   ISPIBus,
   ISerialPort,
   BoardDefinition,
-} from '@typecode/core';
+} from '@typehal/core';
 
 import {
   // D0, D1, D2, D3, D4, D5, D6, D7,

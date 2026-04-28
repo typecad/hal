@@ -38,8 +38,8 @@ function ensureArduinoStrategy(): void {
  * their entry point to override the default strategy for a target.
  *
  * @example
- * // In @typecode/board-avr-atmega328p
- * import { registerPlatformStrategy } from "@typecode/cli/platform/registry";
+ * // In @typehal/board-avr-atmega328p
+ * import { registerPlatformStrategy } from "@typehal/cli/platform/registry";
  * registerPlatformStrategy(new Atmega328pStrategy());
  */
 export function registerPlatformStrategy(strategy: PlatformStrategy): void {

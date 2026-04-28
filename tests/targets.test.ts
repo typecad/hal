@@ -63,11 +63,11 @@ describe("Target-Specific Transpilation", () => {
         }
       `, { target: "generic" });
 
-      // Both targets use typecode_pump_microtasks
-      expect(result.cpp).toContain("inline void typecode_pump_microtasks()");
+      // Both targets use typehal_pump_microtasks
+      expect(result.cpp).toContain("inline void typehal_pump_microtasks()");
       const mainBody = extractFunction(result.cpp, "main");
       expect(mainBody).not.toBeNull();
-      expect(mainBody).toContain("typecode_pump_microtasks();");
+      expect(mainBody).toContain("typehal_pump_microtasks();");
     });
   });
 
@@ -138,9 +138,9 @@ describe("Target-Specific Transpilation", () => {
 
       const loopBody = extractFunction(result.cpp, "loop");
       expect(loopBody).not.toBeNull();
-      // The async pump function name is typecode_pump_microtasks
-      expect(loopBody).toContain("typecode_pump_microtasks();");
-      expect(result.cpp).toContain("inline void typecode_pump_microtasks()");
+      // The async pump function name is typehal_pump_microtasks
+      expect(loopBody).toContain("typehal_pump_microtasks();");
+      expect(result.cpp).toContain("inline void typehal_pump_microtasks()");
     });
   });
 

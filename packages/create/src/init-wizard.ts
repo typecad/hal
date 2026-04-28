@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Interactive project init wizard
 //
-// Walks the user through creating a new TypeCode project.
+// Walks the user through creating a new TypeHAL project.
 // Uses node:readline/promises — same pattern as wizard.ts for create-board.
 // ---------------------------------------------------------------------------
 
@@ -107,7 +107,7 @@ export async function runInitWizard(
 
   try {
     console.log();
-    console.log(chalk.cyan("⤳ typeCode") + chalk.dim(" — Project Setup"));
+    console.log(chalk.cyan("⤳ typeHAL") + chalk.dim(" — Project Setup"));
     console.log();
 
     // 1. Project name
@@ -157,8 +157,8 @@ export async function runInitWizard(
     }
 
     const frameworkPackage = framework === 'avr'
-      ? '@typecode/framework-avr'
-      : '@typecode/framework-arduino';
+      ? '@typehal/framework-avr'
+      : '@typehal/framework-arduino';
 
     // 4. Baud rate
     let baudRate: number;

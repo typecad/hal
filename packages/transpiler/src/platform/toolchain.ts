@@ -8,7 +8,7 @@
 import { getLoadedFramework, hasLoadedFramework } from "../framework-registry";
 import { loadFrameworkPackage } from "../framework-package";
 import type { FrameworkToolchain } from "../framework-registry";
-import type { ToolchainOptions, CompileResult, UploadResult } from "@typecode/core/shared";
+import type { ToolchainOptions, CompileResult, UploadResult } from "@typehal/core/shared";
 
 function getToolchain(fromDir: string): FrameworkToolchain {
   if (hasLoadedFramework()) {

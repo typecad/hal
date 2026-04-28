@@ -1,6 +1,6 @@
 # Polyfill Plugin System
 
-The Polyfill Plugin System provides an extensibility mechanism for adding custom runtime polyfills to the TypeCode transpiler. This allows third-party libraries and board packages to extend TypeScript language support without modifying the core transpiler.
+The Polyfill Plugin System provides an extensibility mechanism for adding custom runtime polyfills to the TypeHAL transpiler. This allows third-party libraries and board packages to extend TypeScript language support without modifying the core transpiler.
 
 ## Overview
 
@@ -80,7 +80,7 @@ interface PolyfillPlugin {
 Use `createSimplePlugin()` for quick plugin creation:
 
 ```typescript
-import { createSimplePlugin, PolyfillDefinition } from 'typecode/polyfill';
+import { createSimplePlugin, PolyfillDefinition } from 'typehal/polyfill';
 
 const myPolyfill: PolyfillDefinition = {
   id: 'custom-map',
@@ -132,7 +132,7 @@ export const myPlugin = createSimplePlugin(
 ### Advanced Plugin with Lifecycle
 
 ```typescript
-import { PolyfillPlugin, PluginContext } from 'typecode/polyfill';
+import { PolyfillPlugin, PluginContext } from 'typehal/polyfill';
 
 export const advancedPlugin: PolyfillPlugin = {
   id: '@myorg/advanced-polyfills',
@@ -274,7 +274,7 @@ generate: (needs, context) => {
 ### From Code
 
 ```typescript
-import { PolyfillRegistry, PluginManager } from 'typecode/polyfill';
+import { PolyfillRegistry, PluginManager } from 'typehal/polyfill';
 import { myPlugin } from './my-plugin';
 
 // Create registry with plugin
@@ -294,7 +294,7 @@ for (const plugin of manager.getPlugins()) {
 ### From Module Path
 
 ```typescript
-import { loadPolyfillPlugin, PolyfillRegistry } from 'typecode/polyfill';
+import { loadPolyfillPlugin, PolyfillRegistry } from 'typehal/polyfill';
 
 const registry = new PolyfillRegistry();
 
@@ -312,7 +312,7 @@ const localResult = await loadPolyfillPlugin('./plugins/my-plugin.ts', {
 
 ### From Configuration
 
-In `typecode.config.ts`:
+In `typehal.config.ts`:
 
 ```typescript
 export default {
@@ -334,7 +334,7 @@ interface PluginContext {
   /** Target platform (e.g., 'arduino', 'esp32') */
   target: string;
   
-  /** Configuration from typecode.config.ts */
+  /** Configuration from typehal.config.ts */
   config: Record<string, unknown>;
   
   /** Logger for plugin messages */
@@ -351,7 +351,7 @@ interface PluginLogger {
 
 ## Built-in Polyfills
 
-TypeCode includes these built-in polyfills:
+TypeHAL includes these built-in polyfills:
 
 | Polyfill ID | Description |
 |-------------|-------------|
@@ -427,9 +427,9 @@ init: (context) => {
 ## Example: Complete Plugin
 
 ```typescript
-// @typecode/polyfill-esp32-touch/index.ts
-import type { PolyfillPlugin, PolyfillDefinition, PluginContext } from 'typecode/polyfill';
-import type { ProgramIR, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from 'typecode/polyfill';
+// @typehal/polyfill-esp32-touch/index.ts
+import type { PolyfillPlugin, PolyfillDefinition, PluginContext } from 'typehal/polyfill';
+import type { ProgramIR, PolyfillContext, PolyfillNeed, RuntimePolyfillIR } from 'typehal/polyfill';
 
 const touchPolyfill: PolyfillDefinition = {
   id: 'esp32-touch',
@@ -481,7 +481,7 @@ const touchPolyfill: PolyfillDefinition = {
 };
 
 export const esp32TouchPlugin: PolyfillPlugin = {
-  id: '@typecode/polyfill-esp32-touch',
+  id: '@typehal/polyfill-esp32-touch',
   name: 'ESP32 Touch Polyfill',
   version: '1.0.0',
   description: 'Adds touch sensor support for ESP32 boards',

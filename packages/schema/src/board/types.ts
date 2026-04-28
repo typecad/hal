@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/schema — Board definition manifest types
+// @typehal/schema — Board definition manifest types
 // ---------------------------------------------------------------------------
 
-import type { PinCapabilityFlags } from '@typecode/core';
+import type { PinCapabilityFlags } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // Architecture identifier

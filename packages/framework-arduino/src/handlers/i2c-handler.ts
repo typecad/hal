@@ -1,18 +1,18 @@
 // ---------------------------------------------------------------------------
-// @typecode/framework-arduino — I2C Handler
+// @typehal/framework-arduino — I2C Handler
 //
-// Renders TypeCode I2C / Wire peripheral calls to Arduino C++.
+// Renders TypeHAL I2C / Wire peripheral calls to Arduino C++.
 // Handles: I2C0 → Wire, I2C1 → Wire1, etc.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
 
 // ---------------------------------------------------------------------------
 // Instance resolution
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the Arduino Wire instance name from a TypeCode receiver.
+ * Resolve the Arduino Wire instance name from a TypeHAL receiver.
  * I2C0 → Wire, I2C1 → Wire1, I2C2 → Wire2, etc.
  */
 export function resolveWireInstance(receiver: string): string {

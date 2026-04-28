@@ -5,7 +5,7 @@
 // direct API for pin configuration and toggling.
 // ---------------------------------------------------------------------------
 
-import { HIGH, LED, delay } from '@typecode';
+import { HIGH, LED, delay } from '@typehal';
 
 // Recommended pattern: alias-based GPIO usage.
 const led = LED.asOutput(HIGH);

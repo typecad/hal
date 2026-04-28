@@ -14,7 +14,7 @@ afterEach(() => {
 
 describe("transpileFile module graph", () => {
   it("transpiles imported local modules", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "test.ts");
@@ -66,7 +66,7 @@ describe("transpileFile module graph", () => {
   });
 
   it("uses case-preserving local header include for relative imports", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "main.ts");
@@ -111,7 +111,7 @@ describe("transpileFile module graph", () => {
   });
 
   it("lowers function-expression aliases without raw or unmapped type warnings", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "test.ts");
@@ -172,7 +172,7 @@ describe("transpileFile module graph", () => {
   });
 
   it("maps string and boolean array aliases to std types", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "all-types.ts");
@@ -221,7 +221,7 @@ describe("transpileFile module graph", () => {
   });
 
   it("does not warn for generic structural alias object literals", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "collection.ts");

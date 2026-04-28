@@ -2,7 +2,7 @@ import path from "node:path";
 import { setLoadedFramework, clearLoadedFramework } from "./framework-registry";
 import type { LoadedFramework, FrameworkToolchain } from "./framework-registry";
 
-export const DEFAULT_FRAMEWORK_PACKAGE = "@typecode/framework-arduino";
+export const DEFAULT_FRAMEWORK_PACKAGE = "@typehal/framework-arduino";
 
 export function resolveFrameworkPackage(
   packageName = DEFAULT_FRAMEWORK_PACKAGE,
@@ -62,7 +62,7 @@ export function loadFrameworkPackage(
   if (!packagePath) {
     throw new Error(
       `Unable to resolve framework package '${packageName}' from '${fromDir}'. ` +
-      `Install it or pass a different framework package name in your TypeCode config.`,
+      `Install it or pass a different framework package name in your TypeHAL config.`,
     );
   }
   // eslint-disable-next-line @typescript-eslint/no-var-requires

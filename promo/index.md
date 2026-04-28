@@ -1,22 +1,22 @@
-# TypeCode
+# TypeHAL
 
 **Write firmware in TypeScript. Ship it as C++.**
 
 Type-safe, board-aware embedded development that catches hardware bugs before you flash — not after a 30-second upload cycle.
 
 ```bash
-npx @typecode/create my-project --board arduino-uno
+npx @typehal/create my-project --board arduino-uno
 ```
 
-[Get Started →](quickstart.md) &nbsp;|&nbsp; [GitHub](https://github.com/typecad/typecode)
+[Get Started →](quickstart.md) &nbsp;|&nbsp; [GitHub](https://github.com/typecad/typehal)
 
 ---
 
-## Why TypeCode?
+## Why TypeHAL?
 
 Embedded firmware development has a feedback loop problem. You write C++, flash it to a board, and *then* discover you passed the wrong pin, forgot to initialize a bus, or used a pin that's already claimed by I2C. Every mistake costs a compile-flash-test cycle.
 
-TypeCode moves those checks into your editor.
+TypeHAL moves those checks into your editor.
 
 ---
 
@@ -27,7 +27,7 @@ TypeCode moves those checks into your editor.
 Full TypeScript syntax — classes, enums, destructuring, template literals, async/await, generics — lowers to lean, AVR-ready C++ with zero runtime overhead. No STL. No heap. Just idiomatic, readable output that fits in 2KB of RAM.
 
 ```typescript
-import { LED, delay } from '@typecode';
+import { LED, delay } from '@typehal';
 
 async function blink() {
   const led = LED.asOutput();
@@ -51,7 +51,7 @@ Emits clean `setup()` + `loop()` Arduino code. No boilerplate, no surprises.
 Every pin has a narrow type that reflects what it can actually do on your board. Wrong pin for PWM? Red squiggle. Analog pin used as digital output? Error. I2C bus not initialized? Compile-time diagnostic.
 
 ```typescript
-import { D4, D9, A0, I2C0 } from '@typecode';
+import { D4, D9, A0, I2C0 } from '@typehal';
 
 D4.pwm(50);    // ❌ Error: D4 does not support PWM on Arduino Uno
 D9.pwm(50);    // ✅ OK — D9 is a PWM pin
@@ -73,7 +73,7 @@ These are not lint hints — they're type errors rooted in your board's actual p
 Bus ownership, ISR-safety analysis, and peripheral conflict detection — all caught before you flash. Double-take on a bus, use a UART inside an ISR, accidentally share SPI pins with GPIO: all errors at transpile time.
 
 ```typescript
-import { I2C0 } from '@typecode';
+import { I2C0 } from '@typehal';
 
 const bus = I2C0.take();  // exclusive ownership
 bus.device(0x76).writeByte(0xFA, 0x55);
@@ -94,12 +94,12 @@ Develop and validate firmware logic in Node.js before touching a board. When you
 
 ```typescript
 // Runs in Node.js — no board needed
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 const board = createSimBoard();
 
 // Runs on the actual microcontroller
-import { describe, done } from '@typecode/expect';
-import { A0 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0 } from '@typehal';
 
 describe("ADC").it("reads in valid range")
   .expect(A0.readAnalog()).toBeWithinRange(0, 1023);
@@ -114,7 +114,7 @@ done();
 ## One command to flash
 
 ```bash
-npx typecode sketch.ts --compile --upload --monitor --port COM4
+npx typehal sketch.ts --compile --upload --monitor --port COM4
 ```
 
 Transpile → compile → upload → open serial monitor. Or mix flags to fit your workflow.
@@ -125,9 +125,9 @@ Transpile → compile → upload → open serial monitor. Or mix flags to fit yo
 
 | Board | Package | Architecture |
 |---|---|---|
-| Arduino Uno | `@typecode/board-arduino-uno` | AVR |
-| Arduino Nano 33 IoT | `@typecode/board-arduino-nano33iot` | SAMD |
-| ESP32 DevKit | `@typecode/board-esp32-devkit` | ESP32 |
+| Arduino Uno | `@typehal/board-arduino-uno` | AVR |
+| Arduino Nano 33 IoT | `@typehal/board-arduino-nano33iot` | SAMD |
+| ESP32 DevKit | `@typehal/board-esp32-devkit` | ESP32 |
 
 More architectures ready for board definitions: ESP32-S2/S3/C3, RP2040, STM32, nRF52.
 
@@ -136,10 +136,10 @@ More architectures ready for board definitions: ESP32-S2/S3/C3, RP2040, STM32, n
 ## Ready to start?
 
 ```bash
-npx @typecode/create my-project --board arduino-uno
+npx @typehal/create my-project --board arduino-uno
 cd my-project
 npm install
-npx typecode build --compile --upload --port COM4
+npx typehal build --compile --upload --port COM4
 ```
 
 [Full quickstart guide →](quickstart.md)

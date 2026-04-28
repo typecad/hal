@@ -9,7 +9,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
   describe('ADC Detection', () => {
     it('detects analog input read', () => {
       const usage = analyzeUsage(`
-        import { A0 } from '@typecode/board-arduino-uno';
+        import { A0 } from '@typehal/board-arduino-uno';
         const value = A0.read();
       `);
 
@@ -19,7 +19,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
 
     it('detects multiple ADC channels', () => {
       const usage = analyzeUsage(`
-        import { A0, A1, A2 } from '@typecode/board-arduino-uno';
+        import { A0, A1, A2 } from '@typehal/board-arduino-uno';
         const v0 = A0.read();
         const v1 = A1.read();
         const v2 = A2.read();
@@ -35,7 +35,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
   describe('PWM Detection', () => {
     it('detects PWM usage and records the pin number', () => {
       const usage = analyzeUsage(`
-        import { D9 } from '@typecode/board-arduino-uno';
+        import { D9 } from '@typehal/board-arduino-uno';
         D9.asOutput();
         D9.write(128);
       `);
@@ -49,7 +49,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
   describe('Pin Mode Detection', () => {
     it('detects output pin configuration', () => {
       const usage = analyzeUsage(`
-        import { D13 } from '@typecode/board-arduino-uno';
+        import { D13 } from '@typehal/board-arduino-uno';
         D13.output(false);
       `);
 
@@ -58,7 +58,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
 
     it('detects input pullup configuration', () => {
       const usage = analyzeUsage(`
-        import { D2 } from '@typecode/board-arduino-uno';
+        import { D2 } from '@typehal/board-arduino-uno';
         D2.inputPullUp();
       `);
 

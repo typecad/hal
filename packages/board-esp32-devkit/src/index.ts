@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Board definition manifest
+// @typehal/board-esp32-devkit — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typecode/hal';
+import type { BoardDefinition } from '@typehal/hal';
 
 // ---------------------------------------------------------------------------
 // Default capability flags for ESP32
@@ -376,7 +376,7 @@ export {
 } from './pins';
 
 // Re-export HIGH/LOW constants from core
-export { HIGH, LOW } from '@typecode/core';
+export { HIGH, LOW } from '@typehal/core';
 
 // Peripheral bus instances
 export { I2C0, I2C1, SPI0, SPI1, UART0, UART2 } from './peripherals';

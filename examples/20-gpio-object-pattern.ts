@@ -12,7 +12,7 @@
 // used the original pin name.
 // ---------------------------------------------------------------------------
 
-import { LED, D2, D3, D9, delay } from '@typecode';
+import { LED, D2, D3, D9, delay } from '@typehal';
 
 // ── Output pins ────────────────────────────────────────────────────────────
 // LED.asOutput(true) → pinMode(LED_BUILTIN, OUTPUT) + digitalWrite(LED_BUILTIN, HIGH)

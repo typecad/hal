@@ -152,7 +152,7 @@ export class FunctionEmitter {
 
     // Inject microtask pumping into the async driver function
     if (options.hasPromiseRuntime && fn.name === options.asyncDriverFn) {
-      appendLine("  typecode_pump_microtasks();");
+      appendLine("  typehal_pump_microtasks();");
     }
 
     // Async tasks are driven by their state machine; don't emit the blocking body

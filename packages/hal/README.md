@@ -1,10 +1,10 @@
-# @typecode/hal
+# @typehal/hal
 
-Hardware abstraction layer types and board metadata builders for TypeCode.
+Hardware abstraction layer types and board metadata builders for TypeHAL.
 
 ## Overview
 
-`@typecode/hal` defines the core hardware metadata types and board definition helpers used by TypeCode board packages and the transpiler. It provides the data model for pins, peripherals, feature flags, memory, and board capabilities.
+`@typehal/hal` defines the core hardware metadata types and board definition helpers used by TypeHAL board packages and the transpiler. It provides the data model for pins, peripherals, feature flags, memory, and board capabilities.
 
 ## Quick start
 
@@ -17,7 +17,7 @@ import {
   PeripheralBuilder,
   BoardDefinitionBuilder,
   validateBoardDefinition,
-} from '@typecode/hal';
+} from '@typehal/hal';
 
 const board = new BoardDefinitionBuilder('custom-board')
   .addPin(new PinBuilder('D0').setCapabilities(GPIO.digital()).build())
@@ -31,7 +31,7 @@ validateBoardDefinition(board);
 
 ### Board metadata
 
-`@typecode/hal` exports the core metadata types for board definitions:
+`@typehal/hal` exports the core metadata types for board definitions:
 
 - `BoardDefinition`
 - `PinDefinition`
@@ -52,4 +52,4 @@ Use the builder utilities to construct and validate board packages:
 
 ### Typical usage
 
-A board package can use `@typecode/hal` to describe which pins exist, what peripherals are available, and which features are supported. The CLI and framework packages consume this metadata to drive safe hardware code generation and diagnostics.
+A board package can use `@typehal/hal` to describe which pins exist, what peripherals are available, and which features are supported. The CLI and framework packages consume this metadata to drive safe hardware code generation and diagnostics.

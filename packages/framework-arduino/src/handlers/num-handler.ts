@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// Num namespace handler — maps TypeCode Num.* calls to Arduino C++ math
+// Num namespace handler — maps TypeHAL Num.* calls to Arduino C++ math
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
 
 /**
  * Render Num namespace direct function calls to Arduino C++.

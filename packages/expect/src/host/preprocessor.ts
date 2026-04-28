@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — AST Preprocessor
+// @typehal/expect — AST Preprocessor
 //
 // Transforms fluent test syntax into flat Serial.print/println protocol
-// calls that the typecode transpiler handles correctly.
+// calls that the typehal transpiler handles correctly.
 //
 // INPUT (user test file):
 //   describe("A0 analog read")
@@ -38,7 +38,7 @@ export interface PreprocessorOptions {
 /**
  * Preprocess a test file's TypeScript source.
  *
- * 1. Strips `import { ... } from '@typecode/expect'`
+ * 1. Strips `import { ... } from '@typehal/expect'`
  * 2. Walks top-level expression-statements looking for `describe(...)...` chains
  * 3. Replaces `done()` with the suite-end sentinel + idle loop
  * 4. Hoists hardware expressions out of `expect()` into `const` declarations
@@ -51,7 +51,7 @@ export function preprocess(source: string, fileName: string = 'test.ts', options
   for (const stmt of sf.statements) {
     if (ts.isImportDeclaration(stmt)) {
       const moduleSpecifier = (stmt.moduleSpecifier as ts.StringLiteral).text;
-      if (moduleSpecifier === '@typecode/expect') continue; // strip
+      if (moduleSpecifier === '@typehal/expect') continue; // strip
       ctx.emit(stmt.getText(sf));
     } else if (ts.isExpressionStatement(stmt)) {
       processExpressionStatement(stmt, sf, ctx);

@@ -1,6 +1,6 @@
 # Simulator
 
-The `@typecode/simulator` package provides hardware simulation for testing TypeCode sketches in Node.js without physical hardware. It implements the same HAL interfaces (`IDigitalPin`, `IAnalogInput`, `IPWMPin`, `ISerialPort`, `II2CBus`, `ISPIBus`) as real board packages, so sketch logic can be tested with standard testing frameworks like Vitest or Jest.
+The `@typehal/simulator` package provides hardware simulation for testing TypeHAL sketches in Node.js without physical hardware. It implements the same HAL interfaces (`IDigitalPin`, `IAnalogInput`, `IPWMPin`, `ISerialPort`, `II2CBus`, `ISPIBus`) as real board packages, so sketch logic can be tested with standard testing frameworks like Vitest or Jest.
 
 ## When to Use the Simulator
 
@@ -11,16 +11,16 @@ The `@typecode/simulator` package provides hardware simulation for testing TypeC
 | Testing interrupt handler wiring | ✅ Yes |
 | Timing-critical code (exact microsecond timing) | ❌ No |
 | Analog signal processing (ADC noise, signal integrity) | ❌ No |
-| Transpilation output verification | ❌ Use `@typecode/expect` instead |
+| Transpilation output verification | ❌ Use `@typehal/expect` instead |
 
 ## Installation
 
-The simulator is included in the TypeCode workspace. Add it to your test dependencies:
+The simulator is included in the TypeHAL workspace. Add it to your test dependencies:
 
 ```json
 {
   "devDependencies": {
-    "@typecode/simulator": "^0.1.0"
+    "@typehal/simulator": "^0.1.0"
   }
 }
 ```
@@ -29,7 +29,7 @@ The simulator is included in the TypeCode workspace. Add it to your test depende
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 
 describe('LED blink logic', () => {
   it('toggles LED on pin 13', () => {
@@ -59,7 +59,7 @@ describe('LED blink logic', () => {
 
 ## Architecture
 
-The simulator mirrors the HAL interface hierarchy from `@typecode/core`:
+The simulator mirrors the HAL interface hierarchy from `@typehal/core`:
 
 ```
 SimBoard (factory: createSimBoard)
@@ -123,5 +123,5 @@ import {
   // Helpers
   createByteReadResult,
   createWriteResult,
-} from '@typecode/simulator';
+} from '@typehal/simulator';
 ```

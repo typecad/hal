@@ -4,11 +4,11 @@
 // These types represent the transpiled TypeScript code in a form
 // that can be emitted as C++ code.
 //
-// NOTE: This file re-exports the IR types from @typecode/core for backwards
-// compatibility. New code should import directly from '@typecode/core'.
+// NOTE: This file re-exports the IR types from @typehal/core for backwards
+// compatibility. New code should import directly from '@typehal/core'.
 // ---------------------------------------------------------------------------
 
-// Re-export all IR types from the canonical source in @typecode/core
+// Re-export all IR types from the canonical source in @typehal/core
 export type {
   // Imports and exports
   ImportIR,
@@ -40,7 +40,7 @@ export type {
   ThrowIR,
   LabeledIR,
   BlockIR,
-  TypecodeCallStatementIR,
+  TypehalCallStatementIR,
   
   // Functions
   FunctionIR,
@@ -73,8 +73,8 @@ export type {
   
   // Program
   ProgramIR,
-} from "@typecode/core";
+} from "@typehal/core";
 
 // Re-export related types that are defined locally in CLI
-export type { TypecodeReceiverKind } from './typecode-symbols';
+export type { TypehalReceiverKind } from './typehal-symbols';
 export type { BoardConstants } from './board-resolver';

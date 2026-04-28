@@ -1,13 +1,13 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Board definition manifest
+// @typehal/board-arduino-uno — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typecode/hal';
+import type { BoardDefinition } from '@typehal/hal';
 
 // NOTE: Platform strategy is now provided by framework packages:
-//   - @typecode/framework-arduino for Arduino framework (digitalWrite, etc.)
-//   - @typecode/framework-avr for native AVR registers (PORTB, etc.)
-// Set `framework` in typecode.config.ts to choose the code generation strategy.
+//   - @typehal/framework-arduino for Arduino framework (digitalWrite, etc.)
+//   - @typehal/framework-avr for native AVR registers (PORTB, etc.)
+// Set `framework` in typehal.config.ts to choose the code generation strategy.
 
 // ---------------------------------------------------------------------------
 // Default capability flags for AVR (fields absent on this platform)
@@ -199,7 +199,7 @@ import {
  * 
  * @example
  * ```typescript
- * import { pins, D9 } from '@typecode/board-arduino-uno';
+ * import { pins, D9 } from '@typehal/board-arduino-uno';
  * 
  * // Check if a specific pin is in a capability group
  * if (pins.pwm.includes(D9)) {
@@ -234,7 +234,7 @@ export const pins = {
  *
  * @example
  * ```typescript
- * import { PeripheralPins } from '@typecode/board-arduino-uno';
+ * import { PeripheralPins } from '@typehal/board-arduino-uno';
  *
  * // Check which pins I2C uses
  * console.log(PeripheralPins.I2C0); // { SDA: 'A4', SCL: 'A5' }
@@ -265,7 +265,7 @@ export {
 } from './pins';
 
 // Re-export HIGH/LOW constants from core
-export { HIGH, LOW } from '@typecode/core';
+export { HIGH, LOW } from '@typehal/core';
 
 // Peripheral bus instances
 export { I2C0, SPI0, UART0 } from './peripherals';

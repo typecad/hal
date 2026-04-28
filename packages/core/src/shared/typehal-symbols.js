@@ -1,14 +1,14 @@
 "use strict";
 // ---------------------------------------------------------------------------
-// Typecode SDK symbol kind inference
+// Typehal SDK symbol kind inference
 //
-// Maps known typecode symbol names to their receiver kind.
+// Maps known typehal symbol names to their receiver kind.
 // This is the ONLY place that knows the mapping — no regexes elsewhere.
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.inferKindByName = inferKindByName;
 /**
- * Static mapping of every known typecode export name to its receiver kind.
+ * Static mapping of every known typehal export name to its receiver kind.
  * Covers Arduino Uno board exports, ESP32 DevKit exports, and common peripheral names.
  */
 const STATIC_KINDS = {
@@ -83,8 +83,8 @@ const STATIC_KINDS = {
     Num: 'num',
 };
 /**
- * Infer the typecode receiver kind for a given symbol name.
- * Returns `'unknown'` for anything that is not a recognised typecode symbol.
+ * Infer the typehal receiver kind for a given symbol name.
+ * Returns `'unknown'` for anything that is not a recognised typehal symbol.
  */
 function inferKindByName(name) {
     // Pattern match peripheral instances (I2C0, I2C1, I2C2, etc.)
@@ -97,4 +97,4 @@ function inferKindByName(name) {
     // Fall back to static mapping for pins and other symbols
     return STATIC_KINDS[name] ?? 'unknown';
 }
-//# sourceMappingURL=typecode-symbols.js.map
+//# sourceMappingURL=typehal-symbols.js.map

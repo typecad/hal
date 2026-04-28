@@ -1,15 +1,15 @@
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   entry: './tests/01-basics.test.ts',
 
   target: 'avr',
 
   // Board package — provides pin definitions and board constants
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
 
   // Framework package — controls code generation strategy
-  framework: '@typecode/framework-arduino',
+  framework: '@typehal/framework-arduino',
 
   // Fully-Qualified Board Name for arduino-cli
   fqbn: 'arduino:avr:uno',

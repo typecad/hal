@@ -1,10 +1,10 @@
-# TypeCode Debugger
+# TypeHAL Debugger
 
-Breakpoint-based debugging for TypeCode embedded projects using VS Code integration and serial output.
+Breakpoint-based debugging for TypeHAL embedded projects using VS Code integration and serial output.
 
 ## Overview
 
-The TypeCode debugger lets you set breakpoints in your TypeScript source and debug directly on the embedded device. When a breakpoint is hit, the device:
+The TypeHAL debugger lets you set breakpoints in your TypeScript source and debug directly on the embedded device. When a breakpoint is hit, the device:
 
 1. Prints the breakpoint location and source line
 2. Displays all variables in scope
@@ -17,7 +17,7 @@ The TypeCode debugger lets you set breakpoints in your TypeScript source and deb
 In VS Code, place your cursor on a line and run the command:
 
 ```
-TypeCode: Toggle Breakpoint
+TypeHAL: Toggle Breakpoint
 ```
 
 Or use the standard VS Code breakpoint gutter (red circle).
@@ -25,13 +25,13 @@ Or use the standard VS Code breakpoint gutter (red circle).
 ### 2. Compile & Upload with Debug
 
 ```bash
-npx typecode sketch.ts --compile --upload --port COM4 --debug
+npx typehal sketch.ts --compile --upload --port COM4 --debug
 ```
 
 ### 3. Monitor Serial Output
 
 ```bash
-npx typecode sketch.ts --monitor --port COM4
+npx typehal sketch.ts --monitor --port COM4
 ```
 
 Or use any serial monitor at **9600 baud**.
@@ -41,7 +41,7 @@ Or use any serial monitor at **9600 baud**.
 When a breakpoint is hit, you'll see:
 
 ```
-🔧 TypeCode Debug Mode Active
+🔧 TypeHAL Debug Mode Active
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⏸️  BREAKPOINT: example.ts:10
@@ -102,19 +102,19 @@ Output:
 
 ## VS Code Extension
 
-The `vscode-typecode-debug` extension provides:
+The `vscode-typehal-debug` extension provides:
 
 ### Commands
 
 | Command | Description |
 |---------|-------------|
-| `typecode-debug.toggleBreakpoint` | Toggle breakpoint at cursor |
-| `typecode-debug.clearAllBreakpoints` | Remove all breakpoints |
-| `typecode-debug.debugWithBreakpoints` | Build and debug with breakpoints |
+| `typehal-debug.toggleBreakpoint` | Toggle breakpoint at cursor |
+| `typehal-debug.clearAllBreakpoints` | Remove all breakpoints |
+| `typehal-debug.debugWithBreakpoints` | Build and debug with breakpoints |
 
 ### Breakpoint Storage
 
-Breakpoints are stored in `.typecode/breakpoints.json`:
+Breakpoints are stored in `.typehal/breakpoints.json`:
 
 ```json
 {
@@ -142,7 +142,7 @@ The extension automatically syncs with VS Code's native breakpoint system:
 1. **Native breakpoints**: Set breakpoints using VS Code's gutter (red circle)
 2. **Conditional breakpoints**: Right-click → "Add Conditional Breakpoint"
 3. **Logpoints**: Right-click → "Add Logpoint"
-4. **Auto-sync**: Breakpoints sync to `.typecode/breakpoints.json` when:
+4. **Auto-sync**: Breakpoints sync to `.typehal/breakpoints.json` when:
    - A breakpoint is added/removed
    - A file is saved
    - The active editor changes
@@ -153,7 +153,7 @@ The extension automatically syncs with VS Code's native breakpoint system:
 
 When you compile with `--debug`, the transpiler:
 
-1. Loads breakpoints from `.typecode/breakpoints.json`
+1. Loads breakpoints from `.typehal/breakpoints.json`
 2. Injects `Serial.begin(9600)` at the start of your code
 3. At each breakpoint line, injects:
    - Serial prints for location, source line, and variables
@@ -176,7 +176,7 @@ while (true) {
 void setup() {
   Serial.begin(9600);
   while (!Serial) { delay(10); }
-  Serial.println("🔧 TypeCode Debug Mode Active");
+  Serial.println("🔧 TypeHAL Debug Mode Active");
   
   int counter = 0;
   while (true) {
@@ -218,7 +218,7 @@ Functions are displayed as `[function]` since their value cannot be printed.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                  VS Code Extension                           │
-│  Tracks breakpoints → .typecode/breakpoints.json            │
+│  Tracks breakpoints → .typehal/breakpoints.json            │
 └─────────────────────────────┬───────────────────────────────┘
                               │
                               ▼
@@ -256,7 +256,7 @@ Functions are displayed as `[function]` since their value cannot be printed.
 | `packages/cli/src/debug/types.ts` | Breakpoint type definitions |
 | `packages/cli/src/debug/breakpoint-loader.ts` | Load breakpoints from JSON |
 | `packages/cli/src/debug/preprocessor.ts` | AST transform for debug injection |
-| `vscode-typecode-debug/src/extension.ts` | VS Code extension |
+| `vscode-typehal-debug/src/extension.ts` | VS Code extension |
 
 ---
 
@@ -265,7 +265,7 @@ Functions are displayed as `[function]` since their value cannot be printed.
 ### Extension Structure
 
 ```
-vscode-typecode-debug/
+vscode-typehal-debug/
 ├── package.json           # Extension manifest and contributions
 ├── tsconfig.json          # TypeScript configuration
 ├── src/
@@ -282,8 +282,8 @@ vscode-typecode-debug/
   "contributes": {
     "commands": [
       {
-        "command": "typecode-debug.myNewCommand",
-        "title": "TypeCode: My New Command"
+        "command": "typehal-debug.myNewCommand",
+        "title": "TypeHAL: My New Command"
       }
     ]
   }
@@ -294,7 +294,7 @@ vscode-typecode-debug/
 
 ```typescript
 const myCmd = vscode.commands.registerCommand(
-  'typecode-debug.myNewCommand',
+  'typehal-debug.myNewCommand',
   () => {
     // Your implementation
     vscode.window.showInformationMessage('Command executed!');
@@ -313,7 +313,7 @@ In `package.json` under `contributes.keybindings`:
   "contributes": {
     "keybindings": [
       {
-        "command": "typecode-debug.toggleBreakpoint",
+        "command": "typehal-debug.toggleBreakpoint",
         "key": "f9",
         "when": "editorTextFocus"
       }
@@ -341,8 +341,8 @@ class SerialMonitorPanel {
       : undefined;
 
     const panel = vscode.window.createWebviewPanel(
-      'typecodeSerialMonitor',
-      'TypeCode Serial Monitor',
+      'typehalSerialMonitor',
+      'TypeHAL Serial Monitor',
       column || vscode.ViewColumn.One,
       {}
     );
@@ -382,7 +382,7 @@ npm install -g @vscode/vsce
 ### Build the Extension
 
 ```bash
-cd vscode-typecode-debug
+cd vscode-typehal-debug
 npm install
 npm run compile  # or: npx tsc
 ```
@@ -393,7 +393,7 @@ npm run compile  # or: npx tsc
 vsce package
 ```
 
-This creates `vscode-typecode-debug-0.1.0.vsix`.
+This creates `vscode-typehal-debug-0.1.0.vsix`.
 
 ### Install Locally for Testing
 
@@ -404,7 +404,7 @@ In VS Code:
 
 Or via CLI:
 ```bash
-code --install-extension vscode-typecode-debug-0.1.0.vsix
+code --install-extension vscode-typehal-debug-0.1.0.vsix
 ```
 
 ### Publish to Marketplace
@@ -436,11 +436,11 @@ Ensure these fields are set for publishing:
 
 ```json
 {
-  "name": "vscode-typecode-debug",
-  "displayName": "TypeCode Debug",
+  "name": "vscode-typehal-debug",
+  "displayName": "TypeHAL Debug",
   "version": "0.1.0",
   "publisher": "<your-publisher-id>",
-  "description": "Breakpoint-based debugging for TypeCode embedded projects",
+  "description": "Breakpoint-based debugging for TypeHAL embedded projects",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -453,7 +453,7 @@ Ensure these fields are set for publishing:
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-repo/typecode"
+    "url": "https://github.com/your-repo/typehal"
   }
 }
 ```

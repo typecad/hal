@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Typed pin exports
+// @typehal/board-arduino-uno — Typed pin exports
 //
 // Each pin is exported with the narrowest interface that matches its
 // capabilities so that TypeScript prevents invalid operations at compile
@@ -14,7 +14,7 @@ import type {
   PWMPin,
   AnalogPin,
   InterruptPin,
-} from '@typecode/core';
+} from '@typehal/core';
 import type {
   IUnoDigitalPin,
   IUnoPWMPin,
@@ -26,7 +26,7 @@ import type {
 // Internal stub factories (no-op at runtime; consumed by transpiler)
 // ---------------------------------------------------------------------------
 
-import type { PinCapabilityFlags } from '@typecode/core';
+import type { PinCapabilityFlags } from '@typehal/core';
 
 const DIGITAL_CAPS: PinCapabilityFlags = {
   digitalInput: true, digitalOutput: true,

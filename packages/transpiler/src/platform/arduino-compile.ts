@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { compileSource, uploadFirmware, monitorDevice } from "./toolchain";
-import type { CompileResult, UploadResult } from "@typecode/core/shared";
+import type { CompileResult, UploadResult } from "@typehal/core/shared";
 
 /** @deprecated Use prepareOutput() from platform/toolchain */
 export function flattenGeneratedModulesIntoSketch(outputDir: string, entryPoint: string): void {

@@ -13,5 +13,5 @@ export {
   getArduinoLibraryClassNames,
   generateUsageDocumentation,
   clearLibraryCache,
-} from "@typecode/framework-arduino";
-export type { ArduinoLibrary, GeneratedArduinoLib } from "@typecode/framework-arduino";
+} from "@typehal/framework-arduino";
+export type { ArduinoLibrary, GeneratedArduinoLib } from "@typehal/framework-arduino";

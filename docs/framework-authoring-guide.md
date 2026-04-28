@@ -1,6 +1,6 @@
 # Framework Package Authoring Guide
 
-This tutorial walks through creating a new `@typecode/framework-{name}` package from scratch. You will learn how the framework loading system works, what the `PlatformStrategy` interface requires, and how to wire everything together so the CLI can use your framework.
+This tutorial walks through creating a new `@typehal/framework-{name}` package from scratch. You will learn how the framework loading system works, what the `PlatformStrategy` interface requires, and how to wire everything together so the CLI can use your framework.
 
 ---
 
@@ -28,7 +28,7 @@ This tutorial walks through creating a new `@typecode/framework-{name}` package 
 
 ## 1. Architecture Overview
 
-TypeCode uses a **strategy pattern** to decouple the C++ emitter from any specific hardware framework. The emitter produces IR (Intermediate Representation) and then asks a `PlatformStrategy` for target-specific decisions.
+TypeHAL uses a **strategy pattern** to decouple the C++ emitter from any specific hardware framework. The emitter produces IR (Intermediate Representation) and then asks a `PlatformStrategy` for target-specific decisions.
 
 ```mermaid
 graph TD
@@ -63,13 +63,13 @@ Understanding the loading sequence helps you know what to export and when your c
 
 ```mermaid
 sequenceDiagram
-    participant User as typecode.config.ts
+    participant User as typehal.config.ts
     participant CLI as transpile.ts
     participant Loader as framework-package.ts
     participant Registry as framework-registry.ts
     participant Pkg as your framework package
 
-    User->>CLI: framework: @typecode/framework-yours
+    User->>CLI: framework: @typehal/framework-yours
     CLI->>Loader: loadFrameworkPackage - name and fromDir
     Loader->>Loader: require.resolve to find package
     Loader->>Pkg: require - loads dist/index.js
@@ -111,9 +111,9 @@ packages/framework-{name}/
 
 ```json
 {
-  "name": "@typecode/framework-{name}",
+  "name": "@typehal/framework-{name}",
   "version": "0.1.0",
-  "description": "TypeCode framework package for {description}",
+  "description": "TypeHAL framework package for {description}",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -128,13 +128,13 @@ packages/framework-{name}/
     "build": "tsc"
   },
   "dependencies": {
-    "@typecode/core": "*"
+    "@typehal/core": "*"
   },
   "license": "MIT"
 }
 ```
 
-> **Important:** Only depend on `@typecode/core`. Do NOT depend on `@typecode/framework-arduino` or any other framework package. Your framework must be fully standalone.
+> **Important:** Only depend on `@typehal/core`. Do NOT depend on `@typehal/framework-arduino` or any other framework package. Your framework must be fully standalone.
 
 ### tsconfig.json
 
@@ -172,14 +172,14 @@ The entry point [`src/index.ts`](../packages/framework-avr/src/index.ts) must ex
 ```typescript
 // src/index.ts
 // ---------------------------------------------------------------------------
-// @typecode/framework-{name} — {description}
+// @typehal/framework-{name} — {description}
 // ---------------------------------------------------------------------------
 
 // Export your strategy class — this is what the CLI loads
 export { YourStrategy as FrameworkStrategy } from './strategy';
 
 // Re-export the PlatformStrategy type for consumer convenience
-export type { PlatformStrategy } from '@typecode/core/shared';
+export type { PlatformStrategy } from '@typehal/core/shared';
 ```
 
 That is the minimum. You can also export additional utilities specific to your framework:
@@ -204,8 +204,8 @@ import type {
   Diagnostic,
   PlatformContext,
   BoardConstants,
-  TypecodeReceiverKind,
-} from '@typecode/core/shared';
+  TypehalReceiverKind,
+} from '@typehal/core/shared';
 
 export class YourStrategy implements PlatformStrategy {
   readonly id = '{name}';
@@ -410,7 +410,7 @@ normalizeRawExpression(value: string): string {
 
 ### `nullValue(): string`
 
-How to render `null`/`undefined`. Embedded platforms often use `"0"` or `"TYPECODE_UNDEFINED"`.
+How to render `null`/`undefined`. Embedded platforms often use `"0"` or `"TYPEHAL_UNDEFINED"`.
 
 ### `mapPeripheralIdentifier?(name): string | undefined` *(optional)*
 
@@ -453,7 +453,7 @@ floatToSnprintfArg(
   tempId: number,
 ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } {
   const effectivePrecision = precision ?? 6;
-  const bufferName = `__typecode_float_${tempId}`;
+  const bufferName = `__typehal_float_${tempId}`;
   const estimatedLength = Math.max(16, effectivePrecision + 8);
   return {
     format: '%s',
@@ -467,12 +467,12 @@ floatToSnprintfArg(
 }
 ```
 
-### `tryRenderTypecodeCall(receiver, receiverKind, method, args, renderArg, boardConstants?, interruptMode?): string | undefined`
+### `tryRenderTypehalCall(receiver, receiverKind, method, args, renderArg, boardConstants?, interruptMode?): string | undefined`
 
-**This is the most important method.** It renders TypeCode SDK calls (pin reads/writes, peripheral calls) to platform C++. Return `undefined` to fall back to default rendering.
+**This is the most important method.** It renders TypeHAL SDK calls (pin reads/writes, peripheral calls) to platform C++. Return `undefined` to fall back to default rendering.
 
 ```typescript
-tryRenderTypecodeCall(
+tryRenderTypehalCall(
   receiver: string,
   receiverKind: string,
   method: string,
@@ -619,7 +619,7 @@ asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean): string[]
   for (const n of taskVarNames) {
     lines.push(`  ${n}.run();`);
   }
-  if (hasPromiseRuntime) lines.push('  typecode_pump_microtasks();');
+  if (hasPromiseRuntime) lines.push('  typehal_pump_microtasks();');
   return lines;
 }
 ```
@@ -794,7 +794,7 @@ interface ToolchainOptions {
 }
 ```
 
-The `frameworkConfig` field carries your framework's dedicated config section from `typecode.config.ts`. This lets users customize framework-specific options without the CLI needing to know about them. See [Framework-Specific Configuration](#framework-specific-configuration) below.
+The `frameworkConfig` field carries your framework's dedicated config section from `typehal.config.ts`. This lets users customize framework-specific options without the CLI needing to know about them. See [Framework-Specific Configuration](#framework-specific-configuration) below.
 
 ### `CompileResult` and `UploadResult`
 
@@ -818,8 +818,8 @@ Here is a minimal toolchain that compiles with g++ or clang++:
 ```typescript
 // src/native-compile.ts
 import { spawnSync } from "node:child_process";
-import type { CompileResult, ToolchainOptions } from "@typecode/core/shared";
-import { parseCompileErrors } from "@typecode/core/shared";
+import type { CompileResult, ToolchainOptions } from "@typehal/core/shared";
+import { parseCompileErrors } from "@typehal/core/shared";
 
 export const NativeToolchain = {
   compile(options: ToolchainOptions): CompileResult {
@@ -855,9 +855,9 @@ The CLI's [`extractToolchain()`](../packages/transpiler/src/framework-package.ts
 
 ### How it connects to the CLI
 
-When a user runs `typecode build --compile`:
+When a user runs `typehal build --compile`:
 
-1. The CLI loads the framework package specified in `typecode.config.ts`
+1. The CLI loads the framework package specified in `typehal.config.ts`
 2. It finds the `Toolchain` export and stores it in the framework registry
 3. After transpilation, `--compile` calls `compileSource(options)` from [`platform/toolchain.ts`](../packages/transpiler/src/platform/toolchain.ts)
 4. That function retrieves the active toolchain and calls its `compile(options)` method
@@ -893,7 +893,7 @@ export const ArduinoToolchain = {
 
 ### Framework-Specific Configuration
 
-Your framework can declare its own config section in `typecode.config.ts`. This is how users pass framework-specific options like compiler selection, include paths, or custom flags.
+Your framework can declare its own config section in `typehal.config.ts`. This is how users pass framework-specific options like compiler selection, include paths, or custom flags.
 
 **1. Define a config interface in your framework package:**
 
@@ -925,15 +925,15 @@ export const MyToolchain = {
 };
 ```
 
-**4. Users configure it in `typecode.config.ts`:**
+**4. Users configure it in `typehal.config.ts`:**
 
 Users add a top-level key matching their framework name. The config loader collects it into `frameworkConfig`:
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
-  framework: '@typecode/framework-mine',
+const config: TypehalConfig = {
+  framework: '@typehal/framework-mine',
   mine: {
     customCompiler: 'clang++',
     includePaths: ['./vendor'],
@@ -943,7 +943,7 @@ const config: TypecodeConfig = {
 
 The config loader in `packages/transpiler/src/config-loader.ts` automatically extracts any unrecognized top-level object section and passes it through as `frameworkConfig` on `ToolchainOptions`. Your framework casts it to its own typed interface.
 
-The existing `@typecode/framework-native` package uses this pattern — see `NativeCompileConfig` in [`native-config.ts`](../packages/framework-native/src/native-config.ts) for a concrete example.
+The existing `@typehal/framework-native` package uses this pattern — see `NativeCompileConfig` in [`native-config.ts`](../packages/framework-native/src/native-config.ts) for a concrete example.
 
 ### Library discovery
 
@@ -974,15 +974,15 @@ npm run build
 
 ### Configure
 
-In your project's `typecode.config.ts`:
+In your project's `typehal.config.ts`:
 
 ```typescript
-import { defineConfig } from '@typecode/transpiler';
+import { defineConfig } from '@typehal/transpiler';
 
 export default defineConfig({
   target: 'arduino',  // or your custom target
-  framework: '@typecode/framework-{name}',
-  board: '@typecode/board-{name}',
+  framework: '@typehal/framework-{name}',
+  board: '@typehal/board-{name}',
   fqbn: 'vendor:arch:board',
 });
 ```
@@ -1033,7 +1033,7 @@ export default defineConfig({
 | Expression | `nullValue` | `() => string` |
 | Expression | `wrapStringConcat` | `(left, right, leftIsString) => string or undefined` |
 | Expression | `useSnprintfForStrings` | `() => boolean` |
-| Expression | `tryRenderTypecodeCall` | `(receiver, receiverKind, method, args, renderArg, boardConstants?, interruptMode?) => string or undefined` |
+| Expression | `tryRenderTypehalCall` | `(receiver, receiverKind, method, args, renderArg, boardConstants?, interruptMode?) => string or undefined` |
 | Expression | `renderBoardDefinitionAccess` | `(chain, boardConstants?) => string or undefined` |
 | Statement | `tryRenderCallStatement` | `(callee, args, renderArg, boardConstants?) => string or undefined` |
 | Statement | `renderThrow` | `(valueExpr) => string` |
@@ -1096,7 +1096,7 @@ Check your `normalizeCppType()` implementation. Common issues:
 
 ### Pin operations not rendering
 
-Your `tryRenderTypecodeCall()` must handle the receiver/method combinations your users will call. The `receiver` is the pin identifier (e.g., `"D13"`, `"A0"`) and `method` is the operation (e.g., `"high"`, `"read"`, `"toggle"`). Return `undefined` for anything you don't handle — the emitter will fall back to default rendering.
+Your `tryRenderTypehalCall()` must handle the receiver/method combinations your users will call. The `receiver` is the pin identifier (e.g., `"D13"`, `"A0"`) and `method` is the operation (e.g., `"high"`, `"read"`, `"toggle"`). Return `undefined` for anything you don't handle — the emitter will fall back to default rendering.
 
 ### Console output not working
 

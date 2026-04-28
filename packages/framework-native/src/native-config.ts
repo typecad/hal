@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Native C++ compilation configuration
 //
-// Place under the `native` key in typecode.config.ts to customize
+// Place under the `native` key in typehal.config.ts to customize
 // how g++/clang++ compiles your generated C++ code.
 // ---------------------------------------------------------------------------
 
@@ -10,9 +10,9 @@
  *
  * @example
  * ```ts
- * // typecode.config.ts
- * const config: TypecodeConfig = {
- *   framework: '@typecode/framework-native',
+ * // typehal.config.ts
+ * const config: TypehalConfig = {
+ *   framework: '@typehal/framework-native',
  *   native: {
  *     compiler: 'clang++',
  *     cxxStandard: 'c++20',

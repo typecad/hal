@@ -1,1 +1,1 @@
-export { ArduinoStrategy } from "@typecode/framework-arduino";
+export { ArduinoStrategy } from "@typehal/framework-arduino";

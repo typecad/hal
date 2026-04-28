@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Removes stale Arduino output artifacts (.ino, .cpp, .h, .tscppmap.json)
+ * Removes stale Arduino output artifacts (.ino, .cpp, .h, .thcppmap.json)
  * from the output directory, preserving the current sketch's .ino file.
  */
 export function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string): void {
@@ -18,16 +18,16 @@ export function cleanStaleArduinoOutputs(outDir: string, currentBaseName: string
     const fullPath = path.join(outDir, fileName);
     const lower = fileName.toLowerCase();
     const isSourceArtifact = lower.endsWith(".ino") || lower.endsWith(".cpp") || lower.endsWith(".h");
-    const isMapArtifact = lower.endsWith(".tscppmap.json");
+    const isMapArtifact = lower.endsWith(".thcppmap.json");
     if (!isSourceArtifact && !isMapArtifact) {
       continue;
     }
 
-    const artifactBase = lower.endsWith(".tscppmap.json")
-      ? path.basename(fileName.slice(0, -".tscppmap.json".length)).replace(/\.[^.]+$/, "")
+    const artifactBase = lower.endsWith(".thcppmap.json")
+      ? path.basename(fileName.slice(0, -".thcppmap.json".length)).replace(/\.[^.]+$/, "")
       : path.basename(fileName).replace(/\.[^.]+$/, "");
 
-    const isCurrentSketch = artifactBase === currentBaseName && (lower.endsWith(".ino") || lower.endsWith(".ino.tscppmap.json"));
+    const isCurrentSketch = artifactBase === currentBaseName && (lower.endsWith(".ino") || lower.endsWith(".ino.thcppmap.json"));
     if (isCurrentSketch) {
       continue;
     }

@@ -1,6 +1,6 @@
 # Ownership & Borrowing Safety
 
-TypeCode provides opt-in, Rust-inspired ownership types that enforce memory safety rules at **transpile time** with **zero runtime cost**. The types are phantom types — they erase to plain C++ types during emission — so there is no code-size or performance penalty on the target device.
+TypeHAL provides opt-in, Rust-inspired ownership types that enforce memory safety rules at **transpile time** with **zero runtime cost**. The types are phantom types — they erase to plain C++ types during emission — so there is no code-size or performance penalty on the target device.
 
 ---
 
@@ -15,7 +15,7 @@ Embedded C++ has no garbage collector and no bounds-checked containers. The most
 | **Double-free** | Destructor called twice; in practice this corrupts the allocator's linked list and causes silent memory corruption. |
 | **Segmentation fault** | Hardware fault triggered by an invalid memory access. On bare-metal AVR devices there is no MMU — the program simply reads/writes a random address and continues, producing unpredictable behaviour. |
 
-TypeCode's ownership system addresses **dangling references** and **use-after-scope** — the two most common of the above in typical embedded C++ code — entirely at transpile time, before any C++ compiler is ever invoked.
+TypeHAL's ownership system addresses **dangling references** and **use-after-scope** — the two most common of the above in typical embedded C++ code — entirely at transpile time, before any C++ compiler is ever invoked.
 
 ---
 
@@ -119,8 +119,8 @@ function clamp(value: Ref): void {
 
 **C++ prevented:**
 ```cpp
-// Emitted without TypeCode safety — reads just fine, writes are UB:
-void clamp(const int value) { value = 100; }  // C++ compile error caught by TypeCode first
+// Emitted without TypeHAL safety — reads just fine, writes are UB:
+void clamp(const int value) { value = 100; }  // C++ compile error caught by TypeHAL first
 ```
 
 ---
@@ -246,7 +246,7 @@ function init(): void {
 
 **What it catches:** A borrow (`Ref` or `MutRef`) that outlives the `Owned` variable it was created from.
 
-**Why it matters:** This is the most insidious class of bug in embedded C++. The stack frame is reused — so a dangling reference silently reads the next function's local variables or the interrupt stack. The data looks plausible, the code "runs", and the bug only manifests under specific call sequences. Traditional C++ compilers do not catch this; Rust's borrow checker does; TypeCode now catches it too.
+**Why it matters:** This is the most insidious class of bug in embedded C++. The stack frame is reused — so a dangling reference silently reads the next function's local variables or the interrupt stack. The data looks plausible, the code "runs", and the bug only manifests under specific call sequences. Traditional C++ compilers do not catch this; Rust's borrow checker does; TypeHAL now catches it too.
 
 ```typescript
 function readSensor(): void {
@@ -286,7 +286,7 @@ int* dangling() {
 
 **What it catches:** Returning a `Ref` or `MutRef` whose underlying data is a local `Owned` variable in the same function.
 
-**Why it matters:** Returning a reference to a local variable is classic undefined behaviour — it is so common that modern C++ compilers warn about it, but only for simple cases. When the reference is stored via a `Ref` intermediate variable the warning is often silenced. TypeCode traces the borrow chain and catches it regardless.
+**Why it matters:** Returning a reference to a local variable is classic undefined behaviour — it is so common that modern C++ compilers warn about it, but only for simple cases. When the reference is stored via a `Ref` intermediate variable the warning is often silenced. TypeHAL traces the borrow chain and catches it regardless.
 
 ```typescript
 function getBuffer(): Ref {
@@ -332,7 +332,7 @@ const int* getPtr() {
 
 ## End-to-End C++ Emission Examples
 
-The table below shows what TypeCode emits for each combination:
+The table below shows what TypeHAL emits for each combination:
 
 | TypeScript declaration | Initialised from | Emitted C++ |
 |------------------------|-----------------|-------------|
@@ -402,4 +402,4 @@ function demo(): void {
 - Ownership tracking is **intra-procedural**. The analyser validates within each function body but does not track ownership across opaque function call boundaries (e.g., it does not know that a called function stores a borrow past its return).
 - **Class fields** that hold borrows are not yet analysed — only local variables and parameters.
 - The detection of moved values via `std::move()` in raw C++ emit nodes is heuristic (text-match based).
-- Designed for stack-allocated and static embedded patterns. Heap allocation (`new` / `delete`) is not emitted by TypeCode, so heap-use-after-free is not in scope.
+- Designed for stack-allocated and static embedded patterns. Heap allocation (`new` / `delete`) is not emitted by TypeHAL, so heap-use-after-free is not in scope.

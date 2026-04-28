@@ -5,8 +5,8 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["tests/**/*.test.ts"],
-    // packages/framework-arduino/tests/ uses the @typecode/expect hardware test framework
-    // (TypeCode fluent describe/it/expect API), not Vitest. They run on real Arduino
+    // packages/framework-arduino/tests/ uses the @typehal/expect hardware test framework
+    // (TypeHAL fluent describe/it/expect API), not Vitest. They run on real Arduino
     // hardware via `npm run test:hw`. Excluding them prevents spurious Vitest load errors.
     exclude: ["node_modules", "dist"],
     setupFiles: ["tests/setup-framework.ts"],

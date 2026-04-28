@@ -9,7 +9,7 @@ describe('GPIO Object-Creation Pattern', () => {
   describe('asOutput()', () => {
     it('emits pinMode OUTPUT for LED.asOutput()', () => {
       const result = transpile(`
-        import { LED } from '@typecode/board-arduino-uno/arduino';
+        import { LED } from '@typehal/board-arduino-uno/arduino';
         const led = LED.asOutput();
         led.toggle();
       `, { target: 'arduino' });
@@ -22,7 +22,7 @@ describe('GPIO Object-Creation Pattern', () => {
 
     it('emits pinMode + digitalWrite for LED.asOutput(true)', () => {
       const result = transpile(`
-        import { LED } from '@typecode/board-arduino-uno/arduino';
+        import { LED } from '@typehal/board-arduino-uno/arduino';
         const led = LED.asOutput(true);
         led.toggle();
       `, { target: 'arduino' });
@@ -35,7 +35,7 @@ describe('GPIO Object-Creation Pattern', () => {
 
     it('emits pinMode for D9.asOutput() and alias resolves for high()/low()', () => {
       const result = transpile(`
-        import { D9 } from '@typecode/board-arduino-uno/arduino';
+        import { D9 } from '@typehal/board-arduino-uno/arduino';
         const buzzer = D9.asOutput();
         buzzer.high();
         buzzer.low();
@@ -50,7 +50,7 @@ describe('GPIO Object-Creation Pattern', () => {
 
     it('resolves alias inside while loop', () => {
       const result = transpile(`
-        import { LED, D2, delay } from '@typecode/board-arduino-uno/arduino';
+        import { LED, D2, delay } from '@typehal/board-arduino-uno/arduino';
         const led = LED.asOutput();
         const btn = D2.asInput();
         while (true) {
@@ -73,7 +73,7 @@ describe('GPIO Object-Creation Pattern', () => {
   describe('asInput()', () => {
     it('emits pinMode INPUT for D2.asInput()', () => {
       const result = transpile(`
-        import { D2 } from '@typecode/board-arduino-uno/arduino';
+        import { D2 } from '@typehal/board-arduino-uno/arduino';
         const button = D2.asInput();
         const val = button.read();
       `, { target: 'arduino' });
@@ -88,7 +88,7 @@ describe('GPIO Object-Creation Pattern', () => {
   describe('asInputPullUp()', () => {
     it('emits pinMode INPUT_PULLUP for D3.asInputPullUp()', () => {
       const result = transpile(`
-        import { D3 } from '@typecode/board-arduino-uno/arduino';
+        import { D3 } from '@typehal/board-arduino-uno/arduino';
         const btn = D3.asInputPullUp();
         const val = btn.read();
       `, { target: 'arduino' });
@@ -101,7 +101,7 @@ describe('GPIO Object-Creation Pattern', () => {
 
     it('emits pinMode INPUT_PULLUP for a pin parameter and resolves alias for btn.read()', () => {
       const result = transpile(`
-        import { D2 } from '@typecode/board-arduino-uno/arduino';
+        import { D2 } from '@typehal/board-arduino-uno/arduino';
         function startButton(pin: { asInputPullUp(): any; onFalling(handler: () => void): void }) {
           const btn = pin.asInputPullUp();
           pin.onFalling(() => {});
@@ -120,7 +120,7 @@ describe('GPIO Object-Creation Pattern', () => {
 
     it('propagates pin aliases through this.field assignment and handles this.pin.read()', () => {
       const result = transpile(`
-        import { D2 } from '@typecode/board-arduino-uno/arduino';
+        import { D2 } from '@typehal/board-arduino-uno/arduino';
 
         class Button {
           private pin: any;
@@ -152,7 +152,7 @@ describe('GPIO Object-Creation Pattern', () => {
   describe('Multiple pins with aliases', () => {
     it('tracks multiple aliases independently', () => {
       const result = transpile(`
-        import { LED, D2, D9, delay } from '@typecode/board-arduino-uno/arduino';
+        import { LED, D2, D9, delay } from '@typehal/board-arduino-uno/arduino';
         const led = LED.asOutput();
         const button = D2.asInput();
         const buzzer = D9.asOutput();

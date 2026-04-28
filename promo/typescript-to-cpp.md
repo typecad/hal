@@ -2,7 +2,7 @@
 
 [← Home](index.md)
 
-TypeCode is a transpiler — you write idiomatic TypeScript and it emits clean, human-readable C++ that compiles on AVR, ESP32, SAMD, and other embedded targets. No runtime. No heap. No STL.
+TypeHAL is a transpiler — you write idiomatic TypeScript and it emits clean, human-readable C++ that compiles on AVR, ESP32, SAMD, and other embedded targets. No runtime. No heap. No STL.
 
 ---
 
@@ -18,15 +18,15 @@ TypeScript constructs that have no meaningful C++ equivalent are erased or inlin
 | Enums | `enum` or integer constants |
 | Template literals | Stack `char[]` + `snprintf` |
 | Destructuring | Flat variable declarations |
-| Optional chaining `?.` | `typecode_exists` guard |
-| Nullish coalescing `??` | `typecode_nullish` inline template helper |
+| Optional chaining `?.` | `typehal_exists` guard |
+| Nullish coalescing `??` | `typehal_nullish` inline template helper |
 
 ---
 
 ## A complete sketch
 
 ```typescript
-import { LED, delay } from '@typecode';
+import { LED, delay } from '@typehal';
 
 async function blink() {
   const led = LED.asOutput();
@@ -98,7 +98,7 @@ Direction dir = Direction::Up;
 ## Template literals → snprintf
 
 ```typescript
-import { UART0 } from '@typecode';
+import { UART0 } from '@typehal';
 const serial = UART0.begin(9600);
 
 const temp = 23;
@@ -184,7 +184,7 @@ Tree-shaking is on by default. Only code reachable from your entry points (`setu
 C++ compiler errors map back to your TypeScript source:
 
 ```bash
-npx typecode map-error out/sketch/sketch.ino.tscppmap.json --line 42 --col 5
+npx typehal map-error out/sketch/sketch.ino.thcppmap.json --line 42 --col 5
 ```
 
 You see the `.ts` file, line, and column — not the generated C++.

@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// @typecode/framework-arduino — Serial Handler
+// @typehal/framework-arduino — Serial Handler
 //
-// Renders TypeCode Serial / UART peripheral calls to Arduino C++.
+// Renders TypeHAL Serial / UART peripheral calls to Arduino C++.
 // Handles: UART0 → Serial, UART1 → Serial1, etc.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
 import { getObjectField } from './handler-utils';
 
 // ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@ import { getObjectField } from './handler-utils';
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the Arduino Serial instance name from a TypeCode receiver.
+ * Resolve the Arduino Serial instance name from a TypeHAL receiver.
  * UART0 → Serial, UART1 → Serial1, Serial → Serial, etc.
  */
 export function resolveSerialInstance(receiver: string): string {

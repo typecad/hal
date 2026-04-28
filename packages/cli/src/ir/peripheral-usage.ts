@@ -163,10 +163,10 @@ function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
 
   try {
     switch (stmt.kind) {
-    case 'typecode-call': {
-      // Typecode call statements (pin.method() calls) at top level
-      // console.log('[DEBUG] Found typecode-call statement:', stmt);
-      analyzeTypecodeCall(stmt as any, usage);
+    case 'typehal-call': {
+      // Typehal call statements (pin.method() calls) at top level
+      // console.log('[DEBUG] Found typehal-call statement:', stmt);
+      analyzeTypehalCall(stmt as any, usage);
       break;
     }
 
@@ -304,9 +304,9 @@ function analyzeExpression(expr: ExpressionIR | undefined, usage: PeripheralUsag
   try {
     const exprKind = (expr as any).kind;
     
-    // Check for typecode-call expressions (pin.method() calls)
-    if (exprKind === 'typecode-call') {
-      analyzeTypecodeCall(expr as any, usage);
+    // Check for typehal-call expressions (pin.method() calls)
+    if (exprKind === 'typehal-call') {
+      analyzeTypehalCall(expr as any, usage);
       return;
     }
 
@@ -392,10 +392,10 @@ export function parsePinNumber(receiver: string): number | null {
 }
 
 /**
- * Analyze a typecode-call expression for peripheral usage.
+ * Analyze a typehal-call expression for peripheral usage.
  * These are pin.method() calls like A0.read(), D9.write(128), etc.
  */
-function analyzeTypecodeCall(expr: { receiver?: string; receiverKind?: string; method?: string; args?: ExpressionIR[] }, usage: PeripheralUsage): void {
+function analyzeTypehalCall(expr: { receiver?: string; receiverKind?: string; method?: string; args?: ExpressionIR[] }, usage: PeripheralUsage): void {
   // Safety checks
   if (!expr || !expr.receiver || !expr.method) return;
 

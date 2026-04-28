@@ -89,7 +89,7 @@ export interface FileChangeStatus {
  * Options for incremental cache
  */
 export interface IncrementalCacheOptions {
-  /** Path to the cache file (default: .typecode-cache.json in project root) */
+  /** Path to the cache file (default: .typehal-cache.json in project root) */
   cachePath?: string;
   /** Project root directory */
   rootDir: string;
@@ -107,7 +107,7 @@ export function computeFileHash(content: string): string {
 /**
  * Default cache file name
  */
-const DEFAULT_CACHE_NAME = ".typecode-cache.json";
+const DEFAULT_CACHE_NAME = ".typehal-cache.json";
 
 /**
  * Incremental transpilation cache manager

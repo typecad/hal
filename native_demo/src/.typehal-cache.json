@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "toolchainFingerprint": "b236871bd5c552dd",
+  "toolchainFingerprint": "0ea6256f0ad1ba67",
   "rootDir": "C:\\typecad\\typecode\\native_demo\\src",
   "files": {
     "C:\\typecad\\typecode\\native_demo\\src\\main.ts": {
@@ -11,11 +11,11 @@
       "outputs": [
         "C:\\typecad\\typecode\\native_demo\\src\\out\\.build\\main.cpp",
         "C:\\typecad\\typecode\\native_demo\\src\\out\\.build\\main.h",
-        "C:\\typecad\\typecode\\native_demo\\src\\out\\.build\\main.cpp.tscppmap.json",
-        "C:\\typecad\\typecode\\native_demo\\src\\out\\.build\\main.h.tscppmap.json"
+        "C:\\typecad\\typecode\\native_demo\\src\\out\\.build\\main.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\native_demo\\src\\out\\.build\\main.h.thcppmap.json"
       ]
     }
   },
-  "createdAt": 1777333274957,
-  "updatedAt": 1777333278265
+  "createdAt": 1777380400915,
+  "updatedAt": 1777380404325
 }

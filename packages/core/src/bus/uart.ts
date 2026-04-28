@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — UART / Serial interfaces
+// @typehal/core — UART / Serial interfaces
 //
 // Modern API: const serial = UART0.begin(baud); serial.print(), serial.println()
 // ---------------------------------------------------------------------------

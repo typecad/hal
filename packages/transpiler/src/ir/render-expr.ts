@@ -53,7 +53,7 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return `${renderExprAsText(expr.object)}.${expr.property}`;
     case "paren":
       return `(${renderExprAsText(expr.inner)})`;
-    case "typecode-call":
+    case "typehal-call":
       // Fallback text rendering used inside build-ir.ts only.
       // The real Arduino translation happens in renderExpression (cpp-emitter.ts).
       return `${expr.receiver}.${expr.method}(${expr.args.map(renderExprAsText).join(', ')})`;

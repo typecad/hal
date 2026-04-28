@@ -65,7 +65,7 @@ All peripherals are also available as `ReadonlyMap<number, T>` for iteration:
 ### Basic Board Creation
 
 ```typescript
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 
 const board = createSimBoard({ boardType: 'arduino-uno' });
 
@@ -157,7 +157,7 @@ Since the simulator implements the same interfaces as real hardware, you can ext
 
 ```typescript
 // sketch-logic.ts — shared between production and test
-import type { IDigitalPin, ISerialPort } from '@typecode/core';
+import type { IDigitalPin, ISerialPort } from '@typehal/core';
 
 export function readAndReport(sensor: IDigitalPin, uart: ISerialPort): void {
   const value = sensor.read();
@@ -165,7 +165,7 @@ export function readAndReport(sensor: IDigitalPin, uart: ISerialPort): void {
 }
 
 // sketch.test.ts
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 import { readAndReport } from './sketch-logic';
 
 it('reads sensor and reports via serial', () => {

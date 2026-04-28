@@ -88,15 +88,15 @@ export interface TranspileOptions {
   /** Tree-shaking options for dead code elimination */
   treeShaking?: TreeShakingOptions;
   /**
-   * Board package specifier resolved from `typecode.config.ts`.
-   * When present, bare `@typecode` imports are rewritten to this package
-   * (e.g. `'@typecode/board-arduino-uno'`).
+   * Board package specifier resolved from `typehal.config.ts`.
+   * When present, bare `@typehal` imports are rewritten to this package
+   * (e.g. `'@typehal/board-arduino-uno'`).
    */
   boardPackage?: string;
   /**
    * Framework package for code generation strategy.
-   * Can be '@typecode/framework-arduino', '@typecode/framework-avr', or a custom path.
-   * Defaults to '@typecode/framework-arduino' if not specified.
+   * Can be '@typehal/framework-arduino', '@typehal/framework-avr', or a custom path.
+   * Defaults to '@typehal/framework-arduino' if not specified.
    */
   frameworkPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
@@ -158,13 +158,13 @@ export interface CommandLineOptions {
   /** Tree-shaking options */
   treeShaking?: TreeShakingOptions;
   /**
-   * Board package specifier resolved from `typecode.config.ts`.
-   * When present, bare `@typecode` imports are rewritten to this package.
+   * Board package specifier resolved from `typehal.config.ts`.
+   * When present, bare `@typehal` imports are rewritten to this package.
    */
   boardPackage?: string;
   /**
    * Framework package for code generation strategy.
-   * Can be '@typecode/framework-arduino', '@typecode/framework-avr', or a custom path.
+   * Can be '@typehal/framework-arduino', '@typehal/framework-avr', or a custom path.
    */
   frameworkPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
@@ -175,7 +175,7 @@ export interface CommandLineOptions {
   force?: boolean;
   /** Watch for file changes and retranspile automatically */
   watch: boolean;
-  /** Run hardware tests via @typecode/expect */
+  /** Run hardware tests via @typehal/expect */
   expect?: boolean;
   /** Optional test file path filter for --expect */
   expectFile?: string;

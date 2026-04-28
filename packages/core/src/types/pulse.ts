@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Pulse measurement utilities (pulseIn, pulseInLong)
+// @typehal/core — Pulse measurement utilities (pulseIn, pulseInLong)
 // ---------------------------------------------------------------------------
 
 import type { BasePin } from './pin';

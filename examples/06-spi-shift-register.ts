@@ -4,7 +4,7 @@
 // Drive a 74HC595 shift register over SPI with a rotating bit pattern.
 // ---------------------------------------------------------------------------
 
-import { SPI0, SS, delay } from '@typecode';
+import { SPI0, SS, delay } from '@typehal';
 
 const spi = SPI0.begin();
 spi.setFrequency(1_000_000);

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/core — Memory placement decorators
+// @typehal/core — Memory placement decorators
 //
 // These are compile-time markers.  At runtime they are no-ops that attach
 // metadata via Reflect; the transpiler reads the metadata when emitting C++.
@@ -146,7 +146,7 @@ export function Retain(): AnyDecorator {
  * 
  * @example
  * ```typescript
- * import { volatile } from '@typecode/core';
+ * import { volatile } from '@typehal/core';
  * 
  * let counter = volatile(0);
  * let buffer = volatile(new Uint8Array(64));

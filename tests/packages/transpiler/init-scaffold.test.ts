@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Tests for `typecode init` project scaffolding
+// Tests for `typehal init` project scaffolding
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -30,8 +30,8 @@ const ARDUINO_UNO_OPTIONS: InitProjectOptions = {
   boardId: 'arduino-uno',
   boardDisplayName: 'Arduino Uno',
   architecture: 'avr',
-  boardPackage: '@typecode/board-arduino-uno',
-  frameworkPackage: '@typecode/framework-arduino',
+  boardPackage: '@typehal/board-arduino-uno',
+  frameworkPackage: '@typehal/framework-arduino',
   framework: 'arduino',
   fqbn: 'arduino:avr:uno',
   mcu: 'ATmega328P',
@@ -51,10 +51,10 @@ describe("init-templates", () => {
 
       expect(parsed.name).toBe('test-project');
       expect(parsed.private).toBe(true);
-      expect(parsed.dependencies['@typecode/core']).toBe('^0.1.0');
-      expect(parsed.dependencies['@typecode/board-arduino-uno']).toBe('^0.1.0');
-      expect(parsed.dependencies['@typecode/framework-arduino']).toBe('^0.1.0');
-      expect(parsed.scripts.build).toContain('typecode');
+      expect(parsed.dependencies['@typehal/core']).toBe('^0.1.0');
+      expect(parsed.dependencies['@typehal/board-arduino-uno']).toBe('^0.1.0');
+      expect(parsed.dependencies['@typehal/framework-arduino']).toBe('^0.1.0');
+      expect(parsed.scripts.build).toContain('typehal');
       expect(parsed.scripts.compile).toContain('--compile');
       expect(parsed.scripts.upload).toContain('--upload');
     });
@@ -67,8 +67,8 @@ describe("init-templates", () => {
 
       expect(parsed.compilerOptions.noEmit).toBe(true);
       expect(parsed.compilerOptions.strict).toBe(true);
-      expect(parsed.compilerOptions.paths['@typecode']).toBeDefined();
-      expect(parsed.compilerOptions.paths['@typecode/core']).toBeDefined();
+      expect(parsed.compilerOptions.paths['@typehal']).toBeDefined();
+      expect(parsed.compilerOptions.paths['@typehal/core']).toBeDefined();
       expect(parsed.include).toContain('src/**/*.ts');
     });
   });
@@ -78,8 +78,8 @@ describe("init-templates", () => {
       const content = generateProjectConfig(ARDUINO_UNO_OPTIONS);
 
       expect(content).toContain("target: 'avr'");
-      expect(content).toContain("board: '@typecode/board-arduino-uno'");
-      expect(content).toContain("framework: '@typecode/framework-arduino'");
+      expect(content).toContain("board: '@typehal/board-arduino-uno'");
+      expect(content).toContain("framework: '@typehal/framework-arduino'");
       expect(content).toContain("fqbn: 'arduino:avr:uno'");
       expect(content).toContain("baudRate: 9600");
     });
@@ -88,21 +88,21 @@ describe("init-templates", () => {
       const avrOptions: InitProjectOptions = {
         ...ARDUINO_UNO_OPTIONS,
         framework: 'avr',
-        frameworkPackage: '@typecode/framework-avr',
+        frameworkPackage: '@typehal/framework-avr',
       };
       const content = generateProjectConfig(avrOptions);
 
-      expect(content).toContain("framework: '@typecode/framework-avr'");
+      expect(content).toContain("framework: '@typehal/framework-avr'");
       expect(content).toContain("framework: 'avr'");
     });
   });
 
   describe("generateProjectEnvDts", () => {
-    it("declares the @typecode module and ownership types", () => {
+    it("declares the @typehal module and ownership types", () => {
       const content = generateProjectEnvDts(ARDUINO_UNO_OPTIONS);
 
-      expect(content).toContain("declare module '@typecode'");
-      expect(content).toContain("export * from '@typecode/board-arduino-uno'");
+      expect(content).toContain("declare module '@typehal'");
+      expect(content).toContain("export * from '@typehal/board-arduino-uno'");
       expect(content).toContain("type Owned<T = any> = T");
       expect(content).toContain("type Ref<T = any> = T");
       expect(content).toContain("type MutRef<T = any> = T");
@@ -113,7 +113,7 @@ describe("init-templates", () => {
     it("produces a blink sketch using LED and delay", () => {
       const content = generateStarterSketch(ARDUINO_UNO_OPTIONS);
 
-      expect(content).toContain("import { LED, delay } from '@typecode'");
+      expect(content).toContain("import { LED, delay } from '@typehal'");
       expect(content).toContain("LED.asOutput");
       expect(content).toContain("led.toggle()");
       expect(content).toContain("delay(1000)");
@@ -169,7 +169,7 @@ describe("init-scaffold", () => {
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecode-init-test-'));
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typehal-init-test-'));
     });
 
     afterEach(() => {
@@ -183,8 +183,8 @@ describe("init-scaffold", () => {
       const fileNames = result.createdFiles.map(f => path.basename(f));
       expect(fileNames).toContain('package.json');
       expect(fileNames).toContain('tsconfig.json');
-      expect(fileNames).toContain('typecode.config.ts');
-      expect(fileNames).toContain('typecode-env.d.ts');
+      expect(fileNames).toContain('typehal.config.ts');
+      expect(fileNames).toContain('typehal-env.d.ts');
       expect(fileNames).toContain('.gitignore');
       expect(fileNames).toContain('sketch.ts');
 
@@ -234,7 +234,7 @@ describe("init-scaffold", () => {
       const parsed = JSON.parse(content);
 
       expect(parsed.name).toBe('test-project');
-      expect(parsed.dependencies['@typecode/board-arduino-uno']).toBeDefined();
+      expect(parsed.dependencies['@typehal/board-arduino-uno']).toBeDefined();
     });
 
     it("generates valid JSON in tsconfig.json", () => {

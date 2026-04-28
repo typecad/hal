@@ -3,6 +3,6 @@ dist/
 **/.build/
 example/
 vitest.config.js
-demo/typecode.config.js
+demo/typehal.config.js
 **/*.tsbuildinfo
 *.zip

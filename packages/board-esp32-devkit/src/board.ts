@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Board namespace
+// @typehal/board-esp32-devkit — Board namespace
 //
 // Single-import entry point that exposes every board feature under one
 // namespace. User code can simply write:
 //
-//   import { Board } from '@typecode/board-esp32-devkit/board';
+//   import { Board } from '@typehal/board-esp32-devkit/board';
 //   Board.D2.high();
 //   const serial = Board.UART0.begin(115200);
 //   serial.println("Hello");
@@ -19,8 +19,8 @@ import type {
   IUninitializedI2CBus,
   IUninitializedSPIBus,
   IUninitializedUARTBus,
-} from '@typecode/core';
-import type { BoardDefinition } from '@typecode/hal';
+} from '@typehal/core';
+import type { BoardDefinition } from '@typehal/hal';
 import type { IESP32FullGPIOPin, IESP32InputOnlyPin } from './pin-types';
 
 import {

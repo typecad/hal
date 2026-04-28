@@ -5,16 +5,16 @@
 // a strategy method.  Board packages provide concrete implementations so the
 // emitter stays target-agnostic.
 //
-// NOTE: This file re-exports the interface from @typecode/core for backwards
-// compatibility. New code should import directly from '@typecode/core'.
+// NOTE: This file re-exports the interface from @typehal/core for backwards
+// compatibility. New code should import directly from '@typehal/core'.
 // ---------------------------------------------------------------------------
 
-// Re-export from the canonical source in @typecode/core
-export type { PlatformStrategy } from "@typecode/core";
+// Re-export from the canonical source in @typehal/core
+export type { PlatformStrategy } from "@typehal/core";
 
 // Re-export types that PlatformStrategy depends on (for convenience)
-export type { ExpressionIR, ProgramIR, StatementIR } from "@typecode/core";
-export type { Diagnostic, PlatformContext } from "@typecode/core";
-export type { BoardConstants } from "@typecode/core";
-export type { TypecodeReceiverKind } from "@typecode/core";
-export type { RuntimePolyfillIR } from "@typecode/core";
+export type { ExpressionIR, ProgramIR, StatementIR } from "@typehal/core";
+export type { Diagnostic, PlatformContext } from "@typehal/core";
+export type { BoardConstants } from "@typehal/core";
+export type { TypehalReceiverKind } from "@typehal/core";
+export type { RuntimePolyfillIR } from "@typehal/core";

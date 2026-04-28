@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Unit tests for @typecode/expect — Reporter
+// Unit tests for @typehal/expect — Reporter
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi } from 'vitest';

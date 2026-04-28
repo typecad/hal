@@ -1,4 +1,4 @@
-import { D2, LED, delay } from '@typecode';
+import { D2, LED, delay } from '@typehal';
 
 const led = LED.asOutput(false);
 let ledState = false;

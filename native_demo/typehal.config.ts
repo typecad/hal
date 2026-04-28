@@ -1,6 +1,6 @@
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   entry: './src/main.ts',
 
   // No target or board needed — native framework outputs standard C++
@@ -8,7 +8,7 @@ const config: TypecodeConfig = {
   board: '' as any,
 
   // Native C++ framework for portable desktop executables
-  framework: '@typecode/framework-native',
+  framework: '@typehal/framework-native',
 
   output: {
     framework: 'bare-metal' as any,

@@ -18,7 +18,7 @@ describe("watch", () => {
     it("includes config directory when config is in a different directory", () => {
       const dirs = discoverWatchDirs(
         "/project/src/sketch.ts",
-        "/project/typecode.config.ts",
+        "/project/typehal.config.ts",
       );
       expect(dirs).toHaveLength(2);
       expect(dirs).toContain(path.resolve("/project/src"));
@@ -28,7 +28,7 @@ describe("watch", () => {
     it("deduplicates when entry and config are in the same directory", () => {
       const dirs = discoverWatchDirs(
         "/project/sketch.ts",
-        "/project/typecode.config.ts",
+        "/project/typehal.config.ts",
       );
       expect(dirs).toHaveLength(1);
       expect(dirs[0]).toBe(path.resolve("/project"));
@@ -57,20 +57,20 @@ describe("watch", () => {
 
     it("rejects node_modules files", () => {
       expect(
-        isRelevantChange("/project/node_modules/@typecode/core/src/index.ts", entryDir),
+        isRelevantChange("/project/node_modules/@typehal/core/src/index.ts", entryDir),
       ).toBe(false);
     });
 
-    it("accepts typecode.config.ts changes", () => {
-      const configPath = "/project/typecode.config.ts";
+    it("accepts typehal.config.ts changes", () => {
+      const configPath = "/project/typehal.config.ts";
       expect(
-        isRelevantChange("/project/typecode.config.ts", entryDir, configPath),
+        isRelevantChange("/project/typehal.config.ts", entryDir, configPath),
       ).toBe(true);
     });
 
     it("rejects unrelated config file changes", () => {
       expect(
-        isRelevantChange("/project/tsconfig.json", entryDir, "/project/typecode.config.ts"),
+        isRelevantChange("/project/tsconfig.json", entryDir, "/project/typehal.config.ts"),
       ).toBe(false);
     });
 
@@ -83,29 +83,29 @@ describe("watch", () => {
   describe("watch flag parsing", () => {
 
     it("parses --watch flag", () => {
-      const result = parseCommandLine(["node", "typecode", "sketch.ts", "--watch"]);
+      const result = parseCommandLine(["node", "typehal", "sketch.ts", "--watch"]);
       expect(result).toMatchObject({ watch: true, command: "default" });
     });
 
     it("parses -w short flag", () => {
-      const result = parseCommandLine(["node", "typecode", "sketch.ts", "-w"]);
+      const result = parseCommandLine(["node", "typehal", "sketch.ts", "-w"]);
       expect(result).toMatchObject({ watch: true, command: "default" });
     });
 
     it("defaults watch to false", () => {
-      const result = parseCommandLine(["node", "typecode", "sketch.ts"]);
+      const result = parseCommandLine(["node", "typehal", "sketch.ts"]);
       expect(result).toMatchObject({ watch: false, command: "default" });
     });
 
     it("rejects --watch --monitor combination", () => {
       expect(() =>
-        parseCommandLine(["node", "typecode", "sketch.ts", "--watch", "--monitor", "--port", "COM4"]),
+        parseCommandLine(["node", "typehal", "sketch.ts", "--watch", "--monitor", "--port", "COM4"]),
       ).toThrow("--watch and --monitor cannot be used together");
     });
 
     it("allows --watch --compile", () => {
       const result = parseCommandLine([
-        "node", "typecode", "sketch.ts", "--watch", "--compile",
+        "node", "typehal", "sketch.ts", "--watch", "--compile",
         "--fqbn", "arduino:avr:uno",
       ]);
       expect(result).toMatchObject({ watch: true, compile: true });
@@ -113,7 +113,7 @@ describe("watch", () => {
 
     it("allows --watch --compile --upload", () => {
       const result = parseCommandLine([
-        "node", "typecode", "sketch.ts", "--watch", "--compile", "--upload",
+        "node", "typehal", "sketch.ts", "--watch", "--compile", "--upload",
         "--fqbn", "arduino:avr:uno", "--port", "COM4",
       ]);
       expect(result).toMatchObject({ watch: true, compile: true, upload: true });

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "toolchainFingerprint": "0ea6256f0ad1ba67",
+  "rootDir": "C:\\typecad\\typecode\\demo\\src",
+  "files": {
+    "C:\\typecad\\typecode\\demo\\src\\sketch.ts": {
+      "hash": "e0aa720e080913fc",
+      "mtime": 1777351680797.0293,
+      "size": 237,
+      "dependencies": [
+        "C:\\typecad\\typecode\\node_modules\\@typehal\\board-esp32-devkit\\src\\index.ts"
+      ],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\sketch.ino",
+        "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\sketch.ino.thcppmap.json"
+      ]
+    }
+  },
+  "createdAt": 1777380399278,
+  "updatedAt": 1777380400451
+}

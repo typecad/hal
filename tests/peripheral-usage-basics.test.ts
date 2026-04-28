@@ -54,7 +54,7 @@ describe('Peripheral Usage Analysis - Defaults and Edge Cases', () => {
 
     it('tracks timer0 usage for delay()', () => {
       const usage = analyzeUsage(`
-        import { delay } from '@typecode/board-arduino-uno';
+        import { delay } from '@typehal/board-arduino-uno';
         delay(10);
       `);
 
@@ -63,7 +63,7 @@ describe('Peripheral Usage Analysis - Defaults and Edge Cases', () => {
 
     it('tracks timer0 usage for millis() in expressions', () => {
       const usage = analyzeUsage(`
-        import { millis } from '@typecode/board-arduino-uno';
+        import { millis } from '@typehal/board-arduino-uno';
         const now = millis();
       `);
 

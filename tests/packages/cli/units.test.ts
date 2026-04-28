@@ -27,7 +27,7 @@ describe('Peripheral configuration', () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { UART0 } from '@typecode/board-arduino-uno';",
+        "import { UART0 } from '@typehal/board-arduino-uno';",
         '',
         'UART0.begin(115200);',
         '',
@@ -53,7 +53,7 @@ describe('Peripheral configuration', () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { UART0 } from '@typecode/board-arduino-uno';",
+        "import { UART0 } from '@typehal/board-arduino-uno';",
         '',
         'UART0.begin(9600);',
         '',
@@ -80,7 +80,7 @@ describe('Peripheral configuration', () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { I2C0 } from '@typecode/board-arduino-uno';",
+        "import { I2C0 } from '@typehal/board-arduino-uno';",
         '',
         'const i2c = I2C0.begin();',
         'i2c.setClock(400000);',

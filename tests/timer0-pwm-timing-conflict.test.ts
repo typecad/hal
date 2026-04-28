@@ -4,7 +4,7 @@ import { transpile } from './setup';
 describe('Timer0 PWM Timing Conflict Validation', () => {
   it('generates info when D5 PWM is used with delay()', () => {
     const result = transpile(`
-      import { D5, delay } from '@typecode/board-arduino-uno';
+      import { D5, delay } from '@typehal/board-arduino-uno';
       D5.pwm(50);
       delay(10);
     `, { target: 'arduino' });
@@ -22,7 +22,7 @@ describe('Timer0 PWM Timing Conflict Validation', () => {
 
   it('generates info when D6 PWM is used with millis()', () => {
     const result = transpile(`
-      import { D6, millis } from '@typecode/board-arduino-uno';
+      import { D6, millis } from '@typehal/board-arduino-uno';
       D6.pwm(40);
       const now = millis();
     `, { target: 'arduino' });
@@ -38,7 +38,7 @@ describe('Timer0 PWM Timing Conflict Validation', () => {
 
   it('does not generate info for non-Timer0 PWM pins with delay()', () => {
     const result = transpile(`
-      import { D9, delay } from '@typecode/board-arduino-uno';
+      import { D9, delay } from '@typehal/board-arduino-uno';
       D9.pwm(50);
       delay(10);
     `, { target: 'arduino' });

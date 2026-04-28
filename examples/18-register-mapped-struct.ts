@@ -11,8 +11,8 @@
 //   (*USART1 >> 8) & 3UL                               // USART1.PS read
 // ---------------------------------------------------------------------------
 
-import { UART0 } from '@typecode';
-import { register, bits, type Bit, type Bits } from '@typecode/core';
+import { UART0 } from '@typehal';
+import { register, bits, type Bit, type Bits } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // Define a USART peripheral at address 0x4001_1000

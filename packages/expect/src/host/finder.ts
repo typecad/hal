@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Test file finder
+// @typehal/expect — Test file finder
 //
 // Globs for test files matching the configured include patterns.
 // ---------------------------------------------------------------------------

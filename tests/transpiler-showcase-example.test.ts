@@ -18,7 +18,7 @@ describe('Transpiler showcase example', () => {
     expect(result.cpp).toContain('enum class SystemMode');
     expect(result.cpp).toContain('class OffsetMeter');
     expect(result.cpp).toContain('Serial.begin(115200)');
-    expect(result.cpp).toContain('Serial.println("TypeCode Uno validation showcase")');
+    expect(result.cpp).toContain('Serial.println("TypeHAL Uno validation showcase")');
     expect(result.cpp).toContain('while (true)');
   });
 

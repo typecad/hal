@@ -3,7 +3,7 @@ LLM TRANSPILER GUIDE
 ====================
 
 This comment block is intended as a readme-style guide for language models and future maintainers
-who are investigating or extending the TypeCode transpiler. It is deliberately placed at the top of
+who are investigating or extending the TypeHAL transpiler. It is deliberately placed at the top of
 `packages/transpiler/src/transpile.ts` so it is found during normal code exploration.
 
 Key files:
@@ -11,7 +11,7 @@ Key files:
   - packages/transpiler/src/utils/cli.ts          : CLI option parser, command validation, help text
   - packages/transpiler/src/transpile.ts          : transpilation pipeline, import resolution, emit orchestration
   - packages/transpiler/src/emit/cpp-emitter.ts   : C++ emission logic and platform-specific codegen
-  - packages/transpiler/src/config-loader.ts      : typecode.config.ts loading and board/package config
+  - packages/transpiler/src/config-loader.ts      : typehal.config.ts loading and board/package config
   - packages/transpiler/src/cli-utils.ts          : shared CLI helpers like expect test runner and error mapping
   - packages/transpiler/src/mapping/source-map.ts : source map I/O and C++ → TypeScript error mapping
   - packages/transpiler/src/watch.ts              : watch mode, directory discovery, rebuild callbacks
@@ -25,9 +25,9 @@ Main code paths for creating or evaluating transpilation
    - For `default` and `build`, CLI options are normalized and passed into the transpilation flow.
 
 2. Config loading and effective option resolution
-   - `loadTypecodeConfig()` from `packages/transpiler/src/config-loader.ts` reads `typecode.config.ts`.
+   - `loadTypehalConfig()` from `packages/transpiler/src/config-loader.ts` reads `typehal.config.ts`.
    - Config values override CLI-supplied flags for board package, fqbn, target, outDir, framework, and console settings.
-   - `generateVirtualTypeDeclaration()` is used to keep editor type resolution aligned with bare `@typecode` imports.
+   - `generateVirtualTypeDeclaration()` is used to keep editor type resolution aligned with bare `@typehal` imports.
 
 3. Transpilation flow
    - The main runtime entry is `transpileFile(options)` in this file.
@@ -72,9 +72,9 @@ Main code paths for creating or evaluating transpilation
    - Incremental rebuilds use `packages/transpiler/src/incremental-cache.ts` when enabled.
    - Watch mode still goes through `transpileFile()` on each rebuild, but may bypass unchanged files.
 
-9. @typecode/expect support and preprocessing
-   - Code that imports `@typecode/expect` is transformed by the preprocessor.
-   - `loadExpectPreprocessor()` loads `@typecode/expect/preprocessor` lazily to avoid startup dependency failures.
+9. @typehal/expect support and preprocessing
+   - Code that imports `@typehal/expect` is transformed by the preprocessor.
+   - `loadExpectPreprocessor()` loads `@typehal/expect/preprocessor` lazily to avoid startup dependency failures.
    - `runExpectTests()` in `packages/transpiler/src/cli-utils.ts` is the runtime test harness invoked after transpilation/upload.
 
 Common extension checklist for new transpiler features
@@ -146,7 +146,7 @@ import {
   getNpmPackageInfoForFile,
   isInNodeModules,
   resolveImport,
-  isTypecodeSDKPath,
+  isTypehalSDKPath,
 } from "./transpile/resolution";
 export type { ResolvedNpmPackage, NativeCppModule, TranspileGraphResult } from "./transpile/resolution";
 type ExpectPreprocessor = (source: string, fileName?: string) => string;
@@ -157,7 +157,7 @@ function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
     return expectPreprocess;
   }
   try {
-    const mod = require("@typecode/expect/preprocessor");
+    const mod = require("@typehal/expect/preprocessor");
     expectPreprocess = mod?.preprocess;
     return expectPreprocess;
   } catch {
@@ -166,7 +166,7 @@ function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
 }
 
 function cleanOutput(entryDir: string, outDir: string): void {
-  const cachePath = path.join(entryDir, ".typecode-cache.json");
+  const cachePath = path.join(entryDir, ".typehal-cache.json");
   try { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); } catch { /* ignore */ }
   try { if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
 }
@@ -273,7 +273,7 @@ function findCppForModule(fromFile: string, modulePath: string): string | undefi
  * Returns early if any errors are found.
  * 
  * @param files List of TypeScript files to type-check
- * @param boardPackage Optional board package for resolving @typecode imports
+ * @param boardPackage Optional board package for resolving @typehal imports
  * @returns TypeCheckResult with success status and any error messages
  */
 function typeCheckFiles(
@@ -437,8 +437,8 @@ function topologicalSortFiles(
  * Also detects native C++ modules (.d.ts + .cpp pairs).
  * Files are returned in dependency order (dependencies before dependents).
  *
- * @param boardPackage  When provided, bare `@typecode` imports resolve to this
- *                      board package (e.g. `'@typecode/board-arduino-uno'`).
+ * @param boardPackage  When provided, bare `@typehal` imports resolve to this
+ *                      board package (e.g. `'@typehal/board-arduino-uno'`).
  */
 function collectTranspileGraph(entryFile: string, boardPackage?: string): TranspileGraphResult {
   const ordered: string[] = [];
@@ -457,8 +457,8 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
 
     visited.add(filePath);
 
-    // Skip typecode SDK files — they are type-level definitions only
-    if (isTypecodeSDKPath(filePath)) {
+    // Skip typehal SDK files — they are type-level definitions only
+    if (isTypehalSDKPath(filePath)) {
       continue;
     }
 
@@ -496,9 +496,9 @@ function collectTranspileGraph(entryFile: string, boardPackage?: string): Transp
         continue; // Don't try to resolve as TypeScript
       }
 
-      // Skip @typecode/expect — it provides type-level stubs only.
+      // Skip @typehal/expect — it provides type-level stubs only.
       // The AST preprocessor rewrites all expect calls before transpilation.
-      if (moduleSpecifier === "@typecode/expect") {
+      if (moduleSpecifier === "@typehal/expect") {
         continue;
       }
 
@@ -780,14 +780,14 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
     let sourceText = await fs.promises.readFile(filePath, "utf8");
 
-    // If the file imports @typecode/expect, run the AST preprocessor
+    // If the file imports @typehal/expect, run the AST preprocessor
     // to rewrite describe/it/expect/done calls into Serial protocol statements.
-    if (sourceText.includes("@typecode/expect")) {
+    if (sourceText.includes("@typehal/expect")) {
       const preprocess = loadExpectPreprocessor();
       if (!preprocess) {
         throw new Error(
-          "The @typecode/expect package is required to transpile files that import @typecode/expect. " +
-          "Install @typecode/expect or remove the import."
+          "The @typehal/expect package is required to transpile files that import @typehal/expect. " +
+          "Install @typehal/expect or remove the import."
         );
       }
       sourceText = preprocess(sourceText, filePath);
@@ -998,7 +998,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       // All files were cached - return the cached entry file outputs
       const sourcePath = cachedEntryOutputs.find(p => p.endsWith(".cpp") || p.endsWith(".ino"));
       const headerPath = cachedEntryOutputs.find(p => p.endsWith(".h"));
-      const sourceMapPath = cachedEntryOutputs.find(p => p.endsWith(".cpp.map") || p.endsWith(".ino.tscppmap.json"));
+      const sourceMapPath = cachedEntryOutputs.find(p => p.endsWith(".cpp.map") || p.endsWith(".ino.thcppmap.json"));
       const headerMapPath = cachedEntryOutputs.find(p => p.endsWith(".h.map"));
       
       if (sourcePath) {

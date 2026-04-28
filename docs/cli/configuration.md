@@ -1,15 +1,15 @@
 # Configuration
 
-Complete configuration options for `typecode.config.ts`.
+Complete configuration options for `typehal.config.ts`.
 
 ## Basic Configuration
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
   output: {
     framework: 'arduino',
@@ -28,13 +28,13 @@ export default config;
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
 | `target` | string | Yes | Target architecture (`avr`, `samd`, `esp32`, etc.) |
-| `board` | string | Yes | Board package name (`@typecode/board-*`) |
+| `board` | string | Yes | Board package name (`@typehal/board-*`) |
 | `fqbn` | string | For compile | Fully Qualified Board Name |
 | `entry` | string | For `build` | Entry point TypeScript file (relative to config file) |
 | `output` | object | No | Output configuration |
 | `include` | string[] | No | Additional include paths |
 | `define` | object | No | Preprocessor definitions |
-| `framework` | string | No | Framework package (e.g. `@typecode/framework-arduino`) |
+| `framework` | string | No | Framework package (e.g. `@typehal/framework-arduino`) |
 | `console` | object | No | Console polyfill settings (`{ baudRate: number }`) |
 | `native` | object | No | Native C++ compilation settings (see [Native Config](#native-configuration)) |
 
@@ -65,14 +65,14 @@ export default config;
 
 | Package | FQBN | Target |
 |---------|------|--------|
-| `@typecode/board-arduino-uno` | `arduino:avr:uno` | `avr` |
-| `@typecode/board-arduino-nano33iot` | `arduino:samd:nano_33_iot` | `samd` |
-| `@typecode/board-esp32-devkit` | `esp32:esp32:esp32doit-devkit-v1` | `esp32` |
+| `@typehal/board-arduino-uno` | `arduino:avr:uno` | `avr` |
+| `@typehal/board-arduino-nano33iot` | `arduino:samd:nano_33_iot` | `samd` |
+| `@typehal/board-esp32-devkit` | `esp32:esp32:esp32doit-devkit-v1` | `esp32` |
 
 ### Custom Board Package
 
 ```typescript
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
   board: './local-board-package',  // Local path
   // ... rest of config
@@ -100,7 +100,7 @@ The FQBN identifies the exact board variant for the toolchain:
 ## Preprocessor Definitions
 
 ```typescript
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   // ... other options
   define: {
     DEBUG: '1',
@@ -121,7 +121,7 @@ Generates:
 ## Include Paths
 
 ```typescript
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   // ... other options
   include: [
     './include',
@@ -132,12 +132,12 @@ const config: TypecodeConfig = {
 
 ### Entry Point
 
-The `entry` field specifies the main TypeScript file for the `typecode build` command. It is required when using `npx typecode build`:
+The `entry` field specifies the main TypeScript file for the `typehal build` command. It is required when using `npx typehal build`:
 
 ```typescript
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
   entry: './src/sketch.ts',  // Relative to config file location
   output: {
@@ -147,19 +147,19 @@ const config: TypecodeConfig = {
 };
 ```
 
-When set, `typecode build` resolves the entry file from the config and transpiles the full import graph. This enables multi-file project support — see [Multi-File Projects](../transpiler/README.md#multi-file-projects) for details.
+When set, `typehal build` resolves the entry file from the config and transpiles the full import graph. This enables multi-file project support — see [Multi-File Projects](../transpiler/README.md#multi-file-projects) for details.
 
 ## Native Configuration
 
-When using `@typecode/framework-native`, the `native` section customizes how g++/clang++ compiles your generated C++:
+When using `@typehal/framework-native`, the `native` section customizes how g++/clang++ compiles your generated C++:
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr' as any,
   board: '' as any,
-  framework: '@typecode/framework-native',
+  framework: '@typehal/framework-native',
 
   output: {
     framework: 'bare-metal' as any,
@@ -194,16 +194,16 @@ export default config;
 | `libraryPaths` | `string[]` | `[]` | Library search directories (`-L` flags) |
 | `libraries` | `string[]` | `[]` | Libraries to link (`-l` flags, placed after source) |
 
-The typed `NativeCompileConfig` interface is exported from `@typecode/framework-native` for editor autocomplete.
+The typed `NativeCompileConfig` interface is exported from `@typehal/framework-native` for editor autocomplete.
 
 ## Complete Example
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
 
   output: {
@@ -227,13 +227,13 @@ export default config;
 ## Environment-Specific Configuration
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
   
   output: {
@@ -257,9 +257,9 @@ For projects targeting multiple boards, create separate config files:
 
 ```
 project/
-├── typecode.config.ts       # Default (Uno)
-├── typecode.config.nano.ts  # Nano variant
-├── typecode.config.esp32.ts # ESP32 variant
+├── typehal.config.ts       # Default (Uno)
+├── typehal.config.nano.ts  # Nano variant
+├── typehal.config.esp32.ts # ESP32 variant
 └── src/
     └── main.ts
 ```
@@ -267,7 +267,7 @@ project/
 Then specify the config file:
 
 ```bash
-npx typecode src/main.ts --config typecode.config.nano.ts
+npx typehal src/main.ts --config typehal.config.nano.ts
 ```
 
 ## Validation
@@ -275,7 +275,7 @@ npx typecode src/main.ts --config typecode.config.nano.ts
 The CLI validates the configuration and reports errors:
 
 ```bash
-$ npx typecode sketch.ts
+$ npx typehal sketch.ts
 Error: Invalid configuration
   - target "invalid" is not supported
-  - board package "@typecode/board-unknown" not found
+  - board package "@typehal/board-unknown" not found

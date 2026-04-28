@@ -6,8 +6,8 @@
  * displays, and other multi-pin outputs.
  */
 
-import { D2, D3, D4, D5, D6, D7, D8, D9, delay } from '@typecode';
-import { createPinGroup } from '@typecode/core';
+import { D2, D3, D4, D5, D6, D7, D8, D9, delay } from '@typehal';
+import { createPinGroup } from '@typehal/core';
 
 // Create a group of 8 pins for an LED bar
 const ledBar = createPinGroup('LED Bar', [D2, D3, D4, D5, D6, D7, D8, D9]);

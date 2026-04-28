@@ -437,7 +437,7 @@ function analyzeStatement(
       break;
     }
 
-    case 'typecode-call': {
+    case 'typehal-call': {
       const tc = stmt as any;
       // Check arguments for use-after-move
       for (const arg of (tc.args ?? [])) {
@@ -669,7 +669,7 @@ function analyzeExpression(
       break;
     }
 
-    case 'typecode-call': {
+    case 'typehal-call': {
       for (const arg of expr.args) {
         analyzeExpression(arg, scope, diagnostics, span);
       }
@@ -973,7 +973,7 @@ function getNestedStatements(stmt: StatementIR): StatementIR[] | undefined {
         ...(s.finallyBlock ?? []),
       ];
     }
-    case 'typecode-call':
+    case 'typehal-call':
     case 'call': {
       const s = stmt as any;
       const result: StatementIR[] = [];

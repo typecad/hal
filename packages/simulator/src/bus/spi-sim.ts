@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
-// @typecode/simulator — SPI bus simulation
+// @typehal/simulator — SPI bus simulation
 // ---------------------------------------------------------------------------
 
 import {
   SPIStatus,
-} from '@typecode/core';
+} from '@typehal/core';
 import type {
   ISPIBus,
   ISPIDevice,
@@ -13,7 +13,7 @@ import type {
   SPISettings,
   BasePin,
   SPIErrorPolicy,
-} from '@typecode/core';
+} from '@typehal/core';
 import type { ISimSPIDevice } from '../types';
 
 // ---------------------------------------------------------------------------

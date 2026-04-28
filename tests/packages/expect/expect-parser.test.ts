@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Unit tests for @typecode/expect — Protocol parser
+// Unit tests for @typehal/expect — Protocol parser
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';

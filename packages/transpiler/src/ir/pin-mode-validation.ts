@@ -43,7 +43,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   // Track which receivers have had their mode explicitly set
   const pinModeSet = new Set<string>();
 
-  const checkTypecodeCall = (receiver: string, receiverKind: string | undefined, method: string): void => {
+  const checkTypehalCall = (receiver: string, receiverKind: string | undefined, method: string): void => {
     if (!receiverKind || !PIN_RECEIVER_KINDS.has(receiverKind)) return;
 
     // Warn when analog pin is used as digital output — analog capability is lost
@@ -80,7 +80,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   };
 
   /**
-   * Recursively scan an expression for typecode-call nodes.
+   * Recursively scan an expression for typehal-call nodes.
    * Pin I/O can appear as expressions inside template literals, function args, etc.
    */
   const scanExpression = (expr: ExpressionIR | undefined): void => {
@@ -88,12 +88,12 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
     const e = expr as any;
     if (!e.kind) return;
 
-    // Check for typecode-call expressions (e.g., D3.read() inside ${...})
-    if (e.kind === 'typecode-call') {
+    // Check for typehal-call expressions (e.g., D3.read() inside ${...})
+    if (e.kind === 'typehal-call') {
       if (e.receiver && e.method) {
-        checkTypecodeCall(e.receiver, e.receiverKind, e.method);
+        checkTypehalCall(e.receiver, e.receiverKind, e.method);
       }
-      // Also scan args of this typecode-call expression
+      // Also scan args of this typehal-call expression
       if (e.args && Array.isArray(e.args)) {
         for (const arg of e.args) scanExpression(arg);
       }
@@ -135,18 +135,18 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   const checkStatement = (stmt: StatementIR): void => {
     if (!stmt || typeof stmt !== 'object') return;
 
-    if (stmt.kind === 'typecode-call') {
+    if (stmt.kind === 'typehal-call') {
       const tc = stmt as any;
       if (tc.receiver && tc.method) {
-        checkTypecodeCall(tc.receiver, tc.receiverKind, tc.method);
+        checkTypehalCall(tc.receiver, tc.receiverKind, tc.method);
       }
-      // Scan args for nested typecode-call expressions
+      // Scan args for nested typehal-call expressions
       if (tc.args && Array.isArray(tc.args)) {
         for (const arg of tc.args) scanExpression(arg);
       }
     }
 
-    // Scan expressions in other statement types for nested typecode-calls
+    // Scan expressions in other statement types for nested typehal-calls
     if (stmt.kind === 'assign') {
       const a = stmt as any;
       if (a.value) scanExpression(a.value);

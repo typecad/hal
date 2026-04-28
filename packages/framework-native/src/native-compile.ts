@@ -7,8 +7,8 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import type { CompileResult, ToolchainOptions } from "@typecode/core/shared";
-import { parseCompileErrors } from "@typecode/core/shared";
+import type { CompileResult, ToolchainOptions } from "@typehal/core/shared";
+import { parseCompileErrors } from "@typehal/core/shared";
 import type { NativeCompileConfig } from "./native-config";
 
 function findCppSource(outputDir: string, sourcePath: string): string {

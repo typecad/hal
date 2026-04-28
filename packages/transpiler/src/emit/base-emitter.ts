@@ -14,7 +14,7 @@ import {
   hasStdMathCalls,
   hasConsoleCalls,
   generateAsyncTaskClass,
-  isTypecodeSDKImport,
+  isTypehalSDKImport,
   normalizeInclude,
   dedupe,
   resolveTranspiledModuleInclude,
@@ -60,7 +60,6 @@ export abstract class BaseEmitter {
   protected readonly boardConstants?: BoardConstants;
   protected readonly arduinoClassNameMap?: Map<string, string>;
   protected readonly npmPackages?: Map<string, ResolvedNpmPackage>;
-  protected readonly polyfills?: Map<string, PolyfillDefinition>;
   protected readonly arduinoClasses?: Map<string, any>;
   protected readonly arduinoFunctions?: Map<string, any>;
 
@@ -77,7 +76,6 @@ export abstract class BaseEmitter {
     this.boardConstants = context.boardConstants;
     this.arduinoClassNameMap = context.arduinoClassNameMap;
     this.npmPackages = context.npmPackages;
-    this.polyfills = context.polyfills;
     this.arduinoClasses = context.arduinoClasses;
     this.arduinoFunctions = context.arduinoFunctions;
   }
@@ -385,8 +383,8 @@ export abstract class BaseEmitter {
 
     // Add includes from imports
     for (const imp of program.imports) {
-      // Skip typecode SDK imports (they're type-level only)
-      if (isTypecodeSDKImport(imp.moduleSpecifier, filePath)) {
+      // Skip typehal SDK imports (they're type-level only)
+      if (isTypehalSDKImport(imp.moduleSpecifier, filePath)) {
         continue;
       }
 
@@ -404,14 +402,6 @@ export abstract class BaseEmitter {
       }
     }
 
-    // Add polyfill includes
-    if (this.polyfills) {
-      for (const [, polyfill] of this.polyfills) {
-        if ((polyfill as any).include) {
-          includes.push(normalizeInclude((polyfill as any).include));
-        }
-      }
-    }
 
     return dedupe(includes);
   }

@@ -10,7 +10,7 @@ import { transpile } from '../../setup';
 describe('Pin Config - Digital Output', () => {
   it('transpiles D13.asOutput()', () => {
     const result = transpile(`
-      import { D13 } from '@typecode/board-arduino-uno';
+      import { D13 } from '@typehal/board-arduino-uno';
       D13.asOutput();
     `, { target: 'arduino' });
 
@@ -19,7 +19,7 @@ describe('Pin Config - Digital Output', () => {
 
   it('transpiles D13.asOutput(true)', () => {
     const result = transpile(`
-      import { D13 } from '@typecode/board-arduino-uno';
+      import { D13 } from '@typehal/board-arduino-uno';
       D13.asOutput(true);
     `, { target: 'arduino' });
 
@@ -29,7 +29,7 @@ describe('Pin Config - Digital Output', () => {
 
   it('transpiles D13.asOutput(false)', () => {
     const result = transpile(`
-      import { D13 } from '@typecode/board-arduino-uno';
+      import { D13 } from '@typehal/board-arduino-uno';
       D13.asOutput(false);
     `, { target: 'arduino' });
 
@@ -39,7 +39,7 @@ describe('Pin Config - Digital Output', () => {
 
   it('transpiles LED.asOutput(true)', () => {
     const result = transpile(`
-      import { LED } from '@typecode/board-arduino-uno';
+      import { LED } from '@typehal/board-arduino-uno';
       LED.asOutput(true);
     `, { target: 'arduino' });
 
@@ -51,7 +51,7 @@ describe('Pin Config - Digital Output', () => {
 describe('Pin Config - Digital Input', () => {
   it('transpiles D2.asInput()', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.asInput();
     `, { target: 'arduino' });
 
@@ -60,7 +60,7 @@ describe('Pin Config - Digital Input', () => {
 
   it('transpiles D2.inputPullUp()', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.inputPullUp();
     `, { target: 'arduino' });
 
@@ -69,7 +69,7 @@ describe('Pin Config - Digital Input', () => {
 
   it('errors on D2.inputPullDown() on boards without pulldown support', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.inputPullDown();
     `, { target: 'arduino' });
 
@@ -81,7 +81,7 @@ describe('Pin Config - Digital Input', () => {
 describe('Pin Config - PWM', () => {
   it('transpiles D9.pwm()', () => {
     const result = transpile(`
-      import { D9 } from '@typecode/board-arduino-uno';
+      import { D9 } from '@typehal/board-arduino-uno';
       D9.pwm();
     `, { target: 'arduino' });
 
@@ -90,7 +90,7 @@ describe('Pin Config - PWM', () => {
 
   it('transpiles D9.pwm(50)', () => {
     const result = transpile(`
-      import { D9 } from '@typecode/board-arduino-uno';
+      import { D9 } from '@typehal/board-arduino-uno';
       D9.pwm(50);
     `, { target: 'arduino' });
 
@@ -102,7 +102,7 @@ describe('Pin Config - PWM', () => {
 
   it('transpiles D3.pwm(100)', () => {
     const result = transpile(`
-      import { D3 } from '@typecode/board-arduino-uno';
+      import { D3 } from '@typehal/board-arduino-uno';
       D3.pwm(100);
     `, { target: 'arduino' });
 
@@ -114,7 +114,7 @@ describe('Pin Config - PWM', () => {
 describe('Pin Config - Interrupt Attach', () => {
   it('transpiles D2.onFalling(callback)', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.onFalling(() => {});
     `, { target: 'arduino' });
 
@@ -125,7 +125,7 @@ describe('Pin Config - Interrupt Attach', () => {
 
   it('emits a named ISR function for D2.onFalling(callback), not a placeholder', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.onFalling(() => {});
     `, { target: 'arduino' });
 
@@ -136,7 +136,7 @@ describe('Pin Config - Interrupt Attach', () => {
 
   it('emits a named ISR function with body for D2.onFalling(callback)', () => {
     const result = transpile(`
-      import { D2, LED } from '@typecode/board-arduino-uno';
+      import { D2, LED } from '@typehal/board-arduino-uno';
       const led = LED.asOutput(false);
       let ledState = false;
       D2.onFalling(() => {
@@ -152,7 +152,7 @@ describe('Pin Config - Interrupt Attach', () => {
 
   it('transpiles an interrupt callback capturing a global pointer variable and emits pointer access correctly', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
 
       type Handler = () => void;
 
@@ -188,7 +188,7 @@ describe('Pin Config - Interrupt Attach', () => {
 
   it('transpiles D2.onRising(callback)', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.onRising(() => {});
     `, { target: 'arduino' });
 
@@ -199,7 +199,7 @@ describe('Pin Config - Interrupt Attach', () => {
 
   it('emits a named ISR function for D2.onRising(callback), not a placeholder', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.onRising(() => {});
     `, { target: 'arduino' });
 
@@ -210,7 +210,7 @@ describe('Pin Config - Interrupt Attach', () => {
 
   it('transpiles D2.onChange(callback)', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.onChange(() => {});
     `, { target: 'arduino' });
 
@@ -220,7 +220,7 @@ describe('Pin Config - Interrupt Attach', () => {
 
   it('emits a named ISR function for D2.onChange(callback), not a placeholder', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.onChange(() => {});
     `, { target: 'arduino' });
 
@@ -233,7 +233,7 @@ describe('Pin Config - Interrupt Attach', () => {
 describe('Pin Config - Interrupt Detach', () => {
   it('transpiles D2.offAll()', () => {
     const result = transpile(`
-      import { D2 } from '@typecode/board-arduino-uno';
+      import { D2 } from '@typehal/board-arduino-uno';
       D2.offAll();
     `, { target: 'arduino' });
 
@@ -245,7 +245,7 @@ describe('Pin Config - Interrupt Detach', () => {
 describe('Pin Config - Combined Usage', () => {
   it('transpiles multiple pin configs in sequence', () => {
     const result = transpile(`
-      import { D13, D2, D9 } from '@typecode/board-arduino-uno';
+      import { D13, D2, D9 } from '@typehal/board-arduino-uno';
       D13.output(true);
       D2.inputPullUp();
       D9.pwm(50);

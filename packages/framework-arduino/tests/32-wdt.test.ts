@@ -1,4 +1,4 @@
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 
 describe("WDT namespace")
   .it("WDT.reset() is callable without crashing")

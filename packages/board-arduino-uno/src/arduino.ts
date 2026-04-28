@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno/arduino — Arduino-compatible API implementations
+// @typehal/board-arduino-uno/arduino — Arduino-compatible API implementations
 //
-// Import from '@typecode/board-arduino-uno/arduino' to use Arduino-style APIs:
+// Import from '@typehal/board-arduino-uno/arduino' to use Arduino-style APIs:
 // - I2C0.begin(), I2C0.beginTransmission(), I2C0.write(), etc.
 // - SPI0.begin(), SPI0.transfer(), SPI0.setMode(), etc.
 // - UART0.begin(), UART0.print(), UART0.read(), etc.
@@ -15,7 +15,7 @@ import type {
   SPIMode,
   SPIBitOrder,
   SPISettings,
-} from '@typecode/core/arduino';
+} from '@typehal/core/arduino';
 
 // ---------------------------------------------------------------------------
 // I2C — Wire (bus 0) - Arduino API

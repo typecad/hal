@@ -1,18 +1,18 @@
 {
-  "name": "typecode-demo",
+  "name": "typehal-demo",
   "version": "1.0.0",
-  "description": "TypeCode demo project for ESP32 DevKit",
+  "description": "TypeHAL demo project for ESP32 DevKit",
   "private": true,
   "scripts": {
-    "build": "typecode ./src/sketch.ts",
-    "build:watch": "typecode build --watch",
-    "compile": "typecode ./src/sketch.ts --compile",
-    "upload": "typecode ./src/sketch.ts --compile --upload --port COM6",
-    "debug": "typecode ./src/sketch.ts --compile --upload --debug --monitor --port COM6"
+    "build": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts",
+    "build:watch": "cd .. && node packages/transpiler/dist/cli.js build --project demo",
+    "compile": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile",
+    "upload": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --port COM6",
+    "debug": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --debug --monitor --port COM6"
   },
   "dependencies": {
-    "@typecode/core": "*",
-    "@typecode/board-esp32-devkit": "*",
-    "@typecode/framework-arduino": "*"
+    "@typehal/core": "*",
+    "@typehal/board-esp32-devkit": "*",
+    "@typehal/framework-arduino": "*"
   }
 }

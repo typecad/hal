@@ -25,7 +25,7 @@ export interface RuntimePolyfillIR {
   /**
    * True when the Promise/MicrotaskQueue runtime was emitted (requires <functional>/<vector>).
    * False for architectures like AVR that lack the C++ standard library.
-   * When false, the emitter must NOT emit typecode_pump_microtasks() calls.
+   * When false, the emitter must NOT emit typehal_pump_microtasks() calls.
    */
   hasPromiseRuntime?: boolean;
 }

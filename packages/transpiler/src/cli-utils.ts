@@ -1,4 +1,4 @@
-﻿import path from "node:path";
+import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import chalk from "chalk";
@@ -8,15 +8,15 @@ import { ArduinoCompileResult, Diagnostic } from "./types";
 
 function resolveExpectCliPath(): string {
   try {
-    return require.resolve("@typecode/expect/dist/host/cli.js");
+    return require.resolve("@typehal/expect/dist/host/cli.js");
   } catch {
     const monorepoPath = path.resolve(__dirname, "..", "..", "expect", "dist", "host", "cli.js");
     if (fs.existsSync(monorepoPath)) return monorepoPath;
 
-    const nmPath = path.resolve(__dirname, "..", "node_modules", "@typecode", "expect", "dist", "host", "cli.js");
+    const nmPath = path.resolve(__dirname, "..", "node_modules", "@typehal", "expect", "dist", "host", "cli.js");
     if (fs.existsSync(nmPath)) return nmPath;
 
-    return "typecode-test";
+    return "typehal-test";
   }
 }
 

@@ -1,9 +1,9 @@
-# @typecode/expect
+# @typehal/expect
 
-Hardware test runner for [TypeCode](../../README.md). Write vitest-style assertions in TypeScript; the framework compiles them to firmware, uploads to your board, reads the results over serial, and reports pass/fail — all in one command.
+Hardware test runner for [TypeHAL](../../README.md). Write vitest-style assertions in TypeScript; the framework compiles them to firmware, uploads to your board, reads the results over serial, and reports pass/fail — all in one command.
 
 ```
- typecode-test v0.1.0
+ typehal-test v0.1.0
 
  ✓ A0 analog read (2 tests)
    ✓ reads a value in valid ADC range
@@ -15,7 +15,7 @@ Hardware test runner for [TypeCode](../../README.md). Write vitest-style asserti
 
 
  Tests   4 passed (4)
- Board   @typecode/board-arduino-uno @ COM4
+ Board   @typehal/board-arduino-uno @ COM4
  Time    18.97s
 
  PASS  All tests passed
@@ -35,7 +35,7 @@ Hardware test runner for [TypeCode](../../README.md). Write vitest-style asserti
   - [String matchers](#string-matchers)
 - [Running tests](#running-tests)
   - [CLI flags](#cli-flags)
-  - [typecode.config.ts](#typecodeconfigts)
+  - [typehal.config.ts](#typehalconfigts)
 - [Architecture](#architecture)
   - [Pipeline](#pipeline)
   - [Serial protocol](#serial-protocol)
@@ -47,7 +47,7 @@ Hardware test runner for [TypeCode](../../README.md). Write vitest-style asserti
 ## How it works
 
 1. **Preprocess** — an AST transform rewrites the fluent test syntax into `Serial.print()` calls.
-2. **Transpile** — the typecode compiler converts the rewritten TypeScript to a C++ Arduino sketch.
+2. **Transpile** — the typehal compiler converts the rewritten TypeScript to a C++ Arduino sketch.
 3. **Compile** — `arduino-cli compile` builds the sketch for the target board.
 4. **Upload** — `arduino-cli upload` flashes the firmware over serial.
 5. **Capture** — the host reads structured protocol lines from the serial port.
@@ -58,7 +58,7 @@ Hardware test runner for [TypeCode](../../README.md). Write vitest-style asserti
 
 ## Installation
 
-`@typecode/expect` is included in the TypeCode monorepo. No separate install step is needed within the workspace.
+`@typehal/expect` is included in the TypeHAL monorepo. No separate install step is needed within the workspace.
 
 **Prerequisites:**
 
@@ -70,12 +70,12 @@ Hardware test runner for [TypeCode](../../README.md). Write vitest-style asserti
 
 ## Writing tests
 
-Test files follow a fluent chaining style. Unlike vitest, there are no callback functions — the TypeCode transpiler does not support inline arrow function arguments.
+Test files follow a fluent chaining style. Unlike vitest, there are no callback functions — the TypeHAL transpiler does not support inline arrow function arguments.
 
 ```typescript
 // examples/my-sensor.test.ts
-import { describe, done } from '@typecode/expect';
-import { A0 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0 } from '@typehal';
 
 describe("A0 analog read")
   .it("reads a value in valid ADC range")
@@ -100,7 +100,7 @@ Opens a named test case within the current group. Returns the same `Suite` for f
 
 `suite.expect(value: number): Expectation`
 
-Captures a hardware value to be asserted. The argument must be a TypeCode hardware expression (e.g. `A0.readAnalog()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
+Captures a hardware value to be asserted. The argument must be a TypeHAL hardware expression (e.g. `A0.readAnalog()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
 
 `suite.expectString(value: string): StringExpectation`
 
@@ -177,16 +177,16 @@ npm run test:hw -- --port COM4
 | `--verbose` | `-v` | `false` | Show raw serial output and per-assertion detail |
 | `--help` | `-h` | | Print help and exit |
 
-### typecode.config.ts
+### typehal.config.ts
 
-Add a `test` section to your project's `typecode.config.ts` to avoid passing flags every time:
+Add a `test` section to your project's `typehal.config.ts` to avoid passing flags every time:
 
 ```typescript
-// typecode.config.ts
-import { defineConfig } from '@typecode/core';
+// typehal.config.ts
+import { defineConfig } from '@typehal/core';
 
 export default defineConfig({
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
 
   test: {
     port: 'COM4',           // serial port of the connected board
@@ -235,7 +235,7 @@ This hybrid workflow is the recommended way to confirm that simple variables, ar
 ┌─────────────────┐
 │ rewritten .ts   │  (Serial.print calls, hoisted hardware vars)
 └────────┬────────┘
-         │  typecode transpiler
+         │  typehal transpiler
          ▼
 ┌─────────────────┐
 │  .ino sketch    │  (Arduino C++)
@@ -282,23 +282,23 @@ Assertion math (pass/fail, formatting) is computed entirely on the host, not in 
 
 ### AST preprocessor
 
-The TypeCode transpiler cannot evaluate hardware calls (like `A0.readAnalog()`) when they are nested inside non-typecode function calls — they lose their structured IR and become plain text. The preprocessor solves this before transpilation:
+The TypeHAL transpiler cannot evaluate hardware calls (like `A0.readAnalog()`) when they are nested inside non-typehal function calls — they lose their structured IR and become plain text. The preprocessor solves this before transpilation:
 
-1. Removes the `import { describe, done } from '@typecode/expect'` statement.
+1. Removes the `import { describe, done } from '@typehal/expect'` statement.
 2. Emits a `Serial.initialize(...)` + `[TC:SUITE_START]` preamble once.
 3. Walks the fluent chain `describe(...).it(...).expect(expr).matcher(args)`.
 4. **Hoists** hardware expressions out of `.expect()` into a `const __tc_vN: number = expr;` declaration at the surrounding statement level.
 5. Replaces the `.expect(...).matcher(...)` chain with the appropriate `Serial.print("[TC:EXPECT:...]")` calls.
 6. Rewrites `done()` to `Serial.println("[TC:SUITE_END]") + while(true){delay(1000)}`.
 
-The result is valid TypeCode TypeScript with no nested hardware calls, ready for the standard transpiler.
+The result is valid TypeHAL TypeScript with no nested hardware calls, ready for the standard transpiler.
 
 ---
 
 ## Limitations
 
-- **No arrow function callbacks** — the TypeCode transpiler does not support inline arrow functions as arguments. Groups and cases are defined by fluent chaining, not by `describe("name", () => { ... })`.
+- **No arrow function callbacks** — the TypeHAL transpiler does not support inline arrow functions as arguments. Groups and cases are defined by fluent chaining, not by `describe("name", () => { ... })`.
 - **No async tests** — all timing is implicit (the board executes sequentially, the host waits on serial output).
 - **Sequential execution only** — all describes in a file run once, in order, inside `setup()`. There is no `beforeEach`/`afterEach`.
 - **One file per upload** — each test file produces one sketch and one upload cycle. Multiple test files run as separate upload+execute passes.
-- **Number types only for hardware values** — the TypeCode type system maps all numeric hardware readings to `int`/`float`. String expectations are for software string variables, not raw hardware reads.
+- **Number types only for hardware values** — the TypeHAL type system maps all numeric hardware readings to `int`/`float`. String expectations are for software string variables, not raw hardware reads.

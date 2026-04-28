@@ -4,22 +4,22 @@ import { CommandLineOptions, EmitMode, PlatformContext, TargetProfile, TreeShaki
 import chalk from "chalk";
 
 const VERSION = "0.1.0";
-const ICON_TYPECODE = "⤳";
+const ICON_TYPEHAL = "⤳";
 
 export function printHelp(): void {
   console.log();
-  console.log(chalk.cyan(`${ICON_TYPECODE} typeCode`) + chalk.gray(` v${VERSION}`));
+  console.log(chalk.cyan(`${ICON_TYPEHAL} typeHAL`) + chalk.gray(` v${VERSION}`));
   console.log(chalk.gray(`  TypeScript to C++ transpiler for embedded systems`));
   console.log();
   console.log(chalk.cyan(`USAGE`));
   console.log();
-  console.log(`  typecode <input.ts> [options]`);
-  console.log(`  typecode build [options]`);
-  console.log(`  typecode init [name] [options]`);
-  console.log(`  typecode gen-libdefs <input.ts>`);
-  console.log(`  typecode gen-decls <input.cpp|--all <directory>>`);
-  console.log(`  typecode map-error <mapFile> [options]`);
-  console.log(`  typecode create-board <name> [options]`);
+  console.log(`  typehal <input.ts> [options]`);
+  console.log(`  typehal build [options]`);
+  console.log(`  typehal init [name] [options]`);
+  console.log(`  typehal gen-libdefs <input.ts>`);
+  console.log(`  typehal gen-decls <input.cpp|--all <directory>>`);
+  console.log(`  typehal map-error <mapFile> [options]`);
+  console.log(`  typehal create-board <name> [options]`);
   console.log();
   console.log(chalk.gray(`Transpilation is always performed first. Use --compile, --upload, and`));
   console.log(chalk.gray(`--monitor to chain arduino-cli operations after transpilation.`));
@@ -54,7 +54,7 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.cyan(`TESTING`));
   console.log();
-  console.log(`  --expect [file]         Run hardware tests via @typecode/expect.`);
+  console.log(`  --expect [file]         Run hardware tests via @typehal/expect.`);
   console.log(`                          Optionally specify a test file to run a single test.`);
   console.log(`                          Discovers test files and validates via serial.`);
   console.log();
@@ -71,7 +71,7 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.cyan(`BUILD COMMAND`));
   console.log();
-  console.log(`  build                    Build using entry point from typecode.config.ts`);
+  console.log(`  build                    Build using entry point from typehal.config.ts`);
   console.log(`                           Requires 'entry' field in config file.`);
   console.log(`                           Supports all transpile, compile, upload, and watch options.`);
   console.log();
@@ -101,8 +101,8 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.cyan(`PROJECT SCAFFOLDING`));
   console.log();
-  console.log(`  init [name]             Create a new TypeCode project`);
-  console.log(`                          Generates package.json, tsconfig.json, typecode.config.ts,`);
+  console.log(`  init [name]             Create a new TypeHAL project`);
+  console.log(`                          Generates package.json, tsconfig.json, typehal.config.ts,`);
   console.log(`                          and an optional starter sketch.`);
   console.log();
   console.log(`  --board <id>            Board to target (e.g., arduino-uno)`);
@@ -145,43 +145,43 @@ export function printHelp(): void {
   console.log(chalk.cyan(`EXAMPLES`));
   console.log();
   console.log(chalk.gray(`  # Interactive project setup`));
-  console.log(`  typecode init`);
+  console.log(`  typehal init`);
   console.log();
   console.log(chalk.gray(`  # Non-interactive project setup`));
-  console.log(`  typecode init my-project --board arduino-uno --framework arduino`);
+  console.log(`  typehal init my-project --board arduino-uno --framework arduino`);
   console.log();
   console.log(chalk.gray(`  # Build using config entry point`));
-  console.log(`  typecode build --compile --upload --port COM4`);
+  console.log(`  typehal build --compile --upload --port COM4`);
   console.log();
   console.log(chalk.gray(`  # Build in watch mode`));
-  console.log(`  typecode build --watch`);
+  console.log(`  typehal build --watch`);
   console.log();
   console.log(chalk.gray(`  # Transpile to generic C++`));
-  console.log(`  typecode src/main.ts`);
+  console.log(`  typehal src/main.ts`);
   console.log();
   console.log(chalk.gray(`  # Transpile to Arduino sketch`));
-  console.log(`  typecode sketch.ts --target arduino --outDir ./build`);
+  console.log(`  typehal sketch.ts --target arduino --outDir ./build`);
   console.log();
   console.log(chalk.gray(`  # Transpile and compile for Arduino Uno`));
-  console.log(`  typecode sketch.ts --compile --fqbn arduino:avr:uno`);
+  console.log(`  typehal sketch.ts --compile --fqbn arduino:avr:uno`);
   console.log();
   console.log(chalk.gray(`  # Transpile, compile, and upload`));
-  console.log(`  typecode sketch.ts --compile --upload --fqbn arduino:avr:uno --port COM4`);
+  console.log(`  typehal sketch.ts --compile --upload --fqbn arduino:avr:uno --port COM4`);
   console.log();
   console.log(chalk.gray(`  # Full chain: transpile → compile → upload → monitor`));
-  console.log(`  typecode sketch.ts --compile --upload --monitor --fqbn arduino:avr:uno --port COM4 --baud 115200`);
+  console.log(`  typehal sketch.ts --compile --upload --monitor --fqbn arduino:avr:uno --port COM4 --baud 115200`);
   console.log();
   console.log(chalk.gray(`  # Watch mode: auto-retranspile on changes`));
-  console.log(`  typecode sketch.ts --watch`);
+  console.log(`  typehal sketch.ts --watch`);
   console.log();
   console.log(chalk.gray(`  # Watch and auto-compile for Arduino`));
-  console.log(`  typecode sketch.ts --watch --compile --fqbn arduino:avr:uno`);
+  console.log(`  typehal sketch.ts --watch --compile --fqbn arduino:avr:uno`);
   console.log();
   console.log(chalk.gray(`  # Generate library definitions from imports`));
-  console.log(`  typecode gen-libdefs src/sensor.ts`);
+  console.log(`  typehal gen-libdefs src/sensor.ts`);
   console.log();
   console.log(chalk.gray(`  # Map a C++ error to TypeScript source`));
-  console.log(`  typecode map-error .build/sketch.cpp.map --line 42 --column 5 --message "undefined reference"`);
+  console.log(`  typehal map-error .build/sketch.cpp.map --line 42 --column 5 --message "undefined reference"`);
   console.log();
 }
 
@@ -388,7 +388,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     } as InitCommandOptions;
   }
 
-  // build subcommand — entry point comes from typecode.config.ts
+  // build subcommand — entry point comes from typehal.config.ts
   if (firstArg === "build") {
     return parsePipelineCommand(argv, "build");
   }
@@ -500,7 +500,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
 
   // Warn about removed `transpile` subcommand
   if (firstArg === "transpile") {
-    console.error("Error: the 'transpile' subcommand has been removed. Run: typecode <input.ts> [options]\n");
+    console.error("Error: the 'transpile' subcommand has been removed. Run: typehal <input.ts> [options]\n");
     return "help";
   }
 

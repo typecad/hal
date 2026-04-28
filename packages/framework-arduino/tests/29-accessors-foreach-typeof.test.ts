@@ -1,4 +1,4 @@
-import { describe, done } from '@typecode/expect';
+import { describe, done } from '@typehal/expect';
 
 // ---------------------------------------------------------------------------
 // On-hardware tests for the five newly implemented embedded-relevant features:

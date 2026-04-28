@@ -1,6 +1,6 @@
 # Polyfills
 
-The TypeCode polyfill system provides runtime implementations for TypeScript features not natively available in C++.
+The TypeHAL polyfill system provides runtime implementations for TypeScript features not natively available in C++.
 
 ## Overview
 

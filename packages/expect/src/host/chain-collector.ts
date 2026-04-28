@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Chain Collector
+// @typehal/expect — Chain Collector
 //
 // Pure functions for detecting and extracting the fluent describe().it().expect()
 // chain segments from a TypeScript AST.  No I/O or protocol emission.

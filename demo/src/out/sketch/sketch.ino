@@ -6,8 +6,12 @@
 
 struct TsAsyncTask { bool done = true; };
 
+#ifndef typehal_halt
+#define typehal_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
+#endif
+
 // Polyfill: cooperative microtask queue + minimal Promise runtime
-namespace typecode_async {
+namespace typehal_async {
   using Microtask = std::function<void()>;
 
   class MicrotaskQueue {
@@ -18,7 +22,7 @@ namespace typecode_async {
     }
 
     bool enqueue(Microtask task) {
-      if (_queue.size() >= 32) {
+      if (_queue.size() >= 256) {
         return false;
       }
       _queue.push_back(std::move(task));
@@ -76,30 +80,22 @@ namespace typecode_async {
     }
 
     void resolve(const T& value) {
-      if (_state != State::Pending) {
-        return;
-      }
+      if (_state != State::Pending) return;
       _state = State::Fulfilled;
       _value = value;
       auto callbacks = _onFulfilled;
       enqueueMicrotask([callbacks, value]() mutable {
-        for (auto& callback : callbacks) {
-          callback(value);
-        }
+        for (auto& callback : callbacks) { callback(value); }
       });
     }
 
     void reject(const std::string& error) {
-      if (_state != State::Pending) {
-        return;
-      }
+      if (_state != State::Pending) return;
       _state = State::Rejected;
       _error = error;
       auto callbacks = _onRejected;
       enqueueMicrotask([callbacks, error]() mutable {
-        for (auto& callback : callbacks) {
-          callback(error);
-        }
+        for (auto& callback : callbacks) { callback(error); }
       });
     }
 
@@ -132,13 +128,9 @@ namespace typecode_async {
   };
 }
 
-inline void typecode_pump_microtasks() {
-  typecode_async::pumpMicrotasks();
+inline void typehal_pump_microtasks() {
+  typehal_async::pumpMicrotasks();
 }
-
-#ifndef typecode_halt
-#define typecode_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
-#endif
 
 // Async state machine for blink
 class BlinkTask {
@@ -185,7 +177,7 @@ void blink()
 // Auto-generated loop() for async microtask pumping
 void loop()
 {
-  typecode_pump_microtasks();
+  typehal_pump_microtasks();
     blinkTask.run();
-    typecode_pump_microtasks();
+    typehal_pump_microtasks();
 }

@@ -1,22 +1,22 @@
-# @typecode/framework-arduino
+# @typehal/framework-arduino
 
-Arduino framework strategy for TypeCode code generation.
+Arduino framework strategy for TypeHAL code generation.
 
 ## Overview
 
-`@typecode/framework-arduino` implements the Arduino-compatible code generation strategy used by TypeCode. It emits Arduino-style C++ calls such as `pinMode()`, `digitalWrite()`, and `Serial` operations, and provides helper utilities for Arduino CLI metadata, library discovery, and runtime polyfills.
+`@typehal/framework-arduino` implements the Arduino-compatible code generation strategy used by TypeHAL. It emits Arduino-style C++ calls such as `pinMode()`, `digitalWrite()`, and `Serial` operations, and provides helper utilities for Arduino CLI metadata, library discovery, and runtime polyfills.
 
 ## Quick start
 
-Add the package to your `typecode.config.ts`:
+Add the package to your `typehal.config.ts`:
 
 ```ts
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
-  framework: '@typecode/framework-arduino',
+  board: '@typehal/board-arduino-uno',
+  framework: '@typehal/framework-arduino',
   fqbn: 'arduino:avr:uno',
   output: { framework: 'arduino', optimize: 'size' },
 };
@@ -27,14 +27,14 @@ export default config;
 Then run the CLI:
 
 ```bash
-npx typecode src/main.ts --compile --upload --port COM4
+npx typehal src/main.ts --compile --upload --port COM4
 ```
 
 ## How to use
 
 ### Framework strategy
 
-When `framework` is set to `@typecode/framework-arduino`, TypeCode generates code compatible with the Arduino runtime and Arduino CLI toolchain.
+When `framework` is set to `@typehal/framework-arduino`, TypeHAL generates code compatible with the Arduino runtime and Arduino CLI toolchain.
 
 ### Key exports
 
@@ -58,7 +58,7 @@ The package can discover installed Arduino libraries and generate TypeScript dec
 
 ### Serial and console polyfills
 
-`@typecode/framework-arduino` includes helpers for detecting `Serial.begin()` usage and injecting Arduino console support automatically when needed.
+`@typehal/framework-arduino` includes helpers for detecting `Serial.begin()` usage and injecting Arduino console support automatically when needed.
 
 ---
 
@@ -66,13 +66,13 @@ The package can discover installed Arduino libraries and generate TypeScript dec
 
 The following features are automatically applied when targeting AVR (Arduino Uno, Mega, etc.) or ESP32.
 
-### Panic handler — `typecode_halt`
+### Panic handler — `typehal_halt`
 
-TypeScript `throw` statements compile to a `typecode_halt("PANIC")` macro call instead of a bare `for(;;){}` loop. The macro prints the message over Serial (using `F()` for flash storage) then halts:
+TypeScript `throw` statements compile to a `typehal_halt("PANIC")` macro call instead of a bare `for(;;){}` loop. The macro prints the message over Serial (using `F()` for flash storage) then halts:
 
 ```cpp
-#ifndef typecode_halt
-#define typecode_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
+#ifndef typehal_halt
+#define typehal_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
 #endif
 ```
 
@@ -104,12 +104,12 @@ Variable expressions are passed through without wrapping.
 | `s.startsWith(prefix)`   | `(strncmp(s, prefix, strlen(prefix)) == 0)` |
 | `s.endsWith(suffix)`     | `__tc_endsWith(s, suffix)`                |
 
-### Configurable string buffer size — `TYPECODE_STR_BUF_SIZE`
+### Configurable string buffer size — `TYPEHAL_STR_BUF_SIZE`
 
 String-method polyfills (`.toUpperCase()`, `.toLowerCase()`, `.trim()`, `.replace()`, etc.) use a stack-allocated buffer whose size is controlled by a compile-time macro. Override it in your sketch or build flags:
 
 ```cpp
-#define TYPECODE_STR_BUF_SIZE 128  // default is 64
+#define TYPEHAL_STR_BUF_SIZE 128  // default is 64
 ```
 
 ### Heap-allocation validator
@@ -140,7 +140,7 @@ IRAM_ATTR void myButton_isr_0() { ... }
 
 ### `Timing` — timing utilities
 
-| TypeCode                      | Generated C++                  |
+| TypeHAL                      | Generated C++                  |
 |-------------------------------|--------------------------------|
 | `Timing.millis()`             | `millis()`                     |
 | `Timing.micros()`             | `micros()`                     |
@@ -157,7 +157,7 @@ const elapsed = Timing.millis() - t0;
 
 Requires `<EEPROM.h>` (included automatically by the board framework).
 
-| TypeCode                      | Generated C++                  |
+| TypeHAL                      | Generated C++                  |
 |-------------------------------|--------------------------------|
 | `EEPROM.read(addr)`           | `EEPROM.read(addr)`            |
 | `EEPROM.write(addr, val)`     | `EEPROM.write(addr, val)`      |
@@ -172,7 +172,7 @@ Requires `<EEPROM.h>` (included automatically by the board framework).
 
 Controls the AVR hardware watchdog. Requires `<avr/wdt.h>`.
 
-| TypeCode                      | Generated C++                    |
+| TypeHAL                      | Generated C++                    |
 |-------------------------------|----------------------------------|
 | `WDT.enable('2s')`            | `wdt_enable(WDTO_2S)`            |
 | `WDT.reset()`                 | `wdt_reset()`                    |

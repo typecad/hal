@@ -75,7 +75,7 @@ describe("detectExportedEntryPoints", () => {
 // ---------------------------------------------------------------------------
 describe("topological sort", () => {
   it("emits dependency files before dependent files in a three-file chain", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     // A → B → C  (A imports B, B imports C)
@@ -147,7 +147,7 @@ describe("topological sort", () => {
 // ---------------------------------------------------------------------------
 describe("cross-module tree-shaking", () => {
   it("preserves functions imported by the entry file", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "lib.ts");
@@ -193,7 +193,7 @@ describe("cross-module tree-shaking", () => {
   });
 
   it("preserves classes imported by the entry file", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "shapes.ts");
@@ -240,7 +240,7 @@ describe("cross-module tree-shaking", () => {
   });
 
   it("preserves enums imported by the entry file", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "types.ts");
@@ -290,7 +290,7 @@ describe("cross-module tree-shaking", () => {
 // ---------------------------------------------------------------------------
 describe("forward declarations", () => {
   it("emits forward declarations for cross-module class types in headers", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "sensor.ts");
@@ -337,7 +337,7 @@ describe("forward declarations", () => {
   });
 
   it("does not duplicate forward declarations for classes defined in the same file", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "local.ts");
@@ -389,7 +389,7 @@ describe("forward declarations", () => {
   });
 
   it("emits unique callback names for entry and imported Arduino modules", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const buttonPath = path.join(workspaceDir, "Button.ts");
@@ -398,8 +398,8 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       buttonPath,
       [
-        "import { D2, millis } from '@typecode';",
-        "import type { IInputModePin } from '@typecode/core';",
+        "import { D2, millis } from '@typehal';",
+        "import type { IInputModePin } from '@typehal/core';",
         "",
         "export class Button {",
         "  private readonly pin: IInputModePin;",
@@ -440,7 +440,7 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { D2 } from '@typecode';",
+        "import { D2 } from '@typehal';",
         "import { Button } from './Button';",
         "",
         "const btn = Button.start(D2, 50).onPress(() => {",
@@ -470,7 +470,7 @@ describe("forward declarations", () => {
   });
 
   it("emits valid C++ for standalone cross-module fluent API calls", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "sketch.ts");
@@ -496,7 +496,7 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { D2 } from '@typecode';",
+        "import { D2 } from '@typehal';",
         "import { Button } from './Button';",
         "",
         "Button.start(D2, 50).onPress(() => {",
@@ -526,7 +526,7 @@ describe("forward declarations", () => {
 // ---------------------------------------------------------------------------
 describe("header guards", () => {
   it("emits #pragma once in every generated header", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "util.ts");

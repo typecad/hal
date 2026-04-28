@@ -1,4 +1,4 @@
-import type { RuntimePolyfillIR } from "@typecode/core/shared";
+import type { RuntimePolyfillIR } from "@typehal/core/shared";
 
 export interface EmittedPolyfillCode {
   includes: string[];

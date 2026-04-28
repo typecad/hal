@@ -1,6 +1,6 @@
 # Transpiler Documentation
 
-The TypeCode transpiler converts TypeScript to C++/Arduino code.
+The TypeHAL transpiler converts TypeScript to C++/Arduino code.
 
 ## Documents
 
@@ -11,11 +11,11 @@ The TypeCode transpiler converts TypeScript to C++/Arduino code.
 
 ## Overview
 
-TypeCode transpiles a subset of TypeScript to efficient C++ code:
+TypeHAL transpiles a subset of TypeScript to efficient C++ code:
 
 ```typescript
 // TypeScript
-import { LED, delay } from '@typecode';
+import { LED, delay } from '@typehal';
 
 LED.output(LOW);
 
@@ -41,7 +41,7 @@ void loop() {
 
 ## Mixing TypeScript and C++
 
-TypeCode allows you to mix TypeScript and native C++ code in the same project. This is useful for:
+TypeHAL allows you to mix TypeScript and native C++ code in the same project. This is useful for:
 
 - Using existing C++ libraries
 - Writing performance-critical code in C++
@@ -64,7 +64,7 @@ src/
 
 ### Auto-Generating Declarations
 
-When you import a C++ module that doesn't have a `.d.ts` file, TypeCode automatically generates one for you:
+When you import a C++ module that doesn't have a `.d.ts` file, TypeHAL automatically generates one for you:
 
 1. Write your C++ implementation file (e.g., `lib/sensor.cpp`)
 2. Import it in TypeScript: `import { Sensor } from './lib/sensor'`
@@ -85,15 +85,15 @@ You can also generate declarations explicitly:
 
 ```bash
 # Generate for a single file
-npx typecode gen-decls lib/sensor.cpp
+npx typehal gen-decls lib/sensor.cpp
 
 # Scan a directory and generate for all C++ files missing declarations
-npx typecode gen-decls --scan-dir src/lib
+npx typehal gen-decls --scan-dir src/lib
 ```
 
 **VSCode Extension:**
 
-The TypeCode VSCode extension automatically generates `.d.ts` files when you save a `.cpp` file that doesn't have one. It also provides the **"TypeCode: Generate Declaration"** command in the Command Palette for manual generation.
+The TypeHAL VSCode extension automatically generates `.d.ts` files when you save a `.cpp` file that doesn't have one. It also provides the **"TypeHAL: Generate Declaration"** command in the Command Palette for manual generation.
 
 #### Example: Native C++ Class
 
@@ -140,7 +140,7 @@ private:
 
 **sketch.ts** - Use from TypeScript:
 ```typescript
-import { LED, delay, Serial } from '@typecode';
+import { LED, delay, Serial } from '@typehal';
 import { Sensor } from './lib/sensor';
 
 const sensor = new Sensor();
@@ -223,13 +223,13 @@ void loop() {}
 
 ## Multi-File Projects
 
-TypeCode supports multi-file TypeScript projects with `import`/`export` statements. You can split your code across multiple `.ts` files and the transpiler will resolve dependencies, tree-shake across module boundaries, and generate proper C++ output with headers and forward declarations.
+TypeHAL supports multi-file TypeScript projects with `import`/`export` statements. You can split your code across multiple `.ts` files and the transpiler will resolve dependencies, tree-shake across module boundaries, and generate proper C++ output with headers and forward declarations.
 
 ### Project Structure
 
 ```
 project/
-├── typecode.config.ts     # Config with entry point
+├── typehal.config.ts     # Config with entry point
 ├── src/
 │   ├── main.ts            # Entry file
 │   ├── sensors.ts         # Sensor module
@@ -248,14 +248,14 @@ project/
 
 ### Configuration
 
-Set the `entry` field in `typecode.config.ts` to specify the entry file:
+Set the `entry` field in `typehal.config.ts` to specify the entry file:
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
+  board: '@typehal/board-arduino-uno',
   fqbn: 'arduino:avr:uno',
   entry: './src/main.ts',   // Entry point for the build
   output: {
@@ -271,7 +271,7 @@ export default config;
 Then build with:
 
 ```bash
-npx typecode build
+npx typehal build
 ```
 
 ### Importing Local Modules
@@ -280,7 +280,7 @@ Use standard TypeScript `import`/`export` syntax to reference other files:
 
 **sensors.ts** — library module:
 ```typescript
-import { Serial } from '@typecode';
+import { Serial } from '@typehal';
 
 export function readTemperature(pin: number): number {
   const value = analogRead(pin);
@@ -296,7 +296,7 @@ export function readHumidity(pin: number): number {
 
 **main.ts** — entry file:
 ```typescript
-import { LED, delay } from '@typecode';
+import { LED, delay } from '@typehal';
 import { readTemperature } from './sensors';
 
 while (true) {
@@ -398,7 +398,7 @@ This allows cross-module type references without creating circular include depen
          │
          ▼
 ┌─────────────────┐
-│   IR Building   │ ← TypeCode IR
+│   IR Building   │ ← TypeHAL IR
 └────────┬────────┘
          │
          ▼
@@ -421,14 +421,14 @@ This allows cross-module type references without creating circular include depen
 
 ### Pin Safety Warnings
 
-TypeCode validates pin usage at compile time and generates warnings for potentially problematic configurations:
+TypeHAL validates pin usage at compile time and generates warnings for potentially problematic configurations:
 
 **Unsafe Pins:**
 
 Some pins are marked as "unsafe" in board definitions. These pins can be used but may have special behaviors:
 
 ```typescript
-import { D0, HIGH } from '@typecode/board-arduino-uno';
+import { D0, HIGH } from '@typehal/board-arduino-uno';
 
 D0.asOutput();
 D0.write(HIGH);  // Warning: Pin 'D0' is marked as unsafe
@@ -447,7 +447,7 @@ this pin may have special boot behavior or conflict with system functions.
 
 ### Compile-Time vs Runtime
 
-TypeCode distinguishes between compile-time and runtime constructs:
+TypeHAL distinguishes between compile-time and runtime constructs:
 
 - **Compile-time**: Interfaces, type aliases, generics → Erased during transpilation
 - **Runtime**: Functions, classes, variables → Emitted as C++ code
@@ -487,10 +487,10 @@ See [Architecture Development Guide](../architecture/development-guide.md) for d
 
 ## Source Maps
 
-TypeCode generates source maps linking C++ back to TypeScript:
+TypeHAL generates source maps linking C++ back to TypeScript:
 
 ```
-sketch.ino.tscppmap.json
+sketch.ino.thcppmap.json
 ```
 
 Use for:

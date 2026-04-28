@@ -6,10 +6,10 @@ export function tryResolveBoardDefFile(
   moduleSpecifier: string,
   boardPackage?: string,
 ): string | undefined {
-  // Handle bare "@typecode" virtual import — rewrite to the concrete board
+  // Handle bare "@typehal" virtual import — rewrite to the concrete board
   // package so the rest of the resolution logic works unchanged.
   let effectiveSpecifier = moduleSpecifier;
-  if (moduleSpecifier === "@typecode" && boardPackage) {
+  if (moduleSpecifier === "@typehal" && boardPackage) {
     effectiveSpecifier = boardPackage;
   }
 
@@ -40,14 +40,14 @@ export function tryResolveBoardDefFile(
     return undefined;
   }
 
-  // Handle npm-scoped board package imports (e.g. "@typecode/board-esp32-devkit")
-  if (effectiveSpecifier.startsWith("@typecode/board-")) {
+  // Handle npm-scoped board package imports (e.g. "@typehal/board-esp32-devkit")
+  if (effectiveSpecifier.startsWith("@typehal/board-")) {
     const parts = effectiveSpecifier.split("/");
     const pkgName = parts[1]; // "board-esp32-devkit"
     // Walk up from the importing file's directory to find node_modules
     let dir = path.dirname(fromFile);
     while (true) {
-      const candidate = path.join(dir, "node_modules", "@typecode", pkgName, "src", "index.ts");
+      const candidate = path.join(dir, "node_modules", "@typehal", pkgName, "src", "index.ts");
       if (fs.existsSync(candidate)) return candidate;
       const parent = path.dirname(dir);
       if (parent === dir) break; // reached filesystem root

@@ -1,5 +1,5 @@
 import type { SourceSpan } from './types';
-import type { TypecodeReceiverKind } from './typecode-symbols';
+import type { TypehalReceiverKind } from './typehal-symbols';
 import type { BoardConstants } from './board-resolver';
 import type { Diagnostic } from './types';
 export interface ImportIR {
@@ -90,7 +90,7 @@ export type ExpressionIR = {
 /**
  * Property access: `object.property`.
  * Produced by `expressionToIR` for all property-read expressions so that
- * the emitter can recognise and translate typecode metadata paths like
+ * the emitter can recognise and translate typehal metadata paths like
  * `Board.definition.mcu` without regex post-processing.
  */
  | {
@@ -99,14 +99,14 @@ export type ExpressionIR = {
     property: string;
 }
 /**
- * A call to a typecode SDK method that the emitter translates to a
+ * A call to a typehal SDK method that the emitter translates to a
  * platform-specific built-in (e.g. `A0.read()` → `analogRead(A0)`).
- * Produced by `expressionToIR` when it detects a typecode receiver.
+ * Produced by `expressionToIR` when it detects a typehal receiver.
  */
  | {
-    kind: "typecode-call";
+    kind: "typehal-call";
     receiver: string;
-    receiverKind: TypecodeReceiverKind;
+    receiverKind: TypehalReceiverKind;
     method: string;
     args: ExpressionIR[];
     interruptMode?: "FALLING" | "RISING" | "CHANGE" | "ALL";
@@ -310,21 +310,21 @@ export interface BlockIR {
     body: StatementIR[];
 }
 /**
- * A typecode SDK method call as a statement (e.g., UART0.config.baudRate(115200).begin()).
- * This is a statement-level version of typecode-call for fluent chains.
+ * A typehal SDK method call as a statement (e.g., UART0.config.baudRate(115200).begin()).
+ * This is a statement-level version of typehal-call for fluent chains.
  */
-export interface TypecodeCallStatementIR {
-    kind: "typecode-call";
+export interface TypehalCallStatementIR {
+    kind: "typehal-call";
     sourceSpan: SourceSpan;
     leadingComments?: string[];
     trailingComments?: string[];
     receiver: string;
-    receiverKind: TypecodeReceiverKind;
+    receiverKind: TypehalReceiverKind;
     method: string;
     args: ExpressionIR[];
     configMethod?: string;
 }
-export type StatementIR = CallExpressionIR | VariableDeclarationIR | AssignmentIR | UpdateIR | ReturnIR | WhileIR | DoWhileIR | IfIR | ForIR | ForOfIR | ForInIR | BreakIR | ContinueIR | SwitchIR | TryIR | ThrowIR | LabeledIR | BlockIR | TypecodeCallStatementIR;
+export type StatementIR = CallExpressionIR | VariableDeclarationIR | AssignmentIR | UpdateIR | ReturnIR | WhileIR | DoWhileIR | IfIR | ForIR | ForOfIR | ForInIR | BreakIR | ContinueIR | SwitchIR | TryIR | ThrowIR | LabeledIR | BlockIR | TypehalCallStatementIR;
 export interface FunctionIR {
     originalName: string;
     isAsync: boolean;

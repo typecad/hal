@@ -1,22 +1,22 @@
-# @typecode/framework-avr
+# @typehal/framework-avr
 
-Native AVR register-level code generation for TypeCode.
+Native AVR register-level code generation for TypeHAL.
 
 ## Overview
 
-`@typecode/framework-avr` provides a native AVR code generation strategy for TypeCode. It targets AVR microcontrollers such as the ATmega328P and emits direct register access instead of Arduino framework calls.
+`@typehal/framework-avr` provides a native AVR code generation strategy for TypeHAL. It targets AVR microcontrollers such as the ATmega328P and emits direct register access instead of Arduino framework calls.
 
 ## Quick start
 
-Use the package in your `typecode.config.ts`:
+Use the package in your `typehal.config.ts`:
 
 ```ts
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board: '@typecode/board-arduino-uno',
-  framework: '@typecode/framework-avr',
+  board: '@typehal/board-arduino-uno',
+  framework: '@typehal/framework-avr',
   output: { optimize: 'size' },
 };
 
@@ -26,14 +26,14 @@ export default config;
 Run the CLI to transpile and compile:
 
 ```bash
-npx typecode src/main.ts --compile --upload --port COM4
+npx typehal src/main.ts --compile --upload --port COM4
 ```
 
 ## How to use
 
 ### Framework strategy
 
-Set `framework` to `@typecode/framework-avr` to use the AVR-native emission strategy. This package is optimized for direct register access and low-level AVR firmware patterns.
+Set `framework` to `@typehal/framework-avr` to use the AVR-native emission strategy. This package is optimized for direct register access and low-level AVR firmware patterns.
 
 ### Key exports
 

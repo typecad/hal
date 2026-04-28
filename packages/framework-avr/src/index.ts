@@ -1,13 +1,13 @@
 // ---------------------------------------------------------------------------
-// @typecode/framework-avr — Native AVR framework package
+// @typehal/framework-avr — Native AVR framework package
 //
 // This package provides native AVR register-level code generation for
 // ATmega328P and similar AVR microcontrollers. It generates direct register
 // access instead of Arduino framework function calls.
 //
 // Usage:
-//   In typecode.config.ts:
-//     framework: '@typecode/framework-avr'
+//   In typehal.config.ts:
+//     framework: '@typehal/framework-avr'
 // ---------------------------------------------------------------------------
 
 // Register definitions and helpers (AVR-specific)

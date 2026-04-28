@@ -12,9 +12,9 @@ import type {
   Diagnostic,
   PlatformContext,
   BoardConstants,
-  TypecodeReceiverKind,
+  TypehalReceiverKind,
   RuntimePolyfillIR,
-} from '@typecode/core/shared';
+} from '@typehal/core/shared';
 
 export class NativeStrategy implements PlatformStrategy {
   readonly id = 'native';
@@ -182,7 +182,7 @@ export class NativeStrategy implements PlatformStrategy {
     return undefined;
   }
 
-  tryRenderTypecodeCall(): string | undefined {
+  tryRenderTypehalCall(): string | undefined {
     return undefined;
   }
 
@@ -270,7 +270,7 @@ export class NativeStrategy implements PlatformStrategy {
         lines.push(`    ${n}.run();`);
       }
       if (hasPromiseRuntime) {
-        lines.push('    typecode_pump_microtasks();');
+        lines.push('    typehal_pump_microtasks();');
       }
       lines.push('    std::this_thread::sleep_for(std::chrono::milliseconds(1));');
       lines.push('  }');

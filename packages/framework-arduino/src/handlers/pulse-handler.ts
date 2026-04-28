@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// Pulse namespace handler — maps TypeCode Pulse.* calls to Arduino C++
+// Pulse namespace handler — maps TypeHAL Pulse.* calls to Arduino C++
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, BoardConstants } from '@typecode/core/shared';
+import type { ExpressionIR, BoardConstants } from '@typehal/core/shared';
 
 /** Convert a pin name to a raw Arduino integer (D2 → 2, A0 → A0). */
 function pinArgRaw(rawPin: string): string {

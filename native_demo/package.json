@@ -1,17 +1,17 @@
 {
-  "name": "typecode-native-demo",
+  "name": "typehal-native-demo",
   "version": "1.0.0",
-  "description": "TypeCode native C++ demo — portable Windows/Linux executables",
+  "description": "TypeHAL native C++ demo — portable Windows/Linux executables",
   "private": true,
   "scripts": {
-    "build": "cd .. && node packages/transpiler/dist/cli.js native_demo/src/main.ts --framework @typecode/framework-native",
+    "build": "cd .. && node packages/transpiler/dist/cli.js native_demo/src/main.ts --framework @typehal/framework-native",
     "build:watch": "cd .. && node packages/transpiler/dist/cli.js build --project native_demo",
-    "native": "cd .. && node packages/transpiler/dist/cli.js native_demo/src/main.ts --compile --framework @typecode/framework-native",
+    "native": "cd .. && node packages/transpiler/dist/cli.js native_demo/src/main.ts --compile --framework @typehal/framework-native",
     "ts": "npx tsx src/main.ts"
   },
   "dependencies": {
-    "@typecode/core": "*",
-    "@typecode/framework-native": "*",
-    "@typecode/transpiler": "*"
+    "@typehal/core": "*",
+    "@typehal/framework-native": "*",
+    "@typehal/transpiler": "*"
   }
 }

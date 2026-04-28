@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Random number utilities
+// @typehal/board-esp32-devkit — Random number utilities
 // ---------------------------------------------------------------------------
 
-import type { IRandomNamespace } from '@typecode/core';
+import type { IRandomNamespace } from '@typehal/core';
 
 /** Initialize pseudo-random number generator. Maps to Arduino `randomSeed()`. */
 export declare function randomSeed(seed: number): void;

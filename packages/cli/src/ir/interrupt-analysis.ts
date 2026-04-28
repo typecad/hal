@@ -103,11 +103,11 @@ function scanStatementForInterruptHandler(
 ): void {
   if (!stmt || typeof stmt !== 'object') return;
 
-  // Check for typecode-call statements — both the low-level pin.attachInterrupt() and
+  // Check for typehal-call statements — both the low-level pin.attachInterrupt() and
   // the flat sugar API (pin.onFalling / pin.onRising / pin.onChange / etc.) which all
   // lower to a single attachInterrupt call on the same hardware interrupt line.
   const ATTACH_METHODS = new Set(['attachInterrupt', 'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh']);
-  if (stmt.kind === 'typecode-call') {
+  if (stmt.kind === 'typehal-call') {
     const tc = stmt as any;
     if (ATTACH_METHODS.has(tc.method) && tc.receiver) {
       const pinName = tc.receiver;
@@ -159,8 +159,8 @@ function isInterruptHandlerCallback(callback: any, parentExpr: any): boolean {
   // Check explicit flag
   if (callback.isInterruptHandler) return true;
 
-  // Check if parent is typecode-call with attachInterrupt
-  if (parentExpr && parentExpr.kind === 'typecode-call') {
+  // Check if parent is typehal-call with attachInterrupt
+  if (parentExpr && parentExpr.kind === 'typehal-call') {
     if (parentExpr.method === 'attachInterrupt' || parentExpr.interruptMode) {
       return true;
     }
@@ -185,8 +185,8 @@ function scanStatementForUnsafeOps(
     checkCalleeForUnsafeOp(call.callee, diagnostics, unsafeOps);
   }
 
-  // Check for typecode-call statements
-  if (stmt.kind === 'typecode-call') {
+  // Check for typehal-call statements
+  if (stmt.kind === 'typehal-call') {
     const tc = stmt as any;
     const callee = `${tc.receiver}.${tc.method}`;
     checkCalleeForUnsafeOp(callee, diagnostics, unsafeOps);
@@ -306,8 +306,8 @@ function scanStatementForCallbacks(
 ): void {
   if (!stmt || typeof stmt !== 'object') return;
 
-  // Check typecode-call args for callbacks
-  if (stmt.kind === 'typecode-call' && stmt.args) {
+  // Check typehal-call args for callbacks
+  if (stmt.kind === 'typehal-call' && stmt.args) {
     for (const arg of stmt.args) {
       if (arg && arg.kind === 'callback') {
         callback(arg, stmt);

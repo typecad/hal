@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// Typecode SDK symbol kind inference
+// Typehal SDK symbol kind inference
 //
-// Maps known typecode symbol names to their receiver kind.
+// Maps known typehal symbol names to their receiver kind.
 // Static symbol mappings live here; peripheral instance parsing is shared via
 // peripheral-symbols.ts so other IR passes do not reimplement it.
 // ---------------------------------------------------------------------------
@@ -9,10 +9,10 @@
 import { inferPeripheralKindByName } from "./peripheral-symbols";
 
 /**
- * Which category of typecode object a symbol belongs to.
+ * Which category of typehal object a symbol belongs to.
  * Used by the emitter to select the correct Arduino built-in.
  */
-export type TypecodeReceiverKind =
+export type TypehalReceiverKind =
   | 'analog-input'  // AnalogPin     — A0-A5, SDA, SCL
   | 'digital'       // BasePin       — D4, D7, D8, D12, D13, LED, MISO, SCK
   | 'interrupt'     // InterruptPin  — D0, D1, D2 (interrupt-capable digital)
@@ -28,13 +28,13 @@ export type TypecodeReceiverKind =
   | 'timing'        // Timing namespace - millis/micros/delay/delayMicroseconds
   | 'wdt'           // WDT namespace - enable/reset/disable
   | 'preferences'   // Preferences namespace - key-value NVS (EEPROM-backed on AVR)
-  | 'unknown';      // Not a typecode symbol
+  | 'unknown';      // Not a typehal symbol
 
 /**
- * Static mapping of every known typecode export name to its receiver kind.
+ * Static mapping of every known typehal export name to its receiver kind.
  * Covers Arduino Uno board exports, ESP32 DevKit exports, and common peripheral names.
  */
-const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
+const STATIC_KINDS: Readonly<Record<string, TypehalReceiverKind>> = {
   // ---- Interrupt-capable digital pins (Arduino Uno: INT0=D2, INT1=D3) ----
   // Note: D0, D1 also have interrupt capability on many AVR boards
   D0:  'interrupt',
@@ -130,10 +130,10 @@ const STATIC_KINDS: Readonly<Record<string, TypecodeReceiverKind>> = {
 };
 
 /**
- * Infer the typecode receiver kind for a given symbol name.
- * Returns `'unknown'` for anything that is not a recognised typecode symbol.
+ * Infer the typehal receiver kind for a given symbol name.
+ * Returns `'unknown'` for anything that is not a recognised typehal symbol.
  */
-export function inferKindByName(name: string): TypecodeReceiverKind {
+export function inferKindByName(name: string): TypehalReceiverKind {
   const peripheralKind = inferPeripheralKindByName(name);
   if (peripheralKind) return peripheralKind;
 

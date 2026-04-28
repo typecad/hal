@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/arch-avr-native — Native AVR platform strategy
+// @typehal/arch-avr-native — Native AVR platform strategy
 //
 // This strategy generates direct AVR register access instead of Arduino
 // framework function calls. For example:
@@ -7,8 +7,8 @@
 //   A0.read()   →  ADC register operations
 // ---------------------------------------------------------------------------
 
-import { ArduinoStrategy } from '@typecode/framework-arduino';
-import type { RuntimePolyfillIR } from '@typecode/core/shared';
+import { ArduinoStrategy } from '@typehal/framework-arduino';
+import type { RuntimePolyfillIR } from '@typehal/core/shared';
 import {
   getPinInfo,
   parsePinFromReceiver,
@@ -622,7 +622,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     return super.tryRenderCallStatement(callee, args as any, renderArg as any, _boardConstants);
   }
 
-  override tryRenderTypecodeCall(
+  override tryRenderTypehalCall(
     receiver: string,
     receiverKind: string,
     method: string,
@@ -635,7 +635,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     if (native !== undefined) return native;
 
     // Fall back to Arduino framework rendering (e.g. digitalWrite(!digitalRead()) for toggle)
-    return super.tryRenderTypecodeCall(receiver, receiverKind as any, method, args as any, renderArg as any, boardConstants);
+    return super.tryRenderTypehalCall(receiver, receiverKind as any, method, args as any, renderArg as any, boardConstants);
   }
 
   /**

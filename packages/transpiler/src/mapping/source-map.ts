@@ -4,7 +4,7 @@ import { GeneratedSourceMap, MappedDiagnostic, SourceMapEntry } from "../types";
 import { readText, writeText } from "../utils/fs";
 
 export function toSourceMapPath(generatedFilePath: string): string {
-  return `${generatedFilePath}.tscppmap.json`;
+  return `${generatedFilePath}.thcppmap.json`;
 }
 
 export function writeSourceMap(map: GeneratedSourceMap): string {
@@ -88,7 +88,7 @@ export function mapCppLocationToTs(
 }
 
 export function resolveMapPath(mapFileOrGeneratedFile: string): string {
-  if (mapFileOrGeneratedFile.endsWith(".tscppmap.json")) {
+  if (mapFileOrGeneratedFile.endsWith(".thcppmap.json")) {
     return path.resolve(process.cwd(), mapFileOrGeneratedFile);
   }
 
@@ -113,9 +113,9 @@ export function resolveSourceMapForSketch(
   
   // Try to find source maps for the sketch directory
   const possibleMaps = [
-    path.join(sketchDir, `${sketchName}.tscppmap.json`),
-    path.join(sketchDir, `${sketchName}.ino.tscppmap.json`),
-    path.join(sketchDir, "example.tscppmap.json"), // Common case for example sketches
+    path.join(sketchDir, `${sketchName}.thcppmap.json`),
+    path.join(sketchDir, `${sketchName}.ino.thcppmap.json`),
+    path.join(sketchDir, "example.thcppmap.json"), // Common case for example sketches
   ];
   
   for (const mapPath of possibleMaps) {
@@ -124,10 +124,10 @@ export function resolveSourceMapForSketch(
     }
   }
   
-  // Look for any .tscppmap.json files in the sketch directory
+  // Look for any .thcppmap.json files in the sketch directory
   try {
     const files = fs.readdirSync(sketchDir);
-    const mapFiles = files.filter(f => f.endsWith('.tscppmap.json'));
+    const mapFiles = files.filter(f => f.endsWith('.thcppmap.json'));
     if (mapFiles.length > 0) {
       // Return the most recent one
       const latest = mapFiles.sort().pop();

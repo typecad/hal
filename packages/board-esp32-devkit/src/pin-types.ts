@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-esp32-devkit — Board-specific pin type overrides
+// @typehal/board-esp32-devkit — Board-specific pin type overrides
 //
 // The ESP32 has two categories of GPIO pins:
 //   1. Full GPIO pins — digital I/O + pull-up + pull-down + PWM + interrupt
@@ -10,7 +10,7 @@
 // GPIO interrupts, so those methods are made non-optional (NonNullable).
 // ---------------------------------------------------------------------------
 
-import type { BasePin, IOutputModePin, IInputModePin } from '@typecode/core';
+import type { BasePin, IOutputModePin, IInputModePin } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // Method groups — used to cleanly Omit methods from pin types

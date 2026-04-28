@@ -8,7 +8,7 @@ import { transpile } from './setup';
 describe('ADC Range Validation', () => {
   it('generates info for comparison exceeding ADC max on Arduino Uno (10-bit)', () => {
     const result = transpile(`
-      import { A0 } from '@typecode/board-arduino-uno';
+      import { A0 } from '@typehal/board-arduino-uno';
       if (A0.read() > 2000) {
         // This comparison may never be true
       }
@@ -25,7 +25,7 @@ describe('ADC Range Validation', () => {
 
   it('does not generate warning for comparison within ADC range', () => {
     const result = transpile(`
-      import { A0 } from '@typecode/board-arduino-uno';
+      import { A0 } from '@typehal/board-arduino-uno';
       if (A0.read() > 512) {
         // This is fine, 512 <= 1023
       }
@@ -40,7 +40,7 @@ describe('ADC Range Validation', () => {
 
   it('generates info for comparison on right side', () => {
     const result = transpile(`
-      import { A0 } from '@typecode/board-arduino-uno';
+      import { A0 } from '@typehal/board-arduino-uno';
       if (2000 < A0.read()) {
         // This comparison may never be true
       }
@@ -71,7 +71,7 @@ describe('ADC Range Validation', () => {
 
   it('generates info for threshold at exact boundary', () => {
     const result = transpile(`
-      import { A0 } from '@typecode/board-arduino-uno';
+      import { A0 } from '@typehal/board-arduino-uno';
       if (A0.read() > 1024) {
         // 1024 > 1023, so this is out of range
       }
@@ -87,7 +87,7 @@ describe('ADC Range Validation', () => {
 
   it('does not generate warning for threshold at max value', () => {
     const result = transpile(`
-      import { A0 } from '@typecode/board-arduino-uno';
+      import { A0 } from '@typehal/board-arduino-uno';
       if (A0.read() > 1023) {
         // 1023 is the max, but > 1023 will never match
         // Actually this SHOULD warn since > 1023 is always false

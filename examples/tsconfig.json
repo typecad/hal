@@ -10,8 +10,8 @@
     "forceConsistentCasingInFileNames": true,
     "experimentalDecorators": true,
     "paths": {
-      "@typecode": ["../packages/board-arduino-uno/src/index.ts"],
-      "@typecode/*": ["../packages/*/src"]
+      "@typehal": ["../packages/board-arduino-uno/src/index.ts"],
+      "@typehal/*": ["../packages/*/src"]
     }
   },
   "include": ["*.ts", "*.d.ts"]

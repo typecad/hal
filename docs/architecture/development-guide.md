@@ -54,7 +54,7 @@ export const UDR0   = 0xC6;
 Implement the `PlatformStrategy` interface:
 
 ```typescript
-import { PlatformStrategy } from 'typecode/platform';
+import { PlatformStrategy } from 'typehal/platform';
 
 export class NativeAVRStrategy extends PlatformStrategy {
   readonly id = 'avr-native';
@@ -116,7 +116,7 @@ export { NativeAVRStrategy } from './strategy';
 export * from './registers';
 
 // Register strategy globally
-import { registerPlatformStrategy } from 'typecode/platform/registry';
+import { registerPlatformStrategy } from 'typehal/platform/registry';
 import { NativeAVRStrategy } from './strategy';
 
 registerPlatformStrategy(new NativeAVRStrategy());
@@ -160,7 +160,7 @@ registerPlatformStrategy(new NativeAVRStrategy());
 | Method | Purpose |
 |--------|---------|
 | `tryRenderCallStatement()` | Custom call statement rendering |
-| `tryRenderTypecodeCall()` | TypeCode-specific call rendering |
+| `tryRenderTypehalCall()` | TypeHAL-specific call rendering |
 | `transformConsoleCall()` | `console.*` transformation |
 
 ## Native vs Arduino Framework
@@ -232,7 +232,7 @@ Board packages then use these:
 
 ```typescript
 // In board-arduino-uno/src/pins.ts
-import { getPortRegister, getBitMask } from '@typecode/arch-avr-native';
+import { getPortRegister, getBitMask } from '@typehal/arch-avr-native';
 
 export const D13 = createDigitalPin(13, 5);  // Port B, bit 5
 export const LED = D13;
@@ -247,7 +247,7 @@ npm run build
 
 # Test with a board package
 cd ../..
-npx typecode examples/01-blink.ts --compile
+npx typehal examples/01-blink.ts --compile
 ```
 
 ## Common Patterns

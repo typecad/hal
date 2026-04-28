@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Project scaffolding orchestration for `typecode init`
+// Project scaffolding orchestration for `typehal init`
 //
 // Creates the directory structure and writes all project files.
 // Mirrors the pattern in board-scaffold.ts for create-board.
@@ -7,7 +7,7 @@
 
 import path from "node:path";
 import fs from "node:fs";
-import type { ArchitectureIdentifier } from "@typecode/core";
+import type { ArchitectureIdentifier } from "@typehal/core";
 import type { InitProjectOptions } from "./init-templates";
 import {
   generateProjectPackageJson,
@@ -42,15 +42,15 @@ export interface KnownBoard {
 /**
  * Static registry of known boards. No network calls needed.
  * New boards are added by contributors. Users who need unlisted boards
- * are directed to `typecode create-board` first.
+ * are directed to `typehal create-board` first.
  */
 export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = [
   {
     id: 'arduino-uno',
     displayName: 'Arduino Uno',
     architecture: 'avr',
-    boardPackage: '@typecode/board-arduino-uno',
-    frameworkPackage: '@typecode/framework-arduino',
+    boardPackage: '@typehal/board-arduino-uno',
+    frameworkPackage: '@typehal/framework-arduino',
     fqbn: 'arduino:avr:uno',
     mcu: 'ATmega328P',
   },
@@ -58,8 +58,8 @@ export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = [
     id: 'esp32-devkit',
     displayName: 'ESP32 DevKit',
     architecture: 'esp32',
-    boardPackage: '@typecode/board-esp32-devkit',
-    frameworkPackage: '@typecode/framework-arduino',
+    boardPackage: '@typehal/board-esp32-devkit',
+    frameworkPackage: '@typehal/framework-arduino',
     fqbn: 'esp32:esp32:esp32',
     mcu: 'ESP32-WROOM-32',
   },
@@ -98,7 +98,7 @@ export interface ScaffoldProjectResult {
 }
 
 /**
- * Scaffold a new TypeCode project.
+ * Scaffold a new TypeHAL project.
  *
  * Creates the directory structure and writes all project files.
  * Returns the list of created file paths.
@@ -139,8 +139,8 @@ export function scaffoldProject(
   // Generate all project files
   writeFile('package.json', generateProjectPackageJson(options));
   writeFile('tsconfig.json', generateProjectTsconfig(options));
-  writeFile('typecode.config.ts', generateProjectConfig(options));
-  writeFile('typecode-env.d.ts', generateProjectEnvDts(options));
+  writeFile('typehal.config.ts', generateProjectConfig(options));
+  writeFile('typehal-env.d.ts', generateProjectEnvDts(options));
   writeFile('.gitignore', generateGitignore(options));
 
   // Optional starter sketch
@@ -168,10 +168,10 @@ export function printInitNextSteps(options: InitProjectOptions, outDir: string):
   console.log("Next steps:");
   console.log(`  cd ${relativeDir}`);
   console.log(`  npm install`);
-  console.log(`  npx typecode ./src/sketch.ts --compile --fqbn ${options.fqbn}`);
+  console.log(`  npx typehal ./src/sketch.ts --compile --fqbn ${options.fqbn}`);
   console.log();
   console.log("To upload to your board:");
-  console.log(`  npx typecode ./src/sketch.ts --compile --upload --port ${portHint}`);
+  console.log(`  npx typehal ./src/sketch.ts --compile --upload --port ${portHint}`);
   console.log();
   console.log(chalk.gray("To use a different serial port, replace") + " " + chalk.white(portHint) + " " + chalk.gray("with your port."));
 }

@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Random number utilities
+// @typehal/board-arduino-uno — Random number utilities
 // ---------------------------------------------------------------------------
 
-import type { IRandomNamespace } from '@typecode/core';
+import type { IRandomNamespace } from '@typehal/core';
 
 /** Initialize pseudo-random number generator. Maps to Arduino `randomSeed()`. */
 export declare function randomSeed(seed: number): void;

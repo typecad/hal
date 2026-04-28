@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
-// EEPROM namespace handler — maps TypeCode EEPROM.* calls to Arduino C++
+// EEPROM namespace handler — maps TypeHAL EEPROM.* calls to Arduino C++
 //
-// Maps the TypeCode EEPROM namespace to the Arduino EEPROM library.
+// Maps the TypeHAL EEPROM namespace to the Arduino EEPROM library.
 // The library provides byte-level read/write with built-in CRC support.
 // Requires: #include <EEPROM.h>  (auto-included by the framework when used)
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from '@typecode/core/shared';
+import type { ExpressionIR } from '@typehal/core/shared';
 
 /**
  * Render EEPROM namespace calls to Arduino C++.

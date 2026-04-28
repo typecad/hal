@@ -8,9 +8,9 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import type { ArduinoCompileResult, ArduinoUploadResult, CompileError } from "@typecode/core/shared";
-import { parseCompileErrors, collectCppFiles } from "@typecode/core/shared";
-export type { ArduinoCompileResult, ArduinoUploadResult } from "@typecode/core/shared";
+import type { ArduinoCompileResult, ArduinoUploadResult, CompileError } from "@typehal/core/shared";
+import { parseCompileErrors, collectCppFiles } from "@typehal/core/shared";
+export type { ArduinoCompileResult, ArduinoUploadResult } from "@typehal/core/shared";
 
 export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath: string): void {
   const normalizedSketchPath = path.resolve(sketchPath);

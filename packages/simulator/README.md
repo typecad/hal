@@ -1,14 +1,14 @@
-# @typecode/simulator
+# @typehal/simulator
 
-Node.js hardware simulation runtime for TypeCode.
+Node.js hardware simulation runtime for TypeHAL.
 
 ## Overview
 
-`@typecode/simulator` provides a simulated hardware runtime for TypeCode firmware and tests. It exposes simulated GPIO pins, serial ports, I2C buses, SPI buses, PWM pins, and interrupt pins so you can verify hardware logic without using a physical board.
+`@typehal/simulator` provides a simulated hardware runtime for TypeHAL firmware and tests. It exposes simulated GPIO pins, serial ports, I2C buses, SPI buses, PWM pins, and interrupt pins so you can verify hardware logic without using a physical board.
 
 ## When to use the simulator
 
-`@typecode/simulator` is best for testing and validating hardware-facing logic in Node.js before you use a real board. It is not a transpiler output checker, and it does not replace `@typecode/expect` for firmware-level hardware tests.
+`@typehal/simulator` is best for testing and validating hardware-facing logic in Node.js before you use a real board. It is not a transpiler output checker, and it does not replace `@typehal/expect` for firmware-level hardware tests.
 
 Use the simulator when you want to:
 
@@ -20,14 +20,14 @@ Use the simulator when you want to:
 
 Do not use it for:
 
-- verifying TypeCode transpilation output
+- verifying TypeHAL transpilation output
 - measuring real ADC noise or analog timing
 - checking exact microsecond timing behavior
 
 ## Quick start
 
 ```ts
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 
 const board = createSimBoard({ boardType: 'arduino-uno' });
 
@@ -48,7 +48,7 @@ This pattern is the real value of the simulator: you can test logic driven by ex
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 
 function updateLed(button: any, led: any) {
   if (!button.read()) {
@@ -109,24 +109,24 @@ board.reset();
 expect(board.digital(13).getBitValue()).toBe(0);
 ```
 
-### TypeCode HAL compatibility
+### TypeHAL HAL compatibility
 
-`@typecode/simulator` is built on the same TypeCode hardware abstraction contract used by the rest of the ecosystem. The simulator implementations use `@typecode/core` interfaces and value types to model hardware behavior:
+`@typehal/simulator` is built on the same TypeHAL hardware abstraction contract used by the rest of the ecosystem. The simulator implementations use `@typehal/core` interfaces and value types to model hardware behavior:
 
 - `SimDigitalPin` implements `BasePin` and digital pin semantics.
 - `SimAnalogPin` implements `AnalogPin` semantics.
 - `SimPWMPin` implements `PWMPin` semantics.
 - `SimInterruptPin` implements `InterruptPin` semantics.
 - `SimSerialPort` implements `ISerialPort` / UART communication semantics.
-- `SimI2CBus` and `SimSPIBus` expose the same bus-style APIs expected by TypeCode HAL consumers.
+- `SimI2CBus` and `SimSPIBus` expose the same bus-style APIs expected by TypeHAL HAL consumers.
 
-The simulator package does not currently import board definition metadata from `@typecode/hal` directly. Instead, it mirrors the HAL/framework contract through shared `@typecode/core` interfaces and the same peripheral method names, so test code can use simulated hardware with the same API shape as firmware running on a real board.
+The simulator package does not currently import board definition metadata from `@typehal/hal` directly. Instead, it mirrors the HAL/framework contract through shared `@typehal/core` interfaces and the same peripheral method names, so test code can use simulated hardware with the same API shape as firmware running on a real board.
 
-### How the simulator uses TypeCode HAL concepts
+### How the simulator uses TypeHAL HAL concepts
 
-- `PinMode` values are imported from `@typecode/core` and used to track simulated pin direction and pull state.
+- `PinMode` values are imported from `@typehal/core` and used to track simulated pin direction and pull state.
 - capability flags like `digitalInput`, `pwm`, and `interrupt` are modeled using the same type definitions that HAL packages expose for pin capabilities.
-- serial, I2C, and SPI simulation classes rely on the shared TypeCode bus interfaces to ensure host code can interact with them using the same method names and semantics as real hardware.
-- `createSimBoard()` selects default PWM and interrupt pin sets by board type, matching the physical pin layout conventions used by TypeCode board packages such as `@typecode/board-arduino-uno`.
+- serial, I2C, and SPI simulation classes rely on the shared TypeHAL bus interfaces to ensure host code can interact with them using the same method names and semantics as real hardware.
+- `createSimBoard()` selects default PWM and interrupt pin sets by board type, matching the physical pin layout conventions used by TypeHAL board packages such as `@typehal/board-arduino-uno`.
 
-This makes the simulator a practical way to validate hardware logic and unit tests while staying aligned with TypeCode’s HAL abstraction layer.
+This makes the simulator a practical way to validate hardware logic and unit tests while staying aligned with TypeHAL’s HAL abstraction layer.

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Timing utilities
+// @typehal/board-arduino-uno — Timing utilities
 //
 // These map 1-to-1 to the Arduino built-in timing functions.
 // The transpiler replaces calls with the C++ equivalents.

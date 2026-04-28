@@ -5,7 +5,7 @@
 // peripherals, and metadata under one namespace.
 // ---------------------------------------------------------------------------
 
-import { Board } from '@typecode';
+import { Board } from '@typehal';
 
 const serial = Board.UART0.begin(115200);
 Board.LED.asOutput(false);

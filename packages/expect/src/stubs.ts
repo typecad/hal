@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
-// @typecode/expect — Firmware stubs
+// @typehal/expect — Firmware stubs
 //
 // These are `declare` functions — they provide types to the user's IDE but
 // have no runtime body.  The test preprocessor rewrites every call into
-// Serial protocol statements before the typecode transpiler ever sees them.
+// Serial protocol statements before the typehal transpiler ever sees them.
 // ---------------------------------------------------------------------------
 
 import type { Suite } from './types';

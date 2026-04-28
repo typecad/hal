@@ -10,13 +10,13 @@
     "experimentalDecorators": true,
     "noEmit": true,
     "paths": {
-      "@typecode/expect": ["../../expect/src/index.ts"],
-      "@typecode": ["../../board-arduino-uno/src/index.ts"],
-      "@typecode/*": ["../../*/src"]
+      "@typehal/expect": ["../../expect/src/index.ts"],
+      "@typehal": ["../../board-arduino-uno/src/index.ts"],
+      "@typehal/*": ["../../*/src"]
     }
   },
   "include": [
     "**/*.ts",
-    "../typecode-env.d.ts"
+    "../typehal-env.d.ts"
   ]
 }

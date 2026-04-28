@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { findConfigFile, parseConfigFile, loadTypecodeConfig, generateVirtualTypeDeclaration } from "../../../packages/transpiler/src/config-loader";
+import { findConfigFile, parseConfigFile, loadTypehalConfig, generateVirtualTypeDeclaration } from "../../../packages/transpiler/src/config-loader";
 
 const tempDirs: string[] = [];
 
@@ -14,21 +14,21 @@ afterEach(() => {
 
 describe("config-loader", () => {
   describe("findConfigFile", () => {
-    it("finds typecode.config.ts in the given directory", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+    it("finds typehal.config.ts in the given directory", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typecode.config.ts");
+      const configPath = path.join(dir, "typehal.config.ts");
       fs.writeFileSync(configPath, "export default {};", "utf-8");
 
       expect(findConfigFile(dir)).toBe(configPath);
     });
 
-    it("walks up to find typecode.config.ts in a parent directory", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+    it("walks up to find typehal.config.ts in a parent directory", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typecode.config.ts");
+      const configPath = path.join(dir, "typehal.config.ts");
       fs.writeFileSync(configPath, "export default {};", "utf-8");
 
       const subDir = path.join(dir, "src", "nested");
@@ -38,7 +38,7 @@ describe("config-loader", () => {
     });
 
     it("returns undefined when no config file exists", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
       // Don't create any config file
@@ -48,16 +48,16 @@ describe("config-loader", () => {
 
   describe("parseConfigFile", () => {
     it("parses a config file with all fields", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typecode.config.ts");
+      const configPath = path.join(dir, "typehal.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "const config = {",
           "  target: 'avr',",
-          "  board: '@typecode/board-arduino-uno',",
+          "  board: '@typehal/board-arduino-uno',",
           "  fqbn: 'arduino:avr:uno',",
           "  output: {",
           "    framework: 'arduino',",
@@ -73,7 +73,7 @@ describe("config-loader", () => {
       const result = parseConfigFile(configPath);
       expect(result).toBeDefined();
       expect(result!.target).toBe("avr");
-      expect(result!.board).toBe("@typecode/board-arduino-uno");
+      expect(result!.board).toBe("@typehal/board-arduino-uno");
       expect(result!.fqbn).toBe("arduino:avr:uno");
       expect(result!.outputFramework).toBe("arduino");
       expect(result!.outputOptimize).toBe("size");
@@ -82,16 +82,16 @@ describe("config-loader", () => {
     });
 
     it("parses config with inline export default", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typecode.config.ts");
+      const configPath = path.join(dir, "typehal.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "export default {",
           "  target: 'esp32',",
-          "  board: '@typecode/board-esp32-devkit',",
+          "  board: '@typehal/board-esp32-devkit',",
           "  fqbn: 'esp32:esp32:esp32doit-devkit-v1',",
           "};",
         ].join("\n"),
@@ -101,15 +101,15 @@ describe("config-loader", () => {
       const result = parseConfigFile(configPath);
       expect(result).toBeDefined();
       expect(result!.target).toBe("esp32");
-      expect(result!.board).toBe("@typecode/board-esp32-devkit");
+      expect(result!.board).toBe("@typehal/board-esp32-devkit");
       expect(result!.fqbn).toBe("esp32:esp32:esp32doit-devkit-v1");
     });
 
     it("returns undefined for empty file", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typecode.config.ts");
+      const configPath = path.join(dir, "typehal.config.ts");
       fs.writeFileSync(configPath, "// empty config\n", "utf-8");
 
       const result = parseConfigFile(configPath);
@@ -117,15 +117,15 @@ describe("config-loader", () => {
     });
 
     it("handles config with only board and fqbn", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typecode.config.ts");
+      const configPath = path.join(dir, "typehal.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "const config = {",
-          "  board: '@typecode/board-arduino-uno',",
+          "  board: '@typehal/board-arduino-uno',",
           "  fqbn: 'arduino:avr:uno',",
           "};",
           "export default config;",
@@ -135,24 +135,24 @@ describe("config-loader", () => {
 
       const result = parseConfigFile(configPath);
       expect(result).toBeDefined();
-      expect(result!.board).toBe("@typecode/board-arduino-uno");
+      expect(result!.board).toBe("@typehal/board-arduino-uno");
       expect(result!.fqbn).toBe("arduino:avr:uno");
       expect(result!.target).toBeUndefined();
     });
   });
 
-  describe("loadTypecodeConfig", () => {
-    it("returns config when typecode.config.ts exists", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+  describe("loadTypehalConfig", () => {
+    it("returns config when typehal.config.ts exists", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typecode.config.ts");
+      const configPath = path.join(dir, "typehal.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "const config = {",
           "  target: 'avr',",
-          "  board: '@typecode/board-arduino-uno',",
+          "  board: '@typehal/board-arduino-uno',",
           "  fqbn: 'arduino:avr:uno',",
           "};",
           "export default config;",
@@ -160,21 +160,21 @@ describe("config-loader", () => {
         "utf-8",
       );
 
-      const result = loadTypecodeConfig(dir);
+      const result = loadTypehalConfig(dir);
       expect(result).toBeDefined();
-      expect(result!.board).toBe("@typecode/board-arduino-uno");
+      expect(result!.board).toBe("@typehal/board-arduino-uno");
     });
 
-    it("generates typecode-env.d.ts with volatile helper declaration", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+    it("generates typehal-env.d.ts with volatile helper declaration", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typecode.config.ts");
+      const configPath = path.join(dir, "typehal.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "const config = {",
-          "  board: '@typecode/board-arduino-uno',",
+          "  board: '@typehal/board-arduino-uno',",
           "  fqbn: 'arduino:avr:uno',",
           "};",
           "export default config;",
@@ -186,16 +186,16 @@ describe("config-loader", () => {
       expect(config).toBeDefined();
       generateVirtualTypeDeclaration(config!);
 
-      const envPath = path.join(dir, "typecode-env.d.ts");
+      const envPath = path.join(dir, "typehal-env.d.ts");
       const envContent = fs.readFileSync(envPath, "utf-8");
       expect(envContent).toContain("declare function volatile<T>(value: T): T;");
     });
 
     it("returns undefined when no config file exists", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecode-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const result = loadTypecodeConfig(dir);
+      const result = loadTypehalConfig(dir);
       expect(result).toBeUndefined();
     });
   });

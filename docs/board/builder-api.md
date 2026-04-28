@@ -7,7 +7,7 @@ The Board Definition Builder provides a fluent, type-safe API for creating board
 The builder pattern guides you through defining a board package step-by-step:
 
 ```typescript
-import { BoardDefinitionBuilder, validateBoardDefinition } from '@typecode/core';
+import { BoardDefinitionBuilder, validateBoardDefinition } from '@typehal/core';
 
 const board = BoardDefinitionBuilder.create('arduino-uno')
   .displayName('Arduino Uno')
@@ -164,7 +164,7 @@ const board = BoardDefinitionBuilder.create('arduino-uno')
 When a user writes code that uses an unsafe pin:
 
 ```typescript
-import { D0, HIGH } from '@typecode/board-arduino-uno';
+import { D0, HIGH } from '@typehal/board-arduino-uno';
 D0.asOutput();
 D0.write(HIGH);
 ```
@@ -211,7 +211,7 @@ const errors = validateBoardDefinition(board);
 ## Complete Example: ESP32 DevKit
 
 ```typescript
-import { BoardDefinitionBuilder, validateBoardDefinition } from '@typecode/core';
+import { BoardDefinitionBuilder, validateBoardDefinition } from '@typehal/core';
 
 const esp32Devkit = BoardDefinitionBuilder.create('esp32-devkit-v1')
   .displayName('ESP32 DevKit V1')
@@ -273,7 +273,7 @@ export default esp32Devkit;
 The builder uses branded types to prevent common errors:
 
 ```typescript
-import { pinNumber, gpioNumber } from '@typecode/core';
+import { pinNumber, gpioNumber } from '@typehal/core';
 
 // PinNumber and GPIO are distinct types
 const physicalPin = pinNumber(13);  // Physical pin on package
@@ -290,7 +290,7 @@ Use the builder in your board package's `board.ts`:
 
 ```typescript
 // packages/board-myboard/src/board.ts
-import { BoardDefinitionBuilder, validateBoardDefinition } from '@typecode/core';
+import { BoardDefinitionBuilder, validateBoardDefinition } from '@typehal/core';
 
 export const board = BoardDefinitionBuilder.create('myboard')
   // ... configuration

@@ -1,7 +1,7 @@
 import type { ProgramIR } from "../ir/model";
 import type { PlatformContext } from "../types";
-import type { RuntimePolyfillIR } from "@typecode/core/shared";
-import { getStdLibSupport } from "@typecode/core/shared";
+import type { RuntimePolyfillIR } from "@typehal/core/shared";
+import { getStdLibSupport } from "@typehal/core/shared";
 
 /**
  * Generate the cooperative microtask queue + minimal Promise runtime for C++.
@@ -12,7 +12,7 @@ export function generatePromiseRuntime(target: string): string {
   const queueCapacity = target === "arduino" ? 32 : 256;
   return `
 // Cooperative microtask queue + minimal Promise runtime
-namespace typecode_async {
+namespace typehal_async {
   using Microtask = std::function<void()>;
 
   class MicrotaskQueue {
@@ -129,8 +129,8 @@ namespace typecode_async {
   };
 }
 
-inline void typecode_pump_microtasks() {
-  typecode_async::pumpMicrotasks();
+inline void typehal_pump_microtasks() {
+  typehal_async::pumpMicrotasks();
 }
 `;
 }

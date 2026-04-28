@@ -119,9 +119,9 @@ describe("Expression Transpilation", () => {
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
       expect(hasInclude(result.cpp, "stdlib.h")).toBe(true);
       expect(result.cpp).toContain("char msg[");
-      expect(result.cpp).toContain("char __typecode_float_");
-      expect(result.cpp).toContain("dtostrf(temp, 0, 1, __typecode_float_");
-      expect(result.cpp).toContain('snprintf(msg, sizeof(msg), "Temp is %sC", __typecode_float_');
+      expect(result.cpp).toContain("char __typehal_float_");
+      expect(result.cpp).toContain("dtostrf(temp, 0, 1, __typehal_float_");
+      expect(result.cpp).toContain('snprintf(msg, sizeof(msg), "Temp is %sC", __typehal_float_');
       expect(result.cpp).not.toContain("String(temp)");
     });
 
@@ -176,9 +176,9 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).not.toContain("char msg[");
     });
 
-    it("uses snprintf for template literal with typecode-call expression (D3.read())", () => {
+    it("uses snprintf for template literal with typehal-call expression (D3.read())", () => {
       const result = transpile([
-        "import { D3, UART0 } from '@typecode/board-arduino-uno';",
+        "import { D3, UART0 } from '@typehal/board-arduino-uno';",
         "function test(): void {",
         "  const uart = UART0.begin(9600);",
         "  uart.println(`d3: ${D3.read()}`);",

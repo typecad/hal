@@ -25,7 +25,7 @@ export function generateSerialInitCode(): string[] {
     `while (!Serial) {`,
     `  delay(10);`,
     `}`,
-    `Serial.println("🔧 TypeCode Debug Mode Active");`,
+    `Serial.println("🔧 TypeHAL Debug Mode Active");`,
     `Serial.println("");`,
     `// === END DEBUG INIT ===`,
     ``,

@@ -6,7 +6,7 @@ import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
 import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from "./platform/arduino-compile";
-import { loadTypecodeConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
+import { loadTypehalConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
 import { runWatch, discoverWatchDirs } from "./watch";
@@ -23,12 +23,12 @@ async function main(): Promise<void> {
       return;
     }
 
-    // Handle init command — delegate to @typecode/create if available
+    // Handle init command — delegate to @typehal/create if available
     if (options.command === "init") {
       const initOptions = options as import("./types").InitCommandOptions;
 
       try {
-        // Build the argument list for @typecode/create
+        // Build the argument list for @typehal/create
         const createArgs: string[] = ["node", "create"];
         if (initOptions.projectName) createArgs.push(initOptions.projectName);
         if (initOptions.board) { createArgs.push("--board", initOptions.board); }
@@ -38,14 +38,14 @@ async function main(): Promise<void> {
         if (initOptions.outDir) { createArgs.push("--outDir", initOptions.outDir); }
 
         try {
-          const create = await import("@typecode/create");
+          const create = await import("@typehal/create");
           await create.runCreate(createArgs);
         } catch (importError: any) {
           if (importError.code === 'MODULE_NOT_FOUND') {
             throw new Error(
-              "The '@typecode/create' package is required for 'typecode init'.\n" +
-              "Install it with: npm install -g @typecode/create\n" +
-              "Or use: npx @typecode/create",
+              "The '@typehal/create' package is required for 'typehal init'.\n" +
+              "Install it with: npm install -g @typehal/create\n" +
+              "Or use: npx @typehal/create",
             );
           }
           throw importError;
@@ -166,16 +166,16 @@ async function main(): Promise<void> {
 
     // ── Handle build command — entry point comes from config ──────────
     if (options.command === "build") {
-      const buildConfig = loadTypecodeConfig(process.cwd());
+      const buildConfig = loadTypehalConfig(process.cwd());
       if (!buildConfig) {
         throw new Error(
-          "No typecode.config.ts found in current directory.\n" +
-          "Run 'typecode init' to create one, or use: typecode <input.ts> [options]",
+          "No typehal.config.ts found in current directory.\n" +
+          "Run 'typehal init' to create one, or use: typehal <input.ts> [options]",
         );
       }
       if (!buildConfig.entry) {
         throw new Error(
-          "typecode.config.ts has no 'entry' field.\n" +
+          "typehal.config.ts has no 'entry' field.\n" +
           "Add: entry: './src/sketch.ts'",
         );
       }
@@ -191,7 +191,7 @@ async function main(): Promise<void> {
 
     if (!options.inputFile) {
       if (options.expect) {
-        const config = loadTypecodeConfig(process.cwd());
+        const config = loadTypehalConfig(process.cwd());
         const exitCode = runExpectTests({
           port: options.port,
           fqbn: config?.fqbn,
@@ -261,9 +261,9 @@ async function main(): Promise<void> {
       return;
     }
 
-    // ── Load typecode.config.ts (config wins over CLI flags) ──────────
+    // ── Load typehal.config.ts (config wins over CLI flags) ──────────
     const inputDir = path.dirname(path.resolve(options.inputFile));
-    const config = loadTypecodeConfig(inputDir);
+    const config = loadTypehalConfig(inputDir);
 
     let effectivePlatformContext = options.platformContext;
     let effectiveTarget = options.target;
@@ -282,8 +282,8 @@ async function main(): Promise<void> {
         }
       }
 
-      // Keep typecode-env.d.ts in sync so the TS language server can resolve
-      // bare '@typecode' imports in editor without a linter error.
+      // Keep typehal-env.d.ts in sync so the TS language server can resolve
+      // bare '@typehal' imports in editor without a linter error.
       generateVirtualTypeDeclaration(config);
 
       // Config is the source of truth — override CLI-provided values.
@@ -397,7 +397,7 @@ async function main(): Promise<void> {
 
           const timestamp = new Date().toLocaleTimeString();
           const relativePath = path.relative(process.cwd(), changedFile);
-          console.log(chalk.cyan(`⤳ typeCode`) + chalk.gray(` v0.1.0`));
+          console.log(chalk.cyan(`⤳ typeHAL`) + chalk.gray(` v0.1.0`));
           console.log();
           ui.printInfo(`[${timestamp}] Change detected: ${relativePath}`);
           console.log();
@@ -508,7 +508,7 @@ async function main(): Promise<void> {
     // --compile
     const fqbn = effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn;
     if (!fqbn) {
-      throw new Error("--compile requires --fqbn <package:arch:board> or a typecode.config.ts with fqbn.");
+      throw new Error("--compile requires --fqbn <package:arch:board> or a typehal.config.ts with fqbn.");
     }
 
     ui.printCompiling(fqbn);

@@ -49,7 +49,7 @@ interface PinStateChange {
 ### Example: Button Press
 
 ```typescript
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 
 const board = createSimBoard({ boardType: 'arduino-uno' });
 const button = board.digital(2);

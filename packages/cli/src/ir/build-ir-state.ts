@@ -2,7 +2,7 @@ import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR } from "./mo
 
 // Module-level map of top-level class names to their IR for static method return type lookup.
 export const topLevelClasses = new Map<string, ClassIR>();
-import type { TypecodeReceiverKind } from "./typecode-symbols";
+import type { TypehalReceiverKind } from "./typehal-symbols";
 
 // Track variables that are pointers (from 'new' expressions)
 // Maps variable name → class name (e.g., "b" → "Builder")
@@ -51,7 +51,7 @@ export const activePinAliases = new Map<string, string>();
 
 // Module-level bus alias map for the current buildProgramIR invocation.
 // Maps alias variable names (e.g., "i2c") to their original peripheral receiver info.
-export const activeBusAliases = new Map<string, { receiver: string; kind: TypecodeReceiverKind }>();
+export const activeBusAliases = new Map<string, { receiver: string; kind: TypehalReceiverKind }>();
 
 // Module-level C-array variable tracker for the current buildProgramIR invocation.
 // Tracks variable names initialized with new Uint8Array([...]) (or similar typed array

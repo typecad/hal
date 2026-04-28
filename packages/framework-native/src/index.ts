@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
-// @typecode/framework-native — Native C++ framework package
+// @typehal/framework-native — Native C++ framework package
 //
 // Outputs standard C++ for portable Windows/Linux desktop executables.
 // Uses main(), std::cout, std::string, and std::thread-based async.
 //
 // Usage:
-//   In typecode.config.ts:
-//     framework: '@typecode/framework-native'
+//   In typehal.config.ts:
+//     framework: '@typehal/framework-native'
 // ---------------------------------------------------------------------------
 
 export { NativeStrategy, NativeStrategy as FrameworkStrategy } from './strategy';

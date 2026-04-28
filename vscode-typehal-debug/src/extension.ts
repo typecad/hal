@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// vscode-typecode-debug — VSCode Extension
+// vscode-typehal-debug — VSCode Extension
 //
 // Tracks breakpoints in TypeScript files and syncs them to
-// .typecode/breakpoints.json for the TypeCode debug preprocessor.
+// .typehal/breakpoints.json for the TypeHAL debug preprocessor.
 // Also auto-generates .d.ts declaration files from C++ sources.
 // ---------------------------------------------------------------------------
 
@@ -32,36 +32,36 @@ interface BreakpointMap {
 // Constants
 // ---------------------------------------------------------------------------
 
-const BREAKPOINTS_FILE = '.typecode/breakpoints.json';
+const BREAKPOINTS_FILE = '.typehal/breakpoints.json';
 
 // ---------------------------------------------------------------------------
 // Extension Activation
 // ---------------------------------------------------------------------------
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('TypeCode Debug extension activated');
+  console.log('TypeHAL Debug extension activated');
 
   // Track breakpoints
   const breakpointTracker = new BreakpointTracker();
 
   // Register commands
   const toggleCmd = vscode.commands.registerCommand(
-    'typecode-debug.toggleBreakpoint',
+    'typehal-debug.toggleBreakpoint',
     () => breakpointTracker.toggleBreakpoint()
   );
 
   const clearAllCmd = vscode.commands.registerCommand(
-    'typecode-debug.clearAllBreakpoints',
+    'typehal-debug.clearAllBreakpoints',
     () => breakpointTracker.clearAllBreakpoints()
   );
 
   const debugCmd = vscode.commands.registerCommand(
-    'typecode-debug.debugWithBreakpoints',
+    'typehal-debug.debugWithBreakpoints',
     () => breakpointTracker.debugWithBreakpoints()
   );
 
   const syncCmd = vscode.commands.registerCommand(
-    'typecode-debug.syncBreakpoints',
+    'typehal-debug.syncBreakpoints',
     () => breakpointTracker.syncFromVSCode()
   );
 
@@ -77,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register declaration generation command
   const genDeclCmd = vscode.commands.registerCommand(
-    'typecode-debug.generateDeclaration',
+    'typehal-debug.generateDeclaration',
     () => declGenerator.generateForCurrentFile()
   );
 
@@ -112,7 +112,7 @@ class BreakpointTracker implements vscode.Disposable {
 
     // Listen for VSCode breakpoint changes
     vscode.debug.onDidChangeBreakpoints(() => {
-      console.log('TypeCode: Breakpoint change detected');
+      console.log('TypeHAL: Breakpoint change detected');
       this.syncFromVSCode();
     });
     
@@ -141,10 +141,10 @@ class BreakpointTracker implements vscode.Disposable {
     const fileBreakpoints = this.breakpoints.get(fileName)!;
     if (fileBreakpoints.has(line)) {
       fileBreakpoints.delete(line);
-      vscode.window.showInformationMessage(`TypeCode: Breakpoint removed at line ${line}`);
+      vscode.window.showInformationMessage(`TypeHAL: Breakpoint removed at line ${line}`);
     } else {
       fileBreakpoints.set(line, { file: fileName, line });
-      vscode.window.showInformationMessage(`TypeCode: Breakpoint added at line ${line}`);
+      vscode.window.showInformationMessage(`TypeHAL: Breakpoint added at line ${line}`);
     }
 
     this.saveToFile();
@@ -158,7 +158,7 @@ class BreakpointTracker implements vscode.Disposable {
     this.breakpoints.clear();
     this.saveToFile();
 
-    vscode.window.showInformationMessage('TypeCode: All breakpoints cleared');
+    vscode.window.showInformationMessage('TypeHAL: All breakpoints cleared');
     this._onDidChange.fire();
   }
 
@@ -168,17 +168,17 @@ class BreakpointTracker implements vscode.Disposable {
   async debugWithBreakpoints(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      vscode.window.showErrorMessage('TypeCode: No active editor');
+      vscode.window.showErrorMessage('TypeHAL: No active editor');
       return;
     }
 
     // Save breakpoints first
     this.saveToFile();
 
-    // Run the typecode build with debug flag
-    const terminal = vscode.window.createTerminal('TypeCode Debug');
+    // Run the typehal build with debug flag
+    const terminal = vscode.window.createTerminal('TypeHAL Debug');
     terminal.show();
-    terminal.sendText('npx typecode build --debug');
+    terminal.sendText('npx typehal build --debug');
   }
 
   /**
@@ -196,7 +196,7 @@ class BreakpointTracker implements vscode.Disposable {
   syncFromVSCode(): void {
     const vscodeBreakpoints = vscode.debug.breakpoints;
     
-    console.log(`TypeCode: Syncing ${vscodeBreakpoints.length} breakpoints from VS Code`);
+    console.log(`TypeHAL: Syncing ${vscodeBreakpoints.length} breakpoints from VS Code`);
 
     // Clear existing breakpoints - we'll rebuild from VS Code state
     this.breakpoints.clear();
@@ -225,12 +225,12 @@ class BreakpointTracker implements vscode.Disposable {
 
     this.saveToFile();
     
-    vscode.window.setStatusBarMessage(`TypeCode: Synced ${count} breakpoints`, 3000);
-    console.log(`TypeCode: Synced ${count} breakpoints to file`);
+    vscode.window.setStatusBarMessage(`TypeHAL: Synced ${count} breakpoints`, 3000);
+    console.log(`TypeHAL: Synced ${count} breakpoints to file`);
   }
 
   /**
-   * Load breakpoints from .typecode/breakpoints.json
+   * Load breakpoints from .typehal/breakpoints.json
    */
   private loadFromFile(): void {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -257,19 +257,19 @@ class BreakpointTracker implements vscode.Disposable {
   }
 
   /**
-   * Save breakpoints to .typecode/breakpoints.json
+   * Save breakpoints to .typehal/breakpoints.json
    */
   private saveToFile(): void {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
-      console.log('TypeCode: No workspace folder, skipping save');
+      console.log('TypeHAL: No workspace folder, skipping save');
       return;
     }
 
-    const dirPath = path.join(workspaceFolders[0].uri.fsPath, '.typecode');
+    const dirPath = path.join(workspaceFolders[0].uri.fsPath, '.typehal');
     const filePath = path.join(dirPath, 'breakpoints.json');
 
-    console.log('TypeCode: Saving breakpoints to', filePath);
+    console.log('TypeHAL: Saving breakpoints to', filePath);
 
     // Ensure directory exists
     try {
@@ -277,8 +277,8 @@ class BreakpointTracker implements vscode.Disposable {
         fs.mkdirSync(dirPath, { recursive: true });
       }
     } catch (mkdirErr) {
-      console.error('TypeCode: Failed to create directory:', mkdirErr);
-      vscode.window.showErrorMessage(`TypeCode: Failed to create .typecode directory: ${mkdirErr}`);
+      console.error('TypeHAL: Failed to create directory:', mkdirErr);
+      vscode.window.showErrorMessage(`TypeHAL: Failed to create .typehal directory: ${mkdirErr}`);
       return;
     }
 
@@ -298,10 +298,10 @@ class BreakpointTracker implements vscode.Disposable {
 
     try {
       fs.writeFileSync(filePath, JSON.stringify(map, null, 2));
-      console.log(`TypeCode: Saved ${map.breakpoints.length} breakpoints to ${filePath}`);
+      console.log(`TypeHAL: Saved ${map.breakpoints.length} breakpoints to ${filePath}`);
     } catch (err) {
-      console.error('TypeCode: Failed to save breakpoints:', err);
-      vscode.window.showErrorMessage(`TypeCode: Failed to save breakpoints: ${err}`);
+      console.error('TypeHAL: Failed to save breakpoints:', err);
+      vscode.window.showErrorMessage(`TypeHAL: Failed to save breakpoints: ${err}`);
     }
   }
 
@@ -328,7 +328,7 @@ class DeclarationGenerator implements vscode.Disposable {
     const result = await this.generateDeclaration(cppPath, declPath);
     if (result) {
       vscode.window.showInformationMessage(
-        `TypeCode: Generated ${path.basename(declPath)} from ${path.basename(cppPath)}. Review and adjust types if needed.`
+        `TypeHAL: Generated ${path.basename(declPath)} from ${path.basename(cppPath)}. Review and adjust types if needed.`
       );
     }
   }
@@ -339,14 +339,14 @@ class DeclarationGenerator implements vscode.Disposable {
   async generateForCurrentFile(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      vscode.window.showErrorMessage('TypeCode: No active editor');
+      vscode.window.showErrorMessage('TypeHAL: No active editor');
       return;
     }
 
     const filePath = editor.document.uri.fsPath;
     
     if (!filePath.endsWith('.cpp')) {
-      vscode.window.showErrorMessage('TypeCode: Active file must be a .cpp file');
+      vscode.window.showErrorMessage('TypeHAL: Active file must be a .cpp file');
       return;
     }
 
@@ -355,24 +355,24 @@ class DeclarationGenerator implements vscode.Disposable {
     
     if (result) {
       vscode.window.showInformationMessage(
-        `TypeCode: Generated ${path.basename(declPath)}`
+        `TypeHAL: Generated ${path.basename(declPath)}`
       );
       // Open the generated file for review
       const doc = await vscode.workspace.openTextDocument(result);
       await vscode.window.showTextDocument(doc);
     } else {
       vscode.window.showWarningMessage(
-        'TypeCode: No classes or constants found in C++ file'
+        'TypeHAL: No classes or constants found in C++ file'
       );
     }
   }
 
   /**
-   * Generate a .d.ts file from a C++ file using the typecode CLI.
+   * Generate a .d.ts file from a C++ file using the typehal CLI.
    */
   private async generateDeclaration(cppPath: string, declPath: string): Promise<string | null> {
     return new Promise((resolve) => {
-      // Use tsx to run the CLI directly for development, fallback to npx typecode
+      // Use tsx to run the CLI directly for development, fallback to npx typehal
       const workspaceFolders = vscode.workspace.workspaceFolders;
       const localCliPath = workspaceFolders 
         ? path.join(workspaceFolders[0].uri.fsPath, 'packages/cli/src/cli.ts')
@@ -380,12 +380,12 @@ class DeclarationGenerator implements vscode.Disposable {
       
       const cmd = localCliPath && fs.existsSync(localCliPath)
         ? `npx tsx "${localCliPath}" gen-decls "${cppPath}"`
-        : `npx typecode gen-decls "${cppPath}"`;
+        : `npx typehal gen-decls "${cppPath}"`;
       
       exec(cmd, { cwd: workspaceFolders?.[0]?.uri.fsPath }, (error, stdout, stderr) => {
         if (error) {
-          console.error('TypeCode: Failed to generate declaration:', error);
-          vscode.window.showErrorMessage(`TypeCode: Failed to generate declaration: ${error.message}`);
+          console.error('TypeHAL: Failed to generate declaration:', error);
+          vscode.window.showErrorMessage(`TypeHAL: Failed to generate declaration: ${error.message}`);
           resolve(null);
           return;
         }

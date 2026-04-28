@@ -1,6 +1,6 @@
 # Arduino CLI Integration
 
-TypeCode integrates with the official Arduino CLI for compilation and upload.
+TypeHAL integrates with the official Arduino CLI for compilation and upload.
 
 ## Installation
 
@@ -222,12 +222,12 @@ directories:
 | `ARDUINO_SKETCHBOOK_DIR` | Sketchbook directory |
 | `ARDUINO_BUILD_CACHE_COMPILATIONS_BEFORE_PURGE` | Build cache size |
 
-## TypeCode Integration
+## TypeHAL Integration
 
-TypeCode uses Arduino CLI automatically when you use `--compile`:
+TypeHAL uses Arduino CLI automatically when you use `--compile`:
 
 ```bash
-npx typecode sketch.ts --compile --fqbn arduino:avr:uno
+npx typehal sketch.ts --compile --fqbn arduino:avr:uno
 ```
 
 ### Custom Arduino CLI Path
@@ -236,7 +236,7 @@ npx typecode sketch.ts --compile --fqbn arduino:avr:uno
 # Set path in environment
 export ARDUINO_CLI_PATH=/path/to/arduino-cli
 
-# Or in typecode.config.ts
+# Or in typehal.config.ts
 const config = {
   toolchain: {
     name: 'arduino-cli',

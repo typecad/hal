@@ -16,7 +16,7 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {
-      "typecode/platform": ["../cli/dist/platform/index"]
+      "typehal/platform": ["../cli/dist/platform/index"]
     }
   },
   "include": ["src/**/*.ts"],

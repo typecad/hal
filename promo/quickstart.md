@@ -11,7 +11,7 @@ Get from zero to blinking LED — with TypeScript, type safety, and a single upl
 No global install needed. Scaffold a new project with `npx`:
 
 ```bash
-npx @typecode/create my-project --board arduino-uno
+npx @typehal/create my-project --board arduino-uno
 cd my-project
 npm install
 ```
@@ -20,27 +20,27 @@ This creates:
 
 ```
 my-project/
-  typecode.config.ts   ← board + output settings
+  typehal.config.ts   ← board + output settings
   tsconfig.json        ← TypeScript project config
-  typecode-env.d.ts    ← auto-generated: @typecode type definitions
+  typehal-env.d.ts    ← auto-generated: @typehal type definitions
   src/
     sketch.ts          ← your entry point
 ```
 
-> **Other boards:** `--board esp32-devkit` or run `npx @typecode/create` with no flags for an interactive wizard.
+> **Other boards:** `--board esp32-devkit` or run `npx @typehal/create` with no flags for an interactive wizard.
 
 ---
 
 ## 2. Configure
 
-`typecode.config.ts` is pre-populated for your board. For Arduino Uno it looks like:
+`typehal.config.ts` is pre-populated for your board. For Arduino Uno it looks like:
 
 ```typescript
-import type { TypecodeConfig } from '@typecode/core';
+import type { TypehalConfig } from '@typehal/core';
 
-const config: TypecodeConfig = {
+const config: TypehalConfig = {
   target: 'avr',
-  board:  '@typecode/board-arduino-uno',
+  board:  '@typehal/board-arduino-uno',
   fqbn:   'arduino:avr:uno',
   output: {
     framework: 'arduino',
@@ -61,7 +61,7 @@ You don't need to touch this for a basic sketch.
 Replace the contents of `src/sketch.ts` with the blink demo:
 
 ```typescript
-import { LED, delay } from '@typecode';
+import { LED, delay } from '@typehal';
 
 async function blink() {
   const led = LED.asOutput();
@@ -79,7 +79,7 @@ blink();
 
 | Line | Meaning |
 |---|---|
-| `import { LED, delay } from '@typecode'` | Import board-specific pin and delay helpers |
+| `import { LED, delay } from '@typehal'` | Import board-specific pin and delay helpers |
 | `LED.asOutput()` | Configure pin 13 as OUTPUT; returns a type-narrowed handle |
 | `led.toggle()` | Emit `digitalWrite(13, !digitalRead(13))` |
 | `await delay(1000)` | `await` is stripped at transpile — emits `delay(1000)` |
@@ -103,7 +103,7 @@ void loop() {
 ## 4. Transpile
 
 ```bash
-npx typecode build
+npx typehal build
 ```
 
 Output goes to `./out/sketch/sketch.ino`. Open it to inspect the generated code.
@@ -115,13 +115,13 @@ Output goes to `./out/sketch/sketch.ino`. Open it to inspect the generated code.
 Connect your Arduino Uno and find the port (`COM4` on Windows, `/dev/ttyUSB0` on Linux/macOS):
 
 ```bash
-npx typecode build --compile --upload --port COM4
+npx typehal build --compile --upload --port COM4
 ```
 
 To also open a serial monitor after upload:
 
 ```bash
-npx typecode build --compile --upload --monitor --port COM4
+npx typehal build --compile --upload --monitor --port COM4
 ```
 
 The LED on pin 13 will start blinking at 1-second intervals.
@@ -133,7 +133,7 @@ The LED on pin 13 will start blinking at 1-second intervals.
 Edit `src/sketch.ts` to trigger a type error:
 
 ```typescript
-import { D4, delay } from '@typecode';
+import { D4, delay } from '@typehal';
 
 // D4 does not support PWM on Arduino Uno
 D4.pwm(50); // ← red squiggle in VS Code
@@ -154,7 +154,7 @@ Undo the change and swap in `D9` — a real PWM pin — to see it compile cleanl
 ### GPIO pins
 
 ```typescript
-import { D2, D9, A0, LED } from '@typecode';
+import { D2, D9, A0, LED } from '@typehal';
 
 // Output
 LED.asOutput();          // configure as output
@@ -183,7 +183,7 @@ D2.onFalling(() => { });
 ### Timing
 
 ```typescript
-import { delay, millis, micros } from '@typecode';
+import { delay, millis, micros } from '@typehal';
 
 delay(1000);             // block for 1000 ms
 const t = millis();      // ms since boot (unsigned long)
@@ -193,7 +193,7 @@ const u = micros();      // µs since boot (unsigned long)
 ### I2C
 
 ```typescript
-import { I2C0 } from '@typecode';
+import { I2C0 } from '@typehal';
 
 const bus = I2C0.begin();           // initialize as master (default 100 kHz)
 I2C0.begin(400000);                 // fast mode
@@ -216,7 +216,7 @@ if (owned) {
 ### SPI
 
 ```typescript
-import { SPI0 } from '@typecode';
+import { SPI0 } from '@typehal';
 
 SPI0.begin();
 SPI0.beginTransaction({ frequency: 4000000, mode: 0, bitOrder: 'msb' });
@@ -227,7 +227,7 @@ SPI0.endTransaction();
 ### UART / Serial
 
 ```typescript
-import { UART0 } from '@typecode';
+import { UART0 } from '@typehal';
 
 const serial = UART0.begin(9600);
 
@@ -243,8 +243,8 @@ serial.flush();                    // wait for TX buffer to drain
 ### Pin type guards
 
 ```typescript
-import { isPWMPin, isAnalogPin, isInterruptPin, assertPWM } from '@typecode/core';
-import type { PWMPin, AnalogPin, InterruptPin } from '@typecode/core';
+import { isPWMPin, isAnalogPin, isInterruptPin, assertPWM } from '@typehal/core';
+import type { PWMPin, AnalogPin, InterruptPin } from '@typehal/core';
 
 isPWMPin(pin)        // narrows to PWMPin
 isAnalogPin(pin)     // narrows to AnalogPin
@@ -256,8 +256,8 @@ assertPWM(pin, 'message')  // throws diagnostic if not PWM
 ### Hardware expect (testing)
 
 ```typescript
-import { describe, done } from '@typecode/expect';
-import { A0 } from '@typecode';
+import { describe, done } from '@typehal/expect';
+import { A0 } from '@typehal';
 
 describe("ADC")
   .it("reads in valid range")
@@ -266,12 +266,12 @@ describe("ADC")
 done();
 ```
 
-Run: `npx typecode-test --port COM4 tests/sketch.test.ts`
+Run: `npx typehal-test --port COM4 tests/sketch.test.ts`
 
 ### Simulator
 
 ```typescript
-import { createSimBoard } from '@typecode/simulator';
+import { createSimBoard } from '@typehal/simulator';
 
 const board = createSimBoard();
 board.i2c.addDevice(0x76, { readByte: (reg) => 0x60 });
@@ -283,28 +283,28 @@ board.i2c.addDevice(0x76, { readByte: (reg) => 0x60 });
 
 ```bash
 # Scaffold a new project
-npx @typecode/create [project-name] --board arduino-uno
+npx @typehal/create [project-name] --board arduino-uno
 
 # Build (transpile only)
-npx typecode build
+npx typehal build
 
 # Build + compile
-npx typecode build --compile
+npx typehal build --compile
 
 # Build + compile + upload
-npx typecode build --compile --upload --port COM4
+npx typehal build --compile --upload --port COM4
 
 # Build + compile + upload + serial monitor
-npx typecode build --compile --upload --monitor --port COM4
+npx typehal build --compile --upload --monitor --port COM4
 
 # Single file (no config)
-npx typecode src/sketch.ts --compile --upload --port COM4
+npx typehal src/sketch.ts --compile --upload --port COM4
 
 # Map a compiler error back to TypeScript
-npx typecode map-error out/sketch/sketch.ino.tscppmap.json --line 42 --col 5
+npx typehal map-error out/sketch/sketch.ino.thcppmap.json --line 42 --col 5
 
 # Scaffold a new board package
-npx typecode create-board my-board
+npx typehal create-board my-board
 ```
 
 ---
@@ -313,16 +313,16 @@ npx typecode create-board my-board
 
 ```
 my-project/
-  typecode.config.ts     ← board, target, output settings
+  typehal.config.ts     ← board, target, output settings
   tsconfig.json          ← TypeScript project config
-  typecode-env.d.ts      ← auto-generated @typecode type definitions
+  typehal-env.d.ts      ← auto-generated @typehal type definitions
   package.json
   src/
     sketch.ts            ← your firmware entry point
   out/
     sketch/
       sketch.ino         ← generated Arduino sketch
-      sketch.ino.tscppmap.json  ← source map
+      sketch.ino.thcppmap.json  ← source map
 ```
 
 ---

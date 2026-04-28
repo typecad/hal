@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecode/board-arduino-uno — Board namespace
+// @typehal/board-arduino-uno — Board namespace
 //
 // Single-import entry point that exposes every board feature under one
 // namespace.  User code can simply write:
@@ -19,8 +19,8 @@ import type {
   IUninitializedI2CBus,
   IUninitializedSPIBus,
   IUninitializedUARTBus,
-} from '@typecode/core';
-import type { BoardDefinition } from '@typecode/hal';
+} from '@typehal/core';
+import type { BoardDefinition } from '@typehal/hal';
 
 import {
   D0, D1, D2, D3, D4, D5, D6, D7,

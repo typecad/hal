@@ -7,7 +7,7 @@
 import type { ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
-import type { TypecodeReceiverKind } from "../ir/typecode-symbols";
+import type { TypehalReceiverKind } from "../ir/typehal-symbols";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
@@ -188,8 +188,8 @@ export class ExpressionRenderer {
       case "property-access":
         rendered = this.renderPropertyAccess(expr, exprTransformer);
         break;
-      case "typecode-call":
-        rendered = this.renderTypecodeCall(expr, exprTransformer);
+      case "typehal-call":
+        rendered = this.renderTypehalCall(expr, exprTransformer);
         break;
       case "callback":
         rendered = this.renderCallback(expr);
@@ -278,7 +278,7 @@ export class ExpressionRenderer {
     if (this.strategy.useSnprintfForStrings()) {
       const argInfo = this.inferFormatSpecifier(expr.expression, exprTransformer);
       if (argInfo) {
-        const bufferName = `__typecode_str_${++this._snprintfTempCounter}`;
+        const bufferName = `__typehal_str_${++this._snprintfTempCounter}`;
         const estimatedLength = Math.max(argInfo.estimatedLength + 1, 16);
         this._preludeLines.push(
           `char ${bufferName}[${estimatedLength}];`,
@@ -323,7 +323,7 @@ export class ExpressionRenderer {
       return undefined;
     }
 
-    const bufferName = `__typecode_str_${++this._snprintfTempCounter}`;
+    const bufferName = `__typehal_str_${++this._snprintfTempCounter}`;
     estimatedLength = Math.max(estimatedLength, 16);
     this._preludeLines.push(
       `char ${bufferName}[${estimatedLength}];`,
@@ -375,7 +375,7 @@ export class ExpressionRenderer {
       case "binary":
       case "unary":
       case "ternary":
-      case "typecode-call":
+      case "typehal-call":
         return { format: "%d", arg: this.render(expr, exprTransformer), estimatedLength: 12 };
       default:
         return undefined;
@@ -471,9 +471,9 @@ export class ExpressionRenderer {
     return this.fixPointerAccess(rendered);
   }
 
-  private renderTypecodeCall(expr: Extract<ExpressionIR, { kind: "typecode-call" }>, exprTransformer?: (expr: string) => string): string {
+  private renderTypehalCall(expr: Extract<ExpressionIR, { kind: "typehal-call" }>, exprTransformer?: (expr: string) => string): string {
     const renderA = (e: ExpressionIR) => this.render(e, exprTransformer);
-    const translated = this.strategy.tryRenderTypecodeCall(
+    const translated = this.strategy.tryRenderTypehalCall(
       expr.receiver, 
       expr.receiverKind, 
       expr.method, 
