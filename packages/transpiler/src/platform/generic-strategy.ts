@@ -7,7 +7,8 @@ import type { ExpressionIR, ProgramIR } from "../ir/model";
 import type { Diagnostic, PlatformContext } from "../types";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { TypehalReceiverKind } from "../ir/typehal-symbols";
-import type { RuntimePolyfillIR } from "@typehal/core/shared";
+import type { RuntimePolyfillIR, StdLibSupport } from "@typehal/core/shared";
+import { DEFAULT_STDLIB_SUPPORT } from "@typehal/core/shared";
 import { buildAsyncRuntimePolyfill } from "./async-runtime";
 
 export class GenericStrategy implements PlatformStrategy {
@@ -54,11 +55,10 @@ export class GenericStrategy implements PlatformStrategy {
   }
   defaultNumericType(): string { return "int"; }
   mapReturnType(_functionName: string, returnType: string): string {
-    if (_functionName === "setup" || _functionName === "loop") return "void";
     return this.normalizeCppType(returnType);
   }
   mapFunctionName(originalName: string): string {
-    if (originalName === "__typehal_entrypoint__") return "setup";
+    if (originalName === "__typehal_entrypoint__") return "main";
     return originalName;
   }
 
@@ -178,7 +178,7 @@ export class GenericStrategy implements PlatformStrategy {
 
   generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
     const helpers: RuntimePolyfillIR[] = [];
-    const asyncRuntime = buildAsyncRuntimePolyfill(program, ctx, "generic");
+    const asyncRuntime = buildAsyncRuntimePolyfill(program, ctx, "generic", this.asyncQueueCapacity());
     if (asyncRuntime) helpers.push(asyncRuntime);
     return helpers;
   }
@@ -198,5 +198,78 @@ export class GenericStrategy implements PlatformStrategy {
 
   emitDiagnostics(_emitMode: string): Diagnostic[] { return []; }
 
-  currentTimeMillis(): string { return 'millis()'; }
+  currentTimeMillis(): string {
+    return 'std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()';
+  }
+
+  // ── Build configuration ─────────────────────────────────────────────────
+
+  asyncQueueCapacity(): number { return 256; }
+  outputSubdirectory(_baseName: string): string { return ".build"; }
+  generateHeaderFile(): boolean { return true; }
+  enumApiGuard(_enumName: string): { open: string; close: string } | undefined { return undefined; }
+  getStdLibSupport(_architecture?: string): StdLibSupport { return DEFAULT_STDLIB_SUPPORT; }
+
+  // ── Debug code generation ─────────────────────────────────────────────────
+
+  generateDebugInitCode(): string[] {
+    return [
+      '// === DEBUG: Initialize ===',
+      'std::cout << "TypeHAL Debug Mode Active" << std::endl;',
+      '// === END DEBUG INIT ===',
+      '',
+    ];
+  }
+
+  generateDebugBreakpointCode(params: {
+    fileName: string; lineNum: number; originalLine: string;
+    variables: Array<{ name: string; isFunction?: boolean }>;
+    normalizedCondition?: string;
+  }): string[] {
+    const lines: string[] = [];
+    lines.push(`  // === BREAKPOINT: ${params.fileName}:${params.lineNum} ===`);
+    if (params.normalizedCondition) {
+      lines.push(`  if (${params.normalizedCondition}) {`);
+    }
+    lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;`);
+    lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "BREAKPOINT: ${params.fileName}:${params.lineNum}" << std::endl;`);
+    lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "  ${params.originalLine.replace(/"/g, '\\"')}" << std::endl;`);
+    if (params.variables.length > 0) {
+      lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "  Variables:" << std::endl;`);
+      for (const v of params.variables) {
+        if (v.isFunction) {
+          lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "  ${v.name} = [function]" << std::endl;`);
+        } else {
+          lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "  ${v.name} = " << ${v.name} << std::endl;`);
+        }
+      }
+    }
+    lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;`);
+    if (params.normalizedCondition) {
+      lines.push(`  }`);
+    }
+    lines.push(`  // === END BREAKPOINT ===`);
+    return lines;
+  }
+
+  generateDebugLogpointCode(params: {
+    fileName: string; lineNum: number;
+    parts: Array<{ type: 'text' | 'variable'; value: string }>;
+    variables: Array<{ name: string; isFunction?: boolean }>;
+  }): string[] {
+    const lines: string[] = [];
+    lines.push(`  // === LOGPOINT: ${params.fileName}:${params.lineNum} ===`);
+    const parts: string[] = [`"[LOG ${params.fileName}:${params.lineNum}] "`];
+    for (const part of params.parts) {
+      if (part.type === 'text') {
+        parts.push(`"${part.value.replace(/"/g, '\\"')}"`);
+      } else {
+        const varExists = params.variables.some(v => v.name === part.value && !v.isFunction);
+        parts.push(varExists ? part.value : `"${part.value}"`);
+      }
+    }
+    lines.push(`  std::cout << ${parts.join(' << ')} << std::endl;`);
+    lines.push(`  // === END LOGPOINT ===`);
+    return lines;
+  }
 }

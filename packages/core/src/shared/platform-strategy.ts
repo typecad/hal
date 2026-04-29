@@ -15,7 +15,7 @@ import type { ExpressionIR, ProgramIR } from './ir';
 import type { Diagnostic, PlatformContext } from './types';
 import type { BoardConstants } from './board-resolver';
 import type { TypehalReceiverKind } from './typehal-symbols';
-import type { RuntimePolyfillIR } from './polyfill-types';
+import type { RuntimePolyfillIR, StdLibSupport } from './polyfill-types';
 
 // ---------------------------------------------------------------------------
 // Sub-interface 1 — Profile, file shape & includes
@@ -330,11 +330,60 @@ export interface PlatformSafetyStrategy {
 }
 
 // ---------------------------------------------------------------------------
-// Composed interface — backward-compatible aggregate of all six sub-interfaces
+// Sub-interface 7 — Build configuration
+// ---------------------------------------------------------------------------
+
+export interface PlatformBuildStrategy {
+  /** Queue capacity for the async microtask ring buffer. */
+  asyncQueueCapacity(): number;
+
+  /** Output subdirectory relative to base dir. */
+  outputSubdirectory(baseName: string): string;
+
+  /** Whether to generate a separate header file. */
+  generateHeaderFile(): boolean;
+
+  /**
+   * Preprocessor guard for API-reserved enums.
+   * Return undefined for no guard.
+   */
+  enumApiGuard(enumName: string): { open: string; close: string } | undefined;
+
+  /** Standard library support for the given architecture. */
+  getStdLibSupport(architecture?: string): StdLibSupport;
+}
+
+// ---------------------------------------------------------------------------
+// Composed interface — backward-compatible aggregate of all sub-interfaces
 // ---------------------------------------------------------------------------
 
 /**
- * Full platform strategy composed from six focused sub-interfaces.
+ * Debug code generation sub-interface.
+ * Frameworks implement these to provide platform-specific debug output
+ * (e.g., Serial.println for Arduino, std::cout for generic targets).
+ */
+export interface PlatformDebugStrategy {
+  /** Generate initialization code for the debug subsystem. */
+  generateDebugInitCode?(): string[];
+  /** Generate code for a breakpoint with optional condition and variable dump. */
+  generateDebugBreakpointCode?(params: {
+    fileName: string;
+    lineNum: number;
+    originalLine: string;
+    variables: Array<{ name: string; isFunction?: boolean }>;
+    normalizedCondition?: string;
+  }): string[];
+  /** Generate code for a logpoint with interpolated message parts. */
+  generateDebugLogpointCode?(params: {
+    fileName: string;
+    lineNum: number;
+    parts: Array<{ type: 'text' | 'variable'; value: string }>;
+    variables: Array<{ name: string; isFunction?: boolean }>;
+  }): string[];
+}
+
+/**
+ * Full platform strategy composed from focused sub-interfaces.
  *
  * Existing implementations that implement PlatformStrategy automatically
  * satisfy every sub-interface.  New code that only needs a subset can accept
@@ -346,7 +395,9 @@ export interface PlatformStrategy
     PlatformTypeStrategy,
     PlatformExpressionStrategy,
     PlatformStatementStrategy,
-    PlatformSafetyStrategy {
+    PlatformSafetyStrategy,
+    PlatformBuildStrategy,
+    PlatformDebugStrategy {
   /** Unique identifier for this strategy (e.g. "arduino", "generic"). */
   readonly id: string;
 }

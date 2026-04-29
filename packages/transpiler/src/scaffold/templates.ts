@@ -3,9 +3,11 @@
 // ---------------------------------------------------------------------------
 
 import type { ArchitectureIdentifier } from '@typehal/core';
-import { ARDUINO_CORE_VERSION } from '@typehal/schema';
 import { toPascalCase } from '../utils/strings';
 import { generatePinFactoryStubs, BASIC_PIN_FACTORY_VARIANTS } from './pin-factory-templates';
+
+/** Arduino core API version used in scaffolded board definitions. */
+const ARDUINO_CORE_VERSION = '10819';
 
 export interface BoardTemplateOptions {
   name: string;              // e.g., 'my-custom-board'
@@ -205,7 +207,7 @@ export const ${className}: BoardDefinition = {
 
   // ----- Build config ------------------------------------------------------
   build: {
-    arduino: '${fqbn}',
+    frameworks: { arduino: '${fqbn}' },
     extraFlags: [],
     defines: {
       F_CPU: '${clockSpeed}UL',

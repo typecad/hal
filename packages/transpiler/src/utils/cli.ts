@@ -270,7 +270,10 @@ function parsePipelineCommand(
       ? effectiveTargetFlag
       : "generic";
 
-  const platformContext: PlatformContext = { arduino: { fqbn } };
+  const platformContext: PlatformContext = {
+    architecture: fqbn?.split(":")?.[1]?.toLowerCase(),
+    frameworkData: { fqbn },
+  };
 
   if (upload && !compile) {
     throw new Error("--upload requires --compile.");
@@ -411,7 +414,10 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
     const target: TargetProfile = targetFlag === "arduino" || targetFlag === "generic" ? targetFlag : "generic";
     const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
-    const platformContext: PlatformContext = { arduino: { fqbn } };
+    const platformContext: PlatformContext = {
+    architecture: fqbn?.split(":")?.[1]?.toLowerCase(),
+    frameworkData: { fqbn },
+  };
 
     if (command === "map-error") {
       const mapFile = argv[3];

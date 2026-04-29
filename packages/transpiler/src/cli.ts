@@ -6,6 +6,7 @@ import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain";
+import { resolveStrategy } from "./platform/registry";
 import { loadTypehalConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
@@ -289,7 +290,8 @@ async function main(): Promise<void> {
       // Config is the source of truth — override CLI-provided values.
       if (config.fqbn) {
         effectivePlatformContext = {
-          arduino: { fqbn: config.fqbn },
+          architecture: config.fqbn?.split(":")?.[1]?.toLowerCase(),
+          frameworkData: { fqbn: config.fqbn },
         };
       }
       if (config.target) {
@@ -480,11 +482,12 @@ async function main(): Promise<void> {
     if (options.noTranspile) {
       const inputBasename = path.basename(options.inputFile!, path.extname(options.inputFile!));
       const outDirPath = effectiveOutDir || inputDir;
+      const noTranspileStrategy = resolveStrategy(effectiveTarget);
       result = {
         sourcePath: path.join(outDirPath, `${inputBasename}.cpp`),
-        headerPath: effectiveTarget === "arduino" ? undefined : path.join(outDirPath, `${inputBasename}.h`),
+        headerPath: noTranspileStrategy.generateHeaderFile() ? path.join(outDirPath, `${inputBasename}.h`) : undefined,
         sourceMapPath: path.join(outDirPath, `${inputBasename}.cpp.map`),
-        headerMapPath: effectiveTarget === "arduino" ? undefined : path.join(outDirPath, `${inputBasename}.h.map`),
+        headerMapPath: noTranspileStrategy.generateHeaderFile() ? path.join(outDirPath, `${inputBasename}.h.map`) : undefined,
         diagnostics: [],
       };
     } else {

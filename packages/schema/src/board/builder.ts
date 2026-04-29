@@ -1,11 +1,8 @@
 // ---------------------------------------------------------------------------
 // Board builder utilities
 //
-// Constants and helpers used by board definition packages.
+// Helpers used by board definition packages.
 // ---------------------------------------------------------------------------
-
-/** Arduino core version string used by board definitions. */
-export const ARDUINO_CORE_VERSION = '10819';
 
 /**
  * A branded type representing a physical pin number on the MCU package.

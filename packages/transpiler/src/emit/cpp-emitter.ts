@@ -67,18 +67,17 @@ const FILE_EXTENSION_PATTERN = /\.[^.]+$/;
 let _emitBoardConstants: BoardConstants | undefined;
 
 // Library class name mapping (simple name -> fully qualified name with namespace)
-// Loaded dynamically from the framework package.
-let _arduinoClassNameMap: Map<string, string> | undefined;
+// Loaded dynamically from the framework registry.
+let _classNameMap: Map<string, string> | undefined;
 
 function loadClassNameMap(imports: any[]): Map<string, string> | undefined {
   try {
     const framework = getLoadedFramework();
-    const mod = require("@typehal/framework-arduino");
-    if (mod?.buildArduinoClassNameMap) {
-      return mod.buildArduinoClassNameMap(imports);
+    if (framework.classNameMapBuilder) {
+      return framework.classNameMapBuilder.buildClassNameMap(imports);
     }
   } catch {
-    // Framework not installed — no class name mapping available.
+    // No loaded framework — no class name mapping available.
   }
   return undefined;
 }
@@ -208,8 +207,8 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
     }
     case "raw": {
       // Apply transformation to raw expressions (for fixing pointer field access)
-      // Use module-level _arduinoClassNameMap if no classNameMap provided
-      const effectiveClassNameMap = classNameMap ?? _arduinoClassNameMap;
+      // Use module-level _classNameMap if no classNameMap provided
+      const effectiveClassNameMap = classNameMap ?? _classNameMap;
       let rawValue = exprTransformer ? exprTransformer(expr.value) : expr.value;
       let result = normalizeRawExpression(rawValue, strategy, effectiveClassNameMap);
       // Replace .size() with sizeof() for C-array variables
@@ -552,8 +551,8 @@ function transformConsoleCall(
 ): string {
   const method = getConsoleMethod(callee);
 
-  // For Arduino, check if any argument is a string_concat that should use snprintf
-  if (strategy.id === "arduino" && args.length > 0) {
+  // Check if any argument is a string_concat that should use snprintf
+  if (strategy.useSnprintfForStrings() && args.length > 0) {
     const firstArg = args[0];
     if (firstArg.kind === "string_concat" && scopeState) {
       const snprintfRender = buildSnprintfRenderResult(
@@ -760,7 +759,7 @@ function renderStatement(
   const declaredType = normalizeCppTypeForTarget(statement.cppType, strategy);
   const volatilePrefix = statement.isVolatile ? "volatile " : "";
   // Transform type name for Arduino library classes (add namespace prefix)
-  const transformedType = transformTypeName(statement.cppType, _arduinoClassNameMap);
+  const transformedType = transformTypeName(statement.cppType, _classNameMap);
   const ownershipKind = (statement as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
   const isConstDecl = statement.storage === "const" || ownershipKind === 'ref';
   const isRefDecl = (ownershipKind === 'ref' || ownershipKind === 'mut_ref')
@@ -879,10 +878,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   ensureDir(options.outDir);
 
   // Build class name mapping for Arduino library imports (for namespace resolution)
-  _arduinoClassNameMap = loadClassNameMap(program.imports);
+  _classNameMap = loadClassNameMap(program.imports);
 
   // Perform single-pass program analysis to replace multiple traversals
   const programAnalysis = analyzeProgram(program);
+
+  // Make analysis available to strategy methods via PlatformContext
+  if (options.platformContext) {
+    options.platformContext.analysis = programAnalysis;
+  }
 
   // For npm package files, use the moduleKey as the base name
   // For entry files, use the original filename
@@ -1189,7 +1193,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const statementRenderer = new StatementRenderer({
         strategy,
         boardConstants: _emitBoardConstants,
-        arduinoClassNameMap: _arduinoClassNameMap,
+        arduinoClassNameMap: _classNameMap,
         enumNames: _emitEnumNames,
         largeEnumNames: _largeEnumNames,
         knownFunctionReturnTypes,
@@ -1818,7 +1822,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   for (const fn of mappedFunctions) {
     allExecutableStatements.push(...fn.statements);
   }
-  const globalPointerVarTypes = collectPointerVarTypes(allExecutableStatements, _arduinoClassNameMap);
+  const globalPointerVarTypes = collectPointerVarTypes(allExecutableStatements, _classNameMap);
 
 
   // Collect callback functions from call arguments (e.g., attachInterrupt handlers)
@@ -2173,16 +2177,15 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       enumDef.members.some(m => m.value !== undefined && (m.value > 32767 || m.value < -32768));
     const underlyingType = needsLongUnderlying ? " : long" : "";
     // Guard enum classes that conflict with target API typedef declarations.
-    const needsApiGuard = apiReservedEnums.has(enumDef.name);
-    if (needsApiGuard) {
-      appendLine(`#if !defined(ARDUINO_API_VERSION)`);
+    const guard = apiReservedEnums.has(enumDef.name) ? strategy.enumApiGuard(enumDef.name) : undefined;
+    if (guard) {
+      appendLine(guard.open);
     }
     appendLine(`${enumKeyword} ${enumDef.name}${underlyingType} {`);
     for (let i = 0; i < enumDef.members.length; i++) {
       const member = enumDef.members[i];
       const valueSuffix = member.value !== undefined ? ` = ${member.value}` : "";
       const commaSuffix = i < enumDef.members.length - 1 ? "," : "";
-      // Prefix reserved names with underscore for Arduino compatibility
       // Prefix reserved names for platform compatibility
       const memberName = reservedNames.has(member.name)
         ? `_${member.name}`
@@ -2190,8 +2193,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendLine(`  ${memberName}${valueSuffix}${commaSuffix}`);
     }
     appendLine("};");
-    if (needsApiGuard) {
-      appendLine(`#endif // !defined(ARDUINO_API_VERSION)`);
+    if (guard) {
+      appendLine(guard.close);
     }
     emitCommentLines(enumDef.trailingComments, "", (line) => appendLine(line));
     appendLine("");

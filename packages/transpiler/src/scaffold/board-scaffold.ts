@@ -19,12 +19,15 @@ import {
   generateStrategyTs,
   generateBoardTs,
 } from "./templates";
-import { type BoardDefinition, ARDUINO_CORE_VERSION, type PinDefinition } from '@typehal/schema';
+import { type BoardDefinition, type PinDefinition } from '@typehal/schema';
 import { WizardResult, PeripheralConfig } from "./wizard";
 import { normalizeKebabName } from "../utils/strings";
 import { toPascalCase } from "../utils/strings";
 import { ARCH_DEFAULTS } from "./architecture-defaults";
 import { generatePinFactoryStubs, ALL_PIN_FACTORY_VARIANTS } from "./pin-factory-templates";
+
+/** Arduino core API version used in scaffolded board definitions. */
+const ARDUINO_CORE_VERSION = '10819';
 
 // Re-export for external use
 export { BoardTemplateOptions } from "./templates";

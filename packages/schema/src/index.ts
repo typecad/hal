@@ -9,6 +9,5 @@ export type {
 } from './board/types';
 
 export {
-  ARDUINO_CORE_VERSION,
   pinNumber,
 } from './board/builder';

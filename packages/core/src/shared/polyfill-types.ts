@@ -23,7 +23,7 @@ export interface RuntimePolyfillIR {
   asyncTaskVars?: string[];
   /**
    * True when the Promise/MicrotaskQueue runtime was emitted (requires <functional>/<vector>).
-   * False for architectures like AVR that lack the C++ standard library.
+   * False for architectures that lack the C++ standard library.
    * When false, the emitter must NOT emit typehal_pump_microtasks() calls.
    */
   hasPromiseRuntime?: boolean;
@@ -39,6 +39,16 @@ export interface StdLibSupport {
   recommendedArrayImpl: "std_vector" | "static_array";
   recommendedStringImpl: "std_string" | "static_string";
 }
+
+export const DEFAULT_STDLIB_SUPPORT: StdLibSupport = {
+  hasVector: true,
+  hasString: true,
+  hasIostream: true,
+  hasExceptions: true,
+  hasRTTI: true,
+  recommendedArrayImpl: "std_vector",
+  recommendedStringImpl: "std_string",
+};
 
 const STDLIB_SUPPORT: Record<string, StdLibSupport> = {
   avr: {
@@ -95,18 +105,10 @@ const STDLIB_SUPPORT: Record<string, StdLibSupport> = {
     recommendedArrayImpl: "static_array",
     recommendedStringImpl: "static_string",
   },
-  default: {
-    hasVector: true,
-    hasString: true,
-    hasIostream: true,
-    hasExceptions: true,
-    hasRTTI: true,
-    recommendedArrayImpl: "std_vector",
-    recommendedStringImpl: "std_string",
-  },
+  default: DEFAULT_STDLIB_SUPPORT,
 };
 
 export function getStdLibSupport(architecture?: string): StdLibSupport {
-  if (!architecture) return STDLIB_SUPPORT.default;
-  return STDLIB_SUPPORT[architecture.toLowerCase()] ?? STDLIB_SUPPORT.default;
+  if (!architecture) return DEFAULT_STDLIB_SUPPORT;
+  return STDLIB_SUPPORT[architecture.toLowerCase()] ?? DEFAULT_STDLIB_SUPPORT;
 }

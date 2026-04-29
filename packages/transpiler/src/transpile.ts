@@ -138,11 +138,16 @@ import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
 
 function tryGenerateLibDecl(modulePath: string, file: string): string | undefined {
   try {
-    const mod = require("@typehal/framework-arduino");
-    return mod.tryGenerateArduinoLibDecl?.(modulePath, file);
+    if (hasLoadedFramework()) {
+      const { libDeclGenerator } = getLoadedFramework();
+      if (libDeclGenerator) {
+        return libDeclGenerator.tryGenerateLibDecl(modulePath, file);
+      }
+    }
   } catch {
-    return undefined;
+    // No loaded framework.
   }
+  return undefined;
 }
 import { initProfiler, getProfiler } from "./profiler";
 import {
@@ -560,9 +565,12 @@ function applyTreeShaking(
 
   // Detect entry points
   profiler.startTimer("tree-shake:entry-points");
+  const treeShakeStrategy = resolveStrategy(target);
   const entryPoints = detectEntryPoints(programIR, target, {
     customEntryPoints: treeShakingOptions?.entryPoints ?? [],
-  });
+  }, treeShakeStrategy.requiresLoopFunction()
+    ? [treeShakeStrategy.entrypointFunctionName(), "loop"]
+    : [treeShakeStrategy.entrypointFunctionName()]);
   profiler.endTimer("tree-shake:entry-points");
 
   // Analyze reachability
@@ -596,6 +604,7 @@ function applyTreeShaking(
 }
 
 import type { PlatformStrategy } from "./platform/platform-strategy";
+import { resolveStrategy } from "./platform/registry";
 import { loadFrameworkPackage } from "./framework-package";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry";
 
@@ -662,7 +671,8 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const sourceDir = entryDir;
   const sketchBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");
   const outBaseDir = options.outDir ?? sourceDir;
-  const outDir = path.join(outBaseDir, options.target === "arduino" ? sketchBaseName : ".build");
+  const strategy = resolveStrategy(options.target);
+  const outDir = path.join(outBaseDir, strategy.outputSubdirectory(sketchBaseName));
 
   // Always start fresh: delete cache and output directory
   cleanOutput(entryDir, outDir);

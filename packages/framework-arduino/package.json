@@ -24,7 +24,9 @@
     "test:hw:single": "npm exec -- typehal-test"
   },
   "dependencies": {
-    "@typehal/core": "*",
+    "@typehal/core": "*"
+  },
+  "devDependencies": {
     "@typehal/expect": "*",
     "@typehal/board-esp32-devkit": "*"
   },

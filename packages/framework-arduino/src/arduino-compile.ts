@@ -8,9 +8,68 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import type { ArduinoCompileResult, ArduinoUploadResult, CompileError } from "@typehal/core/shared";
+import type { CompileError, CompileResult, UploadResult } from "@typehal/core/shared";
 import { parseCompileErrors, collectCppFiles } from "@typehal/core/shared";
-export type { ArduinoCompileResult, ArduinoUploadResult } from "@typehal/core/shared";
+
+export type ArduinoCompileResult = CompileResult;
+export type ArduinoUploadResult = UploadResult;
+
+const ARDUINO_ERROR = /^(.*?):(\d+):\d+:\s*(error|warning|note):\s*(.*)$/i;
+
+/**
+ * Parse compile errors with Arduino format support.
+ */
+function parseArduinoCompileErrors(output: string, sketchDir?: string): CompileError[] {
+  const errors: CompileError[] = [];
+
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    let match = line.match(ARDUINO_ERROR);
+
+    if (!match) {
+      continue;
+    }
+
+    const severityRaw = match[3].toLowerCase();
+    const severity: "error" | "warning" | "note" =
+      severityRaw.includes("error") ? "error" : severityRaw === "warning" ? "warning" : "note";
+
+    let filePath = match[1];
+
+    if (sketchDir) {
+      if (!path.isAbsolute(filePath)) {
+        const resolved = path.resolve(sketchDir, filePath);
+        if (fs.existsSync(resolved)) {
+          filePath = resolved;
+        }
+      }
+      if (filePath.includes(path.basename(sketchDir))) {
+        filePath = path.resolve(sketchDir, path.basename(sketchDir) + ".ino");
+      }
+    }
+
+    errors.push({
+      filePath: path.resolve(filePath),
+      line: parseInt(match[2], 10),
+      column: 1,
+      severity,
+      message: match[4],
+    });
+  }
+
+  return errors;
+}
+
+/**
+ * Extract architecture from FQBN string.
+ * FQBN format: vendor:arch:board[:config]
+ */
+export function toArchitectureFromFqbn(fqbn?: string): string | undefined {
+  if (!fqbn) return undefined;
+  return fqbn.split(":")[1];
+}
 
 export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath: string): void {
   const normalizedSketchPath = path.resolve(sketchPath);
@@ -173,7 +232,9 @@ export function compileArduinoSketch(sketchFilePath: string, fqbn: string): Ardu
   });
 
   const output = `${cmd.stdout ?? ""}\n${cmd.stderr ?? ""}`.trim();
-  const errors = parseCompileErrors(output, sketchDir);
+  const gccErrors = parseCompileErrors(output, sketchDir);
+  const arduinoErrors = parseArduinoCompileErrors(output, sketchDir);
+  const errors = gccErrors.length > 0 ? gccErrors : arduinoErrors;
 
   return {
     success: cmd.status === 0,

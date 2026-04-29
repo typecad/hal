@@ -12,7 +12,7 @@ import type { ArchitectureIdentifier } from './board/types';
 // ---------------------------------------------------------------------------
 
 /** Build-system / framework the transpiler should target. */
-type OutputFramework = 'arduino' | 'platformio' | 'esp-idf' | 'bare-metal';
+type OutputFramework = 'arduino' | 'platformio' | 'esp-idf' | 'bare-metal' | (string & {});
 
 /** Optimization strategy. */
 type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
@@ -74,10 +74,10 @@ export interface TypehalConfig {
   /**
    * Framework package for code generation strategy.
    * Can be:
-   *   - '@typehal/framework-arduino' - Arduino framework (digitalWrite, etc.)
-   *   - '@typehal/framework-avr' - Native AVR registers (PORTB, etc.)
+   *   - '@typehal/framework-arduino' - Arduino framework
+   *   - '@typehal/framework-avr' - Native AVR registers
    *   - a relative path to a custom framework package
-   * Defaults to '@typehal/framework-arduino' if not specified.
+   * Must be specified explicitly; no default.
    */
   framework?: string;
 
@@ -85,8 +85,9 @@ export interface TypehalConfig {
   output?: TypehalOutputConfig;
 
   /**
-   * Fully-Qualified Board Name used by the Arduino CLI (e.g.
-   * `arduino:avr:uno`).  Overrides whatever the board package declares.
+   * Framework-specific board identifier.
+   * For Arduino CLI: FQBN (e.g., `arduino:avr:uno`).
+   * Other frameworks may use different identifier schemes.
    */
   fqbn?: string;
 
@@ -104,13 +105,12 @@ export interface TypehalConfig {
 
   /**
    * Toolchain configuration for compile/upload operations.
-   * Uses arduino-cli as the backend.
    */
   toolchain?: TypehalToolchainConfig;
 
   /**
-   * Console polyfill configuration for Arduino.
-   * Controls Serial.begin() injection and default baud rate.
+   * Console output configuration for the target framework.
+   * Controls serial output initialization and default baud rate.
    */
   console?: TypehalConsoleConfig;
 
@@ -127,35 +127,23 @@ export interface TypehalConfig {
 // ---------------------------------------------------------------------------
 
 /** Supported toolchain types for compile/upload operations. */
-type ToolchainType = 'arduino-cli';
-
-/** Arduino CLI specific configuration options. */
-interface ArduinoCliOptions {
-  /** Path to arduino-cli executable. Auto-detected if not specified. */
-  path?: string;
-  /** Path to custom arduino-cli.yaml config file. */
-  configFile?: string;
-  /** Enable verbose output during compile/upload. */
-  verbose?: boolean;
-}
+type ToolchainType = string;
 
 /**
  * Toolchain configuration for compile and upload operations.
- * Uses arduino-cli as the backend.
  */
 interface TypehalToolchainConfig {
-  /** Toolchain type: 'arduino-cli'. Default: 'arduino-cli' */
+  /** Toolchain type identifier. Each framework defines its own valid values. */
   type?: ToolchainType;
-  /** Arduino CLI specific options. */
-  arduinoCli?: ArduinoCliOptions;
+  /** Framework-specific toolchain options. Each framework reads its own key. */
+  frameworkOptions?: Record<string, unknown>;
 }
 
 /**
- * Console polyfill configuration for Arduino.
- * Controls Serial.begin() injection and default baud rate.
+ * Console output configuration for the target framework.
  */
 interface TypehalConsoleConfig {
-  /** Default baud rate for Serial.begin() when auto-injected. Default: 9600 */
+  /** Default baud rate for console output when auto-injected. Default: 9600 */
   baudRate?: number;
 }
 

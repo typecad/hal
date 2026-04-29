@@ -3,7 +3,9 @@
 // ---------------------------------------------------------------------------
 
 import type { BoardDefinition } from '@typehal/schema';
-import { ARDUINO_CORE_VERSION } from '@typehal/schema';
+
+/** Arduino core API version for this board's build defines. */
+const ARDUINO_CORE_VERSION = '10819';
 
 // ---------------------------------------------------------------------------
 // Default capability flags for ESP32
@@ -305,8 +307,10 @@ export const ESP32DevKit: BoardDefinition = {
 
   // ----- Build config ------------------------------------------------------
   build: {
-    platformio: 'esp32dev',
-    arduino: 'esp32:esp32:esp32',
+    frameworks: {
+      platformio: 'esp32dev',
+      arduino: 'esp32:esp32:esp32',
+    },
     extraFlags: [],
     defines: {
       F_CPU:            '240000000UL',

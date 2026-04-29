@@ -25,6 +25,36 @@ export interface LoadedFramework {
   /** Optional toolchain for compile/upload/monitor (framework-specific) */
   toolchain?: FrameworkToolchain;
 
+  /** Framework library import resolution (e.g., Arduino library detection) */
+  libraryResolver?: FrameworkLibraryResolver;
+
+  /** Framework class name mapping for library imports */
+  classNameMapBuilder?: FrameworkClassNameMapBuilder;
+
+  /** Framework library .d.ts declaration generation */
+  libDeclGenerator?: FrameworkLibDeclGenerator;
+}
+
+/**
+ * Resolves framework-specific library imports (e.g., Arduino libraries).
+ */
+export interface FrameworkLibraryResolver {
+  isFrameworkLibraryImport(moduleSpecifier: string): boolean;
+  getFrameworkLibraryHeaderName(moduleSpecifier: string): string | undefined;
+}
+
+/**
+ * Builds a mapping from short class names to fully qualified C++ names.
+ */
+export interface FrameworkClassNameMapBuilder {
+  buildClassNameMap(imports: any[]): Map<string, string>;
+}
+
+/**
+ * Generates .d.ts declarations from framework library headers.
+ */
+export interface FrameworkLibDeclGenerator {
+  tryGenerateLibDecl(modulePath: string, file: string): string | undefined;
 }
 
 /**

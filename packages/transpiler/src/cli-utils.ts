@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import chalk from "chalk";
 import { mapCppLocationToTs, readSourceMap, resolveSourceMapForSketch } from "./mapping/source-map";
-import type { CompileResult as ArduinoCompileResult, Diagnostic } from "@typehal/core/shared";
+import type { CompileResult, Diagnostic } from "@typehal/core/shared";
 
 function resolveExpectCliPath(): string {
   try {
@@ -87,7 +87,7 @@ export function printDiagnostics(diagnostics: Array<Diagnostic | { severity: str
 }
 
 export function printMappedCompileErrors(
-  compileResult: ArduinoCompileResult,
+  compileResult: CompileResult,
   originalSourceMapPath?: string,
   sketchPath?: string,
 ): void {

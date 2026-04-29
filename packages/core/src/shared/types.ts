@@ -50,5 +50,9 @@ export interface PlatformContext {
   console?: {
     baudRate?: number;
   };
+  /** Target architecture identifier (e.g., 'avr', 'esp32'). Populated from board config. */
+  architecture?: string;
+  /** Framework-specific data. Each framework reads its own key. */
+  frameworkData?: Record<string, unknown>;
   [key: string]: unknown;
 }

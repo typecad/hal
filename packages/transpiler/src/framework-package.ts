@@ -4,10 +4,8 @@ import type { LoadedFramework, FrameworkToolchain } from "./framework-registry";
 import { registerPlatformStrategy } from "./platform/registry";
 import { registerSymbolKinds } from "@typehal/core/shared";
 
-const DEFAULT_FRAMEWORK_PACKAGE = "@typehal/framework-arduino";
-
 function resolveFrameworkPackage(
-  packageName = DEFAULT_FRAMEWORK_PACKAGE,
+  packageName: string,
   fromDir = process.cwd(),
 ): string | undefined {
   try {
@@ -19,32 +17,13 @@ function resolveFrameworkPackage(
 }
 
 /**
- * Extract toolchain operations from a loaded framework module, if present.
- * Supports both new-style `Toolchain` object exports and legacy
- * Arduino-specific named function exports.
+ * Extract toolchain operations from a loaded framework module.
+ * Frameworks export a `Toolchain` object implementing FrameworkToolchain.
  */
 function extractToolchain(mod: any): FrameworkToolchain | undefined {
-  // New style: framework exports a Toolchain object
   if (mod.Toolchain && typeof mod.Toolchain === "object") {
     return mod.Toolchain as FrameworkToolchain;
   }
-
-  // Legacy style: Arduino-specific named exports
-  if (typeof mod.compileArduinoSketch === "function") {
-    return {
-      prepare: typeof mod.flattenGeneratedModulesIntoSketch === "function"
-        ? (outputDir: string, entryPoint: string) => mod.flattenGeneratedModulesIntoSketch(outputDir, entryPoint)
-        : undefined,
-      compile: (options: any) => mod.compileArduinoSketch(options.sourcePath, options.fqbn),
-      upload: typeof mod.uploadArduinoSketch === "function"
-        ? (options: any) => mod.uploadArduinoSketch(options.outputDir, options.fqbn, options.port)
-        : undefined,
-      monitor: typeof mod.monitorArduinoSketch === "function"
-        ? (options: any) => mod.monitorArduinoSketch(options.port, options.baud)
-        : undefined,
-    };
-  }
-
   return undefined;
 }
 
@@ -52,12 +31,13 @@ function extractToolchain(mod: any): FrameworkToolchain | undefined {
  * Load a framework package and populate the LoadedFramework registry.
  *
  * The loaded module is expected to export at minimum `FrameworkStrategy`.
- * Optional exports include toolchain and library resolver functions.
+ * Optional exports include `Toolchain`, `SYMBOL_KINDS`, library resolver,
+ * class name map builder, and lib declaration generator.
  *
  * Returns the raw module for backward compatibility.
  */
 export function loadFrameworkPackage(
-  packageName = DEFAULT_FRAMEWORK_PACKAGE,
+  packageName: string,
   fromDir = process.cwd(),
 ): any {
   const packagePath = resolveFrameworkPackage(packageName, fromDir);
@@ -76,6 +56,16 @@ export function loadFrameworkPackage(
     const framework: LoadedFramework = {
       strategy,
       toolchain: extractToolchain(mod),
+      libraryResolver: typeof mod.isFrameworkLibraryImport === "function" ? {
+        isFrameworkLibraryImport: mod.isFrameworkLibraryImport,
+        getFrameworkLibraryHeaderName: mod.getFrameworkLibraryHeaderName,
+      } : undefined,
+      classNameMapBuilder: typeof mod.buildClassNameMap === "function" ? {
+        buildClassNameMap: mod.buildClassNameMap,
+      } : undefined,
+      libDeclGenerator: typeof mod.tryGenerateLibDecl === "function" ? {
+        tryGenerateLibDecl: mod.tryGenerateLibDecl,
+      } : undefined,
     };
     setLoadedFramework(framework);
     registerPlatformStrategy(strategy);

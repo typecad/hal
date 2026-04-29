@@ -5,9 +5,9 @@
 // cpp-emitter.ts, typehal-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, TypehalReceiverKind, RuntimePolyfillIR } from "@typehal/core/shared";
-import { getStdLibSupport } from "@typehal/core/shared";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, TypehalReceiverKind, RuntimePolyfillIR, StdLibSupport } from "@typehal/core/shared";
 import type { StatementIR } from "@typehal/core/shared";
+import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
 import { resolveArduinoProfile } from "./profile";
 import { renderArduinoBuiltin, tryRenderTypehalCallStatement } from "./typehal-map";
 import { renderDACCall } from "./handlers/dac-handler";
@@ -21,7 +21,8 @@ export interface ArduinoPlatformContext {
 }
 
 function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
-  return (ctx as any)?.arduino as ArduinoPlatformContext | undefined;
+  const data = ctx?.frameworkData as { fqbn?: string } | undefined;
+  return data ?? undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,8 +203,8 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     // Add async Promise runtime if program has async functions and stdlib supports it
     const hasAsync = program.functions.some(fn => fn.isAsync);
     if (hasAsync) {
-      const architecture = arduinoCtx(ctx)?.fqbn?.split(":")?.[1]?.toLowerCase();
-      const stdlib = getStdLibSupport(architecture);
+      const architecture = ctx?.architecture ?? arduinoCtx(ctx)?.fqbn?.split(":")?.[1]?.toLowerCase();
+      const stdlib = this.getStdLibSupport(architecture);
       if (stdlib.hasVector && stdlib.hasString) {
         helpers.push({
           kind: "polyfill",
@@ -231,8 +232,15 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   setupInitCode(program: ProgramIR, ctx?: PlatformContext): string[] {
     const baudRate = ctx?.console?.baudRate;
     if (!baudRate) return [];
-    if (!detectConsoleUsage(program)) return [];
-    if (detectSerialBeginCall(program)) return [];
+    const analysis = (ctx as any)?.analysis as { hasConsoleCalls?: boolean; hasSerialBegin?: boolean } | undefined;
+    if (analysis) {
+      if (!analysis.hasConsoleCalls) return [];
+      if (analysis.hasSerialBegin) return [];
+    } else {
+      // Fallback: walk IR if no pre-computed analysis available
+      if (!detectConsoleUsage(program)) return [];
+      if (!detectSerialBeginCall(program)) return [];
+    }
     return [`Serial.begin(${baudRate});`];
   }
 
@@ -574,6 +582,84 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       ['SPI0', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
       ['SPI1', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
     ]);
+  }
+
+  // ── Build configuration ──────────────────────────────────────────────────
+
+  asyncQueueCapacity(): number { return 32; }
+  outputSubdirectory(baseName: string): string { return baseName; }
+  generateHeaderFile(): boolean { return false; }
+  enumApiGuard(_enumName: string): { open: string; close: string } | undefined {
+    return { open: "#if !defined(ARDUINO_API_VERSION)", close: "#endif // !defined(ARDUINO_API_VERSION)" };
+  }
+
+  private static readonly STDLIB_SUPPORT: Record<string, StdLibSupport> = {
+    avr: {
+      hasVector: false, hasString: false, hasIostream: false,
+      hasExceptions: false, hasRTTI: false,
+      recommendedArrayImpl: "static_array", recommendedStringImpl: "static_string",
+    },
+    esp32: {
+      hasVector: true, hasString: true, hasIostream: true,
+      hasExceptions: true, hasRTTI: true,
+      recommendedArrayImpl: "std_vector", recommendedStringImpl: "std_string",
+    },
+    esp8266: {
+      hasVector: true, hasString: true, hasIostream: true,
+      hasExceptions: true, hasRTTI: true,
+      recommendedArrayImpl: "std_vector", recommendedStringImpl: "std_string",
+    },
+    rp2040: {
+      hasVector: true, hasString: true, hasIostream: true,
+      hasExceptions: true, hasRTTI: true,
+      recommendedArrayImpl: "std_vector", recommendedStringImpl: "std_string",
+    },
+    samd: {
+      hasVector: true, hasString: true, hasIostream: true,
+      hasExceptions: true, hasRTTI: true,
+      recommendedArrayImpl: "std_vector", recommendedStringImpl: "std_string",
+    },
+    megaavr: {
+      hasVector: false, hasString: false, hasIostream: false,
+      hasExceptions: false, hasRTTI: false,
+      recommendedArrayImpl: "static_array", recommendedStringImpl: "static_string",
+    },
+  };
+
+  getStdLibSupport(architecture?: string): StdLibSupport {
+    if (!architecture) return ArduinoStrategy.DEFAULT_STDLIB;
+    return ArduinoStrategy.STDLIB_SUPPORT[architecture.toLowerCase()] ?? ArduinoStrategy.DEFAULT_STDLIB;
+  }
+
+  private static readonly DEFAULT_STDLIB: StdLibSupport = {
+    hasVector: true, hasString: true, hasIostream: true,
+    hasExceptions: true, hasRTTI: true,
+    recommendedArrayImpl: "std_vector", recommendedStringImpl: "std_string",
+  };
+
+  // ── Debug code generation ─────────────────────────────────────────────────
+
+  generateDebugInitCode(): string[] {
+    return generateSerialInitCode();
+  }
+
+  generateDebugBreakpointCode(params: {
+    fileName: string; lineNum: number; originalLine: string;
+    variables: Array<{ name: string; isFunction?: boolean }>;
+    normalizedCondition?: string;
+  }): string[] {
+    return generateBreakpointCode(
+      params.fileName, params.lineNum, params.originalLine,
+      params.variables, params.normalizedCondition,
+    );
+  }
+
+  generateDebugLogpointCode(params: {
+    fileName: string; lineNum: number;
+    parts: Array<{ type: 'text' | 'variable'; value: string }>;
+    variables: Array<{ name: string; isFunction?: boolean }>;
+  }): string[] {
+    return generateLogpointCode(params.fileName, params.lineNum, params.parts, params.variables);
   }
 }
 

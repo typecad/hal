@@ -8,7 +8,8 @@ import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext,
 import type { ArduinoPlatformContext } from "./strategy";
 
 function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
-  return (ctx as any)?.arduino as ArduinoPlatformContext | undefined;
+  const data = ctx?.frameworkData as { fqbn?: string } | undefined;
+  return data ?? undefined;
 }
 import type { ArduinoCliMetadata } from "./cli-metadata";
 import { loadArduinoCliMetadata } from "./cli-metadata";

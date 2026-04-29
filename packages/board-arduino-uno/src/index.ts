@@ -3,7 +3,9 @@
 // ---------------------------------------------------------------------------
 
 import type { BoardDefinition } from '@typehal/schema';
-import { ARDUINO_CORE_VERSION } from '@typehal/schema';
+
+/** Arduino core API version for this board's build defines. */
+const ARDUINO_CORE_VERSION = '10819';
 
 // NOTE: Platform strategy is now provided by framework packages:
 //   - @typehal/framework-arduino for Arduino framework (digitalWrite, etc.)
@@ -170,8 +172,10 @@ export const ArduinoUno: BoardDefinition = {
 
   // ----- Build config ------------------------------------------------------
   build: {
-    platformio: 'uno',
-    arduino: 'arduino:avr:uno',
+    frameworks: {
+      platformio: 'uno',
+      arduino: 'arduino:avr:uno',
+    },
     extraFlags: ['-mmcu=atmega328p'],
     defines: {
       F_CPU:           '16000000UL',

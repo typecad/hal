@@ -3,23 +3,24 @@ import path from "node:path";
 import { LibraryDefinition, LibraryDefinitionCondition, PlatformContext, TargetProfile } from "../types";
 import { listFiles, readText } from "../utils/fs";
 import { toModuleKey, toPascalCase } from "../utils/strings";
-import { toArchitectureFromFqbn } from "@typehal/core/shared";
 import { ImportIR } from "../ir/model";
-// Framework library functions loaded dynamically — no hard dependency.
-const _loadLibFns = (() => {
-  try {
-    const mod = require("@typehal/framework-arduino");
-    return {
-      isArduinoLibraryImport: mod.isArduinoLibraryImport as (s: string) => boolean,
-      getArduinoLibraryHeaderName: mod.getArduinoLibraryHeaderName as (s: string) => string | undefined,
-    };
-  } catch {
-    return {
-      isArduinoLibraryImport: (_s: string) => false,
-      getArduinoLibraryHeaderName: (_s: string) => undefined as string | undefined,
-    };
+import { getLoadedFramework, hasLoadedFramework } from "../framework-registry";
+
+function toArchitectureFromFqbn(fqbn?: string): string | undefined {
+  if (!fqbn) return undefined;
+  return fqbn.split(":")[1];
+}
+
+function getLibraryResolver() {
+  if (hasLoadedFramework()) {
+    const { libraryResolver } = getLoadedFramework();
+    if (libraryResolver) return libraryResolver;
   }
-})();
+  return {
+    isFrameworkLibraryImport: (_s: string) => false as boolean,
+    getFrameworkLibraryHeaderName: (_s: string) => undefined as string | undefined,
+  };
+}
 
 interface ResolvedImport {
   include: string;
@@ -43,14 +44,14 @@ export function loadLibraryDefinitions(definitionsDir: string): Map<string, Libr
 }
 
 function fallbackInclude(moduleSpecifier: string): string {
-  // For Arduino library imports, try to get the actual header file name
-  if (_loadLibFns.isArduinoLibraryImport(moduleSpecifier)) {
-    const actualHeader = _loadLibFns.getArduinoLibraryHeaderName(moduleSpecifier);
+  const resolver = getLibraryResolver();
+  if (resolver.isFrameworkLibraryImport(moduleSpecifier)) {
+    const actualHeader = resolver.getFrameworkLibraryHeaderName(moduleSpecifier);
     if (actualHeader) {
       return `<${actualHeader}>`;
     }
   }
-  
+
   // Fallback to PascalCase conversion for other modules
   const key = toModuleKey(moduleSpecifier);
   const include = `${toPascalCase(key)}.h`;
@@ -89,8 +90,10 @@ function resolveLocalModuleHeader(moduleSpecifier: string, importerFilePath: str
 }
 
 function conditionMatches(condition: LibraryDefinitionCondition, target: TargetProfile, context?: PlatformContext): boolean {
-  const arduino = (context as any)?.arduino as { fqbn?: string } | undefined;
-  const architecture = toArchitectureFromFqbn(arduino?.fqbn);
+  const architecture = context?.architecture ?? toArchitectureFromFqbn(
+    (context?.frameworkData as { fqbn?: string } | undefined)?.fqbn
+  );
+  const fqbn = (context?.frameworkData as { fqbn?: string } | undefined)?.fqbn;
 
   if (condition.target && condition.target !== target) {
     return false;
@@ -100,7 +103,7 @@ function conditionMatches(condition: LibraryDefinitionCondition, target: TargetP
     return false;
   }
 
-  if (condition.fqbnIncludes && !(arduino?.fqbn ?? "").toLowerCase().includes(condition.fqbnIncludes.toLowerCase())) {
+  if (condition.fqbnIncludes && !(fqbn ?? "").toLowerCase().includes(condition.fqbnIncludes.toLowerCase())) {
     return false;
   }
 

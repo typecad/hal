@@ -8,8 +8,7 @@ import { getStdLibSupport } from "@typehal/core/shared";
  * Used by both generic and Arduino strategies when async functions are present
  * and the target has C++ stdlib support.
  */
-function generatePromiseRuntime(target: string): string {
-  const queueCapacity = target === "arduino" ? 32 : 256;
+function generatePromiseRuntime(queueCapacity: number): string {
   return `
 // Cooperative microtask queue + minimal Promise runtime
 namespace typehal_async {
@@ -143,11 +142,12 @@ export function buildAsyncRuntimePolyfill(
   program: ProgramIR,
   ctx: PlatformContext | undefined,
   target: string,
+  queueCapacity?: number,
 ): RuntimePolyfillIR | null {
   const hasAsync = program.functions.some(fn => fn.isAsync);
   if (!hasAsync) return null;
 
-  const architecture = (ctx as any)?.arduino?.fqbn?.split(":")?.[1]?.toLowerCase();
+  const architecture = ctx?.architecture;
   const stdlib = getStdLibSupport(architecture);
   if (!stdlib.hasVector || !stdlib.hasString) return null;
 
@@ -157,7 +157,7 @@ export function buildAsyncRuntimePolyfill(
     domain: "standard",
     requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
     forwardDeclarations: [],
-    helperStructs: [generatePromiseRuntime(target)],
+    helperStructs: [generatePromiseRuntime(queueCapacity ?? 256)],
     helperFunctions: [],
     shimMacros: [],
     dependencies: [],

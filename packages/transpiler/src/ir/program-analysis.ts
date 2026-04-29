@@ -22,6 +22,8 @@ export interface ProgramAnalysisResult {
   usesStringConversion: boolean;
   usesDateNow: boolean;
   usesMillis: boolean;
+  /** Whether the program already calls Serial.begin or similar .begin() methods. */
+  hasSerialBegin: boolean;
 }
 
 // Regex for std:: math calls
@@ -142,6 +144,9 @@ function analyzeStatement(
     case "call":
       if (isConsoleCall(statement.callee)) {
         result.hasConsoleCalls = true;
+      }
+      if (statement.callee === "Serial.begin" || statement.callee.endsWith(".begin")) {
+        result.hasSerialBegin = true;
       }
       for (const arg of statement.args) {
         analyzeExpression(arg, result);
@@ -297,6 +302,7 @@ export function analyzeProgram(program: ProgramIR): ProgramAnalysisResult {
     usesStringConversion: false,
     usesDateNow: false,
     usesMillis: false,
+    hasSerialBegin: false,
   };
 
   // Analyze type aliases

@@ -17,7 +17,7 @@ import { transpile } from "./setup";
 // ---------------------------------------------------------------------------
 
 const AVR_CTX = { platformContext: { arduino: { fqbn: "arduino:avr:uno" } } };
-const ESP32_CTX = { platformContext: { arduino: { fqbn: "esp32:esp32:esp32" } } };
+const ESP32_CTX = { platformContext: { architecture: "esp32", frameworkData: { fqbn: "esp32:esp32:esp32" } } };
 
 // ---------------------------------------------------------------------------
 // 1. typehal_halt panic handler

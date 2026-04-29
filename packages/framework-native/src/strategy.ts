@@ -14,7 +14,9 @@ import type {
   BoardConstants,
   TypehalReceiverKind,
   RuntimePolyfillIR,
+  StdLibSupport,
 } from '@typehal/core/shared';
+import { DEFAULT_STDLIB_SUPPORT } from '@typehal/core/shared';
 
 export class NativeStrategy implements PlatformStrategy {
   readonly id = 'native';
@@ -84,13 +86,12 @@ export class NativeStrategy implements PlatformStrategy {
   defaultNumericType(): string { return 'long long'; }
 
   mapReturnType(functionName: string, returnType: string): string {
-    if (functionName === 'setup' || functionName === 'loop') return 'void';
     if (functionName === 'main') return 'int';
     return this.normalizeCppType(returnType);
   }
 
   mapFunctionName(originalName: string): string {
-    if (originalName === '__typehal_entrypoint__') return 'setup';
+    if (originalName === '__typehal_entrypoint__') return 'main';
     return originalName;
   }
 
@@ -298,6 +299,14 @@ export class NativeStrategy implements PlatformStrategy {
   currentTimeMillis(): string {
     return 'millis()';
   }
+
+  // ── Build configuration ──────────────────────────────────────────────────
+
+  asyncQueueCapacity(): number { return 256; }
+  outputSubdirectory(_baseName: string): string { return ".build"; }
+  generateHeaderFile(): boolean { return true; }
+  enumApiGuard(_enumName: string): { open: string; close: string } | undefined { return undefined; }
+  getStdLibSupport(_architecture?: string): StdLibSupport { return DEFAULT_STDLIB_SUPPORT; }
 
   // ── Native polyfills ────────────────────────────────────────────────────
 

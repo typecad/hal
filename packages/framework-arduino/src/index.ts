@@ -14,55 +14,19 @@ export { ArduinoStrategy as FrameworkStrategy } from './strategy';
 // Re-export types that consumers may need
 export type { PlatformStrategy } from '@typehal/core/shared';
 
-// Export utility functions for advanced use cases
-export { renderArduinoBuiltin, tryRenderTypehalCallStatement, extractPropertyChain, renderBoardDefinitionAccess } from './typehal-map';
+// Export the profile resolver for configuration inspection
 export { resolveArduinoProfile } from './profile';
 export type { ResolvedArduinoProfile } from './profile';
+
+// Export CLI metadata loader
 export { loadArduinoCliMetadata } from './cli-metadata';
 export type { ArduinoCliMetadata } from './cli-metadata';
+
+// Deprecated compile result type aliases (use CompileResult/UploadResult from core)
 export type { ArduinoCompileResult, ArduinoUploadResult } from './arduino-compile';
 
-// Arduino library discovery and .d.ts generation
-export {
-  getInstalledLibraries,
-  findArduinoLibrary,
-  findLibraryHeader,
-  findLibrarySources,
-  isArduinoLibraryImport,
-  mapCppTypeToTs,
-  parseParameters,
-  parseCppClass,
-  generateArduinoLibDecl,
-  tryGenerateArduinoLibDecl,
-  getArduinoLibraryHeaderName,
-  getArduinoLibraryClassNames,
-  generateUsageDocumentation,
-  clearLibraryCache,
-} from './arduino-libs';
-export type { ArduinoLibrary, GeneratedArduinoLib } from './arduino-libs';
-
-// Arduino class name mapping for library imports
-export { buildArduinoClassNameMap } from './arduino-class-map';
-export type { ArduinoImportLike } from './arduino-class-map';
-
-// Arduino snprintf rendering for template literal lowering
-export {
-  createEmissionScopeState,
-  cloneEmissionScopeState,
-  createChildEmissionScope,
-  recordVariableType,
-  inferSnprintfArg,
-  buildSnprintfRenderResult,
-  shouldUseSnprintfForArduinoString,
-  statementNeedsSnprintf,
-} from './arduino-snprintf';
-export type {
-  KnownVariableInfo,
-  SnprintfArgRenderResult,
-  SnprintfRenderResult,
-  EmissionScopeState,
-  SnprintfExpressionRenderer,
-} from './arduino-snprintf';
+// FQBN utility
+export { toArchitectureFromFqbn } from './arduino-compile';
 
 // Arduino compile/upload/monitor
 export {
@@ -71,6 +35,15 @@ export {
   uploadArduinoSketch,
   monitorArduinoSketch,
 } from './arduino-compile';
+
+// Toolchain object for the framework registry
+import { flattenGeneratedModulesIntoSketch, compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from './arduino-compile';
+export const Toolchain = {
+  prepare: flattenGeneratedModulesIntoSketch,
+  compile: (options: any) => compileArduinoSketch(options.sourcePath, options.fqbn),
+  upload: (options: any) => uploadArduinoSketch(options.outputDir, options.fqbn, options.port),
+  monitor: (options: any) => monitorArduinoSketch(options.port, options.baud),
+};
 
 // Arduino debug code generation
 export {
@@ -82,3 +55,8 @@ export type { CapturedVariable, LogMessagePart } from './debug-codegen';
 
 // Symbol kind registry for board/framework pins and namespaces
 export { SYMBOL_KINDS } from './symbol-kinds';
+
+// Library discovery — consumed by the transpiler's dynamic module loader
+export { isArduinoLibraryImport as isFrameworkLibraryImport, getArduinoLibraryHeaderName as getFrameworkLibraryHeaderName } from './arduino-libs';
+export { tryGenerateArduinoLibDecl as tryGenerateLibDecl } from './arduino-libs';
+export { buildArduinoClassNameMap as buildClassNameMap } from './arduino-class-map';

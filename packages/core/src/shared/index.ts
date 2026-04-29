@@ -63,8 +63,9 @@ export type { BoardConstants } from './board-resolver';
 // Polyfill types
 export type {
   RuntimePolyfillIR,
+  StdLibSupport,
 } from './polyfill-types';
-export { getStdLibSupport } from './polyfill-types';
+export { getStdLibSupport, DEFAULT_STDLIB_SUPPORT } from './polyfill-types';
 
 // Platform strategy
 export type {
@@ -75,11 +76,13 @@ export type {
   PlatformExpressionStrategy,
   PlatformStatementStrategy,
   PlatformSafetyStrategy,
+  PlatformBuildStrategy,
+  PlatformDebugStrategy,
 } from './platform-strategy';
 
 // Toolchain types
-export type { CompileError, CompileResult, UploadResult, ToolchainOptions, ArduinoCompileResult, ArduinoUploadResult } from './toolchain-types';
-export { parseCompileErrors, collectCppFiles, toArchitectureFromFqbn } from './toolchain-types';
+export type { CompileError, CompileResult, UploadResult, ToolchainOptions } from './toolchain-types';
+export { parseCompileErrors, collectCppFiles } from './toolchain-types';
 
 // Snprintf types
 export type {

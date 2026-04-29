@@ -173,7 +173,7 @@ export interface GeneratedOutputs {
   diagnostics: Diagnostic[];
 }
 
-interface ArduinoCompileError {
+interface CompileErrorEntry {
   filePath: string;
   line: number;
   column: number;
@@ -181,13 +181,13 @@ interface ArduinoCompileError {
   message: string;
 }
 
-export interface ArduinoCompileResult {
+export interface CompileResultType {
   success: boolean;
   output: string;
-  errors: ArduinoCompileError[];
+  errors: CompileErrorEntry[];
 }
 
-export interface ArduinoUploadResult {
+export interface UploadResultType {
   success: boolean;
   output: string;
 }

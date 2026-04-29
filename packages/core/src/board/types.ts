@@ -11,4 +11,5 @@ export type ArchitectureIdentifier =
   | 'rp2040'
   | 'samd'
   | 'stm32'
-  | 'nrf52';
+  | 'nrf52'
+  | (string & {});

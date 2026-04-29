@@ -28,7 +28,8 @@ const DEFAULT_ENTRY_POINT_CONFIG: EntryPointConfig = {
 export function detectEntryPoints(
   program: ProgramIR,
   target: TargetProfile,
-  config: Partial<EntryPointConfig> = {}
+  config: Partial<EntryPointConfig> = {},
+  entryPointNames?: string[],
 ): Set<string> {
   const effectiveConfig = { ...DEFAULT_ENTRY_POINT_CONFIG, ...config };
   const entryPoints = new Set<string>();
@@ -43,10 +44,11 @@ export function detectEntryPoints(
   const definedClasses = new Set(program.classes.map((cls) => cls.name));
 
   // Add target-specific entry points
-  const targetEntryPoints =
+  const targetEntryPoints = entryPointNames ?? (
     target === "arduino"
       ? effectiveConfig.arduinoEntryPoints
-      : effectiveConfig.genericEntryPoints;
+      : effectiveConfig.genericEntryPoints
+  );
 
   for (const entryPoint of targetEntryPoints) {
     if (definedFunctions.has(entryPoint)) {

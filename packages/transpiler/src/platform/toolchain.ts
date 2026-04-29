@@ -10,20 +10,23 @@ import { loadFrameworkPackage } from "../framework-package";
 import type { FrameworkToolchain } from "../framework-registry";
 import type { ToolchainOptions, CompileResult, UploadResult } from "@typehal/core/shared";
 
-function getToolchain(fromDir: string): FrameworkToolchain {
+function getToolchain(fromDir: string, frameworkPackage?: string): FrameworkToolchain {
   if (hasLoadedFramework()) {
     const { toolchain } = getLoadedFramework();
     if (toolchain) return toolchain;
   }
 
-  const mod = loadFrameworkPackage(undefined, fromDir);
-  if (hasLoadedFramework()) {
-    const { toolchain } = getLoadedFramework();
-    if (toolchain) return toolchain;
+  if (frameworkPackage) {
+    loadFrameworkPackage(frameworkPackage, fromDir);
+    if (hasLoadedFramework()) {
+      const { toolchain } = getLoadedFramework();
+      if (toolchain) return toolchain;
+    }
   }
 
   throw new Error(
-    "No framework toolchain available. Ensure a framework package with compile/upload support is installed."
+    "No framework toolchain available. Specify a framework package in your TypeHAL config " +
+    "or ensure a framework with compile/upload support is installed."
   );
 }
 

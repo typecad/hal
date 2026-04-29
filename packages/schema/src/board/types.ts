@@ -187,13 +187,19 @@ interface FeatureFlags {
 // ---------------------------------------------------------------------------
 
 interface BuildConfig {
-  platformio?: string;
-  arduino?: string;
-  espidf?: string;
-  picoSdk?: string;
+  /** Framework-specific build identifiers (e.g., { arduino: 'arduino:avr:uno' }). */
+  frameworks?: Record<string, string>;
   linkerScript?: string;
   extraFlags?: string[];
   defines?: Record<string, string>;
+  /** @deprecated Use frameworks.arduino */
+  arduino?: string;
+  /** @deprecated Use frameworks.platformio */
+  platformio?: string;
+  /** @deprecated Use frameworks.espidf */
+  espidf?: string;
+  /** @deprecated Use frameworks.picoSdk */
+  picoSdk?: string;
 }
 
 // ---------------------------------------------------------------------------

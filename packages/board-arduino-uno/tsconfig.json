@@ -15,9 +15,6 @@
     "outDir": "dist",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "paths": {
-      "typehal/platform": ["../transpiler/dist/platform/index"]
-    }
   },
   "include": ["src/**/*.ts"],
   "references": [
