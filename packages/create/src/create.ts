@@ -74,7 +74,7 @@ function printHelp(): void {
   console.log();
   console.log(`${chalk.cyan("Options:")}`);
   console.log(`  --board, -b <id>       Board (arduino-uno, esp32-devkit). Skips wizard.`);
-  console.log(`  --framework, -f <id>   Framework (arduino, avr).`);
+  console.log(`  --framework, -f <id>   Framework (arduino, avr, or custom).`);
   console.log(`  --baud <rate>          Serial baud rate (default: 9600).`);
   console.log(`  --no-sketch            Skip generating the starter sketch.`);
   console.log(`  --outDir, -o <dir>     Output directory.`);
@@ -115,10 +115,12 @@ export async function runCreate(argv?: string[]): Promise<void> {
         );
       }
 
-      const framework: 'arduino' | 'avr' = options.framework === 'avr' ? 'avr' : 'arduino';
+      const framework: string = options.framework ?? 'arduino';
       const frameworkPackage = framework === 'avr'
         ? '@typehal/framework-avr'
-        : '@typehal/framework-arduino';
+        : framework === 'arduino'
+          ? '@typehal/framework-arduino'
+          : `@typehal/framework-${framework}`;
 
       const projectName = options.projectName || 'my-project';
 

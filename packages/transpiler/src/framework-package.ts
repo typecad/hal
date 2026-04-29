@@ -1,10 +1,12 @@
 import path from "node:path";
-import { setLoadedFramework, clearLoadedFramework } from "./framework-registry";
+import { setLoadedFramework } from "./framework-registry";
 import type { LoadedFramework, FrameworkToolchain } from "./framework-registry";
+import { registerPlatformStrategy } from "./platform/registry";
+import { registerSymbolKinds } from "@typehal/core/shared";
 
-export const DEFAULT_FRAMEWORK_PACKAGE = "@typehal/framework-arduino";
+const DEFAULT_FRAMEWORK_PACKAGE = "@typehal/framework-arduino";
 
-export function resolveFrameworkPackage(
+function resolveFrameworkPackage(
   packageName = DEFAULT_FRAMEWORK_PACKAGE,
   fromDir = process.cwd(),
 ): string | undefined {
@@ -70,40 +72,18 @@ export function loadFrameworkPackage(
 
   // Populate the registry with the loaded framework components
   if (mod.FrameworkStrategy) {
+    const strategy = new mod.FrameworkStrategy();
     const framework: LoadedFramework = {
-      strategy: new mod.FrameworkStrategy(),
+      strategy,
       toolchain: extractToolchain(mod),
     };
     setLoadedFramework(framework);
+    registerPlatformStrategy(strategy);
+    // Register symbol kinds if the framework provides them
+    if (mod.SYMBOL_KINDS) {
+      registerSymbolKinds(mod.SYMBOL_KINDS);
+    }
   }
 
   return mod;
-}
-
-/**
- * Load a framework package optionally — returns undefined if not found.
- */
-export function loadOptionalFrameworkPackage(
-  packageName = DEFAULT_FRAMEWORK_PACKAGE,
-  fromDir = process.cwd(),
-): any | undefined {
-  const packagePath = resolveFrameworkPackage(packageName, fromDir);
-  if (!packagePath) return undefined;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const mod = require(packagePath);
-
-  // Populate the registry with the loaded framework components
-  if (mod.FrameworkStrategy) {
-    const framework: LoadedFramework = {
-      strategy: new mod.FrameworkStrategy(),
-      toolchain: extractToolchain(mod),
-    };
-    setLoadedFramework(framework);
-  }
-
-  return mod;
-}
-
-export function resetFrameworkPackage(): void {
-  clearLoadedFramework();
 }

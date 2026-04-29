@@ -6,7 +6,7 @@
 
 import path from "node:path";
 import fs from "node:fs";
-import type { ResolvedNpmPackage } from "../../transpile";
+import type { ResolvedNpmPackage } from "../../transpile/resolution";
 
 /**
  * Checks if a module specifier resolves to a typehal SDK path.
@@ -77,7 +77,7 @@ export function dedupe<T>(items: T[]): T[] {
 /**
  * Result of resolving a transpiled module include.
  */
-export interface TranspiledIncludeResult {
+interface TranspiledIncludeResult {
   /** The include path (e.g., "\"./pins.h\"") or empty string if not transpiled */
   include: string;
   /** Whether this import was resolved as a transpiled npm package */

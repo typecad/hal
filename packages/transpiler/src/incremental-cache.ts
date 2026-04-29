@@ -45,7 +45,7 @@ function computeToolchainFingerprint(): string {
 /**
  * File entry in the cache
  */
-export interface CachedFileEntry {
+interface CachedFileEntry {
   /** Content hash (SHA-256, first 16 chars) */
   hash: string;
   /** Last modified timestamp (for quick checks) */
@@ -61,7 +61,7 @@ export interface CachedFileEntry {
 /**
  * Cache structure stored on disk
  */
-export interface IncrementalCacheData {
+interface IncrementalCacheData {
   version: number;
   toolchainFingerprint: string;
   /** Project root directory */
@@ -77,7 +77,7 @@ export interface IncrementalCacheData {
 /**
  * Result of checking if a file needs retranspilation
  */
-export interface FileChangeStatus {
+interface FileChangeStatus {
   filePath: string;
   /** Whether the file needs retranspilation */
   needsRetranspile: boolean;
@@ -88,7 +88,7 @@ export interface FileChangeStatus {
 /**
  * Options for incremental cache
  */
-export interface IncrementalCacheOptions {
+interface IncrementalCacheOptions {
   /** Path to the cache file (default: .typehal-cache.json in project root) */
   cachePath?: string;
   /** Project root directory */
@@ -100,7 +100,7 @@ export interface IncrementalCacheOptions {
 /**
  * Compute a hash of file content
  */
-export function computeFileHash(content: string): string {
+function computeFileHash(content: string): string {
   return crypto.createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
 

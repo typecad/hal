@@ -3,31 +3,12 @@
 // ---------------------------------------------------------------------------
 
 export type {
-  ArchitectureIdentifier,
-  MemorySpec,
+  BoardDefinition,
   PinDefinition,
   PeripheralFunction,
-  PinDefinitions,
-  PeripheralInstance,
-  ADCDefinition,
-  DACDefinition,
-  PWMDefinition,
-  USBDefinition,
-  WiFiDefinition,
-  BluetoothDefinition,
-  TouchDefinition,
-  PeripheralDefinitions,
-  FeatureFlags,
-  BuildConfig,
-  BoardDefinition,
 } from './board/types';
 
 export {
-  GPIO,
-  gpioNumber,
-  PinCapabilityBuilder,
-  PinBuilder,
-  PeripheralBuilder,
-  BoardDefinitionBuilder,
-  validateBoardDefinition,
+  ARDUINO_CORE_VERSION,
+  pinNumber,
 } from './board/builder';

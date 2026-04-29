@@ -13,16 +13,8 @@
 import type { PeripheralUsage } from './peripheral-usage';
 import type { BoardConstants } from './board-resolver';
 import type { Diagnostic } from '../types';
+import type { PeripheralFunction } from '@typehal/schema';
 import { findBoardPinByName, formatPinReference, getBoardPins } from './board-pin-utils';
-
-/**
- * Maps a pin name to its peripheral functions.
- */
-interface PeripheralFunction {
-  type: 'i2c' | 'spi' | 'uart';
-  instance: number;
-  role: string;  // sda, scl, mosi, miso, sck, cs, tx, rx
-}
 
 /**
  * Board peripheral pin map — sourced from board definition.
@@ -308,6 +300,7 @@ export function validatePeripheralPinConflicts(
     const isGpio = isPinUsedAsGpio(pinName, usage);
 
     for (const func of functions) {
+      if (func.type !== 'i2c' && func.type !== 'spi' && func.type !== 'uart') continue;
       const isActive = isPeripheralActive(func.type, func.instance, usage);
       const peripheralName = getPeripheralName(func.type, func.instance);
       const canonicalPinName = findBoardPinByName(pinName, boardConstants)?.name ?? pinName;
@@ -344,15 +337,3 @@ export function validatePeripheralPinConflicts(
   return diagnostics;
 }
 
-/**
- * Get peripheral pin mapping for a board from board constants.
- * Useful for documentation, IDE features, or other tooling.
- *
- * @param boardConstants - Resolved board constants
- * @returns Map of pin names to their peripheral functions
- */
-export function getPeripheralPinMapFromBoard(
-  boardConstants: BoardConstants | undefined,
-): PeripheralPinMap {
-  return buildPeripheralPinMap(boardConstants);
-}

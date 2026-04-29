@@ -2,7 +2,8 @@
 // @typehal/board-esp32-devkit — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typehal/hal';
+import type { BoardDefinition } from '@typehal/schema';
+import { ARDUINO_CORE_VERSION } from '@typehal/schema';
 
 // ---------------------------------------------------------------------------
 // Default capability flags for ESP32
@@ -309,7 +310,7 @@ export const ESP32DevKit: BoardDefinition = {
     extraFlags: [],
     defines: {
       F_CPU:            '240000000UL',
-      ARDUINO:          '10819',
+      ARDUINO:          ARDUINO_CORE_VERSION,
       ARDUINO_ESP32_DEV: '1',
     },
   },

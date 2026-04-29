@@ -2,9 +2,8 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import chalk from "chalk";
-import { compileArduinoSketch } from "./platform/arduino-compile";
 import { mapCppLocationToTs, readSourceMap, resolveSourceMapForSketch } from "./mapping/source-map";
-import { ArduinoCompileResult, Diagnostic } from "./types";
+import type { CompileResult as ArduinoCompileResult, Diagnostic } from "@typehal/core/shared";
 
 function resolveExpectCliPath(): string {
   try {

@@ -12,7 +12,7 @@ import type {
   SPIBitOrder,
   SPISettings,
   BasePin,
-  SPIErrorPolicy,
+  ErrorPolicy,
 } from '@typehal/core';
 import type { ISimSPIDevice } from '../types';
 
@@ -28,7 +28,7 @@ import type { ISimSPIDevice } from '../types';
  */
 export class SimSPIBus implements ISPIBus {
   isEnabled: boolean = false;
-  errorPolicy: SPIErrorPolicy = 'callback';
+  errorPolicy: ErrorPolicy = 'callback';
 
   private _frequency: number = 4000000;
   private _mode: SPIMode = 0;

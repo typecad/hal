@@ -37,10 +37,6 @@
       "types": "./dist/ir/typehal-symbols.d.ts",
       "default": "./dist/ir/typehal-symbols.js"
     },
-    "./utils/toolchain": {
-      "types": "./dist/utils/toolchain.d.ts",
-      "default": "./dist/utils/toolchain.js"
-    },
     "./polyfill/types": {
       "types": "./dist/polyfill/types.d.ts",
       "default": "./dist/polyfill/types.js"

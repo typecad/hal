@@ -11,7 +11,7 @@ const DEBOUNCE_MS = 150;
 /**
  * Options for the watch mode runner.
  */
-export interface WatchOptions {
+interface WatchOptions {
   /** Directories to watch recursively. */
   watchDirs: string[];
   /** Path to typehal.config.ts (if any) — watched for changes. */
@@ -45,11 +45,6 @@ export function discoverWatchDirs(entryFile: string, configPath?: string): strin
 /**
  * Determine whether a file change event is relevant and should trigger a
  * rebuild.
- *
- * A change is relevant when the file is:
- * - The `typehal.config.ts` file, OR
- * - A `.ts` file (but NOT a `.d.ts` declaration) that is NOT inside
- *   `node_modules`
  */
 export function isRelevantChange(
   changedPath: string,
@@ -59,28 +54,25 @@ export function isRelevantChange(
   const resolved = path.resolve(changedPath);
   const ext = path.extname(resolved).toLowerCase();
 
-  // Config file change — always relevant
   if (configPath && resolved === path.resolve(configPath)) {
     return true;
   }
 
-  // Only .ts files beyond this point
   if (ext !== ".ts") {
     return false;
   }
 
-  // Skip auto-generated .d.ts declarations
   if (resolved.endsWith(".d.ts")) {
     return false;
   }
 
-  // Skip anything inside node_modules
   if (resolved.includes(`${path.sep}node_modules${path.sep}`)) {
     return false;
   }
 
   return true;
 }
+
 
 /**
  * Start the file watcher loop.  Sets up `fs.watch` listeners on each of the

@@ -10,12 +10,12 @@ import { makeGeneratedMap, writeSourceMap } from "../mapping/source-map";
 import { RuntimePolyfillIR } from "@typehal/core/shared";
 import { emitPolyfillBoilerplate } from "./native-helpers-emitter";
 import { filterPolyfillHelpers } from "@typehal/core/shared";
-import { ResolvedNpmPackage } from "../transpile";
-import { buildArduinoClassNameMap } from "@typehal/framework-arduino";
+import { ResolvedNpmPackage } from "../transpile/resolution";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import { resolveStrategy } from "../platform/registry";
+import { getLoadedFramework } from "../framework-registry";
 import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
 import { normalizeRawExpression, transformTypeName } from "./expression-renderer";
 import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
@@ -23,7 +23,6 @@ import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
 import { StatementRenderer } from "./statement-renderer";
 import {
   isTypehalSDKImport,
-  normalizeComment,
   emitCommentLines,
   isConsoleCall,
   getConsoleMethod,
@@ -31,11 +30,9 @@ import {
   dedupe,
   applySymbolMap,
   resolveTranspiledModuleInclude,
-  toPascalCaseLocal,
   generateAsyncTaskClass,
   inferObjectFieldType,
   collectNestedStructDefs,
-  collectDeclaredTypes,
   isRuntimeExpression,
   statementRequiresRuntime,
   collectPointerVarTypes,
@@ -69,9 +66,22 @@ const FILE_EXTENSION_PATTERN = /\.[^.]+$/;
 // entire renderStatement / renderExpression call chain.
 let _emitBoardConstants: BoardConstants | undefined;
 
-// Arduino library class name mapping (simple name -> fully qualified name with namespace)
-// Used to transform "new SHT3x()" to "new Microfire::SHT3x()" etc.
+// Library class name mapping (simple name -> fully qualified name with namespace)
+// Loaded dynamically from the framework package.
 let _arduinoClassNameMap: Map<string, string> | undefined;
+
+function loadClassNameMap(imports: any[]): Map<string, string> | undefined {
+  try {
+    const framework = getLoadedFramework();
+    const mod = require("@typehal/framework-arduino");
+    if (mod?.buildArduinoClassNameMap) {
+      return mod.buildArduinoClassNameMap(imports);
+    }
+  } catch {
+    // Framework not installed — no class name mapping available.
+  }
+  return undefined;
+}
 
 // DEPRECATED: Module-level mutable state (same as _emitBoardConstants above).
 //
@@ -170,7 +180,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
   if (!expr || typeof expr !== 'object' || !expr.kind) {
     return "/* invalid expression */";
   }
-  
+
   switch (expr.kind) {
     case "number": {
       if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
@@ -191,8 +201,8 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       if (nullVal && (expr.value === "null" || expr.value === "undefined")) {
         return nullVal;
       }
-      // Map peripheral identifiers to Arduino equivalents (I2C0→Wire, SPI0→SPI, UART0→Serial)
-      const mapped = mapPeripheralName(expr.value);
+      // Map peripheral identifiers to platform-specific names (e.g. I2C0→Wire on Arduino)
+      const mapped = mapPeripheralName(expr.value, strategy);
       if (mapped !== undefined) return mapped;
       return escapeCppKeyword(expr.value);
     }
@@ -326,10 +336,10 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
         // Check for Board.definition.* access first
         const boardDef = strategy.renderBoardDefinitionAccess(chain, _emitBoardConstants);
         if (boardDef !== undefined) return boardDef;
-        
+
         // Check for peripheral stub property access (I2C0.isInitialized, SPI0.isInitialized, Serial.isInitialized)
         // These are TypeScript stubs that don't exist in C++ - return appropriate values
-        const peripheralProperty = renderPeripheralProperty(chain);
+        const peripheralProperty = renderPeripheralProperty(chain, strategy);
         if (peripheralProperty !== undefined) return peripheralProperty;
       }
       const objStr = renderExpression(expr.object, exprTransformer, strategy);
@@ -541,7 +551,7 @@ function transformConsoleCall(
   knownFunctionReturnTypes?: Map<string, string>,
 ): string {
   const method = getConsoleMethod(callee);
-  
+
   // For Arduino, check if any argument is a string_concat that should use snprintf
   if (strategy.id === "arduino" && args.length > 0) {
     const firstArg = args[0];
@@ -566,7 +576,7 @@ function transformConsoleCall(
       }
     }
   }
-  
+
   // Fallback to regular rendering
   const renderedArgs = args.map((arg) => renderExpression(arg, undefined, strategy)).join(", ");
   return strategy.transformConsoleCall(method, renderedArgs, forHeader);
@@ -829,7 +839,7 @@ function renderStatement(
         ? `${nestedDefs.join(" ")} ${parentStruct}`
         : parentStruct;
     }
-    return forHeader 
+    return forHeader
       ? `${declaration} = ${renderExpression(statement.initializer, calleeTransformer, strategy)}`
       : `${declaration} = ${renderExpression(statement.initializer, calleeTransformer, strategy)};`;
   }
@@ -869,7 +879,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   ensureDir(options.outDir);
 
   // Build class name mapping for Arduino library imports (for namespace resolution)
-  _arduinoClassNameMap = buildArduinoClassNameMap(program.imports);
+  _arduinoClassNameMap = loadClassNameMap(program.imports);
 
   // Perform single-pass program analysis to replace multiple traversals
   const programAnalysis = analyzeProgram(program);
@@ -880,7 +890,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   const outDirBaseName = path.basename(path.resolve(options.outDir));
   const baseName = options.npmPackage?.moduleKey
     || strategy.overrideBaseName(originalBaseName, outDirBaseName, options.isEntryFile ?? true, !!options.npmPackage);
-  
+
   // Determine emit mode and extensions
   // For npm packages, always emit .h/.cpp (not .ino)
   const isNpmPackage = !!options.npmPackage;
@@ -895,7 +905,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   const symbolMap: Record<string, string> = {};
   let profileDiagnostics: Diagnostic[] = [];
   let shimLines: string[] = [];
-  
+
   // Get native helper implementations from the strategy
   // Skip for non-entry files — they're emitted in the entry .ino and shared via includes
   const nativePolyfills = isEntryFile
@@ -959,7 +969,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       options.npmPackages,
       program.fileName
     );
-    
+
     if (transpiledInclude.isTranspiled) {
       includes.push(transpiledInclude.include);
       // Keep original symbol names for transpiled modules
@@ -984,12 +994,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       options.npmPackages,
       program.fileName
     );
-    
+
     if (transpiledInclude.isTranspiled) {
       headerIncludes.push(transpiledInclude.include);
       continue;
     }
-    
+
     // Handle relative re-exports within npm packages
     // e.g., export * from "./pins.js" in a package index file
     if (reExport.moduleSpecifier.startsWith(".")) {
@@ -1265,8 +1275,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (statement.kind === "typehal-call" && strategy.useSnprintfForStrings() && statement.args.length > 0) {
       const isSerialPrint = (statement.method === "println" || statement.method === "print") &&
         (statement.receiver === "UART0" || statement.receiver === "Serial" ||
-         statement.receiver.startsWith("UART") || statement.receiver.startsWith("Serial"));
-      
+          statement.receiver.startsWith("UART") || statement.receiver.startsWith("Serial"));
+
       if (isSerialPrint) {
         const firstArg = statement.args[0];
         if (firstArg.kind === "string_concat") {
@@ -1750,11 +1760,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Filter out reserved names from the target platform
   const filteredTopLevelDeclarations = reservedNames.size > 0
     ? topLevelDeclarations.filter((item) => {
-        if (item.kind === "var_decl") {
-          return !reservedNames.has(item.name);
-        }
-        return true;
-      })
+      if (item.kind === "var_decl") {
+        return !reservedNames.has(item.name);
+      }
+      return true;
+    })
     : topLevelDeclarations;
   const topLevelExecutables = program.topLevelStatements.filter(
     (item) => statementRequiresRuntime(item)
@@ -1763,11 +1773,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // framework predefined symbols (e.g. A0, Serial).
   const filteredTopLevelExecutables_presuppress = reservedNames.size > 0
     ? topLevelExecutables.filter((item) => {
-        if (item.kind === "var_decl") {
-          return !reservedNames.has(item.name);
-        }
-        return true;
-      })
+      if (item.kind === "var_decl") {
+        return !reservedNames.has(item.name);
+      }
+      return true;
+    })
     : topLevelExecutables;
 
   const entrypointFunctionName = strategy.entrypointFunctionName();
@@ -1796,9 +1806,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   const emittedTopLevelStatements = isEntryFile
     ? filteredTopLevelDeclarations
     : [
-        ...filteredTopLevelDeclarations,
-        ...filteredTopLevelExecutables.filter((statement) => statement.kind === "var_decl"),
-      ];
+      ...filteredTopLevelDeclarations,
+      ...filteredTopLevelExecutables.filter((statement) => statement.kind === "var_decl"),
+    ];
 
   const knownTopLevelObjectTypes = new Map<string, string>();
   const knownTopLevelObjectFields = new Map<string, Map<string, string>>();
@@ -1814,7 +1824,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Collect callback functions from call arguments (e.g., attachInterrupt handlers)
   const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[] = [];
   let callbackCounter = 0;
-  
+
   function collectCallbacks(statements: StatementIR[]): void {
     for (const stmt of statements) {
       if (stmt.kind === "call" || stmt.kind === "typehal-call") {
@@ -1896,7 +1906,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const e of expr.elements) { collectCallbackFromExpression(e); }
     }
   }
-  
+
   collectCallbacks(filteredTopLevelExecutables);
   for (const fn of mappedFunctions) {
     collectCallbacks(fn.statements);
@@ -2015,7 +2025,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         callee = callee.replace(pattern, `${varName}->`);
       }
     }
-    
+
     // Then, handle pointer struct fields (e.g., Board.A0.method() -> Board.A0->method())
     for (const pointerField of pointerStructFields) {
       // Match patterns like "Board.A0.method" and transform to "Board.A0->method"
@@ -2029,7 +2039,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   if (isEntryFile && filteredTopLevelExecutables.length > 0) {
     const epName = entrypointFunctionName;  // "setup" or "main"
     const existingEp = mappedFunctions.find(fn => fn.name === epName);
-    
+
     // Get platform-specific setup init code (e.g., UART initialization)
     // These are complete C++ statements, so we use a special marker to emit them as-is
     const setupInitLines = strategy.setupInitCode?.(program, options.platformContext) ?? [];
@@ -2042,7 +2052,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
     // Combine platform setup init code
     const allSetupInitStmts = [...setupInitStmts];
-    
+
     if (existingEp) {
       existingEp.statements = [...allSetupInitStmts, ...filteredTopLevelExecutables, ...existingEp.statements];
     } else {
@@ -2052,8 +2062,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const stmts: StatementIR[] = isMain
         ? [...allSetupInitStmts, ...filteredTopLevelExecutables, { kind: "return" as const, sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number" as const, value: 0 } } as StatementIR]
         : [...allSetupInitStmts, ...filteredTopLevelExecutables];
-    const insertFn = {
+      const insertFn = {
         name: epName,
+        originalName: epName,
         returnType,
         sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
         leadingComments: [`// Auto-generated ${epName}() for top-level statements`],
@@ -2173,8 +2184,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const commaSuffix = i < enumDef.members.length - 1 ? "," : "";
       // Prefix reserved names with underscore for Arduino compatibility
       // Prefix reserved names for platform compatibility
-      const memberName = reservedNames.has(member.name) 
-        ? `_${member.name}` 
+      const memberName = reservedNames.has(member.name)
+        ? `_${member.name}`
         : member.name;
       appendLine(`  ${memberName}${valueSuffix}${commaSuffix}`);
     }
@@ -2275,7 +2286,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     emitCommentLines(ns.leadingComments, "", (line) => appendSourceLine(line));
     appendSourceLine(`namespace ${ns.name} {`);
     appendSourceLine("");
-    
+
     // Emit namespace enums
     for (const enumDef of ns.enums) {
       emitCommentLines(enumDef.leadingComments, "  ", (line) => appendSourceLine(line));
@@ -2294,7 +2305,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       emitCommentLines(enumDef.trailingComments, "  ", (line) => appendSourceLine(line));
       appendSourceLine("");
     }
-    
+
     // Emit namespace type aliases
     for (const typeAlias of ns.typeAliases) {
       emitCommentLines(typeAlias.leadingComments, "  ", (line) => appendSourceLine(line));
@@ -2305,7 +2316,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine("");
       }
     }
-    
+
     // Emit namespace constants
     for (const constant of ns.constants) {
       const constType = normalizeCppTypeForTarget(constant.cppType, strategy);
@@ -2318,17 +2329,17 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (ns.constants.length > 0) {
       appendSourceLine("");
     }
-    
+
     // Emit namespace classes
     for (const classDef of ns.classes) {
       emitCommentLines(classDef.leadingComments, "  ", (line) => appendSourceLine(line));
-      
+
       if (classDef.isAbstract) {
         appendSourceLine(`  // Abstract class - contains pure virtual methods`);
       }
-      
+
       appendSourceLine(`  class ${classDef.name} {`);
-      
+
       // Group fields and methods by visibility
       const publicFields = classDef.fields.filter(f => f.visibility === "public");
       const privateFields = classDef.fields.filter(f => f.visibility === "private");
@@ -2336,7 +2347,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const publicMethods = classDef.methods.filter(m => m.visibility === "public");
       const privateMethods = classDef.methods.filter(m => m.visibility === "private");
       const protectedMethods = classDef.methods.filter(m => m.visibility === "protected");
-      
+
       // Public section
       const needsPublicSection = publicFields.length > 0 || publicMethods.length > 0 || classDef.constructor || callbackFunctions.length > 0;
       if (needsPublicSection) {
@@ -2347,7 +2358,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           }
           appendSourceLine("");
         }
-        
+
         if (classDef.constructor) {
           const ctorParams = renderParameters(classDef.constructor.parameters, strategy);
           appendSourceLine(`    ${classDef.name}(${ctorParams}) {`);
@@ -2358,7 +2369,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           appendSourceLine("    }");
           appendSourceLine("");
         }
-        
+
         for (const field of publicFields) {
           const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, strategy)}` : "";
           const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType, strategy));
@@ -2367,18 +2378,18 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         if (publicFields.length > 0) {
           appendSourceLine("");
         }
-        
+
         for (const method of publicMethods) {
           const methodParams = renderParameters(method.parameters, strategy);
           const staticPrefix = method.isStatic ? "static " : "";
           const returnType = normalizeCppTypeForTarget(method.returnType, strategy);
-          
+
           if (method.isAbstract) {
             appendSourceLine(`    virtual ${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) = 0;`);
             appendSourceLine("");
             continue;
           }
-          
+
           appendSourceLine(`    ${staticPrefix}${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
@@ -2388,7 +2399,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           appendSourceLine("");
         }
       }
-      
+
       // Private section
       if (privateFields.length > 0 || privateMethods.length > 0) {
         appendSourceLine("  private:");
@@ -2407,7 +2418,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           appendSourceLine("    }");
         }
       }
-      
+
       // Protected section
       if (protectedFields.length > 0 || protectedMethods.length > 0) {
         appendSourceLine("  protected:");
@@ -2426,12 +2437,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           appendSourceLine("    }");
         }
       }
-      
+
       appendSourceLine("  };");
       emitCommentLines(classDef.trailingComments, "  ", (line) => appendSourceLine(line));
       appendSourceLine("");
     }
-    
+
     // Emit namespace functions
     for (const fn of ns.functions) {
       const parameterList = renderParameters(fn.parameters, strategy);
@@ -2445,7 +2456,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       emitCommentLines(fn.trailingComments, "  ", (line) => appendSourceLine(line));
       appendSourceLine("");
     }
-    
+
     appendSourceLine(`} // namespace ${ns.name}`);
     emitCommentLines(ns.trailingComments, "", (line) => appendSourceLine(line));
     appendSourceLine("");
@@ -2601,7 +2612,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   for (const classDef of program.classes) {
     emitCommentLines(classDef.leadingComments, "", (line) => appendSourceLine(line));
-    
+
     // Build inheritance clause: extends only (implements omitted — C++ has no
     // interface concept; structural compatibility is validated at the TS level)
     const inheritanceParts: string[] = [];
@@ -2612,19 +2623,19 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     // and the interface type may not exist as a C++ class. The transpiler
     // validates structural compatibility at the TypeScript level already.
     const inheritanceClause = inheritanceParts.length > 0 ? ` : ${inheritanceParts.join(", ")}` : "";
-    
+
     // Abstract classes get a comment (C++ doesn't have abstract keyword, uses pure virtual methods)
     if (classDef.isAbstract) {
       appendSourceLine(`// Abstract class - contains pure virtual methods`);
     }
-    
+
     appendSourceLine(`class ${classDef.name}${inheritanceClause} {`);
-    
+
     // Group fields by visibility
     const publicFields = classDef.fields.filter(f => f.visibility === "public");
     const privateFields = classDef.fields.filter(f => f.visibility === "private");
     const protectedFields = classDef.fields.filter(f => f.visibility === "protected");
-    
+
     const publicMethods = classDef.methods.filter(m => m.visibility === "public");
     const privateMethods = classDef.methods.filter(m => m.visibility === "private");
     const protectedMethods = classDef.methods.filter(m => m.visibility === "protected");
@@ -2645,7 +2656,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
         appendSourceLine("");
       }
-      
+
       // Constructor
       if (classDef.constructor) {
         // Normalize constructor parameter types via strategy
@@ -2671,7 +2682,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine("  }");
         appendSourceLine("");
       }
-      
+
       // Public fields
       for (const field of publicFields) {
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined, strategy)}` : "";
@@ -2681,20 +2692,20 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       if (publicFields.length > 0) {
         appendSourceLine("");
       }
-      
+
       // Public methods
       for (const method of publicMethods) {
         const methodParams = renderParameters(method.parameters, strategy);
         const staticPrefix = method.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(method.returnType, strategy);
-        
+
         // Handle abstract methods (pure virtual in C++)
         if (method.isAbstract) {
           appendSourceLine(`  virtual ${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) = 0;`);
           appendSourceLine("");
           continue;
         }
-        
+
         appendSourceLine(`  ${staticPrefix}${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
@@ -2966,16 +2977,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`const unsigned long ${callback.name}_debounce = ${callback.debounceMs};`);
       appendSourceLine("");
     }
-    
+
     appendSourceLine(`${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}() {`);
-    
+
     // Add debounce check if configured
     if (callback.debounceMs !== undefined && callback.debounceMs > 0) {
       appendSourceLine(`  volatile unsigned long now = ${strategy.currentTimeMillis()};`);
       appendSourceLine(`  if (now - ${callback.name}_lastTime < ${callback.name}_debounce) return;`);
       appendSourceLine(`  ${callback.name}_lastTime = now;`);
     }
-    
+
     const callbackScope = createChildEmissionScope(topLevelScope);
     for (const stmt of callback.statements) {
       appendRenderedStatement(stmt, "  ", globalPointerVarTypes, callbackScope);
@@ -3115,8 +3126,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         let insertIdx = 1;
         // Skip past any inserted include lines
         while (insertIdx < finalHeaderLines.length &&
-               (finalHeaderLines[insertIdx].startsWith("#include") ||
-                finalHeaderLines[insertIdx] === "")) {
+          (finalHeaderLines[insertIdx].startsWith("#include") ||
+            finalHeaderLines[insertIdx] === "")) {
           insertIdx++;
         }
         // Insert forward declarations with a blank line separator

@@ -16,12 +16,12 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {
-      "typehal/platform": ["../cli/dist/platform/index"]
+      "typehal/platform": ["../transpiler/dist/platform/index"]
     }
   },
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../core" },
-    { "path": "../hal" }
+    { "path": "../schema" }
   ]
 }

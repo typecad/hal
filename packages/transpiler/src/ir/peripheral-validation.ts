@@ -10,9 +10,9 @@ import { BoardConstants } from './board-resolver';
 import { Diagnostic } from '../types';
 
 /**
- * Extract peripheral capacity from board constants.
+ * Peripheral capacity info (internal).
  */
-export interface PeripheralCapacity {
+interface PeripheralCapacity {
   i2c: number;      // Number of I2C buses (e.g., 1 for Arduino Uno)
   spi: number;      // Number of SPI buses
   uart: number;     // Number of UART ports
@@ -21,7 +21,7 @@ export interface PeripheralCapacity {
 /**
  * Get peripheral capacity from board constants.
  */
-export function getPeripheralCapacity(boardConstants: BoardConstants | undefined): PeripheralCapacity {
+function getPeripheralCapacity(boardConstants: BoardConstants | undefined): PeripheralCapacity {
   const defaultCapacity: PeripheralCapacity = {
     i2c: 1,
     spi: 1,
@@ -43,7 +43,7 @@ export function getPeripheralCapacity(boardConstants: BoardConstants | undefined
  * Validate peripheral usage against board capacity.
  * Returns an array of diagnostics for any invalid peripheral usage.
  */
-export function validatePeripheralUsage(
+function validatePeripheralUsage(
   usage: PeripheralUsage,
   capacity: PeripheralCapacity,
   boardName: string = 'this board',

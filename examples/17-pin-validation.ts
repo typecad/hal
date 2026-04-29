@@ -10,7 +10,7 @@
  */
 
 import { D2, D3, A0, LED, delay, UART0 } from '@typehal';
-import { isPWMPin, isAnalogPin, isInterruptPin, assertPWM } from '@typehal/core';
+import { hasPWM as isPWMPin, hasAnalogInput as isAnalogPin, hasInterrupt as isInterruptPin, assertPWM } from '@typehal/core';
 import type { PWMPin } from '@typehal/core';
 
 // Initialize serial for output

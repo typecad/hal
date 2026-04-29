@@ -1,5 +1,8 @@
 import type { Diagnostic } from "../types";
 import type { ProgramIR } from "./model";
+import type { PlatformStrategy } from "../platform/platform-strategy";
+import { resolveStrategy } from "../platform/registry";
+import { hasLoadedFramework, getLoadedFramework } from "../framework-registry";
 import { analyzeInterruptSafety } from "./interrupt-analysis";
 import { validateADCRange } from "./adc-range-validation";
 import { createEmptyPeripheralUsage, type PeripheralUsage } from "./peripheral-usage";
@@ -18,7 +21,8 @@ import { validateUnitSuspicion } from "./unit-suspicion-validation";
 import { validateOwnership } from "./ownership-analysis";
 import { validatePinCapabilities } from "./pin-capability-validation";
 
-export function runProgramValidations(program: ProgramIR): Diagnostic[] {
+export function runProgramValidations(program: ProgramIR, strategy?: PlatformStrategy): Diagnostic[] {
+  const resolvedStrategy = strategy ?? (hasLoadedFramework() ? getLoadedFramework().strategy : resolveStrategy('generic'));
   const diagnostics: Diagnostic[] = [];
   const peripheralUsage = (program.peripheralUsage as PeripheralUsage | undefined) ?? createEmptyPeripheralUsage();
 
@@ -36,8 +40,8 @@ export function runProgramValidations(program: ProgramIR): Diagnostic[] {
   diagnostics.push(...validatePinModeConfig(program));
   diagnostics.push(...validatePeripheralOwnership(program));
   diagnostics.push(...validateOwnership(program));
-  diagnostics.push(...validateTryCatch(program, program.boardConstants));
-  diagnostics.push(...validateHeapArrayUsage(program, program.boardConstants));
+  diagnostics.push(...validateTryCatch(program, program.boardConstants, resolvedStrategy));
+  diagnostics.push(...validateHeapArrayUsage(program, program.boardConstants, resolvedStrategy));
 
   return diagnostics;
 }

@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@typehal/expect": "*",
-    "@typehal/cli": "*",
+    "@typehal/transpiler": "*",
     "typescript": "^5.7.3"
   },
   "license": "MIT",

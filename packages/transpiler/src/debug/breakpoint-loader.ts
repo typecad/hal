@@ -22,7 +22,7 @@ export const BREAKPOINTS_FILE = 'breakpoints.json';
 /**
  * Find the .typehal directory by walking up from the given directory.
  */
-export function findTypehalDir(startDir: string): string | undefined {
+function findTypehalDir(startDir: string): string | undefined {
   let currentDir = path.resolve(startDir);
   
   while (currentDir !== path.dirname(currentDir)) {
@@ -122,27 +122,6 @@ export function loadBreakpoints(sourceDir: string): BreakpointMap | undefined {
     console.warn(`Warning: Failed to parse ${breakpointsPath}: ${error}`);
     return undefined;
   }
-}
-
-/**
- * Normalize a file path for matching against breakpoint keys.
- * Handles both absolute and relative paths.
- */
-export function normalizeFilePath(filePath: string, projectRoot?: string): string {
-  // Get just the filename if no project root
-  if (!projectRoot) {
-    return path.basename(filePath);
-  }
-  
-  // Make path relative to project root
-  const absolutePath = path.resolve(filePath);
-  const absoluteRoot = path.resolve(projectRoot);
-  
-  if (absolutePath.startsWith(absoluteRoot)) {
-    return path.relative(absoluteRoot, absolutePath);
-  }
-  
-  return path.basename(filePath);
 }
 
 /**

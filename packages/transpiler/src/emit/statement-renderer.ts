@@ -16,7 +16,7 @@ import { mapPeripheralName } from "../mapping/peripheral-names";
 /**
  * Context needed for statement rendering.
  */
-export interface StatementRendererContext {
+interface StatementRendererContext {
   /** The platform strategy for target-specific rendering */
   strategy: PlatformStrategy;
   /** Board constants for Board.definition.* access */
@@ -398,7 +398,7 @@ export class StatementRenderer {
           const addr = renderA(initCall.args[0]);
           const reg = renderA(initCall.args[1]);
           const wireNum = initCall.receiver.slice(3); // strip leading "I2C"
-          const wire = mapPeripheralName(initCall.receiver) ?? `Wire${wireNum}`;
+          const wire = mapPeripheralName(initCall.receiver, this.strategy) ?? `Wire${wireNum}`;
 
           if (initCall.method === "device.readByte") {
             // Emit Wire setup as prelude, keep Wire.read() as the variable initializer.

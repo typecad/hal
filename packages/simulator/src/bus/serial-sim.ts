@@ -8,7 +8,7 @@ import {
 import type {
   ISerialPort,
   UARTStatusInfo,
-  UARTErrorPolicy,
+  ErrorPolicy,
 } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ export class SimSerialPort implements ISerialPort {
   readonly uartNumber: number;
   baudRate: number = 0;
   isEnabled: boolean = false;
-  errorPolicy: UARTErrorPolicy = 'callback';
+  errorPolicy: ErrorPolicy = 'callback';
 
   private _rxBuffer: number[] = [];
   private _txBuffer: number[] = [];

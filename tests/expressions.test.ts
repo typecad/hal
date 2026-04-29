@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { transpile, normalizeCpp, hasInclude } from "./setup";
-import { inferSnprintfArg, createEmissionScopeState } from "../packages/cli/src/emit/arduino-snprintf";
+import { inferSnprintfArg, createEmissionScopeState } from "../packages/transpiler/src/emit/arduino-snprintf";
 
 describe("Expression Transpilation", () => {
   describe("Number Literals", () => {
@@ -32,7 +32,7 @@ describe("Expression Transpilation", () => {
           return x;
         }
       `);
-      expect(result.cpp).toContain("const float x = 3.14");
+      expect(result.cpp).toContain("const double x = 3.14");
     });
 
     it("transpiles negative floats", () => {

@@ -14,9 +14,9 @@ export interface EntryPointConfig {
 }
 
 /**
- * Default entry point configuration
+ * Default entry point configuration (internal)
  */
-export const DEFAULT_ENTRY_POINT_CONFIG: EntryPointConfig = {
+const DEFAULT_ENTRY_POINT_CONFIG: EntryPointConfig = {
   arduinoEntryPoints: ["setup", "loop"],
   genericEntryPoints: ["main"],
   customEntryPoints: [],
@@ -191,15 +191,6 @@ function detectTopLevelCalls(program: ProgramIR): Set<string> {
   }
 
   return calledFunctions;
-}
-
-/**
- * Get the effective entry point function names for a target
- */
-export function getTargetEntryPoints(target: TargetProfile): string[] {
-  return target === "arduino"
-    ? DEFAULT_ENTRY_POINT_CONFIG.arduinoEntryPoints
-    : DEFAULT_ENTRY_POINT_CONFIG.genericEntryPoints;
 }
 
 /**

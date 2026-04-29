@@ -16,6 +16,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@typehal/core": "*",
     "chalk": "^4.1.2"
   },
   "devDependencies": {

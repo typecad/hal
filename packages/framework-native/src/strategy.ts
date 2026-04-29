@@ -90,7 +90,7 @@ export class NativeStrategy implements PlatformStrategy {
   }
 
   mapFunctionName(originalName: string): string {
-    if (originalName === '__arduino_setup__') return 'setup';
+    if (originalName === '__typehal_entrypoint__') return 'setup';
     return originalName;
   }
 

@@ -34,18 +34,13 @@ export interface KnownBoard {
   boardPackage: string;
   /** Default framework package */
   frameworkPackage: string;
-  /** Fully Qualified Board Name for arduino-cli */
-  fqbn: string;
+  /** Fully Qualified Board Name for toolchain (optional, framework-specific) */
+  fqbn?: string;
   /** MCU part number */
   mcu: string;
 }
 
-/**
- * Static registry of known boards. No network calls needed.
- * New boards are added by contributors. Users who need unlisted boards
- * are directed to `typehal create-board` first.
- */
-export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = [
+const _knownBoards: KnownBoard[] = [
   {
     id: 'arduino-uno',
     displayName: 'Arduino Uno',
@@ -65,6 +60,27 @@ export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = [
     mcu: 'ESP32-WROOM-32',
   },
 ];
+
+/**
+ * Register a board for use in `typehal init`.
+ * Framework/board packages call this at load time to make themselves
+ * discoverable by the scaffolding wizard.
+ */
+export function registerKnownBoard(board: KnownBoard): void {
+  const existing = _knownBoards.findIndex(b => b.id === board.id);
+  if (existing >= 0) {
+    _knownBoards[existing] = board;
+  } else {
+    _knownBoards.push(board);
+  }
+}
+
+/**
+ * Known boards available for project scaffolding.
+ * Includes built-in defaults (Arduino Uno, ESP32 DevKit) plus any
+ * boards registered via `registerKnownBoard()`.
+ */
+export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = _knownBoards;
 
 // ---------------------------------------------------------------------------
 // Project name validation

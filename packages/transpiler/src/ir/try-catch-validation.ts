@@ -2,20 +2,14 @@
 // Try/Catch Validation
 //
 // Validates that try/catch and throw statements are not used on architectures
-// that do not support C++ exceptions (e.g., AVR). AVR-GCC compiles with
-// -fno-exceptions by default, so generated try/catch blocks will fail to
-// compile. Emits a compile-time error with an actionable hint.
+// that do not support C++ exceptions. The platform strategy determines which
+// architectures have exceptions disabled (e.g. AVR-GCC with -fno-exceptions).
 // ---------------------------------------------------------------------------
 
 import type { Diagnostic } from '../types';
 import type { BoardConstants } from './board-resolver';
 import type { StatementIR } from './model';
-
-/**
- * Architectures that do NOT support C++ exceptions.
- * AVR and megaAVR compile with -fno-exceptions by default.
- */
-const NO_EXCEPTIONS_ARCHS = new Set(['avr', 'megaavr']);
+import type { PlatformStrategy } from '../platform/platform-strategy';
 
 /**
  * Validate that try/catch and throw statements are not used on
@@ -35,12 +29,12 @@ export function validateTryCatch(
     }>;
   },
   boardConstants: BoardConstants | undefined,
+  strategy?: PlatformStrategy,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
   const arch = boardConstants?.get('architecture') as string | undefined;
-  if (!arch || !NO_EXCEPTIONS_ARCHS.has(arch)) {
-    // Architecture supports exceptions or is unknown — allow without diagnostic
+  if (!arch || !strategy?.isExceptionSupportDisabled?.(arch)) {
     return diagnostics;
   }
 

@@ -2,7 +2,7 @@ import ts from "typescript";
 import { Diagnostic, SourceSpan } from "../types";
 import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "./model";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName, isCompileTimeOnlyMethodName } from "./compile-time-only";
+import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";
 import { inferKindByName } from "./typehal-symbols";
 import { escapeCppKeyword } from "../utils/strings";
@@ -12,7 +12,7 @@ import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { extractRootAndChain } from "./ast-patterns";
 
-export function callToStatement(
+function callToStatement(
   statementNode: ts.ExpressionStatement,
   call: ts.CallExpression,
   fileName: string,
@@ -775,7 +775,7 @@ export function lowerStatement(
       // Also check for method calls like "something.register()" that are compile-time only
       if (ts.isPropertyAccessExpression(call.expression)) {
         const method = call.expression.name.text;
-        if (isCompileTimeOnlyMethodName(method)) {
+        if (isCompileTimeOnlyCallName(method)) {
           return [];
         }
       }

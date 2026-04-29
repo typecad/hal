@@ -11,17 +11,17 @@ import path from "node:path";
 /**
  * GCC-style error regex (used by arduino-cli, platformio, gcc)
  */
-export const GCC_STYLE = /^(.*?):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.*)$/i;
+const GCC_STYLE = /^(.*?):(\d+):(\d+):\s*(fatal error|error|warning|note):\s*(.*)$/i;
 
 /**
  * Arduino-style error regex (sometimes missing column)
  */
-export const ARDUINO_ERROR = /^(.*?):(\d+):\d+:\s*(error|warning|note):\s*(.*)$/i;
+const ARDUINO_ERROR = /^(.*?):(\d+):\d+:\s*(error|warning|note):\s*(.*)$/i;
 
 /**
  * Clang-style error regex
  */
-export const CLANG_ERROR = /^(.*?):(\d+):(\d+):\s*(error|warning|note):\s*(.*)$/i;
+const CLANG_ERROR = /^(.*?):(\d+):(\d+):\s*(error|warning|note):\s*(.*)$/i;
 
 /**
  * Compile error structure

@@ -120,7 +120,7 @@ export interface PlatformTypeStrategy {
   /** Return type to use for a named function (e.g. setup/loop → void). */
   mapReturnType(functionName: string, returnType: string): string;
 
-  /** Map a function name to the platform entrypoint (e.g. void/__arduino_setup__ → setup). */
+  /** Map a function name to the platform entrypoint (e.g. void/__typehal_entrypoint__ → setup). */
   mapFunctionName(originalName: string): string;
 
   /**
@@ -315,6 +315,18 @@ export interface PlatformSafetyStrategy {
    * Returns a map of operation name/prefix → { reason, severity }.
    */
   isrUnsafeOperations?(): Map<string, { reason: string; severity: 'warning' | 'info' }>;
+
+  /**
+   * Whether heap allocation via `operator new` is unsafe on the given architecture.
+   * Frameworks return true for memory-constrained targets (e.g. AVR with 2 KB SRAM).
+   */
+  isHeapAllocationUnsafe?(architecture: string): boolean;
+
+  /**
+   * Whether C++ exceptions are disabled on the given architecture.
+   * Frameworks return true for targets compiled with -fno-exceptions (e.g. AVR-GCC).
+   */
+  isExceptionSupportDisabled?(architecture: string): boolean;
 }
 
 // ---------------------------------------------------------------------------

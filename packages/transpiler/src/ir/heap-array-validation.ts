@@ -1,12 +1,9 @@
 // ---------------------------------------------------------------------------
 // Heap Allocation Validator
 //
-// On AVR (Arduino Uno, Mega, etc.) dynamic heap allocation via `new` is
-// unsafe: the AVR has very limited SRAM (typically 2 KB), no OS to reclaim
-// fragmented heap, and the C++ runtime provides no protection against
-// malloc() failures.  Emits a compile-time error when a `new` expression is
-// detected in a variable initializer so the developer gets an early,
-// actionable message rather than a silent runtime crash.
+// Validates that heap allocation via `new` is not used on architectures
+// where it is unsafe. The platform strategy determines which architectures
+// lack safe heap support (e.g. AVR with 2 KB SRAM, no heap manager).
 //
 // Arrays and class instances that are managed by the TypeHAL framework
 // (StaticArray, peripheral objects created by board-init, compile-time-only
@@ -16,11 +13,7 @@
 import type { Diagnostic } from '../types';
 import type { BoardConstants } from './board-resolver';
 import type { StatementIR } from './model';
-
-/**
- * Architectures where heap allocation via `operator new` is unsafe.
- */
-const NO_HEAP_ARCHS = new Set(['avr', 'megaavr']);
+import type { PlatformStrategy } from '../platform/platform-strategy';
 
 /**
  * Validate that user-written `new ClassName(...)` expressions are not used on
@@ -40,11 +33,12 @@ export function validateHeapArrayUsage(
     }>;
   },
   boardConstants: BoardConstants | undefined,
+  strategy?: PlatformStrategy,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
   const arch = boardConstants?.get('architecture') as string | undefined;
-  if (!arch || !NO_HEAP_ARCHS.has(arch)) {
+  if (!arch || !strategy?.isHeapAllocationUnsafe?.(arch)) {
     return diagnostics;
   }
 

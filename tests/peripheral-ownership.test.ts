@@ -13,7 +13,7 @@ import { findDiagnostics, transpile, transpileArduino } from './setup';
 describe('Peripheral Ownership Validation', () => {
   it('generates error for double take without release', () => {
     const result = transpile(`
-      import { SPI0 } from '@typehal/board-arduino-uno/arduino';
+      import { SPI0 } from '@typehal/framework-arduino/arduino';
       SPI0.begin();
       SPI0.take();
       SPI0.take();
@@ -27,7 +27,7 @@ describe('Peripheral Ownership Validation', () => {
 
   it('generates warning for I/O without ownership', () => {
     const result = transpile(`
-      import { SPI0 } from '@typehal/board-arduino-uno/arduino';
+      import { SPI0 } from '@typehal/framework-arduino/arduino';
       SPI0.begin();
       SPI0.take();
       SPI0.release();
@@ -42,7 +42,7 @@ describe('Peripheral Ownership Validation', () => {
 
   it('generates warning for release without take', () => {
     const result = transpile(`
-      import { SPI0 } from '@typehal/board-arduino-uno/arduino';
+      import { SPI0 } from '@typehal/framework-arduino/arduino';
       SPI0.begin();
       SPI0.release();
     `);
@@ -55,7 +55,7 @@ describe('Peripheral Ownership Validation', () => {
 
   it('no diagnostics when ownership pattern is not used', () => {
     const result = transpileArduino(`
-      import { SPI0 } from '@typehal/board-arduino-uno/arduino';
+      import { SPI0 } from '@typehal/framework-arduino/arduino';
       SPI0.begin();
       SPI0.transfer(0xFF);
     `);
@@ -68,7 +68,7 @@ describe('Peripheral Ownership Validation', () => {
 
   it('no diagnostics when take/release used correctly', () => {
     const result = transpileArduino(`
-      import { SPI0 } from '@typehal/board-arduino-uno/arduino';
+      import { SPI0 } from '@typehal/framework-arduino/arduino';
       SPI0.begin();
       SPI0.take();
       SPI0.transfer(0xFF);

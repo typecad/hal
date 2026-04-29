@@ -14,19 +14,9 @@ import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
 
-/**
- * Flat map from dot-path key to scalar constant value.
- *
- * Examples (for Arduino Uno):
- *   "id"           → "arduino-uno"
- *   "mcu"          → "ATmega328P"
- *   "clockSpeed"   → 16000000
- *   "memory.flash" → 32768
- *   "memory.sram"  → 2048
- *   "memory.eeprom"→ 1024
- *   "pins.unsafe"  → "D0,D1" (string arrays stored as comma-separated)
- */
-export type BoardConstants = Map<string, string | number | boolean>;
+import type { BoardConstants } from "@typehal/core/shared";
+
+export type { BoardConstants };
 
 /**
  * Parse a TypeScript board-definition source file and return a flat map of

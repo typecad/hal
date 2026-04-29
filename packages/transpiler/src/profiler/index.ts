@@ -25,8 +25,7 @@
  * ```
  */
 
-export { Profiler, getProfiler, initProfiler, clearProfiler } from "./profiler";
-export { formatConsoleReport, formatJsonReport, formatMarkdownReport } from "./formatters";
+export { Profiler, getProfiler, initProfiler } from "./profiler";
 export {
   TimingEntry,
   MemorySnapshot,

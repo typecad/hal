@@ -1,6 +1,6 @@
 import type { BoardConstants } from './board-resolver';
 
-export interface BoardPinInfo {
+interface BoardPinInfo {
   number?: number;
   name: string;
   aliases: string[];

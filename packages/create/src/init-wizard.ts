@@ -137,28 +137,31 @@ export async function runInitWizard(
     const board = KNOWN_BOARDS.find((b: KnownBoard) => b.id === boardId)!;
 
     // 3. Framework selection
-    const frameworkOptions: Array<{ label: string; value: 'arduino' | 'avr' }> = [
-      { label: "Arduino (digitalWrite, Wire, SPI)", value: 'arduino' },
+    const frameworkOptions: Array<{ label: string; value: string; pkg: string }> = [
+      { label: "Arduino (digitalWrite, Wire, SPI)", value: 'arduino', pkg: '@typehal/framework-arduino' },
     ];
-    // Only offer AVR framework for AVR architecture
+    // Offer AVR framework for AVR architecture
     if (board.architecture === 'avr') {
-      frameworkOptions.push({ label: "Bare-metal AVR (PORTB, etc.)", value: 'avr' });
+      frameworkOptions.push({ label: "Bare-metal AVR (PORTB, etc.)", value: 'avr', pkg: '@typehal/framework-avr' });
     }
 
-    let framework: 'arduino' | 'avr';
+    let framework: string;
+    let frameworkPackage: string;
     if (partialOptions?.framework) {
-      framework = partialOptions.framework === 'avr' ? 'avr' : 'arduino';
+      const match = frameworkOptions.find(f => f.value === partialOptions.framework);
+      framework = match?.value ?? partialOptions.framework;
+      frameworkPackage = match?.pkg ?? `@typehal/framework-${partialOptions.framework}`;
       console.log(`${chalk.cyan("?")} Framework: ${chalk.white(framework)}`);
     } else if (frameworkOptions.length === 1) {
       framework = frameworkOptions[0].value;
+      frameworkPackage = frameworkOptions[0].pkg;
       console.log(`${chalk.cyan("?")} Framework: ${chalk.white(frameworkOptions[0].label)}`);
     } else {
-      framework = await promptSelect(rl, "Framework", frameworkOptions) as 'arduino' | 'avr';
+      const selected = await promptSelect(rl, "Framework", frameworkOptions.map(f => ({ label: f.label, value: f.value })));
+      const match = frameworkOptions.find(f => f.value === selected)!;
+      framework = match.value;
+      frameworkPackage = match.pkg;
     }
-
-    const frameworkPackage = framework === 'avr'
-      ? '@typehal/framework-avr'
-      : '@typehal/framework-arduino';
 
     // 4. Baud rate
     let baudRate: number;

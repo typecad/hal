@@ -9,10 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./arduino": {
-      "types": "./dist/arduino.d.ts",
-      "default": "./dist/arduino.js"
     }
   },
   "files": [
@@ -23,7 +19,7 @@
   },
   "dependencies": {
     "@typehal/core": "*",
-    "@typehal/hal": "*"
+    "@typehal/schema": "*"
   },
   "license": "MIT",
   "publishConfig": {

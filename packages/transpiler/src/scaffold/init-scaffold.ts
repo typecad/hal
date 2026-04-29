@@ -17,6 +17,7 @@ import {
   generateStarterSketch,
   generateGitignore,
 } from "./init-templates";
+import { normalizeKebabName } from "../utils/strings";
 
 // ---------------------------------------------------------------------------
 // Built-in board registry
@@ -33,18 +34,13 @@ export interface KnownBoard {
   boardPackage: string;
   /** Default framework package */
   frameworkPackage: string;
-  /** Fully Qualified Board Name for arduino-cli */
-  fqbn: string;
+  /** Fully Qualified Board Name for toolchain (optional, framework-specific) */
+  fqbn?: string;
   /** MCU part number */
   mcu: string;
 }
 
-/**
- * Static registry of known boards. No network calls needed.
- * New boards are added by contributors. Users who need unlisted boards
- * are directed to `typehal create-board` first.
- */
-export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = [
+const _knownBoards: KnownBoard[] = [
   {
     id: 'arduino-uno',
     displayName: 'Arduino Uno',
@@ -65,24 +61,32 @@ export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = [
   },
 ];
 
+/**
+ * Register a board for use in `typehal init`.
+ * Framework/board packages call this at load time to make themselves
+ * discoverable by the scaffolding wizard.
+ */
+export function registerKnownBoard(board: KnownBoard): void {
+  const existing = _knownBoards.findIndex(b => b.id === board.id);
+  if (existing >= 0) {
+    _knownBoards[existing] = board;
+  } else {
+    _knownBoards.push(board);
+  }
+}
+
+/**
+ * Known boards available for project scaffolding.
+ * Includes built-in defaults (Arduino Uno, ESP32 DevKit) plus any
+ * boards registered via `registerKnownBoard()`.
+ */
+export const KNOWN_BOARDS: ReadonlyArray<KnownBoard> = _knownBoards;
+
 // ---------------------------------------------------------------------------
 // Project name validation
 // ---------------------------------------------------------------------------
 
-/**
- * Validate and normalize a project name.
- * - Converts to lowercase
- * - Replaces spaces and underscores with hyphens
- * - Removes invalid characters
- */
-export function normalizeProjectName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+export { normalizeKebabName as normalizeProjectName };
 
 // ---------------------------------------------------------------------------
 // Scaffold orchestration
@@ -168,7 +172,7 @@ export function printInitNextSteps(options: InitProjectOptions, outDir: string):
   console.log("Next steps:");
   console.log(`  cd ${relativeDir}`);
   console.log(`  npm install`);
-  console.log(`  npx typehal ./src/sketch.ts --compile --fqbn ${options.fqbn}`);
+  console.log(`  npx typehal ./src/sketch.ts --compile${options.fqbn ? ` --fqbn ${options.fqbn}` : ''}`);
   console.log();
   console.log("To upload to your board:");
   console.log(`  npx typehal ./src/sketch.ts --compile --upload --port ${portHint}`);

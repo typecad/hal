@@ -1,46 +1,28 @@
 // ---------------------------------------------------------------------------
 // Platform strategy registry
 //
-// Maps TargetProfile strings to PlatformStrategy implementations.
+// Maps target profile strings to PlatformStrategy implementations.
 // Framework packages call `registerPlatformStrategy()` to plug in custom
 // strategies at import time.
 // ---------------------------------------------------------------------------
 
 import type { PlatformStrategy } from "./platform-strategy";
 import { GenericStrategy } from "./generic-strategy";
-import { ArduinoStrategy } from "./arduino-strategy";
 
-// Store references to strategy instances for cache management
 const _genericStrategy = new GenericStrategy();
-let _arduinoStrategy: PlatformStrategy | undefined;
-let _arduinoStrategyLoaded = false;
 
 const _registry = new Map<string, PlatformStrategy>([
   ["generic", _genericStrategy],
 ]);
 
-function ensureArduinoStrategy(): void {
-  if (_arduinoStrategyLoaded) return;
-  _arduinoStrategyLoaded = true;
-
-  try {
-    const strategy = new ArduinoStrategy();
-    _arduinoStrategy = strategy;
-    _registry.set("arduino", strategy);
-  } catch {
-    // Arduino framework package not installed or unavailable.
-    // Fallback to generic strategy for generic targets.
-  }
-}
-
 /**
- * Register a custom platform strategy.  Board packages call this from
+ * Register a custom platform strategy.  Framework packages call this from
  * their entry point to override the default strategy for a target.
  *
  * @example
- * // In @typehal/board-avr-atmega328p
+ * // In @typehal/framework-arduino
  * import { registerPlatformStrategy } from "@typehal/transpiler/platform/registry";
- * registerPlatformStrategy(new Atmega328pStrategy());
+ * registerPlatformStrategy(new ArduinoStrategy());
  */
 export function registerPlatformStrategy(strategy: PlatformStrategy): void {
   _registry.set(strategy.id, strategy);
@@ -51,18 +33,17 @@ export function registerPlatformStrategy(strategy: PlatformStrategy): void {
  * Falls back to the "generic" strategy if no match is found.
  */
 export function resolveStrategy(target: string): PlatformStrategy {
-  if (target === "arduino") {
-    ensureArduinoStrategy();
-  }
   return _registry.get(target) ?? _registry.get("generic")!;
 }
 
 /**
- * Clear the Arduino profile cache.
+ * Clear profile caches on all registered strategies.
  * Should be called between transpilations to ensure fresh profile resolution.
  */
-export function clearArduinoProfileCache(): void {
-  if (_arduinoStrategy && typeof (_arduinoStrategy as any).clearProfileCache === "function") {
-    (_arduinoStrategy as any).clearProfileCache();
+export function clearAllProfileCaches(): void {
+  for (const strategy of _registry.values()) {
+    if (typeof (strategy as any).clearProfileCache === "function") {
+      (strategy as any).clearProfileCache();
+    }
   }
 }

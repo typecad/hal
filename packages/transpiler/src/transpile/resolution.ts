@@ -22,7 +22,7 @@ export interface TranspileGraphResult {
   nativeModules: Map<string, NativeCppModule>;
 }
 
-export function resolveLocalImport(fromFile: string, moduleSpecifier: string): string | undefined {
+function resolveLocalImport(fromFile: string, moduleSpecifier: string): string | undefined {
   if (!moduleSpecifier.startsWith(".")) {
     return undefined;
   }
@@ -57,7 +57,7 @@ export function resolveLocalImport(fromFile: string, moduleSpecifier: string): s
   return undefined;
 }
 
-export function parseModuleSpecifier(moduleSpecifier: string): { packageName: string; subpath: string } {
+function parseModuleSpecifier(moduleSpecifier: string): { packageName: string; subpath: string } {
   const parts = moduleSpecifier.split("/");
   if (moduleSpecifier.startsWith("@")) {
     const scope = parts[0];
@@ -71,7 +71,7 @@ export function parseModuleSpecifier(moduleSpecifier: string): { packageName: st
   return { packageName, subpath };
 }
 
-export function findNodeModulesPackage(fromFile: string, packageName: string): string | undefined {
+function findNodeModulesPackage(fromFile: string, packageName: string): string | undefined {
   let currentDir = path.dirname(path.resolve(fromFile));
 
   while (currentDir !== path.dirname(currentDir)) {
@@ -182,7 +182,7 @@ function mapDistToSource(packageDir: string, distPath: string, subpath: string):
   return undefined;
 }
 
-export function resolveNpmPackageImport(
+function resolveNpmPackageImport(
   fromFile: string,
   moduleSpecifier: string,
 ): ResolvedNpmPackage | undefined {

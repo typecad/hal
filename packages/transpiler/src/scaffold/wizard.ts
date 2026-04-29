@@ -11,6 +11,8 @@ import { stdin as input, stdout as output } from "node:process";
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 import type { BoardTemplateOptions } from "./templates";
 import type { ArchitectureIdentifier } from "@typehal/core";
+import type { PinDefinition } from "@typehal/schema";
+import { ARCH_DEFAULTS } from "./architecture-defaults";
 
 // Valid architectures with descriptions
 const ARCHITECTURES: Array<{ id: ArchitectureIdentifier; name: string; description: string }> = [
@@ -35,50 +37,9 @@ const PIN_PRESETS = {
   FULL: "Digital + Analog + PWM + Interrupt",
 };
 
-// Default values per architecture
-const ARCH_DEFAULTS: Record<ArchitectureIdentifier, {
-  mcu: string;
-  clockSpeedMhz: number;
-  flashKb: number;
-  sramKb: number;
-  eepromKb: number;
-  vcc: number;
-}> = {
-  avr: { mcu: "ATmega328P", clockSpeedMhz: 16, flashKb: 32, sramKb: 2, eepromKb: 1, vcc: 5.0 },
-  esp32: { mcu: "ESP32", clockSpeedMhz: 240, flashKb: 4096, sramKb: 520, eepromKb: 0, vcc: 3.3 },
-  esp32s2: { mcu: "ESP32-S2", clockSpeedMhz: 240, flashKb: 4096, sramKb: 320, eepromKb: 0, vcc: 3.3 },
-  esp32s3: { mcu: "ESP32-S3", clockSpeedMhz: 240, flashKb: 8192, sramKb: 512, eepromKb: 0, vcc: 3.3 },
-  esp32c3: { mcu: "ESP32-C3", clockSpeedMhz: 160, flashKb: 4096, sramKb: 400, eepromKb: 0, vcc: 3.3 },
-  rp2040: { mcu: "RP2040", clockSpeedMhz: 133, flashKb: 2048, sramKb: 264, eepromKb: 0, vcc: 3.3 },
-  samd: { mcu: "SAMD21G18A", clockSpeedMhz: 48, flashKb: 256, sramKb: 32, eepromKb: 0, vcc: 3.3 },
-  stm32: { mcu: "STM32F103C8", clockSpeedMhz: 72, flashKb: 64, sramKb: 20, eepromKb: 0, vcc: 3.3 },
-  nrf52: { mcu: "nRF52840", clockSpeedMhz: 64, flashKb: 1024, sramKb: 256, eepromKb: 0, vcc: 3.3 },
-};
-
 export interface WizardResult extends BoardTemplateOptions {
   pins: PinDefinition[];
   peripherals: PeripheralConfig;
-}
-
-export interface PinDefinition {
-  number: number;
-  gpio?: number;
-  name: string;
-  aliases: string[];
-  capabilities: {
-    digitalInput: boolean;
-    digitalOutput: boolean;
-    analogInput: boolean;
-    analogOutput: boolean;
-    pwm: boolean;
-    interrupt: boolean;
-    pullUp: boolean;
-    pullDown: boolean;
-    touch: boolean;
-    openDrain: boolean;
-  };
-  functions: Array<{ type: string; instance: number; role: string }>;
-  onboardLed?: boolean;
 }
 
 export interface PeripheralConfig {
@@ -283,7 +244,7 @@ export async function runBoardWizard(): Promise<WizardResult | null> {
         const ledPin = pins.find(p => p.number === ledPinNum);
         if (ledPin) {
           ledPin.onboardLed = true;
-          ledPin.aliases.push("LED");
+          ledPin.aliases!.push("LED");
         }
       }
     }
@@ -450,12 +411,12 @@ async function defineI2CPins(rl: ReadlineInterface, pins: PinDefinition[], busIn
   const sclPin = pins.find(p => p.number === scl);
   
   if (sdaPin) {
-    sdaPin.functions.push({ type: "i2c", instance: busIndex, role: "sda" });
-    if (!sdaPin.aliases.includes("SDA")) sdaPin.aliases.push(busIndex === 0 ? "SDA" : `SDA${busIndex}`);
+    sdaPin.functions!.push({ type: "i2c", instance: busIndex, role: "sda" });
+    if (!sdaPin.aliases!.includes("SDA")) sdaPin.aliases!.push(busIndex === 0 ? "SDA" : `SDA${busIndex}`);
   }
   if (sclPin) {
-    sclPin.functions.push({ type: "i2c", instance: busIndex, role: "scl" });
-    if (!sclPin.aliases.includes("SCL")) sclPin.aliases.push(busIndex === 0 ? "SCL" : `SCL${busIndex}`);
+    sclPin.functions!.push({ type: "i2c", instance: busIndex, role: "scl" });
+    if (!sclPin.aliases!.includes("SCL")) sclPin.aliases!.push(busIndex === 0 ? "SCL" : `SCL${busIndex}`);
   }
 }
 
@@ -479,20 +440,20 @@ async function defineSPIPins(rl: ReadlineInterface, pins: PinDefinition[], busIn
   const ssPin = pins.find(p => p.number === ss);
   
   if (mosiPin) {
-    mosiPin.functions.push({ type: "spi", instance: busIndex, role: "mosi" });
-    if (!mosiPin.aliases.includes("MOSI")) mosiPin.aliases.push(busIndex === 0 ? "MOSI" : `MOSI${busIndex}`);
+    mosiPin.functions!.push({ type: "spi", instance: busIndex, role: "mosi" });
+    if (!mosiPin.aliases!.includes("MOSI")) mosiPin.aliases!.push(busIndex === 0 ? "MOSI" : `MOSI${busIndex}`);
   }
   if (misoPin) {
-    misoPin.functions.push({ type: "spi", instance: busIndex, role: "miso" });
-    if (!misoPin.aliases.includes("MISO")) misoPin.aliases.push(busIndex === 0 ? "MISO" : `MISO${busIndex}`);
+    misoPin.functions!.push({ type: "spi", instance: busIndex, role: "miso" });
+    if (!misoPin.aliases!.includes("MISO")) misoPin.aliases!.push(busIndex === 0 ? "MISO" : `MISO${busIndex}`);
   }
   if (sckPin) {
-    sckPin.functions.push({ type: "spi", instance: busIndex, role: "sck" });
-    if (!sckPin.aliases.includes("SCK")) sckPin.aliases.push(busIndex === 0 ? "SCK" : `SCK${busIndex}`);
+    sckPin.functions!.push({ type: "spi", instance: busIndex, role: "sck" });
+    if (!sckPin.aliases!.includes("SCK")) sckPin.aliases!.push(busIndex === 0 ? "SCK" : `SCK${busIndex}`);
   }
   if (ssPin) {
-    ssPin.functions.push({ type: "spi", instance: busIndex, role: "ss" });
-    if (!ssPin.aliases.includes("SS")) ssPin.aliases.push(busIndex === 0 ? "SS" : `SS${busIndex}`);
+    ssPin.functions!.push({ type: "spi", instance: busIndex, role: "ss" });
+    if (!ssPin.aliases!.includes("SS")) ssPin.aliases!.push(busIndex === 0 ? "SS" : `SS${busIndex}`);
   }
 }
 
@@ -510,12 +471,12 @@ async function defineUARTPins(rl: ReadlineInterface, pins: PinDefinition[], busI
   const rxPin = pins.find(p => p.number === rx);
   
   if (txPin) {
-    txPin.functions.push({ type: "uart", instance: busIndex, role: "tx" });
-    if (!txPin.aliases.includes("TX")) txPin.aliases.push(busIndex === 0 ? "TX" : `TX${busIndex}`);
+    txPin.functions!.push({ type: "uart", instance: busIndex, role: "tx" });
+    if (!txPin.aliases!.includes("TX")) txPin.aliases!.push(busIndex === 0 ? "TX" : `TX${busIndex}`);
   }
   if (rxPin) {
-    rxPin.functions.push({ type: "uart", instance: busIndex, role: "rx" });
-    if (!rxPin.aliases.includes("RX")) rxPin.aliases.push(busIndex === 0 ? "RX" : `RX${busIndex}`);
+    rxPin.functions!.push({ type: "uart", instance: busIndex, role: "rx" });
+    if (!rxPin.aliases!.includes("RX")) rxPin.aliases!.push(busIndex === 0 ? "RX" : `RX${busIndex}`);
   }
 }
 
@@ -589,25 +550,22 @@ function isInterruptPinDefault(pinIndex: number, arch: ArchitectureIdentifier): 
 }
 
 function getDefaultI2CPins(signal: "sda" | "scl", _bus: number): number {
-  // Arduino Uno defaults
   const defaults = { sda: 18, scl: 19 };
   return defaults[signal];
 }
 
 function getDefaultSPIPins(signal: "mosi" | "miso" | "sck" | "ss", _bus: number): number {
-  // Arduino Uno defaults
   const defaults = { mosi: 11, miso: 12, sck: 13, ss: 10 };
   return defaults[signal];
 }
 
 function getDefaultUARTPins(signal: "tx" | "rx", _bus: number): number {
-  // Arduino Uno defaults
   const defaults = { tx: 1, rx: 0 };
   return defaults[signal];
 }
 
 function findPinByName(pins: PinDefinition[], name: string): PinDefinition | undefined {
-  return pins.find(p => p.name === name || p.aliases.includes(name));
+  return pins.find(p => p.name === name || p.aliases!.includes(name));
 }
 
 function findPinByNumber(pins: PinDefinition[], num: number): PinDefinition | undefined {

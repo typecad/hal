@@ -54,19 +54,6 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   '.some(':         ['__tc_some'],
 };
 
-/**
- * Extract the __tc_* function name from a C++ helper function definition.
- * E.g. "std::string __tc_toUpperCase(const std::string& s) { ... }" => "__tc_toUpperCase"
- */
-export function extractHelperFunctionName(funcDef: string): string | null {
-  const match = funcDef.match(/\b(__tc_[A-Za-z0-9_]+)\s*\(/);
-  return match ? match[1] : null;
-}
-
-/**
- * Extract ALL __tc_* function names from a C++ helper function block.
- * A single helperFunctions entry may define multiple functions.
- */
 function extractHelperFunctionNames(funcDef: string): string[] {
   const matches = funcDef.matchAll(/\b(__tc_[A-Za-z0-9_]+)\s*\(/g);
   return [...new Set([...matches].map(m => m[1]))];

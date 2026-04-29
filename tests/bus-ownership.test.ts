@@ -9,7 +9,7 @@ describe('Bus Ownership Pattern', () => {
   describe('I2C ownership', () => {
     it('emits comment for I2C0.take() and I2C0.release()', () => {
       const result = transpile(`
-        import { I2C0 } from '@typehal/board-arduino-uno/arduino';
+        import { I2C0 } from '@typehal/framework-arduino/arduino';
         I2C0.begin();
         I2C0.take();
         I2C0.beginTransmission(0x76);
@@ -29,7 +29,7 @@ describe('Bus Ownership Pattern', () => {
 
     it('generates error for double take without release', () => {
       const result = transpile(`
-        import { I2C0 } from '@typehal/board-arduino-uno/arduino';
+        import { I2C0 } from '@typehal/framework-arduino/arduino';
         I2C0.begin();
         I2C0.take();
         I2C0.take();
@@ -42,7 +42,7 @@ describe('Bus Ownership Pattern', () => {
 
     it('generates warning for I/O without ownership', () => {
       const result = transpile(`
-        import { I2C0 } from '@typehal/board-arduino-uno/arduino';
+        import { I2C0 } from '@typehal/framework-arduino/arduino';
         I2C0.begin();
         I2C0.take();
         I2C0.release();
@@ -55,7 +55,7 @@ describe('Bus Ownership Pattern', () => {
 
     it('generates warning for release without take', () => {
       const result = transpile(`
-        import { I2C0 } from '@typehal/board-arduino-uno/arduino';
+        import { I2C0 } from '@typehal/framework-arduino/arduino';
         I2C0.begin();
         I2C0.release();
       `, { target: 'arduino' });
@@ -69,7 +69,7 @@ describe('Bus Ownership Pattern', () => {
   describe('SPI ownership', () => {
     it('emits comment for SPI0.take() and SPI0.release()', () => {
       const result = transpile(`
-        import { SPI0 } from '@typehal/board-arduino-uno/arduino';
+        import { SPI0 } from '@typehal/framework-arduino/arduino';
         SPI0.begin();
         SPI0.take();
         SPI0.transfer(0x42);
@@ -88,7 +88,7 @@ describe('Bus Ownership Pattern', () => {
   describe('UART ownership', () => {
     it('emits comment for UART0.take() and UART0.release()', () => {
       const result = transpile(`
-        import { UART0 } from '@typehal/board-arduino-uno/arduino';
+        import { UART0 } from '@typehal/framework-arduino/arduino';
         UART0.begin(9600);
         UART0.take();
         UART0.println("hello");
@@ -107,7 +107,7 @@ describe('Bus Ownership Pattern', () => {
   describe('Opt-in behavior', () => {
     it('no diagnostics when ownership pattern is not used', () => {
       const result = transpile(`
-        import { I2C0 } from '@typehal/board-arduino-uno/arduino';
+        import { I2C0 } from '@typehal/framework-arduino/arduino';
         I2C0.begin();
         I2C0.beginTransmission(0x76);
         I2C0.write(0xFA);
@@ -122,7 +122,7 @@ describe('Bus Ownership Pattern', () => {
 
     it('no diagnostics when take/release used correctly', () => {
       const result = transpile(`
-        import { I2C0 } from '@typehal/board-arduino-uno/arduino';
+        import { I2C0 } from '@typehal/framework-arduino/arduino';
         I2C0.begin();
         I2C0.take();
         I2C0.beginTransmission(0x76);
@@ -141,7 +141,8 @@ describe('Bus Ownership Pattern', () => {
   describe('Take/release in loop', () => {
     it('correctly validates take/release across loop iterations', () => {
       const result = transpile(`
-        import { I2C0, delay } from '@typehal/board-arduino-uno/arduino';
+        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { delay } from '@typehal/board-arduino-uno';
         I2C0.begin();
         while (true) {
           I2C0.take();
@@ -170,7 +171,8 @@ describe('Bus Ownership Pattern', () => {
 describe('Combined GPIO + Bus Ownership', () => {
   it('handles both patterns in the same program', () => {
     const result = transpile(`
-      import { LED, I2C0, UART0, delay } from '@typehal/board-arduino-uno/arduino';
+      import { I2C0, UART0 } from '@typehal/framework-arduino/arduino';
+      import { LED, delay } from '@typehal/board-arduino-uno';
       const led = LED.asOutput();
       const serial = UART0.begin(9600);
       I2C0.begin();

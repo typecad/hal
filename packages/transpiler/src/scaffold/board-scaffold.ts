@@ -19,14 +19,19 @@ import {
   generateStrategyTs,
   generateBoardTs,
 } from "./templates";
-import type { BoardDefinition } from '@typehal/schema';
-import { WizardResult, PinDefinition, PeripheralConfig } from "./wizard";
+import { type BoardDefinition, ARDUINO_CORE_VERSION, type PinDefinition } from '@typehal/schema';
+import { WizardResult, PeripheralConfig } from "./wizard";
+import { normalizeKebabName } from "../utils/strings";
+import { toPascalCase } from "../utils/strings";
+import { ARCH_DEFAULTS } from "./architecture-defaults";
+import { generatePinFactoryStubs, ALL_PIN_FACTORY_VARIANTS } from "./pin-factory-templates";
 
 // Re-export for external use
 export { BoardTemplateOptions } from "./templates";
-export { runBoardWizard, WizardResult, PinDefinition, PeripheralConfig } from "./wizard";
+export { runBoardWizard, WizardResult, PeripheralConfig } from "./wizard";
+export type { PinDefinition } from "@typehal/schema";
 
-export interface ScaffoldOptions {
+interface ScaffoldOptions {
   /** Board name (e.g., 'my-custom-board') */
   name: string;
   /** Display name (e.g., 'My Custom Board') */
@@ -69,23 +74,9 @@ const VALID_ARCHITECTURES = [
 type ValidArchitecture = typeof VALID_ARCHITECTURES[number];
 
 /**
- * Validate and normalize a board name.
- * - Converts to lowercase
- * - Replaces spaces and underscores with hyphens
- * - Removes invalid characters
- */
-export function normalizeBoardName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/^-+|-+$/g, '');
-}
-
-/**
  * Validate architecture identifier.
  */
-export function isValidArchitecture(arch: string): arch is ValidArchitecture {
+function isValidArchitecture(arch: string): arch is ValidArchitecture {
   return VALID_ARCHITECTURES.includes(arch as ValidArchitecture);
 }
 
@@ -99,28 +90,7 @@ function getArchitectureDefaults(arch: ValidArchitecture): {
   sramKb: number;
   eepromKb: number;
 } {
-  switch (arch) {
-    case 'avr':
-      return { mcu: 'ATmega328P', clockSpeedMhz: 16, flashKb: 32, sramKb: 2, eepromKb: 1 };
-    case 'esp32':
-      return { mcu: 'ESP32', clockSpeedMhz: 240, flashKb: 4096, sramKb: 520, eepromKb: 0 };
-    case 'esp32s2':
-      return { mcu: 'ESP32-S2', clockSpeedMhz: 240, flashKb: 4096, sramKb: 320, eepromKb: 0 };
-    case 'esp32s3':
-      return { mcu: 'ESP32-S3', clockSpeedMhz: 240, flashKb: 8192, sramKb: 512, eepromKb: 0 };
-    case 'esp32c3':
-      return { mcu: 'ESP32-C3', clockSpeedMhz: 160, flashKb: 4096, sramKb: 400, eepromKb: 0 };
-    case 'rp2040':
-      return { mcu: 'RP2040', clockSpeedMhz: 133, flashKb: 2048, sramKb: 264, eepromKb: 0 };
-    case 'samd':
-      return { mcu: 'SAMD21G18A', clockSpeedMhz: 48, flashKb: 256, sramKb: 32, eepromKb: 0 };
-    case 'stm32':
-      return { mcu: 'STM32F103C8', clockSpeedMhz: 72, flashKb: 64, sramKb: 20, eepromKb: 0 };
-    case 'nrf52':
-      return { mcu: 'nRF52840', clockSpeedMhz: 64, flashKb: 1024, sramKb: 256, eepromKb: 0 };
-    default:
-      return { mcu: 'Unknown', clockSpeedMhz: 16, flashKb: 32, sramKb: 2, eepromKb: 0 };
-  }
+  return ARCH_DEFAULTS[arch] ?? { mcu: 'Unknown', clockSpeedMhz: 16, flashKb: 32, sramKb: 2, eepromKb: 0 };
 }
 
 /**
@@ -146,7 +116,7 @@ export function scaffoldBoardPackage(options: ScaffoldOptions): string[] {
   } = options;
 
   // Normalize board name
-  const name = normalizeBoardName(rawName);
+  const name = normalizeKebabName(rawName);
   if (!name) {
     throw new Error('Invalid board name. Use alphanumeric characters and hyphens only.');
   }
@@ -300,12 +270,12 @@ function generateIndexTsWithPins(options: BoardTemplateOptions, pins: PinDefinit
       touch: ${caps.touch}, openDrain: ${caps.openDrain},
     }`;
     
-    const functionsStr = pin.functions.length > 0
-      ? `, functions: [${pin.functions.map(f => `{ type: '${f.type}', instance: ${f.instance}, role: '${f.role}' }`).join(', ')}]`
+    const functionsStr = pin.functions!.length > 0
+      ? `, functions: [${pin.functions!.map(f => `{ type: '${f.type}', instance: ${f.instance}, role: '${f.role}' }`).join(', ')}]`
       : '';
     
-    const aliasesStr = pin.aliases.length > 0
-      ? `, aliases: [${pin.aliases.map(a => `'${a}'`).join(', ')}]`
+    const aliasesStr = pin.aliases!.length > 0
+      ? `, aliases: [${pin.aliases!.map(a => `'${a}'`).join(', ')}]`
       : '';
     
     const ledStr = pin.onboardLed ? ', onboardLed: true' : '';
@@ -419,7 +389,7 @@ ${uartPins.map((bus, i) => `      ${i}: { tx: '${bus.tx}', rx: '${bus.rx}' },`).
     extraFlags: [],
     defines: {
       F_CPU: '${clockSpeed}UL',
-      ARDUINO: '10819',
+      ARDUINO: ARDUINO_CORE_VERSION,
     },
   },
 };
@@ -491,14 +461,14 @@ function generatePinsTsWithData(options: BoardTemplateOptions, pins: PinDefiniti
 
   // Find alias pins
   const ledPin = pins.find(p => p.onboardLed);
-  const sdaPins = pins.filter(p => p.aliases.includes('SDA'));
-  const sclPins = pins.filter(p => p.aliases.includes('SCL'));
-  const mosiPins = pins.filter(p => p.aliases.includes('MOSI'));
-  const misoPins = pins.filter(p => p.aliases.includes('MISO'));
-  const sckPins = pins.filter(p => p.aliases.includes('SCK'));
-  const ssPins = pins.filter(p => p.aliases.includes('SS'));
-  const txPins = pins.filter(p => p.aliases.includes('TX'));
-  const rxPins = pins.filter(p => p.aliases.includes('RX'));
+  const sdaPins = pins.filter(p => p.aliases!.includes('SDA'));
+  const sclPins = pins.filter(p => p.aliases!.includes('SCL'));
+  const mosiPins = pins.filter(p => p.aliases!.includes('MOSI'));
+  const misoPins = pins.filter(p => p.aliases!.includes('MISO'));
+  const sckPins = pins.filter(p => p.aliases!.includes('SCK'));
+  const ssPins = pins.filter(p => p.aliases!.includes('SS'));
+  const txPins = pins.filter(p => p.aliases!.includes('TX'));
+  const rxPins = pins.filter(p => p.aliases!.includes('RX'));
 
   return `// ---------------------------------------------------------------------------
 // @typehal/board-${name} — Typed pin exports
@@ -517,33 +487,7 @@ import { pinNumber } from '@typehal/schema';
 // Internal stub factories (no-op at runtime; consumed by transpiler)
 // ---------------------------------------------------------------------------
 
-function createDigitalPin(pin: number, gpio: number): BasePin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin;
-}
-
-function createPWMPin(pin: number, gpio: number): PWMPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as PWMPin;
-}
-
-function createAnalogPin(pin: number, gpio: number): AnalogPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as AnalogPin;
-}
-
-function createInterruptPin(pin: number, gpio: number): BasePin & InterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & InterruptPin;
-}
-
-function createPWMInterruptPin(pin: number, gpio: number): BasePin & PWMPin & InterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & PWMPin & InterruptPin;
-}
-
-function createAnalogPWMPin(pin: number, gpio: number): BasePin & PWMPin & AnalogPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & PWMPin & AnalogPin;
-}
-
-function createFullPin(pin: number, gpio: number): BasePin & PWMPin & AnalogPin & InterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & PWMPin & AnalogPin & InterruptPin;
-}
+${generatePinFactoryStubs(ALL_PIN_FACTORY_VARIANTS)}
 
 // ---------------------------------------------------------------------------
 // Pin exports
@@ -684,7 +628,7 @@ function findPeripheralPins(pins: PinDefinition[], type: string, count: number):
     const busPins: Record<string, string> = {};
     
     for (const pin of pins) {
-      for (const fn of pin.functions) {
+      for (const fn of pin.functions!) {
         if (fn.type === type && fn.instance === i) {
           busPins[fn.role] = pin.name;
         }
@@ -695,13 +639,6 @@ function findPeripheralPins(pins: PinDefinition[], type: string, count: number):
   }
   
   return result;
-}
-
-function toPascalCase(str: string): string {
-  return str
-    .split(/[-_\s]+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join('');
 }
 
 /**

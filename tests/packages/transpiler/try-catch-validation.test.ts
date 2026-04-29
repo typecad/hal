@@ -5,6 +5,9 @@
 import { describe, it, expect } from 'vitest';
 import { validateTryCatch } from '../../../packages/transpiler/src/ir/try-catch-validation';
 import type { StatementIR } from '../../../packages/transpiler/src/ir/model';
+import { ArduinoStrategy } from '../../../packages/framework-arduino';
+
+const _arduinoStrategy = new ArduinoStrategy();
 
 /** Helper to create a minimal program IR with the given statements */
 function makeProgram(stmts: StatementIR[]) {
@@ -34,7 +37,7 @@ describe('Try/Catch Validation', () => {
       } as any as StatementIR,
     ]);
 
-    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'));
+    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'), _arduinoStrategy);
 
     expect(diagnostics.length).toBe(1);
     expect(diagnostics[0].severity).toBe('error');
@@ -55,7 +58,7 @@ describe('Try/Catch Validation', () => {
       } as any as StatementIR,
     ]);
 
-    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'));
+    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'), _arduinoStrategy);
 
     expect(diagnostics.length).toBe(1);
     expect(diagnostics[0].severity).toBe('error');
@@ -113,7 +116,7 @@ describe('Try/Catch Validation', () => {
       } as any as StatementIR,
     ]);
 
-    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'));
+    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'), _arduinoStrategy);
 
     expect(diagnostics.length).toBe(1);
     expect(diagnostics[0].code).toBe('try-catch-unsupported');
@@ -138,7 +141,7 @@ describe('Try/Catch Validation', () => {
       classes: [],
     };
 
-    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'));
+    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'), _arduinoStrategy);
 
     expect(diagnostics.length).toBe(1);
     expect(diagnostics[0].line).toBe(10);
@@ -167,7 +170,7 @@ describe('Try/Catch Validation', () => {
       ],
     };
 
-    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'));
+    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'), _arduinoStrategy);
 
     expect(diagnostics.length).toBe(1);
     expect(diagnostics[0].line).toBe(15);
@@ -183,7 +186,7 @@ describe('Try/Catch Validation', () => {
       } as any as StatementIR,
     ]);
 
-    const diagnostics = validateTryCatch(program, makeBoardConstants('megaavr'));
+    const diagnostics = validateTryCatch(program, makeBoardConstants('megaavr'), _arduinoStrategy);
 
     expect(diagnostics.length).toBe(1);
     expect(diagnostics[0].message).toContain('MEGAAVR');
@@ -200,7 +203,7 @@ describe('Try/Catch Validation', () => {
       } as any as StatementIR,
     ]);
 
-    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'));
+    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'), _arduinoStrategy);
 
     expect(diagnostics.length).toBe(0);
   });
@@ -221,7 +224,7 @@ describe('Try/Catch Validation', () => {
       } as any as StatementIR,
     ]);
 
-    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'));
+    const diagnostics = validateTryCatch(program, makeBoardConstants('avr'), _arduinoStrategy);
 
     expect(diagnostics.length).toBe(2);
     expect(diagnostics[0].line).toBe(5);

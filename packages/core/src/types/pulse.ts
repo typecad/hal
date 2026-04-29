@@ -7,7 +7,7 @@ import type { BasePin } from './pin';
 /**
  * Chainable pulse measurement builder.
  */
-export interface IPulseChain {
+interface IPulseChain {
   /** Measure HIGH pulse with default timeout */
   high(): number;
   /** Measure LOW pulse with default timeout */

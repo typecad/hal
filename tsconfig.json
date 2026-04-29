@@ -12,12 +12,13 @@
   },
   "references": [
     { "path": "packages/core" },
-    { "path": "packages/hal" },
+    { "path": "packages/schema" },
     { "path": "packages/framework-avr" },
     { "path": "packages/framework-arduino" },
+    { "path": "packages/framework-native" },
     { "path": "packages/board-arduino-uno" },
     { "path": "packages/board-esp32-devkit" },
-    { "path": "packages/cli" },
+    { "path": "packages/transpiler" },
     { "path": "packages/expect" },
     { "path": "packages/simulator" }
   ]

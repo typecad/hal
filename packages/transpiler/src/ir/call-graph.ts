@@ -4,7 +4,7 @@ import { collectExpressionIdentifiers, collectStatementIdentifiers } from "./ide
 /**
  * Represents a node in the call graph
  */
-export interface CallGraphNode {
+interface CallGraphNode {
   /** Symbol name */
   name: string;
   /** Type of symbol */

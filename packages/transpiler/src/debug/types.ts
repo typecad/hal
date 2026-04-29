@@ -15,16 +15,6 @@ export interface CapturedVariable {
 }
 
 /**
- * A breakpoint location.
- */
-export interface BreakpointLocation {
-  /** Source file path (relative or absolute) */
-  file: string;
-  /** Line number (1-indexed) */
-  line: number;
-}
-
-/**
  * A rich breakpoint with optional condition and log message.
  */
 export interface RichBreakpoint {

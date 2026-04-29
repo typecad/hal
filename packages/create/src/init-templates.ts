@@ -24,16 +24,18 @@ export interface InitProjectOptions {
   boardPackage: string;
   /** npm package name for the framework (e.g., '@typehal/framework-arduino') */
   frameworkPackage: string;
-  /** Framework id: 'arduino' or 'avr' */
-  framework: 'arduino' | 'avr';
-  /** Fully Qualified Board Name for arduino-cli */
-  fqbn: string;
+  /** Framework identifier (e.g., 'arduino', 'avr', or any custom framework) */
+  framework: string;
+  /** Fully Qualified Board Name for toolchain (optional, framework-specific) */
+  fqbn?: string;
   /** MCU part number */
   mcu: string;
   /** Serial baud rate */
   baudRate: number;
   /** Whether to generate a starter sketch */
   includeSketch: boolean;
+  /** Toolchain type (e.g., 'arduino-cli'). Defaults to 'arduino-cli' when not set. */
+  toolchainType?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +99,11 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
 // ---------------------------------------------------------------------------
 
 export function generateProjectConfig(options: InitProjectOptions): string {
-  const { architecture, boardPackage, frameworkPackage, fqbn, baudRate, framework } = options;
+  const { architecture, boardPackage, frameworkPackage, baudRate, framework, toolchainType } = options;
+  const fqbn = options.fqbn;
+  const resolvedToolchain = toolchainType ?? 'arduino-cli';
+
+  const fqbnLine = fqbn ? `\n  // Fully-Qualified Board Name for toolchain\n  fqbn: '${fqbn}',` : '';
 
   return `// ---------------------------------------------------------------------------
 // typehal.config.ts — Project configuration
@@ -118,10 +124,7 @@ const config: TypehalConfig = {
   board: '${boardPackage}',
 
   // Framework package — controls code generation strategy
-  framework: '${frameworkPackage}',
-
-  // Fully-Qualified Board Name for arduino-cli
-  fqbn: '${fqbn}',
+  framework: '${frameworkPackage}',${fqbnLine}
 
   // Output / build options
   output: {
@@ -132,7 +135,7 @@ const config: TypehalConfig = {
 
   // Toolchain configuration
   toolchain: {
-    type: 'arduino-cli',
+    type: '${resolvedToolchain}',
   },
 
   // Console polyfill configuration
@@ -176,53 +179,6 @@ declare global {
   type size_t = number;
   type float = number;
   type double = number;
-
-  // Convenience helper for volatile variables in TypeHAL programs.
-  // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
-  declare function volatile<T>(value: T): T;
-
-  // Arduino timing utilities (transpiled to millis/micros/delay/delayMicroseconds)
-  const Timing: {
-    millis(): number;
-    micros(): number;
-    delay(ms: number): void;
-    delayMicroseconds(us: number): void;
-  };
-
-  // EEPROM non-volatile storage (transpiled to EEPROM.*)
-  const EEPROM: {
-    read(addr: number): number;
-    write(addr: number, value: number): void;
-    update(addr: number, value: number): void;
-    length(): number;
-    get<T>(addr: number, ref: T): T;
-    put<T>(addr: number, ref: T): void;
-  };
-
-  // Watchdog timer (transpiled to wdt_enable/wdt_reset/wdt_disable)
-  const WDT: {
-    enable(timeout?: '15ms' | '30ms' | '60ms' | '120ms' | '250ms' | '500ms' | '1s' | '2s' | '4s' | '8s'): void;
-    reset(): void;
-    disable(): void;
-  };
-
-  // Key-value non-volatile storage (EEPROM-backed on AVR, native Preferences.h on ESP32)
-  const Preferences: {
-    begin(name: string, readOnly?: boolean): void;
-    end(): void;
-    putInt(key: string, value: number): void;
-    getInt(key: string, defaultValue: number): number;
-    putUInt(key: string, value: number): void;
-    getUInt(key: string, defaultValue: number): number;
-    putBool(key: string, value: boolean): void;
-    getBool(key: string, defaultValue: boolean): boolean;
-    putFloat(key: string, value: number): void;
-    getFloat(key: string, defaultValue: number): number;
-    putString(key: string, value: string): void;
-    getString(key: string, defaultValue: string): string;
-    clear(): void;
-    remove(key: string): void;
-  };
 }
 
 declare module '@typehal' {

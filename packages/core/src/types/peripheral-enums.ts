@@ -66,7 +66,7 @@ export type I2CSpeed = typeof I2CSpeed[keyof typeof I2CSpeed];
  * **Usage:** `SPI0.setFrequency(SPIClock.MHz4)`
  * **Direct:** `SPI0.setFrequency(3_200000)`
  */
-export const SPIClock = {
+const SPIClock = {
   KHz125:  125_000,
   KHz250:  250_000,
   KHz500:  500_000,
@@ -78,29 +78,5 @@ export const SPIClock = {
 } as const;
 
 /** Union type of all standard SPI clock values. */
-export type SPIClock = typeof SPIClock[keyof typeof SPIClock];
+type SPIClock = typeof SPIClock[keyof typeof SPIClock];
 
-// ---------------------------------------------------------------------------
-// Analog Reference Voltage
-// ---------------------------------------------------------------------------
-
-/**
- * Analog reference voltage source selection.
- *
- * **Usage:** `A0.setReference(AnalogRef.Default)`
- */
-export const AnalogRef = {
-  /** Default analog reference (5V on Uno). */
-  Default:      0,
-  /** Internal reference (1.1V on ATmega328P). */
-  Internal:     1,
-  /** External reference on AREF pin. */
-  External:     2,
-  /** Internal 1.1V reference (ATmega specific). */
-  Internal1V1:  3,
-  /** Internal 2.56V reference (ATmega specific). */
-  Internal2V56: 4,
-} as const;
-
-/** Union type of all analog reference values. */
-export type AnalogRef = typeof AnalogRef[keyof typeof AnalogRef];

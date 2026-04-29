@@ -1,7 +1,7 @@
 import { buildProgramIR } from '../packages/cli/src/ir/build-ir';
 import * as fs from 'fs';
 
-const code = `import { I2C0 } from '@typehal/board-arduino-uno/arduino';\nI2C0.begin();\nconst values = [10,20,30];\nconst len = values.length;\n`;
+const code = `import { I2C0 } from '@typehal/framework-arduino/arduino';\nI2C0.begin();\nconst values = [10,20,30];\nconst len = values.length;\n`;
 const ir = buildProgramIR('debug.ts', code);
 const debug = ir.program.topLevelStatements
   .filter(stmt => stmt.kind === 'var_decl')

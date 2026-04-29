@@ -192,22 +192,22 @@ describe("Bug 4: Float type propagation", () => {
     expectCppContains(result, ["4.0f"]);
   });
 
-  it("infers float type for float variable declarations", () => {
+  it("infers double type for float variable declarations", () => {
     const result = transpileArduino(`
       const x = 1.5;
     `);
 
-    expectCppContains(result, ["float x = 1.5f"]);
+    expectCppContains(result, ["double x = 1.5f"]);
   });
 
-  it("promotes function return type from int to float when body returns float", () => {
+  it("promotes function return type from int to double when body returns float", () => {
     const result = transpileArduino(`
       function half(n: number): number {
         return n / 2.0;
       }
     `);
 
-    expectCppContains(result, ["float half"]);
+    expectCppContains(result, ["double half"]);
     expectCppContains(result, ["2.0f"]);
   });
 
@@ -218,7 +218,7 @@ describe("Bug 4: Float type propagation", () => {
 
     expectCppContains(result, ["1.5f"]);
     expectCppContains(result, ["2.5f"]);
-    expectCppContains(result, ["float sum"]);
+    expectCppContains(result, ["double sum"]);
   });
 
   it("keeps integer literals without f suffix", () => {
@@ -236,7 +236,7 @@ describe("Bug 4: Float type propagation", () => {
     `);
 
     expectCppContains(result, ["0.5f"]);
-    expectCppContains(result, ["float z"]);
+    expectCppContains(result, ["double z"]);
   });
 
   it("promotes arrow function return type when returning float", () => {
@@ -247,7 +247,7 @@ describe("Bug 4: Float type propagation", () => {
     `);
 
     expectCppContains(result, ["0.5f"]);
-    expectCppContains(result, ["float getHalf"]);
+    expectCppContains(result, ["double getHalf"]);
   });
 });
 

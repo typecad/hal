@@ -45,14 +45,6 @@ export enum UARTStatus {
   READ_FAILED = 9,
 }
 
-/**
- * How the bus handles errors at runtime.
- * - 'throw': Assert-style — throws on error (good for development)
- * - 'callback': Calls registered onError handlers
- * - 'silent': Returns status codes only (good for production)
- */
-export type { ErrorPolicy } from './error-policy';
-
 // ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
@@ -184,23 +176,8 @@ export interface ISerialPort extends IUARTBus {
  * Owned serial port — obtained via `UART0.take()`, released via `release()`.
  * Extends ISerialPort with ownership semantics for multi-threaded contention.
  */
-export interface IOwnedSerialPort extends ISerialPort {
+interface IOwnedSerialPort extends ISerialPort {
   /** Release exclusive ownership. */
   release(): void;
 }
 
-// ---------------------------------------------------------------------------
-// Debug Serial (extends SerialPort with log levels)
-// ---------------------------------------------------------------------------
-
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-export interface IDebugSerial extends ISerialPort {
-  debug(message: string): void;
-  info(message: string): void;
-  warn(message: string): void;
-  error(message: string): void;
-  logWithTimestamp(level: LogLevel, message: string): void;
-  setEnabled(enabled: boolean): void;
-  setLevel(level: LogLevel): void;
-}

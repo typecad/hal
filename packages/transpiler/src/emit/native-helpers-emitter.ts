@@ -1,6 +1,7 @@
 import type { RuntimePolyfillIR } from "@typehal/core/shared";
+import { normalizeInclude } from "./utils/include-resolver";
 
-export interface EmittedPolyfillCode {
+interface EmittedPolyfillCode {
   includes: string[];
   declarations: string[];
   definitions: string[];
@@ -45,11 +46,4 @@ export function emitPolyfillBoilerplate(polyfills: RuntimePolyfillIR[]): Emitted
   }
 
   return result;
-}
-
-function normalizeInclude(include: string): string {
-  if (include.startsWith("<") || include.startsWith("\"")) {
-    return include;
-  }
-  return `<${include}>`;
 }

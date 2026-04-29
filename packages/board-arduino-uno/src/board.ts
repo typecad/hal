@@ -20,7 +20,7 @@ import type {
   IUninitializedSPIBus,
   IUninitializedUARTBus,
 } from '@typehal/core';
-import type { BoardDefinition } from '@typehal/hal';
+import type { BoardDefinition } from '@typehal/schema';
 
 import {
   D0, D1, D2, D3, D4, D5, D6, D7,

@@ -275,8 +275,9 @@ describe('Transpiler Type Gaps', () => {
         const arr = [...items, 4, 5];
       `);
 
-      expect(result.cpp).toContain('int arr[] = { /* spread from items */, 4, 5 }');
-      expect(result.cpp).not.toContain('/* spread_array: see variable declaration */');
+      expect(result.cpp).toContain('std::vector<int> arr(items)');
+      expect(result.cpp).toContain('arr.push_back(4)');
+      expect(result.cpp).toContain('arr.push_back(5)');
     });
 
     it('expands a spread array with no trailing elements in a declaration', () => {
@@ -284,8 +285,7 @@ describe('Transpiler Type Gaps', () => {
         const arr = [...items];
       `);
 
-      expect(result.cpp).toContain('int arr[] = { /* spread from items */ }');
-      expect(result.cpp).not.toContain('/* spread_array: see variable declaration */');
+      expect(result.cpp).toContain('std::vector<int> arr(items)');
     });
   });
 

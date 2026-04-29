@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { GeneratedSourceMap, MappedDiagnostic, SourceMapEntry } from "../types";
 import { readText, writeText } from "../utils/fs";
 
-export function toSourceMapPath(generatedFilePath: string): string {
+function toSourceMapPath(generatedFilePath: string): string {
   return `${generatedFilePath}.thcppmap.json`;
 }
 

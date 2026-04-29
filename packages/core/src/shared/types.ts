@@ -38,21 +38,15 @@ export interface Diagnostic {
 
 /**
  * Target profile for code generation.
+ * Frameworks register their own profile names (e.g. "arduino", "stm32").
  */
-export type TargetProfile = "generic" | "arduino" | (string & {});
-
-/**
- * Arduino-specific platform context.
- */
-export interface ArduinoPlatformContext {
-  fqbn?: string;
-}
+export type TargetProfile = "generic" | (string & {});
 
 /**
  * Platform-specific context for code generation.
+ * Frameworks add their own context via the index signature.
  */
 export interface PlatformContext {
-  arduino?: ArduinoPlatformContext;
   console?: {
     baudRate?: number;
   };

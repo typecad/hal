@@ -356,7 +356,7 @@ Force specific return types for known functions. Arduino forces `setup`/`loop` t
 
 ### `mapFunctionName(originalName): string`
 
-Rename functions. Arduino maps `"void"` and `"__arduino_setup__"` to `"setup"`.
+Rename functions. Arduino maps `"void"` and `"__typehal_entrypoint__"` to `"setup"`.
 
 ### `renameEnumMember(enumName, memberName): string`
 

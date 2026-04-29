@@ -19,22 +19,14 @@ type LogMessagePart = { type: 'text' | 'variable'; value: string };
 // Public API
 // ---------------------------------------------------------------------------
 
-export interface PreprocessOptions {
+export function preprocess(options: {
   /** The source file path (for line number calculation) */
   fileName: string;
   /** The breakpoint map loaded from .typehal/breakpoints.json */
   breakpoints: BreakpointMap;
   /** The source text to transform */
   source: string;
-}
-
-/**
- * Preprocess a source file by injecting debug code at breakpoint locations.
- *
- * @param options Preprocess options
- * @returns Transformed source with debug instrumentation
- */
-export function preprocess(options: PreprocessOptions): string {
+}): string {
   const { fileName, breakpoints, source } = options;
   const breakpointLines = getBreakpointsForFile(breakpoints, fileName);
 

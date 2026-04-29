@@ -7,7 +7,7 @@
 
 import ts from "typescript";
 import path from "path";
-import { clearArduinoProfileCache } from "./platform/registry";
+import { clearAllProfileCaches } from "./platform/registry";
 
 /**
  * Cache for resolved npm package paths.
@@ -49,8 +49,8 @@ export function clearCaches(): void {
   fileExistsCache.clear();
   fileContentCache.clear();
 
-  // Clear Arduino profile cache to ensure fresh resolution
-  clearArduinoProfileCache();
+  // Clear all strategy profile caches to ensure fresh resolution
+  clearAllProfileCaches();
 }
 
 // ============================================
@@ -174,52 +174,3 @@ export function getOrReadFile(filePath: string): string {
   return content;
 }
 
-// ============================================
-// Cache Statistics (for debugging)
-// ============================================
-
-export interface CacheStats {
-  npmPackageHits: number;
-  npmPackageMisses: number;
-  packageJsonHits: number;
-  packageJsonMisses: number;
-  sourceFileHits: number;
-  sourceFileMisses: number;
-  fileExistsHits: number;
-  fileExistsMisses: number;
-}
-
-/**
- * Get cache statistics for debugging/performance analysis.
- */
-export function getCacheStats(): CacheStats {
-  return {
-    npmPackageHits: 0, // Would need hit counters for accurate stats
-    npmPackageMisses: 0,
-    packageJsonHits: 0,
-    packageJsonMisses: 0,
-    sourceFileHits: 0,
-    sourceFileMisses: 0,
-    fileExistsHits: 0,
-    fileExistsMisses: 0,
-  };
-}
-
-/**
- * Get cache sizes for debugging.
- */
-export function getCacheSizes(): {
-  npmPackage: number;
-  packageJson: number;
-  sourceFile: number;
-  fileExists: number;
-  fileContent: number;
-} {
-  return {
-    npmPackage: npmPackageCache.size,
-    packageJson: packageJsonCache.size,
-    sourceFile: sourceFileCache.size,
-    fileExists: fileExistsCache.size,
-    fileContent: fileContentCache.size,
-  };
-}

@@ -25,8 +25,6 @@ export interface LoadedFramework {
   /** Optional toolchain for compile/upload/monitor (framework-specific) */
   toolchain?: FrameworkToolchain;
 
-  /** Optional library resolver for Arduino-style library discovery */
-  libraryResolver?: FrameworkLibraryResolver;
 }
 
 /**
@@ -39,15 +37,6 @@ export interface FrameworkToolchain {
   compile(options: ToolchainOptions): CompileResult;
   upload?(options: ToolchainOptions): UploadResult;
   monitor?(options: ToolchainOptions): void;
-}
-
-/**
- * Library resolution operations that a framework package may provide.
- */
-export interface FrameworkLibraryResolver {
-  isLibraryImport(moduleSpecifier: string): boolean;
-  getLibraryHeaderName(moduleSpecifier: string): string | undefined;
-  tryGenerateLibDecl(moduleSpecifier: string, fromFile: string): string | undefined;
 }
 
 // ── Singleton state ────────────────────────────────────────────────────────
@@ -69,8 +58,4 @@ export function getLoadedFramework(): LoadedFramework {
 
 export function hasLoadedFramework(): boolean {
   return _framework !== undefined;
-}
-
-export function clearLoadedFramework(): void {
-  _framework = undefined;
 }

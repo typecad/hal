@@ -5,7 +5,7 @@
 // Serial, and Serial2.
 // ---------------------------------------------------------------------------
 
-export type PeripheralReceiverKind = "i2c" | "spi" | "serial";
+type PeripheralReceiverKind = "i2c" | "spi" | "serial";
 
 const I2C_INSTANCE_PATTERN = /^I2C(\d+)$/;
 const SPI_INSTANCE_PATTERN = /^SPI(\d+)$/;

@@ -4,7 +4,12 @@
 // Resolves Arduino-specific profile settings based on FQBN and program IR.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext, ArduinoPlatformContext, TypehalReceiverKind } from "@typehal/core/shared";
+import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext, TypehalReceiverKind } from "@typehal/core/shared";
+import type { ArduinoPlatformContext } from "./strategy";
+
+function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
+  return (ctx as any)?.arduino as ArduinoPlatformContext | undefined;
+}
 import type { ArduinoCliMetadata } from "./cli-metadata";
 import { loadArduinoCliMetadata } from "./cli-metadata";
 
@@ -596,7 +601,7 @@ const AVR_PREFERENCES_SHIM: string[] = [
 ];
 
 export function resolveArduinoProfile(program: ProgramIR, platformContext?: PlatformContext): ResolvedArduinoProfile {
-  const context = platformContext?.arduino;
+  const context = arduinoCtx(platformContext);
   const metadataResult = loadArduinoCliMetadata(context);
   const variant = resolveVariant(context);
   const capabilities = mergeCapabilities(resolveCapabilities(context), metadataResult.metadata);

@@ -20,7 +20,7 @@ import type {
   IUninitializedSPIBus,
   IUninitializedUARTBus,
 } from '@typehal/core';
-import type { BoardDefinition } from '@typehal/hal';
+import type { BoardDefinition } from '@typehal/schema';
 import type { IESP32FullGPIOPin, IESP32InputOnlyPin } from './pin-types';
 
 import {

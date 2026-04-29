@@ -13,12 +13,12 @@ import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, ty
 import { namespaceToIR } from "./namespace-builder";
 import { functionDeclarationToIR, variableAsFunctionToIR } from "./function-builder";
 
-function normalizeLegacyArduinoSyntax(sourceText: string): string {
-  return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __arduino_setup__(");
+function normalizeEntrypointSyntax(sourceText: string): string {
+  return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __typehal_entrypoint__(");
 }
 
 export function buildProgramIR(fileName: string, sourceText: string, boardPackage?: string): ProgramIR {
-  const normalizedSourceText = normalizeLegacyArduinoSyntax(sourceText);
+  const normalizedSourceText = normalizeEntrypointSyntax(sourceText);
   const source = parseSource(fileName, normalizedSourceText);
   const diagnostics: Diagnostic[] = [];
   const imports: ImportIR[] = [];

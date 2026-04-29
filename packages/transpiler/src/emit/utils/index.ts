@@ -33,7 +33,6 @@ export {
   dedupe,
   resolveTranspiledModuleInclude,
   applySymbolMap,
-  type TranspiledIncludeResult,
 } from "./include-resolver";
 
 // Comment handling utilities

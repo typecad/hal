@@ -7,6 +7,11 @@
 
 import type { BasePin } from '../types/pin';
 import type { ErrorPolicy } from './error-policy';
+import type { ShiftBitOrder } from '../types/shift';
+
+/** Bit transmission order — aliased from ShiftBitOrder for SPI-specific naming. */
+type SPIBitOrder = ShiftBitOrder;
+export type { ShiftBitOrder as SPIBitOrder };
 
 /**
  * SPI mode (combination of CPOL and CPHA)
@@ -16,11 +21,6 @@ import type { ErrorPolicy } from './error-policy';
  * - Mode 3: CPOL=1, CPHA=1
  */
 export type SPIMode = 0 | 1 | 2 | 3;
-
-/**
- * Bit transmission order
- */
-export type SPIBitOrder = 'msb' | 'lsb';
 
 /**
  * SPI status codes
@@ -33,14 +33,6 @@ export enum SPIStatus {
   TIMEOUT = 4,
   DEVICE_ERROR = 5,
 }
-
-/**
- * How the bus handles errors at runtime.
- * - 'throw': Assert-style — throws on error (good for development)
- * - 'callback': Calls registered onError handlers
- * - 'silent': Returns status codes only (good for production)
- */
-export type { ErrorPolicy } from './error-policy';
 
 /**
  * SPI settings for transaction
@@ -154,24 +146,8 @@ export interface ISPIBus {
  * Owned SPI bus — obtained via `SPI0.take()`, released via `release()`.
  * Extends ISPIBus with ownership semantics for multi-threaded contention.
  */
-export interface IOwnedSPIBus extends ISPIBus {
+interface IOwnedSPIBus extends ISPIBus {
   /** Release exclusive ownership back to the free bus. */
   release(): void;
 }
 
-// ---------------------------------------------------------------------------
-// Utility Functions
-// ---------------------------------------------------------------------------
-
-export function spiModeToCpolCpha(mode: SPIMode): { cpol: 0 | 1; cpha: 0 | 1 } {
-  switch (mode) {
-    case 0: return { cpol: 0, cpha: 0 };
-    case 1: return { cpol: 0, cpha: 1 };
-    case 2: return { cpol: 1, cpha: 0 };
-    case 3: return { cpol: 1, cpha: 1 };
-  }
-}
-
-export function cpolCphaToSpiMode(cpol: 0 | 1, cpha: 0 | 1): SPIMode {
-  return (cpol * 2 + cpha) as SPIMode;
-}

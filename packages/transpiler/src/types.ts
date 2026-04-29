@@ -1,27 +1,15 @@
+import type {
+  TargetProfile as CoreTargetProfile,
+  PlatformContext as CorePlatformContext,
+  SourceSpan as CoreSourceSpan,
+  Diagnostic as CoreDiagnostic,
+} from "@typehal/core/shared";
+
 export type EmitMode = "cpp" | "split";
-export type TargetProfile = "generic" | "arduino" | (string & {});
 
-export interface ArduinoPlatformContext {
-  fqbn?: string;
-}
-
-export interface PlatformContext {
-  arduino?: ArduinoPlatformContext;
-  console?: {
-    baudRate?: number;
-  };
-  [key: string]: unknown;
-}
-
-export interface SourceSpan {
-  filePath: string;
-  startOffset: number;
-  endOffset: number;
-  startLine: number;
-  startColumn: number;
-  endLine: number;
-  endColumn: number;
-}
+export type TargetProfile = CoreTargetProfile;
+export type PlatformContext = CorePlatformContext;
+export type SourceSpan = CoreSourceSpan;
 
 export interface SourceMapEntry {
   generatedStartLine: number;
@@ -50,16 +38,7 @@ export interface MappedDiagnostic {
   symbolName?: string;
 }
 
-export interface Diagnostic {
-  severity: "info" | "warning" | "error";
-  message: string;
-  /** Actionable fix suggestion, shown as a distinct code block in CLI output. */
-  hint?: string;
-  line?: number;
-  column?: number;
-  code?: string;
-  source?: string;
-}
+export type Diagnostic = CoreDiagnostic;
 
 export interface TreeShakingOptions {
   /** Enable tree-shaking (default: true) */
@@ -117,7 +96,7 @@ export interface LibraryDefinitionCondition {
   fqbnIncludes?: string;
 }
 
-export interface LibraryDefinitionVariant {
+interface LibraryDefinitionVariant {
   when: LibraryDefinitionCondition;
   include: string;
   symbols?: Record<string, string>;
@@ -194,7 +173,7 @@ export interface GeneratedOutputs {
   diagnostics: Diagnostic[];
 }
 
-export interface ArduinoCompileError {
+interface ArduinoCompileError {
   filePath: string;
   line: number;
   column: number;

@@ -1,16 +1,21 @@
-import { buildProgramIR } from "../packages/cli/src/ir/build-ir";
-import { analyzePeripheralUsage } from "../packages/cli/src/ir/peripheral-usage";
-import { emitCpp } from "../packages/cli/src/emit/cpp-emitter";
-import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/cli/src/types";
-import { setFrameworkApi } from "../packages/cli/src/framework-api";
+import { buildProgramIR } from "../packages/transpiler/src/ir/build-ir";
+import { analyzePeripheralUsage } from "../packages/transpiler/src/ir/peripheral-usage";
+import { emitCpp } from "../packages/transpiler/src/emit/cpp-emitter";
+import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/transpiler/src/types";
+import { setLoadedFramework } from "../packages/transpiler/src/framework-registry";
+import { registerPlatformStrategy } from "../packages/transpiler/src/platform/registry";
+import { ArduinoStrategy, SYMBOL_KINDS } from "../packages/framework-arduino";
+import { registerSymbolKinds } from "@typehal/core/shared";
 import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 
 // Load the default framework package so polyfill generators and emitters
 // can access framework functions without going through transpileFile().
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-setFrameworkApi(require("../packages/framework-arduino"));
+const _arduinoStrategy = new ArduinoStrategy();
+setLoadedFramework({ strategy: _arduinoStrategy });
+registerPlatformStrategy(_arduinoStrategy);
+registerSymbolKinds(SYMBOL_KINDS);
 
 // Ensure output directory exists
 const testOutDir = ".build/tests";
@@ -38,20 +43,20 @@ let testCounter = 0;
  */
 export function transpile(tsCode: string, options: TranspileOptions = {}): TranspileResult {
   const { target = "generic", emitMode = "cpp", platformContext } = options;
-  
+
   // Use unique filename based on caller info + counter to ensure isolation
   const uniqueId = `test_${process.pid}_${testCounter++}_${Date.now()}`;
   const fileName = `${uniqueId}.ts`;
-  
+
   // For Arduino target, use a unique output directory to avoid filename collisions
   // since Arduino uses the directory name as the .ino filename
-  const uniqueOutDir = target === "arduino" 
+  const uniqueOutDir = target === "arduino"
     ? path.join(testOutDir, uniqueId)
     : testOutDir;
   if (target === "arduino" && !fs.existsSync(uniqueOutDir)) {
     fs.mkdirSync(uniqueOutDir, { recursive: true });
   }
-  
+
   const programIR = buildProgramIR(fileName, tsCode);
   const libdefs = new Map();
   const result = emitCpp(programIR, {
@@ -65,13 +70,13 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
 
   let cpp = "";
   let header: string | undefined;
-  
+
   if (result.sourcePath && fs.existsSync(result.sourcePath)) {
     cpp = fs.readFileSync(result.sourcePath, "utf-8");
     // Clean up
     fs.unlinkSync(result.sourcePath);
   }
-  
+
   if (result.headerPath && fs.existsSync(result.headerPath)) {
     header = fs.readFileSync(result.headerPath, "utf-8");
     // Clean up

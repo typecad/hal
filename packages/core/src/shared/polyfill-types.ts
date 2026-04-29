@@ -1,16 +1,15 @@
 // ---------------------------------------------------------------------------
 // Polyfill types
 //
-// Types for runtime polyfill generation.
+// Types for runtime polyfill generation via platform strategies.
 // ---------------------------------------------------------------------------
 
-export type PolyfillDomain = "standard" | "arduino" | "embedded";
-export type TargetProfile = "generic" | "arduino" | (string & {});
+import type { SourceSpan } from './types';
 
 export interface RuntimePolyfillIR {
   kind: "polyfill";
   id: string;
-  domain: PolyfillDomain;
+  domain: "standard" | "embedded" | (string & {});
   requiredIncludes: string[];
   forwardDeclarations: string[];
   helperStructs: string[];
@@ -41,7 +40,7 @@ export interface StdLibSupport {
   recommendedStringImpl: "std_string" | "static_string";
 }
 
-export const STDLIB_SUPPORT: Record<string, StdLibSupport> = {
+const STDLIB_SUPPORT: Record<string, StdLibSupport> = {
   avr: {
     hasVector: false,
     hasString: false,
@@ -109,4 +108,5 @@ export const STDLIB_SUPPORT: Record<string, StdLibSupport> = {
 
 export function getStdLibSupport(architecture?: string): StdLibSupport {
   if (!architecture) return STDLIB_SUPPORT.default;
-  return STDLIB_SUPPORT[architecture.toLowerCase()] ?? STDLIB_SUPPORT.default;}
+  return STDLIB_SUPPORT[architecture.toLowerCase()] ?? STDLIB_SUPPORT.default;
+}

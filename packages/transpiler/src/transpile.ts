@@ -129,14 +129,21 @@ import {
   initIncrementalCache,
   getIncrementalCache,
   saveAndClearIncrementalCache,
-  type FileChangeStatus,
 } from "./incremental-cache";
 import { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points";
 import { analyzeReachability } from "./ir/reachability";
 import { filterProgramIR } from "./ir/filter";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { generateDeclFromCpp } from "./libdef/cpp-to-decl";
-import { tryGenerateArduinoLibDecl } from "./arduino-libs";
+
+function tryGenerateLibDecl(modulePath: string, file: string): string | undefined {
+  try {
+    const mod = require("@typehal/framework-arduino");
+    return mod.tryGenerateArduinoLibDecl?.(modulePath, file);
+  } catch {
+    return undefined;
+  }
+}
 import { initProfiler, getProfiler } from "./profiler";
 import {
   ResolvedNpmPackage,
@@ -148,7 +155,6 @@ import {
   resolveImport,
   isTypehalSDKPath,
 } from "./transpile/resolution";
-export type { ResolvedNpmPackage, NativeCppModule, TranspileGraphResult } from "./transpile/resolution";
 type ExpectPreprocessor = (source: string, fileName?: string) => string;
 let expectPreprocess: ExpectPreprocessor | undefined;
 
@@ -208,7 +214,7 @@ function autoGenerateMissingDecls(
     } else {
       // Try Arduino library for bare module imports
       for (const file of files) {
-        const declPath = tryGenerateArduinoLibDecl(modulePath, file);
+        const declPath = tryGenerateLibDecl(modulePath, file);
         if (declPath) {
           generated.push(declPath);
           break;
@@ -227,7 +233,7 @@ function autoGenerateMissingDecls(
 /**
  * Result of type-checking files
  */
-export interface TypeCheckResult {
+interface TypeCheckResult {
   /** Whether all files passed type-checking */
   success: boolean;
   /** Array of formatted error messages */

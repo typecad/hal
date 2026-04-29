@@ -12,6 +12,18 @@ import { resolveArduinoProfile } from "./profile";
 import { renderArduinoBuiltin, tryRenderTypehalCallStatement } from "./typehal-map";
 import { renderDACCall } from "./handlers/dac-handler";
 
+/**
+ * Arduino-specific platform context.
+ * Accessed via `PlatformContext` index signature: `arduinoCtx(ctx)`.
+ */
+export interface ArduinoPlatformContext {
+  fqbn?: string;
+}
+
+function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
+  return (ctx as any)?.arduino as ArduinoPlatformContext | undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Constant sets – previously module-level in cpp-emitter.ts
 // ---------------------------------------------------------------------------
@@ -96,7 +108,7 @@ export class ArduinoStrategy implements PlatformStrategy {
    * Gets or resolves the Arduino profile, caching the result.
    */
   private getOrResolveProfile(program: ProgramIR, ctx?: PlatformContext): ReturnType<typeof resolveArduinoProfile> {
-    const key = ctx?.arduino?.fqbn ?? 'default';
+    const key = arduinoCtx(ctx)?.fqbn ?? 'default';
 
     if (this._cachedProfile && this._cachedProfileKey === key) {
       return this._cachedProfile;
@@ -105,7 +117,7 @@ export class ArduinoStrategy implements PlatformStrategy {
     this._cachedProfile = resolveArduinoProfile(program, ctx);
     this._cachedProfileKey = key;
     // Cache architecture for use by isrFunctionAttribute()
-    const fqbn = ctx?.arduino?.fqbn;
+    const fqbn = arduinoCtx(ctx)?.fqbn;
     if (fqbn) {
       const parts = fqbn.split(':');
       this._cachedArch = parts.length >= 2 ? parts[1] : 'default';
@@ -190,7 +202,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     // Add async Promise runtime if program has async functions and stdlib supports it
     const hasAsync = program.functions.some(fn => fn.isAsync);
     if (hasAsync) {
-      const architecture = ctx?.arduino?.fqbn?.split(":")?.[1]?.toLowerCase();
+      const architecture = arduinoCtx(ctx)?.fqbn?.split(":")?.[1]?.toLowerCase();
       const stdlib = getStdLibSupport(architecture);
       if (stdlib.hasVector && stdlib.hasString) {
         helpers.push({
@@ -199,7 +211,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
           domain: "arduino",
           requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
           forwardDeclarations: [],
-          helperStructs: [generatePromiseRuntime(ctx?.arduino?.fqbn?.split(":")?.[0] === "arduino" ? "arduino" : "generic")],
+          helperStructs: [generatePromiseRuntime(arduinoCtx(ctx)?.fqbn?.split(":")?.[0] === "arduino" ? "arduino" : "generic")],
           helperFunctions: [],
           shimMacros: [],
           dependencies: [],
@@ -265,7 +277,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     return this.normalizeCppType(returnType);
   }
   mapFunctionName(originalName: string): string {
-    if (originalName === "void" || originalName === "__arduino_setup__") return "setup";
+    if (originalName === "void" || originalName === "__typehal_entrypoint__") return "setup";
     return originalName;
   }
 
@@ -470,6 +482,14 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   }
   apiReservedEnumGuard(): string {
     return "ARDUINO_API_VERSION";
+  }
+
+  isHeapAllocationUnsafe(architecture: string): boolean {
+    return architecture === 'avr' || architecture === 'megaavr';
+  }
+
+  isExceptionSupportDisabled(architecture: string): boolean {
+    return architecture === 'avr' || architecture === 'megaavr';
   }
 
   // ── Includes ────────────────────────────────────────────────────────────

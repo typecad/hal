@@ -10,7 +10,7 @@ export type ShiftBitOrder = 'msb' | 'lsb';
 /**
  * Chainable shift read builder.
  */
-export interface IShiftReadChain {
+interface IShiftReadChain {
   /** Set the clock pin */
   clock(pin: BasePin): this;
   /** Read MSB first */
@@ -22,7 +22,7 @@ export interface IShiftReadChain {
 /**
  * Chainable shift write builder.
  */
-export interface IShiftWriteChain {
+interface IShiftWriteChain {
   /** Set the clock pin */
   clock(pin: BasePin): this;
   /** Write MSB first */

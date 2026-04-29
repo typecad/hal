@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./arduino": {
+      "types": "./dist/arduino/index.d.ts",
+      "default": "./dist/arduino/index.js"
     }
   },
   "files": [

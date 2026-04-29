@@ -166,7 +166,7 @@ function resolveTypehalCmd(projectRoot: string): string {
   let searchDir = projectRoot;
   for (let i = 0; i < 5; i++) {
     const candidates = [
-      path.join(searchDir, 'packages', 'cli', 'dist', 'cli.js'),
+      path.join(searchDir, 'packages', 'transpiler', 'dist', 'cli.js'),
       path.join(searchDir, 'node_modules', '.bin', 'typehal'),
       path.join(searchDir, 'node_modules', 'typehal', 'dist', 'cli.js'),
     ];

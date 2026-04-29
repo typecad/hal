@@ -5,7 +5,6 @@ import { parseCommandLine, printHelp } from "./utils/cli";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
-import { compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from "./platform/arduino-compile";
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain";
 import { loadTypehalConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
@@ -322,7 +321,7 @@ async function main(): Promise<void> {
     ui.printBuildInfo({
       framework: effectiveFrameworkPackage,
       board: effectiveBoardPackage,
-      fqbn: effectivePlatformContext?.arduino?.fqbn,
+      fqbn: (effectivePlatformContext as any)?.arduino?.fqbn,
     });
 
     // ── Watch mode ────────────────────────────────────────────────────────
@@ -356,7 +355,7 @@ async function main(): Promise<void> {
 
           // Initial compile + upload if flags are set
           if (options.compile) {
-            const fqbn = effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn;
+            const fqbn = (effectivePlatformContext as any)?.arduino?.fqbn ?? (options.platformContext as any)?.arduino?.fqbn;
             const watchOpts = {
               outputDir: path.dirname(result.sourcePath),
               sourcePath: result.sourcePath,
@@ -436,7 +435,7 @@ async function main(): Promise<void> {
               ui.printSuccess();
 
               if (options.compile) {
-                const fqbn = effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn;
+                const fqbn = (effectivePlatformContext as any)?.arduino?.fqbn ?? (options.platformContext as any)?.arduino?.fqbn;
                 const rebuildOpts = {
                   outputDir: path.dirname(rebuildResult.sourcePath),
                   sourcePath: rebuildResult.sourcePath,
@@ -513,7 +512,7 @@ async function main(): Promise<void> {
       if (options.expect) {
         const exitCode = runExpectTests({
           port: options.port,
-          fqbn: effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn,
+          fqbn: (effectivePlatformContext as any)?.arduino?.fqbn ?? (options.platformContext as any)?.arduino?.fqbn,
           baud: config?.console?.baudRate ?? options.baud,
           expectFile: options.expectFile,
         });
@@ -523,7 +522,7 @@ async function main(): Promise<void> {
     }
 
     // --compile (delegates to the active framework's toolchain)
-    const fqbn = effectivePlatformContext?.arduino?.fqbn ?? options.platformContext?.arduino?.fqbn;
+    const fqbn = (effectivePlatformContext as any)?.arduino?.fqbn ?? (options.platformContext as any)?.arduino?.fqbn;
     const toolchainOpts = {
       outputDir: path.dirname(result.sourcePath),
       sourcePath: result.sourcePath,

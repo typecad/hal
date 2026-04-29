@@ -5,28 +5,6 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Chainable map builder.
- */
-export interface INumMapChain {
-  /** Set the input range */
-  from(low: number, high: number): this;
-  /** Set the output range and compute the result */
-  to(low: number, high: number): number;
-  /** Map to 0-100 percent */
-  toPercent(): number;
-  /** Map to 0-255 byte */
-  toByte(): number;
-}
-
-/**
- * Chainable clamp builder.
- */
-export interface INumClampChain {
-  /** Set the bounds and clamp the value */
-  between(low: number, high: number): number;
-}
-
-/**
  * Number utilities namespace with both direct and fluent APIs.
  */
 export interface INumNamespace {
@@ -46,14 +24,6 @@ export interface INumNamespace {
 
   /** Get the maximum of two values. */
   max(a: number, b: number): number;
-
-  // --- Fluent builders ---
-
-  /** Start a fluent map chain. */
-  map(value: number): INumMapChain;
-
-  /** Start a fluent clamp chain. */
-  clamp(value: number): INumClampChain;
 
   // --- Convenience helpers ---
 

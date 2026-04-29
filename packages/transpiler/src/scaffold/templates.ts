@@ -3,7 +3,9 @@
 // ---------------------------------------------------------------------------
 
 import type { ArchitectureIdentifier } from '@typehal/core';
+import { ARDUINO_CORE_VERSION } from '@typehal/schema';
 import { toPascalCase } from '../utils/strings';
+import { generatePinFactoryStubs, BASIC_PIN_FACTORY_VARIANTS } from './pin-factory-templates';
 
 export interface BoardTemplateOptions {
   name: string;              // e.g., 'my-custom-board'
@@ -207,7 +209,7 @@ export const ${className}: BoardDefinition = {
     extraFlags: [],
     defines: {
       F_CPU: '${clockSpeed}UL',
-      ARDUINO: '10819',
+      ARDUINO: ARDUINO_CORE_VERSION,
     },
   },
 };
@@ -276,21 +278,7 @@ import { pinNumber } from '@typehal/schema';
 // Internal stub factories (no-op at runtime; consumed by transpiler)
 // ---------------------------------------------------------------------------
 
-function createDigitalPin(pin: number, gpio: number): BasePin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin;
-}
-
-function createPWMPin(pin: number, gpio: number): PWMPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as PWMPin;
-}
-
-function createAnalogPin(pin: number, gpio: number): AnalogPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as AnalogPin;
-}
-
-function createInterruptPin(pin: number, gpio: number): BasePin & InterruptPin {
-  return { number: pinNumber(pin), gpio: pinNumber(gpio) } as BasePin & InterruptPin;
-}
+${generatePinFactoryStubs(BASIC_PIN_FACTORY_VARIANTS)}
 
 // ---------------------------------------------------------------------------
 // TODO: Define your board's pins below

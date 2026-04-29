@@ -5,7 +5,7 @@
 // requests. Shows: begin(address), onReceive(), onRequest().
 // ---------------------------------------------------------------------------
 
-import { I2C0 } from '@typehal/board-arduino-uno/arduino';
+import { I2C0 } from '@typehal/framework-arduino/arduino';
 import { UART0, LED, delay } from '@typehal';
 
 const serial = UART0.begin(9600);

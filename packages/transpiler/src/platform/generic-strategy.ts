@@ -58,7 +58,7 @@ export class GenericStrategy implements PlatformStrategy {
     return this.normalizeCppType(returnType);
   }
   mapFunctionName(originalName: string): string {
-    if (originalName === "__arduino_setup__") return "setup";
+    if (originalName === "__typehal_entrypoint__") return "setup";
     return originalName;
   }
 

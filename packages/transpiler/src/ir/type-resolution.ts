@@ -19,7 +19,7 @@ export type CppTypeHint =
   | `std::function<${string}>`
   | `${string}*`;
 
-export interface FunctionTypeSignature {
+interface FunctionTypeSignature {
   parameterTypes: CppTypeHint[];
   returnType: CppTypeHint;
 }
@@ -353,7 +353,7 @@ export function resolveFunctionTypeSignature(
   };
 }
 
-export function isStructuredTypeAnnotation(
+function isStructuredTypeAnnotation(
   typeNode: ts.TypeNode | undefined,
   typeAliases?: Map<string, ts.TypeNode>,
 ): boolean {
@@ -377,7 +377,7 @@ function isKnownTypeName(typeName: string): boolean {
   return isKnownCompileTimeOnlyTypeName(typeName);
 }
 
-export function isKnownCompileTimeType(
+function isKnownCompileTimeType(
   typeNode: ts.TypeNode | undefined,
   typeAliases?: Map<string, ts.TypeNode>,
 ): boolean {

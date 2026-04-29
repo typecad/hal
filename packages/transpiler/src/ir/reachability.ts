@@ -31,9 +31,9 @@ export interface ReachabilityResult {
 }
 
 /**
- * Options for reachability analysis
+ * Options for reachability analysis (internal)
  */
-export interface ReachabilityOptions {
+interface ReachabilityOptions {
   /** Target platform */
   target: TargetProfile;
   /** Entry point configuration */
@@ -269,18 +269,6 @@ export function analyzeReachability(
     },
     diagnostics,
   };
-}
-
-/**
- * Check if a program has any unreachable code
- */
-export function hasUnreachableCode(result: ReachabilityResult): boolean {
-  return (
-    result.unreachable.functions.length > 0 ||
-    result.unreachable.classes.length > 0 ||
-    result.unreachable.enums.length > 0 ||
-    result.unreachable.typeAliases.length > 0
-  );
 }
 
 /**

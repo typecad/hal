@@ -9,7 +9,7 @@ import type {
   II2CBus,
   II2CDeviceAccessor,
   I2CAddress,
-  I2CErrorPolicy,
+  ErrorPolicy,
 } from '@typehal/core';
 import type { ISimI2CDevice } from '../types';
 
@@ -26,7 +26,7 @@ import type { ISimI2CDevice } from '../types';
 export class SimI2CBus implements II2CBus {
   readonly busNumber: number;
   isEnabled: boolean = false;
-  errorPolicy: I2CErrorPolicy = 'callback';
+  errorPolicy: ErrorPolicy = 'callback';
 
   private _devices: Map<I2CAddress, ISimI2CDevice> = new Map();
   private _speed: number = 100000;

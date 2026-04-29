@@ -48,7 +48,7 @@ export enum InterruptMode {
 
 import type { PinCapabilityFlags } from './capabilities';
 
-export interface GPIOConfig {
+interface GPIOConfig {
   pin: number;
   gpio?: number;
   capabilities: PinCapabilityFlags;
@@ -57,21 +57,10 @@ export interface GPIOConfig {
 }
 
 // ---------------------------------------------------------------------------
-// GPIO pin factory
-// ---------------------------------------------------------------------------
-
-import type { BasePin, PWMPin, AnalogPin } from './pin';
-
-export interface IGPIOPinFactory {
-  createDigitalPin(config: GPIOConfig): BasePin;
-  createPWMPin(config: GPIOConfig): PWMPin;
-  createAnalogPin(config: GPIOConfig): AnalogPin;
-  createPin(config: GPIOConfig): BasePin;
-}
-
-// ---------------------------------------------------------------------------
 // Pin groups
 // ---------------------------------------------------------------------------
+
+import type { BasePin } from './pin';
 
 /**
  * A group of digital output pins that can be controlled together.
@@ -90,7 +79,7 @@ export interface IPinGroup<T extends BasePin = BasePin> {
 /**
  * A parallel port for byte-level operations on 8 digital pins.
  */
-export interface IParallelPort extends IPinGroup<BasePin> {
+interface IParallelPort extends IPinGroup<BasePin> {
   /** Write a byte value (alias for writePattern). */
   writeByte(value: number): void;
   /** Read a byte value (alias for readPattern). */
@@ -106,7 +95,7 @@ export interface IParallelPort extends IPinGroup<BasePin> {
  * @param name - A descriptive name for the group
  * @param pins - Array of pins to include in the group
  */
-export function createPinGroup<T extends BasePin>(
+function createPinGroup<T extends BasePin>(
   name: string,
   pins: T[]
 ): IPinGroup<T> {
@@ -145,26 +134,3 @@ export function createPinGroup<T extends BasePin>(
   };
 }
 
-/**
- * Create a parallel port for byte-level operations on 8 digital pins.
- * @param name - A descriptive name for the port
- * @param pins - Exactly 8 digital pins (LSB first)
- */
-export function createParallelPort(
-  name: string,
-  pins: [BasePin, BasePin, BasePin, BasePin, BasePin, BasePin, BasePin, BasePin]
-): IParallelPort {
-  const group = createPinGroup(name, pins);
-
-  return {
-    ...group,
-
-    writeByte(value: number): void {
-      group.writePattern(value);
-    },
-
-    readByte(): number {
-      return group.readPattern();
-    },
-  };
-}

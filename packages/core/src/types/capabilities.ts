@@ -22,40 +22,6 @@ export interface PinCapabilityFlags {
 }
 
 // ---------------------------------------------------------------------------
-// Narrowed capability types (used for branded pin exports)
-// ---------------------------------------------------------------------------
-
-export interface DigitalOnlyCapabilities extends PinCapabilityFlags {
-  digitalInput: true;
-  digitalOutput: true;
-  analogInput: false;
-  analogOutput: false;
-  pwm: false;
-  touch: false;
-}
-
-export interface PWMCapabilities extends PinCapabilityFlags {
-  digitalInput: true;
-  digitalOutput: true;
-  pwm: true;
-}
-
-export interface AnalogInputCapabilities extends PinCapabilityFlags {
-  analogInput: true;
-}
-
-export interface TouchCapabilities extends PinCapabilityFlags {
-  touch: true;
-}
-
-// ---------------------------------------------------------------------------
-// Conditional type helper
-// ---------------------------------------------------------------------------
-
-/** Checks at the type level whether T is a sub-type of U. */
-export type SupportsCapabilities<T, U> = T extends U ? true : false;
-
-// ---------------------------------------------------------------------------
 // Runtime type guards
 // ---------------------------------------------------------------------------
 
@@ -85,19 +51,6 @@ export function hasAnalogInput(pin: unknown): pin is AnalogPin {
 export function hasInterrupt(pin: unknown): pin is InterruptPin {
   return isBasePin(pin) && 'onRising' in pin && typeof pin.onRising === 'function';
 }
-
-// ---------------------------------------------------------------------------
-// Convenience aliases (more intuitive names)
-// ---------------------------------------------------------------------------
-
-/** Alias for hasPWM - checks if pin supports PWM output. */
-export const isPWMPin = hasPWM;
-
-/** Alias for hasAnalogInput - checks if pin supports analog reads. */
-export const isAnalogPin = hasAnalogInput;
-
-/** Alias for hasInterrupt - checks if pin supports interrupts. */
-export const isInterruptPin = hasInterrupt;
 
 // ---------------------------------------------------------------------------
 // Assertion functions

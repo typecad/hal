@@ -11,12 +11,12 @@ import type { TypehalReceiverKind } from "../ir/typehal-symbols";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
-import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
+import { renderPeripheralProperty } from "../mapping/peripheral-names";
 
 /**
  * Context needed for expression rendering.
  */
-export interface ExpressionRendererContext {
+interface ExpressionRendererContext {
   /** The platform strategy for target-specific rendering */
   strategy: PlatformStrategy;
   /** Board constants for Board.definition.* access */
@@ -436,7 +436,7 @@ export class ExpressionRenderer {
       if (boardDef !== undefined) return boardDef;
       
       // Check for peripheral stub property access (I2C0.isInitialized, SPI0.isInitialized, Serial.isInitialized)
-      const peripheralProperty = renderPeripheralProperty(chain);
+      const peripheralProperty = renderPeripheralProperty(chain, this.strategy);
       if (peripheralProperty !== undefined) return peripheralProperty;
     }
     const objStr = this.render(expr.object, exprTransformer);

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-export function stripExtension(fileName: string): string {
+function stripExtension(fileName: string): string {
   return fileName.replace(/\.[^.]+$/, "");
 }
 
@@ -68,4 +68,13 @@ export function escapeCppKeyword(name: string): string {
     return `${name}_`;
   }
   return name;
+}
+
+export function normalizeKebabName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
 }

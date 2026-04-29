@@ -2,28 +2,13 @@
 // @typehal/schema — Board definition manifest types
 // ---------------------------------------------------------------------------
 
-import type { PinCapabilityFlags } from '@typehal/core';
-
-// ---------------------------------------------------------------------------
-// Architecture identifier
-// ---------------------------------------------------------------------------
-
-export type ArchitectureIdentifier =
-  | 'avr'
-  | 'esp32'
-  | 'esp32s2'
-  | 'esp32s3'
-  | 'esp32c3'
-  | 'rp2040'
-  | 'samd'
-  | 'stm32'
-  | 'nrf52';
+import type { PinCapabilityFlags, ArchitectureIdentifier } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // Memory spec
 // ---------------------------------------------------------------------------
 
-export interface MemorySpec {
+interface MemorySpec {
   /** Flash / program memory in bytes. */
   flash: number;
   /** SRAM in bytes. */
@@ -89,7 +74,7 @@ export interface PeripheralFunction {
 // Pin definitions aggregate
 // ---------------------------------------------------------------------------
 
-export interface PinDefinitions {
+interface PinDefinitions {
   /** Complete list of every pin on the board. */
   all: PinDefinition[];
 
@@ -119,13 +104,13 @@ export interface PinDefinitions {
 // Peripheral definitions
 // ---------------------------------------------------------------------------
 
-export interface PeripheralInstance {
+interface PeripheralInstance {
   instance: number;
   defaultPins: Record<string, string>;
   alternatePins?: Record<string, string[]>;
 }
 
-export interface ADCDefinition {
+interface ADCDefinition {
   instance: number;
   channels: number;
   /** Resolution in bits. */
@@ -133,14 +118,14 @@ export interface ADCDefinition {
   referenceVoltage: number;
 }
 
-export interface DACDefinition {
+interface DACDefinition {
   instance: number;
   /** Resolution in bits. */
   resolution: number;
   pins: string[];
 }
 
-export interface PWMDefinition {
+interface PWMDefinition {
   channels: number;
   /** Resolution in bits. */
   resolution: number;
@@ -148,29 +133,29 @@ export interface PWMDefinition {
   maxFrequency: number;
 }
 
-export interface USBDefinition {
+interface USBDefinition {
   type: 'device' | 'host' | 'otg';
   vid: string;
   pid: string;
 }
 
-export interface WiFiDefinition {
+interface WiFiDefinition {
   type: 'wifi' | 'wifi6';
   supportsStation: boolean;
   supportsAp: boolean;
 }
 
-export interface BluetoothDefinition {
+interface BluetoothDefinition {
   type: 'classic' | 'ble' | 'dual';
   version: string;
 }
 
-export interface TouchDefinition {
+interface TouchDefinition {
   channels: number;
   pins: string[];
 }
 
-export interface PeripheralDefinitions {
+interface PeripheralDefinitions {
   i2c: PeripheralInstance[];
   spi: PeripheralInstance[];
   uart: PeripheralInstance[];
@@ -187,7 +172,7 @@ export interface PeripheralDefinitions {
 // Feature flags
 // ---------------------------------------------------------------------------
 
-export interface FeatureFlags {
+interface FeatureFlags {
   multicore: boolean;
   coreCount: number;
   deepSleep: boolean;
@@ -201,7 +186,7 @@ export interface FeatureFlags {
 // Build configuration
 // ---------------------------------------------------------------------------
 
-export interface BuildConfig {
+interface BuildConfig {
   platformio?: string;
   arduino?: string;
   espidf?: string;

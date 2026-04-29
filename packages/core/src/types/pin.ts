@@ -292,54 +292,10 @@ export interface IInputModePin {
 }
 
 // ---------------------------------------------------------------------------
-// Type Guards and Utilities
-// ---------------------------------------------------------------------------
-
-/** Type guard for PWM capable pins. */
-export function isPwmPin(pin: BasePin): pin is BasePin & { pwm: NonNullable<BasePin['pwm']> } {
-  return pin.capabilities.pwm;
-}
-
-/** Type guard for analog input capable pins. */
-export function isAnalogPin(pin: BasePin): pin is BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> } {
-  return pin.capabilities.analogInput;
-}
-
-/** Type guard for interrupt capable pins. */
-export function isInterruptPin(pin: BasePin): pin is BasePin & { onRising: NonNullable<BasePin['onRising']> } {
-  return pin.capabilities.interrupt;
-}
-
-/** Assert pin supports PWM, throws at runtime if not. */
-export function assertPwm(pin: BasePin, message?: string): asserts pin is BasePin & { pwm: NonNullable<BasePin['pwm']> } {
-  if (!isPwmPin(pin)) {
-    throw new Error(message ?? `Pin ${pin.number} does not support PWM`);
-  }
-}
-
-/** Assert pin supports analog input, throws at runtime if not. */
-export function assertAnalog(pin: BasePin, message?: string): asserts pin is BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> } {
-  if (!isAnalogPin(pin)) {
-    throw new Error(message ?? `Pin ${pin.number} does not support analog input`);
-  }
-}
-
-/** Assert pin supports interrupts, throws at runtime if not. */
-export function assertInterrupt(pin: BasePin, message?: string): asserts pin is BasePin & { onRising: NonNullable<BasePin['onRising']> } {
-  if (!isInterruptPin(pin)) {
-    throw new Error(message ?? `Pin ${pin.number} does not support interrupts`);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Pin Groups
 // ---------------------------------------------------------------------------
 
-export type { IPinGroup, IParallelPort } from './gpio';
-
-export interface IPinGroupOptions {
-  name?: string;
-}
+export type { IPinGroup } from './gpio';
 
 // ---------------------------------------------------------------------------
 // Capability-narrowed pin types

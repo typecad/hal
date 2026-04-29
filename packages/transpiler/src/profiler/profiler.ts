@@ -383,13 +383,3 @@ export function initProfiler(options: Partial<ProfilerOptions> = {}): Profiler {
   globalProfiler = new Profiler(options);
   return globalProfiler;
 }
-
-/**
- * Clear the global profiler instance
- */
-export function clearProfiler(): void {
-  if (globalProfiler) {
-    globalProfiler.clear();
-  }
-  globalProfiler = null;
-}

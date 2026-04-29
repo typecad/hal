@@ -3,11 +3,25 @@ import path from "node:path";
 import { LibraryDefinition, LibraryDefinitionCondition, PlatformContext, TargetProfile } from "../types";
 import { listFiles, readText } from "../utils/fs";
 import { toModuleKey, toPascalCase } from "../utils/strings";
-import { toArchitectureFromFqbn } from "../utils/toolchain";
+import { toArchitectureFromFqbn } from "@typehal/core/shared";
 import { ImportIR } from "../ir/model";
-import { getArduinoLibraryHeaderName, isArduinoLibraryImport } from "../arduino-libs";
+// Framework library functions loaded dynamically — no hard dependency.
+const _loadLibFns = (() => {
+  try {
+    const mod = require("@typehal/framework-arduino");
+    return {
+      isArduinoLibraryImport: mod.isArduinoLibraryImport as (s: string) => boolean,
+      getArduinoLibraryHeaderName: mod.getArduinoLibraryHeaderName as (s: string) => string | undefined,
+    };
+  } catch {
+    return {
+      isArduinoLibraryImport: (_s: string) => false,
+      getArduinoLibraryHeaderName: (_s: string) => undefined as string | undefined,
+    };
+  }
+})();
 
-export interface ResolvedImport {
+interface ResolvedImport {
   include: string;
   symbolMap: Record<string, string>;
 }
@@ -30,8 +44,8 @@ export function loadLibraryDefinitions(definitionsDir: string): Map<string, Libr
 
 function fallbackInclude(moduleSpecifier: string): string {
   // For Arduino library imports, try to get the actual header file name
-  if (isArduinoLibraryImport(moduleSpecifier)) {
-    const actualHeader = getArduinoLibraryHeaderName(moduleSpecifier);
+  if (_loadLibFns.isArduinoLibraryImport(moduleSpecifier)) {
+    const actualHeader = _loadLibFns.getArduinoLibraryHeaderName(moduleSpecifier);
     if (actualHeader) {
       return `<${actualHeader}>`;
     }
@@ -75,7 +89,7 @@ function resolveLocalModuleHeader(moduleSpecifier: string, importerFilePath: str
 }
 
 function conditionMatches(condition: LibraryDefinitionCondition, target: TargetProfile, context?: PlatformContext): boolean {
-  const arduino = context?.arduino;
+  const arduino = (context as any)?.arduino as { fqbn?: string } | undefined;
   const architecture = toArchitectureFromFqbn(arduino?.fqbn);
 
   if (condition.target && condition.target !== target) {

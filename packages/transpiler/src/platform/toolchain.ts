@@ -27,19 +27,6 @@ function getToolchain(fromDir: string): FrameworkToolchain {
   );
 }
 
-export function hasToolchain(fromDir: string): boolean {
-  if (hasLoadedFramework()) {
-    const { toolchain } = getLoadedFramework();
-    return toolchain !== undefined;
-  }
-  return false;
-}
-
-export function prepareOutput(outputDir: string, entryPoint: string): void {
-  const toolchain = getToolchain(outputDir);
-  toolchain.prepare?.(outputDir, entryPoint);
-}
-
 export function compileSource(options: ToolchainOptions): CompileResult {
   const toolchain = getToolchain(options.outputDir);
   return toolchain.compile(options);

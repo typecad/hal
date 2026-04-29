@@ -2,7 +2,8 @@
 // @typehal/board-arduino-uno — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typehal/hal';
+import type { BoardDefinition } from '@typehal/schema';
+import { ARDUINO_CORE_VERSION } from '@typehal/schema';
 
 // NOTE: Platform strategy is now provided by framework packages:
 //   - @typehal/framework-arduino for Arduino framework (digitalWrite, etc.)
@@ -174,7 +175,7 @@ export const ArduinoUno: BoardDefinition = {
     extraFlags: ['-mmcu=atmega328p'],
     defines: {
       F_CPU:           '16000000UL',
-      ARDUINO:         '10819',
+      ARDUINO:         ARDUINO_CORE_VERSION,
       ARDUINO_AVR_UNO: '1',
     },
   },

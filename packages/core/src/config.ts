@@ -12,10 +12,10 @@ import type { ArchitectureIdentifier } from './board/types';
 // ---------------------------------------------------------------------------
 
 /** Build-system / framework the transpiler should target. */
-export type OutputFramework = 'arduino' | 'platformio' | 'esp-idf' | 'bare-metal';
+type OutputFramework = 'arduino' | 'platformio' | 'esp-idf' | 'bare-metal';
 
 /** Optimization strategy. */
-export type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
+type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
 
 // ---------------------------------------------------------------------------
 // Config shape
@@ -24,7 +24,7 @@ export type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
 /**
  * Output section — controls how generated C++ is laid out.
  */
-export interface TypehalOutputConfig {
+interface TypehalOutputConfig {
   /** Target build framework. */
   framework: OutputFramework;
   /** Optimization level. */
@@ -127,10 +127,10 @@ export interface TypehalConfig {
 // ---------------------------------------------------------------------------
 
 /** Supported toolchain types for compile/upload operations. */
-export type ToolchainType = 'arduino-cli';
+type ToolchainType = 'arduino-cli';
 
 /** Arduino CLI specific configuration options. */
-export interface ArduinoCliOptions {
+interface ArduinoCliOptions {
   /** Path to arduino-cli executable. Auto-detected if not specified. */
   path?: string;
   /** Path to custom arduino-cli.yaml config file. */
@@ -143,7 +143,7 @@ export interface ArduinoCliOptions {
  * Toolchain configuration for compile and upload operations.
  * Uses arduino-cli as the backend.
  */
-export interface TypehalToolchainConfig {
+interface TypehalToolchainConfig {
   /** Toolchain type: 'arduino-cli'. Default: 'arduino-cli' */
   type?: ToolchainType;
   /** Arduino CLI specific options. */
@@ -154,7 +154,7 @@ export interface TypehalToolchainConfig {
  * Console polyfill configuration for Arduino.
  * Controls Serial.begin() injection and default baud rate.
  */
-export interface TypehalConsoleConfig {
+interface TypehalConsoleConfig {
   /** Default baud rate for Serial.begin() when auto-injected. Default: 9600 */
   baudRate?: number;
 }
@@ -179,7 +179,7 @@ export interface TypehalConsoleConfig {
  * };
  * ```
  */
-export interface TypehalTestConfig {
+interface TypehalTestConfig {
   /** Glob patterns for hardware test files. Default: `['tests/**\/*.test.ts']`. */
   include?: string[];
 

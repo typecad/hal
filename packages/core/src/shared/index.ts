@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 
 // Base types
-export type { Diagnostic, DiagnosticSeverity, PlatformContext, ArduinoPlatformContext, SourceSpan, TargetProfile } from './types';
+export type { Diagnostic, PlatformContext, SourceSpan, TargetProfile } from './types';
 
 // IR types
 export type {
@@ -55,7 +55,7 @@ export type {
 
 // Typehal symbols
 export type { TypehalReceiverKind } from './typehal-symbols';
-export { inferKindByName, pinsWithKind } from './typehal-symbols';
+export { inferKindByName, pinsWithKind, registerSymbolKinds } from './typehal-symbols';
 
 // Board resolver
 export type { BoardConstants } from './board-resolver';
@@ -63,10 +63,8 @@ export type { BoardConstants } from './board-resolver';
 // Polyfill types
 export type {
   RuntimePolyfillIR,
-  PolyfillDomain,
-  StdLibSupport,
 } from './polyfill-types';
-export { STDLIB_SUPPORT, getStdLibSupport } from './polyfill-types';
+export { getStdLibSupport } from './polyfill-types';
 
 // Platform strategy
 export type {
@@ -93,4 +91,4 @@ export type {
 } from './snprintf-types';
 
 // Polyfill helper registry
-export { POLYFILL_HELPER_MAP, extractHelperFunctionName, filterPolyfillHelpers } from './polyfill-helper-registry';
+export { POLYFILL_HELPER_MAP, filterPolyfillHelpers } from './polyfill-helper-registry';

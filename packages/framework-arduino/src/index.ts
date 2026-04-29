@@ -79,3 +79,6 @@ export {
   generateLogpointCode,
 } from './debug-codegen';
 export type { CapturedVariable, LogMessagePart } from './debug-codegen';
+
+// Symbol kind registry for board/framework pins and namespaces
+export { SYMBOL_KINDS } from './symbol-kinds';
