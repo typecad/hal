@@ -21,8 +21,8 @@ interface ExpressionRendererContext {
   strategy: PlatformStrategy;
   /** Board constants for Board.definition.* access */
   boardConstants?: BoardConstants;
-  /** Map of Arduino class simple names to fully qualified names */
-  arduinoClassNameMap?: Map<string, string>;
+  /** Map of class simple names to fully qualified names (framework library imports) */
+  classNameMap?: Map<string, string>;
   /** Set of enum names for scoped enum access (::) */
   enumNames: Set<string>;
   /** Set of enum names with values outside 16-bit int range */
@@ -51,7 +51,7 @@ interface ExpressionRendererContext {
 export class ExpressionRenderer {
   private readonly strategy: PlatformStrategy;
   private readonly boardConstants?: BoardConstants;
-  private readonly arduinoClassNameMap?: Map<string, string>;
+  private readonly classNameMap?: Map<string, string>;
   private readonly enumNames: Set<string>;
   private readonly largeEnumNames: Set<string>;
   private readonly knownFunctionReturnTypes?: Map<string, string>;
@@ -69,7 +69,7 @@ export class ExpressionRenderer {
   constructor(context: ExpressionRendererContext) {
     this.strategy = context.strategy;
     this.boardConstants = context.boardConstants;
-    this.arduinoClassNameMap = context.arduinoClassNameMap;
+    this.classNameMap = context.classNameMap;
     this.enumNames = context.enumNames;
     this.largeEnumNames = context.largeEnumNames;
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
@@ -218,7 +218,7 @@ export class ExpressionRenderer {
   }
 
   private renderRaw(value: string, exprTransformer?: (expr: string) => string): string {
-    const effectiveClassNameMap = this.arduinoClassNameMap;
+    const effectiveClassNameMap = this.classNameMap;
     let result = exprTransformer
       ? normalizeRawExpression(exprTransformer(value), this.strategy, effectiveClassNameMap)
       : normalizeRawExpression(value, this.strategy, effectiveClassNameMap);

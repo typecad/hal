@@ -16,7 +16,7 @@ import type { BoardConstants } from "../ir/board-resolver";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import { resolveStrategy } from "../platform/registry";
 import { getLoadedFramework } from "../framework-registry";
-import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForArduinoString } from "./arduino-snprintf";
+import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForString } from "./snprintf-helpers";
 import { normalizeRawExpression, transformTypeName } from "./expression-renderer";
 import { mapPeripheralName, renderPeripheralProperty } from "../mapping/peripheral-names";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
@@ -124,6 +124,12 @@ export function registerAllEnumNames(
 // Overridden at the top of each emitCpp call.
 let _defaultStrategy: PlatformStrategy = resolveStrategy("generic");
 
+// Platform-reserved identifier names for the active strategy.
+// Populated at the top of each emitCpp call from strategy.reservedNames().
+// Used by escapeCppKeyword() so that Arduino macros (min, max, etc.) are
+// only escaped when the ArduinoStrategy is active, not for other frameworks.
+let _emitPlatformReservedNames: ReadonlySet<string> = new Set();
+
 // Module-level tracking for static class members (class name → static member names).
 // Populated during class emission so renderExpression can use :: for static access.
 let _classStaticMembers: Map<string, Set<string>> = new Map();
@@ -203,7 +209,7 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       // Map peripheral identifiers to platform-specific names (e.g. I2C0→Wire on Arduino)
       const mapped = mapPeripheralName(expr.value, strategy);
       if (mapped !== undefined) return mapped;
-      return escapeCppKeyword(expr.value);
+      return escapeCppKeyword(expr.value, _emitPlatformReservedNames);
     }
     case "raw": {
       // Apply transformation to raw expressions (for fixing pointer field access)
@@ -418,7 +424,7 @@ function isPrimitiveCppType(cppType: string): boolean {
 }
 
 function renderTypedName(cppType: string, name: string, strategy: PlatformStrategy, isConst = false, isRef = false): string {
-  const safeName = escapeCppKeyword(name);
+  const safeName = escapeCppKeyword(name, _emitPlatformReservedNames);
   const normalizedType = normalizeCppTypeForTarget(cppType, strategy);
   const fnPtrMatch = normalizedType.match(/^(.+?)\s*\(\*\)\((.*)\)$/);
   if (fnPtrMatch) {
@@ -820,7 +826,7 @@ function renderStatement(
       );
 
       const fieldDefs = statement.initializer.fields
-        .map((f) => `${inferObjectFieldType(f.value, pointerVarTypes, knownFunctionReturnTypes, undefined, undefined, _largeEnumNames, statement.name, f.name)} ${f.name};`)
+        .map((f) => `${inferObjectFieldType(f.value, pointerVarTypes, knownFunctionReturnTypes, undefined, undefined, _largeEnumNames, statement.name, f.name, strategy.defaultNumericType(), (o, n) => strategy.resolvePinType?.(o, n))} ${f.name};`)
         .join(" ");
       const initValues = statement.initializer.fields
         .map((f) => {
@@ -870,10 +876,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // Resolve the platform strategy for this target.
   const strategy: PlatformStrategy = options.strategy ?? resolveStrategy(options.target ?? "generic");
-  // Inform ArduinoStrategy about large enum names so it can decide on underlying type.
-  if (typeof (strategy as any).setLargeEnumNames === "function") {
-    (strategy as any).setLargeEnumNames(_largeEnumNames);
-  }
+  // Inform the strategy about large enum names so it can decide on underlying type.
+  strategy.setLargeEnumNames?.(_largeEnumNames);
+  // Capture the strategy's platform-reserved names so escapeCppKeyword() only
+  // escapes framework-specific macros (e.g. Arduino's min/max) when that
+  // framework is actually active, not for generic or other frameworks.
+  _emitPlatformReservedNames = strategy.reservedNames();
 
   ensureDir(options.outDir);
 
@@ -1193,7 +1201,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       const statementRenderer = new StatementRenderer({
         strategy,
         boardConstants: _emitBoardConstants,
-        arduinoClassNameMap: _classNameMap,
+        classNameMap: _classNameMap,
         enumNames: _emitEnumNames,
         largeEnumNames: _largeEnumNames,
         knownFunctionReturnTypes,
@@ -1207,7 +1215,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
     };
 
-    if (statement.kind === "var_decl" && shouldUseSnprintfForArduinoString(statement, strategy) && statement.initializer) {
+    if (statement.kind === "var_decl" && shouldUseSnprintfForString(statement, strategy) && statement.initializer) {
       const snprintfRender = buildSnprintfRenderResult(
         statement.initializer,
         strategy,
@@ -1230,7 +1238,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       statement.kind === "assign" &&
       statement.operator === "=" &&
       scopeState.snprintfBuffers.has(statement.target) &&
-      shouldUseSnprintfForArduinoString(statement, strategy)
+      shouldUseSnprintfForString(statement, strategy)
     ) {
       const snprintfRender = buildSnprintfRenderResult(
         statement.value,
@@ -1275,13 +1283,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       }
     }
 
-    // Handle typehal-call for serial println/print with snprintf for Arduino
+    // Handle typehal-call for serial println/print with snprintf — delegated to strategy
     if (statement.kind === "typehal-call" && strategy.useSnprintfForStrings() && statement.args.length > 0) {
       const isSerialPrint = (statement.method === "println" || statement.method === "print") &&
-        (statement.receiver === "UART0" || statement.receiver === "Serial" ||
-          statement.receiver.startsWith("UART") || statement.receiver.startsWith("Serial"));
+        (strategy.isSerialPeripheral?.(statement.receiver) ?? false);
 
-      if (isSerialPrint) {
+      if (isSerialPrint && strategy.renderSerialPrintWithSnprintf) {
         const firstArg = statement.args[0];
         if (firstArg.kind === "string_concat") {
           const snprintfRender = buildSnprintfRenderResult(
@@ -1295,18 +1302,19 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
           if (snprintfRender) {
             const bufferName = `__typehal_println_${++scopeState.nextSnprintfTempId}`;
-            const serialInstance = statement.receiver.startsWith("UART")
-              ? statement.receiver.slice(4) === "0" ? "Serial" : `Serial${statement.receiver.slice(4)}`
-              : statement.receiver.startsWith("Serial")
-                ? statement.receiver
-                : "Serial";
-            const serialMethod = statement.method;
-            emitSnprintfLines(bufferName, snprintfRender, {
-              declareBuffer: true,
-              finalLine: `${serialInstance}.${serialMethod}(${bufferName});`,
+            const rendered = strategy.renderSerialPrintWithSnprintf({
+              receiver: statement.receiver,
+              method: statement.method,
+              bufferName,
             });
-            emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
-            return;
+            if (rendered) {
+              emitSnprintfLines(bufferName, snprintfRender, {
+                declareBuffer: true,
+                finalLine: rendered.finalLine,
+              });
+              emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+              return;
+            }
           }
         }
       }
@@ -2007,7 +2015,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     if (stmt.kind === "var_decl" && stmt.initializer?.kind === "object") {
       const structName = stmt.name;
       for (const field of stmt.initializer.fields) {
-        const fieldType = inferObjectFieldType(field.value, globalPointerVarTypes, knownFunctionReturnTypes, undefined, undefined, _largeEnumNames);
+        const fieldType = inferObjectFieldType(field.value, globalPointerVarTypes, knownFunctionReturnTypes, undefined, undefined, _largeEnumNames, structName, field.name, strategy.defaultNumericType(), (o, n) => strategy.resolvePinType?.(o, n));
         if (fieldType.endsWith("*")) {
           pointerStructFields.add(`${structName}.${field.name}`);
         }
@@ -2904,6 +2912,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           _largeEnumNames,
           statement.name,
           field.name,
+          strategy.defaultNumericType(),
+          (o, n) => strategy.resolvePinType?.(o, n),
         );
         return [field.name, inferred] as const;
       });
@@ -2949,11 +2959,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
 
   if (effectiveEmitMode !== "split") {
+    const excludedNames = new Set(strategy.forwardDeclarationExclusions?.() ?? []);
     for (const callback of callbackFunctions) {
       appendSourceLine(`${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}();`);
     }
     for (const fn of mappedFunctions) {
-      if (fn.name === "setup" || fn.name === "loop" || fn.name === "main") {
+      if (excludedNames.has(fn.name)) {
         continue;
       }
       const declarationParameterList = renderParameters(fn.parameters, strategy, true);
@@ -2966,7 +2977,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         symbolName: fn.name,
       });
     }
-    if (callbackFunctions.length > 0 || mappedFunctions.some((fn) => fn.name !== "setup" && fn.name !== "loop" && fn.name !== "main")) {
+    if (callbackFunctions.length > 0 || mappedFunctions.some((fn) => !excludedNames.has(fn.name))) {
       appendSourceLine("");
     }
   }

@@ -7,13 +7,14 @@ import type { ExpressionIR, StatementIR } from "../../ir/model";
 
 /**
  * Infers the C++ type for an object field based on its initializer value.
- * 
+ *
  * @param value The expression to infer type for
  * @param pointerVarTypes Map of variable names to their pointer types (e.g., "sensor" -> "Sensor*")
  * @param knownFunctionReturnTypes Map of function names to their return types
  * @param knownObjectTypes Map of object names to their types
  * @param knownObjectFieldTypes Map of object names to their field type maps
  * @param largeEnumNames Set of enum names with values outside 16-bit int range
+ * @param resolvePinType Optional callback to resolve pin types from the platform strategy
  * @returns The inferred C++ type string
  */
 export function inferObjectFieldType(
@@ -26,6 +27,7 @@ export function inferObjectFieldType(
   parentName?: string,
   fieldName?: string,
   defaultIntType: string = "int",
+  resolvePinType?: (objectName: string, fieldName: string) => string | undefined,
 ): string {
   if (value.kind === "number") {
     if (value.cppType === "float" || !Number.isInteger(value.value)) {
@@ -57,7 +59,7 @@ export function inferObjectFieldType(
   }
 
   // For enum member access (e.g. I2CSpeed.STANDARD), return `long` if the
-  // enum has values outside AVR's 16-bit int range, otherwise `int`.
+  // enum has values outside the 16-bit int range, otherwise `int`.
   if (value.kind === "property-access" && value.object.kind === "identifier") {
     const enumName = (value.object as Extract<ExpressionIR, { kind: "identifier" }>).value;
     return largeEnumNames?.has(enumName) ? "long" : defaultIntType;
@@ -72,22 +74,9 @@ export function inferObjectFieldType(
       if (fields?.has(fieldName)) {
         return fields.get(fieldName)!;
       }
-      if (objectName === "Pins") {
-        if (fieldName === "D2") {
-          return "AVRInterruptPin*";
-        }
-        if (fieldName === "D3") {
-          return "AVRPWMInterruptPin*";
-        }
-        if (["D3", "D5", "D6", "D9", "D10", "D11"].includes(fieldName)) {
-          return "AVRPWMPin*";
-        }
-        if (/^A\d+$/.test(fieldName)) {
-          return "AVRAnalogPin*";
-        }
-        if (/^D\d+$/.test(fieldName) || fieldName === "LED") {
-          return "AVRDigitalPin*";
-        }
+      if (objectName === "Pins" && resolvePinType) {
+        const resolved = resolvePinType(objectName, fieldName);
+        if (resolved) return resolved;
       }
     }
 

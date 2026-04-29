@@ -1,14 +1,11 @@
 import { ProgramIR, StatementIR, ExpressionIR } from "./model";
-import { TargetProfile } from "../types";
 
 /**
  * Configuration for entry point detection
  */
 export interface EntryPointConfig {
-  /** Arduino target entry points */
-  arduinoEntryPoints: string[];
-  /** Generic C++ target entry points */
-  genericEntryPoints: string[];
+  /** Default entry points when none are explicitly provided */
+  defaultEntryPoints: string[];
   /** Additional custom entry points */
   customEntryPoints: string[];
 }
@@ -17,17 +14,21 @@ export interface EntryPointConfig {
  * Default entry point configuration (internal)
  */
 const DEFAULT_ENTRY_POINT_CONFIG: EntryPointConfig = {
-  arduinoEntryPoints: ["setup", "loop"],
-  genericEntryPoints: ["main"],
+  defaultEntryPoints: ["main"],
   customEntryPoints: [],
 };
 
 /**
- * Detect entry points for a program based on target platform
+ * Detect entry points for a program.
+ *
+ * @param program  The IR program to analyze
+ * @param config   Entry point configuration
+ * @param entryPointNames  Explicit entry point names (overrides config defaults).
+ *                         Derived from the platform strategy's `entrypointFunctionName()`
+ *                         and `requiresLoopFunction()` at the call site.
  */
 export function detectEntryPoints(
   program: ProgramIR,
-  target: TargetProfile,
   config: Partial<EntryPointConfig> = {},
   entryPointNames?: string[],
 ): Set<string> {
@@ -44,11 +45,7 @@ export function detectEntryPoints(
   const definedClasses = new Set(program.classes.map((cls) => cls.name));
 
   // Add target-specific entry points
-  const targetEntryPoints = entryPointNames ?? (
-    target === "arduino"
-      ? effectiveConfig.arduinoEntryPoints
-      : effectiveConfig.genericEntryPoints
-  );
+  const targetEntryPoints = entryPointNames ?? effectiveConfig.defaultEntryPoints;
 
   for (const entryPoint of targetEntryPoints) {
     if (definedFunctions.has(entryPoint)) {

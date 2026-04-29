@@ -17,11 +17,11 @@ import { renderDACCall } from "./handlers/dac-handler";
  * Accessed via `PlatformContext` index signature: `arduinoCtx(ctx)`.
  */
 export interface ArduinoPlatformContext {
-  fqbn?: string;
+  buildTarget?: string;
 }
 
 function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
-  const data = ctx?.frameworkData as { fqbn?: string } | undefined;
+  const data = ctx?.frameworkData as { buildTarget?: string } | undefined;
   return data ?? undefined;
 }
 
@@ -109,7 +109,7 @@ export class ArduinoStrategy implements PlatformStrategy {
    * Gets or resolves the Arduino profile, caching the result.
    */
   private getOrResolveProfile(program: ProgramIR, ctx?: PlatformContext): ReturnType<typeof resolveArduinoProfile> {
-    const key = arduinoCtx(ctx)?.fqbn ?? 'default';
+    const key = arduinoCtx(ctx)?.buildTarget ?? 'default';
 
     if (this._cachedProfile && this._cachedProfileKey === key) {
       return this._cachedProfile;
@@ -118,9 +118,9 @@ export class ArduinoStrategy implements PlatformStrategy {
     this._cachedProfile = resolveArduinoProfile(program, ctx);
     this._cachedProfileKey = key;
     // Cache architecture for use by isrFunctionAttribute()
-    const fqbn = arduinoCtx(ctx)?.fqbn;
-    if (fqbn) {
-      const parts = fqbn.split(':');
+    const buildTarget = arduinoCtx(ctx)?.buildTarget;
+    if (buildTarget) {
+      const parts = buildTarget.split(':');
       this._cachedArch = parts.length >= 2 ? parts[1] : 'default';
     } else {
       this._cachedArch = 'default';
@@ -203,7 +203,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     // Add async Promise runtime if program has async functions and stdlib supports it
     const hasAsync = program.functions.some(fn => fn.isAsync);
     if (hasAsync) {
-      const architecture = ctx?.architecture ?? arduinoCtx(ctx)?.fqbn?.split(":")?.[1]?.toLowerCase();
+      const architecture = ctx?.architecture ?? arduinoCtx(ctx)?.buildTarget?.split(":")?.[1]?.toLowerCase();
       const stdlib = this.getStdLibSupport(architecture);
       if (stdlib.hasVector && stdlib.hasString) {
         helpers.push({
@@ -212,7 +212,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
           domain: "arduino",
           requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
           forwardDeclarations: [],
-          helperStructs: [generatePromiseRuntime(arduinoCtx(ctx)?.fqbn?.split(":")?.[0] === "arduino" ? "arduino" : "generic")],
+          helperStructs: [generatePromiseRuntime(arduinoCtx(ctx)?.buildTarget?.split(":")?.[0] === "arduino" ? "arduino" : "generic")],
           helperFunctions: [],
           shimMacros: [],
           dependencies: [],
@@ -292,6 +292,10 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   // ── Expression rendering ────────────────────────────────────────────────
 
   currentTimeMillis(): string { return "millis()"; }
+
+  isSerialPeripheral(name: string): boolean {
+    return /^Serial\d*$/.test(name);
+  }
 
   // Apply regex transformations to raw expression text.
   // NOTE: String method regexes (toUpperCase, includes, etc.) assume the receiver
@@ -435,6 +439,16 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     return typeof value === "string" ? `"${value}"` : `${value}`;
   }
 
+  resolvePinType(objectName: string, fieldName: string): string | undefined {
+    if (objectName !== "Pins") return undefined;
+    if (fieldName === "D2") return "AVRInterruptPin*";
+    if (fieldName === "D3") return "AVRPWMInterruptPin*";
+    if (["D5", "D6", "D9", "D10", "D11"].includes(fieldName)) return "AVRPWMPin*";
+    if (/^A\d+$/.test(fieldName)) return "AVRAnalogPin*";
+    if (/^D\d+$/.test(fieldName) || fieldName === "LED") return "AVRDigitalPin*";
+    return undefined;
+  }
+
   // ── Statement rendering ─────────────────────────────────────────────────
 
   tryRenderCallStatement(
@@ -480,7 +494,110 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     return normalizedType;
   }
 
+  renderSerialPrintWithSnprintf(params: {
+    receiver: string;
+    method: string;
+    bufferName: string;
+  }): { finalLine: string } | undefined {
+    const serialInstance = params.receiver.startsWith("UART")
+      ? params.receiver.slice(4) === "0" ? "Serial" : `Serial${params.receiver.slice(4)}`
+      : params.receiver.startsWith("Serial")
+        ? params.receiver
+        : "Serial";
+    return {
+      finalLine: `${serialInstance}.${params.method}(${params.bufferName});`,
+    };
+  }
+
+  renderI2CDeviceRead(params: {
+    receiver: string;
+    wireName: string;
+    address: string;
+    register: string;
+    count?: string;
+    targetVarName: string;
+  }): { preludeLines: string[]; returnValue: string; isMultiStatement?: boolean } | undefined {
+    const wire = params.wireName;
+    if (params.count) {
+      // readBytes: declare a uint8_t array and fill it via a read loop
+      return {
+        preludeLines: [
+          `uint8_t ${params.targetVarName}[${params.count}];`,
+          `${wire}.beginTransmission(${params.address});`,
+          `${wire}.write(${params.register});`,
+          `${wire}.endTransmission(false);`,
+          `${wire}.requestFrom(${params.address}, ${params.count});`,
+          `for (int i = 0; i < ${params.count}; i++) { ${params.targetVarName}[i] = ${wire}.read(); }`,
+        ],
+        returnValue: "",
+        isMultiStatement: true,
+      };
+    }
+    // readByte: emit Wire setup as prelude, keep Wire.read() as the variable initializer
+    return {
+      preludeLines: [
+        `${wire}.beginTransmission(${params.address});`,
+        `${wire}.write(${params.register});`,
+        `${wire}.endTransmission(false);`,
+        `${wire}.requestFrom(${params.address}, 1);`,
+      ],
+      returnValue: `${wire}.read()`,
+    };
+  }
+
   // ── Name guards ─────────────────────────────────────────────────────────
+
+  forwardDeclarationExclusions(): string[] {
+    return ["setup", "loop", "main"];
+  }
+
+  ambientTypeDeclarations(): string[] {
+    return [
+      "",
+      "  // Timing utilities (transpiled to millis/micros/delay/delayMicroseconds)",
+      "  const Timing: {",
+      "    millis(): number;",
+      "    micros(): number;",
+      "    delay(ms: number): void;",
+      "    delayMicroseconds(us: number): void;",
+      "  };",
+      "",
+      "  // EEPROM non-volatile storage (transpiled to EEPROM.*)",
+      "  const EEPROM: {",
+      "    read(addr: number): number;",
+      "    write(addr: number, value: number): void;",
+      "    update(addr: number, value: number): void;",
+      "    length(): number;",
+      "    get<T>(addr: number, ref: T): T;",
+      "    put<T>(addr: number, ref: T): void;",
+      "  };",
+      "",
+      "  // Watchdog timer (transpiled to wdt_enable/wdt_reset/wdt_disable)",
+      "  const WDT: {",
+      "    enable(timeout?: '15ms' | '30ms' | '60ms' | '120ms' | '250ms' | '500ms' | '1s' | '2s' | '4s' | '8s'): void;",
+      "    reset(): void;",
+      "    disable(): void;",
+      "  };",
+      "",
+      "  // Key-value non-volatile storage (EEPROM-backed on AVR, native Preferences.h on ESP32)",
+      "  const Preferences: {",
+      "    begin(name: string, readOnly?: boolean): void;",
+      "    end(): void;",
+      "    putInt(key: string, value: number): void;",
+      "    getInt(key: string, defaultValue: number): number;",
+      "    putUInt(key: string, value: number): void;",
+      "    getUInt(key: string, defaultValue: number): number;",
+      "    putBool(key: string, value: boolean): void;",
+      "    getBool(key: string, defaultValue: boolean): boolean;",
+      "    putFloat(key: string, value: number): void;",
+      "    getFloat(key: string, defaultValue: number): number;",
+      "    putString(key: string, value: string): void;",
+      "    getString(key: string, defaultValue: string): string;",
+      "    clear(): void;",
+      "    remove(key: string): void;",
+      "  };",
+    ];
+  }
 
   reservedNames(): ReadonlySet<string> {
     return ARDUINO_RESERVED_NAMES;

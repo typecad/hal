@@ -6,8 +6,7 @@ import type { ArchitectureIdentifier } from '@typehal/core';
 import { toPascalCase } from '../utils/strings';
 import { generatePinFactoryStubs, BASIC_PIN_FACTORY_VARIANTS } from './pin-factory-templates';
 
-/** Arduino core API version used in scaffolded board definitions. */
-const ARDUINO_CORE_VERSION = '10819';
+// No Arduino-specific constants here — board templates must be framework-agnostic.
 
 export interface BoardTemplateOptions {
   name: string;              // e.g., 'my-custom-board'
@@ -19,7 +18,7 @@ export interface BoardTemplateOptions {
   flashKb: number;
   sramKb: number;
   eepromKb: number;
-  fqbn: string;
+  buildTarget: string;
   minimal: boolean;
 }
 
@@ -97,7 +96,7 @@ export function generateTsConfig(): string {
 // ---------------------------------------------------------------------------
 
 export function generateIndexTs(options: BoardTemplateOptions): string {
-  const { name, displayName, vendor, architecture, mcu, clockSpeedMhz, flashKb, sramKb, eepromKb, fqbn } = options;
+  const { name, displayName, vendor, architecture, mcu, clockSpeedMhz, flashKb, sramKb, eepromKb, buildTarget } = options;
   const clockSpeed = clockSpeedMhz * 1_000_000;
   const className = toPascalCase(name);
   
@@ -207,11 +206,13 @@ export const ${className}: BoardDefinition = {
 
   // ----- Build config ------------------------------------------------------
   build: {
-    frameworks: { arduino: '${fqbn}' },
+    // Add your framework-specific build targets here, e.g.:
+    //   frameworks: { 'arduino': '${buildTarget}' }   (for Arduino CLI FQBN)
+    //   frameworks: { 'platformio': '...' }            (for PlatformIO)
+    frameworks: {},
     extraFlags: [],
     defines: {
       F_CPU: '${clockSpeed}UL',
-      ARDUINO: ARDUINO_CORE_VERSION,
     },
   },
 };
@@ -631,17 +632,17 @@ export function generateTimingTs(): string {
   return `// ---------------------------------------------------------------------------
 // Timing utilities
 //
-// These map 1-to-1 to the Arduino built-in timing functions.
+// These map 1-to-1 to the underlying firmware timing functions.
 // The transpiler replaces calls with the C++ equivalents.
 // ---------------------------------------------------------------------------
 
-/** Block execution for \`ms\` milliseconds.  Maps to Arduino \`delay()\`. */
+/** Block execution for \`ms\` milliseconds.  Maps to \`delay()\`. */
 export declare function delay(ms: number): Promise<void>;
 
-/** Returns milliseconds since board reset.  Maps to Arduino \`millis()\`. */
+/** Returns milliseconds since board reset.  Maps to \`millis()\`. */
 export declare function millis(): number;
 
-/** Returns microseconds since board reset.  Maps to Arduino \`micros()\`. */
+/** Returns microseconds since board reset.  Maps to \`micros()\`. */
 export declare function micros(): number;
 
 /** Block execution for \`us\` microseconds.  Maps to \`delayMicroseconds()\`. */
@@ -651,7 +652,7 @@ export declare function delayMicroseconds(us: number): Promise<void>;
 // Map helpers
 // ---------------------------------------------------------------------------
 
-/** Re-map a number from one range to another.  Maps to Arduino \`map()\`. */
+/** Re-map a number from one range to another.  Maps to \`map()\`. */
 export declare function map(
   value: number,
   fromLow: number,
@@ -711,7 +712,7 @@ export declare function dacWrite(pin: number, value: number): void;
   return `// ---------------------------------------------------------------------------
 // Analog helpers — Reference voltage model
 //
-// Typed wrappers around the Arduino ADC subsystem.
+// ADC reference voltage abstraction.
 // ---------------------------------------------------------------------------
 
 /**
@@ -730,7 +731,7 @@ export enum AnalogReference {
 
 /**
  * Set the ADC reference voltage.
- * Maps to Arduino \`analogReference()\`.
+ * Maps to \`analogReference()\`.
  */
 export declare function analogReference(ref: AnalogReference): void;
 `;
@@ -744,7 +745,7 @@ export function generateInterruptsTs(): string {
   return `// ---------------------------------------------------------------------------
 // Interrupt helpers
 //
-// Typed wrappers around Arduino interrupt functions.
+// Typed wrappers around hardware interrupt functions.
 // ---------------------------------------------------------------------------
 
 import type { InterruptHandler, InterruptMode } from '@typehal/core';
@@ -773,16 +774,16 @@ export function generateStrategyTs(): string {
 //
 // Board packages do NOT need to export a strategy. The CLI loads the
 // platform strategy exclusively from the framework package configured in
-// typehal.config.ts (frameworkPackage field).
+// typehal.config.ts (framework field).
 //
 // Only create a custom strategy here if this board requires emit behaviour
-// that differs from the base ArduinoStrategy. In that case, extend
-// ArduinoStrategy and override specific methods, then export it as
-// FrameworkStrategy so the CLI can load it.
+// that differs from the base framework strategy. In that case, implement
+// PlatformStrategy (or extend the framework's strategy class) and export
+// it as FrameworkStrategy so the CLI can load it.
 // ---------------------------------------------------------------------------
 
-// import { ArduinoStrategy } from '@typehal/framework-arduino';
-// export class BoardStrategy extends ArduinoStrategy { ... }
+// import type { PlatformStrategy } from '@typehal/core/shared';
+// export class BoardStrategy implements PlatformStrategy { ... }
 // export { BoardStrategy as FrameworkStrategy };
 `;
 }

@@ -24,8 +24,8 @@ export interface ResolvedTypehalConfig {
   target?: string;
   /** Board package specifier (e.g. '@typehal/board-arduino-uno'). */
   board?: string;
-  /** Fully Qualified Board Name (e.g. 'arduino:avr:uno'). */
-  fqbn?: string;
+  /** Build target identifier (e.g. FQBN for Arduino CLI). */
+  buildTarget?: string;
   /** Output framework (e.g. 'arduino', 'platformio'). */
   outputFramework?: string;
   /** Optimization level. */
@@ -333,8 +333,9 @@ export function parseConfigFile(configPath: string): ResolvedTypehalConfig | und
   const board = flat.get("board");
   if (typeof board === "string") resolved.board = board;
 
-  const fqbn = flat.get("fqbn");
-  if (typeof fqbn === "string") resolved.fqbn = fqbn;
+  // We do not extract fqbn here anymore, it should be in frameworkData
+  const buildTarget = flat.get("frameworkData.buildTarget");
+  if (typeof buildTarget === "string") resolved.buildTarget = buildTarget;
 
   const framework = flat.get("framework");
   if (typeof framework === "string") resolved.framework = framework;
@@ -377,7 +378,7 @@ export function parseConfigFile(configPath: string): ResolvedTypehalConfig | und
  * The file is regenerated on every transpiler run so it stays in sync when
  * the board changes in `typehal.config.ts`.
  */
-export function generateVirtualTypeDeclaration(config: ResolvedTypehalConfig): void {
+export function generateVirtualTypeDeclaration(config: ResolvedTypehalConfig, platformDeclarations?: string[]): void {
   if (!config.board) return;
 
   const configDir = path.dirname(config.configPath);
@@ -412,49 +413,7 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypehalConfig): v
     "  // Convenience helper for volatile variables in TypeHAL programs.",
     "  // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.",
     "  declare function volatile<T>(value: T): T;",
-    "",
-    "  // Arduino timing utilities (transpiled to millis/micros/delay/delayMicroseconds)",
-    "  const Timing: {",
-    "    millis(): number;",
-    "    micros(): number;",
-    "    delay(ms: number): void;",
-    "    delayMicroseconds(us: number): void;",
-    "  };",
-    "",
-    "  // EEPROM non-volatile storage (transpiled to EEPROM.*)",
-    "  const EEPROM: {",
-    "    read(addr: number): number;",
-    "    write(addr: number, value: number): void;",
-    "    update(addr: number, value: number): void;",
-    "    length(): number;",
-    "    get<T>(addr: number, ref: T): T;",
-    "    put<T>(addr: number, ref: T): void;",
-    "  };",
-    "",
-    "  // Watchdog timer (transpiled to wdt_enable/wdt_reset/wdt_disable)",
-    "  const WDT: {",
-    "    enable(timeout?: '15ms' | '30ms' | '60ms' | '120ms' | '250ms' | '500ms' | '1s' | '2s' | '4s' | '8s'): void;",
-    "    reset(): void;",
-    "    disable(): void;",
-    "  };",
-    "",
-    "  // Key-value non-volatile storage (EEPROM-backed on AVR, native Preferences.h on ESP32)",
-    "  const Preferences: {",
-    "    begin(name: string, readOnly?: boolean): void;",
-    "    end(): void;",
-    "    putInt(key: string, value: number): void;",
-    "    getInt(key: string, defaultValue: number): number;",
-    "    putUInt(key: string, value: number): void;",
-    "    getUInt(key: string, defaultValue: number): number;",
-    "    putBool(key: string, value: boolean): void;",
-    "    getBool(key: string, defaultValue: boolean): boolean;",
-    "    putFloat(key: string, value: number): void;",
-    "    getFloat(key: string, defaultValue: number): number;",
-    "    putString(key: string, value: string): void;",
-    "    getString(key: string, defaultValue: string): string;",
-    "    clear(): void;",
-    "    remove(key: string): void;",
-    "  };",
+    ...(platformDeclarations ?? []),
     "}",
     "",
     "declare module '@typehal' {",

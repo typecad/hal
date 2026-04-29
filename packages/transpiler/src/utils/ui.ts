@@ -25,7 +25,7 @@ export function printHeader(): void {
 export function printBuildInfo(options: {
   framework?: string;
   board?: string;
-  fqbn?: string;
+  buildTarget?: string;
 }): void {
   if (options.framework) {
     console.log(chalk.gray(`  ${ICON_INFO} Framework: `) + chalk.white(options.framework));
@@ -33,10 +33,10 @@ export function printBuildInfo(options: {
   if (options.board) {
     console.log(chalk.gray(`  ${ICON_INFO} Board: `) + chalk.white(options.board));
   }
-  if (options.fqbn) {
-    console.log(chalk.gray(`  ${ICON_INFO} FQBN: `) + chalk.white(options.fqbn));
+  if (options.buildTarget) {
+    console.log(chalk.gray(`  • Build Target: `) + chalk.white(options.buildTarget));
   }
-  if (options.framework || options.board || options.fqbn) {
+  if (options.framework || options.board || options.buildTarget) {
     console.log();
   }
 }

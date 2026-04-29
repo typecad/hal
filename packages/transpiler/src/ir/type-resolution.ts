@@ -123,7 +123,7 @@ function getDirectCppType(typeName: string): CppTypeHint | undefined {
 
 function isBoardDefinitionTypeName(typeName: string): boolean {
   return typeName.endsWith("Board") || typeName.endsWith("Definition") ||
-    typeName.startsWith("Native") || typeName.startsWith("Arduino");
+    typeName.startsWith("Native");
 }
 
 function isSerialTypeName(typeName: string): boolean {
@@ -141,7 +141,11 @@ function isPinConstantTypeName(typeName: string): boolean {
 }
 
 function isPinImplementationTypeName(typeName: string): boolean {
-  return typeName.startsWith("AVR") || typeName.startsWith("ESP");
+  // Framework pin implementation types follow the convention {FRAMEWORK}{Capability}Pin
+  // (e.g., AVRDigitalPin, ESP32AnalogPin, STM32PWMPin). Recognized by ALL_CAPS prefix
+  // followed by a pin-related suffix, or the Native* prefix for bare-metal strategies.
+  return typeName.startsWith("Native") ||
+    (/^[A-Z][A-Z0-9]/.test(typeName) && /Pin/.test(typeName));
 }
 
 function isSharedCompileTimeOnlyTypeName(typeName: string): boolean {

@@ -35,7 +35,7 @@ export interface KnownBoard {
   /** Default framework package */
   frameworkPackage: string;
   /** Fully Qualified Board Name for toolchain (optional, framework-specific) */
-  fqbn?: string;
+  buildTarget: string;
   /** MCU part number */
   mcu: string;
 }
@@ -47,7 +47,7 @@ const _knownBoards: KnownBoard[] = [
     architecture: 'avr',
     boardPackage: '@typehal/board-arduino-uno',
     frameworkPackage: '@typehal/framework-arduino',
-    fqbn: 'arduino:avr:uno',
+    buildTarget: 'arduino:avr:uno',
     mcu: 'ATmega328P',
   },
   {
@@ -56,7 +56,7 @@ const _knownBoards: KnownBoard[] = [
     architecture: 'esp32',
     boardPackage: '@typehal/board-esp32-devkit',
     frameworkPackage: '@typehal/framework-arduino',
-    fqbn: 'esp32:esp32:esp32',
+    buildTarget: 'esp32:esp32:esp32',
     mcu: 'ESP32-WROOM-32',
   },
 ];
@@ -172,7 +172,7 @@ export function printInitNextSteps(options: InitProjectOptions, outDir: string):
   console.log("Next steps:");
   console.log(`  cd ${relativeDir}`);
   console.log(`  npm install`);
-  console.log(`  npx typehal ./src/sketch.ts --compile${options.fqbn ? ` --fqbn ${options.fqbn}` : ''}`);
+  console.log(`  npx typehal ./src/sketch.ts --compile${options.buildTarget ? ` --build-target ${options.buildTarget}` : ''}`);
   console.log();
   console.log("To upload to your board:");
   console.log(`  npx typehal ./src/sketch.ts --compile --upload --port ${portHint}`);

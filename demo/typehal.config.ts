@@ -17,8 +17,10 @@ const config: TypehalConfig = {
   // Framework package - controls code generation strategy
   framework: '@typehal/framework-arduino',
 
-  // Fully-Qualified Board Name for arduino-cli
-  fqbn: 'esp32:esp32:esp32',
+  // Framework data containing build target for arduino-cli
+  frameworkData: {
+    buildTarget: 'esp32:esp32:esp32',
+  },
 
   // Output / build options
   output: {

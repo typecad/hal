@@ -26,8 +26,8 @@ export interface InitProjectOptions {
   frameworkPackage: string;
   /** Framework identifier (e.g., 'arduino', 'avr', or any custom framework) */
   framework: string;
-  /** Fully Qualified Board Name for toolchain (optional, framework-specific) */
-  fqbn?: string;
+  /** Framework-specific build target identifier (optional) */
+  buildTarget?: string;
   /** MCU part number */
   mcu: string;
   /** Serial baud rate */
@@ -43,7 +43,7 @@ export interface InitProjectOptions {
 // ---------------------------------------------------------------------------
 
 export function generateProjectPackageJson(options: InitProjectOptions): string {
-  const { projectName, boardPackage, frameworkPackage, fqbn } = options;
+  const { projectName, boardPackage, frameworkPackage } = options;
 
   // Derive a reasonable default port hint from the OS
   const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
@@ -100,10 +100,10 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
 
 export function generateProjectConfig(options: InitProjectOptions): string {
   const { architecture, boardPackage, frameworkPackage, baudRate, framework, toolchainType } = options;
-  const fqbn = options.fqbn;
+  const buildTarget = options.buildTarget;
   const resolvedToolchain = toolchainType ?? 'arduino-cli';
 
-  const fqbnLine = fqbn ? `\n  // Fully-Qualified Board Name for toolchain\n  fqbn: '${fqbn}',` : '';
+  const buildTargetLine = buildTarget ? `\n  // Framework-specific data\n  frameworkData: { buildTarget: '${buildTarget}' },` : '';
 
   return `// ---------------------------------------------------------------------------
 // typehal.config.ts — Project configuration
@@ -124,7 +124,7 @@ const config: TypehalConfig = {
   board: '${boardPackage}',
 
   // Framework package — controls code generation strategy
-  framework: '${frameworkPackage}',${fqbnLine}
+  framework: '${frameworkPackage}',${buildTargetLine}
 
   // Output / build options
   output: {

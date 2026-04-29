@@ -11,8 +11,9 @@ const config: TypehalConfig = {
   // Framework package — controls code generation strategy
   framework: '@typehal/framework-arduino',
 
-  // Fully-Qualified Board Name for arduino-cli
-  fqbn: 'arduino:avr:uno',
+  frameworkData: {
+    buildTarget: 'arduino:avr:uno',
+  },
 
   output: {
     framework: 'arduino',

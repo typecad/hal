@@ -132,7 +132,7 @@ export async function runCreate(argv?: string[]): Promise<void> {
         boardPackage: board.boardPackage,
         frameworkPackage,
         framework,
-        fqbn: board.fqbn,
+        buildTarget: board.buildTarget,
         mcu: board.mcu,
         baudRate: options.baud ?? 9600,
         includeSketch: !options.noSketch,

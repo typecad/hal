@@ -17,7 +17,7 @@ export { SimSPIBus } from './bus/spi-sim';
 export type { SPIOperationLog } from './bus/spi-sim';
 
 // --- Board factory ---
-export { SimBoard, createSimBoard } from './board/board-sim';
+export { SimBoard, createSimBoard, attachSimulator } from './board/board-sim';
 
 // --- Types ---
 export { PinMode } from '@typehal/core';

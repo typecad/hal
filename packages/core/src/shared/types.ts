@@ -38,7 +38,7 @@ export interface Diagnostic {
 
 /**
  * Target profile for code generation.
- * Frameworks register their own profile names (e.g. "arduino", "stm32").
+ * Frameworks register their own profile names (e.g. "arduino", "stm32", "native").
  */
 export type TargetProfile = "generic" | (string & {});
 

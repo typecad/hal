@@ -112,7 +112,7 @@ async function processTestFile(
     preprocessed,
     filePath,
     config.projectRoot,
-    config.fqbn,
+    config.buildTarget,
   );
   if (!transpileResult.success) {
     return errorResult(filePath, transpileResult.error ?? 'Transpilation failed', startTime);
@@ -120,7 +120,7 @@ async function processTestFile(
 
   // Step 3: Compile with arduino-cli
   console.log(`  ${DIM}compiling...${RESET}`);
-  const compileResult = compileSketch(transpileResult.sketchDir, config.fqbn);
+  const compileResult = compileSketch(transpileResult.sketchDir, config.buildTarget);
   if (!compileResult.success) {
     return errorResult(filePath, compileResult.error ?? 'Compilation failed', startTime);
   }
@@ -129,7 +129,7 @@ async function processTestFile(
   console.log(`  ${DIM}uploading to ${config.test.port}...${RESET}`);
   const uploadResult = uploadSketch(
     transpileResult.sketchDir,
-    config.fqbn,
+    config.buildTarget,
     config.test.port,
   );
   if (!uploadResult.success) {

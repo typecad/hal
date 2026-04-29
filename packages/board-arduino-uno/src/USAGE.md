@@ -453,7 +453,7 @@ console.log(ArduinoUno.memory.sram);      // 2048
 console.log(ArduinoUno.memory.eeprom);    // 1024
 console.log(ArduinoUno.pins.pwm);         // ["D3","D5","D6","D9","D10","D11"]
 console.log(ArduinoUno.features.watchdog);// true
-console.log(ArduinoUno.build.arduino);    // "arduino:avr:uno"
+console.log(ArduinoUno.build.frameworks.arduino);    // "arduino:avr:uno"
 
 // Or via Board namespace
 console.log(Board.definition.name);       // "Arduino Uno"

@@ -10,8 +10,8 @@ interface FunctionEmitterContext {
   strategy: PlatformStrategy;
   /** Board constants */
   boardConstants?: BoardConstants;
-  /** Arduino class name map */
-  arduinoClassNameMap?: Map<string, string>;
+  /** Framework class name map */
+  classNameMap?: Map<string, string>;
   /** Enum names for scoped access */
   enumNames: Set<string>;
   /** Large enum names */

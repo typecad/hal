@@ -19,8 +19,8 @@ import type { PlatformStrategy } from "../platform/platform-strategy";
  * Returns `undefined` if the strategy does not recognize the name.
  */
 export function mapPeripheralName(name: string, strategy?: PlatformStrategy): string | undefined {
-  // Pass-through for Serial names (framework-agnostic convenience)
-  if (/^Serial\d*$/.test(name)) {
+  // Delegate serial peripheral detection to the strategy
+  if (strategy?.isSerialPeripheral?.(name)) {
     return name;
   }
   return strategy?.mapPeripheralIdentifier?.(name);

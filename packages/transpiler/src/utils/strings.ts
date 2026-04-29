@@ -52,19 +52,21 @@ const CPP_RESERVED_KEYWORDS = new Set([
   "static_cast", "template", "this", "thread_local", "throw",
   "true", "try", "typedef", "typeid", "typename", "using",
   "virtual", "wchar_t", "xor", "xor_eq",
-  // Arduino built-ins that appear as macros in core headers.
-  "min", "max", "abs", "constrain", "map", "round",
-  "highByte", "lowByte", "bitRead", "bitWrite", "bitSet", "bitClear",
-  "shiftIn", "shiftOut", "pulseIn", "tone", "noTone",
 ]);
 
 /**
- * Escapes a name that conflicts with a C++ reserved keyword or common Arduino macro
- * by appending `_`.
- * For example, `register` → `register_`, `min` → `min_`, `map` → `map_`.
+ * Escapes a name that conflicts with a C++ reserved keyword by appending `_`.
+ * Additionally checks against the optional `platformNames` set, which should
+ * come from `PlatformStrategy.reservedNames()` for the active framework.
+ *
+ * For example, `register` → `register_`.
+ * With Arduino strategy: `min` → `min_`, `map` → `map_`.
  */
-export function escapeCppKeyword(name: string): string {
+export function escapeCppKeyword(name: string, platformNames?: ReadonlySet<string>): string {
   if (CPP_RESERVED_KEYWORDS.has(name)) {
+    return `${name}_`;
+  }
+  if (platformNames?.has(name)) {
     return `${name}_`;
   }
   return name;

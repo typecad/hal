@@ -197,7 +197,7 @@ export async function runInitWizard(
       boardPackage: board.boardPackage,
       frameworkPackage,
       framework,
-      fqbn: board.fqbn,
+      buildTarget: board.buildTarget,
       mcu: board.mcu,
       baudRate,
       includeSketch,

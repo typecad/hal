@@ -175,16 +175,16 @@ export async function runBoardWizard(): Promise<WizardResult | null> {
     const sramKb = await askNumber(rl, "SRAM (KB)", archDefaults.sramKb);
     const eepromKb = await askNumber(rl, "EEPROM (KB)", archDefaults.eepromKb);
 
-    // ── Step 5: Arduino CLI Configuration ────────────────────────────────
+    // ── Step 5: Framework Configuration ────────────────────────────────
     console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log(" STEP 5: Arduino CLI Configuration");
+    console.log(" STEP 5: Framework Configuration");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
-    console.log("  The FQBN (Fully Qualified Board Name) tells arduino-cli which");
-    console.log("  core to use for compilation.\n");
+    console.log("  The build identifier (e.g. FQBN for Arduino) tells the framework");
+    console.log("  toolchain which core/target to use for compilation.\n");
     
-    const fqbnDefault = getFqbnDefault(architecture);
-    const fqbn = await askString(rl, "FQBN (e.g., arduino:avr:uno)", fqbnDefault);
+    const buildTargetDefault = getBuildTargetDefault(architecture);
+    const buildTarget = await askString(rl, "Build Target (e.g., arduino:avr:uno)", buildTargetDefault);
 
     // ── Step 6: Peripheral Count ──────────────────────────────────────────
     console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -289,7 +289,7 @@ export async function runBoardWizard(): Promise<WizardResult | null> {
     console.log(`  MCU:            ${mcu}`);
     console.log(`  Clock:          ${clockSpeedMhz} MHz`);
     console.log(`  Memory:         ${flashKb}KB Flash, ${sramKb}KB SRAM, ${eepromKb}KB EEPROM`);
-    console.log(`  FQBN:           ${fqbn}`);
+    console.log(`  Build Target:   ${buildTarget}`);
     console.log(`  Peripherals:    ${i2cCount} I2C, ${spiCount} SPI, ${uartCount} UART`);
     console.log(`  ADC:            ${adcChannels} channels @ ${adcResolution}-bit`);
     console.log(`  PWM:            ${pwmChannels} channels @ ${pwmResolution}-bit`);
@@ -313,7 +313,7 @@ export async function runBoardWizard(): Promise<WizardResult | null> {
       flashKb,
       sramKb,
       eepromKb,
-      fqbn,
+      buildTarget,
       minimal: false,
       pins,
       peripherals: peripheralConfig,
@@ -482,7 +482,7 @@ async function defineUARTPins(rl: ReadlineInterface, pins: PinDefinition[], busI
 
 // ── Helper Functions ─────────────────────────────────────────────────────
 
-function getFqbnDefault(arch: ArchitectureIdentifier): string {
+function getBuildTargetDefault(arch: ArchitectureIdentifier): string {
   const defaults: Record<ArchitectureIdentifier, string> = {
     avr: "arduino:avr:uno",
     esp32: "esp32:esp32:esp32dev",

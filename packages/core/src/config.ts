@@ -12,7 +12,7 @@ import type { ArchitectureIdentifier } from './board/types';
 // ---------------------------------------------------------------------------
 
 /** Build-system / framework the transpiler should target. */
-type OutputFramework = 'arduino' | 'platformio' | 'esp-idf' | 'bare-metal' | (string & {});
+type OutputFramework = string & {};
 
 /** Optimization strategy. */
 type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
@@ -85,11 +85,10 @@ export interface TypehalConfig {
   output?: TypehalOutputConfig;
 
   /**
-   * Framework-specific board identifier.
-   * For Arduino CLI: FQBN (e.g., `arduino:avr:uno`).
-   * Other frameworks may use different identifier schemes.
+   * Framework-specific data.
+   * Can contain properties like `buildTarget` that the framework toolchain uses.
    */
-  fqbn?: string;
+  frameworkData?: Record<string, unknown>;
 
   /** Extra project-level TypeScript paths the transpiler should include. */
   include?: string[];
@@ -159,16 +158,16 @@ interface TypehalConsoleConfig {
  * ```ts
  * const config: TypehalConfig = {
  *   board: '@typehal/board-arduino-uno',
- *   fqbn: 'arduino:avr:uno',
+ *   frameworkData: { buildTarget: 'arduino:avr:uno' },
  *   test: {
  *     port: 'COM4',
- *     include: ['tests/hardware/**\/*.test.ts'],
+ *     include: ['tests/hardware/**\\/*.test.ts'],
  *   },
  * };
  * ```
  */
 interface TypehalTestConfig {
-  /** Glob patterns for hardware test files. Default: `['tests/**\/*.test.ts']`. */
+  /** Glob patterns for hardware test files. Default: `['tests/**\\/*.test.ts']`. */
   include?: string[];
 
   /** Serial port the board is connected to (e.g. `'COM4'`, `'/dev/ttyACM0'`). */
@@ -180,8 +179,8 @@ interface TypehalTestConfig {
   /** Timeout in ms to wait for `[TC:SUITE_END]` from firmware. Default: `30000`. */
   timeout?: number;
 
-  /** FQBN override — defaults to the root `fqbn` field. */
-  fqbn?: string;
+  /** Framework-specific build target override. */
+  buildTarget?: string;
 
   /** Board package override — defaults to the root `board` field. */
   board?: string;

@@ -139,8 +139,8 @@ export interface TestConfig {
   timeout: number;
   /** Delay in ms before opening serial port (after board reset). Default: `500`. */
   serialOpenDelay?: number;
-  /** Fully Qualified Board Name override (e.g. `'arduino:avr:uno'`). */
-  fqbn?: string;
+  /** Framework-specific build target override. */
+  buildTarget?: string;
   /** Board package override. */
   board?: string;
   /** Show debug serial output and passing assertion details. */
@@ -153,7 +153,7 @@ export interface TestConfig {
 export interface ResolvedConfig {
   test: TestConfig;
   /** From typehal.config.ts root. */
-  fqbn: string;
+  buildTarget: string;
   board: string;
   target: string;
   /** Absolute path to project root. */

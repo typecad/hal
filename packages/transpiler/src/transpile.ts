@@ -186,7 +186,7 @@ function cleanOutput(entryDir: string, outDir: string): void {
 
 /**
  * Auto-generates .d.ts files for C++ modules that are missing declarations.
- * Also tries to generate declarations for Arduino libraries.
+ * Also tries to generate declarations for framework libraries.
  * Returns list of generated files.
  */
 function autoGenerateMissingDecls(
@@ -217,7 +217,7 @@ function autoGenerateMissingDecls(
         }
       }
     } else {
-      // Try Arduino library for bare module imports
+      // Try framework library for bare module imports
       for (const file of files) {
         const declPath = tryGenerateLibDecl(modulePath, file);
         if (declPath) {
@@ -566,7 +566,7 @@ function applyTreeShaking(
   // Detect entry points
   profiler.startTimer("tree-shake:entry-points");
   const treeShakeStrategy = resolveStrategy(target);
-  const entryPoints = detectEntryPoints(programIR, target, {
+  const entryPoints = detectEntryPoints(programIR, {
     customEntryPoints: treeShakingOptions?.entryPoints ?? [],
   }, treeShakeStrategy.requiresLoopFunction()
     ? [treeShakeStrategy.entrypointFunctionName(), "loop"]
@@ -671,7 +671,23 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const sourceDir = entryDir;
   const sketchBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");
   const outBaseDir = options.outDir ?? sourceDir;
-  const strategy = resolveStrategy(options.target);
+
+  profiler.endTimer("setup:caches");
+
+  profiler.startTimer("setup:load-strategy");
+  // Load platform strategy from framework or board package, or use target-based resolution
+  const boardStrategy = loadPlatformStrategy(
+    options.frameworkPackage,
+    options.boardPackage,
+    entryDir,
+    options.debug,
+  );
+  profiler.endTimer("setup:load-strategy");
+
+  // Use the framework-loaded strategy for output path computation if available,
+  // otherwise fall back to target-based resolution.  This ensures a single
+  // consistent strategy drives both the output directory and emission.
+  const strategy = boardStrategy ?? resolveStrategy(options.target);
   const outDir = path.join(outBaseDir, strategy.outputSubdirectory(sketchBaseName));
 
   // Always start fresh: delete cache and output directory
@@ -685,17 +701,6 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       enabled: true,
     });
   }
-  profiler.endTimer("setup:caches");
-
-  profiler.startTimer("setup:load-strategy");
-  // Load platform strategy from framework or board package, or use target-based resolution
-  const boardStrategy = loadPlatformStrategy(
-    options.frameworkPackage,
-    options.boardPackage,
-    entryDir,
-    options.debug,
-  );
-  profiler.endTimer("setup:load-strategy");
 
   profiler.startTimer("graph:collect");
   const graphResult = collectTranspileGraph(entryFile, options.boardPackage);
@@ -972,10 +977,8 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       nativeModules: graphResult.nativeModules,
       crossModuleClasses: allClassNames,
     };
-    // Only pass strategy if loaded from a package - otherwise let emitCpp resolve from target
-    if (boardStrategy) {
-      emitOptions.strategy = boardStrategy;
-    }
+    // Pass the already-resolved strategy (framework-loaded or target-based)
+    emitOptions.strategy = strategy;
     const emitted = emitCpp(programIR, emitOptions);
 
     diagnostics.push(...emitted.diagnostics);

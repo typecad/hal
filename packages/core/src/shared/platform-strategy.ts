@@ -1,11 +1,12 @@
 // ---------------------------------------------------------------------------
 // PlatformStrategy — abstract interface for target-specific C++ emit decisions
 //
-// Every `target === "arduino"` branch in cpp-emitter.ts is captured here as
-// a strategy method.  Board packages provide concrete implementations so the
-// emitter stays target-agnostic.
+// Framework packages provide concrete implementations (e.g. ArduinoStrategy,
+// NativeStrategy) so the emitter stays target-agnostic.  Each framework
+// registers its strategy via the platform registry; the emitter calls methods
+// on the interface without knowing which framework is active.
 //
-// The full interface is composed from six focused sub-interfaces so that
+// The full interface is composed from focused sub-interfaces so that
 // call-sites can accept a narrower type when they only need a subset of the
 // strategy.  All existing implementations automatically satisfy every sub-interface
 // since they already implement the full PlatformStrategy.
@@ -47,16 +48,16 @@ export interface PlatformProfileStrategy {
    */
   setupInitCode?(program: ProgramIR, ctx?: PlatformContext): string[];
 
-  /** Name of the entrypoint function ("setup" for Arduino, "main" for others). */
+  /** Name of the entrypoint function ("setup" for embedded, "main" for hosted). */
   entrypointFunctionName(): string;
 
-  /** Whether a no-arg loop function must be auto-generated (Arduino needs loop()). */
+  /** Whether a no-arg loop function must be auto-generated (embedded targets need loop()). */
   requiresLoopFunction(): boolean;
 
-  /** Base name override for the output file (Arduino uses the output dir name). */
+  /** Base name override for the output file (some targets use the output dir name). */
   overrideBaseName(originalBaseName: string, outDirBaseName: string, isEntryFile: boolean, isNpmPackage: boolean): string;
 
-  /** Effective emit mode – Arduino forces "cpp", generic uses the user's choice. */
+  /** Effective emit mode – some targets force "cpp" regardless of user choice. */
   effectiveEmitMode(requestedMode: string, isNpmPackage: boolean): string;
 
   // ── Include flags ───────────────────────────────────────────────────────
@@ -85,11 +86,24 @@ export interface PlatformProfileStrategy {
   /** Whether a large enum needs an explicit underlying type. */
   needsLargeEnumUnderlying(): boolean;
 
-  /** Whether to skip a type alias for this platform (e.g. std::string on Arduino). */
+  /** Whether to skip a type alias for this platform (e.g. std::string where unsupported). */
   shouldSkipTypeAlias(cppType: string): boolean;
 
-  /** Extra diagnostics to add during emit (e.g. Arduino split-mode ignored). */
+  /** Extra diagnostics to add during emit. */
   emitDiagnostics(emitMode: string): Diagnostic[];
+
+  /**
+   * Names of functions that must be excluded from forward declarations
+   * (e.g., entry points like setup/loop/main that the platform defines).
+   */
+  forwardDeclarationExclusions?(): string[];
+
+  /**
+   * Platform-specific ambient TypeScript type declarations appended to
+   * the generated typehal-env.d.ts file.
+   * Return an empty array if no platform-specific declarations are needed.
+   */
+  ambientTypeDeclarations?(): string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -135,8 +149,14 @@ export interface PlatformTypeStrategy {
    */
   enumCastType(enumName: string): string | undefined;
 
-  /** Default numeric type for the platform (e.g. "int" on generic, "int32_t" on Arduino). */
+  /** Default numeric type for the platform (e.g. "int" on hosted, "int32_t" on embedded). */
   defaultNumericType(): string;
+
+  /**
+   * Inform the strategy which enums have values exceeding the signed 16-bit range.
+   * The strategy can use this to choose an appropriate underlying type.
+   */
+  setLargeEnumNames?(names: ReadonlySet<string>): void;
 
   /** Rename a struct field if it conflicts with platform-reserved names. */
   renameStructField(fieldName: string): string;
@@ -168,20 +188,26 @@ export interface PlatformExpressionStrategy {
 
   /**
    * Map a peripheral identifier to the platform-specific name.
-   * E.g. Arduino: I2C0→Wire, SPI0→SPI, UART0→Serial.
+   * E.g. I2C0→Wire, SPI0→SPI, UART0→Serial on Arduino.
    * Return `undefined` to keep the original name.
    */
   mapPeripheralIdentifier?(name: string): string | undefined;
 
-  /** Whether string-literal + concatenation needs wrapping (Arduino: String(...)). */
+  /** Whether string-literal + concatenation needs wrapping (e.g. String(...) on Arduino). */
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined;
 
-  /** Platform-specific expression for current time in milliseconds (e.g. "millis()" on Arduino). */
+  /** Platform-specific expression for current time in milliseconds (e.g. "millis()" on Arduino, "std::chrono" on hosted). */
   currentTimeMillis(): string;
 
   /**
+   * Whether the given peripheral name represents a serial/UART output device.
+   * Used to decide if println/print calls should be handled as serial output.
+   */
+  isSerialPeripheral?(name: string): boolean;
+
+  /**
    * Whether string concat / template interpolation should use snprintf()
-   * instead of Arduino String() objects.
+   * instead of platform string objects.
    */
   useSnprintfForStrings(): boolean;
 
@@ -217,6 +243,12 @@ export interface PlatformExpressionStrategy {
     chain: string[],
     boardConstants?: BoardConstants,
   ): string | undefined;
+
+  /**
+   * Resolve the C++ type for a pin field on a board object (e.g., Pins.D2).
+   * Return `undefined` to use default type inference.
+   */
+  resolvePinType?(objectName: string, fieldName: string): string | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -237,13 +269,13 @@ export interface PlatformStatementStrategy {
 
   /**
    * How to render a `throw` statement on this platform.
-   * Arduino has no exceptions → emit `for(;;){}`.
+   * Embedded targets without exception support may emit an infinite loop or halt.
    */
   renderThrow(valueExpr: string): string;
 
   /**
    * Transform console.log/error/warn calls to platform output.
-   * Arduino → Serial.println; Generic → std::cout.
+   * Embedded targets → Serial.println; Hosted → std::cout.
    */
   transformConsoleCall(
     method: string,
@@ -253,15 +285,41 @@ export interface PlatformStatementStrategy {
 
   /**
    * Fallback value for an object initializer field on this platform.
-   * Arduino → "0" for nested objects; generic passes through.
+   * Some targets use "0" for nested objects; hosted targets pass through.
    */
   objectFieldInitializer(fieldValue: ExpressionIR, renderExpr: (e: ExpressionIR) => string): string | undefined;
 
   /**
    * Override a class field type when platform-specific types differ.
-   * E.g. Arduino: _interruptHandler → "void (*)(void)".
+   * E.g. interrupt handlers may need function-pointer types on embedded targets.
    */
   overrideClassFieldType(fieldName: string, normalizedType: string): string;
+
+  /**
+   * Render a serial print/println call that uses a pre-formatted snprintf buffer.
+   * Called when a typehal-call for a serial peripheral has a snprintf-formatted argument.
+   * Return `undefined` to use default method-call rendering.
+   */
+  renderSerialPrintWithSnprintf?(params: {
+    receiver: string;
+    method: string;
+    bufferName: string;
+  }): { finalLine: string } | undefined;
+
+  /**
+   * Render an I2C device read operation (readByte / readBytes).
+   * The strategy should emit the platform-specific I2C transaction sequence
+   * (e.g., Wire.beginTransmission / write / endTransmission / requestFrom / read on Arduino).
+   * Return `undefined` to use default rendering.
+   */
+  renderI2CDeviceRead?(params: {
+    receiver: string;
+    wireName: string;
+    address: string;
+    register: string;
+    count?: string;
+    targetVarName: string;
+  }): { preludeLines: string[]; returnValue: string; isMultiStatement?: boolean } | undefined;
 
   /**
    * Lines to inject into the loop/run function body to drive async tasks.
@@ -270,7 +328,7 @@ export interface PlatformStatementStrategy {
 
   /**
    * The function name where microtask pumping and async task driving happens.
-   * Arduino: "loop"; Generic: "main".
+   * Embedded targets: "loop"; Hosted: "main".
    */
   asyncDriverFunctionName(): string;
 
@@ -294,7 +352,7 @@ export interface PlatformStatementStrategy {
 export interface PlatformSafetyStrategy {
   /**
    * Names that must not be re-declared because the platform already defines them
-   * (e.g. Arduino macros: HIGH, LOW, Serial, A0 …).
+   * (e.g. platform macros like HIGH, LOW, Serial, A0 on Arduino).
    */
   reservedNames(): ReadonlySet<string>;
 
@@ -306,7 +364,7 @@ export interface PlatformSafetyStrategy {
 
   /**
    * The preprocessor guard expression for API-reserved enums
-   * (e.g. "ARDUINO_API_VERSION" for Arduino).
+   * (e.g. "ARDUINO_API_VERSION" on Arduino).
    */
   apiReservedEnumGuard(): string;
 
@@ -360,7 +418,7 @@ export interface PlatformBuildStrategy {
 /**
  * Debug code generation sub-interface.
  * Frameworks implement these to provide platform-specific debug output
- * (e.g., Serial.println for Arduino, std::cout for generic targets).
+ * (e.g., Serial.println on embedded, std::cout on hosted targets).
  */
 export interface PlatformDebugStrategy {
   /** Generate initialization code for the debug subsystem. */

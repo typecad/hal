@@ -59,19 +59,12 @@
     "@typehal/schema": "*",
     "@typehal/expect": "*"
   },
-  "peerDependencies": {
-    "@typehal/framework-arduino": "*"
-  },
-  "peerDependenciesMeta": {
-    "@typehal/framework-arduino": {
-      "optional": true
-    }
-  },
+  "peerDependencies": {},
+  "peerDependenciesMeta": {},
   "optionalDependencies": {
     "@typehal/create": "*"
   },
   "devDependencies": {
-    "@typehal/framework-arduino": "*",
     "@types/node": "^22.10.7"
   },
   "license": "MIT"

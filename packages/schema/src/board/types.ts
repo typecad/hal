@@ -187,19 +187,11 @@ interface FeatureFlags {
 // ---------------------------------------------------------------------------
 
 interface BuildConfig {
-  /** Framework-specific build identifiers (e.g., { arduino: 'arduino:avr:uno' }). */
+  /** Framework-specific build identifiers (e.g., { 'my-framework': 'target:arch:board' }). */
   frameworks?: Record<string, string>;
   linkerScript?: string;
   extraFlags?: string[];
   defines?: Record<string, string>;
-  /** @deprecated Use frameworks.arduino */
-  arduino?: string;
-  /** @deprecated Use frameworks.platformio */
-  platformio?: string;
-  /** @deprecated Use frameworks.espidf */
-  espidf?: string;
-  /** @deprecated Use frameworks.picoSdk */
-  picoSdk?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +199,7 @@ interface BuildConfig {
 // ---------------------------------------------------------------------------
 
 export interface BoardDefinition {
-  /** Board identifier (e.g. "arduino-uno"). */
+  /** Board identifier (e.g. "my-board"). */
   id: string;
   /** Human-readable name. */
   name: string;

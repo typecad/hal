@@ -2,6 +2,7 @@ import { ProgramIR, FunctionIR, ClassIR, EnumIR, TypeAliasIR } from "./model";
 import { CallGraph, getReachableSymbols } from "./call-graph";
 import { detectEntryPoints, EntryPointConfig } from "./entry-points";
 import { TargetProfile, Diagnostic } from "../types";
+import { resolveStrategy } from "../platform/registry";
 
 /**
  * Result of reachability analysis
@@ -68,8 +69,12 @@ export function analyzeReachability(
     reportUnused = false,
   } = options;
 
-  // Detect entry points
-  const entryPoints = detectEntryPoints(program, target, entryPointConfig);
+  // Detect entry points — derive from platform strategy instead of hardcoded target strings
+  const strategy = resolveStrategy(target);
+  const strategyEntryPoints = strategy.requiresLoopFunction()
+    ? [strategy.entrypointFunctionName(), "loop"]
+    : [strategy.entrypointFunctionName()];
+  const entryPoints = detectEntryPoints(program, entryPointConfig, strategyEntryPoints);
 
   // Get all reachable symbols from entry points
   const reachableSymbols = getReachableSymbols(callGraph, entryPoints);

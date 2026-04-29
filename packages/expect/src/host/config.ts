@@ -57,14 +57,14 @@ export function loadConfig(
     baudRate: overrides.baudRate ?? testFromFile.baudRate ?? DEFAULT_TEST_CONFIG.baudRate,
     timeout: overrides.timeout ?? testFromFile.timeout ?? DEFAULT_TEST_CONFIG.timeout,
     serialOpenDelay: overrides.serialOpenDelay ?? testFromFile.serialOpenDelay ?? DEFAULT_TEST_CONFIG.serialOpenDelay,
-    fqbn: overrides.fqbn ?? testFromFile.fqbn,
+    buildTarget: overrides.buildTarget ?? testFromFile.buildTarget,
     board: overrides.board ?? testFromFile.board,
     verbose: overrides.verbose ?? testFromFile.verbose,
   };
 
   return {
     test,
-    fqbn: test.fqbn ?? raw.fqbn ?? 'arduino:avr:uno',
+    buildTarget: test.buildTarget ?? raw.frameworkData?.buildTarget ?? 'arduino:avr:uno',
     board: test.board ?? raw.board ?? '@typehal/board-arduino-uno',
     target: raw.target ?? 'avr',
     projectRoot,
@@ -94,7 +94,7 @@ function findConfigFile(projectRoot: string): string | undefined {
 export interface RawConfig {
   target?: string;
   board?: string;
-  fqbn?: string;
+  frameworkData?: { buildTarget?: string };
   framework?: string;
   test?: Partial<TestConfig>;
   output?: {
@@ -145,8 +145,15 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
       case 'board':
         if (ts.isStringLiteral(prop.initializer)) out.board = prop.initializer.text;
         break;
-      case 'fqbn':
-        if (ts.isStringLiteral(prop.initializer)) out.fqbn = prop.initializer.text;
+      case 'frameworkData':
+        if (ts.isObjectLiteralExpression(prop.initializer)) {
+          out.frameworkData = {};
+          for (const fProp of prop.initializer.properties) {
+            if (ts.isPropertyAssignment(fProp) && ts.isIdentifier(fProp.name) && fProp.name.text === 'buildTarget') {
+              if (ts.isStringLiteral(fProp.initializer)) out.frameworkData.buildTarget = fProp.initializer.text;
+            }
+          }
+        }
         break;
       case 'framework':
         if (ts.isStringLiteral(prop.initializer)) out.framework = prop.initializer.text;
@@ -188,8 +195,8 @@ function extractTestConfig(obj: ts.ObjectLiteralExpression): Partial<TestConfig>
       case 'timeout':
         if (ts.isNumericLiteral(prop.initializer)) result.timeout = parseInt(prop.initializer.text, 10);
         break;
-      case 'fqbn':
-        if (ts.isStringLiteral(prop.initializer)) result.fqbn = prop.initializer.text;
+      case 'buildTarget':
+        if (ts.isStringLiteral(prop.initializer)) result.buildTarget = prop.initializer.text;
         break;
       case 'board':
         if (ts.isStringLiteral(prop.initializer)) result.board = prop.initializer.text;

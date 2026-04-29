@@ -40,8 +40,8 @@ export {
 import { flattenGeneratedModulesIntoSketch, compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from './arduino-compile';
 export const Toolchain = {
   prepare: flattenGeneratedModulesIntoSketch,
-  compile: (options: any) => compileArduinoSketch(options.sourcePath, options.fqbn),
-  upload: (options: any) => uploadArduinoSketch(options.outputDir, options.fqbn, options.port),
+  compile: (options: any) => compileArduinoSketch(options.sourcePath, options.buildTarget),
+  upload: (options: any) => uploadArduinoSketch(options.outputDir, options.buildTarget, options.port),
   monitor: (options: any) => monitorArduinoSketch(options.port, options.baud),
 };
 

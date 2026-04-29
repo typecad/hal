@@ -7,6 +7,7 @@ import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain";
 import { resolveStrategy } from "./platform/registry";
+import { loadFrameworkPackage } from "./framework-package";
 import { loadTypehalConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
@@ -104,7 +105,7 @@ async function main(): Promise<void> {
             flashKb: scaffoldOptions.flashKb,
             sramKb: scaffoldOptions.sramKb,
             eepromKb: scaffoldOptions.eepromKb,
-            fqbn: scaffoldOptions.fqbn,
+            buildTarget: scaffoldOptions.buildTarget,
             outDir: scaffoldOptions.outDir,
             minimal: scaffoldOptions.minimal,
           });
@@ -195,7 +196,7 @@ async function main(): Promise<void> {
         const config = loadTypehalConfig(process.cwd());
         const exitCode = runExpectTests({
           port: options.port,
-          fqbn: config?.fqbn,
+          buildTarget: config?.buildTarget,
           baud: config?.console?.baudRate ?? options.baud,
           expectFile: options.expectFile,
         });
@@ -283,22 +284,24 @@ async function main(): Promise<void> {
         }
       }
 
-      // Keep typehal-env.d.ts in sync so the TS language server can resolve
-      // bare '@typehal' imports in editor without a linter error.
-      generateVirtualTypeDeclaration(config);
-
       // Config is the source of truth — override CLI-provided values.
-      if (config.fqbn) {
+      const configBuildTarget = config.buildTarget;
+      if (configBuildTarget) {
         effectivePlatformContext = {
-          architecture: config.fqbn?.split(":")?.[1]?.toLowerCase(),
-          frameworkData: { fqbn: config.fqbn },
+          architecture: configBuildTarget.split(":")?.[1]?.toLowerCase(),
+          frameworkData: { buildTarget: configBuildTarget },
         };
       }
       if (config.target) {
-        // Map config target (architecture id like 'avr') to the transpiler's
-        // TargetProfile.  Presence of an fqbn implies arduino target.
-        if (config.fqbn || config.outputFramework === "arduino") {
-          effectiveTarget = "arduino";
+        // Derive target from the loaded framework's strategy id, not hardcoded strings.
+        // The framework package registers its strategy in the platform registry on load.
+        if (effectiveFrameworkPackage) {
+          try {
+            loadFrameworkPackage(effectiveFrameworkPackage, inputDir);
+            effectiveTarget = resolveStrategy(effectiveTarget).id;
+          } catch {
+            // Framework not loadable — keep the CLI-provided target
+          }
         }
       }
       if (config.outputOutDir && !options.outDir) {
@@ -316,6 +319,18 @@ async function main(): Promise<void> {
         effectivePlatformContext = effectivePlatformContext || {};
         (effectivePlatformContext as any).console = { baudRate: config.console.baudRate };
       }
+
+      // Keep typehal-env.d.ts in sync so the TS language server can resolve
+      // bare '@typehal' imports in editor without a linter error.
+      // Platform-specific declarations come from the strategy if available.
+      let platformDeclarations: string[] | undefined;
+      try {
+        const strategy = resolveStrategy(effectiveTarget);
+        platformDeclarations = strategy.ambientTypeDeclarations?.();
+      } catch {
+        // Strategy not yet loaded — env.d.ts will have generic declarations only
+      }
+      generateVirtualTypeDeclaration(config, platformDeclarations);
     }
 
     // Print branded header and build info
@@ -323,7 +338,7 @@ async function main(): Promise<void> {
     ui.printBuildInfo({
       framework: effectiveFrameworkPackage,
       board: effectiveBoardPackage,
-      fqbn: (effectivePlatformContext as any)?.arduino?.fqbn,
+      buildTarget: (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined),
     });
 
     // ── Watch mode ────────────────────────────────────────────────────────
@@ -357,11 +372,11 @@ async function main(): Promise<void> {
 
           // Initial compile + upload if flags are set
           if (options.compile) {
-            const fqbn = (effectivePlatformContext as any)?.arduino?.fqbn ?? (options.platformContext as any)?.arduino?.fqbn;
+            const buildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
             const watchOpts = {
               outputDir: path.dirname(result.sourcePath),
               sourcePath: result.sourcePath,
-              fqbn,
+              buildTarget,
               port: options.port,
               baud: options.baud ?? config?.console?.baudRate,
               optimize: config?.outputOptimize,
@@ -369,7 +384,7 @@ async function main(): Promise<void> {
               defines: config?.outputDefines,
               frameworkConfig: config?.frameworkConfig,
             };
-            ui.printCompiling(fqbn ?? "native");
+            ui.printCompiling(buildTarget ?? "native");
             const compileResult = compileSource(watchOpts);
             printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath);
 
@@ -437,11 +452,11 @@ async function main(): Promise<void> {
               ui.printSuccess();
 
               if (options.compile) {
-                const fqbn = (effectivePlatformContext as any)?.arduino?.fqbn ?? (options.platformContext as any)?.arduino?.fqbn;
+                const buildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
                 const rebuildOpts = {
                   outputDir: path.dirname(rebuildResult.sourcePath),
                   sourcePath: rebuildResult.sourcePath,
-                  fqbn,
+                  buildTarget,
                   port: options.port,
                   baud: options.baud ?? config?.console?.baudRate,
                   optimize: config?.outputOptimize,
@@ -449,7 +464,7 @@ async function main(): Promise<void> {
                   defines: config?.outputDefines,
                   frameworkConfig: config?.frameworkConfig,
                 };
-                ui.printCompiling(fqbn ?? "native");
+                ui.printCompiling(buildTarget ?? "native");
                 const compileResult = compileSource(rebuildOpts);
                 printMappedCompileErrors(compileResult, rebuildResult.sourceMapPath, rebuildResult.sourcePath);
 
@@ -515,7 +530,7 @@ async function main(): Promise<void> {
       if (options.expect) {
         const exitCode = runExpectTests({
           port: options.port,
-          fqbn: (effectivePlatformContext as any)?.arduino?.fqbn ?? (options.platformContext as any)?.arduino?.fqbn,
+          buildTarget: (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined),
           baud: config?.console?.baudRate ?? options.baud,
           expectFile: options.expectFile,
         });
@@ -525,11 +540,11 @@ async function main(): Promise<void> {
     }
 
     // --compile (delegates to the active framework's toolchain)
-    const fqbn = (effectivePlatformContext as any)?.arduino?.fqbn ?? (options.platformContext as any)?.arduino?.fqbn;
+    const buildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
     const toolchainOpts = {
       outputDir: path.dirname(result.sourcePath),
       sourcePath: result.sourcePath,
-      fqbn,
+      buildTarget,
       port: options.port,
       baud: options.baud ?? config?.console?.baudRate,
       optimize: config?.outputOptimize,
@@ -538,7 +553,7 @@ async function main(): Promise<void> {
       frameworkConfig: config?.frameworkConfig,
     };
 
-    ui.printCompiling(fqbn ?? "native");
+    ui.printCompiling(buildTarget ?? "native");
     let compileResult: import("@typehal/core/shared").CompileResult;
     try {
       compileResult = compileSource(toolchainOpts);
@@ -591,7 +606,7 @@ async function main(): Promise<void> {
       ui.printSuccess();
       const exitCode = runExpectTests({
         port: options.port,
-        fqbn,
+        buildTarget,
         baud: config?.console?.baudRate ?? options.baud,
         expectFile: options.expectFile,
       });

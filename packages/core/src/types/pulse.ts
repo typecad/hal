@@ -22,17 +22,17 @@ interface IPulseChain {
  * Pulse measurement namespace with both direct and fluent APIs.
  */
 export interface IPulseNamespace {
-  // --- Direct functions (Arduino-compatible) ---
+  // --- Direct functions (platform-compatible) ---
 
   /**
    * Measure the length of a pulse in microseconds.
-   * Maps to Arduino `pulseIn(pin, value, timeout)`.
+   * Maps to platform-specific `pulseIn` equivalent.
    */
   in(pin: BasePin, value: boolean, timeout?: number): number;
 
   /**
    * Measure the length of a pulse (for longer pulses).
-   * Maps to Arduino `pulseInLong(pin, value, timeout)`.
+   * Maps to platform-specific `pulseInLong` equivalent.
    */
   long(pin: BasePin, value: boolean, timeout?: number): number;
 
@@ -42,7 +42,7 @@ export interface IPulseNamespace {
   on(pin: BasePin): IPulseChain;
 }
 
-/** Stub for type checking. The transpiler replaces these with Arduino built-ins. */
+/** Stub for type checking. The transpiler replaces these with platform-specific built-ins. */
 declare const Pulse: IPulseNamespace;
 
 export { Pulse };

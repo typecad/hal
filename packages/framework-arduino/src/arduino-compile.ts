@@ -66,9 +66,9 @@ function parseArduinoCompileErrors(output: string, sketchDir?: string): CompileE
  * Extract architecture from FQBN string.
  * FQBN format: vendor:arch:board[:config]
  */
-export function toArchitectureFromFqbn(fqbn?: string): string | undefined {
-  if (!fqbn) return undefined;
-  return fqbn.split(":")[1];
+export function toArchitectureFromFqbn(buildTarget?: string): string | undefined {
+  if (!buildTarget) return undefined;
+  return buildTarget.split(":")[1];
 }
 
 export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath: string): void {
@@ -175,7 +175,7 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
   }
 }
 
-export function compileArduinoSketch(sketchFilePath: string, fqbn: string): ArduinoCompileResult {
+export function compileArduinoSketch(sketchFilePath: string, buildTarget: string): ArduinoCompileResult {
   const resolvedSketchFilePath = path.resolve(sketchFilePath);
   let sketchDir = path.dirname(resolvedSketchFilePath);
   let sketchDirName = path.basename(sketchDir);
@@ -226,7 +226,7 @@ export function compileArduinoSketch(sketchFilePath: string, fqbn: string): Ardu
     // Best-effort flattening for generated modules.
   }
 
-  const cmd = spawnSync("arduino-cli", ["compile", "--fqbn", fqbn, sketchDir], {
+  const cmd = spawnSync("arduino-cli", ["compile", "--fqbn", buildTarget, sketchDir], {
     encoding: "utf8",
     timeout: 120000,
   });
@@ -243,8 +243,8 @@ export function compileArduinoSketch(sketchFilePath: string, fqbn: string): Ardu
   };
 }
 
-export function uploadArduinoSketch(sketchDir: string, fqbn: string, port: string): ArduinoUploadResult {
-  const cmd = spawnSync("arduino-cli", ["upload", "--fqbn", fqbn, "--port", port, sketchDir], {
+export function uploadArduinoSketch(sketchDir: string, buildTarget: string, port: string): ArduinoUploadResult {
+  const cmd = spawnSync("arduino-cli", ["upload", "--fqbn", buildTarget, "--port", port, sketchDir], {
     encoding: "utf8",
     timeout: 60000,
   });

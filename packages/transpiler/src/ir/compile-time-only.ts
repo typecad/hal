@@ -7,7 +7,6 @@ const COMPILE_TIME_ONLY_CALLS = new Set<string>([
 
 const COMPILE_TIME_ONLY_CLASSES = new Set<string>([
   "NativeStrategy",
-  "ArduinoStrategy",
   "BoardStrategy",
 ]);
 

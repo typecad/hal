@@ -86,22 +86,22 @@ describe("buildCallGraph", () => {
 });
 
 describe("detectEntryPoints", () => {
-  it("should detect setup and loop for Arduino target", () => {
+  it("should detect setup and loop for embedded targets", () => {
     const source = `
       function setup(): void {
         console.log("setup");
       }
-      
+
       function loop(): void {
         console.log("loop");
       }
-      
+
       function unused(): void {
         console.log("unused");
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
-    const entryPoints = detectEntryPoints(programIR, "arduino");
+    const entryPoints = detectEntryPoints(programIR, {}, ["setup", "loop"]);
 
     expect(entryPoints.has("setup")).toBe(true);
     expect(entryPoints.has("loop")).toBe(true);
@@ -120,7 +120,7 @@ describe("detectEntryPoints", () => {
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
-    const entryPoints = detectEntryPoints(programIR, "generic");
+    const entryPoints = detectEntryPoints(programIR, {}, ["main"]);
 
     expect(entryPoints.has("main")).toBe(true);
     expect(entryPoints.has("unused")).toBe(false);
@@ -137,9 +137,9 @@ describe("detectEntryPoints", () => {
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
-    const entryPoints = detectEntryPoints(programIR, "generic", {
+    const entryPoints = detectEntryPoints(programIR, {
       customEntryPoints: ["customEntry"],
-    });
+    }, ["main"]);
 
     expect(entryPoints.has("customEntry")).toBe(true);
     expect(entryPoints.has("unused")).toBe(false);
@@ -154,7 +154,7 @@ describe("detectEntryPoints", () => {
       const instance = new MyClass();
     `;
     const programIR = buildProgramIR("test.ts", source);
-    const entryPoints = detectEntryPoints(programIR, "generic");
+    const entryPoints = detectEntryPoints(programIR, {}, ["main"]);
 
     expect(entryPoints.has("MyClass")).toBe(true);
   });
@@ -181,7 +181,7 @@ describe("analyzeReachability", () => {
     `;
     const programIR = buildProgramIR("test.ts", source);
     const callGraph = buildCallGraph(programIR);
-    const entryPoints = detectEntryPoints(programIR, "generic");
+    const entryPoints = detectEntryPoints(programIR, {}, ["main"]);
     const result = analyzeReachability(programIR, callGraph, { target: "generic" });
 
     expect(result.reachableFunctions.has("main")).toBe(true);
@@ -283,7 +283,7 @@ describe("filterProgramIR", () => {
     `;
     const programIR = buildProgramIR("test.ts", source);
     const callGraph = buildCallGraph(programIR);
-    const entryPoints = detectEntryPoints(programIR, "generic");
+    const entryPoints = detectEntryPoints(programIR, {}, ["main"]);
     const reachability = analyzeReachability(programIR, callGraph, { target: "generic" });
     const filtered = filterProgramIR(programIR, reachability, { enabled: true });
 

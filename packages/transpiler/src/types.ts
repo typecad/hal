@@ -74,8 +74,9 @@ export interface TranspileOptions {
   boardPackage?: string;
   /**
    * Framework package for code generation strategy.
-   * Can be '@typehal/framework-arduino', '@typehal/framework-avr', or a custom path.
-   * Defaults to '@typehal/framework-arduino' if not specified.
+   * Can be any framework package path, e.g. '@typehal/framework-arduino',
+   * '@typehal/framework-avr', or a custom local path.
+   * When not specified, the GenericStrategy (standard C++) is used.
    */
   frameworkPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
@@ -118,11 +119,11 @@ export interface CommandLineOptions {
   emitMaps: boolean;
   /** Skip transpilation (use existing generated files) */
   noTranspile: boolean;
-  /** Run arduino-cli compile after transpilation */
+  /** Compile using the framework toolchain after transpilation */
   compile: boolean;
-  /** Run arduino-cli upload after compilation (requires compile) */
+  /** Upload using the framework toolchain after compilation (requires compile) */
   upload: boolean;
-  /** Run arduino-cli monitor after upload */
+  /** Open serial monitor after upload */
   monitor: boolean;
   /** Serial port for upload and monitor (e.g. COM4 or /dev/ttyACM0) */
   port?: string;
@@ -216,8 +217,8 @@ export interface ScaffoldCommandOptions {
   sramKb?: number;
   /** EEPROM size in KB */
   eepromKb?: number;
-  /** Fully Qualified Board Name */
-  fqbn?: string;
+  /** Build Target Identifier (e.g. FQBN for Arduino) */
+  buildTarget?: string;
   /** Output directory */
   outDir?: string;
   /** Generate minimal package */

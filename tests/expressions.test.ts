@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { transpile, normalizeCpp, hasInclude } from "./setup";
-import { inferSnprintfArg, createEmissionScopeState } from "../packages/transpiler/src/emit/arduino-snprintf";
+import { inferSnprintfArg, createEmissionScopeState } from "../packages/transpiler/src/emit/snprintf-helpers";
 
 describe("Expression Transpilation", () => {
   describe("Number Literals", () => {

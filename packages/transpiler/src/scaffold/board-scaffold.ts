@@ -53,8 +53,8 @@ interface ScaffoldOptions {
   sramKb?: number;
   /** EEPROM size in KB */
   eepromKb?: number;
-  /** Fully Qualified Board Name */
-  fqbn?: string;
+  /** Framework-specific build target identifier */
+  buildTarget?: string;
   /** Output directory */
   outDir?: string;
   /** Generate minimal package */
@@ -113,7 +113,7 @@ export function scaffoldBoardPackage(options: ScaffoldOptions): string[] {
     flashKb: flashOverride,
     sramKb: sramOverride,
     eepromKb: eepromOverride,
-    fqbn = '',
+    buildTarget = '',
     outDir: outDirOverride,
     minimal = false,
   } = options;
@@ -145,7 +145,7 @@ export function scaffoldBoardPackage(options: ScaffoldOptions): string[] {
     flashKb: flashOverride || defaults.flashKb,
     sramKb: sramOverride || defaults.sramKb,
     eepromKb: eepromOverride || defaults.eepromKb,
-    fqbn,
+    buildTarget,
     minimal,
   };
 
@@ -197,7 +197,7 @@ export function scaffoldBoardPackage(options: ScaffoldOptions): string[] {
  * @returns Array of created file paths
  */
 export function scaffoldFromWizard(wizardResult: WizardResult, outDirOverride?: string): string[] {
-  const { name, displayName, vendor, architecture, mcu, clockSpeedMhz, flashKb, sramKb, eepromKb, fqbn, pins, peripherals } = wizardResult;
+  const { name, displayName, vendor, architecture, mcu, clockSpeedMhz, flashKb, sramKb, eepromKb, buildTarget, pins, peripherals } = wizardResult;
 
   // Build template options
   const templateOptions: BoardTemplateOptions = {
@@ -210,7 +210,7 @@ export function scaffoldFromWizard(wizardResult: WizardResult, outDirOverride?: 
     flashKb,
     sramKb,
     eepromKb,
-    fqbn,
+    buildTarget,
     minimal: false,
   };
 
@@ -258,7 +258,7 @@ export function scaffoldFromWizard(wizardResult: WizardResult, outDirOverride?: 
  * Generate index.ts with full pin definitions.
  */
 function generateIndexTsWithPins(options: BoardTemplateOptions, pins: PinDefinition[], peripherals: PeripheralConfig): string {
-  const { name, displayName, vendor, architecture, mcu, clockSpeedMhz, flashKb, sramKb, eepromKb, fqbn } = options;
+  const { name, displayName, vendor, architecture, mcu, clockSpeedMhz, flashKb, sramKb, eepromKb, buildTarget } = options;
   const clockSpeed = clockSpeedMhz * 1_000_000;
   const className = toPascalCase(name);
 
@@ -388,7 +388,7 @@ ${uartPins.map((bus, i) => `      ${i}: { tx: '${bus.tx}', rx: '${bus.rx}' },`).
 
   // ----- Build config ------------------------------------------------------
   build: {
-    arduino: '${fqbn}',
+    arduino: '${buildTarget}',
     extraFlags: [],
     defines: {
       F_CPU: '${clockSpeed}UL',

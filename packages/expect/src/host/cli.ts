@@ -8,7 +8,7 @@
 // Options:
 //   --port <port>       Serial port (e.g. COM3, /dev/ttyACM0)
 //   --board <board>     Board package override
-//   --fqbn <fqbn>       Fully Qualified Board Name override
+//   --build-target <id> Framework-specific build target override
 //   --baud <rate>       Serial baud rate (default: 115200)
 //   --timeout <ms>      Serial read timeout in ms (default: 30000)
 //   --include <glob>    Test file glob pattern (repeatable)
@@ -31,7 +31,7 @@ interface CLIArgs {
   files: string[];
   port?: string;
   board?: string;
-  fqbn?: string;
+  buildTarget?: string;
   baudRate?: number;
   timeout?: number;
   include?: string[];
@@ -55,8 +55,8 @@ function parseArgs(argv: string[]): CLIArgs {
       case '-b':
         result.board = args[++i];
         break;
-      case '--fqbn':
-        result.fqbn = args[++i];
+      case '--build-target':
+        result.buildTarget = args[++i];
         break;
       case '--baud': {
         const val = args[++i];
@@ -118,7 +118,7 @@ const HELP = `
 \x1b[1mOptions:\x1b[0m
   --port, -p <port>     Serial port (e.g. COM4, /dev/ttyACM0)
   --board, -b <board>   Board package override
-  --fqbn <fqbn>         Fully Qualified Board Name
+  --build-target <id>   Framework-specific build target override
   --baud <rate>         Serial baud rate (default: 115200)
   --timeout, -t <ms>    Serial read timeout (default: 30000)
   --include, -i <glob>  Test file pattern (repeatable)
@@ -135,8 +135,8 @@ const HELP = `
 
     const config = {
       board: '@typehal/board-arduino-uno',
-      fqbn: 'arduino:avr:uno',
       test: {
+        buildTarget: 'arduino:avr:uno',
         port: 'COM4',
         include: ['tests/**/*.test.ts'],
         baudRate: 115200,
@@ -163,7 +163,7 @@ async function main(): Promise<void> {
   const overrides: Partial<TestConfig> = {};
   if (args.port) overrides.port = args.port;
   if (args.board) overrides.board = args.board;
-  if (args.fqbn) overrides.fqbn = args.fqbn;
+  if (args.buildTarget) overrides.buildTarget = args.buildTarget;
   if (args.baudRate) overrides.baudRate = args.baudRate;
   if (args.timeout) overrides.timeout = args.timeout;
   if (args.verbose) overrides.verbose = args.verbose;

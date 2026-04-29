@@ -29,9 +29,10 @@ export function printHelp(): void {
   console.log(`  --emit <mode>           Emit mode: "cpp" or "split" (default: split)`);
   console.log(`                          - cpp: single output file`);
   console.log(`                          - split: separate .cpp and .h files`);
-  console.log(`                          Note: Arduino target always emits a single .ino file`);
+  console.log(`                          Note: Output file extension is determined by the framework strategy`);
   console.log();
-  console.log(`  --target <platform>     Target platform: "arduino" or "generic" (default: generic)`);
+  console.log(`  --target <platform>     Target platform string (default: generic).`);
+  console.log(`                          The loaded framework package registers its own target id.`);
   console.log();
   console.log(`  --outDir, --out-dir <path>`);
   console.log(`                          Output directory for generated files (default: input file directory)`);
@@ -42,14 +43,13 @@ export function printHelp(): void {
   console.log(chalk.cyan(`BUILD COMMANDS`) + chalk.gray(` (chain in order: --compile → --upload → --monitor)`));
   console.log();
   console.log(`  --compile               Compile the generated output using the framework toolchain.`);
-  console.log(`                          Arduino: uses arduino-cli (requires --fqbn).`);
-  console.log(`                          Native: auto-detects g++ or clang++.`);
+  console.log(`                          Requires a build target (e.g. via --build-target or config).`);
   console.log();
   console.log(`  --upload                Upload the compiled firmware to the board.`);
-  console.log(`                          Requires: --compile, --port (Arduino only).`);
+  console.log(`                          Requires: --compile, --port (if applicable to framework).`);
   console.log();
   console.log(`  --monitor               Open an interactive serial monitor after upload.`);
-  console.log(`                          Requires: --port (Arduino only).`);
+  console.log(`                          Requires: --port (if applicable to framework).`);
   console.log();
   console.log(chalk.cyan(`TESTING`));
   console.log();
@@ -57,10 +57,9 @@ export function printHelp(): void {
   console.log(`                          Optionally specify a test file to run a single test.`);
   console.log(`                          Discovers test files and validates via serial.`);
   console.log();
-  console.log(`  --fqbn <package:arch:board>`);
-  console.log(`                          Fully Qualified Board Name (Arduino only).`);
-  console.log(`                          Required for Arduino --compile and --upload.`);
-  console.log(`                          Example: arduino:avr:uno, esp32:esp32:esp32dev`);
+  console.log(`  --build-target <id>     Framework-specific build target identifier.`);
+  console.log(`                          Required by most frameworks for --compile and --upload.`);
+  console.log(`                          Example: arduino:avr:uno, esp32:esp32:esp32dev, cmake:Debug`);
   console.log();
   console.log(`  --port <port>           Serial port of the connected board.`);
   console.log(`                          Required for --upload and --monitor.`);
@@ -98,7 +97,7 @@ export function printHelp(): void {
   console.log(`  --keep-unused-variables   Keep all top-level variables even if not referenced`);
   console.log();
   console.log(`  --entry-point <name>     Add a custom entry point symbol (repeatable)`);
-  console.log(`                           Default entry points: setup/loop (Arduino), main (generic)`);
+  console.log(`                           Default entry points determined by the framework strategy.`);
   console.log();
   console.log(`  --help, -h              Show this help message`);
   console.log();
@@ -108,9 +107,9 @@ export function printHelp(): void {
   console.log(`                          Generates package.json, tsconfig.json, typehal.config.ts,`);
   console.log(`                          and an optional starter sketch.`);
   console.log();
-  console.log(`  --board <id>            Board to target (e.g., arduino-uno)`);
+  console.log(`  --board <id>            Board to target (e.g., arduino-uno, esp32-devkit)`);
   console.log();
-  console.log(`  --framework <id>        Framework: arduino or avr (default: arduino)`);
+  console.log(`  --framework <pkg>       Framework package (e.g., @typehal/framework-arduino)`);
   console.log();
   console.log(`  --baud <rate>           Serial baud rate (default: 9600)`);
   console.log();
@@ -139,7 +138,7 @@ export function printHelp(): void {
   console.log();
   console.log(`  --eeprom <kb>           EEPROM size in KB`);
   console.log();
-  console.log(`  --fqbn <value>          Fully Qualified Board Name for arduino-cli`);
+  console.log(`  --build-target <value>  Framework-specific build target identifier (e.g. FQBN for Arduino CLI)`);
   console.log();
   console.log(`  --outDir <path>         Output directory (default: packages/board-<name>)`);
   console.log();
@@ -151,7 +150,7 @@ export function printHelp(): void {
   console.log(`  typehal init`);
   console.log();
   console.log(chalk.gray(`  # Non-interactive project setup`));
-  console.log(`  typehal init my-project --board arduino-uno --framework arduino`);
+  console.log(`  typehal init my-project --board arduino-uno --framework @typehal/framework-arduino`);
   console.log();
   console.log(chalk.gray(`  # Build using config entry point`));
   console.log(`  typehal build --compile --upload --port COM4`);
@@ -162,23 +161,23 @@ export function printHelp(): void {
   console.log(chalk.gray(`  # Transpile to generic C++`));
   console.log(`  typehal src/main.ts`);
   console.log();
-  console.log(chalk.gray(`  # Transpile to Arduino sketch`));
-  console.log(`  typehal sketch.ts --target arduino --outDir ./build`);
+  console.log(chalk.gray(`  # Transpile using Arduino framework`));
+  console.log(`  typehal sketch.ts --framework @typehal/framework-arduino --outDir ./build`);
   console.log();
   console.log(chalk.gray(`  # Transpile and compile for Arduino Uno`));
-  console.log(`  typehal sketch.ts --compile --fqbn arduino:avr:uno`);
+  console.log(`  typehal sketch.ts --framework @typehal/framework-arduino --compile --build-target arduino:avr:uno`);
   console.log();
   console.log(chalk.gray(`  # Transpile, compile, and upload`));
-  console.log(`  typehal sketch.ts --compile --upload --fqbn arduino:avr:uno --port COM4`);
+  console.log(`  typehal sketch.ts --framework @typehal/framework-arduino --compile --upload --build-target arduino:avr:uno --port COM4`);
   console.log();
   console.log(chalk.gray(`  # Full chain: transpile → compile → upload → monitor`));
-  console.log(`  typehal sketch.ts --compile --upload --monitor --fqbn arduino:avr:uno --port COM4 --baud 115200`);
+  console.log(`  typehal sketch.ts --framework @typehal/framework-arduino --compile --upload --monitor --build-target arduino:avr:uno --port COM4 --baud 115200`);
   console.log();
   console.log(chalk.gray(`  # Watch mode: auto-retranspile on changes`));
   console.log(`  typehal sketch.ts --watch`);
   console.log();
   console.log(chalk.gray(`  # Watch and auto-compile for Arduino`));
-  console.log(`  typehal sketch.ts --watch --compile --fqbn arduino:avr:uno`);
+  console.log(`  typehal sketch.ts --framework @typehal/framework-arduino --watch --compile --build-target arduino:avr:uno`);
   console.log();
   console.log(chalk.gray(`  # Generate library definitions from imports`));
   console.log(`  typehal gen-libdefs src/sensor.ts`);
@@ -238,7 +237,7 @@ function parsePipelineCommand(
   const targetFlag = readFirstFlagValue(argv, ["--target"]);
   const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir"]);
   const emitMapsFlag = readFirstFlagValue(argv, ["--emit-maps"]);
-  const fqbn = readFirstFlagValue(argv, ["--fqbn"]);
+  const buildTarget = readFirstFlagValue(argv, ["--build-target"]);
   const port = readFirstFlagValue(argv, ["--port"]);
   const baud = readNumberFlag(argv, ["--baud"], 9600) ?? 9600;
   const frameworkFlag = readFirstFlagValue(argv, ["--framework"]);
@@ -264,15 +263,13 @@ function parsePipelineCommand(
 
   const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
   const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
-  const effectiveTargetFlag = targetFlag;
-  const target: TargetProfile =
-    effectiveTargetFlag === "arduino" || effectiveTargetFlag === "generic"
-      ? effectiveTargetFlag
-      : "generic";
+  // Accept any target string — the framework package registers its own strategy id.
+  // Fall back to "generic" (GenericStrategy) when not specified.
+  const target: TargetProfile = targetFlag ?? "generic";
 
   const platformContext: PlatformContext = {
-    architecture: fqbn?.split(":")?.[1]?.toLowerCase(),
-    frameworkData: { fqbn },
+    architecture: buildTarget?.split(":")?.[1]?.toLowerCase(),
+    frameworkData: { buildTarget },
   };
 
   if (upload && !compile) {
@@ -345,7 +342,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     const flashRaw = readFirstFlagValue(argv, ["--flash", "--flash-kb"]);
     const sramRaw = readFirstFlagValue(argv, ["--sram", "--sram-kb"]);
     const eepromRaw = readFirstFlagValue(argv, ["--eeprom", "--eeprom-kb"]);
-    const fqbn = readFirstFlagValue(argv, ["--fqbn"]);
+    const buildTarget = readFirstFlagValue(argv, ["--build-target"]);
     const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir"]);
     const minimal = argv.includes("--minimal");
 
@@ -365,7 +362,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
       flashKb,
       sramKb,
       eepromKb,
-      fqbn,
+      buildTarget,
       outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
       minimal,
     } as ScaffoldCommandOptions;
@@ -409,14 +406,14 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | ScaffoldC
     const targetFlag = readFirstFlagValue(argv, ["--target"]);
     const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir"]);
     const emitMapsFlag = readFirstFlagValue(argv, ["--emit-maps"]);
-    const fqbn = readFirstFlagValue(argv, ["--fqbn"]);
+    const buildTarget = readFirstFlagValue(argv, ["--build-target"]);
 
     const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
-    const target: TargetProfile = targetFlag === "arduino" || targetFlag === "generic" ? targetFlag : "generic";
+    const target: TargetProfile = targetFlag ?? "generic";
     const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
     const platformContext: PlatformContext = {
-    architecture: fqbn?.split(":")?.[1]?.toLowerCase(),
-    frameworkData: { fqbn },
+    architecture: buildTarget?.split(":")?.[1]?.toLowerCase(),
+    frameworkData: { buildTarget },
   };
 
     if (command === "map-error") {

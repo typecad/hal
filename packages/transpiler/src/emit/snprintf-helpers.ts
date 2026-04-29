@@ -262,7 +262,7 @@ export function buildSnprintfRenderResult(
 // Snprintf usage detection
 // ---------------------------------------------------------------------------
 
-export function shouldUseSnprintfForArduinoString(
+export function shouldUseSnprintfForString(
   statement: VariableDeclarationIR | AssignmentIR,
   strategy: PlatformStrategy,
 ): boolean {

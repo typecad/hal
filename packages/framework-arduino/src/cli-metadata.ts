@@ -154,7 +154,7 @@ function normalizeMetadata(raw: unknown, context?: ArduinoPlatformContext): Ardu
   const architecture =
     (typeof object.architecture === "string" ? object.architecture.toLowerCase() : undefined) ??
     (typeof object.arch === "string" ? object.arch.toLowerCase() : undefined) ??
-    toArchitectureFromFqbn(context?.fqbn);
+    toArchitectureFromFqbn(context?.buildTarget);
 
   const pins = {
     ...parsePinMap(object.pins),
@@ -179,12 +179,12 @@ function normalizeMetadata(raw: unknown, context?: ArduinoPlatformContext): Ardu
   };
 }
 
-function tryArduinoCliProbe(context?: ArduinoPlatformContext): { raw?: unknown; diagnostic?: Diagnostic } {
-  if (!context?.fqbn) {
+function tryArduinoCliProbe(ctx?: ArduinoPlatformContext): { raw?: unknown; diagnostic?: Diagnostic } {
+  if (!ctx || !ctx.buildTarget) {
     return {};
   }
 
-  const cmd = spawnSync("arduino-cli", ["board", "details", "--fqbn", context.fqbn, "--format", "json"], {
+  const cmd = spawnSync("arduino-cli", ["compile", "--show-properties", "--fqbn", ctx.buildTarget], {
     encoding: "utf8",
     timeout: 10000,
   });
@@ -194,7 +194,7 @@ function tryArduinoCliProbe(context?: ArduinoPlatformContext): { raw?: unknown; 
       diagnostic: {
         severity: "warning",
         code: "TS2CPP_ARDUINO_CLI_PROBE_FAILED",
-        message: "Could not query arduino-cli board metadata; using static profile fallbacks.",
+        message: `Failed to parse arduino-cli properties for ${ctx.buildTarget}`,
       },
     };
   }
@@ -212,12 +212,12 @@ function tryArduinoCliProbe(context?: ArduinoPlatformContext): { raw?: unknown; 
   }
 }
 
-export function loadArduinoCliMetadata(context?: ArduinoPlatformContext): {
+export function loadArduinoCliMetadata(ctx?: ArduinoPlatformContext): {
   metadata?: ArduinoCliMetadata;
   diagnostics: Diagnostic[];
 } {
   const diagnostics: Diagnostic[] = [];
-  const fqbn = context?.fqbn;
+  const fqbn = ctx?.buildTarget;
 
   if (!fqbn) {
     return { diagnostics };
@@ -230,13 +230,13 @@ export function loadArduinoCliMetadata(context?: ArduinoPlatformContext): {
   }
 
   // Cache miss - probe arduino-cli
-  const probe = tryArduinoCliProbe(context);
+  const probe = tryArduinoCliProbe(ctx);
   if (probe.diagnostic) {
     diagnostics.push(probe.diagnostic);
   }
 
   if (probe.raw) {
-    const metadata = normalizeMetadata(probe.raw, context);
+    const metadata = normalizeMetadata(probe.raw, ctx);
     // Save to disk cache for future sessions
     saveCachedMetadata(fqbn, metadata);
     return { metadata, diagnostics };

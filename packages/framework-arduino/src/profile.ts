@@ -8,7 +8,7 @@ import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext,
 import type { ArduinoPlatformContext } from "./strategy";
 
 function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
-  const data = ctx?.frameworkData as { fqbn?: string } | undefined;
+  const data = ctx?.frameworkData as { buildTarget?: string } | undefined;
   return data ?? undefined;
 }
 import type { ArduinoCliMetadata } from "./cli-metadata";
@@ -19,9 +19,9 @@ import { loadArduinoCliMetadata } from "./cli-metadata";
  * FQBN format: vendor:arch:board[:menu=options]
  * e.g., "arduino:avr:uno" -> "avr"
  */
-function toArchitectureFromFqbn(fqbn?: string): string | undefined {
-  if (!fqbn) return undefined;
-  const parts = fqbn.split(":");
+function toArchitectureFromFqbn(buildTarget?: string): string | undefined {
+  if (!buildTarget) return undefined;
+  const parts = buildTarget.split(":");
   return parts.length >= 2 ? parts[1] : undefined;
 }
 
@@ -346,7 +346,7 @@ function collectTypehalReceiverKinds(program: ProgramIR): Set<TypehalReceiverKin
 }
 
 function resolveVariant(context?: ArduinoPlatformContext): ArduinoProfileVariant {
-  const architecture = toArchitectureFromFqbn(context?.fqbn);
+  const architecture = toArchitectureFromFqbn(context?.buildTarget);
   if (!architecture) {
     return DEFAULT_PROFILE;
   }
@@ -355,7 +355,7 @@ function resolveVariant(context?: ArduinoPlatformContext): ArduinoProfileVariant
 }
 
 function resolveCapabilities(context?: ArduinoPlatformContext): ArduinoCapabilities {
-  const architecture = toArchitectureFromFqbn(context?.fqbn);
+  const architecture = toArchitectureFromFqbn(context?.buildTarget);
   if (!architecture) {
     return DEFAULT_CAPABILITIES;
   }
@@ -387,9 +387,9 @@ function resolveA0Fallback(
     return metadata.pins.A0;
   }
 
-  const fqbn = context?.fqbn?.toLowerCase() ?? "";
-  if (fqbn) {
-    const override = FQBN_PIN_OVERRIDES.find((item) => fqbn.includes(item.fqbnIncludes.toLowerCase()));
+  const buildTarget = context?.buildTarget?.toLowerCase() ?? "";
+  if (buildTarget) {
+    const override = FQBN_PIN_OVERRIDES.find((item) => buildTarget.includes(item.fqbnIncludes.toLowerCase()));
     if (override?.pins.A0 !== undefined) {
       return override.pins.A0;
     }
@@ -690,7 +690,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
   if (receiverKinds.has('spi')) extraIncludes.push('<SPI.h>');
   if (receiverKinds.has('eeprom')) extraIncludes.push('<EEPROM.h>');
   if (receiverKinds.has('wdt')) {
-    const arch = toArchitectureFromFqbn(context?.fqbn);
+    const arch = toArchitectureFromFqbn(context?.buildTarget);
     if (arch === 'esp32') {
       extraIncludes.push('<esp_task_wdt.h>');
     } else {
@@ -699,14 +699,14 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
   }
 
   if (used.has('DAC1') || used.has('DAC2')) {
-    const arch = toArchitectureFromFqbn(context?.fqbn);
+    const arch = toArchitectureFromFqbn(context?.buildTarget);
     if (arch === 'esp32') {
       extraIncludes.push('<driver/dac.h>');
     }
   }
 
   if (receiverKinds.has('preferences')) {
-    const arch = toArchitectureFromFqbn(context?.fqbn);
+    const arch = toArchitectureFromFqbn(context?.buildTarget);
     if (arch === 'esp32') {
       extraIncludes.push('<Preferences.h>');
       shimLines.push('Preferences __tc_prefs;');

@@ -38,7 +38,7 @@ export function transpileTestFile(
   preprocessedSource: string,
   originalFilePath: string,
   projectRoot: string,
-  fqbn: string,
+  buildTarget: string,
 ): CompileResult {
   // Create a build directory for this test file
   const baseName = path.basename(originalFilePath, '.test.ts').replace(/[^a-zA-Z0-9_]/g, '_');
@@ -63,7 +63,7 @@ export function transpileTestFile(
   const useBuildMode = hasRelativeImports(rewrittenSource);
 
   if (useBuildMode) {
-    writeBuildConfig(buildDir, projectRoot, path.basename(tsPath), fqbn);
+    writeBuildConfig(buildDir, projectRoot, path.basename(tsPath), buildTarget);
   }
 
   const result = spawnSync(
@@ -116,10 +116,10 @@ export function transpileTestFile(
 /**
  * Compile the Arduino sketch using arduino-cli.
  */
-export function compileSketch(sketchDir: string, fqbn: string): CompileResult {
+export function compileSketch(sketchDir: string, buildTarget: string): CompileResult {
   const result = spawnSync(
     'arduino-cli',
-    ['compile', '--fqbn', fqbn, sketchDir],
+    ['compile', '--fqbn', buildTarget, sketchDir],
     { encoding: 'utf8', timeout: 120000 },
   );
 
@@ -139,12 +139,12 @@ export function compileSketch(sketchDir: string, fqbn: string): CompileResult {
  */
 export function uploadSketch(
   sketchDir: string,
-  fqbn: string,
+  buildTarget: string,
   port: string,
 ): UploadResult {
   const result = spawnSync(
     'arduino-cli',
-    ['upload', '--fqbn', fqbn, '--port', port, sketchDir],
+    ['upload', '--fqbn', buildTarget, '--port', port, sketchDir],
     { encoding: 'utf8', timeout: 60000 },
   );
 
@@ -253,7 +253,7 @@ function rewriteRelativeImports(source: string, originalFilePath: string, buildD
   });
 }
 
-function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: string, fqbn: string): void {
+function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: string, buildTarget: string): void {
   const baseConfigPath = path.join(projectRoot, 'typehal.config.ts');
   const buildConfigPath = path.join(buildDir, 'typehal.config.ts');
 
@@ -270,7 +270,7 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
     if (baseValues.target) lines.push(`  target: '${baseValues.target}',`);
     if (baseValues.board) lines.push(`  board: '${baseValues.board}',`);
     if (baseValues.framework) lines.push(`  framework: '${baseValues.framework}',`);
-    if (baseValues.fqbn) lines.push(`  fqbn: '${baseValues.fqbn}',`);
+    if (baseValues.frameworkData?.buildTarget) lines.push(`  frameworkData: { buildTarget: '${baseValues.frameworkData.buildTarget}' },`);
 
     lines.push('  output: {');
     if (baseValues.output?.framework) lines.push(`    framework: '${baseValues.output?.framework}',`);
@@ -301,7 +301,7 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
       'const config: TypehalConfig = {',
       `  entry: './${entryFileName}',`,
       `  target: 'avr',`,
-      `  fqbn: '${fqbn}',`,
+      `  frameworkData: { buildTarget: '${buildTarget}' },`,
       '  output: {',
       `    framework: 'arduino',`,
       `    outDir: './out',`,

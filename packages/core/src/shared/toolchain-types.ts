@@ -37,7 +37,7 @@ export interface CompileError {
 export interface ToolchainOptions {
   outputDir: string;
   sourcePath: string;
-  fqbn?: string;
+  buildTarget?: string;
   port?: string;
   baud?: number;
   optimize?: string;

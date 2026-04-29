@@ -21,8 +21,8 @@ interface StatementRendererContext {
   strategy: PlatformStrategy;
   /** Board constants for Board.definition.* access */
   boardConstants?: BoardConstants;
-  /** Map of Arduino class simple names to fully qualified names */
-  arduinoClassNameMap?: Map<string, string>;
+  /** Map of class simple names to fully qualified names (framework library imports) */
+  classNameMap?: Map<string, string>;
   /** Set of enum names for scoped enum access (::) */
   enumNames: Set<string>;
   /** Set of enum names with values outside 16-bit int range */
@@ -72,7 +72,7 @@ export class StatementRenderer {
   private readonly knownFunctionReturnTypes: Map<string, string>;
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly pointerStructFields?: Set<string>;
-  private readonly arduinoClassNameMap?: Map<string, string>;
+  private readonly classNameMap?: Map<string, string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
   private readonly crossModuleClassNames?: Set<string>;
 
@@ -81,7 +81,7 @@ export class StatementRenderer {
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.pointerVarTypes = context.pointerVarTypes;
     this.pointerStructFields = context.pointerStructFields;
-    this.arduinoClassNameMap = context.arduinoClassNameMap;
+    this.classNameMap = context.classNameMap;
     this.varAccessorNames = context.varAccessorNames ?? new Map();
     this.crossModuleClassNames = context.crossModuleClassNames;
 
@@ -89,7 +89,7 @@ export class StatementRenderer {
     this.expressionRenderer = new ExpressionRenderer({
       strategy: context.strategy,
       boardConstants: context.boardConstants,
-      arduinoClassNameMap: context.arduinoClassNameMap,
+      classNameMap: context.classNameMap,
       enumNames: context.enumNames,
       largeEnumNames: context.largeEnumNames,
       knownFunctionReturnTypes: context.knownFunctionReturnTypes,
@@ -368,7 +368,7 @@ export class StatementRenderer {
     const declaredType = this.normalizeCppType(statement.cppType);
     const volatilePrefix = statement.isVolatile ? "volatile " : "";
     // Transform type name for Arduino library classes (add namespace prefix)
-    const transformedType = transformTypeName(statement.cppType, this.arduinoClassNameMap);
+    const transformedType = transformTypeName(statement.cppType, this.classNameMap);
     const ownershipKind = (statement as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
     // Emit const for Ref<T> ownership annotations (ownershipKind === 'ref')
     const isConst = statement.storage === "const" || ownershipKind === 'ref';
@@ -389,8 +389,8 @@ export class StatementRenderer {
         const safeName = escapeCppKeyword(statement.name);
         return `auto ${safeName} = [=](${params})${ret} {\n${bodyStr}\n};`;
       }
-      // Handle device.readByte / device.readBytes — multi-statement Wire expansions
-      // that cannot be used as a C++ r-value expression.
+      // Handle device.readByte / device.readBytes — delegate to strategy for
+      // platform-specific I2C transaction emission.
       if (statement.initializer.kind === "typehal-call") {
         const initCall = statement.initializer as Extract<ExpressionIR, { kind: "typehal-call" }>;
         if (initCall.method === "device.readByte" || initCall.method === "device.readBytes") {
@@ -400,33 +400,31 @@ export class StatementRenderer {
           const wireNum = initCall.receiver.slice(3); // strip leading "I2C"
           const wire = mapPeripheralName(initCall.receiver, this.strategy) ?? `Wire${wireNum}`;
 
-          if (initCall.method === "device.readByte") {
-            // Emit Wire setup as prelude, keep Wire.read() as the variable initializer.
-            this.expressionRenderer.pushPrelude([
-              `${wire}.beginTransmission(${addr});`,
-              `${wire}.write(${reg});`,
-              `${wire}.endTransmission(false);`,
-              `${wire}.requestFrom(${addr}, 1);`,
-            ]);
-            return forHeader
-              ? `${declaration} = ${wire}.read()`
-              : `${declaration} = ${wire}.read();`;
-          } else {
-            // device.readBytes: declare a uint8_t array and fill it via a read loop.
-            const count = renderA(initCall.args[2]);
-            const name = statement.name;
-            this.expressionRenderer.pushPrelude([
-              `uint8_t ${name}[${count}];`,
-              `${wire}.beginTransmission(${addr});`,
-              `${wire}.write(${reg});`,
-              `${wire}.endTransmission(false);`,
-              `${wire}.requestFrom(${addr}, ${count});`,
-              `for (int i = 0; i < ${count}; i++) { ${name}[i] = ${wire}.read(); }`,
-            ]);
-            // The declaration is fully handled in the prelude; return empty so
-            // the emitter just appends a blank line.
-            return "";
+          if (this.strategy.renderI2CDeviceRead) {
+            const readResult = this.strategy.renderI2CDeviceRead({
+              receiver: initCall.receiver,
+              wireName: wire,
+              address: addr,
+              register: reg,
+              count: initCall.method === "device.readBytes" ? renderA(initCall.args[2]) : undefined,
+              targetVarName: statement.name,
+            });
+            if (readResult) {
+              this.expressionRenderer.pushPrelude(readResult.preludeLines);
+              if (readResult.isMultiStatement) {
+                return "";
+              }
+              return forHeader
+                ? `${declaration} = ${readResult.returnValue}`
+                : `${declaration} = ${readResult.returnValue};`;
+            }
           }
+
+          // Fallback: emit as plain method call when strategy doesn't handle it
+          const renderedArgs = initCall.args.map(renderA).join(", ");
+          return forHeader
+            ? `${declaration} = ${initCall.receiver}.${initCall.method}(${renderedArgs})`
+            : `${declaration} = ${initCall.receiver}.${initCall.method}(${renderedArgs});`;
         }
       }
 
@@ -581,6 +579,8 @@ export class StatementRenderer {
       undefined, // largeEnumNames - would need to pass through
       parentName,
       fieldName,
+      this.strategy.defaultNumericType(),
+      (o, n) => this.strategy.resolvePinType?.(o, n),
     );
   }
 

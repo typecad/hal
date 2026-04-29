@@ -4,8 +4,8 @@
 
 import type { BoardDefinition } from '@typehal/schema';
 
-/** Arduino core API version for this board's build defines. */
-const ARDUINO_CORE_VERSION = '10819';
+// NOTE: The ARDUINO preprocessor macro is automatically injected by the Arduino CLI
+// toolchain during compilation — it does not need to be specified in build.defines.
 
 // NOTE: Platform strategy is now provided by framework packages:
 //   - @typehal/framework-arduino for Arduino framework (digitalWrite, etc.)
@@ -179,7 +179,6 @@ export const ArduinoUno: BoardDefinition = {
     extraFlags: ['-mmcu=atmega328p'],
     defines: {
       F_CPU:           '16000000UL',
-      ARDUINO:         ARDUINO_CORE_VERSION,
       ARDUINO_AVR_UNO: '1',
     },
   },

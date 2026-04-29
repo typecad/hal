@@ -1,0 +1,575 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\out\\32-wdt.test\\32-wdt.test.ino",
+  "sourceFilePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+  "entries": [
+    {
+      "generatedStartLine": 6,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 6,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 58,
+        "endOffset": 131,
+        "startLine": 3,
+        "startColumn": 1,
+        "endLine": 6,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn1"
+    },
+    {
+      "generatedStartLine": 7,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 7,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 132,
+        "endOffset": 235,
+        "startLine": 7,
+        "startColumn": 1,
+        "endLine": 11,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn2"
+    },
+    {
+      "generatedStartLine": 8,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 8,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 236,
+        "endOffset": 359,
+        "startLine": 12,
+        "startColumn": 1,
+        "endLine": 17,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn3"
+    },
+    {
+      "generatedStartLine": 11,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 11,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "setup"
+    },
+    {
+      "generatedStartLine": 13,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 13,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 0,
+        "endOffset": 20,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 21
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 14,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 14,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 22,
+        "endOffset": 56,
+        "startLine": 2,
+        "startColumn": 1,
+        "endLine": 2,
+        "endColumn": 35
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 15,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 15,
+      "generatedEndColumn": 49,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 360,
+        "endOffset": 405,
+        "startLine": 18,
+        "startColumn": 1,
+        "endLine": 18,
+        "endColumn": 46
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 16,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 16,
+      "generatedEndColumn": 70,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 407,
+        "endOffset": 473,
+        "startLine": 19,
+        "startColumn": 1,
+        "endLine": 19,
+        "endColumn": 67
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 17,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 17,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 475,
+        "endOffset": 509,
+        "startLine": 20,
+        "startColumn": 1,
+        "endLine": 20,
+        "endColumn": 35
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 18,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 18,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 511,
+        "endOffset": 535,
+        "startLine": 21,
+        "startColumn": 1,
+        "endLine": 21,
+        "endColumn": 25
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 19,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 19,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 537,
+        "endOffset": 556,
+        "startLine": 22,
+        "startColumn": 1,
+        "endLine": 22,
+        "endColumn": 20
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 20,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 20,
+      "generatedEndColumn": 84,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 558,
+        "endOffset": 638,
+        "startLine": 23,
+        "startColumn": 1,
+        "endLine": 23,
+        "endColumn": 81
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 21,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 21,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 640,
+        "endOffset": 674,
+        "startLine": 24,
+        "startColumn": 1,
+        "endLine": 24,
+        "endColumn": 35
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 22,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 22,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 676,
+        "endOffset": 700,
+        "startLine": 25,
+        "startColumn": 1,
+        "endLine": 25,
+        "endColumn": 25
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 23,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 23,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 702,
+        "endOffset": 721,
+        "startLine": 26,
+        "startColumn": 1,
+        "endLine": 26,
+        "endColumn": 20
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 24,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 24,
+      "generatedEndColumn": 83,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 723,
+        "endOffset": 802,
+        "startLine": 27,
+        "startColumn": 1,
+        "endLine": 27,
+        "endColumn": 80
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 25,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 25,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 804,
+        "endOffset": 838,
+        "startLine": 28,
+        "startColumn": 1,
+        "endLine": 28,
+        "endColumn": 35
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 26,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 26,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 840,
+        "endOffset": 864,
+        "startLine": 29,
+        "startColumn": 1,
+        "endLine": 29,
+        "endColumn": 25
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 27,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 27,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 866,
+        "endOffset": 885,
+        "startLine": 30,
+        "startColumn": 1,
+        "endLine": 30,
+        "endColumn": 20
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 28,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 28,
+      "generatedEndColumn": 36,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 887,
+        "endOffset": 919,
+        "startLine": 31,
+        "startColumn": 1,
+        "endLine": 31,
+        "endColumn": 33
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 29,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 29,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 921,
+        "endOffset": 950,
+        "startLine": 32,
+        "startColumn": 1,
+        "endLine": 32,
+        "endColumn": 30
+      },
+      "nodeKind": "while"
+    },
+    {
+      "generatedStartLine": 31,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 31,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 936,
+        "endOffset": 947,
+        "startLine": 32,
+        "startColumn": 16,
+        "endLine": 32,
+        "endColumn": 27
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 35,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 35,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 58,
+        "endOffset": 131,
+        "startLine": 3,
+        "startColumn": 1,
+        "endLine": 6,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn1"
+    },
+    {
+      "generatedStartLine": 37,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 37,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 95,
+        "endOffset": 106,
+        "startLine": 4,
+        "startColumn": 7,
+        "endLine": 4,
+        "endColumn": 18
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 38,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 38,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 115,
+        "endOffset": 124,
+        "startLine": 5,
+        "startColumn": 7,
+        "endLine": 5,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 41,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 41,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 132,
+        "endOffset": 235,
+        "startLine": 7,
+        "startColumn": 1,
+        "endLine": 11,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn2"
+    },
+    {
+      "generatedStartLine": 43,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 43,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 169,
+        "endOffset": 188,
+        "startLine": 8,
+        "startColumn": 7,
+        "endLine": 8,
+        "endColumn": 26
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 44,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 44,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 197,
+        "endOffset": 210,
+        "startLine": 9,
+        "startColumn": 7,
+        "endLine": 9,
+        "endColumn": 20
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 45,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 45,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 219,
+        "endOffset": 228,
+        "startLine": 10,
+        "startColumn": 7,
+        "endLine": 10,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 48,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 48,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 236,
+        "endOffset": 359,
+        "startLine": 12,
+        "startColumn": 1,
+        "endLine": 17,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn3"
+    },
+    {
+      "generatedStartLine": 50,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 50,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 273,
+        "endOffset": 292,
+        "startLine": 13,
+        "startColumn": 7,
+        "endLine": 13,
+        "endColumn": 26
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 51,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 51,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 301,
+        "endOffset": 312,
+        "startLine": 14,
+        "startColumn": 7,
+        "endLine": 14,
+        "endColumn": 18
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 52,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 52,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 321,
+        "endOffset": 334,
+        "startLine": 15,
+        "startColumn": 7,
+        "endLine": 15,
+        "endColumn": 20
+      },
+      "nodeKind": "typehal-call"
+    },
+    {
+      "generatedStartLine": 53,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 53,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 343,
+        "endOffset": 352,
+        "startLine": 16,
+        "startColumn": 7,
+        "endLine": 16,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 56,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 56,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\32-wdt.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "loop"
+    }
+  ]
+}

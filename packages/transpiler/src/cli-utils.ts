@@ -19,11 +19,11 @@ function resolveExpectCliPath(): string {
   }
 }
 
-export function runExpectTests(options: { port?: string; fqbn?: string; baud?: number; expectFile?: string }): number {
+export function runExpectTests(options: { port?: string; buildTarget?: string; baud?: number; expectFile?: string }): number {
   const expectCliPath = resolveExpectCliPath();
   const args: string[] = [expectCliPath];
   if (options.port) args.push("--port", options.port);
-  if (options.fqbn) args.push("--fqbn", options.fqbn);
+  if (options.buildTarget) args.push("--build-target", options.buildTarget);
   if (options.baud) args.push("--baud", String(options.baud));
   if (options.expectFile) args.push(path.resolve(process.cwd(), options.expectFile));
 
