@@ -7,8 +7,8 @@
     "build": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts",
     "build:watch": "cd .. && node packages/transpiler/dist/cli.js build --project demo",
     "compile": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile",
-    "upload": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --port COM6",
-    "debug": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --debug --monitor --port COM6"
+    "upload": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --port COM7",
+    "debug": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --debug --monitor --port COM7"
   },
   "dependencies": {
     "@typehal/core": "*",

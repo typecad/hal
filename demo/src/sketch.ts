@@ -1,4 +1,11 @@
-import { HIGH, LED, delay } from '@typehal';
-const led = LED.asOutput(HIGH);
+import { D2 } from '@typehal';
 
-led.pulse(50);
+const sensor = D2.asInput();
+
+async function monitor() {
+    console.log("Waiting for trigger...");
+    await sensor.waitForRising();
+    console.log("Trigger detected!");
+}
+
+monitor();

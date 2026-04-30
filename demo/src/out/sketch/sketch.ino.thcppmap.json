@@ -4,9 +4,26 @@
   "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
   "entries": [
     {
-      "generatedStartLine": 4,
+      "generatedStartLine": 33,
       "generatedStartColumn": 1,
-      "generatedEndLine": 4,
+      "generatedEndLine": 33,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 66,
+        "endOffset": 213,
+        "startLine": 5,
+        "startColumn": 1,
+        "endLine": 9,
+        "endColumn": 2
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "monitor"
+    },
+    {
+      "generatedStartLine": 36,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 36,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
@@ -21,41 +38,58 @@
       "symbolName": "setup"
     },
     {
-      "generatedStartLine": 6,
+      "generatedStartLine": 38,
       "generatedStartColumn": 1,
-      "generatedEndLine": 6,
-      "generatedEndColumn": 47,
+      "generatedEndLine": 38,
+      "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 51,
-        "endOffset": 75,
-        "startLine": 2,
-        "startColumn": 7,
-        "endLine": 2,
-        "endColumn": 31
-      },
-      "nodeKind": "typehal-call"
-    },
-    {
-      "generatedStartLine": 7,
-      "generatedStartColumn": 1,
-      "generatedEndLine": 7,
-      "generatedEndColumn": 60,
-      "tsSpan": {
-        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 78,
-        "endOffset": 91,
-        "startLine": 4,
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
         "startColumn": 1,
-        "endLine": 4,
-        "endColumn": 14
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 39,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 39,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 40,
+        "endOffset": 61,
+        "startLine": 3,
+        "startColumn": 7,
+        "endLine": 3,
+        "endColumn": 28
       },
       "nodeKind": "typehal-call"
     },
     {
-      "generatedStartLine": 10,
+      "generatedStartLine": 42,
       "generatedStartColumn": 1,
-      "generatedEndLine": 10,
+      "generatedEndLine": 42,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 66,
+        "endOffset": 213,
+        "startLine": 5,
+        "startColumn": 1,
+        "endLine": 9,
+        "endColumn": 2
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "monitor"
+    },
+    {
+      "generatedStartLine": 48,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 48,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",

@@ -92,15 +92,13 @@ interface IParallelPort extends IPinGroup<BasePin> {
 
 /**
  * Create a pin group for bulk operations on multiple pins.
- * @param name - A descriptive name for the group
  * @param pins - Array of pins to include in the group
  */
 export function createPinGroup<T extends BasePin>(
-  name: string,
   pins: T[]
 ): IPinGroup<T> {
   return {
-    name,
+    name: 'PinGroup',
     pins: Object.freeze(pins) as ReadonlyArray<T>,
 
     writePattern(pattern: number): void {

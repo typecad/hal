@@ -957,6 +957,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   if (!programAnalysis.hasThrowStatements) {
     filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "typehal_halt");
   }
+  // Timer runtime is only needed when the program uses setTimeout/setInterval
+  const usesTimers = programAnalysis.usedPolyfillHelpers.has('__tc_setInterval') ||
+                     programAnalysis.usedPolyfillHelpers.has('__tc_setTimeout');
+  if (!usesTimers) {
+    filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "timer_runtime");
+  }
 
   // Emit native helpers
   const allPolyfills = filteredNativePolyfills;
@@ -2905,7 +2911,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Must come AFTER class definitions so the type is known.
   if (promotedVarDecls.size > 0) {
     for (const [varName, info] of promotedVarDecls) {
-      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName, _emitPlatformReservedNames)} = nullptr;`);
+      const defaultInit = info.cppType.includes('*') ? 'nullptr' : '0';
+      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName, _emitPlatformReservedNames)} = ${defaultInit};`);
     }
     appendSourceLine("");
   }
@@ -3095,12 +3102,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
       // For the async driver function, emit async injection before the last return statement
       // so that the injection (e.g., thread spawn) is reachable.
-      const shouldInjectAsync = hasAsyncRuntime && fn.name === asyncDriverFn;
+      const isLoopDriver = fn.name === asyncDriverFn;
       const lastStmt = fn.statements.length > 0 ? fn.statements[fn.statements.length - 1] : null;
       const lastIsReturn = lastStmt?.kind === "return";
 
       // Emit all statements except the last if it's a return and we need to inject async
-      const stmtsToEmit = (shouldInjectAsync && lastIsReturn)
+      const stmtsToEmit = (isLoopDriver && lastIsReturn)
         ? fn.statements.slice(0, -1)
         : fn.statements;
 
@@ -3109,16 +3116,16 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       }
 
       // Emit async loop injection before the final return
-      if (shouldInjectAsync) {
+      if (isLoopDriver) {
         const taskNames = asyncTaskClasses.map(t => t.taskVarName);
-        const injectionLines = strategy.asyncLoopInjection(taskNames, hasPromiseRuntime);
+        const injectionLines = strategy.asyncLoopInjection(taskNames, hasPromiseRuntime, usesTimers);
         for (const line of injectionLines) {
           appendSourceLine(`  ${line}`);
         }
       }
 
       // Now emit the final return (if we deferred it)
-      if (shouldInjectAsync && lastIsReturn) {
+      if (isLoopDriver && lastIsReturn) {
         appendRenderedStatement(lastStmt, "  ", globalPointerVarTypes, functionScope);
       }
       cArrayVarNames = prevCArrayVarNames;

@@ -34,6 +34,8 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   // Timer methods
   'setTimeout(':    ['__tc_setTimeout'],
   'setInterval(':   ['__tc_setInterval'],
+  'clearTimeout(':  ['__tc_clearTimeout'],
+  'clearInterval(': ['__tc_clearInterval'],
 
   // Array methods
   '.join(':         ['__tc_join'],

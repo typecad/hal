@@ -26,6 +26,12 @@ declare global {
   // Convenience helper for volatile variables in TypeHAL programs.
   // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
   declare function volatile<T>(value: T): T;
+
+  // JS-style timers
+  declare function setInterval(handler: () => void, timeout?: number): number;
+  declare function setTimeout(handler: () => void, timeout?: number): number;
+  declare function clearInterval(id: number): void;
+  declare function clearTimeout(id: number): void;
 }
 
 declare module '@typehal' {

@@ -62,25 +62,25 @@ const DEFAULT_PROFILE: ArduinoProfileVariant = {
 const CAPABILITY_TABLE: ArduinoCapabilities[] = [
   {
     architecture: "avr",
-    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros"]),
+    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
     builtinGlobals: new Set(["A0", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
     fallbackPins: { A0: 14 },
   },
   {
     architecture: "esp32",
-    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros"]),
+    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
     builtinGlobals: new Set(["A0", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
     fallbackPins: { A0: 36 },
   },
   {
     architecture: "samd",
-    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros"]),
+    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
     builtinGlobals: new Set(["A0", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
     fallbackPins: { A0: 14 },
   },
   {
     architecture: "rp2040",
-    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros"]),
+    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
     builtinGlobals: new Set(["A0", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
     fallbackPins: { A0: 26 },
   },
@@ -88,7 +88,7 @@ const CAPABILITY_TABLE: ArduinoCapabilities[] = [
 
 const DEFAULT_CAPABILITIES: ArduinoCapabilities = {
   architecture: "default",
-  builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros"]),
+  builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
   builtinGlobals: new Set(["A0", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
   fallbackPins: { A0: 0 },
 };

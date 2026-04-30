@@ -324,7 +324,7 @@ export interface PlatformStatementStrategy {
   /**
    * Lines to inject into the loop/run function body to drive async tasks.
    */
-  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean): string[];
+  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, hasTimers: boolean): string[];
 
   /**
    * The function name where microtask pumping and async task driving happens.

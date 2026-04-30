@@ -9,7 +9,7 @@ const config: TypehalConfig = {
   entry: './src/sketch.ts',
 
   // Target architecture (ESP32 for ESP32-WROOM-32)
-  target: 'esp32',
+  target: 'avr',
 
   // Board package - provides pin definitions and board constants
   board: '@typehal/board-arduino-uno',
@@ -44,7 +44,7 @@ const config: TypehalConfig = {
 
   // Hardware test configuration (used by typehal-test / @typehal/expect)
   test: {
-    port: 'COM6',
+    port: 'COM7',
     baudRate: 115200,
     timeout: 30000,
     include: [

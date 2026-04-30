@@ -176,6 +176,8 @@ export function renderArduinoBuiltin(
             return `attachInterrupt(digitalPinToInterrupt(${pin}), ${handler}, ${interruptMode})`;
           }
           return undefined;
+        case 'waitForRising':  return `typehal_async::waitForPinEdge(${pin}, RISING)`;
+        case 'waitForFalling': return `typehal_async::waitForPinEdge(${pin}, FALLING)`;
       }
       break;
 

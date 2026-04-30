@@ -104,6 +104,8 @@ export class NativeStrategy implements PlatformStrategy {
     // Timers: setTimeout/setInterval → polyfill helpers
     v = v.replace(/setTimeout\(([^,]+),\s*([^)]+)\)/g, '__tc_setTimeout($1, $2)');
     v = v.replace(/setInterval\(([^,]+),\s*([^)]+)\)/g, '__tc_setInterval($1, $2)');
+    v = v.replace(/clearTimeout\(([^)]+)\)/g, '__tc_clearTimeout($1)');
+    v = v.replace(/clearInterval\(([^)]+)\)/g, '__tc_clearInterval($1)');
     // String method transforms using std::string helpers
     v = v.replace(/(\w+)\.toUpperCase\(\)/g, '__tc_toUpperCase($1)');
     v = v.replace(/(\w+)\.toLowerCase\(\)/g, '__tc_toLowerCase($1)');
@@ -262,7 +264,7 @@ export class NativeStrategy implements PlatformStrategy {
 
   // ── Async — std::async background pump ──────────────────────────────────
 
-  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean): string[] {
+  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, _hasTimers: boolean): string[] {
     const lines: string[] = [];
     if (taskVarNames.length > 0 || hasPromiseRuntime) {
       lines.push('std::async(std::launch::async, [&]() {');
@@ -360,8 +362,10 @@ export class NativeStrategy implements PlatformStrategy {
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [
-          'void __tc_setTimeout(std::function<void()> cb, long long ms) { auto f = std::async(std::launch::async, [cb, ms]() { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); cb(); }); (void)f; }',
-          'void __tc_setInterval(std::function<void()> cb, long long ms) { auto f = std::async(std::launch::async, [cb, ms]() { while (true) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); cb(); } }); (void)f; }',
+          'int __tc_setTimeout(std::function<void()> cb, long long ms) { auto f = std::async(std::launch::async, [cb, ms]() { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); cb(); }); (void)f; return 1; }',
+          'int __tc_setInterval(std::function<void()> cb, long long ms) { auto f = std::async(std::launch::async, [cb, ms]() { while (true) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); cb(); } }); (void)f; return 1; }',
+          'void __tc_clearInterval(int id) { /* not implemented in native yet */ }',
+          'void __tc_clearTimeout(int id) { /* not implemented in native yet */ }',
         ],
         shimMacros: [],
         dependencies: [],
