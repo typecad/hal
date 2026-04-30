@@ -11,6 +11,7 @@ export {
   PinMode,
   InterruptMode,
   IPinGroup,
+  createPinGroup,
 } from './types/gpio';
 
 export {

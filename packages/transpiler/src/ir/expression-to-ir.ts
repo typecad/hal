@@ -229,9 +229,20 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   // Detect string-bearing + chains and fold them into string_concat IR so they
   // flow through the same snprintf / std::string pipeline that template literals use.
+  const STRING_RETURNING_METHODS = new Set([
+    'toUpperCase', 'toLowerCase', 'trim', 'replace',
+    'charAt', 'substring', 'slice', 'endsWith', 'includes', 'toString',
+  ]);
   function isStringBearingConcatChain(e: ts.Expression): boolean {
     if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) || ts.isTemplateExpression(e)) return true;
     if (ts.isIdentifier(e) && (activeStringVars.has(e.text) || activeLocalTypes.get(e.text) === "std::string")) return true;
+    // Recognize string-returning method calls like x.toUpperCase(), s.charAt(0)
+    if (ts.isCallExpression(e) && ts.isPropertyAccessExpression(e.expression)) {
+      const methodName = e.expression.name.text;
+      if (STRING_RETURNING_METHODS.has(methodName)) return true;
+      // Also detect when the receiver is a known string variable
+      if (ts.isIdentifier(e.expression.expression) && activeStringVars.has(e.expression.expression.text)) return true;
+    }
     if (
       ts.isBinaryExpression(e) &&
       e.operatorToken.kind === ts.SyntaxKind.PlusToken
@@ -279,6 +290,31 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     const left = renderExprAsText(expressionToIR(expr.left, sourceText, diagnostics, pointerVars));
     const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
     return { kind: "raw", value: `typehal_nullish(${left}, ${right})` };
+  }
+
+  // Extract Num.* fluent chains from a CallExpression AST node.
+  // Returns { method, args } or undefined if the expression is not a Num chain.
+  function extractNumChain(e: ts.CallExpression): { method: string; args: ts.Expression[] } | undefined {
+    if (!ts.isCallExpression(e)) return undefined;
+    // Walk the AST to collect the chain: Num.method(args).method(args)...
+    const methods: string[] = [];
+    const allArgs: ts.Expression[] = [];
+    let current: ts.Expression = e;
+    while (ts.isCallExpression(current)) {
+      const pa = current.expression;
+      if (!ts.isPropertyAccessExpression(pa)) return undefined;
+      methods.push(pa.name.text);
+      // Collect args in reverse order (we'll reverse methods at the end)
+      allArgs.unshift(...current.arguments);
+      current = pa.expression;
+      // If current is now an Identifier named "Num", we found the root
+      if (ts.isIdentifier(current) && current.text === "Num") {
+        methods.reverse();
+        return { method: methods.join("."), args: allArgs };
+      }
+      // Otherwise current might be another CallExpression (next link in chain)
+    }
+    return undefined;
   }
 
   // Handle typeof expressions — at transpile time, typeof on a known variable
@@ -809,6 +845,17 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
     // ---- end typehal detection -----------------------------------------
 
+    // ---- Num namespace chain detection (expression context) ----
+    // Flatten Num.map(v).from(a,b).to(c,d) and Num.constrain(v).between(a,b)
+    // into a single typehal-call IR node so the strategy handler can translate them.
+    {
+      const numChain = extractNumChain(expr);
+      if (numChain) {
+        const argIRs = numChain.args.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+        return { kind: "typehal-call", receiver: "Num", receiverKind: "num", method: numChain.method, args: argIRs };
+      }
+    }
+
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "defineBoardManifest" && expr.arguments.length === 1) {
       return expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
     }
@@ -871,12 +918,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       calleeText = nestedFunctionAliases.get(rawText) ?? rawText;
     }
     const argIRs = expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars));
-    // Preserve structured IR when args contain callbacks/lambdas so the emitter can hoist them
-    if (argIRs.some(arg => arg.kind === "callback" || arg.kind === "lambda")) {
-      return { kind: "method-call", callee: calleeText, args: argIRs } as any;
-    }
-    const argsText = argIRs.map(arg => renderExprAsText(arg)).join(", ");
-    return { kind: "raw", value: `${calleeText}(${argsText})` };
+    return { kind: "method-call", callee: calleeText, args: argIRs };
   }
 
   if (ts.isNewExpression(expr)) {
@@ -1038,14 +1080,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
     // In C++, 'this' is a pointer, so use -> instead of .
     if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      return { kind: "raw", value: `this->${escapeCppKeyword(expr.name.text)}` };
+      return { kind: "property-access", object: { kind: "raw", value: "this" }, property: expr.name.text };
     }
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "Math") {
-      return { kind: "raw", value: `std::${escapeCppKeyword(expr.name.text)}` };
+      return { kind: "raw", value: `std::${expr.name.text}` };
     }
     // Use -> for pointer variables in property access
     if (ts.isIdentifier(expr.expression) && pointerVars.has(expr.expression.text)) {
-      return { kind: "raw", value: `${expr.expression.text}->${escapeCppKeyword(expr.name.text)}` };
+      return { kind: "property-access", object: { kind: "identifier", value: expr.expression.text }, property: expr.name.text };
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
@@ -1061,9 +1103,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   // Handle element access expressions like arr[index]
   if (ts.isElementAccessExpression(expr)) {
-    const object = expressionToIR(expr.expression, sourceText, diagnostics);
-    const index = expressionToIR(expr.argumentExpression, sourceText, diagnostics);
-    return { kind: "raw", value: `${renderExprAsText(object)}[${renderExprAsText(index)}]` };
+    const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
+    const index = expressionToIR(expr.argumentExpression, sourceText, diagnostics, pointerVars);
+    return { kind: "element-access", object, index };
   }
 
   // Handle ternary/conditional expressions: a ? b : c

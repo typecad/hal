@@ -63,6 +63,32 @@ function analyzeExpression(
       }
       break;
 
+    case "method-call":
+      if (/\bmillis\b/.test(expr.callee) || /\bdelay\b/.test(expr.callee) || /\bmicros\b/.test(expr.callee)) {
+        result.usesMillis = true;
+      }
+      if (MATH_PATTERN.test(expr.callee)) {
+        result.hasStdMathCalls = true;
+      }
+      for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+        // Strip leading '.' and trailing '(' for method name matching
+        const methodName = pattern.startsWith('.') ? pattern.slice(1, -1) : pattern.slice(0, -1);
+        if (expr.callee.includes(pattern) || expr.callee.endsWith("." + methodName) || expr.callee === methodName) {
+          for (const name of helperNames) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+      }
+      for (const arg of expr.args) {
+        analyzeExpression(arg, result);
+      }
+      break;
+
+    case "identifier":
+      // Identifiers don't typically trigger polyfills directly, 
+      // but we should check if they match any known constants that need shims.
+      break;
+
     case "array":
       result.usesVectorTypes = true;
       for (const element of expr.elements) {
@@ -110,6 +136,11 @@ function analyzeExpression(
       analyzeExpression(expr.object, result);
       break;
 
+    case "element-access":
+      analyzeExpression(expr.object, result);
+      analyzeExpression(expr.index, result);
+      break;
+
     case "typehal-call":
       for (const arg of expr.args) {
         analyzeExpression(arg, result);
@@ -147,6 +178,14 @@ function analyzeStatement(
       }
       if (statement.callee === "Serial.begin" || statement.callee.endsWith(".begin")) {
         result.hasSerialBegin = true;
+      }
+      for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+        const methodName = pattern.startsWith('.') ? pattern.slice(1, -1) : pattern.slice(0, -1);
+        if (statement.callee.includes(pattern) || statement.callee.endsWith("." + methodName) || statement.callee === methodName) {
+          for (const name of helperNames) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
       }
       for (const arg of statement.args) {
         analyzeExpression(arg, result);

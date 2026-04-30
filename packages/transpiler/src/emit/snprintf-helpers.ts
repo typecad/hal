@@ -200,6 +200,13 @@ export function inferSnprintfArg(
     case "ternary":
     case "typehal-call":
       return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
+    case "method-call": {
+      const rendered = renderExpression(expr);
+      if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith)\b/.test(rendered)) {
+        return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
+      }
+      return { format: "%d", arg: rendered, estimatedLength: 12, preludeLines: [] };
+    }
     default:
       return undefined;
   }

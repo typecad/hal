@@ -71,6 +71,8 @@ export type ExpressionIR =
   | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean }
   /** A general method call with structured argument IR (preserves callbacks/lambdas). */
   | { kind: "method-call"; callee: string; args: ExpressionIR[] }
+  /** Array element access: `object[index]`. */
+  | { kind: "element-access"; object: ExpressionIR; index: ExpressionIR }
   /** Parenthesized expression: preserves explicit grouping from TS source (e.g. `(2+3)*4`). */
   | { kind: "paren"; inner: ExpressionIR };
 

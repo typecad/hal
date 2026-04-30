@@ -16,8 +16,8 @@ import { transpile } from "./setup";
 //   9. IRAM_ATTR attribute for ESP32 ISR functions
 // ---------------------------------------------------------------------------
 
-const AVR_CTX = { platformContext: { arduino: { fqbn: "arduino:avr:uno" } } };
-const ESP32_CTX = { platformContext: { architecture: "esp32", frameworkData: { fqbn: "esp32:esp32:esp32" } } };
+const AVR_CTX = { platformContext: { frameworkData: { buildTarget: "arduino:avr:uno" } } };
+const ESP32_CTX = { platformContext: { architecture: "esp32", frameworkData: { buildTarget: "esp32:esp32:esp32" } } };
 
 // ---------------------------------------------------------------------------
 // 1. typehal_halt panic handler
@@ -60,6 +60,14 @@ describe("typehal_halt panic handler", () => {
       { target: "arduino", ...AVR_CTX },
     );
     expect(result.cpp).toContain("#ifndef typehal_halt");
+  });
+
+  it("omits typehal_halt macro when no throw statements exist", () => {
+    const result = transpile(
+      `function setup(): void { Serial.println("hello"); }`,
+      { target: "arduino", ...AVR_CTX },
+    );
+    expect(result.cpp).not.toContain("typehal_halt");
   });
 });
 

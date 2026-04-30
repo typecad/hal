@@ -58,7 +58,7 @@ describe("config-loader", () => {
           "const config = {",
           "  target: 'avr',",
           "  board: '@typehal/board-arduino-uno',",
-          "  fqbn: 'arduino:avr:uno',",
+          "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "  output: {",
           "    framework: 'arduino',",
           "    optimize: 'size',",
@@ -74,7 +74,7 @@ describe("config-loader", () => {
       expect(result).toBeDefined();
       expect(result!.target).toBe("avr");
       expect(result!.board).toBe("@typehal/board-arduino-uno");
-      expect(result!.fqbn).toBe("arduino:avr:uno");
+      expect(result!.buildTarget).toBe("arduino:avr:uno");
       expect(result!.outputFramework).toBe("arduino");
       expect(result!.outputOptimize).toBe("size");
       expect(result!.outputOutDir).toBe("./out");
@@ -92,7 +92,7 @@ describe("config-loader", () => {
           "export default {",
           "  target: 'esp32',",
           "  board: '@typehal/board-esp32-devkit',",
-          "  fqbn: 'esp32:esp32:esp32doit-devkit-v1',",
+          "  frameworkData: { buildTarget: 'esp32:esp32:esp32doit-devkit-v1' },",
           "};",
         ].join("\n"),
         "utf-8",
@@ -102,7 +102,7 @@ describe("config-loader", () => {
       expect(result).toBeDefined();
       expect(result!.target).toBe("esp32");
       expect(result!.board).toBe("@typehal/board-esp32-devkit");
-      expect(result!.fqbn).toBe("esp32:esp32:esp32doit-devkit-v1");
+      expect(result!.buildTarget).toBe("esp32:esp32:esp32doit-devkit-v1");
     });
 
     it("returns undefined for empty file", () => {
@@ -126,7 +126,7 @@ describe("config-loader", () => {
         [
           "const config = {",
           "  board: '@typehal/board-arduino-uno',",
-          "  fqbn: 'arduino:avr:uno',",
+          "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
           "export default config;",
         ].join("\n"),
@@ -136,7 +136,7 @@ describe("config-loader", () => {
       const result = parseConfigFile(configPath);
       expect(result).toBeDefined();
       expect(result!.board).toBe("@typehal/board-arduino-uno");
-      expect(result!.fqbn).toBe("arduino:avr:uno");
+      expect(result!.buildTarget).toBe("arduino:avr:uno");
       expect(result!.target).toBeUndefined();
     });
   });
@@ -153,7 +153,7 @@ describe("config-loader", () => {
           "const config = {",
           "  target: 'avr',",
           "  board: '@typehal/board-arduino-uno',",
-          "  fqbn: 'arduino:avr:uno',",
+          "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
           "export default config;",
         ].join("\n"),
@@ -175,7 +175,7 @@ describe("config-loader", () => {
         [
           "const config = {",
           "  board: '@typehal/board-arduino-uno',",
-          "  fqbn: 'arduino:avr:uno',",
+          "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
           "export default config;",
         ].join("\n"),

@@ -4,26 +4,9 @@
   "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
   "entries": [
     {
-      "generatedStartLine": 41,
+      "generatedStartLine": 4,
       "generatedStartColumn": 1,
-      "generatedEndLine": 41,
-      "generatedEndColumn": 14,
-      "tsSpan": {
-        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 127,
-        "endOffset": 227,
-        "startLine": 6,
-        "startColumn": 1,
-        "endLine": 11,
-        "endColumn": 2
-      },
-      "nodeKind": "function_declaration",
-      "symbolName": "blink"
-    },
-    {
-      "generatedStartLine": 44,
-      "generatedStartColumn": 1,
-      "generatedEndLine": 44,
+      "generatedEndLine": 4,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
@@ -38,42 +21,41 @@
       "symbolName": "setup"
     },
     {
-      "generatedStartLine": 47,
+      "generatedStartLine": 6,
       "generatedStartColumn": 1,
-      "generatedEndLine": 47,
-      "generatedEndColumn": 45,
+      "generatedEndLine": 6,
+      "generatedEndColumn": 47,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 100,
-        "endOffset": 124,
-        "startLine": 4,
+        "startOffset": 51,
+        "endOffset": 75,
+        "startLine": 2,
         "startColumn": 7,
-        "endLine": 4,
+        "endLine": 2,
         "endColumn": 31
       },
       "nodeKind": "typehal-call"
     },
     {
-      "generatedStartLine": 50,
+      "generatedStartLine": 7,
       "generatedStartColumn": 1,
-      "generatedEndLine": 50,
-      "generatedEndColumn": 13,
+      "generatedEndLine": 7,
+      "generatedEndColumn": 60,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 127,
-        "endOffset": 227,
-        "startLine": 6,
+        "startOffset": 78,
+        "endOffset": 91,
+        "startLine": 4,
         "startColumn": 1,
-        "endLine": 11,
-        "endColumn": 2
+        "endLine": 4,
+        "endColumn": 14
       },
-      "nodeKind": "function_definition",
-      "symbolName": "blink"
+      "nodeKind": "typehal-call"
     },
     {
-      "generatedStartLine": 56,
+      "generatedStartLine": 10,
       "generatedStartColumn": 1,
-      "generatedEndLine": 56,
+      "generatedEndLine": 10,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",

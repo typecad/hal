@@ -513,6 +513,33 @@ function renderBoilerplate(program: ProgramIR): string {
     chunks.push("struct TsAsyncTask { bool done = true; };\n");
   }
 
+  // StaticArray: lightweight fixed-capacity array used for mutable arrays (push/pop/indexOf).
+  // Only emitted when the transpiled code contains StaticArray<> references.
+  if (serializedProgram.includes('StaticArray<')) {
+    chunks.push([
+      '#ifndef TYPEHAL_STATIC_ARRAY_SIZE',
+      '#define TYPEHAL_STATIC_ARRAY_SIZE 16',
+      '#endif',
+      'template <typename T, int N = TYPEHAL_STATIC_ARRAY_SIZE>',
+      'class StaticArray {',
+      '  T _data[N];',
+      '  int _size;',
+      'public:',
+      '  StaticArray(): _size(0) {}',
+      '  void push_back(const T& v) { if (_size < N) _data[_size++] = v; }',
+      '  T pop_back() { return _data[--_size]; }',
+      '  int size() const { return _size; }',
+      '  T& operator[](int i) { return _data[i]; }',
+      '  const T& operator[](int i) const { return _data[i]; }',
+      '  int indexOf(const T& v) const {',
+      '    for (int i = 0; i < _size; i++) if (_data[i] == v) return i;',
+      '    return -1;',
+      '  }',
+      '};',
+      ''
+    ].join('\n'));
+  }
+
   return chunks.join("\n");
 }
 
@@ -783,7 +810,7 @@ function renderStatement(
       }
       // Use "int" for "auto" element type since C arrays need explicit types
       const arrayType = statement.initializer.elementType === "auto" ? strategy.defaultNumericType() : statement.initializer.elementType;
-      const safeName = escapeCppKeyword(statement.name);
+      const safeName = escapeCppKeyword(statement.name, _emitPlatformReservedNames);
       return forHeader
         ? `${arrayType} ${safeName}[] = { ${elements} }`
         : `${arrayType} ${safeName}[] = { ${elements} };`;
@@ -793,7 +820,7 @@ function renderStatement(
       const arrayType = statement.initializer.elementType === "auto" ? strategy.defaultNumericType() : statement.initializer.elementType;
       const spreadName = renderExpression(statement.initializer.spreadExpr, calleeTransformer, strategy);
       const renderedExtraElements = statement.initializer.additionalElements.map(e => renderExpression(e, calleeTransformer, strategy));
-      const safeSpreadArrName = escapeCppKeyword(statement.name);
+      const safeSpreadArrName = escapeCppKeyword(statement.name, _emitPlatformReservedNames);
       if (strategy.needsStdVector()) {
         // Use std::vector copy + append for spread semantics
         const parts = [`std::vector<${arrayType}> ${safeSpreadArrName}(${spreadName})`];
@@ -836,7 +863,7 @@ function renderStatement(
           return renderExpr(f.value);
         })
         .join(", ");
-      const safeStructName = escapeCppKeyword(statement.name);
+      const safeStructName = escapeCppKeyword(statement.name, _emitPlatformReservedNames);
       const parentStruct = forHeader
         ? `struct ${structName} { ${fieldDefs} } ${safeStructName} = { ${initValues} }`
         : `struct ${structName} { ${fieldDefs} } ${safeStructName} = { ${initValues} };`;
@@ -925,7 +952,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     : [];
 
   // Filter native polyfill helpers to only those actually used by the program
-  const filteredNativePolyfills = filterPolyfillHelpers(nativePolyfills, programAnalysis.usedPolyfillHelpers);
+  let filteredNativePolyfills = filterPolyfillHelpers(nativePolyfills, programAnalysis.usedPolyfillHelpers);
+  // typehal_halt is only needed when the program contains throw statements
+  if (!programAnalysis.hasThrowStatements) {
+    filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "typehal_halt");
+  }
 
   // Emit native helpers
   const allPolyfills = filteredNativePolyfills;
@@ -1436,7 +1467,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         const objName = statement.object.kind === "identifier" ? statement.object.value : "_obj";
         const idxVar = `_ki_${objName}`;
         const varDecl = statement.variable;
-        const safeName = escapeCppKeyword(varDecl.name);
+        const safeName = escapeCppKeyword(varDecl.name, _emitPlatformReservedNames);
         appendSourceLine(`${indent}  const char* ${safeName} = ${idxVar}_keys[${idxVar}];`);
       }
       for (const nested of statement.body) {
@@ -2396,12 +2427,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           const returnType = normalizeCppTypeForTarget(method.returnType, strategy);
 
           if (method.isAbstract) {
-            appendSourceLine(`    virtual ${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) = 0;`);
+            appendSourceLine(`    virtual ${returnType} ${escapeCppKeyword(method.name, _emitPlatformReservedNames)}(${methodParams}) = 0;`);
             appendSourceLine("");
             continue;
           }
 
-          appendSourceLine(`    ${staticPrefix}${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
+          appendSourceLine(`    ${staticPrefix}${returnType} ${escapeCppKeyword(method.name, _emitPlatformReservedNames)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(stmt, "      ", undefined, methodScope);
@@ -2421,7 +2452,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
         for (const method of privateMethods) {
           const methodParams = renderParameters(method.parameters, strategy);
-          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
+          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name, _emitPlatformReservedNames)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(stmt, "      ", undefined, methodScope);
@@ -2440,7 +2471,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
         for (const method of protectedMethods) {
           const methodParams = renderParameters(method.parameters, strategy);
-          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
+          appendSourceLine(`    ${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name, _emitPlatformReservedNames)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(stmt, "      ", undefined, methodScope);
@@ -2712,12 +2743,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
         // Handle abstract methods (pure virtual in C++)
         if (method.isAbstract) {
-          appendSourceLine(`  virtual ${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) = 0;`);
+          appendSourceLine(`  virtual ${returnType} ${escapeCppKeyword(method.name, _emitPlatformReservedNames)}(${methodParams}) = 0;`);
           appendSourceLine("");
           continue;
         }
 
-        appendSourceLine(`  ${staticPrefix}${returnType} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
+        appendSourceLine(`  ${staticPrefix}${returnType} ${escapeCppKeyword(method.name, _emitPlatformReservedNames)}(${methodParams}) {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ", undefined, methodScope);
@@ -2769,7 +2800,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const method of privateMethods) {
         const methodParams = renderParameters(method.parameters, strategy);
         const staticPrefix = method.isStatic ? "static " : "";
-        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
+        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name, _emitPlatformReservedNames)}(${methodParams}) {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ", undefined, methodScope);
@@ -2817,7 +2848,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       for (const method of protectedMethods) {
         const methodParams = renderParameters(method.parameters, strategy);
         const staticPrefix = method.isStatic ? "static " : "";
-        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name)}(${methodParams}) {`);
+        appendSourceLine(`  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType, strategy)} ${escapeCppKeyword(method.name, _emitPlatformReservedNames)}(${methodParams}) {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         for (const stmt of method.statements) {
           appendRenderedStatement(stmt, "    ", undefined, methodScope);
@@ -2874,7 +2905,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Must come AFTER class definitions so the type is known.
   if (promotedVarDecls.size > 0) {
     for (const [varName, info] of promotedVarDecls) {
-      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName)} = nullptr;`);
+      appendSourceLine(`${info.cppType} ${escapeCppKeyword(varName, _emitPlatformReservedNames)} = nullptr;`);
     }
     appendSourceLine("");
   }

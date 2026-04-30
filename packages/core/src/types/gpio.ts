@@ -95,7 +95,7 @@ interface IParallelPort extends IPinGroup<BasePin> {
  * @param name - A descriptive name for the group
  * @param pins - Array of pins to include in the group
  */
-function createPinGroup<T extends BasePin>(
+export function createPinGroup<T extends BasePin>(
   name: string,
   pins: T[]
 ): IPinGroup<T> {

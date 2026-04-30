@@ -200,10 +200,14 @@ export class ExpressionRenderer {
       case "method-call":
         rendered = this.renderMethodCall(expr, exprTransformer);
         break;
+      case "element-access":
+        rendered = this.renderElementAccess(expr, exprTransformer);
+        break;
       default:
         rendered = "0 /* unsupported_expr */";
     }
-    return this.fixPointerAccess(rendered);
+    const finalResult = this.fixPointerAccess(rendered);
+    return normalizeRawExpression(finalResult, this.strategy, this.classNameMap);
   }
 
   private renderIdentifier(value: string): string {
@@ -214,7 +218,7 @@ export class ExpressionRenderer {
     // Delegate peripheral identifier mapping to the platform strategy
     const mapped = this.strategy.mapPeripheralIdentifier?.(value);
     if (mapped) return mapped;
-    return escapeCppKeyword(value);
+    return escapeCppKeyword(value, this.strategy.reservedNames());
   }
 
   private renderRaw(value: string, exprTransformer?: (expr: string) => string): string {
@@ -223,7 +227,7 @@ export class ExpressionRenderer {
       ? normalizeRawExpression(exprTransformer(value), this.strategy, effectiveClassNameMap)
       : normalizeRawExpression(value, this.strategy, effectiveClassNameMap);
     result = this.fixPointerAccess(result);
-    const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name)));
+    const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name, this.strategy.reservedNames())));
     const stringVarNames = this.stringVarNames ?? new Set();
     const cArrayNames = this.cArrayVarNames ?? new Set();
     result = result.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)(?:\(\))?/g, (match, varName) => {
@@ -377,6 +381,14 @@ export class ExpressionRenderer {
       case "ternary":
       case "typehal-call":
         return { format: "%d", arg: this.render(expr, exprTransformer), estimatedLength: 12 };
+      case "method-call": {
+        const rendered = this.render(expr, exprTransformer);
+        // String-returning helpers (__tc_toUpperCase, etc.) use %s
+        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith)\b/.test(rendered)) {
+          return { format: "%s", arg: rendered, estimatedLength: 32 };
+        }
+        return { format: "%d", arg: rendered, estimatedLength: 12 };
+      }
       default:
         return undefined;
     }
@@ -394,6 +406,12 @@ export class ExpressionRenderer {
 
   private renderInstanceof(expr: Extract<ExpressionIR, { kind: "instanceof" }>, exprTransformer?: (expr: string) => string): string {
     return `(dynamic_cast<const ${expr.className}*>(${this.render(expr.object, exprTransformer)}) != nullptr)`;
+  }
+
+  private renderElementAccess(expr: Extract<ExpressionIR, { kind: "element-access" }>, exprTransformer?: (expr: string) => string): string {
+    const objectText = this.render(expr.object, exprTransformer);
+    const indexText = this.render(expr.index, exprTransformer);
+    return this.fixPointerAccess(`${objectText}[${indexText}]`);
   }
 
   private renderBinary(expr: Extract<ExpressionIR, { kind: "binary" }>, exprTransformer?: (expr: string) => string): string {
@@ -440,6 +458,10 @@ export class ExpressionRenderer {
       if (peripheralProperty !== undefined) return peripheralProperty;
     }
     const objStr = this.render(expr.object, exprTransformer);
+    // In C++, 'this' is a pointer — always use -> for member access.
+    if (expr.object.kind === "raw" && expr.object.value === "this") {
+      return `this->${expr.property}`;
+    }
     if (expr.object.kind === "identifier" && expr.property === "length") {
       if (this.cArrayVarNames?.has(expr.object.value)) {
         return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
@@ -505,7 +527,7 @@ export class ExpressionRenderer {
   private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {
     const argsText = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
     let callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
-    const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name)));
+    const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name, this.strategy.reservedNames())));
     const stringVarNames = this.stringVarNames ?? new Set();
     const cArrayNames = this.cArrayVarNames ?? new Set();
     callee = callee.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g, (match, varName) => {

@@ -12,14 +12,14 @@ const config: TypehalConfig = {
   target: 'esp32',
 
   // Board package - provides pin definitions and board constants
-  board: '@typehal/board-esp32-devkit',
+  board: '@typehal/board-arduino-uno',
 
   // Framework package - controls code generation strategy
   framework: '@typehal/framework-arduino',
 
   // Framework data containing build target for arduino-cli
   frameworkData: {
-    buildTarget: 'esp32:esp32:esp32',
+    buildTarget: 'arduino:avr:uno',
   },
 
   // Output / build options
@@ -32,7 +32,7 @@ const config: TypehalConfig = {
   // Toolchain configuration
   toolchain: {
     type: 'arduino-cli',
-    arduinoCli: {
+    frameworkOptions: {
       verbose: true,
     },
   },

@@ -32,9 +32,11 @@ export function renderExprAsText(expr: ExpressionIR): string {
     case "boolean":
       return expr.value ? "true" : "false";
     case "identifier":
-      return escapeCppKeyword(expr.value);
+      return expr.value;
     case "raw":
       return expr.value;
+    case "element-access":
+      return `${renderExprAsText(expr.object)}[${renderExprAsText(expr.index)}]`;
     case "await":
       return renderExprAsText(expr.value);
     case "ternary":
@@ -49,8 +51,11 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return `${renderExprAsText(expr.left)} ${expr.operator} ${renderExprAsText(expr.right)}`;
     case "unary":
       return `${expr.operator}${renderExprAsText(expr.operand)}`;
-    case "property-access":
-      return `${renderExprAsText(expr.object)}.${expr.property}`;
+    case "property-access": {
+      const objText = renderExprAsText(expr.object);
+      const sep = (expr.object.kind === "raw" && expr.object.value === "this") ? "->" : ".";
+      return `${objText}${sep}${expr.property}`;
+    }
     case "paren":
       return `(${renderExprAsText(expr.inner)})`;
     case "typehal-call":

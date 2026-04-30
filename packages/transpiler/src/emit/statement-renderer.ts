@@ -149,7 +149,7 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "assign") {
-        let target = escapeCppKeyword(statement.target);
+        let target = escapeCppKeyword(statement.target, this.strategy.reservedNames());
         target = this.fixPointerFieldAccess(target);
         // Rewrite setter assignments: c->count = val → c->setCount(val)
         if (statement.operator === "=" || statement.operator === "+=" || statement.operator === "-=") {
@@ -183,7 +183,7 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "update") {
-        let target = escapeCppKeyword(statement.target);
+        let target = escapeCppKeyword(statement.target, this.strategy.reservedNames());
         target = this.fixPointerFieldAccess(target);
         return statement.prefix
           ? `${statement.operator}${target}${forHeader ? "" : ";"}`
@@ -386,7 +386,7 @@ export class StatementRenderer {
         const ret = statement.initializer.returnType && statement.initializer.returnType !== "auto"
           ? ` -> ${statement.initializer.returnType}` : "";
         const bodyStr = statement.initializer.body.map(s => "  " + this.render(s)).join("\n");
-        const safeName = escapeCppKeyword(statement.name);
+        const safeName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         return `auto ${safeName} = [=](${params})${ret} {\n${bodyStr}\n};`;
       }
       // Handle device.readByte / device.readBytes — delegate to strategy for
@@ -431,7 +431,7 @@ export class StatementRenderer {
       // Handle array initializers
       if (statement.initializer.kind === "array") {
         const elements = statement.initializer.elements.map((e) => this.expressionRenderer.render(e)).join(", ");
-        const safeArrName = escapeCppKeyword(statement.name);
+        const safeArrName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         const rawType = statement.cppType;
 
         if (this.strategy.needsStdVector() && rawType.startsWith("std::vector<")) {
@@ -484,7 +484,7 @@ export class StatementRenderer {
             return renderExpr(f.value);
           })
           .join(", ");
-        const safeObjName = escapeCppKeyword(statement.name);
+        const safeObjName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         return forHeader
           ? `struct ${structName} { ${fieldDefs} } ${safeObjName} = { ${initValues} }`
           : `struct ${structName} { ${fieldDefs} } ${safeObjName} = { ${initValues} };`;
@@ -495,7 +495,7 @@ export class StatementRenderer {
         const spreadName = this.expressionRenderer.render(statement.initializer.spreadExpr, calleeTransformer);
         const renderedExtraElements = statement.initializer.additionalElements
           .map(e => this.expressionRenderer.render(e, calleeTransformer));
-        const safeSpreadArrName = escapeCppKeyword(statement.name);
+        const safeSpreadArrName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         if (this.strategy.needsStdVector()) {
           const parts = [`std::vector<${arrayType}> ${safeSpreadArrName}(${spreadName})`];
           for (const elem of renderedExtraElements) {
@@ -523,7 +523,7 @@ export class StatementRenderer {
    * Renders a typed name with proper C++ syntax.
    */
   renderTypedName(cppType: string, name: string, isConst = false, isRef = false): string {
-    const safeName = escapeCppKeyword(name);
+    const safeName = escapeCppKeyword(name, this.strategy.reservedNames());
     const normalizedType = this.normalizeCppType(cppType);
     const fnPtrMatch = normalizedType.match(/^(.+?)\s*\(\*\)\((.*)\)$/);
     if (fnPtrMatch) {
@@ -588,7 +588,9 @@ export class StatementRenderer {
    * Transform method calls on pointer variables and pointer struct fields from '.' to '->'
    */
   private fixPointerFieldAccess(callee: string): string {
-    // First, handle top-level pointer variables (e.g., sensor.method() -> sensor->method())
+    // In C++, 'this' is a pointer — always use -> for member access.
+    callee = callee.replace(/\bthis\./g, "this->");
+    // Handle top-level pointer variables (e.g., sensor.method() -> sensor->method())
     if (this.pointerVarTypes) {
       for (const [varName, varType] of this.pointerVarTypes) {
         if (varType.endsWith("*")) {

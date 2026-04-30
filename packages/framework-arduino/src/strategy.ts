@@ -57,6 +57,24 @@ const ARDUINO_RESERVED_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Arduino macros that are used as VALUE constants in TypeHAL code
+ * (e.g. HIGH, LOW, OUTPUT). These map to themselves via mapPeripheralIdentifier
+ * so they bypass escapeCppKeyword. Function-like macros (min, max) are excluded
+ * because user variables with those names must remain escaped in expressions.
+ */
+const ARDUINO_CONSTANT_MACROS: ReadonlySet<string> = new Set([
+  "HIGH", "LOW",
+  "INPUT", "OUTPUT", "INPUT_PULLUP",
+  "RISING", "FALLING", "CHANGE",
+  "INPUT_PULLDOWN", "OUTPUT_OPEN_DRAIN", "ANALOG",
+  "SDA", "SCL", "SS", "MOSI", "MISO", "SCK",
+  "TX", "RX", "TX2", "RX2",
+  "DAC1", "DAC2",
+  "A0", "A1", "A2", "A3", "A4", "A5",
+  "DEFAULT", "INTERNAL", "EXTERNAL",
+]);
+
+/**
  * Enum member names that conflict with Arduino / ESP32 framework macros.
  * Prefixed with `_` in the emitted enum class body.
  */
@@ -347,6 +365,14 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     if (/^UART\d+$/.test(name)) {
       const num = name.slice(4);
       return num === '0' ? 'Serial' : `Serial${num}`;
+    }
+    // Arduino constant macros (HIGH, LOW, INPUT, OUTPUT, etc.) are predefined
+    // by the framework headers — return as-is to prevent escapeCppKeyword from
+    // suffixing them with '_'.  User variables sharing these names are escaped
+    // at the declaration site; the mapping here only fires when the identifier
+    // is the original (un-escaped) macro name used as a value.
+    if (ARDUINO_CONSTANT_MACROS.has(name)) {
+      return name;
     }
     return undefined;
   }

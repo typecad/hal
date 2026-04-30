@@ -33,7 +33,7 @@ const ARDUINO_UNO_OPTIONS: InitProjectOptions = {
   boardPackage: '@typehal/board-arduino-uno',
   frameworkPackage: '@typehal/framework-arduino',
   framework: 'arduino',
-  fqbn: 'arduino:avr:uno',
+  buildTarget: 'arduino:avr:uno',
   mcu: 'ATmega328P',
   baudRate: 9600,
   includeSketch: true,
@@ -80,7 +80,7 @@ describe("init-templates", () => {
       expect(content).toContain("target: 'avr'");
       expect(content).toContain("board: '@typehal/board-arduino-uno'");
       expect(content).toContain("framework: '@typehal/framework-arduino'");
-      expect(content).toContain("fqbn: 'arduino:avr:uno'");
+      expect(content).toContain("frameworkData: { buildTarget: 'arduino:avr:uno' }");
       expect(content).toContain("baudRate: 9600");
     });
 
@@ -161,7 +161,7 @@ describe("init-scaffold", () => {
       const uno = KNOWN_BOARDS.find(b => b.id === 'arduino-uno');
       expect(uno).toBeDefined();
       expect(uno!.architecture).toBe('avr');
-      expect(uno!.fqbn).toBe('arduino:avr:uno');
+      expect(uno!.buildTarget).toBe('arduino:avr:uno');
     });
   });
 

@@ -313,6 +313,11 @@ function analyzeExpression(expr: ExpressionIR | undefined, usage: PeripheralUsag
     if (exprKind === 'raw' && 'value' in expr) {
       markTimer0UsageFromText((expr as any).value, usage);
     }
+
+    // Structured method-call IR: check callee for timer0-triggering functions
+    if (exprKind === 'method-call' && 'callee' in expr) {
+      markTimer0UsageFromText((expr as any).callee, usage);
+    }
     
     // Recursively analyze nested expressions
     if ('args' in expr && Array.isArray((expr as any).args)) {
