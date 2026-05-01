@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // @typehal/arch-avr-native — Native AVR platform strategy
 //
 // This strategy generates direct AVR register access instead of Arduino
@@ -615,7 +615,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       return super.tryRenderCallStatement(callee, args as any, renderArg as any, _boardConstants);
     }
 
-    const native = this.tryRenderNativeCall(receiver, method, args, renderArg);
+    const native = this.tryRenderNativeCall(receiver, method, args, renderArg, _boardConstants);
     if (native !== undefined) return native;
 
     // Native couldn't handle it — fall back to Arduino framework rendering
@@ -631,7 +631,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     boardConstants?: any,
   ): string | undefined {
     // Try native AVR register-level rendering first (e.g. PORTB ^= (1 << 5) for toggle)
-    const native = this.tryRenderNativeCall(receiver, method, args, renderArg);
+    const native = this.tryRenderNativeCall(receiver, method, args, renderArg, boardConstants);
     if (native !== undefined) return native;
 
     // Fall back to Arduino framework rendering (e.g. digitalWrite(!digitalRead()) for toggle)
@@ -646,6 +646,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     method: string,
     args: ReadonlyArray<any>,
     renderArg: (e: any) => string,
+    boardConstants?: any,
   ): string | undefined {
     const a = (i: number) => args[i] !== undefined ? renderArg(args[i]) : '';
     
@@ -777,10 +778,16 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         switch (method) {
           case 'read':
             return nativeAnalogRead(pin);
-          case 'readVoltage':
-            return `(nativeAnalogRead(${pin}) * 5.0 / 1023.0)`;
-          case 'getResolution':
-            return '10';
+          case 'readVoltage': {
+            const refV = (boardConstants?.get('peripherals.adc.0.referenceVoltage') as number) ?? 5.0;
+            const res = (boardConstants?.get('peripherals.adc.0.resolution') as number) ?? 10;
+            const maxADC = Math.pow(2, res) - 1;
+            return `(nativeAnalogRead(${pin}) * ${refV} / ${maxADC}.0)`;
+          }
+          case 'getResolution': {
+            const res = (boardConstants?.get('peripherals.adc.0.resolution') as number) ?? 10;
+            return `${res}`;
+          }
           case 'setMode':
             return nativePinMode(pin, a(0));
           // Analog pins on AVR are dual-purpose (A0-A5 = D14-D19 on PORTC)

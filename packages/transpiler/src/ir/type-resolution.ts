@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { CppType } from "./model";
 import { topLevelClasses } from "./build-ir-state";
+import { inferKindByName } from "@typehal/core/shared";
 
 export type CppTypeHint =
   | "int"
@@ -409,6 +410,26 @@ function isKnownCompileTimeType(
   return false;
 }
 
+const typehalMethodReturnTypes: Map<string, CppTypeHint> = new Map([
+  // analog-input methods
+  ["analog-input:readVoltage", "float"],
+  ["analog-input:readAnalog", "int"],
+  ["analog-input:read", "int"],
+  ["analog-input:getResolution", "int"],
+  ["analog-input:getAnalogResolution", "int"],
+  // pwm-output methods
+  ["pwm-output:pwm", "void"],
+  ["pwm-output:getPwmResolution", "int"],
+  // digital methods
+  ["digital:read", "int"],
+  ["digital:high", "void"],
+  ["digital:low", "void"],
+  ["digital:toggle", "void"],
+  // serial methods
+  ["serial:read", "int"],
+  ["serial:available", "int"],
+]);
+
 export function inferExprCppType(
   expr: ts.Expression,
   functionReturnTypes: Map<string, CppTypeHint>,
@@ -485,6 +506,15 @@ export function inferExprCppType(
           const classMethod = classDef.methods.find((m) => m.name === method);
           if (classMethod) {
             return classMethod.returnType as CppTypeHint;
+          }
+        }
+
+        const receiverKind = inferKindByName(className);
+        if (receiverKind !== "unknown") {
+          const method = expr.expression.name.text;
+          const typehalReturn = typehalMethodReturnTypes.get(`${receiverKind}:${method}`);
+          if (typehalReturn) {
+            return typehalReturn;
           }
         }
       }

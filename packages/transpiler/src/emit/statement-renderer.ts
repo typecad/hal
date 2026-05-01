@@ -7,6 +7,7 @@
 import type { StatementIR, ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
+import type { KnownVariableInfo } from "@typehal/core/shared";
 import { ExpressionRenderer, transformTypeName } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
 import { escapeCppKeyword } from "../utils/strings";
@@ -29,6 +30,8 @@ interface StatementRendererContext {
   largeEnumNames: Set<string>;
   /** Map of function names to their return types */
   knownFunctionReturnTypes: Map<string, string>;
+  /** Map of variable names to their inferred C++ types (for snprintf format specifiers) */
+  knownVariableTypes?: Map<string, KnownVariableInfo>;
   /** Map of variable names to their pointer types */
   pointerVarTypes?: Map<string, string>;
   /** Set of pointer struct fields for -> access */
@@ -43,6 +46,8 @@ interface StatementRendererContext {
   varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
   /** Imported class names from other transpiled modules */
   crossModuleClassNames?: Set<string>;
+  /** Shared counter for unique snprintf buffer names across statement renders */
+  snprintfCounter?: { value: number };
 }
 
 /**
@@ -93,12 +98,14 @@ export class StatementRenderer {
       enumNames: context.enumNames,
       largeEnumNames: context.largeEnumNames,
       knownFunctionReturnTypes: context.knownFunctionReturnTypes,
+      knownVariableTypes: context.knownVariableTypes,
       pointerVarTypes: context.pointerVarTypes,
       stringVarNames: context.stringVarNames,
       cArrayVarNames: context.cArrayVarNames,
       namespaceNames: context.namespaceNames,
       varAccessorNames: context.varAccessorNames,
       crossModuleClassNames: context.crossModuleClassNames,
+      snprintfCounter: context.snprintfCounter,
     });
   }
 

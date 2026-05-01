@@ -707,7 +707,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           'read', 'high', 'low', 'toggle', 'write', 'pulse',
           'isHigh', 'isLow', 'getMode', 'setMode', 'inputPullUp', 'inputPullDown',
           'tone', 'toneFor', 'noTone',
-          'readAnalog', 'readVoltage', 'getResolution', 'setReference',
+          'readAnalog', 'readVoltage', 'getResolution', 'getAnalogResolution', 'setReference', 'setAnalogReference',
           'setDutyCycle', 'setFrequency',
         ]);
 

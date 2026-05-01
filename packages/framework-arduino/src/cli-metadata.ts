@@ -151,7 +151,11 @@ function parseStringSet(value: unknown): Set<string> {
 
 function normalizeMetadata(raw: unknown, context?: ArduinoPlatformContext): ArduinoCliMetadata {
   const object = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+
+  // board details --format json puts architecture under platform.architecture
+  const platform = object.platform && typeof object.platform === "object" ? (object.platform as Record<string, unknown>) : {};
   const architecture =
+    (typeof platform.architecture === "string" ? platform.architecture.toLowerCase() : undefined) ??
     (typeof object.architecture === "string" ? object.architecture.toLowerCase() : undefined) ??
     (typeof object.arch === "string" ? object.arch.toLowerCase() : undefined) ??
     toArchitectureFromFqbn(context?.buildTarget);
@@ -184,7 +188,7 @@ function tryArduinoCliProbe(ctx?: ArduinoPlatformContext): { raw?: unknown; diag
     return {};
   }
 
-  const cmd = spawnSync("arduino-cli", ["compile", "--show-properties", "--fqbn", ctx.buildTarget], {
+  const cmd = spawnSync("arduino-cli", ["board", "details", "--show-properties", "--format", "json", "--fqbn", ctx.buildTarget], {
     encoding: "utf8",
     timeout: 10000,
   });

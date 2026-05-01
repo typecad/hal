@@ -114,6 +114,7 @@ export function renderArduinoBuiltin(
   renderArg: (e: ExpressionIR) => string,
   boardConstants?: BoardConstants,
   interruptMode?: "FALLING" | "RISING" | "CHANGE",
+  activeAnalogReference?: string,
 ): string | undefined {
   const pin = pinArg(receiver, boardConstants);
   const a = (i: number) => (args[i] !== undefined ? renderArg(args[i]) : '');
@@ -126,9 +127,22 @@ export function renderArduinoBuiltin(
       switch (method) {
         case 'read':          return `analogRead(${pin})`;  // backward compat
         case 'readAnalog':    return `analogRead(${pin})`;
-        case 'readVoltage':   return `(analogRead(${pin}) * 5.0 / 1023.0)`;
-        case 'getResolution': return `10`;
-        case 'setReference':  return `analogReference(${a(0)})`;
+        case 'readVoltage': {
+          const refName = activeAnalogReference ?? 'DEFAULT';
+          const refV = (boardConstants?.get(`peripherals.adc.0.referenceVoltages.${refName}`) as number)
+            ?? (boardConstants?.get('peripherals.adc.0.referenceVoltage') as number)
+            ?? 5.0;
+          const res = (boardConstants?.get('peripherals.adc.0.resolution') as number) ?? 10;
+          const maxADC = Math.pow(2, res) - 1;
+          return `(analogRead(${pin}) * ${refV} / ${maxADC}.0)`;
+        }
+        case 'getResolution':
+        case 'getAnalogResolution': {
+          const res = (boardConstants?.get('peripherals.adc.0.resolution') as number) ?? 10;
+          return `${res}`;
+        }
+        case 'setReference':
+        case 'setAnalogReference':  return `analogReference(${a(0)})`;
         case 'getMode':       return `0`;
         case 'setMode':       return `pinMode(${pin}, ${a(0)})`;
         case 'inputPullUp':   return `pinMode(${pin}, INPUT_PULLUP)`;

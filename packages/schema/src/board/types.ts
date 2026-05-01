@@ -115,7 +115,10 @@ interface ADCDefinition {
   channels: number;
   /** Resolution in bits. */
   resolution: number;
+  /** Default reference voltage (used when no analogReference() call precedes readVoltage()). */
   referenceVoltage: number;
+  /** Per-reference voltage map keyed by AnalogReference member name (e.g. { DEFAULT: 5.0, INTERNAL: 1.1 }). */
+  referenceVoltages?: Record<string, number>;
 }
 
 interface DACDefinition {

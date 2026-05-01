@@ -149,6 +149,14 @@ export interface PlatformTypeStrategy {
    */
   enumCastType(enumName: string): string | undefined;
 
+  /**
+   * Enum names whose member access should render as bare C identifiers
+   * (no scoped prefix).  For example, if "AnalogReference" is a passthrough
+   * enum, `AnalogReference.INTERNAL` renders as just `INTERNAL` — useful
+   * when the enum members map directly to platform preprocessor macros.
+   */
+  passthroughEnumNames?(): ReadonlySet<string>;
+
   /** Default numeric type for the platform (e.g. "int" on hosted, "int32_t" on embedded). */
   defaultNumericType(): string;
 

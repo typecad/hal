@@ -107,6 +107,8 @@ export class ArduinoStrategy implements PlatformStrategy {
   private _cachedArch: string = 'default';
   /** Track whether the current program uses createPinGroup() */
   private _usesPinGroup: boolean = false;
+  /** Active analog reference name, updated as analogReference() calls are emitted. */
+  private _activeAnalogReference: string = 'DEFAULT';
 
   /**
    * Allows the emitter to inform this strategy which enums have large values
@@ -123,6 +125,7 @@ export class ArduinoStrategy implements PlatformStrategy {
     this._cachedProfile = null;
     this._cachedProfileKey = null;
     this._cachedArch = 'default';
+    this._activeAnalogReference = 'DEFAULT';
   }
 
   /**
@@ -477,6 +480,10 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   enumCastType(enumName: string): string | undefined {
     return _largeEnumNames.has(enumName) ? "long" : "int";
   }
+  private static readonly _passthroughEnumNames = new Set(["AnalogReference"]);
+  passthroughEnumNames(): ReadonlySet<string> {
+    return ArduinoStrategy._passthroughEnumNames;
+  }
   tryRenderTypehalCall(
     receiver: string,
     receiverKind: TypehalReceiverKind,
@@ -503,7 +510,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       }
       return `/* setFrequency() not supported on this architecture (${receiver}) */`;
     }
-    const builtin = renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode);
+    const builtin = renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode, this._activeAnalogReference);
     if (builtin !== undefined) return builtin;
 
     // Try the statement-level handler for all typehal calls
@@ -546,6 +553,9 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     renderArg: (e: ExpressionIR) => string,
     boardConstants?: BoardConstants,
   ): string | undefined {
+    if (callee === 'analogReference' && args.length >= 1) {
+      this._activeAnalogReference = renderArg(args[0]);
+    }
     return tryRenderTypehalCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch) ?? undefined;
   }
   renderThrow(_valueExpr: string): string {

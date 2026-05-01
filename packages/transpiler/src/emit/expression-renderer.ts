@@ -8,6 +8,7 @@ import type { ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { TypehalReceiverKind } from "../ir/typehal-symbols";
+import type { KnownVariableInfo } from "@typehal/core/shared";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
@@ -29,6 +30,8 @@ interface ExpressionRendererContext {
   largeEnumNames: Set<string>;
   /** Map of function names to their return types */
   knownFunctionReturnTypes?: Map<string, string>;
+  /** Map of variable names to their inferred C++ types (for snprintf format specifiers) */
+  knownVariableTypes?: Map<string, KnownVariableInfo>;
   /** Map of variable names to their pointer types */
   pointerVarTypes?: Map<string, string>;
   /** Set of variable names known to hold string values (for snprintf %s) */
@@ -43,6 +46,8 @@ interface ExpressionRendererContext {
   varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
   /** Optional transformer for expression values */
   exprTransformer?: (expr: string) => string;
+  /** Shared counter for unique snprintf buffer names across statement renders */
+  snprintfCounter?: { value: number };
 }
 
 /**
@@ -55,6 +60,7 @@ export class ExpressionRenderer {
   private readonly enumNames: Set<string>;
   private readonly largeEnumNames: Set<string>;
   private readonly knownFunctionReturnTypes?: Map<string, string>;
+  private readonly knownVariableTypes?: Map<string, KnownVariableInfo>;
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly stringVarNames?: Set<string>;
   private readonly cArrayVarNames?: Set<string>;
@@ -63,8 +69,8 @@ export class ExpressionRenderer {
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
   private _preludeLines: string[] = [];
-  /** Monotonic counter for unique snprintf buffer names. */
-  private _snprintfTempCounter = 0;
+  /** Monotonic counter for unique snprintf buffer names. Shared across renders when provided. */
+  private _snprintfCounter: { value: number };
 
   constructor(context: ExpressionRendererContext) {
     this.strategy = context.strategy;
@@ -73,11 +79,13 @@ export class ExpressionRenderer {
     this.enumNames = context.enumNames;
     this.largeEnumNames = context.largeEnumNames;
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
+    this.knownVariableTypes = context.knownVariableTypes;
     this.pointerVarTypes = context.pointerVarTypes;
     this.stringVarNames = context.stringVarNames;
     this.cArrayVarNames = context.cArrayVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
+    this._snprintfCounter = context.snprintfCounter ?? { value: 0 };
   }
 
   /**
@@ -92,7 +100,6 @@ export class ExpressionRenderer {
    */
   clearPrelude(): void {
     this._preludeLines = [];
-    this._snprintfTempCounter = 0;
   }
 
   /**
@@ -282,7 +289,10 @@ export class ExpressionRenderer {
     if (this.strategy.useSnprintfForStrings()) {
       const argInfo = this.inferFormatSpecifier(expr.expression, exprTransformer);
       if (argInfo) {
-        const bufferName = `__typehal_str_${++this._snprintfTempCounter}`;
+        if (argInfo.preludeLines) {
+          this._preludeLines.push(...argInfo.preludeLines);
+        }
+        const bufferName = `__typehal_str_${++this._snprintfCounter.value}`;
         const estimatedLength = Math.max(argInfo.estimatedLength + 1, 16);
         this._preludeLines.push(
           `char ${bufferName}[${estimatedLength}];`,
@@ -317,6 +327,9 @@ export class ExpressionRenderer {
       if (part.kind === "template_string") {
         const argInfo = this.inferFormatSpecifier(part.expression, exprTransformer);
         if (!argInfo) return undefined;
+        if (argInfo.preludeLines) {
+          this._preludeLines.push(...argInfo.preludeLines);
+        }
         formatString += argInfo.format;
         args.push(argInfo.arg);
         estimatedLength += argInfo.estimatedLength;
@@ -327,7 +340,7 @@ export class ExpressionRenderer {
       return undefined;
     }
 
-    const bufferName = `__typehal_str_${++this._snprintfTempCounter}`;
+    const bufferName = `__typehal_str_${++this._snprintfCounter.value}`;
     estimatedLength = Math.max(estimatedLength, 16);
     this._preludeLines.push(
       `char ${bufferName}[${estimatedLength}];`,
@@ -338,12 +351,12 @@ export class ExpressionRenderer {
 
   /**
    * Infer printf format specifier for an expression.
-   * Returns format string, rendered arg, and estimated length, or undefined if unknown.
+   * Returns format string, rendered arg, estimated length, and optional prelude lines, or undefined if unknown.
    */
   private inferFormatSpecifier(
     expr: ExpressionIR,
     exprTransformer?: (expr: string) => string,
-  ): { format: string; arg: string; estimatedLength: number } | undefined {
+  ): { format: string; arg: string; estimatedLength: number; preludeLines?: string[] } | undefined {
     switch (expr.kind) {
       case "number": {
         if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
@@ -360,13 +373,18 @@ export class ExpressionRenderer {
       case "string":
         return { format: "%s", arg: `"${expr.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`, estimatedLength: Math.max(expr.value.length, 1) };
       case "identifier": {
-        // Check known variable types for better format specifiers
-        const cppType = this.knownFunctionReturnTypes?.get(expr.value);
+        const knownVar = this.knownVariableTypes?.get(expr.value);
+        const cppType = knownVar?.cppType ?? this.knownFunctionReturnTypes?.get(expr.value);
         if (cppType === "bool") {
           return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5 };
         }
         if (cppType === "float" || cppType === "double") {
-          return { format: "%g", arg: expr.value, estimatedLength: 16 };
+          const floatArg = this.strategy.floatToSnprintfArg?.(expr.value, knownVar?.floatPrecision, ++this._snprintfCounter.value);
+          if (floatArg !== undefined) return floatArg;
+          return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%g", arg: expr.value, estimatedLength: 16 };
+        }
+        if (cppType === "int" || cppType === "long" || cppType === "short" || cppType === "auto") {
+          return { format: "%d", arg: expr.value, estimatedLength: 12 };
         }
         if (this.stringVarNames?.has(expr.value)) {
           return { format: "%s", arg: expr.value, estimatedLength: 32 };
@@ -469,6 +487,10 @@ export class ExpressionRenderer {
       if (this.stringVarNames?.has(expr.object.value)) {
         return `strlen(${objStr})`;
       }
+    }
+    // Passthrough enums: members render as bare identifiers (e.g. INTERNAL, not AnalogReference::INTERNAL).
+    if (expr.object.kind === "identifier" && this.strategy.passthroughEnumNames?.().has(expr.object.value)) {
+      return expr.property;
     }
     // Use C++ scope-resolution operator (::) for enum class member access.
     if (expr.object.kind === "identifier" && this.enumNames.has(expr.object.value)) {

@@ -7,7 +7,7 @@
 // does not exist" instead of the unhelpful "Object is possibly undefined".
 // ---------------------------------------------------------------------------
 
-import type { BasePin, IOutputModePin, IInputModePin, PWMPin, AnalogPin, InterruptPin } from '@typehal/core';
+import type { BasePin, IOutputModePin, IInputModePin, PWMPin, AnalogPin, InterruptPin, DigitalValue } from '@typehal/core';
 
 // ---------------------------------------------------------------------------
 // Method groups — used to cleanly Omit capability methods from pin types
@@ -34,10 +34,11 @@ type UnsupportedOnAVR = 'inputPullDown';
 export type IUnoDigitalPin = Omit<BasePin, UnsupportedOnAVR | AnalogMethods | PWMMethods | InterruptMethods>;
 
 /** PWM pin (D3, D5, D6, D9, D10, D11) — no analog or interrupts. */
-export type IUnoPWMPin = Omit<BasePin, UnsupportedOnAVR | AnalogMethods | InterruptMethods> & {
+export type IUnoPWMPin = Omit<BasePin, UnsupportedOnAVR | AnalogMethods | InterruptMethods | 'asOutput'> & {
   pwm: NonNullable<BasePin['pwm']>;
   getPwmFrequency: NonNullable<BasePin['getPwmFrequency']>;
   getPwmResolution: NonNullable<BasePin['getPwmResolution']>;
+  asOutput(initial?: DigitalValue): IUnoPWMOutputModePin;
 };
 
 /** Analog pin (A0-A5) — no PWM or interrupts. */
@@ -62,6 +63,13 @@ export type IUnoInterruptPin = Omit<BasePin, UnsupportedOnAVR | AnalogMethods | 
 
 /** Output-mode pin on Arduino Uno — no hardware pulldown or analog/interrupt methods. */
 export type IUnoOutputModePin = Omit<IOutputModePin, UnsupportedOnAVR | AnalogMethods | InterruptMethods>;
+
+/** Output-mode pin with PWM capability — pwm methods required, not optional. */
+export type IUnoPWMOutputModePin = Omit<IOutputModePin, UnsupportedOnAVR | AnalogMethods | InterruptMethods> & {
+  pwm: NonNullable<IOutputModePin['pwm']>;
+  getPwmFrequency: NonNullable<IOutputModePin['getPwmFrequency']>;
+  getPwmResolution: NonNullable<IOutputModePin['getPwmResolution']>;
+};
 
 /** Input-mode pin on Arduino Uno — no hardware pulldown or PWM methods. */
 export type IUnoInputModePin = Omit<IInputModePin, UnsupportedOnAVR | PWMMethods>;

@@ -348,6 +348,10 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
         if (peripheralProperty !== undefined) return peripheralProperty;
       }
       const objStr = renderExpression(expr.object, exprTransformer, strategy);
+      // Passthrough enums: members render as bare identifiers (e.g. INTERNAL, not AnalogReference::INTERNAL).
+      if (expr.object.kind === "identifier" && strategy.passthroughEnumNames?.().has(expr.object.value)) {
+        return expr.property;
+      }
       // Use C++ scope-resolution operator (::) for enum class member access.
       if (expr.object.kind === "identifier" && _emitEnumNames.has(expr.object.value)) {
         const enumMember = strategy.renameEnumMember(expr.object.value, expr.property);
@@ -1190,6 +1194,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     indent: string,
     pointerVarTypes?: Map<string, string>,
     scopeState: EmissionScopeState = createEmissionScopeState(),
+    snprintfCounter: { value: number } = { value: 0 },
   ): void {
     emitCommentLines(statement.leadingComments, indent, (line) => appendSourceLine(line));
 
@@ -1242,12 +1247,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         enumNames: _emitEnumNames,
         largeEnumNames: _largeEnumNames,
         knownFunctionReturnTypes,
+        knownVariableTypes: scopeState.knownVariableTypes,
         pointerVarTypes: rendererPointerVarTypes,
         pointerStructFields,
         stringVarNames: _stringVarTypes,
         cArrayVarNames,
         namespaceNames: _namespaceNames,
         varAccessorNames: _varAccessorNames,
+        snprintfCounter,
       });
       return statementRenderer.renderWithPrelude(statementToRender, false, calleeTransformer);
     };
@@ -1372,7 +1379,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`${indent}{`);
       const whileScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, whileScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, whileScope, snprintfCounter);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1394,7 +1401,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`${indent}{`);
       const thenScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.thenBranch) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, thenScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, thenScope, snprintfCounter);
       }
       appendSourceLine(`${indent}}`);
 
@@ -1402,7 +1409,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine(`${indent}else {`);
         const elseScope = cloneEmissionScopeState(scopeState);
         for (const nested of statement.elseBranch) {
-          appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, elseScope);
+          appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, elseScope, snprintfCounter);
         }
         appendSourceLine(`${indent}}`);
       }
@@ -1425,7 +1432,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`${indent}{`);
       const forScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forScope, snprintfCounter);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1447,7 +1454,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`${indent}{`);
       const forOfScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forOfScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forOfScope, snprintfCounter);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1477,7 +1484,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine(`${indent}  const char* ${safeName} = ${idxVar}_keys[${idxVar}];`);
       }
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forInScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, forInScope, snprintfCounter);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1492,7 +1499,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`${indent}{`);
       const doScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, doScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, doScope, snprintfCounter);
       }
       appendSourceLine(`${indent}} while (${renderExpression(statement.condition, undefined, strategy)});`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1521,7 +1528,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         }
         const caseScope = cloneEmissionScopeState(scopeState);
         for (const nested of caseClause.body) {
-          appendRenderedStatement(nested, `${indent}    `, pointerVarTypes, caseScope);
+          appendRenderedStatement(nested, `${indent}    `, pointerVarTypes, caseScope, snprintfCounter);
         }
         emitCommentLines(caseClause.trailingComments, `${indent}  `, (line) => appendSourceLine(line));
       }
@@ -1540,13 +1547,13 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`${indent}{`);
       const tryScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.tryBlock) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, tryScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, tryScope, snprintfCounter);
       }
       // If there's a finally block but no catch, run finally before rethrow
       if (statement.finallyBlock && !statement.catchBlock) {
         const finallyScope = cloneEmissionScopeState(scopeState);
         for (const nested of statement.finallyBlock) {
-          appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, finallyScope);
+          appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, finallyScope, snprintfCounter);
         }
       }
       appendSourceLine(`${indent}}`);
@@ -1557,12 +1564,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         appendSourceLine(`${indent}{`);
         const catchScope = cloneEmissionScopeState(scopeState);
         for (const nested of statement.catchBlock) {
-          appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, catchScope);
+          appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, catchScope, snprintfCounter);
         }
         if (statement.finallyBlock) {
           const finallyScope = cloneEmissionScopeState(scopeState);
           for (const nested of statement.finallyBlock) {
-            appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, finallyScope);
+            appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, finallyScope, snprintfCounter);
           }
         }
         appendSourceLine(`${indent}}`);
@@ -1572,7 +1579,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
         if (statement.finallyBlock) {
           const finallyScope = cloneEmissionScopeState(scopeState);
           for (const nested of statement.finallyBlock) {
-            appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, finallyScope);
+            appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, finallyScope, snprintfCounter);
           }
         }
         appendSourceLine(`${indent}  throw;`);
@@ -1585,7 +1592,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       if (statement.finallyBlock && statement.catchBlock) {
         const finallyScope = cloneEmissionScopeState(scopeState);
         for (const nested of statement.finallyBlock) {
-          appendRenderedStatement(nested, `${indent}`, pointerVarTypes, finallyScope);
+          appendRenderedStatement(nested, `${indent}`, pointerVarTypes, finallyScope, snprintfCounter);
         }
       }
 
@@ -1617,7 +1624,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       appendSourceLine(`${indent}{`);
       const labeledScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, labeledScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, labeledScope, snprintfCounter);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
@@ -1631,7 +1638,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       });
       const blockScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.body) {
-        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, blockScope);
+        appendRenderedStatement(nested, `${indent}  `, pointerVarTypes, blockScope, snprintfCounter);
       }
       appendSourceLine(`${indent}}`);
       emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
