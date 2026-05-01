@@ -300,6 +300,21 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       }
     }
 
+    // Add I2C bus recovery helper when recover() is used.
+    if (detectI2CRecoverUsage(program)) {
+      helpers.push({
+        kind: "polyfill",
+        id: "i2c_recover",
+        domain: "arduino",
+        requiredIncludes: [],
+        forwardDeclarations: [],
+        helperStructs: [],
+        helperFunctions: [I2C_RECOVER_POLYFILL],
+        shimMacros: [],
+        dependencies: [],
+      });
+    }
+
     return helpers;
   }
 
@@ -409,6 +424,19 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     v = v.replace(/(\w+)\.replace\(([^,]+),\s*([^)]+)\)/g, "__tc_replace($1, $2, $3)");
     v = v.replace(/(\w+)\.charAt\(([^)]+)\)/g, "__tc_charAt($1, $2)");
     v = v.replace(/(\w+)\.charCodeAt\(([^)]+)\)/g, "__tc_charCodeAt($1, $2)");
+
+    // Pulse fluent chain: Pulse.on(pin).timeout(us).long().high/low() → pulseIn/pulseInLong
+    // Order: most specific first (long+timeout > timeout > long > simple)
+    v = v.replace(/Pulse\.on\(([^)]+)\)\.timeout\(([^)]+)\)\.long\(\)\.(high|low)\(\)/g,
+      (_m, pin: string, to: string, level: string) => `pulseInLong(${pin}, ${level.toUpperCase()}, ${to})`);
+    v = v.replace(/Pulse\.on\(([^)]+)\)\.long\(\)\.timeout\(([^)]+)\)\.(high|low)\(\)/g,
+      (_m, pin: string, to: string, level: string) => `pulseInLong(${pin}, ${level.toUpperCase()}, ${to})`);
+    v = v.replace(/Pulse\.on\(([^)]+)\)\.timeout\(([^)]+)\)\.(high|low)\(\)/g,
+      (_m, pin: string, to: string, level: string) => `pulseIn(${pin}, ${level.toUpperCase()}, ${to})`);
+    v = v.replace(/Pulse\.on\(([^)]+)\)\.long\(\)\.(high|low)\(\)/g,
+      (_m, pin: string, level: string) => `pulseInLong(${pin}, ${level.toUpperCase()})`);
+    v = v.replace(/Pulse\.on\(([^)]+)\)\.(high|low)\(\)/g,
+      (_m, pin: string, level: string) => `pulseIn(${pin}, ${level.toUpperCase()})`);
 
     if (this._usesPinGroup) {
       v = v.replace(/createPinGroup\(\{\s*(.*?)\s*\}\)/g, '__tc_createPinGroup($1)');
@@ -555,6 +583,22 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   ): string | undefined {
     if (callee === 'analogReference' && args.length >= 1) {
       this._activeAnalogReference = renderArg(args[0]);
+    }
+    // Tone chain: "D8.tone(1000).for_" with args [500] → tone(8, 1000, 500)
+    const toneChain = callee.match(/^(D\d+)\.tone\(([^)]+)\)\.for_$/);
+    if (toneChain && args.length >= 1) {
+      const pin = toneChain[1].slice(1);
+      const freq = toneChain[2];
+      const dur = renderArg(args[0]);
+      return `tone(${pin}, ${freq}, ${dur})`;
+    }
+    const ledToneChain = callee.match(/^LED\.tone\(([^)]+)\)\.for_$/);
+    if (ledToneChain && args.length >= 1) {
+      const freq = ledToneChain[1];
+      const dur = renderArg(args[0]);
+      const ledPin = boardConstants?.get('pins.led');
+      const pin = (typeof ledPin === 'string' && /^D(\d+)$/.test(ledPin)) ? ledPin.slice(1) : 'LED_BUILTIN';
+      return `tone(${pin}, ${freq}, ${dur})`;
     }
     return tryRenderTypehalCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch) ?? undefined;
   }
@@ -958,6 +1002,50 @@ function detectWaitForPinEdgeUsage(program: ProgramIR): boolean {
     if ("cases" in stmt && Array.isArray((stmt as any).cases)) {
       for (const c of (stmt as any).cases) { for (const s of c.body) { if (checkStmt(s)) return true; } }
     }
+    if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) { for (const s of stmt.tryBlock) { if (checkStmt(s)) return true; } }
+    if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) { for (const s of stmt.catchBlock) { if (checkStmt(s)) return true; } }
+    return false;
+  };
+  for (const fn of program.functions) { for (const s of fn.statements) { if (checkStmt(s)) return true; } }
+  for (const s of program.topLevelStatements) { if (checkStmt(s)) return true; }
+  for (const cls of program.classes) {
+    for (const m of cls.methods) { for (const s of m.statements) { if (checkStmt(s)) return true; } }
+    if (cls.constructor) { for (const s of cls.constructor.statements) { if (checkStmt(s)) return true; } }
+  }
+  return false;
+}
+
+const I2C_RECOVER_POLYFILL = `inline bool typehal_i2c_recover() {
+  pinMode(SCL, OUTPUT);
+  pinMode(SDA, INPUT_PULLUP);
+  delay(10);
+  for (int i = 0; i < 9; i++) {
+    digitalWrite(SCL, LOW);
+    delayMicroseconds(5);
+    digitalWrite(SCL, HIGH);
+    delayMicroseconds(5);
+  }
+  // Generate a stop condition
+  pinMode(SDA, OUTPUT);
+  digitalWrite(SDA, LOW);
+  delayMicroseconds(5);
+  digitalWrite(SDA, HIGH);
+  pinMode(SCL, INPUT);
+  pinMode(SDA, INPUT);
+  return true;
+}`;
+
+/**
+ * Scan IR to see if I2C bus recover() is used.
+ */
+function detectI2CRecoverUsage(program: ProgramIR): boolean {
+  const checkStmt = (stmt: StatementIR): boolean => {
+    if (stmt.kind === "typehal-call" && stmt.method === "recover") return true;
+    if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) { if (checkStmt(s)) return true; } }
+    if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) { if (checkStmt(s)) return true; } }
+    if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) { for (const s of stmt.elseBranch) { if (checkStmt(s)) return true; } }
+    if ("cases" in stmt && Array.isArray((stmt as any).cases)) {
+      for (const c of (stmt as any).cases) { for (const s of c.body) { if (checkStmt(s)) return true; } } }
     if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) { for (const s of stmt.tryBlock) { if (checkStmt(s)) return true; } }
     if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) { for (const s of stmt.catchBlock) { if (checkStmt(s)) return true; } }
     return false;

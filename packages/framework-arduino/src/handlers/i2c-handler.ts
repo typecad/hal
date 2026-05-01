@@ -54,6 +54,8 @@ export function renderI2CCall(
     // Slave callbacks
     case 'onReceive':         return `${instance}.onReceive(${a(0)})`;
     case 'onRequest':         return `${instance}.onRequest(${a(0)})`;
+    // Bus recovery
+    case 'recover':           return `typehal_i2c_recover()`;
     // Cleanup
     case 'disable':           return `${instance}.end()`;
     case 'end':               return `${instance}.end()`;

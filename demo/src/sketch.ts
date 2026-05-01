@@ -1,6 +1,10 @@
-import { D4, D9, A0 } from '@typehal';
+import { Shift, D2, D3 } from '@typehal';
 
-D4.pwm(50);      // Error: D4 does not support PWM on this board
-D9.pwm(50);      // OK: D9 is a PWM pin
-A0.readAnalog(); // OK: A0 is an analog pin
-D9.readAnalog(); // Error: D9 does not have an ADC
+const dataPin = D2.asOutput();
+const clockPin = D3.asOutput();
+
+// Send the value 0b10101010, Most Significant Bit first
+Shift.out(dataPin, clockPin, 'msb', 0xAA);
+
+// Fluent style
+Shift.write(dataPin, 0xAA).clock(clockPin).msbFirst();

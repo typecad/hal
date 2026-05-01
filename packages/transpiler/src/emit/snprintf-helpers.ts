@@ -80,7 +80,7 @@ function escapeCppStringLiteral(value: string): string {
 }
 
 function isStringLikeCppType(typeName: string): boolean {
-  return typeName === "std::string" || typeName === "const char*" || typeName === "char*";
+  return typeName === "std::string" || typeName === "const char*" || typeName === "char*" || typeName === "String";
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +132,9 @@ export function inferSnprintfArg(
       const knownVar = scopeState.knownVariableTypes.get(expr.value);
       const cppType = knownVar?.cppType;
       if (cppType && isStringLikeCppType(cppType)) {
-        return { format: "%s", arg: expr.value, estimatedLength: 24, preludeLines: [] };
+        const needsCStr = cppType === "std::string" || cppType === "String";
+        const arg = needsCStr ? `${expr.value}.c_str()` : expr.value;
+        return { format: "%s", arg, estimatedLength: 24, preludeLines: [] };
       }
       if (cppType === "bool") {
         return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };

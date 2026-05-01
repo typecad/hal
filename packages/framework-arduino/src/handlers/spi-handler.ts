@@ -78,6 +78,33 @@ export function renderSPICall(
       const value = a(1);
       return `({ digitalWrite(${cs}, LOW); ${instance}.transfer(${value}); digitalWrite(${cs}, HIGH); 0; })`;
     }
+    case 'device.read': {
+      const cs = pinLikeArgValue(a(0), boardConstants);
+      const count = a(1);
+      return `({ digitalWrite(${cs}, LOW); uint8_t __typehal_spi_result = ${instance}.transfer(0xFF); digitalWrite(${cs}, HIGH); __typehal_spi_result; })`;
+    }
+    case 'device.writeRegister': {
+      const cs = pinLikeArgValue(a(0), boardConstants);
+      const register = a(1);
+      const value = a(2);
+      const dataArg = args[2];
+      // Array literal — expand into individual SPI.transfer() calls
+      if (dataArg && dataArg.kind === 'array') {
+        const transfers = dataArg.elements
+          .map(e => `${instance}.transfer(${renderArg(e)})`)
+          .join('; ');
+        return `digitalWrite(${cs}, LOW); ${instance}.transfer(${register}); ${transfers}; digitalWrite(${cs}, HIGH)`;
+      }
+      return `digitalWrite(${cs}, LOW); ${instance}.transfer(${register}); ${instance}.transfer(${value}); digitalWrite(${cs}, HIGH)`;
+    }
+    case 'device.readRegister': {
+      const cs = pinLikeArgValue(a(0), boardConstants);
+      const register = a(1);
+      return `({ digitalWrite(${cs}, LOW); ${instance}.transfer(${register}); uint8_t __typehal_spi_result = ${instance}.transfer(0xFF); digitalWrite(${cs}, HIGH); __typehal_spi_result; })`;
+    }
+    case 'device':
+      // SPI0.device(cs) — returns accessor, no direct C++ equivalent
+      return `/* ${receiver}.device(${a(0)}) */`;
     // Ownership (opt-in, single-threaded Arduino = no-op with comment)
     case 'take':            return `/* ${receiver}.take() */`;
     case 'release':         return `/* ${receiver}.release() */`;

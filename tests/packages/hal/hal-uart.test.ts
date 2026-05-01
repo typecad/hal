@@ -124,7 +124,10 @@ describe('UART HAL - Arduino API Transpilation', () => {
         UART0.printf("Value: %d", 42);
       `);
       
-      expectCppContains(result, ['Serial.printf("Value: %d", 42)']);
+      expectCppContains(result, [
+        'snprintf(__typehal_printf_1, sizeof(__typehal_printf_1), "Value: %d", 42)',
+        'Serial.print(__typehal_printf_1)',
+      ]);
     });
   });
 

@@ -378,6 +378,11 @@ export class ExpressionRenderer {
         if (cppType === "bool") {
           return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5 };
         }
+        if (cppType === "std::string" || cppType === "const char*" || cppType === "char*" || cppType === "String") {
+          const needsCStr = cppType === "std::string" || cppType === "String";
+          const arg = needsCStr ? `${expr.value}.c_str()` : expr.value;
+          return { format: "%s", arg, estimatedLength: 32 };
+        }
         if (cppType === "float" || cppType === "double") {
           const floatArg = this.strategy.floatToSnprintfArg?.(expr.value, knownVar?.floatPrecision, ++this._snprintfCounter.value);
           if (floatArg !== undefined) return floatArg;

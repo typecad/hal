@@ -3,10 +3,10 @@ import { Diagnostic, SourceSpan } from "../types";
 import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "./model";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only";
-import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";
+import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode, getTypehalMethodReturnType } from "./type-resolution";
 import { inferKindByName } from "./typehal-symbols";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState, topLevelClassNames, topLevelClasses } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activePinAliases, activeBusAliases, activeDeviceAccessorAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
@@ -156,8 +156,29 @@ function callToStatement(
         }
       }
     }
+
+    // ── Two-step device accessor pattern at statement level ────────────
+    // Handle: sensor.writeByte(0xF4, 0x27)
+    //   where `sensor` was registered via `const sensor = bus.device(0x76)`
+    if (ts.isIdentifier(call.expression.expression)) {
+      const accessorAlias = activeDeviceAccessorAliases.get(call.expression.expression.text);
+      if (accessorAlias) {
+        const method = call.expression.name.text;
+        return {
+          kind: "typehal-call",
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+          receiver: accessorAlias.receiver,
+          receiverKind: accessorAlias.kind,
+          method: `device.${method}`,
+          args: [
+            accessorAlias.addressIR,
+            ...call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          ],
+        };
+      }
+    }
   }
-  
+
   // ---- Fluent peripheral config chain detection at statement level -------
   // Handle UART0.config.baudRate(115200).begin() -> Serial.begin(115200)
   // Handle I2C0.config.speed(400000).begin() -> Wire.begin() + Wire.setClock()
@@ -2298,6 +2319,26 @@ export function variableStatementToIR(
       continue;
     }
 
+    // ── Device accessor alias detection ──────────────────────────────────
+    // Handle: const sensor = bus.device(0x76)
+    //         const sensor = I2C0.device(0x76)
+    // Registers `sensor` as a device accessor so that later calls like
+    // sensor.readByte(reg) can be expanded into Wire transactions.
+    if (initIR?.kind === 'typehal-call' &&
+        typeof initIR.method === 'string' &&
+        initIR.method === 'device' &&
+        (initIR.receiverKind === 'i2c' || initIR.receiverKind === 'spi') &&
+        initIR.args && initIR.args.length >= 1 &&
+        ts.isIdentifier(declaration.name)) {
+      activeDeviceAccessorAliases.set(declaration.name.text, {
+        receiver: initIR.receiver,
+        kind: initIR.receiverKind,
+        addressIR: initIR.args[0],
+      });
+      // Device accessor is a compile-time concept — no C++ emission needed.
+      continue;
+    }
+
     const declarationType = resolveDeclarationType(
       declaration.type,
       declaration.initializer,
@@ -2305,6 +2346,17 @@ export function variableStatementToIR(
       localVariableTypes,
       typeAliases,
     );
+
+    // When the initializer is a typehal-call (possibly via bus alias),
+    // inferExprCppType can't resolve bus aliases, so check the known method
+    // return types directly using the resolved receiverKind.
+    if (declarationType.resolvedType === "auto" && initIR?.kind === 'typehal-call' && typeof initIR.method === 'string') {
+      const methodReturnType = getTypehalMethodReturnType(initIR.receiverKind, initIR.method);
+      if (methodReturnType && methodReturnType !== "auto") {
+        declarationType.resolvedType = methodReturnType;
+        declarationType.inferredType = methodReturnType;
+      }
+    }
 
     // Resolve type through nested class aliases for hoisted class names.
     let varCppType: string = declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType;

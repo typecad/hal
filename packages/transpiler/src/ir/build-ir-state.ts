@@ -53,6 +53,11 @@ export const activePinAliases = new Map<string, string>();
 // Maps alias variable names (e.g., "i2c") to their original peripheral receiver info.
 export const activeBusAliases = new Map<string, { receiver: string; kind: TypehalReceiverKind }>();
 
+// Module-level device accessor alias map for the current buildProgramIR invocation.
+// Tracks variables created via bus.device(addr), e.g. `const sensor = bus.device(0x76)`
+// so that `sensor.readByte(reg)` can be expanded into a Wire transaction.
+export const activeDeviceAccessorAliases = new Map<string, { receiver: string; kind: TypehalReceiverKind; addressIR: import("./model").ExpressionIR }>();
+
 // Module-level C-array variable tracker for the current buildProgramIR invocation.
 // Tracks variable names initialized with new Uint8Array([...]) (or similar typed array
 // constructors) that transpile to C arrays rather than pointers. For these variables,
@@ -100,6 +105,7 @@ export function resetBuildState(): void {
   nestedClassAliases.clear();
   activePinAliases.clear();
   activeBusAliases.clear();
+  activeDeviceAccessorAliases.clear();
   resetFunctionScopeState();
   activeNamespaceNames.clear();
   topLevelClassNames.clear();

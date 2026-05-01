@@ -78,7 +78,7 @@ export function renderSerialCall(
     case 'end':              return `${instance}.end()`;
     case 'print':            return `${instance}.print(${allArgs()})`;
     case 'println':          return `${instance}.println(${allArgs()})`;
-    case 'printf':           return `${instance}.printf(${allArgs()})`;
+    case 'printf':           return undefined; // handled by transpiler snprintf path
     case 'write':            return `${instance}.write(${allArgs()})`;
     case 'read':             return `${instance}.read()`;
     case 'available':        return `${instance}.available()`;

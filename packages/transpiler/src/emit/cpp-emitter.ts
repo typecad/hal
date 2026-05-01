@@ -1327,12 +1327,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       }
     }
 
-    // Handle typehal-call for serial println/print with snprintf — delegated to strategy
+    // Handle typehal-call for serial println/print/printf with snprintf — delegated to strategy
     if (statement.kind === "typehal-call" && strategy.useSnprintfForStrings() && statement.args.length > 0) {
-      const isSerialPrint = (statement.method === "println" || statement.method === "print") &&
-        (strategy.isSerialPeripheral?.(statement.receiver) ?? false);
+      const isSerial = statement.receiverKind === "serial";
 
-      if (isSerialPrint && strategy.renderSerialPrintWithSnprintf) {
+      if ((statement.method === "println" || statement.method === "print") && isSerial && strategy.renderSerialPrintWithSnprintf) {
         const firstArg = statement.args[0];
         if (firstArg.kind === "string_concat") {
           const snprintfRender = buildSnprintfRenderResult(
@@ -1360,6 +1359,42 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
               return;
             }
           }
+        }
+      }
+
+      // serial.printf(format, args...) → snprintf buffer + Serial.print(buffer)
+      if (statement.method === "printf" && isSerial && strategy.renderSerialPrintWithSnprintf) {
+        const formatArg = statement.args[0];
+        const formatExpr = formatArg.kind === "string"
+          ? `"${formatArg.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")}"`
+          : renderExpression(formatArg, undefined, strategy);
+        const printfArgs = statement.args.slice(1).map(a => renderExpression(a, undefined, strategy));
+
+        const bufferName = `__typehal_printf_${++scopeState.nextSnprintfTempId}`;
+        const rendered = strategy.renderSerialPrintWithSnprintf({
+          receiver: statement.receiver,
+          method: "print",
+          bufferName,
+        });
+
+        if (rendered) {
+          appendSourceLine(`${indent}char ${bufferName}[64];`, {
+            tsSpan: statement.sourceSpan,
+            nodeKind: statement.kind,
+          });
+          appendSourceLine(
+            `${indent}snprintf(${bufferName}, sizeof(${bufferName}), ${formatExpr}${printfArgs.length > 0 ? `, ${printfArgs.join(", ")}` : ""});`,
+            {
+              tsSpan: statement.sourceSpan,
+              nodeKind: statement.kind,
+            },
+          );
+          appendSourceLine(`${indent}${rendered.finalLine}`, {
+            tsSpan: statement.sourceSpan,
+            nodeKind: statement.kind,
+          });
+          emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+          return;
         }
       }
     }
@@ -2587,10 +2622,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       target.add(name);
     }
   };
+  const isStringLikeType = (t: string) => t === "const char*" || t === "char*" || t === "String";
   for (const stmt of program.topLevelStatements) {
     if (stmt.kind === "var_decl") {
       const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
-      if (normalizedType === "const char*" || normalizedType === "char*") {
+      if (isStringLikeType(normalizedType)) {
         stringVarTypes.add(stmt.name);
       }
       if (stmt.initializer?.kind === "array") {
@@ -2609,7 +2645,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     for (const stmt of fn.statements) {
       if (stmt.kind === "var_decl") {
         const normalizedType = normalizeCppTypeForTarget(stmt.cppType, strategy);
-        if (normalizedType === "const char*" || normalizedType === "char*") {
+        if (isStringLikeType(normalizedType)) {
           stringVarTypes.add(stmt.name);
         }
         if (stmt.initializer?.kind === "array") {

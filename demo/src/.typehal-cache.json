@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "toolchainFingerprint": "aefc427d26283402",
+  "toolchainFingerprint": "b4e6ff43b9aa13fe",
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
     "C:\\typecad\\typecode\\demo\\src\\sketch.ts": {
-      "hash": "dfbcd741a1e3ff3a",
-      "mtime": 1777609704511.9482,
-      "size": 260,
+      "hash": "09b322c6e3cda055",
+      "mtime": 1777646924964.3098,
+      "size": 232,
       "dependencies": [
         "C:\\typecad\\typecode\\node_modules\\@typehal\\board-arduino-uno\\src\\index.ts"
       ],
@@ -16,6 +16,6 @@
       ]
     }
   },
-  "createdAt": 1777609705947,
-  "updatedAt": 1777609707216
+  "createdAt": 1777646926229,
+  "updatedAt": 1777646927361
 }

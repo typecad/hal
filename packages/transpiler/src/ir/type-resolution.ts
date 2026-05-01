@@ -428,7 +428,13 @@ const typehalMethodReturnTypes: Map<string, CppTypeHint> = new Map([
   // serial methods
   ["serial:read", "int"],
   ["serial:available", "int"],
+  ["serial:readLine", "String" as CppTypeHint],
+  ["serial:readString", "String" as CppTypeHint],
 ]);
+
+export function getTypehalMethodReturnType(receiverKind: string, method: string): CppTypeHint | undefined {
+  return typehalMethodReturnTypes.get(`${receiverKind}:${method}`);
+}
 
 export function inferExprCppType(
   expr: ts.Expression,

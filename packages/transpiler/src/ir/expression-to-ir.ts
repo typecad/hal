@@ -4,7 +4,7 @@ import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { inferKindByName } from "./typehal-symbols";
 import { parsePinNumber } from "./peripheral-usage";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeDeviceAccessorAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement } from "./statement-to-ir";
 import { escapeCppKeyword } from "../utils/strings";
@@ -608,6 +608,25 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             method: `device.${method}`,
             args: [
               ...receiverNode.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+              ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+            ],
+          };
+        }
+      }
+
+      // Two-step device accessor pattern (expression context):
+      //   const sensor = bus.device(0x76);  ← tracked in activeDeviceAccessorAliases
+      //   sensor.readByte(reg)               ← expanded here
+      if (ts.isIdentifier(receiverNode)) {
+        const accessorAlias = activeDeviceAccessorAliases.get(receiverNode.text);
+        if (accessorAlias) {
+          return {
+            kind: "typehal-call",
+            receiver: accessorAlias.receiver,
+            receiverKind: accessorAlias.kind,
+            method: `device.${method}`,
+            args: [
+              accessorAlias.addressIR,
               ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
             ],
           };
