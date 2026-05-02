@@ -10,6 +10,7 @@
     "noEmit": true,
     "paths": {
       "@typehal": ["../packages/board-arduino-uno/src/index.ts"],
+      "@typehal/typehal": ["../packages/typehal/src/index.ts"],
       "@typehal/core": ["../packages/core/src/index.ts"],
       "@typehal/board-esp32-devkit": ["../packages/board-esp32-devkit/src/index.ts"],
       "@typehal/expect": ["../packages/expect/src/index.ts"]

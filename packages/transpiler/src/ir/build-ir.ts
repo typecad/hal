@@ -8,7 +8,7 @@ import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from ".
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, topLevelClassNames, topLevelClasses, resetBuildState } from "./build-ir-state";
-import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR } from "./statement-to-ir";
+import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, pinInstances, i2cInstances, serialInstances } from "./statement-to-ir";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
 import { functionDeclarationToIR, variableAsFunctionToIR } from "./function-builder";
@@ -39,6 +39,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   
   // Reset module-level state for this file
   resetBuildState();
+  pinInstances.clear();
+  i2cInstances.clear();
+  serialInstances.clear();
   registerFieldMap.clear();
   
   // Collect pointer variables at top level (for correct -> vs . usage)

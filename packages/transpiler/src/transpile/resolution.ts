@@ -340,8 +340,10 @@ export function isTypehalSDKPath(filePath: string): boolean {
     /\/code\/board-/.test(normalized) ||
     /\/packages\/board-/.test(normalized) ||
     /\/packages\/expect\//.test(normalized) ||
+    /\/packages\/typehal\//.test(normalized) ||
     /\/node_modules\/@typehal\/board-/.test(normalized) ||
     /\/node_modules\/@typehal\/core\//.test(normalized) ||
-    /\/node_modules\/@typehal\/expect\//.test(normalized)
+    /\/node_modules\/@typehal\/expect\//.test(normalized) ||
+    /\/node_modules\/@typehal\/typehal\//.test(normalized)
   );
 }

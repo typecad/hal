@@ -87,11 +87,25 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
     const baseName = path.basename(cppPath, path.extname(cppPath));
     const headerName = `${baseName}.h`;
     mergedHeaderNames.add(headerName);
-    
+
     // Check if corresponding .h file exists
     const headerPath = path.join(path.dirname(cppPath), headerName);
     if (fs.existsSync(headerPath) && fs.statSync(headerPath).isFile()) {
       headerFiles.set(baseName, headerPath);
+    }
+  }
+
+  // Also collect standalone .h files in the output directory that have no .cpp.
+  // These come from modules that only contain `declare function` (no bodies = no .cpp output).
+  for (const entry of fs.readdirSync(sketchDir)) {
+    if (!entry.endsWith(".h")) continue;
+    if (mergedHeaderNames.has(entry)) continue;
+    // Skip the sketch's own header and non-generated files
+    if (entry === path.basename(normalizedSketchPath, ".ino") + ".h") continue;
+    mergedHeaderNames.add(entry);
+    const headerPath = path.join(sketchDir, entry);
+    if (fs.statSync(headerPath).isFile()) {
+      headerFiles.set(path.basename(entry, ".h"), headerPath);
     }
   }
 
@@ -122,8 +136,15 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
       const headerContent = fs.readFileSync(headerPath, "utf8");
       const sanitizedHeader = headerContent
         .replace(/^\s*#include\s+<Arduino\.h>\s*$/gm, "")
-        .replace(/^\s*#include\s+"Arduino\.h"\s*$/gm, "");
-      
+        .replace(/^\s*#include\s+"Arduino\.h"\s*$/gm, "")
+        .replace(/^\s*#include\s+"([^"]+)"\s*$/gm, (line, includePath: string) => {
+          const headerName = path.basename(includePath);
+          if (mergedHeaderNames.has(headerName)) {
+            return ""; // Remove the include since the module is merged inline
+          }
+          return line;
+        });
+
       moduleContents.push(`\n// ---- merged from ${headerRelativePath} ----\n${sanitizedHeader}\n`);
     }
     

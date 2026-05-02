@@ -1,0 +1,24 @@
+{
+  "name": "@typehal/typehal",
+  "version": "0.1.0",
+  "description": "TypeHAL hardware abstraction layer — GPIO, I2C, SPI, UART as regular TypeScript",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

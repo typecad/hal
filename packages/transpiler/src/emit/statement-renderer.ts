@@ -348,6 +348,11 @@ export class StatementRenderer {
       const rawStmt = statement.callee.slice('__RAW_STMT__'.length);
       return forHeader ? rawStmt : `${rawStmt.endsWith(';') ? rawStmt : rawStmt + ';'}`;
     }
+    // Handle emit() — compile-time C++ injection
+    if (statement.callee === "__EMIT__") {
+      const rawText = statement.args.map(arg => this.renderEmitArg(arg)).join("");
+      return forHeader ? rawText : `${rawText.endsWith(';') ? rawText : rawText + ';'}`;
+    }
     // Handle console.* calls specially
     if (isConsoleCall(statement.callee)) {
       return this.transformConsoleCall(statement.callee, statement.args, forHeader);
@@ -637,5 +642,12 @@ export class StatementRenderer {
     const method = getConsoleMethod(callee);
     const renderedArgs = args.map((arg) => this.expressionRenderer.render(arg)).join(", ");
     return this.strategy.transformConsoleCall(method, renderedArgs, forHeader);
+  }
+
+  private renderEmitArg(arg: ExpressionIR): string {
+    if (arg.kind === "string") return arg.value;
+    if (arg.kind === "string_concat") return arg.parts.map(p => this.renderEmitArg(p)).join("");
+    if (arg.kind === "template_string") return this.expressionRenderer.render(arg.expression);
+    return this.expressionRenderer.render(arg);
   }
 }

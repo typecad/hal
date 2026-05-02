@@ -12,6 +12,321 @@ import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { extractRootAndChain } from "./ast-patterns";
 
+// ---------------------------------------------------------------------------
+// Pin inline evaluator — zero-cost abstraction
+//
+// When the transpiler encounters Pin method calls (e.g., led.asOutput(HIGH)),
+// it evaluates them at compile time and emits the raw Arduino C++ inline,
+// erasing the Pin class entirely from the output.
+// ---------------------------------------------------------------------------
+
+/** Tracks variable → pin expression (e.g., "led" → "LED_BUILTIN") */
+export const pinInstances = new Map<string, string>();
+
+/** Tracks variable → bus name for I2CBus (e.g., "I2C0" → "Wire") */
+export const i2cInstances = new Map<string, string>();
+
+/** Tracks variable → port name for SerialPort (e.g., "UART0" → "Serial") */
+export const serialInstances = new Map<string, string>();
+
+/** Pin method → inline C++ template */
+function inlinePinMethod(
+  pinExpr: string,
+  method: string,
+  args: ExpressionIR[],
+): { emitLines: string[]; returnValue?: string } | null {
+  // Helper to render an argument as text for C++ interpolation
+  const argText = (idx: number): string => {
+    const a = args[idx];
+    if (!a) return "";
+    return renderExprAsText(a);
+  };
+
+  switch (method) {
+    case "asOutput":
+      return {
+        emitLines: [
+          `pinMode(${pinExpr}, OUTPUT);`,
+          `digitalWrite(${pinExpr}, ${argText(0) || "LOW"});`,
+        ],
+        returnValue: pinExpr,
+      };
+    case "asInput":
+      return { emitLines: [`pinMode(${pinExpr}, INPUT);`], returnValue: pinExpr };
+    case "asInputPullUp":
+      return { emitLines: [`pinMode(${pinExpr}, INPUT_PULLUP);`], returnValue: pinExpr };
+    case "high":
+      return { emitLines: [`digitalWrite(${pinExpr}, HIGH);`] };
+    case "low":
+      return { emitLines: [`digitalWrite(${pinExpr}, LOW);`] };
+    case "toggle":
+      return { emitLines: [`digitalWrite(${pinExpr}, digitalRead(${pinExpr}) == LOW ? HIGH : LOW);`] };
+    case "write":
+      return { emitLines: [`digitalWrite(${pinExpr}, ${argText(0)});`] };
+    case "read":
+      return { emitLines: [], returnValue: `digitalRead(${pinExpr})` };
+    case "pulse":
+      return {
+        emitLines: [
+          `digitalWrite(${pinExpr}, HIGH);`,
+          `delayMicroseconds(${argText(0)});`,
+          `digitalWrite(${pinExpr}, LOW);`,
+        ],
+      };
+    case "tone":
+      return { emitLines: [`tone(${pinExpr}, ${argText(0)});`] };
+    case "toneFor":
+      return { emitLines: [`tone(${pinExpr}, ${argText(0)}, ${argText(1)});`] };
+    case "noTone":
+      return { emitLines: [`noTone(${pinExpr});`] };
+    case "pwm":
+      return { emitLines: [`analogWrite(${pinExpr}, ${argText(0)});`] };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Check if a CallExpression is a `new Pin(...)` constructor.
+ * Returns the pin argument text if so, or null.
+ */
+function extractPinCtorArg(node: ts.Expression): string | null {
+  if (!ts.isNewExpression(node)) return null;
+  if (!ts.isIdentifier(node.expression) || node.expression.text !== "Pin") return null;
+  if (!node.arguments || node.arguments.length === 0) return null;
+  const arg = node.arguments[0];
+  if (ts.isIdentifier(arg)) return arg.text;
+  if (ts.isNumericLiteral(arg)) return arg.text;
+  if (ts.isPropertyAccessExpression(arg)) {
+    // e.g., LED_BUILTIN — render the full expression
+    return arg.getText ? arg.getText() : "";
+  }
+  return null;
+}
+
+/**
+ * Resolve a method call receiver to a pin expression.
+ * Handles: `new Pin(x).method()`, `pinVar.method()`, `expr.method()`
+ * Returns { pinExpr, isChainedCtor } or null.
+ */
+function resolvePinReceiver(
+  receiver: ts.Expression,
+): { pinExpr: string; isChainedCtor: boolean } | null {
+  // Case 1: `new Pin(x).method()` — method called on constructor result
+  const ctorArg = extractPinCtorArg(receiver);
+  if (ctorArg !== null) {
+    return { pinExpr: ctorArg, isChainedCtor: true };
+  }
+
+  // Case 2: `pinVar.method()` — method called on tracked variable
+  if (ts.isIdentifier(receiver)) {
+    const tracked = pinInstances.get(receiver.text);
+    if (tracked !== undefined) {
+      return { pinExpr: tracked, isChainedCtor: false };
+    }
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// I2CBus inline evaluator — zero-cost abstraction for I2C
+// ---------------------------------------------------------------------------
+
+/** I2CBus method → inline C++ template */
+function inlineI2CMethod(
+  busName: string,
+  method: string,
+  args: ExpressionIR[],
+): { emitLines: string[]; returnValue?: string } | null {
+  const argText = (idx: number): string => {
+    const a = args[idx];
+    if (!a) return "";
+    return renderExprAsText(a);
+  };
+
+  switch (method) {
+    case "begin":
+      return { emitLines: [`${busName}.begin();`] };
+    case "beginSlave":
+      return { emitLines: [`${busName}.begin(${argText(0)});`] };
+    case "end":
+      return { emitLines: [`${busName}.end();`] };
+    case "setClock":
+      return { emitLines: [`${busName}.setClock(${argText(0)});`] };
+    case "writeByte":
+      return {
+        emitLines: [
+          `${busName}.beginTransmission(${argText(0)});`,
+          `${busName}.write(${argText(1)});`,
+          `${busName}.write(${argText(2)});`,
+          `${busName}.endTransmission();`,
+        ],
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Check if a CallExpression is a `new I2CBus("Wire")` constructor.
+ * Returns the bus name string literal value if so, or null.
+ */
+function extractI2CCtorArg(node: ts.Expression): string | null {
+  if (!ts.isNewExpression(node)) return null;
+  if (!ts.isIdentifier(node.expression) || node.expression.text !== "I2CBus") return null;
+  if (!node.arguments || node.arguments.length === 0) return null;
+  const arg = node.arguments[0];
+  if (ts.isStringLiteral(arg)) return arg.text;
+  return null;
+}
+
+/**
+ * Resolve an I2C method call receiver to a bus name.
+ * Returns the bus name (e.g., "Wire") or null.
+ */
+function resolveI2CReceiver(receiver: ts.Expression): string | null {
+  // Case 1: `new I2CBus("Wire").method()`
+  const ctorArg = extractI2CCtorArg(receiver);
+  if (ctorArg !== null) return ctorArg;
+
+  // Case 2: tracked variable
+  if (ts.isIdentifier(receiver)) {
+    return i2cInstances.get(receiver.text) ?? null;
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// SerialPort inline evaluator — zero-cost abstraction for UART
+// ---------------------------------------------------------------------------
+
+/** SerialPort method → inline C++ template */
+function inlineSerialMethod(
+  portName: string,
+  method: string,
+  args: ExpressionIR[],
+): { emitLines: string[]; returnValue?: string } | null {
+  const argText = (idx: number): string => {
+    const a = args[idx];
+    if (!a) return "";
+    return renderExprAsText(a);
+  };
+  const allArgs = (): string => args.map(a => renderExprAsText(a)).join(", ");
+
+  switch (method) {
+    case "begin":
+      return { emitLines: [`${portName}.begin(${argText(0) || "9600"});`] };
+    case "end":
+      return { emitLines: [`${portName}.end();`] };
+    case "print":
+      return { emitLines: [`${portName}.print(${allArgs()});`] };
+    case "println":
+      return { emitLines: [`${portName}.println(${allArgs()});`] };
+    case "write":
+      return { emitLines: [`${portName}.write(${allArgs()});`] };
+    case "flush":
+      return { emitLines: [`${portName}.flush();`] };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Check if a CallExpression is a `new SerialPort("Serial")` constructor.
+ * Returns the port name string literal value if so, or null.
+ */
+function extractSerialCtorArg(node: ts.Expression): string | null {
+  if (!ts.isNewExpression(node)) return null;
+  if (!ts.isIdentifier(node.expression) || node.expression.text !== "SerialPort") return null;
+  if (!node.arguments || node.arguments.length === 0) return null;
+  const arg = node.arguments[0];
+  if (ts.isStringLiteral(arg)) return arg.text;
+  return null;
+}
+
+/**
+ * Resolve a SerialPort method call receiver to a port name.
+ * Returns the port name (e.g., "Serial") or null.
+ */
+function resolveSerialReceiver(receiver: ts.Expression): string | null {
+  // Case 1: `new SerialPort("Serial").method()`
+  const ctorArg = extractSerialCtorArg(receiver);
+  if (ctorArg !== null) return ctorArg;
+
+  // Case 2: tracked variable
+  if (ts.isIdentifier(receiver)) {
+    return serialInstances.get(receiver.text) ?? null;
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Generic HAL inline evaluator dispatcher
+// ---------------------------------------------------------------------------
+
+/**
+ * Try to inline a HAL method call (Pin, I2CBus, SerialPort).
+ * Returns emit IR statements if inlined, or null if not a HAL call.
+ */
+function tryInlineHALMethod(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+): StatementIR | null {
+  if (!ts.isPropertyAccessExpression(call.expression)) return null;
+
+  const method = call.expression.name.text;
+  const receiver = call.expression.expression;
+  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+
+  // Try Pin
+  const pinResolved = resolvePinReceiver(receiver);
+  if (pinResolved) {
+    const inlined = inlinePinMethod(pinResolved.pinExpr, method, argIRs);
+    if (inlined) return emitLinesToIR(inlined.emitLines, call, fileName, sourceText);
+  }
+
+  // Try I2CBus
+  const busName = resolveI2CReceiver(receiver);
+  if (busName) {
+    const inlined = inlineI2CMethod(busName, method, argIRs);
+    if (inlined) return emitLinesToIR(inlined.emitLines, call, fileName, sourceText);
+  }
+
+  // Try SerialPort
+  const portName = resolveSerialReceiver(receiver);
+  if (portName) {
+    const inlined = inlineSerialMethod(portName, method, argIRs);
+    if (inlined) return emitLinesToIR(inlined.emitLines, call, fileName, sourceText);
+  }
+
+  return null;
+}
+
+/** Convert emit lines to a StatementIR (single emit or block of emits). */
+function emitLinesToIR(
+  lines: string[],
+  node: ts.Node,
+  fileName: string,
+  sourceText: string,
+): StatementIR | null {
+  if (lines.length === 0) return null;
+  const emitStmts: StatementIR[] = lines.map(line => ({
+    kind: "call" as const,
+    sourceSpan: makeSourceSpan(node, fileName, sourceText),
+    callee: "__EMIT__",
+    args: [{ kind: "string" as const, value: line }],
+  }));
+  return emitStmts.length === 1
+    ? emitStmts[0]
+    : { kind: "block" as const, body: emitStmts, sourceSpan: makeSourceSpan(node, fileName, sourceText) };
+}
+
 function callToStatement(
   statementNode: ts.ExpressionStatement,
   call: ts.CallExpression,
@@ -21,7 +336,11 @@ function callToStatement(
   pointerVars: PointerTracker = new Map(),
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
-  
+
+  // ---- HAL inline evaluator (highest priority: Pin, I2CBus, SerialPort) ---
+  const inlined = tryInlineHALMethod(call, fileName, sourceText, diagnostics, pointerVars);
+  if (inlined) return inlined;
+
   // ---- Typehal call detection at statement level -------------------------
   // Handle D13.asOutput(), D9.pwm(), D2.pullup(), etc.
   // These need to be detected as typehal-call IR nodes for proper transpilation.
@@ -250,6 +569,18 @@ function callToStatement(
     }
     
     return innerStmt;
+  }
+
+  // ── emit() — compile-time C++ injection ─────────────────────────────────
+  if (ts.isIdentifier(call.expression) && call.expression.text === "emit") {
+    return {
+      kind: "call",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      callee: "__EMIT__",
+      args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+    };
   }
 
   // ── Array method translation: push → push_back, pop → pop_back ──────────
@@ -2186,6 +2517,128 @@ export function variableStatementToIR(
         ),
       );
       continue;
+    }
+
+    // ── HAL inline evaluator for variable declarations ──────────────────────
+    // Detect: const led = new Pin(LED_BUILTIN).asOutput(HIGH)
+    // Or:     const p = new Pin(7)
+    // Or:     const I2C0 = new I2CBus("Wire")
+    // Or:     const UART0 = new SerialPort("Serial")
+    // Inlines the emit() content and tracks the expression for subsequent calls.
+    if (declaration.initializer && ts.isIdentifier(declaration.name)) {
+      const varName = declaration.name.text;
+      let pinExpr: string | null = null;
+      let inlineStmts: StatementIR[] = [];
+      let methodChained = false;
+
+      if (ts.isNewExpression(declaration.initializer) && ts.isIdentifier(declaration.initializer.expression)) {
+        const className = declaration.initializer.expression.text;
+        const ctorArg = declaration.initializer.arguments?.[0];
+
+        if (className === "Pin" && ctorArg) {
+          // const p = new Pin(n) — track pin expression
+          if (ts.isIdentifier(ctorArg)) pinExpr = ctorArg.text;
+          else if (ts.isNumericLiteral(ctorArg)) pinExpr = ctorArg.text;
+          else if (ts.isPropertyAccessExpression(ctorArg)) pinExpr = ctorArg.getText();
+
+          if (pinExpr !== null) {
+            pinInstances.set(varName, pinExpr);
+            continue; // skip declaration — zero-cost
+          }
+        } else if (className === "I2CBus" && ctorArg && ts.isStringLiteral(ctorArg)) {
+          // const I2C0 = new I2CBus("Wire") — track bus name
+          i2cInstances.set(varName, ctorArg.text);
+          continue;
+        } else if (className === "SerialPort" && ctorArg && ts.isStringLiteral(ctorArg)) {
+          // const UART0 = new SerialPort("Serial") — track port name
+          serialInstances.set(varName, ctorArg.text);
+          continue;
+        }
+      } else if (ts.isCallExpression(declaration.initializer) && ts.isPropertyAccessExpression(declaration.initializer.expression)) {
+        // const led = new Pin(n).method(args) — inline the method
+        const receiver = declaration.initializer.expression.expression;
+        const method = declaration.initializer.expression.name.text;
+
+        // Try Pin chained constructor
+        const resolved = resolvePinReceiver(receiver);
+        if (resolved) {
+          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+          const inlined = inlinePinMethod(resolved.pinExpr, method, argIRs);
+          if (inlined) {
+            pinExpr = resolved.pinExpr;
+            methodChained = true;
+            inlineStmts = inlined.emitLines.map(line => ({
+              kind: "call" as const,
+              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
+              callee: "__EMIT__",
+              args: [{ kind: "string" as const, value: line }],
+            }));
+          }
+        }
+
+        if (pinExpr !== null) {
+          pinInstances.set(varName, pinExpr);
+          if (methodChained && inlineStmts.length > 0) {
+            lowered.push(...inlineStmts);
+            commentsAssigned = true;
+            continue;
+          }
+          continue;
+        }
+
+        // Try I2CBus chained constructor: const x = new I2CBus("Wire").begin()
+        const busName = resolveI2CReceiver(receiver);
+        if (busName) {
+          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+          const inlined = inlineI2CMethod(busName, method, argIRs);
+          if (inlined) {
+            i2cInstances.set(varName, busName);
+            const stmts = inlined.emitLines.map(line => ({
+              kind: "call" as const,
+              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
+              callee: "__EMIT__",
+              args: [{ kind: "string" as const, value: line }],
+            }));
+            if (stmts.length > 0) {
+              lowered.push(...stmts);
+              commentsAssigned = true;
+            }
+            continue;
+          }
+        }
+
+        // Try SerialPort chained constructor
+        const portName = resolveSerialReceiver(receiver);
+        if (portName) {
+          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+          const inlined = inlineSerialMethod(portName, method, argIRs);
+          if (inlined) {
+            serialInstances.set(varName, portName);
+            const stmts = inlined.emitLines.map(line => ({
+              kind: "call" as const,
+              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
+              callee: "__EMIT__",
+              args: [{ kind: "string" as const, value: line }],
+            }));
+            if (stmts.length > 0) {
+              lowered.push(...stmts);
+              commentsAssigned = true;
+            }
+            continue;
+          }
+        }
+      }
+
+      // Fallback: Pin-only path for simple `new Pin(n)` that wasn't caught above
+      if (pinExpr !== null) {
+        pinInstances.set(varName, pinExpr);
+        if (methodChained && inlineStmts.length > 0) {
+          lowered.push(...inlineStmts);
+          commentsAssigned = true;
+          continue;
+        }
+        continue;
+      }
     }
 
     // Check if initializer is a volatile() call - if so, unwrap it and mark as volatile

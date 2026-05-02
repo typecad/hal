@@ -664,6 +664,17 @@ function renderStatement(
       const rawStmt = statement.callee.slice('__RAW_STMT__'.length);
       return forHeader ? rawStmt : `${rawStmt.endsWith(';') ? rawStmt : rawStmt + ';'}`;
     }
+    // Handle emit() — compile-time C++ injection
+    if (statement.callee === "__EMIT__") {
+      const renderEmitArg = (arg: ExpressionIR): string => {
+        if (arg.kind === "string") return arg.value;
+        if (arg.kind === "string_concat") return arg.parts.map(p => renderEmitArg(p)).join("");
+        if (arg.kind === "template_string") return renderExpression(arg.expression, undefined, strategy);
+        return renderExpression(arg, undefined, strategy);
+      };
+      const rawText = statement.args.map(arg => renderEmitArg(arg)).join("");
+      return forHeader ? rawText : `${rawText.endsWith(';') ? rawText : rawText + ';'}`;
+    }
     // Handle console.* calls specially
     if (isConsoleCall(statement.callee)) {
       return transformConsoleCall(statement.callee, statement.args, strategy, forHeader);

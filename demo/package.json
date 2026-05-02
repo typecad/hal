@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@typehal/core": "*",
+    "@typehal/typehal": "*",
     "@typehal/board-esp32-devkit": "*",
     "@typehal/framework-arduino": "*"
   }
