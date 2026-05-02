@@ -3,12 +3,12 @@
 //
 // Validates Rust-inspired ownership rules at transpile time:
 //   1. Use-after-move: error when reading a moved Owned variable
-//   2. Assign-to-ref: error when assigning to a Ref (immutable borrow)
-//   3. MutRef exclusivity: warning when multiple MutRef borrows exist
-//   4. Borrow mismatch: error passing Ref where MutRef is expected
+//   2. Assign-to-shared: error when assigning to a Shared (immutable borrow)
+//   3. Mutable exclusivity: warning when multiple Mutable borrows exist
+//   4. Borrow mismatch: error passing Shared where Mutable is expected
 //   5. Const suggestion: warning for let variables never reassigned
 //
-// Opt-in: if no ownership types (Ref, MutRef, Owned) are used anywhere
+// Opt-in: if no ownership types (Shared, Mutable, Owned) are used anywhere
 // in the program, no diagnostics are generated.
 // ---------------------------------------------------------------------------
 
@@ -18,7 +18,7 @@ import type { Diagnostic, SourceSpan } from '../types';
 /**
  * Returns true for C++ scalar/primitive types passed cheaply by value.
  * Non-primitives (std::vector, String, structs) should be passed by C++ reference
- * when borrowed via Ref<T> or MutRef<T>.
+ * when borrowed via Shared<T> or Mutable<T>.
  */
 function isPrimitiveCppType(cppType: string): boolean {
   const t = cppType.trim();
@@ -34,7 +34,7 @@ function isPrimitiveCppType(cppType: string): boolean {
 }
 
 /** Ownership kind for a variable or parameter. */
-type OwnershipKind = 'owned' | 'ref' | 'mut_ref';
+type OwnershipKind = 'owned' | 'shared' | 'mutable';
 
 /** Tracked state for a variable in a scope. */
 interface VariableState {
@@ -60,7 +60,7 @@ class OwnershipScope {
   /** Set of variable names that have been moved. */
   movedVars = new Set<string>();
 
-  /** Track MutRef variables and their sources for exclusivity checking. */
+  /** Track Mutable variables and their sources for exclusivity checking. */
   mutRefSources = new Map<string, string[]>();  // source -> [mutRefVarName, ...]
 
   /** Track parameter ownership kinds for the current function. */
@@ -86,8 +86,8 @@ class OwnershipScope {
       cppType,
     });
 
-    // Track MutRef sources for exclusivity checking
-    if (ownershipKind === 'mut_ref' && borrowSource) {
+    // Track Mutable sources for exclusivity checking
+    if (ownershipKind === 'mutable' && borrowSource) {
       const existing = this.mutRefSources.get(borrowSource) ?? [];
       existing.push(name);
       this.mutRefSources.set(borrowSource, existing);
@@ -157,7 +157,7 @@ export function validateOwnership(program: ProgramIR): Diagnostic[] {
   let usesOwnershipTypes = false;
 
   const checkTypeForOwnership = (cppType: string): boolean => {
-    return /\b(Ref|MutRef|Owned)</.test(cppType);
+    return /\b(Shared|Mutable|Owned)</.test(cppType);
   };
 
   // Check top-level variable declarations
@@ -220,7 +220,7 @@ export function validateOwnership(program: ProgramIR): Diagnostic[] {
   // Const suggestions for ownership-aware code
   validateConstSuggestions(program, diagnostics);
 
-  // Borrow mismatch: Ref<T> arg passed to MutRef<T> param
+  // Borrow mismatch: Shared<T> arg passed to Mutable<T> param
   checkBorrowMismatch(program, diagnostics);
 
   return diagnostics;
@@ -252,7 +252,7 @@ function analyzeStatement(
   switch (stmt.kind) {
     case 'var_decl': {
       const v = stmt as VariableDeclarationIR;
-      // Only variables explicitly annotated with Owned<T>, Ref<T>, or MutRef<T>
+      // Only variables explicitly annotated with Owned<T>, Shared<T>, or Mutable<T>
       // get an ownershipKind. Unannotated variables get undefined (no tracking).
       const ownershipKind = (v as any).ownershipKind as OwnershipKind | undefined;
 
@@ -271,13 +271,13 @@ function analyzeStatement(
 
         // If the initializer is a plain identifier referencing an explicitly Owned variable
         // that hasn't already been moved, check whether this is a move or a borrow.
-        // Ref<T> and MutRef<T> destinations are borrows — the source stays alive.
+        // Shared<T> and Mutable<T> destinations are borrows — the source stays alive.
         // Only untyped or Owned<T> destinations trigger a move (ownership transfer).
         const initName = extractIdentifier(v.initializer);
         if (initName) {
           const sourceVar = scope.resolve(initName);
           if (sourceVar && sourceVar.ownershipKind === 'owned' && !scope.isMoved(initName)) {
-            const isBorrow = ownershipKind === 'ref' || ownershipKind === 'mut_ref';
+            const isBorrow = ownershipKind === 'shared' || ownershipKind === 'mutable';
             if (!isBorrow) {
               // Move ownership from source to this new variable
               scope.move(initName);
@@ -286,7 +286,7 @@ function analyzeStatement(
                 diagnostics.push({
                   severity: 'info',
                   message: `Moving '${initName}' into '${v.name}' creates a C++ copy — ownership types do not emit std::move().`,
-                  hint: `const ${v.name}: Ref = ${initName};  // borrow by reference instead of copying`,
+                  hint: `const ${v.name}: Shared = ${initName};  // borrow by reference instead of copying`,
                   line: span.startLine,
                   column: span.startColumn,
                   code: 'ownership-owned-copy',
@@ -302,7 +302,7 @@ function analyzeStatement(
               diagnostics.push({
                 severity: 'info',
                 message: `'${v.name}' silently copies '${initName}' — no borrow annotation.`,
-                hint: `const ${v.name}: Ref = ${initName};  // borrow by const reference, zero copy`,
+                hint: `const ${v.name}: Shared = ${initName};  // borrow by const reference, zero copy`,
                 line: span.startLine,
                 column: span.startColumn,
                 code: 'ownership-implicit-copy',
@@ -312,11 +312,11 @@ function analyzeStatement(
           }
         }
 
-        // ownership-temp-ref-warn: Ref/MutRef assigned from a non-identifier non-primitive
+        // ownership-temp-ref-warn: Shared/Mutable assigned from a non-identifier non-primitive
         if (ownershipKind && ownershipKind !== 'owned' && !isPrimitiveCppType(v.cppType)) {
           if (v.initializer.kind !== 'identifier') {
-            const annotLabel = ownershipKind === 'ref' ? 'Ref' : 'MutRef';
-            const storageKw = ownershipKind === 'ref' ? 'const' : 'let';
+            const annotLabel = ownershipKind === 'shared' ? 'Shared' : 'Mutable';
+            const storageKw = ownershipKind === 'shared' ? 'const' : 'let';
             diagnostics.push({
               severity: 'warning',
               message: `'${v.name}: ${annotLabel}' borrows a temporary — C++ cannot bind a reference to an rvalue. The emitter will fall back to a copy.`,
@@ -339,15 +339,15 @@ function analyzeStatement(
     case 'assign': {
       const a = stmt as any;
 
-      // Check: assignment to Ref variable
+      // Check: assignment to Shared variable
       const targetKind = scope.getOwnershipKind(a.target);
-      if (targetKind === 'ref') {
+      if (targetKind === 'shared') {
         const targetVar = scope.resolve(a.target);
-        const typeAnnotation = (targetVar?.cppType && targetVar.cppType !== 'auto') ? `: Ref<${targetVar.cppType}>` : ': Ref';
+        const typeAnnotation = (targetVar?.cppType && targetVar.cppType !== 'auto') ? `: Shared<${targetVar.cppType}>` : ': Shared';
         diagnostics.push({
           severity: 'error',
           message: `Cannot assign to '${a.target}' — it is an immutable borrow.`,
-          hint: `change '${a.target}${typeAnnotation}' → '${a.target}: MutRef'  // MutRef allows mutation`,
+          hint: `change '${a.target}${typeAnnotation}' → '${a.target}: Mutable'  // Mutable allows mutation`,
           line: span.startLine,
           column: span.startColumn,
           code: 'ownership-assign-to-ref',
@@ -363,12 +363,12 @@ function analyzeStatement(
 
         // If the value is a plain identifier referencing an Owned variable that
         // hasn't already been moved, register the move — but only if the target
-        // is not a borrow (Ref/MutRef). Borrows don't transfer ownership.
+        // is not a borrow (Shared/Mutable). Borrows don't transfer ownership.
         const sourceName = extractIdentifier(a.value);
         if (sourceName) {
           const sourceVar = scope.resolve(sourceName);
           const targetOwnership = scope.getOwnershipKind(a.target);
-          const isTargetBorrow = targetOwnership === 'ref' || targetOwnership === 'mut_ref';
+          const isTargetBorrow = targetOwnership === 'shared' || targetOwnership === 'mutable';
           if (sourceVar && sourceVar.ownershipKind === 'owned' && !scope.isMoved(sourceName) && sourceVar.isLet && !isTargetBorrow) {
             // Moving from a let Owned variable
             scope.move(sourceName);
@@ -394,15 +394,15 @@ function analyzeStatement(
     case 'update': {
       const u = stmt as any;
 
-      // Check: update to Ref variable
+      // Check: update to Shared variable
       const updateTargetKind = scope.getOwnershipKind(u.target);
-      if (updateTargetKind === 'ref') {
+      if (updateTargetKind === 'shared') {
         const updateTargetVar = scope.resolve(u.target);
-        const typeAnnotation = (updateTargetVar?.cppType && updateTargetVar.cppType !== 'auto') ? `: Ref<${updateTargetVar.cppType}>` : ': Ref';
+        const typeAnnotation = (updateTargetVar?.cppType && updateTargetVar.cppType !== 'auto') ? `: Shared<${updateTargetVar.cppType}>` : ': Shared';
         diagnostics.push({
           severity: 'error',
           message: `Cannot update '${u.target}' — it is an immutable borrow.`,
-          hint: `change '${u.target}${typeAnnotation}' → '${u.target}: MutRef'  // MutRef allows mutation`,
+          hint: `change '${u.target}${typeAnnotation}' → '${u.target}: Mutable'  // Mutable allows mutation`,
           line: span.startLine,
           column: span.startColumn,
           code: 'ownership-assign-to-ref',
@@ -416,7 +416,7 @@ function analyzeStatement(
         diagnostics.push({
           severity: 'error',
           message: `'${u.target}' was moved and cannot be used again.`,
-          hint: `const ${u.target}_ref: Ref = ${u.target};  // add this before the move`,
+          hint: `const ${u.target}_ref: Shared = ${u.target};  // add this before the move`,
           line: span.startLine,
           column: span.startColumn,
           code: 'ownership-use-after-move',
@@ -454,13 +454,13 @@ function analyzeStatement(
         const retName = extractIdentifier(r.value);
         if (retName) {
           const retVar = scope.resolve(retName);
-          if (retVar && (retVar.ownershipKind === 'ref' || retVar.ownershipKind === 'mut_ref') && retVar.borrowSource) {
+          if (retVar && (retVar.ownershipKind === 'shared' || retVar.ownershipKind === 'mutable') && retVar.borrowSource) {
             const source = scope.resolve(retVar.borrowSource);
             if (source && source.ownershipKind === 'owned') {
               diagnostics.push({
                 severity: 'error',
                 message: `Returning '${retName}' borrows '${retVar.borrowSource}' which will be destroyed when this function returns — dangling reference.`,
-                hint: `return ${retVar.borrowSource} directly as Owned, or change the function to accept '${retVar.borrowSource}: Ref' as a parameter`,
+                hint: `return ${retVar.borrowSource} directly as Owned, or change the function to accept '${retVar.borrowSource}: Shared' as a parameter`,
                 line: span.startLine,
                 column: span.startColumn,
                 code: 'ownership-return-local-ref',
@@ -605,7 +605,7 @@ function analyzeExpression(
         diagnostics.push({
           severity: 'error',
           message: `'${name}' was moved and cannot be used again.`,
-          hint: `const ${name}_ref: Ref = ${name};  // add this before the move`,
+          hint: `const ${name}_ref: Shared = ${name};  // add this before the move`,
           line: span.startLine,
           column: span.startColumn,
           code: 'ownership-use-after-move',
@@ -698,7 +698,7 @@ function analyzeExpression(
             diagnostics.push({
               severity: 'error',
               message: `'${match}' was moved and cannot be used again.`,
-              hint: `const ${match}_ref: Ref = ${match};  // add this before the move`,
+              hint: `const ${match}_ref: Shared = ${match};  // add this before the move`,
               line: span.startLine,
               column: span.startColumn,
               code: 'ownership-use-after-move',
@@ -727,7 +727,7 @@ function extractIdentifier(expr: ExpressionIR): string | undefined {
 
 /**
  * Extract the borrow source from an initializer expression.
- * For `let ref: Ref<T> = source`, returns "source".
+ * For `let ref: Shared<T> = source`, returns "source".
  */
 function extractBorrowSource(expr: ExpressionIR): string | undefined {
   return extractIdentifier(expr);
@@ -798,7 +798,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
       diagnostics.push({
         severity: 'warning',
         message: `'${entry.name}' is never reassigned.`,
-        hint: `const ${entry.name} = ...;  // or annotate with Ref to also enforce const T& at the C++ level`,
+        hint: `const ${entry.name} = ...;  // or annotate with Shared to also enforce const T& at the C++ level`,
         line: entry.span.startLine,
         column: entry.span.startColumn,
         code: 'ownership-suggest-const',
@@ -809,7 +809,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
 }
 
 /**
- * Check for borrow mismatch: a Ref<T>-annotated variable passed as a MutRef<T> parameter.
+ * Check for borrow mismatch: a Shared<T>-annotated variable passed as a Mutable<T> parameter.
  * Runs as a separate top-level pass so it doesn't need to thread state through the main
  * recursive analysis.
  */
@@ -842,13 +842,13 @@ function checkBorrowMismatch(program: ProgramIR, diagnostics: Diagnostic[]): voi
           const args: any[] = c.args ?? [];
           for (let i = 0; i < args.length; i++) {
             const paramKind = paramKinds[i];
-            if (paramKind === 'mut_ref' && args[i]?.kind === 'identifier') {
+            if (paramKind === 'mutable' && args[i]?.kind === 'identifier') {
               const argKind = varKinds.get(args[i].value);
-              if (argKind === 'ref') {
+              if (argKind === 'shared') {
                 diagnostics.push({
                   severity: 'error',
-                  message: `Cannot pass '${args[i].value}' (immutable Ref) to '${c.callee}' which expects a mutable borrow.`,
-                  hint: `change '${args[i].value}: Ref = ...' → '${args[i].value}: MutRef = ...'`,
+                  message: `Cannot pass '${args[i].value}' (immutable Shared) to '${c.callee}' which expects a mutable borrow.`,
+                  hint: `change '${args[i].value}: Shared = ...' → '${args[i].value}: Mutable = ...'`,
                   line: stmt.sourceSpan.startLine,
                   column: stmt.sourceSpan.startColumn,
                   code: 'ownership-borrow-mismatch',
@@ -903,7 +903,7 @@ function checkDanglingBorrowsOnScopeExit(
   while (ancestor) {
     for (const v of ancestor.vars.values()) {
       if (
-        (v.ownershipKind === 'ref' || v.ownershipKind === 'mut_ref') &&
+        (v.ownershipKind === 'shared' || v.ownershipKind === 'mutable') &&
         v.borrowSource &&
         exitingOwnedNames.has(v.borrowSource)
       ) {

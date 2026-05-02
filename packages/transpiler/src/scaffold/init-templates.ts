@@ -166,8 +166,8 @@ export function generateProjectEnvDts(options: InitProjectOptions): string {
 
 declare global {
   type Owned<T = any> = T;
-  type Ref<T = any> = T;
-  type MutRef<T = any> = T;
+  type Shared<T = any> = T;
+  type Mutable<T = any> = T;
 
   // C-style explicit number types recognized by the transpiler
   type uint8_t = number;

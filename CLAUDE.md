@@ -76,7 +76,7 @@ pnpm vitest run tests/expressions.test.ts --reporter=verbose
 # Correct build order for transpiler changes:
 pnpm --filter @typehal/core build
 pnpm --filter @typehal/framework-arduino build
-pnpm --filter @typehal/cli build
+pnpm --filter @typehal/transpiler build
 
 # Type-check the whole repo
 pnpm tsc -b

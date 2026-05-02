@@ -427,6 +427,15 @@ function isPrimitiveCppType(cppType: string): boolean {
   return primitives.has(t);
 }
 
+/**
+ * Returns true for types that are already passed by address (pointers, arrays)
+ * and should not get a C++ reference `&` appended for Shared/Mutable ownership.
+ */
+function isIndirectType(cppType: string): boolean {
+  const t = cppType.trim();
+  return /\*$/.test(t) || /\[\d*\]$/.test(t);
+}
+
 function renderTypedName(cppType: string, name: string, strategy: PlatformStrategy, isConst = false, isRef = false): string {
   const safeName = escapeCppKeyword(name, _emitPlatformReservedNames);
   const normalizedType = normalizeCppTypeForTarget(cppType, strategy);
@@ -559,10 +568,11 @@ function renderParameters(
 
   return parameters
     .map((parameter) => {
-      const paramOwnershipKind = (parameter as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
-      const isConst = paramOwnershipKind === 'ref';
-      const isRef = (paramOwnershipKind === 'ref' || paramOwnershipKind === 'mut_ref')
-        && !isPrimitiveCppType(parameter.cppType);
+      const paramOwnershipKind = (parameter as any).ownershipKind as 'owned' | 'shared' | 'mutable' | undefined;
+      const isConst = paramOwnershipKind === 'shared';
+      const isRef = (paramOwnershipKind === 'shared' || paramOwnershipKind === 'mutable')
+        && !isPrimitiveCppType(parameter.cppType)
+        && !isIndirectType(parameter.cppType);
       let result = renderTypedName(parameter.cppType, parameter.name, strategy, isConst, isRef);
       if (includeDefaults && parameter.defaultValue !== undefined) {
         result += ` = ${renderExpression(parameter.defaultValue, undefined, strategy)}`;
@@ -797,10 +807,11 @@ function renderStatement(
   const volatilePrefix = statement.isVolatile ? "volatile " : "";
   // Transform type name for Arduino library classes (add namespace prefix)
   const transformedType = transformTypeName(statement.cppType, _classNameMap);
-  const ownershipKind = (statement as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
-  const isConstDecl = statement.storage === "const" || ownershipKind === 'ref';
-  const isRefDecl = (ownershipKind === 'ref' || ownershipKind === 'mut_ref')
+  const ownershipKind = (statement as any).ownershipKind as 'owned' | 'shared' | 'mutable' | undefined;
+  const isConstDecl = statement.storage === "const" || ownershipKind === 'shared';
+  const isRefDecl = (ownershipKind === 'shared' || ownershipKind === 'mutable')
     && !isPrimitiveCppType(statement.cppType)
+    && !isIndirectType(statement.cppType)
     && statement.initializer?.kind === 'identifier';
   const declaration = `${volatilePrefix}${renderTypedName(transformedType, statement.name, strategy, isConstDecl, isRefDecl)}`;
   if (statement.initializer) {

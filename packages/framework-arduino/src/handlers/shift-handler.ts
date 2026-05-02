@@ -5,16 +5,24 @@
 import type { ExpressionIR, BoardConstants } from '@typehal/core/shared';
 
 /** Convert a pin name to a raw Arduino integer (D2 → 2, A0 → A0). */
-function pinArgRaw(rawPin: string): string {
+export function pinArgRaw(rawPin: string): string {
   if (/^D\d+$/.test(rawPin)) return rawPin.slice(1);
   return rawPin;
+}
+
+/** Map a ShiftBitOrder IR argument to the Arduino C++ constant. */
+function bitOrderConstant(arg: ExpressionIR, renderArg: (e: ExpressionIR) => string): string {
+  if (arg.kind === 'string') {
+    return arg.value === 'lsb' ? 'LSBFIRST' : 'MSBFIRST';
+  }
+  return renderArg(arg).replace(/"msb"/, 'MSBFIRST').replace(/"lsb"/, 'LSBFIRST');
 }
 
 /**
  * Render Shift namespace calls to Arduino C++.
  *
  * Direct functions:
- * - Shift.in(dataPin, clockPin, bitOrder) → shiftIn(dataPin, clockPin, bitOrder)
+ * - Shift.in(dataPin, clockPin, bitOrder) → shiftIn(dataPin, clockPin, MSBFIRST)
  * - Shift.out(dataPin, clockPin, bitOrder, value) → shiftOut(...)
  *
  * Fluent chains:
@@ -34,9 +42,9 @@ export function renderShiftCall(
   if (parts.length === 2) {
     switch (parts[1]) {
       case 'in':
-        return `shiftIn(${pinArgRaw(a(0))}, ${pinArgRaw(a(1))}, ${a(2)})`;
+        return `shiftIn(${pinArgRaw(a(0))}, ${pinArgRaw(a(1))}, ${bitOrderConstant(args[2], renderArg)})`;
       case 'out':
-        return `shiftOut(${pinArgRaw(a(0))}, ${pinArgRaw(a(1))}, ${a(2)}, ${a(3)})`;
+        return `shiftOut(${pinArgRaw(a(0))}, ${pinArgRaw(a(1))}, ${bitOrderConstant(args[2], renderArg)}, ${a(3)})`;
     }
   }
 

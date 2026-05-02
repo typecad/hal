@@ -104,8 +104,8 @@ describe("init-templates", () => {
       expect(content).toContain("declare module '@typehal'");
       expect(content).toContain("export * from '@typehal/board-arduino-uno'");
       expect(content).toContain("type Owned<T = any> = T");
-      expect(content).toContain("type Ref<T = any> = T");
-      expect(content).toContain("type MutRef<T = any> = T");
+      expect(content).toContain("type Shared<T = any> = T");
+      expect(content).toContain("type Mutable<T = any> = T");
     });
   });
 

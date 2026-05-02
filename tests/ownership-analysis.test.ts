@@ -23,11 +23,11 @@ describe('Ownership Analysis', () => {
     });
   });
 
-  describe('Ref<T> — immutable borrow', () => {
-    it('emits const in C++ for Ref<T> function parameters', () => {
+  describe('Shared<T> — immutable borrow', () => {
+    it('emits const in C++ for Shared<T> function parameters', () => {
       const result = transpile(`
-        type Ref<T> = T;
-        function process(data: Ref<number>): void {
+        type Shared<T> = T;
+        function process(data: Shared<number>): void {
           console.log(data);
         }
       `);
@@ -35,10 +35,10 @@ describe('Ownership Analysis', () => {
       expectCppContains(result, ['const']);
     });
 
-    it('reports error when assigning to a Ref<T> variable', () => {
+    it('reports error when assigning to a Shared<T> variable', () => {
       const result = transpile(`
-        type Ref<T> = T;
-        function foo(x: Ref<number>): void {
+        type Shared<T> = T;
+        function foo(x: Shared<number>): void {
           x = 42;
         }
       `);
@@ -50,10 +50,10 @@ describe('Ownership Analysis', () => {
       expect(typeof diags[0].line).toBe('number');
     });
 
-    it('reports error when updating a Ref<T> variable', () => {
+    it('reports error when updating a Shared<T> variable', () => {
       const result = transpile(`
-        type Ref<T> = T;
-        function foo(x: Ref<number>): void {
+        type Shared<T> = T;
+        function foo(x: Shared<number>): void {
           x++;
         }
       `);
@@ -98,13 +98,13 @@ describe('Ownership Analysis', () => {
       expect(diags.length).toBe(0);
     });
 
-    it('does NOT move source when destination is a Ref<T> borrow', () => {
+    it('does NOT move source when destination is a Shared<T> borrow', () => {
       const result = transpile(`
         type Owned<T> = T;
-        type Ref<T> = T;
+        type Shared<T> = T;
         function borrowExample(): void {
           const buffer: Owned<number> = 42;
-          const ref: Ref<typeof buffer> = buffer;
+          const ref: Shared<typeof buffer> = buffer;
           console.log(buffer);
           console.log(ref);
         }
@@ -115,11 +115,11 @@ describe('Ownership Analysis', () => {
     });
   });
 
-  describe('MutRef<T> — mutable borrow', () => {
-    it('allows assignment to MutRef<T> variables', () => {
+  describe('Mutable<T> — mutable borrow', () => {
+    it('allows assignment to Mutable<T> variables', () => {
       const result = transpile(`
-        type MutRef<T> = T;
-        function foo(x: MutRef<number>): void {
+        type Mutable<T> = T;
+        function foo(x: Mutable<number>): void {
           x = 42;
         }
       `);
@@ -158,24 +158,24 @@ describe('Ownership Analysis', () => {
   });
 
   describe('Type stripping in C++ emission', () => {
-    it('strips Ref<> wrapper from C++ type emission', () => {
+    it('strips Shared<> wrapper from C++ type emission', () => {
       const result = transpile(`
-        type Ref<T> = T;
-        function process(data: Ref<number>): void {
+        type Shared<T> = T;
+        function process(data: Shared<number>): void {
           console.log(data);
         }
       `);
 
-      // The type should be resolved to the inner type, not "Ref<number>"
-      expectCppNotContains(result, ['Ref<', 'MutRef<', 'Owned<']);
+      // The type should be resolved to the inner type, not "Shared<number>"
+      expectCppNotContains(result, ['Shared<', 'Mutable<', 'Owned<']);
     });
   });
 
   describe('C++ reference emission (Phase 1)', () => {
-    it('emits const T& for non-primitive Ref<T> parameters', () => {
+    it('emits const T& for non-primitive Shared<T> parameters', () => {
       const result = transpile(`
-        type Ref<T> = T;
-        function process(data: Ref<number[]>): void {
+        type Shared<T> = T;
+        function process(data: Shared<number[]>): void {
           console.log(data);
         }
       `);
@@ -183,10 +183,10 @@ describe('Ownership Analysis', () => {
       expectCppContains(result, ['const std::vector<int>& data']);
     });
 
-    it('emits T& for non-primitive MutRef<T> parameters', () => {
+    it('emits T& for non-primitive Mutable<T> parameters', () => {
       const result = transpile(`
-        type MutRef<T> = T;
-        function fill(buf: MutRef<number[]>): void {
+        type Mutable<T> = T;
+        function fill(buf: Mutable<number[]>): void {
           buf[0] = 1;
         }
       `);
@@ -194,10 +194,10 @@ describe('Ownership Analysis', () => {
       expectCppContains(result, ['std::vector<int>& buf']);
     });
 
-    it('keeps primitive Ref<T> parameters by value (no reference)', () => {
+    it('keeps primitive Shared<T> parameters by value (no reference)', () => {
       const result = transpile(`
-        type Ref<T> = T;
-        function process(data: Ref<number>): void {
+        type Shared<T> = T;
+        function process(data: Shared<number>): void {
           console.log(data);
         }
       `);
@@ -206,24 +206,24 @@ describe('Ownership Analysis', () => {
       expectCppNotContains(result, ['const int& data', 'int& data']);
     });
 
-    it('emits const T& for non-primitive Ref<T> local variable from named variable', () => {
+    it('emits const T& for non-primitive Shared<T> local variable from named variable', () => {
       const result = transpile(`
         type Owned<T> = T;
-        type Ref<T> = T;
+        type Shared<T> = T;
         function example(): void {
           const buffer: Owned<number[]> = [1, 2, 3];
-          const view: Ref<number[]> = buffer;
+          const view: Shared<number[]> = buffer;
         }
       `);
 
       expectCppContains(result, ['const std::vector<int>& view = buffer']);
     });
 
-    it('falls back to copy (not reference) when Ref<T> initialized from non-identifier', () => {
+    it('falls back to copy (not reference) when Shared<T> initialized from non-identifier', () => {
       const result = transpile(`
-        type Ref<T> = T;
+        type Shared<T> = T;
         function example(): void {
-          const view: Ref<number[]> = [1, 2, 3];
+          const view: Shared<number[]> = [1, 2, 3];
         }
       `);
 
@@ -232,28 +232,28 @@ describe('Ownership Analysis', () => {
     });
   });
 
-  describe('Bare Ref / MutRef without type args (Phase 2)', () => {
-    it('bare Ref annotation still sets ownershipKind to ref and emits const reference', () => {
+  describe('Bare Shared / Mutable without type args (Phase 2)', () => {
+    it('bare Shared annotation still sets ownershipKind to shared and emits const reference', () => {
       const result = transpile(`
-        type Ref<T = any> = T;
+        type Shared<T = any> = T;
         type Owned<T = any> = T;
         function example(): void {
           const buffer: Owned<number[]> = [1, 2, 3];
-          const view: Ref = buffer;
+          const view: Shared = buffer;
         }
       `);
 
-      // Bare Ref should emit a const reference (concrete type deduced from initializer)
+      // Bare Shared should emit a const reference (concrete type deduced from initializer)
       expectCppContains(result, ['const std::vector<int>& view = buffer']);
     });
   });
 
   describe('New diagnostics (Phase 3)', () => {
-    it('emits ownership-temp-ref-warn when Ref<T> non-primitive is initialized from a literal', () => {
+    it('emits ownership-temp-ref-warn when Shared<T> non-primitive is initialized from a literal', () => {
       const result = transpile(`
-        type Ref<T> = T;
+        type Shared<T> = T;
         function example(): void {
-          const view: Ref<number[]> = [1, 2, 3];
+          const view: Shared<number[]> = [1, 2, 3];
         }
       `);
 
@@ -262,12 +262,12 @@ describe('Ownership Analysis', () => {
       expect(diags[0].message).toContain('borrows a temporary');
     });
 
-    it('emits ownership-borrow-mismatch when Ref param is passed to MutRef param', () => {
+    it('emits ownership-borrow-mismatch when Shared param is passed to Mutable param', () => {
       const result = transpile(`
-        type Ref<T> = T;
-        type MutRef<T> = T;
-        function fill(buf: MutRef<number[]>): void {}
-        function proxy(data: Ref<number[]>): void {
+        type Shared<T> = T;
+        type Mutable<T> = T;
+        function fill(buf: Mutable<number[]>): void {}
+        function proxy(data: Shared<number[]>): void {
           fill(data);
         }
       `);
@@ -280,9 +280,9 @@ describe('Ownership Analysis', () => {
     it('emits ownership-implicit-copy info when non-primitive is copied without annotation', () => {
       const result = transpile(`
         type Owned<T> = T;
-        type Ref<T> = T;
+        type Shared<T> = T;
         function example(): void {
-          const buffer: Ref<number[]> = [1, 2, 3];
+          const buffer: Shared<number[]> = [1, 2, 3];
           const copy = buffer;
         }
       `);
@@ -311,9 +311,9 @@ describe('Ownership Analysis', () => {
     it('reports ownership-dangling-borrow when a borrow outlives its source via block scope', () => {
       const result = transpile(`
         type Owned<T> = T;
-        type MutRef<T> = T;
+        type Mutable<T> = T;
         function example(): void {
-          let dangling: MutRef<number[]>;
+          let dangling: Mutable<number[]>;
           {
             const data: Owned<number[]> = [1, 2, 3];
             dangling = data;
@@ -330,10 +330,10 @@ describe('Ownership Analysis', () => {
     it('does NOT report dangling-borrow when borrow and source are in the same scope', () => {
       const result = transpile(`
         type Owned<T> = T;
-        type Ref<T> = T;
+        type Shared<T> = T;
         function example(): void {
           const data: Owned<number[]> = [1, 2, 3];
-          const view: Ref<number[]> = data;
+          const view: Shared<number[]> = data;
         }
       `);
 
@@ -344,11 +344,11 @@ describe('Ownership Analysis', () => {
     it('does NOT report dangling-borrow when borrow is declared inside the inner scope (safe: both die together)', () => {
       const result = transpile(`
         type Owned<T> = T;
-        type Ref<T> = T;
+        type Shared<T> = T;
         function example(): void {
           const data: Owned<number[]> = [1, 2, 3];
           {
-            const view: Ref<number[]> = data;
+            const view: Shared<number[]> = data;
           }
         }
       `);
@@ -360,10 +360,10 @@ describe('Ownership Analysis', () => {
     it('reports ownership-return-local-ref when returning a borrow of a local Owned variable', () => {
       const result = transpile(`
         type Owned<T> = T;
-        type Ref<T> = T;
-        function getSlice(): Ref<number[]> {
+        type Shared<T> = T;
+        function getSlice(): Shared<number[]> {
           const local: Owned<number[]> = [1, 2, 3];
-          const view: Ref<number[]> = local;
+          const view: Shared<number[]> = local;
           return view;
         }
       `);
@@ -374,10 +374,10 @@ describe('Ownership Analysis', () => {
       expect(diags[0].severity).toBe('error');
     });
 
-    it('does NOT report return-local-ref when returning a borrow of a Ref parameter (pass-through)', () => {
+    it('does NOT report return-local-ref when returning a borrow of a Shared parameter (pass-through)', () => {
       const result = transpile(`
-        type Ref<T> = T;
-        function passThrough(buf: Ref<number[]>): Ref<number[]> {
+        type Shared<T> = T;
+        function passThrough(buf: Shared<number[]>): Shared<number[]> {
           return buf;
         }
       `);

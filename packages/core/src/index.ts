@@ -109,8 +109,8 @@ export {
 export type {
   OwnershipKind,
   Owned,
-  Ref,
-  MutRef,
+  Shared,
+  Mutable,
 } from './types/ownership';
 
 // --- Shared types (for CLI and framework packages) -------------------------

@@ -11,6 +11,7 @@ import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } 
 import { resolveArduinoProfile } from "./profile";
 import { renderArduinoBuiltin, tryRenderTypehalCallStatement } from "./typehal-map";
 import { renderDACCall } from "./handlers/dac-handler";
+import { pinArgRaw } from "./handlers/shift-handler";
 
 /**
  * Arduino-specific platform context.
@@ -381,6 +382,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   }
   mapFunctionName(originalName: string): string {
     if (originalName === "void" || originalName === "__typehal_entrypoint__") return "setup";
+    if (originalName === "main") return "typehal_main";
     return originalName;
   }
 
@@ -437,6 +439,14 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       (_m, pin: string, level: string) => `pulseInLong(${pin}, ${level.toUpperCase()})`);
     v = v.replace(/Pulse\.on\(([^)]+)\)\.(high|low)\(\)/g,
       (_m, pin: string, level: string) => `pulseIn(${pin}, ${level.toUpperCase()})`);
+
+    // Shift fluent chains (expression-level): Shift.write/read → shiftOut/shiftIn
+    v = v.replace(/Shift\.write\(([^,]+),\s*([^)]+)\)\.clock\(([^)]+)\)\.(msb|lsb)First\(\)/g,
+      (_m, dataPin: string, value: string, clockPin: string, order: string) =>
+        `shiftOut(${pinArgRaw(dataPin.trim())}, ${pinArgRaw(clockPin.trim())}, ${order.toUpperCase()}FIRST, ${value.trim()})`);
+    v = v.replace(/Shift\.read\(([^)]+)\)\.clock\(([^)]+)\)\.(msb|lsb)First\(\)/g,
+      (_m, dataPin: string, clockPin: string, order: string) =>
+        `shiftIn(${pinArgRaw(dataPin.trim())}, ${pinArgRaw(clockPin.trim())}, ${order.toUpperCase()}FIRST)`);
 
     if (this._usesPinGroup) {
       v = v.replace(/createPinGroup\(\{\s*(.*?)\s*\}\)/g, '__tc_createPinGroup($1)');
@@ -600,7 +610,33 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       const pin = (typeof ledPin === 'string' && /^D(\d+)$/.test(ledPin)) ? ledPin.slice(1) : 'LED_BUILTIN';
       return `tone(${pin}, ${freq}, ${dur})`;
     }
+    // Shift fluent chains that bypass the IR builder
+    const shiftFluent = this.renderShiftFluentChain(callee);
+    if (shiftFluent !== undefined) return shiftFluent;
+
     return tryRenderTypehalCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch) ?? undefined;
+  }
+
+  /**
+   * Detect and render Shift fluent chains that the IR builder can't flatten.
+   * The transpiler's extractRootAndChain() can't traverse through intermediate
+   * CallExpression nodes, so chains like Shift.write(pin, val).clock(pin).msbFirst()
+   * arrive as literal callee text. Parse them here.
+   */
+  private renderShiftFluentChain(callee: string): string | undefined {
+    // Shift.write(dataPin, value).clock(clockPin).msbFirst / .lsbFirst
+    const writeMatch = callee.match(/^Shift\.write\(([^,]+),\s*([^)]+)\)\.clock\(([^)]+)\)\.(msb|lsb)First$/);
+    if (writeMatch) {
+      const [, dataPin, value, clockPin, order] = writeMatch;
+      return `shiftOut(${pinArgRaw(dataPin.trim())}, ${pinArgRaw(clockPin.trim())}, ${order.toUpperCase()}FIRST, ${value.trim()})`;
+    }
+    // Shift.read(dataPin).clock(clockPin).msbFirst / .lsbFirst
+    const readMatch = callee.match(/^Shift\.read\(([^)]+)\)\.clock\(([^)]+)\)\.(msb|lsb)First$/);
+    if (readMatch) {
+      const [, dataPin, clockPin, order] = readMatch;
+      return `shiftIn(${pinArgRaw(dataPin.trim())}, ${pinArgRaw(clockPin.trim())}, ${order.toUpperCase()}FIRST)`;
+    }
+    return undefined;
   }
   renderThrow(_valueExpr: string): string {
     return "typehal_halt(\"PANIC\")";
@@ -691,7 +727,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   // ── Name guards ─────────────────────────────────────────────────────────
 
   forwardDeclarationExclusions(): string[] {
-    return ["setup", "loop", "main"];
+    return ["setup", "loop", "typehal_main"];
   }
 
   ambientTypeDeclarations(): string[] {
@@ -739,6 +775,18 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       "    clear(): void;",
       "    remove(key: string): void;",
       "  };",
+      // Augment the '@typehal' module to re-export ownership types so that
+      // `import { Owned, Shared } from '@typehal'` resolves correctly during
+      // the transpiler's pre-emit type-check.  The strings below close the
+      // enclosing `declare global {`, open a module augmentation, then
+      // re-open `declare global {` for the caller's closing brace.
+      "}",
+      "declare module '@typehal' {",
+      "  export type Owned<T = any> = T;",
+      "  export type Shared<T = any> = T;",
+      "  export type Mutable<T = any> = T;",
+      "}",
+      "declare global {",
     ];
   }
 

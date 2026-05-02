@@ -2,7 +2,8 @@
 // @typehal/core — Shift register utilities
 // ---------------------------------------------------------------------------
 
-import type { BasePin } from './pin';
+/** Minimal pin identity — accepts BasePin, IOutputModePin, IInputModePin, and board variants. */
+type AnyPin = { readonly number: number; readonly gpio: number };
 
 /** Bit transmission order */
 export type ShiftBitOrder = 'msb' | 'lsb';
@@ -12,7 +13,7 @@ export type ShiftBitOrder = 'msb' | 'lsb';
  */
 interface IShiftReadChain {
   /** Set the clock pin */
-  clock(pin: BasePin): this;
+  clock(pin: AnyPin): this;
   /** Read MSB first */
   msbFirst(): number;
   /** Read LSB first */
@@ -24,7 +25,7 @@ interface IShiftReadChain {
  */
 interface IShiftWriteChain {
   /** Set the clock pin */
-  clock(pin: BasePin): this;
+  clock(pin: AnyPin): this;
   /** Write MSB first */
   msbFirst(): void;
   /** Write LSB first */
@@ -40,20 +41,20 @@ export interface IShiftNamespace {
   /**
    * Shift data in from a pin.
    */
-  in(dataPin: BasePin, clockPin: BasePin, bitOrder: ShiftBitOrder): number;
+  in(dataPin: AnyPin, clockPin: AnyPin, bitOrder: ShiftBitOrder): number;
 
   /**
    * Shift data out to a pin.
    */
-  out(dataPin: BasePin, clockPin: BasePin, bitOrder: ShiftBitOrder, value: number): void;
+  out(dataPin: AnyPin, clockPin: AnyPin, bitOrder: ShiftBitOrder, value: number): void;
 
   // --- Fluent builders ---
 
   /** Start a fluent shift read chain */
-  read(dataPin: BasePin): IShiftReadChain;
+  read(dataPin: AnyPin): IShiftReadChain;
 
   /** Start a fluent shift write chain */
-  write(dataPin: BasePin, value: number): IShiftWriteChain;
+  write(dataPin: AnyPin, value: number): IShiftWriteChain;
 }
 
 /** Stub for type checking. The transpiler replaces these with built-ins. */

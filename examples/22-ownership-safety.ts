@@ -7,13 +7,13 @@
 //
 // Three ownership kinds:
 //
-//   Owned<T>   — The variable owns its data. Assignment moves ownership.
-//                Use after move is a transpile-time error.
+//   Owned<T>    — The variable owns its data. Assignment moves ownership.
+//                 Use after move is a transpile-time error.
 //
-//   Ref<T>     — An immutable borrow. The transpiler emits `const` in C++.
-//                Assignment to a Ref is a transpile-time error.
+//   Shared<T>   — An immutable borrow. The transpiler emits `const` in C++.
+//                 Assignment to a Shared is a transpile-time error.
 //
-//   MutRef<T>  — A mutable borrow. Allows in-place modification.
+//   Mutable<T>  — A mutable borrow. Allows in-place modification.
 //
 // All rules are opt-in: if you don't use these types, no diagnostics are
 // generated and your code compiles exactly as before.
@@ -21,21 +21,21 @@
 
 // Phantom type declarations (these are erased during transpilation)
 type Owned<T> = T;
-type Ref<T> = T;
-type MutRef<T> = T;
+type Shared<T> = T;
+type Mutable<T> = T;
 
-// --- Example 1: Immutable borrow (Ref<T>) --------------------------------
+// --- Example 1: Immutable borrow (Shared<T>) ------------------------------
 // The transpiler emits `const int data` in C++, preventing accidental mutation.
 
-function processData(data: Ref<number>): void {
+function processData(data: Shared<number>): void {
   console.log(data);
   // data = 99;  // ERROR: Cannot assign to immutable borrow 'data'
 }
 
-// --- Example 2: Mutable borrow (MutRef<T>) -------------------------------
+// --- Example 2: Mutable borrow (Mutable<T>) -------------------------------
 // Allows in-place modification through the borrow.
 
-function increment(value: MutRef<number>): void {
+function increment(value: Mutable<number>): void {
   value = value + 1;
 }
 

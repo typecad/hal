@@ -110,8 +110,8 @@ The transpiler auto-generates `typehal-env.d.ts` so your editor resolves the `@t
 TypeScript constructs that have no C++ equivalent are erased or inlined at transpile time:
 
 - GPIO aliases (`const led = LED.asOutput()`) produce no C++ variables
-- `Ref<T>` phantom types emit C++ `const`
-- `Owned<T>` / `MutRef<T>` types are fully erased
+- `Shared<T>` phantom types emit C++ `const`
+- `Owned<T>` / `Mutable<T>` types are fully erased
 - Enums, classes with private fields, destructuring, template literals, typed arrays — all lowered to valid C++ for an ATmega328P with 2KB RAM
 
 ## Rust-inspired bus ownership

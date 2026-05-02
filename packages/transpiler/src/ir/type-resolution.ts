@@ -83,7 +83,7 @@ const BOARD_CONSTANT_TYPE_NAMES = new Set<string>([
 ]);
 
 const OWNERSHIP_WRAPPER_TYPE_NAMES = new Set<string>([
-  "Owned", "Ref", "MutRef",
+  "Owned", "Shared", "Mutable",
 ]);
 
 export function resolveAliasedTypeNode(
@@ -185,12 +185,12 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   }
 
   // ── Ownership wrapper detection (before alias resolution) ───────────
-  // Ref<T>, MutRef<T>, Owned<T> are phantom types that wrap the real type.
+  // Shared<T>, Mutable<T>, Owned<T> are phantom types that wrap the real type.
   // We must check the ORIGINAL node before alias resolution, because
-  // `type Ref<T> = T` would resolve Ref<number> → number, hiding the wrapper.
+  // `type Shared<T> = T` would resolve Shared<number> → number, hiding the wrapper.
   if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
     const wrapperName = node.typeName.text;
-    if (wrapperName === 'Ref' || wrapperName === 'MutRef' || wrapperName === 'Owned') {
+    if (OWNERSHIP_WRAPPER_TYPE_NAMES.has(wrapperName)) {
       const innerTypeNode = node.typeArguments?.[0];
       return typeNodeToCppType(innerTypeNode, typeAliases);
     }
@@ -848,21 +848,21 @@ export function resolveFunctionReturnType(name: string, functionReturnTypes: Map
 
 /**
  * Extract the ownership kind from a TypeScript type node.
- * Detects Ref<T>, MutRef<T>, and Owned<T> wrapper types.
+ * Detects Shared<T>, Mutable<T>, and Owned<T> wrapper types.
  * Returns undefined if no ownership wrapper is found.
  */
 export function extractOwnershipKindFromTypeNode(
   node: ts.TypeNode | undefined,
   typeAliases?: Map<string, ts.TypeNode>,
-): 'owned' | 'ref' | 'mut_ref' | undefined {
+): 'owned' | 'shared' | 'mutable' | undefined {
   if (!node) return undefined;
 
   // Check the ORIGINAL node before alias resolution.
-  // `type Ref<T> = T` would resolve Ref<number> → number, hiding the wrapper.
+  // `type Shared<T> = T` would resolve Shared<number> → number, hiding the wrapper.
   if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
     const wrapperName = node.typeName.text;
-    if (wrapperName === 'Ref') return 'ref';
-    if (wrapperName === 'MutRef') return 'mut_ref';
+    if (wrapperName === 'Shared') return 'shared';
+    if (wrapperName === 'Mutable') return 'mutable';
     if (wrapperName === 'Owned') return 'owned';
   }
 

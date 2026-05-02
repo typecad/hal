@@ -8,6 +8,7 @@ import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForS
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain";
 import { resolveStrategy } from "./platform/registry";
 import { loadFrameworkPackage } from "./framework-package";
+import { getLoadedFramework, hasLoadedFramework } from "./framework-registry";
 import { loadTypehalConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
@@ -292,18 +293,6 @@ async function main(): Promise<void> {
           frameworkData: { buildTarget: configBuildTarget },
         };
       }
-      if (config.target) {
-        // Derive target from the loaded framework's strategy id, not hardcoded strings.
-        // The framework package registers its strategy in the platform registry on load.
-        if (effectiveFrameworkPackage) {
-          try {
-            loadFrameworkPackage(effectiveFrameworkPackage, inputDir);
-            effectiveTarget = resolveStrategy(effectiveTarget).id;
-          } catch {
-            // Framework not loadable — keep the CLI-provided target
-          }
-        }
-      }
       if (config.outputOutDir && !options.outDir) {
         effectiveOutDir = path.resolve(inputDir, config.outputOutDir);
       }
@@ -313,6 +302,19 @@ async function main(): Promise<void> {
       // Load framework package from config (new approach)
       if (config.framework) {
         effectiveFrameworkPackage = config.framework;
+      }
+      if (config.target) {
+        // Load framework package and derive the effective target from its strategy id.
+        if (effectiveFrameworkPackage) {
+          try {
+            loadFrameworkPackage(effectiveFrameworkPackage, inputDir);
+            if (hasLoadedFramework()) {
+              effectiveTarget = getLoadedFramework().strategy.id;
+            }
+          } catch {
+            // Framework not loadable — keep the CLI-provided target
+          }
+        }
       }
       // Pass console baud rate to platform context
       if (config.console?.baudRate) {
@@ -325,7 +327,10 @@ async function main(): Promise<void> {
       // Platform-specific declarations come from the strategy if available.
       let platformDeclarations: string[] | undefined;
       try {
-        const strategy = resolveStrategy(effectiveTarget);
+        // Use the loaded framework's strategy for platform-specific declarations
+        const strategy = hasLoadedFramework()
+          ? getLoadedFramework().strategy
+          : resolveStrategy(effectiveTarget);
         platformDeclarations = strategy.ambientTypeDeclarations?.();
       } catch {
         // Strategy not yet loaded — env.d.ts will have generic declarations only

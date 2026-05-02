@@ -326,6 +326,11 @@ function typeCheckFiles(
       );
       if (!parsedConfig.errors.length) {
         compilerOptions = { ...parsedConfig.options, noEmit: true };
+        // Include typehal-env.d.ts so module augmentations are visible to the type-checker
+        const envDts = path.join(path.dirname(configPath), "typehal-env.d.ts");
+        if (fs.existsSync(envDts) && !rootNames.includes(envDts)) {
+          rootNames.push(envDts);
+        }
       }
     }
   }

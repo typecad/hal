@@ -2593,7 +2593,7 @@ export function variableStatementToIR(
     }
 
     // â”€â”€ Ownership kind detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // Detect Ref<T>, MutRef<T>, Owned<T> wrapper types and store the
+    // Detect Shared<T>, Mutable<T>, Owned<T> wrapper types and store the
     // ownership kind on the IR node for validation and const emission.
     const ownershipKind = extractOwnershipKindFromTypeNode(declaration.type, typeAliases);
     if (ownershipKind) {

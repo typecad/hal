@@ -53,7 +53,7 @@ interface StatementRendererContext {
 /**
  * Returns true for C++ scalar/primitive types that are cheaply passed by value.
  * Non-primitives (std::vector, String, structs, arrays) should be passed by reference
- * when borrowed via Ref<T> or MutRef<T> to avoid deep copies.
+ * when borrowed via Shared<T> or Mutable<T> to avoid deep copies.
  */
 function isPrimitiveCppType(cppType: string): boolean {
   const t = cppType.trim();
@@ -66,6 +66,11 @@ function isPrimitiveCppType(cppType: string): boolean {
     'signed int', 'signed long', 'signed char',
   ]);
   return primitives.has(t);
+}
+
+function isIndirectType(cppType: string): boolean {
+  const t = cppType.trim();
+  return /\*$/.test(t) || /\[\d*\]$/.test(t);
 }
 
 /**
@@ -376,13 +381,14 @@ export class StatementRenderer {
     const volatilePrefix = statement.isVolatile ? "volatile " : "";
     // Transform type name for Arduino library classes (add namespace prefix)
     const transformedType = transformTypeName(statement.cppType, this.classNameMap);
-    const ownershipKind = (statement as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
-    // Emit const for Ref<T> ownership annotations (ownershipKind === 'ref')
-    const isConst = statement.storage === "const" || ownershipKind === 'ref';
-    // Emit C++ reference for non-primitive Ref<T>/MutRef<T> from named variables.
+    const ownershipKind = (statement as any).ownershipKind as 'owned' | 'shared' | 'mutable' | undefined;
+    // Emit const for Shared<T> ownership annotations (ownershipKind === 'shared')
+    const isConst = statement.storage === "const" || ownershipKind === 'shared';
+    // Emit C++ reference for non-primitive Shared<T>/Mutable<T> from named variables.
     // Primitives pass by value (no overhead). Temporary/literal initializers fall back to copy.
-    const isRef = (ownershipKind === 'ref' || ownershipKind === 'mut_ref')
+    const isRef = (ownershipKind === 'shared' || ownershipKind === 'mutable')
       && !isPrimitiveCppType(statement.cppType)
+      && !isIndirectType(statement.cppType)
       && statement.initializer?.kind === 'identifier';
     const declaration = `${volatilePrefix}${this.renderTypedName(transformedType, statement.name, isConst, isRef)}`;
     
@@ -547,10 +553,10 @@ export class StatementRenderer {
 
   /**
    * Renders function parameters.
-   * Emits `const` for parameters annotated with `Ref<T>` (ownershipKind === 'ref').
+   * Emits `const` for parameters annotated with `Shared<T>` (ownershipKind === 'shared').
    */
   renderParameters(
-    parameters: Array<{ name: string; cppType: string; defaultValue?: any; ownershipKind?: 'owned' | 'ref' | 'mut_ref' }>,
+    parameters: Array<{ name: string; cppType: string; defaultValue?: any; ownershipKind?: 'owned' | 'shared' | 'mutable' }>,
   ): string {
     if (parameters.length === 0) {
       return "";
@@ -558,11 +564,12 @@ export class StatementRenderer {
 
     return parameters
       .map((parameter) => {
-        const paramOwnershipKind = (parameter as any).ownershipKind as 'owned' | 'ref' | 'mut_ref' | undefined;
-        const isConst = paramOwnershipKind === 'ref';
-        // Emit C++ reference for non-primitive Ref<T>/MutRef<T> parameters.
-        const isRef = (paramOwnershipKind === 'ref' || paramOwnershipKind === 'mut_ref')
-          && !isPrimitiveCppType(parameter.cppType);
+        const paramOwnershipKind = (parameter as any).ownershipKind as 'owned' | 'shared' | 'mutable' | undefined;
+        const isConst = paramOwnershipKind === 'shared';
+        // Emit C++ reference for non-primitive Shared<T>/Mutable<T> parameters.
+        const isRef = (paramOwnershipKind === 'shared' || paramOwnershipKind === 'mutable')
+          && !isPrimitiveCppType(parameter.cppType)
+          && !isIndirectType(parameter.cppType);
         let result = this.renderTypedName(parameter.cppType, parameter.name, isConst, isRef);
         if (parameter.defaultValue) {
           result += ` = ${this.expressionRenderer.render(parameter.defaultValue)}`;
