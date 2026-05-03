@@ -82,8 +82,8 @@ describe('Peripheral configuration', () => {
       [
         "import { I2C0 } from '@typehal/board-arduino-uno';",
         '',
-        'const i2c = I2C0.begin();',
-        'i2c.setClock(400000);',
+        'I2C0.begin();',
+        'I2C0.setClock(400000);',
         '',
       ].join('\n'),
       'utf8',

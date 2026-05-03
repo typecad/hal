@@ -269,8 +269,8 @@ export {
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX,
 } from './pins';
 
-// Re-export HIGH/LOW constants from core
-export { HIGH, LOW } from '@typehal/core';
+// Re-export constants from typehal
+export { HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP } from '@typehal/typehal';
 
 // Peripheral bus instances
 export { I2C0, SPI0, UART0 } from './peripherals';
@@ -298,4 +298,3 @@ export { noInterrupts, interrupts, attachInterrupt, detachInterrupt } from './in
 
 // Board namespace (single-import convenience)
 export { Board } from './board';
-export type { IBoard, DigitalPins, AnalogPins } from './board';

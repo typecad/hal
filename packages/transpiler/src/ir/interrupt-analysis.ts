@@ -107,24 +107,6 @@ function scanStatementForInterruptHandler(
   // the flat sugar API (pin.onFalling / pin.onRising / pin.onChange / etc.) which all
   // lower to a single attachInterrupt call on the same hardware interrupt line.
   const ATTACH_METHODS = new Set(['attachInterrupt', 'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh']);
-  if (stmt.kind === 'typehal-call') {
-    const tc = stmt as any;
-    if (ATTACH_METHODS.has(tc.method) && tc.receiver) {
-      const pinName = tc.receiver;
-      const count = handlersByPin.get(pinName) ?? 0;
-
-      if (count > 0) {
-        diagnostics.push({
-          severity: 'warning',
-          message: `Pin '${pinName}' already has an interrupt handler attached. The previous handler will be replaced.`,
-          code: 'duplicate-interrupt-handler',
-          source: 'interrupt-analysis',
-        });
-      }
-
-      handlersByPin.set(pinName, count + 1);
-    }
-  }
 
   // Recursively scan nested statements in control flow
   scanNestedStatements(stmt, (s) => scanStatementForInterruptHandler(s, handlersByPin, diagnostics));
@@ -159,13 +141,6 @@ function isInterruptHandlerCallback(callback: any, parentExpr: any): boolean {
   // Check explicit flag
   if (callback.isInterruptHandler) return true;
 
-  // Check if parent is typehal-call with attachInterrupt
-  if (parentExpr && parentExpr.kind === 'typehal-call') {
-    if (parentExpr.method === 'attachInterrupt' || parentExpr.interruptMode) {
-      return true;
-    }
-  }
-
   return false;
 }
 
@@ -183,13 +158,6 @@ function scanStatementForUnsafeOps(
   if (stmt.kind === 'call') {
     const call = stmt as any;
     checkCalleeForUnsafeOp(call.callee, diagnostics, unsafeOps);
-  }
-
-  // Check for typehal-call statements
-  if (stmt.kind === 'typehal-call') {
-    const tc = stmt as any;
-    const callee = `${tc.receiver}.${tc.method}`;
-    checkCalleeForUnsafeOp(callee, diagnostics, unsafeOps);
   }
 
   // Recursively scan nested statements
@@ -305,16 +273,6 @@ function scanStatementForCallbacks(
   parentExpr: any,
 ): void {
   if (!stmt || typeof stmt !== 'object') return;
-
-  // Check typehal-call args for callbacks
-  if (stmt.kind === 'typehal-call' && stmt.args) {
-    for (const arg of stmt.args) {
-      if (arg && arg.kind === 'callback') {
-        callback(arg, stmt);
-      }
-      scanExpressionForCallbacks(arg, callback, stmt);
-    }
-  }
 
   // Check call args for callbacks
   if (stmt.kind === 'call' && stmt.args) {

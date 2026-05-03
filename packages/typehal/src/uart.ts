@@ -7,8 +7,9 @@ export class SerialPort {
     this._port = port;
   }
 
-  begin(baud: number = 9600): void {
+  begin(baud: number = 9600): this {
     emit(`${this._port}.begin(${baud});`);
+    return this;
   }
 
   end(): void {
@@ -37,6 +38,11 @@ export class SerialPort {
 
   flush(): void {
     emit(`${this._port}.flush();`);
+  }
+
+  printf(format: string, ...args: any[]): void {
+    emit(`snprintf(buf, sizeof(buf), "${format}", ${args.join(", ")});`);
+    emit(`${this._port}.print(buf);`);
   }
 }
 

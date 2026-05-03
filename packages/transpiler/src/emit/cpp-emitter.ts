@@ -385,13 +385,6 @@ function renderExpression(expr: ExpressionIR, exprTransformer?: (expr: string) =
       }
       return `${objStr}.${expr.property}`;
     }
-    case "typehal-call": {
-      const renderA = (e: ExpressionIR) => renderExpression(e, exprTransformer, strategy);
-      const translated = strategy.tryRenderTypehalCall(expr.receiver, expr.receiverKind, expr.method, expr.args, renderA, _emitBoardConstants, expr.interruptMode);
-      if (translated !== undefined) return translated;
-      // Fallback: render as plain method call
-      return `${expr.receiver}.${expr.method}(${expr.args.map(renderA).join(", ")})`;
-    }
     case "callback": {
       // Callbacks are rendered by the statement emitter which tracks them globally
       // Here we just return a marker that gets replaced with the actual function name
@@ -637,27 +630,6 @@ function renderStatement(
   calleeTransformer?: (callee: string) => string,
   knownFunctionReturnTypes?: Map<string, string>,
 ): string {
-  if (statement.kind === "typehal-call") {
-    // Handle typehal-call statements (from fluent chains like UART0.config.baudRate(115200).begin())
-    const renderA = (e: ExpressionIR) => renderExpression(e, undefined, strategy);
-    const translated = strategy.tryRenderTypehalCall(
-      statement.receiver,
-      statement.receiverKind,
-      statement.method,
-      statement.args,
-      renderA,
-      _emitBoardConstants,
-      (statement as any).interruptMode
-    );
-    if (translated !== undefined) {
-      return forHeader ? translated : `${translated};`;
-    }
-    // Fallback: render as plain method call
-    return forHeader
-      ? `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")})`
-      : `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")});`;
-  }
-
   if (statement.kind === "call") {
     // Handle raw statements from setupInitCode
     if (statement.callee.startsWith('__RAW_STMT__')) {
@@ -678,12 +650,6 @@ function renderStatement(
     // Handle console.* calls specially
     if (isConsoleCall(statement.callee)) {
       return transformConsoleCall(statement.callee, statement.args, strategy, forHeader);
-    }
-    // Handle typehal SDK calls via strategy (pin/serial/i2c/spi)
-    const renderA = (e: ExpressionIR) => renderExpression(e, undefined, strategy);
-    const translated = strategy.tryRenderCallStatement(statement.callee, statement.args, renderA, _emitBoardConstants);
-    if (translated !== undefined) {
-      return forHeader ? translated : `${translated};`;
     }
     let callee = statement.callee;
     if (callee.startsWith("this.")) {
@@ -1349,11 +1315,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       }
     }
 
-    // Handle typehal-call for serial println/print/printf with snprintf — delegated to strategy
-    if (statement.kind === "typehal-call" && strategy.useSnprintfForStrings() && statement.args.length > 0) {
-      const isSerial = statement.receiverKind === "serial";
-
-      if ((statement.method === "println" || statement.method === "print") && isSerial && strategy.renderSerialPrintWithSnprintf) {
+    // Handle Serial.print/println calls with string_concat args (snprintf lowering)
+    if (statement.kind === "call" && strategy.useSnprintfForStrings() && statement.args.length > 0) {
+      const callee = statement.callee;
+      const serialMatch = callee.match(/^(Serial\d*)\.(println|print)$/);
+      if (serialMatch) {
+        const [, portName, method] = serialMatch;
         const firstArg = statement.args[0];
         if (firstArg.kind === "string_concat") {
           const snprintfRender = buildSnprintfRenderResult(
@@ -1367,56 +1334,14 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
           if (snprintfRender) {
             const bufferName = `__typehal_println_${++scopeState.nextSnprintfTempId}`;
-            const rendered = strategy.renderSerialPrintWithSnprintf({
-              receiver: statement.receiver,
-              method: statement.method,
-              bufferName,
+            const serialCall = `${portName}.${method}(${bufferName});`;
+            emitSnprintfLines(bufferName, snprintfRender, {
+              declareBuffer: true,
+              finalLine: serialCall,
             });
-            if (rendered) {
-              emitSnprintfLines(bufferName, snprintfRender, {
-                declareBuffer: true,
-                finalLine: rendered.finalLine,
-              });
-              emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
-              return;
-            }
+            emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
+            return;
           }
-        }
-      }
-
-      // serial.printf(format, args...) → snprintf buffer + Serial.print(buffer)
-      if (statement.method === "printf" && isSerial && strategy.renderSerialPrintWithSnprintf) {
-        const formatArg = statement.args[0];
-        const formatExpr = formatArg.kind === "string"
-          ? `"${formatArg.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")}"`
-          : renderExpression(formatArg, undefined, strategy);
-        const printfArgs = statement.args.slice(1).map(a => renderExpression(a, undefined, strategy));
-
-        const bufferName = `__typehal_printf_${++scopeState.nextSnprintfTempId}`;
-        const rendered = strategy.renderSerialPrintWithSnprintf({
-          receiver: statement.receiver,
-          method: "print",
-          bufferName,
-        });
-
-        if (rendered) {
-          appendSourceLine(`${indent}char ${bufferName}[64];`, {
-            tsSpan: statement.sourceSpan,
-            nodeKind: statement.kind,
-          });
-          appendSourceLine(
-            `${indent}snprintf(${bufferName}, sizeof(${bufferName}), ${formatExpr}${printfArgs.length > 0 ? `, ${printfArgs.join(", ")}` : ""});`,
-            {
-              tsSpan: statement.sourceSpan,
-              nodeKind: statement.kind,
-            },
-          );
-          appendSourceLine(`${indent}${rendered.finalLine}`, {
-            tsSpan: statement.sourceSpan,
-            nodeKind: statement.kind,
-          });
-          emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(line));
-          return;
         }
       }
     }
@@ -1782,6 +1707,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     includes.push(...emittedPolyfills.includes.map((include) => normalizeInclude(include)));
   }
 
+  // Auto-include library headers registered by inline evaluators
+  if (program.requiredIncludes) {
+    includes.push(...program.requiredIncludes);
+  }
+
   for (const include of dedupe(includes)) {
     appendSourceLine(`#include ${include}`);
   }
@@ -1940,7 +1870,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   function collectCallbacks(statements: StatementIR[]): void {
     for (const stmt of statements) {
-      if (stmt.kind === "call" || stmt.kind === "typehal-call") {
+      if (stmt.kind === "call") {
         for (const arg of stmt.args) {
           collectCallbackFromExpression(arg);
         }
@@ -2574,14 +2504,6 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     appendSourceLine("");
   }
 
-  if (effectiveEmitMode !== "split") {
-    for (const callback of callbackFunctions) {
-      appendSourceLine(`${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}();`);
-    }
-    if (callbackFunctions.length > 0) {
-      appendSourceLine("");
-    }
-  }
 
   // Emit classes
   // Forward-declare classes that are used as base classes so the compiler

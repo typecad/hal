@@ -16,5 +16,4 @@ export type { PlatformStrategy } from "@typehal/core";
 export type { ExpressionIR, ProgramIR, StatementIR } from "@typehal/core";
 export type { Diagnostic, PlatformContext } from "@typehal/core";
 export type { BoardConstants } from "@typehal/core";
-export type { TypehalReceiverKind } from "@typehal/core";
 export type { RuntimePolyfillIR } from "@typehal/core";

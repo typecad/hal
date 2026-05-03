@@ -1,7 +1,14 @@
 export { emit } from './emit';
+export { include } from './include';
 export { HIGH, LOW, OUTPUT, INPUT, INPUT_PULLUP, LED_BUILTIN, LSBFIRST, MSBFIRST } from './constants';
 export { delay, millis, micros, delayMicroseconds, map, constrain } from './timing';
+export { abs, min, max } from './math';
+export { pulseIn, pulseInLong } from './pulse';
+export { shiftIn, shiftOut } from './shift';
+export { randomSeed, random } from './random';
 export { Pin } from './gpio';
 export { I2CBus, i2cName } from './i2c';
 export { SPIBus, spiName } from './spi';
 export { SerialPort, serialName } from './uart';
+export { EEPROMClass, EEPROM } from './eeprom';
+export { WDTClass, WDT } from './wdt';

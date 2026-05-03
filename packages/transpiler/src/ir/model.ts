@@ -40,8 +40,7 @@ export type {
   ThrowIR,
   LabeledIR,
   BlockIR,
-  TypehalCallStatementIR,
-  
+
   // Functions
   FunctionIR,
   
@@ -76,5 +75,4 @@ export type {
 } from "@typehal/core";
 
 // Re-export related types that are defined locally in CLI
-export type { TypehalReceiverKind } from './typehal-symbols';
 export type { BoardConstants } from './board-resolver';

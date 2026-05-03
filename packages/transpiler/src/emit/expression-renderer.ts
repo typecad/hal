@@ -7,7 +7,6 @@
 import type { ExpressionIR } from "../ir/model";
 import type { PlatformStrategy } from "../platform/platform-strategy";
 import type { BoardConstants } from "../ir/board-resolver";
-import type { TypehalReceiverKind } from "../ir/typehal-symbols";
 import type { KnownVariableInfo } from "@typehal/core/shared";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import { escapeCppKeyword } from "../utils/strings";
@@ -195,9 +194,6 @@ export class ExpressionRenderer {
       case "property-access":
         rendered = this.renderPropertyAccess(expr, exprTransformer);
         break;
-      case "typehal-call":
-        rendered = this.renderTypehalCall(expr, exprTransformer);
-        break;
       case "callback":
         rendered = this.renderCallback(expr);
         break;
@@ -222,9 +218,6 @@ export class ExpressionRenderer {
     if (nullVal && (value === "null" || value === "undefined")) {
       return nullVal;
     }
-    // Delegate peripheral identifier mapping to the platform strategy
-    const mapped = this.strategy.mapPeripheralIdentifier?.(value);
-    if (mapped) return mapped;
     return escapeCppKeyword(value, this.strategy.reservedNames());
   }
 
@@ -402,8 +395,6 @@ export class ExpressionRenderer {
       case "binary":
       case "unary":
       case "ternary":
-      case "typehal-call":
-        return { format: "%d", arg: this.render(expr, exprTransformer), estimatedLength: 12 };
       case "method-call": {
         const rendered = this.render(expr, exprTransformer);
         // String-returning helpers (__tc_toUpperCase, etc.) use %s
@@ -518,22 +509,6 @@ export class ExpressionRenderer {
     }
     const rendered = `${objStr}.${expr.property}`;
     return this.fixPointerAccess(rendered);
-  }
-
-  private renderTypehalCall(expr: Extract<ExpressionIR, { kind: "typehal-call" }>, exprTransformer?: (expr: string) => string): string {
-    const renderA = (e: ExpressionIR) => this.render(e, exprTransformer);
-    const translated = this.strategy.tryRenderTypehalCall(
-      expr.receiver, 
-      expr.receiverKind, 
-      expr.method, 
-      expr.args, 
-      renderA, 
-      this.boardConstants,
-      expr.interruptMode
-    );
-    if (translated !== undefined) return translated;
-    // Fallback: render as plain method call
-    return `${expr.receiver}.${expr.method}(${expr.args.map(renderA).join(", ")})`;
   }
 
   private renderCallback(expr: Extract<ExpressionIR, { kind: "callback" }>): string {

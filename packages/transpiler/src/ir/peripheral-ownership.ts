@@ -14,28 +14,6 @@ import type { ProgramIR, StatementIR, ExpressionIR } from './model';
 import type { Diagnostic } from '../types';
 import { scanNestedStatements } from './interrupt-analysis';
 
-/** Receiver kinds that represent shared buses. */
-const BUS_RECEIVER_KINDS = new Set(['spi', 'i2c', 'serial']);
-
-/** I/O methods that require bus ownership. */
-const BUS_IO_METHODS = new Set([
-  // SPI
-  'transfer', 'write', 'write16', 'read', 'beginTransaction', 'endTransaction',
-  'setFrequency', 'setMode', 'setBitOrder',
-  // I2C
-  'beginTransmission', 'endTransmission', 'requestFrom',
-  'setClock', 'onReceive', 'onRequest',
-  // UART/Serial
-  'print', 'println', 'printf', 'writeString', 'writeLine',
-  'readString', 'readLine', 'clearRxBuffer',
-]);
-
-/** Methods that initialize a bus (not I/O, so no ownership required). */
-const INIT_METHODS = new Set([
-  'begin', 'end', 'initialize',
-  'take', 'release',
-]);
-
 /**
  * Validate peripheral bus ownership when the take()/release() pattern is used.
  *
@@ -55,19 +33,7 @@ export function validatePeripheralOwnership(program: ProgramIR): Diagnostic[] {
   const busesWithOwnership = new Set<string>();
   const quickScan = (stmts: StatementIR[]): void => {
     for (const stmt of stmts) {
-      if (stmt.kind === 'typehal-call') {
-        const tc = stmt as any;
-        if ((tc.method === 'take' || tc.method === 'release') && tc.receiver) {
-          busesWithOwnership.add(tc.receiver);
-        }
-      }
       scanNestedStatements(stmt, (s) => {
-        if (s.kind === 'typehal-call') {
-          const tc = s as any;
-          if ((tc.method === 'take' || tc.method === 'release') && tc.receiver) {
-            busesWithOwnership.add(tc.receiver);
-          }
-        }
       });
     }
   };
@@ -79,58 +45,9 @@ export function validatePeripheralOwnership(program: ProgramIR): Diagnostic[] {
   // If no bus uses the ownership pattern, skip validation entirely
   if (busesWithOwnership.size === 0) return diagnostics;
 
-  const checkTypehalCall = (receiver: string, receiverKind: string | undefined, method: string): void => {
-    if (!receiverKind || !BUS_RECEIVER_KINDS.has(receiverKind)) return;
-
-    if (method === 'take') {
-      if (ownedBuses.has(receiver)) {
-        diagnostics.push({
-          severity: 'error',
-          message: `Bus '${receiver}' is already owned. Call ${receiver}.release() before taking again.`,
-          code: 'peripheral-double-take',
-          source: 'peripheral-ownership',
-        });
-      } else {
-        ownedBuses.add(receiver);
-      }
-    } else if (method === 'release') {
-      if (!ownedBuses.has(receiver)) {
-        diagnostics.push({
-          severity: 'warning',
-          message: `Bus '${receiver}' is not currently owned. Call ${receiver}.take() first.`,
-          code: 'peripheral-release-without-take',
-          source: 'peripheral-ownership',
-        });
-      } else {
-        ownedBuses.delete(receiver);
-      }
-    } else if (!INIT_METHODS.has(method) && BUS_IO_METHODS.has(method) && busesWithOwnership.has(receiver)) {
-      // I/O method — check if bus is owned (only for buses that use ownership pattern)
-      if (!ownedBuses.has(receiver)) {
-        diagnostics.push({
-          severity: 'warning',
-          message: `Bus '${receiver}' I/O via '${method}()' without ownership. ` +
-                   `Use ${receiver}.take() before I/O and ${receiver}.release() after.`,
-          code: 'peripheral-io-without-ownership',
-          source: 'peripheral-ownership',
-        });
-      }
-    }
-  };
-
   /** Scan an expression for typehal calls. */
   const scanExpression = (expr: ExpressionIR | undefined): void => {
     if (!expr || typeof expr !== 'object') return;
-
-    if (expr.kind === 'typehal-call') {
-      const tc = expr as any;
-      if (tc.receiver && tc.method) {
-        checkTypehalCall(tc.receiver, tc.receiverKind, tc.method);
-      }
-      if (tc.args && Array.isArray(tc.args)) {
-        for (const arg of tc.args) scanExpression(arg);
-      }
-    }
 
     // Scan callback bodies for nested typehal-calls
     if (expr.kind === 'callback') {
@@ -144,17 +61,6 @@ export function validatePeripheralOwnership(program: ProgramIR): Diagnostic[] {
   /** Scan a statement for typehal calls. */
   const checkStatement = (stmt: StatementIR): void => {
     if (!stmt || typeof stmt !== 'object') return;
-
-    if (stmt.kind === 'typehal-call') {
-      const tc = stmt as any;
-      if (tc.receiver && tc.method) {
-        checkTypehalCall(tc.receiver, tc.receiverKind, tc.method);
-      }
-      // Scan args for nested typehal-call expressions
-      if (tc.args && Array.isArray(tc.args)) {
-        for (const arg of tc.args) scanExpression(arg);
-      }
-    }
 
     if (stmt.kind === 'call') {
       const c = stmt as any;

@@ -58,10 +58,6 @@ export function renderExprAsText(expr: ExpressionIR): string {
     }
     case "paren":
       return `(${renderExprAsText(expr.inner)})`;
-    case "typehal-call":
-      // Fallback text rendering used inside build-ir.ts only.
-      // The real Arduino translation happens in renderExpression (cpp-emitter.ts).
-      return `${expr.receiver}.${expr.method}(${expr.args.map(renderExprAsText).join(', ')})`;
     case "callback":
       return `/* __callback__ */`;
     case "lambda":
@@ -70,6 +66,10 @@ export function renderExprAsText(expr: ExpressionIR): string {
       const argsText = expr.args.map(a => renderExprAsText(a)).join(", ");
       return `${expr.callee}(${argsText})`;
     }
+    case "template_string":
+      return renderExprAsText(expr.expression);
+    case "string_concat":
+      return expr.parts.map(p => renderExprAsText(p)).join(" + ");
     default:
       return "0 /* unsupported_expr */";
   }

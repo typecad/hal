@@ -5,13 +5,10 @@
 // cpp-emitter.ts, typehal-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, TypehalReceiverKind, RuntimePolyfillIR, StdLibSupport } from "@typehal/core/shared";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport } from "@typehal/core/shared";
 import type { StatementIR } from "@typehal/core/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
 import { resolveArduinoProfile } from "./profile";
-import { renderArduinoBuiltin, tryRenderTypehalCallStatement } from "./typehal-map";
-import { renderDACCall } from "./handlers/dac-handler";
-import { pinArgRaw } from "./handlers/shift-handler";
 
 /**
  * Arduino-specific platform context.
@@ -58,24 +55,6 @@ const ARDUINO_RESERVED_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Arduino macros that are used as VALUE constants in TypeHAL code
- * (e.g. HIGH, LOW, OUTPUT). These map to themselves via mapPeripheralIdentifier
- * so they bypass escapeCppKeyword. Function-like macros (min, max) are excluded
- * because user variables with those names must remain escaped in expressions.
- */
-const ARDUINO_CONSTANT_MACROS: ReadonlySet<string> = new Set([
-  "HIGH", "LOW",
-  "INPUT", "OUTPUT", "INPUT_PULLUP",
-  "RISING", "FALLING", "CHANGE",
-  "INPUT_PULLDOWN", "OUTPUT_OPEN_DRAIN", "ANALOG",
-  "SDA", "SCL", "SS", "MOSI", "MISO", "SCK",
-  "TX", "RX", "TX2", "RX2",
-  "DAC1", "DAC2",
-  "A0", "A1", "A2", "A3", "A4", "A5",
-  "DEFAULT", "INTERNAL", "EXTERNAL",
-]);
-
-/**
  * Enum member names that conflict with Arduino / ESP32 framework macros.
  * Prefixed with `_` in the emitted enum class body.
  */
@@ -108,9 +87,6 @@ export class ArduinoStrategy implements PlatformStrategy {
   private _cachedArch: string = 'default';
   /** Track whether the current program uses createPinGroup() */
   private _usesPinGroup: boolean = false;
-  /** Active analog reference name, updated as analogReference() calls are emitted. */
-  private _activeAnalogReference: string = 'DEFAULT';
-
   /**
    * Allows the emitter to inform this strategy which enums have large values
    * so that static_cast uses `long` instead of `int`.
@@ -126,7 +102,6 @@ export class ArduinoStrategy implements PlatformStrategy {
     this._cachedProfile = null;
     this._cachedProfileKey = null;
     this._cachedArch = 'default';
-    this._activeAnalogReference = 'DEFAULT';
   }
 
   /**
@@ -282,40 +257,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       }
     }
 
-    // Add blocking pin-edge polyfill for constrained targets (AVR) when waitForRising/Falling is used.
-    if (detectWaitForPinEdgeUsage(program)) {
-      const architecture = ctx?.architecture ?? arduinoCtx(ctx)?.buildTarget?.split(":")?.[1]?.toLowerCase();
-      const stdlib = this.getStdLibSupport(architecture);
-      if (!(stdlib.hasVector && stdlib.hasString)) {
-        helpers.push({
-          kind: "polyfill",
-          id: "avr_pin_edge_blocking",
-          domain: "arduino",
-          requiredIncludes: [],
-          forwardDeclarations: [],
-          helperStructs: [],
-          helperFunctions: [AVR_PIN_EDGE_BLOCKING_POLYFILL],
-          shimMacros: [],
-          dependencies: [],
-        });
-      }
-    }
-
-    // Add I2C bus recovery helper when recover() is used.
-    if (detectI2CRecoverUsage(program)) {
-      helpers.push({
-        kind: "polyfill",
-        id: "i2c_recover",
-        domain: "arduino",
-        requiredIncludes: [],
-        forwardDeclarations: [],
-        helperStructs: [],
-        helperFunctions: [I2C_RECOVER_POLYFILL],
-        shimMacros: [],
-        dependencies: [],
-      });
-    }
-
     return helpers;
   }
 
@@ -427,27 +368,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     v = v.replace(/(\w+)\.charAt\(([^)]+)\)/g, "__tc_charAt($1, $2)");
     v = v.replace(/(\w+)\.charCodeAt\(([^)]+)\)/g, "__tc_charCodeAt($1, $2)");
 
-    // Pulse fluent chain: Pulse.on(pin).timeout(us).long().high/low() → pulseIn/pulseInLong
-    // Order: most specific first (long+timeout > timeout > long > simple)
-    v = v.replace(/Pulse\.on\(([^)]+)\)\.timeout\(([^)]+)\)\.long\(\)\.(high|low)\(\)/g,
-      (_m, pin: string, to: string, level: string) => `pulseInLong(${pin}, ${level.toUpperCase()}, ${to})`);
-    v = v.replace(/Pulse\.on\(([^)]+)\)\.long\(\)\.timeout\(([^)]+)\)\.(high|low)\(\)/g,
-      (_m, pin: string, to: string, level: string) => `pulseInLong(${pin}, ${level.toUpperCase()}, ${to})`);
-    v = v.replace(/Pulse\.on\(([^)]+)\)\.timeout\(([^)]+)\)\.(high|low)\(\)/g,
-      (_m, pin: string, to: string, level: string) => `pulseIn(${pin}, ${level.toUpperCase()}, ${to})`);
-    v = v.replace(/Pulse\.on\(([^)]+)\)\.long\(\)\.(high|low)\(\)/g,
-      (_m, pin: string, level: string) => `pulseInLong(${pin}, ${level.toUpperCase()})`);
-    v = v.replace(/Pulse\.on\(([^)]+)\)\.(high|low)\(\)/g,
-      (_m, pin: string, level: string) => `pulseIn(${pin}, ${level.toUpperCase()})`);
-
-    // Shift fluent chains (expression-level): Shift.write/read → shiftOut/shiftIn
-    v = v.replace(/Shift\.write\(([^,]+),\s*([^)]+)\)\.clock\(([^)]+)\)\.(msb|lsb)First\(\)/g,
-      (_m, dataPin: string, value: string, clockPin: string, order: string) =>
-        `shiftOut(${pinArgRaw(dataPin.trim())}, ${pinArgRaw(clockPin.trim())}, ${order.toUpperCase()}FIRST, ${value.trim()})`);
-    v = v.replace(/Shift\.read\(([^)]+)\)\.clock\(([^)]+)\)\.(msb|lsb)First\(\)/g,
-      (_m, dataPin: string, clockPin: string, order: string) =>
-        `shiftIn(${pinArgRaw(dataPin.trim())}, ${pinArgRaw(clockPin.trim())}, ${order.toUpperCase()}FIRST)`);
-
     if (this._usesPinGroup) {
       v = v.replace(/createPinGroup\(\{\s*(.*?)\s*\}\)/g, '__tc_createPinGroup($1)');
     }
@@ -456,29 +376,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   }
   nullValue(): string {
     return "TYPEHAL_UNDEFINED";
-  }
-  mapPeripheralIdentifier(name: string): string | undefined {
-    if (/^I2C\d+$/.test(name)) {
-      const num = name.slice(3);
-      return num === '0' ? 'Wire' : `Wire${num}`;
-    }
-    if (/^SPI\d+$/.test(name)) {
-      const num = name.slice(3);
-      return num === '0' ? 'SPI' : `SPI${num}`;
-    }
-    if (/^UART\d+$/.test(name)) {
-      const num = name.slice(4);
-      return num === '0' ? 'Serial' : `Serial${num}`;
-    }
-    // Arduino constant macros (HIGH, LOW, INPUT, OUTPUT, etc.) are predefined
-    // by the framework headers — return as-is to prevent escapeCppKeyword from
-    // suffixing them with '_'.  User variables sharing these names are escaped
-    // at the declaration site; the mapping here only fires when the identifier
-    // is the original (un-escaped) macro name used as a value.
-    if (ARDUINO_CONSTANT_MACROS.has(name)) {
-      return name;
-    }
-    return undefined;
   }
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined {
     // When snprintf mode is active, string concat is handled at the expression
@@ -522,43 +419,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   passthroughEnumNames(): ReadonlySet<string> {
     return ArduinoStrategy._passthroughEnumNames;
   }
-  tryRenderTypehalCall(
-    receiver: string,
-    receiverKind: TypehalReceiverKind,
-    method: string,
-    args: ReadonlyArray<ExpressionIR>,
-    renderArg: (e: ExpressionIR) => string,
-    boardConstants?: BoardConstants,
-    interruptMode?: "FALLING" | "RISING" | "CHANGE",
-  ): string | undefined {
-    // First try the standard pin/peripheral built-ins
-    // DAC1/DAC2 are mapped as 'pwm' by inferKindByName — intercept and route to DAC handler
-    if ((receiver === 'DAC1' || receiver === 'DAC2') && (method === 'write' || method === 'disable')) {
-      if (this._cachedArch === 'esp32') {
-        return renderDACCall(receiver, method, args, renderArg);
-      }
-      return `/* DAC output is not available on this architecture */`;
-    }
-    // Architecture-aware override: PWM setFrequency
-    if (receiverKind === 'pwm' && method === 'setFrequency') {
-      const pin = /^D(\d+)$/.test(receiver) ? receiver.slice(1) : receiver;
-      const freq = args[0] !== undefined ? renderArg(args[0]) : '0';
-      if (this._cachedArch === 'esp32') {
-        return `analogWriteFrequency(${pin}, ${freq})`;
-      }
-      return `/* setFrequency() not supported on this architecture (${receiver}) */`;
-    }
-    const builtin = renderArduinoBuiltin(receiver, receiverKind, method, args, renderArg, boardConstants, interruptMode, this._activeAnalogReference);
-    if (builtin !== undefined) return builtin;
-
-    // Try the statement-level handler for all typehal calls
-    // This handles config chains (D13.config.output), interrupts (D2.onFalling), etc.
-    const callee = `${receiver}.${method}`;
-    const statementResult = tryRenderTypehalCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch);
-    if (statementResult !== undefined) return statementResult;
-
-    return undefined;
-  }
   renderBoardDefinitionAccess(
     chain: string[],
     boardConstants?: BoardConstants,
@@ -585,59 +445,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
 
   // ── Statement rendering ─────────────────────────────────────────────────
 
-  tryRenderCallStatement(
-    callee: string,
-    args: ReadonlyArray<ExpressionIR>,
-    renderArg: (e: ExpressionIR) => string,
-    boardConstants?: BoardConstants,
-  ): string | undefined {
-    if (callee === 'analogReference' && args.length >= 1) {
-      this._activeAnalogReference = renderArg(args[0]);
-    }
-    // Tone chain: "D8.tone(1000).for_" with args [500] → tone(8, 1000, 500)
-    const toneChain = callee.match(/^(D\d+)\.tone\(([^)]+)\)\.for_$/);
-    if (toneChain && args.length >= 1) {
-      const pin = toneChain[1].slice(1);
-      const freq = toneChain[2];
-      const dur = renderArg(args[0]);
-      return `tone(${pin}, ${freq}, ${dur})`;
-    }
-    const ledToneChain = callee.match(/^LED\.tone\(([^)]+)\)\.for_$/);
-    if (ledToneChain && args.length >= 1) {
-      const freq = ledToneChain[1];
-      const dur = renderArg(args[0]);
-      const ledPin = boardConstants?.get('pins.led');
-      const pin = (typeof ledPin === 'string' && /^D(\d+)$/.test(ledPin)) ? ledPin.slice(1) : 'LED_BUILTIN';
-      return `tone(${pin}, ${freq}, ${dur})`;
-    }
-    // Shift fluent chains that bypass the IR builder
-    const shiftFluent = this.renderShiftFluentChain(callee);
-    if (shiftFluent !== undefined) return shiftFluent;
-
-    return tryRenderTypehalCallStatement(callee, args, "arduino", renderArg, boardConstants, this._cachedArch) ?? undefined;
-  }
-
-  /**
-   * Detect and render Shift fluent chains that the IR builder can't flatten.
-   * The transpiler's extractRootAndChain() can't traverse through intermediate
-   * CallExpression nodes, so chains like Shift.write(pin, val).clock(pin).msbFirst()
-   * arrive as literal callee text. Parse them here.
-   */
-  private renderShiftFluentChain(callee: string): string | undefined {
-    // Shift.write(dataPin, value).clock(clockPin).msbFirst / .lsbFirst
-    const writeMatch = callee.match(/^Shift\.write\(([^,]+),\s*([^)]+)\)\.clock\(([^)]+)\)\.(msb|lsb)First$/);
-    if (writeMatch) {
-      const [, dataPin, value, clockPin, order] = writeMatch;
-      return `shiftOut(${pinArgRaw(dataPin.trim())}, ${pinArgRaw(clockPin.trim())}, ${order.toUpperCase()}FIRST, ${value.trim()})`;
-    }
-    // Shift.read(dataPin).clock(clockPin).msbFirst / .lsbFirst
-    const readMatch = callee.match(/^Shift\.read\(([^)]+)\)\.clock\(([^)]+)\)\.(msb|lsb)First$/);
-    if (readMatch) {
-      const [, dataPin, clockPin, order] = readMatch;
-      return `shiftIn(${pinArgRaw(dataPin.trim())}, ${pinArgRaw(clockPin.trim())}, ${order.toUpperCase()}FIRST)`;
-    }
-    return undefined;
-  }
   renderThrow(_valueExpr: string): string {
     return "typehal_halt(\"PANIC\")";
   }
@@ -1015,85 +822,6 @@ function detectSerialBeginCall(program: ProgramIR): boolean {
     if ("cases" in stmt && Array.isArray((stmt as any).cases)) {
       for (const c of (stmt as any).cases) { for (const s of c.body) { if (checkStmt(s)) return true; } }
     }
-    if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) { for (const s of stmt.tryBlock) { if (checkStmt(s)) return true; } }
-    if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) { for (const s of stmt.catchBlock) { if (checkStmt(s)) return true; } }
-    return false;
-  };
-  for (const fn of program.functions) { for (const s of fn.statements) { if (checkStmt(s)) return true; } }
-  for (const s of program.topLevelStatements) { if (checkStmt(s)) return true; }
-  for (const cls of program.classes) {
-    for (const m of cls.methods) { for (const s of m.statements) { if (checkStmt(s)) return true; } }
-    if (cls.constructor) { for (const s of cls.constructor.statements) { if (checkStmt(s)) return true; } }
-  }
-  return false;
-}
-
-const AVR_PIN_EDGE_BLOCKING_POLYFILL = `namespace typehal_async {
-  inline void waitForPinEdge(int pin, int mode) {
-    int target = (mode == RISING) ? HIGH : LOW;
-    int idle   = (mode == RISING) ? LOW  : HIGH;
-    while (digitalRead(pin) != idle) { }
-    while (digitalRead(pin) != target) { }
-    delay(10);
-  }
-}`;
-
-/**
- * Scan IR to see if waitForRising or waitForFalling is used.
- */
-function detectWaitForPinEdgeUsage(program: ProgramIR): boolean {
-  const checkStmt = (stmt: StatementIR): boolean => {
-    if (stmt.kind === "typehal-call" && (stmt.method === "waitForRising" || stmt.method === "waitForFalling")) return true;
-    if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) { if (checkStmt(s)) return true; } }
-    if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) { if (checkStmt(s)) return true; } }
-    if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) { for (const s of stmt.elseBranch) { if (checkStmt(s)) return true; } }
-    if ("cases" in stmt && Array.isArray((stmt as any).cases)) {
-      for (const c of (stmt as any).cases) { for (const s of c.body) { if (checkStmt(s)) return true; } }
-    }
-    if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) { for (const s of stmt.tryBlock) { if (checkStmt(s)) return true; } }
-    if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) { for (const s of stmt.catchBlock) { if (checkStmt(s)) return true; } }
-    return false;
-  };
-  for (const fn of program.functions) { for (const s of fn.statements) { if (checkStmt(s)) return true; } }
-  for (const s of program.topLevelStatements) { if (checkStmt(s)) return true; }
-  for (const cls of program.classes) {
-    for (const m of cls.methods) { for (const s of m.statements) { if (checkStmt(s)) return true; } }
-    if (cls.constructor) { for (const s of cls.constructor.statements) { if (checkStmt(s)) return true; } }
-  }
-  return false;
-}
-
-const I2C_RECOVER_POLYFILL = `inline bool typehal_i2c_recover() {
-  pinMode(SCL, OUTPUT);
-  pinMode(SDA, INPUT_PULLUP);
-  delay(10);
-  for (int i = 0; i < 9; i++) {
-    digitalWrite(SCL, LOW);
-    delayMicroseconds(5);
-    digitalWrite(SCL, HIGH);
-    delayMicroseconds(5);
-  }
-  // Generate a stop condition
-  pinMode(SDA, OUTPUT);
-  digitalWrite(SDA, LOW);
-  delayMicroseconds(5);
-  digitalWrite(SDA, HIGH);
-  pinMode(SCL, INPUT);
-  pinMode(SDA, INPUT);
-  return true;
-}`;
-
-/**
- * Scan IR to see if I2C bus recover() is used.
- */
-function detectI2CRecoverUsage(program: ProgramIR): boolean {
-  const checkStmt = (stmt: StatementIR): boolean => {
-    if (stmt.kind === "typehal-call" && stmt.method === "recover") return true;
-    if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) { if (checkStmt(s)) return true; } }
-    if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) { if (checkStmt(s)) return true; } }
-    if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) { for (const s of stmt.elseBranch) { if (checkStmt(s)) return true; } }
-    if ("cases" in stmt && Array.isArray((stmt as any).cases)) {
-      for (const c of (stmt as any).cases) { for (const s of c.body) { if (checkStmt(s)) return true; } } }
     if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) { for (const s of stmt.tryBlock) { if (checkStmt(s)) return true; } }
     if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) { for (const s of stmt.catchBlock) { if (checkStmt(s)) return true; } }
     return false;

@@ -88,18 +88,6 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
     const e = expr as any;
     if (!e.kind) return;
 
-    // Check for typehal-call expressions (e.g., D3.read() inside ${...})
-    if (e.kind === 'typehal-call') {
-      if (e.receiver && e.method) {
-        checkTypehalCall(e.receiver, e.receiverKind, e.method);
-      }
-      // Also scan args of this typehal-call expression
-      if (e.args && Array.isArray(e.args)) {
-        for (const arg of e.args) scanExpression(arg);
-      }
-      return;
-    }
-
     // Recurse into nested expressions
     if (e.args && Array.isArray(e.args)) {
       for (const arg of e.args) scanExpression(arg);
@@ -134,17 +122,6 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
 
   const checkStatement = (stmt: StatementIR): void => {
     if (!stmt || typeof stmt !== 'object') return;
-
-    if (stmt.kind === 'typehal-call') {
-      const tc = stmt as any;
-      if (tc.receiver && tc.method) {
-        checkTypehalCall(tc.receiver, tc.receiverKind, tc.method);
-      }
-      // Scan args for nested typehal-call expressions
-      if (tc.args && Array.isArray(tc.args)) {
-        for (const arg of tc.args) scanExpression(arg);
-      }
-    }
 
     // Scan expressions in other statement types for nested typehal-calls
     if (stmt.kind === 'assign') {

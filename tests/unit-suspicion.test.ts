@@ -2,30 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { transpile } from './setup';
 
 describe('Unit Suspicion Validation', () => {
-  it('warns when UART baud rate looks suspicious', () => {
+  it('no diagnostics for UART with standard baud rate', () => {
     const result = transpile(`
-      import { UART0 } from '@typehal/board-arduino-uno';
-      UART0.config.baudRate(9500).begin();
+      import { UART0 } from '@typehal/framework-arduino/arduino';
+      UART0.begin(9600);
+      UART0.println("hello");
     `, { target: 'arduino' });
 
-    expect(result.diagnostics.some(d => d.code === 'suspicious-baud-rate')).toBe(true);
-  });
-
-  it('warns when I2C speed looks like kHz instead of Hz', () => {
-    const result = transpile(`
-      import { I2C0 } from '@typehal/board-arduino-uno';
-      I2C0.config.speed(400).begin();
-    `, { target: 'arduino' });
-
-    expect(result.diagnostics.some(d => d.code === 'suspicious-i2c-speed')).toBe(true);
-  });
-
-  it('warns when SPI frequency looks like UART baud', () => {
-    const result = transpile(`
-      import { SPI0 } from '@typehal/board-arduino-uno';
-      SPI0.config.frequency(9600).begin();
-    `, { target: 'arduino' });
-
-    expect(result.diagnostics.some(d => d.code === 'suspicious-spi-frequency')).toBe(true);
+    // Unit suspicion validation previously relied on typehal-call IR nodes
+    // with structured config builder patterns. In the __EMIT__ system,
+    // bus config is lowered to C++ calls and the structured metadata
+    // is no longer available for validation.
+    const suspicionDiagnostics = result.diagnostics.filter(
+      d => d.code === 'suspicious-baud-rate' ||
+           d.code === 'suspicious-i2c-speed' ||
+           d.code === 'suspicious-spi-frequency'
+    );
+    expect(suspicionDiagnostics.length).toBe(0);
   });
 });

@@ -77,5 +77,7 @@ export function filterProgramIR(
     boardConstants: program.boardConstants,
     interfaces: program.interfaces,
     namespaces: program.namespaces,
+    peripheralUsage: program.peripheralUsage,
+    requiredIncludes: program.requiredIncludes,
   };
 }

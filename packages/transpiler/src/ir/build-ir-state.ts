@@ -2,7 +2,6 @@ import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR } from "./mo
 
 // Module-level map of top-level class names to their IR for static method return type lookup.
 export const topLevelClasses = new Map<string, ClassIR>();
-import type { TypehalReceiverKind } from "./typehal-symbols";
 
 // Track variables that are pointers (from 'new' expressions)
 // Maps variable name → class name (e.g., "b" → "Builder")
@@ -45,19 +44,6 @@ export const hoistedNestedTypeAliases: TypeAliasIR[] = [];
 export const nestedFunctionAliases = new Map<string, string>();
 export const nestedClassAliases = new Map<string, string>();
 
-// Module-level pin alias map for the current buildProgramIR invocation.
-// Maps alias variable names (e.g., "led") to their original pin names (e.g., "LED").
-export const activePinAliases = new Map<string, string>();
-
-// Module-level bus alias map for the current buildProgramIR invocation.
-// Maps alias variable names (e.g., "i2c") to their original peripheral receiver info.
-export const activeBusAliases = new Map<string, { receiver: string; kind: TypehalReceiverKind }>();
-
-// Module-level device accessor alias map for the current buildProgramIR invocation.
-// Tracks variables created via bus.device(addr), e.g. `const sensor = bus.device(0x76)`
-// so that `sensor.readByte(reg)` can be expanded into a Wire transaction.
-export const activeDeviceAccessorAliases = new Map<string, { receiver: string; kind: TypehalReceiverKind; addressIR: import("./model").ExpressionIR }>();
-
 // Module-level C-array variable tracker for the current buildProgramIR invocation.
 // Tracks variable names initialized with new Uint8Array([...]) (or similar typed array
 // constructors) that transpile to C arrays rather than pointers. For these variables,
@@ -91,6 +77,9 @@ export const activeNamespaceNames = new Set<string>();
 // Used to emit :: for static method calls on top-level classes (not just hoisted nested ones).
 export const topLevelClassNames = new Set<string>();
 
+// Module-level set of library includes required by inline evaluators (e.g., "<SPI.h>", "<Wire.h>").
+export const requiredIncludes = new Set<string>();
+
 // Module-level local variable type tracker for typeof resolution.
 // Maps variable name → inferred C++ type string (e.g., "int", "std::string").
 export const activeLocalTypes = new Map<string, string>();
@@ -103,13 +92,11 @@ export function resetBuildState(): void {
   hoistedNestedTypeAliases.length = 0;
   nestedFunctionAliases.clear();
   nestedClassAliases.clear();
-  activePinAliases.clear();
-  activeBusAliases.clear();
-  activeDeviceAccessorAliases.clear();
   resetFunctionScopeState();
   activeNamespaceNames.clear();
   topLevelClassNames.clear();
   topLevelClasses.clear();
+  requiredIncludes.clear();
 }
 
 /** Clear state that should be scoped to a single function body. */

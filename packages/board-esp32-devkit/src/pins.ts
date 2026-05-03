@@ -1,12 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-esp32-devkit — Typed pin exports
+// @typehal/board-esp32-devkit — Pin exports
 //
-// Each pin is exported with the narrowest interface that matches its
-// capabilities so that TypeScript prevents invalid operations at compile
-// time (e.g. calling high() on an input-only pin).
-//
-// The factory stubs capture pin/gpio numbers as plain data. The transpiler
-// replaces them with architecture-specific C++ during code-gen.
+// Each pin is a Pin instance from @typehal/typehal. The transpiler inlines
+// method calls as direct Arduino C++.
 //
 // ESP32 DevKit v1 (38-pin) usable GPIOs:
 //   Output-capable: 0-5, 12-19, 21-23, 25-27, 32-33
@@ -14,114 +10,52 @@
 //   Flash-connected (unusable): 6-11
 // ---------------------------------------------------------------------------
 
-import type { PinCapabilityFlags } from '@typehal/core';
-import type {
-  IESP32FullGPIOPin,
-  IESP32InputOnlyPin,
-} from './pin-types';
+import { Pin } from '@typehal/typehal';
 
 // ---------------------------------------------------------------------------
-// Internal stub factories (no-op at runtime; consumed by transpiler)
-// ---------------------------------------------------------------------------
-
-const FULL_GPIO_CAPS: PinCapabilityFlags = {
-  digitalInput: true, digitalOutput: true,
-  analogInput: false, analogOutput: false,
-  pwm: true, interrupt: true,
-  pullUp: true, pullDown: true,
-  touch: false, openDrain: false,
-};
-
-const FULL_GPIO_ANALOG_CAPS: PinCapabilityFlags = {
-  ...FULL_GPIO_CAPS,
-  analogInput: true,
-};
-
-const FULL_GPIO_TOUCH_CAPS: PinCapabilityFlags = {
-  ...FULL_GPIO_CAPS,
-  touch: true,
-};
-
-const FULL_GPIO_ANALOG_TOUCH_CAPS: PinCapabilityFlags = {
-  ...FULL_GPIO_CAPS,
-  analogInput: true,
-  touch: true,
-};
-
-const FULL_GPIO_DAC_CAPS: PinCapabilityFlags = {
-  ...FULL_GPIO_CAPS,
-  analogInput: true,
-  analogOutput: true,
-};
-
-const INPUT_ONLY_CAPS: PinCapabilityFlags = {
-  digitalInput: true, digitalOutput: false,
-  analogInput: true, analogOutput: false,
-  pwm: false, interrupt: true,
-  pullUp: false, pullDown: false,
-  touch: false, openDrain: false,
-};
-
-function createFullGPIOPin(pin: number, gpio: number, caps: PinCapabilityFlags = FULL_GPIO_CAPS): IESP32FullGPIOPin {
-  return {
-    number: pin,
-    gpio,
-    capabilities: caps,
-  } as unknown as IESP32FullGPIOPin;
-}
-
-function createInputOnlyPin(pin: number, gpio: number): IESP32InputOnlyPin {
-  return {
-    number: pin,
-    gpio,
-    capabilities: INPUT_ONLY_CAPS,
-  } as unknown as IESP32InputOnlyPin;
-}
-
-// ---------------------------------------------------------------------------
-// Output-capable GPIOs — all support PWM + interrupt + pull-up + pull-down
+// Output-capable GPIOs
 // ---------------------------------------------------------------------------
 
 // Boot strapping pins (unsafe — affect boot mode)
-export const D0:  IESP32FullGPIOPin = createFullGPIOPin(0, 0, FULL_GPIO_ANALOG_TOUCH_CAPS);   // Boot: HIGH for normal boot. Touch1. ADC2_CH1.
-export const D2:  IESP32FullGPIOPin = createFullGPIOPin(2, 2, FULL_GPIO_ANALOG_TOUCH_CAPS);   // Onboard LED. Touch2. ADC2_CH2.
-export const D5:  IESP32FullGPIOPin = createFullGPIOPin(5, 5);                                 // Boot: must be HIGH. VSPI CS0.
-export const D12: IESP32FullGPIOPin = createFullGPIOPin(12, 12, FULL_GPIO_ANALOG_TOUCH_CAPS);  // Boot: must be LOW (flash voltage). Touch5. HSPI MISO.
-export const D15: IESP32FullGPIOPin = createFullGPIOPin(15, 15, FULL_GPIO_ANALOG_TOUCH_CAPS);  // Boot: must be HIGH. Touch3. HSPI CS0.
+export const D0  = new Pin(0);   // Boot: HIGH for normal boot. Touch1. ADC2_CH1.
+export const D2  = new Pin(2);   // Onboard LED. Touch2. ADC2_CH2.
+export const D5  = new Pin(5);   // Boot: must be HIGH. VSPI CS0.
+export const D12 = new Pin(12);  // Boot: must be LOW (flash voltage). Touch5. HSPI MISO.
+export const D15 = new Pin(15);  // Boot: must be HIGH. Touch3. HSPI CS0.
 
 // UART0 pins (unsafe — interferes with USB serial)
-export const D1:  IESP32FullGPIOPin = createFullGPIOPin(1, 1);   // UART0 TX
-export const D3:  IESP32FullGPIOPin = createFullGPIOPin(3, 3);   // UART0 RX
+export const D1  = new Pin(1);   // UART0 TX
+export const D3  = new Pin(3);   // UART0 RX
 
 // General purpose GPIOs
-export const D4:  IESP32FullGPIOPin = createFullGPIOPin(4, 4, FULL_GPIO_ANALOG_TOUCH_CAPS);    // Touch0. ADC2_CH0.
-export const D13: IESP32FullGPIOPin = createFullGPIOPin(13, 13, FULL_GPIO_ANALOG_TOUCH_CAPS);  // HSPI MOSI. Touch4. ADC2_CH4.
-export const D14: IESP32FullGPIOPin = createFullGPIOPin(14, 14, FULL_GPIO_ANALOG_TOUCH_CAPS);  // HSPI SCK. Touch6. ADC2_CH6.
-export const D16: IESP32FullGPIOPin = createFullGPIOPin(16, 16);   // UART2 RX
-export const D17: IESP32FullGPIOPin = createFullGPIOPin(17, 17);   // UART2 TX
-export const D18: IESP32FullGPIOPin = createFullGPIOPin(18, 18);   // VSPI SCK
-export const D19: IESP32FullGPIOPin = createFullGPIOPin(19, 19);   // VSPI MISO
-export const D21: IESP32FullGPIOPin = createFullGPIOPin(21, 21);   // I2C0 SDA
-export const D22: IESP32FullGPIOPin = createFullGPIOPin(22, 22);   // I2C0 SCL
-export const D23: IESP32FullGPIOPin = createFullGPIOPin(23, 23);   // VSPI MOSI
+export const D4  = new Pin(4);   // Touch0. ADC2_CH0.
+export const D13 = new Pin(13);  // HSPI MOSI. Touch4. ADC2_CH4.
+export const D14 = new Pin(14);  // HSPI SCK. Touch6. ADC2_CH6.
+export const D16 = new Pin(16);  // UART2 RX
+export const D17 = new Pin(17);  // UART2 TX
+export const D18 = new Pin(18);  // VSPI SCK
+export const D19 = new Pin(19);  // VSPI MISO
+export const D21 = new Pin(21);  // I2C0 SDA
+export const D22 = new Pin(22);  // I2C0 SCL
+export const D23 = new Pin(23);  // VSPI MOSI
 
 // DAC pins
-export const D25: IESP32FullGPIOPin = createFullGPIOPin(25, 25, FULL_GPIO_DAC_CAPS);  // DAC1. ADC2_CH8.
-export const D26: IESP32FullGPIOPin = createFullGPIOPin(26, 26, FULL_GPIO_DAC_CAPS);  // DAC2. ADC2_CH9.
+export const D25 = new Pin(25);  // DAC1. ADC2_CH8.
+export const D26 = new Pin(26);  // DAC2. ADC2_CH9.
 
 // Touch + ADC pins
-export const D27: IESP32FullGPIOPin = createFullGPIOPin(27, 27, FULL_GPIO_ANALOG_TOUCH_CAPS);  // Touch7. ADC2_CH7.
-export const D32: IESP32FullGPIOPin = createFullGPIOPin(32, 32, FULL_GPIO_ANALOG_TOUCH_CAPS);  // Touch9. ADC1_CH4.
-export const D33: IESP32FullGPIOPin = createFullGPIOPin(33, 33, FULL_GPIO_ANALOG_TOUCH_CAPS);  // Touch8. ADC1_CH5.
+export const D27 = new Pin(27);  // Touch7. ADC2_CH7.
+export const D32 = new Pin(32);  // Touch9. ADC1_CH4.
+export const D33 = new Pin(33);  // Touch8. ADC1_CH5.
 
 // ---------------------------------------------------------------------------
 // Input-only GPIOs — no output, no pull-up/pull-down
 // ---------------------------------------------------------------------------
 
-export const D34: IESP32InputOnlyPin = createInputOnlyPin(34, 34);  // ADC1_CH6
-export const D35: IESP32InputOnlyPin = createInputOnlyPin(35, 35);  // ADC1_CH7
-export const D36: IESP32InputOnlyPin = createInputOnlyPin(36, 36);  // ADC1_CH0 (VP)
-export const D39: IESP32InputOnlyPin = createInputOnlyPin(39, 39);  // ADC1_CH3 (VN)
+export const D34 = new Pin(34);  // ADC1_CH6
+export const D35 = new Pin(35);  // ADC1_CH7
+export const D36 = new Pin(36);  // ADC1_CH0 (VP)
+export const D39 = new Pin(39);  // ADC1_CH3 (VN)
 
 // ---------------------------------------------------------------------------
 // Analog aliases (Arduino ESP32 convention)

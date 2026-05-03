@@ -8,108 +8,28 @@
 
 import type { ProgramIR, ExpressionIR, StatementIR } from './model';
 import type { Diagnostic } from '../types';
-import type { TypehalReceiverKind } from '@typehal/core';
-import { pinsWithKind } from '@typehal/core';
-
-// ---------------------------------------------------------------------------
-// Method-to-capability mapping
-// ---------------------------------------------------------------------------
-
-const ANALOG_METHODS = new Set(['readAnalog', 'readVoltage', 'setAnalogReference', 'getAnalogResolution']);
-const PWM_METHODS = new Set(['pwm', 'getPwmFrequency', 'getPwmResolution']);
-const INTERRUPT_METHODS = new Set(['onRising', 'onFalling', 'onChange', 'offInterrupts']);
-
-interface CapabilityRule {
-  methods: Set<string>;
-  requiredKind: TypehalReceiverKind;
-  label: string;
-  description: (method: string) => string;
-}
-
-const RULES: CapabilityRule[] = [
-  {
-    methods: ANALOG_METHODS,
-    requiredKind: 'analog-input',
-    label: 'analog reading',
-    description: (m) => `${m}() is an analog-only method`,
-  },
-  {
-    methods: PWM_METHODS,
-    requiredKind: 'pwm',
-    label: 'PWM output',
-    description: (m) => `${m}() is a PWM-only method`,
-  },
-  {
-    methods: INTERRUPT_METHODS,
-    requiredKind: 'interrupt',
-    label: 'interrupts',
-    description: (m) => `${m}() is an interrupt-only method`,
-  },
-];
-
-function describeKind(kind: TypehalReceiverKind): string {
-  switch (kind) {
-  case 'digital': return 'digital-only';
-  case 'pwm': return 'PWM-capable';
-  case 'analog-input': return 'analog-capable';
-  case 'interrupt': return 'interrupt-capable';
-  default: return kind;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// IR walker — mirrors the pattern in adc-range-validation.ts
-// ---------------------------------------------------------------------------
-
-function checkTypehalCall(
-  receiver: string,
-  receiverKind: string,
-  method: string,
-  sourceLine: number | undefined,
-  sourceColumn: number | undefined,
-  diagnostics: Diagnostic[],
-): void {
-  for (const rule of RULES) {
-    if (!rule.methods.has(method)) continue;
-    if (receiverKind === rule.requiredKind) continue;
-
-    diagnostics.push({
-      severity: 'error',
-      code: 'pin-capability-mismatch',
-      message: `${receiver}.${method}() — ${rule.description(method)}, but ${receiver} is a ${describeKind(receiverKind as TypehalReceiverKind)} pin.`,
-      hint: `Use a pin that supports ${rule.label}: ${pinsWithKind(rule.requiredKind).join(', ')}.`,
-      source: 'pin-capability-validation',
-      line: sourceLine,
-      column: sourceColumn,
-    });
-  }
-}
 
 function scanExpression(expr: ExpressionIR, parentLine: number | undefined, parentCol: number | undefined, diagnostics: Diagnostic[]): void {
   if (!expr || typeof expr !== 'object') return;
 
-  if (expr.kind === 'typehal-call') {
-    const tc = expr as any;
-    checkTypehalCall(tc.receiver, tc.receiverKind, tc.method, parentLine, parentCol, diagnostics);
-    if (tc.args) {
-      for (const arg of tc.args) {
-        scanExpression(arg, parentLine, parentCol, diagnostics);
-      }
-    }
-  } else if (expr.kind === 'binary') {
+  if (expr.kind === 'binary') {
     const bin = expr as any;
     scanExpression(bin.left, parentLine, parentCol, diagnostics);
     scanExpression(bin.right, parentLine, parentCol, diagnostics);
-  } else if (expr.kind === 'ternary') {
+  }
+  if (expr.kind === 'ternary') {
     const t = expr as any;
     scanExpression(t.condition, parentLine, parentCol, diagnostics);
     scanExpression(t.consequent, parentLine, parentCol, diagnostics);
     scanExpression(t.alternate, parentLine, parentCol, diagnostics);
-  } else if (expr.kind === 'property-access') {
+  }
+  if (expr.kind === 'property-access') {
     scanExpression((expr as any).object, parentLine, parentCol, diagnostics);
-  } else if (expr.kind === 'unary') {
+  }
+  if (expr.kind === 'unary') {
     scanExpression((expr as any).operand, parentLine, parentCol, diagnostics);
-  } else if (expr.kind === 'paren') {
+  }
+  if (expr.kind === 'paren') {
     scanExpression((expr as any).inner, parentLine, parentCol, diagnostics);
   }
 }
@@ -121,17 +41,6 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   const col = (stmt as any).sourceSpan?.startColumn as number | undefined;
 
   switch (stmt.kind) {
-  case 'typehal-call': {
-    const tc = stmt as any;
-    checkTypehalCall(tc.receiver, tc.receiverKind, tc.method, line, col, diagnostics);
-    if (tc.args) {
-      for (const arg of tc.args) {
-        scanExpression(arg, line, col, diagnostics);
-      }
-    }
-    break;
-  }
-
   case 'var_decl': {
     const v = stmt as any;
     if (v.initializer) scanExpression(v.initializer, line, col, diagnostics);

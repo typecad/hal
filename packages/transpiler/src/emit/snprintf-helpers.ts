@@ -200,7 +200,6 @@ export function inferSnprintfArg(
     case "binary":
     case "unary":
     case "ternary":
-    case "typehal-call":
       return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
     case "method-call": {
       const rendered = renderExpression(expr);
@@ -296,7 +295,7 @@ export function statementNeedsSnprintf(statement: StatementIR, strategy: Platfor
     return true;
   }
 
-  if ((statement.kind === "call" || statement.kind === "typehal-call") && statement.args.length > 0) {
+  if (statement.kind === "call" && statement.args.length > 0) {
     if (statement.args.some((arg) => arg.kind === "string_concat")) {
       return true;
     }

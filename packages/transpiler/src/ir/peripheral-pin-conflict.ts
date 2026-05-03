@@ -179,9 +179,18 @@ function buildPeripheralPinMap(boardConstants: BoardConstants | undefined): Peri
 
 /**
  * Check if a pin is used as GPIO (digital/analog operations, not peripheral init).
+ * Checks both by pin name (in pinsUsed set) and by pin number (in outputPins/inputPins sets).
  */
-function isPinUsedAsGpio(pinName: string, usage: PeripheralUsage): boolean {
-  return usage.pinsUsed.has(pinName);
+function isPinUsedAsGpio(pinName: string, pinNumber: number | undefined, usage: PeripheralUsage): boolean {
+  if (usage.pinsUsed.has(pinName)) return true;
+  // Also check by pin number from the usage sets populated by __EMIT__ node analysis
+  if (pinNumber !== undefined) {
+    if (usage.outputPins.has(pinNumber) || usage.inputPins.has(pinNumber) ||
+        usage.inputPullupPins.has(pinNumber) || usage.inputPulldownPins.has(pinNumber)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -297,7 +306,8 @@ export function validatePeripheralPinConflicts(
 
   // Check each pin with peripheral functions
   for (const [pinName, functions] of pinMap) {
-    const isGpio = isPinUsedAsGpio(pinName, usage);
+    const boardPin = findBoardPinByName(pinName, boardConstants);
+    const isGpio = isPinUsedAsGpio(pinName, boardPin?.number, usage);
 
     for (const func of functions) {
       if (func.type !== 'i2c' && func.type !== 'spi' && func.type !== 'uart') continue;
@@ -307,7 +317,8 @@ export function validatePeripheralPinConflicts(
       const conflictKey = `${canonicalPinName}:${peripheralName}`;
 
       // Direction 1: Pin used as GPIO while peripheral is active
-      if (isGpio && isActive) {
+      // CS pins are GPIO outputs by design — skip the warning
+      if (isGpio && isActive && func.role !== 'cs') {
         if (!reportedConflicts.has(conflictKey)) {
           reportedConflicts.add(conflictKey);
           const roleUpper = func.role.toUpperCase();

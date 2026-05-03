@@ -1,4 +1,37 @@
 import { emit } from './emit';
+import { include } from './include';
+
+export class I2CDevice {
+  private _bus: string;
+  private _address: number;
+
+  constructor(bus: string, address: number) {
+    this._bus = bus;
+    this._address = address;
+  }
+
+  writeByte(register: number, value: number): void {
+    emit(`${this._bus}.beginTransmission(${this._address});`);
+    emit(`${this._bus}.write(${register});`);
+    emit(`${this._bus}.write(${value});`);
+    emit(`${this._bus}.endTransmission();`);
+  }
+
+  readByte(register: number): number {
+    return 0;
+  }
+
+  writeBytes(register: number, data: number[] | Uint8Array): void {
+    emit(`${this._bus}.beginTransmission(${this._address});`);
+    emit(`${this._bus}.write(${register});`);
+    emit(`${this._bus}.write(data, sizeof(data));`);
+    emit(`${this._bus}.endTransmission();`);
+  }
+
+  readBytes(register: number, count: number): Uint8Array {
+    return new Uint8Array(count);
+  }
+}
 
 export class I2CBus {
   private _bus: string;
@@ -7,8 +40,14 @@ export class I2CBus {
     this._bus = bus;
   }
 
-  begin(): void {
+  device(address: number): I2CDevice {
+    return new I2CDevice(this._bus, address);
+  }
+
+  begin(): this {
+    include("<Wire.h>");
     emit(`${this._bus}.begin();`);
+    return this;
   }
 
   beginSlave(address: number): void {

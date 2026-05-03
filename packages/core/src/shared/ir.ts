@@ -38,7 +38,6 @@ export type {
   ThrowIR,
   LabeledIR,
   BlockIR,
-  TypehalCallStatementIR,
   StatementIR,
 } from './ir-core';
 
@@ -143,6 +142,8 @@ export interface ProgramIR {
   boardConstants?: BoardConstants;
   /** Tracks which hardware peripherals are used (for optimized initialization) */
   peripheralUsage?: PeripheralUsageIR;
+  /** Library includes registered by inline evaluators (e.g., "<SPI.h>", "<Wire.h>") */
+  requiredIncludes?: Set<string>;
   /** The name of the default export, if this module has `export default <name>` */
   defaultExportName?: string;
 }

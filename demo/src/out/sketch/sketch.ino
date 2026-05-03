@@ -1,33 +1,40 @@
 #include <Arduino.h>
-#include <Wire.h>
-
-const int BME280_ADDR = 118;
+#include <stdio.h>
+#include <stdlib.h>
+#include <SPI.h>
 
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  // Initialize UART0 for debug output
   Serial.begin(9600);
-  // Initialize I2C as master
-  Wire.begin();
-  // Main loop
+  SPI.begin();
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  SPI.setDataMode(0);
+  SPI.setBitOrder("msb");
+  {
+    pinMode(10, OUTPUT);
+    digitalWrite(10, LOW);
+  }
+  Serial.println("SPI Basic Example");
   while (true)
   {
-    // Read 2 bytes from register 0xFA (temperature data)
-    uint8_t tempData[2];
-    Wire.beginTransmission(BME280_ADDR);
-    Wire.write(250);
-    Wire.endTransmission(false);
-    Wire.requestFrom(BME280_ADDR, 2);
-    for (int i = 0; i < 2; i++) { tempData[i] = Wire.read(); }
-    
-    // Access bytes directly from returned Uint8Array
-    const auto msb = tempData[0];
-    const auto lsb = tempData[1];
-    // Combine into raw temperature value
-    const auto tempRaw = (msb << 8) | lsb;
-    const auto temperature = tempRaw / 100.0f;
-    Serial.println(temperature);
+    digitalWrite(10, LOW);
+    SPI.transfer(68);
+    digitalWrite(10, HIGH);
+    // Send byte and receive response (full-duplex)
+    // CS is asserted and deasserted automatically by .device()
+    const auto response = SPI.transfer(68);
+    char __typehal_println_1[37];
+    snprintf(__typehal_println_1, sizeof(__typehal_println_1), "Sent: 0xAA, Received: 0x%d", response);
+    Serial.println(__typehal_println_1);
+    delay(1000);
+    {
+      digitalWrite(10, LOW);
+      SPI.transfer(128);
+      SPI.transfer(0);
+      SPI.transfer(255);
+      digitalWrite(10, HIGH);
+    }
     delay(1000);
   }
 }

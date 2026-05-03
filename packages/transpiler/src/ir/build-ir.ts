@@ -7,8 +7,8 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, topLevelClassNames, topLevelClasses, resetBuildState } from "./build-ir-state";
-import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, pinInstances, i2cInstances, serialInstances } from "./statement-to-ir";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState } from "./build-ir-state";
+import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, pinInstances, i2cInstances, serialInstances, spiInstances, eepromInstances, wdtInstances, halNamespaces } from "./statement-to-ir";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
 import { functionDeclarationToIR, variableAsFunctionToIR } from "./function-builder";
@@ -42,6 +42,10 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   pinInstances.clear();
   i2cInstances.clear();
   serialInstances.clear();
+  spiInstances.clear();
+  eepromInstances.clear();
+  wdtInstances.clear();
+  halNamespaces.clear();
   registerFieldMap.clear();
   
   // Collect pointer variables at top level (for correct -> vs . usage)
@@ -83,6 +87,62 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         for (const name of namedImports) {
           if (/^[A-Z]/.test(name)) {
             topLevelClassNames.add(name);
+          }
+        }
+      }
+
+      // Track HAL instances imported from board packages and framework stubs
+      // so inline evaluators can resolve them to Arduino C++ names.
+      const isHALSource = moduleSpecifier.startsWith('@typehal/board-')
+        || moduleSpecifier === '@typehal/framework-arduino/arduino'
+        || moduleSpecifier === '@typehal';
+
+      if (isHALSource) {
+        // Determine analog pin offset for A-pin resolution
+        const isEsp32 = moduleSpecifier.includes('esp32');
+        const analogOffset = isEsp32 ? 36 : 14;
+
+        for (const name of namedImports) {
+          // D-pins: D0-D53 → pin number from name
+          const dMatch = name.match(/^D(\d+)$/);
+          if (dMatch) { pinInstances.set(name, dMatch[1]); continue; }
+
+          // A-pins: A0-A19 → pin number with board-specific offset
+          const aMatch = name.match(/^A(\d+)$/);
+          if (aMatch) { pinInstances.set(name, String(analogOffset + parseInt(aMatch[1]))); continue; }
+
+          // I2C buses: I2C0→Wire, I2C1→Wire1
+          const i2cMatch = name.match(/^I2C(\d+)$/);
+          if (i2cMatch) { i2cInstances.set(name, i2cMatch[1] === '0' ? 'Wire' : `Wire${i2cMatch[1]}`); continue; }
+
+          // SPI buses: SPI0→SPI, SPI1→SPI1
+          const spiMatch = name.match(/^SPI(\d+)$/);
+          if (spiMatch) { spiInstances.set(name, spiMatch[1] === '0' ? 'SPI' : `SPI${spiMatch[1]}`); continue; }
+
+          // UART: UART0→Serial, UART1→Serial1, UART2→Serial2
+          const uartMatch = name.match(/^UART(\d+)$/);
+          if (uartMatch) { serialInstances.set(name, uartMatch[1] === '0' ? 'Serial' : `Serial${uartMatch[1]}`); continue; }
+
+          // HAL namespace imports: Pulse, Shift, Random
+          if (name === 'Pulse' || name === 'Shift' || name === 'Random') {
+            halNamespaces.set(name, name);
+            continue;
+          }
+        }
+
+        // Board-specific pin and peripheral aliases
+        if (!isEsp32) {
+          const pinAliases: Record<string, string> = {
+            LED: '13', SDA: '18', SCL: '19',
+            MOSI: '11', MISO: '12', SCK: '13', SS: '10',
+            TX: '1', RX: '0',
+          };
+          const serialAliases: Record<string, string> = {
+            Serial: 'Serial',
+          };
+          for (const name of namedImports) {
+            if (pinAliases[name]) { pinInstances.set(name, pinAliases[name]); }
+            if (serialAliases[name]) { serialInstances.set(name, serialAliases[name]); }
           }
         }
       }
@@ -337,6 +397,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     diagnostics,
     boardConstants,
     peripheralUsage,
+    requiredIncludes: new Set(requiredIncludes),
     interfaces,
     namespaces,
     ...(defaultExportName ? { defaultExportName } : {}),

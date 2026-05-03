@@ -145,79 +145,10 @@ function checkSPIFrequency(value: number): string | undefined {
 }
 
 /**
- * Scan a typehal-call statement for suspicious peripheral config values.
- */
-function scanTypehalCall(
-  stmt: StatementIR,
-  diagnostics: Diagnostic[],
-): void {
-  const tc = stmt as any;
-  if (tc.kind !== 'typehal-call') return;
-
-  const rawMethod = tc.method as string | undefined;
-  const method = rawMethod === 'configBegin'
-    ? (tc.configMethod as string | undefined)
-    : rawMethod;
-  const receiver = tc.receiver as string | undefined;
-  const args = tc.args as ExpressionIR[] | undefined;
-
-  if (!method || !args || args.length === 0) return;
-
-  const value = extractNumericValue(args[0]);
-  if (value === undefined) return;
-
-  let warning: string | undefined;
-
-  // Check UART baudRate config
-  if (method === 'baudRate') {
-    warning = checkBaudRate(value);
-    if (warning) {
-      diagnostics.push({
-        severity: 'warning',
-        message: warning,
-        code: 'suspicious-baud-rate',
-        source: 'unit-suspicion',
-      });
-    }
-    return;
-  }
-
-  // Check I2C speed config
-  if (method === 'speed') {
-    warning = checkI2CSpeed(value);
-    if (warning) {
-      diagnostics.push({
-        severity: 'warning',
-        message: warning,
-        code: 'suspicious-i2c-speed',
-        source: 'unit-suspicion',
-      });
-    }
-    return;
-  }
-
-  // Check SPI frequency config
-  if (method === 'frequency') {
-    warning = checkSPIFrequency(value);
-    if (warning) {
-      diagnostics.push({
-        severity: 'warning',
-        message: warning,
-        code: 'suspicious-spi-frequency',
-        source: 'unit-suspicion',
-      });
-    }
-    return;
-  }
-}
-
-/**
  * Recursively scan a statement and its children for suspicious peripheral config values.
  */
 function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   if (!stmt || typeof stmt !== 'object') return;
-
-  scanTypehalCall(stmt, diagnostics);
 
   // Recurse into nested statements
   const s = stmt as any;

@@ -4,7 +4,7 @@
 // Resolves Arduino-specific profile settings based on FQBN and program IR.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext, TypehalReceiverKind } from "@typehal/core/shared";
+import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext } from "@typehal/core/shared";
 import type { ArduinoPlatformContext } from "./strategy";
 
 function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
@@ -222,127 +222,6 @@ function collectTopLevelDeclarations(program: ProgramIR): Set<string> {
   }
 
   return declared;
-}
-
-function collectTypehalReceiverKinds(program: ProgramIR): Set<TypehalReceiverKind> {
-  const kinds = new Set<TypehalReceiverKind>();
-
-  // Forward-declare so collectFromExpr and collectFromStatement can call each other
-  let collectFromStatement: (s: StatementIR) => void;
-
-  const collectFromExpr = (expr: ExpressionIR | undefined): void => {
-    if (!expr || typeof expr !== 'object') return;
-    switch (expr.kind) {
-      case "typehal-call":
-        kinds.add(expr.receiverKind);
-        break;
-      case "callback":
-        for (const s of (expr as any).statements ?? []) collectFromStatement(s as StatementIR);
-        break;
-      case "lambda":
-        for (const s of (expr as any).body ?? []) collectFromStatement(s as StatementIR);
-        break;
-      case "ternary":
-        collectFromExpr(expr.condition);
-        collectFromExpr(expr.whenTrue);
-        collectFromExpr(expr.whenFalse);
-        break;
-      case "binary":
-        collectFromExpr(expr.left);
-        collectFromExpr(expr.right);
-        break;
-      case "unary":
-        collectFromExpr(expr.operand);
-        break;
-      case "await":
-        collectFromExpr(expr.value);
-        break;
-      case "paren":
-        collectFromExpr(expr.inner);
-        break;
-      case "array":
-        for (const el of expr.elements) collectFromExpr(el);
-        break;
-      case "string_concat":
-        for (const p of expr.parts) collectFromExpr(p);
-        break;
-      case "template_string":
-        collectFromExpr(expr.expression);
-        break;
-      case "object":
-        for (const f of expr.fields) collectFromExpr(f.value);
-        break;
-      // Leaf kinds — nothing to recurse into
-      default:
-        break;
-    }
-  };
-
-  collectFromStatement = (statement: StatementIR): void => {
-    if (!statement || typeof statement !== 'object') return;
-    switch (statement.kind) {
-      case "typehal-call":
-        kinds.add(statement.receiverKind);
-        break;
-      case "var_decl":
-        collectFromExpr(statement.initializer);
-        break;
-      case "return":
-        collectFromExpr((statement as any).value);
-        break;
-      case "assign":
-        collectFromExpr((statement as any).value);
-        break;
-      case "if":
-        collectFromExpr((statement as any).condition);
-        for (const s of (statement as any).thenBranch ?? []) collectFromStatement(s);
-        for (const s of (statement as any).elseBranch ?? []) collectFromStatement(s);
-        break;
-      case "while":
-      case "do_while":
-        collectFromExpr((statement as any).condition);
-        for (const s of (statement as any).body ?? []) collectFromStatement(s);
-        break;
-      case "for":
-        collectFromStatement((statement as any).initializer as StatementIR);
-        collectFromExpr((statement as any).condition);
-        collectFromStatement((statement as any).increment as StatementIR);
-        for (const s of (statement as any).body ?? []) collectFromStatement(s);
-        break;
-      case "for_of":
-      case "for_in":
-        for (const s of (statement as any).body ?? []) collectFromStatement(s);
-        break;
-      case "block":
-        for (const s of (statement as any).statements ?? []) collectFromStatement(s);
-        break;
-      case "try":
-        for (const s of (statement as any).tryBlock ?? []) collectFromStatement(s);
-        for (const s of (statement as any).catchBlock ?? []) collectFromStatement(s);
-        for (const s of (statement as any).finallyBlock ?? []) collectFromStatement(s);
-        break;
-      case "call":
-        for (const arg of (statement as any).args ?? []) collectFromExpr(arg as ExpressionIR);
-        break;
-      default:
-        break;
-    }
-  };
-
-  walkStatements(program.topLevelStatements, collectFromStatement);
-  for (const fn of program.functions) {
-    walkStatements(fn.statements, collectFromStatement);
-  }
-  for (const cls of program.classes ?? []) {
-    for (const method of cls.methods ?? []) {
-      walkStatements(method.statements, collectFromStatement);
-    }
-    if (cls.constructor) {
-      walkStatements(cls.constructor.statements, collectFromStatement);
-    }
-  }
-
-  return kinds;
 }
 
 function resolveVariant(context?: ArduinoPlatformContext): ArduinoProfileVariant {
@@ -612,11 +491,15 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
   const used = collectUsedIdentifiers(program);
   const calledFunctions = collectCalledFunctions(program);
   const declared = collectTopLevelDeclarations(program);
-  const receiverKinds = collectTypehalReceiverKinds(program);
   const shimLines: string[] = [];
 
   for (const functionName of calledFunctions) {
     if (declared.has(functionName)) {
+      continue;
+    }
+
+    // Skip internal transpiler functions
+    if (functionName === "__EMIT__" || functionName.startsWith("__RAW_STMT__")) {
       continue;
     }
 
@@ -686,34 +569,11 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
   }
 
   const extraIncludes: string[] = [];
-  if (receiverKinds.has('i2c')) extraIncludes.push('<Wire.h>');
-  if (receiverKinds.has('spi')) extraIncludes.push('<SPI.h>');
-  if (receiverKinds.has('eeprom')) extraIncludes.push('<EEPROM.h>');
-  if (receiverKinds.has('wdt')) {
-    const arch = toArchitectureFromFqbn(context?.buildTarget);
-    if (arch === 'esp32') {
-      extraIncludes.push('<esp_task_wdt.h>');
-    } else {
-      extraIncludes.push('<avr/wdt.h>');
-    }
-  }
 
   if (used.has('DAC1') || used.has('DAC2')) {
     const arch = toArchitectureFromFqbn(context?.buildTarget);
     if (arch === 'esp32') {
       extraIncludes.push('<driver/dac.h>');
-    }
-  }
-
-  if (receiverKinds.has('preferences')) {
-    const arch = toArchitectureFromFqbn(context?.buildTarget);
-    if (arch === 'esp32') {
-      extraIncludes.push('<Preferences.h>');
-      shimLines.push('Preferences __tc_prefs;');
-    } else {
-      extraIncludes.push('<EEPROM.h>');
-      shimLines.push(...AVR_PREFERENCES_SHIM);
-      shimLines.push('__tc_Preferences __tc_prefs;');
     }
   }
 

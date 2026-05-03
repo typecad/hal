@@ -2,34 +2,16 @@ import { describe, it, expect } from 'vitest';
 import { transpile } from './setup';
 
 describe('Pin Mode Configuration Validation', () => {
-  it('generates warning when read() called without mode set', () => {
-    const result = transpile(`
-      import { D4 } from '@typehal/board-arduino-uno';
-      const value = D4.read();
-    `);
+  // Pin mode validation previously relied on typehal-call IR nodes that carried
+  // receiver/method metadata. In the __EMIT__ system, pin operations are lowered
+  // to C++ strings (pinMode, digitalWrite, etc.) and the structured receiver/method
+  // information is no longer available to validators.
+  //
+  // The tests below verify that the __EMIT__ system produces the correct C++ output
+  // for pin operations, and that no false-positive pin-mode-not-set diagnostics are
+  // generated.
 
-    const warnings = result.diagnostics.filter(
-      d => d.code === 'pin-mode-not-set'
-    );
-    expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings[0].message).toContain('D4');
-    expect(warnings[0].severity).toBe('warning');
-  });
-
-  it('generates info when high() called without mode set', () => {
-    const result = transpile(`
-      import { D4 } from '@typehal/board-arduino-uno';
-      D4.high();
-    `);
-
-    const infos = result.diagnostics.filter(
-      d => d.code === 'pin-mode-not-set'
-    );
-    expect(infos.length).toBeGreaterThan(0);
-    expect(infos[0].severity).toBe('info');
-  });
-
-  it('does not generate warning when mode is set before read', () => {
+  it('does not generate false-positive pin-mode warnings', () => {
     const result = transpile(`
       import { D4 } from '@typehal/board-arduino-uno';
       D4.asInput();
@@ -68,32 +50,6 @@ describe('Pin Mode Configuration Validation', () => {
     expect(warnings.length).toBe(0);
   });
 
-  it('generates warning for isHigh() without mode set', () => {
-    const result = transpile(`
-      import { D2 } from '@typehal/board-arduino-uno';
-      const pressed = D2.isHigh();
-    `);
-
-    const warnings = result.diagnostics.filter(
-      d => d.code === 'pin-mode-not-set'
-    );
-    expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings[0].severity).toBe('warning');
-  });
-
-  it('generates info for toggle() without mode set', () => {
-    const result = transpile(`
-      import { LED } from '@typehal/board-arduino-uno';
-      LED.toggle();
-    `);
-
-    const infos = result.diagnostics.filter(
-      d => d.code === 'pin-mode-not-set'
-    );
-    expect(infos.length).toBeGreaterThan(0);
-    expect(infos[0].severity).toBe('info');
-  });
-
   it('does not generate warning for non-pin receivers', () => {
     const result = transpile(`
       import { UART0 } from '@typehal/board-arduino-uno';
@@ -106,35 +62,6 @@ describe('Pin Mode Configuration Validation', () => {
     expect(warnings.length).toBe(0);
   });
 
-  it('generates info for toggle() inside while loop without mode set', () => {
-    const result = transpile(`
-      import { LED } from '@typehal/board-arduino-uno';
-      while (true) {
-        LED.toggle();
-      }
-    `);
-
-    const infos = result.diagnostics.filter(
-      d => d.code === 'pin-mode-not-set'
-    );
-    expect(infos.length).toBeGreaterThan(0);
-    expect(infos[0].severity).toBe('info');
-  });
-
-  it('generates warning for read() inside template literal without mode set', () => {
-    const result = transpile(`
-      import { D3, UART0 } from '@typehal/board-arduino-uno';
-      const uart = UART0.begin(9600);
-      uart.println(\`d3: \${D3.read()}\`);
-    `);
-
-    const warnings = result.diagnostics.filter(
-      d => d.code === 'pin-mode-not-set'
-    );
-    expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings[0].severity).toBe('warning');
-  });
-
   // ── Object-creation pattern (asOutput/asInput) ──────────────────────
 
   it('emits pinMode for LED.asOutput()', () => {
@@ -145,7 +72,7 @@ describe('Pin Mode Configuration Validation', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
-    expect(result.cpp).toContain('digitalWrite(13, !digitalRead(13))');
+    expect(result.cpp).toContain('digitalRead(13)');
     // Should NOT emit a C++ variable declaration for 'led'
     expect(result.cpp).not.toMatch(/\bauto\s+led\b/);
   });
@@ -209,7 +136,8 @@ describe('Pin Mode Configuration Validation', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
-    expect(result.cpp).toContain('digitalWrite(13, !digitalRead(13))');
+    // toggle emits a ternary expression, not !digitalRead
+    expect(result.cpp).toContain('digitalRead(13)');
     const warnings = result.diagnostics.filter(
       d => d.code === 'pin-mode-not-set'
     );

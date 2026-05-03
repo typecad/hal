@@ -1,35 +1,37 @@
 // ---------------------------------------------------------------------------
-// Example 5a — I2C Sensor Read (Basic Wire API)
+// Example 6 — SPI Basic
 //
-// Demonstrates basic I2C master mode communication with a BME280 sensor.
-// Shows: begin(), setClock(), beginTransmission(), write(), endTransmission(),
-//        requestFrom(), available(), read()
+// Demonstrates basic SPI communication using Arduino-compatible API.
+// Shows: begin(), transfer(), setMode(), setBitOrder(), setFrequency()
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0, delay } from '@typehal';
+import { SPI0, UART0, delay, D10 } from '@typehal';
 
-// Initialize UART0 for debug output
 const serial = UART0.begin(9600);
 
-// Initialize I2C as master
-const sensor = I2C0.begin();
-const BME280_ADDR = 0x76;
+// Initialize SPI with configuration
+const spi = SPI0.begin();
+spi.setFrequency(1_000_000);
+spi.setMode(0);
+spi.setBitOrder('msb');
 
-// Main loop
+// Chip select pin
+const CS = D10;
+CS.asOutput();  // true (deselected)
+
+serial.println("SPI Basic Example");
+
 while (true) {
-  // Read 2 bytes from register 0xFA (temperature data)
-  const tempData = sensor.device(BME280_ADDR).readBytes(0xfa, 2);
+  // Send byte and receive response (full-duplex)
+  // CS is asserted and deasserted automatically by .device()
+  const response = spi.device(CS).transfer(0x44);
 
-  // Access bytes directly from returned Uint8Array
-  const msb = tempData[0];
-  const lsb = tempData[1];
-
-  // Combine into raw temperature value
-  const tempRaw = (msb << 8) | lsb;
-  const temperature = tempRaw / 100.0;
-  serial.println(temperature);
-
-
+  serial.println(`Sent: 0xAA, Received: 0x${response}`);
+  
+  delay(1000);
+  
+  // Transfer multiple bytes
+  spi.device(CS).transfer(new Uint8Array([0x80, 0x00, 0xFF]));
+    
   delay(1000);
 }
-

@@ -12,7 +12,6 @@ import { ExpressionRenderer, transformTypeName } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
-import { mapPeripheralName } from "../mapping/peripheral-names";
 
 /**
  * Context needed for statement rendering.
@@ -152,10 +151,6 @@ export class StatementRenderer {
    */
   render(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string): string {
     const rendered = (() => {
-      if (statement.kind === "typehal-call") {
-        return this.renderTypehalCallStatement(statement, forHeader);
-      }
-
       if (statement.kind === "call") {
         return this.renderCall(statement, forHeader, calleeTransformer);
       }
@@ -288,26 +283,6 @@ export class StatementRenderer {
     return this.fixPointerFieldAccess(rendered);
   }
 
-  private renderTypehalCallStatement(statement: Extract<StatementIR, { kind: "typehal-call" }>, forHeader: boolean): string {
-    const renderA = (e: ExpressionIR) => this.expressionRenderer.render(e);
-    const translated = this.strategy.tryRenderTypehalCall(
-      statement.receiver,
-      statement.receiverKind,
-      statement.method,
-      statement.args,
-      renderA,
-      this.expressionRenderer.getBoardConstants(),
-      (statement as any).interruptMode
-    );
-    if (translated !== undefined) {
-      return forHeader ? translated : `${translated};`;
-    }
-    // Fallback: render as plain method call
-    return forHeader
-      ? `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")})`
-      : `${statement.receiver}.${statement.method}(${statement.args.map(renderA).join(", ")});`;
-  }
-
   private fixCrossModuleMethodCall(callee: string): string {
     const lastDot = callee.lastIndexOf(".");
     if (lastDot === -1) {
@@ -357,17 +332,6 @@ export class StatementRenderer {
     if (isConsoleCall(statement.callee)) {
       return this.transformConsoleCall(statement.callee, statement.args, forHeader);
     }
-    // Handle typehal SDK calls via strategy (pin/serial/i2c/spi)
-    const renderA = (e: ExpressionIR) => this.expressionRenderer.render(e);
-    const translated = this.strategy.tryRenderCallStatement(
-      statement.callee, 
-      statement.args, 
-      renderA, 
-      this.expressionRenderer.getBoardConstants()
-    );
-    if (translated !== undefined) {
-      return forHeader ? translated : `${translated};`;
-    }
     let callee = statement.callee;
     if (callee.startsWith("this.")) {
       callee = `this->${callee.slice("this.".length)}`;
@@ -406,44 +370,6 @@ export class StatementRenderer {
         const bodyStr = statement.initializer.body.map(s => "  " + this.render(s)).join("\n");
         const safeName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         return `auto ${safeName} = [=](${params})${ret} {\n${bodyStr}\n};`;
-      }
-      // Handle device.readByte / device.readBytes — delegate to strategy for
-      // platform-specific I2C transaction emission.
-      if (statement.initializer.kind === "typehal-call") {
-        const initCall = statement.initializer as Extract<ExpressionIR, { kind: "typehal-call" }>;
-        if (initCall.method === "device.readByte" || initCall.method === "device.readBytes") {
-          const renderA = (e: ExpressionIR) => this.expressionRenderer.render(e);
-          const addr = renderA(initCall.args[0]);
-          const reg = renderA(initCall.args[1]);
-          const wireNum = initCall.receiver.slice(3); // strip leading "I2C"
-          const wire = mapPeripheralName(initCall.receiver, this.strategy) ?? `Wire${wireNum}`;
-
-          if (this.strategy.renderI2CDeviceRead) {
-            const readResult = this.strategy.renderI2CDeviceRead({
-              receiver: initCall.receiver,
-              wireName: wire,
-              address: addr,
-              register: reg,
-              count: initCall.method === "device.readBytes" ? renderA(initCall.args[2]) : undefined,
-              targetVarName: statement.name,
-            });
-            if (readResult) {
-              this.expressionRenderer.pushPrelude(readResult.preludeLines);
-              if (readResult.isMultiStatement) {
-                return "";
-              }
-              return forHeader
-                ? `${declaration} = ${readResult.returnValue}`
-                : `${declaration} = ${readResult.returnValue};`;
-            }
-          }
-
-          // Fallback: emit as plain method call when strategy doesn't handle it
-          const renderedArgs = initCall.args.map(renderA).join(", ");
-          return forHeader
-            ? `${declaration} = ${initCall.receiver}.${initCall.method}(${renderedArgs})`
-            : `${declaration} = ${initCall.receiver}.${initCall.method}(${renderedArgs});`;
-        }
       }
 
       // Handle array initializers

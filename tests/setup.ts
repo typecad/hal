@@ -4,8 +4,7 @@ import { emitCpp } from "../packages/transpiler/src/emit/cpp-emitter";
 import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/transpiler/src/types";
 import { setLoadedFramework } from "../packages/transpiler/src/framework-registry";
 import { registerPlatformStrategy } from "../packages/transpiler/src/platform/registry";
-import { ArduinoStrategy, SYMBOL_KINDS } from "../packages/framework-arduino";
-import { registerSymbolKinds } from "@typehal/core/shared";
+import { ArduinoStrategy } from "../packages/framework-arduino";
 import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
@@ -15,7 +14,6 @@ import * as path from "path";
 const _arduinoStrategy = new ArduinoStrategy();
 setLoadedFramework({ strategy: _arduinoStrategy });
 registerPlatformStrategy(_arduinoStrategy);
-registerSymbolKinds(SYMBOL_KINDS);
 
 // Ensure output directory exists
 const testOutDir = ".build/tests";

@@ -2,13 +2,10 @@ import ts from "typescript";
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { inferKindByName } from "./typehal-symbols";
-import { parsePinNumber } from "./peripheral-usage";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activePinAliases, activeBusAliases, activeDeviceAccessorAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
-import { lowerStatement } from "./statement-to-ir";
+import { lowerStatement, tryInlineHALExpression, pinInstances, halNamespaces } from "./statement-to-ir";
 import { escapeCppKeyword } from "../utils/strings";
-import { extractRootAndChain } from "./ast-patterns";
 
 export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
   function emitUnsupportedExpression(message: string): ExpressionIR {
@@ -292,31 +289,6 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return { kind: "raw", value: `typehal_nullish(${left}, ${right})` };
   }
 
-  // Extract Num.* fluent chains from a CallExpression AST node.
-  // Returns { method, args } or undefined if the expression is not a Num chain.
-  function extractNumChain(e: ts.CallExpression): { method: string; args: ts.Expression[] } | undefined {
-    if (!ts.isCallExpression(e)) return undefined;
-    // Walk the AST to collect the chain: Num.method(args).method(args)...
-    const methods: string[] = [];
-    const allArgs: ts.Expression[] = [];
-    let current: ts.Expression = e;
-    while (ts.isCallExpression(current)) {
-      const pa = current.expression;
-      if (!ts.isPropertyAccessExpression(pa)) return undefined;
-      methods.push(pa.name.text);
-      // Collect args in reverse order (we'll reverse methods at the end)
-      allArgs.unshift(...current.arguments);
-      current = pa.expression;
-      // If current is now an Identifier named "Num", we found the root
-      if (ts.isIdentifier(current) && current.text === "Num") {
-        methods.reverse();
-        return { method: methods.join("."), args: allArgs };
-      }
-      // Otherwise current might be another CallExpression (next link in chain)
-    }
-    return undefined;
-  }
-
   // Handle typeof expressions — at transpile time, typeof on a known variable
   // can be resolved. For typeof x === "number", the binary handler will compare.
   // Standalone typeof x emits a type-name string literal.
@@ -383,6 +355,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isCallExpression(expr)) {
+    // ---- HAL inline evaluator for expression context ----
+    const halResult = tryInlineHALExpression(expr, sourceText, diagnostics, pointerVars);
+    if (halResult) return halResult.ir;
+
     // Warn about optional chaining on call expressions â€” we preserve a null guard,
     // but the runtime semantics are still only approximate compared to TypeScript.
     if (isOptionalChainNode(expr)) {
@@ -402,129 +378,6 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         };
       }
     }
-    // ---- Debounce chain detection -------------------------------------------
-    // Handle D2.onFalling(() => {...}).debounce(50) pattern
-    // The outer call is .debounce(ms), inner call is the interrupt attachment
-    if (ts.isPropertyAccessExpression(expr.expression) && 
-        expr.expression.name.text === "debounce" &&
-        expr.arguments.length === 1 &&
-        ts.isCallExpression(expr.expression.expression)) {
-      
-      const innerCall = expr.expression.expression;
-      const debounceArg = expr.arguments[0];
-      let debounceMs: number | undefined;
-      
-      if (ts.isNumericLiteral(debounceArg)) {
-        debounceMs = Number(debounceArg.text);
-      }
-      
-      // Process the inner call (the interrupt attachment with callback)
-      const innerResult = expressionToIR(innerCall, sourceText, diagnostics, pointerVars);
-      
-      // If the inner result is a typehal-call with a callback argument, attach debounce
-      if (innerResult.kind === "typehal-call") {
-        for (const arg of innerResult.args) {
-          if (arg.kind === "callback" && debounceMs !== undefined) {
-            arg.debounceMs = debounceMs;
-          }
-        }
-      }
-      
-      return innerResult;
-    }
-
-    // ---- Fluent peripheral config chain detection ---------------------------
-    // Handle UART0.config.baudRate(115200).begin() -> Serial.begin(115200)
-    // Handle I2C0.config.speed(400000).begin() -> Wire.begin() + Wire.setClock()
-    // Handle SPI0.config.frequency(1000000).begin() -> SPI.begin()
-    // 
-    // AST structure: CallExpression
-    //   expression: PropertyAccessExpression (.begin)
-    //     expression: CallExpression (baudRate(115200))
-    //       expression: PropertyAccessExpression (.baudRate)
-    //         expression: PropertyAccessExpression (.config)
-    //           expression: Identifier (UART0)
-    if (ts.isPropertyAccessExpression(expr.expression) && 
-        expr.expression.name.text === "begin" &&
-        ts.isCallExpression(expr.expression.expression)) {
-      
-      const innerCall = expr.expression.expression;
-      const innerCallee = innerCall.expression;
-      
-      // Check for peripheral.config.method(value).begin() pattern
-      // innerCallee should be: UART0.config.baudRate (PropertyAccessExpression)
-      if (ts.isPropertyAccessExpression(innerCallee)) {
-        const configMethodName = innerCallee.name.text;  // baudRate, speed, frequency
-        
-        // Check if innerCallee.expression is UART0.config (PropertyAccessExpression with .config)
-        if (ts.isPropertyAccessExpression(innerCallee.expression) &&
-            innerCallee.expression.name.text === "config") {
-          
-          // Get the peripheral name (UART0, I2C0, SPI0)
-          const peripheralExpr = innerCallee.expression.expression;
-          if (ts.isIdentifier(peripheralExpr)) {
-            const peripheralName = peripheralExpr.text;
-            const kind = inferKindByName(peripheralName);
-            
-            // Only handle peripheral types (serial, i2c, spi)
-            if (kind === 'serial' || kind === 'i2c' || kind === 'spi') {
-              // Extract the config value
-              const configValue = innerCall.arguments.length > 0 
-                ? expressionToIR(innerCall.arguments[0], sourceText, diagnostics, pointerVars)
-                : undefined;
-              
-              // Return a typehal-call with the config value passed to begin
-              return {
-                kind: "typehal-call",
-                receiver: peripheralName,
-                receiverKind: kind,
-                method: "configBegin",  // Special method that handles config + begin
-                args: configValue ? [configValue] : [],
-                configMethod: configMethodName,  // Pass along which config method was used
-              } as any;
-            }
-          }
-        }
-      }
-    }
-
-    // ---- Tone().duration() chain detection ------------------------------------
-    // Handle D3.tone(500).duration(1000) pattern -> tone(pin, 500, 1000)
-    // Works on all digital output pins (digital, pwm, interrupt)
-    if (ts.isPropertyAccessExpression(expr.expression) &&
-        expr.expression.name.text === "duration" &&
-        expr.arguments.length === 1 &&
-        ts.isCallExpression(expr.expression.expression)) {
-      
-      const innerCall = expr.expression.expression;
-      const durationArg = expr.arguments[0];
-      
-      // Check if inner call is a tone() call on any digital-capable pin
-      if (ts.isPropertyAccessExpression(innerCall.expression) &&
-          innerCall.expression.name.text === "tone" &&
-          ts.isIdentifier(innerCall.expression.expression)) {
-        
-        const pinName = innerCall.expression.expression.text;
-        const kind = inferKindByName(pinName);
-        
-        // Allow tone on digital, pwm, and interrupt pins
-        if (kind === 'pwm' || kind === 'digital' || kind === 'interrupt') {
-          // Build a typehal-call with toneFor method that includes duration
-          const frequencyArg = innerCall.arguments[0];
-          return {
-            kind: "typehal-call",
-            receiver: pinName,
-            receiverKind: kind,
-            method: "toneFor",  // Special method that emits tone(pin, freq, duration)
-            args: [
-              expressionToIR(frequencyArg, sourceText, diagnostics, pointerVars),
-              expressionToIR(durationArg, sourceText, diagnostics, pointerVars),
-            ],
-          };
-        }
-      }
-    }
-
     // ---- Pin factory constant-folding ---------------------------------------
     // createDigitalPin(pin, gpio), createPWMPin(pin, gpio), etc. are folded to
     // just the pin number (first argument) at compile time.
@@ -577,303 +430,6 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return { kind: "raw", value: `String(${varName}).indexOf(${argsText})` };
     }
 
-    // ---- Typehal SDK method call detection (expression context) -----------
-    // Detects A0.read(), D13.high(), Serial.println(), Board.A0.read(), etc.
-    // and emits a structured `typehal-call` IR node instead of a raw string.
-    // The emitter translates these to Arduino built-ins without regex.
-    if (ts.isPropertyAccessExpression(expr.expression)) {
-      const method = expr.expression.name.text;
-      const receiverNode = expr.expression.expression;
-
-      // Device accessor in expression context:
-      //   spi.device(cs).transfer(x)  -> receiver: SPI0, method: device.transfer, args: [cs, x]
-      //   i2c.device(addr).readByte(r) -> receiver: I2C0, method: device.readByte, args: [addr, r]
-      if (
-        ts.isCallExpression(receiverNode) &&
-        ts.isPropertyAccessExpression(receiverNode.expression) &&
-        receiverNode.expression.name.text === 'device' &&
-        ts.isIdentifier(receiverNode.expression.expression)
-      ) {
-        const rootName = receiverNode.expression.expression.text;
-        const directKind = inferKindByName(rootName);
-        const busAlias = activeBusAliases.get(rootName);
-        const resolvedReceiver = directKind !== 'unknown' ? rootName : busAlias?.receiver;
-        const resolvedKind = directKind !== 'unknown' ? directKind : busAlias?.kind;
-
-        if (resolvedReceiver && resolvedKind) {
-          return {
-            kind: "typehal-call",
-            receiver: resolvedReceiver,
-            receiverKind: resolvedKind,
-            method: `device.${method}`,
-            args: [
-              ...receiverNode.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-              ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-            ],
-          };
-        }
-      }
-
-      // Two-step device accessor pattern (expression context):
-      //   const sensor = bus.device(0x76);  ← tracked in activeDeviceAccessorAliases
-      //   sensor.readByte(reg)               ← expanded here
-      if (ts.isIdentifier(receiverNode)) {
-        const accessorAlias = activeDeviceAccessorAliases.get(receiverNode.text);
-        if (accessorAlias) {
-          return {
-            kind: "typehal-call",
-            receiver: accessorAlias.receiver,
-            receiverKind: accessorAlias.kind,
-            method: `device.${method}`,
-            args: [
-              accessorAlias.addressIR,
-              ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-            ],
-          };
-        }
-      }
-
-      // Flat interrupt API: D2.onFalling(callback), D2.onRising(callback), D2.onChange(callback)
-      // Pattern: pin.onFalling(callback) where method is onFalling/onRising/onChange
-      if (method === 'onFalling' || method === 'onRising' || method === 'onChange') {
-        const pinName = ts.isIdentifier(receiverNode) ? receiverNode.text : null;
-        if (pinName) {
-          const kind = inferKindByName(pinName);
-          if (kind !== 'unknown') {
-            const interruptModeMap: Record<string, string> = {
-              onFalling: 'FALLING',
-              onRising: 'RISING',
-              onChange: 'CHANGE',
-            };
-            return {
-              kind: "typehal-call",
-              receiver: pinName,
-              receiverKind: kind,
-              method: `attachInterrupt`,
-              interruptMode: interruptModeMap[method] as "FALLING" | "RISING" | "CHANGE",
-              args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-            };
-          }
-        }
-      }
-
-      // Flat interrupt detach API: D2.offFalling(), D2.offRising(), D2.offChange(), D2.offAll()
-      if (method === 'offFalling' || method === 'offRising' || method === 'offChange' || method === 'offAll') {
-        const pinName = ts.isIdentifier(receiverNode) ? receiverNode.text : null;
-        if (pinName) {
-          const kind = inferKindByName(pinName);
-          if (kind !== 'unknown') {
-            return {
-              kind: "typehal-call",
-              receiver: pinName,
-              receiverKind: kind,
-              method: `detachInterrupt`,
-              interruptMode: method.toUpperCase() as "FALLING" | "RISING" | "CHANGE" | "ALL",
-              args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-            };
-          }
-        }
-      }
-
-      // Board.A0.method() or Pins.A0.method()
-      if (
-        ts.isPropertyAccessExpression(receiverNode) &&
-        ts.isIdentifier(receiverNode.expression) &&
-        (receiverNode.expression.text === 'Board' || receiverNode.expression.text === 'Pins')
-      ) {
-        const pinName = receiverNode.name.text;
-        const kind = inferKindByName(pinName);
-        if (kind !== 'unknown') {
-          return {
-            kind: "typehal-call",
-            receiver: pinName,
-            receiverKind: kind,
-            method,
-            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-          };
-        }
-      }
-
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // CRITICAL: Fluent Peripheral API Detection
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // This helper extracts the root identifier from nested property access chains
-      // like UART0.write.line() or I2C0.device(addr).write.bytes().
-      //
-      // DO NOT REMOVE: Without this, fluent peripheral APIs will NOT transpile:
-      //   - UART0.write.line("text") â†’ would emit raw "UART0.write.line()" 
-      //   - I2C0.device(addr).read() â†’ would emit raw "I2C0.device(addr).read()"
-      //   - SPI0.config.frequency().begin() â†’ would emit raw chain
-      //
-      // The correct behavior generates a `typehal-call` IR node that the emitter
-      // translates to Arduino APIs (Serial.println, Wire.begin, etc.)
-      //
-      // See: docs/transpiler/ir-model.md - Typehal-Call IR Node
-      // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // symbol.method() â€” direct typehal symbol (A0.read(), Serial.println(), etc.)
-      // Also handles nested chains like UART0.write.line() -> receiver: "UART0", method: "write.line"
-      const chainInfo = extractRootAndChain(expr.expression);
-      if (chainInfo) {
-        const fullMethod = chainInfo.chain.length > 0
-          ? chainInfo.chain.join('.')
-          : method;
-        const kind = inferKindByName(chainInfo.root);
-        const pinMethodCandidates = new Set([
-          'asInput', 'asInputPullUp', 'asOutput',
-          'pullup', 'pulldown', 'float',
-          'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh',
-          'offFalling', 'offRising', 'offChange', 'offAll',
-          'read', 'high', 'low', 'toggle', 'write', 'pulse',
-          'isHigh', 'isLow', 'getMode', 'setMode', 'inputPullUp', 'inputPullDown',
-          'tone', 'toneFor', 'noTone',
-          'readAnalog', 'readVoltage', 'getResolution', 'getAnalogResolution', 'setReference', 'setAnalogReference',
-          'setDutyCycle', 'setFrequency',
-        ]);
-
-        // Pin alias resolution: led.toggle() → LED.toggle()
-        const aliasTarget = activePinAliases.get(chainInfo.root);
-        if (aliasTarget) {
-          const originalAliasKind = inferKindByName(aliasTarget);
-          let aliasKind = originalAliasKind;
-          if (aliasKind === 'unknown' && pinMethodCandidates.has(fullMethod)) {
-            aliasKind = 'digital';
-          }
-          if (originalAliasKind !== 'unknown') {
-            return {
-              kind: "typehal-call",
-              receiver: aliasTarget,
-              receiverKind: aliasKind,
-              method: fullMethod,
-              args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-            };
-          }
-          return {
-            kind: "typehal-call",
-            receiver: chainInfo.root,
-            receiverKind: aliasKind,
-            method: fullMethod,
-            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-          };
-        }
-
-        if (kind !== 'unknown') {
-          return {
-            kind: "typehal-call",
-            receiver: chainInfo.root,
-            receiverKind: kind,
-            method: fullMethod,
-            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-          };
-        }
-
-        // Unknown symbols may still represent a pin-like object that is passed in
-        // as a parameter. Recognize the pin configuration and interrupt APIs
-        // even when the identifier cannot be resolved statically.
-        const safePinMethods = new Set([
-          'asInput', 'asInputPullUp', 'asOutput',
-          'pullup', 'pulldown', 'float',
-          'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh',
-          'offFalling', 'offRising', 'offChange', 'offAll',
-        ]);
-        if (safePinMethods.has(fullMethod)) {
-          return {
-            kind: "typehal-call",
-            receiver: chainInfo.root,
-            receiverKind: 'digital',
-            method: fullMethod,
-            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-          };
-        }
-
-        // Do not assume unknown symbols with pin-like method names are digital pins.
-        // This prevents class/static methods like AddrLib.read() from being miscompiled.
-        // Bus alias resolution: i2c.device() → I2C0.device()
-        const busAlias = activeBusAliases.get(chainInfo.root);
-        if (busAlias) {
-          const fullMethod = chainInfo.chain.length > 0
-            ? chainInfo.chain.join('.')
-            : method;
-          return {
-            kind: "typehal-call",
-            receiver: busAlias.receiver,
-            receiverKind: busAlias.kind,
-            method: fullMethod,
-            args: expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-          };
-        }
-      }
-
-      // â”€â”€ Device accessor pattern detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      // Handle: I2C0.device(0x76).writeByte(0xFA, 0x55)
-      //   or:   i2c.device(0x76).writeByte(0xFA, 0x55)  (bus alias)
-      // AST: CallExpr(PropertyAccessExpr(CallExpr(PropertyAccessExpr(root, "device"), [addr]), outerMethod), [args])
-      if (ts.isCallExpression(expr.expression.expression) &&
-          ts.isPropertyAccessExpression(expr.expression.expression.expression)) {
-        const innerCall = expr.expression.expression;
-        const innerProp = expr.expression.expression.expression;
-        const outerMethod = expr.expression.name.text;
-
-        if (innerProp.name.text === 'device' && ts.isIdentifier(innerProp.expression)) {
-          const rootName = innerProp.expression.text;
-          const kind = inferKindByName(rootName);
-          if (kind !== 'unknown') {
-            return {
-              kind: "typehal-call",
-              receiver: rootName,
-              receiverKind: kind,
-              method: `device.${outerMethod}`,
-              args: [
-                ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-                ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-              ],
-            };
-          }
-          // Bus alias resolution for device accessor
-          const busAlias = activeBusAliases.get(rootName);
-          if (busAlias) {
-            return {
-              kind: "typehal-call",
-              receiver: busAlias.receiver,
-              receiverKind: busAlias.kind,
-              method: `device.${outerMethod}`,
-              args: [
-                ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-                ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-              ],
-            };
-          }
-          // Pin alias resolution for device accessor
-          const pinAlias = activePinAliases.get(rootName);
-          if (pinAlias) {
-            const aliasKind = inferKindByName(pinAlias);
-            if (aliasKind !== 'unknown') {
-              return {
-                kind: "typehal-call",
-                receiver: rootName,
-                receiverKind: aliasKind,
-                method: `device.${outerMethod}`,
-                args: [
-                  ...innerCall.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-                  ...expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-                ],
-              };
-            }
-          }
-        }
-      }
-    }
-    // ---- end typehal detection -----------------------------------------
-
-    // ---- Num namespace chain detection (expression context) ----
-    // Flatten Num.map(v).from(a,b).to(c,d) and Num.constrain(v).between(a,b)
-    // into a single typehal-call IR node so the strategy handler can translate them.
-    {
-      const numChain = extractNumChain(expr);
-      if (numChain) {
-        const argIRs = numChain.args.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-        return { kind: "typehal-call", receiver: "Num", receiverKind: "num", method: numChain.method, args: argIRs };
-      }
-    }
 
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "defineBoardManifest" && expr.arguments.length === 1) {
       return expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
@@ -1038,26 +594,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isIdentifier(expr)) {
-    const pinAlias = activePinAliases.get(expr.text);
-    if (pinAlias) {
-      const aliasKind = inferKindByName(pinAlias);
-      if (aliasKind === 'unknown') {
-        return { kind: "identifier", value: expr.text };
-      }
-      return { kind: "identifier", value: pinAlias };
-    }
-    const busAlias = activeBusAliases.get(expr.text);
-    if (busAlias) {
-      return { kind: "identifier", value: busAlias.receiver };
-    }
-    // Resolve typehal pin identifiers to their numeric values when used as plain values
-    const kind = inferKindByName(expr.text);
-    if (kind === 'digital' || kind === 'interrupt' || kind === 'pwm' || kind === 'analog-input') {
-      const pinNum = parsePinNumber(expr.text);
-      if (pinNum !== null) {
-        return { kind: "number", value: pinNum };
-      }
-    }
+    // Resolve tracked pin instances to their pin numbers
+    const pinResolved = pinInstances.get(expr.text);
+    if (pinResolved) return { kind: "raw", value: pinResolved };
+    // Resolve tracked HAL namespace instances
+    if (halNamespaces.has(expr.text)) return { kind: "identifier", value: expr.text };
     return { kind: "identifier", value: expr.text };
   }
 

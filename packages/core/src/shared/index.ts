@@ -33,7 +33,6 @@ export type {
   ThrowIR,
   LabeledIR,
   BlockIR,
-  TypehalCallStatementIR,
   FunctionIR,
   StructDefIR,
   EnumIR,
@@ -52,10 +51,6 @@ export type {
   ParameterIR,
   CppType,
 } from './ir';
-
-// Typehal symbols
-export type { TypehalReceiverKind } from './typehal-symbols';
-export { inferKindByName, pinsWithKind, registerSymbolKinds } from './typehal-symbols';
 
 // Board resolver
 export type { BoardConstants } from './board-resolver';

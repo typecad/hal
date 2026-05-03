@@ -437,15 +437,6 @@ function analyzeStatement(
       break;
     }
 
-    case 'typehal-call': {
-      const tc = stmt as any;
-      // Check arguments for use-after-move
-      for (const arg of (tc.args ?? [])) {
-        analyzeExpression(arg, scope, diagnostics, span);
-      }
-      break;
-    }
-
     case 'return': {
       const r = stmt as any;
       if (r.value) {
@@ -666,13 +657,6 @@ function analyzeExpression(
 
     case 'property-access': {
       analyzeExpression(expr.object, scope, diagnostics, span);
-      break;
-    }
-
-    case 'typehal-call': {
-      for (const arg of expr.args) {
-        analyzeExpression(arg, scope, diagnostics, span);
-      }
       break;
     }
 
@@ -973,7 +957,6 @@ function getNestedStatements(stmt: StatementIR): StatementIR[] | undefined {
         ...(s.finallyBlock ?? []),
       ];
     }
-    case 'typehal-call':
     case 'call': {
       const s = stmt as any;
       const result: StatementIR[] = [];

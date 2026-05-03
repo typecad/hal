@@ -251,8 +251,12 @@ describe('Pin Config - Combined Usage', () => {
       D9.pwm(50);
     `, { target: 'arduino' });
 
-    expect(result.cpp).toContain('D13.output(true)');
+    // D13.output(true) inlines to pinMode + digitalWrite
+    expect(result.cpp).toContain('pinMode(13, OUTPUT)');
+    expect(result.cpp).toContain('digitalWrite(13, true)');
+    // D2.inputPullUp() inlines to pinMode
     expect(result.cpp).toContain('pinMode(2, INPUT_PULLUP)');
+    // D9.pwm(50) inlines to pinMode + analogWrite (50% → 128)
     expect(result.cpp).toContain('pinMode(9, OUTPUT)');
     expect(result.cpp).toContain('analogWrite(9, 128)');
   });

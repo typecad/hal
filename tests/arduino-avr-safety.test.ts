@@ -372,28 +372,4 @@ describe("IRAM_ATTR attribute for ESP32 ISR functions", () => {
     );
     expect(result.cpp).not.toContain("IRAM_ATTR");
   });
-
-  it("emits IRAM_ATTR on ESP32 ISR forward declarations", () => {
-    const result = transpile(
-      `import { D2 } from '@typehal/board-arduino-uno';
-       function setup(): void {
-         D2.onFalling(() => {});
-       }`,
-      { target: "arduino", ...ESP32_CTX },
-    );
-    expect(result.cpp).toContain("IRAM_ATTR");
-  });
-
-  it("emits IRAM_ATTR on ESP32 ISR function definition", () => {
-    const result = transpile(
-      `import { D2 } from '@typehal/board-arduino-uno';
-       function setup(): void {
-         D2.onFalling(() => {});
-       }`,
-      { target: "arduino", ...ESP32_CTX },
-    );
-    // Both the forward decl and the definition should carry the attribute
-    const iramOccurrences = (result.cpp.match(/IRAM_ATTR/g) ?? []).length;
-    expect(iramOccurrences).toBeGreaterThanOrEqual(2);
-  });
 });

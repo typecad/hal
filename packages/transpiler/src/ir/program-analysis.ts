@@ -141,12 +141,6 @@ function analyzeExpression(
       analyzeExpression(expr.index, result);
       break;
 
-    case "typehal-call":
-      for (const arg of expr.args) {
-        analyzeExpression(arg, result);
-      }
-      break;
-
     case "string_concat":
     case "template_string":
       if (expr.kind === "string_concat") {
@@ -288,12 +282,6 @@ function analyzeStatement(
       }
       for (const nested of statement.finallyBlock ?? []) {
         analyzeStatement(nested, result);
-      }
-      break;
-
-    case "typehal-call":
-      for (const arg of statement.args) {
-        analyzeExpression(arg, result);
       }
       break;
 

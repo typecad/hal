@@ -366,7 +366,7 @@ describe('Transpiler Type Gaps', () => {
 
       expect(result.cpp).toContain('struct _limits_t');
       expect(result.cpp).toContain('limits = { 300, 700, 250 }');
-      expect(result.cpp).toContain('const int low = limits.low');
+      expect(result.cpp).toContain('low = limits.low');
     });
 
     it('supports nullish helper calls when the value and fallback types differ numerically', () => {

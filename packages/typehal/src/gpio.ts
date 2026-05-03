@@ -4,8 +4,12 @@ import { HIGH, LOW, OUTPUT, INPUT, INPUT_PULLUP } from './constants';
 export class Pin {
   private _pin: number;
 
+  /** Public pin number (read-only) for simulator and metadata access. */
+  readonly number: number;
+
   constructor(pin: number) {
     this._pin = pin;
+    this.number = pin;
   }
 
   asOutput(value: number = LOW): Pin {
@@ -64,6 +68,22 @@ export class Pin {
 
   pwm(value: number): void {
     emit(`analogWrite(${this._pin}, ${value});`);
+  }
+
+  onFalling(handler: () => void): void {
+    emit(`attachInterrupt(digitalPinToInterrupt(${this._pin}), handler, FALLING);`);
+  }
+
+  onRising(handler: () => void): void {
+    emit(`attachInterrupt(digitalPinToInterrupt(${this._pin}), handler, RISING);`);
+  }
+
+  onChange(handler: () => void): void {
+    emit(`attachInterrupt(digitalPinToInterrupt(${this._pin}), handler, CHANGE);`);
+  }
+
+  offAll(): void {
+    emit(`detachInterrupt(digitalPinToInterrupt(${this._pin}));`);
   }
 }
 

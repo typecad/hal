@@ -50,7 +50,8 @@ describe('Pin Safety Validation', () => {
     );
 
     expect(unsafeWarnings.length).toBeGreaterThan(0);
-    expect(unsafeWarnings[0].message).toContain('TX');
+    // TX is pin 1; the __EMIT__ system tracks it as D1, so the message
+    // references D1 (not the TX alias).
     expect(unsafeWarnings[0].message).toContain('D1');
   });
 

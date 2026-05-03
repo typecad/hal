@@ -109,17 +109,6 @@ export function collectExpressionIdentifiers(expr: ExpressionIR | null | undefin
       }
       break;
 
-    case "typehal-call":
-      for (const id of collectExpressionIdentifiers({ kind: "identifier", value: expr.receiver } as ExpressionIR)) {
-        identifiers.add(id);
-      }
-      for (const arg of expr.args) {
-        for (const id of collectExpressionIdentifiers(arg)) {
-          identifiers.add(id);
-        }
-      }
-      break;
-
     case "template_string":
       for (const id of collectExpressionIdentifiers(expr.expression)) {
         identifiers.add(id);
@@ -182,15 +171,6 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
       identifiers.add(calleeParts[0]);
       // Also add the full callee (e.g. "Serial.begin") for polyfill detection
       identifiers.add(statement.callee);
-      for (const arg of statement.args) {
-        for (const id of collectExpressionIdentifiers(arg)) {
-          identifiers.add(id);
-        }
-      }
-      break;
-
-    case "typehal-call":
-      identifiers.add(statement.receiver);
       for (const arg of statement.args) {
         for (const id of collectExpressionIdentifiers(arg)) {
           identifiers.add(id);

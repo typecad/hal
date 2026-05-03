@@ -1,7 +1,6 @@
 import ts from "typescript";
 import { CppType } from "./model";
 import { topLevelClasses } from "./build-ir-state";
-import { inferKindByName } from "@typehal/core/shared";
 
 export type CppTypeHint =
   | "int"
@@ -410,32 +409,6 @@ function isKnownCompileTimeType(
   return false;
 }
 
-const typehalMethodReturnTypes: Map<string, CppTypeHint> = new Map([
-  // analog-input methods
-  ["analog-input:readVoltage", "float"],
-  ["analog-input:readAnalog", "int"],
-  ["analog-input:read", "int"],
-  ["analog-input:getResolution", "int"],
-  ["analog-input:getAnalogResolution", "int"],
-  // pwm-output methods
-  ["pwm-output:pwm", "void"],
-  ["pwm-output:getPwmResolution", "int"],
-  // digital methods
-  ["digital:read", "int"],
-  ["digital:high", "void"],
-  ["digital:low", "void"],
-  ["digital:toggle", "void"],
-  // serial methods
-  ["serial:read", "int"],
-  ["serial:available", "int"],
-  ["serial:readLine", "String" as CppTypeHint],
-  ["serial:readString", "String" as CppTypeHint],
-]);
-
-export function getTypehalMethodReturnType(receiverKind: string, method: string): CppTypeHint | undefined {
-  return typehalMethodReturnTypes.get(`${receiverKind}:${method}`);
-}
-
 export function inferExprCppType(
   expr: ts.Expression,
   functionReturnTypes: Map<string, CppTypeHint>,
@@ -512,15 +485,6 @@ export function inferExprCppType(
           const classMethod = classDef.methods.find((m) => m.name === method);
           if (classMethod) {
             return classMethod.returnType as CppTypeHint;
-          }
-        }
-
-        const receiverKind = inferKindByName(className);
-        if (receiverKind !== "unknown") {
-          const method = expr.expression.name.text;
-          const typehalReturn = typehalMethodReturnTypes.get(`${receiverKind}:${method}`);
-          if (typehalReturn) {
-            return typehalReturn;
           }
         }
       }
@@ -613,6 +577,10 @@ export function inferExprCppType(
       return "int";
     }
 
+    // Partial type info: if one operand is auto, use the other for arithmetic ops
+    if (leftType === "auto" && rightType !== "auto") return rightType;
+    if (rightType === "auto" && leftType !== "auto") return leftType;
+
     return "auto";
   }
 
@@ -640,6 +608,19 @@ export function inferExprCppType(
     if (objectType === "uint8_t*") return "int";
     if (objectType === "int16_t*") return "int";
     if (objectType === "int32_t*") return "int";
+    // std::vector<T> element access → T
+    if (objectType.startsWith("std::vector<")) {
+      const inner = objectType.slice("std::vector<".length, -1);
+      if (inner === "uint8_t" || inner === "int8_t") return "int";
+      if (inner === "float" || inner === "double") return "double";
+      return inner as CppTypeHint;
+    }
+    // C-array types like "uint8_t[]"
+    if (objectType.endsWith("[]")) {
+      const elemType = objectType.slice(0, -2);
+      if (elemType === "uint8_t" || elemType === "int8_t") return "int";
+      return elemType as CppTypeHint;
+    }
     // Check local variable declarations for typed array constructors
     if (ts.isIdentifier(expr.expression)) {
       const varName = expr.expression.text;
@@ -658,10 +639,11 @@ export function resolveDeclarationType(
   functionReturnTypes: Map<string, CppTypeHint>,
   localVariableTypes: Map<string, CppTypeHint>,
   typeAliases?: Map<string, ts.TypeNode>,
+  sourceText?: string,
 ): ResolvedDeclarationType {
   const explicitType = typeNodeToCppType(typeNode, typeAliases);
   const inferredType = initializer
-    ? inferExprCppType(initializer, functionReturnTypes, localVariableTypes)
+    ? inferExprCppType(initializer, functionReturnTypes, localVariableTypes, sourceText)
     : "auto";
 
   let resolvedType: CppTypeHint;

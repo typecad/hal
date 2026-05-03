@@ -12,7 +12,6 @@ import type {
   Diagnostic,
   PlatformContext,
   BoardConstants,
-  TypehalReceiverKind,
   RuntimePolyfillIR,
   StdLibSupport,
 } from '@typehal/core/shared';
@@ -185,19 +184,11 @@ export class NativeStrategy implements PlatformStrategy {
     return undefined;
   }
 
-  tryRenderTypehalCall(): string | undefined {
-    return undefined;
-  }
-
   renderBoardDefinitionAccess(): string | undefined {
     return undefined;
   }
 
   // ── Statement rendering ─────────────────────────────────────────────────
-
-  tryRenderCallStatement(): string | undefined {
-    return undefined;
-  }
 
   renderThrow(valueExpr: string): string {
     return `throw ${valueExpr};`;

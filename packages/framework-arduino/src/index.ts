@@ -53,9 +53,6 @@ export {
 } from './debug-codegen';
 export type { CapturedVariable, LogMessagePart } from './debug-codegen';
 
-// Symbol kind registry for board/framework pins and namespaces
-export { SYMBOL_KINDS } from './symbol-kinds';
-
 // Library discovery — consumed by the transpiler's dynamic module loader
 export { isArduinoLibraryImport as isFrameworkLibraryImport, getArduinoLibraryHeaderName as getFrameworkLibraryHeaderName } from './arduino-libs';
 export { tryGenerateArduinoLibDecl as tryGenerateLibDecl } from './arduino-libs';

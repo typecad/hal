@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@typehal/core": "*",
-    "@typehal/schema": "*"
+    "@typehal/schema": "*",
+    "@typehal/typehal": "*"
   },
   "license": "MIT",
   "publishConfig": {

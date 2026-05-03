@@ -15,7 +15,6 @@
 import type { ExpressionIR, ProgramIR } from './ir';
 import type { Diagnostic, PlatformContext } from './types';
 import type { BoardConstants } from './board-resolver';
-import type { TypehalReceiverKind } from './typehal-symbols';
 import type { RuntimePolyfillIR, StdLibSupport } from './polyfill-types';
 
 // ---------------------------------------------------------------------------
@@ -194,24 +193,11 @@ export interface PlatformExpressionStrategy {
   /** How to render a null/undefined identifier value. */
   nullValue(): string;
 
-  /**
-   * Map a peripheral identifier to the platform-specific name.
-   * E.g. I2C0→Wire, SPI0→SPI, UART0→Serial on Arduino.
-   * Return `undefined` to keep the original name.
-   */
-  mapPeripheralIdentifier?(name: string): string | undefined;
-
   /** Whether string-literal + concatenation needs wrapping (e.g. String(...) on Arduino). */
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined;
 
   /** Platform-specific expression for current time in milliseconds (e.g. "millis()" on Arduino, "std::chrono" on hosted). */
   currentTimeMillis(): string;
-
-  /**
-   * Whether the given peripheral name represents a serial/UART output device.
-   * Used to decide if println/print calls should be handled as serial output.
-   */
-  isSerialPeripheral?(name: string): boolean;
 
   /**
    * Whether string concat / template interpolation should use snprintf()
@@ -228,20 +214,6 @@ export interface PlatformExpressionStrategy {
     precision: number | undefined,
     tempId: number,
   ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } | undefined;
-
-  /**
-   * Try to render a typehal SDK call expression (pin.read, Serial.print …).
-   * Return `undefined` to fall back to default rendering.
-   */
-  tryRenderTypehalCall(
-    receiver: string,
-    receiverKind: TypehalReceiverKind,
-    method: string,
-    args: ReadonlyArray<ExpressionIR>,
-    renderArg: (e: ExpressionIR) => string,
-    boardConstants?: BoardConstants,
-    interruptMode?: "FALLING" | "RISING" | "CHANGE" | "ALL",
-  ): string | undefined;
 
   /**
    * Try to render a Board.definition.* property access.
@@ -264,17 +236,6 @@ export interface PlatformExpressionStrategy {
 // ---------------------------------------------------------------------------
 
 export interface PlatformStatementStrategy {
-  /**
-   * Try to render a call statement as a platform string.
-   * Return `undefined` to fall back to default rendering.
-   */
-  tryRenderCallStatement(
-    callee: string,
-    args: ReadonlyArray<ExpressionIR>,
-    renderArg: (e: ExpressionIR) => string,
-    boardConstants?: BoardConstants,
-  ): string | undefined;
-
   /**
    * How to render a `throw` statement on this platform.
    * Embedded targets without exception support may emit an infinite loop or halt.
@@ -313,21 +274,6 @@ export interface PlatformStatementStrategy {
     method: string;
     bufferName: string;
   }): { finalLine: string } | undefined;
-
-  /**
-   * Render an I2C device read operation (readByte / readBytes).
-   * The strategy should emit the platform-specific I2C transaction sequence
-   * (e.g., Wire.beginTransmission / write / endTransmission / requestFrom / read on Arduino).
-   * Return `undefined` to use default rendering.
-   */
-  renderI2CDeviceRead?(params: {
-    receiver: string;
-    wireName: string;
-    address: string;
-    register: string;
-    count?: string;
-    targetVarName: string;
-  }): { preludeLines: string[]; returnValue: string; isMultiStatement?: boolean } | undefined;
 
   /**
    * Lines to inject into the loop/run function body to drive async tasks.

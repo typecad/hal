@@ -1,127 +1,52 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-arduino-uno — Typed pin exports
+// @typehal/board-arduino-uno — Pin exports
 //
-// Each pin is exported with the narrowest interface that matches its
-// capabilities so that TypeScript prevents invalid operations at compile
-// time (e.g. calling analogWrite on a digital-only pin).
-//
-// The factory stubs below capture pin/gpio numbers as plain data.  The
-// transpiler replaces them with architecture-specific C++ during code-gen.
+// Each pin is a Pin instance from @typehal/typehal. The transpiler inlines
+// method calls (high(), low(), write(), etc.) as direct Arduino C++.
+// Pin numbers match the Arduino digital/analog pin numbering.
 // ---------------------------------------------------------------------------
 
-import type {
-  BasePin,
-  PWMPin,
-  AnalogPin,
-  InterruptPin,
-} from '@typehal/core';
-import type {
-  IUnoDigitalPin,
-  IUnoPWMPin,
-  IUnoAnalogPin,
-  IUnoInterruptPin,
-} from './pin-types';
-
-// ---------------------------------------------------------------------------
-// Internal stub factories (no-op at runtime; consumed by transpiler)
-// ---------------------------------------------------------------------------
-
-import type { PinCapabilityFlags } from '@typehal/core';
-
-const DIGITAL_CAPS: PinCapabilityFlags = {
-  digitalInput: true, digitalOutput: true,
-  analogInput: false, analogOutput: false,
-  pwm: false, interrupt: false,
-  pullUp: true, pullDown: false,
-  touch: false, openDrain: false,
-};
-
-const PWM_CAPS: PinCapabilityFlags = {
-  ...DIGITAL_CAPS,
-  pwm: true,
-};
-
-const INTERRUPT_CAPS: PinCapabilityFlags = {
-  ...DIGITAL_CAPS,
-  interrupt: true,
-};
-
-const ANALOG_CAPS: PinCapabilityFlags = {
-  ...DIGITAL_CAPS,
-  analogInput: true,
-};
-
-function createDigitalPin(pin: number, gpio: number): IUnoDigitalPin {
-  return {
-    number: pin,
-    gpio,
-    capabilities: DIGITAL_CAPS,
-  } as unknown as IUnoDigitalPin;
-}
-
-function createPWMPin(pin: number, gpio: number): IUnoPWMPin {
-  return {
-    number: pin,
-    gpio,
-    capabilities: PWM_CAPS,
-  } as unknown as IUnoPWMPin;
-}
-
-function createInterruptPin(pin: number, gpio: number): IUnoInterruptPin {
-  return {
-    number: pin,
-    gpio,
-    capabilities: INTERRUPT_CAPS,
-  } as unknown as IUnoInterruptPin;
-}
-
-function createAnalogPin(pin: number, gpio: number): IUnoAnalogPin {
-  return {
-    number: pin,
-    gpio,
-    capabilities: ANALOG_CAPS,
-  } as unknown as IUnoAnalogPin;
-}
+import { Pin } from '@typehal/typehal';
 
 // ---------------------------------------------------------------------------
 // Digital-only pins (no PWM, no interrupt)
 // ---------------------------------------------------------------------------
 
-export const D4:  IUnoDigitalPin = createDigitalPin(4, 4);
-export const D7:  IUnoDigitalPin = createDigitalPin(7, 7);
-export const D8:  IUnoDigitalPin = createDigitalPin(8, 8);
-export const D12: IUnoDigitalPin = createDigitalPin(12, 12);
-export const D13: IUnoDigitalPin = createDigitalPin(13, 13);  // onboard LED
+export const D4  = new Pin(4);
+export const D7  = new Pin(7);
+export const D8  = new Pin(8);
+export const D12 = new Pin(12);
+export const D13 = new Pin(13);  // onboard LED
 
 // ---------------------------------------------------------------------------
 // Interrupt-capable digital pins (INT0 on D2, INT1 on D3)
 // ---------------------------------------------------------------------------
 
-export const D0: IUnoInterruptPin = createInterruptPin(0, 0);   // RX
-export const D1: IUnoInterruptPin = createInterruptPin(1, 1);   // TX
-export const D2: IUnoInterruptPin = createInterruptPin(2, 2);
+export const D0 = new Pin(0);   // RX
+export const D1 = new Pin(1);   // TX
+export const D2 = new Pin(2);
 
 // ---------------------------------------------------------------------------
 // PWM pins
 // ---------------------------------------------------------------------------
 
-export const D3:  IUnoPWMPin = createPWMPin(3, 3);    // also INT1
-export const D5:  IUnoPWMPin = createPWMPin(5, 5);
-export const D6:  IUnoPWMPin = createPWMPin(6, 6);
-export const D9:  IUnoPWMPin = createPWMPin(9, 9);
-export const D10: IUnoPWMPin = createPWMPin(10, 10);
-export const D11: IUnoPWMPin = createPWMPin(11, 11);
+export const D3  = new Pin(3);    // also INT1
+export const D5  = new Pin(5);
+export const D6  = new Pin(6);
+export const D9  = new Pin(9);
+export const D10 = new Pin(10);
+export const D11 = new Pin(11);
 
 // ---------------------------------------------------------------------------
 // Analog input pins (also support digital I/O)
 // ---------------------------------------------------------------------------
 
-export const A0: IUnoAnalogPin = createAnalogPin(14, 14);
-export const A1: IUnoAnalogPin = createAnalogPin(15, 15);
-export const A2: IUnoAnalogPin = createAnalogPin(16, 16);
-export const A3: IUnoAnalogPin = createAnalogPin(17, 17);
-export const A4: IUnoAnalogPin = createAnalogPin(18, 18);  // SDA
-export const A5: IUnoAnalogPin = createAnalogPin(19, 19);  // SCL
+export const A0 = new Pin(14);
+export const A1 = new Pin(15);
+export const A2 = new Pin(16);
+export const A3 = new Pin(17);
+export const A4 = new Pin(18);  // SDA
+export const A5 = new Pin(19);  // SCL
 
 // ---------------------------------------------------------------------------
 // Convenience aliases

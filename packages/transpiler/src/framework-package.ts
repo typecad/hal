@@ -2,7 +2,6 @@ import path from "node:path";
 import { setLoadedFramework } from "./framework-registry";
 import type { LoadedFramework, FrameworkToolchain } from "./framework-registry";
 import { registerPlatformStrategy } from "./platform/registry";
-import { registerSymbolKinds } from "@typehal/core/shared";
 
 function resolveFrameworkPackage(
   packageName: string,
@@ -69,10 +68,6 @@ export function loadFrameworkPackage(
     };
     setLoadedFramework(framework);
     registerPlatformStrategy(strategy);
-    // Register symbol kinds if the framework provides them
-    if (mod.SYMBOL_KINDS) {
-      registerSymbolKinds(mod.SYMBOL_KINDS);
-    }
   }
 
   return mod;

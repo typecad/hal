@@ -7,7 +7,6 @@
 // ---------------------------------------------------------------------------
 
 import type { SourceSpan } from './types';
-import type { TypehalReceiverKind } from './typehal-symbols';
 
 // ---------------------------------------------------------------------------
 // Shared primitive types
@@ -53,12 +52,6 @@ export type ExpressionIR =
    * `Board.definition.mcu` without regex post-processing.
    */
   | { kind: "property-access"; object: ExpressionIR; property: string }
-  /**
-   * A call to a typehal SDK method that the emitter translates to a
-   * platform-specific built-in (e.g. `A0.read()` → `analogRead(A0)`).
-   * Produced by `expressionToIR` when it detects a typehal receiver.
-   */
-  | { kind: "typehal-call"; receiver: string; receiverKind: TypehalReceiverKind; method: string; args: ExpressionIR[]; interruptMode?: "FALLING" | "RISING" | "CHANGE" | "ALL" }
   /**
    * A callback function (arrow function or function expression) passed as an argument.
    * Used for interrupt handlers and other callback contexts.
@@ -274,39 +267,22 @@ export interface BlockIR {
   body: StatementIR[];
 }
 
-/**
- * A typehal SDK method call as a statement (e.g., UART0.config.baudRate(115200).begin()).
- * This is a statement-level version of typehal-call for fluent chains.
- */
-export interface TypehalCallStatementIR {
-  kind: "typehal-call";
-  sourceSpan: SourceSpan;
-  leadingComments?: string[];
-  trailingComments?: string[];
-  receiver: string;
-  receiverKind: TypehalReceiverKind;
-  method: string;
-  args: ExpressionIR[];
-  configMethod?: string;
-}
-
-export type StatementIR = 
-  | CallExpressionIR 
-  | VariableDeclarationIR 
-  | AssignmentIR 
-  | UpdateIR 
-  | ReturnIR 
-  | WhileIR 
+export type StatementIR =
+  | CallExpressionIR
+  | VariableDeclarationIR
+  | AssignmentIR
+  | UpdateIR
+  | ReturnIR
+  | WhileIR
   | DoWhileIR
-  | IfIR 
-  | ForIR 
-  | ForOfIR 
+  | IfIR
+  | ForIR
+  | ForOfIR
   | ForInIR
-  | BreakIR 
+  | BreakIR
   | ContinueIR
   | SwitchIR
   | TryIR
   | ThrowIR
   | LabeledIR
-  | BlockIR
-  | TypehalCallStatementIR;
+  | BlockIR;

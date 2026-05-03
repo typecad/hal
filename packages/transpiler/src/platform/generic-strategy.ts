@@ -3,10 +3,8 @@
 // ---------------------------------------------------------------------------
 
 import type { PlatformStrategy } from "./platform-strategy";
-import type { ExpressionIR, ProgramIR } from "../ir/model";
+import type { ExpressionIR, ProgramIR, BoardConstants } from "../ir/model";
 import type { Diagnostic, PlatformContext } from "../types";
-import type { BoardConstants } from "../ir/board-resolver";
-import type { TypehalReceiverKind } from "../ir/typehal-symbols";
 import type { RuntimePolyfillIR, StdLibSupport } from "@typehal/core/shared";
 import { DEFAULT_STDLIB_SUPPORT } from "@typehal/core/shared";
 import { buildAsyncRuntimePolyfill } from "./async-runtime";
@@ -84,17 +82,6 @@ export class GenericStrategy implements PlatformStrategy {
   enumCastType(_enumName: string): string | undefined {
     return undefined;
   }
-  tryRenderTypehalCall(
-    _receiver: string,
-    _receiverKind: TypehalReceiverKind,
-    _method: string,
-    _args: ReadonlyArray<ExpressionIR>,
-    _renderArg: (e: ExpressionIR) => string,
-    _boardConstants?: BoardConstants,
-    _interruptMode?: "FALLING" | "RISING" | "CHANGE",
-  ): string | undefined {
-    return undefined;
-  }
   renderBoardDefinitionAccess(
     _chain: string[],
     _boardConstants?: BoardConstants,
@@ -104,14 +91,6 @@ export class GenericStrategy implements PlatformStrategy {
 
   // ── Statement rendering ─────────────────────────────────────────────────
 
-  tryRenderCallStatement(
-    _callee: string,
-    _args: ReadonlyArray<ExpressionIR>,
-    _renderArg: (e: ExpressionIR) => string,
-    _boardConstants?: BoardConstants,
-  ): string | undefined {
-    return undefined;
-  }
   renderThrow(valueExpr: string): string {
     return `throw ${valueExpr};`;
   }

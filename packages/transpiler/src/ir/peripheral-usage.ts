@@ -6,7 +6,6 @@
 // ---------------------------------------------------------------------------
 
 import { ProgramIR, StatementIR, ExpressionIR, CallExpressionIR, VariableDeclarationIR, AssignmentIR, ForOfIR, ForInIR, SwitchIR, CaseIR, TryIR } from './model';
-import { parsePeripheralInstance } from './peripheral-symbols';
 
 /**
  * Tracks which hardware peripherals are used in the program.
@@ -153,6 +152,191 @@ function analyzeStatements(statements: StatementIR[] | undefined, usage: Periphe
 }
 
 /**
+ * Record a pin number as a D-prefixed pin name in pinsUsed.
+ * This allows validators (pin-safety, pin-alias-conflict, etc.) to detect
+ * pin usage from __EMIT__ nodes that use numeric pin references.
+ */
+function trackPinNumberAsName(pinNum: number, usage: PeripheralUsage): void {
+  usage.pinsUsed.add(`D${pinNum}`);
+}
+
+/**
+ * Parse an __EMIT__ node's C++ string for peripheral usage patterns.
+ */
+function analyzeEmitString(cpp: string, usage: PeripheralUsage): void {
+  // pinMode(N, MODE) — track pin mode configuration and pin usage
+  const pinModeMatch = cpp.match(/^pinMode\((\d+),\s*(\w+)\)/);
+  if (pinModeMatch) {
+    const pin = parseInt(pinModeMatch[1], 10);
+    const mode = pinModeMatch[2];
+    trackPinNumberAsName(pin, usage);
+    if (mode === 'OUTPUT') {
+      usage.outputPins.add(pin);
+    } else if (mode === 'INPUT_PULLUP') {
+      usage.inputPullupPins.add(pin);
+    } else if (mode === 'INPUT') {
+      usage.inputPins.add(pin);
+    } else if (mode === 'INPUT_PULLDOWN') {
+      usage.inputPulldownPins.add(pin);
+    }
+  }
+
+  // analogWrite(N, ...) — PWM usage
+  const analogWriteMatch = cpp.match(/^analogWrite\((\d+)/);
+  if (analogWriteMatch) {
+    const pin = parseInt(analogWriteMatch[1], 10);
+    trackPinNumberAsName(pin, usage);
+    usage.pwm = true;
+    usage.pwmPinsUsed.add(pin);
+  }
+
+  // analogRead(A0), analogRead(A1), etc. — ADC usage
+  const analogReadMatch = cpp.match(/analogRead\(([A](\d+)|\d+)\)/);
+  if (analogReadMatch) {
+    usage.adc = true;
+    const channel = parseInt(analogReadMatch[2] ?? analogReadMatch[1], 10);
+    if (!isNaN(channel)) {
+      usage.adcChannelsUsed.add(channel);
+    }
+  }
+
+  // digitalRead(N) — pin usage (extract pin number)
+  const digitalReadMatch = cpp.match(/digitalRead\((\d+)\)/);
+  if (digitalReadMatch) {
+    trackPinNumberAsName(parseInt(digitalReadMatch[1], 10), usage);
+  }
+
+  // digitalWrite(N, ...) — pin usage
+  const digitalWriteMatch = cpp.match(/digitalWrite\((\d+)/);
+  if (digitalWriteMatch) {
+    trackPinNumberAsName(parseInt(digitalWriteMatch[1], 10), usage);
+  }
+
+  // attachInterrupt(...) — external interrupt
+  if (cpp.startsWith('attachInterrupt(')) {
+    usage.externalInterrupts = true;
+  }
+
+  // Wire.begin(), Wire1.begin() — I2C
+  const i2cMatch = cpp.match(/^(Wire)(\d*)\.begin/);
+  if (i2cMatch) {
+    usage.i2c = true;
+    const instance = i2cMatch[2] ? parseInt(i2cMatch[2], 10) : 0;
+    usage.i2cInstancesUsed.add(instance);
+  }
+
+  // SPI.begin(), SPI1.begin() — SPI bus
+  const spiMatch = cpp.match(/^SPI(\d*)\.begin/);
+  if (spiMatch) {
+    usage.spi = true;
+    usage.spiInstancesUsed.add(spiMatch[1] ? parseInt(spiMatch[1], 10) : 0);
+  }
+
+  // Serial.begin(...), Serial1.begin(...) — UART
+  const uartMatch = cpp.match(/^Serial(\d*)\.begin/);
+  if (uartMatch) {
+    usage.uart = true;
+    usage.uartInstancesUsed.add(uartMatch[1] ? parseInt(uartMatch[1], 10) : 0);
+  }
+
+  // delay(), millis(), micros() — timer0
+  markTimer0UsageFromText(cpp, usage);
+
+  // tone(N, ...) — also implies PWM output
+  const toneMatch = cpp.match(/^tone\((\d+)/);
+  if (toneMatch) {
+    usage.pwm = true;
+    usage.pwmPinsUsed.add(parseInt(toneMatch[1], 10));
+  }
+}
+
+/**
+ * Analyze a callee string (e.g., "D13.read", "A0.read", "Wire.begin")
+ * for peripheral usage patterns from non-__EMIT__ call nodes.
+ */
+function analyzeCalleeForPeripheralUsage(callee: string, usage: PeripheralUsage): void {
+  if (!callee || typeof callee !== 'string') return;
+
+  // Pin method calls: D13.read, D9.write, A0.read, LED.toggle, etc.
+  const pinMethodMatch = callee.match(/^([A-Z]\w*)\.(\w+)$/);
+  if (pinMethodMatch) {
+    const pinName = pinMethodMatch[1];
+    const method = pinMethodMatch[2];
+
+    // Track pin usage by name
+    usage.pinsUsed.add(pinName);
+
+    const pinNum = parsePinNumber(pinName);
+
+    // ADC read: A0.read, A1.read, etc.
+    if (method === 'read' && pinName.startsWith('A')) {
+      usage.adc = true;
+      if (pinNum !== null) {
+        usage.adcChannelsUsed.add(pinNum - 14);
+      }
+    }
+
+    // Pin mode methods
+    if (method === 'asOutput' || method === 'output') {
+      if (pinNum !== null) usage.outputPins.add(pinNum);
+    }
+    if (method === 'asInput') {
+      if (pinNum !== null) usage.inputPins.add(pinNum);
+    }
+    if (method === 'asInputPullUp' || method === 'inputPullUp') {
+      if (pinNum !== null) usage.inputPullupPins.add(pinNum);
+    }
+    if (method === 'inputPullDown') {
+      if (pinNum !== null) usage.inputPulldownPins.add(pinNum);
+    }
+
+    // PWM
+    if (method === 'pwm') {
+      usage.pwm = true;
+      if (pinNum !== null) usage.pwmPinsUsed.add(pinNum);
+    }
+
+    // Tone (also PWM-related)
+    if (method === 'tone' || method === 'toneFor') {
+      usage.pwm = true;
+      if (pinNum !== null) usage.pwmPinsUsed.add(pinNum);
+    }
+
+    // External interrupts
+    if (method === 'onFalling' || method === 'onRising' || method === 'onChange' ||
+        method === 'onLow' || method === 'onHigh' || method === 'attachInterrupt') {
+      usage.externalInterrupts = true;
+    }
+
+    // Timer0 functions
+    markTimer0UsageFromText(pinName + '.' + method, usage);
+  }
+
+  // Bus method calls: Wire.begin, Serial.begin, SPI.begin
+  const busMethodMatch = callee.match(/^(Wire|SPI|Serial)(\d*)\.(\w+)$/);
+  if (busMethodMatch) {
+    const busType = busMethodMatch[1];
+    const instanceStr = busMethodMatch[2];
+    const method = busMethodMatch[3];
+    const instance = instanceStr ? parseInt(instanceStr, 10) : 0;
+
+    if (busType === 'Wire') {
+      usage.i2c = true;
+      usage.i2cInstancesUsed.add(instance);
+    } else if (busType === 'SPI') {
+      usage.spi = true;
+      usage.spiInstancesUsed.add(instance);
+    } else if (busType === 'Serial') {
+      usage.uart = true;
+      usage.uartInstancesUsed.add(instance);
+    }
+  }
+
+  // Top-level timer0 functions: delay(), millis(), micros()
+  markTimer0UsageFromText(callee, usage);
+}
+
+/**
  * Analyze a single statement for peripheral usage.
  */
 function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
@@ -163,17 +347,22 @@ function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
 
   try {
     switch (stmt.kind) {
-    case 'typehal-call': {
-      // Typehal call statements (pin.method() calls) at top level
-      // console.log('[DEBUG] Found typehal-call statement:', stmt);
-      analyzeTypehalCall(stmt as any, usage);
-      break;
-    }
-
     case 'call': {
-      // Call statements at top level - analyze args for nested peripheral calls
       const call = stmt as CallExpressionIR;
-      markTimer0UsageFromText((call as any).callee, usage);
+      // Handle __EMIT__ nodes — parse the C++ string for peripheral patterns
+      if ((call as any).callee === '__EMIT__') {
+        if (call.args) {
+          for (const arg of call.args) {
+            if (arg && (arg as any).kind === 'string' && typeof (arg as any).value === 'string') {
+              analyzeEmitString((arg as any).value, usage);
+            }
+          }
+        }
+      } else {
+        // Regular call — analyze callee for peripheral usage
+        analyzeCalleeForPeripheralUsage((call as any).callee, usage);
+      }
+      // Also analyze args for nested expressions
       if (call.args) {
         for (const arg of call.args) {
           if (arg) analyzeExpression(arg, usage);
@@ -275,12 +464,18 @@ function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
     case 'update':
       // Update statements don't involve peripheral calls
       break;
-    
+
     case 'break':
     case 'continue':
       // Control flow statements don't involve peripherals
       break;
-    
+
+    case 'block': {
+      const blockStmt = stmt as any;
+      if (blockStmt.body && Array.isArray(blockStmt.body)) analyzeStatements(blockStmt.body, usage);
+      break;
+    }
+
     default:
       // Unknown statement kind - skip
       break;
@@ -304,19 +499,13 @@ function analyzeExpression(expr: ExpressionIR | undefined, usage: PeripheralUsag
   try {
     const exprKind = (expr as any).kind;
     
-    // Check for typehal-call expressions (pin.method() calls)
-    if (exprKind === 'typehal-call') {
-      analyzeTypehalCall(expr as any, usage);
-      return;
-    }
-
     if (exprKind === 'raw' && 'value' in expr) {
       markTimer0UsageFromText((expr as any).value, usage);
     }
 
-    // Structured method-call IR: check callee for timer0-triggering functions
+    // Structured method-call IR: check callee for peripheral usage
     if (exprKind === 'method-call' && 'callee' in expr) {
-      markTimer0UsageFromText((expr as any).callee, usage);
+      analyzeCalleeForPeripheralUsage((expr as any).callee, usage);
     }
     
     // Recursively analyze nested expressions
@@ -396,106 +585,3 @@ export function parsePinNumber(receiver: string): number | null {
   return null;
 }
 
-/**
- * Analyze a typehal-call expression for peripheral usage.
- * These are pin.method() calls like A0.read(), D9.write(128), etc.
- */
-function analyzeTypehalCall(expr: { receiver?: string; receiverKind?: string; method?: string; args?: ExpressionIR[] }, usage: PeripheralUsage): void {
-  // Safety checks
-  if (!expr || !expr.receiver || !expr.method) return;
-
-  const { receiver, receiverKind, method } = expr;
-  const pinNumber = parsePinNumber(receiver);
-  const peripheralInstance = parsePeripheralInstance(receiver);
-
-  // Track all pin usage for unsafe pin validation
-  // Include digital, pwm, analog-input, and interrupt pins
-  if (receiverKind && ['digital', 'pwm', 'analog-input', 'interrupt'].includes(receiverKind)) {
-    usage.pinsUsed.add(receiver);
-  }
-
-  // Check for pin mode configuration (direct API: output, input, inputPullUp, inputPullDown)
-  if (method === 'output' || method === 'config.output' || method === 'config.output.initial') {
-    if (pinNumber !== null) {
-      usage.outputPins.add(pinNumber);
-    }
-    return;
-  }
-
-  if (method === 'input' || method === 'config.input') {
-    if (pinNumber !== null) {
-      usage.inputPins.add(pinNumber);
-    }
-    return;
-  }
-
-  if (method === 'inputPullUp' || method === 'config.inputPullUp') {
-    if (pinNumber !== null) {
-      usage.inputPullupPins.add(pinNumber);
-    }
-    return;
-  }
-
-  if (method === 'inputPullDown' || method === 'config.inputPullDown') {
-    if (pinNumber !== null) {
-      usage.inputPulldownPins.add(pinNumber);
-    }
-    return;
-  }
-  
-  // Check for analog input reads
-  if (receiverKind === 'analog-input' && method === 'read') {
-    usage.adc = true;
-    const pinMatch = receiver.match(/^A(\d+)$/);
-    if (pinMatch) {
-      usage.adcChannelsUsed.add(parseInt(pinMatch[1], 10));
-    }
-    return;
-  }
-  
-  // Check for PWM writes (new direct API: pwm(), old API: write/setDutyCycle)
-  if (receiverKind === 'pwm' && (method === 'pwm' || method === 'write' || method === 'setDutyCycle')) {
-    usage.pwm = true;
-    if (pinNumber !== null) {
-      usage.pwmPinsUsed.add(pinNumber);
-    }
-    return;
-  }
-  
-  // Check for digital pin methods on interrupt-capable pins
-  // New direct API: on.falling, on.rising, on.change, off.all
-  // Old API: attachInterrupt, detachInterrupt
-  if (method === 'attachInterrupt' || method === 'detachInterrupt' ||
-      method === 'on.falling' || method === 'on.rising' || method === 'on.change' ||
-      method === 'off.all') {
-    usage.externalInterrupts = true;
-    return;
-  }
-  
-  // Check for I2C bus usage (I2C0, I2C1, I2C2, etc.)
-  if (receiverKind === 'i2c' || peripheralInstance?.kind === 'i2c') {
-    usage.i2c = true;
-    if (peripheralInstance?.kind === 'i2c') {
-      usage.i2cInstancesUsed.add(peripheralInstance.index);
-    }
-    return;
-  }
-  
-  // Check for SPI bus usage (SPI0, SPI1, SPI2, etc.)
-  if (receiverKind === 'spi' || peripheralInstance?.kind === 'spi') {
-    usage.spi = true;
-    if (peripheralInstance?.kind === 'spi') {
-      usage.spiInstancesUsed.add(peripheralInstance.index);
-    }
-    return;
-  }
-  
-  // Check for Serial/UART usage (Serial, Serial1, Serial2 or UART0, UART1, UART2)
-  if (receiverKind === 'serial' || peripheralInstance?.kind === 'serial') {
-    usage.uart = true;
-    if (peripheralInstance?.kind === 'serial') {
-      usage.uartInstancesUsed.add(peripheralInstance.index);
-    }
-    return;
-  }
-}
