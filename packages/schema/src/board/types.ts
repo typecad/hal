@@ -74,7 +74,9 @@ export interface PeripheralFunction {
 // Pin definitions aggregate
 // ---------------------------------------------------------------------------
 
-interface PinDefinitions {
+export interface PinDefinitions {
+  /** Offset for analog pin numbers (e.g. A0 = 14 on Uno). */
+  analogOffset?: number;
   /** Complete list of every pin on the board. */
   all: PinDefinition[];
 
@@ -160,7 +162,9 @@ interface TouchDefinition {
   pins: string[];
 }
 
-interface PeripheralDefinitions {
+export interface PeripheralDefinitions {
+  /** Peripheral object name aliases (e.g. UART0 -> Serial). */
+  aliases?: Record<string, string>;
   i2c: PeripheralInstance[];
   spi: PeripheralInstance[];
   uart: PeripheralInstance[];

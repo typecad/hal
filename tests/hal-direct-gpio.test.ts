@@ -156,7 +156,8 @@ describe("GPIO HAL with emit()", () => {
     const result = transpile(GPIO_HAL_WITH_EMIT + `
       const D13: Pin = new Pin(13);
       const D7: Pin = new Pin(7);
-      D13.asOutput(HIGH);
+      D13.asOutput();
+      D13.high();
       D7.asInput();
     `);
 

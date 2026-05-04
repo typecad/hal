@@ -19,7 +19,7 @@ function normalizeEntrypointSyntax(sourceText: string): string {
 }
 
 export function buildProgramIR(fileName: string, sourceText: string, boardPackage?: string): ProgramIR {
-  loadHALModules(); // Parse HAL source files (idempotent)
+  loadHALModules(true); // Parse HAL source files (force reload to pick up changes)
   const normalizedSourceText = normalizeEntrypointSyntax(sourceText);
   const source = parseSource(fileName, normalizedSourceText);
   const diagnostics: Diagnostic[] = [];

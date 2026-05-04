@@ -87,11 +87,15 @@ export interface RegisteredCallback {
 }
 export const registeredCallbacks: RegisteredCallback[] = [];
 
+import { BoardConstants, getDefaultBoardConstants } from "./board-resolver";
+
 // Module-level board constants for the current buildProgramIR invocation.
 // Resolved from the board package before IR building starts, so HAL resolver can access it.
-let _currentBoardConstants: Map<string, string | number | boolean> | undefined;
-export function getCurrentBoardConstants() { return _currentBoardConstants; }
-export function setCurrentBoardConstants(v: Map<string, string | number | boolean> | undefined) { _currentBoardConstants = v; }
+let _currentBoardConstants: BoardConstants | undefined;
+export function getCurrentBoardConstants(): BoardConstants { 
+  return _currentBoardConstants || getDefaultBoardConstants(); 
+}
+export function setCurrentBoardConstants(v: BoardConstants | undefined) { _currentBoardConstants = v; }
 
 // Module-level local variable type tracker for typeof resolution.
 // Maps variable name → inferred C++ type string (e.g., "int", "std::string").

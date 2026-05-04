@@ -16,7 +16,7 @@ packages/
   framework-native/    Native (non-hardware) framework for dev/test
   cli/                 CLI entry point — thin wrappers; heavy logic is in transpiler/framework-*
   core/                Shared runtime types (@typehal public API)
-  hal/                 Hardware Abstraction Layer type definitions
+  typehal/             Hardware Abstraction Layer (emit/include/board directives)
   board-arduino-uno/   Board pin/peripheral data for Arduino Uno
   board-esp32-devkit/  Board data for ESP32 DevKit
   schema/              Config file schema

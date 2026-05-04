@@ -34,6 +34,13 @@ export class I2CDevice {
   }
 
   readBytes(register: number, count: number): Uint8Array {
+    emit(`${this._bus}.beginTransmission(${this._address});`);
+    emit(`${this._bus}.write(${register});`);
+    emit(`${this._bus}.endTransmission(false);`);
+    emit(`${this._bus}.requestFrom(${this._address}, ${count});`);
+    emit(`Uint8Array result(${count});`);
+    emit(`for (int i=0; i<${count}; i++) result[i] = ${this._bus}.read();`);
+    emit(`return result;`);
     return new Uint8Array(count);
   }
 }
@@ -67,6 +74,25 @@ export class I2CBus {
     emit(`${this._bus}.setClock(${hz});`);
   }
 
+  recover(): void {
+    emit(`pinMode(SCL, OUTPUT);`);
+    emit(`for (int i = 0; i < 16; i++) {`);
+    emit(`  digitalWrite(SCL, LOW);`);
+    emit(`  delayMicroseconds(10);`);
+    emit(`  digitalWrite(SCL, HIGH);`);
+    emit(`  delayMicroseconds(10);`);
+    emit(`}`);
+    emit(`${this._bus}.begin();`);
+  }
+
+  take(): this | null {
+    return this;
+  }
+
+  release(): void {
+    // No-op for standard Arduino.
+  }
+
   writeByte(address: number, register: number, value: number): void {
     emit(`${this._bus}.beginTransmission(${address});`);
     emit(`${this._bus}.write(${register});`);
@@ -75,6 +101,11 @@ export class I2CBus {
   }
 
   readByte(address: number, register: number): number {
+    emit(`${this._bus}.beginTransmission(${address});`);
+    emit(`${this._bus}.write(${register});`);
+    emit(`${this._bus}.endTransmission(false);`);
+    emit(`${this._bus}.requestFrom(${address}, 1);`);
+    emit(`return ${this._bus}.read();`);
     return 0;
   }
 
@@ -88,21 +119,26 @@ export class I2CBus {
   }
 
   endTransmission(stop?: boolean): number {
+    emit(`return ${this._bus}.endTransmission(${stop ?? true});`);
     return 0;
   }
 
   requestFrom(address: number, quantity: number, stop?: boolean): number {
+    emit(`return ${this._bus}.requestFrom(${address}, ${quantity}, ${stop ?? true});`);
     return 0;
   }
 
   available(): number {
+    emit(`return ${this._bus}.available();`);
     return 0;
   }
 
   read(): number {
+    emit(`return ${this._bus}.read();`);
     return 0;
   }
 }
+
 
 /** Map TypeHAL I2C instance number to Arduino C++ object name. I2C0→Wire, I2C1→Wire1 */
 export function i2cName(instance: number): string {

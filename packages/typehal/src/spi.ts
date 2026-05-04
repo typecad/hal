@@ -13,7 +13,7 @@ export class SPIDevice {
 
   transfer(data: number | Uint8Array): number {
     emit(`digitalWrite(${this._cs}, LOW);`);
-    emit(`${this._bus}.transfer(${data});`);
+    emit(`return ${this._bus}.transfer(${data});`);
     emit(`digitalWrite(${this._cs}, HIGH);`);
     return 0;
   }
@@ -21,6 +21,23 @@ export class SPIDevice {
   write(data: number | Uint8Array): void {
     emit(`digitalWrite(${this._cs}, LOW);`);
     emit(`${this._bus}.transfer(${data});`);
+    emit(`digitalWrite(${this._cs}, HIGH);`);
+  }
+
+  readRegister(register: number, count: number): Uint8Array {
+    emit(`digitalWrite(${this._cs}, LOW);`);
+    emit(`${this._bus}.transfer(${register});`);
+    emit(`Uint8Array result(${count});`);
+    emit(`for (int i=0; i<${count}; i++) result[i] = ${this._bus}.transfer(0x00);`);
+    emit(`digitalWrite(${this._cs}, HIGH);`);
+    emit(`return result;`);
+    return new Uint8Array(count);
+  }
+
+  writeRegister(register: number, value: number): void {
+    emit(`digitalWrite(${this._cs}, LOW);`);
+    emit(`${this._bus}.transfer(${register});`);
+    emit(`${this._bus}.transfer(${value});`);
     emit(`digitalWrite(${this._cs}, HIGH);`);
   }
 }
@@ -45,6 +62,15 @@ export class SPIBus {
   end(): void {
     emit(`${this._bus}.end();`);
   }
+
+  take(): this | null {
+    return this;
+  }
+
+  release(): void {
+    // No-op for standard Arduino.
+  }
+
 
   transfer(value: number | Uint8Array): number {
     return 0;

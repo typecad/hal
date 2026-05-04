@@ -67,6 +67,7 @@ export const ESP32DevKit: BoardDefinition = {
 
   // ----- Pins --------------------------------------------------------------
   pins: {
+    analogOffset: 36, // A0 is GPIO 36
     all: [
       // ---- Boot strapping pins (unsafe) ------------------------------------
       { number:  0, gpio:  0, name: 'D0', capabilities: FULL_GPIO_ANALOG_TOUCH,
@@ -266,6 +267,15 @@ export const ESP32DevKit: BoardDefinition = {
 
   // ----- Peripherals -------------------------------------------------------
   peripherals: {
+    aliases: {
+      UART0: 'Serial',
+      UART1: 'Serial1',
+      UART2: 'Serial2',
+      I2C0:  'Wire',
+      I2C1:  'Wire1',
+      SPI0:  'SPI',
+      SPI1:  'SPI1',
+    },
     i2c: [
       { instance: 0, defaultPins: { sda: 'D21', scl: 'D22' } },
       { instance: 1, defaultPins: { sda: 'D21', scl: 'D22' }, alternatePins: { sda: ['D4', 'D13', 'D14', 'D25', 'D26', 'D27', 'D32', 'D33'], scl: ['D4', 'D13', 'D14', 'D25', 'D26', 'D27', 'D32', 'D33'] } },

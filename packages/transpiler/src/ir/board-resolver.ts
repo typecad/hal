@@ -19,6 +19,20 @@ import type { BoardConstants } from "@typehal/core/shared";
 export type { BoardConstants };
 
 /**
+ * Returns a set of default board constants (standard Arduino Uno-like)
+ * used as a fallback when no specific board manifest is loaded.
+ */
+export function getDefaultBoardConstants(): BoardConstants {
+  const result: BoardConstants = new Map();
+  result.set("pins.analogOffset", 14);
+  result.set("peripherals.aliases.UART0", "Serial");
+  result.set("peripherals.aliases.I2C0", "Wire");
+  result.set("peripherals.aliases.SPI0", "SPI");
+  return result;
+}
+
+
+/**
  * Parse a TypeScript board-definition source file and return a flat map of
  * all compile-time constant scalar values exported as a `BoardDefinition`.
  *

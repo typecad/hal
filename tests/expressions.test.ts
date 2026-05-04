@@ -181,7 +181,7 @@ describe("Expression Transpilation", () => {
         "import { D3, UART0 } from '@typehal/board-arduino-uno';",
         "function test(): void {",
         "  const uart = UART0.begin(9600);",
-        "  uart.println(`d3: ${D3.read()}`);",
+        "  uart.println(`d3: ${D3.asInput().read()}`);",
         "}",
       ].join("\n"), { target: "arduino" });
       expect(result.cpp).toContain("digitalRead(3)");

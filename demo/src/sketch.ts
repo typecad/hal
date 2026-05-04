@@ -1,9 +1,12 @@
-import { Owned } from '@typehal';
+import { D8 } from '@typehal';
 
-const buffer: Owned<Uint8Array> = new Uint8Array([1, 2, 3]);
+const speaker = D8.asOutput();
 
-// Ownership is transferred to 'movedBuffer'
-const movedBuffer = buffer; 
+// Play 440Hz (A4) indefinitely
+speaker.tone(440);
 
-// ERROR: 'buffer' was moved and cannot be used again. [ownership-use-after-move]
-console.log(buffer[0]); 
+// Stop the tone
+speaker.noTone();
+
+// Play a 1000Hz beep for 500ms
+speaker.tone(1000).for(400);

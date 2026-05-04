@@ -12,33 +12,57 @@ const SPI_INSTANCE_PATTERN = /^SPI(\d+)$/;
 const UART_INSTANCE_PATTERN = /^UART(\d+)$/;
 const SERIAL_INSTANCE_PATTERN = /^Serial(\d*)$/;
 
+import { getCurrentBoardConstants } from "./build-ir-state";
+
 export function inferPeripheralKindByName(name: string): PeripheralReceiverKind | undefined {
-  if (I2C_INSTANCE_PATTERN.test(name)) return "i2c";
-  if (SPI_INSTANCE_PATTERN.test(name)) return "spi";
-  if (UART_INSTANCE_PATTERN.test(name) || SERIAL_INSTANCE_PATTERN.test(name)) return "serial";
-  return undefined;
+  const resolved = resolveCanonicalPeripheral(name);
+  return resolved?.kind;
 }
 
 export function parsePeripheralInstance(name: string): { kind: PeripheralReceiverKind; index: number } | undefined {
-  let match = name.match(I2C_INSTANCE_PATTERN);
-  if (match) {
-    return { kind: "i2c", index: parseInt(match[1], 10) };
+  return resolveCanonicalPeripheral(name);
+}
+
+/**
+ * Resolves a peripheral name (e.g. "UART0", "Serial", "Wire", "I2C1") 
+ * to its canonical kind and index using the current board manifest aliases.
+ */
+function resolveCanonicalPeripheral(name: string): { kind: PeripheralReceiverKind; index: number } | undefined {
+  const bc = getCurrentBoardConstants();
+
+  // 1. Check if name is already canonical (UART0, I2C1, etc.)
+  const canonicalMatch = name.match(/^(UART|I2C|SPI)(\d+)$/);
+  if (canonicalMatch) {
+    return {
+      kind: canonicalMatch[1] === "UART" ? "serial" : canonicalMatch[1].toLowerCase() as any,
+      index: parseInt(canonicalMatch[2], 10)
+    };
   }
 
-  match = name.match(SPI_INSTANCE_PATTERN);
-  if (match) {
-    return { kind: "spi", index: parseInt(match[1], 10) };
+  // 2. Check if name is a platform alias (e.g. "Serial" -> UART0)
+  if (bc) {
+    for (const [key, value] of bc.entries()) {
+      if (key.startsWith("peripherals.aliases.") && value === name) {
+        const canonical = key.replace("peripherals.aliases.", "");
+        const match = canonical.match(/^(UART|I2C|SPI)(\d+)$/);
+        if (match) {
+          return {
+            kind: match[1] === "UART" ? "serial" : match[1].toLowerCase() as any,
+            index: parseInt(match[2], 10)
+          };
+        }
+      }
+    }
   }
 
-  match = name.match(UART_INSTANCE_PATTERN);
-  if (match) {
-    return { kind: "serial", index: parseInt(match[1], 10) };
-  }
-
-  match = name.match(SERIAL_INSTANCE_PATTERN);
-  if (match) {
-    return { kind: "serial", index: match[1] === "" ? 0 : parseInt(match[1], 10) };
+  // 3. Fallback to standard Arduino patterns (e.g. Serial2 -> UART2)
+  const serialMatch = name.match(/^Serial(\d*)$/);
+  if (serialMatch) {
+    return {
+      kind: "serial",
+      index: serialMatch[1] === "" ? 0 : parseInt(serialMatch[1], 10)
+    };
   }
 
   return undefined;
-}
+}

@@ -33,19 +33,13 @@ export const halInstances = new Map<string, HALInstance>();
 // Registry of HAL class method ASTs, keyed by class name
 const halClassRegistry = new Map<string, HALClassEntry>();
 
+// Registry of singleton metadata, keyed by bare name (e.g. "ADC")
+const halSingletons = new Map<string, { className: string; fieldValues: Map<string, string>; includes?: string[] }>();
+
 // Guard: only load once per process
 let halModulesLoaded = false;
 
-// HAL source files to load
-const HAL_SOURCE_FILES = [
-  "gpio.ts",
-  "i2c.ts",
-  "spi.ts",
-  "uart.ts",
-  "eeprom.ts",
-  "wdt.ts",
-  "adc.ts",
-];
+
 
 /** Resolve the HAL source directory. */
 function resolveHALSourceDir(): string {
@@ -149,15 +143,22 @@ function extractMethods(cls: ts.ClassDeclaration): Map<string, HALMethodEntry> {
   return methods;
 }
 
-/** Load and parse all HAL source files. Idempotent. */
-export function loadHALModules(): void {
-  if (halModulesLoaded) return;
+/** Load and parse all HAL source files. Dynamic discovery. */
+export function loadHALModules(force = false): void {
+  if (halModulesLoaded && !force) return;
   halModulesLoaded = true;
+
+  if (force) {
+    halClassRegistry.clear();
+    halCtorIncludes.clear();
+    halSingletons.clear();
+  }
 
   try {
     const srcDir = resolveHALSourceDir();
+    const files = fs.readdirSync(srcDir).filter(f => f.endsWith(".ts") && f !== "index.ts");
 
-    for (const fileName of HAL_SOURCE_FILES) {
+    for (const fileName of files) {
       const filePath = path.join(srcDir, fileName);
       if (!fs.existsSync(filePath)) continue;
       const source = fs.readFileSync(filePath, "utf-8");
@@ -172,7 +173,36 @@ export function loadHALModules(): void {
           const { fieldMap: ctorFieldMap, defaults: ctorDefaults } = ctor ? extractCtorFieldMap(ctor) : { fieldMap: new Map<string, string>(), defaults: new Map<string, string>() };
           const ctorIncludes = extractCtorIncludes(ctor);
           const methods = extractMethods(stmt);
+          
+          // Metadata extraction for singletons
+          let instanceName: string | undefined;
+          let includes: string[] | undefined;
+          const defaultFields = new Map<string, string>();
+
+          for (const member of stmt.members) {
+            if (ts.isPropertyDeclaration(member) && 
+                member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) &&
+                ts.isIdentifier(member.name)) {
+              if (member.name.text === "__instance_name" && member.initializer && ts.isStringLiteral(member.initializer)) {
+                instanceName = member.initializer.text;
+              }
+              if (member.name.text === "__includes" && member.initializer && ts.isArrayLiteralExpression(member.initializer)) {
+                includes = member.initializer.elements.filter(ts.isStringLiteral).map(e => e.text);
+              }
+              if (member.name.text === "__default_fields" && member.initializer && ts.isObjectLiteralExpression(member.initializer)) {
+                for (const prop of member.initializer.properties) {
+                  if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && ts.isStringLiteral(prop.initializer)) {
+                    defaultFields.set(prop.name.text, prop.initializer.text);
+                  }
+                }
+              }
+            }
+          }
+
           halClassRegistry.set(className, { ctorFieldMap, ctorDefaults, methods });
+          if (instanceName) {
+            halSingletons.set(instanceName, { className, fieldValues: defaultFields, includes });
+          }
           if (ctorIncludes.length > 0) {
             halCtorIncludes.set(className, ctorIncludes);
           }
@@ -196,49 +226,102 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
     const inst = halInstances.get(receiver.text);
     if (inst) return inst;
 
-    // Bare-name fallbacks for well-known singleton instances
-    const bareNameMap: Record<string, { className: string; fieldValues: Map<string, string>; includes?: string[] }> = {
-      EEPROM: { className: "EEPROMClass", fieldValues: new Map([["_name", "EEPROM"]]), includes: ["<EEPROM.h>"] },
-      WDT: { className: "WDTClass", fieldValues: new Map() },
-      ADC: { className: "ADCClass", fieldValues: new Map([["_reference", "DEFAULT"]]) },
-    };
-    const bare = bareNameMap[receiver.text];
-    if (bare) {
-      if (bare.includes) {
-        for (const inc of bare.includes) requiredIncludes.add(inc);
+    // Metadata-driven singleton resolution (e.g., ADC, EEPROM, WDT)
+    const singleton = halSingletons.get(receiver.text);
+    if (singleton) {
+      if (singleton.includes) {
+        for (const inc of singleton.includes) requiredIncludes.add(inc);
       }
       // Reuse cached instance so state updates (e.g. ADC._reference) persist
       const cached = halInstances.get(receiver.text);
       if (cached) return cached;
-      halInstances.set(receiver.text, bare);
-      return bare;
+      const inst = { className: singleton.className, fieldValues: new Map(singleton.fieldValues) };
+      halInstances.set(receiver.text, inst);
+      return inst;
     }
 
-    // Pattern-based fallbacks for unimported bus aliases
-    const uartMatch = receiver.text.match(/^UART(\d+)$/);
-    if (uartMatch) {
-      const portName = uartMatch[1] === '0' ? 'Serial' : `Serial${uartMatch[1]}`;
-      return { className: "SerialPort", fieldValues: new Map([["_port", portName]]) };
-    }
-    const i2cMatch = receiver.text.match(/^I2C(\d+)$/);
-    if (i2cMatch) {
-      const busName = i2cMatch[1] === '0' ? 'Wire' : `Wire${i2cMatch[1]}`;
-      return { className: "I2CBus", fieldValues: new Map([["_bus", busName]]) };
-    }
-    const spiMatch = receiver.text.match(/^SPI(\d+)$/);
-    if (spiMatch) {
-      const busName = spiMatch[1] === '0' ? 'SPI' : `SPI${spiMatch[1]}`;
-      return { className: "SPIBus", fieldValues: new Map([["_bus", busName]]) };
+    const name = receiver.text;
+    const bc = getCurrentBoardConstants();
+
+    // Board-defined peripheral aliases (e.g., UART0 -> Serial)
+    // Consolidates both canonical (UART0) and platform (Serial) names via the manifest.
+    for (const [key, value] of bc.entries()) {
+      if (key.startsWith("peripherals.aliases.") && (name === value || name === key.replace("peripherals.aliases.", ""))) {
+        const canonical = key.replace("peripherals.aliases.", "");
+        if (canonical.startsWith("UART")) return { className: "SerialPort", fieldValues: new Map([["_port", String(value)]]) };
+        if (canonical.startsWith("I2C")) return { className: "I2CBus", fieldValues: new Map([["_bus", String(value)]]) };
+        if (canonical.startsWith("SPI")) return { className: "SPIBus", fieldValues: new Map([["_bus", String(value)]]) };
+      }
     }
 
-    // D-pin and A-pin bare-name fallbacks
-    const dMatch = receiver.text.match(/^D(\d+)$/);
+    // Bare pin resolution (D0, A0, etc.)
+    const dMatch = name.match(/^D(\d+)$/);
     if (dMatch) {
       return { className: "Pin", fieldValues: new Map([["_pin", dMatch[1]]]) };
     }
-    const aMatch = receiver.text.match(/^A(\d+)$/);
+    const aMatch = name.match(/^A(\d+)$/);
     if (aMatch) {
-      return { className: "Pin", fieldValues: new Map([["_pin", aMatch[1]]]) };
+      const offset = Number(bc.get("pins.analogOffset") ?? 0);
+      const pinNum = Number(aMatch[1]) + offset;
+      return { className: "Pin", fieldValues: new Map([["_pin", String(pinNum)]]) };
+    }
+  }
+
+  // Chained call result: new Pin(13).asOutput()
+  if (ts.isCallExpression(receiver) && ts.isPropertyAccessExpression(receiver.expression)) {
+    const innerInstance = resolveHALReceiver(receiver.expression.expression);
+    if (innerInstance) {
+      const methodName = receiver.expression.name.text;
+      // Specialized handling for Pin chaining (Pin -> OutputPin/InputPin)
+      if (innerInstance.className === "Pin" && (methodName === "asOutput" || methodName === "asInput" || methodName === "asInputPullUp")) {
+        const returnClassName = methodName === "asOutput" ? "OutputPin" : "InputPin";
+        return { className: returnClassName, fieldValues: new Map(innerInstance.fieldValues) };
+      }
+
+      // Specialized handling for device() factory pattern (I2CBus/SPIBus -> I2CDevice/SPIDevice)
+      // This allows propagating the address/CS pin from the call argument to the new instance.
+      if (methodName === "device" && (innerInstance.className === "I2CBus" || innerInstance.className === "SPIBus") && receiver.arguments.length > 0) {
+        const returnClassName = innerInstance.className === "SPIBus" ? "SPIDevice" : "I2CDevice";
+        const fieldValues = new Map(innerInstance.fieldValues);
+        const arg = receiver.arguments[0];
+        let argVal: string | null = null;
+        if (ts.isNumericLiteral(arg)) argVal = arg.text;
+        else if (ts.isIdentifier(arg)) {
+          // Check halInstances first (e.g. D10)
+          const argInst = halInstances.get(arg.text);
+          if (argInst && argInst.fieldValues.has("_pin")) argVal = argInst.fieldValues.get("_pin")!;
+          else argVal = arg.text;
+        }
+        if (argVal) {
+          const fieldName = innerInstance.className === "SPIBus" ? "_cs" : "_address";
+          fieldValues.set(fieldName, argVal);
+          return { className: returnClassName, fieldValues };
+        }
+      }
+
+      // Specialized handling for tone() chaining (OutputPin -> ToneChain)
+      if (methodName === "tone" && innerInstance.className === "OutputPin" && receiver.arguments.length > 0) {
+        const fieldValues = new Map(innerInstance.fieldValues);
+        const arg = receiver.arguments[0];
+        let argVal: string | null = null;
+        if (ts.isNumericLiteral(arg)) argVal = arg.text;
+        else if (ts.isIdentifier(arg)) argVal = arg.text;
+        
+        if (argVal) {
+          fieldValues.set("_lastFreq", argVal);
+          return { className: "ToneChain", fieldValues };
+        }
+      }
+
+      // General fallback: if the method is known to return another HAL class, carry over fields
+      const classEntry = halClassRegistry.get(innerInstance.className);
+      const methodEntry = classEntry?.methods.get(methodName);
+      if (methodEntry && methodEntry.methodNode.type && ts.isTypeReferenceNode(methodEntry.methodNode.type) && ts.isIdentifier(methodEntry.methodNode.type.typeName)) {
+        const returnClassName = methodEntry.methodNode.type.typeName.text;
+        if (halClassRegistry.has(returnClassName)) {
+          return { className: returnClassName, fieldValues: new Map(innerInstance.fieldValues) };
+        }
+      }
     }
   }
 
@@ -598,7 +681,7 @@ export function processHALMethodBody(
 
   // Auto-passthrough for stub methods: if no emit() calls and the return is a literal
   // (e.g., return 0), construct the C++ expression as <objectName>.<method>(<args>).
-  // Skip for Pin class since Pin methods use standalone C functions, not object methods.
+  // Skip for Pin classes since Pin methods are typically lowered to standalone C calls (digitalRead/Write).
   if (emitLines.length === 0 && isLiteralReturnValue(returnValue)
       && instance.className !== "Pin"
       && instance.className !== "OutputPin"
@@ -629,12 +712,10 @@ export function processHALMethodBody(
   return { emitLines, returnValue, returnClassName };
 }
 
-/** Check if a return value is a literal (0, "", etc.) indicating a stub. */
+/** Check if a resolved C++ value string is a simple literal (for stub detection). */
 function isLiteralReturnValue(val: string | undefined): boolean {
-  if (val === undefined) return true;
-  if (val === "0") return true;
-  if (val === "''" || val === '""') return true;
-  return false;
+  if (val === undefined) return false;
+  return val === "0" || val === "true" || val === "false" || val === "''" || val === '""';
 }
 
 /** Resolve the C++ object name from a HAL instance's constructor field values. */

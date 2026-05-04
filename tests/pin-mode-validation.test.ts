@@ -88,10 +88,11 @@ describe('Pin Mode Configuration Validation', () => {
     expect(result.cpp).toContain('digitalRead(3)');
   });
 
-  it('emits pinMode + digitalWrite for LED.asOutput(HIGH)', () => {
+  it('emits pinMode + digitalWrite for LED.asOutput() and high()', () => {
     const result = transpile(`
       import { LED, HIGH } from '@typehal/board-arduino-uno';
-      const led = LED.asOutput(HIGH);
+      const led = LED.asOutput();
+      led.high();
       led.toggle();
     `, { target: 'arduino' });
 

@@ -20,10 +20,11 @@ describe('GPIO Object-Creation Pattern', () => {
       ]);
     });
 
-    it('emits pinMode + digitalWrite for LED.asOutput(true)', () => {
+    it('emits pinMode + digitalWrite for LED.asOutput() followed by write(true)', () => {
       const result = transpile(`
         import { LED } from '@typehal/board-arduino-uno';
-        const led = LED.asOutput(true);
+        const led = LED.asOutput();
+        led.write(true);
         led.toggle();
       `, { target: 'arduino' });
 

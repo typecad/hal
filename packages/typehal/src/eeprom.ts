@@ -2,6 +2,10 @@ import { emit } from './emit';
 import { include } from './include';
 
 export class EEPROMClass {
+  static readonly __instance_name = "EEPROM";
+  static readonly __includes = ["<EEPROM.h>"];
+  static readonly __default_fields = { _name: "EEPROM" };
+
   private _name: string;
   constructor(name: string) {
     include("<EEPROM.h>");

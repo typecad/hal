@@ -1,15 +1,13 @@
 #include <Arduino.h>
 
-uint8_t buffer[] = { 1, 2, 3 };
-// Ownership is transferred to 'movedBuffer'
-const uint8_t* movedBuffer = buffer;
-
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  Serial.begin(115200);
-  // ERROR: 'buffer' was moved and cannot be used again. [ownership-use-after-move]
-  Serial.println(buffer[0]);
+  pinMode(8, OUTPUT);
+  digitalWrite(8, initial);
+  tone(8, 440);
+  noTone(8);
+  tone(8, 1000, 400);
 }
 
 void loop()

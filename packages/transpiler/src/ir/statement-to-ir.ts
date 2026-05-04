@@ -302,20 +302,8 @@ export function tryResolveHALExpression(
   return null;
 }
 
-/** @deprecated Use halInstances from hal-resolver instead. Kept for migration. */
-export const pinInstances = new Map<string, string>();
-/** @deprecated Use halInstances from hal-resolver instead. */
-export const i2cInstances = new Map<string, string>();
-/** @deprecated Use halInstances from hal-resolver instead. */
-export const serialInstances = new Map<string, string>();
-/** @deprecated Use halInstances from hal-resolver instead. */
-export const spiInstances = new Map<string, string>();
-/** @deprecated Use halInstances from hal-resolver instead. */
-export const eepromInstances = new Map<string, string>();
-/** @deprecated Use halInstances from hal-resolver instead. */
-export const wdtInstances = new Map<string, string>();
-/** @deprecated HAL namespace methods now resolve through HAL source files. */
-export const halNamespaces = new Map<string, string>();
+
+
 
 function callToStatement(
   statementNode: ts.ExpressionStatement,
@@ -2365,18 +2353,23 @@ export function variableStatementToIR(
             lowered.push(...stmts);
             commentsAssigned = true;
           }
-          // Track the instance for subsequent calls — resolve the receiver
-          // Propagate only when the method returns 'this' (chaining pattern like begin())
-          // or has no return value (void methods). Skip when returning primitives.
-          const receiver = declaration.initializer.expression.expression;
-          const instance = resolveHALReceiver(receiver);
-          if (instance && (!result.returnValue || result.returnValue === "this")) {
-            if (result.returnClassName) {
-              halInstances.set(varName, {
-                className: result.returnClassName,
-                fieldValues: new Map(instance.fieldValues),
-              });
-            } else {
+          // Track the instance for subsequent calls
+          const init = declaration.initializer as ts.CallExpression;
+          if (result.returnClassName && ts.isPropertyAccessExpression(init.expression)) {
+            // If the method returns a HAL class name (e.g. .asOutput() -> OutputPin),
+            // track the variable as an instance of that class.
+            const receiver = init.expression.expression;
+            const instance = resolveHALReceiver(receiver);
+            halInstances.set(varName, {
+              className: result.returnClassName,
+              fieldValues: new Map(instance?.fieldValues || []),
+            });
+          } else if (ts.isPropertyAccessExpression(init.expression)) {
+            // Propagate only when the method returns 'this' (chaining pattern like begin())
+            // or has no return value (void methods). Skip when returning primitives.
+            const receiver = init.expression.expression;
+            const instance = resolveHALReceiver(receiver);
+            if (instance && (!result.returnValue || result.returnValue === "this")) {
               halInstances.set(varName, instance);
             }
           }

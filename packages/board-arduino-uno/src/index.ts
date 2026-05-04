@@ -62,6 +62,7 @@ export const ArduinoUno: BoardDefinition = {
 
   // ----- Pins --------------------------------------------------------------
   pins: {
+    analogOffset: 14,
     all: [
       // Digital pins D0 – D13
       { number:  0, gpio:  0, name: 'D0',  aliases: ['RX'],   capabilities: DIGITAL_INT,
@@ -152,6 +153,11 @@ export const ArduinoUno: BoardDefinition = {
 
   // ----- Peripherals -------------------------------------------------------
   peripherals: {
+    aliases: {
+      UART0: 'Serial',
+      I2C0:  'Wire',
+      SPI0:  'SPI',
+    },
     i2c:  [{ instance: 0, defaultPins: { sda: 'A4', scl: 'A5' } }],
     spi:  [{ instance: 0, defaultPins: { mosi: 'D11', miso: 'D12', sck: 'D13', cs: 'D10' } }],
     uart: [{ instance: 0, defaultPins: { tx: 'D1', rx: 'D0' } }],

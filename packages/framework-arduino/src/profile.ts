@@ -352,11 +352,10 @@ const AVR_PREFERENCES_SHIM: string[] = [
   '    EEPROM.update(addr + 5, (uint8_t)((hash >> 24) & 0xFF));',
   '  }',
   'public:',
-  '  __tc_Preferences() : _started(false) {}',
-  '  void begin(const char*, bool = false) { _started = true; }',
-  '  void end() { _started = false; }',
+  '  __tc_Preferences() {}',
+  '  void begin(const char*, bool = false) {}',
+  '  void end() {}',
   '  size_t putInt(const char* key, int32_t value) {',
-  '    if (!_started) return 0;',
   '    uint32_t h = _djbHash(key);',
   '    int idx = _findSlotForWrite(key, _T_I32);',
   '    if (idx < 0) return 0;',
@@ -574,6 +573,18 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     const arch = toArchitectureFromFqbn(context?.buildTarget);
     if (arch === 'esp32') {
       extraIncludes.push('<driver/dac.h>');
+    }
+  }
+
+  const needsPreferences = used.has("Preferences") && !declared.has("Preferences");
+  if (needsPreferences) {
+    const arch = toArchitectureFromFqbn(context?.buildTarget);
+    if (arch === 'avr' || arch === 'megaavr' || arch === 'default') {
+      shimLines.push(...AVR_PREFERENCES_SHIM);
+      shimLines.push("static __tc_Preferences Preferences;");
+      extraIncludes.push('<EEPROM.h>');
+    } else if (arch === 'esp32') {
+      extraIncludes.push('<Preferences.h>');
     }
   }
 

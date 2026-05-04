@@ -175,6 +175,65 @@ export class ArduinoStrategy implements PlatformStrategy {
         "}"
       );
     }
+
+    // Comprehensive HAL polyfills in C++
+    lines.push(
+      "// TypeHAL Native Polyfills",
+      "struct __tc_Num {",
+      "    struct MapChain {",
+      "        long v; long fl, fh;",
+      "        MapChain(long _v) : v(_v), fl(0), fh(1023) {}",
+      "        MapChain& from(long l, long h) { fl = l; fh = h; return *this; }",
+      "        long to(long l, long h) { return (v - fl) * (h - l) / (fh - fl) + l; }",
+      "        long toPercent() { return (v - fl) * 100 / (fh - fl); }",
+      "        long toByte() { return (v - fl) * 255 / (fh - fl); }",
+      "    };",
+      "    struct ConstrainChain {",
+      "        long v;",
+      "        ConstrainChain(long _v) : v(_v) {}",
+      "        long between(long l, long h) { return v < l ? l : (v > h ? h : v); }",
+      "    };",
+      "    static long (_abs)(long x) { return x < 0 ? -x : x; }",
+      "    static long (_min)(long a, long b) { return a < b ? a : b; }",
+      "    static long (_max)(long a, long b) { return a > b ? a : b; }",
+      "    static MapChain (_map)(long v) { return MapChain(v); }",
+      "    static ConstrainChain (_constrain)(long v) { return ConstrainChain(v); }",
+      "} Num;",
+      "",
+      "struct __tc_Timing {",
+      "    unsigned long millis() { return ::millis(); }",
+      "    unsigned long micros() { return ::micros(); }",
+      "    void delay(unsigned long ms) { ::delay(ms); }",
+      "    void delayMicroseconds(unsigned int us) { ::delayMicroseconds(us); }",
+      "} Timing;",
+      "",
+      "#if defined(__AVR__)",
+      "#include <avr/wdt.h>",
+      "#include <string.h>",
+      "struct __tc_WDT {",
+      "    void (enable)(const char* t) {",
+      "        if (strcmp(t, \"15ms\") == 0) wdt_enable(WDTO_15MS);",
+      "        else if (strcmp(t, \"30ms\") == 0) wdt_enable(WDTO_30MS);",
+      "        else if (strcmp(t, \"60ms\") == 0) wdt_enable(WDTO_60MS);",
+      "        else if (strcmp(t, \"120ms\") == 0) wdt_enable(WDTO_120MS);",
+      "        else if (strcmp(t, \"250ms\") == 0) wdt_enable(WDTO_250MS);",
+      "        else if (strcmp(t, \"500ms\") == 0) wdt_enable(WDTO_500MS);",
+      "        else if (strcmp(t, \"1s\") == 0) wdt_enable(WDTO_1S);",
+      "        else if (strcmp(t, \"2s\") == 0) wdt_enable(WDTO_2S);",
+      "        else if (strcmp(t, \"4s\") == 0) wdt_enable(WDTO_4S);",
+      "        else if (strcmp(t, \"8s\") == 0) wdt_enable(WDTO_8S);",
+      "    }",
+      "    void (enable)(int t) { wdt_enable(t); }",
+      "    void (reset)() { wdt_reset(); }",
+      "    void (disable)() { wdt_disable(); }",
+      "} WDT;",
+      "#endif",
+      "",
+      "// String helpers",
+      "inline size_t (strlen)(const String& s) { return s.length(); }",
+      "inline size_t (strlen)(const char* s) { return ::strlen(s); }"
+    );
+
     return lines;
   }
   profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
@@ -308,7 +367,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   defaultNumericType(): string { return "int"; }
   normalizeCppType(typeName: string): string {
     if (typeName === "auto") return "auto";
-    if (typeName === "std::string") return "const char*";
+    if (typeName === "std::string") return "String";
     if (typeName === "IInputModePin" || typeName === "IOutputModePin" || typeName === "IPin") return "int";
     if (this._usesPinGroup && typeName.startsWith("IPinGroup")) return "__tc_PinGroup";
     const fnTypeMatch = typeName.match(/^std::function<\s*([^()<>]+)\((.*)\)\s*>$/);
@@ -373,6 +432,9 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     if (this._usesPinGroup) {
       v = v.replace(/createPinGroup\(\{\s*(.*?)\s*\}\)/g, '__tc_createPinGroup($1)');
     }
+
+    // Prevent macro expansion for Num methods (abs, min, max, map, constrain)
+    v = v.replace(/Num\.(abs|min|max|map|constrain)\(/g, "Num._$1(");
 
     return v;
   }

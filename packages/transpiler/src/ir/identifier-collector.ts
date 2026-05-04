@@ -172,6 +172,15 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
       // Also add the full callee (e.g. "Serial.begin") for polyfill detection
       identifiers.add(statement.callee);
       for (const arg of statement.args) {
+        // Special case: if this is an __EMIT__ call, scan string literals for identifiers
+        if (statement.callee === "__EMIT__" && arg.kind === "string") {
+          const matches = arg.value.match(/[A-Za-z_][A-Za-z0-9_]*/g);
+          if (matches) {
+            for (const match of matches) {
+              identifiers.add(match);
+            }
+          }
+        }
         for (const id of collectExpressionIdentifiers(arg)) {
           identifiers.add(id);
         }

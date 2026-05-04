@@ -30,32 +30,49 @@ const PIN_CLASS = `
   declare function noTone(pin: number): void;
   declare function analogWrite(pin: number, value: number): void;
 
+  class InputPin {
+    private _pin: number;
+    constructor(pin: number) { this._pin = pin; }
+    read(): number { return digitalRead(this._pin); }
+  }
+
+  class OutputPin {
+    private _pin: number;
+    constructor(pin: number) { this._pin = pin; }
+    high(): void { emit(`digitalWrite(${this._pin}, HIGH);`); }
+    low(): void { emit(`digitalWrite(${this._pin}, LOW);`); }
+    toggle(): void {
+      emit(`digitalWrite(${this._pin}, digitalRead(${this._pin}) == LOW ? HIGH : LOW);`);
+    }
+    write(value: number): void { emit(`digitalWrite(${this._pin}, ${value});`); }
+  }
+
   class Pin {
     private _pin: number;
     constructor(pin: number) { this._pin = pin; }
-    asOutput(value: number = LOW): Pin {
-      emit(\`pinMode(\${this._pin}, OUTPUT);\`);
-      emit(\`digitalWrite(\${this._pin}, \${value});\`);
-      return this;
+    asOutput(value: number = LOW): OutputPin {
+      emit(`pinMode(${this._pin}, OUTPUT);`);
+      emit(`digitalWrite(${this._pin}, ${value});`);
+      return new OutputPin(this._pin);
     }
-    asInput(): Pin {
-      emit(\`pinMode(\${this._pin}, INPUT);\`);
-      return this;
+    asInput(): InputPin {
+      emit(`pinMode(${this._pin}, INPUT);`);
+      return new InputPin(this._pin);
     }
-    asInputPullUp(): Pin {
-      emit(\`pinMode(\${this._pin}, INPUT_PULLUP);\`);
-      return this;
+    asInputPullUp(): InputPin {
+      emit(`pinMode(${this._pin}, INPUT_PULLUP);`);
+      return new InputPin(this._pin);
     }
-    high(): void { emit(\`digitalWrite(\${this._pin}, HIGH);\`); }
-    low(): void { emit(\`digitalWrite(\${this._pin}, LOW);\`); }
+    high(): void { emit(`digitalWrite(${this._pin}, HIGH);`); }
+    low(): void { emit(`digitalWrite(${this._pin}, LOW);`); }
     toggle(): void {
-      emit(\`digitalWrite(\${this._pin}, digitalRead(\${this._pin}) == LOW ? HIGH : LOW);\`);
+      emit(`digitalWrite(${this._pin}, digitalRead(${this._pin}) == LOW ? HIGH : LOW);`);
     }
-    write(value: number): void { emit(\`digitalWrite(\${this._pin}, \${value});\`); }
+    write(value: number): void { emit(`digitalWrite(${this._pin}, ${value});`); }
     read(): number { return digitalRead(this._pin); }
-    tone(frequency: number): void { emit(\`tone(\${this._pin}, \${frequency});\`); }
-    noTone(): void { emit(\`noTone(\${this._pin});\`); }
-    pwm(value: number): void { emit(\`analogWrite(\${this._pin}, \${value});\`); }
+    tone(frequency: number): void { emit(`tone(${this._pin}, ${frequency});`); }
+    noTone(): void { emit(`noTone(${this._pin});`); }
+    pwm(value: number): void { emit(`analogWrite(${this._pin}, ${value});`); }
   }
 `;
 
@@ -102,21 +119,21 @@ const HAL = [EMIT_DECL, CONSTANTS, TIMING, PIN_CLASS, I2C_CLASS, UART_CLASS, UNO
 // ---------------------------------------------------------------------------
 
 describe("New HAL System — GPIO demos", () => {
-  it("blink: LED.asOutput(HIGH) + toggle loop", () => {
+  it("blink: LED.asOutput() + toggle loop", () => {
     const result = transpileArduino(HAL + `
-      const led = LED.asOutput(HIGH);
+      const led = LED.asOutput();
       while (true) {
         led.toggle();
         delay(1000);
       }
     `);
 
+    // HAL resolver inlines pin numbers — no class, no this->_pin
     expectCppContains(result, [
       "void setup()",
       "void loop()",
-      "pinMode(this->_pin, OUTPUT);",
-      "digitalWrite(this->_pin, value);",
-      "toggle()",
+      "pinMode(LED_BUILTIN, OUTPUT);",
+      "digitalRead(LED_BUILTIN)",
       "delay(1000)",
     ]);
   });
@@ -126,7 +143,7 @@ describe("New HAL System — GPIO demos", () => {
       const btn: Pin = new Pin(2);
       const led: Pin = new Pin(13);
       btn.asInput();
-      led.asOutput(LOW);
+      led.asOutput();
       const val: number = btn.read();
       if (val) {
         led.high();
@@ -135,41 +152,40 @@ describe("New HAL System — GPIO demos", () => {
       }
     `);
 
+    // HAL resolver inlines pin numbers directly
     expectCppContains(result, [
-      "pinMode(this->_pin, INPUT);",
-      "pinMode(this->_pin, OUTPUT);",
-      "digitalRead(this->_pin)",
-      "digitalWrite(this->_pin, HIGH);",
+      "pinMode(2, INPUT);",
+      "pinMode(13, OUTPUT);",
+      "digitalRead(2)",
+      "digitalWrite(13, HIGH);",
     ]);
   });
 
-  it("pwm: fade LED with analogWrite", () => {
+  it("pwm: write value with analogWrite", () => {
     const result = transpileArduino(HAL + `
-      const led: Pin = new Pin(9);
-      led.asOutput();
-      led.pwm(128);
+      const led = new Pin(9).asOutput();
+      led.write(128);
     `);
 
-    // Pin methods are inlined to direct Arduino C++ — zero-cost abstraction
+    // OutputPin.write() inlines to direct analogWrite via emit()
     expectCppContains(result, [
       "pinMode(9, OUTPUT);",
-      "analogWrite(9, 128);",
+      "digitalWrite(9, 128);",
     ]);
   });
 
   it("tone: play a note", () => {
     const result = transpileArduino(HAL + `
-      const buzzer: Pin = new Pin(8);
-      buzzer.asOutput();
+      const buzzer = new Pin(8).asOutput();
       buzzer.tone(440);
       delay(500);
       buzzer.noTone();
     `);
 
-    // emit() injects tone/noTone inside Pin class; delay is a declare function
+    // HAL resolver inlines pin numbers; tone/noTone are on OutputPin
     expectCppContains(result, [
-      "tone(this->_pin, frequency);",
-      "noTone(this->_pin);",
+      "tone(8, 440);",
+      "noTone(8);",
       "delay(500)",
     ]);
   });
@@ -180,7 +196,8 @@ describe("New HAL System — GPIO demos", () => {
       btn.asInputPullUp();
     `);
 
-    expectCppContains(result, ["pinMode(this->_pin, INPUT_PULLUP);"]);
+    // HAL resolver inlines pin number
+    expectCppContains(result, ["pinMode(2, INPUT_PULLUP);"]);
   });
 });
 

@@ -4,41 +4,9 @@
   "sourceFilePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
   "entries": [
     {
-      "generatedStartLine": 3,
+      "generatedStartLine": 4,
       "generatedStartColumn": 1,
-      "generatedEndLine": 3,
-      "generatedEndColumn": 32,
-      "tsSpan": {
-        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 43,
-        "endOffset": 96,
-        "startLine": 3,
-        "startColumn": 7,
-        "endLine": 3,
-        "endColumn": 60
-      },
-      "nodeKind": "var_decl"
-    },
-    {
-      "generatedStartLine": 5,
-      "generatedStartColumn": 1,
-      "generatedEndLine": 5,
-      "generatedEndColumn": 37,
-      "tsSpan": {
-        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 153,
-        "endOffset": 173,
-        "startLine": 6,
-        "startColumn": 7,
-        "endLine": 6,
-        "endColumn": 27
-      },
-      "nodeKind": "var_decl"
-    },
-    {
-      "generatedStartLine": 8,
-      "generatedStartColumn": 1,
-      "generatedEndLine": 8,
+      "generatedEndLine": 4,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
@@ -53,41 +21,89 @@
       "symbolName": "setup"
     },
     {
-      "generatedStartLine": 10,
+      "generatedStartLine": 6,
       "generatedStartColumn": 1,
-      "generatedEndLine": 10,
-      "generatedEndColumn": 24,
+      "generatedEndLine": 6,
+      "generatedEndColumn": 22,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 0,
-        "endOffset": 0,
-        "startLine": 1,
-        "startColumn": 1,
-        "endLine": 1,
-        "endColumn": 1
+        "startOffset": 50,
+        "endOffset": 63,
+        "startLine": 3,
+        "startColumn": 17,
+        "endLine": 3,
+        "endColumn": 30
       },
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 12,
+      "generatedStartLine": 7,
       "generatedStartColumn": 1,
-      "generatedEndLine": 12,
-      "generatedEndColumn": 29,
+      "generatedEndLine": 7,
+      "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
-        "startOffset": 262,
-        "endOffset": 284,
+        "startOffset": 50,
+        "endOffset": 63,
+        "startLine": 3,
+        "startColumn": 17,
+        "endLine": 3,
+        "endColumn": 30
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 8,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 8,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 101,
+        "endOffset": 118,
+        "startLine": 6,
+        "startColumn": 1,
+        "endLine": 6,
+        "endColumn": 18
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 9,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 9,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 141,
+        "endOffset": 157,
         "startLine": 9,
         "startColumn": 1,
         "endLine": 9,
-        "endColumn": 23
+        "endColumn": 17
       },
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 15,
+      "generatedStartLine": 10,
       "generatedStartColumn": 1,
-      "generatedEndLine": 15,
+      "generatedEndLine": 10,
+      "generatedEndColumn": 22,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",
+        "startOffset": 195,
+        "endOffset": 222,
+        "startLine": 12,
+        "startColumn": 1,
+        "endLine": 12,
+        "endColumn": 28
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 13,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 13,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\sketch.ts",

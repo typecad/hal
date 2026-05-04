@@ -2,6 +2,8 @@ import { emit } from './emit';
 import { board } from './board';
 
 export class ADCClass {
+  static readonly __instance_name = "ADC";
+  static readonly __default_fields = { _reference: "DEFAULT" };
   _reference: string;
 
   constructor() {

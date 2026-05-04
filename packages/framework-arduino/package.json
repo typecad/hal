@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc",
     "test:hw": "npm exec -- typehal-test",
-    "test:hw:single": "npm exec -- typehal-test"
+    "test:hw:basics": "npm exec -- typehal-test tests/01-basics.test.ts"
   },
   "dependencies": {
     "@typehal/core": "*"
