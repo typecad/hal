@@ -57,12 +57,57 @@ function getFloatPrecisionFromNumber(value: number): number | undefined {
   return text.length - decimalIndex - 1;
 }
 
+function expressionInvolvesFloat(expr: ExpressionIR | undefined): boolean {
+  if (!expr) return false;
+  switch (expr.kind) {
+    case "number":
+      return !Number.isInteger(expr.value);
+    case "binary":
+      return expressionInvolvesFloat(expr.left) || expressionInvolvesFloat(expr.right);
+    case "unary":
+      return expressionInvolvesFloat(expr.operand);
+    case "paren":
+      return expressionInvolvesFloat(expr.inner);
+    case "ternary":
+      return expressionInvolvesFloat(expr.condition) || expressionInvolvesFloat(expr.whenTrue) || expressionInvolvesFloat(expr.whenFalse);
+    case "method-call":
+      return expr.args.some(expressionInvolvesFloat);
+    case "property-access":
+      return expressionInvolvesFloat(expr.object);
+    case "element-access":
+      return expressionInvolvesFloat(expr.object) || expressionInvolvesFloat(expr.index);
+    case "template_string":
+      return expressionInvolvesFloat(expr.expression);
+    case "string_concat":
+      return expr.parts.some(expressionInvolvesFloat);
+    case "raw":
+      return /\b\d+\.\d+\b/.test(expr.value);
+    default:
+      return false;
+  }
+}
+
+function findFloatPrecision(expr: ExpressionIR | undefined): number | undefined {
+  if (!expr) return undefined;
+  if (expr.kind === "number") return getFloatPrecisionFromNumber(expr.value);
+  if (expr.kind === "binary") return findFloatPrecision(expr.left) ?? findFloatPrecision(expr.right);
+  if (expr.kind === "unary") return findFloatPrecision(expr.operand);
+  if (expr.kind === "paren") return findFloatPrecision(expr.inner);
+  if (expr.kind === "raw") {
+    const match = expr.value.match(/\b(\d+\.\d+)\b/);
+    if (match) return getFloatPrecisionFromNumber(parseFloat(match[1]));
+  }
+  return undefined;
+}
+
 export function recordVariableType(statement: VariableDeclarationIR, scopeState: EmissionScopeState): void {
+  const involvesFloat = expressionInvolvesFloat(statement.initializer);
+  const effectiveCppType = statement.cppType === "auto" && involvesFloat ? "float" : statement.cppType;
   scopeState.knownVariableTypes.set(statement.name, {
-    cppType: statement.cppType,
+    cppType: effectiveCppType,
     floatPrecision: statement.initializer?.kind === "number"
       ? getFloatPrecisionFromNumber(statement.initializer.value)
-      : undefined,
+      : effectiveCppType === "float" ? findFloatPrecision(statement.initializer) : undefined,
   });
 }
 
@@ -162,22 +207,34 @@ export function inferSnprintfArg(
     }
     case "raw": {
       const callMatch = expr.value.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
-      if (callMatch && knownFunctionReturnTypes) {
-        const returnType = knownFunctionReturnTypes.get(callMatch[1]);
-        if (returnType && isStringLikeCppType(returnType)) {
-          return { format: "%s", arg: renderExpression(expr), estimatedLength: 24, preludeLines: [] };
+      if (callMatch) {
+        const funcName = callMatch[1];
+        // Check user-defined function return types first
+        if (knownFunctionReturnTypes) {
+          const returnType = knownFunctionReturnTypes.get(funcName);
+          if (returnType && isStringLikeCppType(returnType)) {
+            return { format: "%s", arg: renderExpression(expr), estimatedLength: 24, preludeLines: [] };
+          }
+          if (returnType === "bool") {
+            const rendered = renderExpression(expr);
+            return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
+          }
+          if (returnType === "float" || returnType === "double") {
+            const rendered = renderExpression(expr);
+            const floatArgR = strategy.floatToSnprintfArg?.(rendered, undefined, ++scopeState.nextSnprintfTempId);
+            if (floatArgR !== undefined) return floatArgR;
+            return { format: "%g", arg: rendered, estimatedLength: 8, preludeLines: [] };
+          }
+          if (returnType === "int" || returnType === "long" || returnType === "short") {
+            return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
+          }
         }
-        if (returnType === "bool") {
-          const rendered = renderExpression(expr);
-          return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
-        }
-        if (returnType === "float" || returnType === "double") {
-          const rendered = renderExpression(expr);
-          const floatArgR = strategy.floatToSnprintfArg?.(rendered, undefined, ++scopeState.nextSnprintfTempId);
-          if (floatArgR !== undefined) return floatArgR;
-          return { format: "%g", arg: rendered, estimatedLength: 8, preludeLines: [] };
-        }
-        if (returnType === "int" || returnType === "long" || returnType === "short") {
+        // Known Arduino C functions that return int
+        const arduinoIntFunctions = new Set([
+          "digitalRead", "analogRead", "pulseIn", "pulseInLong",
+          "Wire_available", "Serial_available",
+        ]);
+        if (arduinoIntFunctions.has(funcName)) {
           return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
         }
       }
@@ -192,8 +249,21 @@ export function inferSnprintfArg(
       }
       // Numeric constant that overflows AVR 16-bit signed int — emit as long.
       const numVal = Number(rendered);
-      if (Number.isInteger(numVal) && !isNaN(numVal) && (numVal > 32767 || numVal < -32768)) {
-        return { format: "%ld", arg: `${rendered}L`, estimatedLength: 12, preludeLines: [] };
+      if (!isNaN(numVal)) {
+        if (Number.isInteger(numVal) && (numVal > 32767 || numVal < -32768)) {
+          return { format: "%ld", arg: `${rendered}L`, estimatedLength: 12, preludeLines: [] };
+        }
+        if (!Number.isInteger(numVal)) {
+          const precision = getFloatPrecisionFromNumber(numVal);
+          const floatArg = strategy.floatToSnprintfArg?.(rendered, precision, ++scopeState.nextSnprintfTempId);
+          if (floatArg !== undefined) return floatArg;
+          return {
+            format: precision !== undefined ? `%.${precision}f` : "%g",
+            arg: rendered,
+            estimatedLength: 8,
+            preludeLines: [],
+          };
+        }
       }
       return { format: "%d", arg: rendered, estimatedLength: 12, preludeLines: [] };
     }
@@ -205,6 +275,21 @@ export function inferSnprintfArg(
       const rendered = renderExpression(expr);
       if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith)\b/.test(rendered)) {
         return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
+      }
+      // Check if the rendered value is a numeric literal (e.g. board constant like "1.1")
+      const numVal = Number(rendered);
+      if (!isNaN(numVal) && rendered.trim() !== "") {
+        if (!Number.isInteger(numVal)) {
+          const precision = getFloatPrecisionFromNumber(numVal);
+          const floatArg = strategy.floatToSnprintfArg?.(rendered, precision, ++scopeState.nextSnprintfTempId);
+          if (floatArg !== undefined) return floatArg;
+          return {
+            format: precision !== undefined ? `%.${precision}f` : "%g",
+            arg: rendered,
+            estimatedLength: 8,
+            preludeLines: [],
+          };
+        }
       }
       return { format: "%d", arg: rendered, estimatedLength: 12, preludeLines: [] };
     }

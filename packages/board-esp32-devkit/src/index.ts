@@ -279,8 +279,10 @@ export const ESP32DevKit: BoardDefinition = {
       { instance: 2, defaultPins: { tx: 'D17', rx: 'D16' } },
     ],
     adc: [
-      { instance: 0, channels: 8, resolution: 12, referenceVoltage: 3.3 },   // ADC1 — usable with WiFi active
-      { instance: 1, channels: 10, resolution: 12, referenceVoltage: 3.3 },  // ADC2 — NOT usable with WiFi active
+      { instance: 0, channels: 8, resolution: 12, referenceVoltage: 3.3, maxValue: 4095,
+        referenceVoltages: { DEFAULT: 3.3, INTERNAL: 1.1 } },   // ADC1 — usable with WiFi active
+      { instance: 1, channels: 10, resolution: 12, referenceVoltage: 3.3, maxValue: 4095,
+        referenceVoltages: { DEFAULT: 3.3, INTERNAL: 1.1 } },  // ADC2 — NOT usable with WiFi active
     ],
     dac: [
       { instance: 0, resolution: 8, pins: ['D25', 'D26'] },
@@ -402,10 +404,13 @@ export { shiftIn, shiftOut, Shift, ShiftBitOrder } from './shift';
 export { randomSeed, random, Random } from './random';
 
 // Analog helpers
-export { AnalogReference, analogReference } from './analog';
+export { DEFAULT, INTERNAL } from './analog';
 
 // Interrupt helpers
 export { noInterrupts, interrupts, attachInterrupt, detachInterrupt } from './interrupts';
 
 // Board namespace (single-import convenience)
 export { Board } from './board';
+
+// ADC singleton
+export { ADC } from '@typehal/typehal';

@@ -8,6 +8,7 @@
 import type { ProgramIR, StatementIR, ExpressionIR } from './model';
 import type { PeripheralUsage } from './peripheral-usage';
 import type { Diagnostic } from '../types';
+import { registeredCallbacks } from './build-ir-state';
 
 /** ISR-unsafe operation entry. */
 export interface IsrUnsafeOp { reason: string; severity: 'warning' | 'info'; }
@@ -261,6 +262,11 @@ function scanProgramForCallbacks(
         }
       }
     }
+  }
+
+  // Scan registered callbacks from HAL resolver (callback() directive)
+  for (const rc of registeredCallbacks) {
+    callback(rc.callbackIR, null);
   }
 }
 

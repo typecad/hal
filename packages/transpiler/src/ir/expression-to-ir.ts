@@ -4,7 +4,8 @@ import { ExpressionIR, StatementIR } from "./model";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
-import { lowerStatement, tryInlineHALExpression, pinInstances, halNamespaces } from "./statement-to-ir";
+import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
+import { halInstances } from "./hal-resolver";
 import { escapeCppKeyword } from "../utils/strings";
 
 export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
@@ -356,7 +357,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   if (ts.isCallExpression(expr)) {
     // ---- HAL inline evaluator for expression context ----
-    const halResult = tryInlineHALExpression(expr, sourceText, diagnostics, pointerVars);
+    const halResult = tryResolveHALExpression(expr, sourceText, diagnostics, pointerVars);
     if (halResult) return halResult.ir;
 
     // Warn about optional chaining on call expressions â€” we preserve a null guard,
@@ -594,11 +595,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isIdentifier(expr)) {
-    // Resolve tracked pin instances to their pin numbers
-    const pinResolved = pinInstances.get(expr.text);
-    if (pinResolved) return { kind: "raw", value: pinResolved };
-    // Resolve tracked HAL namespace instances
-    if (halNamespaces.has(expr.text)) return { kind: "identifier", value: expr.text };
+    // Resolve tracked HAL instances to their resolved values
+    const halInst = halInstances.get(expr.text);
+    if (halInst) {
+      // For Pin instances, resolve to the pin number
+      if (halInst.fieldValues.has("_pin")) {
+        return { kind: "raw", value: halInst.fieldValues.get("_pin")! };
+      }
+    }
     return { kind: "identifier", value: expr.text };
   }
 

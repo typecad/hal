@@ -12,14 +12,6 @@
  * - `INTERNAL` = Internal 1.1 V reference
  * - `EXTERNAL` = Voltage on the AREF pin
  */
-export enum AnalogReference {
-  DEFAULT  = 1,
-  INTERNAL = 3,
-  EXTERNAL = 0,
-}
-
-/**
- * Set the ADC reference voltage.
- * Maps to Arduino `analogReference()`.
- */
-export declare function analogReference(ref: AnalogReference): void;
+export declare const DEFAULT: number;
+export declare const INTERNAL: number;
+export declare const EXTERNAL: number;

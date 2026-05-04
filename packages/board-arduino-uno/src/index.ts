@@ -155,7 +155,7 @@ export const ArduinoUno: BoardDefinition = {
     i2c:  [{ instance: 0, defaultPins: { sda: 'A4', scl: 'A5' } }],
     spi:  [{ instance: 0, defaultPins: { mosi: 'D11', miso: 'D12', sck: 'D13', cs: 'D10' } }],
     uart: [{ instance: 0, defaultPins: { tx: 'D1', rx: 'D0' } }],
-    adc:  [{ instance: 0, channels: 6, resolution: 10, referenceVoltage: 5.0,
+    adc:  [{ instance: 0, channels: 6, resolution: 10, referenceVoltage: 5.0, maxValue: 1023,
              referenceVoltages: { DEFAULT: 5.0, INTERNAL: 1.1 } }],
     pwm:  { channels: 6, resolution: 8, maxFrequency: 62_500 },
   },
@@ -291,10 +291,13 @@ export { shiftIn, shiftOut, Shift, ShiftBitOrder } from './shift';
 export { randomSeed, random, Random } from './random';
 
 // Analog helpers
-export { AnalogReference, analogReference } from './analog';
+export { DEFAULT, INTERNAL, EXTERNAL } from './analog';
 
 // Interrupt helpers
 export { noInterrupts, interrupts, attachInterrupt, detachInterrupt } from './interrupts';
 
 // Board namespace (single-import convenience)
 export { Board } from './board';
+
+// ADC singleton
+export { ADC } from '@typehal/typehal';

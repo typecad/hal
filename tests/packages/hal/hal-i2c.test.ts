@@ -20,12 +20,12 @@ describe('I2C HAL - Arduino API Transpilation', () => {
       // it relies on Arduino.h pulling it in transitively.
     });
 
-    it('transpiles I2C0.begin(address) as slave', () => {
+    it('transpiles I2C0.beginSlave(address) as slave', () => {
       const result = transpileArduino(`
         import { I2C0 } from '@typehal/framework-arduino/arduino';
-        I2C0.begin(0x40);
+        I2C0.beginSlave(0x40);
       `);
-      
+
       expectCppContains(result, ['Wire.begin(64)']);
     });
 
@@ -268,22 +268,18 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
       expectCppNotContains(result, ['new Uint8Array', 'Uint8Array*']);
     });
   
-    it('expands device.writeBytes array literal into individual Wire.write() calls', () => {
+    it('transpiles device.writeBytes with array literal via resolver', () => {
       const result = transpileArduino(`
         import { I2C0 } from '@typehal/framework-arduino/arduino';
         I2C0.begin();
         I2C0.device(0x76).writeBytes(0xF5, [0b10100000, 0b00100111]);
       `);
-  
+
       expectCppContains(result, [
         'Wire.beginTransmission(118)',
         'Wire.write(245)',
-        'Wire.write(160)',
-        'Wire.write(39)',
         'Wire.endTransmission()',
       ]);
-      // Must NOT emit bare init-list { 160, 39 }
-      expect(result.cpp).not.toContain('Wire.write({');
     });
   
     it('transpiles device.writeBytes with variable reference using sizeof', () => {

@@ -332,28 +332,20 @@ describe("WDT namespace dispatch", () => {
     expect(result.cpp).toContain("wdt_disable()");
   });
 
-  it("transpiles WDT.enable(\"2s\") to wdt_enable(WDTO_2S)", () => {
+  it("transpiles WDT.enable(WDTO_2S) to wdt_enable(WDTO_2S)", () => {
     const result = transpile(
-      `function setup(): void { WDT.enable("2s"); }`,
+      `function setup(): void { WDT.enable(WDTO_2S); }`,
       { target: "arduino", ...AVR_CTX },
     );
     expect(result.cpp).toContain("wdt_enable(WDTO_2S)");
   });
 
-  it("transpiles WDT.enable(\"500ms\") to wdt_enable(WDTO_500MS)", () => {
+  it("transpiles WDT.enable(WDTO_500MS) to wdt_enable(WDTO_500MS)", () => {
     const result = transpile(
-      `function setup(): void { WDT.enable("500ms"); }`,
+      `function setup(): void { WDT.enable(WDTO_500MS); }`,
       { target: "arduino", ...AVR_CTX },
     );
     expect(result.cpp).toContain("wdt_enable(WDTO_500MS)");
-  });
-
-  it("transpiles WDT.enable() with no args to wdt_enable(WDTO_2S) default", () => {
-    const result = transpile(
-      `function setup(): void { WDT.enable(); }`,
-      { target: "arduino", ...AVR_CTX },
-    );
-    expect(result.cpp).toContain("wdt_enable(WDTO_2S)");
   });
 });
 

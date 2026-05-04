@@ -7,8 +7,9 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState } from "./build-ir-state";
-import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, pinInstances, i2cInstances, serialInstances, spiInstances, eepromInstances, wdtInstances, halNamespaces } from "./statement-to-ir";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants } from "./build-ir-state";
+import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR } from "./statement-to-ir";
+import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
 import { functionDeclarationToIR, variableAsFunctionToIR } from "./function-builder";
@@ -18,6 +19,7 @@ function normalizeEntrypointSyntax(sourceText: string): string {
 }
 
 export function buildProgramIR(fileName: string, sourceText: string, boardPackage?: string): ProgramIR {
+  loadHALModules(); // Parse HAL source files (idempotent)
   const normalizedSourceText = normalizeEntrypointSyntax(sourceText);
   const source = parseSource(fileName, normalizedSourceText);
   const diagnostics: Diagnostic[] = [];
@@ -39,13 +41,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   
   // Reset module-level state for this file
   resetBuildState();
-  pinInstances.clear();
-  i2cInstances.clear();
-  serialInstances.clear();
-  spiInstances.clear();
-  eepromInstances.clear();
-  wdtInstances.clear();
-  halNamespaces.clear();
+  resetHALResolver();
   registerFieldMap.clear();
   
   // Collect pointer variables at top level (for correct -> vs . usage)
@@ -55,6 +51,31 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   for (const statement of source.statements) {
     if (ts.isTypeAliasDeclaration(statement)) {
       typeAliasNodes.set(statement.name.text, statement.type);
+    }
+  }
+
+  // Resolve board-definition constants BEFORE IR building so the HAL resolver
+  // can access them via currentBoardConstants during method body processing.
+  // First pass: collect imports so we can find the board package.
+  const earlyImports: ImportIR[] = [];
+  for (const stmt of source.statements) {
+    if (ts.isImportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
+      const namedImports: string[] = [];
+      if (stmt.importClause?.namedBindings && ts.isNamedImports(stmt.importClause.namedBindings)) {
+        namedImports.push(...stmt.importClause.namedBindings.elements.map((e) => e.name.text));
+      }
+      earlyImports.push({ moduleSpecifier: stmt.moduleSpecifier.text, namedImports });
+    }
+  }
+  for (const imp of earlyImports) {
+    const boardFile = tryResolveBoardDefFile(fileName, imp.moduleSpecifier, boardPackage);
+    if (boardFile) {
+      try {
+        setCurrentBoardConstants(resolveBoardConstants(boardFile));
+      } catch {
+        // Non-fatal
+      }
+      break;
     }
   }
 
@@ -92,7 +113,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       }
 
       // Track HAL instances imported from board packages and framework stubs
-      // so inline evaluators can resolve them to Arduino C++ names.
+      // so the HAL resolver can resolve them to Arduino C++ names.
       const isHALSource = moduleSpecifier.startsWith('@typehal/board-')
         || moduleSpecifier === '@typehal/framework-arduino/arduino'
         || moduleSpecifier === '@typehal';
@@ -103,29 +124,47 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         const analogOffset = isEsp32 ? 36 : 14;
 
         for (const name of namedImports) {
-          // D-pins: D0-D53 → pin number from name
+          // D-pins: D0-D53 → Pin instance
           const dMatch = name.match(/^D(\d+)$/);
-          if (dMatch) { pinInstances.set(name, dMatch[1]); continue; }
+          if (dMatch) {
+            halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", dMatch[1]]]) });
+            continue;
+          }
 
-          // A-pins: A0-A19 → pin number with board-specific offset
+          // A-pins: A0-A19 → Pin instance with board-specific offset
           const aMatch = name.match(/^A(\d+)$/);
-          if (aMatch) { pinInstances.set(name, String(analogOffset + parseInt(aMatch[1]))); continue; }
+          if (aMatch) {
+            const pinNum = String(analogOffset + parseInt(aMatch[1]));
+            halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", pinNum]]) });
+            continue;
+          }
 
-          // I2C buses: I2C0→Wire, I2C1→Wire1
+          // I2C buses: I2C0→I2CBus("Wire"), I2C1→I2CBus("Wire1")
           const i2cMatch = name.match(/^I2C(\d+)$/);
-          if (i2cMatch) { i2cInstances.set(name, i2cMatch[1] === '0' ? 'Wire' : `Wire${i2cMatch[1]}`); continue; }
+          if (i2cMatch) {
+            const busName = i2cMatch[1] === '0' ? 'Wire' : `Wire${i2cMatch[1]}`;
+            halInstances.set(name, { className: "I2CBus", fieldValues: new Map([["_bus", busName]]) });
+            continue;
+          }
 
-          // SPI buses: SPI0→SPI, SPI1→SPI1
+          // SPI buses: SPI0→SPIBus("SPI"), SPI1→SPIBus("SPI1")
           const spiMatch = name.match(/^SPI(\d+)$/);
-          if (spiMatch) { spiInstances.set(name, spiMatch[1] === '0' ? 'SPI' : `SPI${spiMatch[1]}`); continue; }
+          if (spiMatch) {
+            const busName = spiMatch[1] === '0' ? 'SPI' : `SPI${spiMatch[1]}`;
+            halInstances.set(name, { className: "SPIBus", fieldValues: new Map([["_bus", busName]]) });
+            continue;
+          }
 
-          // UART: UART0→Serial, UART1→Serial1, UART2→Serial2
+          // UART: UART0→SerialPort("Serial"), UART1→SerialPort("Serial1")
           const uartMatch = name.match(/^UART(\d+)$/);
-          if (uartMatch) { serialInstances.set(name, uartMatch[1] === '0' ? 'Serial' : `Serial${uartMatch[1]}`); continue; }
+          if (uartMatch) {
+            const portName = uartMatch[1] === '0' ? 'Serial' : `Serial${uartMatch[1]}`;
+            halInstances.set(name, { className: "SerialPort", fieldValues: new Map([["_port", portName]]) });
+            continue;
+          }
 
           // HAL namespace imports: Pulse, Shift, Random
           if (name === 'Pulse' || name === 'Shift' || name === 'Random') {
-            halNamespaces.set(name, name);
             continue;
           }
         }
@@ -141,8 +180,12 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             Serial: 'Serial',
           };
           for (const name of namedImports) {
-            if (pinAliases[name]) { pinInstances.set(name, pinAliases[name]); }
-            if (serialAliases[name]) { serialInstances.set(name, serialAliases[name]); }
+            if (pinAliases[name]) {
+              halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", pinAliases[name]]]) });
+            }
+            if (serialAliases[name]) {
+              halInstances.set(name, { className: "SerialPort", fieldValues: new Map([["_port", serialAliases[name]]]) });
+            }
           }
         }
       }
@@ -336,21 +379,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     topLevelClassNames.add(cls.name);
   }
 
-  // Resolve board-definition constants from the actual board package file.
-  // This replaces the old hard-coded ARDUINO_BOARD_METADATA table in
-  // typehal-map.ts so that Board.definition.* folds to the real values.
-  let boardConstants: BoardConstants | undefined;
-  for (const imp of imports) {
-    const boardFile = tryResolveBoardDefFile(fileName, imp.moduleSpecifier, boardPackage);
-    if (boardFile) {
-      try {
-        boardConstants = resolveBoardConstants(boardFile);
-      } catch {
-        // Non-fatal: missing or malformed board file — fall back to no-fold.
-      }
-      break;
-    }
-  }
+  // Board constants were already resolved before IR building (for HAL resolver access).
+  // Reuse the module-level value for the ProgramIR output.
+  const boardConstants = getCurrentBoardConstants();
 
   // Analyze peripheral usage for optimization
   let peripheralUsage: PeripheralUsage;

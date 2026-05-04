@@ -32,17 +32,16 @@ export class SerialPort {
     return 0;
   }
 
+  peek(): number {
+    return 0;
+  }
+
   available(): number {
     return 0;
   }
 
   flush(): void {
     emit(`${this._port}.flush();`);
-  }
-
-  printf(format: string, ...args: any[]): void {
-    emit(`snprintf(buf, sizeof(buf), "${format}", ${args.join(", ")});`);
-    emit(`${this._port}.print(buf);`);
   }
 }
 

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // HAL Pin Configuration Tests
 //
-// Tests for direct pin configuration APIs (asOutput, asInput, inputPullUp, pwm)
+// Tests for type-narrowed pin pattern: Pin → OutputPin / InputPin
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
@@ -17,34 +17,37 @@ describe('Pin Config - Digital Output', () => {
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
   });
 
-  it('transpiles D13.asOutput(true)', () => {
+  it('transpiles const led = D13.asOutput(); led.write(true)', () => {
     const result = transpile(`
       import { D13 } from '@typehal/board-arduino-uno';
-      D13.asOutput(true);
+      const led = D13.asOutput();
+      led.write(true);
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
     expect(result.cpp).toContain('digitalWrite(13, true)');
   });
 
-  it('transpiles D13.asOutput(false)', () => {
+  it('transpiles const led = D13.asOutput(); led.write(false)', () => {
     const result = transpile(`
       import { D13 } from '@typehal/board-arduino-uno';
-      D13.asOutput(false);
+      const led = D13.asOutput();
+      led.write(false);
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
     expect(result.cpp).toContain('digitalWrite(13, false)');
   });
 
-  it('transpiles LED.asOutput(true)', () => {
+  it('transpiles const led = LED.asOutput(); led.high()', () => {
     const result = transpile(`
       import { LED } from '@typehal/board-arduino-uno';
-      LED.asOutput(true);
+      const led = LED.asOutput();
+      led.high();
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
-    expect(result.cpp).toContain('digitalWrite(13, true)');
+    expect(result.cpp).toContain('digitalWrite(13, HIGH)');
   });
 });
 
@@ -79,35 +82,26 @@ describe('Pin Config - Digital Input', () => {
 });
 
 describe('Pin Config - PWM', () => {
-  it('transpiles D9.pwm()', () => {
+  it('transpiles const led = D9.asOutput(); led.pwm(50)', () => {
     const result = transpile(`
       import { D9 } from '@typehal/board-arduino-uno';
-      D9.pwm();
+      const led = D9.asOutput();
+      led.pwm(50);
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(9, OUTPUT)');
+    expect(result.cpp).toContain('analogWrite(9, 50 * ((1 << 8) - 1) / 100)');
   });
 
-  it('transpiles D9.pwm(50)', () => {
-    const result = transpile(`
-      import { D9 } from '@typehal/board-arduino-uno';
-      D9.pwm(50);
-    `, { target: 'arduino' });
-
-    expect(result.cpp).toContain('pinMode(9, OUTPUT)');
-    expect(result.cpp).toContain('analogWrite(9');
-    // Literal percent should be pre-computed: Math.round(50 * 255 / 100) = 128
-    expect(result.cpp).toContain('analogWrite(9, 128)');
-  });
-
-  it('transpiles D3.pwm(100)', () => {
+  it('transpiles const led = D3.asOutput(); led.pwm(100)', () => {
     const result = transpile(`
       import { D3 } from '@typehal/board-arduino-uno';
-      D3.pwm(100);
+      const led = D3.asOutput();
+      led.pwm(100);
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(3, OUTPUT)');
-    expect(result.cpp).toContain('analogWrite(3, 255)');
+    expect(result.cpp).toContain('analogWrite(3, 100 * ((1 << 8) - 1) / 100)');
   });
 });
 
@@ -137,7 +131,7 @@ describe('Pin Config - Interrupt Attach', () => {
   it('emits a named ISR function with body for D2.onFalling(callback)', () => {
     const result = transpile(`
       import { D2, LED } from '@typehal/board-arduino-uno';
-      const led = LED.asOutput(false);
+      const led = LED.asOutput();
       let ledState = false;
       D2.onFalling(() => {
         ledState = !ledState;
@@ -231,10 +225,11 @@ describe('Pin Config - Interrupt Attach', () => {
 });
 
 describe('Pin Config - Interrupt Detach', () => {
-  it('transpiles D2.offAll()', () => {
+  it('transpiles const pin = D2.asInput(); pin.offAll()', () => {
     const result = transpile(`
       import { D2 } from '@typehal/board-arduino-uno';
-      D2.offAll();
+      const pin = D2.asInput();
+      pin.offAll();
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('detachInterrupt');
@@ -246,18 +241,17 @@ describe('Pin Config - Combined Usage', () => {
   it('transpiles multiple pin configs in sequence', () => {
     const result = transpile(`
       import { D13, D2, D9 } from '@typehal/board-arduino-uno';
-      D13.output(true);
-      D2.inputPullUp();
-      D9.pwm(50);
+      const led = D13.asOutput();
+      led.write(true);
+      const btn = D2.asInputPullUp();
+      const pwm = D9.asOutput();
+      pwm.pwm(50);
     `, { target: 'arduino' });
 
-    // D13.output(true) inlines to pinMode + digitalWrite
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
     expect(result.cpp).toContain('digitalWrite(13, true)');
-    // D2.inputPullUp() inlines to pinMode
     expect(result.cpp).toContain('pinMode(2, INPUT_PULLUP)');
-    // D9.pwm(50) inlines to pinMode + analogWrite (50% → 128)
     expect(result.cpp).toContain('pinMode(9, OUTPUT)');
-    expect(result.cpp).toContain('analogWrite(9, 128)');
+    expect(result.cpp).toContain('analogWrite(9, 50 * ((1 << 8) - 1) / 100)');
   });
 });

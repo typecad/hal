@@ -10,1209 +10,7 @@ import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 
-// ---------------------------------------------------------------------------
-// Pin inline evaluator — zero-cost abstraction
-//
-// When the transpiler encounters Pin method calls (e.g., led.asOutput(HIGH)),
-// it evaluates them at compile time and emits the raw Arduino C++ inline,
-// erasing the Pin class entirely from the output.
-// ---------------------------------------------------------------------------
-
-/** Tracks variable → pin expression (e.g., "led" → "LED_BUILTIN") */
-export const pinInstances = new Map<string, string>();
-
-/** Counter for unique printf buffer names */
-let printfCounter = 0;
-
-/** Tracks variable → bus name for I2CBus (e.g., "I2C0" → "Wire") */
-export const i2cInstances = new Map<string, string>();
-
-/** Tracks variable → port name for SerialPort (e.g., "UART0" → "Serial") */
-export const serialInstances = new Map<string, string>();
-
-/** Tracks variable → bus name for SPIBus (e.g., "SPI0" → "SPI") */
-export const spiInstances = new Map<string, string>();
-
-/** Tracks variable → name for EEPROMClass (e.g., "EEPROM" → "EEPROM") */
-export const eepromInstances = new Map<string, string>();
-
-/** Tracks variable → name for WDTClass (e.g., "WDT" → "WDT") */
-export const wdtInstances = new Map<string, string>();
-
-/** Tracks HAL namespace imports (e.g., "Pulse" → "Pulse", "Shift" → "Shift", "Random" → "Random") */
-export const halNamespaces = new Map<string, string>();
-
-/** Pin method → inline C++ template */
-function inlinePinMethod(
-  pinExpr: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string } | null {
-  // Helper to render an argument as text for C++ interpolation
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-
-  switch (method) {
-    case "asOutput":
-      return {
-        emitLines: [
-          `pinMode(${pinExpr}, OUTPUT);`,
-          `digitalWrite(${pinExpr}, ${argText(0) || "LOW"});`,
-        ],
-        returnValue: pinExpr,
-      };
-    case "asInput":
-      return { emitLines: [`pinMode(${pinExpr}, INPUT);`], returnValue: pinExpr };
-    case "asInputPullUp":
-      return { emitLines: [`pinMode(${pinExpr}, INPUT_PULLUP);`], returnValue: pinExpr };
-    case "high":
-      return { emitLines: [`digitalWrite(${pinExpr}, HIGH);`] };
-    case "low":
-      return { emitLines: [`digitalWrite(${pinExpr}, LOW);`] };
-    case "toggle":
-      return { emitLines: [`digitalWrite(${pinExpr}, digitalRead(${pinExpr}) == LOW ? HIGH : LOW);`] };
-    case "write":
-      return { emitLines: [`digitalWrite(${pinExpr}, ${argText(0)});`] };
-    case "read":
-      return { emitLines: [], returnValue: `digitalRead(${pinExpr})` };
-    case "pulse":
-      return {
-        emitLines: [
-          `digitalWrite(${pinExpr}, HIGH);`,
-          `delayMicroseconds(${argText(0)});`,
-          `digitalWrite(${pinExpr}, LOW);`,
-        ],
-      };
-    case "tone":
-      return { emitLines: [`tone(${pinExpr}, ${argText(0)});`] };
-    case "toneFor":
-      return { emitLines: [`tone(${pinExpr}, ${argText(0)}, ${argText(1)});`] };
-    case "noTone":
-      return { emitLines: [`noTone(${pinExpr});`] };
-    case "pwm": {
-      // If arg is a numeric literal ≤ 100, treat as percentage and pre-compute
-      const rawVal = argText(0);
-      const numVal = parseInt(rawVal, 10);
-      if (!isNaN(numVal) && numVal >= 0 && numVal <= 100 && rawVal === String(numVal)) {
-        const pwmVal = Math.round((numVal * 255) / 100);
-        return {
-          emitLines: [
-            `pinMode(${pinExpr}, OUTPUT);`,
-            `analogWrite(${pinExpr}, ${pwmVal});`,
-          ],
-        };
-      }
-      return {
-        emitLines: [
-          `pinMode(${pinExpr}, OUTPUT);`,
-          `analogWrite(${pinExpr}, ${rawVal || "0"});`,
-        ],
-      };
-    }
-    case "output":
-      return {
-        emitLines: [
-          `pinMode(${pinExpr}, OUTPUT);`,
-          ...(args.length > 0 ? [`digitalWrite(${pinExpr}, ${argText(0)});`] : []),
-        ],
-        returnValue: pinExpr,
-      };
-    case "inputPullUp":
-      return { emitLines: [`pinMode(${pinExpr}, INPUT_PULLUP);`], returnValue: pinExpr };
-    case "inputPullDown":
-      // Not supported on AVR — fall through, let normal transpilation emit the call
-      // so diagnostics can catch it later
-      return null;
-    case "onFalling":
-      return { emitLines: [`attachInterrupt(digitalPinToInterrupt(${pinExpr}), /* callback:${argText(0)} */, FALLING);`] };
-    case "onRising":
-      return { emitLines: [`attachInterrupt(digitalPinToInterrupt(${pinExpr}), /* callback:${argText(0)} */, RISING);`] };
-    case "onChange":
-      return { emitLines: [`attachInterrupt(digitalPinToInterrupt(${pinExpr}), /* callback:${argText(0)} */, CHANGE);`] };
-    case "offAll":
-      return { emitLines: [`detachInterrupt(digitalPinToInterrupt(${pinExpr}));`] };
-    default:
-      return null;
-  }
-}
-
-/**
- * Check if a CallExpression is a `new Pin(...)` constructor.
- * Returns the pin argument text if so, or null.
- */
-function extractPinCtorArg(node: ts.Expression): string | null {
-  if (!ts.isNewExpression(node)) return null;
-  if (!ts.isIdentifier(node.expression) || node.expression.text !== "Pin") return null;
-  if (!node.arguments || node.arguments.length === 0) return null;
-  const arg = node.arguments[0];
-  if (ts.isIdentifier(arg)) return arg.text;
-  if (ts.isNumericLiteral(arg)) return arg.text;
-  if (ts.isPropertyAccessExpression(arg)) {
-    // e.g., LED_BUILTIN — render the full expression
-    return arg.getText ? arg.getText() : "";
-  }
-  return null;
-}
-
-/**
- * Resolve a method call receiver to a pin expression.
- * Handles: `new Pin(x).method()`, `pinVar.method()`, `expr.method()`
- * Returns { pinExpr, isChainedCtor } or null.
- */
-function resolvePinReceiver(
-  receiver: ts.Expression,
-): { pinExpr: string; isChainedCtor: boolean } | null {
-  // Case 1: `new Pin(x).method()` — method called on constructor result
-  const ctorArg = extractPinCtorArg(receiver);
-  if (ctorArg !== null) {
-    return { pinExpr: ctorArg, isChainedCtor: true };
-  }
-
-  // Case 2: `pinVar.method()` — method called on tracked variable or bare name
-  if (ts.isIdentifier(receiver)) {
-    const tracked = pinInstances.get(receiver.text);
-    if (tracked !== undefined) {
-      return { pinExpr: tracked, isChainedCtor: false };
-    }
-    // Bare name fallback: D2→"2", D10→"10", A0→"14", LED→"13"
-    const dMatch = receiver.text.match(/^D(\d+)$/);
-    if (dMatch) return { pinExpr: dMatch[1], isChainedCtor: false };
-    const aMatch = receiver.text.match(/^A(\d+)$/);
-    if (aMatch) return { pinExpr: String(14 + parseInt(aMatch[1])), isChainedCtor: false };
-    const pinAliases: Record<string, string> = {
-      LED: '13', SDA: '18', SCL: '19', MOSI: '11', MISO: '12', SCK: '13', SS: '10', TX: '1', RX: '0',
-    };
-    if (pinAliases[receiver.text]) return { pinExpr: pinAliases[receiver.text], isChainedCtor: false };
-  }
-
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// I2CBus inline evaluator — zero-cost abstraction for I2C
-// ---------------------------------------------------------------------------
-
-/** I2CBus method → inline C++ template */
-function inlineI2CMethod(
-  busName: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string } | null {
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-
-  switch (method) {
-    case "begin":
-      requiredIncludes.add("<Wire.h>");
-      if (args.length > 0) {
-        // Slave mode: I2C0.begin(address)
-        return { emitLines: [`${busName}.begin(${argText(0)});`] };
-      }
-      return { emitLines: [`${busName}.begin();`] };
-    case "beginSlave":
-      return { emitLines: [`${busName}.begin(${argText(0)});`] };
-    case "end":
-      return { emitLines: [`${busName}.end();`] };
-    case "setClock":
-      return { emitLines: [`${busName}.setClock(${argText(0)});`] };
-    case "beginTransmission":
-      return { emitLines: [`${busName}.beginTransmission(${argText(0)});`] };
-    case "write":
-      return { emitLines: [`${busName}.write(${argText(0)});`] };
-    case "endTransmission":
-      if (args.length > 0) {
-        return { emitLines: [], returnValue: `${busName}.endTransmission(${argText(0)})` };
-      }
-      return { emitLines: [], returnValue: `${busName}.endTransmission()` };
-    case "requestFrom":
-      if (args.length >= 3) {
-        return { emitLines: [], returnValue: `${busName}.requestFrom(${argText(0)}, ${argText(1)}, ${argText(2)})` };
-      }
-      return { emitLines: [], returnValue: `${busName}.requestFrom(${argText(0)}, ${argText(1)})` };
-    case "available":
-      return { emitLines: [], returnValue: `${busName}.available()` };
-    case "read":
-      return { emitLines: [], returnValue: `${busName}.read()` };
-    case "writeByte":
-      return {
-        emitLines: [
-          `${busName}.beginTransmission(${argText(0)});`,
-          `${busName}.write(${argText(1)});`,
-          `${busName}.write(${argText(2)});`,
-          `${busName}.endTransmission();`,
-        ],
-      };
-    default:
-      return null;
-  }
-}
-
-/**
- * Check if a CallExpression is a `new I2CBus("Wire")` constructor.
- * Returns the bus name string literal value if so, or null.
- */
-function extractI2CCtorArg(node: ts.Expression): string | null {
-  if (!ts.isNewExpression(node)) return null;
-  if (!ts.isIdentifier(node.expression) || node.expression.text !== "I2CBus") return null;
-  if (!node.arguments || node.arguments.length === 0) return null;
-  const arg = node.arguments[0];
-  if (ts.isStringLiteral(arg)) return arg.text;
-  return null;
-}
-
-/**
- * Resolve an I2C method call receiver to a bus name.
- * Returns the bus name (e.g., "Wire") or null.
- */
-function resolveI2CReceiver(receiver: ts.Expression): string | null {
-  // Case 1: `new I2CBus("Wire").method()`
-  const ctorArg = extractI2CCtorArg(receiver);
-  if (ctorArg !== null) return ctorArg;
-
-  // Case 2: tracked variable
-  if (ts.isIdentifier(receiver)) {
-    const tracked = i2cInstances.get(receiver.text);
-    if (tracked) return tracked;
-    // Bare name fallback: I2C0→Wire, I2C1→Wire1
-    const i2cMatch = receiver.text.match(/^I2C(\d+)$/);
-    if (i2cMatch) return i2cMatch[1] === '0' ? 'Wire' : `Wire${i2cMatch[1]}`;
-  }
-
-  return null;
-}
-
-/**
- * Detect `<bus>.device(addr).method(args)` pattern from a CallExpression.
- * Returns { busName, addressExpr, method } or null.
- * Arg IRs are computed by the caller.
- */
-function resolveI2CDeviceCall(
-  call: ts.CallExpression,
-): { busName: string; addressExpr: string; method: string } | null {
-  if (!ts.isPropertyAccessExpression(call.expression)) return null;
-  const method = call.expression.name.text;
-  const deviceCall = call.expression.expression;
-
-  // deviceCall should be `<bus>.device(addr)` — a CallExpression
-  if (!ts.isCallExpression(deviceCall)) return null;
-  if (!ts.isPropertyAccessExpression(deviceCall.expression)) return null;
-  if (deviceCall.expression.name.text !== "device") return null;
-
-  const busReceiver = deviceCall.expression.expression;
-  const busName = resolveI2CReceiver(busReceiver);
-  if (!busName) return null;
-
-  // Extract address from .device(addr) arguments
-  if (!deviceCall.arguments || deviceCall.arguments.length === 0) return null;
-  const addrArg = deviceCall.arguments[0];
-  if (ts.isNumericLiteral(addrArg)) {
-    return { busName, addressExpr: parseInt(addrArg.text).toString(), method };
-  }
-  return { busName, addressExpr: addrArg.getText(), method };
-}
-
-/** I2C Device Accessor method → inline C++ template */
-function inlineI2CDeviceMethod(
-  busName: string,
-  addressExpr: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string; varType?: string } | null {
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-
-  switch (method) {
-    case "writeByte":
-      return {
-        emitLines: [
-          `${busName}.beginTransmission(${addressExpr});`,
-          `${busName}.write(${argText(0)});`,
-          `${busName}.write(${argText(1)});`,
-          `${busName}.endTransmission();`,
-        ],
-      };
-    case "readByte":
-      return {
-        emitLines: [
-          `${busName}.beginTransmission(${addressExpr});`,
-          `${busName}.write(${argText(0)});`,
-          `${busName}.endTransmission(false);`,
-          `${busName}.requestFrom(${addressExpr}, 1);`,
-        ],
-        returnValue: `${busName}.read()`,
-      };
-    case "writeBytes": {
-      const dataArg = args[1];
-      if (dataArg && dataArg.kind === "array" && "elements" in dataArg) {
-        const lines = [
-          `${busName}.beginTransmission(${addressExpr});`,
-          `${busName}.write(${argText(0)});`,
-        ];
-        for (const elem of (dataArg as { kind: "array"; elements: ExpressionIR[] }).elements) {
-          lines.push(`${busName}.write(${renderExprAsText(elem)});`);
-        }
-        lines.push(`${busName}.endTransmission();`);
-        return { emitLines: lines };
-      }
-      return {
-        emitLines: [
-          `${busName}.beginTransmission(${addressExpr});`,
-          `${busName}.write(${argText(0)});`,
-          `${busName}.write(${argText(1)}, sizeof(${argText(1)}));`,
-          `${busName}.endTransmission();`,
-        ],
-      };
-    }
-    case "readBytes":
-      return {
-        emitLines: [
-          `${busName}.beginTransmission(${addressExpr});`,
-          `${busName}.write(${argText(0)});`,
-          `${busName}.endTransmission(false);`,
-          `${busName}.requestFrom(${addressExpr}, ${argText(1)});`,
-        ],
-        varType: "uint8_t[]",
-      };
-    default:
-      return null;
-  }
-}
-
-/** Detect `<bus>.device(cs).method()` SPI device accessor pattern */
-function resolveSPIDeviceCall(
-  call: ts.CallExpression,
-): { busName: string; csExpr: string; method: string } | null {
-  if (!ts.isPropertyAccessExpression(call.expression)) return null;
-  const method = call.expression.name.text;
-  const deviceCall = call.expression.expression;
-
-  // deviceCall should be `<bus>.device(cs)` — a CallExpression
-  if (!ts.isCallExpression(deviceCall)) return null;
-  if (!ts.isPropertyAccessExpression(deviceCall.expression)) return null;
-  if (deviceCall.expression.name.text !== "device") return null;
-
-  const busReceiver = deviceCall.expression.expression;
-  const busName = resolveSPIReceiver(busReceiver);
-  if (!busName) return null;
-
-  // Extract chip-select from .device(cs) arguments — must resolve to a pin
-  if (!deviceCall.arguments || deviceCall.arguments.length === 0) return null;
-  const csArg = deviceCall.arguments[0];
-  if (ts.isIdentifier(csArg)) {
-    const resolved = resolvePinReceiver(csArg);
-    if (resolved) return { busName, csExpr: resolved.pinExpr, method };
-  }
-  return null;
-}
-
-/** Extract array elements from an ExpressionIR if it represents a literal array or new Uint8Array([...]). */
-function extractArrayElements(arg: ExpressionIR): ExpressionIR[] | null {
-  if (!arg) return null;
-  if (arg.kind === "array" && "elements" in arg) {
-    return (arg as { kind: "array"; elements: ExpressionIR[] }).elements;
-  }
-  return null;
-}
-
-/** SPI Device method → inline C++ template */
-function inlineSPIDeviceMethod(
-  busName: string,
-  csExpr: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string } | null {
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-
-  switch (method) {
-    case "transfer": {
-      const dataArg = args[0];
-      // Array/Uint8Array argument → expand to individual transfers
-      const elements = extractArrayElements(dataArg);
-      if (elements) {
-        const lines = [`digitalWrite(${csExpr}, LOW);`];
-        for (const elem of elements) {
-          lines.push(`${busName}.transfer(${renderExprAsText(elem)});`);
-        }
-        lines.push(`digitalWrite(${csExpr}, HIGH);`);
-        return { emitLines: lines };
-      }
-      return {
-        emitLines: [
-          `digitalWrite(${csExpr}, LOW);`,
-          `${busName}.transfer(${argText(0)});`,
-          `digitalWrite(${csExpr}, HIGH);`,
-        ],
-        returnValue: `${busName}.transfer(${argText(0)})`,
-      };
-    }
-    case "write": {
-      const dataArg = args[0];
-      const elements = extractArrayElements(dataArg);
-      if (elements) {
-        const lines = [`digitalWrite(${csExpr}, LOW);`];
-        for (const elem of elements) {
-          lines.push(`${busName}.transfer(${renderExprAsText(elem)});`);
-        }
-        lines.push(`digitalWrite(${csExpr}, HIGH);`);
-        return { emitLines: lines };
-      }
-      return {
-        emitLines: [
-          `digitalWrite(${csExpr}, LOW);`,
-          `${busName}.transfer(${argText(0)});`,
-          `digitalWrite(${csExpr}, HIGH);`,
-        ],
-      };
-    }
-    default:
-      return null;
-  }
-}
-
-/** SerialPort method → inline C++ template */
-function inlineSerialMethod(
-  portName: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string } | null {
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-  const allArgs = (): string => args.map(a => renderExprAsText(a)).join(", ");
-
-  switch (method) {
-    case "begin":
-      return { emitLines: [`${portName}.begin(${argText(0) || "9600"});`] };
-    case "end":
-      return { emitLines: [`${portName}.end();`] };
-    case "print":
-      return { emitLines: [`${portName}.print(${allArgs()});`] };
-    case "println":
-      return { emitLines: [`${portName}.println(${allArgs()});`] };
-    case "write":
-      return { emitLines: [`${portName}.write(${allArgs()});`] };
-    case "flush":
-      return { emitLines: [`${portName}.flush();`] };
-    case "available":
-      return { emitLines: [], returnValue: `${portName}.available()` };
-    case "read":
-      return { emitLines: [], returnValue: `${portName}.read()` };
-    case "peek":
-      return { emitLines: [], returnValue: `${portName}.peek()` };
-    case "printf": {
-      // snprintf lowering: Serial.printf("fmt", args) → char buf[16]; snprintf(buf, sizeof(buf), "fmt", args); Serial.print(buf);
-      if (args.length === 0) return null;
-      const fmtText = argText(0);
-      const restArgs = args.slice(1).map(a => renderExprAsText(a)).join(", ");
-      const bufName = `__typehal_printf_${++printfCounter}`;
-      return {
-        emitLines: [
-          `char ${bufName}[16];`,
-          `snprintf(${bufName}, sizeof(${bufName}), ${fmtText}${restArgs ? ", " + restArgs : ""});`,
-          `${portName}.print(${bufName});`,
-        ],
-      };
-    }
-    default:
-      return null;
-  }
-}
-
-/**
- * Check if a CallExpression is a `new SerialPort("Serial")` constructor.
- * Returns the port name string literal value if so, or null.
- */
-function extractSerialCtorArg(node: ts.Expression): string | null {
-  if (!ts.isNewExpression(node)) return null;
-  if (!ts.isIdentifier(node.expression) || node.expression.text !== "SerialPort") return null;
-  if (!node.arguments || node.arguments.length === 0) return null;
-  const arg = node.arguments[0];
-  if (ts.isStringLiteral(arg)) return arg.text;
-  return null;
-}
-
-/**
- * Resolve a SerialPort method call receiver to a port name.
- * Returns the port name (e.g., "Serial") or null.
- */
-function resolveSerialReceiver(receiver: ts.Expression): string | null {
-  // Case 1: `new SerialPort("Serial").method()`
-  const ctorArg = extractSerialCtorArg(receiver);
-  if (ctorArg !== null) return ctorArg;
-
-  // Case 2: tracked variable
-  if (ts.isIdentifier(receiver)) {
-    const tracked = serialInstances.get(receiver.text);
-    if (tracked) return tracked;
-    // Bare name fallback: UART0→Serial, UART1→Serial1, etc.
-    const uartMatch = receiver.text.match(/^UART(\d+)$/);
-    if (uartMatch) return uartMatch[1] === '0' ? 'Serial' : `Serial${uartMatch[1]}`;
-  }
-
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// SPIBus inline evaluator — zero-cost abstraction for SPI
-// ---------------------------------------------------------------------------
-
-/** SPIBus method → inline C++ template */
-function inlineSPIMethod(
-  busName: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string } | null {
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-
-  switch (method) {
-    case "begin":
-      requiredIncludes.add("<SPI.h>");
-      return { emitLines: [`${busName}.begin();`] };
-    case "end":
-      return { emitLines: [`${busName}.end();`] };
-    case "transfer":
-      return { emitLines: [], returnValue: `${busName}.transfer(${argText(0)})` };
-    case "setFrequency":
-      return { emitLines: [`${busName}.beginTransaction(SPISettings(${argText(0)}, MSBFIRST, SPI_MODE0));`] };
-    case "beginTransaction":
-      // beginTransaction(SPISettings(...)) — pass through the arg as-is
-      return { emitLines: [`${busName}.beginTransaction(${argText(0)});`] };
-    case "endTransaction":
-      return { emitLines: [`${busName}.endTransaction();`] };
-    case "setMode":
-      return { emitLines: [`${busName}.setDataMode(${argText(0)});`] };
-    case "setBitOrder":
-      // SPIBitOrder.MSB → MSBFIRST (render the expression; the test accepts several forms)
-      return { emitLines: [`${busName}.setBitOrder(${argText(0)});`] };
-    case "write":
-      // write() is transfer() ignoring return
-      return { emitLines: [`${busName}.transfer(${argText(0)});`] };
-    case "write16":
-      return { emitLines: [`${busName}.transfer16(${argText(0)});`] };
-    default:
-      return null;
-  }
-}
-
-/**
- * Check if a CallExpression is a `new SPIBus("SPI")` constructor.
- * Returns the bus name string literal value if so, or null.
- */
-function extractSPICtorArg(node: ts.Expression): string | null {
-  if (!ts.isNewExpression(node)) return null;
-  if (!ts.isIdentifier(node.expression) || node.expression.text !== "SPIBus") return null;
-  if (!node.arguments || node.arguments.length === 0) return null;
-  const arg = node.arguments[0];
-  if (ts.isStringLiteral(arg)) return arg.text;
-  return null;
-}
-
-/**
- * Resolve an SPI method call receiver to a bus name.
- * Returns the bus name (e.g., "SPI") or null.
- */
-function resolveSPIReceiver(receiver: ts.Expression): string | null {
-  // Case 1: `new SPIBus("SPI").method()`
-  const ctorArg = extractSPICtorArg(receiver);
-  if (ctorArg !== null) return ctorArg;
-
-  // Case 2: tracked variable
-  if (ts.isIdentifier(receiver)) {
-    const tracked = spiInstances.get(receiver.text);
-    if (tracked) return tracked;
-    // Bare name fallback: SPI0→SPI, SPI1→SPI1
-    const spiMatch = receiver.text.match(/^SPI(\d+)$/);
-    if (spiMatch) return spiMatch[1] === '0' ? 'SPI' : `SPI${spiMatch[1]}`;
-  }
-
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// EEPROMClass inline evaluator — zero-cost abstraction for EEPROM
-// ---------------------------------------------------------------------------
-
-function inlineEEPROMMethod(
-  name: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string } | null {
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-
-  switch (method) {
-    case "write":
-      return { emitLines: [`${name}.write(${argText(0)}, ${argText(1)});`] };
-    case "update":
-      return { emitLines: [`${name}.update(${argText(0)}, ${argText(1)});`] };
-    case "put":
-      return { emitLines: [`${name}.put(${argText(0)}, ${argText(1)});`] };
-    case "read":
-      return { emitLines: [], returnValue: `${name}.read(${argText(0)})` };
-    case "length":
-      return { emitLines: [], returnValue: `${name}.length()` };
-    default:
-      return null;
-  }
-}
-
-function extractEEPROMCtorArg(node: ts.Expression): string | null {
-  if (!ts.isNewExpression(node)) return null;
-  if (!ts.isIdentifier(node.expression) || node.expression.text !== "EEPROMClass") return null;
-  if (!node.arguments || node.arguments.length === 0) return null;
-  const arg = node.arguments[0];
-  if (ts.isStringLiteral(arg)) return arg.text;
-  return null;
-}
-
-function resolveEEPROMReceiver(receiver: ts.Expression): string | null {
-  const ctorArg = extractEEPROMCtorArg(receiver);
-  if (ctorArg !== null) return ctorArg;
-  if (ts.isIdentifier(receiver)) {
-    return eepromInstances.get(receiver.text) ?? (receiver.text === "EEPROM" ? "EEPROM" : null);
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// WDTClass inline evaluator — zero-cost abstraction for WDT
-// ---------------------------------------------------------------------------
-
-function inlineWDTMethod(
-  name: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string } | null {
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-
-  // WDT emits wdt_* functions directly (not name.method())
-  // Map timeout strings to WDTO constants
-  const wdtTimeoutMap: Record<string, string> = {
-    "15ms": "WDTO_15MS",
-    "30ms": "WDTO_30MS",
-    "60ms": "WDTO_60MS",
-    "120ms": "WDTO_120MS",
-    "250ms": "WDTO_250MS",
-    "500ms": "WDTO_500MS",
-    "1s": "WDTO_1S",
-    "2s": "WDTO_2S",
-    "4s": "WDTO_4S",
-    "8s": "WDTO_8S",
-  };
-
-  switch (method) {
-    case "enable": {
-      const timeoutStr = argText(0).replace(/^"|"$/g, ''); // strip quotes
-      const wdtoConst = wdtTimeoutMap[timeoutStr] || "WDTO_2S";
-      return { emitLines: [`wdt_enable(${wdtoConst});`] };
-    }
-    case "reset":
-      return { emitLines: [`wdt_reset();`] };
-    case "disable":
-      return { emitLines: [`wdt_disable();`] };
-    default:
-      return null;
-  }
-}
-
-function extractWDTCtorArg(node: ts.Expression): string | null {
-  if (!ts.isNewExpression(node)) return null;
-  if (!ts.isIdentifier(node.expression) || node.expression.text !== "WDTClass") return null;
-  // WDTClass has no constructor args, but we need to detect it
-  return "WDT";
-}
-
-function resolveWDTReceiver(receiver: ts.Expression): string | null {
-  const ctorArg = extractWDTCtorArg(receiver);
-  if (ctorArg !== null) return ctorArg;
-  if (ts.isIdentifier(receiver)) {
-    return wdtInstances.get(receiver.text) ?? (receiver.text === "WDT" ? "WDT" : null);
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// HAL namespace inline evaluators (Pulse, Shift, Random)
-// ---------------------------------------------------------------------------
-
-function inlineHALNamespaceMethod(
-  namespace: string,
-  method: string,
-  args: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string } | null {
-  const argText = (idx: number): string => {
-    const a = args[idx];
-    if (!a) return "";
-    return renderExprAsText(a);
-  };
-
-  // Resolve pin argument: if it's a tracked pin, use the pin number
-  const resolvePinArg = (idx: number): string => {
-    const text = argText(idx);
-    const resolved = pinInstances.get(text);
-    return resolved ?? text;
-  };
-
-  // Resolve boolean argument: true→HIGH, false→LOW
-  const resolveBoolArg = (idx: number): string => {
-    const text = argText(idx);
-    if (text === "true") return "HIGH";
-    if (text === "false") return "LOW";
-    return text;
-  };
-
-  switch (namespace) {
-    case "Pulse": {
-      switch (method) {
-        case "in": {
-          const pin = resolvePinArg(0);
-          const level = resolveBoolArg(1);
-          const timeout = argText(2);
-          const call = timeout
-            ? `pulseIn(${pin}, ${level}, ${timeout})`
-            : `pulseIn(${pin}, ${level})`;
-          return { emitLines: [], returnValue: call };
-        }
-        case "long":
-        case "long_": {
-          const pin = resolvePinArg(0);
-          const level = resolveBoolArg(1);
-          const timeout = argText(2);
-          const call = timeout
-            ? `pulseInLong(${pin}, ${level}, ${timeout})`
-            : `pulseInLong(${pin}, ${level})`;
-          return { emitLines: [], returnValue: call };
-        }
-        default:
-          return null;
-      }
-    }
-    case "Shift": {
-      switch (method) {
-        case "in": {
-          const dataPin = resolvePinArg(0);
-          const clockPin = resolvePinArg(1);
-          const bitOrder = argText(2);
-          return { emitLines: [], returnValue: `shiftIn(${dataPin}, ${clockPin}, ${bitOrder})` };
-        }
-        case "out": {
-          const dataPin = resolvePinArg(0);
-          const clockPin = resolvePinArg(1);
-          const bitOrder = argText(2);
-          const value = argText(3);
-          return { emitLines: [`shiftOut(${dataPin}, ${clockPin}, ${bitOrder}, ${value});`] };
-        }
-        default:
-          return null;
-      }
-    }
-    case "Random": {
-      switch (method) {
-        case "seed":
-          return { emitLines: [`randomSeed(${argText(0)});`] };
-        case "number": {
-          const min = argText(0);
-          const max = argText(1);
-          if (max) {
-            return { emitLines: [], returnValue: `random(${min}, ${max})` };
-          }
-          return { emitLines: [], returnValue: `random(${min})` };
-        }
-        default:
-          return null;
-      }
-    }
-    default:
-      return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Generic HAL inline evaluator dispatcher
-// ---------------------------------------------------------------------------
-
-/**
- * Try to resolve a HAL method call and return both emitLines and returnValue.
- * Used by variableStatementToIR to produce correct initializers for variables
- * like `const count = I2C0.requestFrom(0x76, 4)`.
- */
-function resolveHALCallForVarInit(
-  call: ts.CallExpression,
-  sourceText: string,
-  diagnostics: Diagnostic[],
-  pointerVars: PointerTracker,
-): { emitLines: string[]; returnValue?: string; halName?: string } | null {
-  if (!ts.isPropertyAccessExpression(call.expression)) return null;
-
-  const method = call.expression.name.text;
-  const receiver = call.expression.expression;
-  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-
-  const tryResolve = (
-    resolveFn: () => string | null,
-    inlineFn: (name: string, m: string, a: ExpressionIR[]) => { emitLines: string[]; returnValue?: string } | null,
-  ): { emitLines: string[]; returnValue?: string; halName?: string } | null => {
-    const name = resolveFn();
-    if (!name) return null;
-    const inlined = inlineFn(name, method, argIRs);
-    if (!inlined) return null;
-    return { emitLines: inlined.emitLines, returnValue: inlined.returnValue, halName: name };
-  };
-
-  // Try Pin
-  const pinResult = tryResolve(
-    () => { const r = resolvePinReceiver(receiver); return r ? r.pinExpr : null; },
-    (n, m, a) => inlinePinMethod(n, m, a),
-  );
-  if (pinResult) return pinResult;
-
-  // Try I2CBus
-  const i2cResult = tryResolve(
-    () => resolveI2CReceiver(receiver),
-    (n, m, a) => inlineI2CMethod(n, m, a),
-  );
-  if (i2cResult) return i2cResult;
-
-  // Try I2C Device Accessor (<bus>.device(addr).method())
-  const deviceCall = resolveI2CDeviceCall(call);
-  if (deviceCall) {
-    const inlined = inlineI2CDeviceMethod(deviceCall.busName, deviceCall.addressExpr, deviceCall.method, argIRs);
-    if (inlined) {
-      return { emitLines: inlined.emitLines, returnValue: inlined.returnValue, halName: deviceCall.busName };
-    }
-  }
-
-  // Try SerialPort
-  const serialResult = tryResolve(
-    () => resolveSerialReceiver(receiver),
-    (n, m, a) => inlineSerialMethod(n, m, a),
-  );
-  if (serialResult) return serialResult;
-
-  // Try SPIBus
-  const spiResult = tryResolve(
-    () => resolveSPIReceiver(receiver),
-    (n, m, a) => inlineSPIMethod(n, m, a),
-  );
-  if (spiResult) return spiResult;
-
-  // Try SPI Device Accessor (<bus>.device(cs).method())
-  const spiDeviceCall = resolveSPIDeviceCall(call);
-  if (spiDeviceCall) {
-    const inlined = inlineSPIDeviceMethod(spiDeviceCall.busName, spiDeviceCall.csExpr, spiDeviceCall.method, argIRs);
-    if (inlined) {
-      return { emitLines: inlined.emitLines, returnValue: inlined.returnValue, halName: spiDeviceCall.busName };
-    }
-  }
-
-  // Try EEPROMClass
-  const eepromResult = tryResolve(
-    () => resolveEEPROMReceiver(receiver),
-    (n, m, a) => inlineEEPROMMethod(n, m, a),
-  );
-  if (eepromResult) return eepromResult;
-
-  // Try WDTClass
-  const wdtResult = tryResolve(
-    () => resolveWDTReceiver(receiver),
-    (n, m, a) => inlineWDTMethod(n, m, a),
-  );
-  if (wdtResult) return wdtResult;
-
-  return null;
-}
-
-/**
- * Try to inline a HAL method call (Pin, I2CBus, SerialPort, SPIBus, EEPROMClass, WDTClass).
- * Returns emit IR statements if inlined, or null if not a HAL call.
- */
-function tryInlineHALMethod(
-  call: ts.CallExpression,
-  fileName: string,
-  sourceText: string,
-  diagnostics: Diagnostic[],
-  pointerVars: PointerTracker,
-): StatementIR | null {
-  if (!ts.isPropertyAccessExpression(call.expression)) return null;
-
-  const method = call.expression.name.text;
-  const receiver = call.expression.expression;
-  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-
-  const tryInline = (
-    resolveFn: () => string | null,
-    inlineFn: (name: string, m: string, a: ExpressionIR[]) => { emitLines: string[]; returnValue?: string } | null,
-  ): StatementIR | null => {
-    const name = resolveFn();
-    if (!name) return null;
-    const inlined = inlineFn(name, method, argIRs);
-    if (!inlined) return null;
-    if (inlined.emitLines.length > 0) return emitLinesToIR(inlined.emitLines, call, fileName, sourceText);
-    // Methods with only returnValue (e.g., available(), read()) — emit as standalone expression statement
-    if (inlined.returnValue) {
-      return emitLinesToIR([`${inlined.returnValue};`], call, fileName, sourceText);
-    }
-    return null;
-  };
-
-  // Try Pin ISR methods (need structured call IR with callback, not __EMIT__)
-  if (method === "onFalling" || method === "onRising" || method === "onChange") {
-    const pinResolved = resolvePinReceiver(receiver);
-    if (pinResolved) {
-      const mode = method === "onFalling" ? "FALLING" : method === "onRising" ? "RISING" : "CHANGE";
-      const callbackArg = argIRs[0];
-      if (callbackArg && callbackArg.kind === "callback") {
-        return {
-          kind: "call",
-          sourceSpan: makeSourceSpan(call, fileName, sourceText),
-          callee: "attachInterrupt",
-          args: [
-            { kind: "raw", value: `digitalPinToInterrupt(${pinResolved.pinExpr})` } as ExpressionIR,
-            { ...callbackArg, isInterruptHandler: true } as ExpressionIR,
-            { kind: "raw", value: mode } as ExpressionIR,
-          ],
-        };
-      }
-    }
-  }
-
-  // Try Pin
-  const pinResult = tryInline(
-    () => { const r = resolvePinReceiver(receiver); return r ? r.pinExpr : null; },
-    (n, m, a) => inlinePinMethod(n, m, a),
-  );
-  if (pinResult) return pinResult;
-
-  // Try I2CBus
-  const i2cResult = tryInline(
-    () => resolveI2CReceiver(receiver),
-    (n, m, a) => inlineI2CMethod(n, m, a),
-  );
-  if (i2cResult) return i2cResult;
-
-  // Try I2C Device Accessor (<bus>.device(addr).method())
-  const deviceCall = resolveI2CDeviceCall(call);
-  if (deviceCall) {
-    const inlined = inlineI2CDeviceMethod(deviceCall.busName, deviceCall.addressExpr, deviceCall.method, argIRs);
-    if (inlined) {
-      if (inlined.emitLines.length > 0) return emitLinesToIR(inlined.emitLines, call, fileName, sourceText);
-      if (inlined.returnValue) return emitLinesToIR([`${inlined.returnValue};`], call, fileName, sourceText);
-    }
-  }
-
-  // Try SerialPort — but handle print/println with string_concat specially
-  // to enable snprintf lowering in the emitter
-  const serialName = resolveSerialReceiver(receiver);
-  if (serialName) {
-    const hasStringConcat = argIRs.some(a => a.kind === "string_concat" || a.kind === "template_string");
-    if ((method === "print" || method === "println") && hasStringConcat) {
-      // Emit as a regular call with serial alias, preserving string_concat IR
-      // The emitter's snprintf detection will handle the string_concat arg
-      const comments = extractNodeComments(call.parent && ts.isExpressionStatement(call.parent) ? call.parent as ts.ExpressionStatement : call as any, sourceText);
-      return {
-        kind: "call",
-        sourceSpan: makeSourceSpan(call, fileName, sourceText),
-        leadingComments: [],
-        trailingComments: [],
-        callee: `${serialName}.${method}`,
-        args: argIRs,
-      };
-    }
-    const inlined = inlineSerialMethod(serialName, method, argIRs);
-    if (inlined) {
-      if (inlined.emitLines.length > 0) return emitLinesToIR(inlined.emitLines, call, fileName, sourceText);
-      if (inlined.returnValue) return emitLinesToIR([`${inlined.returnValue};`], call, fileName, sourceText);
-    }
-  }
-
-  // Try SPIBus
-  const spiResult = tryInline(
-    () => resolveSPIReceiver(receiver),
-    (n, m, a) => inlineSPIMethod(n, m, a),
-  );
-  if (spiResult) return spiResult;
-
-  // Try SPI Device Accessor (<bus>.device(cs).method())
-  const spiDeviceCall = resolveSPIDeviceCall(call);
-  if (spiDeviceCall) {
-    const inlined = inlineSPIDeviceMethod(spiDeviceCall.busName, spiDeviceCall.csExpr, spiDeviceCall.method, argIRs);
-    if (inlined) {
-      if (inlined.emitLines.length > 0) return emitLinesToIR(inlined.emitLines, call, fileName, sourceText);
-      if (inlined.returnValue) return emitLinesToIR([`${inlined.returnValue};`], call, fileName, sourceText);
-    }
-  }
-
-  // Try EEPROMClass
-  const eepromResult = tryInline(
-    () => resolveEEPROMReceiver(receiver),
-    (n, m, a) => inlineEEPROMMethod(n, m, a),
-  );
-  if (eepromResult) return eepromResult;
-
-  // Try WDTClass
-  const wdtResult = tryInline(
-    () => resolveWDTReceiver(receiver),
-    (n, m, a) => inlineWDTMethod(n, m, a),
-  );
-  if (wdtResult) return wdtResult;
-
-  // Try HAL namespace (Pulse, Shift, Random)
-  if (ts.isIdentifier(receiver)) {
-    const nsType = halNamespaces.get(receiver.text);
-    if (nsType) {
-      const inlined = inlineHALNamespaceMethod(nsType, method, argIRs);
-      if (inlined) {
-        if (inlined.emitLines.length > 0) return emitLinesToIR(inlined.emitLines, call, fileName, sourceText);
-        if (inlined.returnValue) return emitLinesToIR([`${inlined.returnValue};`], call, fileName, sourceText);
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Try to inline a HAL expression call for use inside expression contexts
- * (e.g., variable initializers, template literals).
- * Returns a raw string ExpressionIR if inlined, or null if not a HAL call.
- * Side effects (emitLines) are accumulated and returned separately.
- */
-export function tryInlineHALExpression(
-  call: ts.CallExpression,
-  sourceText: string,
-  diagnostics: Diagnostic[],
-  pointerVars: PointerTracker,
-): { ir: ExpressionIR; sideEffects: string[] } | null {
-  if (!ts.isPropertyAccessExpression(call.expression)) return null;
-
-  const method = call.expression.name.text;
-  const receiver = call.expression.expression;
-  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-
-  // Helper to try inline and extract returnValue
-  const tryExpr = (
-    resolveFn: () => string | null,
-    inlineFn: (name: string, m: string, a: ExpressionIR[]) => { emitLines: string[]; returnValue?: string } | null,
-  ): { ir: ExpressionIR; sideEffects: string[] } | null => {
-    const name = resolveFn();
-    if (!name) return null;
-    const inlined = inlineFn(name, method, argIRs);
-    if (!inlined) return null;
-    if (inlined.returnValue) {
-      return { ir: { kind: "raw", value: inlined.returnValue }, sideEffects: inlined.emitLines };
-    }
-    if (inlined.emitLines.length > 0) {
-      return { ir: { kind: "raw", value: "0" }, sideEffects: inlined.emitLines };
-    }
-    return null;
-  };
-
-  // Try Pin
-  const pinResult = tryExpr(
-    () => { const r = resolvePinReceiver(receiver); return r ? r.pinExpr : null; },
-    (n, m, a) => inlinePinMethod(n, m, a),
-  );
-  if (pinResult) return pinResult;
-
-  // Try I2CBus
-  const i2cResult = tryExpr(
-    () => resolveI2CReceiver(receiver),
-    (n, m, a) => inlineI2CMethod(n, m, a),
-  );
-  if (i2cResult) return i2cResult;
-
-  // Try I2C Device Accessor
-  const deviceCall = resolveI2CDeviceCall(call);
-  if (deviceCall) {
-    const inlined = inlineI2CDeviceMethod(deviceCall.busName, deviceCall.addressExpr, deviceCall.method, argIRs);
-    if (inlined) {
-      if (inlined.returnValue) {
-        return { ir: { kind: "raw", value: inlined.returnValue }, sideEffects: inlined.emitLines };
-      }
-      if (inlined.emitLines.length > 0) {
-        return { ir: { kind: "raw", value: "0" }, sideEffects: inlined.emitLines };
-      }
-    }
-  }
-
-  // Try SerialPort
-  const serialResult = tryExpr(
-    () => resolveSerialReceiver(receiver),
-    (n, m, a) => inlineSerialMethod(n, m, a),
-  );
-  if (serialResult) return serialResult;
-
-  // Try SPIBus
-  const spiResult = tryExpr(
-    () => resolveSPIReceiver(receiver),
-    (n, m, a) => inlineSPIMethod(n, m, a),
-  );
-  if (spiResult) return spiResult;
-
-  // Try SPI Device Accessor
-  const spiDeviceCall = resolveSPIDeviceCall(call);
-  if (spiDeviceCall) {
-    const inlined = inlineSPIDeviceMethod(spiDeviceCall.busName, spiDeviceCall.csExpr, spiDeviceCall.method, argIRs);
-    if (inlined) {
-      if (inlined.returnValue) {
-        return { ir: { kind: "raw", value: inlined.returnValue }, sideEffects: inlined.emitLines };
-      }
-      if (inlined.emitLines.length > 0) {
-        return { ir: { kind: "raw", value: "0" }, sideEffects: inlined.emitLines };
-      }
-    }
-  }
-
-  // Try EEPROMClass
-  const eepromResult = tryExpr(
-    () => resolveEEPROMReceiver(receiver),
-    (n, m, a) => inlineEEPROMMethod(n, m, a),
-  );
-  if (eepromResult) return eepromResult;
-
-  // Try WDTClass — WDT methods are void (side effects only), not typically used in expressions
-
-  // Try HAL namespace (Pulse, Shift, Random)
-  if (ts.isIdentifier(receiver)) {
-    const nsType = halNamespaces.get(receiver.text);
-    if (nsType) {
-      const inlined = inlineHALNamespaceMethod(nsType, method, argIRs);
-      if (inlined) {
-        if (inlined.returnValue) {
-          return { ir: { kind: "raw", value: inlined.returnValue }, sideEffects: inlined.emitLines };
-        }
-      }
-    }
-  }
-
-  return null;
-}
+import { resolveHALReceiver, processHALMethodBody, halInstances, getCtorIncludes, isKnownHALClass, registerFloatVariable } from "./hal-resolver";
 
 /** Convert emit lines to a StatementIR (single emit or block of emits). */
 function emitLinesToIR(
@@ -1233,6 +31,292 @@ function emitLinesToIR(
     : { kind: "block" as const, body: emitStmts, sourceSpan: makeSourceSpan(node, fileName, sourceText) };
 }
 
+/**
+ * Resolve a HAL method call using the HAL resolver.
+ * Handles all HAL classes: Pin, I2CBus, SPIBus, SerialPort, EEPROMClass, WDTClass,
+ * plus device accessor patterns (I2CDevice, SPIDevice) and namespace methods (Pulse, Shift, Random).
+ */
+function tryResolveHALMethod(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+): StatementIR | null {
+  if (!ts.isPropertyAccessExpression(call.expression)) return null;
+
+  const method = call.expression.name.text;
+  const receiver = call.expression.expression;
+
+  const instance = resolveHALReceiver(receiver);
+
+  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+  const argText = (idx: number): string => {
+    const a = argIRs[idx];
+    if (!a) return "";
+    return renderExprAsText(a);
+  };
+
+  // Try HAL class method resolution via resolver
+  if (instance) {
+    const result = processHALMethodBody(instance, method, argIRs);
+    if (result) {
+      if (result.emitLines.length > 0) return emitLinesToIR(result.emitLines, call, fileName, sourceText);
+      if (result.returnValue) return emitLinesToIR([`${result.returnValue};`], call, fileName, sourceText);
+    }
+  }
+
+  // Try device accessor pattern: <bus>.device(addr).method(args)
+  // This resolves I2CDevice and SPIDevice calls
+  if (ts.isCallExpression(receiver)) {
+    const deviceCall = receiver;
+    if (ts.isPropertyAccessExpression(deviceCall.expression) && deviceCall.expression.name.text === "device") {
+      const busReceiver = deviceCall.expression.expression;
+      const busInstance = resolveHALReceiver(busReceiver);
+      if (busInstance) {
+        // Resolve device() arguments to create a device instance
+        const deviceArgs = deviceCall.arguments as ts.NodeArray<ts.Expression> | undefined;
+        if (deviceArgs && deviceArgs.length > 0) {
+          // Determine the device class based on bus class
+          const deviceClassName = busInstance.className === "SPIBus" ? "SPIDevice" : "I2CDevice";
+          // Build field values for the device: _bus from bus instance, _address/_cs from device() arg
+          const deviceFieldValues = new Map<string, string>();
+          const busField = busInstance.fieldValues.get("_bus");
+          if (busField) deviceFieldValues.set("_bus", busField);
+          const deviceArg = deviceArgs[0];
+          if (ts.isNumericLiteral(deviceArg)) {
+            const fieldName = busInstance.className === "SPIBus" ? "_cs" : "_address";
+            deviceFieldValues.set(fieldName, deviceArg.text);
+          } else if (ts.isIdentifier(deviceArg)) {
+            // For SPI device, resolve the pin
+            const pinInstance = resolveHALReceiver(deviceArg);
+            if (pinInstance && pinInstance.fieldValues.has("_pin")) {
+              deviceFieldValues.set("_cs", pinInstance.fieldValues.get("_pin")!);
+            }
+          }
+          const deviceInstance = { className: deviceClassName, fieldValues: deviceFieldValues };
+          const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+
+          const result = processHALMethodBody(deviceInstance, method, argIRs);
+          if (result) {
+            if (result.emitLines.length > 0) return emitLinesToIR(result.emitLines, call, fileName, sourceText);
+            if (result.returnValue) return emitLinesToIR([`${result.returnValue};`], call, fileName, sourceText);
+          }
+        }
+      }
+    }
+  }
+
+  // ── Inline fallbacks for namespace methods the HAL resolver can't express ──
+
+  // Pulse/Shift/Random — namespace method pass-throughs
+  if (ts.isIdentifier(receiver)) {
+    const ns = receiver.text;
+    const resolvePinArg = (idx: number): string => {
+      const text = argText(idx);
+      const inst = halInstances.get(text);
+      if (inst && inst.fieldValues.has("_pin")) return inst.fieldValues.get("_pin")!;
+      return text;
+    };
+    const resolveBoolArg = (idx: number): string => {
+      const text = argText(idx);
+      if (text === "true") return "HIGH";
+      if (text === "false") return "LOW";
+      return text;
+    };
+
+    if (ns === "Pulse") {
+      if (method === "in") {
+        const pin = resolvePinArg(0);
+        const level = resolveBoolArg(1);
+        const timeout = argText(2);
+        return emitLinesToIR([`${timeout ? `pulseIn(${pin}, ${level}, ${timeout})` : `pulseIn(${pin}, ${level})`};`], call, fileName, sourceText);
+      }
+      if (method === "long" || method === "long_") {
+        const pin = resolvePinArg(0);
+        const level = resolveBoolArg(1);
+        const timeout = argText(2);
+        return emitLinesToIR([`${timeout ? `pulseInLong(${pin}, ${level}, ${timeout})` : `pulseInLong(${pin}, ${level})`};`], call, fileName, sourceText);
+      }
+    }
+    if (ns === "Shift") {
+      if (method === "in") {
+        return emitLinesToIR([`shiftIn(${resolvePinArg(0)}, ${resolvePinArg(1)}, ${argText(2)});`], call, fileName, sourceText);
+      }
+      if (method === "out") {
+        return emitLinesToIR([`shiftOut(${resolvePinArg(0)}, ${resolvePinArg(1)}, ${argText(2)}, ${argText(3)});`], call, fileName, sourceText);
+      }
+    }
+    if (ns === "Random") {
+      if (method === "seed") return emitLinesToIR([`randomSeed(${argText(0)});`], call, fileName, sourceText);
+      if (method === "number") {
+        const min = argText(0);
+        const max = argText(1);
+        return emitLinesToIR([`${max ? `random(${min}, ${max})` : `random(${min})`};`], call, fileName, sourceText);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resolve a HAL call for use in variable initializers and expression contexts.
+ * Returns emitLines and returnValue via the HAL resolver.
+ */
+function resolveHALCallForVarInit(
+  call: ts.CallExpression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+): { emitLines: string[]; returnValue?: string; returnClassName?: string } | null {
+  if (!ts.isPropertyAccessExpression(call.expression)) return null;
+
+  const method = call.expression.name.text;
+  const receiver = call.expression.expression;
+  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+
+  const instance = resolveHALReceiver(receiver);
+  if (instance) {
+    const result = processHALMethodBody(instance, method, argIRs);
+    if (result) return { emitLines: result.emitLines, returnValue: result.returnValue, returnClassName: result.returnClassName };
+  }
+
+  // Try device accessor pattern
+  if (ts.isCallExpression(receiver)) {
+    const deviceCall = receiver;
+    if (ts.isPropertyAccessExpression(deviceCall.expression) && deviceCall.expression.name.text === "device") {
+      const busReceiver = deviceCall.expression.expression;
+      const busInstance = resolveHALReceiver(busReceiver);
+      if (busInstance) {
+        const deviceArgs = deviceCall.arguments as ts.NodeArray<ts.Expression> | undefined;
+        if (deviceArgs && deviceArgs.length > 0) {
+          const deviceClassName = busInstance.className === "SPIBus" ? "SPIDevice" : "I2CDevice";
+          const deviceFieldValues = new Map<string, string>();
+          const busField = busInstance.fieldValues.get("_bus");
+          if (busField) deviceFieldValues.set("_bus", busField);
+          const deviceArg = deviceArgs[0];
+          if (ts.isNumericLiteral(deviceArg)) {
+            const fieldName = busInstance.className === "SPIBus" ? "_cs" : "_address";
+            deviceFieldValues.set(fieldName, deviceArg.text);
+          } else if (ts.isIdentifier(deviceArg)) {
+            const pinInstance = resolveHALReceiver(deviceArg);
+            if (pinInstance && pinInstance.fieldValues.has("_pin")) {
+              deviceFieldValues.set("_cs", pinInstance.fieldValues.get("_pin")!);
+            }
+          }
+          const deviceInstance = { className: deviceClassName, fieldValues: deviceFieldValues };
+          const result = processHALMethodBody(deviceInstance, method, argIRs);
+          if (result) return { emitLines: result.emitLines, returnValue: result.returnValue };
+        }
+      }
+    }
+  }
+
+  // Namespace method fallbacks (Pulse, Shift, Random) — used in variable initializer context
+  if (ts.isIdentifier(receiver)) {
+    const ns = receiver.text;
+    const argText = (idx: number): string => {
+      const a = argIRs[idx];
+      if (!a) return "";
+      return renderExprAsText(a);
+    };
+    const resolvePinArg = (idx: number): string => {
+      const text = argText(idx);
+      const inst = halInstances.get(text);
+      if (inst && inst.fieldValues.has("_pin")) return inst.fieldValues.get("_pin")!;
+      return text;
+    };
+    const resolveBoolArg = (idx: number): string => {
+      const text = argText(idx);
+      if (text === "true") return "HIGH";
+      if (text === "false") return "LOW";
+      return text;
+    };
+
+    if (ns === "Pulse") {
+      if (method === "in") {
+        const pin = resolvePinArg(0);
+        const level = resolveBoolArg(1);
+        const timeout = argText(2);
+        return { emitLines: [], returnValue: timeout ? `pulseIn(${pin}, ${level}, ${timeout})` : `pulseIn(${pin}, ${level})` };
+      }
+      if (method === "long" || method === "long_") {
+        const pin = resolvePinArg(0);
+        const level = resolveBoolArg(1);
+        const timeout = argText(2);
+        return { emitLines: [], returnValue: timeout ? `pulseInLong(${pin}, ${level}, ${timeout})` : `pulseInLong(${pin}, ${level})` };
+      }
+    }
+    if (ns === "Shift") {
+      if (method === "in") {
+        return { emitLines: [], returnValue: `shiftIn(${resolvePinArg(0)}, ${resolvePinArg(1)}, ${argText(2)})` };
+      }
+      if (method === "out") {
+        return { emitLines: [`shiftOut(${resolvePinArg(0)}, ${resolvePinArg(1)}, ${argText(2)}, ${argText(3)});`] };
+      }
+    }
+    if (ns === "Random") {
+      if (method === "seed") return { emitLines: [`randomSeed(${argText(0)});`] };
+      if (method === "number") {
+        const min = argText(0);
+        const max = argText(1);
+        return { emitLines: [], returnValue: max ? `random(${min}, ${max})` : `random(${min})` };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Try to resolve a HAL expression call for use inside expression contexts.
+ * Returns a raw string ExpressionIR if resolved, or null if not a HAL call.
+ * Side effects (emitLines) are accumulated and returned separately.
+ */
+export function tryResolveHALExpression(
+  call: ts.CallExpression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+): { ir: ExpressionIR; sideEffects: string[] } | null {
+  if (!ts.isPropertyAccessExpression(call.expression)) return null;
+
+  const method = call.expression.name.text;
+  const receiver = call.expression.expression;
+  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+
+  const instance = resolveHALReceiver(receiver);
+  if (instance) {
+    const result = processHALMethodBody(instance, method, argIRs);
+    if (result) {
+      if (result.returnValue) {
+        return { ir: { kind: "raw", value: result.returnValue }, sideEffects: result.emitLines };
+      }
+      if (result.emitLines.length > 0) {
+        return { ir: { kind: "raw", value: "0" }, sideEffects: result.emitLines };
+      }
+    }
+  }
+
+  return null;
+}
+
+/** @deprecated Use halInstances from hal-resolver instead. Kept for migration. */
+export const pinInstances = new Map<string, string>();
+/** @deprecated Use halInstances from hal-resolver instead. */
+export const i2cInstances = new Map<string, string>();
+/** @deprecated Use halInstances from hal-resolver instead. */
+export const serialInstances = new Map<string, string>();
+/** @deprecated Use halInstances from hal-resolver instead. */
+export const spiInstances = new Map<string, string>();
+/** @deprecated Use halInstances from hal-resolver instead. */
+export const eepromInstances = new Map<string, string>();
+/** @deprecated Use halInstances from hal-resolver instead. */
+export const wdtInstances = new Map<string, string>();
+/** @deprecated HAL namespace methods now resolve through HAL source files. */
+export const halNamespaces = new Map<string, string>();
+
 function callToStatement(
   statementNode: ts.ExpressionStatement,
   call: ts.CallExpression,
@@ -1243,9 +327,9 @@ function callToStatement(
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
 
-  // ---- HAL inline evaluator (highest priority: Pin, I2CBus, SerialPort) ---
-  const inlined = tryInlineHALMethod(call, fileName, sourceText, diagnostics, pointerVars);
-  if (inlined) return inlined;
+  // ---- HAL method resolver (highest priority) ---
+  const halResolved = tryResolveHALMethod(call, fileName, sourceText, diagnostics, pointerVars);
+  if (halResolved) return halResolved;
 
 
   // ── emit() — compile-time C++ injection ─────────────────────────────────
@@ -3205,7 +2289,7 @@ export function variableStatementToIR(
       continue;
     }
 
-    // ── HAL inline evaluator for variable declarations ──────────────────────
+    // ── HAL resolver for variable declarations ──────────────────────────────
     // Detect: const led = new Pin(LED_BUILTIN).asOutput(HIGH)
     // Or:     const p = new Pin(7)
     // Or:     const I2C0 = new I2CBus("Wire")
@@ -3213,285 +2297,118 @@ export function variableStatementToIR(
     // Inlines the emit() content and tracks the expression for subsequent calls.
     if (declaration.initializer && ts.isIdentifier(declaration.name)) {
       const varName = declaration.name.text;
-      let pinExpr: string | null = null;
-      let inlineStmts: StatementIR[] = [];
-      let methodChained = false;
 
       if (ts.isNewExpression(declaration.initializer) && ts.isIdentifier(declaration.initializer.expression)) {
         const className = declaration.initializer.expression.text;
-        const ctorArg = declaration.initializer.arguments?.[0];
+        const ctorArgs = declaration.initializer.arguments as ts.NodeArray<ts.Expression> | undefined;
 
-        if (className === "Pin" && ctorArg) {
-          // const p = new Pin(n) — track pin expression
-          if (ts.isIdentifier(ctorArg)) pinExpr = ctorArg.text;
-          else if (ts.isNumericLiteral(ctorArg)) pinExpr = ctorArg.text;
-          else if (ts.isPropertyAccessExpression(ctorArg)) pinExpr = ctorArg.getText();
-
-          if (pinExpr !== null) {
-            pinInstances.set(varName, pinExpr);
-            continue; // skip declaration — zero-cost
+        // Check if it's a known HAL class
+        if (isKnownHALClass(className)) {
+          // Resolve constructor field values from arguments
+          const fieldValues = new Map<string, string>();
+          const ctorIncludes = getCtorIncludes(className);
+          for (const inc of ctorIncludes) {
+            requiredIncludes.add(inc);
           }
-        } else if (className === "I2CBus" && ctorArg && ts.isStringLiteral(ctorArg)) {
-          // const I2C0 = new I2CBus("Wire") — track bus name
-          i2cInstances.set(varName, ctorArg.text);
-          continue;
-        } else if (className === "SerialPort" && ctorArg && ts.isStringLiteral(ctorArg)) {
-          // const UART0 = new SerialPort("Serial") — track port name
-          serialInstances.set(varName, ctorArg.text);
-          continue;
-        } else if (className === "SPIBus" && ctorArg && ts.isStringLiteral(ctorArg)) {
-          // const SPI0 = new SPIBus("SPI") — track bus name
-          spiInstances.set(varName, ctorArg.text);
-          continue;
-        } else if (className === "EEPROMClass" && ctorArg && ts.isStringLiteral(ctorArg)) {
-          // const EEPROM = new EEPROMClass("EEPROM") — track name
-          eepromInstances.set(varName, ctorArg.text);
-          requiredIncludes.add("<EEPROM.h>");
-          continue;
-        } else if (className === "WDTClass") {
-          // const WDT = new WDTClass() — track (no ctor args)
-          wdtInstances.set(varName, "WDT");
-          continue;
+
+          // Map constructor arguments to field values using the resolver's field map
+          if (ctorArgs) {
+            for (const arg of ctorArgs) {
+              if (ts.isIdentifier(arg)) {
+                // For I2CBus("Wire"), SPIBus("SPI"), SerialPort("Serial"), EEPROMClass("EEPROM")
+                // The argument is a string literal, not an identifier
+              } else if (ts.isStringLiteral(arg)) {
+                // bus/port/name constructor args
+                if (className === "I2CBus") fieldValues.set("_bus", arg.text);
+                else if (className === "SPIBus") fieldValues.set("_bus", arg.text);
+                else if (className === "SerialPort") fieldValues.set("_port", arg.text);
+                else if (className === "EEPROMClass") fieldValues.set("_name", arg.text);
+              } else if (ts.isNumericLiteral(arg)) {
+                if (className === "Pin") fieldValues.set("_pin", arg.text);
+              } else if (ts.isPropertyAccessExpression(arg)) {
+                if (className === "Pin") fieldValues.set("_pin", arg.getText());
+              }
+            }
+          }
+
+          // Also resolve identifier args (e.g., new Pin(LED_BUILTIN) or new Pin(D2))
+          if (ctorArgs) {
+            for (const arg of ctorArgs) {
+              if (ts.isIdentifier(arg) && className === "Pin") {
+                // Try to resolve to a tracked HAL instance
+                const existing = halInstances.get(arg.text);
+                if (existing && existing.fieldValues.has("_pin")) {
+                  fieldValues.set("_pin", existing.fieldValues.get("_pin")!);
+                } else {
+                  // Bare name: use as-is (e.g., LED_BUILTIN, D2)
+                  fieldValues.set("_pin", arg.text);
+                }
+              }
+            }
+          }
+
+          halInstances.set(varName, { className, fieldValues });
+          continue; // skip declaration — zero-cost
         }
       } else if (ts.isCallExpression(declaration.initializer) && ts.isPropertyAccessExpression(declaration.initializer.expression)) {
-        // const led = new Pin(n).method(args) — inline the method
-        const receiver = declaration.initializer.expression.expression;
-        const method = declaration.initializer.expression.name.text;
-
-        // Try Pin chained constructor
-        const resolved = resolvePinReceiver(receiver);
-        if (resolved) {
-          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-          const inlined = inlinePinMethod(resolved.pinExpr, method, argIRs);
-          if (inlined) {
-            // Methods with returnValue but no side effects (e.g., read()) — create a variable with the return value
-            if (inlined.emitLines.length === 0 && inlined.returnValue) {
-              lowered.push({
-                kind: "var_decl",
-                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
-                leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
-                trailingComments: [],
-                name: varName,
-                storage,
-                cppType: "auto",
-                initializer: { kind: "raw", value: inlined.returnValue },
-              });
-              localVariableTypes.set(varName, "auto");
-              commentsAssigned = true;
-              continue;
-            }
-            pinExpr = resolved.pinExpr;
-            methodChained = true;
-            inlineStmts = inlined.emitLines.map(line => ({
-              kind: "call" as const,
-              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
-              callee: "__EMIT__",
-              args: [{ kind: "string" as const, value: line }],
-            }));
-          }
-        }
-
-        if (pinExpr !== null) {
-          pinInstances.set(varName, pinExpr);
-          if (methodChained && inlineStmts.length > 0) {
-            lowered.push(...inlineStmts);
+        // const led = new Pin(n).method(args) — chained constructor + method call
+        const result = resolveHALCallForVarInit(declaration.initializer, sourceText, diagnostics, pointerVars);
+        if (result) {
+          // Emit side effects
+          const stmts = result.emitLines.map(line => ({
+            kind: "call" as const,
+            sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
+            callee: "__EMIT__",
+            args: [{ kind: "string" as const, value: line }],
+          }));
+          if (stmts.length > 0) {
+            lowered.push(...stmts);
             commentsAssigned = true;
-            continue;
+          }
+          // Track the instance for subsequent calls — resolve the receiver
+          // Propagate only when the method returns 'this' (chaining pattern like begin())
+          // or has no return value (void methods). Skip when returning primitives.
+          const receiver = declaration.initializer.expression.expression;
+          const instance = resolveHALReceiver(receiver);
+          if (instance && (!result.returnValue || result.returnValue === "this")) {
+            if (result.returnClassName) {
+              halInstances.set(varName, {
+                className: result.returnClassName,
+                fieldValues: new Map(instance.fieldValues),
+              });
+            } else {
+              halInstances.set(varName, instance);
+            }
+          }
+          // For methods with returnValue, emit the variable with returnValue as initializer
+          if (result.returnValue && result.returnValue !== "this") {
+            if (/\b\d+\.\d+\b/.test(result.returnValue)) {
+              registerFloatVariable(varName);
+            }
+            lowered.push({
+              kind: "var_decl",
+              sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
+              leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
+              trailingComments: [],
+              name: varName,
+              storage,
+              cppType: "auto",
+              initializer: { kind: "raw", value: result.returnValue },
+            });
+            localVariableTypes.set(varName, "auto");
+            commentsAssigned = true;
           }
           continue;
         }
-
-        // Try I2CBus chained constructor: const x = new I2CBus("Wire").begin()
-        const busName = resolveI2CReceiver(receiver);
-        if (busName) {
-          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-          const inlined = inlineI2CMethod(busName, method, argIRs);
-          if (inlined) {
-            i2cInstances.set(varName, busName);
-            const stmts = inlined.emitLines.map(line => ({
-              kind: "call" as const,
-              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
-              callee: "__EMIT__",
-              args: [{ kind: "string" as const, value: line }],
-            }));
-            if (stmts.length > 0) {
-              lowered.push(...stmts);
-              commentsAssigned = true;
-            }
-            // For methods with returnValue but no emitLines, emit the variable with returnValue as initializer
-            if (inlined.emitLines.length === 0 && inlined.returnValue) {
-              lowered.push({
-                kind: "var_decl",
-                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
-                leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
-                trailingComments: [],
-                name: varName,
-                storage,
-                cppType: "auto",
-                initializer: { kind: "raw", value: inlined.returnValue },
-              });
-              localVariableTypes.set(varName, "auto");
-              commentsAssigned = true;
-            }
-            continue;
-          }
-        }
-
-        // Try I2C device accessor: const val = I2C0.device(addr).readByte(reg)
-        const deviceCall = resolveI2CDeviceCall(declaration.initializer);
-        if (deviceCall) {
-          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-          const inlined = inlineI2CDeviceMethod(deviceCall.busName, deviceCall.addressExpr, deviceCall.method, argIRs);
-          if (inlined) {
-            const stmts = inlined.emitLines.map(line => ({
-              kind: "call" as const,
-              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
-              callee: "__EMIT__",
-              args: [{ kind: "string" as const, value: line }],
-            }));
-            if (stmts.length > 0) {
-              lowered.push(...stmts);
-            }
-            if (inlined.returnValue) {
-              lowered.push({
-                kind: "var_decl",
-                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
-                leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
-                trailingComments: [],
-                name: varName,
-                storage,
-                cppType: "auto",
-                initializer: { kind: "raw", value: inlined.returnValue },
-              });
-            }
-            localVariableTypes.set(varName, (inlined.varType ?? "auto") as CppTypeHint);
-            commentsAssigned = true;
-            continue;
-          }
-        }
-
-        // Try SPI device accessor: const val = spi.device(cs).transfer(data)
-        const spiDeviceCall = resolveSPIDeviceCall(declaration.initializer);
-        if (spiDeviceCall) {
-          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-          const inlined = inlineSPIDeviceMethod(spiDeviceCall.busName, spiDeviceCall.csExpr, spiDeviceCall.method, argIRs);
-          if (inlined) {
-            const stmts = inlined.emitLines.map(line => ({
-              kind: "call" as const,
-              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
-              callee: "__EMIT__",
-              args: [{ kind: "string" as const, value: line }],
-            }));
-            if (stmts.length > 0) {
-              lowered.push(...stmts);
-            }
-            if (inlined.returnValue) {
-              lowered.push({
-                kind: "var_decl",
-                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
-                leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
-                trailingComments: [],
-                name: varName,
-                storage,
-                cppType: "auto",
-                initializer: { kind: "raw", value: inlined.returnValue },
-              });
-              localVariableTypes.set(varName, "auto");
-            }
-            commentsAssigned = true;
-            continue;
-          }
-        }
-
-        // Try SerialPort chained constructor
-        const portName = resolveSerialReceiver(receiver);
-        if (portName) {
-          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-          const inlined = inlineSerialMethod(portName, method, argIRs);
-          if (inlined) {
-            serialInstances.set(varName, portName);
-            const stmts = inlined.emitLines.map(line => ({
-              kind: "call" as const,
-              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
-              callee: "__EMIT__",
-              args: [{ kind: "string" as const, value: line }],
-            }));
-            if (stmts.length > 0) {
-              lowered.push(...stmts);
-              commentsAssigned = true;
-            }
-            if (inlined.emitLines.length === 0 && inlined.returnValue) {
-              lowered.push({
-                kind: "var_decl",
-                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
-                leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
-                trailingComments: [],
-                name: varName,
-                storage,
-                cppType: "auto",
-                initializer: { kind: "raw", value: inlined.returnValue },
-              });
-              localVariableTypes.set(varName, "auto");
-              commentsAssigned = true;
-            }
-            continue;
-          }
-        }
-
-        // Try SPIBus chained constructor
-        const spiBusName = resolveSPIReceiver(receiver);
-        if (spiBusName) {
-          const argIRs = declaration.initializer.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
-          const inlined = inlineSPIMethod(spiBusName, method, argIRs);
-          if (inlined) {
-            spiInstances.set(varName, spiBusName);
-            const stmts = inlined.emitLines.map(line => ({
-              kind: "call" as const,
-              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
-              callee: "__EMIT__",
-              args: [{ kind: "string" as const, value: line }],
-            }));
-            if (stmts.length > 0) {
-              lowered.push(...stmts);
-              commentsAssigned = true;
-            }
-            if (inlined.emitLines.length === 0 && inlined.returnValue) {
-              lowered.push({
-                kind: "var_decl",
-                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
-                leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
-                trailingComments: [],
-                name: varName,
-                storage,
-                cppType: "auto",
-                initializer: { kind: "raw", value: inlined.returnValue },
-              });
-              localVariableTypes.set(varName, "auto");
-              commentsAssigned = true;
-            }
-            continue;
-          }
-        }
       }
 
-      // Handle: const CS = D10 — bare identifier that resolves to a pin constant
+      // Handle: const CS = D10 — bare identifier that resolves to a tracked HAL instance
       if (declaration.initializer && ts.isIdentifier(declaration.initializer)) {
-        const resolved = resolvePinReceiver(declaration.initializer);
-        if (resolved) {
-          pinInstances.set(varName, resolved.pinExpr);
+        const existing = halInstances.get(declaration.initializer.text);
+        if (existing) {
+          halInstances.set(varName, existing);
           continue;
         }
-      }
-
-      // Fallback: Pin-only path for simple `new Pin(n)` that wasn't caught above
-      if (pinExpr !== null) {
-        pinInstances.set(varName, pinExpr);
-        if (methodChained && inlineStmts.length > 0) {
-          lowered.push(...inlineStmts);
-          commentsAssigned = true;
-          continue;
-        }
-        continue;
       }
     }
 

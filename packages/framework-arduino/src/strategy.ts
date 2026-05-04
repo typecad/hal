@@ -33,7 +33,9 @@ function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
  */
 const ARDUINO_RESERVED_NAMES: ReadonlySet<string> = new Set([
   // Standard Arduino digital/analog pin-mode macros (all platforms)
-  "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE",
+  // HIGH and LOW are phantom constants from @typehal that map directly to Arduino
+  // macros — they must pass through as-is in expressions.
+  "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE",
   // ESP32-specific pin-mode macros (esp32-hal-gpio.h)
   "INPUT_PULLDOWN", "OUTPUT_OPEN_DRAIN", "ANALOG",
   // Bus pin aliases (all platforms)

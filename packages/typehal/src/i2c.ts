@@ -18,13 +18,18 @@ export class I2CDevice {
   }
 
   readByte(register: number): number {
+    emit(`${this._bus}.beginTransmission(${this._address});`);
+    emit(`${this._bus}.write(${register});`);
+    emit(`${this._bus}.endTransmission(false);`);
+    emit(`${this._bus}.requestFrom(${this._address}, 1);`);
+    emit(`return ${this._bus}.read();`);
     return 0;
   }
 
   writeBytes(register: number, data: number[] | Uint8Array): void {
     emit(`${this._bus}.beginTransmission(${this._address});`);
     emit(`${this._bus}.write(${register});`);
-    emit(`${this._bus}.write(data, sizeof(data));`);
+    emit(`${this._bus}.write(${data}, sizeof(${data}));`);
     emit(`${this._bus}.endTransmission();`);
   }
 
@@ -70,6 +75,31 @@ export class I2CBus {
   }
 
   readByte(address: number, register: number): number {
+    return 0;
+  }
+
+  // Low-level Wire API pass-through methods
+  beginTransmission(address: number): void {
+    emit(`${this._bus}.beginTransmission(${address});`);
+  }
+
+  write(data: number | number[] | Uint8Array): void {
+    emit(`${this._bus}.write(${data});`);
+  }
+
+  endTransmission(stop?: boolean): number {
+    return 0;
+  }
+
+  requestFrom(address: number, quantity: number, stop?: boolean): number {
+    return 0;
+  }
+
+  available(): number {
+    return 0;
+  }
+
+  read(): number {
     return 0;
   }
 }

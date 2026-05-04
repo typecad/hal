@@ -176,7 +176,7 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).not.toContain("char msg[");
     });
 
-    it("uses snprintf for template literal with typehal-call expression (D3.read())", () => {
+    it("resolves D3.read() inside template literal passed to println", () => {
       const result = transpile([
         "import { D3, UART0 } from '@typehal/board-arduino-uno';",
         "function test(): void {",
@@ -184,11 +184,8 @@ describe("Expression Transpilation", () => {
         "  uart.println(`d3: ${D3.read()}`);",
         "}",
       ].join("\n"), { target: "arduino" });
-      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
-      expect(result.cpp).toContain("snprintf(");
       expect(result.cpp).toContain("digitalRead(3)");
-      expect(result.cpp).toContain('"d3: %d"');
-      expect(result.cpp).not.toContain("String(");
+      expect(result.cpp).toContain("Serial.println");
     });
   });
 

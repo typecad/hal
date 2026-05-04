@@ -13,13 +13,5 @@
  *
  * NOTE: ADC2 cannot be used when WiFi is active.
  */
-export enum AnalogReference {
-  DEFAULT  = 1,
-  INTERNAL = 3,
-}
-
-/**
- * Set the ADC reference voltage.
- * Maps to Arduino `analogReference()`.
- */
-export declare function analogReference(ref: AnalogReference): void;
+export declare const DEFAULT: number;
+export declare const INTERNAL: number;

@@ -1,4 +1,4 @@
-import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR } from "./model";
+import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "./model";
 
 // Module-level map of top-level class names to their IR for static method return type lookup.
 export const topLevelClasses = new Map<string, ClassIR>();
@@ -80,6 +80,19 @@ export const topLevelClassNames = new Set<string>();
 // Module-level set of library includes required by inline evaluators (e.g., "<SPI.h>", "<Wire.h>").
 export const requiredIncludes = new Set<string>();
 
+// Module-level registry of callbacks registered via the callback() directive in HAL method bodies.
+export interface RegisteredCallback {
+  placeholderName: string;
+  callbackIR: ExpressionIR & { kind: "callback" };
+}
+export const registeredCallbacks: RegisteredCallback[] = [];
+
+// Module-level board constants for the current buildProgramIR invocation.
+// Resolved from the board package before IR building starts, so HAL resolver can access it.
+let _currentBoardConstants: Map<string, string | number | boolean> | undefined;
+export function getCurrentBoardConstants() { return _currentBoardConstants; }
+export function setCurrentBoardConstants(v: Map<string, string | number | boolean> | undefined) { _currentBoardConstants = v; }
+
 // Module-level local variable type tracker for typeof resolution.
 // Maps variable name → inferred C++ type string (e.g., "int", "std::string").
 export const activeLocalTypes = new Map<string, string>();
@@ -97,6 +110,8 @@ export function resetBuildState(): void {
   topLevelClassNames.clear();
   topLevelClasses.clear();
   requiredIncludes.clear();
+  registeredCallbacks.length = 0;
+  _currentBoardConstants = undefined;
 }
 
 /** Clear state that should be scoped to a single function body. */

@@ -117,6 +117,8 @@ interface ADCDefinition {
   resolution: number;
   /** Default reference voltage (used when no analogReference() call precedes readVoltage()). */
   referenceVoltage: number;
+  /** Pre-computed maximum ADC value: (1 << resolution) - 1. Used by readVoltage() and board(). */
+  maxValue: number;
   /** Per-reference voltage map keyed by AnalogReference member name (e.g. { DEFAULT: 5.0, INTERNAL: 1.1 }). */
   referenceVoltages?: Record<string, number>;
 }

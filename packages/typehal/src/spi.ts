@@ -54,6 +54,14 @@ export class SPIBus {
     emit(`${this._bus}.beginTransaction(SPISettings(${hz}, MSBFIRST, SPI_MODE0));`);
   }
 
+  beginTransaction(settings: any): void {
+    emit(`${this._bus}.beginTransaction(${settings});`);
+  }
+
+  endTransaction(): void {
+    emit(`${this._bus}.endTransaction();`);
+  }
+
   setMode(mode: number): void {
     emit(`${this._bus}.setDataMode(${mode});`);
   }
@@ -62,8 +70,12 @@ export class SPIBus {
     emit(`${this._bus}.setBitOrder(${order});`);
   }
 
-  endTransaction(): void {
-    emit(`${this._bus}.endTransaction();`);
+  write(value: number): void {
+    emit(`${this._bus}.transfer(${value});`);
+  }
+
+  write16(value: number): void {
+    emit(`${this._bus}.transfer16(${value});`);
   }
 }
 

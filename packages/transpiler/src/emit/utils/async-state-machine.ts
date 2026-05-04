@@ -107,6 +107,24 @@ export function generateAsyncTaskClass(
   const renderStmt = (stmt: StatementIR): string =>
     renderStatement(stmt, false, strategy, undefined, undefined, knownFunctionReturnTypes);
 
+  // Collect edge-detection markers from segments
+  const edgeInfoMap = new Map<number, { pin: string; edge: "rising" | "falling"; timeout: number | null }>();
+  const edgeMembers = new Set<string>();
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.awaitedCallee === "__EMIT__" && seg.awaitedArgs.length > 0) {
+      const argText = seg.awaitedArgs[0].kind === "string"
+        ? (seg.awaitedArgs[0] as Extract<ExpressionIR, { kind: "string" }>).value
+        : renderExpression(seg.awaitedArgs[0], strategy);
+      const info = parseEdgeMarker(argText);
+      if (info) {
+        edgeInfoMap.set(i, info);
+        edgeMembers.add(`_edgePrev_p${info.pin}`);
+      }
+    }
+  }
+
   const caseLines: string[] = [];
 
   for (let i = 0; i < segments.length; i++) {
@@ -115,28 +133,85 @@ export function generateAsyncTaskClass(
     const isTerminal = seg.awaitedCallee === undefined;
     const body: string[] = [];
 
-    if (i === 0) {
-      // STATE_0: execute immediately, no millis check
-      for (const stmt of seg.preStatements) body.push(`        ${renderStmt(stmt)}`);
-      if (!isTerminal) {
+    const edgeSetup = edgeInfoMap.get(i);
+    const edgePoll = i > 0 ? edgeInfoMap.get(i - 1) : undefined;
+
+    if (edgePoll) {
+      // Poll state: check pin transition via digitalRead
+      const prevVar = `_edgePrev_p${edgePoll.pin}`;
+      const cond = edgePoll.edge === "rising"
+        ? `${prevVar} == LOW && _cur == HIGH`
+        : `${prevVar} == HIGH && _cur == LOW`;
+      const fullCond = edgePoll.timeout !== null
+        ? `(${cond}) || ${strategy.currentTimeMillis()} >= _waitUntil`
+        : cond;
+
+      body.push(`        {`);
+      body.push(`          int _cur = digitalRead(${edgePoll.pin});`);
+      body.push(`          if (${fullCond}) {`);
+      body.push(`            ${prevVar} = _cur;`);
+      for (const stmt of seg.preStatements) body.push(`            ${renderStmt(stmt)}`);
+      if (edgeSetup) {
+        // Next await is also edge detection — set up its pin tracking
+        body.push(`            _edgePrev_p${edgeSetup.pin} = digitalRead(${edgeSetup.pin});`);
+        if (edgeSetup.timeout !== null) {
+          body.push(`            _waitUntil = ${strategy.currentTimeMillis()} + ${edgeSetup.timeout};`);
+        }
+        body.push(`            _state = STATE_${i + 1};`);
+      } else if (!isTerminal) {
         const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
-        body.push(`        _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
+        body.push(`            _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
+        body.push(`            _state = STATE_${i + 1};`);
+      } else {
+        body.push(`            _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+      }
+      body.push(`          } else {`);
+      body.push(`            ${prevVar} = _cur;`);
+      body.push(`          }`);
+      body.push(`        }`);
+    } else if (edgeSetup) {
+      // Setup state: capture initial pin state before polling
+      const prevVar = `_edgePrev_p${edgeSetup.pin}`;
+      if (i === 0) {
+        for (const stmt of seg.preStatements) body.push(`        ${renderStmt(stmt)}`);
+        body.push(`        ${prevVar} = digitalRead(${edgeSetup.pin});`);
+        if (edgeSetup.timeout !== null) {
+          body.push(`        _waitUntil = ${strategy.currentTimeMillis()} + ${edgeSetup.timeout};`);
+        }
         body.push(`        _state = STATE_${i + 1};`);
       } else {
-        body.push(`        _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+        body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
+        for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
+        body.push(`          ${prevVar} = digitalRead(${edgeSetup.pin});`);
+        if (edgeSetup.timeout !== null) {
+          body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${edgeSetup.timeout};`);
+        }
+        body.push(`          _state = STATE_${i + 1};`);
+        body.push(`        }`);
       }
     } else {
-      // STATE_i (i >= 1): poll millis, then execute segment
-      body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
-      for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
-      if (!isTerminal) {
-        const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
-        body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
-        body.push(`          _state = STATE_${i + 1};`);
+      // Normal timed-wait state
+      if (i === 0) {
+        for (const stmt of seg.preStatements) body.push(`        ${renderStmt(stmt)}`);
+        if (!isTerminal) {
+          const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
+          body.push(`        _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
+          body.push(`        _state = STATE_${i + 1};`);
+        } else {
+          body.push(`        _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+        }
       } else {
-        body.push(`          _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+        body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
+        for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
+        if (!isTerminal) {
+          const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
+          body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
+          body.push(`          _state = STATE_${i + 1};`);
+        } else {
+          body.push(`          _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+        }
+        body.push(`        }`);
       }
-      body.push(`        }`);
     }
 
     caseLines.push(`      case ${stateName}:`, ...body, `        break;`);
@@ -147,22 +222,31 @@ export function generateAsyncTaskClass(
   const stateEnumList = stateNames.join(", ");
   const isCompleteExpr = isCyclic ? "false" : "_state == STATE_DONE";
 
+  // Build constructor initializer list and edge member declarations
+  const edgeMemberArr = Array.from(edgeMembers);
+  const ctorInitList = edgeMemberArr.length > 0
+    ? `_state(STATE_0), _waitUntil(0), ${edgeMemberArr.map(m => `${m}(LOW)`).join(", ")}`
+    : `_state(STATE_0), _waitUntil(0)`;
+  const edgeResetList = edgeMemberArr.map(m => ` ${m} = LOW;`).join("");
+  const edgeMemberDecls = edgeMemberArr.map(m => `  int ${m};`);
+
   const classDef = [
     `// Async state machine for ${fnName}`,
     `class ${className} {`,
     `public:`,
     `  enum State { ${stateEnumList} };`,
-    `  ${className}() : _state(STATE_0), _waitUntil(0) {}`,
+    `  ${className}() : ${ctorInitList} {}`,
     `  void run() {`,
     `    switch (_state) {`,
     ...caseLines,
     `    }`,
     `  }`,
     `  bool isComplete() const { return ${isCompleteExpr}; }`,
-    `  void reset() { _state = STATE_0; _waitUntil = 0; }`,
+    `  void reset() { _state = STATE_0; _waitUntil = 0;${edgeResetList} }`,
     `private:`,
     `  State _state;`,
     `  unsigned long _waitUntil;`,
+    ...edgeMemberDecls,
     `};`,
   ].join("\n");
 
@@ -195,4 +279,20 @@ function renderExpression(expr: ExpressionIR, strategy: PlatformStrategy): strin
     default:
       return "/* complex expr */";
   }
+}
+
+interface EdgeInfo {
+  pin: string;
+  edge: "rising" | "falling";
+  timeout: number | null;
+}
+
+function parseEdgeMarker(argText: string): EdgeInfo | null {
+  const match = argText.match(/^__EDGE_(RISING|FALLING)__([a-zA-Z0-9_]+)__T(.*)$/);
+  if (!match) return null;
+  const edge = match[1] === "RISING" ? "rising" : "falling";
+  const pin = match[2];
+  const timeoutStr = match[3];
+  const timeout = !isNaN(Number(timeoutStr)) && Number(timeoutStr) > 0 ? Number(timeoutStr) : null;
+  return { pin, edge, timeout };
 }

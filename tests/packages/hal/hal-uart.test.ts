@@ -116,19 +116,6 @@ describe('UART HAL - Arduino API Transpilation', () => {
       expect(result.cpp).not.toContain('const int serial = Serial.begin(115200);');
       expect(result.cpp).not.toContain('serial.println(');
     });
-
-    it('transpiles printf()', () => {
-      const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
-        UART0.begin(9600);
-        UART0.printf("Value: %d", 42);
-      `);
-      
-      expectCppContains(result, [
-        'snprintf(__typehal_printf_1, sizeof(__typehal_printf_1), "Value: %d", 42)',
-        'Serial.print(__typehal_printf_1)',
-      ]);
-    });
   });
 
   describe('Buffer Control', () => {

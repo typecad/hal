@@ -572,8 +572,6 @@ export class StatementRenderer {
 
   private renderEmitArg(arg: ExpressionIR): string {
     if (arg.kind === "string") return arg.value;
-    if (arg.kind === "string_concat") return arg.parts.map(p => this.renderEmitArg(p)).join("");
-    if (arg.kind === "template_string") return this.expressionRenderer.render(arg.expression);
     return this.expressionRenderer.render(arg);
   }
 }

@@ -38,6 +38,7 @@ import {
   collectPointerVarTypes,
   hasConsoleCalls,
 } from "./utils";
+import { registeredCallbacks } from "../ir/build-ir-state";
 
 // ---------------------------------------------------------------------------
 // Pre-compiled regex patterns for performance
@@ -1971,9 +1972,54 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     }
   }
 
+  // Process registered callbacks from HAL resolver (callback() directive)
+  for (const rc of registeredCallbacks) {
+    const callbackName = `${isrPrefix}_isr_${callbackCounter++}`;
+    callbackFunctions.push({
+      name: callbackName,
+      params: rc.callbackIR.params,
+      statements: rc.callbackIR.statements,
+      debounceMs: rc.callbackIR.debounceMs,
+    });
+    replacePlaceholderInAllStatements(filteredTopLevelExecutables, rc.placeholderName, callbackName);
+    for (const fn of mappedFunctions) {
+      replacePlaceholderInAllStatements(fn.statements, rc.placeholderName, callbackName);
+    }
+  }
+
   // Promote runtime var_decls that are referenced in ISR callbacks to file scope.
   // ISRs are emitted as file-scope free functions, so they can't access setup()-local variables.
   // We emit a forward declaration at file scope and convert the var_decl to an assignment in setup().
+
+  function replacePlaceholderInStmt(stmt: any, placeholder: string, replacement: string): void {
+    if (stmt.kind === "call" && stmt.callee === "__EMIT__" && stmt.args) {
+      for (const arg of stmt.args) {
+        if (arg.kind === "string" && typeof arg.value === "string" && arg.value.includes(placeholder)) {
+          arg.value = arg.value.replace(placeholder, replacement);
+        }
+      }
+    }
+    for (const key of ["body", "thenBranch", "elseBranch"]) {
+      if (Array.isArray(stmt[key])) {
+        for (const s of stmt[key]) replacePlaceholderInStmt(s, placeholder, replacement);
+      }
+    }
+    if (stmt.cases && Array.isArray(stmt.cases)) {
+      for (const c of stmt.cases) {
+        if (c.body) for (const s of c.body) replacePlaceholderInStmt(s, placeholder, replacement);
+      }
+    }
+    if (stmt.statements && Array.isArray(stmt.statements)) {
+      for (const s of stmt.statements) replacePlaceholderInStmt(s, placeholder, replacement);
+    }
+  }
+
+  function replacePlaceholderInAllStatements(statements: StatementIR[], placeholder: string, replacement: string): void {
+    for (const stmt of statements) {
+      replacePlaceholderInStmt(stmt, placeholder, replacement);
+    }
+  }
+
   function collectIdentifierNames(statements: StatementIR[]): Set<string> {
     const names = new Set<string>();
     function scanStmt(stmt: StatementIR) {
