@@ -1,4 +1,4 @@
-import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "./model";
+import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "@typehal/core";
 
 // Module-level map of top-level class names to their IR for static method return type lookup.
 export const topLevelClasses = new Map<string, ClassIR>();

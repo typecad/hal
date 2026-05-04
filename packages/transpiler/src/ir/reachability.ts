@@ -1,4 +1,4 @@
-import { ProgramIR, FunctionIR, ClassIR, EnumIR, TypeAliasIR } from "./model";
+import { ProgramIR, FunctionIR, ClassIR, EnumIR, TypeAliasIR } from "@typehal/core";
 import { CallGraph, getReachableSymbols } from "./call-graph";
 import { detectEntryPoints, EntryPointConfig } from "./entry-points";
 import { TargetProfile, Diagnostic } from "../types";

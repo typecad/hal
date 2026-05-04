@@ -92,13 +92,6 @@ export function printError(message: string): void {
 }
 
 /**
- * Print warning message
- */
-export function printWarning(message: string): void {
-  console.log(chalk.yellow(`${ICON_ERROR} ${message}`));
-}
-
-/**
  * Print info message
  */
 export function printInfo(message: string): void {
@@ -112,10 +105,3 @@ export function printFileCreated(filePath: string): void {
   console.log(chalk.gray(`  ${ICON_SUCCESS} ${filePath}`));
 }
 
-/**
- * Print a section header
- */
-export function printSection(title: string): void {
-  console.log();
-  console.log(chalk.cyan(`${ICON_TYPEHAL} ${title}`));
-}

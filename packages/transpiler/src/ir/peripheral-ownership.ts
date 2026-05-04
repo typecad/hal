@@ -10,7 +10,7 @@
 // If take() is never used, no diagnostics are generated (opt-in).
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR } from './model';
+import type { ProgramIR, StatementIR, ExpressionIR } from '@typehal/core';
 import type { Diagnostic } from '../types';
 import { scanNestedStatements } from './interrupt-analysis';
 

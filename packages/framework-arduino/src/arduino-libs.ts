@@ -12,7 +12,6 @@ export {
   getInstalledLibraries,
   findArduinoLibrary,
   findLibraryHeader,
-  findLibrarySources,
   isArduinoLibraryImport,
   clearLibraryCache,
 } from './lib-discovery';
@@ -26,7 +25,6 @@ export {
 
 export type { GeneratedArduinoLib } from './lib-declaration';
 export {
-  generateArduinoLibDecl,
   tryGenerateArduinoLibDecl,
   getArduinoLibraryHeaderName,
   getArduinoLibraryClassNames,

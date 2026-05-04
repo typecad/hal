@@ -6,7 +6,7 @@
  * this module performs all checks in a single traversal.
  */
 
-import { ProgramIR, StatementIR, ExpressionIR } from "./model";
+import { ProgramIR, StatementIR, ExpressionIR } from "@typehal/core";
 import { POLYFILL_HELPER_MAP } from "@typehal/core/shared";
 
 export interface ProgramAnalysisResult {

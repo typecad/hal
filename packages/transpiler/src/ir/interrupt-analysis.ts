@@ -5,7 +5,7 @@
 // on the same pin.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR } from './model';
+import type { ProgramIR, StatementIR, ExpressionIR } from '@typehal/core';
 import type { PeripheralUsage } from './peripheral-usage';
 import type { Diagnostic } from '../types';
 import { registeredCallbacks } from './build-ir-state';

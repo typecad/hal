@@ -90,3 +90,6 @@ export type {
 
 // Polyfill helper registry
 export { POLYFILL_HELPER_MAP, filterPolyfillHelpers } from './polyfill-helper-registry';
+
+// Promise runtime generator
+export { generatePromiseRuntime } from './promise-runtime';

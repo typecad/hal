@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { Diagnostic } from "../types";
-import { ExpressionIR, StatementIR } from "./model";
+import { ExpressionIR, StatementIR } from "@typehal/core";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";

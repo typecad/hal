@@ -6,7 +6,7 @@
 // respective framework packages, which register via registerPlatformStrategy().
 // ---------------------------------------------------------------------------
 
-export { PlatformStrategy } from './platform-strategy';
+export type { PlatformStrategy } from '@typehal/core/shared';
 export { GenericStrategy } from './generic-strategy';
 export { resolveStrategy, registerPlatformStrategy } from './registry';
 export type { RuntimePolyfillIR } from '@typehal/core/shared';

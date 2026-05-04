@@ -7,7 +7,6 @@
 export {
   inferObjectFieldType,
   collectNestedStructDefs,
-  collectDeclaredTypes,
   hasArrayInObjectLiteral,
   hasThrowStatements,
   hasStdMathCalls,

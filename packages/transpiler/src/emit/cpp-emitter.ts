@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ProgramIR, ExpressionIR, StatementIR } from "../ir/model";
+import type { ProgramIR, ExpressionIR, StatementIR } from "@typehal/core";
 import { analyzeProgram, ProgramAnalysisResult } from "../ir/program-analysis";
 import { Diagnostic, EmitMode, GeneratedOutputs, PlatformContext, SourceMapEntry, TargetProfile } from "../types";
 import { ensureDir, writeText } from "../utils/fs";
@@ -13,7 +13,7 @@ import { filterPolyfillHelpers } from "@typehal/core/shared";
 import { ResolvedNpmPackage } from "../transpile/resolution";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import type { BoardConstants } from "../ir/board-resolver";
-import type { PlatformStrategy } from "../platform/platform-strategy";
+import type { PlatformStrategy } from "@typehal/core/shared";
 import { resolveStrategy } from "../platform/registry";
 import { getLoadedFramework } from "../framework-registry";
 import { buildSnprintfRenderResult, cloneEmissionScopeState, createChildEmissionScope, createEmissionScopeState, type EmissionScopeState, inferSnprintfArg, recordVariableType, statementNeedsSnprintf, shouldUseSnprintfForString } from "./snprintf-helpers";
@@ -75,7 +75,7 @@ function loadClassNameMap(imports: any[]): Map<string, string> | undefined {
   try {
     const framework = getLoadedFramework();
     if (framework.classNameMapBuilder) {
-      return framework.classNameMapBuilder.buildClassNameMap(imports);
+      return framework.classNameMapBuilder(imports);
     }
   } catch {
     // No loaded framework — no class name mapping available.
@@ -972,7 +972,11 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   if (!isNpmPackage) {
     includes.push(...strategy.forcedIncludes(program, options.platformContext));
     Object.assign(symbolMap, strategy.symbolAliases(program, options.platformContext));
-    shimLines = [...strategy.shimLines(program, options.platformContext)];
+    // Only emit shim lines for the entry file — non-entry files are merged into
+    // the entry sketch, so emitting shims there too would cause redefinitions.
+    if (isEntryFile) {
+      shimLines = [...strategy.shimLines(program, options.platformContext)];
+    }
     // Filter shim lines for unused utilities
     if (!programAnalysis.usesStringConversion) {
       shimLines = shimLines.filter(l => !l.includes('std::string String('));
@@ -3234,18 +3238,48 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // Post-process the final source for any remaining pointer member access
   // patterns that were not transformed earlier in the emitter.
+  // Only transform lines AFTER the shim/polyfill block to avoid corrupting
+  // platform polyfill code (e.g. strlen(s.buf) must not become strlen(s->buf)
+  // when a user pointer variable is also named `s`).
   if (typeof globalPointerVarTypes !== "undefined" && globalPointerVarTypes.size > 0) {
     const pointerNames = Array.from(globalPointerVarTypes.keys()).filter((varName) => {
       const varType = globalPointerVarTypes.get(varName);
       return typeof varType === "string" && varType.trim().endsWith("*");
     });
     if (pointerNames.length > 0) {
-      const sourceText = sourceLines.join("\n");
-      const fixedSource = pointerNames.reduce((text, varName) => {
-        const pattern = new RegExp(`\\b${varName}\\.`, "g");
-        return text.replace(pattern, `${varName}->`);
-      }, sourceText);
-      sourceLines = fixedSource.split("\n");
+      // Count shim + polyfill lines so we skip them during post-processing.
+      const shimLineCount = shimLines.length + (shimLines.length > 0 ? 1 : 0); // +1 for trailing blank
+      const polyfillLineCount = emittedPolyfills
+        ? emittedPolyfills.declarations.join("\n").split("\n").length +
+          emittedPolyfills.definitions.join("\n").split("\n").length
+        : 0;
+      const protectedLineCount = shimLineCount + polyfillLineCount;
+
+      // Find the line index where user code starts (after includes + shim + polyfills)
+      // The shim block is appended at a known point; scan for its end.
+      let userCodeStartIdx = 0;
+      for (let i = 0; i < sourceLines.length; i++) {
+        const line = sourceLines[i];
+        // The shim lines start with known patterns like "// TypeHAL Native Polyfills"
+        // or struct definitions. We look for the last polyfill-related line.
+        if (line.includes("// TypeHAL Native Polyfills") || line.includes("// String helpers")) {
+          // Found the shim block start — user code begins after shimLineCount + some header lines
+          userCodeStartIdx = i + protectedLineCount;
+          break;
+        }
+      }
+
+      // Apply the pointer -> transform only to user code lines
+      if (userCodeStartIdx > 0 && userCodeStartIdx < sourceLines.length) {
+        const protectedLines = sourceLines.slice(0, userCodeStartIdx);
+        const userLines = sourceLines.slice(userCodeStartIdx);
+        const userText = userLines.join("\n");
+        const fixedUserText = pointerNames.reduce((text, varName) => {
+          const pattern = new RegExp(`\\b${varName}\\.`, "g");
+          return text.replace(pattern, `${varName}->`);
+        }, userText);
+        sourceLines = [...protectedLines, ...fixedUserText.split("\n")];
+      }
     }
   }
 

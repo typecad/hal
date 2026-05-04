@@ -1,4 +1,4 @@
-import { ProgramIR } from "./model";
+import { ProgramIR } from "@typehal/core";
 import { Diagnostic, TreeShakingOptions } from "../types";
 import { ReachabilityResult } from "./reachability";
 

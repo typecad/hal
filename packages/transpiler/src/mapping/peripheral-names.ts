@@ -6,7 +6,7 @@
  * to provide their target-specific naming conventions.
  */
 
-import type { PlatformStrategy } from "../platform/platform-strategy";
+import type { PlatformStrategy } from "@typehal/core/shared";
 
 // ---------------------------------------------------------------------------
 // Peripheral name mapping

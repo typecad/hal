@@ -1,4 +1,4 @@
-import { ProgramIR, StatementIR, ExpressionIR } from "./model";
+import { ProgramIR, StatementIR, ExpressionIR } from "@typehal/core";
 
 /**
  * Configuration for entry point detection

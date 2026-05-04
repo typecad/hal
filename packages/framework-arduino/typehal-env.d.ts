@@ -72,7 +72,6 @@ declare global {
     getFloat(key: string, defaultValue: number): number;
     putString(key: string, value: string): void;
     getString(key: string, defaultValue: string): string;
-    clear(): void;
     remove(key: string): void;
   };
 }

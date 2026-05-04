@@ -59,12 +59,8 @@ export function loadFrameworkPackage(
         isFrameworkLibraryImport: mod.isFrameworkLibraryImport,
         getFrameworkLibraryHeaderName: mod.getFrameworkLibraryHeaderName,
       } : undefined,
-      classNameMapBuilder: typeof mod.buildClassNameMap === "function" ? {
-        buildClassNameMap: mod.buildClassNameMap,
-      } : undefined,
-      libDeclGenerator: typeof mod.tryGenerateLibDecl === "function" ? {
-        tryGenerateLibDecl: mod.tryGenerateLibDecl,
-      } : undefined,
+      classNameMapBuilder: typeof mod.buildClassNameMap === "function" ? mod.buildClassNameMap : undefined,
+      libDeclGenerator: typeof mod.tryGenerateLibDecl === "function" ? mod.tryGenerateLibDecl : undefined,
     };
     setLoadedFramework(framework);
     registerPlatformStrategy(strategy);

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { Diagnostic, SourceSpan } from "../types";
-import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "./model";
+import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "@typehal/core";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";

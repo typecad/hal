@@ -12,7 +12,7 @@
 // The registry is populated once per transpilation and cleared between runs.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy } from "./platform/platform-strategy";
+import type { PlatformStrategy } from "@typehal/core/shared";
 import type { CompileResult, UploadResult, ToolchainOptions } from "@typehal/core/shared";
 
 /**
@@ -29,10 +29,10 @@ export interface LoadedFramework {
   libraryResolver?: FrameworkLibraryResolver;
 
   /** Framework class name mapping for library imports */
-  classNameMapBuilder?: FrameworkClassNameMapBuilder;
+  classNameMapBuilder?: (imports: any[]) => Map<string, string>;
 
   /** Framework library .d.ts declaration generation */
-  libDeclGenerator?: FrameworkLibDeclGenerator;
+  libDeclGenerator?: (modulePath: string, file: string) => string | undefined;
 }
 
 /**
@@ -41,20 +41,6 @@ export interface LoadedFramework {
 export interface FrameworkLibraryResolver {
   isFrameworkLibraryImport(moduleSpecifier: string): boolean;
   getFrameworkLibraryHeaderName(moduleSpecifier: string): string | undefined;
-}
-
-/**
- * Builds a mapping from short class names to fully qualified C++ names.
- */
-export interface FrameworkClassNameMapBuilder {
-  buildClassNameMap(imports: any[]): Map<string, string>;
-}
-
-/**
- * Generates .d.ts declarations from framework library headers.
- */
-export interface FrameworkLibDeclGenerator {
-  tryGenerateLibDecl(modulePath: string, file: string): string | undefined;
 }
 
 /**

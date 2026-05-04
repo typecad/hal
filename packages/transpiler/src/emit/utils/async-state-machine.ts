@@ -4,8 +4,8 @@
  * Extracted from cpp-emitter.ts
  */
 
-import type { StatementIR, ExpressionIR } from "../../ir/model";
-import type { PlatformStrategy } from "../../platform/platform-strategy";
+import type { StatementIR, ExpressionIR } from "@typehal/core";
+import type { PlatformStrategy } from "@typehal/core/shared";
 
 /**
  * Converts a string to PascalCase.

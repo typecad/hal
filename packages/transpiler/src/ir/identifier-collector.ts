@@ -1,4 +1,4 @@
-import { ExpressionIR, StatementIR } from "./model";
+import { ExpressionIR, StatementIR } from "@typehal/core";
 
 /**
  * Shared utility for collecting identifiers from IR nodes.

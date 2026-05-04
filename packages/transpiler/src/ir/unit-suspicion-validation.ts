@@ -10,7 +10,7 @@
 // - Bare numbers in .config builders are validated here for common mistakes
 // ---------------------------------------------------------------------------
 
-import { ProgramIR, StatementIR, ExpressionIR } from './model';
+import { ProgramIR, StatementIR, ExpressionIR } from '@typehal/core';
 import { Diagnostic } from '../types';
 
 // Standard baud rates for UART

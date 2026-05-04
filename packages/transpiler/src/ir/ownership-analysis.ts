@@ -12,7 +12,7 @@
 // in the program, no diagnostics are generated.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR, VariableDeclarationIR, FunctionIR, ParameterIR } from './model';
+import type { ProgramIR, StatementIR, ExpressionIR, VariableDeclarationIR, FunctionIR, ParameterIR } from '@typehal/core';
 import type { Diagnostic, SourceSpan } from '../types';
 
 /**

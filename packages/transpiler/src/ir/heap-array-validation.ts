@@ -12,8 +12,8 @@
 
 import type { Diagnostic } from '../types';
 import type { BoardConstants } from './board-resolver';
-import type { StatementIR } from './model';
-import type { PlatformStrategy } from '../platform/platform-strategy';
+import type { StatementIR } from '@typehal/core';
+import type { PlatformStrategy } from '@typehal/core/shared';
 
 /**
  * Validate that user-written `new ClassName(...)` expressions are not used on

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { Diagnostic } from "../types";
-import { FunctionIR, ParameterIR, StatementIR } from "./model";
+import { FunctionIR, ParameterIR, StatementIR } from "@typehal/core";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { collectReturns, CppTypeHint, inferExprCppType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveFunctionReturnType, resolveFunctionTypeSignature } from "./type-resolution";
 import { expressionToIR } from "./expression-to-ir";

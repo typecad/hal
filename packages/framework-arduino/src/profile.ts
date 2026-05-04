@@ -352,10 +352,11 @@ const AVR_PREFERENCES_SHIM: string[] = [
   '    EEPROM.update(addr + 5, (uint8_t)((hash >> 24) & 0xFF));',
   '  }',
   'public:',
-  '  __tc_Preferences() {}',
-  '  void begin(const char*, bool = false) {}',
-  '  void end() {}',
+  '  __tc_Preferences() : _started(false) {}',
+  '  void begin(const char* ns, bool readOnly = false) { _started = true; }',
+  '  void end() { _started = false; }',
   '  size_t putInt(const char* key, int32_t value) {',
+    '    if (!_started) return 0;',
   '    uint32_t h = _djbHash(key);',
   '    int idx = _findSlotForWrite(key, _T_I32);',
   '    if (idx < 0) return 0;',
@@ -449,17 +450,18 @@ const AVR_PREFERENCES_SHIM: string[] = [
   '    EEPROM.update(addr + vLen, 0);',
   '    return (size_t)vLen;',
   '  }',
-  '  String getString(const char* key, const char* defaultValue) {',
-  '    if (!_started) return String(defaultValue);',
+  '  const char* getString(const char* key, const char* defaultValue) {',
+  '    if (!_started) return defaultValue;',
   '    int idx = _findSlot(key, _T_STR);',
-  '    if (idx < 0) return String(defaultValue);',
+  '    if (idx < 0) return defaultValue;',
   '    int addr = _BASE_ADDR + idx * _SLOT_SIZE + 6;',
-  '    String result;',
+  '    static char result[11];',
   '    for (int i = 0; i < 10; i++) {',
   '      char c = (char)EEPROM.read(addr + i);',
+  '      result[i] = c;',
   '      if (c == 0) break;',
-  '      result += c;',
   '    }',
+  '    result[10] = 0;',
   '    return result;',
   '  }',
   '  bool clear() {',
@@ -584,7 +586,18 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
       shimLines.push("static __tc_Preferences Preferences;");
       extraIncludes.push('<EEPROM.h>');
     } else if (arch === 'esp32') {
-      extraIncludes.push('<Preferences.h>');
+      shimLines.push(
+        "#include <Preferences.h>",
+        "struct __tc_Esp32Prefs : public Preferences {",
+        "  const char* getString(const char* key, const char* defaultValue = \"\") {",
+        "    static char _buf[64];",
+        "    if (Preferences::getString(key, _buf, sizeof(_buf))) return _buf;",
+        "    return defaultValue;",
+        "  }",
+        "};",
+        "static __tc_Esp32Prefs __tc_prefs;",
+        "#define Preferences __tc_prefs"
+      );
     }
   }
 

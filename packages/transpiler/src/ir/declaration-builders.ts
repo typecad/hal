@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { Diagnostic } from "../types";
-import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, EnumIR, ExpressionIR, InterfaceIR, ParameterIR, RegisterClassIR, StatementIR, TypeAliasIR } from "./model";
+import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, EnumIR, ExpressionIR, InterfaceIR, ParameterIR, RegisterClassIR, StatementIR, TypeAliasIR } from "@typehal/core";
 import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { getBitsRange, getRegisterAddress } from "./register-decorators";

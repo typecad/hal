@@ -1,5 +1,5 @@
-import type { StatementIR } from "../ir/model";
-import type { PlatformStrategy } from "../platform/platform-strategy";
+import type { StatementIR } from "@typehal/core";
+import type { PlatformStrategy } from "@typehal/core/shared";
 import type { BoardConstants } from "../ir/board-resolver";
 
 /**

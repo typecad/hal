@@ -1,12 +1,12 @@
 import ts from "typescript";
 import { Diagnostic } from "../types";
-import { CppType, ExpressionIR, FunctionIR, NamespaceIR, ParameterIR } from "./model";
+import { CppType, ExpressionIR, FunctionIR, NamespaceIR, ParameterIR } from "@typehal/core";
 import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveFunctionReturnType } from "./type-resolution";
 import { expressionToIR } from "./expression-to-ir";
 import { lowerStatementList } from "./statement-to-ir";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
-import { RegisterClassIR } from "./model";
+import { RegisterClassIR } from "@typehal/core";
 
 export function namespaceToIR(
   node: ts.ModuleDeclaration,

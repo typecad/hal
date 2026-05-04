@@ -5,7 +5,7 @@
 // configuration. Generates warnings for reads and info for writes.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR } from './model';
+import type { ProgramIR, StatementIR, ExpressionIR } from '@typehal/core';
 import type { Diagnostic } from '../types';
 import { scanNestedStatements } from './interrupt-analysis';
 

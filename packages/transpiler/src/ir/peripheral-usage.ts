@@ -5,7 +5,7 @@
 // This enables compile-time initialization optimization.
 // ---------------------------------------------------------------------------
 
-import { ProgramIR, StatementIR, ExpressionIR, CallExpressionIR, VariableDeclarationIR, AssignmentIR, ForOfIR, ForInIR, SwitchIR, CaseIR, TryIR } from './model';
+import { ProgramIR, StatementIR, ExpressionIR, CallExpressionIR, VariableDeclarationIR, AssignmentIR, ForOfIR, ForInIR, SwitchIR, CaseIR, TryIR } from '@typehal/core';
 
 /**
  * Tracks which hardware peripherals are used in the program.

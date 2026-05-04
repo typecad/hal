@@ -1,6 +1,6 @@
 import type { Diagnostic } from "../types";
-import type { ProgramIR } from "./model";
-import type { PlatformStrategy } from "../platform/platform-strategy";
+import type { ProgramIR } from "@typehal/core";
+import type { PlatformStrategy } from "@typehal/core/shared";
 import { resolveStrategy } from "../platform/registry";
 import { hasLoadedFramework, getLoadedFramework } from "../framework-registry";
 import { analyzeInterruptSafety } from "./interrupt-analysis";

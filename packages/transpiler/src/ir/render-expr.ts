@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { ExpressionIR } from "./model";
+import { ExpressionIR } from "@typehal/core";
 import { nestedFunctionAliases } from "./build-ir-state";
 import { escapeCppKeyword } from "../utils/strings";
 

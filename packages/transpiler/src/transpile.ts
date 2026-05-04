@@ -111,7 +111,7 @@ import { GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingO
 import { readText } from "./utils/fs";
 import { debug as logDebug, info } from "./utils/logger";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry";
-import { ProgramIR } from "./ir/model";
+import type { ProgramIR } from "@typehal/core";
 import { buildCallGraph } from "./ir/call-graph";
 import {
   clearCaches,
@@ -141,7 +141,7 @@ function tryGenerateLibDecl(modulePath: string, file: string): string | undefine
     if (hasLoadedFramework()) {
       const { libDeclGenerator } = getLoadedFramework();
       if (libDeclGenerator) {
-        return libDeclGenerator.tryGenerateLibDecl(modulePath, file);
+        return libDeclGenerator(modulePath, file);
       }
     }
   } catch {
@@ -608,7 +608,7 @@ function applyTreeShaking(
   return result;
 }
 
-import type { PlatformStrategy } from "./platform/platform-strategy";
+import type { PlatformStrategy } from "@typehal/core/shared";
 import { resolveStrategy } from "./platform/registry";
 import { loadFrameworkPackage } from "./framework-package";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry";

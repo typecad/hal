@@ -3,7 +3,7 @@ import path from "node:path";
 import { LibraryDefinition, LibraryDefinitionCondition, PlatformContext, TargetProfile } from "../types";
 import { listFiles, readText } from "../utils/fs";
 import { toModuleKey, toPascalCase } from "../utils/strings";
-import { ImportIR } from "../ir/model";
+import type { ImportIR } from "@typehal/core";
 import { getLoadedFramework, hasLoadedFramework } from "../framework-registry";
 
 function toArchitectureFromFqbn(fqbn?: string): string | undefined {

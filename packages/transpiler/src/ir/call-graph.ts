@@ -1,4 +1,4 @@
-import { ProgramIR, StatementIR } from "./model";
+import { ProgramIR, StatementIR } from "@typehal/core";
 import { collectExpressionIdentifiers, collectStatementIdentifiers } from "./identifier-collector";
 
 /**

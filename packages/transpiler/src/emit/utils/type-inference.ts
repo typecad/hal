@@ -3,7 +3,7 @@
  * Pure functions with no side effects - extracted from cpp-emitter.ts
  */
 
-import type { ExpressionIR, StatementIR } from "../../ir/model";
+import type { ExpressionIR, StatementIR } from "@typehal/core";
 
 /**
  * Infers the C++ type for an object field based on its initializer value.
@@ -170,70 +170,6 @@ export function collectNestedStructDefs(
   }
 
   return result;
-}
-
-/**
- * Collects all declared types from a program's functions, classes, and statements.
- * Used to determine which standard library includes are needed.
- * 
- * @param program The program IR to analyze
- * @returns Array of C++ type strings used in the program
- */
-export function collectDeclaredTypes(program: {
-  typeAliases: Array<{ cppType: string }>;
-  functions: Array<{
-    returnType: string;
-    parameters: Array<{ cppType: string }>;
-  }>;
-  topLevelStatements: StatementIR[];
-  classes: Array<{
-    fields: Array<{ cppType: string }>;
-    methods: Array<{
-      returnType: string;
-      parameters: Array<{ cppType: string }>;
-    }>;
-    constructor?: {
-      parameters: Array<{ cppType: string }>;
-    };
-  }>;
-}): string[] {
-  const types: string[] = [];
-
-  for (const typeAlias of program.typeAliases) {
-    types.push(typeAlias.cppType);
-  }
-
-  for (const fn of program.functions) {
-    types.push(fn.returnType);
-    for (const parameter of fn.parameters) {
-      types.push(parameter.cppType);
-    }
-  }
-
-  for (const statement of program.topLevelStatements) {
-    if (statement.kind === "var_decl") {
-      types.push(statement.cppType);
-    }
-  }
-
-  for (const classDef of program.classes) {
-    for (const field of classDef.fields) {
-      types.push(field.cppType);
-    }
-    for (const method of classDef.methods) {
-      types.push(method.returnType);
-      for (const parameter of method.parameters) {
-        types.push(parameter.cppType);
-      }
-    }
-    if (classDef.constructor) {
-      for (const parameter of classDef.constructor.parameters) {
-        types.push(parameter.cppType);
-      }
-    }
-  }
-
-  return types;
 }
 
 /**

@@ -2,8 +2,9 @@
 // GenericStrategy — standard C++ target (std::cout, main(), <cmath> …)
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy } from "./platform-strategy";
-import type { ExpressionIR, ProgramIR, BoardConstants } from "../ir/model";
+import type { PlatformStrategy } from "@typehal/core/shared";
+import type { ExpressionIR, ProgramIR } from "@typehal/core";
+import type { BoardConstants } from "@typehal/core/shared";
 import type { Diagnostic, PlatformContext } from "../types";
 import type { RuntimePolyfillIR, StdLibSupport } from "@typehal/core/shared";
 import { DEFAULT_STDLIB_SUPPORT } from "@typehal/core/shared";

@@ -7,6 +7,7 @@
 
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport } from "@typehal/core/shared";
 import type { StatementIR } from "@typehal/core/shared";
+import { generatePromiseRuntime } from "@typehal/core/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
 import { resolveArduinoProfile } from "./profile";
 
@@ -230,7 +231,22 @@ export class ArduinoStrategy implements PlatformStrategy {
       "#endif",
       "",
       "// String helpers",
-      "inline size_t (strlen)(const String& s) { return s.length(); }",
+      "struct __tc_str_ptr {",
+      "    char buf[32];",
+      "    __tc_str_ptr(const char* s = \"\") { strncpy(buf, s, 31); buf[31] = 0; }",
+      "    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, 32); }",
+      "    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, 32); return *this; }",
+      "    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, 31); buf[31] = 0; return *this; }",
+      "    const char* c_str() const { return buf; }",
+      "    size_t size() const { return strlen(buf); }",
+      "    size_t length() const { return strlen(buf); }",
+      "    operator const char*() const { return buf; }",
+      "    bool operator==(const char* o) const { return strcmp(buf, o) == 0; }",
+      "    bool operator!=(const char* o) const { return strcmp(buf, o) != 0; }",
+      "    bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }",
+      "    bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }",
+      "};",
+      "inline size_t (strlen)(const __tc_str_ptr& s) { return strlen(s.buf); }",
       "inline size_t (strlen)(const char* s) { return ::strlen(s); }"
     );
 
@@ -309,7 +325,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
           domain: "arduino",
           requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
           forwardDeclarations: [],
-          helperStructs: [generatePromiseRuntime(arduinoCtx(ctx)?.buildTarget?.split(":")?.[0] === "arduino" ? "arduino" : "generic")],
+          helperStructs: [generatePromiseRuntime(arduinoCtx(ctx)?.buildTarget?.split(":")?.[0] === "arduino" ? 32 : 256, true)],
           helperFunctions: [],
           shimMacros: [],
           dependencies: [],
@@ -367,7 +383,7 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   defaultNumericType(): string { return "int"; }
   normalizeCppType(typeName: string): string {
     if (typeName === "auto") return "auto";
-    if (typeName === "std::string") return "String";
+    if (typeName === "std::string") return "__tc_str_ptr";
     if (typeName === "IInputModePin" || typeName === "IOutputModePin" || typeName === "IPin") return "int";
     if (this._usesPinGroup && typeName.startsWith("IPinGroup")) return "__tc_PinGroup";
     const fnTypeMatch = typeName.match(/^std::function<\s*([^()<>]+)\((.*)\)\s*>$/);
@@ -391,10 +407,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   // ── Expression rendering ────────────────────────────────────────────────
 
   currentTimeMillis(): string { return "millis()"; }
-
-  isSerialPeripheral(name: string): boolean {
-    return /^Serial\d*$/.test(name);
-  }
 
   // Apply regex transformations to raw expression text.
   // NOTE: String method regexes (toUpperCase, includes, etc.) assume the receiver
@@ -559,42 +571,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     };
   }
 
-  renderI2CDeviceRead(params: {
-    receiver: string;
-    wireName: string;
-    address: string;
-    register: string;
-    count?: string;
-    targetVarName: string;
-  }): { preludeLines: string[]; returnValue: string; isMultiStatement?: boolean } | undefined {
-    const wire = params.wireName;
-    if (params.count) {
-      // readBytes: declare a uint8_t array and fill it via a read loop
-      return {
-        preludeLines: [
-          `uint8_t ${params.targetVarName}[${params.count}];`,
-          `${wire}.beginTransmission(${params.address});`,
-          `${wire}.write(${params.register});`,
-          `${wire}.endTransmission(false);`,
-          `${wire}.requestFrom(${params.address}, ${params.count});`,
-          `for (int i = 0; i < ${params.count}; i++) { ${params.targetVarName}[i] = ${wire}.read(); }`,
-        ],
-        returnValue: "",
-        isMultiStatement: true,
-      };
-    }
-    // readByte: emit Wire setup as prelude, keep Wire.read() as the variable initializer
-    return {
-      preludeLines: [
-        `${wire}.beginTransmission(${params.address});`,
-        `${wire}.write(${params.register});`,
-        `${wire}.endTransmission(false);`,
-        `${wire}.requestFrom(${params.address}, 1);`,
-      ],
-      returnValue: `${wire}.read()`,
-    };
-  }
-
   // ── Name guards ─────────────────────────────────────────────────────────
 
   forwardDeclarationExclusions(): string[] {
@@ -643,7 +619,6 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       "    getFloat(key: string, defaultValue: number): number;",
       "    putString(key: string, value: string): void;",
       "    getString(key: string, defaultValue: string): string;",
-      "    clear(): void;",
       "    remove(key: string): void;",
       "  };",
       // Augment the '@typehal' module to re-export ownership types so that
@@ -897,149 +872,6 @@ function detectSerialBeginCall(program: ProgramIR): boolean {
     if (cls.constructor) { for (const s of cls.constructor.statements) { if (checkStmt(s)) return true; } }
   }
   return false;
-}
-
-/**
- * Generate the cooperative microtask queue + Promise runtime C++ code.
- */
-function generatePromiseRuntime(target: string): string {
-  const queueCapacity = target === "arduino" ? 32 : 256;
-  return `
-// Polyfill: cooperative microtask queue + minimal Promise runtime
-namespace typehal_async {
-  using Microtask = std::function<void()>;
-
-  class MicrotaskQueue {
-  public:
-    static MicrotaskQueue& instance() {
-      static MicrotaskQueue queue;
-      return queue;
-    }
-
-    bool enqueue(Microtask task) {
-      if (_queue.size() >= ${queueCapacity}) {
-        return false;
-      }
-      _queue.push_back(std::move(task));
-      return true;
-    }
-
-    void pump() {
-      const size_t total = _queue.size();
-      for (size_t i = 0; i < total; ++i) {
-        Microtask task = std::move(_queue[i]);
-        task();
-      }
-      if (total > 0) {
-        _queue.erase(_queue.begin(), _queue.begin() + static_cast<long long>(total));
-      }
-    }
-
-  private:
-    std::vector<Microtask> _queue;
-  };
-
-  inline void enqueueMicrotask(Microtask task) {
-    MicrotaskQueue::instance().enqueue(std::move(task));
-  }
-
-  inline void pumpMicrotasks() {
-    MicrotaskQueue::instance().pump();
-  }
-
-  template <typename T>
-  class Promise {
-  public:
-    enum class State { Pending, Fulfilled, Rejected };
-
-    Promise() : _state(State::Pending), _value{}, _error{} {}
-
-    explicit Promise(std::function<void(std::function<void(const T&)>, std::function<void(const std::string&)>)> executor)
-      : _state(State::Pending), _value{}, _error{} {
-      executor(
-        [this](const T& value) { this->resolve(value); },
-        [this](const std::string& error) { this->reject(error); }
-      );
-    }
-
-    static Promise<T> resolveValue(const T& value) {
-      Promise<T> promise;
-      promise.resolve(value);
-      return promise;
-    }
-
-    static Promise<T> rejectValue(const std::string& error) {
-      Promise<T> promise;
-      promise.reject(error);
-      return promise;
-    }
-
-    void resolve(const T& value) {
-      if (_state != State::Pending) return;
-      _state = State::Fulfilled;
-      _value = value;
-      auto callbacks = _onFulfilled;
-      enqueueMicrotask([callbacks, value]() mutable {
-        for (auto& callback : callbacks) { callback(value); }
-      });
-    }
-
-    void reject(const std::string& error) {
-      if (_state != State::Pending) return;
-      _state = State::Rejected;
-      _error = error;
-      auto callbacks = _onRejected;
-      enqueueMicrotask([callbacks, error]() mutable {
-        for (auto& callback : callbacks) { callback(error); }
-      });
-    }
-
-    Promise<T>& then(std::function<void(const T&)> onFulfilled) {
-      if (_state == State::Fulfilled) {
-        const T value = _value;
-        enqueueMicrotask([onFulfilled, value]() mutable { onFulfilled(value); });
-      } else if (_state == State::Pending) {
-        _onFulfilled.push_back(std::move(onFulfilled));
-      }
-      return *this;
-    }
-
-    Promise<T>& catchError(std::function<void(const std::string&)> onRejected) {
-      if (_state == State::Rejected) {
-        const std::string error = _error;
-        enqueueMicrotask([onRejected, error]() mutable { onRejected(error); });
-      } else if (_state == State::Pending) {
-        _onRejected.push_back(std::move(onRejected));
-      }
-      return *this;
-    }
-
-  private:
-    State _state;
-    T _value;
-    std::string _error;
-    std::vector<std::function<void(const T&)>> _onFulfilled;
-    std::vector<std::function<void(const std::string&)>> _onRejected;
-  };
-
-  /**
-   * wait for a pin edge (RISING/FALLING). 
-   * Implementation uses a simple polling mechanism for now to keep it generic,
-   * or it could use attachInterrupt if we had a global interrupt manager.
-   */
-  inline Promise<void> waitForPinEdge(int pin, int mode) {
-    return Promise<void>([pin, mode](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
-       // This is a stub. Real implementation would use interrupts.
-       // For now we just resolve immediately so it doesn't hang forever during testing.
-       resolve(nullptr); 
-    });
-  }
-}
-
-inline void typehal_pump_microtasks() {
-  typehal_async::pumpMicrotasks();
-}
-`;
 }
 
 /**

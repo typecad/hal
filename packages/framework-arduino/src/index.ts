@@ -11,23 +11,6 @@ export { ArduinoStrategy } from './strategy';
 // Export as FrameworkStrategy for consistency with framework package naming
 export { ArduinoStrategy as FrameworkStrategy } from './strategy';
 
-// Re-export types that consumers may need
-export type { PlatformStrategy } from '@typehal/core/shared';
-
-// Export the profile resolver for configuration inspection
-export { resolveArduinoProfile } from './profile';
-export type { ResolvedArduinoProfile } from './profile';
-
-// Export CLI metadata loader
-export { loadArduinoCliMetadata } from './cli-metadata';
-export type { ArduinoCliMetadata } from './cli-metadata';
-
-// Deprecated compile result type aliases (use CompileResult/UploadResult from core)
-export type { ArduinoCompileResult, ArduinoUploadResult } from './arduino-compile';
-
-// FQBN utility
-export { toArchitectureFromFqbn } from './arduino-compile';
-
 // Arduino compile/upload/monitor
 export {
   flattenGeneratedModulesIntoSketch,
@@ -44,14 +27,6 @@ export const Toolchain = {
   upload: (options: any) => uploadArduinoSketch(options.outputDir, options.buildTarget, options.port),
   monitor: (options: any) => monitorArduinoSketch(options.port, options.baud),
 };
-
-// Arduino debug code generation
-export {
-  generateSerialInitCode,
-  generateBreakpointCode,
-  generateLogpointCode,
-} from './debug-codegen';
-export type { CapturedVariable, LogMessagePart } from './debug-codegen';
 
 // Library discovery — consumed by the transpiler's dynamic module loader
 export { isArduinoLibraryImport as isFrameworkLibraryImport, getArduinoLibraryHeaderName as getFrameworkLibraryHeaderName } from './arduino-libs';

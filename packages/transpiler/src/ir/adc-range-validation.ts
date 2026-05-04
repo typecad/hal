@@ -5,8 +5,8 @@
 // ADC resolution (e.g., comparing to > 1023 on a 10-bit Arduino Uno).
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, ExpressionIR, StatementIR } from './model';
-import type { BoardConstants } from './board-resolver';
+import type { ProgramIR, ExpressionIR, StatementIR } from '@typehal/core';
+import type { BoardConstants } from '@typehal/core/shared';
 import type { Diagnostic } from '../types';
 
 /**

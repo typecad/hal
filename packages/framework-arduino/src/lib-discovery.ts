@@ -230,41 +230,6 @@ export function findLibraryHeader(library: ArduinoLibrary): string | undefined {
 }
 
 /**
- * Find all source files (.h, .cpp) for an Arduino library.
- */
-export function findLibrarySources(library: ArduinoLibrary): { headers: string[]; cpps: string[] } {
-  const libDir = library.path;
-  const headers: string[] = [];
-  const cpps: string[] = [];
-
-  if (!fs.existsSync(libDir)) {
-    return { headers, cpps };
-  }
-
-  // Search directories: root, src
-  const searchDirs = [libDir, path.join(libDir, "src")];
-
-  for (const dir of searchDirs) {
-    if (!fs.existsSync(dir)) continue;
-
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-
-      const fullPath = path.join(dir, entry.name);
-      const lower = entry.name.toLowerCase();
-
-      if (lower.endsWith(".h")) {
-        headers.push(fullPath);
-      } else if (lower.endsWith(".cpp")) {
-        cpps.push(fullPath);
-      }
-    }
-  }
-
-  return { headers, cpps };
-}
-
-/**
  * Check if a module specifier looks like an Arduino library import.
  * Arduino library imports are bare names like "BH1750", "Servo", "Wire"
  * (not relative paths, not npm packages).

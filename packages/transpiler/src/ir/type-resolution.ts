@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { CppType } from "./model";
+import { CppType } from "@typehal/core";
 import { topLevelClasses } from "./build-ir-state";
 
 export type CppTypeHint =

@@ -6,7 +6,7 @@
 // Produces diagnostics with actionable hints listing the correct pins.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, ExpressionIR, StatementIR } from './model';
+import type { ProgramIR, ExpressionIR, StatementIR } from '@typehal/core';
 import type { Diagnostic } from '../types';
 
 function scanExpression(expr: ExpressionIR, parentLine: number | undefined, parentCol: number | undefined, diagnostics: Diagnostic[]): void {

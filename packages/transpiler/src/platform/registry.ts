@@ -6,7 +6,7 @@
 // strategies at import time.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy } from "./platform-strategy";
+import type { PlatformStrategy } from "@typehal/core/shared";
 import { GenericStrategy } from "./generic-strategy";
 
 const _genericStrategy = new GenericStrategy();

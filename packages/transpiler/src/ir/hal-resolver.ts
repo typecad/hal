@@ -3,7 +3,7 @@ import path from "path";
 import ts from "typescript";
 import { parseSource } from "../ast/parse";
 import { requiredIncludes, registeredCallbacks, getCurrentBoardConstants } from "./build-ir-state";
-import { ExpressionIR } from "./model";
+import { ExpressionIR } from "@typehal/core";
 import { renderExprAsText } from "./render-expr";
 
 // ---------------------------------------------------------------------------

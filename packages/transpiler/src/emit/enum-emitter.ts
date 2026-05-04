@@ -1,4 +1,4 @@
-import type { PlatformStrategy } from "../platform/platform-strategy";
+import type { PlatformStrategy } from "@typehal/core/shared";
 
 /**
  * Context for enum emission.

@@ -4,8 +4,8 @@
  * Extracted from cpp-emitter.ts
  */
 
-import type { ExpressionIR } from "../ir/model";
-import type { PlatformStrategy } from "../platform/platform-strategy";
+import type { ExpressionIR } from "@typehal/core";
+import type { PlatformStrategy } from "@typehal/core/shared";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { KnownVariableInfo } from "@typehal/core/shared";
 import { extractPropertyChain } from "../ir/extract-property-chain";
@@ -505,6 +505,14 @@ export class ExpressionRenderer {
     if (expr.property === "size" || expr.property === "length") {
       if (expr.object.kind === "identifier" && this.stringVarNames?.has(expr.object.value)) {
         return `strlen(${objStr})`;
+      }
+    }
+    // Rewrite property access to getter call if the property is an accessor
+    if (expr.object.kind === "identifier") {
+      const accessors = this.varAccessorNames.get(expr.object.value);
+      if (accessors?.has(expr.property)) {
+        const getterName = accessorGetterName(expr.property);
+        return `${objStr}->${getterName}()`;
       }
     }
     const rendered = `${objStr}.${expr.property}`;
