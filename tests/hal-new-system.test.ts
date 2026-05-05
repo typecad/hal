@@ -39,40 +39,40 @@ const PIN_CLASS = `
   class OutputPin {
     private _pin: number;
     constructor(pin: number) { this._pin = pin; }
-    high(): void { emit(`digitalWrite(${this._pin}, HIGH);`); }
-    low(): void { emit(`digitalWrite(${this._pin}, LOW);`); }
+    high(): void { emit(\`digitalWrite(\${this._pin}, HIGH);\`); }
+    low(): void { emit(\`digitalWrite(\${this._pin}, LOW);\`); }
     toggle(): void {
-      emit(`digitalWrite(${this._pin}, digitalRead(${this._pin}) == LOW ? HIGH : LOW);`);
+      emit(\`digitalWrite(\${this._pin}, digitalRead(\${this._pin}) == LOW ? HIGH : LOW);\`);
     }
-    write(value: number): void { emit(`digitalWrite(${this._pin}, ${value});`); }
+    write(value: number): void { emit(\`digitalWrite(\${this._pin}, \${value});\`); }
   }
 
   class Pin {
     private _pin: number;
     constructor(pin: number) { this._pin = pin; }
     asOutput(value: number = LOW): OutputPin {
-      emit(`pinMode(${this._pin}, OUTPUT);`);
-      emit(`digitalWrite(${this._pin}, ${value});`);
+      emit(\`pinMode(\${this._pin}, OUTPUT);\`);
+      emit(\`digitalWrite(\${this._pin}, \${value});\`);
       return new OutputPin(this._pin);
     }
     asInput(): InputPin {
-      emit(`pinMode(${this._pin}, INPUT);`);
+      emit(\`pinMode(\${this._pin}, INPUT);\`);
       return new InputPin(this._pin);
     }
     asInputPullUp(): InputPin {
-      emit(`pinMode(${this._pin}, INPUT_PULLUP);`);
+      emit(\`pinMode(\${this._pin}, INPUT_PULLUP);\`);
       return new InputPin(this._pin);
     }
-    high(): void { emit(`digitalWrite(${this._pin}, HIGH);`); }
-    low(): void { emit(`digitalWrite(${this._pin}, LOW);`); }
+    high(): void { emit(\`digitalWrite(\${this._pin}, HIGH);\`); }
+    low(): void { emit(\`digitalWrite(\${this._pin}, LOW);\`); }
     toggle(): void {
-      emit(`digitalWrite(${this._pin}, digitalRead(${this._pin}) == LOW ? HIGH : LOW);`);
+      emit(\`digitalWrite(\${this._pin}, digitalRead(\${this._pin}) == LOW ? HIGH : LOW);\`);
     }
-    write(value: number): void { emit(`digitalWrite(${this._pin}, ${value});`); }
+    write(value: number): void { emit(\`digitalWrite(\${this._pin}, \${value});\`); }
     read(): number { return digitalRead(this._pin); }
-    tone(frequency: number): void { emit(`tone(${this._pin}, ${frequency});`); }
-    noTone(): void { emit(`noTone(${this._pin});`); }
-    pwm(value: number): void { emit(`analogWrite(${this._pin}, ${value});`); }
+    tone(frequency: number): void { emit(\`tone(\${this._pin}, \${frequency});\`); }
+    noTone(): void { emit(\`noTone(\${this._pin});\`); }
+    pwm(value: number): void { emit(\`analogWrite(\${this._pin}, \${value});\`); }
   }
 `;
 
@@ -139,7 +139,7 @@ describe("New HAL System — GPIO demos", () => {
   });
 
   it("digital read + write: button controls LED", () => {
-    const result = transpile(HAL + `
+    const result = transpileArduino(HAL + `
       const btn: Pin = new Pin(2);
       const led: Pin = new Pin(13);
       btn.asInput();

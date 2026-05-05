@@ -1,4 +1,3 @@
-packages:
-  - "packages/*"
-  - "demo"
-  - "native_demo"
+# This file intentionally left empty - project uses npm workspaces, not pnpm
+# The 'workspaces' field in package.json is the source of truth.
+# This file exists to suppress the pnpm warning.

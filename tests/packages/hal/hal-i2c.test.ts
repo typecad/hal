@@ -89,7 +89,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
         const data = I2C0.read();
       `);
       
-      expectCppContains(result, ['Wire.requestFrom(118, 4)', 'Wire.read()']);
+      expectCppContains(result, ['Wire.requestFrom(118, 4, true)', 'Wire.read()']);
     });
 
     it('transpiles available() check', () => {

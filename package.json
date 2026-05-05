@@ -4,7 +4,6 @@
   "workspaces": [
     "packages/core",
     "packages/typehal",
-    "packages/hal",
     "packages/framework-avr",
     "packages/framework-arduino",
     "packages/framework-native",

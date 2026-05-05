@@ -12,6 +12,39 @@ import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR
 
 import { resolveHALReceiver, processHALMethodBody, halInstances, getCtorIncludes, isKnownHALClass, registerFloatVariable, HALInstance } from "./hal-resolver";
 
+/**
+ * Recursively collect emit lines from chained HAL method calls.
+ * For an expression like led.tone(440).for(400), this collects
+ * the emit lines from the inner led.tone(440) call.
+ */
+function collectChainedHALEmits(
+  expr: ts.Expression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+  emitLines: string[],
+): void {
+  // Chained call: led.tone(440).for(400) — the receiver is the inner call led.tone(440)
+  if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
+    const call = expr;
+    const method = call.expression.name.text;
+    const innerReceiver = call.expression.expression;
+    const instance = resolveHALReceiver(innerReceiver);
+    if (instance) {
+      const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+      const result = processHALMethodBody(instance, method, argIRs);
+      if (result && result.emitLines.length > 0) {
+        // Prepend inner emits so they appear before outer emits
+        emitLines.unshift(...result.emitLines);
+      }
+    }
+    // Continue recursion to collect deeper chain levels
+    if (ts.isCallExpression(innerReceiver) && ts.isPropertyAccessExpression(innerReceiver)) {
+      collectChainedHALEmits(innerReceiver, sourceText, diagnostics, pointerVars, emitLines);
+    }
+  }
+}
+
 /** Convert emit lines to a StatementIR (single emit or block of emits). */
 function emitLinesToIR(
   lines: string[],
@@ -69,7 +102,16 @@ function tryResolveHALMethod(
   if (instance) {
     const result = processHALMethodBody(instance, method, argIRs);
     if (result) {
-      if (result.emitLines.length > 0) return emitLinesToIR(result.emitLines, call, fileName, sourceText);
+      // Collect emit lines from chained inner calls: led.tone(440).for(400)
+      // The receiver of this call is itself a chained HAL call (led.tone(440)).
+      // We need to process that inner call to collect its emit lines too.
+      const chainedEmits: string[] = [];
+      if (ts.isPropertyAccessExpression(call.expression)) {
+        const innerReceiver = call.expression.expression;
+        collectChainedHALEmits(innerReceiver, sourceText, diagnostics, pointerVars, chainedEmits);
+      }
+      const allEmits = [...chainedEmits, ...result.emitLines];
+      if (allEmits.length > 0) return emitLinesToIR(allEmits, call, fileName, sourceText);
       if (result.returnValue) return emitLinesToIR([`${result.returnValue};`], call, fileName, sourceText);
     }
   }

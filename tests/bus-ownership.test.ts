@@ -149,7 +149,7 @@ describe('Combined GPIO + Bus Ownership', () => {
     `, { target: 'arduino' });
 
     expectCppContains(result, [
-      'pinMode(D13, OUTPUT)',
+      'pinMode(13, OUTPUT)',
       'Serial.begin(9600)',
     ]);
 

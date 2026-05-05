@@ -563,11 +563,32 @@ function resolveExpressionText(
     if (op === "===") op = "==";
     else if (op === "!==") op = "!=";
     else if (op === "??") {
+      // If the left side is a literal expression (true/false/number/string),
+      // it can never be undefined so use it directly
+      if (expr.left.kind === ts.SyntaxKind.TrueKeyword || expr.left.kind === ts.SyntaxKind.FalseKeyword || 
+          ts.isNumericLiteral(expr.left) || ts.isStringLiteral(expr.left)) {
+        return left;
+      }
+      // If the left side is an identifier whose resolved text matches its source,
+      // it means the parameter was not provided by the caller, so use the right side
+      if (ts.isIdentifier(expr.left) && left === expr.left.text) {
+        return right;
+      }
+      // If the left side resolved to a recognized literal (true, false, or number),
+      // the parameter was provided with a concrete value, not undefined.
+      if (left === "true" || left === "false" || /^-?\d+(\.\d+)?$/.test(left)) {
+        return left;
+      }
       // Use a more concise ternary for C++
       return `(${left} != TYPEHAL_UNDEFINED ? ${left} : ${right})`;
     }
     
     return `${left} ${op} ${right}`;
+  }
+
+  // Parenthesized expression: (expr) → unwrap to inner expression
+  if (ts.isParenthesizedExpression(expr)) {
+    return resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
   }
 
   // Type assertion: this as any → unwrap to inner expression

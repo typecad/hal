@@ -16,7 +16,7 @@ import { transpile } from "./setup";
 //   9. IRAM_ATTR attribute for ESP32 ISR functions
 // ---------------------------------------------------------------------------
 
-const AVR_CTX = { platformContext: { frameworkData: { buildTarget: "arduino:avr:uno" } } };
+const AVR_CTX = { platformContext: { architecture: "avr", frameworkData: { buildTarget: "arduino:avr:uno" } } };
 const ESP32_CTX = { platformContext: { architecture: "esp32", frameworkData: { buildTarget: "esp32:esp32:esp32" } } };
 
 // ---------------------------------------------------------------------------

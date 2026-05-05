@@ -124,8 +124,15 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
         for (const name of namedImports) {
           // Check if this name is a known pin alias (D0, A0, LED, etc.)
-          const pinVal = pinAliasMap.get(name);
+          // Transitively resolve aliases: LED -> D13 -> "13"
+          let pinVal = pinAliasMap.get(name);
           if (pinVal) {
+            // Resolve transitive aliases (e.g. LED -> D13 -> 13)
+            while (pinAliasMap.has(pinVal) && !/^\d+$/.test(pinVal)) {
+              const nextVal = pinAliasMap.get(pinVal)!;
+              if (nextVal === pinVal) break; // prevent infinite loop
+              pinVal = nextVal;
+            }
             halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", pinVal]]) });
             continue;
           }

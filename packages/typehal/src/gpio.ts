@@ -173,7 +173,11 @@ export class Pin {
   }
 
   output(initial?: number | boolean): OutputPin {
-    return this.asOutput(initial);
+    emit(`pinMode(${this._pin}, OUTPUT);`);
+    if (initial !== undefined) {
+      emit(`digitalWrite(${this._pin}, ${initial});`);
+    }
+    return this as any;
   }
 
   asInput(): InputPin {
@@ -192,7 +196,8 @@ export class Pin {
   }
 
   inputPullUp(): InputPin {
-    return this.asInputPullUp();
+    emit(`pinMode(${this._pin}, INPUT_PULLUP);`);
+    return this as any;
   }
 }
 
