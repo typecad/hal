@@ -12,6 +12,10 @@
     ".": {
       "types": "./dist/transpile.d.ts",
       "default": "./dist/transpile.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "files": [
@@ -28,8 +32,7 @@
     "chalk": "^4.1.2",
     "typescript": "^5.7.3",
     "@typehal/core": "*",
-    "@typehal/schema": "*",
-    "@typehal/expect": "*"
+    "@typehal/schema": "*"
   },
   "peerDependencies": {},
   "peerDependenciesMeta": {},

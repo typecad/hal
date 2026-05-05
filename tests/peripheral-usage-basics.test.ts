@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { createEmptyPeripheralUsage } from '../packages/transpiler/src/ir/peripheral-usage';
+import { createEmptyPeripheralUsage } from '@typehal/transpiler/testing';
 import { analyzeUsage } from './setup';
 
 describe('Peripheral Usage Analysis - Defaults and Edge Cases', () => {

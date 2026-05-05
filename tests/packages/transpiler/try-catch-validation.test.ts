@@ -3,8 +3,8 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { validateTryCatch } from '../../../packages/transpiler/src/ir/try-catch-validation';
-import type { StatementIR } from '../../../packages/transpiler/src/ir/model';
+import { validateTryCatch } from '@typehal/transpiler/testing';
+import type { StatementIR } from '@typehal/transpiler/testing';
 import { ArduinoStrategy } from '../../../packages/framework-arduino';
 
 const _arduinoStrategy = new ArduinoStrategy();

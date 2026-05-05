@@ -2,9 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { transpileFile } from "../../../packages/transpiler/src/transpile";
-import { buildProgramIR } from "../../../packages/transpiler/src/ir/build-ir";
-import { detectExportedEntryPoints } from "../../../packages/transpiler/src/ir/entry-points";
+import { transpileFile, buildProgramIR, detectExportedEntryPoints } from "@typehal/transpiler/testing";
 
 const tempDirs: string[] = [];
 

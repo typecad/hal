@@ -10,16 +10,14 @@ import {
   scaffoldProject,
   normalizeProjectName,
   KNOWN_BOARDS,
-} from "../../../packages/transpiler/src/scaffold/init-scaffold";
-import {
   generateProjectPackageJson,
   generateProjectTsconfig,
   generateProjectConfig,
   generateProjectEnvDts,
   generateStarterSketch,
   generateGitignore,
-  type InitProjectOptions,
-} from "../../../packages/transpiler/src/scaffold/init-templates";
+} from "@typehal/transpiler/testing";
+import type { InitProjectOptions } from "@typehal/transpiler/testing";
 
 // ---------------------------------------------------------------------------
 // Test fixtures

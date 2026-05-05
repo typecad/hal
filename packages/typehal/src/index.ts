@@ -1,3 +1,6 @@
+// Re-export commonly-used core types so consumers can import everything from @typehal/typehal
+export type { IInputModePin, IOutputModePin, InterruptHandler, InterruptOptions, IToneAttachment } from '@typehal/core';
+
 export { emit } from './emit';
 export { include } from './include';
 export { board } from './board';

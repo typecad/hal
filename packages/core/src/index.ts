@@ -6,8 +6,6 @@
 export {
   DigitalValue,
   AnalogValue,
-  HIGH,
-  LOW,
   PinMode,
   InterruptMode,
   IPinGroup,

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { findConfigFile, parseConfigFile, loadTypehalConfig, generateVirtualTypeDeclaration } from "../../../packages/transpiler/src/config-loader";
+import { findConfigFile, parseConfigFile, loadTypehalConfig, generateVirtualTypeDeclaration } from "@typehal/transpiler/testing";
 
 const tempDirs: string[] = [];
 

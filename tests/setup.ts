@@ -1,9 +1,11 @@
-import { buildProgramIR } from "../packages/transpiler/src/ir/build-ir";
-import { analyzePeripheralUsage } from "../packages/transpiler/src/ir/peripheral-usage";
-import { emitCpp } from "../packages/transpiler/src/emit/cpp-emitter";
-import { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/transpiler/src/types";
-import { setLoadedFramework } from "../packages/transpiler/src/framework-registry";
-import { registerPlatformStrategy } from "../packages/transpiler/src/platform/registry";
+import { 
+  buildProgramIR,
+  emitCpp,
+  analyzePeripheralUsage,
+  setLoadedFramework,
+  registerPlatformStrategy
+} from "@typehal/transpiler/testing";
+import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "@typehal/transpiler/testing";
 import { ArduinoStrategy } from "../packages/framework-arduino";
 import { expect } from "vitest";
 import * as fs from "fs";

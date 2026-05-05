@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildProgramIR } from "../../../packages/transpiler/src/ir/build-ir";
-import { emitCpp } from "../../../packages/transpiler/src/emit/cpp-emitter";
-import { resolveStrategy } from "../../../packages/transpiler/src/platform/registry";
+import { buildProgramIR, emitCpp, resolveStrategy } from "@typehal/transpiler/testing";
 
 const TARGET = "generic" as const;
 const STRATEGY = resolveStrategy("generic");

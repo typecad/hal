@@ -4,8 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import path from "node:path";
-import { discoverWatchDirs, isRelevantChange } from "../../../packages/transpiler/src/watch";
-import { parseCommandLine } from "../../../packages/transpiler/src/utils/cli";
+import { discoverWatchDirs, isRelevantChange, parseCommandLine } from "@typehal/transpiler/testing";
 
 describe("watch", () => {
   describe("discoverWatchDirs", () => {

@@ -2,15 +2,6 @@
 // @typehal/core — GPIO primitives and digital values
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Digital value constants
-// ---------------------------------------------------------------------------
-
-/** Logical-high — alias for `true`. */
-export const HIGH = true;
-/** Logical-low — alias for `false`. */
-export const LOW = false;
-
 /** A digital value is a plain boolean. */
 export type DigitalValue = boolean;
 

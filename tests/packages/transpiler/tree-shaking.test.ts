@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildProgramIR } from "../../../packages/transpiler/src/ir/build-ir";
-import { buildCallGraph, getReachableSymbols } from "../../../packages/transpiler/src/ir/call-graph";
-import { detectEntryPoints } from "../../../packages/transpiler/src/ir/entry-points";
-import { analyzeReachability, getReachabilityStats } from "../../../packages/transpiler/src/ir/reachability";
-import { filterProgramIR } from "../../../packages/transpiler/src/ir/filter";
+import { buildProgramIR, buildCallGraph, getReachableSymbols, detectEntryPoints, analyzeReachability, getReachabilityStats, filterProgramIR } from "@typehal/transpiler/testing";
 
 describe("buildCallGraph", () => {
   it("should build a call graph for a simple function", () => {
