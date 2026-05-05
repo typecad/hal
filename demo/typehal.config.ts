@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// demo/typehal.config.ts - Demo Project Configuration for ESP32 DevKit
+// demo/typehal.config.ts - Demo Project Configuration for Arduino Uno (AVR)
 // ---------------------------------------------------------------------------
 
 import type { TypehalConfig } from '@typehal/core';
@@ -8,7 +8,7 @@ const config: TypehalConfig = {
   // Entry point — the main TypeScript file to transpile
   entry: './src/sketch.ts',
 
-  // Target architecture (ESP32 for ESP32-WROOM-32)
+  // Target architecture (AVR for ATmega328P)
   target: 'avr',
 
   // Board package - provides pin definitions and board constants

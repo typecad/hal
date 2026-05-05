@@ -1,90 +1,135 @@
 // ---------------------------------------------------------------------------
-// Simulator Demo: Testing firmware logic without physical hardware
+// SIMULATOR DEMO: TESTING FIRMWARE WITHOUT HARDWARE
 //
-// This file demonstrates the value of software-defined hardware simulation.
-// Instead of wiring up breadboards, flashing microcontrollers, and manually 
-// testing scenarios, we can simulate the hardware in software and write 
-// automated tests to prove our logic works perfectly.
-//
-// Scenario: A simple "Smart Door Alarm"
-// - Reads a digital pin connected to a door sensor (magnetic switch)
-// - Drives a digital pin connected to an alarm buzzer
+// This demo shows how "Software-Defined Hardware" allows you to develop and
+// test firmware logic for a Smart Street Light without needing the physical
+// LEDs or light sensors.
 //
 // Run with:
-//   npm run vitest tests/simulator-demo.test.ts
+//   pnpm vitest run tests/simulator-demo.test.ts
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, beforeEach } from "vitest";
-import { attachSimulator, type SimBoard } from "@typehal/simulator";
-import { Board } from "@typehal/board-arduino-uno";
+import { describe, it, expect } from "vitest";
+import { createSimBoard, type SimAnalogPin, type SimPWMPin, type SimSerialPort } from "@typehal/simulator";
 
 // ===========================================================================
-// 1. The Firmware Logic
+// SECTION 1: FIRMWARE LOGIC
 // ---------------------------------------------------------------------------
-// This is the actual logic that will run on the microcontroller. 
-// We import the board singleton directly, just like real firmware!
+// This is the "brain" of our street light. It reads a sensor and adjusts
+// the lamp brightness. In a real project, this logic stays the same whether
+// it's running on a real chip or in this simulator.
 // ===========================================================================
 
-function runAlarmLogic() {
-  // Read the physical state of the door sensor (D2).
-  const isDoorOpen = Board.D2.isHigh();
+interface StreetLightHardware {
+  sensor: SimAnalogPin;
+  lamp: SimPWMPin;
+  serial: SimSerialPort;
+}
 
-  if (isDoorOpen) {
-    Board.D8.high(); // Sound the alarm!
-  } else {
-    Board.D8.low();  // Keep quiet.
+/**
+ * Updates the light state based on current sensor readings.
+ */
+function tick(hw: StreetLightHardware) {
+  // 1. Read the light sensor (0 = pitch black, 1023 = bright sun)
+  const lightLevel = hw.sensor.readAnalog();
+  
+  // 2. Logic: If it's dark (< 500), turn on the lamp.
+  // The darker it is, the brighter the lamp should be (proportional control).
+  let brightness = 0;
+  if (lightLevel < 500) {
+    // Map 0..500 sensor reading to 100..0% brightness
+    brightness = Math.round(((500 - lightLevel) / 500) * 100);
   }
+
+  // 3. Command the hardware
+  hw.lamp.pwm(brightness);
+
+  // 4. Log what's happening so we can "debug" our virtual device
+  hw.serial.println(`Sensor: ${lightLevel} | Lamp: ${brightness}%`);
 }
 
 // ===========================================================================
-// 2. The Automated Tests
+// SECTION 2: THE VIRTUAL TEST BENCH
 // ---------------------------------------------------------------------------
-// Here we prove the firmware works using virtual hardware. 
-// By attaching the simulator, the imported `Board` becomes fully functional!
+// This function creates a virtual "Arduino Uno" and wires up our logic.
 // ===========================================================================
 
-describe("Smart Door Alarm Firmware", () => {
-  let sim: SimBoard;
+function setupTestHarness() {
+  const board = createSimBoard({ boardType: "arduino-uno" });
 
-  beforeEach(() => {
-    // Magically patch the global Board singleton with simulated pins
-    sim = attachSimulator(Board);
-    sim.reset(); // Ensure a clean state for each test
-  });
+  const hw: StreetLightHardware = {
+    sensor: board.analog(0), // Light sensor on A0
+    lamp: board.pwm(9),      // LED Lamp on Pin 9
+    serial: board.serial(0), // Built-in Serial
+  };
 
-  it("keeps the buzzer OFF when the door is closed", () => {
-    // Simulate the physical environment (Door is closed -> LOW)
-    sim.digital(2).injectValue(0);
+  return {
+    ...hw,
+    // Convenience function to run one "cycle" of our firmware
+    runCycle: () => tick(hw)
+  };
+}
 
-    // Run our firmware logic
-    runAlarmLogic();
+// ===========================================================================
+// SECTION 3: AUTOMATED SIMULATION TESTS
+// ---------------------------------------------------------------------------
+// These tests verify that our logic is correct by "injecting" virtual 
+// environment data (light levels) and checking the resulting hardware states.
+// ===========================================================================
 
-    // Verify the hardware responded correctly
-    expect(Board.D8.isHigh()).toBe(false);
-  });
-
-  it("turns the buzzer ON when the door is opened", () => {
-    // Simulate the physical environment (Door is opened -> HIGH)
-    sim.digital(2).injectValue(1);
-
-    // Run our firmware logic
-    runAlarmLogic();
-
-    // Verify the hardware responded correctly
-    expect(Board.D8.isHigh()).toBe(true);
-  });
+describe("Smart Street Light (Simulator Demo)", () => {
   
-  it("turns the buzzer OFF when the door is closed again", () => {
-    // Simulate door opening
-    sim.digital(2).injectValue(1);
-    runAlarmLogic();
-    expect(Board.D8.isHigh()).toBe(true); // Sanity check: alarm is on
+  it("stays completely OFF during broad daylight", () => {
+    const sim = setupTestHarness();
 
-    // Simulate door closing
-    sim.digital(2).injectValue(0);
-    runAlarmLogic();
-    
-    // Verify buzzer turned off
-    expect(Board.D8.isLow()).toBe(true);
+    // Simulate bright sunlight (max ADC value)
+    sim.sensor.injectValue(1023);
+    sim.runCycle();
+
+    // Verify lamp is 0% brightness
+    expect(sim.lamp.getPwmPercent()).toBe(0);
+    expect(sim.serial.peekTxAsString()).toContain("Lamp: 0%");
   });
+
+  it("turns ON gradually as it gets darker (50% brightness at sunset)", () => {
+    const sim = setupTestHarness();
+
+    // Simulate "sunset" (250 is half-way between 0 and our 500 threshold)
+    sim.sensor.injectValue(250);
+    sim.runCycle();
+
+    // Verify lamp is at half power
+    expect(sim.lamp.getPwmPercent()).toBe(50);
+    expect(sim.serial.peekTxAsString()).toContain("Lamp: 50%");
+  });
+
+  it("runs at FULL brightness in pitch black", () => {
+    const sim = setupTestHarness();
+
+    // Simulate midnight (0 reading)
+    sim.sensor.injectValue(0);
+    sim.runCycle();
+
+    // Verify lamp is at max power
+    expect(sim.lamp.getPwmPercent()).toBe(100);
+    expect(sim.serial.peekTxAsString()).toContain("Lamp: 100%");
+  });
+
+  it("recovers and turns back off when light returns", () => {
+    const sim = setupTestHarness();
+
+    // First it's dark...
+    sim.sensor.injectValue(0);
+    sim.runCycle();
+    expect(sim.lamp.getPwmPercent()).toBe(100);
+
+    // Then the sun comes up!
+    sim.sensor.injectValue(800);
+    sim.runCycle();
+
+    // Should turn back off
+    expect(sim.lamp.getPwmPercent()).toBe(0);
+    expect(sim.serial.peekTxAsString()).toContain("Lamp: 0%");
+  });
+
 });

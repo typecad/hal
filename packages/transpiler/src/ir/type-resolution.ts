@@ -13,6 +13,7 @@ export type CppTypeHint =
   | "long"
   | "std::string"
   | "unsigned int"
+  | "__tc_str_ptr"
   | `std::vector<${string}>`
   | `std::set<${string}>`
   | `std::map<${string}, ${string}>`

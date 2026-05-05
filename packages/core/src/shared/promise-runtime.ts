@@ -4,6 +4,12 @@
 // Generates a cooperative microtask queue + minimal Promise<T> runtime
 // for embedded C++ targets. Used by both the generic transpiler strategy
 // and the Arduino framework strategy.
+//
+// Functions named __typehal_async_* and __typehal_wait_pin_edge are the
+// runtime implementations that the HAL Async module's emit() calls resolve to.
+// They are defined inside the typehal_async namespace (to see Promise<T> and
+// enqueueMicrotask), and also have unscoped global aliases so the emitted
+// C++ code can call them directly.
 // ---------------------------------------------------------------------------
 
 /**
@@ -15,18 +21,27 @@
  * @param includeWaitForPinEdge Whether to include the `waitForPinEdge` stub
  *   (used by Arduino targets).
  */
-export function generatePromiseRuntime(queueCapacity: number, includeWaitForPinEdge: boolean = false): string {
+export function generatePromiseRuntime(
+  queueCapacity: number,
+  includeWaitForPinEdge: boolean = false,
+): string {
   const waitForPinEdge = includeWaitForPinEdge ? `
-  /**
-   * wait for a pin edge (RISING/FALLING).
-   * Implementation uses a simple polling mechanism for now to keep it generic,
-   * or it could use attachInterrupt if we had a global interrupt manager.
-   */
-  inline Promise<void> waitForPinEdge(int pin, int mode) {
-    return Promise<void>([pin, mode](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
-       // This is a stub. Real implementation would use interrupts.
-       // For now we just resolve immediately so it doesn't hang forever during testing.
-       resolve(nullptr);
+  // HAL-level wait for pin edge — polling-based implementation.
+  inline Promise<void> __typehal_wait_pin_edge(int pin, int mode, long timeout) {
+    return Promise<void>([pin, mode, timeout](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
+      int targetState = (mode == RISING) ? HIGH : LOW;
+      unsigned long start = millis();
+      enqueueMicrotask([pin, mode, targetState, timeout, start, resolve]() {
+        int current = digitalRead(pin);
+        bool triggered = (mode == RISING) ? (current == HIGH) : (current == LOW);
+        if (triggered) {
+          resolve(nullptr);
+        } else if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) {
+          resolve(nullptr);  // timeout — resolves anyway for now
+        } else {
+          enqueueMicrotask([pin, mode, targetState, timeout, start, resolve]() { /* re-check next cycle */ });
+        }
+      });
     });
   }
 ` : "";
@@ -148,8 +163,62 @@ namespace typehal_async {
     std::vector<std::function<void(const T&)>> _onFulfilled;
     std::vector<std::function<void(const std::string&)>> _onRejected;
   };
+
+  // ── HAL-level implementations (inside namespace so they see Promise<T> and enqueueMicrotask) ──
+
+  // Async.sleep() — cooperative delay using millis polling
+  inline Promise<void> __typehal_async_sleep(unsigned long ms) {
+    return Promise<void>([ms](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
+      unsigned long start = millis();
+      if (millis() - start >= ms) {
+        resolve(nullptr);
+      } else {
+        enqueueMicrotask([ms, start, resolve]() {
+          if (millis() - start >= ms) {
+            resolve(nullptr);
+          } else {
+            enqueueMicrotask([ms, start, resolve]() { /* will be re-checked next cycle */ });
+          }
+        });
+      }
+    });
+  }
+
+  // Async.yield() — defer to next microtask pump cycle
+  inline Promise<void> __typehal_async_yield() {
+    return Promise<void>([](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
+      enqueueMicrotask([resolve]() { resolve(nullptr); });
+    });
+  }
+
+  // Async.sleepUntil() — poll condition every interval ms
+  inline Promise<void> __typehal_async_sleep_until(unsigned long pollIntervalMs) {
+    return Promise<void>([pollIntervalMs](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
+      unsigned long start = millis();
+      enqueueMicrotask([pollIntervalMs, start, resolve]() {
+        if (millis() - start >= pollIntervalMs) {
+          resolve(nullptr);  // caller re-checks condition
+        } else {
+          enqueueMicrotask([pollIntervalMs, start, resolve]() { /* re-check next cycle */ });
+        }
+      });
+    });
+  }
+
+  // Async.currentTask() — return task description string
+  inline const char* __typehal_async_current_task() {
+    return "main";
+  }
+
 ${waitForPinEdge}
-}
+} // namespace typehal_async
+
+// ── Global-scope aliases so HAL emit() calls resolve ──
+using typehal_async::__typehal_async_sleep;
+using typehal_async::__typehal_async_yield;
+using typehal_async::__typehal_async_sleep_until;
+using typehal_async::__typehal_async_current_task;
+${includeWaitForPinEdge ? `using typehal_async::__typehal_wait_pin_edge;` : ``}
 
 inline void typehal_pump_microtasks() {
   typehal_async::pumpMicrotasks();

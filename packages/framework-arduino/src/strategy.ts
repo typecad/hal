@@ -5,7 +5,7 @@
 // cpp-emitter.ts, typehal-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport } from "@typehal/core/shared";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig } from "@typehal/core/shared";
 import type { StatementIR } from "@typehal/core/shared";
 import { generatePromiseRuntime } from "@typehal/core/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
@@ -790,13 +790,36 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   // ── Async ───────────────────────────────────────────────────────────────
 
-  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, hasTimers: boolean): string[] {
+  getAsyncRuntimeConfig(): AsyncRuntimeConfig {
+    return {
+      queueCapacity: 32,
+      scheduler: "microtask",
+      waitForPinEdge: "polling",
+      hasPromiseRuntime: true,
+      hasTimers: true,
+      requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
+    };
+  }
+
+  asyncLoopInjection(taskVarNames: string[], config: AsyncRuntimeConfig): string[];
+  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, hasTimers: boolean): string[];
+  asyncLoopInjection(taskVarNames: string[], configOrBool: AsyncRuntimeConfig | boolean, hasTimers?: boolean): string[] {
+    // Support both old (boolean) and new (AsyncRuntimeConfig) signatures
+    let hasPromiseRuntime: boolean;
+    let hasTimersVal: boolean;
+    if (typeof configOrBool === 'boolean') {
+      hasPromiseRuntime = configOrBool;
+      hasTimersVal = hasTimers ?? false;
+    } else {
+      hasPromiseRuntime = configOrBool.hasPromiseRuntime;
+      hasTimersVal = configOrBool.hasTimers;
+    }
     const lines: string[] = [];
     for (const n of taskVarNames) {
       lines.push(`  ${n}.run();`);
     }
     if (hasPromiseRuntime) lines.push("  typehal_pump_microtasks();");
-    if (hasTimers) lines.push("  __tc_timer_runtime.run();");
+    if (hasTimersVal) lines.push("  __tc_timer_runtime.run();");
     return lines;
   }
   asyncDriverFunctionName(): string { return "loop"; }

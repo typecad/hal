@@ -3156,9 +3156,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       }
 
       // Emit async loop injection before the final return
-      if (isLoopDriver) {
+      if (isLoopDriver && (hasPromiseRuntime || asyncTaskClasses.length > 0)) {
         const taskNames = asyncTaskClasses.map(t => t.taskVarName);
-        const injectionLines = strategy.asyncLoopInjection(taskNames, hasPromiseRuntime, usesTimers);
+        const asyncConfig = strategy.getAsyncRuntimeConfig();
+        const injectionLines = strategy.asyncLoopInjection(taskNames, asyncConfig);
         for (const line of injectionLines) {
           appendSourceLine(`  ${line}`);
         }

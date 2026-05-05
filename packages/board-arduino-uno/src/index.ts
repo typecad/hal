@@ -313,3 +313,6 @@ export { Board } from './board';
 
 // ADC singleton
 export { ADC } from '@typehal/typehal';
+
+// Async singleton
+export { AsyncClass, Async } from '@typehal/typehal';

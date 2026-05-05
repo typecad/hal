@@ -14,6 +14,7 @@ import type {
   BoardConstants,
   RuntimePolyfillIR,
   StdLibSupport,
+  AsyncRuntimeConfig,
 } from '@typehal/core/shared';
 import { DEFAULT_STDLIB_SUPPORT } from '@typehal/core/shared';
 
@@ -251,7 +252,29 @@ export class NativeStrategy implements PlatformStrategy {
 
   // ── Async — std::async background pump ──────────────────────────────────
 
-  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, _hasTimers: boolean): string[] {
+  getAsyncRuntimeConfig(): AsyncRuntimeConfig {
+    return {
+      queueCapacity: 256,
+      scheduler: "thread",
+      waitForPinEdge: "stub",
+      hasPromiseRuntime: true,
+      hasTimers: true,
+      requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>", "<thread>", "<chrono>", "<future>"],
+    };
+  }
+
+  asyncLoopInjection(taskVarNames: string[], config: AsyncRuntimeConfig): string[];
+  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, hasTimers: boolean): string[];
+  asyncLoopInjection(taskVarNames: string[], configOrBool: AsyncRuntimeConfig | boolean, hasTimers?: boolean): string[] {
+    let hasPromiseRuntime: boolean;
+    let hasTimersVal: boolean;
+    if (typeof configOrBool === 'boolean') {
+      hasPromiseRuntime = configOrBool;
+      hasTimersVal = hasTimers ?? false;
+    } else {
+      hasPromiseRuntime = configOrBool.hasPromiseRuntime;
+      hasTimersVal = configOrBool.hasTimers;
+    }
     const lines: string[] = [];
     if (taskVarNames.length > 0 || hasPromiseRuntime) {
       lines.push('std::async(std::launch::async, [&]() {');

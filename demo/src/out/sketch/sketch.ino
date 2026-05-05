@@ -69,6 +69,7 @@ struct __tc_Num {
 } Num;
 
 struct __tc_Timing {
+    unsigned long millis() { return ::millis(); }
     unsigned long micros() { return ::micros(); }
     void delay(unsigned long ms) { ::delay(ms); }
     void delayMicroseconds(unsigned int us) { ::delayMicroseconds(us); }
@@ -112,19 +113,73 @@ struct __tc_str_ptr {
     bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }
     bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }
 };
-inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }
+inline size_t (strlen)(const __tc_str_ptr& s) { return strlen(s.buf); }
 inline size_t (strlen)(const char* s) { return ::strlen(s); }
 
-// Auto-generated setup() for top-level statements
+// ── State machine state ───────────────────────────────────────────────────
+int blinkPhase = 0;
+int lastBlinkTime = 0;
+int buzzerPhase = 0;
+int lastBuzzerTime = 0;
+int buttonState = 0;
+int edgeTime = 0;
+int edgeTimeout = 0;
+
+// ── Entry point ───────────────────────────────────────────────────────────
 void setup()
 {
-  pinMode(8, OUTPUT);
-  digitalWrite(8, initial);
-  tone(8, 440);
-  noTone(8);
-  tone(8, 1000, 400);
+  Serial.begin(115200);
+  pinMode(4, INPUT_PULLUP);
+  pinMode(13, OUTPUT);
+  digitalWrite(13, false);
+  pinMode(9, OUTPUT);
+  digitalWrite(9, false);
+  Serial.println("== TypeHAL Arduino Uno Demo ==");
+  Serial.println("Board: Arduino Uno (ATmega328P)");
+  Serial.println("Features: LED blink, button input, buzzer tone");
 }
 
 void loop()
 {
+  const auto now = millis();
+  // ── Blink LED every 500ms ─────────────────────────────────────────────
+  if (now - lastBlinkTime >= 500)
+  {
+    lastBlinkTime = now;
+    if (blinkPhase == 0)
+    {
+      digitalWrite(13, true);
+      blinkPhase = 1;
+    }
+    else {
+      digitalWrite(13, false);
+      blinkPhase = 0;
+    }
+  }
+  // ── Button edge detection ──────────────────────────────────────────────
+  const auto btnLow = !digitalRead(4) == HIGH;
+  // INPUT_PULLUP = active low
+  // Wait for press
+  if (buttonState == 0 && btnLow)
+  {
+    buttonState = 1;
+    edgeTime = now;
+    Serial.println("  Button pressed!");
+  }
+  // Debounce 50ms, then wait for release or timeout
+  if (buttonState == 1 && !btnLow && (now - edgeTime >= 50))
+  {
+    buttonState = 0;
+    edgeTime = now;
+    Serial.println("  Button released!");
+    tone(9, 880);
+    buzzerPhase = 1;
+    lastBuzzerTime = now;
+  }
+  // ── Buzzer tone duration (300ms) ──────────────────────────────────────
+  if (buzzerPhase == 1 && (now - lastBuzzerTime >= 300))
+  {
+    noTone(9);
+    buzzerPhase = 0;
+  }
 }

@@ -1,7 +1,7 @@
 {
   "name": "typehal-demo",
   "version": "1.0.0",
-  "description": "TypeHAL demo project for ESP32 DevKit",
+  "description": "TypeHAL demo project for Arduino Uno (AVR)",
   "private": true,
   "scripts": {
     "build": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@typehal/core": "*",
     "@typehal/typehal": "*",
-    "@typehal/board-esp32-devkit": "*",
+    "@typehal/board-arduino-uno": "*",
     "@typehal/framework-arduino": "*"
   }
 }

@@ -24,3 +24,4 @@ export { PreferencesClass, Preferences } from './preferences';
 export { HardwareTimer, Timer0, Timer1, Timer2 } from './timer';
 export { FSClass, FS } from './fs';
 export { PowerClass, Power } from './power';
+export { AsyncClass, Async } from './async';

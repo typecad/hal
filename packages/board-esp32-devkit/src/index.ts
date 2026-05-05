@@ -436,3 +436,6 @@ export { Board } from './board';
 
 // ADC singleton
 export { ADC } from '@typehal/typehal';
+
+// Async HAL module
+export { AsyncClass, Async } from '@typehal/typehal';

@@ -26,12 +26,12 @@ function collectChainedHALEmits(
 ): void {
   // Chained call: led.tone(440).for(400) — the receiver is the inner call led.tone(440)
   if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
-    const call = expr;
-    const method = call.expression.name.text;
-    const innerReceiver = call.expression.expression;
+    const method = expr.expression.name.text;
+    const innerReceiver = expr.expression.expression;
+
     const instance = resolveHALReceiver(innerReceiver);
     if (instance) {
-      const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+      const argIRs = expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
       const result = processHALMethodBody(instance, method, argIRs);
       if (result && result.emitLines.length > 0) {
         // Prepend inner emits so they appear before outer emits

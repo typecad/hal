@@ -45,19 +45,20 @@ let halModulesLoaded = false;
 
 /** Resolve the HAL source directory. */
 function resolveHALSourceDir(): string {
-  // Monorepo: transpiler/dist/ir/ → ../../../typehal/src/
   const monoPath = path.resolve(__dirname, "..", "..", "..", "typehal", "src");
-  if (fs.existsSync(path.join(monoPath, "gpio.ts"))) return monoPath;
-
-  // Try npm package resolution
-  try {
-    const pkgDir = path.dirname(require.resolve("@typehal/typehal/package.json"));
-    const npmPath = path.join(pkgDir, "src");
-    if (fs.existsSync(path.join(npmPath, "gpio.ts"))) return npmPath;
-  } catch {}
-
-  throw new Error("Could not resolve @typehal/typehal/src/");
+  let res = "";
+  if (fs.existsSync(path.join(monoPath, "gpio.ts"))) {
+    res = monoPath;
+  } else {
+    try {
+      const pkgDir = path.dirname(require.resolve("@typehal/typehal/package.json"));
+      res = path.join(pkgDir, "src");
+    } catch {}
+  }
+  if (!res) throw new Error("Could not resolve @typehal/typehal/src/");
+  return res;
 }
+
 
 /** Extract constructor field mappings: which `this._field = param` assignments exist. */
 function extractCtorFieldMap(ctor: ts.ConstructorDeclaration): { fieldMap: Map<string, string>; defaults: Map<string, string> } {
@@ -221,6 +222,7 @@ export function loadHALModules(force = false): void {
           }
 
           halClassRegistry.set(className, { ctorFieldMap, ctorDefaults, methods });
+
           if (instanceName) {
             halSingletons.set(instanceName, { className, fieldValues: defaultFields, includes });
           }
@@ -646,8 +648,10 @@ export function processHALMethodBody(
     if (!classEntry) return null;
 
     methodEntry = classEntry.methods.get(methodName);
+
     // Fallback: search other HAL classes for the method (e.g., Pin instance calling InputPin.onFalling)
     if (!methodEntry) {
+
       for (const [, entry] of halClassRegistry) {
         const found = entry.methods.get(methodName);
         if (found && found.methodNode.body) {
@@ -803,6 +807,7 @@ export function processHALMethodBody(
     }
   }
 
+
   return { emitLines, returnValue, returnClassName };
 }
 
@@ -869,6 +874,7 @@ function processStatementList(
 export function isKnownHALClass(className: string): boolean {
   return halClassRegistry.has(className);
 }
+
 
 /** Get the constructor field map for a HAL class. */
 export function getHALCtorFieldMap(className: string): Map<string, string> | undefined {

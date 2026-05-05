@@ -2,7 +2,7 @@
 // GenericStrategy — standard C++ target (std::cout, main(), <cmath> …)
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy } from "@typehal/core/shared";
+import type { PlatformStrategy, AsyncRuntimeConfig } from "@typehal/core/shared";
 import type { ExpressionIR, ProgramIR } from "@typehal/core";
 import type { BoardConstants } from "@typehal/core/shared";
 import type { Diagnostic, PlatformContext } from "../types";
@@ -156,6 +156,17 @@ export class GenericStrategy implements PlatformStrategy {
 
   // ── Async ───────────────────────────────────────────────────────────────
 
+  getAsyncRuntimeConfig(): AsyncRuntimeConfig {
+    return {
+      queueCapacity: this.asyncQueueCapacity(),
+      scheduler: "microtask",
+      waitForPinEdge: "stub",
+      hasPromiseRuntime: true,
+      hasTimers: false,
+      requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
+    };
+  }
+
   generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
     const helpers: RuntimePolyfillIR[] = [];
     const asyncRuntime = buildAsyncRuntimePolyfill(program, ctx, "generic", this.asyncQueueCapacity());
@@ -163,7 +174,15 @@ export class GenericStrategy implements PlatformStrategy {
     return helpers;
   }
 
-  asyncLoopInjection(_taskVarNames: string[], hasPromiseRuntime: boolean): string[] {
+  asyncLoopInjection(_taskVarNames: string[], config: AsyncRuntimeConfig): string[];
+  asyncLoopInjection(_taskVarNames: string[], hasPromiseRuntime: boolean): string[];
+  asyncLoopInjection(_taskVarNames: string[], configOrBool: AsyncRuntimeConfig | boolean): string[] {
+    let hasPromiseRuntime: boolean;
+    if (typeof configOrBool === 'boolean') {
+      hasPromiseRuntime = configOrBool;
+    } else {
+      hasPromiseRuntime = configOrBool.hasPromiseRuntime;
+    }
     const lines: string[] = [];
     if (hasPromiseRuntime) lines.push("  typehal_pump_microtasks();");
     return lines;

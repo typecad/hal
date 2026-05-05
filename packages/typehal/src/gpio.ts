@@ -124,13 +124,28 @@ export class InputPin {
     emit(`detachInterrupt(digitalPinToInterrupt(${this._pin}));`);
   }
 
+  /**
+   * Wait for a RISING edge on this input pin.
+   * Returns a Promise<void> that resolves when the pin transitions from LOW to HIGH.
+   * The platform strategy controls whether this uses interrupts, polling, or a stub.
+   *
+   * @param timeout Optional timeout in milliseconds. If provided, the promise
+   *   rejects (or resolves with a false/error) after the timeout expires.
+   */
   waitForRising(timeout?: number): Promise<void> {
-    emit(`__EDGE_RISING__${this._pin}__T${timeout}`);
+    emit(`__typehal_wait_pin_edge(${this._pin}, RISING, ${timeout ?? -1})`);
     return undefined as any;
   }
 
+  /**
+   * Wait for a FALLING edge on this input pin.
+   * Returns a Promise<void> that resolves when the pin transitions from HIGH to LOW.
+   *
+   * @param timeout Optional timeout in milliseconds. If provided, the promise
+   *   rejects (or resolves with a false/error) after the timeout expires.
+   */
   waitForFalling(timeout?: number): Promise<void> {
-    emit(`__EDGE_FALLING__${this._pin}__T${timeout}`);
+    emit(`__typehal_wait_pin_edge(${this._pin}, FALLING, ${timeout ?? -1})`);
     return undefined as any;
   }
 }
@@ -199,7 +214,41 @@ export class Pin {
     emit(`pinMode(${this._pin}, INPUT_PULLUP);`);
     return this as any;
   }
+
+  read(): boolean {
+    return (digitalRead(this._pin) === HIGH);
+  }
+
+  write(value: number | boolean): void {
+    emit(`digitalWrite(${this._pin}, ${value});`);
+  }
+
+  high(): void {
+    emit(`digitalWrite(${this._pin}, HIGH);`);
+  }
+
+  low(): void {
+    emit(`digitalWrite(${this._pin}, LOW);`);
+  }
+
+  toggle(): void {
+    emit(`digitalWrite(${this._pin}, digitalRead(${this._pin}) == LOW ? HIGH : LOW);`);
+  }
+
+  pwm(value: number): void {
+    emit(`analogWrite(${this._pin}, ${value});`);
+  }
+
+  tone(frequency: number): ToneChain {
+    emit(`tone(${this._pin}, ${frequency});`);
+    return new ToneChain(this._pin, frequency);
+  }
+
+  noTone(): void {
+    emit(`noTone(${this._pin});`);
+  }
 }
+
 
 
 declare function digitalRead(pin: number): number;

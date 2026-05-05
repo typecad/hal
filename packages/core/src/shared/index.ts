@@ -73,6 +73,7 @@ export type {
   PlatformSafetyStrategy,
   PlatformBuildStrategy,
   PlatformDebugStrategy,
+  PlatformAsyncStrategy,
 } from './platform-strategy';
 
 // Toolchain types
@@ -90,6 +91,9 @@ export type {
 
 // Polyfill helper registry
 export { POLYFILL_HELPER_MAP, filterPolyfillHelpers } from './polyfill-helper-registry';
+
+// Async types
+export type { AsyncRuntimeConfig } from './async-types';
 
 // Promise runtime generator
 export { generatePromiseRuntime } from './promise-runtime';

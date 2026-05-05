@@ -15,6 +15,7 @@
 import type { ExpressionIR, ProgramIR } from './ir';
 import type { Diagnostic, PlatformContext } from './types';
 import type { BoardConstants } from './board-resolver';
+import type { AsyncRuntimeConfig } from './async-types';
 import type { RuntimePolyfillIR, StdLibSupport } from './polyfill-types';
 
 // ---------------------------------------------------------------------------
@@ -282,17 +283,6 @@ export interface PlatformStatementStrategy {
   }): { finalLine: string } | undefined;
 
   /**
-   * Lines to inject into the loop/run function body to drive async tasks.
-   */
-  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, hasTimers: boolean): string[];
-
-  /**
-   * The function name where microtask pumping and async task driving happens.
-   * Embedded targets: "loop"; Hosted: "main".
-   */
-  asyncDriverFunctionName(): string;
-
-  /**
    * Optional attribute prefix placed before ISR function declarations and
    * definitions.  Required on ESP32/Xtensa to place ISR code in IRAM so it
    * can execute while flash is being accessed.
@@ -400,6 +390,33 @@ export interface PlatformDebugStrategy {
   }): string[];
 }
 
+// ---------------------------------------------------------------------------
+// Sub-interface 9 — Async runtime configuration
+// ---------------------------------------------------------------------------
+
+export interface PlatformAsyncStrategy {
+  /**
+   * Returns the async runtime configuration for this platform.
+   * The emitter uses this to decide:
+   *   - Whether to include the MicrotaskQueue + Promise<T> runtime
+   *   - How to implement waitForRising/waitForFalling
+   *   - What headers to include
+   *   - What queue capacity to use
+   */
+  getAsyncRuntimeConfig(): AsyncRuntimeConfig;
+
+  /**
+   * Lines to inject into the loop/run function body to drive async tasks.
+   */
+  asyncLoopInjection(taskVarNames: string[], config: AsyncRuntimeConfig): string[];
+
+  /**
+   * The function name where microtask pumping and async task driving happens.
+   * Embedded targets: "loop"; Hosted: "main".
+   */
+  asyncDriverFunctionName(): string;
+}
+
 /**
  * Full platform strategy composed from focused sub-interfaces.
  *
@@ -415,7 +432,8 @@ export interface PlatformStrategy
     PlatformStatementStrategy,
     PlatformSafetyStrategy,
     PlatformBuildStrategy,
-    PlatformDebugStrategy {
+    PlatformDebugStrategy,
+    PlatformAsyncStrategy {
   /** Unique identifier for this strategy (e.g. "arduino", "generic"). */
   readonly id: string;
 }
