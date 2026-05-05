@@ -308,7 +308,7 @@ export function tryResolveBoardDefFile(
     for (const candidate of candidates) {
       if (!fs.existsSync(candidate)) continue;
       const normalized = candidate.replace(/\\/g, "/");
-      if (/\/code\/board-/.test(normalized)) {
+      if (/[\\/]board-/.test(normalized)) {
         // Always redirect to index.ts in the board package root so we parse the
         // BoardDefinition manifest regardless of which file was actually imported
         // (e.g. board.ts, pins.ts, etc.).
@@ -324,11 +324,22 @@ export function tryResolveBoardDefFile(
   if (effectiveSpecifier.startsWith("@typehal/board-")) {
     const parts = effectiveSpecifier.split("/");
     const pkgName = parts[1]; // "board-esp32-devkit"
-    // Walk up from the importing file's directory to find node_modules
+
+    // Walk up from the importing file's directory to find node_modules OR a packages directory (monorepo)
     let dir = path.dirname(fromFile);
     while (true) {
-      const candidate = path.join(dir, "node_modules", "@typehal", pkgName, "src", "index.ts");
-      if (fs.existsSync(candidate)) return candidate;
+      // 1. Try node_modules
+      const nmCandidate = path.join(dir, "node_modules", "@typehal", pkgName, "src", "index.ts");
+      if (fs.existsSync(nmCandidate)) return nmCandidate;
+
+      // 2. Try packages/ directory (monorepo layout)
+      const pkgCandidate = path.join(dir, "packages", pkgName, "src", "index.ts");
+      if (fs.existsSync(pkgCandidate)) return pkgCandidate;
+
+      // 3. Try sibling packages directory (if fromFile is inside a package)
+      const siblingPkgCandidate = path.join(path.dirname(dir), "packages", pkgName, "src", "index.ts");
+      if (fs.existsSync(siblingPkgCandidate)) return siblingPkgCandidate;
+
       const parent = path.dirname(dir);
       if (parent === dir) break; // reached filesystem root
       dir = parent;
@@ -336,4 +347,25 @@ export function tryResolveBoardDefFile(
   }
 
   return undefined;
+}
+
+/**
+ * Resolve the framework-specific build target (e.g. Arduino FQBN) from the
+ * board package's manifest.
+ *
+ * @param boardPackage  Board package identifier or path.
+ * @param configPath    Path to the project config file (for relative resolution).
+ * @param framework     Target framework name (default: 'arduino').
+ */
+export function resolveBoardBuildTarget(
+  boardPackage: string,
+  configPath: string,
+  framework: string = "arduino"
+): string | undefined {
+  const defFile = tryResolveBoardDefFile(configPath, boardPackage);
+  if (!defFile) return undefined;
+
+  const constants = resolveBoardConstants(defFile);
+  const target = constants.get(`build.frameworks.${framework}`);
+  return typeof target === "string" ? target : undefined;
 }

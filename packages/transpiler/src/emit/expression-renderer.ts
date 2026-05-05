@@ -209,8 +209,7 @@ export class ExpressionRenderer {
       default:
         rendered = "0 /* unsupported_expr */";
     }
-    const finalResult = this.fixPointerAccess(rendered);
-    return normalizeRawExpression(finalResult, this.strategy, this.classNameMap);
+    return normalizeRawExpression(rendered, this.strategy, this.classNameMap);
   }
 
   private renderIdentifier(value: string): string {
@@ -226,7 +225,6 @@ export class ExpressionRenderer {
     let result = exprTransformer
       ? normalizeRawExpression(exprTransformer(value), this.strategy, effectiveClassNameMap)
       : normalizeRawExpression(value, this.strategy, effectiveClassNameMap);
-    result = this.fixPointerAccess(result);
     const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name, this.strategy.reservedNames())));
     const stringVarNames = this.stringVarNames ?? new Set();
     const cArrayNames = this.cArrayVarNames ?? new Set();
@@ -371,8 +369,8 @@ export class ExpressionRenderer {
         if (cppType === "bool") {
           return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5 };
         }
-        if (cppType === "std::string" || cppType === "const char*" || cppType === "char*" || cppType === "String") {
-          const needsCStr = cppType === "std::string" || cppType === "String";
+        if (cppType === "std::string" || cppType === "const char*" || cppType === "char*" || cppType === "String" || cppType === "__tc_str_ptr") {
+          const needsCStr = cppType === "std::string" || cppType === "String" || cppType === "__tc_str_ptr";
           const arg = needsCStr ? `${expr.value}.c_str()` : expr.value;
           return { format: "%s", arg, estimatedLength: 32 };
         }
@@ -381,8 +379,11 @@ export class ExpressionRenderer {
           if (floatArg !== undefined) return floatArg;
           return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%g", arg: expr.value, estimatedLength: 16 };
         }
-        if (cppType === "int" || cppType === "long" || cppType === "short" || cppType === "auto") {
+        if (cppType === "int" || cppType === "short" || cppType === "auto") {
           return { format: "%d", arg: expr.value, estimatedLength: 12 };
+        }
+        if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t") {
+          return { format: "%ld", arg: expr.value, estimatedLength: 12 };
         }
         if (this.stringVarNames?.has(expr.value)) {
           return { format: "%s", arg: expr.value, estimatedLength: 32 };
@@ -425,7 +426,7 @@ export class ExpressionRenderer {
   private renderElementAccess(expr: Extract<ExpressionIR, { kind: "element-access" }>, exprTransformer?: (expr: string) => string): string {
     const objectText = this.render(expr.object, exprTransformer);
     const indexText = this.render(expr.index, exprTransformer);
-    return this.fixPointerAccess(`${objectText}[${indexText}]`);
+    return `${objectText}[${indexText}]`;
   }
 
   private renderBinary(expr: Extract<ExpressionIR, { kind: "binary" }>, exprTransformer?: (expr: string) => string): string {
@@ -476,6 +477,24 @@ export class ExpressionRenderer {
     if (expr.object.kind === "raw" && expr.object.value === "this") {
       return `this->${expr.property}`;
     }
+
+    // Use C++ scope-resolution operator (::) for enum class member access.
+    if (expr.isEnum || (expr.object.kind === "identifier" && this.enumNames.has(expr.object.value))) {
+      const enumName = expr.object.kind === "identifier" ? expr.object.value : objStr;
+      const enumMember = this.strategy.renameEnumMember(enumName, expr.property);
+      const enumAccess = `${objStr}::${enumMember}`;
+      const castType = this.strategy.enumCastType(enumName);
+      if (castType !== undefined) {
+        return `static_cast<${castType}>(${enumAccess})`;
+      }
+      return enumAccess;
+    }
+
+    // Use C++ scope-resolution operator (::) for namespace or static member access.
+    if (expr.isNamespace || expr.isStatic || (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value))) {
+      return `${objStr}::${expr.property}`;
+    }
+
     if (expr.object.kind === "identifier" && expr.property === "length") {
       if (this.cArrayVarNames?.has(expr.object.value)) {
         return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
@@ -488,20 +507,7 @@ export class ExpressionRenderer {
     if (expr.object.kind === "identifier" && this.strategy.passthroughEnumNames?.().has(expr.object.value)) {
       return expr.property;
     }
-    // Use C++ scope-resolution operator (::) for enum class member access.
-    if (expr.object.kind === "identifier" && this.enumNames.has(expr.object.value)) {
-      const enumMember = this.strategy.renameEnumMember(expr.object.value, expr.property);
-      const enumAccess = `${objStr}::${enumMember}`;
-      const castType = this.strategy.enumCastType(expr.object.value);
-      if (castType !== undefined) {
-        return `static_cast<${castType}>(${enumAccess})`;
-      }
-      return enumAccess;
-    }
-    // Use C++ scope-resolution operator (::) for namespace member access.
-    if (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value)) {
-      return `${objStr}::${expr.property}`;
-    }
+
     if (expr.property === "size" || expr.property === "length") {
       if (expr.object.kind === "identifier" && this.stringVarNames?.has(expr.object.value)) {
         return `strlen(${objStr})`;
@@ -515,8 +521,9 @@ export class ExpressionRenderer {
         return `${objStr}->${getterName}()`;
       }
     }
-    const rendered = `${objStr}.${expr.property}`;
-    return this.fixPointerAccess(rendered);
+    const accessor = expr.isPointer ? "->" : ".";
+    const rendered = `${objStr}${accessor}${expr.property}`;
+    return rendered;
   }
 
   private renderCallback(expr: Extract<ExpressionIR, { kind: "callback" }>): string {
@@ -537,30 +544,26 @@ export class ExpressionRenderer {
   private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {
     const argsText = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
     let callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
+    
+    // Convert . to :: for static or namespace method calls if the IR flagged them.
+    if (expr.isStatic || expr.isNamespace) {
+      callee = callee.replace(/\./g, "::");
+    }
+
     const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name, this.strategy.reservedNames())));
     const stringVarNames = this.stringVarNames ?? new Set();
     const cArrayNames = this.cArrayVarNames ?? new Set();
-    callee = callee.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g, (match, varName) => {
-      if (stringVarNames.has(varName) || escapedStringVarNames.has(varName)) return `strlen(${varName})`;
-      if (cArrayNames.has(varName)) return `(sizeof(${varName}) / sizeof(${varName}[0]))`;
-      return match;
-    });
+    // Convert . to -> for pointer method calls if the IR flagged them.
+    if (expr.isPointer && !callee.includes("->")) {
+      callee = callee.replace(/\./g, "->");
+    }
+
     if (/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g.test(callee)) {
       return callee;
     }
-    return this.fixPointerAccess(`${callee}(${argsText})`);
+    return `${callee}(${argsText})`;
   }
 
-  private fixPointerAccess(code: string): string {
-    if (this.pointerVarTypes) {
-      for (const [varName, varType] of this.pointerVarTypes) {
-        if (varType.endsWith("*")) {
-          code = code.replace(new RegExp(`\\b${varName}\\.`, "g"), `${varName}->`);
-        }
-      }
-    }
-    return code;
-  }
 }
 
 /**
@@ -612,18 +615,8 @@ function transformClassNames(value: string, classNameMap: Map<string, string>): 
 export function normalizeRawExpression(value: string, strategy: PlatformStrategy, classNameMap?: Map<string, string>): string {
   let normalized = value
     .replace(/===/g, "==")
-    .replace(/!==/g, "!=");
-
-  // Convert TypeScript-style enum member access (EnumType.MEMBER_NAME) to C++ scoped
-  // enum access (EnumType::MEMBER_NAME).  The pattern matches an identifier followed by
-  // a dot followed by an ALL_CAPS name (2+ uppercase letters at the start), which is the
-  // naming convention for enum class members.  Pin aliases like D0, D1 (single uppercase
-  // letter + digits) are intentionally excluded because they don't start with 2+ uppercase
-  // letters.
-  normalized = normalized.replace(
-    /\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Z]{2,}[A-Z0-9_]*)\b/g,
-    "$1::$2"
-  );
+    .replace(/!==/g, "!=")
+    .replace(/\?\?/g, "/* ?? */"); // Fallback for raw expressions; usually handled at IR level
 
   // Apply platform-specific expression normalisation
   normalized = strategy.normalizeRawExpression(normalized);

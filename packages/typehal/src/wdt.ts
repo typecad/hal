@@ -1,7 +1,17 @@
+import { emit } from './emit';
+
 export class WDTClass {
-  enable(timeout: number | string): void {}
-  reset(): void {}
-  disable(): void {}
+  static readonly __instance_name = "WDT";
+
+  enable(timeout: number | string): void {
+    emit(`wdt_enable(${timeout});`);
+  }
+  reset(): void {
+    emit(`wdt_reset();`);
+  }
+  disable(): void {
+    emit(`wdt_disable();`);
+  }
 }
 
 export const WDT = new WDTClass();

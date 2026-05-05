@@ -125,7 +125,7 @@ function escapeCppStringLiteral(value: string): string {
 }
 
 function isStringLikeCppType(typeName: string): boolean {
-  return typeName === "std::string" || typeName === "const char*" || typeName === "char*" || typeName === "String";
+  return typeName === "std::string" || typeName === "const char*" || typeName === "char*" || typeName === "String" || typeName === "__tc_str_ptr";
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +177,7 @@ export function inferSnprintfArg(
       const knownVar = scopeState.knownVariableTypes.get(expr.value);
       const cppType = knownVar?.cppType;
       if (cppType && isStringLikeCppType(cppType)) {
-        const needsCStr = cppType === "std::string" || cppType === "String";
+        const needsCStr = cppType === "std::string" || cppType === "String" || cppType === "__tc_str_ptr";
         const arg = needsCStr ? `${expr.value}.c_str()` : expr.value;
         return { format: "%s", arg, estimatedLength: 24, preludeLines: [] };
       }
@@ -194,8 +194,11 @@ export function inferSnprintfArg(
           preludeLines: [],
         };
       }
-      if (cppType === "int" || cppType === "long" || cppType === "short" || cppType === "auto") {
+      if (cppType === "int" || cppType === "short" || cppType === "auto") {
         return { format: "%d", arg: expr.value, estimatedLength: 12, preludeLines: [] };
+      }
+      if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t") {
+        return { format: "%ld", arg: expr.value, estimatedLength: 12, preludeLines: [] };
       }
       if (pointerVarTypes?.has(expr.value)) {
         const pointerType = pointerVarTypes.get(expr.value)!;

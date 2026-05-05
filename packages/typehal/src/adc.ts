@@ -24,6 +24,11 @@ export class ADCClass {
     emit(`return ${board("peripherals.adc.0.referenceVoltages." + this._reference)};`);
     return 0;
   }
+
+  read(pin: number): number {
+    emit(`return analogRead(${pin});`);
+    return 0;
+  }
 }
 
 export const ADC = new ADCClass();

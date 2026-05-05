@@ -911,9 +911,12 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // Perform single-pass program analysis to replace multiple traversals
   const programAnalysis = analyzeProgram(program);
 
-  // Make analysis available to strategy methods via PlatformContext
+  // Make analysis and architecture available to strategy methods via PlatformContext
   if (options.platformContext) {
     options.platformContext.analysis = programAnalysis;
+    if (!options.platformContext.architecture && program.boardConstants) {
+      options.platformContext.architecture = program.boardConstants.get("architecture") as string;
+    }
   }
 
   // For npm package files, use the moduleKey as the base name

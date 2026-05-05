@@ -302,6 +302,18 @@ export const ESP32DevKit: BoardDefinition = {
       channels: 10,
       pins: ['D4', 'D0', 'D2', 'D15', 'D13', 'D12', 'D14', 'D27', 'D33', 'D32'],
     },
+    /** Hardware timers available for application use. */
+    timers: [
+      { instance: 0, type: 'general', bits: 64, features: ['interrupt'] },
+      { instance: 1, type: 'general', bits: 64, features: ['interrupt'] },
+      { instance: 2, type: 'general', bits: 64, features: ['interrupt'] },
+      { instance: 3, type: 'general', bits: 64, features: ['interrupt'] },
+    ],
+    /** DMA controllers available for high-speed transfers. */
+    dma: [
+      { instance: 0, channels: 8 },
+      { instance: 1, channels: 8 },
+    ],
     wifi: { type: 'wifi', supportsStation: true, supportsAp: true },
     bluetooth: { type: 'dual', version: '5.0' },
   },

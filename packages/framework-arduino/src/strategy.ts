@@ -140,7 +140,8 @@ export class ArduinoStrategy implements PlatformStrategy {
   }
   shimLines(program: ProgramIR, ctx?: PlatformContext): string[] {
     this._usesPinGroup = detectPinGroupUsage(program);
-    const lines = this.getOrResolveProfile(program, ctx).shimLines;
+    const profileLines = this.getOrResolveProfile(program, ctx).shimLines;
+    const lines: string[] = [];
 
     if (this._usesPinGroup) {
       lines.push(
@@ -246,10 +247,11 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }",
       "    bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }",
       "};",
-      "inline size_t (strlen)(const __tc_str_ptr& s) { return strlen(s.buf); }",
+      "inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }",
       "inline size_t (strlen)(const char* s) { return ::strlen(s); }"
     );
 
+    lines.push(...profileLines);
     return lines;
   }
   profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
@@ -263,7 +265,7 @@ export class ArduinoStrategy implements PlatformStrategy {
    * Board packages can override to provide native implementations.
    */
   nativePolyfills(): Set<string> {
-    return new Set(["string_methods", "typehal_halt"]);
+    return new Set(["string_methods", "typehal_halt", "timer_methods"]);
   }
 
   /**
@@ -312,6 +314,92 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       shimMacros: [],
       dependencies: [],
     }];
+
+    // Add timer methods if used
+    const hasHwTimer = program.boardConstants?.has("peripherals.timers.0.instance");
+    const isEsp32 = ctx?.architecture === "esp32";
+    
+    helpers.push({
+      kind: "polyfill",
+      id: "timer_methods",
+      domain: "arduino",
+      requiredIncludes: isEsp32 ? ["esp_timer.h"] : [],
+      forwardDeclarations: [],
+      helperStructs: [`
+struct __tc_TimerTask {
+    void (*callback)();
+    unsigned long interval;
+    unsigned long lastRun;
+    bool repeat;
+    bool active;
+};
+
+class __tc_TimerRuntime {
+    static const int MAX_TIMERS = 8;
+    __tc_TimerTask tasks[MAX_TIMERS];
+public:
+    __tc_TimerRuntime() {
+        for (int i=0; i<MAX_TIMERS; i++) tasks[i].active = false;
+    }
+    int add(void (*cb)(), unsigned long ms, bool repeat) {
+        for (int i=0; i<MAX_TIMERS; i++) {
+            if (!tasks[i].active) {
+                tasks[i].callback = cb;
+                tasks[i].interval = ms;
+                tasks[i].lastRun = millis();
+                tasks[i].repeat = repeat;
+                tasks[i].active = true;
+                return i + 1;
+            }
+        }
+        return 0;
+    }
+    void clear(int id) {
+        if (id > 0 && id <= MAX_TIMERS) tasks[id-1].active = false;
+    }
+    void run() {
+        unsigned long now = millis();
+        for (int i=0; i<MAX_TIMERS; i++) {
+            if (tasks[i].active && (now - tasks[i].lastRun >= tasks[i].interval)) {
+                tasks[i].callback();
+                if (tasks[i].repeat) {
+                    tasks[i].lastRun = now;
+                } else {
+                    tasks[i].active = false;
+                }
+            }
+        }
+    }
+} __tc_timer_runtime;
+`],
+      helperFunctions: [
+        isEsp32 ? `
+int __tc_setInterval(void (*cb)(), long ms) {
+    const esp_timer_create_args_t periodic_timer_args = { .callback = (esp_timer_cb_t)cb, .arg = NULL, .name = "periodic" };
+    esp_timer_handle_t timer;
+    esp_timer_create(&periodic_timer_args, &timer);
+    esp_timer_start_periodic(timer, ms * 1000);
+    return (int)timer;
+}
+int __tc_setTimeout(void (*cb)(), long ms) {
+    const esp_timer_create_args_t once_timer_args = { .callback = (esp_timer_cb_t)cb, .arg = NULL, .name = "one-shot" };
+    esp_timer_handle_t timer;
+    esp_timer_create(&once_timer_args, &timer);
+    esp_timer_start_once(timer, ms * 1000);
+    return (int)timer;
+}
+void __tc_clearInterval(int id) { esp_timer_stop((esp_timer_handle_t)id); esp_timer_delete((esp_timer_handle_t)id); }
+void __tc_clearTimeout(int id) { esp_timer_stop((esp_timer_handle_t)id); esp_timer_delete((esp_timer_handle_t)id); }
+` : `
+int __tc_setInterval(void (*cb)(), long ms) { return __tc_timer_runtime.add(cb, ms, true); }
+int __tc_setTimeout(void (*cb)(), long ms) { return __tc_timer_runtime.add(cb, ms, false); }
+void __tc_clearInterval(int id) { __tc_timer_runtime.clear(id); }
+void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
+`
+      ],
+      shimMacros: [],
+      dependencies: [],
+    });
 
     // Add async Promise runtime if program has async functions and stdlib supports it
     const hasAsync = program.functions.some(fn => fn.isAsync);
@@ -413,7 +501,10 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
   // is a string (const char*). Array methods (indexOf, push, etc.) are handled at
   // the IR level in expression-to-ir.ts where type context is available.
   normalizeRawExpression(value: string): string {
-    let v = value;
+    let v = value
+      .replace(/===/g, "==")
+      .replace(/!==/g, "!=")
+      .replace(/\?\?/g, "/* ?? */");
     v = v.replace(/\bPinMode::(HIGH|LOW|INPUT|OUTPUT|INPUT_PULLUP)\b/g, "PinMode::_$1");
     v = v.replace(/\bPinMode::(_?[A-Z_]+)\b/g, "static_cast<int>(PinMode::$1)");
     v = v.replace(/(->|\.)capabilities\.interrupt\b/g, "$1capabilities");
@@ -440,6 +531,8 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     v = v.replace(/(\w+)\.replace\(([^,]+),\s*([^)]+)\)/g, "__tc_replace($1, $2, $3)");
     v = v.replace(/(\w+)\.charAt\(([^)]+)\)/g, "__tc_charAt($1, $2)");
     v = v.replace(/(\w+)\.charCodeAt\(([^)]+)\)/g, "__tc_charCodeAt($1, $2)");
+
+    // Timer transformations are now handled via HAL resolver in timing.ts
 
     if (this._usesPinGroup) {
       v = v.replace(/createPinGroup\(\{\s*(.*?)\s*\}\)/g, '__tc_createPinGroup($1)');
@@ -503,10 +596,18 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
     if (chain[0] !== "Board" && chain[0] !== "Pins") return undefined;
     if (chain[1] !== "definition") return undefined;
     if (!boardConstants) return undefined;
-    const dotPath = chain.slice(2).join(".");
-    const value = boardConstants.get(dotPath);
-    if (value === undefined) return undefined;
-    return typeof value === "string" ? `"${value}"` : `${value}`;
+
+    const path = chain.slice(2).join(".");
+    const val = boardConstants.get(path);
+    return val !== undefined ? String(val) : undefined;
+  }
+
+  mapPeripheralIdentifier(name: string): string | undefined {
+    const canonical = name.toUpperCase();
+    if (canonical === "UART0") return "Serial";
+    if (canonical === "I2C0") return "Wire";
+    if (canonical === "SPI0") return "SPI";
+    return undefined;
   }
 
   resolvePinType(objectName: string, fieldName: string): string | undefined {
@@ -689,12 +790,13 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
 
   // ── Async ───────────────────────────────────────────────────────────────
 
-  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean): string[] {
+  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, hasTimers: boolean): string[] {
     const lines: string[] = [];
     for (const n of taskVarNames) {
       lines.push(`  ${n}.run();`);
     }
     if (hasPromiseRuntime) lines.push("  typehal_pump_microtasks();");
+    if (hasTimers) lines.push("  __tc_timer_runtime.run();");
     return lines;
   }
   asyncDriverFunctionName(): string { return "loop"; }

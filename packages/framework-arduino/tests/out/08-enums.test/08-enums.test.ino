@@ -1,51 +1,5 @@
 #include <Arduino.h>
 
-struct __tc_TimerTask {
-    void (*callback)();
-    unsigned long interval;
-    unsigned long lastRun;
-    bool repeat;
-    bool active;
-};
-
-class __tc_TimerRuntime {
-    static const int MAX_TIMERS = 8;
-    __tc_TimerTask tasks[MAX_TIMERS];
-public:
-    __tc_TimerRuntime() {
-        for (int i=0; i<MAX_TIMERS; i++) tasks[i].active = false;
-    }
-    int add(void (*cb)(), unsigned long ms, bool repeat) {
-        for (int i=0; i<MAX_TIMERS; i++) {
-            if (!tasks[i].active) {
-                tasks[i].callback = cb;
-                tasks[i].interval = ms;
-                tasks[i].lastRun = millis();
-                tasks[i].repeat = repeat;
-                tasks[i].active = true;
-                return i + 1;
-            }
-        }
-        return 0;
-    }
-    void clear(int id) {
-        if (id > 0 && id <= MAX_TIMERS) tasks[id-1].active = false;
-    }
-    void run() {
-        unsigned long now = millis();
-        for (int i=0; i<MAX_TIMERS; i++) {
-            if (tasks[i].active && (now - tasks[i].lastRun >= tasks[i].interval)) {
-                tasks[i].callback();
-                if (tasks[i].repeat) {
-                    tasks[i].lastRun = now;
-                } else {
-                    tasks[i].active = false;
-                }
-            }
-        }
-    }
-} __tc_timer_runtime;
-
 // TypeHAL Native Polyfills
 struct __tc_Num {
     struct MapChain {
@@ -112,17 +66,121 @@ struct __tc_str_ptr {
     bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }
     bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }
 };
-inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }
+inline size_t (strlen)(const __tc_str_ptr& s) { return strlen(s.buf); }
 inline size_t (strlen)(const char* s) { return ::strlen(s); }
+
+enum class Direction {
+  Up = 0,
+  Down = 1,
+  Left = 2,
+  Right = 3
+};
+
+enum class Status {
+  Ok = 200,
+  NotFound = 404,
+  Error = 500
+};
+
+enum class Flags {
+  None = 0,
+  Read = 1,
+  Write = 2,
+  Execute = 3
+};
+
+enum class Code {
+  Invalid = -1,
+  Unknown = -2
+};
+
+enum class Color : long {
+  Red = 16711680,
+  Green = 65280,
+  Blue = 255
+};
+
+int __tc_fn1();
+int __tc_fn2();
+int __tc_fn3();
+int __tc_fn4();
+int __tc_fn5();
+int __tc_fn6();
+long __tc_fn7();
 
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  pinMode(8, OUTPUT);
-  digitalWrite(8, initial);
-  tone(8, 440);
-  noTone(8);
-  tone(8, 1000, 400);
+  Serial.begin(115200);
+  Serial.println("[TC:SUITE_START]");
+  Serial.println("[TC:DESCRIBE:Enum basics]");
+  Serial.println("[TC:IT:enum member values]");
+  Serial.print("[TC:EXPECT:toBe:0:");
+  Serial.print(__tc_fn1());
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:3:");
+  Serial.print(__tc_fn2());
+  Serial.println("]");
+  Serial.println("[TC:IT:enum with explicit values]");
+  Serial.print("[TC:EXPECT:toBe:200:");
+  Serial.print(__tc_fn3());
+  Serial.println("]");
+  Serial.print("[TC:EXPECT:toBe:500:");
+  Serial.print(__tc_fn4());
+  Serial.println("]");
+  Serial.println("[TC:IT:enum with mixed auto and explicit]");
+  Serial.print("[TC:EXPECT:toBe:3:");
+  Serial.print(__tc_fn5());
+  Serial.println("]");
+  Serial.println("[TC:IT:enum with negative values]");
+  Serial.print("[TC:EXPECT:toBe:-1:");
+  Serial.print(__tc_fn6());
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Const enum]");
+  Serial.println("[TC:IT:const enum values]");
+  Serial.print("[TC:EXPECT:toBe:0xFF0000:");
+  Serial.print(__tc_fn7());
+  Serial.println("]");
+  Serial.println("[TC:SUITE_END]");
+  while (true)
+  {
+    delay(1000);
+  }
+}
+
+int __tc_fn1()
+{
+  return static_cast<int>(Direction::Up);
+}
+
+int __tc_fn2()
+{
+  return static_cast<int>(Direction::Right);
+}
+
+int __tc_fn3()
+{
+  return static_cast<int>(Status::Ok);
+}
+
+int __tc_fn4()
+{
+  return static_cast<int>(Status::Error);
+}
+
+int __tc_fn5()
+{
+  return static_cast<int>(Flags::Execute);
+}
+
+int __tc_fn6()
+{
+  return static_cast<int>(Code::Invalid);
+}
+
+long __tc_fn7()
+{
+  return static_cast<long>(Color::Red);
 }
 
 void loop()

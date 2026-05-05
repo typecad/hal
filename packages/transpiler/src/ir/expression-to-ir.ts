@@ -2,7 +2,7 @@ import ts from "typescript";
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "@typehal/core";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
 import { halInstances } from "./hal-resolver";
@@ -494,7 +494,29 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       calleeText = nestedFunctionAliases.get(rawText) ?? rawText;
     }
     const argIRs = expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars));
-    return { kind: "method-call", callee: calleeText, args: argIRs };
+    
+    let isStatic = false;
+    let isNamespace = false;
+    if (ts.isPropertyAccessExpression(expr.expression)) {
+      const receiver = expr.expression.expression;
+      if (ts.isIdentifier(receiver)) {
+        const name = receiver.text;
+        if (activeNamespaceNames.has(name)) {
+          isNamespace = true;
+        } else if (topLevelClassNames.has(name) || nestedClassAliases.has(name) || name === "Math") {
+          isStatic = true;
+        }
+      }
+    }
+
+    return { 
+      kind: "method-call", 
+      callee: calleeText, 
+      args: argIRs,
+      isStatic,
+      isNamespace,
+      isPointer: calleeText.includes("->")
+    };
   }
 
   if (ts.isNewExpression(expr)) {
@@ -651,7 +673,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
     // Use -> for pointer variables in property access
     if (ts.isIdentifier(expr.expression) && pointerVars.has(expr.expression.text)) {
-      return { kind: "property-access", object: { kind: "identifier", value: expr.expression.text }, property: expr.name.text };
+      return { 
+        kind: "property-access", 
+        object: { kind: "identifier", value: expr.expression.text }, 
+        property: expr.name.text,
+        isPointer: true
+      };
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
@@ -662,7 +689,38 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
       return { kind: "raw", value: resolved };
     }
-    return { kind: "property-access", object, property: expr.name.text };
+
+    let isEnum = false;
+    let isNamespace = false;
+    let isStatic = false;
+
+    if (ts.isIdentifier(expr.expression)) {
+      const name = expr.expression.text;
+      if (activeEnumNames.has(name)) {
+        isEnum = true;
+      } else if (activeNamespaceNames.has(name)) {
+        isNamespace = true;
+      } else if (topLevelClassNames.has(name) || nestedClassAliases.has(name)) {
+        isStatic = true;
+      }
+    }
+
+    let isPointer = false;
+    if (ts.isIdentifier(expr.expression) && pointerVars.has(expr.expression.text)) {
+      isPointer = true;
+    } else if ((expr.expression.kind as number) === ts.SyntaxKind.ThisKeyword) {
+      isPointer = true;
+    }
+
+    return { 
+      kind: "property-access", 
+      object, 
+      property: expr.name.text,
+      isEnum,
+      isNamespace,
+      isStatic,
+      isPointer
+    };
   }
 
   // Handle element access expressions like arr[index]

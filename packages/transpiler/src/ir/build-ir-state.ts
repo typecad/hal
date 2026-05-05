@@ -77,6 +77,12 @@ export const activeNamespaceNames = new Set<string>();
 // Used to emit :: for static method calls on top-level classes (not just hoisted nested ones).
 export const topLevelClassNames = new Set<string>();
 
+export const activeEnumNames = new Set<string>();
+
+// Board-specific peripheral and pin alias mappings (populated from BoardConstants)
+export const peripheralAliasMap = new Map<string, string>();
+export const pinAliasMap = new Map<string, string>();
+
 // Module-level set of library includes required by inline evaluators (e.g., "<SPI.h>", "<Wire.h>").
 export const requiredIncludes = new Set<string>();
 
@@ -95,7 +101,51 @@ let _currentBoardConstants: BoardConstants | undefined;
 export function getCurrentBoardConstants(): BoardConstants { 
   return _currentBoardConstants || getDefaultBoardConstants(); 
 }
-export function setCurrentBoardConstants(v: BoardConstants | undefined) { _currentBoardConstants = v; }
+export function setCurrentBoardConstants(v: BoardConstants | undefined) { 
+  _currentBoardConstants = v; 
+  if (v) {
+    // Populate peripheral aliases (e.g. UART0 -> Serial, I2C0 -> Wire)
+    for (const [key, value] of v.entries()) {
+      if (key.startsWith("peripherals.aliases.")) {
+        const alias = key.slice("peripherals.aliases.".length);
+        peripheralAliasMap.set(alias, String(value));
+      }
+    }
+
+    // Populate pin aliases (e.g. D0 -> 0, A0 -> 14, LED -> 13)
+    // We look for name/number pairs in pins.all.N.*
+    const pinNames = new Map<number, string>();
+    const pinNumbers = new Map<number, string>();
+
+    for (const [key, value] of v.entries()) {
+      const nameMatch = key.match(/^pins\.all\.(\d+)\.name$/);
+      if (nameMatch) {
+        pinNames.set(parseInt(nameMatch[1]), String(value));
+        continue;
+      }
+      const numMatch = key.match(/^pins\.all\.(\d+)\.number$/);
+      if (numMatch) {
+        pinNumbers.set(parseInt(numMatch[1]), String(value));
+        continue;
+      }
+      // Also handle direct aliases if any (e.g. pins.led -> 13)
+      const directMatch = key.match(/^pins\.([a-z_][a-z0-9_]*)$/);
+      if (directMatch && typeof value !== 'object') {
+        const pinName = directMatch[1].toUpperCase();
+        if (pinName !== 'ALL' && pinName !== 'DIGITAL' && pinName !== 'ANALOG' && pinName !== 'PWM' && pinName !== 'UNSAFE' && pinName !== 'I2C' && pinName !== 'SPI' && pinName !== 'UART') {
+          pinAliasMap.set(pinName, String(value));
+        }
+      }
+    }
+
+    for (const [idx, name] of pinNames) {
+      const num = pinNumbers.get(idx);
+      if (num !== undefined) {
+        pinAliasMap.set(name, num);
+      }
+    }
+  }
+}
 
 // Module-level local variable type tracker for typeof resolution.
 // Maps variable name → inferred C++ type string (e.g., "int", "std::string").
@@ -112,7 +162,10 @@ export function resetBuildState(): void {
   resetFunctionScopeState();
   activeNamespaceNames.clear();
   topLevelClassNames.clear();
+  activeEnumNames.clear();
   topLevelClasses.clear();
+  peripheralAliasMap.clear();
+  pinAliasMap.clear();
   requiredIncludes.clear();
   registeredCallbacks.length = 0;
   _currentBoardConstants = undefined;

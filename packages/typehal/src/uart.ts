@@ -25,7 +25,7 @@ export class SerialPort {
   }
 
   printf(format: string, ...args: any[]): void {
-    emit(`${this._port}.printf("${format}", ${args.join(", ")});`);
+    emit(`${this._port}.printf(${format}, ${args});`);
   }
 
   write(data: any): void {

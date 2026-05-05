@@ -16,6 +16,7 @@ import { runWatch, discoverWatchDirs } from "./watch";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils";
 import * as ui from "./utils/ui";
 import chalk from "chalk";
+import { resolveBoardBuildTarget } from "./ir/board-resolver";
 
 async function main(): Promise<void> {
   try {
@@ -286,7 +287,14 @@ async function main(): Promise<void> {
       }
 
       // Config is the source of truth — override CLI-provided values.
-      const configBuildTarget = config.buildTarget;
+      let configBuildTarget = config.buildTarget;
+      
+      // If buildTarget is missing from config, try to resolve it from the board manifest
+      if (!configBuildTarget && config.board) {
+        const framework = config.outputFramework ?? 'arduino';
+        configBuildTarget = resolveBoardBuildTarget(config.board, config.configPath, framework);
+      }
+
       if (configBuildTarget) {
         effectivePlatformContext = {
           architecture: configBuildTarget.split(":")?.[1]?.toLowerCase(),

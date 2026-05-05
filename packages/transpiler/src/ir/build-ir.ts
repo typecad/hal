@@ -7,7 +7,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR } from "./statement-to-ir";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
@@ -119,19 +119,25 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         || moduleSpecifier === '@typehal';
 
       if (isHALSource) {
-        // Determine analog pin offset for A-pin resolution
-        const isEsp32 = moduleSpecifier.includes('esp32');
-        const analogOffset = isEsp32 ? 36 : 14;
+        const boardConstants = getCurrentBoardConstants();
+        const analogOffset = (boardConstants.get("pins.analogOffset") as number) ?? 14;
 
         for (const name of namedImports) {
-          // D-pins: D0-D53 → Pin instance
+          // Check if this name is a known pin alias (D0, A0, LED, etc.)
+          const pinVal = pinAliasMap.get(name);
+          if (pinVal) {
+            halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", pinVal]]) });
+            continue;
+          }
+
+          // D-pins: D0-D53 → Pin instance (fallback)
           const dMatch = name.match(/^D(\d+)$/);
           if (dMatch) {
             halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", dMatch[1]]]) });
             continue;
           }
 
-          // A-pins: A0-A19 → Pin instance with board-specific offset
+          // A-pins: A0-A19 → Pin instance with board-specific offset (fallback)
           const aMatch = name.match(/^A(\d+)$/);
           if (aMatch) {
             const pinNum = String(analogOffset + parseInt(aMatch[1]));
@@ -139,53 +145,40 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             continue;
           }
 
-          // I2C buses: I2C0→I2CBus("Wire"), I2C1→I2CBus("Wire1")
+          // I2C buses: I2C0, I2C1, ...
           const i2cMatch = name.match(/^I2C(\d+)$/);
           if (i2cMatch) {
-            const busName = i2cMatch[1] === '0' ? 'Wire' : `Wire${i2cMatch[1]}`;
-            halInstances.set(name, { className: "I2CBus", fieldValues: new Map([["_bus", busName]]) });
+            const alias = peripheralAliasMap.get(name) ?? (i2cMatch[1] === '0' ? 'Wire' : `Wire${i2cMatch[1]}`);
+            halInstances.set(name, { className: "I2CBus", fieldValues: new Map([["_bus", alias]]) });
             continue;
           }
 
-          // SPI buses: SPI0→SPIBus("SPI"), SPI1→SPIBus("SPI1")
+          // SPI buses: SPI0, SPI1, ...
           const spiMatch = name.match(/^SPI(\d+)$/);
           if (spiMatch) {
-            const busName = spiMatch[1] === '0' ? 'SPI' : `SPI${spiMatch[1]}`;
-            halInstances.set(name, { className: "SPIBus", fieldValues: new Map([["_bus", busName]]) });
+            const alias = peripheralAliasMap.get(name) ?? (spiMatch[1] === '0' ? 'SPI' : `SPI${spiMatch[1]}`);
+            halInstances.set(name, { className: "SPIBus", fieldValues: new Map([["_bus", alias]]) });
             continue;
           }
 
-          // UART: UART0→SerialPort("Serial"), UART1→SerialPort("Serial1")
+          // UART: UART0, UART1, ...
           const uartMatch = name.match(/^UART(\d+)$/);
           if (uartMatch) {
-            const portName = uartMatch[1] === '0' ? 'Serial' : `Serial${uartMatch[1]}`;
-            halInstances.set(name, { className: "SerialPort", fieldValues: new Map([["_port", portName]]) });
+            const alias = peripheralAliasMap.get(name) ?? (uartMatch[1] === '0' ? 'Serial' : `Serial${uartMatch[1]}`);
+            halInstances.set(name, { className: "SerialPort", fieldValues: new Map([["_port", alias]]) });
             continue;
           }
 
           // HAL namespace imports: Pulse, Shift, Random
           if (name === 'Pulse' || name === 'Shift' || name === 'Random') {
+            activeNamespaceNames.add(name);
             continue;
           }
-        }
 
-        // Board-specific pin and peripheral aliases
-        if (!isEsp32) {
-          const pinAliases: Record<string, string> = {
-            LED: '13', SDA: '18', SCL: '19',
-            MOSI: '11', MISO: '12', SCK: '13', SS: '10',
-            TX: '1', RX: '0',
-          };
-          const serialAliases: Record<string, string> = {
-            Serial: 'Serial',
-          };
-          for (const name of namedImports) {
-            if (pinAliases[name]) {
-              halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", pinAliases[name]]]) });
-            }
-            if (serialAliases[name]) {
-              halInstances.set(name, { className: "SerialPort", fieldValues: new Map([["_port", serialAliases[name]]]) });
-            }
+          // HAL enum imports: BaudRate, I2CSpeed
+          if (name === 'BaudRate' || name === 'I2CSpeed') {
+            activeEnumNames.add(name);
+            continue;
           }
         }
       }
@@ -294,6 +287,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       const enumIR = enumDeclarationToIR(node, fileName, sourceText);
       if (enumIR) {
         enums.push(enumIR);
+        activeEnumNames.add(enumIR.name);
       }
       return;
     }

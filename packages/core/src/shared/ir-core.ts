@@ -51,7 +51,7 @@ export type ExpressionIR =
    * the emitter can recognise and translate typehal metadata paths like
    * `Board.definition.mcu` without regex post-processing.
    */
-  | { kind: "property-access"; object: ExpressionIR; property: string }
+  | { kind: "property-access"; object: ExpressionIR; property: string; isStatic?: boolean; isEnum?: boolean; isNamespace?: boolean; isPointer?: boolean }
   /**
    * A callback function (arrow function or function expression) passed as an argument.
    * Used for interrupt handlers and other callback contexts.
@@ -63,7 +63,7 @@ export type ExpressionIR =
   /** Arrow function or lambda expression: (params) => expression | { statements } */
   | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean }
   /** A general method call with structured argument IR (preserves callbacks/lambdas). */
-  | { kind: "method-call"; callee: string; args: ExpressionIR[] }
+  | { kind: "method-call"; callee: string; args: ExpressionIR[]; isStatic?: boolean; isNamespace?: boolean; isPointer?: boolean }
   /** Array element access: `object[index]`. */
   | { kind: "element-access"; object: ExpressionIR; index: ExpressionIR }
   /** Parenthesized expression: preserves explicit grouping from TS source (e.g. `(2+3)*4`). */

@@ -164,6 +164,12 @@ export const ArduinoUno: BoardDefinition = {
     adc:  [{ instance: 0, channels: 6, resolution: 10, referenceVoltage: 5.0, maxValue: 1023,
              referenceVoltages: { DEFAULT: 5.0, INTERNAL: 1.1 } }],
     pwm:  { channels: 6, resolution: 8, maxFrequency: 62_500 },
+    /** Hardware timers available for application use. */
+    timers: [
+      { instance: 0, type: 'sys', bits: 8, features: ['pwm', 'interrupt'], frequency: 16000000 },
+      { instance: 1, type: 'general', bits: 16, features: ['pwm', 'interrupt', 'capture', 'compare'], frequency: 16000000 },
+      { instance: 2, type: 'general', bits: 8, features: ['pwm', 'interrupt'], frequency: 16000000 },
+    ],
   },
 
   // ----- Features ----------------------------------------------------------

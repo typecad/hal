@@ -1,51 +1,5 @@
 #include <Arduino.h>
 
-struct __tc_TimerTask {
-    void (*callback)();
-    unsigned long interval;
-    unsigned long lastRun;
-    bool repeat;
-    bool active;
-};
-
-class __tc_TimerRuntime {
-    static const int MAX_TIMERS = 8;
-    __tc_TimerTask tasks[MAX_TIMERS];
-public:
-    __tc_TimerRuntime() {
-        for (int i=0; i<MAX_TIMERS; i++) tasks[i].active = false;
-    }
-    int add(void (*cb)(), unsigned long ms, bool repeat) {
-        for (int i=0; i<MAX_TIMERS; i++) {
-            if (!tasks[i].active) {
-                tasks[i].callback = cb;
-                tasks[i].interval = ms;
-                tasks[i].lastRun = millis();
-                tasks[i].repeat = repeat;
-                tasks[i].active = true;
-                return i + 1;
-            }
-        }
-        return 0;
-    }
-    void clear(int id) {
-        if (id > 0 && id <= MAX_TIMERS) tasks[id-1].active = false;
-    }
-    void run() {
-        unsigned long now = millis();
-        for (int i=0; i<MAX_TIMERS; i++) {
-            if (tasks[i].active && (now - tasks[i].lastRun >= tasks[i].interval)) {
-                tasks[i].callback();
-                if (tasks[i].repeat) {
-                    tasks[i].lastRun = now;
-                } else {
-                    tasks[i].active = false;
-                }
-            }
-        }
-    }
-} __tc_timer_runtime;
-
 // TypeHAL Native Polyfills
 struct __tc_Num {
     struct MapChain {
@@ -112,17 +66,99 @@ struct __tc_str_ptr {
     bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }
     bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }
 };
-inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }
+inline size_t (strlen)(const __tc_str_ptr& s) { return strlen(s.buf); }
 inline size_t (strlen)(const char* s) { return ::strlen(s); }
+
+namespace SensorLib {
+
+  const auto BASE = 42;
+  const auto OFFSET = 8;
+
+} // namespace SensorLib
+
+namespace MathUtils {
+
+  int twice(int x) {
+    return x * 2;
+  }
+
+} // namespace MathUtils
+
+class __tc_fn3__AddrLib {
+public:
+  static int read() {
+    return 104;
+  }
+
+};
+
+class __tc_fn4__I2CBusDev {
+public:
+  __tc_fn4__I2CBusDev(int addr) {
+    this->address = addr;
+  }
+
+  int address;
+
+  int getAddress() {
+    return this->address;
+  }
+
+};
+
+int __tc_fn1();
+int __tc_fn2();
+int __tc_fn3();
+int __tc_fn4();
 
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  pinMode(8, OUTPUT);
-  digitalWrite(8, initial);
-  tone(8, 440);
-  noTone(8);
-  tone(8, 1000, 400);
+  Serial.begin(115200);
+  Serial.println("[TC:SUITE_START]");
+  Serial.println("[TC:DESCRIBE:Namespaced organization]");
+  Serial.println("[TC:IT:namespace constant access]");
+  Serial.print("[TC:EXPECT:toBe:50:");
+  Serial.print(__tc_fn1());
+  Serial.println("]");
+  Serial.println("[TC:IT:namespace function call]");
+  Serial.print("[TC:EXPECT:toBe:10:");
+  Serial.print(__tc_fn2());
+  Serial.println("]");
+  Serial.println("[TC:IT:static class method as library]");
+  Serial.print("[TC:EXPECT:toBe:0x68:");
+  Serial.print(__tc_fn3());
+  Serial.println("]");
+  Serial.println("[TC:IT:class instantiation in IIFE]");
+  Serial.print("[TC:EXPECT:toBe:0x55:");
+  Serial.print(__tc_fn4());
+  Serial.println("]");
+  Serial.println("[TC:SUITE_END]");
+  while (true)
+  {
+    delay(1000);
+  }
+}
+
+int __tc_fn1()
+{
+  return SensorLib::BASE + SensorLib::OFFSET;
+}
+
+int __tc_fn2()
+{
+  return MathUtils::twice(5);
+}
+
+int __tc_fn3()
+{
+  return __tc_fn3__AddrLib::read();
+}
+
+int __tc_fn4()
+{
+  const __tc_fn4__I2CBusDev* bus = new __tc_fn4__I2CBusDev(85);
+  return bus->getAddress();
 }
 
 void loop()

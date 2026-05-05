@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "toolchainFingerprint": "95ab164f4209437f",
+  "rootDir": "C:\\typecad\\typecode\\packages\\transpiler\\scratch",
+  "files": {
+    "C:\\typecad\\typecode\\packages\\transpiler\\scratch\\printf-test.ts": {
+      "hash": "940b0e4fdc694e0b",
+      "mtime": 1777937761109.2244,
+      "size": 127,
+      "dependencies": [],
+      "outputs": [
+        "C:\\typecad\\typecode\\packages\\transpiler\\scratch\\.build\\printf-test.cpp",
+        "C:\\typecad\\typecode\\packages\\transpiler\\scratch\\.build\\printf-test.h",
+        "C:\\typecad\\typecode\\packages\\transpiler\\scratch\\.build\\printf-test.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\packages\\transpiler\\scratch\\.build\\printf-test.h.thcppmap.json"
+      ]
+    }
+  },
+  "createdAt": 1777937811969,
+  "updatedAt": 1777937812832
+}

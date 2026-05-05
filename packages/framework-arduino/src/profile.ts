@@ -140,12 +140,22 @@ function collectUsedIdentifiers(program: ProgramIR): Set<string> {
 
   const collectFromStatement = (statement: StatementIR): void => {
     if (statement.kind === "call") {
-      const root = statement.callee.split(".")[0];
-      if (root) {
-        used.add(root);
-      }
-      for (const arg of statement.args) {
-        collectExpression(arg);
+      if (statement.callee === "__EMIT__") {
+        for (const arg of statement.args) {
+          if (arg.kind === "string") {
+            for (const token of arg.value.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []) {
+              used.add(token);
+            }
+          }
+        }
+      } else {
+        const root = statement.callee.split(".")[0];
+        if (root) {
+          used.add(root);
+        }
+        for (const arg of statement.args) {
+          collectExpression(arg);
+        }
       }
       return;
     }
@@ -450,7 +460,7 @@ const AVR_PREFERENCES_SHIM: string[] = [
   '    EEPROM.update(addr + vLen, 0);',
   '    return (size_t)vLen;',
   '  }',
-  '  const char* getString(const char* key, const char* defaultValue) {',
+  '  __tc_str_ptr getString(const char* key, const char* defaultValue) {',
   '    if (!_started) return defaultValue;',
   '    int idx = _findSlot(key, _T_STR);',
   '    if (idx < 0) return defaultValue;',

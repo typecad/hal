@@ -4,6 +4,7 @@ import ts from "typescript";
 import { parseSource } from "../ast/parse";
 import { requiredIncludes, registeredCallbacks, getCurrentBoardConstants } from "./build-ir-state";
 import { ExpressionIR } from "@typehal/core";
+import { mapPeripheralName } from "../mapping/peripheral-names";
 import { renderExprAsText } from "./render-expr";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,8 @@ export interface HALInstance {
 export interface HALMethodEntry {
   methodNode: ts.MethodDeclaration;
   paramNames: string[];
+  spreadParamName?: string;
+  paramDefaults: Map<string, string>;
 }
 
 interface HALClassEntry {
@@ -32,8 +35,7 @@ export const halInstances = new Map<string, HALInstance>();
 
 // Registry of HAL class method ASTs, keyed by class name
 const halClassRegistry = new Map<string, HALClassEntry>();
-
-// Registry of singleton metadata, keyed by bare name (e.g. "ADC")
+const halGlobalFunctions = new Map<string, HALMethodEntry>();
 const halSingletons = new Map<string, { className: string; fieldValues: Map<string, string>; includes?: string[] }>();
 
 // Guard: only load once per process
@@ -125,6 +127,27 @@ function extractCtorIncludes(ctor: ts.ConstructorDeclaration | undefined): strin
   return includes;
 }
 
+/** Extract parameter names and defaults from a function-like node. */
+function extractParams(node: ts.FunctionLikeDeclarationBase): { paramNames: string[], spreadParamName?: string, paramDefaults: Map<string, string> } {
+  const paramNames: string[] = [];
+  const paramDefaults = new Map<string, string>();
+  for (const p of node.parameters) {
+    if (ts.isIdentifier(p.name)) {
+      const name = p.name.text;
+      paramNames.push(name);
+      if (p.initializer) {
+        if (ts.isNumericLiteral(p.initializer)) paramDefaults.set(name, p.initializer.text);
+        else if (ts.isStringLiteral(p.initializer)) paramDefaults.set(name, `"${p.initializer.text}"`);
+        else if (p.initializer.kind === ts.SyntaxKind.TrueKeyword) paramDefaults.set(name, "true");
+        else if (p.initializer.kind === ts.SyntaxKind.FalseKeyword) paramDefaults.set(name, "false");
+      }
+    }
+  }
+  const spreadParam = node.parameters.find(p => !!p.dotDotDotToken);
+  const spreadParamName = spreadParam && ts.isIdentifier(spreadParam.name) ? spreadParam.name.text : undefined;
+  return { paramNames, spreadParamName, paramDefaults };
+}
+
 // Store constructor includes per class
 const halCtorIncludes = new Map<string, string[]>();
 
@@ -134,10 +157,8 @@ function extractMethods(cls: ts.ClassDeclaration): Map<string, HALMethodEntry> {
   for (const member of cls.members) {
     if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       const methodName = member.name.text;
-      const paramNames = (member.parameters ?? []).map(p =>
-        ts.isIdentifier(p.name) ? p.name.text : "",
-      );
-      methods.set(methodName, { methodNode: member, paramNames });
+      const { paramNames, spreadParamName, paramDefaults } = extractParams(member);
+      methods.set(methodName, { methodNode: member, paramNames, spreadParamName, paramDefaults });
     }
   }
   return methods;
@@ -206,6 +227,10 @@ export function loadHALModules(force = false): void {
           if (ctorIncludes.length > 0) {
             halCtorIncludes.set(className, ctorIncludes);
           }
+        } else if (ts.isFunctionDeclaration(stmt) && stmt.name && stmt.body) {
+          const functionName = stmt.name.text;
+          const { paramNames, spreadParamName, paramDefaults } = extractParams(stmt);
+          halGlobalFunctions.set(functionName, { methodNode: stmt as any, paramNames, spreadParamName, paramDefaults });
         }
       }
     }
@@ -245,25 +270,33 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
 
     // Board-defined peripheral aliases (e.g., UART0 -> Serial)
     // Consolidates both canonical (UART0) and platform (Serial) names via the manifest.
-    for (const [key, value] of bc.entries()) {
-      if (key.startsWith("peripherals.aliases.") && (name === value || name === key.replace("peripherals.aliases.", ""))) {
-        const canonical = key.replace("peripherals.aliases.", "");
-        if (canonical.startsWith("UART")) return { className: "SerialPort", fieldValues: new Map([["_port", String(value)]]) };
-        if (canonical.startsWith("I2C")) return { className: "I2CBus", fieldValues: new Map([["_bus", String(value)]]) };
-        if (canonical.startsWith("SPI")) return { className: "SPIBus", fieldValues: new Map([["_bus", String(value)]]) };
-      }
+    const mappedName = mapPeripheralName(name);
+    if (mappedName) {
+      const canonical = name.toUpperCase();
+      if (canonical.startsWith("UART")) return { className: "SerialPort", fieldValues: new Map([["_port", mappedName]]) };
+      if (canonical.startsWith("I2C")) return { className: "I2CBus", fieldValues: new Map([["_bus", mappedName]]) };
+      if (canonical.startsWith("SPI")) return { className: "SPIBus", fieldValues: new Map([["_bus", mappedName]]) };
     }
 
     // Bare pin resolution (D0, A0, etc.)
     const dMatch = name.match(/^D(\d+)$/);
     if (dMatch) {
-      return { className: "Pin", fieldValues: new Map([["_pin", dMatch[1]]]) };
+      const inst = { className: "Pin", fieldValues: new Map([["_pin", dMatch[1]]]) };
+      halInstances.set(name, inst);
+      return inst;
     }
     const aMatch = name.match(/^A(\d+)$/);
     if (aMatch) {
       const offset = Number(bc.get("pins.analogOffset") ?? 0);
       const pinNum = Number(aMatch[1]) + offset;
-      return { className: "Pin", fieldValues: new Map([["_pin", String(pinNum)]]) };
+      const inst = { className: "Pin", fieldValues: new Map([["_pin", String(pinNum)]]) };
+      halInstances.set(name, inst);
+      return inst;
+    }
+
+    const timerMatch = name.match(/^Timer(\d+)$/);
+    if (timerMatch) {
+      return { className: "HardwareTimer", fieldValues: new Map([["_instance", timerMatch[1]]]) };
     }
   }
 
@@ -390,22 +423,23 @@ function resolveTemplateLiteral(
   instance: HALInstance,
   paramNames: string[],
   callArgTexts: string[],
+  paramDefaults?: Map<string, string>,
 ): string | null {
-  if (ts.isStringLiteral(node)) {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     return node.text;
   }
 
   if (ts.isTemplateExpression(node)) {
     let result = node.head.text;
     for (const span of node.templateSpans) {
-      const resolved = resolveExpressionText(span.expression, instance, paramNames, callArgTexts);
+      const resolved = resolveExpressionText(span.expression, instance, paramNames, callArgTexts, paramDefaults);
       if (resolved === null) return null;
       result += resolved + span.literal.text;
     }
     return result;
   }
 
-  return resolveExpressionText(node, instance, paramNames, callArgTexts);
+  return resolveExpressionText(node, instance, paramNames, callArgTexts, paramDefaults);
 }
 
 /** Resolve an arbitrary expression to its text form, with this/param substitution. */
@@ -414,15 +448,24 @@ function resolveExpressionText(
   instance: HALInstance,
   paramNames: string[],
   callArgTexts: string[],
+  paramDefaults?: Map<string, string>,
 ): string | null {
   // this._field → look up in instance
   // OtherInstance._field → look up in tracked halInstances (cross-instance reference)
   if (ts.isPropertyAccessExpression(expr)) {
     const isThis = expr.expression.kind === ts.SyntaxKind.ThisKeyword
-      || (ts.isIdentifier(expr.expression) && expr.expression.text === "this");
+      || (ts.isIdentifier(expr.expression) && expr.expression.text === "this")
+      || expr.expression.getText() === "this";
     if (isThis) {
-      const val = instance.fieldValues.get(expr.name.text);
-      return val ?? null;
+      const fieldName = expr.name.text;
+      const val = instance.fieldValues.get(fieldName) ?? instance.fieldValues.get(fieldName.startsWith("_") ? fieldName.slice(1) : "_" + fieldName);
+      if (val !== undefined && val !== null) return val;
+      
+      // Fallback: try to see if it's a known field that should be mapped
+      if (fieldName === "_pin" && instance.fieldValues.has("pin")) return instance.fieldValues.get("pin")!;
+      if (fieldName === "_bus" && instance.fieldValues.has("bus")) return instance.fieldValues.get("bus")!;
+
+      return `this->${fieldName}`;
     }
     // Cross-instance field reference: e.g. ADC._reference → look up tracked instance
     if (ts.isIdentifier(expr.expression)) {
@@ -436,7 +479,7 @@ function resolveExpressionText(
         if (val !== undefined) return val;
       }
     }
-    const obj = resolveExpressionText(expr.expression, instance, paramNames, callArgTexts);
+    const obj = resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
     if (obj === null) return null;
     return `${obj}.${expr.name.text}`;
   }
@@ -444,8 +487,17 @@ function resolveExpressionText(
   // Identifier → parameter or constant
   if (ts.isIdentifier(expr)) {
     const paramIdx = paramNames.indexOf(expr.text);
-    if (paramIdx !== -1 && paramIdx < callArgTexts.length) {
-      return callArgTexts[paramIdx];
+    if (paramIdx !== -1) {
+      if (paramIdx < callArgTexts.length) {
+        const isSpread = expr.text === (instance as any)._spreadParamName;
+        if (isSpread) {
+          const spreadArgs = callArgTexts.slice(paramIdx);
+          return spreadArgs.join(", ");
+        }
+        return callArgTexts[paramIdx];
+      } else if (paramDefaults?.has(expr.text)) {
+        return paramDefaults.get(expr.text)!;
+      }
     }
     return expr.text;
   }
@@ -494,28 +546,33 @@ function resolveExpressionText(
       return null;
     }
 
-    const callee = resolveExpressionText(expr.expression as ts.Expression, instance, paramNames, callArgTexts);
+    const callee = resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
     if (callee === null) return null;
-    const args: string[] = [];
-    for (const a of expr.arguments) {
-      const resolved = resolveExpressionText(a as ts.Expression, instance, paramNames, callArgTexts);
-      if (resolved === null) return null;
-      args.push(resolved);
-    }
+    const args = expr.arguments.map(arg => resolveExpressionText(arg, instance, paramNames, callArgTexts, paramDefaults));
+    if (args.some(a => a === null)) return null;
     return `${callee}(${args.join(", ")})`;
   }
 
   // Binary expression
   if (ts.isBinaryExpression(expr)) {
-    const left = resolveExpressionText(expr.left, instance, paramNames, callArgTexts);
-    const right = resolveExpressionText(expr.right, instance, paramNames, callArgTexts);
+    const left = resolveExpressionText(expr.left, instance, paramNames, callArgTexts, paramDefaults);
+    const right = resolveExpressionText(expr.right, instance, paramNames, callArgTexts, paramDefaults);
     if (left === null || right === null) return null;
-    return `${left} ${expr.operatorToken.getText()} ${right}`;
+    
+    let op = expr.operatorToken.getText();
+    if (op === "===") op = "==";
+    else if (op === "!==") op = "!=";
+    else if (op === "??") {
+      // Use a more concise ternary for C++
+      return `(${left} != TYPEHAL_UNDEFINED ? ${left} : ${right})`;
+    }
+    
+    return `${left} ${op} ${right}`;
   }
 
   // Type assertion: this as any → unwrap to inner expression
   if (ts.isAsExpression(expr)) {
-    return resolveExpressionText(expr.expression, instance, paramNames, callArgTexts);
+    return resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
   }
 
   return expr.getText ? expr.getText() : null;
@@ -561,24 +618,36 @@ export function processHALMethodBody(
   methodName: string,
   callArgs: ExpressionIR[],
 ): { emitLines: string[]; returnValue?: string; returnClassName?: string } | null {
-  const classEntry = halClassRegistry.get(instance.className);
-  if (!classEntry) return null;
+  let methodEntry: HALMethodEntry | undefined;
 
-  let methodEntry = classEntry.methods.get(methodName);
-  // Fallback: search other HAL classes for the method (e.g., Pin instance calling InputPin.onFalling)
-  if (!methodEntry) {
-    for (const [, entry] of halClassRegistry) {
-      const found = entry.methods.get(methodName);
-      if (found && found.methodNode.body) {
-        methodEntry = found;
-        break;
+  if (instance.className) {
+    const classEntry = halClassRegistry.get(instance.className);
+    if (!classEntry) return null;
+
+    methodEntry = classEntry.methods.get(methodName);
+    // Fallback: search other HAL classes for the method (e.g., Pin instance calling InputPin.onFalling)
+    if (!methodEntry) {
+      for (const [, entry] of halClassRegistry) {
+        const found = entry.methods.get(methodName);
+        if (found && found.methodNode.body) {
+          methodEntry = found;
+          break;
+        }
       }
     }
+  } else {
+    methodEntry = halGlobalFunctions.get(methodName);
   }
+
   if (!methodEntry || !methodEntry.methodNode.body) return null;
 
   const paramNames = methodEntry.paramNames;
+  const spreadParamName = methodEntry.spreadParamName;
   const callArgTexts = callArgs.map(a => renderExprAsText(a));
+  
+  (instance as any)._spreadParamName = spreadParamName;
+  const paramDefaults = methodEntry.paramDefaults;
+
   const body = methodEntry.methodNode.body;
 
   const emitLines: string[] = [];
@@ -612,7 +681,7 @@ export function processHALMethodBody(
           (ts.isIdentifier(left.expression) && left.expression.text === "this"))
       ) {
         const fieldName = left.name.text;
-        const resolved = resolveExpressionText(right, instance, paramNames, callArgTexts);
+        const resolved = resolveExpressionText(right, instance, paramNames, callArgTexts, paramDefaults);
         if (resolved !== null) {
           instance.fieldValues.set(fieldName, resolved);
         }
@@ -633,16 +702,20 @@ export function processHALMethodBody(
             instance,
             paramNames,
             callArgTexts,
+            paramDefaults,
           );
-          if (resolved !== null) {
-            // Convention: emit("return EXPR") means this is a return value expression
-            if (resolved.startsWith("return ")) {
-              const returnExpr = resolved.slice(7).replace(/;$/, "");
-              returnValue = returnExpr;
-            } else {
-              emitLines.push(resolved);
+            if (resolved !== null) {
+              const normalized = resolved
+                .replace(/===/g, "==")
+                .replace(/!==/g, "!=");
+              // Convention: emit("return EXPR") means this is a return value expression
+              if (normalized.startsWith("return ")) {
+                const returnExpr = normalized.slice(7).replace(/;$/, "");
+                returnValue = returnExpr;
+              } else {
+                emitLines.push(normalized);
+              }
             }
-          }
         }
         continue;
       }
@@ -663,7 +736,7 @@ export function processHALMethodBody(
         const returnRef = returnValue !== undefined ? undefined : { value: "" };
         processStatementList(
           ts.isBlock(stmt.thenStatement) ? (stmt.thenStatement as ts.Block).statements : [stmt.thenStatement as ts.Statement],
-          instance, paramNames, callArgTexts, emitLines, returnRef,
+          instance, paramNames, callArgTexts, emitLines, paramDefaults, returnRef,
         );
         if (returnRef && returnRef.value) returnValue = returnRef.value;
       }
@@ -672,9 +745,9 @@ export function processHALMethodBody(
 
     // return expr — only set if not already set by emit("return EXPR") convention
     if (ts.isReturnStatement(stmt) && stmt.expression && returnValue === undefined) {
-      const resolved = resolveExpressionText(stmt.expression, instance, paramNames, callArgTexts);
+      const resolved = resolveExpressionText(stmt.expression, instance, paramNames, callArgTexts, paramDefaults);
       if (resolved !== null) {
-        returnValue = resolved;
+        returnValue = resolved.replace(/===/g, "==").replace(/!==/g, "!=");
       }
     }
   }
@@ -741,6 +814,7 @@ function processStatementList(
   paramNames: string[],
   callArgTexts: string[],
   emitLines: string[],
+  paramDefaults: Map<string, string>,
   returnExpr?: { value: string },
 ): void {
   for (const stmt of stmts) {
@@ -750,7 +824,7 @@ function processStatementList(
         const templateArg = call.arguments[0];
         if (templateArg) {
           const resolved = resolveTemplateLiteral(
-            templateArg as ts.Expression, instance, paramNames, callArgTexts,
+            templateArg as ts.Expression, instance, paramNames, callArgTexts, paramDefaults,
           );
           if (resolved !== null) {
             if (resolved.startsWith("return ") && returnExpr) {

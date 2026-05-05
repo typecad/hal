@@ -388,7 +388,9 @@ ${uartPins.map((bus, i) => `      ${i}: { tx: '${bus.tx}', rx: '${bus.rx}' },`).
 
   // ----- Build config ------------------------------------------------------
   build: {
-    arduino: '${buildTarget}',
+    frameworks: {
+      arduino: '${buildTarget}',
+    },
     extraFlags: [],
     defines: {
       F_CPU: '${clockSpeed}UL',

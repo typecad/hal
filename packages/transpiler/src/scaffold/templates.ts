@@ -204,12 +204,10 @@ export const ${className}: BoardDefinition = {
     fpu: false,
   },
 
-  // ----- Build config ------------------------------------------------------
   build: {
-    // Add your framework-specific build targets here, e.g.:
-    //   frameworks: { 'arduino': '${buildTarget}' }   (for Arduino CLI FQBN)
-    //   frameworks: { 'platformio': '...' }            (for PlatformIO)
-    frameworks: {},
+    frameworks: {
+      arduino: '${buildTarget}',
+    },
     extraFlags: [],
     defines: {
       F_CPU: '${clockSpeed}UL',

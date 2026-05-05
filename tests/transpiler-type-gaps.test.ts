@@ -399,8 +399,8 @@ describe('Transpiler Type Gaps', () => {
         const label = 'showcase';
       `);
 
-      expect(result.cpp).toContain('const char* label = "showcase"');
-      expect(result.cpp).not.toContain('const const char*');
+      expect(result.cpp).toContain('const __tc_str_ptr label = "showcase"');
+      expect(result.cpp).not.toContain('const const');
     });
 
     it('emits a C-style array for Arduino readonly array declarations', () => {
@@ -585,7 +585,7 @@ describe('Transpiler Type Gaps', () => {
         }
       `);
 
-      expect(result.cpp).toContain('const char* getName()');
+      expect(result.cpp).toContain('__tc_str_ptr getName()');
       expect(result.cpp).not.toContain('auto getName()');
     });
   });

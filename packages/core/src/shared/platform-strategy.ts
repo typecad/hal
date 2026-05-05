@@ -223,6 +223,12 @@ export interface PlatformExpressionStrategy {
     chain: string[],
     boardConstants?: BoardConstants,
   ): string | undefined;
+  
+  /**
+   * Maps a generic peripheral name (e.g., I2C0, UART0) to a platform-specific C++ name (e.g., Wire, Serial).
+   * Returns undefined if the strategy does not recognize the name.
+   */
+  mapPeripheralIdentifier?(name: string): string | undefined;
 
   /**
    * Resolve the C++ type for a pin field on a board object (e.g., Pins.D2).

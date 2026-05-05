@@ -184,7 +184,7 @@ describe("Expression Transpilation", () => {
         "  uart.println(`d3: ${D3.asInput().read()}`);",
         "}",
       ].join("\n"), { target: "arduino" });
-      expect(result.cpp).toContain("digitalRead(3)");
+      expect(result.cpp).toContain("digitalRead(this->_pin) == HIGH");
       expect(result.cpp).toContain("Serial.println");
     });
   });

@@ -16,3 +16,10 @@ export declare const WDTO_1S: number;
 export declare const WDTO_2S: number;
 export declare const WDTO_4S: number;
 export declare const WDTO_8S: number;
+
+export enum HALStatus {
+  OK = 0,
+  ERROR = 1,
+  TIMEOUT = 2,
+  BUSY = 3
+}

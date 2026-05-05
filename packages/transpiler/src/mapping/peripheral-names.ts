@@ -18,8 +18,18 @@ import type { PlatformStrategy } from "@typehal/core/shared";
  * Delegates to `strategy.mapPeripheralIdentifier()` when available.
  * Returns `undefined` if the strategy does not recognize the name.
  */
-export function mapPeripheralName(name: string, _strategy?: PlatformStrategy): string | undefined {
-  // TODO: Re-implement peripheral name mapping via the new inline evaluators
+export function mapPeripheralName(name: string, strategy?: PlatformStrategy): string | undefined {
+  if (strategy?.mapPeripheralIdentifier) {
+    const mapped = strategy.mapPeripheralIdentifier(name);
+    if (mapped) return mapped;
+  }
+  
+  // Default fallbacks if strategy doesn't provide a mapping
+  const canonical = name.toUpperCase();
+  if (canonical === "UART0") return "Serial";
+  if (canonical === "I2C0") return "Wire";
+  if (canonical === "SPI0") return "SPI";
+  
   return undefined;
 }
 

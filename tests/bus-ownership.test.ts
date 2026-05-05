@@ -27,6 +27,7 @@ describe('Bus Ownership Pattern', () => {
         'Wire.begin()',
         'Wire.beginTransmission(118)',
         'Wire.write(250)',
+        'Wire.endTransmission',
       ]);
     });
   });
@@ -148,7 +149,7 @@ describe('Combined GPIO + Bus Ownership', () => {
     `, { target: 'arduino' });
 
     expectCppContains(result, [
-      'pinMode(13, OUTPUT)',
+      'pinMode(D13, OUTPUT)',
       'Serial.begin(9600)',
     ]);
 

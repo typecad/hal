@@ -16,4 +16,8 @@ export { SerialPort, serialName } from './uart';
 export { EEPROMClass, EEPROM } from './eeprom';
 export { WDTClass, WDT } from './wdt';
 export { ADCClass, ADC } from './adc';
+export { DACClass, DAC } from './dac';
 export { PreferencesClass, Preferences } from './preferences';
+export { HardwareTimer, Timer0, Timer1, Timer2 } from './timer';
+export { FSClass, FS } from './fs';
+export { PowerClass, Power } from './power';

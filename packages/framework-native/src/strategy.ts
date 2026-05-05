@@ -100,11 +100,7 @@ export class NativeStrategy implements PlatformStrategy {
     let v = value;
     // Namespace-qualified calls: Date.now() → Date::now()
     v = v.replace(/Date\.now\(\)/g, 'Date::now()');
-    // Timers: setTimeout/setInterval → polyfill helpers
-    v = v.replace(/setTimeout\(([^,]+),\s*([^)]+)\)/g, '__tc_setTimeout($1, $2)');
-    v = v.replace(/setInterval\(([^,]+),\s*([^)]+)\)/g, '__tc_setInterval($1, $2)');
-    v = v.replace(/clearTimeout\(([^)]+)\)/g, '__tc_clearTimeout($1)');
-    v = v.replace(/clearInterval\(([^)]+)\)/g, '__tc_clearInterval($1)');
+    // Timers are now handled via HAL resolver in timing.ts
     // String method transforms using std::string helpers
     v = v.replace(/(\w+)\.toUpperCase\(\)/g, '__tc_toUpperCase($1)');
     v = v.replace(/(\w+)\.toLowerCase\(\)/g, '__tc_toLowerCase($1)');

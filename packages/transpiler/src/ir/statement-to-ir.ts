@@ -10,7 +10,7 @@ import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 
-import { resolveHALReceiver, processHALMethodBody, halInstances, getCtorIncludes, isKnownHALClass, registerFloatVariable } from "./hal-resolver";
+import { resolveHALReceiver, processHALMethodBody, halInstances, getCtorIncludes, isKnownHALClass, registerFloatVariable, HALInstance } from "./hal-resolver";
 
 /** Convert emit lines to a StatementIR (single emit or block of emits). */
 function emitLinesToIR(
@@ -43,12 +43,20 @@ function tryResolveHALMethod(
   diagnostics: Diagnostic[],
   pointerVars: PointerTracker,
 ): StatementIR | null {
-  if (!ts.isPropertyAccessExpression(call.expression)) return null;
+  let method: string;
+  let instance: HALInstance | null = null;
 
-  const method = call.expression.name.text;
-  const receiver = call.expression.expression;
-
-  const instance = resolveHALReceiver(receiver);
+  if (ts.isPropertyAccessExpression(call.expression)) {
+    method = call.expression.name.text;
+    const receiver = call.expression.expression;
+    instance = resolveHALReceiver(receiver);
+  } else if (ts.isIdentifier(call.expression)) {
+    method = call.expression.text;
+    // Global functions are treated as methods on a pseudo-instance with no class
+    instance = { className: "", fieldValues: new Map() };
+  } else {
+    return null;
+  }
 
   const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
   const argText = (idx: number): string => {
@@ -66,9 +74,11 @@ function tryResolveHALMethod(
     }
   }
 
+  const receiver = ts.isPropertyAccessExpression(call.expression) ? call.expression.expression : null;
+
   // Try device accessor pattern: <bus>.device(addr).method(args)
   // This resolves I2CDevice and SPIDevice calls
-  if (ts.isCallExpression(receiver)) {
+  if (receiver && ts.isCallExpression(receiver)) {
     const deviceCall = receiver;
     if (ts.isPropertyAccessExpression(deviceCall.expression) && deviceCall.expression.name.text === "device") {
       const busReceiver = deviceCall.expression.expression;
@@ -110,7 +120,7 @@ function tryResolveHALMethod(
   // ── Inline fallbacks for namespace methods the HAL resolver can't express ──
 
   // Pulse/Shift/Random — namespace method pass-throughs
-  if (ts.isIdentifier(receiver)) {
+  if (receiver && ts.isIdentifier(receiver)) {
     const ns = receiver.text;
     const resolvePinArg = (idx: number): string => {
       const text = argText(idx);
@@ -2503,7 +2513,7 @@ export function variableStatementToIR(
     activeLocalTypes.set(declaration.name.text, declarationType.resolvedType);
 
     // Track C-string variables for .length → strlen() conversion
-    if (declarationType.resolvedType === "const char*" || declarationType.resolvedType === "char*") {
+    if (declarationType.resolvedType === "const char*" || declarationType.resolvedType === "char*" || declarationType.resolvedType === "__tc_str_ptr") {
       activeStringVars.add(declaration.name.text);
     }
 

@@ -8,7 +8,7 @@ import type { PinCapabilityFlags, ArchitectureIdentifier } from '@typehal/core';
 // Memory spec
 // ---------------------------------------------------------------------------
 
-interface MemorySpec {
+export interface MemorySpec {
   /** Flash / program memory in bytes. */
   flash: number;
   /** SRAM in bytes. */
@@ -106,13 +106,13 @@ export interface PinDefinitions {
 // Peripheral definitions
 // ---------------------------------------------------------------------------
 
-interface PeripheralInstance {
+export interface PeripheralInstance {
   instance: number;
   defaultPins: Record<string, string>;
   alternatePins?: Record<string, string[]>;
 }
 
-interface ADCDefinition {
+export interface ADCDefinition {
   instance: number;
   channels: number;
   /** Resolution in bits. */
@@ -125,14 +125,14 @@ interface ADCDefinition {
   referenceVoltages?: Record<string, number>;
 }
 
-interface DACDefinition {
+export interface DACDefinition {
   instance: number;
   /** Resolution in bits. */
   resolution: number;
   pins: string[];
 }
 
-interface PWMDefinition {
+export interface PWMDefinition {
   channels: number;
   /** Resolution in bits. */
   resolution: number;
@@ -140,26 +140,48 @@ interface PWMDefinition {
   maxFrequency: number;
 }
 
-interface USBDefinition {
+export interface USBDefinition {
   type: 'device' | 'host' | 'otg';
   vid: string;
   pid: string;
 }
 
-interface WiFiDefinition {
+export interface WiFiDefinition {
   type: 'wifi' | 'wifi6';
   supportsStation: boolean;
   supportsAp: boolean;
 }
 
-interface BluetoothDefinition {
+export interface BluetoothDefinition {
   type: 'classic' | 'ble' | 'dual';
   version: string;
 }
 
-interface TouchDefinition {
+export interface TouchDefinition {
   channels: number;
   pins: string[];
+}
+
+export interface TimerDefinition {
+  instance: number;
+  /** Timer type classification. */
+  type: 'general' | 'high_speed' | 'rtc' | 'sys';
+  /** Register width in bits. */
+  bits: 8 | 16 | 32 | 64;
+  /** Counter frequency in Hz (if fixed). */
+  frequency?: number;
+  /** Features supported by this timer. */
+  features?: Array<'pwm' | 'capture' | 'compare' | 'interrupt' | 'dma'>;
+}
+
+export interface DMADefinition {
+  instance: number;
+  /** Number of independent DMA channels. */
+  channels: number;
+  /** Peripherals that can act as DMA triggers/destinations. */
+  peripherals?: string[];
+  /** Max transfer size in bytes per transaction. */
+  maxTransferSize?: number;
 }
 
 export interface PeripheralDefinitions {
@@ -175,13 +197,17 @@ export interface PeripheralDefinitions {
   wifi?: WiFiDefinition;
   bluetooth?: BluetoothDefinition;
   touch?: TouchDefinition;
+  /** Hardware timers available for application use. */
+  timers?: TimerDefinition[];
+  /** DMA controllers available for high-speed transfers. */
+  dma?: DMADefinition[];
 }
 
 // ---------------------------------------------------------------------------
 // Feature flags
 // ---------------------------------------------------------------------------
 
-interface FeatureFlags {
+export interface FeatureFlags {
   multicore: boolean;
   coreCount: number;
   deepSleep: boolean;
@@ -195,7 +221,7 @@ interface FeatureFlags {
 // Build configuration
 // ---------------------------------------------------------------------------
 
-interface BuildConfig {
+export interface BuildConfig {
   /** Framework-specific build identifiers (e.g., { 'my-framework': 'target:arch:board' }). */
   frameworks?: Record<string, string>;
   linkerScript?: string;

@@ -112,17 +112,182 @@ struct __tc_str_ptr {
     bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }
     bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }
 };
-inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }
+inline size_t (strlen)(const __tc_str_ptr& s) { return strlen(s.buf); }
 inline size_t (strlen)(const char* s) { return ::strlen(s); }
+
+class __tc_fn1__Point {
+public:
+  __tc_fn1__Point(int x, int y) {
+    this->x = x;
+    this->y = y;
+  }
+
+  int x;
+  int y;
+
+};
+
+class __tc_fn2__Calculator {
+public:
+  __tc_fn2__Calculator() {
+    this->value = 0;
+  }
+
+  int value;
+
+  int add(int n) {
+    this->value += n;
+    return this->value;
+  }
+
+};
+
+class __tc_fn3__Rect {
+public:
+  __tc_fn3__Rect(int w, int h) {
+    this->width = w;
+    this->height = h;
+  }
+
+  int width;
+  int height;
+
+  int area() {
+    return this->width * this->height;
+  }
+
+};
+
+class __tc_fn4__Animal {
+public:
+  __tc_fn4__Animal(__tc_str_ptr name) {
+    this->name = name;
+  }
+
+  __tc_str_ptr name;
+
+  __tc_str_ptr identify() {
+    return this->name;
+  }
+
+};
+
+class __tc_fn4__Dog : public __tc_fn4__Animal {
+public:
+  __tc_fn4__Dog(__tc_str_ptr name, __tc_str_ptr breed) : __tc_fn4__Animal(name) {
+    this->breed = breed;
+  }
+
+  __tc_str_ptr breed;
+
+};
+
+class __tc_fn5__MathUtils {
+public:
+  static int double_(int n) {
+    return n * 2;
+  }
+
+};
+
+class __tc_fn6__Builder {
+public:
+  __tc_fn6__Builder() {
+    this->value = 0;
+  }
+
+  int value;
+
+  __tc_fn6__Builder* add(int n) {
+    this->value += n;
+    return this;
+  }
+
+};
+
+int __tc_fn1();
+int __tc_fn2();
+int __tc_fn3();
+int __tc_fn4();
+int __tc_fn5();
+int __tc_fn6();
 
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  pinMode(8, OUTPUT);
-  digitalWrite(8, initial);
-  tone(8, 440);
-  noTone(8);
-  tone(8, 1000, 400);
+  Serial.begin(115200);
+  Serial.println("[TC:SUITE_START]");
+  Serial.println("[TC:DESCRIBE:Class basics]");
+  Serial.println("[TC:IT:constructor and fields]");
+  Serial.print("[TC:EXPECT:toBe:7:");
+  Serial.print(__tc_fn1());
+  Serial.println("]");
+  Serial.println("[TC:IT:method invocation]");
+  Serial.print("[TC:EXPECT:toBe:8:");
+  Serial.print(__tc_fn2());
+  Serial.println("]");
+  Serial.println("[TC:IT:method returning value]");
+  Serial.print("[TC:EXPECT:toBe:20:");
+  Serial.print(__tc_fn3());
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Class inheritance]");
+  Serial.println("[TC:IT:extends with super]");
+  Serial.print("[TC:EXPECT:toBe:3:");
+  Serial.print(__tc_fn4());
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:Static members]");
+  Serial.println("[TC:IT:static method]");
+  Serial.print("[TC:EXPECT:toBe:14:");
+  Serial.print(__tc_fn5());
+  Serial.println("]");
+  Serial.println("[TC:DESCRIBE:This keyword]");
+  Serial.println("[TC:IT:this in method chain]");
+  Serial.print("[TC:EXPECT:toBe:10:");
+  Serial.print(__tc_fn6());
+  Serial.println("]");
+  Serial.println("[TC:SUITE_END]");
+  while (true)
+  {
+    delay(1000);
+  }
+}
+
+int __tc_fn1()
+{
+  const __tc_fn1__Point* p = new __tc_fn1__Point(3, 4);
+  return p->x + p->y;
+}
+
+int __tc_fn2()
+{
+  const __tc_fn2__Calculator* calc = new __tc_fn2__Calculator();
+  calc->add(5);
+  calc->add(3);
+  return calc->value;
+}
+
+int __tc_fn3()
+{
+  const __tc_fn3__Rect* r = new __tc_fn3__Rect(4, 5);
+  return r->area();
+}
+
+int __tc_fn4()
+{
+  const __tc_fn4__Dog* d = new __tc_fn4__Dog("Rex", "Shepherd");
+  return strlen(d->identify());
+}
+
+int __tc_fn5()
+{
+  return __tc_fn5__MathUtils::double_(7);
+}
+
+int __tc_fn6()
+{
+  const __tc_fn6__Builder* b = new __tc_fn6__Builder();
+  b->add(3)->add(7);
+  return b->value;
 }
 
 void loop()
