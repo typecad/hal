@@ -352,6 +352,17 @@ export class Profiler {
   }
 
   /**
+   * Get all timing durations as a flat record (for diagnostics integration).
+   */
+  getTimings(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [name, entry] of this.timings) {
+      result[name] = entry.duration;
+    }
+    return result;
+  }
+
+  /**
    * Clear all profiling data
    */
   clear(): void {

@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
 // @typehal/board-arduino-uno — Pin exports
 //
-// Each pin is a Pin instance from @typehal/typehal. The transpiler inlines
+// Each pin is a Pin instance from @typehal/hal. The transpiler inlines
 // method calls (high(), low(), write(), etc.) as direct Arduino C++.
 // Pin numbers match the Arduino digital/analog pin numbering.
 // ---------------------------------------------------------------------------
 
-import { Pin } from '@typehal/typehal';
+import { Pin } from '@typehal/hal';
 
 // ---------------------------------------------------------------------------
 // Digital-only pins (no PWM, no interrupt)

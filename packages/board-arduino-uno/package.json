@@ -20,7 +20,7 @@
   "dependencies": {
     "@typehal/core": "*",
     "@typehal/schema": "*",
-    "@typehal/typehal": "*"
+    "@typehal/hal": "*"
   },
   "license": "MIT",
   "publishConfig": {

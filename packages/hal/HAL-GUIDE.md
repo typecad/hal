@@ -1,6 +1,6 @@
 # Adding HAL Features with emit/include
 
-This guide explains how to add new hardware abstraction features to TypeHAL using the `emit()`, `include()`, and `board()` compile-time functions. The HAL source files live in `packages/typehal/src/` and are read by the transpiler's resolver at build time.
+This guide explains how to add new hardware abstraction features to TypeHAL using the `emit()`, `include()`, and `board()` compile-time functions. The HAL source files live in `packages/hal/src/` and are read by the transpiler's resolver at build time.
 
 ## Core principle
 
@@ -32,7 +32,7 @@ declare function board(path: string): number;
 ## File layout
 
 ```
-packages/typehal/src/
+packages/hal/src/
   emit.ts          — emit() declaration
   include.ts       — include() function
   board.ts         — board() declaration
@@ -517,7 +517,7 @@ Understanding how the resolver processes your HAL source helps debug issues.
 
 ## Checklist for adding a new HAL peripheral
 
-1. Create `packages/typehal/src/your-peripheral.ts` with class(es) using `emit()`/`include()`
+1. Create `packages/hal/src/your-peripheral.ts` with class(es) using `emit()`/`include()`
 2. If the method needs board-specific constants, import `board` from `'./board'` and use `${board("path")}` in emit templates
 3. If the board definition doesn't have the field you need, add it to the board package and `BoardDefinition` type in `packages/schema/src/board/types.ts`
 4. If needed, add phantom C++ constants to `constants.ts` with `export declare const`

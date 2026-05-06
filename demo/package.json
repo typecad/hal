@@ -4,7 +4,7 @@
   "description": "TypeHAL demo project for Arduino Uno (AVR)",
   "private": true,
   "scripts": {
-    "build": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts",
+    "build": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --diagnostics",
     "build:watch": "cd .. && node packages/transpiler/dist/cli.js build --project demo",
     "compile": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile",
     "upload": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --port COM7",
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@typehal/core": "*",
-    "@typehal/typehal": "*",
+    "@typehal/hal": "*",
     "@typehal/board-arduino-uno": "*",
     "@typehal/framework-arduino": "*"
   }

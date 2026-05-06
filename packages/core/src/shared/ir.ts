@@ -103,6 +103,18 @@ export interface PeripheralUsageIR {
   pwmPinsUsed: Set<number>;
   /** Specific ADC channels used */
   adcChannelsUsed: Set<number>;
+  /** Pins configured as output */
+  outputPins: Set<number>;
+  /** Pins configured as input with pullup */
+  inputPullupPins: Set<number>;
+  /** Pins configured as input (no pullup) */
+  inputPins: Set<number>;
+  /** Pins configured as input with pulldown */
+  inputPulldownPins: Set<number>;
+  /** All pin names explicitly referenced */
+  pinsUsed: Set<string>;
+  /** Specific pins used for external interrupts */
+  interruptPinsUsed: Set<number>;
 }
 
 // ---------------------------------------------------------------------------

@@ -45,6 +45,8 @@ export interface PeripheralUsage {
   uartInstancesUsed: Set<number>;
   /** All pin names used (for unsafe pin validation) */
   pinsUsed: Set<string>;
+  /** Specific pins used for external interrupts */
+  interruptPinsUsed: Set<number>;
 }
 
 /**
@@ -69,6 +71,7 @@ export function createEmptyPeripheralUsage(): PeripheralUsage {
     spiInstancesUsed: new Set(),
     uartInstancesUsed: new Set(),
     pinsUsed: new Set(),
+    interruptPinsUsed: new Set(),
   };
 }
 
@@ -212,10 +215,15 @@ function analyzeEmitString(cpp: string, usage: PeripheralUsage): void {
     trackPinNumberAsName(parseInt(digitalWriteMatch[1], 10), usage);
   }
 
-  // attachInterrupt(...) — external interrupt
-  if (cpp.startsWith('attachInterrupt(')) {
-    usage.externalInterrupts = true;
-  }
+    // attachInterrupt(digitalPinToInterrupt(N), ...) — external interrupt
+    const attachIntMatch = cpp.match(/attachInterrupt\(digitalPinToInterrupt\((\d+)\)/);
+    if (attachIntMatch) {
+        const pin = parseInt(attachIntMatch[1], 10);
+        usage.interruptPinsUsed.add(pin);
+        usage.externalInterrupts = true;
+    } else if (cpp.startsWith('attachInterrupt(')) {
+        usage.externalInterrupts = true;
+    }
 
   // Wire.begin(), Wire1.begin() — I2C
   const i2cMatch = cpp.match(/^(Wire)(\d*)\.begin/);
@@ -257,67 +265,40 @@ function analyzeEmitString(cpp: string, usage: PeripheralUsage): void {
 function analyzeCalleeForPeripheralUsage(callee: string, usage: PeripheralUsage): void {
   if (!callee || typeof callee !== 'string') return;
 
-  // Pin method calls: D13.read, D9.write, A0.read, LED.toggle, etc.
-  const pinMethodMatch = callee.match(/^([A-Z]\w*)\.(\w+)$/);
-  if (pinMethodMatch) {
-    const pinName = pinMethodMatch[1];
-    const method = pinMethodMatch[2];
-
-    // Track pin usage by name
-    usage.pinsUsed.add(pinName);
-
-    const pinNum = parsePinNumber(pinName);
-
-    // ADC read: A0.read, A1.read, etc.
-    if (method === 'read' && pinName.startsWith('A')) {
-      usage.adc = true;
+  // Track all pin names found in the callee string (handles chains like D2.asInput().onFalling())
+  const pinNames = callee.match(/\b(D\d+|A\d+|LED|SDA|SCL|MOSI|MISO|SCK|SS|TX|RX)\b/g);
+  if (pinNames) {
+    for (const pinName of pinNames) {
+      usage.pinsUsed.add(pinName);
+      const pinNum = parsePinNumber(pinName);
       if (pinNum !== null) {
-        usage.adcChannelsUsed.add(pinNum - 14);
+        // Track mode based on method presence in the chain
+        if (callee.includes('.asOutput') || callee.includes('.output')) usage.outputPins.add(pinNum);
+        if (callee.includes('.asInputPullUp') || callee.includes('.inputPullUp')) usage.inputPullupPins.add(pinNum);
+        if (callee.includes('.asInput')) usage.inputPins.add(pinNum);
+        if (callee.includes('.inputPullDown')) usage.inputPulldownPins.add(pinNum);
+        if (callee.includes('.pwm')) { usage.pwm = true; usage.pwmPinsUsed.add(pinNum); }
+        if (callee.includes('.tone')) { usage.pwm = true; usage.pwmPinsUsed.add(pinNum); }
+        if (callee.includes('.onFalling') || callee.includes('.onRising') || callee.includes('.onChange') ||
+            callee.includes('.onLow') || callee.includes('.onHigh') || callee.includes('.attachInterrupt')) {
+          usage.externalInterrupts = true;
+          usage.interruptPinsUsed.add(pinNum);
+        }
+        
+        // ADC read: A0.read, etc.
+        if (callee.includes('.read') && pinName.startsWith('A')) {
+          usage.adc = true;
+          usage.adcChannelsUsed.add(pinNum - 14);
+        }
       }
     }
-
-    // Pin mode methods
-    if (method === 'asOutput' || method === 'output') {
-      if (pinNum !== null) usage.outputPins.add(pinNum);
-    }
-    if (method === 'asInput') {
-      if (pinNum !== null) usage.inputPins.add(pinNum);
-    }
-    if (method === 'asInputPullUp' || method === 'inputPullUp') {
-      if (pinNum !== null) usage.inputPullupPins.add(pinNum);
-    }
-    if (method === 'inputPullDown') {
-      if (pinNum !== null) usage.inputPulldownPins.add(pinNum);
-    }
-
-    // PWM
-    if (method === 'pwm') {
-      usage.pwm = true;
-      if (pinNum !== null) usage.pwmPinsUsed.add(pinNum);
-    }
-
-    // Tone (also PWM-related)
-    if (method === 'tone' || method === 'toneFor') {
-      usage.pwm = true;
-      if (pinNum !== null) usage.pwmPinsUsed.add(pinNum);
-    }
-
-    // External interrupts
-    if (method === 'onFalling' || method === 'onRising' || method === 'onChange' ||
-        method === 'onLow' || method === 'onHigh' || method === 'attachInterrupt') {
-      usage.externalInterrupts = true;
-    }
-
-    // Timer0 functions
-    markTimer0UsageFromText(pinName + '.' + method, usage);
   }
 
   // Bus method calls: Wire.begin, Serial.begin, SPI.begin
-  const busMethodMatch = callee.match(/^(Wire|SPI|Serial)(\d*)\.(\w+)$/);
+  const busMethodMatch = callee.match(/\b(Wire|SPI|Serial)(\d*)\.(\w+)\b/);
   if (busMethodMatch) {
     const busType = busMethodMatch[1];
     const instanceStr = busMethodMatch[2];
-    const method = busMethodMatch[3];
     const instance = instanceStr ? parseInt(instanceStr, 10) : 0;
 
     if (busType === 'Wire') {

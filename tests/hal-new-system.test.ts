@@ -2,8 +2,8 @@ import { describe, it } from "vitest";
 import { expectCppContains, expectCppNotContains, transpile, transpileArduino } from "./setup";
 
 // ---------------------------------------------------------------------------
-// The new HAL — mirrors @typehal/typehal package, inlined for testing.
-// This is the exact same code that lives in packages/typehal/src/.
+// The new HAL — mirrors @typehal/hal package, inlined for testing.
+// This is the exact same code that lives in packages/hal/src/.
 // ---------------------------------------------------------------------------
 
 const EMIT_DECL = `declare function emit(text: string): void;`;

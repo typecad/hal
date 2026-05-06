@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // @typehal/board-esp32-devkit — Pin exports
 //
-// Each pin is a Pin instance from @typehal/typehal. The transpiler inlines
+// Each pin is a Pin instance from @typehal/hal. The transpiler inlines
 // method calls as direct Arduino C++.
 //
 // ESP32 DevKit v1 (38-pin) usable GPIOs:
@@ -10,7 +10,7 @@
 //   Flash-connected (unusable): 6-11
 // ---------------------------------------------------------------------------
 
-import { Pin } from '@typehal/typehal';
+import { Pin } from '@typehal/hal';
 
 // ---------------------------------------------------------------------------
 // Output-capable GPIOs

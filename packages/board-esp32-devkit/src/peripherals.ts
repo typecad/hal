@@ -13,7 +13,7 @@
 //   - UART2 (Serial2) on pins D17/D16
 // ---------------------------------------------------------------------------
 
-import { I2CBus, SPIBus, SerialPort, i2cName, spiName, serialName } from '@typehal/typehal';
+import { I2CBus, SPIBus, SerialPort, i2cName, spiName, serialName } from '@typehal/hal';
 
 /** I2C bus 0 (Wire library, pins D21=SDA / D22=SCL). */
 export const I2C0 = new I2CBus(i2cName(0));

@@ -88,6 +88,8 @@ export interface TranspileOptions {
    * (default: false)
    */
   force?: boolean;
+  /** Generate diagnostics.md and diagnostics.json reports (default: false) */
+  diagnostics?: boolean;
 }
 
 export interface LibraryDefinitionCondition {
@@ -159,6 +161,8 @@ export interface CommandLineOptions {
   expect?: boolean;
   /** Optional test file path filter for --expect */
   expectFile?: string;
+  /** Generate diagnostics.md and diagnostics.json reports */
+  diagnostics?: boolean;
 }
 
 export interface GenerateLibdefOptions {

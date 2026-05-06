@@ -10,7 +10,7 @@
 //   - UART0 (Serial) on pins D0/D1 + USB
 // ---------------------------------------------------------------------------
 
-import { I2CBus, SPIBus, SerialPort, i2cName, spiName, serialName } from '@typehal/typehal';
+import { I2CBus, SPIBus, SerialPort, i2cName, spiName, serialName } from '@typehal/hal';
 
 /** I2C bus 0 (Wire library, pins A4=SDA / A5=SCL). */
 export const I2C0 = new I2CBus(i2cName(0));

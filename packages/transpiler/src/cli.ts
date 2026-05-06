@@ -2,6 +2,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli";
+import type { GeneratedOutputs } from "./types";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
 import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
@@ -375,6 +376,7 @@ async function main(): Promise<void> {
           debug: options.debug,
           force: options.force,
           skipTypeCheck: options.skipTypeCheck,
+          diagnostics: options.diagnostics,
         });
 
         printDiagnostics(result.diagnostics);
@@ -460,6 +462,7 @@ async function main(): Promise<void> {
               debug: options.debug,
               force: true, // Always force in watch mode to bypass stale cache
               skipTypeCheck: options.skipTypeCheck,
+              diagnostics: options.diagnostics,
             });
 
             printDiagnostics(rebuildResult.diagnostics);
@@ -515,7 +518,7 @@ async function main(): Promise<void> {
     }
 
     // ── One-shot mode (no --watch) ────────────────────────────────────────
-    let result: { headerPath?: string; sourcePath: string; headerMapPath?: string; sourceMapPath?: string; diagnostics: Array<{ severity: string; message: string; line?: number; column?: number; code?: string }> };
+    let result: GeneratedOutputs;
 
     if (options.noTranspile) {
       const inputBasename = path.basename(options.inputFile!, path.extname(options.inputFile!));
@@ -543,6 +546,7 @@ async function main(): Promise<void> {
         debug: options.debug,
         force: options.force,
         skipTypeCheck: options.skipTypeCheck,
+        diagnostics: options.diagnostics,
       });
 
       printDiagnostics(result.diagnostics);

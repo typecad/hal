@@ -282,7 +282,7 @@ export {
 } from './pins';
 
 // Re-export constants from typehal
-export { HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP } from '@typehal/typehal';
+export { HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP } from '@typehal/hal';
 
 // Peripheral bus instances
 export { I2C0, SPI0, UART0 } from './peripherals';
@@ -312,7 +312,7 @@ export { noInterrupts, interrupts, attachInterrupt, detachInterrupt } from './in
 export { Board } from './board';
 
 // ADC singleton
-export { ADC } from '@typehal/typehal';
+export { ADC } from '@typehal/hal';
 
 // Async singleton
-export { AsyncClass, Async } from '@typehal/typehal';
+export { AsyncClass, Async } from '@typehal/hal';

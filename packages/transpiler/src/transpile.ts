@@ -150,6 +150,7 @@ function tryGenerateLibDecl(modulePath: string, file: string): string | undefine
   return undefined;
 }
 import { initProfiler, getProfiler } from "./profiler";
+import { buildDiagnosticsReport, writeDiagnosticsReport } from "./diagnostics/diagnostics-report";
 import {
   ResolvedNpmPackage,
   NativeCppModule,
@@ -553,12 +554,12 @@ function applyTreeShaking(
   programIR: ProgramIR,
   target: TranspileOptions["target"],
   treeShakingOptions?: TreeShakingOptions
-): ProgramIR {
+): { programIR: ProgramIR; removedSymbols: string[] } {
   // Default to enabled - tree-shaking removes unreachable code
   const enabled = treeShakingOptions?.enabled !== false;
 
   if (!enabled) {
-    return programIR;
+    return { programIR, removedSymbols: [] };
   }
 
   const profiler = getProfiler();
@@ -605,7 +606,19 @@ function applyTreeShaking(
   });
   profiler.endTimer("tree-shake:filter");
 
-  return result;
+  // Collect removed symbols for the report
+  const removedSymbols: string[] = [];
+  for (const fn of programIR.functions) {
+    if (!reachability.reachableFunctions.has(fn.originalName)) removedSymbols.push(fn.originalName);
+  }
+  for (const cls of programIR.classes) {
+    if (!reachability.reachableClasses.has(cls.name)) removedSymbols.push(cls.name);
+  }
+  for (const e of programIR.enums) {
+    if (!reachability.reachableEnums.has(e.name)) removedSymbols.push(e.name);
+  }
+
+  return { programIR: result, removedSymbols };
 }
 
 import type { PlatformStrategy } from "@typehal/core/shared";
@@ -661,8 +674,9 @@ function loadPlatformStrategy(
 export async function transpileFile(options: TranspileOptions): Promise<GeneratedOutputs> {
   // Initialize profiler (disabled by default - internal use only)
   const profiler = initProfiler({
-    enabled: false,
+    enabled: options.diagnostics === true,
     trackMemory: false,
+    threshold: 0, // Ensure even fast phases are recorded for the report
   });
 
   profiler.startSession();
@@ -746,6 +760,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   let entryOutputs: GeneratedOutputs | undefined;
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
+  const allRemovedSymbols: string[] = [];
 
   // ── Pass 1: build + tree-shake every IR and pre-compute polyfills ─────────
   // We need to process ALL files before emitting any of them so that
@@ -902,11 +917,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     const exportedEntryPoints = detectExportedEntryPoints(rawIR, importedByOthers);
 
     profiler.startTimer(`tree-shake:${fileBasename}`);
-    let programIR: ProgramIR;
+    let shakingResult: { programIR: ProgramIR; removedSymbols: string[] };
     if (filePath === entryFile) {
-      programIR = applyTreeShaking(rawIR, options.target, {
+      shakingResult = applyTreeShaking(rawIR, options.target, {
         ...options.treeShaking,
-        keepUnusedVariables: true,
+        keepUnusedVariables: options.treeShaking?.keepUnusedVariables ?? false,
         // Merge exported entry points so cross-module imports aren't shaken out
         entryPoints: [
           ...(options.treeShaking?.entryPoints ?? []),
@@ -914,7 +929,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         ],
       });
     } else {
-      programIR = applyTreeShaking(rawIR, options.target, {
+      shakingResult = applyTreeShaking(rawIR, options.target, {
         enabled: options.treeShaking?.enabled ?? true,
         keepUnusedEnums: true,
         keepUnusedClasses: options.treeShaking?.keepUnusedClasses,
@@ -928,6 +943,8 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         ],
       });
     }
+    const programIR = shakingResult.programIR;
+    allRemovedSymbols.push(...shakingResult.removedSymbols);
     profiler.endTimer(`tree-shake:${fileBasename}`);
 
     preBuiltArray.push({ filePath, programIR, npmPackage });
@@ -1090,6 +1107,34 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   }
   profiler.endTimer("post:save-cache");
   // Profiler session ends (profiling disabled - no report generation)
+
+  // ── Generate diagnostics report if enabled ──────────────────────────────
+  if (options.diagnostics) {
+    try {
+      const entryPreBuilt = preBuilt.get(entryFile);
+      const report = buildDiagnosticsReport({
+        entryFile,
+        program: entryPreBuilt?.programIR ?? null,
+        diagnostics,
+        asyncTaskNames: entryOutputs.asyncTaskNames ?? [],
+        usesTimers: entryOutputs.usesTimers ?? false,
+        target: options.target,
+        boardPackage: options.boardPackage,
+        frameworkPackage: options.frameworkPackage,
+        outDir,
+        outputFile: entryOutputs.sourcePath,
+        preBuilt,
+        profiler,
+        removedSymbols: allRemovedSymbols,
+      });
+      writeDiagnosticsReport(report, entryPreBuilt?.programIR ?? null, outDir);
+    } catch (e) {
+      // Diagnostics report generation is best-effort; don't fail the build
+      if (options.debug) {
+        logDebug(`Diagnostics report generation failed: ${e instanceof Error ? e.message : String(e)}`, true);
+      }
+    }
+  }
 
   return {
     ...entryOutputs,

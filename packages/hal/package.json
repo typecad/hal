@@ -1,5 +1,5 @@
 {
-  "name": "@typehal/typehal",
+  "name": "@typehal/hal",
   "version": "0.1.0",
   "description": "TypeHAL hardware abstraction layer — GPIO, I2C, SPI, UART as regular TypeScript",
   "type": "commonjs",

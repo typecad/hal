@@ -99,6 +99,9 @@ export function printHelp(): void {
   console.log(`  --entry-point <name>     Add a custom entry point symbol (repeatable)`);
   console.log(`                           Default entry points determined by the framework strategy.`);
   console.log();
+  console.log(`  --diagnostics           Generate diagnostics.md and diagnostics.json reports`);
+  console.log(`                          Includes IR graph, heap analysis, and task analysis`);
+  console.log();
   console.log(`  --help, -h              Show this help message`);
   console.log();
   console.log(chalk.cyan(`PROJECT SCAFFOLDING`));
@@ -250,6 +253,7 @@ function parsePipelineCommand(
   const noTranspile = readBooleanFlag(argv, ["--no-transpile"]);
   const force = readBooleanFlag(argv, ["--force"]);
   const skipTypeCheck = readBooleanFlag(argv, ["--skip-type-check"]);
+  const diagnostics = readBooleanFlag(argv, ["--diagnostics"]);
   const expect = readBooleanFlag(argv, ["--expect"]);
   const expectArg = readFlag(argv, "--expect");
   const expectFile = expect && expectArg && !expectArg.startsWith("-") ? expectArg : undefined;
@@ -314,6 +318,7 @@ function parsePipelineCommand(
     debug,
     force,
     skipTypeCheck,
+    diagnostics,
     expect,
     expectFile,
     frameworkPackage: frameworkFlag,

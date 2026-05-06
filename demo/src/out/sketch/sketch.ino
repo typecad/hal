@@ -139,9 +139,15 @@ int buzzerPhase = 0;
 int lastBuzzerTime = 0;
 int buttonState = 0;
 int edgeTime = 0;
-int edgeTimeout = 0;
+
+void myIsr();
 
 // ── Entry point ───────────────────────────────────────────────────────────
+void myIsr()
+{
+  digitalWrite(13, digitalRead(13) == LOW ? HIGH : LOW);
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -152,7 +158,11 @@ void setup()
   digitalWrite(9, false);
   Serial.println("== TypeHAL Arduino Uno Demo ==");
   Serial.println("Board: Arduino Uno (ATmega328P)");
-  Serial.println("Features: LED blink, button input, buzzer tone");
+  Serial.println("Features: LED blink, button input, buzzer tone, D2 interrupt");
+  {
+    pinMode(2, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(2), myIsr, FALLING);
+  }
 }
 
 void loop()

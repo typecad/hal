@@ -16,7 +16,7 @@ packages/
   framework-native/    Native (non-hardware) framework for dev/test
   cli/                 CLI entry point — thin wrappers; heavy logic is in transpiler/framework-*
   core/                Shared runtime types (@typehal public API)
-  typehal/             Hardware Abstraction Layer (emit/include/board directives)
+  typehal/             Hardware Abstraction Layer — now packages/hal (emit/include/board directives)
   board-arduino-uno/   Board pin/peripheral data for Arduino Uno
   board-esp32-devkit/  Board data for ESP32 DevKit
   schema/              Config file schema
@@ -67,19 +67,19 @@ docs/                  Architecture and language reference docs
 
 ```bash
 # Run all tests
-pnpm vitest run
+npm vitest run
 
 # Run a specific test file
-pnpm vitest run tests/expressions.test.ts --reporter=verbose
+npm vitest run tests/expressions.test.ts --reporter=verbose
 
 # Rebuild packages (required before CLI picks up source changes)
 # Correct build order for transpiler changes:
-pnpm --filter @typehal/core build
-pnpm --filter @typehal/framework-arduino build
-pnpm --filter @typehal/transpiler build
+npm --filter @typehal/core build
+npm --filter @typehal/framework-arduino build
+npm --filter @typehal/transpiler build
 
 # Type-check the whole repo
-pnpm tsc -b
+npm tsc -b
 ```
 
 Tests live in `tests/` (transpiler) and `tests/packages/` (per-package).

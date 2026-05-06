@@ -6,7 +6,7 @@
 // Uses cooperative polling pattern compatible with Arduino's loop().
 // ---------------------------------------------------------------------------
 
-import { D4, D9, LED, UART0, millis } from '@typehal';
+import { D2, D4, D9, LED, UART0, millis } from '@typehal';
 
 // ── Hardware Setup ─────────────────────────────────────────────────────────
 
@@ -29,12 +29,21 @@ let lastBuzzerTime = 0;
 let buttonState = 0;
 let edgeTime = 0;
 let edgeTimeout = 0;
+let unused_variable;
 
 // ── Entry point ───────────────────────────────────────────────────────────
+function myIsr(): void {
+  // Rapid toggle in ISR to show it's triggered
+  led.toggle();
+}
+
 function setup(): void {
   port.println("=== TypeHAL Arduino Uno Demo ===");
   port.println("Board: Arduino Uno (ATmega328P)");
-  port.println("Features: LED blink, button input, buzzer tone");
+  port.println("Features: LED blink, button input, buzzer tone, D2 interrupt");
+
+  // Attach interrupt to D2 (standard interrupt pin on Uno)
+  D2.asInputPullUp().onFalling(myIsr);
 }
 
 function loop(): void {

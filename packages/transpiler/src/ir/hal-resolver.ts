@@ -52,17 +52,17 @@ export function isHALSingleton(name: string): boolean {
 
 /** Resolve the HAL source directory. */
 function resolveHALSourceDir(): string {
-  const monoPath = path.resolve(__dirname, "..", "..", "..", "typehal", "src");
+  const monoPath = path.resolve(__dirname, "..", "..", "..", "hal", "src");
   let res = "";
   if (fs.existsSync(path.join(monoPath, "gpio.ts"))) {
     res = monoPath;
   } else {
     try {
-      const pkgDir = path.dirname(require.resolve("@typehal/typehal/package.json"));
+      const pkgDir = path.dirname(require.resolve("@typehal/hal/package.json"));
       res = path.join(pkgDir, "src");
     } catch {}
   }
-  if (!res) throw new Error("Could not resolve @typehal/typehal/src/");
+  if (!res) throw new Error("Could not resolve @typehal/hal/src/");
   return res;
 }
 
