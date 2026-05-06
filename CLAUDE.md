@@ -74,9 +74,9 @@ npm vitest run tests/expressions.test.ts --reporter=verbose
 
 # Rebuild packages (required before CLI picks up source changes)
 # Correct build order for transpiler changes:
-npm --filter @typehal/core build
-npm --filter @typehal/framework-arduino build
-npm --filter @typehal/transpiler build
+npm run build --workspace @typehal/core
+npm run build --workspace @typehal/framework-arduino
+npm run build --workspace @typehal/transpiler
 
 # Type-check the whole repo
 npm tsc -b
@@ -124,6 +124,6 @@ Cache lives at `<source-root>/.typehal-cache.json`. It includes a toolchain fing
 ## What NOT to touch
 
 - `dist/` directories — generated build output, never edit directly.
-- `node_modules/` — managed by pnpm.
+- `node_modules/` — managed by npm.
 - Root `tsconfig.json` — solution-style, `"files": []` intentional.
 - `.typehal-cache.json` files — auto-generated cache, delete to bust.

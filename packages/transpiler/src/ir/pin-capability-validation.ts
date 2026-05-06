@@ -9,125 +9,204 @@
 import type { ProgramIR, ExpressionIR, StatementIR } from '@typehal/core';
 import type { Diagnostic } from '../types';
 
+/** Compile-time exhaustiveness check for switch statements on IR kinds. */
+function assertNever(x: never): never {
+  throw new Error(`Unhandled IR kind: ${JSON.stringify(x)}`);
+}
+
 function scanExpression(expr: ExpressionIR, parentLine: number | undefined, parentCol: number | undefined, diagnostics: Diagnostic[]): void {
   if (!expr || typeof expr !== 'object') return;
 
-  if (expr.kind === 'binary') {
-    const bin = expr as any;
-    scanExpression(bin.left, parentLine, parentCol, diagnostics);
-    scanExpression(bin.right, parentLine, parentCol, diagnostics);
-  }
-  if (expr.kind === 'ternary') {
-    const t = expr as any;
-    scanExpression(t.condition, parentLine, parentCol, diagnostics);
-    scanExpression(t.consequent, parentLine, parentCol, diagnostics);
-    scanExpression(t.alternate, parentLine, parentCol, diagnostics);
-  }
-  if (expr.kind === 'property-access') {
-    scanExpression((expr as any).object, parentLine, parentCol, diagnostics);
-  }
-  if (expr.kind === 'unary') {
-    scanExpression((expr as any).operand, parentLine, parentCol, diagnostics);
-  }
-  if (expr.kind === 'paren') {
-    scanExpression((expr as any).inner, parentLine, parentCol, diagnostics);
+  switch (expr.kind) {
+    case 'binary': {
+      scanExpression(expr.left, parentLine, parentCol, diagnostics);
+      scanExpression(expr.right, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'ternary': {
+      scanExpression(expr.condition, parentLine, parentCol, diagnostics);
+      scanExpression(expr.whenTrue, parentLine, parentCol, diagnostics);
+      scanExpression(expr.whenFalse, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'property-access': {
+      scanExpression(expr.object, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'unary': {
+      scanExpression(expr.operand, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'paren': {
+      scanExpression(expr.inner, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'array': {
+      for (const el of expr.elements) {
+        scanExpression(el, parentLine, parentCol, diagnostics);
+      }
+      break;
+    }
+    case 'object': {
+      for (const field of expr.fields) {
+        scanExpression(field.value, parentLine, parentCol, diagnostics);
+      }
+      break;
+    }
+    case 'callback': {
+      for (const s of expr.statements) {
+        scanStatement(s, diagnostics);
+      }
+      break;
+    }
+    case 'lambda': {
+      for (const s of expr.body) {
+        scanStatement(s, diagnostics);
+      }
+      break;
+    }
+    case 'method-call': {
+      for (const arg of expr.args) {
+        scanExpression(arg, parentLine, parentCol, diagnostics);
+      }
+      break;
+    }
+    case 'element-access': {
+      scanExpression(expr.object, parentLine, parentCol, diagnostics);
+      scanExpression(expr.index, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'string_concat': {
+      for (const part of expr.parts) {
+        scanExpression(part, parentLine, parentCol, diagnostics);
+      }
+      break;
+    }
+    case 'template_string': {
+      scanExpression(expr.expression, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'spread_array': {
+      scanExpression(expr.spreadExpr, parentLine, parentCol, diagnostics);
+      for (const el of expr.additionalElements) {
+        scanExpression(el, parentLine, parentCol, diagnostics);
+      }
+      break;
+    }
+    case 'instanceof': {
+      scanExpression(expr.object, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'await': {
+      scanExpression(expr.value, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'number':
+    case 'string':
+    case 'boolean':
+    case 'identifier':
+    case 'raw':
+      break;
+    default:
+      assertNever(expr);
   }
 }
 
 function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   if (!stmt || typeof stmt !== 'object') return;
 
-  const line = (stmt as any).sourceSpan?.startLine as number | undefined;
-  const col = (stmt as any).sourceSpan?.startColumn as number | undefined;
+  const line = stmt.sourceSpan?.startLine as number | undefined;
+  const col = stmt.sourceSpan?.startColumn as number | undefined;
 
   switch (stmt.kind) {
   case 'var_decl': {
-    const v = stmt as any;
-    if (v.initializer) scanExpression(v.initializer, line, col, diagnostics);
+    if (stmt.initializer) scanExpression(stmt.initializer, line, col, diagnostics);
     break;
   }
 
   case 'assign': {
-    const a = stmt as any;
-    if (a.value) scanExpression(a.value, line, col, diagnostics);
+    if (stmt.value) scanExpression(stmt.value, line, col, diagnostics);
     break;
   }
 
   case 'if': {
-    const i = stmt as any;
-    if (i.condition) scanExpression(i.condition, line, col, diagnostics);
-    if (i.thenBranch) for (const s of i.thenBranch) scanStatement(s, diagnostics);
-    if (i.elseBranch) for (const s of i.elseBranch) scanStatement(s, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, line, col, diagnostics);
+    for (const s of stmt.thenBranch) scanStatement(s, diagnostics);
+    if (stmt.elseBranch) for (const s of stmt.elseBranch) scanStatement(s, diagnostics);
     break;
   }
 
-  case 'while': {
-    const w = stmt as any;
-    if (w.condition) scanExpression(w.condition, line, col, diagnostics);
-    if (w.body) for (const s of w.body) scanStatement(s, diagnostics);
-    break;
-  }
-
+  case 'while':
   case 'do_while': {
-    const dw = stmt as any;
-    if (dw.condition) scanExpression(dw.condition, line, col, diagnostics);
-    if (dw.body) for (const s of dw.body) scanStatement(s, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, line, col, diagnostics);
+    for (const s of stmt.body) scanStatement(s, diagnostics);
     break;
   }
 
   case 'for': {
-    const f = stmt as any;
-    if (f.condition) scanExpression(f.condition, line, col, diagnostics);
-    if (f.body) for (const s of f.body) scanStatement(s, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, line, col, diagnostics);
+    if (stmt.initializer) scanStatement(stmt.initializer, diagnostics);
+    if (stmt.increment) scanStatement(stmt.increment, diagnostics);
+    for (const s of stmt.body) scanStatement(s, diagnostics);
     break;
   }
 
   case 'for_of':
   case 'for_in': {
-    const fi = stmt as any;
-    if (fi.body) for (const s of fi.body) scanStatement(s, diagnostics);
+    if (stmt.variable) scanStatement(stmt.variable, diagnostics);
+    for (const s of stmt.body) scanStatement(s, diagnostics);
     break;
   }
 
   case 'return': {
-    const r = stmt as any;
-    if (r.value) scanExpression(r.value, line, col, diagnostics);
+    if (stmt.value) scanExpression(stmt.value, line, col, diagnostics);
     break;
   }
 
   case 'call': {
-    const c = stmt as any;
-    if (c.args) {
-      for (const arg of c.args) {
-        scanExpression(arg, line, col, diagnostics);
-      }
+    for (const arg of stmt.args) {
+      scanExpression(arg, line, col, diagnostics);
     }
     break;
   }
 
   case 'switch': {
-    const sw = stmt as any;
-    if (sw.discriminant) scanExpression(sw.discriminant, line, col, diagnostics);
-    if (sw.cases) for (const c of sw.cases) {
-      if (c.statements) for (const s of c.statements) scanStatement(s, diagnostics);
+    if (stmt.expression) scanExpression(stmt.expression, line, col, diagnostics);
+    for (const c of stmt.cases) {
+      for (const s of c.body) scanStatement(s, diagnostics);
     }
     break;
   }
 
   case 'block': {
-    const b = stmt as any;
-    if (b.statements) for (const s of b.statements) scanStatement(s, diagnostics);
+    for (const s of stmt.body) scanStatement(s, diagnostics);
     break;
   }
 
-  case 'update': {
-    const u = stmt as any;
-    if (u.value) scanExpression(u.value, line, col, diagnostics);
+  case 'labeled': {
+    for (const s of stmt.body) scanStatement(s, diagnostics);
     break;
   }
+
+  case 'try': {
+    for (const s of stmt.tryBlock) scanStatement(s, diagnostics);
+    if (stmt.catchBlock) for (const s of stmt.catchBlock) scanStatement(s, diagnostics);
+    if (stmt.finallyBlock) for (const s of stmt.finallyBlock) scanStatement(s, diagnostics);
+    break;
+  }
+
+  case 'throw': {
+    if (stmt.value) scanExpression(stmt.value, line, col, diagnostics);
+    break;
+  }
+
+  case 'update':
+  case 'break':
+  case 'continue':
+    break;
 
   default:
-    break;
+    assertNever(stmt);
   }
 }
 

@@ -10,6 +10,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
+import { safeValidateConfig } from "./config-schema";
 
 /** The filename we search for when walking up directories. */
 const CONFIG_FILENAME = "typehal.config.ts";
@@ -364,6 +365,34 @@ export function parseConfigFile(configPath: string): ResolvedTypehalConfig | und
 
   const nativeSection = extractFrameworkSection(configObject, "native");
   if (nativeSection) resolved.frameworkConfig = nativeSection;
+
+  // Validate the parsed config against the Zod schema.
+  // Reconstruct a structured object from the flat-map extraction for validation.
+  const structuredForValidation: Record<string, unknown> = {};
+  if (resolved.target) structuredForValidation.target = resolved.target;
+  if (resolved.board) structuredForValidation.board = resolved.board;
+  if (resolved.entry) structuredForValidation.entry = resolved.entry;
+  if (resolved.framework) structuredForValidation.framework = resolved.framework;
+  if (resolved.outputFramework || resolved.outputOptimize || resolved.outputOutDir || resolved.outputExtraFlags || resolved.outputDefines) {
+    structuredForValidation.output = {
+      ...(resolved.outputFramework ? { framework: resolved.outputFramework } : {}),
+      ...(resolved.outputOptimize ? { optimize: resolved.outputOptimize } : {}),
+      ...(resolved.outputOutDir ? { outDir: resolved.outputOutDir } : {}),
+      ...(resolved.outputExtraFlags ? { extraFlags: resolved.outputExtraFlags } : {}),
+      ...(resolved.outputDefines ? { defines: resolved.outputDefines } : {}),
+    };
+  }
+  if (resolved.console) structuredForValidation.console = resolved.console;
+  if (resolved.buildTarget) {
+    structuredForValidation.frameworkData = { buildTarget: resolved.buildTarget };
+  }
+
+  const validation = safeValidateConfig(structuredForValidation);
+  if (!validation.success) {
+    for (const error of validation.errors) {
+      console.error(`[typehal] Config validation error in ${configPath}: ${error}`);
+    }
+  }
 
   return resolved;
 }

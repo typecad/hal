@@ -162,7 +162,6 @@ export class ArduinoStrategy implements PlatformStrategy {
         "            }",
         "        }",
         "        return value;",
-        "        return value;",
         "    }",
         "    void fill(bool value) const {",
         "        for (int i = 0; i < count; i++) {",
