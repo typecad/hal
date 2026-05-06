@@ -73,6 +73,17 @@ struct __tc_Timing {
     unsigned long micros() { return ::micros(); }
     void delay(unsigned long ms) { ::delay(ms); }
     void delayMicroseconds(unsigned int us) { ::delayMicroseconds(us); }
+    unsigned long freeHeap() {
+#if defined(ESP32)
+        return ESP.getFreeHeap();
+#elif defined(__AVR__)
+        extern int __heap_start, *__brkval;
+        int v;
+        return (unsigned long) &v - (__brkval == 0 ? (unsigned long) &__heap_start : (unsigned long) __brkval);
+#else
+        return 0;
+#endif
+    }
 } Timing;
 
 #if defined(__AVR__)
@@ -97,23 +108,28 @@ struct __tc_WDT {
 } WDT;
 #endif
 
+#ifndef TYPEHAL_STR_BUF_SIZE
+#define TYPEHAL_STR_BUF_SIZE 64
+#endif
+
 // String helpers
 struct __tc_str_ptr {
-    char buf[32];
-    __tc_str_ptr(const char* s = "") { strncpy(buf, s, 31); buf[31] = 0; }
-    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, 32); }
-    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, 32); return *this; }
-    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, 31); buf[31] = 0; return *this; }
+    char buf[TYPEHAL_STR_BUF_SIZE];
+    __tc_str_ptr(const char* s = "") { strncpy(buf, s, TYPEHAL_STR_BUF_SIZE - 1); buf[TYPEHAL_STR_BUF_SIZE - 1] = 0; }
+    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, TYPEHAL_STR_BUF_SIZE); }
+    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, TYPEHAL_STR_BUF_SIZE); return *this; }
+    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, TYPEHAL_STR_BUF_SIZE - 1); buf[TYPEHAL_STR_BUF_SIZE - 1] = 0; return *this; }
     const char* c_str() const { return buf; }
     size_t size() const { return strlen(buf); }
     size_t length() const { return strlen(buf); }
+    int indexOf(const char* s) const { const char* p = strstr(buf, s); return p ? p - buf : -1; }
     operator const char*() const { return buf; }
     bool operator==(const char* o) const { return strcmp(buf, o) == 0; }
     bool operator!=(const char* o) const { return strcmp(buf, o) != 0; }
     bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }
     bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }
 };
-inline size_t (strlen)(const __tc_str_ptr& s) { return strlen(s.buf); }
+inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }
 inline size_t (strlen)(const char* s) { return ::strlen(s); }
 
 // ── State machine state ───────────────────────────────────────────────────

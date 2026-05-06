@@ -53,7 +53,8 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return `${expr.operator}${renderExprAsText(expr.operand)}`;
     case "property-access": {
       const objText = renderExprAsText(expr.object);
-      const sep = (expr.object.kind === "raw" && expr.object.value === "this") ? "->" : ".";
+      const isPointer = (expr as any).isPointer || (expr.object.kind === "raw" && expr.object.value === "this");
+      const sep = isPointer ? "->" : ".";
       return `${objText}${sep}${expr.property}`;
     }
     case "paren":

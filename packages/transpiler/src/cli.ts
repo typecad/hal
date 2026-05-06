@@ -378,6 +378,7 @@ async function main(): Promise<void> {
         });
 
         printDiagnostics(result.diagnostics);
+        ui.printTasks(result.asyncTaskNames ?? [], result.usesTimers ?? false);
 
         if (result.diagnostics.length === 0) {
           ui.printSuccess();
@@ -401,13 +402,17 @@ async function main(): Promise<void> {
             const compileResult = compileSource(watchOpts);
             printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath);
 
-            if (compileResult.success && options.upload && options.port) {
-              ui.printUploading(options.port);
-              const uploadResult = uploadFirmware(watchOpts);
-              if (uploadResult.output) console.log(uploadResult.output);
-              if (uploadResult.success) ui.printSuccess();
-            } else if (compileResult.success) {
-              ui.printSuccess();
+            if (compileResult.success) {
+              if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
+              
+              if (options.upload && options.port) {
+                ui.printUploading(options.port);
+                const uploadResult = uploadFirmware(watchOpts);
+                if (uploadResult.output) console.log(uploadResult.output);
+                if (uploadResult.success) ui.printSuccess();
+              } else {
+                ui.printSuccess();
+              }
             }
           }
         }
@@ -458,6 +463,7 @@ async function main(): Promise<void> {
             });
 
             printDiagnostics(rebuildResult.diagnostics);
+            ui.printTasks(rebuildResult.asyncTaskNames ?? [], rebuildResult.usesTimers ?? false);
 
             if (rebuildResult.diagnostics.length > 0) {
               // Errors shown via printDiagnostics — skip compile/upload
@@ -481,13 +487,17 @@ async function main(): Promise<void> {
                 const compileResult = compileSource(rebuildOpts);
                 printMappedCompileErrors(compileResult, rebuildResult.sourceMapPath, rebuildResult.sourcePath);
 
-                if (compileResult.success && options.upload && options.port) {
-                  ui.printUploading(options.port);
-                  const uploadResult = uploadFirmware(rebuildOpts);
-                  if (uploadResult.output) console.log(uploadResult.output);
-                  if (uploadResult.success) ui.printSuccess();
-                } else if (compileResult.success) {
-                  ui.printSuccess();
+                if (compileResult.success) {
+                  if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
+
+                  if (options.upload && options.port) {
+                    ui.printUploading(options.port);
+                    const uploadResult = uploadFirmware(rebuildOpts);
+                    if (uploadResult.output) console.log(uploadResult.output);
+                    if (uploadResult.success) ui.printSuccess();
+                  } else {
+                    ui.printSuccess();
+                  }
                 }
               }
             }
@@ -536,6 +546,7 @@ async function main(): Promise<void> {
       });
 
       printDiagnostics(result.diagnostics);
+      ui.printTasks(result.asyncTaskNames ?? [], result.usesTimers ?? false);
     }
 
     if (!options.compile) {
@@ -576,13 +587,14 @@ async function main(): Promise<void> {
       return;
     }
     printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath);
-
     if (!compileResult.success) {
       console.error(compileResult.output);
       process.exitCode = 1;
       return;
     }
 
+    if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
+      
     if (!options.upload) {
       ui.printSuccess();
       return;

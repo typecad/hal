@@ -78,6 +78,8 @@ export const activeNamespaceNames = new Set<string>();
 export const topLevelClassNames = new Set<string>();
 
 export const activeEnumNames = new Set<string>();
+export const activePinUsage = new Map<string, { pinNumber: string; source: string }>();
+export const activePeripheralUsage = new Map<string, { instance: number; source: string }>();
 
 // Board-specific peripheral and pin alias mappings (populated from BoardConstants)
 export const peripheralAliasMap = new Map<string, string>();
@@ -151,6 +153,9 @@ export function setCurrentBoardConstants(v: BoardConstants | undefined) {
 // Maps variable name → inferred C++ type string (e.g., "int", "std::string").
 export const activeLocalTypes = new Map<string, string>();
 
+// Module-level global variable type tracker (persists across function boundaries).
+export const activeGlobalTypes = new Map<string, string>();
+
 export function resetBuildState(): void {
   hoistedNestedFunctions.length = 0;
   hoistedNestedClasses.length = 0;
@@ -164,8 +169,11 @@ export function resetBuildState(): void {
   topLevelClassNames.clear();
   activeEnumNames.clear();
   topLevelClasses.clear();
+  activeGlobalTypes.clear();
   peripheralAliasMap.clear();
   pinAliasMap.clear();
+  activePinUsage.clear();
+  activePeripheralUsage.clear();
   requiredIncludes.clear();
   registeredCallbacks.length = 0;
   _currentBoardConstants = undefined;

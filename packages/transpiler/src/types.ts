@@ -172,6 +172,8 @@ export interface GeneratedOutputs {
   headerMapPath?: string;
   sourceMapPath?: string;
   diagnostics: Diagnostic[];
+  asyncTaskNames?: string[];
+  usesTimers?: boolean;
 }
 
 interface CompileErrorEntry {

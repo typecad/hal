@@ -4,7 +4,7 @@ import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSett
 import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { getBitsRange, getRegisterAddress } from "./register-decorators";
-import { registerFieldMap } from "./build-ir-state";
+import { registerFieldMap, PointerTracker } from "./build-ir-state";
 import { expressionToIR } from "./expression-to-ir";
 import { lowerStatementList } from "./statement-to-ir";
 
@@ -16,6 +16,7 @@ export function classDeclarationToIR(
   functionReturnTypes: Map<string, CppTypeHint>,
   typeAliasNodes: Map<string, ts.TypeNode>,
   registerClasses: RegisterClassIR[],
+  pointerVars: PointerTracker = new Map(),
   scopePrefix?: string,
 ): ClassIR | undefined {
   if (!node.name) {
@@ -98,7 +99,7 @@ export function classDeclarationToIR(
             name: param.name.text,
             cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
             defaultValue: param.initializer
-              ? expressionToIR(param.initializer, sourceText, diagnostics)
+              ? expressionToIR(param.initializer, sourceText, diagnostics, pointerVars)
               : undefined,
             isRest: false,
             ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
@@ -122,7 +123,7 @@ export function classDeclarationToIR(
               cppType: (paramType === "void" ? "auto" : paramType) as CppType,
               visibility,
               initializer: param.initializer
-                ? expressionToIR(param.initializer, sourceText, diagnostics)
+                ? expressionToIR(param.initializer, sourceText, diagnostics, pointerVars)
                 : undefined,
             });
             paramPropertyNames.push(param.name.text);
@@ -140,6 +141,7 @@ export function classDeclarationToIR(
             ctorLocalTypes,
             `${qualifiedName}.constructor`,
             typeAliasNodes,
+            pointerVars,
           )
         : [];
 
@@ -172,7 +174,7 @@ export function classDeclarationToIR(
         cppType: (fieldType === "void" ? "auto" : fieldType) as CppType,
         visibility,
         initializer: member.initializer
-          ? expressionToIR(member.initializer, sourceText, diagnostics)
+          ? expressionToIR(member.initializer, sourceText, diagnostics, pointerVars)
           : undefined,
       });
       continue;
@@ -201,7 +203,7 @@ export function classDeclarationToIR(
             name: param.name.text,
             cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
             defaultValue: param.initializer
-              ? expressionToIR(param.initializer, sourceText, diagnostics)
+              ? expressionToIR(param.initializer, sourceText, diagnostics, pointerVars)
               : undefined,
             isRest: false,
             ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
@@ -219,6 +221,7 @@ export function classDeclarationToIR(
             methodLocalTypes,
             `${qualifiedName}.${member.name.text}`,
             typeAliasNodes,
+            pointerVars,
           )
         : [];
       const methodReturnType = typeNodeToCppType(member.type, typeAliasNodes);
@@ -257,6 +260,7 @@ export function classDeclarationToIR(
             new Map<string, CppTypeHint>(),
             `${qualifiedName}.${member.name.text}`,
             typeAliasNodes,
+            pointerVars,
           )
         : [];
       getters.push({
@@ -291,6 +295,7 @@ export function classDeclarationToIR(
             new Map<string, CppTypeHint>(),
             `${qualifiedName}.${member.name.text}`,
             typeAliasNodes,
+            pointerVars,
           )
         : [];
       setters.push({

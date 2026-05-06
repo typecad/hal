@@ -7,6 +7,11 @@ export class TimingClass {
   micros(): number { return 0; }
   delay(ms: number): void {}
   delayMicroseconds(us: number): void {}
+  freeHeap(): number {
+    emit("return Timing.freeHeap();");
+    return 0;
+  }
+
 
   setInterval(handler: () => void, timeout: number): number {
     emit(`return __tc_setInterval(${callback(handler)}, ${timeout});`);
@@ -33,21 +38,25 @@ export function delay(ms: number): void {}
 export function millis(): number { return 0; }
 export function micros(): number { return 0; }
 export function delayMicroseconds(us: number): void {}
+export function freeHeap(): number { return Timing.freeHeap(); }
+
 
 export function setInterval(handler: () => void, timeout: number): number {
-  return Timing.setInterval(handler, timeout);
+  emit(`return __tc_setInterval(${callback(handler)}, ${timeout});`);
+  return 0;
 }
 
 export function setTimeout(handler: () => void, timeout: number): number {
-  return Timing.setTimeout(handler, timeout);
+  emit(`return __tc_setTimeout(${callback(handler)}, ${timeout});`);
+  return 0;
 }
 
 export function clearInterval(id: number): void {
-  Timing.clearInterval(id);
+  emit(`__tc_clearInterval(${id});`);
 }
 
 export function clearTimeout(id: number): void {
-  Timing.clearTimeout(id);
+  emit(`__tc_clearTimeout(${id});`);
 }
 
 export function map(value: number, fromLow: number, fromHigh: number, toLow: number, toHigh: number): number { return 0; }

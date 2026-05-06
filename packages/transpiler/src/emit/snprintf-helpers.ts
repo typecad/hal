@@ -107,7 +107,7 @@ export function recordVariableType(statement: VariableDeclarationIR, scopeState:
     cppType: effectiveCppType,
     floatPrecision: statement.initializer?.kind === "number"
       ? getFloatPrecisionFromNumber(statement.initializer.value)
-      : effectiveCppType === "float" ? findFloatPrecision(statement.initializer) : undefined,
+      : (effectiveCppType === "float" || effectiveCppType === "double") ? findFloatPrecision(statement.initializer) : undefined,
   });
 }
 
@@ -124,9 +124,6 @@ function escapeCppStringLiteral(value: string): string {
     .replace(/\t/g, "\\t");
 }
 
-function isStringLikeCppType(typeName: string): boolean {
-  return typeName === "std::string" || typeName === "const char*" || typeName === "char*" || typeName === "String" || typeName === "__tc_str_ptr";
-}
 
 // ---------------------------------------------------------------------------
 // Snprintf arg inference
@@ -176,7 +173,7 @@ export function inferSnprintfArg(
     case "identifier": {
       const knownVar = scopeState.knownVariableTypes.get(expr.value);
       const cppType = knownVar?.cppType;
-      if (cppType && isStringLikeCppType(cppType)) {
+      if (cppType && strategy.isStringLikeType(cppType)) {
         const needsCStr = cppType === "std::string" || cppType === "String" || cppType === "__tc_str_ptr";
         const arg = needsCStr ? `${expr.value}.c_str()` : expr.value;
         return { format: "%s", arg, estimatedLength: 24, preludeLines: [] };
@@ -202,7 +199,7 @@ export function inferSnprintfArg(
       }
       if (pointerVarTypes?.has(expr.value)) {
         const pointerType = pointerVarTypes.get(expr.value)!;
-        if (isStringLikeCppType(pointerType)) {
+        if (strategy.isStringLikeType(pointerType)) {
           return { format: "%s", arg: expr.value, estimatedLength: 24, preludeLines: [] };
         }
       }
@@ -215,7 +212,7 @@ export function inferSnprintfArg(
         // Check user-defined function return types first
         if (knownFunctionReturnTypes) {
           const returnType = knownFunctionReturnTypes.get(funcName);
-          if (returnType && isStringLikeCppType(returnType)) {
+          if (returnType && strategy.isStringLikeType(returnType)) {
             return { format: "%s", arg: renderExpression(expr), estimatedLength: 24, preludeLines: [] };
           }
           if (returnType === "bool") {

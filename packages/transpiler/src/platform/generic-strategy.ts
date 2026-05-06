@@ -56,6 +56,12 @@ export class GenericStrategy implements PlatformStrategy {
   mapReturnType(_functionName: string, returnType: string): string {
     return this.normalizeCppType(returnType);
   }
+  isStringLikeType(cppType: string): boolean {
+    return cppType === "std::string" || cppType === "const char*" || cppType === "char*";
+  }
+  isPointerType(cppType: string): boolean {
+    return cppType.endsWith("*");
+  }
   mapFunctionName(originalName: string): string {
     if (originalName === "__typehal_entrypoint__") return "main";
     return originalName;
@@ -67,12 +73,13 @@ export class GenericStrategy implements PlatformStrategy {
     return value;
   }
   nullValue(): string {
-    // In generic C++ null/undefined are left as-is (the common normalizeRawExpression
-    // in the emitter already handles === / !== / enum scoping).
     return "";
   }
   wrapStringConcat(_leftRendered: string, _rightRendered: string, _leftIsString: boolean): string | undefined {
     return undefined;
+  }
+  wrapStringObject(expr: string): string {
+    return `std::string(${expr})`;
   }
   useSnprintfForStrings(): boolean {
     return false;
@@ -94,6 +101,9 @@ export class GenericStrategy implements PlatformStrategy {
 
   renderThrow(valueExpr: string): string {
     return `throw ${valueExpr};`;
+  }
+  isConsoleCall(callee: string): boolean {
+    return callee.startsWith("console.");
   }
   transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? "" : ";";

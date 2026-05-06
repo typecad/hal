@@ -67,9 +67,9 @@ function isPrimitiveCppType(cppType: string): boolean {
   return primitives.has(t);
 }
 
-function isIndirectType(cppType: string): boolean {
+function isIndirectType(cppType: string, strategy: PlatformStrategy): boolean {
   const t = cppType.trim();
-  return /\*$/.test(t) || /\[\d*\]$/.test(t);
+  return strategy.isPointerType(t) || /\[\d*\]$/.test(t);
 }
 
 /**
@@ -127,11 +127,12 @@ export class StatementRenderer {
    * @param statement The statement to render
    * @param forHeader Whether this is for a header file (no semicolons)
    * @param calleeTransformer Optional transformer for callee names
+   * @param knownVariableTypes Optional override for variable type mapping
    * @returns Object with prelude lines and the rendered statement
    */
-  renderWithPrelude(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string): { prelude: string[]; statement: string } {
+  renderWithPrelude(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): { prelude: string[]; statement: string } {
     this.expressionRenderer.clearPrelude();
-    const rendered = this.render(statement, forHeader, calleeTransformer);
+    const rendered = this.render(statement, forHeader, calleeTransformer, knownVariableTypes);
     let prelude = this.expressionRenderer.drainPrelude();
     // When returning a snprintf buffer, make it static so the pointer remains
     // valid after the function returns (avoids dangling pointer to local stack).
@@ -147,12 +148,13 @@ export class StatementRenderer {
    * @param statement The statement to render
    * @param forHeader Whether this is for a header file (no semicolons)
    * @param calleeTransformer Optional transformer for callee names
+   * @param knownVariableTypes Optional override for variable type mapping
    * @returns The C++ code string
    */
-  render(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string): string {
+  render(statement: StatementIR, forHeader: boolean = false, calleeTransformer?: (callee: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     const rendered = (() => {
       if (statement.kind === "call") {
-        return this.renderCall(statement, forHeader, calleeTransformer);
+        return this.renderCall(statement, forHeader, calleeTransformer, knownVariableTypes);
       }
 
       if (statement.kind === "assign") {
@@ -169,7 +171,7 @@ export class StatementRenderer {
               const kind = accessors.get(propName)!;
               if (kind === "setter" || kind === "both") {
                 const setterName = accessorSetterName(propName);
-                const renderedValue = this.expressionRenderer.render(statement.value);
+                const renderedValue = this.expressionRenderer.render(statement.value, undefined, knownVariableTypes);
                 if (statement.operator === "=") {
                   return forHeader
                     ? `${varName}${sep}${setterName}(${renderedValue})`
@@ -185,8 +187,8 @@ export class StatementRenderer {
           }
         }
         return forHeader
-          ? `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)}`
-          : `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value)};`;
+          ? `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)}`
+          : `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)};`;
       }
 
       if (statement.kind === "update") {
@@ -198,30 +200,30 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "return") {
-        return statement.value ? `return ${this.expressionRenderer.render(statement.value)};` : "return;";
+        return statement.value ? `return ${this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)};` : "return;";
       }
 
       if (statement.kind === "while") {
-        return `while (${this.expressionRenderer.render(statement.condition)})`;
+        return `while (${this.expressionRenderer.render(statement.condition, undefined, knownVariableTypes)})`;
       }
 
       if (statement.kind === "if") {
-        return `if (${this.expressionRenderer.render(statement.condition)})`;
+        return `if (${this.expressionRenderer.render(statement.condition, undefined, knownVariableTypes)})`;
       }
 
       if (statement.kind === "for") {
-        const init = statement.initializer ? this.render(statement.initializer, true) : "";
-        const cond = statement.condition ? this.expressionRenderer.render(statement.condition) : "";
-        const incr = statement.increment ? this.render(statement.increment, true) : "";
+        const init = statement.initializer ? this.render(statement.initializer, true, calleeTransformer, knownVariableTypes) : "";
+        const cond = statement.condition ? this.expressionRenderer.render(statement.condition, undefined, knownVariableTypes) : "";
+        const incr = statement.increment ? this.render(statement.increment, true, calleeTransformer, knownVariableTypes) : "";
         return `for (${init}; ${cond}; ${incr})`;
       }
 
       if (statement.kind === "for_of") {
         const varDecl = statement.variable;
         if (varDecl.kind === "var_decl") {
-          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.iterable)})`;
+          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes)})`;
         }
-        return `for (auto item : ${this.expressionRenderer.render(statement.iterable)})`;
+        return `for (auto item : ${this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes)})`;
       }
 
       if (statement.kind === "for_in") {
@@ -236,9 +238,9 @@ export class StatementRenderer {
         }
         const varDecl = statement.variable;
         if (varDecl.kind === "var_decl") {
-          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.object)})`;
+          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;
         }
-        return `for (auto key : ${this.expressionRenderer.render(statement.object)})`;
+        return `for (auto key : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;
       }
 
       if (statement.kind === "break") {
@@ -254,7 +256,7 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "switch") {
-        return `switch (${this.expressionRenderer.render(statement.expression)})`;
+        return `switch (${this.expressionRenderer.render(statement.expression, undefined, knownVariableTypes)})`;
       }
 
       if (statement.kind === "try") {
@@ -262,7 +264,7 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "throw") {
-        return this.strategy.renderThrow(this.expressionRenderer.render(statement.value));
+        return this.strategy.renderThrow(this.expressionRenderer.render(statement.value, undefined, knownVariableTypes));
       }
 
       if (statement.kind === "labeled") {
@@ -277,7 +279,7 @@ export class StatementRenderer {
         return "/* unsupported_statement */";
       }
 
-      return this.renderVarDecl(statement, forHeader, calleeTransformer);
+      return this.renderVarDecl(statement, forHeader, calleeTransformer, knownVariableTypes);
     })();
 
     return this.fixPointerFieldAccess(rendered);
@@ -310,14 +312,14 @@ export class StatementRenderer {
       `${receiverCallName.replace(/\./g, "::")}(`,
     );
 
-    if (returnType?.endsWith("*") || isCrossModuleClass) {
+    if ((returnType && this.strategy.isPointerType(returnType)) || isCrossModuleClass) {
       return `${callPrefix}->${memberName}`;
     }
 
     return `${callPrefix}.${memberName}`;
   }
 
-  private renderCall(statement: Extract<StatementIR, { kind: "call" }>, forHeader: boolean, calleeTransformer?: (callee: string) => string): string {
+  private renderCall(statement: Extract<StatementIR, { kind: "call" }>, forHeader: boolean, calleeTransformer?: (callee: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     // Handle raw statements from setupInitCode
     if (statement.callee.startsWith('__RAW_STMT__')) {
       const rawStmt = statement.callee.slice('__RAW_STMT__'.length);
@@ -341,11 +343,11 @@ export class StatementRenderer {
     }
     callee = this.fixCrossModuleMethodCall(callee);
     callee = this.fixPointerFieldAccess(callee);
-    const renderedArgs = statement.args.map((arg) => this.expressionRenderer.render(arg)).join(", ");
+    const renderedArgs = statement.args.map((arg) => this.expressionRenderer.render(arg, undefined, knownVariableTypes)).join(", ");
     return forHeader ? `${callee}(${renderedArgs})` : `${callee}(${renderedArgs});`;
   }
 
-  private renderVarDecl(statement: Extract<StatementIR, { kind: "var_decl" }>, forHeader: boolean, calleeTransformer?: (callee: string) => string): string {
+  private renderVarDecl(statement: Extract<StatementIR, { kind: "var_decl" }>, forHeader: boolean, calleeTransformer?: (callee: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     const declaredType = this.normalizeCppType(statement.cppType);
     const volatilePrefix = statement.isVolatile ? "volatile " : "";
     // Transform type name for Arduino library classes (add namespace prefix)
@@ -357,7 +359,7 @@ export class StatementRenderer {
     // Primitives pass by value (no overhead). Temporary/literal initializers fall back to copy.
     const isRef = (ownershipKind === 'shared' || ownershipKind === 'mutable')
       && !isPrimitiveCppType(statement.cppType)
-      && !isIndirectType(statement.cppType)
+      && !isIndirectType(statement.cppType, this.strategy)
       && statement.initializer?.kind === 'identifier';
     const declaration = `${volatilePrefix}${this.renderTypedName(transformedType, statement.name, isConst, isRef)}`;
     
@@ -367,14 +369,14 @@ export class StatementRenderer {
         const params = statement.initializer.params.map(p => `${p.cppType} ${p.name}`).join(", ");
         const ret = statement.initializer.returnType && statement.initializer.returnType !== "auto"
           ? ` -> ${statement.initializer.returnType}` : "";
-        const bodyStr = statement.initializer.body.map(s => "  " + this.render(s)).join("\n");
+        const bodyStr = statement.initializer.body.map(s => "  " + this.render(s, false, calleeTransformer, knownVariableTypes)).join("\n");
         const safeName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         return `auto ${safeName} = [=](${params})${ret} {\n${bodyStr}\n};`;
       }
 
       // Handle array initializers
       if (statement.initializer.kind === "array") {
-        const elements = statement.initializer.elements.map((e) => this.expressionRenderer.render(e)).join(", ");
+        const elements = statement.initializer.elements.map((e) => this.expressionRenderer.render(e, undefined, knownVariableTypes)).join(", ");
         const safeArrName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         const rawType = statement.cppType;
 
@@ -422,7 +424,7 @@ export class StatementRenderer {
           .join(" ");
         const initValues = statement.initializer.fields
           .map((f) => {
-            const renderExpr = (e: ExpressionIR) => this.expressionRenderer.render(e, calleeTransformer);
+            const renderExpr = (e: ExpressionIR) => this.expressionRenderer.render(e, calleeTransformer, knownVariableTypes);
             const overridden = this.strategy.objectFieldInitializer(f.value, renderExpr);
             if (overridden !== undefined) return overridden;
             return renderExpr(f.value);
@@ -436,9 +438,9 @@ export class StatementRenderer {
       // Handle spread array initializers
       if (statement.initializer.kind === "spread_array") {
         const arrayType = statement.initializer.elementType === "auto" ? this.strategy.defaultNumericType() : statement.initializer.elementType;
-        const spreadName = this.expressionRenderer.render(statement.initializer.spreadExpr, calleeTransformer);
+        const spreadName = this.expressionRenderer.render(statement.initializer.spreadExpr, calleeTransformer, knownVariableTypes);
         const renderedExtraElements = statement.initializer.additionalElements
-          .map(e => this.expressionRenderer.render(e, calleeTransformer));
+          .map(e => this.expressionRenderer.render(e, calleeTransformer, knownVariableTypes));
         const safeSpreadArrName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         if (this.strategy.needsStdVector()) {
           const parts = [`std::vector<${arrayType}> ${safeSpreadArrName}(${spreadName})`];
@@ -456,8 +458,8 @@ export class StatementRenderer {
           : `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} };`;
       }
       return forHeader 
-        ? `${declaration} = ${this.expressionRenderer.render(statement.initializer, calleeTransformer)}`
-        : `${declaration} = ${this.expressionRenderer.render(statement.initializer, calleeTransformer)};`;
+        ? `${declaration} = ${this.expressionRenderer.render(statement.initializer, calleeTransformer, knownVariableTypes)}`
+        : `${declaration} = ${this.expressionRenderer.render(statement.initializer, calleeTransformer, knownVariableTypes)};`;
     }
 
     return forHeader ? declaration : `${declaration};`;
@@ -500,7 +502,7 @@ export class StatementRenderer {
         // Emit C++ reference for non-primitive Shared<T>/Mutable<T> parameters.
         const isRef = (paramOwnershipKind === 'shared' || paramOwnershipKind === 'mutable')
           && !isPrimitiveCppType(parameter.cppType)
-          && !isIndirectType(parameter.cppType);
+          && !isIndirectType(parameter.cppType, this.strategy);
         let result = this.renderTypedName(parameter.cppType, parameter.name, isConst, isRef);
         if (parameter.defaultValue) {
           result += ` = ${this.expressionRenderer.render(parameter.defaultValue)}`;
@@ -538,7 +540,7 @@ export class StatementRenderer {
     // Handle top-level pointer variables (e.g., sensor.method() -> sensor->method())
     if (this.pointerVarTypes) {
       for (const [varName, varType] of this.pointerVarTypes) {
-        if (varType.endsWith("*")) {
+        if (this.strategy.isPointerType(varType)) {
           // Match patterns like "varName.method" and transform to "varName->method"
           const pattern = new RegExp(`\\b${varName}\\.`, "g");
           callee = callee.replace(pattern, `${varName}->`);
@@ -575,5 +577,22 @@ export class StatementRenderer {
     if (arg.kind === "string_concat") return arg.parts.map(p => this.renderEmitArg(p)).join("");
     if (arg.kind === "template_string") return this.expressionRenderer.render(arg.expression);
     return this.expressionRenderer.render(arg);
+  }
+
+  /**
+   * Map a function name to its platform-specific name (e.g. __typehal_entrypoint__ -> setup/main).
+   */
+  public mapFunctionName(originalName: string): string {
+    if (originalName === "__typehal_entrypoint__") {
+      return this.strategy.entrypointFunctionName();
+    }
+    return originalName;
+  }
+
+  /**
+   * Map a TypeScript return type to its C++ equivalent for a specific function.
+   */
+  public mapReturnType(fnName: string, tsType: string): string {
+    return this.strategy.mapReturnType(fnName, tsType);
   }
 }

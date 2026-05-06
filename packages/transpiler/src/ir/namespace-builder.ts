@@ -7,6 +7,7 @@ import { expressionToIR } from "./expression-to-ir";
 import { lowerStatementList } from "./statement-to-ir";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { RegisterClassIR } from "@typehal/core";
+import { PointerTracker } from "./build-ir-state";
 
 export function namespaceToIR(
   node: ts.ModuleDeclaration,
@@ -16,6 +17,7 @@ export function namespaceToIR(
   functionReturnTypes: Map<string, CppTypeHint>,
   typeAliasNodes: Map<string, ts.TypeNode>,
   registerClasses: RegisterClassIR[],
+  pointerVars: PointerTracker = new Map(),
 ): NamespaceIR | undefined {
   if (!node.name || !ts.isIdentifier(node.name)) {
     return undefined;
@@ -60,6 +62,7 @@ export function namespaceToIR(
         functionReturnTypes,
         typeAliasNodes,
         registerClasses,
+        pointerVars,
         namespaceName,
       );
       if (classIR) {
@@ -103,7 +106,7 @@ export function namespaceToIR(
             name: parameter.name.text,
             cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
             defaultValue: parameter.initializer
-              ? expressionToIR(parameter.initializer, sourceText, diagnostics)
+              ? expressionToIR(parameter.initializer, sourceText, diagnostics, pointerVars)
               : undefined,
             isRest: false,
             ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
@@ -120,6 +123,7 @@ export function namespaceToIR(
         localVariableTypes,
         `${namespaceName}.${nsNode.name.text}`,
         typeAliasNodes,
+        pointerVars,
       );
 
       const nsFnTypeParams = nsNode.typeParameters
@@ -150,7 +154,7 @@ export function namespaceToIR(
           nsConstants.push({
             name: decl.name.text,
             cppType: constType,
-            value: expressionToIR(decl.initializer, sourceText, diagnostics),
+            value: expressionToIR(decl.initializer, sourceText, diagnostics, pointerVars),
           });
         }
       }

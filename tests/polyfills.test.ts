@@ -272,8 +272,8 @@ describe("Array Method Polyfills", () => {
         arr.push(4);
       }
     `);
-    expect(result.cpp).toContain("StaticArray<int> arr");
-    expect(result.cpp).toContain("arr.push_back(4)");
+    expect(result.cpp).toContain("__tc_StaticArray<int, 5> arr");
+    expect(result.cpp).toContain("arr.push(4)");
   });
 
   it("transpiles array.length to size()", () => {
@@ -305,7 +305,7 @@ describe("String Method Polyfills", () => {
         return s.length;
       }
     `);
-    expect(result.cpp).toContain("return s.size()");
+    expect(result.cpp).toContain("return s.length()");
   });
 
   it("transpiles string concatenation", () => {
@@ -318,8 +318,8 @@ describe("String Method Polyfills", () => {
     `);
     expect(result.cpp).toContain('const std::string c =');
     expect(result.cpp).toContain('" "');
-    expect(result.cpp).toContain('String(String(a))');
-    expect(result.cpp).toContain('String(String(b))');
+    expect(result.cpp).toContain('std::string(std::string(a))');
+    expect(result.cpp).toContain('std::string(std::string(b))');
   });
 
   it("transpiles string comparison", () => {

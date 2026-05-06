@@ -3,7 +3,7 @@
  * Pure functions with no side effects - extracted from cpp-emitter.ts
  */
 
-import type { ExpressionIR, StatementIR } from "@typehal/core";
+import type { ExpressionIR, StatementIR, PlatformStrategy } from "@typehal/core";
 
 /**
  * Infers the C++ type for an object field based on its initializer value.
@@ -32,6 +32,9 @@ export function inferObjectFieldType(
   if (value.kind === "number") {
     if (value.cppType === "float" || !Number.isInteger(value.value)) {
       return "float";
+    }
+    if (value.value > 32767 || value.value < -32768) {
+      return "long";
     }
     return defaultIntType;
   }
@@ -429,10 +432,10 @@ export function hasConsoleCalls(program: {
     methods: Array<{ statements: StatementIR[] }>;
     constructor?: { statements: StatementIR[] };
   }>;
-}): boolean {
+}, strategy?: PlatformStrategy): boolean {
   const checkStatements = (statements: StatementIR[]): boolean => {
     for (const stmt of statements) {
-      if (stmt.kind === "call" && isConsoleCall(stmt.callee)) {
+      if (stmt.kind === "call" && isConsoleCall(stmt.callee, strategy)) {
         return true;
       }
       // Check nested statements in control flow
@@ -479,7 +482,8 @@ export function hasConsoleCalls(program: {
 /**
  * Checks if a callee is a console method call (e.g., "console.log", "console.error")
  */
-export function isConsoleCall(callee: string): boolean {
+export function isConsoleCall(callee: string, strategy?: PlatformStrategy): boolean {
+  if (strategy) return strategy.isConsoleCall(callee);
   return callee.startsWith("console.");
 }
 

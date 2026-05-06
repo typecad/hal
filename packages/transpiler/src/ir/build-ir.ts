@@ -8,7 +8,7 @@ import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from ".
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants } from "./build-ir-state";
-import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR } from "./statement-to-ir";
+import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage } from "./statement-to-ir";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
@@ -35,14 +35,26 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   const registerClasses: RegisterClassIR[] = [];
   const typeAliasNodes = new Map<string, ts.TypeNode>();
   const boilerplates = new Set<string>();
-  const functionReturnTypes = buildFunctionReturnTypeMap(source);
-  const topLevelVariableTypes = new Map<string, CppTypeHint>();
-  let defaultExportName: string | undefined;
-  
   // Reset module-level state for this file
   resetBuildState();
   resetHALResolver();
   registerFieldMap.clear();
+
+  // Phase 0: Pre-scan for top-level classes and register them so type inference can resolve them
+  for (const statement of source.statements) {
+    if (ts.isClassDeclaration(statement) && statement.name) {
+      topLevelClassNames.add(statement.name.text);
+      // We don't build full IR yet, just enough for type mapping
+      const classIR = classDeclarationToIR(statement, fileName, sourceText, [], new Map(), new Map(), [], new Map());
+      if (classIR) {
+        topLevelClasses.set(classIR.name, classIR);
+      }
+    }
+  }
+
+  const functionReturnTypes = buildFunctionReturnTypeMap(source);
+  const topLevelVariableTypes = new Map<string, CppTypeHint>();
+  let defaultExportName: string | undefined;
   
   // Collect pointer variables at top level (for correct -> vs . usage)
   // This also populates activeCArrayVars for typed array variables
@@ -52,6 +64,11 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     if (ts.isTypeAliasDeclaration(statement)) {
       typeAliasNodes.set(statement.name.text, statement.type);
     }
+  }
+
+  // Pre-scan for mutable arrays (push/pop/indexOf) at top level
+  for (const statement of source.statements) {
+    prescanArrayUsage(statement);
   }
 
   // Resolve board-definition constants BEFORE IR building so the HAL resolver
@@ -225,7 +242,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
     // Handle namespace declarations
     if (ts.isModuleDeclaration(node)) {
-      const nsIR = namespaceToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, registerClasses);
+      const nsIR = namespaceToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, registerClasses, topLevelPointerVars);
       if (nsIR) {
         namespaces.push(nsIR);
         activeNamespaceNames.add(nsIR.name);
@@ -234,7 +251,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
 
     if (ts.isFunctionDeclaration(node)) {
-      const fnIR = functionDeclarationToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, boilerplates);
+      const fnIR = functionDeclarationToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, boilerplates, topLevelPointerVars);
       if (fnIR) {
         functions.push(fnIR);
       }
@@ -243,7 +260,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
     if (ts.isVariableStatement(node)) {
       // Check if all declarations are function expressions/arrow functions
-      const fnResults = variableAsFunctionToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, boilerplates);
+      const fnResults = variableAsFunctionToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, boilerplates, topLevelPointerVars);
       if (fnResults) {
         functions.push(...fnResults);
         return;
@@ -258,6 +275,8 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           functionReturnTypes,
           topLevelVariableTypes,
           typeAliasNodes,
+          topLevelPointerVars,
+          "", // Top-level
         ),
       );
       return;
@@ -280,7 +299,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
 
     if (ts.isClassDeclaration(node)) {
-      const classIR = classDeclarationToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, registerClasses);
+      const classIR = classDeclarationToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, registerClasses, topLevelPointerVars);
       if (classIR) {
         classes.push(classIR);
         topLevelClassNames.add(classIR.name);

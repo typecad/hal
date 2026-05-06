@@ -125,9 +125,10 @@ export class ExpressionRenderer {
    * 
    * @param expr The expression to render
    * @param exprTransformer Optional transformer for raw expressions
+   * @param knownVariableTypes Optional override for variable type mapping
    * @returns The C++ code string
    */
-  render(expr: ExpressionIR, exprTransformer?: (expr: string) => string): string {
+  render(expr: ExpressionIR, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     // Safety check
     if (!expr || typeof expr !== 'object' || !expr.kind) {
       return "/* invalid expression */";
@@ -165,10 +166,10 @@ export class ExpressionRenderer {
         rendered = this.renderTernary(expr, exprTransformer);
         break;
       case "string_concat":
-        rendered = this.renderStringConcat(expr, exprTransformer);
+        rendered = this.renderStringConcat(expr, exprTransformer, knownVariableTypes);
         break;
       case "template_string":
-        rendered = this.renderTemplateString(expr, exprTransformer);
+        rendered = this.renderTemplateString(expr, exprTransformer, knownVariableTypes);
         break;
       case "array":
         rendered = this.renderArray(expr, exprTransformer);
@@ -250,10 +251,10 @@ export class ExpressionRenderer {
     return `(${this.render(expr.condition, exprTransformer)} ? ${this.render(expr.whenTrue, exprTransformer)} : ${this.render(expr.whenFalse, exprTransformer)})`;
   }
 
-  private renderStringConcat(expr: Extract<ExpressionIR, { kind: "string_concat" }>, exprTransformer?: (expr: string) => string): string {
+  private renderStringConcat(expr: Extract<ExpressionIR, { kind: "string_concat" }>, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     // When snprintf mode is active, build snprintf buffer instead of String() concatenation
     if (this.strategy.useSnprintfForStrings()) {
-      const snprintfResult = this.buildSnprintfFromParts(expr.parts, exprTransformer);
+      const snprintfResult = this.buildSnprintfFromParts(expr.parts, exprTransformer, knownVariableTypes);
       if (snprintfResult) {
         return snprintfResult;
       }
@@ -267,18 +268,18 @@ export class ExpressionRenderer {
       }
       // For template_string, wrap in String() to convert to string
       if (part.kind === "template_string") {
-        return `String(${rendered})`;
+        return this.strategy.wrapStringObject(rendered);
       }
       // For other types, also wrap in String()
-      return `String(${rendered})`;
+      return this.strategy.wrapStringObject(rendered);
     });
     return renderedParts.join(" + ");
   }
 
-  private renderTemplateString(expr: Extract<ExpressionIR, { kind: "template_string" }>, exprTransformer?: (expr: string) => string): string {
+  private renderTemplateString(expr: Extract<ExpressionIR, { kind: "template_string" }>, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     // When snprintf mode is active, build snprintf buffer for single interpolation
     if (this.strategy.useSnprintfForStrings()) {
-      const argInfo = this.inferFormatSpecifier(expr.expression, exprTransformer);
+      const argInfo = this.inferFormatSpecifier(expr.expression, exprTransformer, knownVariableTypes);
       if (argInfo) {
         if (argInfo.preludeLines) {
           this._preludeLines.push(...argInfo.preludeLines);
@@ -292,8 +293,8 @@ export class ExpressionRenderer {
         return bufferName;
       }
     }
-    // Fallback: Wrap the expression in String() to convert to string
-    return `String(${this.render(expr.expression, exprTransformer)})`;
+    // Fallback: Wrap the expression in the platform's string object to convert to string
+    return this.strategy.wrapStringObject(this.render(expr.expression, exprTransformer));
   }
 
   /**
@@ -303,6 +304,7 @@ export class ExpressionRenderer {
   private buildSnprintfFromParts(
     parts: ExpressionIR[],
     exprTransformer?: (expr: string) => string,
+    knownVariableTypes?: Map<string, KnownVariableInfo>,
   ): string | undefined {
     let formatString = "";
     const args: string[] = [];
@@ -315,9 +317,8 @@ export class ExpressionRenderer {
         continue;
       }
 
-      if (part.kind === "template_string") {
-        const argInfo = this.inferFormatSpecifier(part.expression, exprTransformer);
-        if (!argInfo) return undefined;
+      const argInfo = this.inferFormatSpecifier(part, exprTransformer, knownVariableTypes);
+      if (argInfo) {
         if (argInfo.preludeLines) {
           this._preludeLines.push(...argInfo.preludeLines);
         }
@@ -344,10 +345,12 @@ export class ExpressionRenderer {
    * Infer printf format specifier for an expression.
    * Returns format string, rendered arg, estimated length, and optional prelude lines, or undefined if unknown.
    */
-  private inferFormatSpecifier(
+  public inferFormatSpecifier(
     expr: ExpressionIR,
     exprTransformer?: (expr: string) => string,
+    knownVariableTypes?: Map<string, KnownVariableInfo>,
   ): { format: string; arg: string; estimatedLength: number; preludeLines?: string[] } | undefined {
+    const effectiveKnownVariableTypes = knownVariableTypes ?? this.knownVariableTypes;
     switch (expr.kind) {
       case "number": {
         if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
@@ -364,25 +367,26 @@ export class ExpressionRenderer {
       case "string":
         return { format: "%s", arg: `"${expr.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`, estimatedLength: Math.max(expr.value.length, 1) };
       case "identifier": {
-        const knownVar = this.knownVariableTypes?.get(expr.value);
+        const knownVar = effectiveKnownVariableTypes?.get(expr.value);
         const cppType = knownVar?.cppType ?? this.knownFunctionReturnTypes?.get(expr.value);
+        
+        if (this.strategy.isStringLikeType(cppType ?? "")) {
+          const normalized = this.strategy.normalizeCppType(cppType ?? "");
+          const arg = normalized === "__tc_str_ptr" ? `${expr.value}.c_str()` : expr.value;
+          return { format: "%s", arg, estimatedLength: 32 };
+        }
         if (cppType === "bool") {
           return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5 };
-        }
-        if (cppType === "std::string" || cppType === "const char*" || cppType === "char*" || cppType === "String" || cppType === "__tc_str_ptr") {
-          const needsCStr = cppType === "std::string" || cppType === "String" || cppType === "__tc_str_ptr";
-          const arg = needsCStr ? `${expr.value}.c_str()` : expr.value;
-          return { format: "%s", arg, estimatedLength: 32 };
         }
         if (cppType === "float" || cppType === "double") {
           const floatArg = this.strategy.floatToSnprintfArg?.(expr.value, knownVar?.floatPrecision, ++this._snprintfCounter.value);
           if (floatArg !== undefined) return floatArg;
           return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%g", arg: expr.value, estimatedLength: 16 };
         }
-        if (cppType === "int" || cppType === "short" || cppType === "auto") {
+        if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t") {
           return { format: "%d", arg: expr.value, estimatedLength: 12 };
         }
-        if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t") {
+        if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t" || cppType === "auto") {
           return { format: "%ld", arg: expr.value, estimatedLength: 12 };
         }
         if (this.stringVarNames?.has(expr.value)) {
@@ -391,17 +395,28 @@ export class ExpressionRenderer {
         // Default to %d for integers and unknowns
         return { format: "%d", arg: expr.value, estimatedLength: 12 };
       }
-      case "raw":
+      case "template_string":
+        return this.inferFormatSpecifier(expr.expression, exprTransformer, knownVariableTypes);
+      case "method-call":
       case "property-access":
       case "binary":
       case "unary":
       case "ternary":
-      case "method-call": {
+      case "raw": {
         const rendered = this.render(expr, exprTransformer);
         // String-returning helpers (__tc_toUpperCase, etc.) use %s
         if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith)\b/.test(rendered)) {
           return { format: "%s", arg: rendered, estimatedLength: 32 };
         }
+        // Check if it's a property access on a string (e.g. s.length)
+        if (expr.kind === "property-access" && (expr.property === "length" || expr.property === "size")) {
+          return { format: "%d", arg: rendered, estimatedLength: 10 };
+        }
+        // Fallback for expressions that render as string-like pointers
+        if (this.stringVarNames?.has(rendered)) {
+          return { format: "%s", arg: rendered, estimatedLength: 32 };
+        }
+        // Default to %d for other complex expressions (mostly numeric)
         return { format: "%d", arg: rendered, estimatedLength: 12 };
       }
       default:
@@ -495,12 +510,17 @@ export class ExpressionRenderer {
       return `${objStr}::${expr.property}`;
     }
 
-    if (expr.object.kind === "identifier" && expr.property === "length") {
-      if (this.cArrayVarNames?.has(expr.object.value)) {
+    if (expr.object.kind === "identifier" && (expr.property === "length" || expr.property === "size")) {
+      const varName = expr.object.value;
+      if (this.cArrayVarNames?.has(varName)) {
         return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
       }
-      if (this.stringVarNames?.has(expr.object.value)) {
+      if (this.stringVarNames?.has(varName)) {
         return `strlen(${objStr})`;
+      }
+      const varInfo = this.knownVariableTypes?.get(varName);
+      if (varInfo?.cppType.startsWith("__tc_StaticArray")) {
+        return `${objStr}.${expr.property}()`;
       }
     }
     // Passthrough enums: members render as bare identifiers (e.g. INTERNAL, not AnalogReference::INTERNAL).
@@ -508,10 +528,9 @@ export class ExpressionRenderer {
       return expr.property;
     }
 
+    // Fallback for general size/length accessors if not handled above
     if (expr.property === "size" || expr.property === "length") {
-      if (expr.object.kind === "identifier" && this.stringVarNames?.has(expr.object.value)) {
-        return `strlen(${objStr})`;
-      }
+      // (Handled above for identified strings/arrays)
     }
     // Rewrite property access to getter call if the property is an accessor
     if (expr.object.kind === "identifier") {

@@ -134,6 +134,12 @@ export interface PlatformTypeStrategy {
   /** Return type to use for a named function (e.g. setup/loop → void). */
   mapReturnType(functionName: string, returnType: string): string;
 
+  /** Whether a C++ type behaves like a string (needs .c_str() or is const char*). */
+  isStringLikeType(cppType: string): boolean;
+
+  /** Whether a C++ type is a pointer (needs -> instead of .). */
+  isPointerType(cppType: string): boolean;
+
   /** Map a function name to the platform entrypoint (e.g. void/__typehal_entrypoint__ → setup). */
   mapFunctionName(originalName: string): string;
 
@@ -197,6 +203,9 @@ export interface PlatformExpressionStrategy {
   /** Whether string-literal + concatenation needs wrapping (e.g. String(...) on Arduino). */
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined;
 
+  /** Wrap an expression in the platform's string object type (e.g. String(...) on Arduino). */
+  wrapStringObject(expr: string): string;
+
   /** Platform-specific expression for current time in milliseconds (e.g. "millis()" on Arduino, "std::chrono" on hosted). */
   currentTimeMillis(): string;
 
@@ -251,8 +260,10 @@ export interface PlatformStatementStrategy {
 
   /**
    * Transform console.log/error/warn calls to platform output.
-   * Embedded targets → Serial.println; Hosted → std::cout.
    */
+  isConsoleCall(callee: string): boolean;
+
+  /** Transform console.log/error/warn calls based on target platform. */
   transformConsoleCall(
     method: string,
     renderedArgs: string,

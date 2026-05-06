@@ -11,7 +11,7 @@ export { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter";
 export { analyzePeripheralUsage, createEmptyPeripheralUsage } from "./ir/peripheral-usage";
 export { inferSnprintfArg, createEmissionScopeState } from "./emit/snprintf-helpers";
 export { setLoadedFramework } from "./framework-registry";
-export { registerPlatformStrategy, resolveStrategy } from "./platform/registry";
+export { registerPlatformStrategy, resolveStrategy, clearAllProfileCaches } from "./platform/registry";
 export type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "./types";
 
 // ── Config loader ───────────────────────────────────────────────────────────

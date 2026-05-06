@@ -1,0 +1,20 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Diagnostic Snapshotting > snapshots peripheral ownership conflicts 1`] = `
+[
+  {
+    "code": "hal-ownership-double-take",
+    "column": 7,
+    "line": 4,
+    "message": "Double-take: 'SPI0' is already owned.",
+    "severity": "error",
+  },
+  {
+    "code": "hal-ownership-leak",
+    "column": 7,
+    "line": 4,
+    "message": "'SPI0' was taken but never released.",
+    "severity": "warning",
+  },
+]
+`;

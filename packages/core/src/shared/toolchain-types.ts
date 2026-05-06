@@ -30,6 +30,16 @@ export interface CompileError {
 }
 
 /**
+ * Memory usage details
+ */
+export interface MemoryUsage {
+  flashUsed?: number;
+  flashTotal?: number;
+  ramUsed?: number;
+  ramTotal?: number;
+}
+
+/**
  * Generic compile options bag. Each framework reads what it needs
  * and ignores the rest. The CLI populates whichever fields are
  * available from CLI flags and config.
@@ -57,6 +67,7 @@ export interface CompileResult {
   success: boolean;
   output: string;
   errors: CompileError[];
+  memoryUsage?: MemoryUsage;
 }
 
 /**

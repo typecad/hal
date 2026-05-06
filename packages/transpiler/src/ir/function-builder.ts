@@ -5,6 +5,7 @@ import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-
 import { collectReturns, CppTypeHint, inferExprCppType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveFunctionReturnType, resolveFunctionTypeSignature } from "./type-resolution";
 import { expressionToIR } from "./expression-to-ir";
 import { lowerStatementList } from "./statement-to-ir";
+import { PointerTracker } from "./build-ir-state";
 
 export function functionDeclarationToIR(
   node: ts.FunctionDeclaration,
@@ -14,6 +15,7 @@ export function functionDeclarationToIR(
   functionReturnTypes: Map<string, CppTypeHint>,
   typeAliasNodes: Map<string, ts.TypeNode>,
   boilerplates: Set<string>,
+  pointerVars: PointerTracker = new Map(),
 ): FunctionIR | undefined {
   // Skip overload signatures (declarations without a body).
   if (!node.body) return undefined;
@@ -49,7 +51,7 @@ export function functionDeclarationToIR(
         name: parameter.name.text,
         cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
         defaultValue: parameter.initializer
-          ? expressionToIR(parameter.initializer, sourceText, diagnostics)
+          ? expressionToIR(parameter.initializer, sourceText, diagnostics, pointerVars)
           : undefined,
         isRest: false,
         ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
@@ -66,6 +68,7 @@ export function functionDeclarationToIR(
     localVariableTypes,
     node.name.text,
     typeAliasNodes,
+    pointerVars,
   );
 
   const fnTypeParams = node.typeParameters
@@ -92,6 +95,7 @@ export function variableAsFunctionToIR(
   functionReturnTypes: Map<string, CppTypeHint>,
   typeAliasNodes: Map<string, ts.TypeNode>,
   boilerplates: Set<string>,
+  pointerVars: PointerTracker = new Map(),
 ): FunctionIR[] | undefined {
   const functionExpressionDeclarations = node.declarationList.declarations.filter((declaration) => {
     if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
@@ -141,7 +145,7 @@ export function variableAsFunctionToIR(
         name: parameter.name.text,
         cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
         defaultValue: parameter.initializer
-          ? expressionToIR(parameter.initializer, sourceText, diagnostics)
+          ? expressionToIR(parameter.initializer, sourceText, diagnostics, pointerVars)
           : undefined,
         isRest: false,
         ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
@@ -158,12 +162,13 @@ export function variableAsFunctionToIR(
           localVariableTypes,
           declaration.name.text,
           typeAliasNodes,
+          pointerVars,
         )
       : [
           {
             kind: "return" as const,
             sourceSpan: makeSourceSpan(fnExpression.body, fileName, sourceText),
-            value: expressionToIR(fnExpression.body, sourceText, diagnostics),
+            value: expressionToIR(fnExpression.body, sourceText, diagnostics, pointerVars),
           },
         ];
 

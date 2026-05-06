@@ -5,12 +5,12 @@ import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, activeGlobalTypes, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 
-import { resolveHALReceiver, processHALMethodBody, halInstances, getCtorIncludes, isKnownHALClass, registerFloatVariable, HALInstance } from "./hal-resolver";
+import { resolveHALReceiver, processHALMethodBody, halInstances, getCtorIncludes, isKnownHALClass, registerFloatVariable, HALInstance, isHALSingleton } from "./hal-resolver";
 
 /**
  * Recursively collect emit lines from chained HAL method calls.
@@ -112,6 +112,15 @@ function tryResolveHALMethod(
       }
       const allEmits = [...chainedEmits, ...result.emitLines];
       if (allEmits.length > 0) return emitLinesToIR(allEmits, call, fileName, sourceText);
+      if (result.returnValue === "this" && ts.isPropertyAccessExpression(call.expression)) {
+        const objText = renderExprAsText(expressionToIR(call.expression.expression, sourceText, diagnostics, pointerVars));
+        return {
+          kind: "call",
+          callee: `${objText}.${method}`,
+          args: argIRs,
+          sourceSpan: makeSourceSpan(call, fileName, sourceText)
+        };
+      }
       if (result.returnValue) return emitLinesToIR([`${result.returnValue};`], call, fileName, sourceText);
     }
   }
@@ -342,6 +351,14 @@ export function tryResolveHALExpression(
   if (instance) {
     const result = processHALMethodBody(instance, method, argIRs);
     if (result) {
+      if (result.returnValue === "this") {
+        // Return structured method call for analysis
+        const objText = renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars));
+        return { 
+          ir: { kind: "method-call", callee: `${objText}.${method}`, args: argIRs }, 
+          sideEffects: result.emitLines 
+        };
+      }
       if (result.returnValue) {
         return { ir: { kind: "raw", value: result.returnValue }, sideEffects: result.emitLines };
       }
@@ -411,7 +428,7 @@ function callToStatement(
           sourceSpan: makeSourceSpan(call, fileName, sourceText),
           leadingComments: comments.leadingComments,
           trailingComments: comments.trailingComments,
-          callee: `${objExpr.text}.push_back`,
+          callee: `${objExpr.text}.push`,
           args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
         };
       }
@@ -421,7 +438,7 @@ function callToStatement(
           sourceSpan: makeSourceSpan(call, fileName, sourceText),
           leadingComments: comments.leadingComments,
           trailingComments: comments.trailingComments,
-          callee: `${objExpr.text}.pop_back`,
+          callee: `${objExpr.text}.pop`,
           args: [],
         };
       }
@@ -905,6 +922,7 @@ export function lowerStatement(
           const blockStatements = lowerStatementList(
             arrowFn.body.statements, fileName, sourceText, diagnostics,
             functionReturnTypes, localVariableTypes, functionNameForDiagnostics, typeAliases,
+            pointerVars,
           );
           return [{
             kind: "for",
@@ -977,6 +995,7 @@ export function lowerStatement(
       localVariableTypes,
       typeAliases,
       pointerVars,
+      functionNameForDiagnostics,
     );
   }
 
@@ -1011,6 +1030,8 @@ export function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       functionNameForDiagnostics,
+      typeAliases,
+      pointerVars,
     );
 
     return [{
@@ -1033,6 +1054,8 @@ export function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       functionNameForDiagnostics,
+      typeAliases,
+      pointerVars,
     );
 
     let elseBranch: StatementIR[] | undefined;
@@ -1045,6 +1068,8 @@ export function lowerStatement(
         functionReturnTypes,
         localVariableTypes,
         functionNameForDiagnostics,
+        typeAliases,
+        pointerVars,
       );
     }
 
@@ -1104,6 +1129,8 @@ export function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       functionNameForDiagnostics,
+      typeAliases,
+      pointerVars,
     );
 
     return [{
@@ -1141,6 +1168,8 @@ export function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       functionNameForDiagnostics,
+      typeAliases,
+      pointerVars,
     );
 
     return [{
@@ -1178,6 +1207,8 @@ export function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       functionNameForDiagnostics,
+      typeAliases,
+      pointerVars,
     );
 
     const keys = extractForInKeys(statement.expression);
@@ -1225,6 +1256,8 @@ export function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       functionNameForDiagnostics,
+      typeAliases,
+      pointerVars,
     );
 
     return [{
@@ -1260,6 +1293,8 @@ export function lowerStatement(
             functionReturnTypes,
             localVariableTypes,
             functionNameForDiagnostics,
+            typeAliases,
+            pointerVars,
           ),
         });
       } else if (ts.isCaseClause(clause)) {
@@ -1277,6 +1312,8 @@ export function lowerStatement(
             functionReturnTypes,
             localVariableTypes,
             functionNameForDiagnostics,
+            typeAliases,
+            pointerVars,
           ),
         });
       }
@@ -1303,6 +1340,8 @@ export function lowerStatement(
       functionReturnTypes,
       localVariableTypes,
       functionNameForDiagnostics,
+      typeAliases,
+      pointerVars,
     );
 
     let catchParam: string | undefined;
@@ -1320,6 +1359,8 @@ export function lowerStatement(
         functionReturnTypes,
         localVariableTypes,
         functionNameForDiagnostics,
+        typeAliases,
+        pointerVars,
       );
     }
 
@@ -1334,6 +1375,8 @@ export function lowerStatement(
         functionReturnTypes,
         localVariableTypes,
         functionNameForDiagnostics,
+        typeAliases,
+        pointerVars,
       );
     }
 
@@ -1481,6 +1524,7 @@ function hoistNestedFunction(
   functionReturnTypes: Map<string, CppTypeHint>,
   parentFunctionName: string,
   typeAliases?: Map<string, ts.TypeNode>,
+  pointerVars: PointerTracker = new Map(),
 ): void {
   const originalName = statement.name!.text;
   const safeParentName = parentFunctionName.replace(/\./g, "_");
@@ -1535,6 +1579,7 @@ function hoistNestedFunction(
     localVariableTypes,
     mangledName,
     typeAliases,
+    pointerVars,
   );
 
   const typeParams = statement.typeParameters
@@ -1629,6 +1674,7 @@ function hoistNestedClass(
   functionReturnTypes: Map<string, CppTypeHint>,
   functionNameForDiagnostics: string,
   typeAliases?: Map<string, ts.TypeNode>,
+  pointerVars: PointerTracker = new Map(),
 ): void {
   if (!node.name) return;
   const originalClassName = node.name.text;
@@ -1871,7 +1917,7 @@ function hoistNestedClass(
 // but needs StaticArray since C arrays don't have an indexOf method).
 const ARRAY_METHODS_REQUIRING_STATIC_ARRAY = new Set(["push", "pop", "indexOf"]);
 
-function prescanArrayUsage(statement: ts.Statement): void {
+export function prescanArrayUsage(statement: ts.Statement): void {
   if (ts.isVariableStatement(statement)) {
     for (const decl of statement.declarationList.declarations) {
       if (ts.isIdentifier(decl.name) && decl.initializer) {
@@ -1952,6 +1998,7 @@ export function lowerStatementList(
   localVariableTypes: Map<string, CppTypeHint>,
   functionNameForDiagnostics: string,
   typeAliases?: Map<string, ts.TypeNode>,
+  pointerVars: PointerTracker = new Map(),
 ): StatementIR[] {
   const lowered: StatementIR[] = [];
   const nestedNames: string[] = [];
@@ -2119,6 +2166,7 @@ export function variableStatementToIR(
   localVariableTypes: Map<string, CppTypeHint>,
   typeAliases?: Map<string, ts.TypeNode>,
   pointerVars: PointerTracker = new Map(),
+  functionNameForDiagnostics: string = "",
 ): StatementIR[] {
   const statementComments = extractNodeComments(statement, sourceText);
   const storage: "var" | "let" | "const" =
@@ -2392,8 +2440,13 @@ export function variableStatementToIR(
         }
       } else if (ts.isCallExpression(declaration.initializer) && ts.isPropertyAccessExpression(declaration.initializer.expression)) {
         // const led = new Pin(n).method(args) — chained constructor + method call
+        const method = declaration.initializer.expression.name.text;
         const result = resolveHALCallForVarInit(declaration.initializer, sourceText, diagnostics, pointerVars);
-        if (result) {
+        const receiver = declaration.initializer.expression.expression;
+        const isOwnershipMethod = method === "take" || method === "release" || method === "begin" || method === "end";
+        const isSingletonReceiver = ts.isIdentifier(receiver) && isHALSingleton(receiver.text);
+
+        if (result && (!isOwnershipMethod || isSingletonReceiver)) {
           // Emit side effects
           const stmts = result.emitLines.map(line => ({
             kind: "call" as const,
@@ -2496,7 +2549,7 @@ export function variableStatementToIR(
           params.push({
             name: param.name.text,
             cppType: (paramType === "void" ? "auto" : paramType) as any,
-            defaultValue: param.initializer ? expressionToIR(param.initializer, sourceText, diagnostics) : undefined,
+            defaultValue: param.initializer ? expressionToIR(param.initializer, sourceText, diagnostics, pointerVars) : undefined,
             isRest: false,
           });
         }
@@ -2509,11 +2562,12 @@ export function variableStatementToIR(
             new Map(), new Map(),
             declaration.name.getText(),
             typeAliases,
+            pointerVars,
           )
         : [{
             kind: "return" as const,
             sourceSpan: makeSourceSpan(fnExpr.body, fileName, sourceText),
-            value: expressionToIR(fnExpr.body, sourceText, diagnostics),
+            value: expressionToIR(fnExpr.body, sourceText, diagnostics, pointerVars),
           }];
       const returnType = typeNodeToCppType(fnExpr.type, typeAliases);
       lambdaInitializer = { kind: "lambda", params, body, returnType, isExpressionBody: !isBlock };
@@ -2529,7 +2583,7 @@ export function variableStatementToIR(
       cppType: "auto",
       isVolatile,
       initializer: lambdaInitializer ?? (actualInitializer
-        ? expressionToIR(actualInitializer, sourceText, diagnostics)
+        ? expressionToIR(actualInitializer, sourceText, diagnostics, pointerVars)
         : undefined),
     };
     commentsAssigned = true;
@@ -2553,6 +2607,10 @@ export function variableStatementToIR(
     loweredDeclaration.cppType = varCppType as CppType;
     localVariableTypes.set(declaration.name.text, declarationType.resolvedType);
     activeLocalTypes.set(declaration.name.text, declarationType.resolvedType);
+    // If we're at top-level, also register in activeGlobalTypes so functions can see it
+    if (!functionNameForDiagnostics || functionNameForDiagnostics === "") {
+      activeGlobalTypes.set(declaration.name.text, declarationType.resolvedType);
+    }
 
     // Track C-string variables for .length → strlen() conversion
     if (declarationType.resolvedType === "const char*" || declarationType.resolvedType === "char*" || declarationType.resolvedType === "__tc_str_ptr") {
@@ -2563,9 +2621,18 @@ export function variableStatementToIR(
     if (ts.isIdentifier(declaration.name) && actualInitializer) {
       const varName = declaration.name.text;
 
-      // 1) Mutable array (push/pop/indexOf) → StaticArray with push_back init
+      // 1) Mutable array (push/pop/indexOf) → StaticArray with push init
       if (mutableArrayVars.has(varName) && ts.isArrayLiteralExpression(actualInitializer)) {
         const elements = actualInitializer.elements;
+        // Infer element type from the vector type (std::vector<T> -> T)
+        let elemType = "int";
+        if (declarationType.resolvedType.startsWith("std::vector<")) {
+          elemType = declarationType.resolvedType.slice("std::vector<".length, -1);
+        } else if (declarationType.resolvedType === "auto" && elements.length > 0) {
+          elemType = inferExprCppType(elements[0], functionReturnTypes, localVariableTypes, sourceText);
+        }
+
+        const capacity = elements.length + 2; // Headroom for push()
         lowered.push({
           kind: "var_decl",
           sourceSpan: loweredDeclaration.sourceSpan,
@@ -2573,14 +2640,14 @@ export function variableStatementToIR(
           trailingComments: [],
           name: varName,
           storage: "let",
-          cppType: "StaticArray<int>",
+          cppType: `__tc_StaticArray<${elemType}, ${capacity}>` as any,
           initializer: undefined,
         });
         for (let ei = 0; ei < elements.length; ei++) {
           lowered.push({
             kind: "call",
             sourceSpan: loweredDeclaration.sourceSpan,
-            callee: `${varName}.push_back`,
+            callee: `${varName}.push`,
             args: [expressionToIR(elements[ei], sourceText, diagnostics)],
           });
         }
@@ -2742,7 +2809,7 @@ export function variableStatementToIR(
           const span = loweredDeclaration.sourceSpan;
           lowered.push({
             kind: "call", sourceSpan: span,
-            callee: `${arrName}.push_back`,
+            callee: `${arrName}.push`,
             args: [expressionToIR(actualInitializer.arguments[0], sourceText, diagnostics)],
           });
           lowered.push({

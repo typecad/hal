@@ -63,6 +63,29 @@ function parseArduinoCompileErrors(output: string, sketchDir?: string): CompileE
 }
 
 /**
+ * Parse memory usage from arduino-cli output.
+ */
+export function parseArduinoMemoryUsage(output: string): { flashUsed?: number, flashTotal?: number, ramUsed?: number, ramTotal?: number } {
+  const result: { flashUsed?: number, flashTotal?: number, ramUsed?: number, ramTotal?: number } = {};
+  
+  // Sketch uses 444 bytes (1%) of program storage space. Maximum is 32256 bytes.
+  const flashMatch = output.match(/Sketch uses (\d+) bytes.*Maximum is (\d+) bytes/i);
+  if (flashMatch) {
+    result.flashUsed = parseInt(flashMatch[1], 10);
+    result.flashTotal = parseInt(flashMatch[2], 10);
+  }
+  
+  // Global variables use 9 bytes (0%) of dynamic memory, leaving 2039 bytes for local variables. Maximum is 2048 bytes.
+  const ramMatch = output.match(/Global variables use (\d+) bytes.*Maximum is (\d+) bytes/i);
+  if (ramMatch) {
+    result.ramUsed = parseInt(ramMatch[1], 10);
+    result.ramTotal = parseInt(ramMatch[2], 10);
+  }
+  
+  return result;
+}
+
+/**
  * Extract architecture from FQBN string.
  * FQBN format: vendor:arch:board[:config]
  */
@@ -261,6 +284,7 @@ export function compileArduinoSketch(sketchFilePath: string, buildTarget: string
     success: cmd.status === 0,
     output,
     errors,
+    memoryUsage: cmd.status === 0 ? parseArduinoMemoryUsage(output) : undefined,
   };
 }
 

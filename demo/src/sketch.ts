@@ -31,7 +31,6 @@ let edgeTime = 0;
 let edgeTimeout = 0;
 
 // ── Entry point ───────────────────────────────────────────────────────────
-
 function setup(): void {
   port.println("=== TypeHAL Arduino Uno Demo ===");
   port.println("Board: Arduino Uno (ATmega328P)");

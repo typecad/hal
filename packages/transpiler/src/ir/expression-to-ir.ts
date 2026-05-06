@@ -2,7 +2,7 @@ import ts from "typescript";
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "@typehal/core";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeLocalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeLocalTypes, activeGlobalTypes, topLevelClassNames, topLevelClasses } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
 import { halInstances } from "./hal-resolver";
@@ -40,7 +40,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return `__FILTERED_LEN__${filteredArrayLengthVars.get(receiverNode.text)!}`;
     }
     if (ts.isIdentifier(receiverNode) && mutableArrayVars.has(receiverNode.text)) {
-      return `${safeText}.size()`;
+      return `${safeText}.length()`;
     }
     if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
@@ -48,7 +48,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isIdentifier(receiverNode) && activeArrayLiteralVars.has(receiverNode.text)) {
       const varType = activeLocalTypes.get(receiverNode.text);
       if (typeof varType === 'string' && (varType.startsWith('std::vector<') || varType.startsWith('StaticArray<'))) {
-        return `${safeText}.size()`;
+        return `${safeText}.length()`;
       }
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
@@ -68,7 +68,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return `strlen(${safeText})`;
       }
       if (varType === "std::string") {
-        return `${safeText}.size()`;
+        return `${safeText}.length()`;
       }
     }
     // Handle this->field.length where field is a string (const char*)
@@ -408,11 +408,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const arrName = expr.expression.expression.text;
       const methodName = expr.expression.name.text;
       if (methodName === "pop") {
-        return { kind: "raw", value: `${arrName}.pop_back()` };
+        return { kind: "raw", value: `${arrName}.pop()` };
       }
       if (methodName === "push") {
         const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-        return { kind: "raw", value: `${arrName}.push_back(${argsText})` };
+        return { kind: "raw", value: `${arrName}.push(${argsText})` };
       }
       if (methodName === "indexOf") {
         const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
@@ -428,7 +428,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         !activeCArrayVars.has(expr.expression.expression.text)) {
       const varName = expr.expression.expression.text;
       const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-      return { kind: "raw", value: `String(${varName}).indexOf(${argsText})` };
+      return { kind: "raw", value: `__tc_str_ptr(${varName}).indexOf(${argsText})` };
     }
 
 
@@ -458,7 +458,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       } else {
         const objText = renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars));
         let accessor = ".";
-        if (ts.isIdentifier(receiver) && pointerVars.has(receiver.text)) {
+        if (ts.isIdentifier(receiver) && (pointerVars.has(receiver.text) || activeLocalTypes.get(receiver.text)?.endsWith("*") || activeGlobalTypes.get(receiver.text)?.endsWith("*"))) {
           accessor = "->";
         } else if (ts.isCallExpression(receiver) && ts.isPropertyAccessExpression(receiver.expression)) {
           const innerReceiver = receiver.expression.expression;
@@ -671,15 +671,6 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "Math") {
       return { kind: "raw", value: `std::${expr.name.text}` };
     }
-    // Use -> for pointer variables in property access
-    if (ts.isIdentifier(expr.expression) && pointerVars.has(expr.expression.text)) {
-      return { 
-        kind: "property-access", 
-        object: { kind: "identifier", value: expr.expression.text }, 
-        property: expr.name.text,
-        isPointer: true
-      };
-    }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     if (expr.name.text === "length") {
       const objectText = renderExprAsText(object);
@@ -688,6 +679,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return { kind: "identifier", value: resolved.slice("__FILTERED_LEN__".length) };
       }
       return { kind: "raw", value: resolved };
+    }
+
+    // Use -> for pointer variables in property access
+    if (ts.isIdentifier(expr.expression) && (pointerVars.has(expr.expression.text) || activeLocalTypes.get(expr.expression.text)?.endsWith("*") || activeGlobalTypes.get(expr.expression.text)?.endsWith("*"))) {
+      return { 
+        kind: "property-access", 
+        object: { kind: "identifier", value: expr.expression.text }, 
+        property: expr.name.text,
+        isPointer: true
+      };
     }
 
     let isEnum = false;

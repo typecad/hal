@@ -81,6 +81,11 @@ declare module '@typehal' {
   export type Mutable<T = any> = T;
 }
 declare global {
+  export type Owned<T = any> = T;
+  export type Shared<T = any> = T;
+  export type Mutable<T = any> = T;
+}
+declare global {
 }
 
 declare module '@typehal' {

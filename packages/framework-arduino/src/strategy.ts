@@ -162,6 +162,7 @@ export class ArduinoStrategy implements PlatformStrategy {
         "            }",
         "        }",
         "        return value;",
+        "        return value;",
         "    }",
         "    void fill(bool value) const {",
         "        for (int i = 0; i < count; i++) {",
@@ -207,6 +208,17 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    unsigned long micros() { return ::micros(); }",
       "    void delay(unsigned long ms) { ::delay(ms); }",
       "    void delayMicroseconds(unsigned int us) { ::delayMicroseconds(us); }",
+      "    unsigned long freeHeap() {",
+      "#if defined(ESP32)",
+      "        return ESP.getFreeHeap();",
+      "#elif defined(__AVR__)",
+      "        extern int __heap_start, *__brkval;",
+      "        int v;",
+      "        return (unsigned long) &v - (__brkval == 0 ? (unsigned long) &__heap_start : (unsigned long) __brkval);",
+      "#else",
+      "        return 0;",
+      "#endif",
+      "    }",
       "} Timing;",
       "",
       "#if defined(__AVR__)",
@@ -231,16 +243,21 @@ export class ArduinoStrategy implements PlatformStrategy {
       "} WDT;",
       "#endif",
       "",
+      "#ifndef TYPEHAL_STR_BUF_SIZE",
+      "#define TYPEHAL_STR_BUF_SIZE 64",
+      "#endif",
+      "",
       "// String helpers",
       "struct __tc_str_ptr {",
-      "    char buf[32];",
-      "    __tc_str_ptr(const char* s = \"\") { strncpy(buf, s, 31); buf[31] = 0; }",
-      "    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, 32); }",
-      "    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, 32); return *this; }",
-      "    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, 31); buf[31] = 0; return *this; }",
+      "    char buf[TYPEHAL_STR_BUF_SIZE];",
+      "    __tc_str_ptr(const char* s = \"\") { strncpy(buf, s, TYPEHAL_STR_BUF_SIZE - 1); buf[TYPEHAL_STR_BUF_SIZE - 1] = 0; }",
+      "    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, TYPEHAL_STR_BUF_SIZE); }",
+      "    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, TYPEHAL_STR_BUF_SIZE); return *this; }",
+      "    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, TYPEHAL_STR_BUF_SIZE - 1); buf[TYPEHAL_STR_BUF_SIZE - 1] = 0; return *this; }",
       "    const char* c_str() const { return buf; }",
       "    size_t size() const { return strlen(buf); }",
       "    size_t length() const { return strlen(buf); }",
+      "    int indexOf(const char* s) const { const char* p = strstr(buf, s); return p ? p - buf : -1; }",
       "    operator const char*() const { return buf; }",
       "    bool operator==(const char* o) const { return strcmp(buf, o) == 0; }",
       "    bool operator!=(const char* o) const { return strcmp(buf, o) != 0; }",
@@ -294,22 +311,48 @@ export class ArduinoStrategy implements PlatformStrategy {
       requiredIncludes: [],
       forwardDeclarations: [],
       helperStructs: [],
-      helperFunctions: [
-        `#ifndef TYPEHAL_STR_BUF_SIZE
-#define TYPEHAL_STR_BUF_SIZE 64
-#endif
+      helperFunctions: [`
+// TYPEHAL_STR_BUF_SIZE now defined in shimLines
 // Arduino string method polyfills
 bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
-const char* __tc_toUpperCase(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
-const char* __tc_toLowerCase(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
-const char* __tc_trim(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < TYPEHAL_STR_BUF_SIZE - 1 ? len : TYPEHAL_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
-const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= TYPEHAL_STR_BUF_SIZE) len = TYPEHAL_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
+const char* __tc_toUpperCase(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
+const char* __tc_toLowerCase(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
+const char* __tc_trim(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' || s[len-1] == '\n' || s[len-1] == '\r')) len--; int cplen = len < TYPEHAL_STR_BUF_SIZE - 1 ? len : TYPEHAL_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\0'; return b; }
+const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= TYPEHAL_STR_BUF_SIZE) len = TYPEHAL_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\0'; return b; }
 const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
 const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
 const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= TYPEHAL_STR_BUF_SIZE) { strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
-const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
+const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= TYPEHAL_STR_BUF_SIZE) { strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
+const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\0'; return buf[slot]; }
 int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx]; }
+`],
+      shimMacros: [],
+      dependencies: [],
+    }, {
+      kind: "polyfill",
+      id: "static_array",
+      domain: "arduino",
+      requiredIncludes: [],
+      forwardDeclarations: [],
+      helperStructs: [],
+      helperFunctions: [`
+template<typename T, int N>
+struct __tc_StaticArray {
+    T data[N];
+    int _size;
+    __tc_StaticArray() : _size(0) {}
+    int length() const { return _size; }
+    int size() const { return _size; }
+    void push(T val) { if (_size < N) data[_size++] = val; }
+    T pop() { return (_size > 0) ? data[--_size] : T(); }
+    int indexOf(T val) const { for (int i = 0; i < _size; i++) if (data[i] == val) return i; return -1; }
+    T& operator[](int i) { return data[i]; }
+    const T& operator[](int i) const { return data[i]; }
+    T* begin() { return &data[0]; }
+    T* end() { return &data[_size]; }
+    const T* begin() const { return &data[0]; }
+    const T* end() const { return &data[_size]; }
+};
 `],
       shimMacros: [],
       dependencies: [],
@@ -486,6 +529,12 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     if (functionName === "setup" || functionName === "loop") return "void";
     return this.normalizeCppType(returnType);
   }
+  isStringLikeType(cppType: string): boolean {
+    return cppType === "const char*" || cppType === "char*" || cppType === "String" || cppType === "__tc_str_ptr" || cppType === "std::string";
+  }
+  isPointerType(cppType: string): boolean {
+    return cppType.endsWith("*");
+  }
   mapFunctionName(originalName: string): string {
     if (originalName === "void" || originalName === "__typehal_entrypoint__") return "setup";
     if (originalName === "main") return "typehal_main";
@@ -557,6 +606,9 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     }
     return undefined;
   }
+  wrapStringObject(value: string): string {
+    return `__tc_str_ptr(${value})`;
+  }
   useSnprintfForStrings(): boolean {
     return true;
   }
@@ -564,7 +616,13 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     renderedExpr: string,
     precision: number | undefined,
     tempId: number,
-  ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } {
+  ): { format: string; arg: string; estimatedLength: number; preludeLines: string[] } | undefined {
+    // Only use dtostrf on AVR where snprintf %f is disabled to save flash space.
+    // On ESP32, SAMD, and other modern architectures, snprintf supports %f natively.
+    if (this._cachedArch !== 'avr') {
+      return undefined;
+    }
+
     const effectivePrecision = precision ?? 6;
     const bufferName = `__typehal_float_${tempId}`;
     const estimatedLength = Math.max(16, effectivePrecision + 8);
@@ -624,6 +682,9 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   renderThrow(_valueExpr: string): string {
     return "typehal_halt(\"PANIC\")";
+  }
+  isConsoleCall(callee: string): boolean {
+    return callee.startsWith("console.");
   }
   transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? "" : ";";
@@ -729,6 +790,11 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       // re-open `declare global {` for the caller's closing brace.
       "}",
       "declare module '@typehal' {",
+      "  export type Owned<T = any> = T;",
+      "  export type Shared<T = any> = T;",
+      "  export type Mutable<T = any> = T;",
+      "}",
+      "declare global {",
       "  export type Owned<T = any> = T;",
       "  export type Shared<T = any> = T;",
       "  export type Mutable<T = any> = T;",
@@ -1022,4 +1088,4 @@ function detectPinGroupUsage(program: ProgramIR): boolean {
     if (cls.constructor) { for (const s of cls.constructor.statements) { if (checkStmt(s)) return true; } }
   }
   return false;
-}
+}

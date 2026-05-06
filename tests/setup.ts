@@ -3,10 +3,11 @@ import {
   emitCpp,
   analyzePeripheralUsage,
   setLoadedFramework,
-  registerPlatformStrategy
-} from "@typehal/transpiler/testing";
-import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "@typehal/transpiler/testing";
-import { ArduinoStrategy } from "../packages/framework-arduino";
+  registerPlatformStrategy,
+  clearAllProfileCaches
+} from "../packages/transpiler/src/testing";
+import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/transpiler/src/types";
+import { ArduinoStrategy } from "../packages/framework-arduino/src";
 import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
@@ -43,6 +44,8 @@ let testCounter = 0;
  */
 export function transpile(tsCode: string, options: TranspileOptions = {}): TranspileResult {
   const { target = "generic", emitMode = "cpp", platformContext } = options;
+
+  // clearAllProfileCaches() is removed to allow strategy-level caching across tests
 
   // Use unique filename based on caller info + counter to ensure isolation
   const uniqueId = `test_${process.pid}_${testCounter++}_${Date.now()}`;
@@ -90,14 +93,44 @@ export function transpileArduino(tsCode: string, options: Omit<TranspileOptions,
   return transpile(tsCode, { ...options, target: "arduino" });
 }
 
+export function transpileAVR(tsCode: string): TranspileResult {
+  return transpile(tsCode, { 
+    target: "arduino", 
+    platformContext: { frameworkData: { buildTarget: "arduino:avr:uno" } } 
+  });
+}
+
+export function transpileESP32(tsCode: string): TranspileResult {
+  return transpile(tsCode, { 
+    target: "arduino", 
+    platformContext: { frameworkData: { buildTarget: "esp32:esp32:devkitv1" } } 
+  });
+}
+
 /**
  * Helper to strip whitespace for comparison while maintaining readability
  */
 export function normalizeCpp(code: string): string {
   return code
+    .replace(/\/\/.*/g, "") // Strip // comments
+    .replace(/\/\*[\s\S]*?\*\//g, "") // Strip /* */ comments
     .replace(/\r\n/g, "\n")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Semantic C++ matching helper.
+ * Strips comments and normalizes whitespace for robust comparisons.
+ */
+export function matchesCpp(cpp: string, expected: string | string[]): void {
+  const normalizedCpp = normalizeCpp(cpp);
+  const expectedSnippets = Array.isArray(expected) ? expected : [expected];
+
+  for (const snippet of expectedSnippets) {
+    const normalizedSnippet = normalizeCpp(snippet);
+    expect(normalizedCpp).toContain(normalizedSnippet);
+  }
 }
 
 /**
@@ -150,6 +183,20 @@ export function expectCppNotContains(result: TranspileResult, snippets: string[]
 
 export function findDiagnostics(result: TranspileResult, code: string) {
   return result.diagnostics.filter((diagnostic) => diagnostic.code === code);
+}
+
+/**
+ * Snapshot diagnostics to ensure error reporting remains consistent.
+ */
+export function expectDiagnosticsMatchSnapshot(result: TranspileResult): void {
+  const stable = result.diagnostics.map(d => ({
+    code: d.code,
+    severity: d.severity,
+    message: d.message,
+    line: d.line,
+    column: d.column
+  }));
+  expect(stable).toMatchSnapshot();
 }
 
 export function analyzeUsage(tsCode: string) {

@@ -90,6 +90,14 @@ export class NativeStrategy implements PlatformStrategy {
     return this.normalizeCppType(returnType);
   }
 
+  isStringLikeType(cppType: string): boolean {
+    return cppType === "std::string" || cppType === "const char*" || cppType === "char*";
+  }
+
+  isPointerType(cppType: string): boolean {
+    return cppType.endsWith("*");
+  }
+
   mapFunctionName(originalName: string): string {
     if (originalName === '__typehal_entrypoint__') return 'main';
     return originalName;
@@ -169,6 +177,10 @@ export class NativeStrategy implements PlatformStrategy {
     return undefined;
   }
 
+  wrapStringObject(value: string): string {
+    return `std::string(${value})`;
+  }
+
   useSnprintfForStrings(): boolean {
     return false;
   }
@@ -189,6 +201,10 @@ export class NativeStrategy implements PlatformStrategy {
 
   renderThrow(valueExpr: string): string {
     return `throw ${valueExpr};`;
+  }
+
+  isConsoleCall(callee: string): boolean {
+    return callee.startsWith("console.");
   }
 
   transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {

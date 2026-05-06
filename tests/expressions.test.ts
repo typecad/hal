@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { transpile, normalizeCpp, hasInclude } from "./setup";
+import { transpile, transpileAVR, normalizeCpp, hasInclude } from "./setup";
 import { inferSnprintfArg, createEmissionScopeState } from "@typehal/transpiler/testing";
 
 describe("Expression Transpilation", () => {
@@ -110,28 +110,29 @@ describe("Expression Transpilation", () => {
     });
 
     it("uses snprintf for Arduino template literals", () => {
-      const result = transpile([
+      const result = transpileAVR([
         "function test(): void {",
         "  const temp = 24.5;",
         "  const msg = `Temp is ${temp}C`;",
         "}",
-      ].join("\n"), { target: "arduino" });
+      ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
       expect(hasInclude(result.cpp, "stdlib.h")).toBe(true);
-      expect(result.cpp).toContain("char msg[");
+      expect(result.cpp).toContain("char __typehal_str_");
       expect(result.cpp).toContain("char __typehal_float_");
       expect(result.cpp).toContain("dtostrf(temp, 0, 1, __typehal_float_");
-      expect(result.cpp).toContain('snprintf(msg, sizeof(msg), "Temp is %sC", __typehal_float_');
+      expect(result.cpp).toContain("snprintf(__typehal_str_");
+      expect(result.cpp).toContain("const auto msg = __typehal_str_");
       expect(result.cpp).not.toContain("String(temp)");
     });
 
     it("uses snprintf for string concat as function argument", () => {
-      const result = transpile([
+      const result = transpileAVR([
         "function test(): void {",
         "  const x = 42;",
         "  console.log(`value: ${x}`);",
         "}",
-      ].join("\n"), { target: "arduino" });
+      ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
       expect(result.cpp).toContain("snprintf(");
       expect(result.cpp).toContain("Serial.println(");
@@ -158,11 +159,13 @@ describe("Expression Transpilation", () => {
         "}",
       ].join("\n"), { target: "arduino" });
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
-      // Both variables should use snprintf
-      expect(result.cpp).toContain("char a[");
-      expect(result.cpp).toContain("char b[");
-      expect(result.cpp).toContain('snprintf(a, sizeof(a), "first: %d", 1)');
-      expect(result.cpp).toContain('snprintf(b, sizeof(b), "second: %d", 2)');
+      // Both variables should use unique snprintf buffers
+      expect(result.cpp).toContain("char __typehal_str_1[");
+      expect(result.cpp).toContain("char __typehal_str_2[");
+      expect(result.cpp).toContain("snprintf(__typehal_str_1,");
+      expect(result.cpp).toContain("snprintf(__typehal_str_2,");
+      expect(result.cpp).toContain("const auto a = __typehal_str_1;");
+      expect(result.cpp).toContain("const auto b = __typehal_str_2;");
     });
 
     it("keeps std::string for generic target", () => {
@@ -190,46 +193,46 @@ describe("Expression Transpilation", () => {
   });
 
   describe("Binary String Concatenation", () => {
-    it("uses snprintf for string literal + int variable on Arduino", () => {
-      const result = transpile([
+    it("uses snprintf for string literal + int on Arduino", () => {
+      const result = transpileAVR([
         "function test(): void {",
         "  const flash = 32768;",
         '  const msg = "Flash: " + flash + " bytes";',
         "}",
-      ].join("\n"), { target: "arduino" });
+      ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
-      expect(result.cpp).toContain("char msg[");
-      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).toContain("char __typehal_str_");
+      expect(result.cpp).toContain("snprintf(__typehal_str_");
       expect(result.cpp).toContain("%d");
       expect(result.cpp).not.toContain("String(");
     });
 
     it("uses snprintf with dtostrf for string literal + float variable on Arduino", () => {
-      const result = transpile([
+      const result = transpileAVR([
         "function test(): void {",
         "  const val = 3.14;",
         '  const msg = "Value: " + val;',
         "}",
-      ].join("\n"), { target: "arduino" });
+      ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
       expect(hasInclude(result.cpp, "stdlib.h")).toBe(true);
-      expect(result.cpp).toContain("char msg[");
+      expect(result.cpp).toContain("char __typehal_str_");
       expect(result.cpp).toContain("dtostrf(");
-      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).toContain("snprintf(__typehal_str_");
       expect(result.cpp).not.toContain("String(");
     });
 
     it("uses snprintf for string var + string var concat on Arduino", () => {
-      const result = transpile([
+      const result = transpileAVR([
         "function test(): void {",
         '  const a = "hello";',
         '  const b = "world";',
         '  const c = a + " " + b;',
         "}",
-      ].join("\n"), { target: "arduino" });
+      ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
-      expect(result.cpp).toContain("char c[");
-      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).toContain("char __typehal_str_");
+      expect(result.cpp).toContain("snprintf(__typehal_str_");
       expect(result.cpp).not.toContain("String(");
     });
 

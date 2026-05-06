@@ -7,8 +7,8 @@ import { analyzeInterruptSafety } from "./interrupt-analysis";
 import { validateADCRange } from "./adc-range-validation";
 import { createEmptyPeripheralUsage, type PeripheralUsage } from "./peripheral-usage";
 import { validatePeripherals } from "./peripheral-validation";
+import { analyzeResources } from "./resource-analysis";
 import { validatePeripheralOwnership } from "./peripheral-ownership";
-import { validatePeripheralPinConflicts } from "./peripheral-pin-conflict";
 import { validatePinAliasConflicts } from "./pin-alias-conflict";
 import { validatePinModeConfig } from "./pin-mode-validation";
 import { validateUnsafePins } from "./pin-safety";
@@ -29,7 +29,7 @@ export function runProgramValidations(program: ProgramIR, strategy?: PlatformStr
   diagnostics.push(...validatePinCapabilities(program));
   diagnostics.push(...validatePeripherals(peripheralUsage, program.boardConstants));
   diagnostics.push(...validateUnsafePins(peripheralUsage, program.boardConstants));
-  diagnostics.push(...validatePeripheralPinConflicts(peripheralUsage, program.boardConstants));
+  diagnostics.push(...analyzeResources(program, resolvedStrategy));
   diagnostics.push(...validatePinAliasConflicts(peripheralUsage, program.boardConstants));
   diagnostics.push(...validatePWMTimerSharing(peripheralUsage, program.boardConstants));
   diagnostics.push(...validateTimer0PWMTimingConflict(peripheralUsage, program.boardConstants));

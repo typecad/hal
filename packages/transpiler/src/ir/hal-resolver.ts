@@ -41,6 +41,13 @@ const halSingletons = new Map<string, { className: string; fieldValues: Map<stri
 // Guard: only load once per process
 let halModulesLoaded = false;
 
+/** Check if an identifier name refers to a known HAL singleton or mapped peripheral. */
+export function isHALSingleton(name: string): boolean {
+  if (halSingletons.has(name)) return true;
+  if (mapPeripheralName(name) !== undefined) return true;
+  return false;
+}
+
 
 
 /** Resolve the HAL source directory. */

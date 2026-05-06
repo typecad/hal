@@ -38,8 +38,8 @@ export class I2CDevice {
     emit(`${this._bus}.write(${register});`);
     emit(`${this._bus}.endTransmission(false);`);
     emit(`${this._bus}.requestFrom(${this._address}, ${count});`);
-    emit(`Uint8Array result(${count});`);
-    emit(`for (int i=0; i<${count}; i++) result[i] = ${this._bus}.read();`);
+    emit(`static uint8_t result[32];`); // Fallback static buffer
+    emit(`for (int i=0; i<${count} && i<32; i++) result[i] = ${this._bus}.read();`);
     emit(`return result;`);
     return new Uint8Array(count);
   }

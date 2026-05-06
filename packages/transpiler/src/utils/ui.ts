@@ -9,6 +9,7 @@ const ICON_UPLOAD = "↱";
 const ICON_SUCCESS = "✓";
 const ICON_ERROR = "✗";
 const ICON_INFO = "•";
+const ICON_MEMORY = " ";
 
 /**
  * Print the typeHAL branded header
@@ -39,6 +40,22 @@ export function printBuildInfo(options: {
   if (options.framework || options.board || options.buildTarget) {
     console.log();
   }
+}
+
+/**
+ * Print discovered tasks and timers
+ */
+export function printTasks(tasks: string[], usesTimers: boolean): void {
+  if (tasks.length === 0 && !usesTimers) return;
+
+  console.log(chalk.gray(`  ${ICON_INFO} Discovered Tasks:`));
+  for (const task of tasks) {
+    console.log(chalk.gray(`    Task:  `) + chalk.white(task));
+  }
+  if (usesTimers) {
+    console.log(chalk.gray(`    Timer: `) + chalk.white(`Active (setInterval/setTimeout)`));
+  }
+  console.log();
 }
 
 /**
@@ -105,3 +122,53 @@ export function printFileCreated(filePath: string): void {
   console.log(chalk.gray(`  ${ICON_SUCCESS} ${filePath}`));
 }
 
+/**
+ * Print memory usage info
+ */
+export function printMemoryUsage(usage: {
+  flashUsed?: number;
+  flashTotal?: number;
+  ramUsed?: number;
+  ramTotal?: number;
+}): void {
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  };
+
+  const renderBar = (used: number, total: number) => {
+    const percent = Math.round((used / total) * 100);
+    const color = percent > 90 ? chalk.red : percent > 75 ? chalk.yellow : chalk.green;
+    return color(`${percent}%`);
+  };
+
+  console.log(chalk.gray(`  ${ICON_MEMORY} Memory Usage:`));
+  
+  if (usage.flashUsed !== undefined && usage.flashTotal !== undefined) {
+    console.log(
+      chalk.gray(`    Flash: `) + 
+      chalk.white(formatBytes(usage.flashUsed)) + 
+      chalk.gray(` / ${formatBytes(usage.flashTotal)} (`) + 
+      renderBar(usage.flashUsed, usage.flashTotal) + 
+      chalk.gray(`)`)
+    );
+  }
+  
+  if (usage.ramUsed !== undefined && usage.ramTotal !== undefined) {
+    console.log(
+      chalk.gray(`    RAM:   `) + 
+      chalk.white(formatBytes(usage.ramUsed)) + 
+      chalk.gray(` / ${formatBytes(usage.ramTotal)} (`) + 
+      renderBar(usage.ramUsed, usage.ramTotal) + 
+      chalk.gray(`)`)
+    );
+
+    const free = usage.ramTotal - usage.ramUsed;
+    console.log(
+      chalk.gray(`    Heap:  `) + 
+      chalk.white(formatBytes(free)) + 
+      chalk.gray(` available`)
+    );
+  }
+  console.log();
+}

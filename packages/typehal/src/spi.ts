@@ -13,8 +13,9 @@ export class SPIDevice {
 
   transfer(data: number | Uint8Array): number {
     emit(`digitalWrite(${this._cs}, LOW);`);
-    emit(`return ${this._bus}.transfer(${data});`);
+    emit(`auto __res = ${this._bus}.transfer(${data});`);
     emit(`digitalWrite(${this._cs}, HIGH);`);
+    emit(`return __res;`);
     return 0;
   }
 
@@ -27,7 +28,7 @@ export class SPIDevice {
   readRegister(register: number, count: number): Uint8Array {
     emit(`digitalWrite(${this._cs}, LOW);`);
     emit(`${this._bus}.transfer(${register});`);
-    emit(`Uint8Array result(${count});`);
+    emit(`uint8_t result[${count}];`);
     emit(`for (int i=0; i<${count}; i++) result[i] = ${this._bus}.transfer(0x00);`);
     emit(`digitalWrite(${this._cs}, HIGH);`);
     emit(`return result;`);
