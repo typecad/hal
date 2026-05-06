@@ -8,7 +8,7 @@ import type { StatementIR, ExpressionIR } from "@typehal/core";
 import type { PlatformStrategy } from "@typehal/core/shared";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { KnownVariableInfo } from "@typehal/core/shared";
-import { ExpressionRenderer, transformTypeName } from "./expression-renderer";
+import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
@@ -282,7 +282,8 @@ export class StatementRenderer {
       return this.renderVarDecl(statement, forHeader, calleeTransformer, knownVariableTypes);
     })();
 
-    return this.fixPointerFieldAccess(rendered);
+    const fixed = this.fixPointerFieldAccess(rendered);
+    return normalizeRawExpression(fixed, this.strategy, this.classNameMap);
   }
 
   private fixCrossModuleMethodCall(callee: string): string {
@@ -490,6 +491,7 @@ export class StatementRenderer {
    */
   renderParameters(
     parameters: Array<{ name: string; cppType: string; defaultValue?: any; ownershipKind?: 'owned' | 'shared' | 'mutable' }>,
+    forHeader: boolean = false,
   ): string {
     if (parameters.length === 0) {
       return "";
@@ -504,7 +506,7 @@ export class StatementRenderer {
           && !isPrimitiveCppType(parameter.cppType)
           && !isIndirectType(parameter.cppType, this.strategy);
         let result = this.renderTypedName(parameter.cppType, parameter.name, isConst, isRef);
-        if (parameter.defaultValue) {
+        if (forHeader && parameter.defaultValue) {
           result += ` = ${this.expressionRenderer.render(parameter.defaultValue)}`;
         }
         return result;

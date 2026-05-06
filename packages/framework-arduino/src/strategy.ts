@@ -141,7 +141,16 @@ export class ArduinoStrategy implements PlatformStrategy {
   shimLines(program: ProgramIR, ctx?: PlatformContext): string[] {
     this._usesPinGroup = detectPinGroupUsage(program);
     const profileLines = this.getOrResolveProfile(program, ctx).shimLines;
-    const lines: string[] = [];
+    const lines: string[] = [
+      "// TypeHAL Core Shims",
+      "#ifndef TYPEHAL_UNDEFINED",
+      "#define TYPEHAL_UNDEFINED 0",
+      "#endif",
+      "",
+      "template<typename T> inline bool typehal_exists(T v) { return v != (T)TYPEHAL_UNDEFINED; }",
+      "template<typename T, typename U> inline T typehal_nullish(T a, U b) { return (a != (T)TYPEHAL_UNDEFINED) ? a : (T)b; }",
+      "",
+    ];
 
     if (this._usesPinGroup) {
       lines.push(
@@ -579,6 +588,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     v = v.replace(/(\w+)\.replace\(([^,]+),\s*([^)]+)\)/g, "__tc_replace($1, $2, $3)");
     v = v.replace(/(\w+)\.charAt\(([^)]+)\)/g, "__tc_charAt($1, $2)");
     v = v.replace(/(\w+)\.charCodeAt\(([^)]+)\)/g, "__tc_charCodeAt($1, $2)");
+    v = v.replace(/(\w+)\.indexOf\(([^)]+)\)/g, "__tc_str_ptr($1).indexOf($2)");
 
     // Timer transformations are now handled via HAL resolver in timing.ts
 

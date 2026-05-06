@@ -33,6 +33,17 @@ export class NativeStrategy implements PlatformStrategy {
 
   shimLines(): string[] {
     return [
+      '#ifndef TYPEHAL_UNDEFINED',
+      '#define TYPEHAL_UNDEFINED 0',
+      '#endif',
+      'template<typename T> inline bool typehal_is_nullish(const T& v) { return false; }',
+      'inline bool typehal_is_nullish(long long v) { return v == TYPEHAL_UNDEFINED; }',
+      'inline bool typehal_is_nullish(int v) { return v == TYPEHAL_UNDEFINED; }',
+      'inline bool typehal_is_nullish(double v) { return v == (double)TYPEHAL_UNDEFINED; }',
+      'inline bool typehal_is_nullish(bool v) { return v == false; }',
+      'template<typename T> inline bool typehal_is_nullish(T* v) { return v == nullptr; }',
+      'template<typename T> inline bool typehal_exists(const T& v) { return !typehal_is_nullish(v); }',
+      'template<typename T, typename U> inline T typehal_nullish(const T& a, U b) { return !typehal_is_nullish(a) ? a : (T)b; }',
       'inline std::string String(const std::string& s) { return s; }',
       'inline std::string String(const char* s) { return std::string(s); }',
       'inline std::string String(int v) { return std::to_string(v); }',
@@ -80,6 +91,10 @@ export class NativeStrategy implements PlatformStrategy {
     if (typeName === 'int') return 'long long';
     // JavaScript number fractional precision needs double, not float
     if (typeName === 'float') return 'double';
+    // Map StaticArray back to its alias name (handled by pipeline typedef)
+    if (typeName.startsWith("__tc_StaticArray")) {
+      return typeName.replace("__tc_StaticArray", "StaticArray");
+    }
     return typeName;
   }
 
@@ -107,6 +122,8 @@ export class NativeStrategy implements PlatformStrategy {
 
   normalizeRawExpression(value: string): string {
     let v = value;
+    v = v.replace(/\bundefined\b/g, 'TYPEHAL_UNDEFINED');
+    v = v.replace(/\bnull\b/g, 'TYPEHAL_UNDEFINED');
     // Namespace-qualified calls: Date.now() → Date::now()
     v = v.replace(/Date\.now\(\)/g, 'Date::now()');
     // Timers are now handled via HAL resolver in timing.ts
@@ -141,6 +158,10 @@ export class NativeStrategy implements PlatformStrategy {
     v = v.replace(/(\w+)\.slice\(([^)]+)\)/g, '__tc_slice1($1, $2)');
     // String/Array reverse
     v = v.replace(/(\w+)\.reverse\(\)/g, '__tc_reverse($1)');
+    // StaticArray/std::vector method renames
+    v = v.replace(/(\w+)\.push\(([^)]+)\)/g, '$1.push_back($2)');
+    v = v.replace(/(\w+)\.pop\(\)/g, '$1.pop_back()');
+    v = v.replace(/(\w+)\.length\b(?:\(\))?/g, '$1.size()');
     // Array mutation methods
     v = v.replace(/(\w+)\.shift\(\)/g, '__tc_shift($1)');
     v = v.replace(/(\w+)\.pop\(\)/g, '__tc_pop($1)');
@@ -170,7 +191,7 @@ export class NativeStrategy implements PlatformStrategy {
   }
 
   nullValue(): string {
-    return '0';
+    return 'TYPEHAL_UNDEFINED';
   }
 
   wrapStringConcat(): string | undefined {
@@ -178,7 +199,7 @@ export class NativeStrategy implements PlatformStrategy {
   }
 
   wrapStringObject(value: string): string {
-    return `std::string(${value})`;
+    return `String(${value})`;
   }
 
   useSnprintfForStrings(): boolean {

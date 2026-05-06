@@ -65,7 +65,7 @@ export function runNativeTest(fixturePath: string): NativeTestResult {
   writeBuildConfig(buildDir, baseName);
 
   // 4. Transpile via typehal CLI (always use build mode for config discovery)
-  const cliPath = path.resolve(packageRoot, '..', '..', 'packages', 'cli', 'dist', 'cli.js');
+  const cliPath = path.resolve(packageRoot, '..', '..', 'packages', 'transpiler', 'dist', 'cli.js');
 
   const transpileResult = spawnSync(
     process.execPath,
@@ -232,7 +232,7 @@ function patchGeneratedCpp(cppPath: string): void {
 
   // Add StaticArray typedef as alias for std::vector (after all includes)
   if (src.includes('StaticArray<')) {
-    const typedefLine = 'template<typename T> using StaticArray = std::vector<T>;\n';
+    const typedefLine = 'template<typename T, int N> using StaticArray = std::vector<T>;\n';
     // Find the last #include line to insert after it
     const lastInclude = src.lastIndexOf('\n#include ');
     if (lastInclude !== -1) {
@@ -575,7 +575,7 @@ function inlineSupportClasses(cppPath: string, buildDir: string): void {
   if (defsToInline.length === 0) return;
 
   // Insert definitions before the first __tc_fn function definition
-  const insertPoint = mainSrc.indexOf('\ndouble __tc_fn1()');
+  const insertPoint = mainSrc.search(/\n(double|int|long long|void)\s+__tc_fn1\b/);
   if (insertPoint === -1) {
     // Try to find the main() function and insert before it
     const mainPoint = mainSrc.indexOf('\nint main()');

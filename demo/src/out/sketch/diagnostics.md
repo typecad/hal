@@ -1,6 +1,6 @@
 # Build Diagnostics
 
-> **Source:** `sketch.ts` | **Target:** `arduino` | **Generated:** 5/6/2026, 11:17:04 AM
+> **Source:** `sketch.ts` | **Target:** `arduino` | **Generated:** 5/6/2026, 3:31:51 PM
 > **Board:** @typehal/board-arduino-uno | **Framework:** @typehal/framework-arduino
 > **MCU:** ATmega328P | **Flash:** 32KB | **SRAM:** 2KB | **Clock:** 16MHz
 
@@ -353,25 +353,25 @@ _No symbols were removed by tree shaking._
 | Phase | Time (ms) |
 |-------|-----------|
 | setup:caches#0 | 0.19 |
-| setup:load-strategy#1 | 0.53 |
-| graph:collect#2 | 6.16 |
-| typecheck:full#3 | 690.32 |
-| ir:build-all#4 | 481.16 |
-| ir:build:sketch.ts#5 | 480.93 |
-| ir:build-ir:sketch.ts#6 | 475.68 |
-| ir:cross-module-imports#7 | 0.91 |
-| tree-shake:sketch.ts#8 | 3.19 |
-| tree-shake:call-graph#9 | 1.95 |
-| tree-shake:entry-points#10 | 0.48 |
-| tree-shake:reachability#11 | 0.47 |
-| tree-shake:filter#12 | 0.13 |
-| emit:register-enums#13 | 0.03 |
-| emit:all#14 | 18.27 |
-| emit:file:sketch.ts#15 | 18.25 |
+| setup:load-strategy#1 | 0.69 |
+| graph:collect#2 | 6.85 |
+| typecheck:full#3 | 706.26 |
+| ir:build-all#4 | 493.25 |
+| ir:build:sketch.ts#5 | 493.14 |
+| ir:build-ir:sketch.ts#6 | 490.83 |
+| ir:cross-module-imports#7 | 1.28 |
+| tree-shake:sketch.ts#8 | 5.04 |
+| tree-shake:call-graph#9 | 2.78 |
+| tree-shake:entry-points#10 | 0.85 |
+| tree-shake:reachability#11 | 0.70 |
+| tree-shake:filter#12 | 0.51 |
+| emit:register-enums#13 | 0.05 |
+| emit:all#14 | 20.98 |
+| emit:file:sketch.ts#15 | 20.96 |
 | post:native-modules#16 | 0.01 |
-| post:flatten#17 | 0.60 |
-| post:save-cache#18 | 0.59 |
-| **Total** | **2179.87** |
+| post:flatten#17 | 0.67 |
+| post:save-cache#18 | 0.70 |
+| **Total** | **2245.73** |
 
 
 ## Transpile Diagnostics

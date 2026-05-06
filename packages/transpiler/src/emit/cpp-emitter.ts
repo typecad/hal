@@ -410,7 +410,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
     statementRenderer.renderTypedName(cppType, name);
 
   const renderParameters = (params: any[], forHeader: boolean = false) =>
-    statementRenderer.renderParameters(params);
+    statementRenderer.renderParameters(params, forHeader);
 
   const mapFunctionName = (originalName: string, strategy: PlatformStrategy) =>
     statementRenderer.mapFunctionName(originalName);
@@ -2023,7 +2023,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
       if (excludedNames.has(fn.name)) {
         continue;
       }
-      const declarationParameterList = renderParameters(fn.parameters);
+      const declarationParameterList = renderParameters(fn.parameters, true);
       if (fn.typeParameters && fn.typeParameters.length > 0) {
         appendSourceLine(`template<typename ${fn.typeParameters.join(", typename ")}>`);
       }
@@ -2067,8 +2067,8 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   for (let fi = 0; fi < mappedFunctions.length; fi++) {
     const fn = mappedFunctions[fi];
-    const declarationParameterList = renderParameters(fn.parameters);
-    const definitionParameterList = renderParameters(fn.parameters);
+    const declarationParameterList = renderParameters(fn.parameters, true);
+    const definitionParameterList = renderParameters(fn.parameters, false);
     const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
     if (effectiveEmitMode === "split") {
       emitCommentLines(fn.leadingComments, "", (line) => appendHeaderLine(line));

@@ -428,7 +428,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         !activeCArrayVars.has(expr.expression.expression.text)) {
       const varName = expr.expression.expression.text;
       const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-      return { kind: "raw", value: `__tc_str_ptr(${varName}).indexOf(${argsText})` };
+      return {
+        kind: "method-call",
+        callee: `${varName}.indexOf`,
+        args: expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars))
+      };
     }
 
 

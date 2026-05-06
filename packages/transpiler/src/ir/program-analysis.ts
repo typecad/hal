@@ -75,6 +75,12 @@ function analyzeExpression(
       if (/\bmillis\b/.test(expr.callee) || /\bdelay\b/.test(expr.callee) || /\bmicros\b/.test(expr.callee)) {
         result.usesMillis = true;
       }
+      if (expr.callee === "Date.now" || expr.callee === "Date::now") {
+        result.usesDateNow = true;
+      }
+      if (expr.callee === "String") {
+        result.usesStringConversion = true;
+      }
       if (MATH_PATTERN.test(expr.callee)) {
         result.hasStdMathCalls = true;
       }
@@ -197,6 +203,15 @@ function analyzeStatement(
       }
       if (statement.callee === "Serial.begin" || statement.callee.endsWith(".begin")) {
         result.hasSerialBegin = true;
+      }
+      if (statement.callee === "String") {
+        result.usesStringConversion = true;
+      }
+      if (statement.callee === "Date.now" || statement.callee === "Date::now") {
+        result.usesDateNow = true;
+      }
+      if (statement.callee === "millis" || statement.callee === "delay") {
+        result.usesMillis = true;
       }
       for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
         const methodName = pattern.startsWith('.') ? pattern.slice(1, -1) : pattern.slice(0, -1);
