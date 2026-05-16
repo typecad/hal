@@ -1,4 +1,4 @@
-import { ExpressionIR, StatementIR } from "@typehal/core";
+import { ExpressionIR, HALOpIR, StatementIR } from "@typehal/core";
 
 /**
  * Shared utility for collecting identifiers from IR nodes.
@@ -359,8 +359,43 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
       break;
 
     // break, continue have no identifiers
+
+    case "hal-op":
+      for (const id of collectHALOpIdentifiers(statement.operation)) {
+        identifiers.add(id);
+      }
+      break;
+
+    // break, continue have no identifiers
   }
 
+  return identifiers;
+}
+
+/**
+ * Extract identifier names from a HAL operation's string fields.
+ * This ensures the call graph tracks function references embedded in
+ * semantic HAL ops (e.g. the handler name in interrupt.attach).
+ */
+function collectHALOpIdentifiers(op: HALOpIR): Set<string> {
+  const identifiers = new Set<string>();
+  switch (op.operation) {
+    case "interrupt.attach":
+      // handler is a resolved C++ function name (e.g. "myIsr" or a placeholder)
+      identifiers.add(op.handler);
+      break;
+    case "raw": {
+      // Raw C++ code may reference user-defined identifiers
+      const matches = op.code.match(/[A-Za-z_][A-Za-z0-9_]*/g);
+      if (matches) {
+        for (const match of matches) {
+          identifiers.add(match);
+        }
+      }
+      break;
+    }
+    // Other HAL ops have only numeric/literal fields — no identifier references
+  }
   return identifiers;
 }
 

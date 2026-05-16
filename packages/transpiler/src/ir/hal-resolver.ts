@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 import ts from "typescript";
 import { parseSource } from "../ast/parse";
-import { requiredIncludes, registeredCallbacks, getCurrentBoardConstants } from "./build-ir-state";
-import { ExpressionIR } from "@typehal/core";
+import { requiredIncludes, registeredCallbacks, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap } from "./build-ir-state";
+import { ExpressionIR, HALOpIR } from "@typehal/core";
 import { mapPeripheralName } from "../mapping/peripheral-names";
 import { renderExprAsText } from "./render-expr";
 
@@ -287,18 +287,25 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
       if (canonical.startsWith("SPI")) return { className: "SPIBus", fieldValues: new Map([["_bus", mappedName]]) };
     }
 
-    // Bare pin resolution (D0, A0, etc.)
+    // Bare pin resolution (D0, A0, etc.) — enriched with MCU port name
     const dMatch = name.match(/^D(\d+)$/);
     if (dMatch) {
-      const inst = { className: "Pin", fieldValues: new Map([["_pin", dMatch[1]]]) };
+      const arduinoPin = dMatch[1];
+      const portName = mcuPinReverseMap.get(arduinoPin);
+      const fields: Map<string, string> = new Map([["_pin", arduinoPin]]);
+      if (portName) fields.set("_port", portName);
+      const inst = { className: "Pin", fieldValues: fields };
       halInstances.set(name, inst);
       return inst;
     }
     const aMatch = name.match(/^A(\d+)$/);
     if (aMatch) {
       const offset = Number(bc.get("pins.analogOffset") ?? 0);
-      const pinNum = Number(aMatch[1]) + offset;
-      const inst = { className: "Pin", fieldValues: new Map([["_pin", String(pinNum)]]) };
+      const pinNum = String(Number(aMatch[1]) + offset);
+      const portName = mcuPinReverseMap.get(pinNum);
+      const fields: Map<string, string> = new Map([["_pin", pinNum]]);
+      if (portName) fields.set("_port", portName);
+      const inst = { className: "Pin", fieldValues: fields };
       halInstances.set(name, inst);
       return inst;
     }
@@ -310,7 +317,21 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
   }
 
   // Chained call result: new Pin(13).asOutput()
+  // Also handles static factory calls: Pin.fromPort("PB5")
   if (ts.isCallExpression(receiver) && ts.isPropertyAccessExpression(receiver.expression)) {
+    // Static factory: Pin.fromPort("PB5") → Pin with _port field
+    if (ts.isIdentifier(receiver.expression.expression) &&
+        receiver.expression.expression.text === 'Pin' &&
+        receiver.expression.name.text === 'fromPort') {
+      const factoryArgs = (receiver as ts.CallExpression).arguments;
+      if (factoryArgs && factoryArgs.length > 0 && ts.isStringLiteral(factoryArgs[0])) {
+        const portName = factoryArgs[0].text;
+        // Resolve Arduino pin number from MCU forward map
+        const arduinoPin = mcuPinForwardMap.get(portName) ?? '-1';
+        return { className: 'Pin', fieldValues: new Map([['_port', portName], ['_pin', arduinoPin]]) };
+      }
+    }
+
     const innerInstance = resolveHALReceiver(receiver.expression.expression);
     if (innerInstance) {
       const methodName = receiver.expression.name.text;
@@ -424,31 +445,6 @@ function resolveCtorFieldValues(
     }
   }
   return fieldValues;
-}
-
-/** Resolve a template expression with field/param substitution. */
-function resolveTemplateLiteral(
-  node: ts.Expression,
-  instance: HALInstance,
-  paramNames: string[],
-  callArgTexts: string[],
-  paramDefaults?: Map<string, string>,
-): string | null {
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-    return node.text;
-  }
-
-  if (ts.isTemplateExpression(node)) {
-    let result = node.head.text;
-    for (const span of node.templateSpans) {
-      const resolved = resolveExpressionText(span.expression, instance, paramNames, callArgTexts, paramDefaults);
-      if (resolved === null) return null;
-      result += resolved + span.literal.text;
-    }
-    return result;
-  }
-
-  return resolveExpressionText(node, instance, paramNames, callArgTexts, paramDefaults);
 }
 
 /** Resolve an arbitrary expression to its text form, with this/param substitution. */
@@ -605,6 +601,22 @@ function resolveExpressionText(
     return resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
   }
 
+  // Template expression: `text ${expr} more text`
+  if (ts.isTemplateExpression(expr)) {
+    let result = expr.head.text;
+    for (const span of expr.templateSpans) {
+      const resolved = resolveExpressionText(span.expression, instance, paramNames, callArgTexts, paramDefaults);
+      if (resolved === null) return null;
+      result += resolved + span.literal.text;
+    }
+    return result;
+  }
+
+  // No-substitution template literal: `text`
+  if (ts.isNoSubstitutionTemplateLiteral(expr)) {
+    return expr.text;
+  }
+
   return expr.getText ? expr.getText() : null;
 }
 
@@ -641,13 +653,391 @@ function extractAndRegisterCallbacks(
   scan(expr);
 }
 
-/** Process a HAL method body, resolving emit()/include() calls.
- *  Returns { emitLines, returnValue, returnClassName } or null if unresolvable. */
+// ---------------------------------------------------------------------------
+// Semantic HAL function → HALOpIR resolver
+//
+// When HAL source files use semantic functions (gpioWrite, i2cBegin, etc.)
+// instead of raw emit("..."), this table maps each function name to a
+// HALOpIR node using the resolved argument expressions.
+// ---------------------------------------------------------------------------
+
+/** Resolve a single argument from a semantic call's AST node list. */
+function resolveSemanticArg(
+  args: readonly ts.Expression[],
+  idx: number,
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  paramDefaults: Map<string, string> | undefined,
+): string | null {
+  const arg = args[idx];
+  if (!arg) return null;
+  return resolveExpressionText(arg, instance, paramNames, callArgTexts, paramDefaults);
+}
+
+/** Resolve a numeric argument, returning its numeric value or null. */
+function resolveNumericArg(
+  args: readonly ts.Expression[],
+  idx: number,
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  paramDefaults: Map<string, string> | undefined,
+): number | null {
+  const text = resolveSemanticArg(args, idx, instance, paramNames, callArgTexts, paramDefaults);
+  if (text === null) return null;
+  // R1: Boolean coercion — true → 1, false → 0
+  if (text === "true") return 1;
+  if (text === "false") return 0;
+  const n = Number(text);
+  return isNaN(n) ? null : n;
+}
+
+/** Extract the MCU port name from the current HAL instance, if available. */
+function portFromInstance(instance: HALInstance): string | undefined {
+  const port = instance.fieldValues.get('_port');
+  return port && port !== '' ? port : undefined;
+}
+
+/**
+ * Try to resolve a semantic HAL function call to a HALOpIR node.
+ * Returns the HALOpIR if the function name is recognized, or null.
+ */
+function tryResolveSemanticCall(
+  fnName: string,
+  args: readonly ts.Expression[],
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  paramDefaults: Map<string, string> | undefined,
+): HALOpIR | null {
+  // Extract MCU port name from instance (set by Pin.fromPort())
+  const port = portFromInstance(instance);
+
+  switch (fnName) {
+    // ── GPIO ──
+    case "gpioWrite": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || value === null) return null;
+      return { operation: "gpio.write", port, pin, value: (value ? 1 : 0) as 0 | 1 };
+    }
+    case "gpioRead": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "gpio.read", port, pin };
+    }
+    case "gpioToggle": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "gpio.toggle", port, pin };
+    }
+    case "gpioSetMode": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const mode = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || mode === null) return null;
+      return { operation: "gpio.set_mode", port, pin, mode };
+    }
+
+    // ── PWM ──
+    case "pwmWrite": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const duty = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || duty === null) return null;
+      return { operation: "pwm.write", port, pin, duty };
+    }
+
+    // ── ADC ──
+    case "adcRead": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "adc.read", port, pin };
+    }
+    case "adcSetReference": {
+      const ref = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ref === null) return null;
+      const numRef = Number(ref);
+      return { operation: "adc.set_reference", reference: isNaN(numRef) ? ref : numRef };
+    }
+    case "adcReadVoltage": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "adc.read_voltage", port, pin };
+    }
+
+    // ── DAC ──
+    case "dacWrite": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || value === null) return null;
+      return { operation: "dac.write", port, pin, value };
+    }
+
+    // ── Interrupts ──
+    case "interruptAttach": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const mode = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || handler === null || mode === null) return null;
+      return { operation: "interrupt.attach", port, pin, handler, mode };
+    }
+    case "interruptDetach": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "interrupt.detach", port, pin };
+    }
+
+    // ── Tone ──
+    case "tonePlay": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const frequency = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const duration = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || frequency === null) return null;
+      return { operation: "tone.play", port, pin, frequency, ...(duration !== null ? { duration } : {}) };
+    }
+    case "toneStop": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "tone.stop", port, pin };
+    }
+
+    // ── Timing ──
+    case "delayMs": {
+      const ms = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ms === null) return null;
+      return { operation: "timing.delay", ms };
+    }
+    case "delayMicro": {
+      const us = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (us === null) return null;
+      return { operation: "timing.delay_microseconds", us };
+    }
+    case "getMillis":
+      return { operation: "timing.millis" };
+    case "getMicros":
+      return { operation: "timing.micros" };
+
+    // ── I2C ──
+    case "i2cBegin": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null) return null;
+      return { operation: "i2c.begin", bus, ...(address !== null ? { address } : {}) };
+    }
+    case "i2cEnd": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null) return null;
+      return { operation: "i2c.end", bus };
+    }
+    case "i2cSetClock": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || hz === null) return null;
+      return { operation: "i2c.set_clock", bus, hz };
+    }
+    case "i2cBeginTx": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || address === null) return null;
+      return { operation: "i2c.begin_transmission", bus, address };
+    }
+    case "i2cWrite": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || data === null) return null;
+      return { operation: "i2c.write", bus, data };
+    }
+    case "i2cEndTx": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const stop = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || stop === null) return null;
+      return { operation: "i2c.end_transmission", bus, stop: stop !== "false" };
+    }
+    case "i2cRequestFrom": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const quantity = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const stop = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || address === null || quantity === null || stop === null) return null;
+      return { operation: "i2c.request_from", bus, address, quantity, stop: stop !== "false" };
+    }
+    case "i2cAvailable": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null) return null;
+      return { operation: "i2c.available", bus };
+    }
+    case "i2cRead": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null) return null;
+      return { operation: "i2c.read", bus };
+    }
+
+    // ── SPI ──
+    case "spiBegin": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null) return null;
+      return { operation: "spi.begin", bus };
+    }
+    case "spiEnd": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null) return null;
+      return { operation: "spi.end", bus };
+    }
+    case "spiTransfer": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || data === null) return null;
+      return { operation: "spi.transfer", bus, data };
+    }
+    case "spiBeginTx": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const settings = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || settings === null) return null;
+      return { operation: "spi.begin_transaction", bus, settings };
+    }
+    case "spiEndTx": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null) return null;
+      return { operation: "spi.end_transaction", bus };
+    }
+    case "spiCsLow": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "spi.cs_low", port, pin };
+    }
+    case "spiCsHigh": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "spi.cs_high", port, pin };
+    }
+    case "spiSetMode": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const mode = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || mode === null) return null;
+      return { operation: "spi.set_mode", bus, mode };
+    }
+    case "spiSetBitOrder": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const order = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || order === null) return null;
+      return { operation: "spi.set_bit_order", bus, order };
+    }
+
+    // ── UART ──
+    case "uartBegin": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const baud = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || baud === null) return null;
+      return { operation: "uart.begin", port, baud };
+    }
+    case "uartEnd": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "uart.end", port };
+    }
+    case "uartPrint": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || value === null) return null;
+      return { operation: "uart.print", port, value };
+    }
+    case "uartPrintln": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || value === null) return null;
+      return { operation: "uart.println", port, value };
+    }
+    case "uartWrite": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || data === null) return null;
+      return { operation: "uart.write", port, data };
+    }
+    case "uartRead": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "uart.read", port };
+    }
+    case "uartPeek": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "uart.peek", port };
+    }
+    case "uartAvailable": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "uart.available", port };
+    }
+    case "uartFlush": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "uart.flush", port };
+    }
+
+    // ── Pulse ──
+    case "pulseIn_": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const timeout = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || value === null) return null;
+      return { operation: "pulse.in", port, pin, value: (value ? 1 : 0) as 0 | 1, ...(timeout !== null ? { timeout } : {}) };
+    }
+    case "pulseInLong_": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || value === null) return null;
+      return { operation: "pulse.in_long", port, pin, value: (value ? 1 : 0) as 0 | 1 };
+    }
+
+    // ── Shift ──
+    case "shiftOut_": {
+      const dataPin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const clockPin = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const bitOrder = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      if (dataPin === null || clockPin === null || bitOrder === null || value === null) return null;
+      return { operation: "shift.out", dataPin, clockPin, bitOrder, value };
+    }
+    case "shiftIn_": {
+      const dataPin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const clockPin = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const bitOrder = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (dataPin === null || clockPin === null || bitOrder === null) return null;
+      return { operation: "shift.in", dataPin, clockPin, bitOrder };
+    }
+
+    // ── Board ──
+    case "boardResolve": {
+      const p = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (p === null) return null;
+      return { operation: "board.resolve", path: p };
+    }
+
+    // ── Raw C++ passthrough ──
+    case "rawCpp": {
+      const code = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (code === null) return null;
+      return { operation: "raw", code };
+    }
+
+    default:
+      return null;
+  }
+}
+
+/** Process a HAL method body, resolving emit()/include()/semantic calls.
+ *  Returns { emitLines, halOps, returnValue, returnClassName } or null if unresolvable.
+ *
+ *  `emitLines` contains legacy raw C++ strings (from `emit()` calls).
+ *  `halOps` contains structured HALOpIR nodes (from semantic function calls like
+ *  `gpioWrite()`, `i2cBegin()`, etc.).
+ *
+ *  During migration both can coexist; consumers should prefer `halOps` when present. */
 export function processHALMethodBody(
   instance: HALInstance,
   methodName: string,
   callArgs: ExpressionIR[],
-): { emitLines: string[]; returnValue?: string; returnClassName?: string } | null {
+): { emitLines: string[]; halOps: HALOpIR[]; returnValue?: string; returnClassName?: string } | null {
   let methodEntry: HALMethodEntry | undefined;
 
   if (instance.className) {
@@ -683,6 +1073,7 @@ export function processHALMethodBody(
   const body = methodEntry.methodNode.body;
 
   const emitLines: string[] = [];
+  const halOps: HALOpIR[] = [];
 
   // For string_concat args (template literals), generate snprintf instead of
   // C++ + concatenation which is invalid for char* on Arduino.
@@ -720,36 +1111,33 @@ export function processHALMethodBody(
       }
     }
 
-    // emit(...) call
+    // emit(...) call or semantic HAL function call
     if (ts.isExpressionStatement(stmt) && ts.isCallExpression(stmt.expression)) {
       const call = stmt.expression;
-      if (ts.isIdentifier(call.expression) && call.expression.text === "emit") {
-        const templateArg = call.arguments[0];
-        if (templateArg) {
-          // Extract callbacks from template and patch callArgTexts with placeholders
-          extractAndRegisterCallbacks(templateArg as ts.Expression, paramNames, callArgs, callArgTexts);
 
-          const resolved = resolveTemplateLiteral(
-            templateArg as ts.Expression,
-            instance,
-            paramNames,
-            callArgTexts,
-            paramDefaults,
-          );
-            if (resolved !== null) {
-              const normalized = resolved
-                .replace(/===/g, "==")
-                .replace(/!==/g, "!=");
-              // Convention: emit("return EXPR") means this is a return value expression
-              if (normalized.startsWith("return ")) {
-                const returnExpr = normalized.slice(7).replace(/;$/, "");
-                returnValue = returnExpr;
-              } else {
-                emitLines.push(normalized);
-              }
-            }
+      // ── Semantic HAL function calls (gpioWrite, i2cBegin, etc.) ──
+      if (ts.isIdentifier(call.expression)) {
+        // Extract callbacks from semantic call arguments and patch callArgTexts
+        // with placeholder names before resolving (mirrors the emit() path at
+        // line ~1090).  Without this, callback(handler) inside a semantic call
+        // like interruptAttach(pin, callback(handler), "FALLING") would never
+        // be registered, and the handler placeholder would not be substituted.
+        for (const arg of call.arguments) {
+          extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
         }
-        continue;
+
+        const semanticOp = tryResolveSemanticCall(
+          call.expression.text,
+          call.arguments,
+          instance,
+          paramNames,
+          callArgTexts,
+          paramDefaults,
+        );
+        if (semanticOp) {
+          halOps.push(semanticOp);
+          continue;
+        }
       }
 
       // include(...) call
@@ -762,22 +1150,65 @@ export function processHALMethodBody(
       }
     }
 
-    // if statement (e.g., WDT.enable with optional timeout)
+    // R4: if statement with compile-time condition evaluation
     if (ts.isIfStatement(stmt)) {
-      if (stmt.thenStatement) {
+      let conditionTrue = true; // default: process then-branch
+      const cond = stmt.expression;
+      if (cond && ts.isBinaryExpression(cond)) {
+        const left = resolveExpressionText(cond.left, instance, paramNames, callArgTexts, paramDefaults);
+        const right = resolveExpressionText(cond.right, instance, paramNames, callArgTexts, paramDefaults);
+        if (left !== null && right !== null) {
+          const op = cond.operatorToken.kind;
+          if (op === ts.SyntaxKind.EqualsEqualsToken || op === ts.SyntaxKind.EqualsEqualsEqualsToken) {
+            conditionTrue = left === right;
+          } else if (op === ts.SyntaxKind.ExclamationEqualsToken || op === ts.SyntaxKind.ExclamationEqualsEqualsToken) {
+            conditionTrue = left !== right;
+          }
+        }
+      }
+
+      if (conditionTrue && stmt.thenStatement) {
         const returnRef = returnValue !== undefined ? undefined : { value: "" };
         processStatementList(
           ts.isBlock(stmt.thenStatement) ? (stmt.thenStatement as ts.Block).statements : [stmt.thenStatement as ts.Statement],
-          instance, paramNames, callArgTexts, emitLines, paramDefaults, returnRef,
+          instance, paramNames, callArgTexts, emitLines, halOps, callArgs, paramDefaults, returnRef,
+        );
+        if (returnRef && returnRef.value) returnValue = returnRef.value;
+      }
+      if (!conditionTrue && stmt.elseStatement) {
+        const returnRef = returnValue !== undefined ? undefined : { value: "" };
+        processStatementList(
+          ts.isBlock(stmt.elseStatement) ? (stmt.elseStatement as ts.Block).statements : [stmt.elseStatement as ts.Statement],
+          instance, paramNames, callArgTexts, emitLines, halOps, callArgs, paramDefaults, returnRef,
         );
         if (returnRef && returnRef.value) returnValue = returnRef.value;
       }
       continue;
     }
 
-    // return expr — only set if not already set by emit("return EXPR") convention
+    // R2: return expr — check for semantic call first, then fall back to resolveExpressionText
     if (ts.isReturnStatement(stmt) && stmt.expression && returnValue === undefined) {
-      const resolved = resolveExpressionText(stmt.expression, instance, paramNames, callArgTexts, paramDefaults);
+      const retExpr = stmt.expression;
+      // Check if the return expression is a semantic HAL function call
+      if (ts.isCallExpression(retExpr) && ts.isIdentifier(retExpr.expression)) {
+        for (const arg of retExpr.arguments) {
+          extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
+        }
+        const semanticOp = tryResolveSemanticCall(
+          retExpr.expression.text,
+          retExpr.arguments,
+          instance, paramNames, callArgTexts, paramDefaults,
+        );
+        if (semanticOp) {
+          halOps.push(semanticOp);
+          // Mark returnValue as a sentinel so consumers know there's a return
+          // The actual expression comes from the last halOp via strategy.resolveHALOperation
+          returnValue = "__hal_op_return__";
+          continue;
+        }
+      }
+      // Fall back to expression text resolution
+      const resolved = resolveExpressionText(retExpr, instance, paramNames, callArgTexts, paramDefaults);
       if (resolved !== null) {
         returnValue = resolved.replace(/===/g, "==").replace(/!==/g, "!=");
       }
@@ -794,12 +1225,12 @@ export function processHALMethodBody(
     const cppObj = resolveCppObjectName(instance);
     if (cppObj) {
       const argsStr = callArgTexts.join(", ");
-      return { emitLines: [], returnValue: `${cppObj}.${methodName}(${argsStr})` };
+      return { emitLines: [], halOps: [], returnValue: `${cppObj}.${methodName}(${argsStr})` };
     }
   }
 
   // Return null if nothing useful was resolved, allowing inline fallbacks to kick in
-  if (emitLines.length === 0 && returnValue === undefined) {
+  if (emitLines.length === 0 && halOps.length === 0 && returnValue === undefined) {
     return null;
   }
 
@@ -815,7 +1246,7 @@ export function processHALMethodBody(
   }
 
 
-  return { emitLines, returnValue, returnClassName };
+  return { emitLines, halOps, returnValue, returnClassName };
 }
 
 /** Check if a resolved C++ value string is a simple literal (for stub detection). */
@@ -840,37 +1271,39 @@ function resolveCppObjectName(instance: HALInstance): string | null {
   return null;
 }
 
-/** Process a list of statements for emit/include/return. */
+/** Process a list of statements for emit/include/semantic calls/return. */
 function processStatementList(
   stmts: readonly ts.Statement[],
   instance: HALInstance,
   paramNames: string[],
   callArgTexts: string[],
   emitLines: string[],
+  halOps: HALOpIR[],
+  callArgs: ExpressionIR[],
   paramDefaults: Map<string, string>,
   returnExpr?: { value: string },
 ): void {
   for (const stmt of stmts) {
     if (ts.isExpressionStatement(stmt) && ts.isCallExpression(stmt.expression)) {
       const call = stmt.expression;
-      if (ts.isIdentifier(call.expression) && call.expression.text === "emit") {
-        const templateArg = call.arguments[0];
-        if (templateArg) {
-          const resolved = resolveTemplateLiteral(
-            templateArg as ts.Expression, instance, paramNames, callArgTexts, paramDefaults,
-          );
-          if (resolved !== null) {
-            if (resolved.startsWith("return ") && returnExpr) {
-              returnExpr.value = resolved.slice(7).replace(/;$/, "");
-            } else {
-              emitLines.push(resolved);
-            }
+      if (ts.isIdentifier(call.expression)) {
+        if (call.expression.text === "include") {
+          const firstArg = call.arguments[0];
+          if (firstArg && ts.isStringLiteral(firstArg)) {
+            requiredIncludes.add(firstArg.text);
           }
-        }
-      } else if (ts.isIdentifier(call.expression) && call.expression.text === "include") {
-        const firstArg = call.arguments[0];
-        if (firstArg && ts.isStringLiteral(firstArg)) {
-          requiredIncludes.add(firstArg.text);
+        } else {
+          // R3: Try semantic HAL function call
+          for (const arg of call.arguments) {
+            extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
+          }
+          const semanticOp = tryResolveSemanticCall(
+            call.expression.text, call.arguments,
+            instance, paramNames, callArgTexts, paramDefaults,
+          );
+          if (semanticOp) {
+            halOps.push(semanticOp);
+          }
         }
       }
     }

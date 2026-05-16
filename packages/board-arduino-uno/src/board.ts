@@ -20,7 +20,7 @@ import {
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX,
 } from './pins';
 
-import { I2C0, SPI0, UART0 } from './peripherals';
+import { I2C0, SPI0, UART0 } from '@typehal/mcu-atmega328p';
 import { ArduinoUno } from './index';
 
 export const Board = {

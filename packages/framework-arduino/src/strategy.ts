@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig } from "@typehal/core/shared";
-import type { StatementIR } from "@typehal/core/shared";
+import type { StatementIR, HALOpIR } from "@typehal/core/shared";
 import { generatePromiseRuntime } from "@typehal/core/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
 import { resolveArduinoProfile } from "./profile";
@@ -216,20 +216,40 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    unsigned long micros() { return ::micros(); }",
       "    void delay(unsigned long ms) { ::delay(ms); }",
       "    void delayMicroseconds(unsigned int us) { ::delayMicroseconds(us); }",
+    );
+
+    // freeHeap() — architecture-specific, resolved at transpile time
+    const arch = this._cachedArch;
+    if (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3') {
+      lines.push(
       "    unsigned long freeHeap() {",
-      "#if defined(ESP32)",
       "        return ESP.getFreeHeap();",
-      "#elif defined(__AVR__)",
+      "    }",
+      );
+    } else if (arch === 'avr' || arch === 'megaavr') {
+      lines.push(
+      "    unsigned long freeHeap() {",
       "        extern int __heap_start, *__brkval;",
       "        int v;",
       "        return (unsigned long) &v - (__brkval == 0 ? (unsigned long) &__heap_start : (unsigned long) __brkval);",
-      "#else",
-      "        return 0;",
-      "#endif",
       "    }",
+      );
+    } else {
+      lines.push(
+      "    unsigned long freeHeap() {",
+      "        return 0;",
+      "    }",
+      );
+    }
+
+    lines.push(
       "} Timing;",
       "",
-      "#if defined(__AVR__)",
+    );
+
+    // WDT — only emitted on AVR architectures that support it
+    if (arch === 'avr' || arch === 'megaavr') {
+      lines.push(
       "#include <avr/wdt.h>",
       "#include <string.h>",
       "struct __tc_WDT {",
@@ -249,7 +269,10 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    void (reset)() { wdt_reset(); }",
       "    void (disable)() { wdt_disable(); }",
       "} WDT;",
-      "#endif",
+      );
+    }
+
+    lines.push(
       "",
       "#ifndef TYPEHAL_STR_BUF_SIZE",
       "#define TYPEHAL_STR_BUF_SIZE 64",
@@ -679,11 +702,14 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   resolvePinType(objectName: string, fieldName: string): string | undefined {
     if (objectName !== "Pins") return undefined;
-    if (fieldName === "D2") return "AVRInterruptPin*";
-    if (fieldName === "D3") return "AVRPWMInterruptPin*";
-    if (["D5", "D6", "D9", "D10", "D11"].includes(fieldName)) return "AVRPWMPin*";
-    if (/^A\d+$/.test(fieldName)) return "AVRAnalogPin*";
-    if (/^D\d+$/.test(fieldName) || fieldName === "LED") return "AVRDigitalPin*";
+    // AVR port-name patterns (ATmega328P)
+    if (fieldName === "PD2") return "AVRInterruptPin*";
+    if (fieldName === "PD3") return "AVRPWMInterruptPin*";
+    if (["PD5", "PD6", "PB1", "PB2", "PB3"].includes(fieldName)) return "AVRPWMPin*";
+    if (/^PC\d+$/.test(fieldName)) return "AVRAnalogPin*";
+    if (/^P[A-L]\d+$/.test(fieldName) || fieldName === "LED") return "AVRDigitalPin*";
+    // ESP32 GPIO-name patterns
+    if (/^GPIO\d+$/.test(fieldName) || fieldName === "LED") return "int";
     return undefined;
   }
 
@@ -1014,6 +1040,171 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     variables: Array<{ name: string; isFunction?: boolean }>;
   }): string[] {
     return generateLogpointCode(params.fileName, params.lineNum, params.parts, params.variables);
+  }
+
+  // ── HAL Operation Resolution ────────────────────────────────────────────
+
+  resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
+    switch (op.operation) {
+      // GPIO
+      case "gpio.write":
+        return { code: `digitalWrite(${op.pin}, ${op.value ? "HIGH" : "LOW"});` };
+      case "gpio.read":
+        return { expression: `digitalRead(${op.pin})` };
+      case "gpio.toggle":
+        return { code: `digitalWrite(${op.pin}, digitalRead(${op.pin}) == LOW ? HIGH : LOW);` };
+      case "gpio.set_mode":
+        return { code: `pinMode(${op.pin}, ${op.mode});` };
+
+      // PWM
+      case "pwm.write":
+        return { code: `analogWrite(${op.pin}, ${op.duty});` };
+      case "pwm.get_frequency":
+        return { expression: `0` };
+      case "pwm.get_resolution":
+        return { expression: `8` };
+
+      // ADC
+      case "adc.read":
+        return { expression: `analogRead(${op.pin})` };
+      case "adc.get_resolution":
+        return { expression: `10` };
+      case "adc.set_reference":
+        return { code: `analogReference(${op.reference});` };
+      case "adc.get_reference":
+        return { expression: `AR_DEFAULT` };
+      case "adc.read_voltage":
+        return { expression: `(analogRead(${op.pin}) * 5.0 / 1023.0)` };
+
+      // DAC
+      case "dac.write":
+        return { code: `dacWrite(${op.pin}, ${op.value});` };
+
+      // Interrupts
+      case "interrupt.attach":
+        return { code: `attachInterrupt(digitalPinToInterrupt(${op.pin}), ${op.handler}, ${op.mode});` };
+      case "interrupt.detach":
+        return { code: `detachInterrupt(digitalPinToInterrupt(${op.pin}));` };
+
+      // Tone
+      case "tone.play":
+        if (op.duration !== undefined) {
+          return { code: `tone(${op.pin}, ${op.frequency}, ${op.duration});` };
+        }
+        return { code: `tone(${op.pin}, ${op.frequency});` };
+      case "tone.stop":
+        return { code: `noTone(${op.pin});` };
+
+      // Timing
+      case "timing.delay":
+        return { code: `delay(${op.ms});` };
+      case "timing.delay_microseconds":
+        return { code: `delayMicroseconds(${op.us});` };
+      case "timing.millis":
+        return { expression: `millis()` };
+      case "timing.micros":
+        return { expression: `micros()` };
+      case "timing.free_heap":
+        return { expression: `0` };
+      case "timing.set_interval":
+      case "timing.set_timeout":
+      case "timing.clear_interval":
+      case "timing.clear_timeout":
+        return undefined;
+
+      // I2C
+      case "i2c.begin":
+        return { code: `${op.bus}.begin(${op.address ?? ""});` };
+      case "i2c.end":
+        return { code: `${op.bus}.end();` };
+      case "i2c.set_clock":
+        return { code: `${op.bus}.setClock(${op.hz});` };
+      case "i2c.begin_transmission":
+        return { code: `${op.bus}.beginTransmission(${op.address});` };
+      case "i2c.write":
+        return { code: `${op.bus}.write(${op.data});` };
+      case "i2c.end_transmission":
+        return { code: `${op.bus}.endTransmission(${op.stop ? "true" : "false"});` };
+      case "i2c.request_from":
+        return { code: `${op.bus}.requestFrom(${op.address}, ${op.quantity}, ${op.stop ? "true" : "false"});` };
+      case "i2c.available":
+        return { expression: `${op.bus}.available()` };
+      case "i2c.read":
+        return { expression: `${op.bus}.read()` };
+      case "i2c.recover":
+        return undefined;
+
+      // SPI
+      case "spi.begin":
+        return { code: `${op.bus}.begin();` };
+      case "spi.end":
+        return { code: `${op.bus}.end();` };
+      case "spi.transfer":
+        return { expression: `${op.bus}.transfer(${op.data})` };
+      case "spi.begin_transaction":
+        return { code: `${op.bus}.beginTransaction(${op.settings});` };
+      case "spi.end_transaction":
+        return { code: `${op.bus}.endTransaction();` };
+      case "spi.set_frequency":
+        return { code: `${op.bus}.setClockDivider(${op.hz});` };
+      case "spi.set_mode":
+        return { code: `${op.bus}.setDataMode(${op.mode});` };
+      case "spi.set_bit_order":
+        return { code: `${op.bus}.setBitOrder(${op.order === "msb" ? "MSBFIRST" : "LSBFIRST"});` };
+      case "spi.cs_low":
+        return { code: `digitalWrite(${op.pin}, LOW);` };
+      case "spi.cs_high":
+        return { code: `digitalWrite(${op.pin}, HIGH);` };
+
+      // UART
+      case "uart.begin":
+        return { code: `${op.port}.begin(${op.baud});` };
+      case "uart.end":
+        return { code: `${op.port}.end();` };
+      case "uart.print":
+        return { code: `${op.port}.print(${op.value});` };
+      case "uart.println":
+        return { code: `${op.port}.println(${op.value});` };
+      case "uart.printf":
+        return { code: `${op.port}.printf(${op.format}, ${op.args.join(", ")});` };
+      case "uart.write":
+        return { code: `${op.port}.write(${op.data});` };
+      case "uart.read":
+        return { expression: `${op.port}.read()` };
+      case "uart.peek":
+        return { expression: `${op.port}.peek()` };
+      case "uart.available":
+        return { expression: `${op.port}.available()` };
+      case "uart.flush":
+        return { code: `${op.port}.flush();` };
+
+      // Pulse
+      case "pulse.in":
+        return { expression: `pulseIn(${op.pin}, ${op.value ? "HIGH" : "LOW"}${op.timeout !== undefined ? `, ${op.timeout}` : ""})` };
+      case "pulse.in_long":
+        return { expression: `pulseInLong(${op.pin}, ${op.value ? "HIGH" : "LOW"})` };
+
+      // Shift
+      case "shift.out":
+        return { code: `shiftOut(${op.dataPin}, ${op.clockPin}, ${op.bitOrder === "msb" ? "MSBFIRST" : "LSBFIRST"}, ${op.value});` };
+      case "shift.in":
+        return { expression: `shiftIn(${op.dataPin}, ${op.clockPin}, ${op.bitOrder === "msb" ? "MSBFIRST" : "LSBFIRST"})` };
+
+      // Board constants
+      case "board.resolve":
+        return { expression: this.renderBoardDefinitionAccess(op.path.split("."), undefined) };
+
+      // Snprintf
+      case "snprintf.emit":
+        return { code: `snprintf(${op.bufferName}, sizeof(${op.bufferName}), ${op.format}, ${op.args.join(", ")});` };
+
+      // Raw passthrough
+      case "raw":
+        return { code: op.code };
+
+      default:
+        return undefined;
+    }
   }
 }
 

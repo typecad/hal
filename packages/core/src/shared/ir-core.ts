@@ -6,6 +6,7 @@
 // statements embed expressions) so they must live in the same file.
 // ---------------------------------------------------------------------------
 
+import type { HALOpIR } from './hal-op-ir';
 import type { SourceSpan } from './types';
 
 // ---------------------------------------------------------------------------
@@ -67,7 +68,12 @@ export type ExpressionIR =
   /** Array element access: `object[index]`. */
   | { kind: "element-access"; object: ExpressionIR; index: ExpressionIR }
   /** Parenthesized expression: preserves explicit grouping from TS source (e.g. `(2+3)*4`). */
-  | { kind: "paren"; inner: ExpressionIR };
+  | { kind: "paren"; inner: ExpressionIR }
+  /**
+   * HAL operation used as an expression (returns a value).
+   * The framework strategy resolves the operation to a C++ expression string.
+   */
+  | { kind: "hal-expr"; operation: HALOpIR };
 
 // ---------------------------------------------------------------------------
 // Statements
@@ -267,6 +273,17 @@ export interface BlockIR {
   body: StatementIR[];
 }
 
+export interface HALOpStatementIR {
+  kind: "hal-op";
+  sourceSpan: SourceSpan;
+  leadingComments?: string[];
+  trailingComments?: string[];
+  /** The semantic hardware operation to emit. */
+  operation: HALOpIR;
+  /** When true, the operation returns a value that should be captured. */
+  returns_value: boolean;
+}
+
 export type StatementIR =
   | CallExpressionIR
   | VariableDeclarationIR
@@ -285,4 +302,5 @@ export type StatementIR =
   | TryIR
   | ThrowIR
   | LabeledIR
-  | BlockIR;
+  | BlockIR
+  | HALOpStatementIR;

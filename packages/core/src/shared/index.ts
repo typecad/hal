@@ -33,6 +33,7 @@ export type {
   ThrowIR,
   LabeledIR,
   BlockIR,
+  HALOpStatementIR,
   FunctionIR,
   StructDefIR,
   EnumIR,
@@ -51,6 +52,12 @@ export type {
   ParameterIR,
   CppType,
 } from './ir';
+
+// HAL Operation IR types
+export type {
+  HALOpIR,
+  HALOperationKind,
+} from './hal-op-ir';
 
 // Board resolver
 export type { BoardConstants } from './board-resolver';
@@ -74,6 +81,7 @@ export type {
   PlatformBuildStrategy,
   PlatformDebugStrategy,
   PlatformAsyncStrategy,
+  PlatformHALStrategy,
 } from './platform-strategy';
 
 // Toolchain types

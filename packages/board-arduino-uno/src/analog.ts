@@ -1,17 +1,10 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-arduino-uno — Analog helpers
-//
-// Typed wrappers around the Arduino ADC subsystem.
+// @typehal/board-arduino-uno — Analog constants
 // ---------------------------------------------------------------------------
 
-/**
- * ADC reference voltage source.
- *
- * On the Arduino Uno (ATmega328P):
- * - `DEFAULT`  = AVcc (5 V)
- * - `INTERNAL` = Internal 1.1 V reference
- * - `EXTERNAL` = Voltage on the AREF pin
- */
-export declare const DEFAULT: number;
-export declare const INTERNAL: number;
-export declare const EXTERNAL: number;
+/** Default reference (VCC). */
+export const DEFAULT = 0;
+/** Internal 1.1V reference. */
+export const INTERNAL = 3;
+/** External AREF pin. */
+export const EXTERNAL = 1;

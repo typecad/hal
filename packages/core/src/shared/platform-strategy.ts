@@ -13,6 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ExpressionIR, ProgramIR } from './ir';
+import type { HALOpIR } from './hal-op-ir';
 import type { Diagnostic, PlatformContext } from './types';
 import type { BoardConstants } from './board-resolver';
 import type { AsyncRuntimeConfig } from './async-types';
@@ -428,6 +429,31 @@ export interface PlatformAsyncStrategy {
   asyncDriverFunctionName(): string;
 }
 
+// ---------------------------------------------------------------------------
+// Sub-interface 10 — HAL operation resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Strategy for resolving semantic HAL operations to framework-specific C++.
+ *
+ * When the transpiler encounters a HAL method call that has been resolved to
+ * a {@link HALOpIR} node, it calls {@link resolveHALOperation} so the
+ * framework can produce the correct C++ for the target platform.
+ *
+ * Returning `undefined` signals that the strategy does not handle the
+ * operation; the emitter will fall back to a default or raw emission.
+ */
+export interface PlatformHALStrategy {
+  /**
+   * Resolve a HAL operation to C++ code.
+   *
+   * @param op  The semantic hardware operation to translate.
+   * @returns An object with either `code` (for statements) or `expression`
+   *          (for value-returning operations), or `undefined` to fall back.
+   */
+  resolveHALOperation?(op: HALOpIR): { code?: string; expression?: string } | undefined;
+}
+
 /**
  * Full platform strategy composed from focused sub-interfaces.
  *
@@ -444,7 +470,8 @@ export interface PlatformStrategy
     PlatformSafetyStrategy,
     PlatformBuildStrategy,
     PlatformDebugStrategy,
-    PlatformAsyncStrategy {
+    PlatformAsyncStrategy,
+    PlatformHALStrategy {
   /** Unique identifier for this strategy (e.g. "arduino", "generic"). */
   readonly id: string;
 }

@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { rawCpp } from './emit';
 import { board } from './board';
 import { callback } from './callback';
 
@@ -21,29 +21,28 @@ export class HardwareTimer {
    * Note: The actual frequency may be limited by the hardware's clock dividers.
    */
   setFrequency(hz: number): void {
-    emit(`// Hardware timer frequency control is target-specific`);
-    emit(`Timer${this._instance}.setFrequency(${hz});`);
+    rawCpp(`Timer${this._instance}.setFrequency(${hz});`);
   }
 
   /**
    * Attaches an interrupt handler that executes when the timer overflows.
    */
   onOverflow(handler: () => void): void {
-    emit(`Timer${this._instance}.onOverflow(${callback(handler)});`);
+    rawCpp(`Timer${this._instance}.onOverflow(${callback(handler)});`);
   }
 
   /**
    * Starts the timer.
    */
   start(): void {
-    emit(`Timer${this._instance}.start();`);
+    rawCpp(`Timer${this._instance}.start();`);
   }
 
   /**
    * Stops the timer.
    */
   stop(): void {
-    emit(`Timer${this._instance}.stop();`);
+    rawCpp(`Timer${this._instance}.stop();`);
   }
 
   /**

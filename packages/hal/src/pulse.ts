@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { pulseIn_, pulseInLong_, rawCpp } from './emit';
 import { HIGH, LOW } from './constants';
 import type { Pin, InputPin } from './gpio';
 
@@ -16,7 +16,7 @@ export class Pulse {
 
   /** Measure long pulses using high-precision 64-bit timers. */
   static long(pin: Pin | InputPin, value: number): number {
-    emit(`return pulseInLong(${(pin as any)._pin}, ${value});`);
+    rawCpp(`return pulseInLong(${(pin as any)._pin}, ${value});`);
     return 0;
   }
 }
@@ -37,13 +37,13 @@ class PulseMeasurement {
 
   /** Measures the next HIGH pulse duration in microseconds. */
   high(): number {
-    emit(`return pulseIn(${this._pin}, HIGH${this._timeout !== undefined ? `, ${this._timeout}` : ""});`);
+    rawCpp(`return pulseIn(${this._pin}, HIGH${this._timeout !== undefined ? `, ${this._timeout}` : ""});`);
     return 0;
   }
 
   /** Measures the next LOW pulse duration in microseconds. */
   low(): number {
-    emit(`return pulseIn(${this._pin}, LOW${this._timeout !== undefined ? `, ${this._timeout}` : ""});`);
+    rawCpp(`return pulseIn(${this._pin}, LOW${this._timeout !== undefined ? `, ${this._timeout}` : ""});`);
     return 0;
   }
 }

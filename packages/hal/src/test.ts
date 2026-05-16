@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { rawCpp } from './emit';
 import { include } from './include';
 
 export class Test{
@@ -6,6 +6,6 @@ export class Test{
     static start() {
         let _t = "test";
         include("<test.h>");
-        emit(`test(${_t}, LOW);`);
+        rawCpp(`test(${_t}, LOW);`);
     }
 }

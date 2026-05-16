@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit';
 import { include } from './include';
 
 export class I2CDevice {
@@ -11,36 +11,35 @@ export class I2CDevice {
   }
 
   writeByte(register: number, value: number): void {
-    emit(`${this._bus}.beginTransmission(${this._address});`);
-    emit(`${this._bus}.write(${register});`);
-    emit(`${this._bus}.write(${value});`);
-    emit(`${this._bus}.endTransmission();`);
+    i2cBeginTx(this._bus, this._address);
+    i2cWrite(this._bus, register);
+    i2cWrite(this._bus, value);
+    i2cEndTx(this._bus, true);
   }
 
   readByte(register: number): number {
-    emit(`${this._bus}.beginTransmission(${this._address});`);
-    emit(`${this._bus}.write(${register});`);
-    emit(`${this._bus}.endTransmission(false);`);
-    emit(`${this._bus}.requestFrom(${this._address}, 1);`);
-    emit(`return ${this._bus}.read();`);
-    return 0;
+    i2cBeginTx(this._bus, this._address);
+    i2cWrite(this._bus, register);
+    i2cEndTx(this._bus, false);
+    i2cRequestFrom(this._bus, this._address, 1);
+    return i2cRead(this._bus);
   }
 
   writeBytes(register: number, data: number[] | Uint8Array): void {
-    emit(`${this._bus}.beginTransmission(${this._address});`);
-    emit(`${this._bus}.write(${register});`);
-    emit(`${this._bus}.write(${data}, sizeof(${data}));`);
-    emit(`${this._bus}.endTransmission();`);
+    rawCpp(`${this._bus}.beginTransmission(${this._address});`);
+    rawCpp(`${this._bus}.write(${register});`);
+    rawCpp(`${this._bus}.write(${data}, sizeof(${data}));`);
+    rawCpp(`${this._bus}.endTransmission();`);
   }
 
   readBytes(register: number, count: number): Uint8Array {
-    emit(`${this._bus}.beginTransmission(${this._address});`);
-    emit(`${this._bus}.write(${register});`);
-    emit(`${this._bus}.endTransmission(false);`);
-    emit(`${this._bus}.requestFrom(${this._address}, ${count});`);
-    emit(`static uint8_t result[32];`); // Fallback static buffer
-    emit(`for (int i=0; i<${count} && i<32; i++) result[i] = ${this._bus}.read();`);
-    emit(`return result;`);
+    rawCpp(`${this._bus}.beginTransmission(${this._address});`);
+    rawCpp(`${this._bus}.write(${register});`);
+    rawCpp(`${this._bus}.endTransmission(false);`);
+    rawCpp(`${this._bus}.requestFrom(${this._address}, ${count});`);
+    rawCpp(`static uint8_t result[32];`); // Fallback static buffer
+    rawCpp(`for (int i=0; i<${count} && i<32; i++) result[i] = ${this._bus}.read();`);
+    rawCpp(`return result;`);
     return new Uint8Array(count);
   }
 }
@@ -58,31 +57,31 @@ export class I2CBus {
 
   begin(): this {
     include("<Wire.h>");
-    emit(`${this._bus}.begin();`);
+    i2cBegin(this._bus);
     return this;
   }
 
   beginSlave(address: number): void {
-    emit(`${this._bus}.begin(${address});`);
+    i2cBegin(this._bus, address);
   }
 
   end(): void {
-    emit(`${this._bus}.end();`);
+    i2cEnd(this._bus);
   }
 
   setClock(hz: number): void {
-    emit(`${this._bus}.setClock(${hz});`);
+    i2cSetClock(this._bus, hz);
   }
 
   recover(): void {
-    emit(`pinMode(SCL, OUTPUT);`);
-    emit(`for (int i = 0; i < 16; i++) {`);
-    emit(`  digitalWrite(SCL, LOW);`);
-    emit(`  delayMicroseconds(10);`);
-    emit(`  digitalWrite(SCL, HIGH);`);
-    emit(`  delayMicroseconds(10);`);
-    emit(`}`);
-    emit(`${this._bus}.begin();`);
+    rawCpp(`pinMode(SCL, OUTPUT);`);
+    rawCpp(`for (int i = 0; i < 16; i++) {`);
+    rawCpp(`  digitalWrite(SCL, LOW);`);
+    rawCpp(`  delayMicroseconds(10);`);
+    rawCpp(`  digitalWrite(SCL, HIGH);`);
+    rawCpp(`  delayMicroseconds(10);`);
+    rawCpp(`}`);
+    rawCpp(`${this._bus}.begin();`);
   }
 
   take(): this | null {
@@ -94,48 +93,43 @@ export class I2CBus {
   }
 
   writeByte(address: number, register: number, value: number): void {
-    emit(`${this._bus}.beginTransmission(${address});`);
-    emit(`${this._bus}.write(${register});`);
-    emit(`${this._bus}.write(${value});`);
-    emit(`${this._bus}.endTransmission();`);
+    i2cBeginTx(this._bus, address);
+    i2cWrite(this._bus, register);
+    i2cWrite(this._bus, value);
+    i2cEndTx(this._bus, true);
   }
 
   readByte(address: number, register: number): number {
-    emit(`${this._bus}.beginTransmission(${address});`);
-    emit(`${this._bus}.write(${register});`);
-    emit(`${this._bus}.endTransmission(false);`);
-    emit(`${this._bus}.requestFrom(${address}, 1);`);
-    emit(`return ${this._bus}.read();`);
-    return 0;
+    i2cBeginTx(this._bus, address);
+    i2cWrite(this._bus, register);
+    i2cEndTx(this._bus, false);
+    i2cRequestFrom(this._bus, address, 1);
+    return i2cRead(this._bus);
   }
 
   // Low-level Wire API pass-through methods
   beginTransmission(address: number): void {
-    emit(`${this._bus}.beginTransmission(${address});`);
+    i2cBeginTx(this._bus, address);
   }
 
   write(data: number | number[] | Uint8Array): void {
-    emit(`${this._bus}.write(${data});`);
+    i2cWrite(this._bus, data);
   }
 
   endTransmission(stop?: boolean): number {
-    emit(`return ${this._bus}.endTransmission(${stop ?? true});`);
-    return 0;
+    return i2cEndTx(this._bus, stop ?? true);
   }
 
   requestFrom(address: number, quantity: number, stop?: boolean): number {
-    emit(`return ${this._bus}.requestFrom(${address}, ${quantity}, ${stop ?? true});`);
-    return 0;
+    return i2cRequestFrom(this._bus, address, quantity, stop ?? true);
   }
 
   available(): number {
-    emit(`return ${this._bus}.available();`);
-    return 0;
+    return i2cAvailable(this._bus);
   }
 
   read(): number {
-    emit(`return ${this._bus}.read();`);
-    return 0;
+    return i2cRead(this._bus);
   }
 }
 

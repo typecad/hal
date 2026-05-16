@@ -3,73 +3,61 @@
 //
 // Each pin is a Pin instance from @typehal/hal. The transpiler inlines
 // method calls (high(), low(), write(), etc.) as direct Arduino C++.
-// Pin numbers match the Arduino digital/analog pin numbering.
+// Pin names use MCU port identifiers (PD0, PB5, PC0) matching the
+// ATmega328P datasheet and KiCad symbol library.
+//
+// Port-name pins are imported from the MCU package and re-exported here
+// for backward compatibility. The Pin.fromPort() factory stores both the
+// port name and the resolved Arduino pin number.
 // ---------------------------------------------------------------------------
 
-import { Pin } from '@typehal/hal';
+// Import datasheet pins from MCU package — these use Pin.fromPort() internally
+// so each Pin carries both its port name (PB5) and Arduino pin number (13).
+export {
+  PD0, PD1, PD2, PD3, PD4, PD5, PD6, PD7,
+  PB0, PB1, PB2, PB3, PB4, PB5,
+  PC0, PC1, PC2, PC3, PC4, PC5,
+} from '@typehal/mcu-atmega328p';
+
+// Re-import for local aliasing
+import {
+  PD0, PD1, PD2, PD3, PD4, PD5, PD6, PD7,
+  PB0, PB1, PB2, PB3, PB4, PB5,
+  PC0, PC1, PC2, PC3, PC4, PC5,
+} from '@typehal/mcu-atmega328p';
 
 // ---------------------------------------------------------------------------
-// Digital-only pins (no PWM, no interrupt)
+// Arduino-style pin aliases (D0–D13, A0–A5)
 // ---------------------------------------------------------------------------
 
-export const D4  = new Pin(4);
-export const D7  = new Pin(7);
-export const D8  = new Pin(8);
-export const D12 = new Pin(12);
-export const D13 = new Pin(13);  // onboard LED
+export const D0  = PD0;
+export const D1  = PD1;
+export const D2  = PD2;
+export const D3  = PD3;
+export const D4  = PD4;
+export const D5  = PD5;
+export const D6  = PD6;
+export const D7  = PD7;
+export const D8  = PB0;
+export const D9  = PB1;
+export const D10 = PB2;
+export const D11 = PB3;
+export const D12 = PB4;
+export const D13 = PB5;
 
-// ---------------------------------------------------------------------------
-// Interrupt-capable digital pins (INT0 on D2, INT1 on D3)
-// ---------------------------------------------------------------------------
-
-export const D0 = new Pin(0);   // RX
-export const D1 = new Pin(1);   // TX
-export const D2 = new Pin(2);
-
-// ---------------------------------------------------------------------------
-// PWM pins
-// ---------------------------------------------------------------------------
-
-export const D3  = new Pin(3);    // also INT1
-export const D5  = new Pin(5);
-export const D6  = new Pin(6);
-export const D9  = new Pin(9);
-export const D10 = new Pin(10);
-export const D11 = new Pin(11);
-
-// ---------------------------------------------------------------------------
-// Analog input pins (also support digital I/O)
-// ---------------------------------------------------------------------------
-
-export const A0 = new Pin(14);
-export const A1 = new Pin(15);
-export const A2 = new Pin(16);
-export const A3 = new Pin(17);
-export const A4 = new Pin(18);  // SDA
-export const A5 = new Pin(19);  // SCL
+export const A0 = PC0;
+export const A1 = PC1;
+export const A2 = PC2;
+export const A3 = PC3;
+export const A4 = PC4;
+export const A5 = PC5;
 
 // ---------------------------------------------------------------------------
 // Convenience aliases
 // ---------------------------------------------------------------------------
 
-/** On-board LED (D13). */
-export const LED  = D13;
+/** On-board LED (PB5). */
+export const LED  = PB5;
 
-/** I2C data line (A4). */
-export const SDA  = A4;
-/** I2C clock line (A5). */
-export const SCL  = A5;
-
-/** SPI master-out / slave-in (D11). */
-export const MOSI = D11;
-/** SPI master-in / slave-out (D12). */
-export const MISO = D12;
-/** SPI clock (D13). */
-export const SCK  = D13;
-/** SPI slave select (D10). */
-export const SS   = D10;
-
-/** UART transmit (D1). */
-export const TX   = D1;
-/** UART receive (D0). */
-export const RX   = D0;
+// Re-export silicon-level aliases (SDA, MOSI, etc.) from MCU package
+export { SDA, SCL, MOSI, MISO, SCK, SS, TX, RX } from '@typehal/mcu-atmega328p';

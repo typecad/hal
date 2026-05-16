@@ -545,6 +545,7 @@ function analyzeStatement(
 
     case 'break':
     case 'continue':
+    case 'hal-op':
       break;
 
     default:
@@ -710,6 +711,7 @@ function analyzeExpression(
     case 'number':
     case 'string':
     case 'boolean':
+    case 'hal-expr':
       break;
 
     default:
@@ -978,6 +980,7 @@ function getNestedStatements(stmt: StatementIR): StatementIR[] | undefined {
     case 'break':
     case 'continue':
     case 'throw':
+    case 'hal-op':
       return undefined;
     default:
       assertNever(stmt);

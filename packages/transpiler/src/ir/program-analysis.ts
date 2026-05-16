@@ -325,6 +325,24 @@ function analyzeStatement(
       }
       break;
 
+    case "hal-op":
+      // Scan raw C++ code in HAL ops for polyfill helper usage
+      if (statement.operation && statement.operation.operation === "raw" && typeof statement.operation.code === "string") {
+        for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+          if (statement.operation.code.includes(pattern)) {
+            for (const name of helperNames) {
+              result.usedPolyfillHelpers.add(name);
+            }
+          }
+          for (const name of helperNames) {
+            if (statement.operation.code.includes(name)) {
+              result.usedPolyfillHelpers.add(name);
+            }
+          }
+        }
+      }
+      break;
+
     case "update":
       // update statements just increment/decrement a variable
       break;

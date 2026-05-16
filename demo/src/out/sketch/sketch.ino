@@ -46,6 +46,19 @@ public:
     }
 } __tc_timer_runtime;
 
+int __tc_setInterval(void (*cb)(), long ms) { return __tc_timer_runtime.add(cb, ms, true); }
+int __tc_setTimeout(void (*cb)(), long ms) { return __tc_timer_runtime.add(cb, ms, false); }
+void __tc_clearInterval(int id) { __tc_timer_runtime.clear(id); }
+void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
+
+// TypeHAL Core Shims
+#ifndef TYPEHAL_UNDEFINED
+#define TYPEHAL_UNDEFINED 0
+#endif
+
+template<typename T> inline bool typehal_exists(T v) { return v != (T)TYPEHAL_UNDEFINED; }
+template<typename T, typename U> inline T typehal_nullish(T a, U b) { return (a != (T)TYPEHAL_UNDEFINED) ? a : (T)b; }
+
 // TypeHAL Native Polyfills
 struct __tc_Num {
     struct MapChain {
@@ -69,24 +82,16 @@ struct __tc_Num {
 } Num;
 
 struct __tc_Timing {
-    unsigned long millis() { return ::millis(); }
     unsigned long micros() { return ::micros(); }
     void delay(unsigned long ms) { ::delay(ms); }
     void delayMicroseconds(unsigned int us) { ::delayMicroseconds(us); }
     unsigned long freeHeap() {
-#if defined(ESP32)
-        return ESP.getFreeHeap();
-#elif defined(__AVR__)
         extern int __heap_start, *__brkval;
         int v;
         return (unsigned long) &v - (__brkval == 0 ? (unsigned long) &__heap_start : (unsigned long) __brkval);
-#else
-        return 0;
-#endif
     }
 } Timing;
 
-#if defined(__AVR__)
 #include <avr/wdt.h>
 #include <string.h>
 struct __tc_WDT {
@@ -106,7 +111,6 @@ struct __tc_WDT {
     void (reset)() { wdt_reset(); }
     void (disable)() { wdt_disable(); }
 } WDT;
-#endif
 
 #ifndef TYPEHAL_STR_BUF_SIZE
 #define TYPEHAL_STR_BUF_SIZE 64
@@ -132,80 +136,34 @@ struct __tc_str_ptr {
 inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }
 inline size_t (strlen)(const char* s) { return ::strlen(s); }
 
-// ── State machine state ───────────────────────────────────────────────────
-int blinkPhase = 0;
-int lastBlinkTime = 0;
-int buzzerPhase = 0;
-int lastBuzzerTime = 0;
-int buttonState = 0;
-int edgeTime = 0;
-
+void main_isr_0();
 void myIsr();
 
-// ── Entry point ───────────────────────────────────────────────────────────
-void myIsr()
-{
-  digitalWrite(13, digitalRead(13) == LOW ? HIGH : LOW);
+void main_isr_0() {
+  return (PB5.toggle());
 }
 
+// Auto-generated setup() for top-level statements
 void setup()
 {
   Serial.begin(115200);
   pinMode(4, INPUT_PULLUP);
-  pinMode(13, OUTPUT);
-  digitalWrite(13, false);
   pinMode(9, OUTPUT);
-  digitalWrite(9, false);
+  digitalWrite(9, LOW);
   Serial.println("== TypeHAL Arduino Uno Demo ==");
   Serial.println("Board: Arduino Uno (ATmega328P)");
   Serial.println("Features: LED blink, button input, buzzer tone, D2 interrupt");
-  {
-    pinMode(2, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(2), myIsr, FALLING);
-  }
+  // Attach interrupt to D2 (standard interrupt pin on Uno)
+  PD2.asInputPullUp().onFalling(myIsr);
+  __tc_setInterval(main_isr_0, 500);
+}
+
+// ── Entry point ───────────────────────────────────────────────────────────
+void myIsr()
+{
 }
 
 void loop()
 {
-  const auto now = millis();
-  // ── Blink LED every 500ms ─────────────────────────────────────────────
-  if (now - lastBlinkTime >= 500)
-  {
-    lastBlinkTime = now;
-    if (blinkPhase == 0)
-    {
-      digitalWrite(13, true);
-      blinkPhase = 1;
-    }
-    else {
-      digitalWrite(13, false);
-      blinkPhase = 0;
-    }
-  }
-  // ── Button edge detection ──────────────────────────────────────────────
-  const auto btnLow = !digitalRead(4) == HIGH;
-  // INPUT_PULLUP = active low
-  // Wait for press
-  if (buttonState == 0 && btnLow)
-  {
-    buttonState = 1;
-    edgeTime = now;
-    Serial.println("  Button pressed!");
-  }
-  // Debounce 50ms, then wait for release or timeout
-  if (buttonState == 1 && !btnLow && (now - edgeTime >= 50))
-  {
-    buttonState = 0;
-    edgeTime = now;
-    Serial.println("  Button released!");
-    tone(9, 880);
-    buzzerPhase = 1;
-    lastBuzzerTime = now;
-  }
-  // ── Buzzer tone duration (300ms) ──────────────────────────────────────
-  if (buzzerPhase == 1 && (now - lastBuzzerTime >= 300))
-  {
-    noTone(9);
-    buzzerPhase = 0;
-  }
+    __tc_timer_runtime.run();
 }

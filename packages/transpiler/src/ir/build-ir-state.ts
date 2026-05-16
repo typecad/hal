@@ -85,6 +85,12 @@ export const activePeripheralUsage = new Map<string, { instance: number; source:
 export const peripheralAliasMap = new Map<string, string>();
 export const pinAliasMap = new Map<string, string>();
 
+// MCU pin maps: port name ↔ Arduino pin number (populated from BoardConstants)
+// Forward: "PB5" → "13", "PD0" → "0"  (port name → Arduino pin number string)
+export const mcuPinForwardMap = new Map<string, string>();
+// Reverse: "13" → "PB5", "0" → "PD0"  (Arduino pin number string → port name)
+export const mcuPinReverseMap = new Map<string, string>();
+
 // Module-level set of library includes required by inline evaluators (e.g., "<SPI.h>", "<Wire.h>").
 export const requiredIncludes = new Set<string>();
 
@@ -144,6 +150,10 @@ export function setCurrentBoardConstants(v: BoardConstants | undefined) {
       const num = pinNumbers.get(idx);
       if (num !== undefined) {
         pinAliasMap.set(name, num);
+        // Populate MCU pin maps: port name ↔ Arduino pin number
+        // name is the MCU port name (e.g. "PB5"), num is the Arduino pin number (e.g. "13")
+        mcuPinForwardMap.set(name, num);
+        mcuPinReverseMap.set(num, name);
       }
     }
   }
@@ -172,6 +182,8 @@ export function resetBuildState(): void {
   activeGlobalTypes.clear();
   peripheralAliasMap.clear();
   pinAliasMap.clear();
+  mcuPinForwardMap.clear();
+  mcuPinReverseMap.clear();
   activePinUsage.clear();
   activePeripheralUsage.clear();
   requiredIncludes.clear();

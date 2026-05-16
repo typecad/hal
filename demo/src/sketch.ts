@@ -6,10 +6,9 @@
 // Uses cooperative polling pattern compatible with Arduino's loop().
 // ---------------------------------------------------------------------------
 
-import { D2, D4, D9, LED, UART0, millis } from '@typehal';
+import { PD2, D4, D9, LED, UART0, millis, PB5 } from '@typehal';
 
 // ── Hardware Setup ─────────────────────────────────────────────────────────
-
 // Serial debug output
 const port = UART0.begin(115200);
 
@@ -34,58 +33,17 @@ let unused_variable;
 // ── Entry point ───────────────────────────────────────────────────────────
 function myIsr(): void {
   // Rapid toggle in ISR to show it's triggered
-  led.toggle();
+  // led.toggle();
 }
 
-function setup(): void {
-  port.println("=== TypeHAL Arduino Uno Demo ===");
-  port.println("Board: Arduino Uno (ATmega328P)");
-  port.println("Features: LED blink, button input, buzzer tone, D2 interrupt");
+port.println("=== TypeHAL Arduino Uno Demo ===");
+port.println("Board: Arduino Uno (ATmega328P)");
+port.println("Features: LED blink, button input, buzzer tone, D2 interrupt");
 
-  // Attach interrupt to D2 (standard interrupt pin on Uno)
-  D2.asInputPullUp().onFalling(myIsr);
-}
+// Attach interrupt to D2 (standard interrupt pin on Uno)
+PD2.asInputPullUp().onFalling(myIsr);
 
-function loop(): void {
-  const now = millis();
+setInterval(() => (PB5.toggle()), 500);
 
-  // ── Blink LED every 500ms ─────────────────────────────────────────────
-  if (now - lastBlinkTime >= 500) {
-    lastBlinkTime = now;
-    if (blinkPhase === 0) {
-      led.write(true);
-      blinkPhase = 1;
-    } else {
-      led.write(false);
-      blinkPhase = 0;
-    }
-  }
-
-  // ── Button edge detection ──────────────────────────────────────────────
-  const btnLow = !button.read();  // INPUT_PULLUP = active low
-
-  // Wait for press
-  if (buttonState === 0 && btnLow) {
-    buttonState = 1;
-    edgeTime = now;
-    port.println("  Button pressed!");
-  }
-
-  // Debounce 50ms, then wait for release or timeout
-  if (buttonState === 1 && !btnLow && (now - edgeTime >= 50)) {
-    buttonState = 0;
-    edgeTime = now;
-    port.println("  Button released!");
-
-    // Buzzer beep on release
-    buzzer.tone(880);
-    buzzerPhase = 1;
-    lastBuzzerTime = now;
-  }
-
-  // ── Buzzer tone duration (300ms) ──────────────────────────────────────
-  if (buzzerPhase === 1 && (now - lastBuzzerTime >= 300)) {
-    buzzer.noTone();
-    buzzerPhase = 0;
-  }
-}
+// let button = PB5.asInput();
+// button.waitForRising();

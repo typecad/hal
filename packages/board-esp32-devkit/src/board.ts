@@ -22,7 +22,7 @@ import {
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX, TX2, RX2, DAC1, DAC2,
 } from './pins';
 
-import { I2C0, I2C1, SPI0, SPI1, UART0, UART2 } from './peripherals';
+import { I2C0, I2C1, SPI0, SPI1, UART0, UART2 } from '@typehal/mcu-esp32';
 import { ESP32DevKit } from './index';
 
 export const Board = {

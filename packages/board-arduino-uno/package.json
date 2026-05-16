@@ -15,12 +15,15 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "publish:private": "npm publish --registry http://192.168.2.207:4873/"
+
   },
   "dependencies": {
     "@typehal/core": "*",
     "@typehal/schema": "*",
-    "@typehal/hal": "*"
+    "@typehal/hal": "*",
+    "@typehal/mcu-atmega328p": "*"
   },
   "license": "MIT",
   "publishConfig": {

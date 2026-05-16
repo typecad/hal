@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { rawCpp } from './emit';
 import { callback } from './callback';
 
 export class TimingClass {
@@ -8,27 +8,27 @@ export class TimingClass {
   delay(ms: number): void {}
   delayMicroseconds(us: number): void {}
   freeHeap(): number {
-    emit("return Timing.freeHeap();");
+    rawCpp("return ESP.getFreeHeap();");
     return 0;
   }
 
 
   setInterval(handler: () => void, timeout: number): number {
-    emit(`return __tc_setInterval(${callback(handler)}, ${timeout});`);
+    rawCpp(`return __tc_setInterval(${callback(handler)}, ${timeout});`);
     return 0;
   }
 
   setTimeout(handler: () => void, timeout: number): number {
-    emit(`return __tc_setTimeout(${callback(handler)}, ${timeout});`);
+    rawCpp(`return __tc_setTimeout(${callback(handler)}, ${timeout});`);
     return 0;
   }
 
   clearInterval(id: number): void {
-    emit(`__tc_clearInterval(${id});`);
+    rawCpp(`__tc_clearInterval(${id});`);
   }
 
   clearTimeout(id: number): void {
-    emit(`__tc_clearTimeout(${id});`);
+    rawCpp(`__tc_clearTimeout(${id});`);
   }
 }
 
@@ -42,21 +42,21 @@ export function freeHeap(): number { return Timing.freeHeap(); }
 
 
 export function setInterval(handler: () => void, timeout: number): number {
-  emit(`return __tc_setInterval(${callback(handler)}, ${timeout});`);
+  rawCpp(`return __tc_setInterval(${callback(handler)}, ${timeout});`);
   return 0;
 }
 
 export function setTimeout(handler: () => void, timeout: number): number {
-  emit(`return __tc_setTimeout(${callback(handler)}, ${timeout});`);
+  rawCpp(`return __tc_setTimeout(${callback(handler)}, ${timeout});`);
   return 0;
 }
 
 export function clearInterval(id: number): void {
-  emit(`__tc_clearInterval(${id});`);
+  rawCpp(`__tc_clearInterval(${id});`);
 }
 
 export function clearTimeout(id: number): void {
-  emit(`__tc_clearTimeout(${id});`);
+  rawCpp(`__tc_clearTimeout(${id});`);
 }
 
 export function map(value: number, fromLow: number, fromHigh: number, toLow: number, toHigh: number): number { return 0; }

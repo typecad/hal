@@ -8,11 +8,11 @@
 //   - currentTask()  — return a description of the currently executing task
 //
 // Framework packages (Arduino, Native, etc.) provide the C++ runtime behind
-// the emit() markers; the transpiler resolves these to the correct platform
+// the rawCpp() markers; the transpiler resolves these to the correct platform
 // implementation at compile time.
 // ---------------------------------------------------------------------------
 
-import { emit } from './emit';
+import { rawCpp } from './emit';
 
 export class AsyncClass {
   static readonly __instance_name = "Async";
@@ -25,7 +25,7 @@ export class AsyncClass {
    * on native, or a FreeRTOS vTaskDelay in the future).
    */
   sleep(ms: number): Promise<void> {
-    emit(`__typehal_async_sleep(${ms})`);
+    rawCpp(`__typehal_async_sleep(${ms})`);
     return undefined as any;
   }
 
@@ -34,7 +34,7 @@ export class AsyncClass {
    * (microtasks, timers) to run. Resumes on the next microtask pump cycle.
    */
   yield(): Promise<void> {
-    emit(`__typehal_async_yield()`);
+    rawCpp(`__typehal_async_yield()`);
     return undefined as any;
   }
 
@@ -45,7 +45,7 @@ export class AsyncClass {
    * The underlying implementation uses the platform's timer mechanism.
    */
   sleepUntil(condition: () => boolean, pollIntervalMs: number = 10): Promise<void> {
-    emit(`__typehal_async_sleep_until(${pollIntervalMs})`);
+    rawCpp(`__typehal_async_sleep_until(${pollIntervalMs})`);
     return undefined as any;
   }
 
@@ -54,7 +54,7 @@ export class AsyncClass {
    * Useful for debugging / logging in cooperative multitasking environments.
    */
   currentTask(): string {
-    emit(`return __typehal_async_current_task()`);
+    rawCpp(`return __typehal_async_current_task()`);
     return "";
   }
 }

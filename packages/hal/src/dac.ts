@@ -1,5 +1,4 @@
-import { emit } from './emit';
-import { board } from './board';
+import { dacWrite, boardResolve } from './emit';
 
 /**
  * DACClass provides access to true digital-to-analog converters.
@@ -11,12 +10,11 @@ export class DACClass {
   static readonly __instance_name = "DAC";
 
   write(pin: number, value: number): void {
-    emit(`dacWrite(${pin}, ${value});`);
+    dacWrite(pin, value);
   }
 
   getResolution(): number {
-    emit(`return ${board("peripherals.dac.0.resolution")};`);
-    return 0;
+    return boardResolve("peripherals.dac.0.resolution");
   }
 }
 

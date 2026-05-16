@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { rawCpp } from './emit';
 import { LSBFIRST, MSBFIRST } from './constants';
 import type { Pin, OutputPin, InputPin } from './gpio';
 
@@ -9,13 +9,13 @@ export class Shift {
   /** Directly shifts a byte out to a pin. */
   static out(dataPin: Pin | OutputPin, clockPin: Pin | OutputPin, order: 'lsb' | 'msb', value: number): void {
     const bitOrder = order === 'lsb' ? LSBFIRST : MSBFIRST;
-    emit(`shiftOut(${(dataPin as any)._pin}, ${(clockPin as any)._pin}, ${bitOrder}, ${value});`);
+    rawCpp(`shiftOut(${(dataPin as any)._pin}, ${(clockPin as any)._pin}, ${bitOrder}, ${value});`);
   }
 
   /** Directly shifts a byte in from a pin. */
   static in(dataPin: Pin | InputPin, clockPin: Pin | OutputPin, order: 'lsb' | 'msb'): number {
     const bitOrder = order === 'lsb' ? LSBFIRST : MSBFIRST;
-    emit(`return shiftIn(${(dataPin as any)._pin}, ${(clockPin as any)._pin}, ${bitOrder});`);
+    rawCpp(`return shiftIn(${(dataPin as any)._pin}, ${(clockPin as any)._pin}, ${bitOrder});`);
     return 0;
   }
 
@@ -47,12 +47,12 @@ class ShiftOutBuilder {
 
   msbFirst(): void {
     if (this._clockPin === undefined) throw new Error("Clock pin must be specified");
-    emit(`shiftOut(${this._dataPin}, ${this._clockPin}, MSBFIRST, ${this._value});`);
+    rawCpp(`shiftOut(${this._dataPin}, ${this._clockPin}, MSBFIRST, ${this._value});`);
   }
 
   lsbFirst(): void {
     if (this._clockPin === undefined) throw new Error("Clock pin must be specified");
-    emit(`shiftOut(${this._dataPin}, ${this._clockPin}, LSBFIRST, ${this._value});`);
+    rawCpp(`shiftOut(${this._dataPin}, ${this._clockPin}, LSBFIRST, ${this._value});`);
   }
 }
 
@@ -71,13 +71,13 @@ class ShiftInBuilder {
 
   msbFirst(): number {
     if (this._clockPin === undefined) throw new Error("Clock pin must be specified");
-    emit(`return shiftIn(${this._dataPin}, ${this._clockPin}, MSBFIRST);`);
+    rawCpp(`return shiftIn(${this._dataPin}, ${this._clockPin}, MSBFIRST);`);
     return 0;
   }
 
   lsbFirst(): number {
     if (this._clockPin === undefined) throw new Error("Clock pin must be specified");
-    emit(`return shiftIn(${this._dataPin}, ${this._clockPin}, LSBFIRST);`);
+    rawCpp(`return shiftIn(${this._dataPin}, ${this._clockPin}, LSBFIRST);`);
     return 0;
   }
 }

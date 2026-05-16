@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { Diagnostic, SourceSpan } from "../types";
-import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, ParameterIR, StatementIR } from "@typehal/core";
+import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, HALOpIR, ParameterIR, StatementIR } from "@typehal/core";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";
@@ -23,6 +23,7 @@ function collectChainedHALEmits(
   diagnostics: Diagnostic[],
   pointerVars: PointerTracker,
   emitLines: string[],
+  halOps: HALOpIR[] = [],
 ): void {
   // Chained call: led.tone(440).for(400) — the receiver is the inner call led.tone(440)
   if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
@@ -33,14 +34,19 @@ function collectChainedHALEmits(
     if (instance) {
       const argIRs = expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
       const result = processHALMethodBody(instance, method, argIRs);
-      if (result && result.emitLines.length > 0) {
-        // Prepend inner emits so they appear before outer emits
-        emitLines.unshift(...result.emitLines);
+      if (result) {
+        if (result.emitLines.length > 0) {
+          // Prepend inner emits so they appear before outer emits
+          emitLines.unshift(...result.emitLines);
+        }
+        if (result.halOps.length > 0) {
+          halOps.unshift(...result.halOps);
+        }
       }
     }
     // Continue recursion to collect deeper chain levels
     if (ts.isCallExpression(innerReceiver) && ts.isPropertyAccessExpression(innerReceiver)) {
-      collectChainedHALEmits(innerReceiver, sourceText, diagnostics, pointerVars, emitLines);
+      collectChainedHALEmits(innerReceiver, sourceText, diagnostics, pointerVars, emitLines, halOps);
     }
   }
 }
@@ -62,6 +68,26 @@ function emitLinesToIR(
   return emitStmts.length === 1
     ? emitStmts[0]
     : { kind: "block" as const, body: emitStmts, sourceSpan: makeSourceSpan(node, fileName, sourceText) };
+}
+
+/** Convert HALOpIR array to hal-op StatementIR nodes. */
+function halOpsToIR(
+  ops: HALOpIR[],
+  node: ts.Node,
+  fileName: string,
+  sourceText: string,
+): StatementIR | null {
+  if (ops.length === 0) return null;
+  const span = makeSourceSpan(node, fileName, sourceText);
+  const halStmts: StatementIR[] = ops.map(op => ({
+    kind: "hal-op" as const,
+    sourceSpan: span,
+    operation: op,
+    returns_value: false,
+  }));
+  return halStmts.length === 1
+    ? halStmts[0]
+    : { kind: "block" as const, body: halStmts, sourceSpan: span };
 }
 
 /**
@@ -102,14 +128,19 @@ function tryResolveHALMethod(
   if (instance) {
     const result = processHALMethodBody(instance, method, argIRs);
     if (result) {
-      // Collect emit lines from chained inner calls: led.tone(440).for(400)
+      // Collect emit lines and halOps from chained inner calls: led.tone(440).for(400)
       // The receiver of this call is itself a chained HAL call (led.tone(440)).
       // We need to process that inner call to collect its emit lines too.
       const chainedEmits: string[] = [];
+      const chainedHalOps: HALOpIR[] = [];
       if (ts.isPropertyAccessExpression(call.expression)) {
         const innerReceiver = call.expression.expression;
-        collectChainedHALEmits(innerReceiver, sourceText, diagnostics, pointerVars, chainedEmits);
+        collectChainedHALEmits(innerReceiver, sourceText, diagnostics, pointerVars, chainedEmits, chainedHalOps);
       }
+      // Prefer hal-op IR over raw emit lines
+      const allHalOps = [...chainedHalOps, ...result.halOps];
+      if (allHalOps.length > 0) return halOpsToIR(allHalOps, call, fileName, sourceText);
+
       const allEmits = [...chainedEmits, ...result.emitLines];
       if (allEmits.length > 0) return emitLinesToIR(allEmits, call, fileName, sourceText);
       if (result.returnValue === "this" && ts.isPropertyAccessExpression(call.expression)) {
@@ -160,6 +191,7 @@ function tryResolveHALMethod(
 
           const result = processHALMethodBody(deviceInstance, method, argIRs);
           if (result) {
+            if (result.halOps.length > 0) return halOpsToIR(result.halOps, call, fileName, sourceText);
             if (result.emitLines.length > 0) return emitLinesToIR(result.emitLines, call, fileName, sourceText);
             if (result.returnValue) return emitLinesToIR([`${result.returnValue};`], call, fileName, sourceText);
           }
@@ -230,7 +262,7 @@ function resolveHALCallForVarInit(
   sourceText: string,
   diagnostics: Diagnostic[],
   pointerVars: PointerTracker,
-): { emitLines: string[]; returnValue?: string; returnClassName?: string } | null {
+): { emitLines: string[]; halOps: HALOpIR[]; returnValue?: string; returnClassName?: string } | null {
   if (!ts.isPropertyAccessExpression(call.expression)) return null;
 
   const method = call.expression.name.text;
@@ -240,7 +272,7 @@ function resolveHALCallForVarInit(
   const instance = resolveHALReceiver(receiver);
   if (instance) {
     const result = processHALMethodBody(instance, method, argIRs);
-    if (result) return { emitLines: result.emitLines, returnValue: result.returnValue, returnClassName: result.returnClassName };
+    if (result) return { emitLines: result.emitLines, halOps: result.halOps, returnValue: result.returnValue, returnClassName: result.returnClassName };
   }
 
   // Try device accessor pattern
@@ -268,7 +300,7 @@ function resolveHALCallForVarInit(
           }
           const deviceInstance = { className: deviceClassName, fieldValues: deviceFieldValues };
           const result = processHALMethodBody(deviceInstance, method, argIRs);
-          if (result) return { emitLines: result.emitLines, returnValue: result.returnValue };
+          if (result) return { emitLines: result.emitLines, halOps: result.halOps, returnValue: result.returnValue };
         }
       }
     }
@@ -300,29 +332,29 @@ function resolveHALCallForVarInit(
         const pin = resolvePinArg(0);
         const level = resolveBoolArg(1);
         const timeout = argText(2);
-        return { emitLines: [], returnValue: timeout ? `pulseIn(${pin}, ${level}, ${timeout})` : `pulseIn(${pin}, ${level})` };
+        return { emitLines: [], halOps: [], returnValue: timeout ? `pulseIn(${pin}, ${level}, ${timeout})` : `pulseIn(${pin}, ${level})` };
       }
       if (method === "long" || method === "long_") {
         const pin = resolvePinArg(0);
         const level = resolveBoolArg(1);
         const timeout = argText(2);
-        return { emitLines: [], returnValue: timeout ? `pulseInLong(${pin}, ${level}, ${timeout})` : `pulseInLong(${pin}, ${level})` };
+        return { emitLines: [], halOps: [], returnValue: timeout ? `pulseInLong(${pin}, ${level}, ${timeout})` : `pulseInLong(${pin}, ${level})` };
       }
     }
     if (ns === "Shift") {
       if (method === "in") {
-        return { emitLines: [], returnValue: `shiftIn(${resolvePinArg(0)}, ${resolvePinArg(1)}, ${argText(2)})` };
+        return { emitLines: [], halOps: [], returnValue: `shiftIn(${resolvePinArg(0)}, ${resolvePinArg(1)}, ${argText(2)})` };
       }
       if (method === "out") {
-        return { emitLines: [`shiftOut(${resolvePinArg(0)}, ${resolvePinArg(1)}, ${argText(2)}, ${argText(3)});`] };
+        return { emitLines: [`shiftOut(${resolvePinArg(0)}, ${resolvePinArg(1)}, ${argText(2)}, ${argText(3)});`], halOps: [] };
       }
     }
     if (ns === "Random") {
-      if (method === "seed") return { emitLines: [`randomSeed(${argText(0)});`] };
+      if (method === "seed") return { emitLines: [`randomSeed(${argText(0)});`], halOps: [] };
       if (method === "number") {
         const min = argText(0);
         const max = argText(1);
-        return { emitLines: [], returnValue: max ? `random(${min}, ${max})` : `random(${min})` };
+        return { emitLines: [], halOps: [], returnValue: max ? `random(${min}, ${max})` : `random(${min})` };
       }
     }
   }
@@ -351,12 +383,21 @@ export function tryResolveHALExpression(
   if (instance) {
     const result = processHALMethodBody(instance, method, argIRs);
     if (result) {
+      // Prefer hal-expr for semantic HAL operations
+      if (result.halOps.length > 0) {
+        // Use the last halOp as the expression; preceding ones are side effects
+        const lastOp = result.halOps[result.halOps.length - 1];
+        return {
+          ir: { kind: "hal-expr", operation: lastOp },
+          sideEffects: result.emitLines,
+        };
+      }
       if (result.returnValue === "this") {
         // Return structured method call for analysis
         const objText = renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars));
-        return { 
-          ir: { kind: "method-call", callee: `${objText}.${method}`, args: argIRs }, 
-          sideEffects: result.emitLines 
+        return {
+          ir: { kind: "method-call", callee: `${objText}.${method}`, args: argIRs },
+          sideEffects: result.emitLines
         };
       }
       if (result.returnValue) {
@@ -2447,7 +2488,22 @@ export function variableStatementToIR(
         const isSingletonReceiver = ts.isIdentifier(receiver) && isHALSingleton(receiver.text);
 
         if (result && (!isOwnershipMethod || isSingletonReceiver)) {
-          // Emit side effects
+          const isHalOpReturn = result.returnValue === "__hal_op_return__";
+
+          // Emit hal-op side effects (preferred over raw emit lines)
+          if (result.halOps && result.halOps.length > 0) {
+            // If the last halOp is the return expression, only emit preceding ops as side effects
+            const sideEffectOps = isHalOpReturn ? result.halOps.slice(0, -1) : result.halOps;
+            const halStmts = sideEffectOps.map(op => ({
+              kind: "hal-op" as const,
+              sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
+              operation: op,
+              returns_value: false,
+            }));
+            lowered.push(...halStmts);
+            commentsAssigned = true;
+          }
+          // Emit raw C++ side effects (legacy path)
           const stmts = result.emitLines.map(line => ({
             kind: "call" as const,
             sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
@@ -2474,25 +2530,40 @@ export function variableStatementToIR(
             // or has no return value (void methods). Skip when returning primitives.
             const receiver = init.expression.expression;
             const instance = resolveHALReceiver(receiver);
-            if (instance && (!result.returnValue || result.returnValue === "this")) {
+            if (instance && (!result.returnValue || result.returnValue === "this" || isHalOpReturn)) {
               halInstances.set(varName, instance);
             }
           }
           // For methods with returnValue, emit the variable with returnValue as initializer
           if (result.returnValue && result.returnValue !== "this") {
-            if (/\b\d+\.\d+\b/.test(result.returnValue)) {
-              registerFloatVariable(varName);
+            if (isHalOpReturn) {
+              // R2: Use the last halOp as a hal-expr initializer for the variable
+              const lastOp = result.halOps[result.halOps.length - 1];
+              lowered.push({
+                kind: "var_decl",
+                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
+                leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
+                trailingComments: [],
+                name: varName,
+                storage,
+                cppType: "auto",
+                initializer: { kind: "hal-expr", operation: lastOp },
+              });
+            } else {
+              if (/\b\d+\.\d+\b/.test(result.returnValue)) {
+                registerFloatVariable(varName);
+              }
+              lowered.push({
+                kind: "var_decl",
+                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
+                leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
+                trailingComments: [],
+                name: varName,
+                storage,
+                cppType: "auto",
+                initializer: { kind: "raw", value: result.returnValue },
+              });
             }
-            lowered.push({
-              kind: "var_decl",
-              sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
-              leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
-              trailingComments: [],
-              name: varName,
-              storage,
-              cppType: "auto",
-              initializer: { kind: "raw", value: result.returnValue },
-            });
             localVariableTypes.set(varName, "auto");
             commentsAssigned = true;
           }

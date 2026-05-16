@@ -1,8 +1,8 @@
-import { emit } from './emit';
+import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp } from './emit';
 import { board } from './board';
 import { callback } from './callback';
 import { ADC } from './adc';
-import { HIGH, LOW, OUTPUT, INPUT, INPUT_PULLUP } from './constants';
+import { HIGH } from './constants';
 
 export class OutputPin {
   private _pin: number;
@@ -18,43 +18,43 @@ export class OutputPin {
   }
 
   high(): void {
-    emit(`digitalWrite(${this._pin}, HIGH);`);
+    gpioWrite(this._pin, 1);
   }
 
   low(): void {
-    emit(`digitalWrite(${this._pin}, LOW);`);
+    gpioWrite(this._pin, 0);
   }
 
   toggle(): void {
-    emit(`digitalWrite(${this._pin}, digitalRead(${this._pin}) == LOW ? HIGH : LOW);`);
+    gpioToggle(this._pin);
   }
 
   write(value: number | boolean): void {
-    emit(`digitalWrite(${this._pin}, ${value});`);
+    gpioWrite(this._pin, value);
   }
 
   pulse(durationMs: number): void {
-    emit(`digitalWrite(${this._pin}, HIGH);`);
-    emit(`delayMicroseconds(${durationMs} * 1000);`);
-    emit(`digitalWrite(${this._pin}, LOW);`);
+    gpioWrite(this._pin, 1);
+    rawCpp(`delayMicroseconds(${durationMs} * 1000);`);
+    gpioWrite(this._pin, 0);
   }
 
   tone(frequency: number): ToneChain {
     this._lastFreq = frequency;
-    emit(`tone(${this._pin}, ${frequency});`);
+    tonePlay(this._pin, frequency);
     return new ToneChain(this._pin, this._lastFreq);
   }
 
   toneFor(frequency: number, duration: number): void {
-    emit(`tone(${this._pin}, ${frequency}, ${duration});`);
+    tonePlay(this._pin, frequency, duration);
   }
 
   noTone(): void {
-    emit(`noTone(${this._pin});`);
+    toneStop(this._pin);
   }
 
   pwm(percent: number): void {
-    emit(`analogWrite(${this._pin}, ${percent} * ((1 << ${board("peripherals.pwm.resolution")}) - 1) / 100);`);
+    rawCpp(`analogWrite(${this._pin}, ${percent} * ((1 << ${board("peripherals.pwm.resolution")}) - 1) / 100);`);
   }
 
   getPwmFrequency(): number {
@@ -78,7 +78,7 @@ export class InputPin {
   }
 
   read(): boolean {
-    return (digitalRead(this._pin) === HIGH);
+    return (gpioRead(this._pin) === HIGH);
   }
 
   isHigh(): boolean {
@@ -90,13 +90,11 @@ export class InputPin {
   }
 
   readAnalog(): number {
-    emit(`return analogRead(${this._pin});`);
-    return 0;
+    return adcRead(this._pin);
   }
 
   readVoltage(): number {
-    emit(`return analogRead(${this._pin}) * ${board("peripherals.adc.0.referenceVoltages." + ADC._reference)} / ${board("peripherals.adc.0.maxValue")};`);
-    return 0;
+    return adcReadVoltage(this._pin);
   }
 
   getAnalogResolution(): number {
@@ -105,23 +103,23 @@ export class InputPin {
 
   setAnalogReference(ref: number | string): void {
     ADC._reference = String(ref);
-    emit(`analogReference(${ref});`);
+    adcSetReference(ref);
   }
 
   onFalling(handler: () => void): void {
-    emit(`attachInterrupt(digitalPinToInterrupt(${this._pin}), ${callback(handler)}, FALLING);`);
+    interruptAttach(this._pin, callback(handler), "FALLING");
   }
 
   onRising(handler: () => void): void {
-    emit(`attachInterrupt(digitalPinToInterrupt(${this._pin}), ${callback(handler)}, RISING);`);
+    interruptAttach(this._pin, callback(handler), "RISING");
   }
 
   onChange(handler: () => void): void {
-    emit(`attachInterrupt(digitalPinToInterrupt(${this._pin}), ${callback(handler)}, CHANGE);`);
+    interruptAttach(this._pin, callback(handler), "CHANGE");
   }
 
   offAll(): void {
-    emit(`detachInterrupt(digitalPinToInterrupt(${this._pin}));`);
+    interruptDetach(this._pin);
   }
 
   /**
@@ -133,7 +131,7 @@ export class InputPin {
    *   rejects (or resolves with a false/error) after the timeout expires.
    */
   waitForRising(timeout?: number): Promise<void> {
-    emit(`__typehal_wait_pin_edge(${this._pin}, RISING, ${timeout ?? -1})`);
+    rawCpp(`__typehal_wait_pin_edge(${this._pin}, RISING, ${timeout ?? -1})`);
     return undefined as any;
   }
 
@@ -145,7 +143,7 @@ export class InputPin {
    *   rejects (or resolves with a false/error) after the timeout expires.
    */
   waitForFalling(timeout?: number): Promise<void> {
-    emit(`__typehal_wait_pin_edge(${this._pin}, FALLING, ${timeout ?? -1})`);
+    rawCpp(`__typehal_wait_pin_edge(${this._pin}, FALLING, ${timeout ?? -1})`);
     return undefined as any;
   }
 }
@@ -160,99 +158,120 @@ export class ToneChain {
   }
 
   for(duration: number): void {
-    emit(`tone(${this._pin}, ${this._lastFreq}, ${duration});`);
+    tonePlay(this._pin, this._lastFreq, duration);
   }
 }
 
 /**
  * Represents a physical hardware pin before it has been configured for a specific mode.
  * Use `.asInput()` or `.asOutput()` to obtain a functional pin instance.
+ *
+ * Pins can be created two ways:
+ * - `new Pin(number)` — legacy, using framework pin number (e.g. Arduino pin 13)
+ * - `Pin.fromPort("PB5")` — preferred, using MCU datasheet port name
+ *
+ * When created via `fromPort()`, the pin carries its canonical port identity.
+ * The transpiler resolves the port name to a framework pin number at compile time
+ * using the MCU package's pin mapping (e.g. arduino-map.ts).
  */
 export class Pin {
+  /** MCU port name (e.g. "PB5") — empty string for legacy numeric pins */
+  private _port: string;
+  /** Framework pin number (e.g. 13 for Arduino). -1 for port-based pins. */
   private _pin: number;
+  /** Public readonly access to port name */
+  readonly port: string;
   readonly number: number;
   readonly gpio: number;
 
+  /** Legacy constructor — creates a Pin from a framework pin number */
   constructor(pin: number) {
+    this._port = '';
     this._pin = pin;
+    this.port = '';
     this.number = pin;
     this.gpio = pin;
   }
 
+  /**
+   * Create a Pin from its MCU datasheet port name (e.g. "PB5", "PC0").
+   * The port name is the canonical identity; framework-specific pin numbers
+   * are resolved at transpile time via the MCU package's pin mapping.
+   */
+  static fromPort(portName: string): Pin {
+    const p = new Pin(-1);
+    p._port = portName;
+    // Bypass readonly for factory method
+    (p as any).port = portName;
+    return p;
+  }
+
   asOutput(initial?: number | boolean): OutputPin {
-    emit(`pinMode(${this._pin}, OUTPUT);`);
+    gpioSetMode(this._pin, "OUTPUT");
     if (initial !== undefined) {
-      emit(`digitalWrite(${this._pin}, ${initial});`);
+      gpioWrite(this._pin, initial);
     }
     return this as any;
   }
 
   output(initial?: number | boolean): OutputPin {
-    emit(`pinMode(${this._pin}, OUTPUT);`);
+    gpioSetMode(this._pin, "OUTPUT");
     if (initial !== undefined) {
-      emit(`digitalWrite(${this._pin}, ${initial});`);
+      gpioWrite(this._pin, initial);
     }
     return this as any;
   }
 
   asInput(): InputPin {
-    emit(`pinMode(${this._pin}, INPUT);`);
+    gpioSetMode(this._pin, "INPUT");
     return this as any;
   }
 
   asInputPullUp(): InputPin {
-    emit(`pinMode(${this._pin}, INPUT_PULLUP);`);
+    gpioSetMode(this._pin, "INPUT_PULLUP");
     return this as any;
   }
 
   asInputPullDown(): InputPin {
-    emit(`pinMode(${this._pin}, INPUT_PULLDOWN);`);
+    gpioSetMode(this._pin, "INPUT_PULLDOWN");
     return this as any;
   }
 
   inputPullUp(): InputPin {
-    emit(`pinMode(${this._pin}, INPUT_PULLUP);`);
+    gpioSetMode(this._pin, "INPUT_PULLUP");
     return this as any;
   }
 
   read(): boolean {
-    return (digitalRead(this._pin) === HIGH);
+    return (gpioRead(this._pin) === HIGH);
   }
 
   write(value: number | boolean): void {
-    emit(`digitalWrite(${this._pin}, ${value});`);
+    gpioWrite(this._pin, value);
   }
 
   high(): void {
-    emit(`digitalWrite(${this._pin}, HIGH);`);
+    gpioWrite(this._pin, 1);
   }
 
   low(): void {
-    emit(`digitalWrite(${this._pin}, LOW);`);
+    gpioWrite(this._pin, 0);
   }
 
   toggle(): void {
-    emit(`digitalWrite(${this._pin}, digitalRead(${this._pin}) == LOW ? HIGH : LOW);`);
+    gpioToggle(this._pin);
   }
 
   pwm(value: number): void {
-    emit(`analogWrite(${this._pin}, ${value});`);
+    pwmWrite(this._pin, value);
   }
 
   tone(frequency: number): ToneChain {
-    emit(`tone(${this._pin}, ${frequency});`);
+    tonePlay(this._pin, frequency);
     return new ToneChain(this._pin, frequency);
   }
 
   noTone(): void {
-    emit(`noTone(${this._pin});`);
+    toneStop(this._pin);
   }
 }
-
-
-
-declare function digitalRead(pin: number): number;
-declare function delayMicroseconds(us: number): void;
-declare function tone(pin: number, frequency: number, duration?: number): void;
-declare function noTone(pin: number): void;
-declare function analogWrite(pin: number, value: number): void;

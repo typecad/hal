@@ -1,39 +1,39 @@
-import { emit } from './emit';
+import { rawCpp } from './emit';
 
 export class PreferencesClass {
   static readonly __instance_name = "Preferences";
 
   begin(name: string, readOnly: boolean = false): void {
-    emit(`Preferences.begin(${name}, ${readOnly});`);
+    rawCpp(`Preferences.begin(${name}, ${readOnly});`);
   }
   end(): void {
-    emit(`Preferences.end();`);
+    rawCpp(`Preferences.end();`);
   }
   clear(): void {
-    emit(`Preferences.clear();`);
+    rawCpp(`Preferences.clear();`);
   }
   remove(key: string): void {
-    emit(`Preferences.remove(${key});`);
+    rawCpp(`Preferences.remove(${key});`);
   }
   putInt(key: string, value: number): void {
-    emit(`Preferences.putInt(${key}, ${value});`);
+    rawCpp(`Preferences.putInt(${key}, ${value});`);
   }
   getInt(key: string, defaultValue: number = 0): number {
-    emit(`return Preferences.getInt(${key}, ${defaultValue});`);
+    rawCpp(`return Preferences.getInt(${key}, ${defaultValue});`);
     return 0;
   }
   putBool(key: string, value: boolean): void {
-    emit(`Preferences.putBool(${key}, ${value});`);
+    rawCpp(`Preferences.putBool(${key}, ${value});`);
   }
   getBool(key: string, defaultValue: boolean = false): boolean {
-    emit(`return Preferences.getBool(${key}, ${defaultValue});`);
+    rawCpp(`return Preferences.getBool(${key}, ${defaultValue});`);
     return false;
   }
   putString(key: string, value: string): void {
-    emit(`Preferences.putString(${key}, ${value});`);
+    rawCpp(`Preferences.putString(${key}, ${value});`);
   }
   getString(key: string, defaultValue: string = ""): string {
-    emit(`return Preferences.getString(${key}, ${defaultValue});`);
+    rawCpp(`return Preferences.getString(${key}, ${defaultValue});`);
     return "";
   }
 }

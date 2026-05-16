@@ -207,6 +207,18 @@ export class ExpressionRenderer {
       case "element-access":
         rendered = this.renderElementAccess(expr, exprTransformer);
         break;
+      case "hal-expr": {
+        const resolved = this.strategy.resolveHALOperation?.(expr.operation);
+        if (resolved?.expression) {
+          rendered = resolved.expression;
+        } else if (resolved?.code) {
+          // Strip trailing semicolon if present for expression context
+          rendered = resolved.code.replace(/;\s*$/, "");
+        } else {
+          rendered = `/* unhandled hal-expr: ${expr.operation.operation} */`;
+        }
+        break;
+      }
       default:
         rendered = "0 /* unsupported_expr */";
     }

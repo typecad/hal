@@ -4,6 +4,8 @@
   "workspaces": [
     "packages/core",
     "packages/hal",
+    "packages/mcu-atmega328p",
+    "packages/mcu-esp32",
     "packages/framework-avr",
     "packages/framework-arduino",
     "packages/framework-native",

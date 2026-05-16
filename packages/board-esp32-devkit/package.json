@@ -20,7 +20,8 @@
   "dependencies": {
     "@typehal/core": "*",
     "@typehal/schema": "*",
-    "@typehal/hal": "*"
+    "@typehal/hal": "*",
+    "@typehal/mcu-esp32": "*"
   },
   "license": "MIT",
   "publishConfig": {

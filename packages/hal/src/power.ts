@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { rawCpp } from './emit';
 import { board } from './board';
 
 /**
@@ -10,24 +10,24 @@ export class PowerClass {
   deepSleep(ms: number): void {
     const arch: any = board("architecture");
     if (arch === "esp32") {
-      emit(`esp_sleep_enable_timer_wakeup(${ms} * 1000);`);
-      emit(`esp_deep_sleep_start();`);
+      rawCpp(`esp_sleep_enable_timer_wakeup(${ms} * 1000);`);
+      rawCpp(`esp_deep_sleep_start();`);
     } else {
-      emit(`// Architecture ${board("architecture")} does not support deep sleep yet`);
+      rawCpp(`// Architecture ${board("architecture")} does not support deep sleep yet`);
     }
   }
 
   lightSleep(): void {
     const arch: any = board("architecture");
     if (arch === "esp32") {
-      emit(`esp_light_sleep_start();`);
+      rawCpp(`esp_light_sleep_start();`);
     } else {
-      emit(`// Architecture ${board("architecture")} does not support light sleep yet`);
+      rawCpp(`// Architecture ${board("architecture")} does not support light sleep yet`);
     }
   }
 
   setCpuFrequency(mhz: number): void {
-    emit(`setCpuFrequencyMhz(${mhz});`);
+    rawCpp(`setCpuFrequencyMhz(${mhz});`);
   }
 }
 

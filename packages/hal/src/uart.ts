@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit';
 
 export class SerialPort {
   private _port: string;
@@ -8,56 +8,53 @@ export class SerialPort {
   }
 
   begin(baud: number = 9600): this {
-    emit(`${this._port}.begin(${baud});`);
+    uartBegin(this._port, baud);
     return this;
   }
 
   end(): void {
-    emit(`${this._port}.end();`);
+    uartEnd(this._port);
   }
 
   print(value: any): void {
-    emit(`${this._port}.print(${value});`);
+    uartPrint(this._port, value);
   }
 
   println(value: any): void {
-    emit(`${this._port}.println(${value});`);
+    uartPrintln(this._port, value);
   }
 
   printf(format: string, ...args: any[]): void {
-    emit(`${this._port}.printf(${format}, ${args});`);
+    rawCpp(`${this._port}.printf(${format}, ${args});`);
   }
 
   write(data: any): void {
-    emit(`${this._port}.write(${data});`);
+    uartWrite(this._port, data);
   }
 
   read(): number {
-    emit(`return ${this._port}.read();`);
-    return 0;
+    return uartRead(this._port);
   }
 
   readLine(): string {
-    emit(`return ${this._port}.readStringUntil('\n');`);
+    rawCpp(`return ${this._port}.readStringUntil('\\n');`);
     return "";
   }
 
   peek(): number {
-    emit(`return ${this._port}.peek();`);
-    return 0;
+    return uartPeek(this._port);
   }
 
   available(): number {
-    emit(`return ${this._port}.available();`);
-    return 0;
+    return uartAvailable(this._port);
   }
 
   flush(): void {
-    emit(`${this._port}.flush();`);
+    uartFlush(this._port);
   }
 
   waitForConnection(): Promise<void> {
-    emit(`while (!${this._port}) { delay(10); }`);
+    rawCpp(`while (!${this._port}) { delay(10); }`);
     return Promise.resolve();
   }
 

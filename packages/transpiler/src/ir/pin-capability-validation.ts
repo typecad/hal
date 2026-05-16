@@ -106,6 +106,7 @@ function scanExpression(expr: ExpressionIR, parentLine: number | undefined, pare
     case 'boolean':
     case 'identifier':
     case 'raw':
+    case 'hal-expr':
       break;
     default:
       assertNever(expr);
@@ -203,6 +204,7 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   case 'update':
   case 'break':
   case 'continue':
+  case 'hal-op':
     break;
 
   default:

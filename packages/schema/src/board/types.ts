@@ -30,9 +30,11 @@ export interface PinDefinition {
   number: number;
   /** GPIO number (may differ from physical pin). */
   gpio?: number;
-  /** Pin name (e.g. "D13", "A0", "GP0"). */
+  /** Pin name — MCU-native identifier (e.g. "PB5", "GPIO21", "PC0"). */
   name: string;
-  /** Alternate names (e.g. ["RX"], ["SDA"]). */
+  /** MCU port identifier for contract matching (e.g. "PB5", "GPIO21"). Auto-derived from name if absent. */
+  port?: string;
+  /** Alternate names (e.g. ["LED", "SCK"], ["SDA"]). */
   aliases?: string[];
   /** Pin capabilities. */
   capabilities: PinCapabilityFlags;
@@ -187,20 +189,20 @@ export interface DMADefinition {
 export interface PeripheralDefinitions {
   /** Peripheral object name aliases (e.g. UART0 -> Serial). */
   aliases?: Record<string, string>;
-  i2c: PeripheralInstance[];
-  spi: PeripheralInstance[];
-  uart: PeripheralInstance[];
-  adc: ADCDefinition[];
-  dac?: DACDefinition[];
+  i2c: readonly PeripheralInstance[];
+  spi: readonly PeripheralInstance[];
+  uart: readonly PeripheralInstance[];
+  adc: readonly ADCDefinition[];
+  dac?: readonly DACDefinition[];
   pwm: PWMDefinition;
   usb?: USBDefinition;
   wifi?: WiFiDefinition;
   bluetooth?: BluetoothDefinition;
   touch?: TouchDefinition;
   /** Hardware timers available for application use. */
-  timers?: TimerDefinition[];
+  timers?: readonly TimerDefinition[];
   /** DMA controllers available for high-speed transfers. */
-  dma?: DMADefinition[];
+  dma?: readonly DMADefinition[];
 }
 
 // ---------------------------------------------------------------------------
@@ -230,9 +232,40 @@ export interface BuildConfig {
 }
 
 // ---------------------------------------------------------------------------
+// MCU definition (hardware silicon)
+// ---------------------------------------------------------------------------
+
+/**
+ * Intrinsic hardware definition for a Microcontroller (MCU).
+ * Describes the silicon capabilities that are independent of any board.
+ */
+export interface MCUDefinition {
+  /** MCU identifier (e.g. "atmega328p"). */
+  id: string;
+  /** Human-readable name. */
+  name: string;
+  /** Target architecture. */
+  architecture: ArchitectureIdentifier;
+  /** Built-in memory specifications. */
+  memory: MemorySpec;
+  /** Intrinsic pin definitions and capabilities. */
+  pins: PinDefinitions;
+  /** Hardware peripheral instances. */
+  peripherals: PeripheralDefinitions;
+  /** Silicon-level features. */
+  features: FeatureFlags;
+  /** MCU-specific build configuration. */
+  build: BuildConfig;
+}
+
+// ---------------------------------------------------------------------------
 // Board definition (top-level manifest)
 // ---------------------------------------------------------------------------
 
+/**
+ * Board definition manifest.
+ * Describes a specific PCB implementation that utilizes an MCU.
+ */
 export interface BoardDefinition {
   /** Board identifier (e.g. "my-board"). */
   id: string;
@@ -243,22 +276,31 @@ export interface BoardDefinition {
   /** Board description. */
   description?: string;
 
-  /** Target architecture. */
-  architecture: ArchitectureIdentifier;
-  /** MCU / FPGA part number. */
-  mcu: string;
-  /** Clock speed in Hz. */
+  /** The MCU used on this board. */
+  mcu: MCUDefinition;
+
+  /** External clock speed in Hz. */
   clockSpeed: number;
 
-  /** Memory specifications. */
-  memory: MemorySpec;
-  /** Pin definitions. */
+  /**
+   * Memory specifications (extends/overrides MCU memory).
+   * Used for boards with external flash or RAM.
+   */
+  memory?: Partial<MemorySpec>;
+
+  /**
+   * Pin definitions (extends/overrides MCU pins).
+   * Used for board-level aliases (D0, LED), header mappings, etc.
+   */
   pins: PinDefinitions;
-  /** Built-in peripherals. */
+
+  /**
+   * Built-in peripherals (extends/overrides MCU peripherals).
+   * Used for board-level aliases (Serial, Wire, SPI).
+   */
   peripherals: PeripheralDefinitions;
-  /** Supported features. */
-  features: FeatureFlags;
-  /** Build configuration. */
+
+  /** Build configuration (overrides/extends MCU build). */
   build: BuildConfig;
 
   /** Related board variants. */

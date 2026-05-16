@@ -1,5 +1,4 @@
-import { emit } from './emit';
-import { board } from './board';
+import { adcRead, adcSetReference, boardResolve } from './emit';
 
 export class ADCClass {
   static readonly __instance_name = "ADC";
@@ -11,23 +10,20 @@ export class ADCClass {
   }
 
   getAnalogResolution(): number {
-    emit(`return ${board("peripherals.adc.0.resolution")};`);
-    return 0;
+    return boardResolve("peripherals.adc.0.resolution");
   }
 
   setAnalogReference(ref: number): void {
-    this._reference = ref as unknown as string;
-    emit(`analogReference(${ref});`);
+    this._reference = String(ref);
+    adcSetReference(ref);
   }
 
   getAnalogReference(): number {
-    emit(`return ${board("peripherals.adc.0.referenceVoltages." + this._reference)};`);
-    return 0;
+    return boardResolve("peripherals.adc.0.referenceVoltages." + this._reference);
   }
 
   read(pin: number): number {
-    emit(`return analogRead(${pin});`);
-    return 0;
+    return adcRead(pin);
   }
 }
 

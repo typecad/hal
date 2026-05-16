@@ -276,6 +276,8 @@ function renderExpression(expr: ExpressionIR, strategy: PlatformStrategy): strin
       return expr.value;
     case "raw":
       return expr.value;
+    case "hal-expr":
+      return `/* hal-expr: ${expr.operation.operation} */`;
     default:
       return "/* complex expr */";
   }

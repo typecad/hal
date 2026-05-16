@@ -7,7 +7,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage } from "./statement-to-ir";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
@@ -150,22 +150,31 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
               if (!nextVal || nextVal === pinVal) break; // prevent infinite loop
               pinVal = nextVal;
             }
-            halInstances.set(name, { className: "Pin", fieldValues: new Map<string, string>([["_pin", pinVal as string]]) });
+            const fields: Map<string, string> = new Map<string, string>([["_pin", pinVal as string]]);
+            const portName = mcuPinReverseMap.get(pinVal);
+            if (portName) fields.set("_port", portName);
+            halInstances.set(name, { className: "Pin", fieldValues: fields });
             continue;
           }
 
-          // D-pins: D0-D53 → Pin instance (fallback)
+          // D-pins: D0-D53 → Pin instance with MCU port name (fallback)
           const dMatch = name.match(/^D(\d+)$/);
           if (dMatch) {
-            halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", dMatch[1]]]) });
+            const fields = new Map([["_pin", dMatch[1]]]);
+            const portName = mcuPinReverseMap.get(dMatch[1]);
+            if (portName) fields.set("_port", portName);
+            halInstances.set(name, { className: "Pin", fieldValues: fields });
             continue;
           }
 
-          // A-pins: A0-A19 → Pin instance with board-specific offset (fallback)
+          // A-pins: A0-A19 → Pin instance with board-specific offset and MCU port name (fallback)
           const aMatch = name.match(/^A(\d+)$/);
           if (aMatch) {
             const pinNum = String(analogOffset + parseInt(aMatch[1]));
-            halInstances.set(name, { className: "Pin", fieldValues: new Map([["_pin", pinNum]]) });
+            const fields = new Map([["_pin", pinNum]]);
+            const portName = mcuPinReverseMap.get(pinNum);
+            if (portName) fields.set("_port", portName);
+            halInstances.set(name, { className: "Pin", fieldValues: fields });
             continue;
           }
 

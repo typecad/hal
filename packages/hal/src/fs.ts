@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { rawCpp } from './emit';
 import { include } from './include';
 
 /**
@@ -10,35 +10,35 @@ export class FSClass {
 
   begin(): boolean {
     include("<FS.h>");
-    emit(`return FS.begin();`);
+    rawCpp(`return FS.begin();`);
     return true;
   }
 
   readText(path: string): string {
     include("<FS.h>");
-    emit(`File f = FS.open(${path}, "r");`);
-    emit(`if (!f) return "";`);
-    emit(`String s = f.readString();`);
-    emit(`f.close();`);
-    emit(`return s.c_str();`);
+    rawCpp(`File f = FS.open(${path}, "r");`);
+    rawCpp(`if (!f) return "";`);
+    rawCpp(`String s = f.readString();`);
+    rawCpp(`f.close();`);
+    rawCpp(`return s.c_str();`);
     return "";
   }
 
   writeText(path: string, content: string): void {
     include("<FS.h>");
-    emit(`File f = FS.open(${path}, "w");`);
-    emit(`if (f) { f.print(${content}); f.close(); }`);
+    rawCpp(`File f = FS.open(${path}, "w");`);
+    rawCpp(`if (f) { f.print(${content}); f.close(); }`);
   }
 
   exists(path: string): boolean {
     include("<FS.h>");
-    emit(`return FS.exists(${path});`);
+    rawCpp(`return FS.exists(${path});`);
     return false;
   }
 
   remove(path: string): boolean {
     include("<FS.h>");
-    emit(`return FS.remove(${path});`);
+    rawCpp(`return FS.remove(${path});`);
     return false;
   }
 }

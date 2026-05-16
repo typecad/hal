@@ -14,6 +14,7 @@
     "@typehal/core": "*",
     "@typehal/hal": "*",
     "@typehal/board-arduino-uno": "*",
-    "@typehal/framework-arduino": "*"
+    "@typehal/framework-arduino": "*",
+    "@typehal/mcu-atmega328p": "*"
   }
 }

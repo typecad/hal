@@ -1,4 +1,4 @@
-import { emit } from './emit';
+import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit';
 import { include } from './include';
 import type { Pin } from './gpio';
 
@@ -12,34 +12,34 @@ export class SPIDevice {
   }
 
   transfer(data: number | Uint8Array): number {
-    emit(`digitalWrite(${this._cs}, LOW);`);
-    emit(`auto __res = ${this._bus}.transfer(${data});`);
-    emit(`digitalWrite(${this._cs}, HIGH);`);
-    emit(`return __res;`);
+    rawCpp(`digitalWrite(${this._cs}, LOW);`);
+    rawCpp(`auto __res = ${this._bus}.transfer(${data});`);
+    rawCpp(`digitalWrite(${this._cs}, HIGH);`);
+    rawCpp(`return __res;`);
     return 0;
   }
 
   write(data: number | Uint8Array): void {
-    emit(`digitalWrite(${this._cs}, LOW);`);
-    emit(`${this._bus}.transfer(${data});`);
-    emit(`digitalWrite(${this._cs}, HIGH);`);
+    spiCsLow(this._cs);
+    spiTransfer(this._bus, data);
+    spiCsHigh(this._cs);
   }
 
   readRegister(register: number, count: number): Uint8Array {
-    emit(`digitalWrite(${this._cs}, LOW);`);
-    emit(`${this._bus}.transfer(${register});`);
-    emit(`uint8_t result[${count}];`);
-    emit(`for (int i=0; i<${count}; i++) result[i] = ${this._bus}.transfer(0x00);`);
-    emit(`digitalWrite(${this._cs}, HIGH);`);
-    emit(`return result;`);
+    rawCpp(`digitalWrite(${this._cs}, LOW);`);
+    rawCpp(`${this._bus}.transfer(${register});`);
+    rawCpp(`uint8_t result[${count}];`);
+    rawCpp(`for (int i=0; i<${count}; i++) result[i] = ${this._bus}.transfer(0x00);`);
+    rawCpp(`digitalWrite(${this._cs}, HIGH);`);
+    rawCpp(`return result;`);
     return new Uint8Array(count);
   }
 
   writeRegister(register: number, value: number): void {
-    emit(`digitalWrite(${this._cs}, LOW);`);
-    emit(`${this._bus}.transfer(${register});`);
-    emit(`${this._bus}.transfer(${value});`);
-    emit(`digitalWrite(${this._cs}, HIGH);`);
+    spiCsLow(this._cs);
+    spiTransfer(this._bus, register);
+    spiTransfer(this._bus, value);
+    spiCsHigh(this._cs);
   }
 }
 
@@ -56,12 +56,12 @@ export class SPIBus {
 
   begin(): this {
     include("<SPI.h>");
-    emit(`${this._bus}.begin();`);
+    spiBegin(this._bus);
     return this;
   }
 
   end(): void {
-    emit(`${this._bus}.end();`);
+    spiEnd(this._bus);
   }
 
   take(): this | null {
@@ -74,35 +74,35 @@ export class SPIBus {
 
 
   transfer(value: number | Uint8Array): number {
-    return 0;
+    return spiTransfer(this._bus, value);
   }
 
   setFrequency(hz: number): void {
-    emit(`${this._bus}.beginTransaction(SPISettings(${hz}, MSBFIRST, SPI_MODE0));`);
+    spiBeginTx(this._bus, `SPISettings(${hz}, MSBFIRST, SPI_MODE0)`);
   }
 
   beginTransaction(settings: any): void {
-    emit(`${this._bus}.beginTransaction(${settings});`);
+    spiBeginTx(this._bus, settings);
   }
 
   endTransaction(): void {
-    emit(`${this._bus}.endTransaction();`);
+    spiEndTx(this._bus);
   }
 
   setMode(mode: number): void {
-    emit(`${this._bus}.setDataMode(${mode});`);
+    spiSetMode(this._bus, mode);
   }
 
   setBitOrder(order: 'lsb' | 'msb'): void {
-    emit(`${this._bus}.setBitOrder(${order});`);
+    spiSetBitOrder(this._bus, order);
   }
 
   write(value: number): void {
-    emit(`${this._bus}.transfer(${value});`);
+    spiTransfer(this._bus, value);
   }
 
   write16(value: number): void {
-    emit(`${this._bus}.transfer16(${value});`);
+    rawCpp(`${this._bus}.transfer16(${value});`);
   }
 }
 

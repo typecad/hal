@@ -275,6 +275,22 @@ export class StatementRenderer {
         return `{`;
       }
 
+      if (statement.kind === "hal-op") {
+        const resolved = this.strategy.resolveHALOperation?.(statement.operation);
+        if (resolved?.code) {
+          // Strip leading 'return ' from raw hal-op code when emitted as a
+          // standalone statement.  The HAL definition includes `return` because
+          // the TypeScript stub returns a value, but the C++ statement context
+          // (e.g. inside void setup()) does not expect it.
+          const code = resolved.code;
+          return code.startsWith('return ') ? code.slice('return '.length) : code;
+        }
+        if (resolved?.expression) {
+          return forHeader ? resolved.expression : `${resolved.expression};`;
+        }
+        return `/* unhandled hal-op: ${statement.operation.operation} */`;
+      }
+
       if (statement.kind !== "var_decl") {
         return "/* unsupported_statement */";
       }

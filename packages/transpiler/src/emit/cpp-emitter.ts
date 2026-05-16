@@ -202,7 +202,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   const usesTimers = programAnalysis.usedPolyfillHelpers.has('__tc_setInterval') ||
                      programAnalysis.usedPolyfillHelpers.has('__tc_setTimeout');
   if (!usesTimers) {
-    filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "timer_runtime");
+    filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "timer_methods");
   }
 
   // Emit native helpers
@@ -858,6 +858,96 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   }
   const globalPointerVarTypes = collectPointerVarTypes(allExecutableStatements, classNameMap);
 
+  // ── Promote timing variables to unsigned long ────────────────────────────
+  // Variables that receive millis()/micros() return values must be unsigned long
+  // to avoid truncation on platforms where int is 16-bit (e.g. AVR ATmega328P).
+  {
+    const timingVarNames = new Set<string>();
+
+    function exprContainsTimingCall(expr: ExpressionIR): boolean {
+      if (!expr || typeof expr !== 'object' || !expr.kind) return false;
+      switch (expr.kind) {
+        case "method-call":
+          return /\bmillis\b/.test(expr.callee) || /\bmicros\b/.test(expr.callee);
+        case "raw":
+          return /\bmillis\s*\(/.test(expr.value) || /\bmicros\s*\(/.test(expr.value);
+        case "identifier":
+          return timingVarNames.has(expr.value);
+        case "binary":
+          return exprContainsTimingCall(expr.left) || exprContainsTimingCall(expr.right);
+        case "unary":
+          return exprContainsTimingCall(expr.operand);
+        case "paren":
+          return exprContainsTimingCall(expr.inner);
+        case "ternary":
+          return exprContainsTimingCall(expr.condition) || exprContainsTimingCall(expr.whenTrue) || exprContainsTimingCall(expr.whenFalse);
+        case "property-access":
+          return exprContainsTimingCall(expr.object);
+        case "element-access":
+          return exprContainsTimingCall(expr.object) || exprContainsTimingCall(expr.index);
+        default:
+          return false;
+      }
+    }
+
+    function scanForTimingAssignments(stmts: StatementIR[]): void {
+      for (const stmt of stmts) {
+        if (stmt.kind === "var_decl" && stmt.initializer && exprContainsTimingCall(stmt.initializer)) {
+          timingVarNames.add(stmt.name);
+        }
+        if (stmt.kind === "assign" && exprContainsTimingCall(stmt.value)) {
+          timingVarNames.add(stmt.target);
+        }
+        // Recurse into nested statement blocks
+        if ("body" in stmt && Array.isArray(stmt.body)) scanForTimingAssignments(stmt.body);
+        if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) scanForTimingAssignments(stmt.thenBranch);
+        if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) scanForTimingAssignments(stmt.elseBranch);
+        if ("cases" in stmt && Array.isArray(stmt.cases)) {
+          for (const c of stmt.cases) scanForTimingAssignments(c.body);
+        }
+        if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) scanForTimingAssignments(stmt.tryBlock);
+        if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) scanForTimingAssignments(stmt.catchBlock);
+        if ("finallyBlock" in stmt && Array.isArray(stmt.finallyBlock)) scanForTimingAssignments(stmt.finallyBlock);
+      }
+    }
+
+    // Collect all statements to scan (globals + function bodies)
+    const allStatementsForTiming: StatementIR[] = [...emittedTopLevelStatements];
+    for (const fn of mappedFunctions) {
+      allStatementsForTiming.push(...fn.statements);
+    }
+
+    // Multiple passes to handle transitive assignments (e.g., now = millis(); lastTime = now)
+    for (let pass = 0; pass < 3; pass++) {
+      const prevSize = timingVarNames.size;
+      scanForTimingAssignments(allStatementsForTiming);
+      if (timingVarNames.size === prevSize) break;
+    }
+
+    // Promote matching var_decl cppType to unsigned long
+    function promoteVarDecls(stmts: StatementIR[]): void {
+      for (const stmt of stmts) {
+        if (stmt.kind === "var_decl" && timingVarNames.has(stmt.name)) {
+          const t = stmt.cppType;
+          if (t === "auto" || t === "int" || t === "long" || t === "unsigned int" || t === "short" || t === "unsigned short") {
+            (stmt as any).cppType = "unsigned long";
+          }
+        }
+        if ("body" in stmt && Array.isArray(stmt.body)) promoteVarDecls(stmt.body);
+        if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) promoteVarDecls(stmt.thenBranch);
+        if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) promoteVarDecls(stmt.elseBranch);
+        if ("cases" in stmt && Array.isArray(stmt.cases)) {
+          for (const c of stmt.cases) promoteVarDecls(c.body);
+        }
+        if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) promoteVarDecls(stmt.tryBlock);
+        if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) promoteVarDecls(stmt.catchBlock);
+        if ("finallyBlock" in stmt && Array.isArray(stmt.finallyBlock)) promoteVarDecls(stmt.finallyBlock);
+      }
+    }
+
+    promoteVarDecls(allStatementsForTiming);
+  }
+
 
   // Collect callback functions from call arguments (e.g., attachInterrupt handlers)
   const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[] = [];
@@ -992,6 +1082,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
           arg.value = arg.value.replace(placeholder, replacement);
         }
       }
+    }
+    // Handle hal-op statements with raw code containing callback placeholders
+    if (stmt.kind === "hal-op" && stmt.operation && stmt.operation.operation === "raw" && typeof stmt.operation.code === "string") {
+      stmt.operation.code = stmt.operation.code.replace(placeholder, replacement);
     }
     for (const key of ["body", "thenBranch", "elseBranch"]) {
       if (Array.isArray(stmt[key])) {
