@@ -10,10 +10,12 @@ import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolcha
 import { resolveStrategy } from "./platform/registry";
 import { loadFrameworkPackage } from "./framework-package";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry";
-import { loadTypehalConfig, generateVirtualTypeDeclaration, validateBoardPackage } from "./config-loader";
+import { loadTypehalConfig, generateVirtualTypeDeclaration } from "./config-loader";
 import { scaffoldBoardPackage, scaffoldFromWizard, printNextSteps } from "./scaffold/board-scaffold";
 import { runBoardWizard } from "./scaffold/wizard";
 import { runWatch, discoverWatchDirs } from "./watch";
+import { parseContractFile, matchConnectedPins } from "./contract-parser";
+import { generateBoardFile } from "./board-generator";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils";
 import * as ui from "./utils/ui";
 import chalk from "chalk";
@@ -277,23 +279,102 @@ async function main(): Promise<void> {
     let effectiveFrameworkPackage = options.frameworkPackage;
 
     if (config) {
-      // Validate board package exists before proceeding
-      if (config.board) {
-        const validationError = validateBoardPackage(config.board, config.configPath);
-        if (validationError) {
-          ui.printError(validationError);
-          process.exitCode = 1;
-          return;
+      // Auto-discover contract if MCU is specified, no board is specified, and no contract provided
+      if (config.mcu && !config.board && !config.contract) {
+        const contractFiles = fs.readdirSync(inputDir).filter(f => f.endsWith('.contract.json'));
+        if (contractFiles.length > 0) {
+          config.contract = path.join(inputDir, contractFiles[0]);
+        } else {
+          const srcDir = path.join(inputDir, 'src');
+          if (fs.existsSync(srcDir)) {
+             const srcContracts = fs.readdirSync(srcDir).filter(f => f.endsWith('.contract.json'));
+             if (srcContracts.length > 0) {
+               config.contract = path.join(srcDir, srcContracts[0]);
+             }
+          }
         }
       }
 
+      // Generate dynamic board if contract is present
+      if (config.contract && config.mcu) {
+        try {
+          const contractPath = path.isAbsolute(config.contract) 
+            ? config.contract 
+            : path.resolve(path.dirname(config.configPath), config.contract);
+          
+          if (fs.existsSync(contractPath)) {
+            ui.printStep(`Generating narrowed board from contract: ${path.basename(contractPath)}`);
+            const contractData = parseContractFile(contractPath);
+            
+            // Resolve MCU package path to find pin names
+            const mcuPkgPath = require.resolve(config.mcu, { paths: [inputDir] });
+            const mcuDir = path.dirname(mcuPkgPath);
+            
+            // Try to find pins.ts or pins.js
+            let pinsFile = path.join(mcuDir, 'pins.ts');
+            if (!fs.existsSync(pinsFile)) pinsFile = path.join(mcuDir, 'pins.js');
+            if (!fs.existsSync(pinsFile)) pinsFile = path.join(mcuDir, 'src', 'pins.ts');
+            
+            if (fs.existsSync(pinsFile)) {
+              const pinsContent = fs.readFileSync(pinsFile, 'utf-8');
+              const pinMatches = pinsContent.matchAll(/(?:export const|exports\.)(\w+) = (?:hal_1\.)?Pin\.fromPort/g);
+              const mcuPinNames = Array.from(pinMatches, m => m[1]);
+              
+              const connectedPins = matchConnectedPins(contractData, mcuPinNames);
+              
+              // Find peripherals to re-export
+              let peripheralsFile = path.join(mcuDir, 'peripherals.ts');
+              if (!fs.existsSync(peripheralsFile)) peripheralsFile = path.join(mcuDir, 'peripherals.js');
+              if (!fs.existsSync(peripheralsFile)) peripheralsFile = path.join(mcuDir, 'src', 'peripherals.ts');
+              
+              let mcuPeripherals: string[] = [];
+              if (fs.existsSync(peripheralsFile)) {
+                const periphContent = fs.readFileSync(peripheralsFile, 'utf-8');
+                const pMatches = periphContent.matchAll(/(?:export const|exports\.)\s*(?:\[\s*([A-Za-z0-9_, ]+)\s*\]|([A-Za-z0-9_]+))\s*=[^;\n]*(?:createHALInstances|new (?:I2CBus|SPIBus|SerialPort))/g);
+                for (const m of pMatches) {
+                  if (m[1]) mcuPeripherals.push(...m[1].split(',').map(s => s.trim()));
+                  if (m[2]) mcuPeripherals.push(m[2]);
+                }
+              }
+
+              generateBoardFile(path.dirname(config.configPath), config.mcu, connectedPins, mcuPeripherals);
+              effectiveBoardPackage = './.typehal/board';
+            }
+          }
+        } catch (e) {
+          ui.printWarning(`Failed to generate narrowed board: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      } else if (config.board) {
+        // Legacy board package — generate a forwarding file to unify tsconfig paths
+        try {
+          generateBoardFile(path.dirname(config.configPath), config.board);
+          effectiveBoardPackage = './.typehal/board';
+        } catch (e) {
+           // Fallback to direct board package if generation fails
+           effectiveBoardPackage = config.board;
+        }
+      } else if (config.mcu) {
+        // MCU-only — generate a forwarding file to unify tsconfig paths
+        try {
+          generateBoardFile(path.dirname(config.configPath), config.mcu);
+          effectiveBoardPackage = './.typehal/board';
+        } catch (e) {
+           // Fallback to direct MCU package if generation fails
+           effectiveBoardPackage = config.mcu;
+        }
+      }
+      
       // Config is the source of truth — override CLI-provided values.
       let configBuildTarget = config.buildTarget;
       
       // If buildTarget is missing from config, try to resolve it from the board manifest
       if (!configBuildTarget && config.board) {
         const framework = config.outputFramework ?? 'arduino';
-        configBuildTarget = resolveBoardBuildTarget(config.board, config.configPath, framework);
+        try {
+          configBuildTarget = resolveBoardBuildTarget(config.board, config.configPath, framework);
+        } catch {
+          // If board is deprecated/missing, we'll fall back to frameworkData.buildTarget
+        }
       }
 
       if (configBuildTarget) {
@@ -304,9 +385,6 @@ async function main(): Promise<void> {
       }
       if (config.outputOutDir && !options.outDir) {
         effectiveOutDir = path.resolve(inputDir, config.outputOutDir);
-      }
-      if (config.board) {
-        effectiveBoardPackage = config.board;
       }
       // Load framework package from config (new approach)
       if (config.framework) {

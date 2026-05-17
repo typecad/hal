@@ -49,6 +49,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "split",
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       emitMaps: true,
 
     });
@@ -100,6 +101,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "split",
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       emitMaps: true,
 
     });
@@ -162,6 +164,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       emitMaps: true,
 
     });
@@ -204,6 +207,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       emitMaps: true,
 
     });
@@ -255,6 +259,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       emitMaps: true,
 
     });

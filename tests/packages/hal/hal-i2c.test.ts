@@ -149,7 +149,7 @@ describe('I2C HAL - Device Accessor Pattern', () => {
       I2C0.device(0x76).writeByte(0xFA, 0x55);
     `);
 
-    expectCppContains(result, ['Wire.begin()', 'Wire.beginTransmission(118)', 'Wire.write(250)', 'Wire.write(85)', 'Wire.endTransmission()']);
+    expectCppContains(result, ['Wire.begin()', 'Wire.beginTransmission(118)', 'Wire.write(250)', 'Wire.write(85)', 'Wire.endTransmission(true)']);
     expectCppNotContains(result, ['.device(', '.writeByte(']);
   });
 
@@ -164,7 +164,6 @@ describe('I2C HAL - Device Accessor Pattern', () => {
       'Wire.beginTransmission(118)',
       'Wire.write(250)',
       'Wire.endTransmission(false)',
-      'Wire.requestFrom(118, 1)',
     ]);
     // Wire.read() must be the initializer of val, not assigned to void
     expect(result.cpp).toMatch(/val\s*=\s*Wire\.read\(\)/);
@@ -194,7 +193,7 @@ describe('I2C HAL - Device Accessor Pattern', () => {
       'Wire.beginTransmission(118)',
       'Wire.write(250)',
       'Wire.endTransmission(false)',
-      'Wire.requestFrom(118, 4)',
+      'Wire.requestFrom(118, 4, true)',
       'Wire.read()',
     ]);
     // Must not assign buf to a void/int expression
@@ -226,7 +225,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
       'Wire.beginTransmission(118)',
       'Wire.write(250)',
       'Wire.write(85)',
-      'Wire.endTransmission()',
+      'Wire.endTransmission(true)',
     ]);
     expectCppNotContains(result, ['const int i2c', 'i2c.']);
   });

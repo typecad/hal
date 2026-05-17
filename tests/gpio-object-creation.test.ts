@@ -30,7 +30,7 @@ describe('GPIO Object-Creation Pattern', () => {
 
       expectCppContains(result, [
         'pinMode(13, OUTPUT)',
-        'digitalWrite(13, true)',
+        'digitalWrite(13, HIGH)',
       ]);
     });
 

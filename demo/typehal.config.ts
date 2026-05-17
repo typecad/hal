@@ -11,8 +11,16 @@ const config: TypehalConfig = {
   // Target architecture (AVR for ATmega328P)
   target: 'avr',
 
-  // Board package - provides pin definitions and board constants
+  // ── CORE CONFIGURATION (Required) ───────────────────────────────────────
+  // MCU package providing the underlying silicon definitions.
+  mcu: '@typehal/mcu-atmega328p',
+
+  // ── HARDWARE DEFINITION (Choose one) ────────────────────────────────────
+  // Option A: Use a standard board package (Arduino Uno, ESP32 DevKit, etc.)
   board: '@typehal/board-arduino-uno',
+
+  // Option B: Use a TypeCAD contract for custom hardware (narrows pins)
+  // contract: './src/pro_mini.contract.json',
 
   // Framework package - controls code generation strategy
   framework: '@typehal/framework-arduino',

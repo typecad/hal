@@ -36,31 +36,10 @@ struct __tc_Timing {
     void delay(unsigned long ms) { ::delay(ms); }
     void delayMicroseconds(unsigned int us) { ::delayMicroseconds(us); }
     unsigned long freeHeap() {
-        extern int __heap_start, *__brkval;
-        int v;
-        return (unsigned long) &v - (__brkval == 0 ? (unsigned long) &__heap_start : (unsigned long) __brkval);
+        return 0;
     }
 } Timing;
 
-#include <avr/wdt.h>
-#include <string.h>
-struct __tc_WDT {
-    void (enable)(const char* t) {
-        if (strcmp(t, "15ms") == 0) wdt_enable(WDTO_15MS);
-        else if (strcmp(t, "30ms") == 0) wdt_enable(WDTO_30MS);
-        else if (strcmp(t, "60ms") == 0) wdt_enable(WDTO_60MS);
-        else if (strcmp(t, "120ms") == 0) wdt_enable(WDTO_120MS);
-        else if (strcmp(t, "250ms") == 0) wdt_enable(WDTO_250MS);
-        else if (strcmp(t, "500ms") == 0) wdt_enable(WDTO_500MS);
-        else if (strcmp(t, "1s") == 0) wdt_enable(WDTO_1S);
-        else if (strcmp(t, "2s") == 0) wdt_enable(WDTO_2S);
-        else if (strcmp(t, "4s") == 0) wdt_enable(WDTO_4S);
-        else if (strcmp(t, "8s") == 0) wdt_enable(WDTO_8S);
-    }
-    void (enable)(int t) { wdt_enable(t); }
-    void (reset)() { wdt_reset(); }
-    void (disable)() { wdt_disable(); }
-} WDT;
 
 #ifndef TYPEHAL_STR_BUF_SIZE
 #define TYPEHAL_STR_BUF_SIZE 64
@@ -86,17 +65,11 @@ struct __tc_str_ptr {
 inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }
 inline size_t (strlen)(const char* s) { return ::strlen(s); }
 
-const __tc_str_ptr test = "typeHAL";
-
 // Auto-generated setup() for top-level statements
 void setup()
 {
   Serial.begin(115200);
-  {
-    char __typehal_snprintf_0[58];
-    snprintf(__typehal_snprintf_0, sizeof(__typehal_snprintf_0), "%s is working %d", test.c_str(), 1 + 2);
-    Serial.println(__typehal_snprintf_0);
-  }
+  Serial.println(__typehal_snprintf_0);
 }
 
 void loop()

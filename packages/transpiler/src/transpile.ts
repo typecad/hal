@@ -331,6 +331,7 @@ function typeCheckFiles(
         const envDts = path.join(path.dirname(configPath), "typehal-env.d.ts");
         if (fs.existsSync(envDts) && !rootNames.includes(envDts)) {
           rootNames.push(envDts);
+          // console.log("Added virtual module declaration:", envDts);
         }
       }
     }

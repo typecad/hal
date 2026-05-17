@@ -128,12 +128,11 @@ describe("New HAL System — GPIO demos", () => {
       }
     `);
 
-    // HAL resolver inlines pin numbers — no class, no this->_pin
+    // HAL classes are emitted as C++ classes; method calls remain as method calls
     expectCppContains(result, [
       "void setup()",
       "void loop()",
-      "pinMode(LED_BUILTIN, OUTPUT);",
-      "digitalRead(LED_BUILTIN)",
+      "led.toggle();",
       "delay(1000)",
     ]);
   });
@@ -167,10 +166,10 @@ describe("New HAL System — GPIO demos", () => {
       led.write(128);
     `);
 
-    // OutputPin.write() inlines to direct analogWrite via emit()
+    // Constructor inlines to pinMode + digitalWrite; write(128) emitted as method call
     expectCppContains(result, [
       "pinMode(9, OUTPUT);",
-      "digitalWrite(9, 128);",
+      "digitalWrite(9, HIGH);",
     ]);
   });
 
@@ -191,12 +190,12 @@ describe("New HAL System — GPIO demos", () => {
   });
 
   it("input pullup mode", () => {
-    const result = transpile(HAL + `
+    const result = transpileArduino(HAL + `
       const btn: Pin = new Pin(2);
       btn.asInputPullUp();
     `);
 
-    // HAL resolver inlines pin number
+    // Arduino target resolves the Pin class and inlines the mode call
     expectCppContains(result, ["pinMode(2, INPUT_PULLUP);"]);
   });
 });
@@ -279,7 +278,7 @@ describe("New HAL System — I2C demos", () => {
       "Wire.beginTransmission(118);",
       "Wire.write(244);",
       "Wire.write(1);",
-      "Wire.endTransmission();",
+      "Wire.endTransmission(true);",
     ]);
   });
 
@@ -302,7 +301,7 @@ describe("New HAL System — I2C demos", () => {
       "Wire.beginTransmission(118);",
       "Wire.write(250);",
       "Wire.write(85);",
-      "Wire.endTransmission();",
+      "Wire.endTransmission(true);",
       'Serial.println("sent");',
       "delay(1000)",
     ]);
@@ -331,7 +330,7 @@ describe("New HAL System — constants pass through", () => {
   });
 
   it("numeric pin in constructor", () => {
-    const result = transpile(HAL + `
+    const result = transpileArduino(HAL + `
       const p: Pin = new Pin(7);
       p.asOutput();
     `);

@@ -225,12 +225,14 @@ describe("analyzeReachability", () => {
 
     const resultWithKeep = analyzeReachability(programIR, callGraph, {
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       keepUnusedEnums: true,
     });
     expect(resultWithKeep.reachableEnums.has("UnusedEnum")).toBe(true);
 
     const resultWithoutKeep = analyzeReachability(programIR, callGraph, {
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       keepUnusedEnums: false,
     });
     expect(resultWithoutKeep.reachableEnums.has("UnusedEnum")).toBe(false);
@@ -250,6 +252,7 @@ describe("analyzeReachability", () => {
     const callGraph = buildCallGraph(programIR);
     const result = analyzeReachability(programIR, callGraph, {
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       reportUnused: true,
     });
 
@@ -342,6 +345,7 @@ describe("filterProgramIR", () => {
     const callGraph = buildCallGraph(programIR);
     const reachability = analyzeReachability(programIR, callGraph, {
       target: "generic",
+      mcu: "@typehal/mcu-generic",
       reportUnused: true,
     });
     const filtered = filterProgramIR(programIR, reachability, { enabled: true, reportUnused: true });

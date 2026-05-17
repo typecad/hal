@@ -1,10 +1,10 @@
-import { rawCpp } from './emit';
+import { rawCpp, getMillis, getMicros } from './emit';
 import { callback } from './callback';
 
 export class TimingClass {
   static readonly __instance_name = "Timing";
-  millis(): number { return 0; }
-  micros(): number { return 0; }
+  millis(): number { return getMillis(); }
+  micros(): number { return getMicros(); }
   delay(ms: number): void {}
   delayMicroseconds(us: number): void {}
   freeHeap(): number {
@@ -35,8 +35,8 @@ export class TimingClass {
 export const Timing = new TimingClass();
 
 export function delay(ms: number): void {}
-export function millis(): number { return 0; }
-export function micros(): number { return 0; }
+export function millis(): number { return getMillis(); }
+export function micros(): number { return getMicros(); }
 export function delayMicroseconds(us: number): void {}
 export function freeHeap(): number { return Timing.freeHeap(); }
 

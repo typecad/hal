@@ -137,11 +137,30 @@ function tryResolveHALMethod(
         const innerReceiver = call.expression.expression;
         collectChainedHALEmits(innerReceiver, sourceText, diagnostics, pointerVars, chainedEmits, chainedHalOps);
       }
-      // Prefer hal-op IR over raw emit lines
+      // Prefer hal-op IR over raw emit lines, but preserve emit lines if both are generated
       const allHalOps = [...chainedHalOps, ...result.halOps];
-      if (allHalOps.length > 0) return halOpsToIR(allHalOps, call, fileName, sourceText);
-
       const allEmits = [...chainedEmits, ...result.emitLines];
+
+      if (allHalOps.length > 0 && allEmits.length > 0) {
+        const emitIR = emitLinesToIR(allEmits, call, fileName, sourceText);
+        const halOpIR = halOpsToIR(allHalOps, call, fileName, sourceText);
+        const body: StatementIR[] = [];
+        if (emitIR) {
+          if (emitIR.kind === "block") body.push(...emitIR.body);
+          else body.push(emitIR);
+        }
+        if (halOpIR) {
+          if (halOpIR.kind === "block") body.push(...halOpIR.body);
+          else body.push(halOpIR);
+        }
+        return {
+          kind: "block",
+          body,
+          sourceSpan: makeSourceSpan(call, fileName, sourceText)
+        };
+      }
+
+      if (allHalOps.length > 0) return halOpsToIR(allHalOps, call, fileName, sourceText);
       if (allEmits.length > 0) return emitLinesToIR(allEmits, call, fileName, sourceText);
       if (result.returnValue === "this" && ts.isPropertyAccessExpression(call.expression)) {
         const objText = renderExprAsText(expressionToIR(call.expression.expression, sourceText, diagnostics, pointerVars));
@@ -2684,7 +2703,8 @@ export function variableStatementToIR(
     }
 
     // Track C-string variables for .length → strlen() conversion
-    if (declarationType.resolvedType === "const char*" || declarationType.resolvedType === "char*" || declarationType.resolvedType === "__tc_str_ptr") {
+    const cleanTypeForStringVar = declarationType.resolvedType.replace(/\bconst\b\s*/g, "").trim();
+    if (cleanTypeForStringVar === "const char*" || cleanTypeForStringVar === "char*" || cleanTypeForStringVar === "__tc_str_ptr") {
       activeStringVars.add(declaration.name.text);
     }
 

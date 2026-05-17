@@ -32,9 +32,9 @@ describe('PWM Timer Sharing Validation', () => {
     );
 
     expect(diagnostics.length).toBeGreaterThan(0);
-    expect(diagnostics[0].message).toContain('D3');
-    // MOSI (pin 11) is tracked as D11 in the __EMIT__ system
-    expect(diagnostics[0].message).toContain('D11');
+    // D3 is tracked as PD3 in the board data; MOSI is tracked as MOSI/PB3
+    expect(diagnostics[0].message).toContain('PD3');
+    expect(diagnostics[0].message).toContain('MOSI');
     expect(diagnostics[0].message).toContain('timer2');
   });
 

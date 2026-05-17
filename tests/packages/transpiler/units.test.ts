@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { transpileFile } from '@typehal/transpiler/testing';
+import { transpileFile } from '../../../packages/transpiler/src/testing';
 
 const tempDirs: string[] = [];
 

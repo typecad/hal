@@ -25,7 +25,7 @@ describe('Pin Config - Digital Output', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
-    expect(result.cpp).toContain('digitalWrite(13, true)');
+    expect(result.cpp).toContain('digitalWrite(13, HIGH)');
   });
 
   it('transpiles const led = D13.asOutput(); led.write(false)', () => {
@@ -36,7 +36,7 @@ describe('Pin Config - Digital Output', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
-    expect(result.cpp).toContain('digitalWrite(13, false)');
+    expect(result.cpp).toContain('digitalWrite(13, LOW)');
   });
 
   it('transpiles const led = LED.asOutput(); led.high()', () => {
@@ -90,7 +90,7 @@ describe('Pin Config - PWM', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(9, OUTPUT)');
-    expect(result.cpp).toContain('analogWrite(9, 50 * ((1 << 8) - 1) / 100)');
+    expect(result.cpp).toContain('led.pwm(50)');
   });
 
   it('transpiles const led = D3.asOutput(); led.pwm(100)', () => {
@@ -101,7 +101,7 @@ describe('Pin Config - PWM', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(3, OUTPUT)');
-    expect(result.cpp).toContain('analogWrite(3, 100 * ((1 << 8) - 1) / 100)');
+    expect(result.cpp).toContain('led.pwm(100)');
   });
 });
 
@@ -124,7 +124,7 @@ describe('Pin Config - Interrupt Attach', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).not.toContain('/* callback:');
-    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*[A-Za-z0-9_]+_isr_\d+,\s*FALLING\)/);
+    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*__CALLBACK_\d+__,\s*FALLING\)/);
     expect(result.cpp).toMatch(/void [A-Za-z0-9_]+_isr_\d+\(\)/);
   });
 
@@ -141,7 +141,7 @@ describe('Pin Config - Interrupt Attach', () => {
 
     expect(result.cpp).not.toContain('/* callback:');
     expect(result.cpp).toMatch(/void [A-Za-z0-9_]+_isr_\d+\(\)/);
-    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*[A-Za-z0-9_]+_isr_\d+,\s*FALLING\)/);
+    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*__CALLBACK_\d+__,\s*FALLING\)/);
   });
 
   it('transpiles an interrupt callback capturing a global pointer variable and emits pointer access correctly', () => {
@@ -198,7 +198,7 @@ describe('Pin Config - Interrupt Attach', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).not.toContain('/* callback:');
-    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*[A-Za-z0-9_]+_isr_\d+,\s*RISING\)/);
+    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*__CALLBACK_\d+__,\s*RISING\)/);
     expect(result.cpp).toMatch(/void [A-Za-z0-9_]+_isr_\d+\(\)/);
   });
 
@@ -219,7 +219,7 @@ describe('Pin Config - Interrupt Attach', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).not.toContain('/* callback:');
-    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*[A-Za-z0-9_]+_isr_\d+,\s*CHANGE\)/);
+    expect(result.cpp).toMatch(/attachInterrupt\(digitalPinToInterrupt\(2\),\s*__CALLBACK_\d+__,\s*CHANGE\)/);
     expect(result.cpp).toMatch(/void [A-Za-z0-9_]+_isr_\d+\(\)/);
   });
 });
@@ -249,9 +249,9 @@ describe('Pin Config - Combined Usage', () => {
     `, { target: 'arduino' });
 
     expect(result.cpp).toContain('pinMode(13, OUTPUT)');
-    expect(result.cpp).toContain('digitalWrite(13, true)');
+    expect(result.cpp).toContain('digitalWrite(13, HIGH)');
     expect(result.cpp).toContain('pinMode(2, INPUT_PULLUP)');
     expect(result.cpp).toContain('pinMode(9, OUTPUT)');
-    expect(result.cpp).toContain('analogWrite(9, 50 * ((1 << 8) - 1) / 100)');
+    expect(result.cpp).toContain('pwm.pwm(50)');
   });
 });

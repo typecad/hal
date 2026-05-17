@@ -27,7 +27,8 @@ describe("typehal_halt panic handler", () => {
   it("emits typehal_halt macro definition in string_methods polyfill", () => {
     const result = transpile(
       `function setup(): void { throw new Error("bad"); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("typehal_halt");
     expect(result.cpp).toContain("Serial.println");
@@ -37,7 +38,8 @@ describe("typehal_halt panic handler", () => {
   it("renderThrow emits typehal_halt(\"PANIC\") not a bare for(;;) in setup body", () => {
     const result = transpile(
       `function setup(): void { throw new Error("oops"); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     // Should use typehal_halt macro call, not a bare infinite-loop in the function body
     expect(result.cpp).toContain('typehal_halt("PANIC")');
@@ -48,7 +50,8 @@ describe("typehal_halt panic handler", () => {
   it("typehal_halt macro uses F() for flash storage", () => {
     const result = transpile(
       `function setup(): void { throw new Error("err"); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     // The macro definition itself must use F() so the panic string sits in flash
     expect(result.cpp).toContain("F(msg)");
@@ -57,7 +60,8 @@ describe("typehal_halt panic handler", () => {
   it("typehal_halt macro is guarded with #ifndef", () => {
     const result = transpile(
       `function setup(): void { throw new Error(""); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("#ifndef typehal_halt");
   });
@@ -65,7 +69,8 @@ describe("typehal_halt panic handler", () => {
   it("omits typehal_halt macro when no throw statements exist", () => {
     const result = transpile(
       `function setup(): void { Serial.println("hello"); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).not.toContain("typehal_halt");
   });
@@ -79,7 +84,8 @@ describe("F() string wrapping for Arduino Serial output", () => {
   it("wraps bare string literal in F() for console.log", () => {
     const result = transpile(
       `function setup(): void { console.log("hello AVR"); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain('Serial.println(F("hello AVR"))');
   });
@@ -87,7 +93,8 @@ describe("F() string wrapping for Arduino Serial output", () => {
   it("wraps bare string literal in F() for console.error", () => {
     const result = transpile(
       `function setup(): void { console.error("bad state"); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain('F("[ERROR] ")');
     expect(result.cpp).toContain('F("bad state")');
@@ -96,7 +103,8 @@ describe("F() string wrapping for Arduino Serial output", () => {
   it("wraps bare string literal in F() for console.warn", () => {
     const result = transpile(
       `function setup(): void { console.warn("low battery"); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain('F("[WARN] ")');
   });
@@ -107,7 +115,8 @@ describe("F() string wrapping for Arduino Serial output", () => {
         const msg = "hi";
         console.log(msg);
       }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     // Variable reference — no F() wrapping in the Serial.println call itself
     expect(result.cpp).toContain("Serial.println(msg)");
@@ -125,7 +134,8 @@ describe("String predicates use C stdlib (no heap String allocation)", () => {
       `function check(s: string): bool {
         return s.includes("OK");
       }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("strstr(s, \"OK\") != NULL");
     expect(result.cpp).not.toContain("String(s)");
@@ -136,7 +146,8 @@ describe("String predicates use C stdlib (no heap String allocation)", () => {
       `function check(s: string): bool {
         return s.startsWith("$GP");
       }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain('strncmp(s, "$GP", strlen("$GP")) == 0');
     expect(result.cpp).not.toContain("String(s)");
@@ -147,7 +158,8 @@ describe("String predicates use C stdlib (no heap String allocation)", () => {
       `function check(s: string): bool {
         return s.endsWith("\\n");
       }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("__tc_endsWith(s");
     expect(result.cpp).not.toContain("String(s)");
@@ -165,7 +177,8 @@ describe("TYPEHAL_STR_BUF_SIZE macro in string polyfills", () => {
         const msg = "hello";
         console.log(msg.toUpperCase());
       }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("TYPEHAL_STR_BUF_SIZE");
     expect(result.cpp).toContain("#ifndef TYPEHAL_STR_BUF_SIZE");
@@ -178,7 +191,8 @@ describe("TYPEHAL_STR_BUF_SIZE macro in string polyfills", () => {
         const s = "test";
         console.log(s.toLowerCase());
       }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("buf[2][TYPEHAL_STR_BUF_SIZE]");
     // No raw 64 should appear without the macro (the macro definition itself is ok)
@@ -204,7 +218,8 @@ describe("Heap-allocation validator (AVR)", () => {
          const led = D13;
          const f = new Foo(1);
        }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     const codes = result.diagnostics.map(d => (d as any).code);
     expect(codes).toContain("heap-allocation-avr");
@@ -216,7 +231,8 @@ describe("Heap-allocation validator (AVR)", () => {
        function setup(): void {
          const b = new Bar(1);
        }`,
-      { target: "arduino", ...ESP32_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...ESP32_CTX },
     );
     const codes = result.diagnostics.map(d => (d as any).code);
     expect(codes).not.toContain("heap-allocation-avr");
@@ -227,7 +243,8 @@ describe("Heap-allocation validator (AVR)", () => {
       `function setup(): void {
         const buf = new Uint8Array(8);
       }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     // Typed array new expressions are handled by the emitter as C arrays — not heap
     const heapDiags = result.diagnostics.filter(d => (d as any).code === "heap-allocation-avr");
@@ -243,7 +260,8 @@ describe("EEPROM namespace dispatch", () => {
   it("transpiles EEPROM.read(addr) to EEPROM.read()", () => {
     const result = transpile(
       `function setup(): void { const v = EEPROM.read(10); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("EEPROM.read(10)");
   });
@@ -251,7 +269,8 @@ describe("EEPROM namespace dispatch", () => {
   it("transpiles EEPROM.write(addr, val) to EEPROM.write()", () => {
     const result = transpile(
       `function setup(): void { EEPROM.write(0, 42); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("EEPROM.write(0, 42)");
   });
@@ -259,7 +278,8 @@ describe("EEPROM namespace dispatch", () => {
   it("transpiles EEPROM.update(addr, val) to EEPROM.update()", () => {
     const result = transpile(
       `function setup(): void { EEPROM.update(5, 99); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("EEPROM.update(5, 99)");
   });
@@ -267,7 +287,8 @@ describe("EEPROM namespace dispatch", () => {
   it("transpiles EEPROM.length() to EEPROM.length()", () => {
     const result = transpile(
       `function setup(): void { const sz = EEPROM.length(); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("EEPROM.length()");
   });
@@ -281,7 +302,8 @@ describe("Timing namespace dispatch", () => {
   it("transpiles Timing.millis() to millis()", () => {
     const result = transpile(
       `function loop(): void { const t = Timing.millis(); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("millis()");
   });
@@ -289,7 +311,8 @@ describe("Timing namespace dispatch", () => {
   it("transpiles Timing.micros() to micros()", () => {
     const result = transpile(
       `function loop(): void { const t = Timing.micros(); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("micros()");
   });
@@ -297,7 +320,8 @@ describe("Timing namespace dispatch", () => {
   it("transpiles Timing.delay(ms) to delay()", () => {
     const result = transpile(
       `function setup(): void { Timing.delay(500); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("delay(500)");
   });
@@ -305,7 +329,8 @@ describe("Timing namespace dispatch", () => {
   it("transpiles Timing.delayMicroseconds(us) to delayMicroseconds()", () => {
     const result = transpile(
       `function setup(): void { Timing.delayMicroseconds(100); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("delayMicroseconds(100)");
   });
@@ -319,7 +344,8 @@ describe("WDT namespace dispatch", () => {
   it("transpiles WDT.reset() to wdt_reset()", () => {
     const result = transpile(
       `function loop(): void { WDT.reset(); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("wdt_reset()");
   });
@@ -327,7 +353,8 @@ describe("WDT namespace dispatch", () => {
   it("transpiles WDT.disable() to wdt_disable()", () => {
     const result = transpile(
       `function setup(): void { WDT.disable(); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("wdt_disable()");
   });
@@ -335,7 +362,8 @@ describe("WDT namespace dispatch", () => {
   it("transpiles WDT.enable(WDTO_2S) to wdt_enable(WDTO_2S)", () => {
     const result = transpile(
       `function setup(): void { WDT.enable(WDTO_2S); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("wdt_enable(WDTO_2S)");
   });
@@ -343,7 +371,8 @@ describe("WDT namespace dispatch", () => {
   it("transpiles WDT.enable(WDTO_500MS) to wdt_enable(WDTO_500MS)", () => {
     const result = transpile(
       `function setup(): void { WDT.enable(WDTO_500MS); }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("wdt_enable(WDTO_500MS)");
   });
@@ -360,7 +389,8 @@ describe("IRAM_ATTR attribute for ESP32 ISR functions", () => {
        function setup(): void {
          D2.onFalling(() => {});
        }`,
-      { target: "arduino", ...AVR_CTX },
+      { target: "arduino",
+      mcu: "@typehal/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).not.toContain("IRAM_ATTR");
   });

@@ -34,6 +34,7 @@ export interface TranspileOptions {
   target?: TargetProfile;
   emitMode?: EmitMode;
   platformContext?: PlatformContext;
+  boardPackage?: string;
 }
 
 let testCounter = 0;
@@ -43,7 +44,7 @@ let testCounter = 0;
  * Uses unique filenames to avoid test isolation issues
  */
 export function transpile(tsCode: string, options: TranspileOptions = {}): TranspileResult {
-  const { target = "generic", emitMode = "cpp", platformContext } = options;
+  const { target = "generic", emitMode = "cpp", platformContext, boardPackage } = options;
 
   // clearAllProfileCaches() is removed to allow strategy-level caching across tests
 
@@ -60,7 +61,7 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
     fs.mkdirSync(uniqueOutDir, { recursive: true });
   }
 
-  const programIR = buildProgramIR(fileName, tsCode);
+  const programIR = buildProgramIR(fileName, tsCode, boardPackage);
   const libdefs = new Map();
   const result = emitCpp(programIR, {
     outDir: uniqueOutDir,

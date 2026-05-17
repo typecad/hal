@@ -49,7 +49,9 @@ const ToolchainConfig = z.object({
 export const TypehalConfigSchema = z.object({
   entry: z.string().optional(),
   target: z.string().min(1),
-  board: z.string().min(1),
+  mcu: z.string().min(1),
+  board: z.string().optional(),
+  contract: z.string().optional(),
   framework: z.string().optional(),
   output: OutputConfig.optional(),
   frameworkData: z.record(z.string(), z.unknown()).optional(),
@@ -59,7 +61,10 @@ export const TypehalConfigSchema = z.object({
   toolchain: ToolchainConfig.optional(),
   console: ConsoleConfig.optional(),
   native: z.record(z.string(), z.unknown()).optional(),
-}).strict();
+}).strict().refine(data => !(data.board && data.contract), {
+  message: "Specifying both 'board' and 'contract' is not allowed. Choose one.",
+  path: ['board'],
+});
 
 /** Inferred TypeScript type from the Zod schema. */
 export type ValidatedTypehalConfig = z.infer<typeof TypehalConfigSchema>;

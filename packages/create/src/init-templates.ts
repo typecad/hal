@@ -85,7 +85,7 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "paths": {
-      "@typehal": ["./node_modules/${boardPackage}"],
+      "@typehal": ["./.typehal/board.ts"],
       "@typehal/core": ["./node_modules/@typehal/core"]
     }
   },
@@ -119,7 +119,7 @@ const config: TypehalConfig = {
 
   // Target architecture
   target: '${architecture}',
-
+${options.mcu ? `\n  // MCU package — provides silicon-level pin definitions\n  mcu: '${options.mcu.startsWith('@') ? options.mcu : `@typehal/mcu-${options.mcu}`}',\n` : ''}
   // Board package — provides pin definitions and board constants
   board: '${boardPackage}',
 
@@ -182,7 +182,7 @@ declare global {
 }
 
 declare module '@typehal' {
-  export * from '${boardPackage}';
+  export * from './.typehal/board';
 }
 
 export {};

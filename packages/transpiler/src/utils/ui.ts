@@ -109,6 +109,13 @@ export function printError(message: string): void {
 }
 
 /**
+ * Print warning message
+ */
+export function printWarning(message: string): void {
+  console.log(chalk.yellow(`! ${message}`));
+}
+
+/**
  * Print info message
  */
 export function printInfo(message: string): void {

@@ -21,10 +21,13 @@ const CONFIG_FILENAME = "typehal.config.ts";
  * nested objects (like `output`) are flattened into simple scalars.
  */
 export interface ResolvedTypehalConfig {
-  /** Target architecture (e.g. 'avr', 'esp32', 'samd'). */
   target?: string;
-  /** Board package specifier (e.g. '@typehal/board-arduino-uno'). */
+  /** MCU package specifier (e.g. '@typehal/mcu-atmega328p'). */
+  mcu?: string;
+  /** Board package specifier (e.g. '@typehal/board-arduino-uno'). (Deprecated) */
   board?: string;
+  /** Path to a TypeCAD contract file (*.contract.json). */
+  contract?: string;
   /** Build target identifier (e.g. FQBN for Arduino CLI). */
   buildTarget?: string;
   /** Output framework (e.g. 'arduino', 'platformio'). */
@@ -331,8 +334,14 @@ export function parseConfigFile(configPath: string): ResolvedTypehalConfig | und
   const target = flat.get("target");
   if (typeof target === "string") resolved.target = target;
 
+  const mcu = flat.get("mcu");
+  if (typeof mcu === "string") resolved.mcu = mcu;
+
   const board = flat.get("board");
   if (typeof board === "string") resolved.board = board;
+
+  const contract = flat.get("contract");
+  if (typeof contract === "string") resolved.contract = contract;
 
   // We do not extract fqbn here anymore, it should be in frameworkData
   const buildTarget = flat.get("frameworkData.buildTarget");
@@ -370,7 +379,9 @@ export function parseConfigFile(configPath: string): ResolvedTypehalConfig | und
   // Reconstruct a structured object from the flat-map extraction for validation.
   const structuredForValidation: Record<string, unknown> = {};
   if (resolved.target) structuredForValidation.target = resolved.target;
+  if (resolved.mcu) structuredForValidation.mcu = resolved.mcu;
   if (resolved.board) structuredForValidation.board = resolved.board;
+  if (resolved.contract) structuredForValidation.contract = resolved.contract;
   if (resolved.entry) structuredForValidation.entry = resolved.entry;
   if (resolved.framework) structuredForValidation.framework = resolved.framework;
   if (resolved.outputFramework || resolved.outputOptimize || resolved.outputOutDir || resolved.outputExtraFlags || resolved.outputDefines) {
@@ -389,9 +400,8 @@ export function parseConfigFile(configPath: string): ResolvedTypehalConfig | und
 
   const validation = safeValidateConfig(structuredForValidation);
   if (!validation.success) {
-    for (const error of validation.errors) {
-      console.error(`[typehal] Config validation error in ${configPath}: ${error}`);
-    }
+    const errorMsg = validation.errors.map(e => `  - ${e}`).join("\n");
+    throw new Error(`Configuration validation failed for ${configPath}:\n${errorMsg}`);
   }
 
   return resolved;
@@ -408,10 +418,23 @@ export function parseConfigFile(configPath: string): ResolvedTypehalConfig | und
  * the board changes in `typehal.config.ts`.
  */
 export function generateVirtualTypeDeclaration(config: ResolvedTypehalConfig, platformDeclarations?: string[]): void {
-  if (!config.board) return;
+  if (!config.mcu && !config.board) return;
 
   const configDir = path.dirname(config.configPath);
   const outPath = path.join(configDir, "typehal-env.d.ts");
+
+  // Determine what @typehal exports
+  let typehalExport = "";
+  if (config.contract) {
+    // Contract-based: export from generated board
+    typehalExport = "export * from './.typehal/board';";
+  } else if (config.board) {
+    // Explicit board package (legacy)
+    typehalExport = `export * from '${config.board}';`;
+  } else {
+    // MCU-only: export all from MCU
+    typehalExport = `export * from '${config.mcu}';`;
+  }
 
   const content = [
     "// ---------------------------------------------------------------------------",
@@ -452,7 +475,7 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypehalConfig, pl
     "}",
     "",
     "declare module '@typehal' {",
-    `  export * from '${config.board}';`,
+    `  ${typehalExport}`,
     "}",
     "",
     "export {};",
@@ -462,58 +485,6 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypehalConfig, pl
   fs.writeFileSync(outPath, content, "utf-8");
 }
 
-/**
- * Validate that a board package exists.
- * 
- * Checks both relative paths (packages/board-*) and npm packages (@typehal/board-*).
- * Returns an error message if validation fails, or undefined if valid.
- */
-export function validateBoardPackage(board: string, configPath: string): string | undefined {
-  const configDir = path.dirname(configPath);
-  
-  // Check if it's a relative path (packages/*, ./packages/*, ../packages/*)
-  if (board.startsWith('.') || board.startsWith('packages/') || board.startsWith('/packages/')) {
-    const resolvedPath = path.resolve(configDir, board);
-    if (!fs.existsSync(resolvedPath)) {
-      return `Board package directory not found: ${board}\n  Resolved to: ${resolvedPath}`;
-    }
-    if (!fs.statSync(resolvedPath).isDirectory()) {
-      return `Board package path is not a directory: ${board}\n  Resolved to: ${resolvedPath}`;
-    }
-    // Check for package.json or src/index.ts
-    const hasPackageJson = fs.existsSync(path.join(resolvedPath, 'package.json'));
-    const hasIndexTs = fs.existsSync(path.join(resolvedPath, 'src', 'index.ts'));
-    if (!hasPackageJson && !hasIndexTs) {
-      return `Board package directory exists but is not a valid board package (missing package.json or src/index.ts): ${board}`;
-    }
-    return undefined; // Valid
-  }
-  
-  // Check if it's an npm package (@typehal/board-* or similar)
-  if (board.startsWith('@')) {
-    try {
-      const resolvedPath = require.resolve(board);
-      // Package resolved successfully
-      return undefined;
-    } catch {
-      return `Board package not found in node_modules: ${board}\n  Run 'npm install' or check the package name.`;
-    }
-  }
-  
-  // For other paths, try to resolve as a local path first, then as npm package
-  const localPath = path.resolve(configDir, board);
-  if (fs.existsSync(localPath) && fs.statSync(localPath).isDirectory()) {
-    return undefined; // Valid local path
-  }
-  
-  // Try npm resolution as fallback
-  try {
-    require.resolve(board);
-    return undefined;
-  } catch {
-    return `Board package not found: ${board}\n  Checked as local path: ${localPath}\n  Also tried npm package resolution.`;
-  }
-}
 
 /**
  * High-level entry point: find and load `typehal.config.ts` starting from

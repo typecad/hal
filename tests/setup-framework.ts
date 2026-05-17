@@ -2,8 +2,8 @@
 // (including those that call transpileFile() or emitCpp() directly) can access
 // framework functions without going through the test helper in setup.ts.
 
-import { setLoadedFramework, registerPlatformStrategy } from "@typehal/transpiler/testing";
-import { ArduinoStrategy } from "../packages/framework-arduino";
+import { setLoadedFramework, registerPlatformStrategy } from "../packages/transpiler/src/testing";
+import { ArduinoStrategy } from "../packages/framework-arduino/src";
 
 const _arduinoStrategy = new ArduinoStrategy();
 setLoadedFramework({ strategy: _arduinoStrategy });

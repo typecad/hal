@@ -9,7 +9,7 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "paths": {
-      "@typehal": ["../packages/board-arduino-uno/src/index.ts"],
+      "@typehal": ["./.typehal/board.ts"],
       "@typehal/hal": ["../packages/hal/src/index.ts"],
       "@typehal/core": ["../packages/core/src/index.ts"],
       "@typehal/board-arduino-uno": ["../packages/board-arduino-uno/src/index.ts"],

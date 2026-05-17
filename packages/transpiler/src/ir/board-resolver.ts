@@ -79,7 +79,89 @@ export function resolveBoardConstants(defFilePath: string): BoardConstants {
     }
   });
 
+  // After parsing the board file, check for MCU imports and merge pin data.
+  // Board definitions often use `...MCU.pins` spread which the AST walker
+  // cannot handle, but the MCU file has static pin data we can parse.
+  resolveAndMergeMCUConstants(defFilePath, result);
+
   return result;
+}
+
+/**
+ * Detect MCU package imports in a board definition file, resolve the MCU
+ * definition file, parse its pin/peripheral constants, and merge them into
+ * the board constants. This handles the common pattern where board definitions
+ * use spread operators (`...ATmega328P.pins`) that the AST walker can't parse.
+ */
+function resolveAndMergeMCUConstants(boardFilePath: string, boardConstants: BoardConstants): void {
+  // Only proceed if the board file didn't produce pin.all entries on its own
+  let hasPinData = false;
+  for (const key of boardConstants.keys()) {
+    if (key.startsWith("pins.all.")) { hasPinData = true; break; }
+  }
+  if (hasPinData) return;
+
+  // Parse the board file to find MCU imports
+  const sourceText = fs.readFileSync(boardFilePath, "utf-8");
+  const sourceFile = ts.createSourceFile(boardFilePath, sourceText, ts.ScriptTarget.Latest, true);
+
+  let mcuSpecifier: string | undefined;
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isImportDeclaration(stmt)) continue;
+    const spec = stmt.moduleSpecifier;
+    if (!ts.isStringLiteral(spec)) continue;
+    if (spec.text.startsWith("@typehal/mcu-")) {
+      mcuSpecifier = spec.text;
+      break;
+    }
+  }
+
+  if (!mcuSpecifier) return;
+
+  // Resolve the MCU package file path
+  let dir = path.dirname(boardFilePath);
+  while (true) {
+    const parts = mcuSpecifier.split("/");
+    const pkgName = parts[1]; // e.g. "mcu-atmega328p"
+
+    const nmCandidate = path.join(dir, "node_modules", "@typehal", pkgName, "src", "mcu.ts");
+    if (fs.existsSync(nmCandidate)) {
+      mergeMCUConstants(nmCandidate, boardConstants);
+      return;
+    }
+
+    const pkgCandidate = path.join(dir, "packages", pkgName, "src", "mcu.ts");
+    if (fs.existsSync(pkgCandidate)) {
+      mergeMCUConstants(pkgCandidate, boardConstants);
+      return;
+    }
+
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+}
+
+/**
+ * Parse an MCU definition file and merge its pin data into the board constants.
+ */
+function mergeMCUConstants(mcuFilePath: string, boardConstants: BoardConstants): void {
+  const mcuConstants = resolveBoardConstants(mcuFilePath);
+
+  // Merge MCU pin data (pins.all.N.name, pins.all.N.number, pins.all.N.aliases.*)
+  // Don't overwrite existing board-specific values
+  for (const [key, value] of mcuConstants.entries()) {
+    if (key.startsWith("pins.all.") || key.startsWith("peripherals.")) {
+      if (!boardConstants.has(key)) {
+        boardConstants.set(key, value);
+      }
+    }
+  }
+
+  // Copy architecture if the MCU has it and the board doesn't
+  if (mcuConstants.has("architecture") && !boardConstants.has("architecture")) {
+    boardConstants.set("architecture", mcuConstants.get("architecture")!);
+  }
 }
 
 // ---------------------------------------------------------------------------

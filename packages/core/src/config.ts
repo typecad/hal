@@ -8,7 +8,7 @@
 import type { ArchitectureIdentifier } from './board/types';
 
 // ---------------------------------------------------------------------------
-// Output framework
+// Output section
 // ---------------------------------------------------------------------------
 
 /** Build-system / framework the transpiler should target. */
@@ -16,10 +16,6 @@ type OutputFramework = string & {};
 
 /** Optimization strategy. */
 type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
-
-// ---------------------------------------------------------------------------
-// Config shape
-// ---------------------------------------------------------------------------
 
 /**
  * Output section — controls how generated C++ is laid out.
@@ -39,23 +35,6 @@ interface TypehalOutputConfig {
 
 /**
  * Root configuration object exported from `typehal.config.ts`.
- *
- * @example
- * ```ts
- * // typehal.config.ts
- * import type { TypehalConfig } from './code/core';
- *
- * const config: TypehalConfig = {
- *   target: 'avr',
- *   board: '@typehal/board-arduino-uno',
- *   output: {
- *     framework: 'arduino',
- *     optimize: 'size',
- *   },
- * };
- *
- * export default config;
- * ```
  */
 export interface TypehalConfig {
   /** Entry point TypeScript file (relative to config file directory). */
@@ -65,19 +44,24 @@ export interface TypehalConfig {
   target: ArchitectureIdentifier;
 
   /**
-   * Board package to use.  Can be:
-   *   - a bare identifier  `'@typehal/board-arduino-uno'`
-   *   - a relative path     `'./boards/my-custom-board'`
+   * MCU package providing silicon definitions.
+   * Example: '@typehal/mcu-atmega328p'
    */
-  board: string;
+  mcu: string;
+  
+  /**
+   * Board package to use. (Deprecated — use mcu + contract instead)
+   */
+  board?: string;
+
+  /**
+   * Path to a TypeCAD contract file (*.contract.json).
+   * If provided, the transpiler will generate a narrowed board definition.
+   */
+  contract?: string;
 
   /**
    * Framework package for code generation strategy.
-   * Can be:
-   *   - '@typehal/framework-arduino' - Arduino framework
-   *   - '@typehal/framework-avr' - Native AVR registers
-   *   - a relative path to a custom framework package
-   * Must be specified explicitly; no default.
    */
   framework?: string;
 
@@ -86,7 +70,6 @@ export interface TypehalConfig {
 
   /**
    * Framework-specific data.
-   * Can contain properties like `buildTarget` that the framework toolchain uses.
    */
   frameworkData?: Record<string, unknown>;
 
@@ -97,8 +80,7 @@ export interface TypehalConfig {
   exclude?: string[];
 
   /**
-   * Hardware test runner configuration (`@typehal/expect`).
-   * Defines how `typehal-test` discovers files and communicates with the board.
+   * Hardware test runner configuration.
    */
   test?: TypehalTestConfig;
 
@@ -108,32 +90,22 @@ export interface TypehalConfig {
   toolchain?: TypehalToolchainConfig;
 
   /**
-   * Console output configuration for the target framework.
-   * Controls serial output initialization and default baud rate.
+   * Console output configuration.
    */
   console?: TypehalConsoleConfig;
 
   /**
-   * Framework-specific configuration. Each framework reads its own section.
-   * For native C++ builds, use the `NativeCompileConfig` shape from
-   * `@typehal/framework-native`.
+   * Framework-specific configuration.
    */
   native?: Record<string, unknown>;
 }
-
-// ---------------------------------------------------------------------------
-// Toolchain configuration
-// ---------------------------------------------------------------------------
-
-/** Supported toolchain types for compile/upload operations. */
-type ToolchainType = string;
 
 /**
  * Toolchain configuration for compile and upload operations.
  */
 interface TypehalToolchainConfig {
   /** Toolchain type identifier. Each framework defines its own valid values. */
-  type?: ToolchainType;
+  type?: string;
   /** Framework-specific toolchain options. Each framework reads its own key. */
   frameworkOptions?: Record<string, unknown>;
 }
@@ -146,37 +118,20 @@ interface TypehalConsoleConfig {
   baudRate?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Test configuration (@typehal/expect)
-// ---------------------------------------------------------------------------
-
 /**
  * Configuration for the `typehal-test` hardware test runner.
- * Add this section to your `typehal.config.ts` when using `@typehal/expect`.
- *
- * @example
- * ```ts
- * const config: TypehalConfig = {
- *   board: '@typehal/board-arduino-uno',
- *   frameworkData: { buildTarget: 'arduino:avr:uno' },
- *   test: {
- *     port: 'COM4',
- *     include: ['tests/hardware/**\\/*.test.ts'],
- *   },
- * };
- * ```
  */
 interface TypehalTestConfig {
-  /** Glob patterns for hardware test files. Default: `['tests/**\\/*.test.ts']`. */
+  /** Glob patterns for hardware test files. */
   include?: string[];
 
-  /** Serial port the board is connected to (e.g. `'COM4'`, `'/dev/ttyACM0'`). */
+  /** Serial port the board is connected to (e.g. 'COM4', '/dev/ttyACM0'). */
   port?: string;
 
-  /** Serial baud rate for the test protocol. Default: `115200`. */
+  /** Serial baud rate for the test protocol. Default: 115200. */
   baudRate?: number;
 
-  /** Timeout in ms to wait for `[TC:SUITE_END]` from firmware. Default: `30000`. */
+  /** Timeout in ms to wait for test completion. Default: 30000. */
   timeout?: number;
 
   /** Framework-specific build target override. */

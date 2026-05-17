@@ -78,7 +78,7 @@ export class InputPin {
   }
 
   read(): boolean {
-    return (gpioRead(this._pin) === HIGH);
+    return gpioRead(this._pin) as unknown as boolean;
   }
 
   isHigh(): boolean {
@@ -243,7 +243,7 @@ export class Pin {
   }
 
   read(): boolean {
-    return (gpioRead(this._pin) === HIGH);
+    return gpioRead(this._pin) as unknown as boolean;
   }
 
   write(value: number | boolean): void {

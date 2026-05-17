@@ -5,7 +5,7 @@
 // This enables compile-time initialization optimization.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR } from '@typehal/core';
+import type { ProgramIR, StatementIR, ExpressionIR, HALOpIR } from '@typehal/core';
 
 /**
  * Tracks which hardware peripherals are used in the program.
@@ -296,6 +296,211 @@ function analyzeCalleeForPeripheralUsage(callee: string, usage: PeripheralUsage)
   markTimer0UsageFromText(callee, usage);
 }
 
+/**
+ * Extract the bus/UART instance number from a name like "Wire" → 0, "Wire1" → 1, "SPI" → 0, "Serial" → 0, "Serial1" → 1.
+ */
+function extractBusInstance(busOrPort: string, prefix: string): number {
+  const rest = busOrPort.slice(prefix.length);
+  return rest ? parseInt(rest, 10) : 0;
+}
+
+/**
+ * Analyze a single HAL operation and record peripheral usage.
+ */
+function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
+  switch (op.operation) {
+    // GPIO — pin mode configuration
+    case 'gpio.set_mode': {
+      trackPinNumberAsName(op.pin, usage);
+      const mode = op.mode.toLowerCase();
+      if (mode === 'output') {
+        usage.outputPins.add(op.pin);
+      } else if (mode === 'input_pullup') {
+        usage.inputPullupPins.add(op.pin);
+      } else if (mode === 'input_pulldown') {
+        usage.inputPulldownPins.add(op.pin);
+      } else if (mode === 'input') {
+        usage.inputPins.add(op.pin);
+      }
+      break;
+    }
+
+    case 'gpio.write':
+    case 'gpio.read':
+    case 'gpio.toggle': {
+      trackPinNumberAsName(op.pin, usage);
+      break;
+    }
+
+    // PWM
+    case 'pwm.write': {
+      trackPinNumberAsName(op.pin, usage);
+      usage.pwm = true;
+      usage.pwmPinsUsed.add(op.pin);
+      break;
+    }
+
+    case 'pwm.get_frequency':
+    case 'pwm.get_resolution': {
+      trackPinNumberAsName(op.pin, usage);
+      break;
+    }
+
+    // ADC
+    case 'adc.read':
+    case 'adc.read_voltage': {
+      usage.adc = true;
+      usage.adcChannelsUsed.add(op.pin);
+      break;
+    }
+
+    case 'adc.get_resolution':
+    case 'adc.set_reference':
+    case 'adc.get_reference':
+      break;
+
+    // DAC
+    case 'dac.write': {
+      trackPinNumberAsName(op.pin, usage);
+      break;
+    }
+
+    // Interrupts
+    case 'interrupt.attach': {
+      trackPinNumberAsName(op.pin, usage);
+      usage.externalInterrupts = true;
+      usage.interruptPinsUsed.add(op.pin);
+      break;
+    }
+
+    case 'interrupt.detach': {
+      trackPinNumberAsName(op.pin, usage);
+      break;
+    }
+
+    // Tone
+    case 'tone.play': {
+      usage.pwm = true;
+      usage.pwmPinsUsed.add(op.pin);
+      break;
+    }
+
+    case 'tone.stop': {
+      trackPinNumberAsName(op.pin, usage);
+      break;
+    }
+
+    // Timing
+    case 'timing.delay':
+    case 'timing.delay_microseconds':
+    case 'timing.millis':
+    case 'timing.micros': {
+      usage.timer0 = true;
+      break;
+    }
+
+    case 'timing.free_heap':
+    case 'timing.set_interval':
+    case 'timing.set_timeout':
+    case 'timing.clear_interval':
+    case 'timing.clear_timeout':
+      break;
+
+    // I2C
+    case 'i2c.begin': {
+      usage.i2c = true;
+      usage.i2cInstancesUsed.add(extractBusInstance(op.bus, 'Wire'));
+      break;
+    }
+
+    case 'i2c.end':
+    case 'i2c.set_clock':
+    case 'i2c.begin_transmission':
+    case 'i2c.write':
+    case 'i2c.end_transmission':
+    case 'i2c.request_from':
+    case 'i2c.available':
+    case 'i2c.read':
+    case 'i2c.recover': {
+      usage.i2c = true;
+      usage.i2cInstancesUsed.add(extractBusInstance(op.bus, 'Wire'));
+      break;
+    }
+
+    // SPI
+    case 'spi.begin': {
+      usage.spi = true;
+      usage.spiInstancesUsed.add(extractBusInstance(op.bus, 'SPI'));
+      break;
+    }
+
+    case 'spi.end':
+    case 'spi.transfer':
+    case 'spi.begin_transaction':
+    case 'spi.end_transaction':
+    case 'spi.set_frequency':
+    case 'spi.set_mode':
+    case 'spi.set_bit_order': {
+      usage.spi = true;
+      usage.spiInstancesUsed.add(extractBusInstance(op.bus, 'SPI'));
+      break;
+    }
+
+    case 'spi.cs_low':
+    case 'spi.cs_high': {
+      trackPinNumberAsName(op.pin, usage);
+      break;
+    }
+
+    // UART
+    case 'uart.begin': {
+      usage.uart = true;
+      usage.uartInstancesUsed.add(extractBusInstance(op.port, 'Serial'));
+      break;
+    }
+
+    case 'uart.end':
+    case 'uart.print':
+    case 'uart.println':
+    case 'uart.printf':
+    case 'uart.write':
+    case 'uart.read':
+    case 'uart.peek':
+    case 'uart.available':
+    case 'uart.flush': {
+      usage.uart = true;
+      usage.uartInstancesUsed.add(extractBusInstance(op.port, 'Serial'));
+      break;
+    }
+
+    // Pulse
+    case 'pulse.in':
+    case 'pulse.in_long': {
+      trackPinNumberAsName(op.pin, usage);
+      break;
+    }
+
+    // Shift
+    case 'shift.out': {
+      trackPinNumberAsName(op.dataPin, usage);
+      trackPinNumberAsName(op.clockPin, usage);
+      break;
+    }
+
+    case 'shift.in': {
+      trackPinNumberAsName(op.dataPin, usage);
+      trackPinNumberAsName(op.clockPin, usage);
+      break;
+    }
+
+    // Board resolve, snprintf, raw — no peripheral tracking needed
+    case 'board.resolve':
+    case 'snprintf.emit':
+    case 'raw':
+      break;
+  }
+}
+
 function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
   if (!stmt || typeof stmt !== 'object' || !stmt.kind) {
     return;
@@ -315,6 +520,13 @@ function analyzeStatement(stmt: StatementIR, usage: PeripheralUsage): void {
       }
       for (const arg of stmt.args) {
         analyzeExpression(arg, usage);
+      }
+      break;
+    }
+
+    case 'hal-op': {
+      if (stmt.operation) {
+        analyzeHALOp(stmt.operation, usage);
       }
       break;
     }
@@ -518,6 +730,13 @@ function analyzeExpression(expr: ExpressionIR | undefined, usage: PeripheralUsag
 
     case 'paren': {
       analyzeExpression(expr.inner, usage);
+      break;
+    }
+
+    case 'hal-expr': {
+      if (expr.operation) {
+        analyzeHALOp(expr.operation, usage);
+      }
       break;
     }
 

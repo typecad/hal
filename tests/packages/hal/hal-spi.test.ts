@@ -44,12 +44,12 @@ describe('SPI HAL - Arduino API Transpilation', () => {
 
     it('transpiles setBitOrder()', () => {
       const result = transpileArduino(`
-        import { SPI0, SPIBitOrder } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typehal/framework-arduino/arduino';
         SPI0.begin();
-        SPI0.setBitOrder(SPIBitOrder.MSB);
+        SPI0.setBitOrder('msb');
       `);
-      
-      expect(result.cpp).toMatch(/SPI\.setBitOrder\((SPIBitOrder\.MSB|MSBFIRST|SPI_MSBFIRST)\)/);
+
+      expect(result.cpp).toMatch(/SPI\.setBitOrder\((MSBFIRST|LSBFIRST|SPI_MSBFIRST)\)/);
     });
 
     it('transpiles setFrequency()', () => {

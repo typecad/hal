@@ -4,8 +4,9 @@ const config: TypehalConfig = {
   entry: './src/main.ts',
 
   // No target or board needed — native framework outputs standard C++
-  target: 'avr' as any,
-  board: '' as any,
+  target: 'native',
+  mcu: '@typehal/mcu-atmega328p', // Fallback mcu
+  board: undefined,
 
   // Native C++ framework for portable desktop executables
   framework: '@typehal/framework-native',

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import ts from "typescript";
 import { parseSource } from "../ast/parse";
-import { requiredIncludes, registeredCallbacks, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap } from "./build-ir-state";
+import { requiredIncludes, registeredCallbacks, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, activeStringVars, activeLocalTypes, activeGlobalTypes } from "./build-ir-state";
 import { ExpressionIR, HALOpIR } from "@typehal/core";
 import { mapPeripheralName } from "../mapping/peripheral-names";
 import { renderExprAsText } from "./render-expr";
@@ -700,6 +700,99 @@ function portFromInstance(instance: HALInstance): string | undefined {
 }
 
 /**
+ * Try to resolve a compound return expression that contains semantic calls.
+ * For example, `(gpioRead(this._pin) === HIGH)` should produce a halOp for
+ * `gpioRead` and return a combined expression with the strategy-resolved form.
+ * Returns the resolved text with placeholders, or null if no semantic calls found.
+ */
+function tryResolveCompoundSemanticReturn(
+  expr: ts.Expression,
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  paramDefaults: Map<string, string> | undefined,
+  halOps: HALOpIR[],
+): string | null {
+  const semanticPlaceholders: Map<ts.Node, number> = new Map();
+
+  // Walk the expression tree looking for semantic calls
+  function findSemanticCalls(node: ts.Expression): boolean {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const semanticOp = tryResolveSemanticCall(
+        node.expression.text,
+        node.arguments,
+        instance, paramNames, callArgTexts, paramDefaults,
+      );
+      if (semanticOp) {
+        halOps.push(semanticOp);
+        semanticPlaceholders.set(node, halOps.length - 1);
+        return true;
+      }
+    }
+    let found = false;
+    if (ts.isBinaryExpression(node)) {
+      found = findSemanticCalls(node.left) || findSemanticCalls(node.right);
+    } else if (ts.isParenthesizedExpression(node)) {
+      found = findSemanticCalls(node.expression);
+    } else if (ts.isAsExpression(node)) {
+      found = findSemanticCalls(node.expression);
+    } else if (ts.isPrefixUnaryExpression(node)) {
+      found = findSemanticCalls(node.operand);
+    } else if (ts.isConditionalExpression(node)) {
+      found = findSemanticCalls(node.condition) || findSemanticCalls(node.whenTrue) || findSemanticCalls(node.whenFalse);
+    }
+    return found;
+  }
+
+  if (!findSemanticCalls(expr)) return null;
+
+  // Now resolve the expression text, substituting semantic calls with their resolved forms
+  function resolveWithSemantics(node: ts.Expression): string | null {
+    // If this node was a semantic call, return a placeholder for the halOp expression
+    const opIdx = semanticPlaceholders.get(node);
+    if (opIdx !== undefined) {
+      return `__hal_op_expr_${opIdx}__`;
+    }
+
+    // Delegate non-semantic parts to resolveExpressionText
+    if (ts.isBinaryExpression(node)) {
+      const left = resolveWithSemantics(node.left);
+      const right = resolveWithSemantics(node.right);
+      if (left === null || right === null) return null;
+      let op = node.operatorToken.getText();
+      if (op === "===") op = "==";
+      else if (op === "!==") op = "!=";
+      return `${left} ${op} ${right}`;
+    }
+
+    if (ts.isParenthesizedExpression(node)) {
+      const inner = resolveWithSemantics(node.expression);
+      return inner !== null ? `(${inner})` : null;
+    }
+
+    if (ts.isAsExpression(node)) {
+      // Unwrap type assertions (e.g., gpioRead(pin) as unknown as boolean)
+      return resolveWithSemantics(node.expression);
+    }
+
+    if (ts.isPrefixUnaryExpression(node)) {
+      const operand = resolveWithSemantics(node.operand);
+      if (operand === null) return null;
+      const op = node.operator === ts.SyntaxKind.ExclamationToken ? "!" : node.operator === ts.SyntaxKind.MinusToken ? "-" : "";
+      return `${op}${operand}`;
+    }
+
+    // Fall back to text resolution for non-semantic parts
+    return resolveExpressionText(node, instance, paramNames, callArgTexts, paramDefaults);
+  }
+
+  const resolved = resolveWithSemantics(expr);
+  if (resolved === null) return null;
+
+  return resolved.replace(/===/g, "==").replace(/!==/g, "!=");
+}
+
+/**
  * Try to resolve a semantic HAL function call to a HALOpIR node.
  * Returns the HALOpIR if the function name is recognized, or null.
  */
@@ -1207,6 +1300,12 @@ export function processHALMethodBody(
           continue;
         }
       }
+      // Try to resolve semantic calls within compound expressions (e.g., gpioRead(pin) === HIGH)
+      const compoundResult = tryResolveCompoundSemanticReturn(retExpr, instance, paramNames, callArgTexts, paramDefaults, halOps);
+      if (compoundResult !== null) {
+        returnValue = compoundResult;
+        continue;
+      }
       // Fall back to expression text resolution
       const resolved = resolveExpressionText(retExpr, instance, paramNames, callArgTexts, paramDefaults);
       if (resolved !== null) {
@@ -1370,11 +1469,28 @@ function buildSnprintfFromConcat(
         estimatedLength += 12;
       }
     } else {
+      // Check for string variable reference: template_string wrapping an identifier
+      const isStringVar = part.kind === "template_string"
+        && part.expression.kind === "identifier"
+        && (activeStringVars.has((part.expression as any).value) || activeLocalTypes.get((part.expression as any).value) === "std::string" || activeGlobalTypes.get((part.expression as any).value) === "std::string");
+
       // Check for float variable reference: template_string wrapping an identifier
       const isFloatVar = part.kind === "template_string"
         && part.expression.kind === "identifier"
-        && floatVariables.has(part.expression.value);
-      if (isFloatVar) {
+        && floatVariables.has((part.expression as any).value);
+
+      if (isStringVar) {
+        formatString += "%s";
+        const varName = (part.expression as any).value;
+        const varType = activeLocalTypes.get(varName) || activeGlobalTypes.get(varName) || "";
+        const cleanType = varType.replace(/\bconst\b\s*/g, "").trim();
+        if (cleanType && cleanType !== "char*" && cleanType !== "const char*") {
+          args.push(`${text}.c_str()`);
+        } else {
+          args.push(text);
+        }
+        estimatedLength += 32;
+      } else if (isFloatVar) {
         requiredIncludes.add("<stdlib.h>");
         const floatBuf = `__typehal_float_${snprintfCounter++}`;
         prelude.push(`char ${floatBuf}[16];`);

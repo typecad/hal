@@ -57,6 +57,7 @@ describe("config-loader", () => {
         [
           "const config = {",
           "  target: 'avr',",
+          "  mcu: '@typehal/mcu-atmega328p',",
           "  board: '@typehal/board-arduino-uno',",
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "  output: {",
@@ -91,6 +92,7 @@ describe("config-loader", () => {
         [
           "export default {",
           "  target: 'esp32',",
+          "  mcu: '@typehal/mcu-esp32',",
           "  board: '@typehal/board-esp32-devkit',",
           "  frameworkData: { buildTarget: 'esp32:esp32:esp32doit-devkit-v1' },",
           "};",
@@ -125,6 +127,8 @@ describe("config-loader", () => {
         configPath,
         [
           "const config = {",
+          "  target: 'avr',",
+          "  mcu: '@typehal/mcu-atmega328p',",
           "  board: '@typehal/board-arduino-uno',",
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
@@ -137,7 +141,7 @@ describe("config-loader", () => {
       expect(result).toBeDefined();
       expect(result!.board).toBe("@typehal/board-arduino-uno");
       expect(result!.buildTarget).toBe("arduino:avr:uno");
-      expect(result!.target).toBeUndefined();
+      expect(result!.target).toBe("avr");
     });
   });
 
@@ -152,6 +156,7 @@ describe("config-loader", () => {
         [
           "const config = {",
           "  target: 'avr',",
+          "  mcu: '@typehal/mcu-atmega328p',",
           "  board: '@typehal/board-arduino-uno',",
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
@@ -174,6 +179,8 @@ describe("config-loader", () => {
         configPath,
         [
           "const config = {",
+          "  target: 'avr',",
+          "  mcu: '@typehal/mcu-atmega328p',",
           "  board: '@typehal/board-arduino-uno',",
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
