@@ -1,11 +1,13 @@
-import { 
+import {
   buildProgramIR,
   emitCpp,
   analyzePeripheralUsage,
   setLoadedFramework,
   registerPlatformStrategy,
+  resolveStrategy,
   clearAllProfileCaches
 } from "../packages/transpiler/src/testing";
+import { setActiveStrategy } from "../packages/transpiler/src/ir/hal-resolver";
 import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/transpiler/src/types";
 import { ArduinoStrategy } from "../packages/framework-arduino/src";
 import { expect } from "vitest";
@@ -17,6 +19,7 @@ import * as path from "path";
 const _arduinoStrategy = new ArduinoStrategy();
 setLoadedFramework({ strategy: _arduinoStrategy });
 registerPlatformStrategy(_arduinoStrategy);
+setActiveStrategy(_arduinoStrategy);
 
 // Ensure output directory exists
 const testOutDir = ".build/tests";
@@ -45,6 +48,8 @@ let testCounter = 0;
  */
 export function transpile(tsCode: string, options: TranspileOptions = {}): TranspileResult {
   const { target = "generic", emitMode = "cpp", platformContext, boardPackage } = options;
+
+  setActiveStrategy(resolveStrategy(target));
 
   // clearAllProfileCaches() is removed to allow strategy-level caching across tests
 

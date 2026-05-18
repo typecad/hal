@@ -1073,8 +1073,11 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         return { code: `analogReference(${op.reference});` };
       case "adc.get_reference":
         return { expression: `AR_DEFAULT` };
-      case "adc.read_voltage":
-        return { expression: `(analogRead(${op.pin}) * 5.0 / 1023.0)` };
+      case "adc.read_voltage": {
+        const vRef = op.vRef ?? 5.0;
+        const maxValue = op.maxValue ?? 1023.0;
+        return { expression: `(analogRead(${op.pin}) * ${vRef} / ${maxValue})` };
+      }
 
       // DAC
       case "dac.write":

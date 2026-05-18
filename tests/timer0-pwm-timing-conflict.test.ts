@@ -14,7 +14,7 @@ describe('Timer0 PWM Timing Conflict Validation', () => {
     );
 
     expect(diagnostics.length).toBeGreaterThan(0);
-    expect(diagnostics[0].message).toContain('D5');
+    expect(diagnostics[0].message).toContain('PD5');
     expect(diagnostics[0].message).toContain('Timer0');
     expect(diagnostics[0].message).toContain('delay()');
     expect(diagnostics[0].severity).toBe('info');
@@ -32,7 +32,7 @@ describe('Timer0 PWM Timing Conflict Validation', () => {
     );
 
     expect(diagnostics.length).toBeGreaterThan(0);
-    expect(diagnostics[0].message).toContain('D6');
+    expect(diagnostics[0].message).toContain('PD6');
     expect(diagnostics[0].message).toContain('millis()');
   });
 

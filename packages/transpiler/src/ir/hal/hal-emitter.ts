@@ -1,0 +1,684 @@
+import ts from "typescript";
+import { ExpressionIR, HALOpIR } from "@typehal/core";
+import { requiredIncludes, registeredCallbacks, activeStringVars, activeLocalTypes, activeGlobalTypes, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants } from "../build-ir-state";
+import { renderExprAsText } from "../render-expr";
+import { escapeCppKeyword } from "../../utils/strings";
+import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser";
+import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn } from "./hal-plugins";
+
+/** Escape C++ keywords in resolved text, but only when the text looks like a
+ *  variable reference (not a literal like "false", "true", "42", or a string). */
+export function maybeEscapeResolvedText(text: string): string {
+  // Skip escaping for boolean literals, numeric literals, and string literals
+  if (text === "true" || text === "false" || text === "null" || text === "undefined") return text;
+  if (/^-?\d+(\.\d+)?$/.test(text)) return text;
+  if (text.startsWith('"') || text.startsWith("'")) return text;
+  return escapeCppKeyword(text);
+}
+
+/** Resolve an arbitrary expression to its text form, with this/param substitution. */
+export function resolveExpressionText(
+  expr: ts.Expression,
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  paramDefaults?: Map<string, string>,
+): string | null {
+  // this._field → look up in instance
+  // OtherInstance._field → look up in tracked halInstances (cross-instance reference)
+  if (ts.isPropertyAccessExpression(expr)) {
+    const isThis = expr.expression.kind === ts.SyntaxKind.ThisKeyword
+      || (ts.isIdentifier(expr.expression) && expr.expression.text === "this")
+      || expr.expression.getText() === "this";
+    if (isThis) {
+      const fieldName = expr.name.text;
+      const val = instance.fieldValues.get(fieldName) ?? instance.fieldValues.get(fieldName.startsWith("_") ? fieldName.slice(1) : "_" + fieldName);
+      if (val !== undefined && val !== null) return val;
+      
+      // Fallback: try to see if it's a known field that should be mapped
+      if (fieldName === "_pin" && instance.fieldValues.has("pin")) return instance.fieldValues.get("pin")!;
+      if (fieldName === "_bus" && instance.fieldValues.has("bus")) return instance.fieldValues.get("bus")!;
+
+      return `this->${fieldName}`;
+    }
+    // Cross-instance field reference: e.g. ADC._reference → look up tracked instance
+    if (ts.isIdentifier(expr.expression)) {
+      let crossInst = halInstances.get(expr.expression.text);
+      // Fall back to bare-name defaults if not yet cached
+      if (!crossInst && expr.expression.text === "ADC") {
+        crossInst = { className: "ADCClass", fieldValues: new Map([["_reference", "DEFAULT"]]) };
+      }
+      if (crossInst) {
+        const val = crossInst.fieldValues.get(expr.name.text);
+        if (val !== undefined) return val;
+      }
+    }
+    const obj = resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
+    if (obj === null) return null;
+    return `${obj}.${expr.name.text}`;
+  }
+
+  // Identifier → parameter or constant
+  if (ts.isIdentifier(expr)) {
+    const paramIdx = paramNames.indexOf(expr.text);
+    if (paramIdx !== -1) {
+      if (paramIdx < callArgTexts.length) {
+        const isSpread = expr.text === (instance as any)._spreadParamName;
+        if (isSpread) {
+          const spreadArgs = callArgTexts.slice(paramIdx);
+          return spreadArgs.join(", ");
+        }
+        return maybeEscapeResolvedText(callArgTexts[paramIdx]);
+      } else if (paramDefaults?.has(expr.text)) {
+        return maybeEscapeResolvedText(paramDefaults.get(expr.text)!);
+      }
+    }
+    return escapeCppKeyword(expr.text);
+  }
+
+  if (ts.isNumericLiteral(expr)) return expr.text;
+  if (ts.isStringLiteral(expr)) return expr.text;
+
+  // Call expression (e.g., digitalRead(this._pin), board("path"))
+  if (ts.isCallExpression(expr)) {
+    // callback(param) → return the patched placeholder text
+    if (ts.isIdentifier(expr.expression) && expr.expression.text === "callback") {
+      const cbArg = expr.arguments[0];
+      if (cbArg && ts.isIdentifier(cbArg)) {
+        const paramIdx = paramNames.indexOf(cbArg.text);
+        if (paramIdx !== -1 && paramIdx < callArgTexts.length) {
+          return callArgTexts[paramIdx];
+        }
+      }
+      return null;
+    }
+
+    // String(x) → return resolved text of x (identity in compile-time string context)
+    if (ts.isIdentifier(expr.expression) && expr.expression.text === "String") {
+      const inner = expr.arguments[0];
+      if (inner) {
+        return resolveExpressionText(inner, instance, paramNames, callArgTexts, paramDefaults);
+      }
+      return "";
+    }
+
+    // board("path") → look up in current board constants
+    if (ts.isIdentifier(expr.expression) && expr.expression.text === "board") {
+      const pathArg = expr.arguments[0];
+      // Static string literal path: board("peripherals.adc.0.resolution")
+      if (pathArg && ts.isStringLiteral(pathArg)) {
+        const bc = getCurrentBoardConstants();
+        if (bc) {
+          const val = bc.get(pathArg.text);
+          if (val !== undefined) return String(val);
+        }
+      }
+      // Dynamic path via string concat: board("prefix." + this._field)
+      if (pathArg && ts.isBinaryExpression(pathArg) && pathArg.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        const left = resolveExpressionText(pathArg.left, instance, paramNames, callArgTexts);
+        const right = resolveExpressionText(pathArg.right, instance, paramNames, callArgTexts);
+        if (left !== null && right !== null) {
+          const fullPath = left + right;
+          const bc = getCurrentBoardConstants();
+          if (bc) {
+            const val = bc.get(fullPath);
+            if (val !== undefined) return String(val);
+          }
+        }
+      }
+      return null;
+    }
+
+    const callee = resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
+    if (callee === null) return null;
+    const args = expr.arguments.map(arg => resolveExpressionText(arg, instance, paramNames, callArgTexts, paramDefaults));
+    if (args.some(a => a === null)) return null;
+    return `${callee}(${args.join(", ")})`;
+  }
+
+  // Binary expression
+  if (ts.isBinaryExpression(expr)) {
+    const left = resolveExpressionText(expr.left, instance, paramNames, callArgTexts, paramDefaults);
+    const right = resolveExpressionText(expr.right, instance, paramNames, callArgTexts, paramDefaults);
+    if (left === null || right === null) return null;
+    
+    let op = expr.operatorToken.getText();
+    if (op === "===") op = "==";
+    else if (op === "!==") op = "!=";
+    else if (op === "??") {
+      // If the left side is a literal expression (true/false/number/string),
+      // it can never be undefined so use it directly
+      if (expr.left.kind === ts.SyntaxKind.TrueKeyword || expr.left.kind === ts.SyntaxKind.FalseKeyword || 
+          ts.isNumericLiteral(expr.left) || ts.isStringLiteral(expr.left)) {
+        return left;
+      }
+      // If the left side is an identifier whose resolved text matches its source,
+      // it means the parameter was not provided by the caller, so use the right side
+      if (ts.isIdentifier(expr.left) && left === expr.left.text) {
+        return right;
+      }
+      // If the left side resolved to a recognized literal (true, false, or number),
+      // the parameter was provided with a concrete value, not undefined.
+      if (left === "true" || left === "false" || /^-?\d+(\.\d+)?$/.test(left)) {
+        return left;
+      }
+      // Use a more concise ternary for C++
+      return `(${left} != TYPEHAL_UNDEFINED ? ${left} : ${right})`;
+    }
+    
+    return `${left} ${op} ${right}`;
+  }
+
+  // Parenthesized expression: (expr) → unwrap to inner expression
+  if (ts.isParenthesizedExpression(expr)) {
+    return resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
+  }
+
+  // Type assertion: this as any → unwrap to inner expression
+  if (ts.isAsExpression(expr)) {
+    return resolveExpressionText(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
+  }
+
+  // Template expression: `text ${expr} more text`
+  if (ts.isTemplateExpression(expr)) {
+    let result = expr.head.text;
+    for (const span of expr.templateSpans) {
+      const resolved = resolveExpressionText(span.expression, instance, paramNames, callArgTexts, paramDefaults);
+      if (resolved === null) return null;
+      result += resolved + span.literal.text;
+    }
+    return result;
+  }
+
+  // No-substitution template literal: `text`
+  if (ts.isNoSubstitutionTemplateLiteral(expr)) {
+    return expr.text;
+  }
+
+  return expr.getText ? expr.getText() : null;
+}
+
+/** Scan an expression AST for callback() calls, extract callback IR from callArgs,
+ *  register them, and patch callArgTexts with placeholder names. */
+export function extractAndRegisterCallbacks(
+  expr: ts.Expression,
+  paramNames: string[],
+  callArgs: ExpressionIR[],
+  callArgTexts: string[],
+): void {
+  function scan(node: ts.Expression): void {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "callback") {
+      const cbArg = node.arguments[0];
+      if (cbArg && ts.isIdentifier(cbArg)) {
+        const paramIdx = paramNames.indexOf(cbArg.text);
+        if (paramIdx !== -1 && paramIdx < callArgs.length) {
+          const callbackIR = callArgs[paramIdx];
+          if (callbackIR.kind === "callback") {
+            const placeholder = `__CALLBACK_${getContext().callbackPlaceholderCounter++}__`;
+            (callbackIR as any).isInterruptHandler = true;
+            registeredCallbacks.push({ placeholderName: placeholder, callbackIR });
+            callArgTexts[paramIdx] = placeholder;
+          }
+        }
+      }
+    }
+    if (ts.isTemplateExpression(node)) {
+      for (const span of node.templateSpans) {
+        scan(span.expression);
+      }
+    }
+  }
+  scan(expr);
+}
+
+/** Process a HAL method body, resolving emit()/include()/semantic calls.
+ *  Returns { emitLines, halOps, returnValue, returnClassName } or null if unresolvable.
+ *
+ *  `emitLines` contains legacy raw C++ strings (from `emit()` calls).
+ *  `halOps` contains structured HALOpIR nodes (from semantic function calls like
+ *  `gpioWrite()`, `i2cBegin()`, etc.).
+ *
+ *  During migration both can coexist; consumers should prefer `halOps` when present. */
+export function processHALMethodBody(
+  instance: HALInstance,
+  methodName: string,
+  callArgs: ExpressionIR[],
+): { emitLines: string[]; halOps: HALOpIR[]; returnValue?: string; returnClassName?: string } | null {
+  let methodEntry: HALMethodEntry | undefined;
+
+  if (instance.className) {
+    const classEntry = halClassRegistry.get(instance.className);
+    if (!classEntry) return null;
+
+    methodEntry = classEntry.methods.get(methodName);
+
+    // Fallback: search other HAL classes for the method (e.g., Pin instance calling InputPin.onFalling)
+    if (!methodEntry) {
+      for (const [, entry] of halClassRegistry) {
+        const found = entry.methods.get(methodName);
+        if (found && found.methodNode.body) {
+          methodEntry = found;
+          break;
+        }
+      }
+    }
+  } else {
+    methodEntry = halGlobalFunctions.get(methodName);
+  }
+
+  if (!methodEntry || !methodEntry.methodNode.body) return null;
+
+  const paramNames = methodEntry.paramNames;
+  const spreadParamName = methodEntry.spreadParamName;
+  const callArgTexts = callArgs.map(a => renderExprAsText(a));
+  
+  (instance as any)._spreadParamName = spreadParamName;
+  const paramDefaults = methodEntry.paramDefaults;
+
+  const body = methodEntry.methodNode.body;
+
+  const emitLines: string[] = [];
+  const halOps: HALOpIR[] = [];
+
+  // For string_concat args (template literals), generate snprintf instead of
+  // C++ + concatenation which is invalid for char* on Arduino.
+  for (let i = 0; i < callArgs.length; i++) {
+    const arg = callArgs[i];
+    if (arg.kind === "string_concat" && arg.parts.some(p => p.kind !== "string")) {
+      const snprintf = buildSnprintfFromConcat(arg);
+      if (snprintf) {
+        emitLines.push(...snprintf.lines);
+        callArgTexts[i] = snprintf.bufferName;
+      }
+    }
+  }
+  let returnValue: string | undefined;
+
+  for (const stmt of body.statements) {
+    // this._field = param — track field updates on the instance
+    if (
+      ts.isExpressionStatement(stmt) &&
+      ts.isBinaryExpression(stmt.expression) &&
+      stmt.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
+      const left = stmt.expression.left;
+      const right = stmt.expression.right;
+      if (
+        ts.isPropertyAccessExpression(left) &&
+        (left.expression.kind === ts.SyntaxKind.ThisKeyword ||
+          (ts.isIdentifier(left.expression) && left.expression.text === "this"))
+      ) {
+        const fieldName = left.name.text;
+        const resolved = resolveExpressionText(right, instance, paramNames, callArgTexts, paramDefaults);
+        if (resolved !== null) {
+          instance.fieldValues.set(fieldName, resolved);
+        }
+      }
+    }
+
+    // emit(...) call or semantic HAL function call
+    if (ts.isExpressionStatement(stmt) && ts.isCallExpression(stmt.expression)) {
+      const call = stmt.expression;
+
+      // ── Board resolve: pure lookup, no side effects — skip ──
+      if (ts.isIdentifier(call.expression) && call.expression.text === "boardResolve") {
+        continue;
+      }
+
+      // ── Semantic HAL function calls (gpioWrite, i2cBegin, etc.) ──
+      if (ts.isIdentifier(call.expression)) {
+        // Extract callbacks from semantic call arguments and patch callArgTexts
+        // with placeholder names before resolving (mirrors the emit() path).
+        for (const arg of call.arguments) {
+          extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
+        }
+
+        const semanticOp = tryResolveSemanticCall(
+          call.expression.text,
+          call.arguments,
+          instance,
+          paramNames,
+          callArgTexts,
+          paramDefaults,
+          callArgs,
+        );
+        if (semanticOp) {
+          halOps.push(semanticOp);
+          continue;
+        }
+      }
+
+      // include(...) call
+      if (ts.isIdentifier(call.expression) && call.expression.text === "include") {
+        const firstArg = call.arguments[0];
+        if (firstArg && ts.isStringLiteral(firstArg)) {
+          requiredIncludes.add(firstArg.text);
+        }
+        continue;
+      }
+    }
+
+    // R4: if statement with compile-time condition evaluation
+    if (ts.isIfStatement(stmt)) {
+      let conditionTrue = true; // default: process then-branch
+      const cond = stmt.expression;
+      if (cond && ts.isBinaryExpression(cond)) {
+        const left = resolveExpressionText(cond.left, instance, paramNames, callArgTexts, paramDefaults);
+        const right = resolveExpressionText(cond.right, instance, paramNames, callArgTexts, paramDefaults);
+        if (left !== null && right !== null) {
+          const op = cond.operatorToken.kind;
+          if (op === ts.SyntaxKind.EqualsEqualsToken || op === ts.SyntaxKind.EqualsEqualsEqualsToken) {
+            conditionTrue = left === right;
+          } else if (op === ts.SyntaxKind.ExclamationEqualsToken || op === ts.SyntaxKind.ExclamationEqualsEqualsToken) {
+            conditionTrue = left !== right;
+          }
+        }
+      }
+
+      if (conditionTrue && stmt.thenStatement) {
+        const returnRef = returnValue !== undefined ? undefined : { value: "" };
+        processStatementList(
+          ts.isBlock(stmt.thenStatement) ? (stmt.thenStatement as ts.Block).statements : [stmt.thenStatement as ts.Statement],
+          instance, paramNames, callArgTexts, emitLines, halOps, callArgs, paramDefaults, returnRef,
+        );
+        if (returnRef && returnRef.value) returnValue = returnRef.value;
+      }
+      if (!conditionTrue && stmt.elseStatement) {
+        const returnRef = returnValue !== undefined ? undefined : { value: "" };
+        processStatementList(
+          ts.isBlock(stmt.elseStatement) ? (stmt.elseStatement as ts.Block).statements : [stmt.elseStatement as ts.Statement],
+          instance, paramNames, callArgTexts, emitLines, halOps, callArgs, paramDefaults, returnRef,
+        );
+        if (returnRef && returnRef.value) returnValue = returnRef.value;
+      }
+      continue;
+    }
+
+    // R2: return expr — check for semantic call first, then fall back to resolveExpressionText
+    if (ts.isReturnStatement(stmt) && stmt.expression && returnValue === undefined) {
+      const retExpr = stmt.expression;
+
+      // ── Board resolve: constant-fold via board constants ──
+      if (ts.isCallExpression(retExpr) && ts.isIdentifier(retExpr.expression) && retExpr.expression.text === "boardResolve") {
+        const resolved = tryResolveBoardResolveArg(retExpr.arguments, instance, paramNames, callArgTexts, paramDefaults);
+        if (resolved !== null) {
+          const bc = getCurrentBoardConstants();
+          const val = bc?.get(resolved);
+          if (val !== undefined) {
+            returnValue = String(val);
+            continue;
+          }
+        }
+      }
+
+      let actualRetExpr: ts.Expression = retExpr;
+      while (ts.isAsExpression(actualRetExpr) || ts.isParenthesizedExpression(actualRetExpr)) {
+        actualRetExpr = actualRetExpr.expression;
+      }
+      if (ts.isCallExpression(actualRetExpr) && ts.isIdentifier(actualRetExpr.expression)) {
+        for (const arg of actualRetExpr.arguments) {
+          extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
+        }
+        const semanticOp = tryResolveSemanticCall(
+          actualRetExpr.expression.text,
+          actualRetExpr.arguments,
+          instance, paramNames, callArgTexts, paramDefaults,
+          callArgs,
+        );
+        if (semanticOp) {
+          halOps.push(semanticOp);
+          returnValue = "__hal_op_return__";
+          continue;
+        }
+      }
+      // Try to resolve semantic calls within compound expressions (e.g., gpioRead(pin) === HIGH)
+      const compoundResult = tryResolveCompoundSemanticReturn(retExpr, instance, paramNames, callArgTexts, paramDefaults, halOps, callArgs);
+      if (compoundResult !== null) {
+        returnValue = compoundResult;
+        continue;
+      }
+
+      // Handle: return new TypedArray(count) — mark as C array allocation
+      if (ts.isNewExpression(retExpr) && ts.isIdentifier(retExpr.expression)) {
+        const ctorName = retExpr.expression.text;
+        const elementType = TYPED_ARRAY_ELEMENT_MAP?.[ctorName];
+        if (elementType) {
+          const sizeArg = retExpr.arguments?.[0];
+          if (sizeArg) {
+            const size = resolveExpressionText(sizeArg, instance, paramNames, callArgTexts, paramDefaults);
+            if (size !== null) {
+              returnValue = `__TYPED_ARRAY__:${elementType}:${size}`;
+              continue;
+            }
+          }
+        }
+      }
+
+      // Fall back to expression text resolution
+      const resolved = resolveExpressionText(retExpr, instance, paramNames, callArgTexts, paramDefaults);
+      if (resolved !== null) {
+        returnValue = resolved.replace(/===/g, "==").replace(/!==/g, "!=");
+      }
+    }
+  }
+
+  // Auto-passthrough for stub methods: if no emit() calls and the return is a literal
+  // (e.g., return 0), construct the C++ expression as <objectName>.<method>(<args>).
+  // Skip for Pin classes since Pin methods are typically lowered to standalone C calls (digitalRead/Write).
+  if (emitLines.length === 0 && isLiteralReturnValue(returnValue)
+      && instance.className !== "Pin"
+      && instance.className !== "OutputPin"
+      && instance.className !== "InputPin") {
+    const cppObj = resolveCppObjectName(instance);
+    if (cppObj) {
+      const argsStr = callArgTexts.join(", ");
+      return { emitLines: [], halOps: [], returnValue: `${cppObj}.${methodName}(${argsStr})` };
+    }
+  }
+
+  // Return null if nothing useful was resolved, allowing inline fallbacks to kick in
+  if (emitLines.length === 0 && halOps.length === 0 && returnValue === undefined) {
+    return null;
+  }
+
+  // Extract return type annotation to support type-narrowed pattern
+  // (e.g., Pin.asOutput(): OutputPin → returnClassName = "OutputPin")
+  let returnClassName: string | undefined;
+  const returnType = methodEntry.methodNode.type;
+  if (returnType && ts.isTypeReferenceNode(returnType) && ts.isIdentifier(returnType.typeName)) {
+    const name = returnType.typeName.text;
+    if (halClassRegistry.has(name) && name !== instance.className) {
+      returnClassName = name;
+    }
+  }
+
+  return { emitLines, halOps, returnValue, returnClassName };
+}
+
+/** Check if a resolved C++ value string is a simple literal (for stub detection). */
+export function isLiteralReturnValue(val: string | undefined): boolean {
+  if (val === undefined) return false;
+  return val === "0" || val === "true" || val === "false" || val === "''" || val === '""';
+}
+
+/** Resolve the C++ object name from a HAL instance's constructor field values. */
+export function resolveCppObjectName(instance: HALInstance): string | null {
+  const fieldMap = halClassRegistry.get(instance.className)?.ctorFieldMap;
+  if (!fieldMap) return null;
+
+  // Get the first field value from the instance that matches a constructor field
+  for (const [fieldName] of fieldMap) {
+    const val = instance.fieldValues.get(fieldName);
+    if (val) return val;
+  }
+  return null;
+}
+
+/** Process a list of statements for emit/include/semantic calls/return. */
+export function processStatementList(
+  stmts: readonly ts.Statement[],
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  emitLines: string[],
+  halOps: HALOpIR[],
+  callArgs: ExpressionIR[],
+  paramDefaults: Map<string, string>,
+  returnExpr?: { value: string },
+): void {
+  for (const stmt of stmts) {
+    if (ts.isExpressionStatement(stmt) && ts.isCallExpression(stmt.expression)) {
+      const call = stmt.expression;
+      if (ts.isIdentifier(call.expression)) {
+        if (call.expression.text === "include") {
+          const firstArg = call.arguments[0];
+          if (firstArg && ts.isStringLiteral(firstArg)) {
+            requiredIncludes.add(firstArg.text);
+          }
+        } else {
+          // R3: Try semantic HAL function call
+          for (const arg of call.arguments) {
+            extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
+          }
+          const semanticOp = tryResolveSemanticCall(
+            call.expression.text, call.arguments,
+            instance, paramNames, callArgTexts, paramDefaults,
+            callArgs,
+          );
+          if (semanticOp) {
+            halOps.push(semanticOp);
+          }
+        }
+      }
+    }
+  }
+}
+
+/** Reset resolver state (called between builds). */
+export function resetHALResolver(): void {
+  halInstances.clear();
+  floatVariables.clear();
+  getContext().callbackPlaceholderCounter = 0;
+  getContext().snprintfCounter = 0;
+}
+
+/** Resolve a hal-expr IR node to its C++ text using the active strategy. */
+export function setActiveStrategy(strategy: import("@typehal/core/shared").PlatformStrategy | null): void {
+  getContext().activeStrategy = strategy;
+}
+
+export function resolveHALExprToText(expr: Extract<import("@typehal/core/shared").ExpressionIR, { kind: "hal-expr" }>): string | null {
+  const strategy = getContext().activeStrategy;
+  if (!strategy?.resolveHALOperation) return null;
+  const resolved = strategy.resolveHALOperation(expr.operation);
+  if (resolved?.expression) return resolved.expression;
+  if (resolved?.code) return resolved.code.replace(/;\s*$/, "");
+  return null;
+}
+
+export function registerFloatVariable(name: string): void {
+  floatVariables.add(name);
+}
+
+/** Build snprintf prelude lines from a string_concat expression.
+ *  Returns { lines, bufferName } or null if the expression can't be formatted. */
+export function buildSnprintfFromConcat(
+  expr: Extract<ExpressionIR, { kind: "string_concat" }>,
+): { lines: string[]; bufferName: string } | null {
+  let formatString = "";
+  const args: string[] = [];
+  let estimatedLength = 1;
+  const prelude: string[] = [];
+
+  requiredIncludes.add("<stdio.h>");
+
+  for (const part of expr.parts) {
+    const text = renderExprAsText(part);
+    if (part.kind === "string") {
+      formatString += text.slice(1, -1).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      estimatedLength += part.value.length;
+    } else if (part.kind === "number") {
+      const isFloat = part.cppType === "float" || !Number.isInteger(part.value);
+      if (isFloat) {
+        requiredIncludes.add("<stdlib.h>");
+        const floatBuf = `__typehal_float_${getContext().snprintfCounter++}`;
+        prelude.push(`char ${floatBuf}[16];`);
+        prelude.push(`dtostrf(${text}, 0, 1, ${floatBuf});`);
+        formatString += "%s";
+        args.push(floatBuf);
+        estimatedLength += 16;
+      } else {
+        formatString += "%d";
+        args.push(text);
+        estimatedLength += 12;
+      }
+    } else {
+      // Check for string variable reference: template_string wrapping an identifier
+      const isStringVar = part.kind === "template_string"
+        && part.expression.kind === "identifier"
+        && (activeStringVars.has((part.expression as any).value) || activeLocalTypes.get((part.expression as any).value) === "std::string" || activeGlobalTypes.get((part.expression as any).value) === "std::string");
+
+      // Check for float variable reference: template_string wrapping an identifier
+      const isFloatVar = part.kind === "template_string"
+        && part.expression.kind === "identifier"
+        && floatVariables.has((part.expression as any).value);
+
+      if (isStringVar) {
+        formatString += "%s";
+        const varName = (part.expression as any).value;
+        const varType = activeLocalTypes.get(varName) || activeGlobalTypes.get(varName) || "";
+        const cleanType = varType.replace(/\bconst\b\s*/g, "").trim();
+        if (cleanType && cleanType !== "char*" && cleanType !== "const char*") {
+          args.push(`${text}.c_str()`);
+        } else {
+          args.push(text);
+        }
+        estimatedLength += 32;
+      } else if (isFloatVar) {
+        requiredIncludes.add("<stdlib.h>");
+        const floatBuf = `__typehal_float_${getContext().snprintfCounter++}`;
+        prelude.push(`char ${floatBuf}[16];`);
+        prelude.push(`dtostrf(${text}, 0, 1, ${floatBuf});`);
+        formatString += "%s";
+        args.push(floatBuf);
+        estimatedLength += 16;
+      } else if (part.kind === "template_string" && part.expression.kind === "hal-expr") {
+        // HAL expression inside template literal — resolve via strategy
+        const resolved = resolveHALExprToText(part.expression);
+        if (resolved !== null) {
+          formatString += "%d";
+          args.push(resolved);
+          estimatedLength += 12;
+        } else {
+          formatString += "%d";
+          args.push(text);
+          estimatedLength += 12;
+        }
+      } else {
+        const numVal = Number(text);
+        if (!isNaN(numVal) && !Number.isInteger(numVal)) {
+          requiredIncludes.add("<stdlib.h>");
+          const floatBuf = `__typehal_float_${getContext().snprintfCounter++}`;
+          const precision = text.includes(".") ? text.split(".")[1].length : 1;
+          prelude.push(`char ${floatBuf}[16];`);
+          prelude.push(`dtostrf(${text}, 0, ${precision}, ${floatBuf});`);
+          formatString += "%s";
+          args.push(floatBuf);
+          estimatedLength += 16;
+        } else {
+          formatString += "%d";
+          args.push(text);
+          estimatedLength += 12;
+        }
+      }
+    }
+  }
+
+  const bufName = `__typehal_snprintf_${getContext().snprintfCounter++}`;
+  const bufSize = Math.max(estimatedLength + 1, 16);
+
+  prelude.push(`char ${bufName}[${bufSize}];`);
+  prelude.push(`snprintf(${bufName}, sizeof(${bufName}), "${formatString}", ${args.join(", ")});`);
+
+  return { lines: prelude, bufferName: bufName };
+}

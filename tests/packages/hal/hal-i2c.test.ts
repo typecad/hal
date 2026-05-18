@@ -181,7 +181,7 @@ describe('I2C HAL - Device Accessor Pattern', () => {
   });
 
   // TODO: readBytes needs buffer allocation + read loop generation in inline evaluator
-  it.skip('transpiles I2C0.device(addr).readBytes(reg, count)', () => {
+  it('transpiles I2C0.device(addr).readBytes(reg, count)', () => {
     const result = transpileArduino(`
       import { I2C0 } from '@typehal/framework-arduino/arduino';
       I2C0.begin();
@@ -297,7 +297,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
   
     // TODO: The inline evaluator emits raw text without applying C++ keyword escaping.
     // Parameter renaming happens in the emitter, but __EMIT__ nodes bypass it.
-    it.skip('escapes C++ reserved keyword register in function parameters', () => {
+    it('escapes C++ reserved keyword register in function parameters', () => {
       const result = transpileArduino(`
         import { I2C0 } from '@typehal/framework-arduino/arduino';
         I2C0.begin();

@@ -60,7 +60,25 @@ export function findBoardPinByName(
   pinName: string,
   boardConstants: BoardConstants | undefined,
 ): BoardPinInfo | undefined {
-  return getBoardPins(boardConstants).find(pin => pin.name === pinName || pin.aliases.includes(pinName));
+  const pins = getBoardPins(boardConstants);
+  const match = pins.find(pin => pin.name === pinName || pin.aliases.includes(pinName));
+  if (match) return match;
+
+  // Fallback: resolve D/A patterns by pin number.
+  // D3 → pin with number 3, A0 → pin with number 0+analogOffset.
+  const dMatch = pinName.match(/^D(\d+)$/);
+  if (dMatch) {
+    const num = parseInt(dMatch[1], 10);
+    return pins.find(pin => pin.number === num);
+  }
+  const aMatch = pinName.match(/^A(\d+)$/);
+  if (aMatch && boardConstants) {
+    const offset = Number(boardConstants.get('pins.analogOffset') ?? 0);
+    const num = parseInt(aMatch[1], 10) + offset;
+    return pins.find(pin => pin.number === num);
+  }
+
+  return undefined;
 }
 
 export function formatPinReference(usedPinName: string, boardPin: BoardPinInfo | undefined): string {

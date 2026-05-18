@@ -1,0 +1,170 @@
+{
+  "metadata": {
+    "timestamp": "2026-05-18T00:57:49.910Z",
+    "sourceFile": "sketch.ts",
+    "target": "arduino",
+    "board": "./.typehal/board",
+    "framework": "@typehal/framework-arduino",
+    "outputFile": "C:\\typecad\\typecode\\demo\\src\\out\\sketch\\sketch.ino",
+    "boardDetails": {
+      "flashKb": null,
+      "sramKb": null,
+      "clockSpeedMhz": null
+    }
+  },
+  "executionFlow": {
+    "callGraph": {
+      "nodes": {
+        "test": {
+          "name": "test",
+          "kind": "variable",
+          "dependencies": []
+        },
+        "__top_level__": {
+          "name": "__top_level__",
+          "kind": "variable",
+          "dependencies": [
+            "__EMIT__",
+            "char",
+            "__typehal_snprintf_0",
+            "snprintf",
+            "sizeof",
+            "s",
+            "is",
+            "working",
+            "d",
+            "test",
+            "c_str"
+          ]
+        }
+      },
+      "referencedBy": {
+        "__EMIT__": [
+          "__top_level__"
+        ],
+        "char": [
+          "__top_level__"
+        ],
+        "__typehal_snprintf_0": [
+          "__top_level__"
+        ],
+        "snprintf": [
+          "__top_level__"
+        ],
+        "sizeof": [
+          "__top_level__"
+        ],
+        "s": [
+          "__top_level__"
+        ],
+        "is": [
+          "__top_level__"
+        ],
+        "working": [
+          "__top_level__"
+        ],
+        "d": [
+          "__top_level__"
+        ],
+        "test": [
+          "__top_level__"
+        ],
+        "c_str": [
+          "__top_level__"
+        ]
+      }
+    },
+    "entryPoints": [],
+    "isrHandlers": [],
+    "asyncTaskNames": [],
+    "usesTimers": false
+  },
+  "pinUsage": {
+    "gpio": [],
+    "peripherals": [
+      {
+        "type": "uart",
+        "instance": 0,
+        "displayName": "Serial",
+        "pins": []
+      }
+    ],
+    "summary": {
+      "totalPins": 0,
+      "usedPins": 0,
+      "unusedPins": 0
+    }
+  },
+  "asyncTasks": [],
+  "heapEstimate": {
+    "globalVariables": [
+      {
+        "name": "test",
+        "cppType": "std::string",
+        "estimatedBytes": 0
+      }
+    ],
+    "structSizes": {},
+    "stringLiterals": [
+      {
+        "value": "typeHAL",
+        "estimatedBytes": 8
+      }
+    ],
+    "totalStaticBytes": 8,
+    "estimatedStackDepth": 1,
+    "stackPaths": [
+      [
+        "setup"
+      ],
+      [
+        "loop"
+      ]
+    ],
+    "notes": [
+      "Heap estimate is static only — dynamic allocations (malloc/new) are not tracked.",
+      "String literals may be deduplicated by the compiler/linker.",
+      "Default sizes: int=4 bytes, pointer=4 bytes, float=4 bytes."
+    ]
+  },
+  "peripheralConflicts": [],
+  "moduleGraph": {
+    "nodes": [
+      "sketch.ts",
+      "@typehal"
+    ],
+    "edges": [
+      {
+        "from": "sketch.ts",
+        "to": "@typehal"
+      }
+    ]
+  },
+  "treeShaking": {
+    "removedSymbols": []
+  },
+  "buildTiming": {
+    "phases": {
+      "setup:caches#0": 0.18439999999998236,
+      "setup:load-strategy#1": 0.5683999999999969,
+      "graph:collect#2": 2.691599999999994,
+      "typecheck:full#3": 735.5506,
+      "ir:build-all#4": 36.64840000000004,
+      "ir:build:sketch.ts#5": 36.51409999999987,
+      "ir:build-ir:sketch.ts#6": 34.61979999999994,
+      "ir:cross-module-imports#7": 0.4805999999998676,
+      "tree-shake:sketch.ts#8": 2.2837999999999283,
+      "tree-shake:call-graph#9": 1.0213000000001102,
+      "tree-shake:entry-points#10": 0.3669999999999618,
+      "tree-shake:reachability#11": 0.5574999999998909,
+      "tree-shake:filter#12": 0.12809999999990396,
+      "emit:register-enums#13": 0.03559999999993124,
+      "emit:all#14": 15.970000000000027,
+      "emit:file:sketch.ts#15": 15.956800000000158,
+      "post:native-modules#16": 0.009700000000066211,
+      "post:flatten#17": 0.6061999999999443,
+      "post:save-cache#18": 0.7130999999999403
+    },
+    "totalMs": 884.9069999999996
+  }
+}

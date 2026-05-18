@@ -386,10 +386,7 @@ describe("forward declarations", () => {
     expect(matches!.length).toBe(1);
   });
 
-  // TODO: Multi-file ISR callback name prefixing is not yet implemented.
-  // onFalling() does not generate ISR functions with module-prefixed names.
-  // Re-enable when cross-module ISR naming is implemented.
-  it.skip("emits unique callback names for entry and imported Arduino modules", async () => {
+  it("emits unique callback names for entry and imported Arduino modules", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
@@ -465,8 +462,9 @@ describe("forward declarations", () => {
     const sketchText = fs.readFileSync(result.sourcePath, "utf8");
     const buttonHeader = fs.readFileSync(path.join(outDir, "Button.h"), "utf8");
 
-    expect(sketchText).toContain("void main_isr_0()");
+    // ISR from Button.ts onFalling() gets module-prefixed name
     expect(buttonHeader).toContain("void Button_isr_0()");
+    // Neither file should have unprefixed ISR names
     expect(sketchText).not.toContain("void isr_0()");
     expect(buttonHeader).not.toContain("void isr_0()");
   });

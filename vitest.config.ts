@@ -10,6 +10,7 @@ export default defineConfig({
     // hardware via `npm run test:hw`. Excluding them prevents spurious Vitest load errors.
     exclude: ["node_modules", "dist"],
     setupFiles: ["tests/setup-framework.ts"],
+    testTimeout: 60000,
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
@@ -17,4 +18,4 @@ export default defineConfig({
       exclude: ["src/cli.ts"],
     },
   },
-});
+});

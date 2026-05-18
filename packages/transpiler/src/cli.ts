@@ -306,39 +306,26 @@ async function main(): Promise<void> {
             ui.printStep(`Generating narrowed board from contract: ${path.basename(contractPath)}`);
             const contractData = parseContractFile(contractPath);
             
-            // Resolve MCU package path to find pin names
-            const mcuPkgPath = require.resolve(config.mcu, { paths: [inputDir] });
-            const mcuDir = path.dirname(mcuPkgPath);
-            
-            // Try to find pins.ts or pins.js
-            let pinsFile = path.join(mcuDir, 'pins.ts');
-            if (!fs.existsSync(pinsFile)) pinsFile = path.join(mcuDir, 'pins.js');
-            if (!fs.existsSync(pinsFile)) pinsFile = path.join(mcuDir, 'src', 'pins.ts');
-            
-            if (fs.existsSync(pinsFile)) {
-              const pinsContent = fs.readFileSync(pinsFile, 'utf-8');
-              const pinMatches = pinsContent.matchAll(/(?:export const|exports\.)(\w+) = (?:hal_1\.)?Pin\.fromPort/g);
-              const mcuPinNames = Array.from(pinMatches, m => m[1]);
-              
-              const connectedPins = matchConnectedPins(contractData, mcuPinNames);
-              
-              // Find peripherals to re-export
-              let peripheralsFile = path.join(mcuDir, 'peripherals.ts');
-              if (!fs.existsSync(peripheralsFile)) peripheralsFile = path.join(mcuDir, 'peripherals.js');
-              if (!fs.existsSync(peripheralsFile)) peripheralsFile = path.join(mcuDir, 'src', 'peripherals.ts');
-              
-              let mcuPeripherals: string[] = [];
-              if (fs.existsSync(peripheralsFile)) {
-                const periphContent = fs.readFileSync(peripheralsFile, 'utf-8');
-                const pMatches = periphContent.matchAll(/(?:export const|exports\.)\s*(?:\[\s*([A-Za-z0-9_, ]+)\s*\]|([A-Za-z0-9_]+))\s*=[^;\n]*(?:createHALInstances|new (?:I2CBus|SPIBus|SerialPort))/g);
-                for (const m of pMatches) {
-                  if (m[1]) mcuPeripherals.push(...m[1].split(',').map(s => s.trim()));
-                  if (m[2]) mcuPeripherals.push(m[2]);
-                }
-              }
+            // Load MCU manifest — the MCU package exports typehalManifest with
+            // pin and peripheral names so we don't need to scrape compiled output.
+            const mcuModule = require(require.resolve(config.mcu, { paths: [inputDir] }));
+            const manifest = mcuModule?.typehalManifest as {
+              pinNames: readonly string[];
+              peripheralNames: readonly string[];
+            } | undefined;
+
+            if (manifest) {
+              const connectedPins = matchConnectedPins(contractData, [...manifest.pinNames]);
+              const mcuPeripherals = [...manifest.peripheralNames];
 
               generateBoardFile(path.dirname(config.configPath), config.mcu, connectedPins, mcuPeripherals);
               effectiveBoardPackage = './.typehal/board';
+            } else {
+              ui.printWarning(
+                `MCU package '${config.mcu}' does not export typehalManifest — ` +
+                `contract-based board generation skipped. ` +
+                `Update the MCU package to export typehalManifest.`
+              );
             }
           }
         } catch (e) {

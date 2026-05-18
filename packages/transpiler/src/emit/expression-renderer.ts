@@ -409,6 +409,14 @@ export class ExpressionRenderer {
       }
       case "template_string":
         return this.inferFormatSpecifier(expr.expression, exprTransformer, knownVariableTypes);
+      case "hal-expr": {
+        const rendered = this.render(expr, exprTransformer);
+        // HAL expressions that resolve to string-like outputs use %s
+        if (rendered.startsWith('"') || this.stringVarNames?.has(rendered)) {
+          return { format: "%s", arg: rendered, estimatedLength: 32 };
+        }
+        return { format: "%d", arg: rendered, estimatedLength: 12 };
+      }
       case "method-call":
       case "property-access":
       case "binary":

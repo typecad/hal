@@ -227,4 +227,6 @@ export interface ProgramIR {
   requiredIncludes?: Set<string>;
   /** The name of the default export, if this module has `export default <name>` */
   defaultExportName?: string;
+  /** Registered callbacks from the HAL resolver */
+  registeredCallbacks?: any[];
 }

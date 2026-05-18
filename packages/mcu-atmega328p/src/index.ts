@@ -19,3 +19,21 @@ export * from './mcu';
 // Re-export Arduino pin mapping (used by transpiler and framework strategy)
 export * from './arduino-map';
 
+/**
+ * Structured manifest consumed by the TypeHAL CLI for contract-based
+ * board generation. Provides pin names and peripheral instance names
+ * without requiring the CLI to text-scrape compiled output.
+ */
+export const typehalManifest = {
+  /** All MCU port-level pin names (e.g. 'PB5', 'PC4'). */
+  pinNames: [
+    'PD0', 'PD1', 'PD2', 'PD3', 'PD4', 'PD5', 'PD6', 'PD7',
+    'PB0', 'PB1', 'PB2', 'PB3', 'PB4', 'PB5', 'PB6', 'PB7',
+    'PC0', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5', 'PC6'
+  ] as const,
+
+  /** All HAL peripheral instance names exported from this package. */
+  peripheralNames: ['I2C0', 'SPI0', 'UART0'] as const,
+} as const;
+
+

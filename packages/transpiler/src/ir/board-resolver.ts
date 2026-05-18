@@ -61,8 +61,8 @@ export function resolveBoardConstants(defFilePath: string): BoardConstants {
 
   if (!sourceFile) return result;
 
-  // Find the first exported variable declaration whose initializer is an
-  // object literal — that is the board definition manifest.
+  // Find exported variable declarations — both object literals (board/MCU defs)
+  // and arrays of objects (peripheral instance lists).
   ts.forEachChild(sourceFile, (node) => {
     if (!ts.isVariableStatement(node)) return;
 
@@ -72,10 +72,28 @@ export function resolveBoardConstants(defFilePath: string): BoardConstants {
     if (!isExported) return;
 
     for (const decl of node.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name)) continue;
+      const varName = decl.name.text;
       const init = decl.initializer;
-      if (!init || !ts.isObjectLiteralExpression(init)) continue;
-      walkObjectLiteral(init, "", result);
-      return; // stop after first match
+
+      // Object literal — walk normally (board/MCU definitions)
+      let walkInit: ts.Expression | undefined = init;
+      // Unwrap `as const` / type assertions
+      while (walkInit && ts.isAsExpression(walkInit)) walkInit = walkInit.expression;
+
+      if (walkInit && ts.isObjectLiteralExpression(walkInit)) {
+        walkObjectLiteral(walkInit, "", result);
+      }
+
+      // Array of objects — walk for peripheral instance data
+      // (e.g., ADC_INSTANCES → peripherals.adc.0.*)
+      if (walkInit && ts.isArrayLiteralExpression(walkInit)) {
+        if (varName.endsWith("_INSTANCES")) {
+          const baseName = varName.replace("_INSTANCES", "").toLowerCase();
+          const prefix = `peripherals.${baseName}`;
+          walkArrayLiteral(walkInit, prefix, result);
+        }
+      }
     }
   });
 
@@ -119,21 +137,24 @@ function resolveAndMergeMCUConstants(boardFilePath: string, boardConstants: Boar
   if (!mcuSpecifier) return;
 
   // Resolve the MCU package file path
+  const parts = mcuSpecifier.split("/");
+  const pkgName = parts[1]; // e.g. "mcu-atmega328p"
+  const mcuFileNames = ["mcu.ts", "index.ts"];
+
   let dir = path.dirname(boardFilePath);
   while (true) {
-    const parts = mcuSpecifier.split("/");
-    const pkgName = parts[1]; // e.g. "mcu-atmega328p"
+    for (const mcuFileName of mcuFileNames) {
+      const nmCandidate = path.join(dir, "node_modules", "@typehal", pkgName, "src", mcuFileName);
+      if (fs.existsSync(nmCandidate)) {
+        mergeMCUConstants(nmCandidate, boardConstants);
+        return;
+      }
 
-    const nmCandidate = path.join(dir, "node_modules", "@typehal", pkgName, "src", "mcu.ts");
-    if (fs.existsSync(nmCandidate)) {
-      mergeMCUConstants(nmCandidate, boardConstants);
-      return;
-    }
-
-    const pkgCandidate = path.join(dir, "packages", pkgName, "src", "mcu.ts");
-    if (fs.existsSync(pkgCandidate)) {
-      mergeMCUConstants(pkgCandidate, boardConstants);
-      return;
+      const pkgCandidate = path.join(dir, "packages", pkgName, "src", mcuFileName);
+      if (fs.existsSync(pkgCandidate)) {
+        mergeMCUConstants(pkgCandidate, boardConstants);
+        return;
+      }
     }
 
     const parent = path.dirname(dir);
@@ -148,10 +169,10 @@ function resolveAndMergeMCUConstants(boardFilePath: string, boardConstants: Boar
 function mergeMCUConstants(mcuFilePath: string, boardConstants: BoardConstants): void {
   const mcuConstants = resolveBoardConstants(mcuFilePath);
 
-  // Merge MCU pin data (pins.all.N.name, pins.all.N.number, pins.all.N.aliases.*)
+  // Merge MCU pin data and peripheral constants into board constants.
   // Don't overwrite existing board-specific values
   for (const [key, value] of mcuConstants.entries()) {
-    if (key.startsWith("pins.all.") || key.startsWith("peripherals.")) {
+    if (key.startsWith("pins.") || key.startsWith("peripherals.")) {
       if (!boardConstants.has(key)) {
         boardConstants.set(key, value);
       }
@@ -161,6 +182,19 @@ function mergeMCUConstants(mcuFilePath: string, boardConstants: BoardConstants):
   // Copy architecture if the MCU has it and the board doesn't
   if (mcuConstants.has("architecture") && !boardConstants.has("architecture")) {
     boardConstants.set("architecture", mcuConstants.get("architecture")!);
+  }
+
+  // Also parse the MCU peripherals file for ADC/PWM/Timer data that the MCU
+  // definition references via import (e.g., `peripherals: MCU_PERIPHERALS`).
+  const mcuDir = path.dirname(mcuFilePath);
+  const periphFile = path.join(mcuDir, "peripherals.ts");
+  if (fs.existsSync(periphFile)) {
+    const periphConstants = resolveBoardConstants(periphFile);
+    for (const [key, value] of periphConstants.entries()) {
+      if (!boardConstants.has(key)) {
+        boardConstants.set(key, value);
+      }
+    }
   }
 }
 

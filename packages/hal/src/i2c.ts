@@ -36,10 +36,8 @@ export class I2CDevice {
     rawCpp(`${this._bus}.beginTransmission(${this._address});`);
     rawCpp(`${this._bus}.write(${register});`);
     rawCpp(`${this._bus}.endTransmission(false);`);
-    rawCpp(`${this._bus}.requestFrom(${this._address}, ${count});`);
-    rawCpp(`static uint8_t result[32];`); // Fallback static buffer
-    rawCpp(`for (int i=0; i<${count} && i<32; i++) result[i] = ${this._bus}.read();`);
-    rawCpp(`return result;`);
+    rawCpp(`${this._bus}.requestFrom(${this._address}, ${count}, true);`);
+    rawCpp(`for (int __i = 0; __i < ${count}; __i++) __HAL_READ_BUF__[__i] = ${this._bus}.read();`);
     return new Uint8Array(count);
   }
 }

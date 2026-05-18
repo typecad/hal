@@ -496,6 +496,13 @@ export class StatementRenderer {
       return `${constPrefix}${returnType} (*${safeName})(${params})`;
     }
     const alreadyConstQualified = /^const\s+/.test(normalizedType);
+    const arrayMatch = normalizedType.match(/^(.+?)\s*\[(\d*)\]$/);
+    if (arrayMatch) {
+      const baseType = arrayMatch[1].trim();
+      const size = arrayMatch[2];
+      const constPrefix = isConst && !alreadyConstQualified ? "const " : "";
+      return `${constPrefix}${baseType} ${safeName}[${size}]`;
+    }
     const constPrefix = isConst && !alreadyConstQualified ? "const " : "";
     const refMark = isRef ? "& " : " ";
     return `${constPrefix}${normalizedType}${refMark}${safeName}`;

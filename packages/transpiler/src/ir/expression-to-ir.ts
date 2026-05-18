@@ -7,6 +7,8 @@ import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
 import { halInstances } from "./hal-resolver";
 import { escapeCppKeyword } from "../utils/strings";
+import { tryLowerRegisterRead } from "./transformers/register-assignment";
+import { tryLowerArrayAndStringMethods } from "./transformers/array-methods";
 
 export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
   function emitUnsupportedExpression(message: string): ExpressionIR {
@@ -400,39 +402,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
     }
 
-    // ---- Array method translation for mutable arrays (StaticArray) -----------
-    // Translate push → push_back, pop → pop_back, indexOf → indexOf at the expression level.
-    if (ts.isPropertyAccessExpression(expr.expression) &&
-        ts.isIdentifier(expr.expression.expression) &&
-        mutableArrayVars.has(expr.expression.expression.text)) {
-      const arrName = expr.expression.expression.text;
-      const methodName = expr.expression.name.text;
-      if (methodName === "pop") {
-        return { kind: "raw", value: `${arrName}.pop()` };
-      }
-      if (methodName === "push") {
-        const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-        return { kind: "raw", value: `${arrName}.push(${argsText})` };
-      }
-      if (methodName === "indexOf") {
-        const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-        return { kind: "raw", value: `${arrName}.indexOf(${argsText})` };
-      }
-    }
-
-    // ---- String indexOf wrapping (const char* needs String() on Arduino) ---
-    if (ts.isPropertyAccessExpression(expr.expression) &&
-        ts.isIdentifier(expr.expression.expression) &&
-        expr.expression.name.text === "indexOf" &&
-        !mutableArrayVars.has(expr.expression.expression.text) &&
-        !activeCArrayVars.has(expr.expression.expression.text)) {
-      const varName = expr.expression.expression.text;
-      const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-      return {
-        kind: "method-call",
-        callee: `${varName}.indexOf`,
-        args: expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars))
-      };
+    const arrayMethodRes = tryLowerArrayAndStringMethods(expr, sourceText, diagnostics, pointerVars);
+    if (arrayMethodRes !== null) {
+      return arrayMethodRes;
     }
 
 
@@ -651,21 +623,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // â”€â”€ Register bit-field read â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // If the object is a register class name and the property is a known
     // bit field, emit the inline bit-extract expression.
-    if (ts.isIdentifier(expr.expression)) {
-      const regName = expr.expression.text;
-      const fieldName = expr.name.text;
-      const fieldMap = registerFieldMap.get(regName);
-      if (fieldMap) {
-        const field = fieldMap.get(fieldName);
-        if (field) {
-          const mask = ((1 << field.width) - 1) >>> 0;
-          const maskUL = mask + 'UL';
-          if (field.lo === 0 && field.width === 1) {
-            return { kind: "raw", value: `(*${regName} >> ${field.lo}) & 1UL` };
-          }
-          return { kind: "raw", value: `(*${regName} >> ${field.lo}) & ${maskUL}` };
-        }
-      }
+    const regRead = tryLowerRegisterRead(expr, sourceText, diagnostics);
+    if (regRead !== null) {
+      return regRead;
     }
 
     // In C++, 'this' is a pointer, so use -> instead of .

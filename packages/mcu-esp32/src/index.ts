@@ -270,3 +270,21 @@ export default ESP32WROOM32;
 // Re-exports
 export * from './pins';
 export * from './peripherals';
+
+/**
+ * Structured manifest consumed by the TypeHAL CLI for contract-based
+ * board generation. Provides pin names and peripheral instance names
+ * without requiring the CLI to text-scrape compiled output.
+ */
+export const typehalManifest = {
+  /** All MCU port-level pin names (e.g. 'GPIO0', 'GPIO1'). */
+  pinNames: [
+    'GPIO0', 'GPIO1', 'GPIO2', 'GPIO3', 'GPIO4', 'GPIO5',
+    'GPIO12', 'GPIO13', 'GPIO14', 'GPIO15', 'GPIO16', 'GPIO17', 'GPIO18', 'GPIO19',
+    'GPIO21', 'GPIO22', 'GPIO23', 'GPIO25', 'GPIO26', 'GPIO27', 'GPIO32', 'GPIO33',
+    'GPIO34', 'GPIO35', 'GPIO36', 'GPIO39'
+  ] as const,
+
+  /** All HAL peripheral instance names exported from this package. */
+  peripheralNames: ['I2C0', 'I2C1', 'SPI0', 'SPI1', 'UART0', 'UART2'] as const,
+} as const;

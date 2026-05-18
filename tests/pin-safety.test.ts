@@ -8,7 +8,7 @@ import { transpile } from './setup';
 // TODO: Pin safety validation is not yet generating unsafe-pin warnings.
 // The transpiler does not currently emit pin-safety diagnostics for D0/D1/TX/RX.
 // Re-enable when pin-safety diagnostics are implemented.
-describe.skip('Pin Safety Validation', () => {
+describe('Pin Safety Validation', () => {
   it('generates warning when unsafe pin D0 is used', () => {
     const result = transpile(`
       import { D0 } from '@typehal/board-arduino-uno';
@@ -21,8 +21,8 @@ describe.skip('Pin Safety Validation', () => {
     );
 
     expect(unsafeWarnings.length).toBeGreaterThan(0);
-    expect(unsafeWarnings[0].message).toContain('D0');
-    expect(unsafeWarnings[0].message).toContain('Serial');
+    expect(unsafeWarnings[0].message).toContain('PD0');
+    expect(unsafeWarnings[0].message).toContain('UART');
     expect(unsafeWarnings[0].severity).toBe('warning');
   });
 
@@ -38,7 +38,7 @@ describe.skip('Pin Safety Validation', () => {
     );
 
     expect(unsafeWarnings.length).toBeGreaterThan(0);
-    expect(unsafeWarnings[0].message).toContain('D1');
+    expect(unsafeWarnings[0].message).toContain('PD1');
   });
 
   it('generates warning when unsafe pin alias TX is used', () => {
@@ -53,9 +53,8 @@ describe.skip('Pin Safety Validation', () => {
     );
 
     expect(unsafeWarnings.length).toBeGreaterThan(0);
-    // TX is pin 1; the __EMIT__ system tracks it as D1, so the message
-    // references D1 (not the TX alias).
-    expect(unsafeWarnings[0].message).toContain('D1');
+    // TX is an alias of PD1; the message references the MCU name.
+    expect(unsafeWarnings[0].message).toContain('PD1');
   });
 
   it('does not generate warning for safe pins', () => {

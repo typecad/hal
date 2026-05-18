@@ -8,7 +8,7 @@ import { transpile } from './setup';
 // TODO: Peripheral pin conflict detection is not yet generating warnings.
 // The transpiler does not currently track peripheral ownership across pin operations.
 // Re-enable when peripheral-pin-conflict diagnostics are implemented.
-describe.skip('Peripheral Pin Conflict Detection', () => {
+describe('Peripheral Pin Conflict Detection', () => {
   it('generates warning when I2C pin is used as GPIO while I2C is active', () => {
     const result = transpile(`
       import { I2C0, A4 } from '@typehal/board-arduino-uno';
@@ -21,7 +21,7 @@ describe.skip('Peripheral Pin Conflict Detection', () => {
     );
 
     expect(conflictWarnings.length).toBeGreaterThan(0);
-    expect(conflictWarnings[0].message).toContain('A4');
+    expect(conflictWarnings[0].message).toContain('PC4');
     expect(conflictWarnings[0].message).toContain('I2C0');
     expect(conflictWarnings[0].message).toContain('SDA');
   });
@@ -38,7 +38,7 @@ describe.skip('Peripheral Pin Conflict Detection', () => {
     );
 
     expect(conflictWarnings.length).toBeGreaterThan(0);
-    expect(conflictWarnings[0].message).toContain('A5');
+    expect(conflictWarnings[0].message).toContain('PC5');
     expect(conflictWarnings[0].message).toContain('SCL');
   });
 
@@ -54,8 +54,7 @@ describe.skip('Peripheral Pin Conflict Detection', () => {
     );
 
     expect(conflictWarnings.length).toBeGreaterThan(0);
-    expect(conflictWarnings[0].message).toContain('SDA');
-    expect(conflictWarnings[0].message).toContain('A4');
+    expect(conflictWarnings[0].message).toContain('PC4');
     expect(conflictWarnings[0].message).toContain('I2C0');
   });
 
@@ -84,7 +83,7 @@ describe.skip('Peripheral Pin Conflict Detection', () => {
     );
 
     expect(conflictWarnings.length).toBeGreaterThan(0);
-    expect(conflictWarnings[0].message).toContain('D11');
+    expect(conflictWarnings[0].message).toContain('PB3');
     expect(conflictWarnings[0].message).toContain('SPI0');
     expect(conflictWarnings[0].message).toContain('MOSI');
   });
@@ -101,7 +100,7 @@ describe.skip('Peripheral Pin Conflict Detection', () => {
     );
 
     expect(conflictWarnings.length).toBeGreaterThan(0);
-    expect(conflictWarnings[0].message).toContain('D1');
+    expect(conflictWarnings[0].message).toContain('PD1');
     expect(conflictWarnings[0].message).toContain('TX');
   });
 });

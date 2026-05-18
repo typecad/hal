@@ -7,8 +7,8 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants } from "./build-ir-state";
-import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage } from "./statement-to-ir";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext } from "./build-ir-state";
+import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
 import { namespaceToIR } from "./namespace-builder";
@@ -19,8 +19,11 @@ function normalizeEntrypointSyntax(sourceText: string): string {
 }
 
 export function buildProgramIR(fileName: string, sourceText: string, boardPackage?: string): ProgramIR {
-  loadHALModules(true); // Parse HAL source files (force reload to pick up changes)
-  const normalizedSourceText = normalizeEntrypointSyntax(sourceText);
+  const parentStrategy = getContext().activeStrategy;
+  return contextStorage.run(new CompilationContext(), () => {
+    getContext().activeStrategy = parentStrategy;
+    loadHALModules(true); // Parse HAL source files (force reload to pick up changes)
+    const normalizedSourceText = normalizeEntrypointSyntax(sourceText);
   const source = parseSource(fileName, normalizedSourceText);
   const diagnostics: Diagnostic[] = [];
   const imports: ImportIR[] = [];
@@ -260,7 +263,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
 
     if (ts.isFunctionDeclaration(node)) {
-      const fnIR = functionDeclarationToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, boilerplates, topLevelPointerVars);
+      const fnIR = functionDeclarationToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, boilerplates, topLevelPointerVars, lowerStatementList);
       if (fnIR) {
         functions.push(fnIR);
       }
@@ -269,7 +272,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
     if (ts.isVariableStatement(node)) {
       // Check if all declarations are function expressions/arrow functions
-      const fnResults = variableAsFunctionToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, boilerplates, topLevelPointerVars);
+      const fnResults = variableAsFunctionToIR(node, fileName, sourceText, diagnostics, functionReturnTypes, typeAliasNodes, boilerplates, topLevelPointerVars, lowerStatementList);
       if (fnResults) {
         functions.push(...fnResults);
         return;
@@ -286,6 +289,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           typeAliasNodes,
           topLevelPointerVars,
           "", // Top-level
+          lowerStatementList,
         ),
       );
       return;
@@ -460,6 +464,8 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     requiredIncludes: new Set(requiredIncludes),
     interfaces,
     namespaces,
+    registeredCallbacks: [...registeredCallbacks],
     ...(defaultExportName ? { defaultExportName } : {}),
   };
+  });
 }

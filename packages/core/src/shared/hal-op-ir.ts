@@ -102,6 +102,8 @@ export interface AdcReadVoltageOp {
   operation: "adc.read_voltage";
   port?: string;
   pin: number;
+  vRef?: number;
+  maxValue?: number;
 }
 
 // ---------------------------------------------------------------------------

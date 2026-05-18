@@ -14,8 +14,8 @@ describe('PWM Timer Sharing Validation', () => {
     );
 
     expect(diagnostics.length).toBeGreaterThan(0);
-    expect(diagnostics[0].message).toContain('D5');
-    expect(diagnostics[0].message).toContain('D6');
+    expect(diagnostics[0].message).toContain('PD5');
+    expect(diagnostics[0].message).toContain('PD6');
     expect(diagnostics[0].message).toContain('timer0');
     expect(diagnostics[0].severity).toBe('info');
   });

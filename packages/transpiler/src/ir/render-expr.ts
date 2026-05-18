@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { ExpressionIR } from "@typehal/core";
-import { nestedFunctionAliases } from "./build-ir-state";
+import { nestedFunctionAliases, getContext } from "./build-ir-state";
 import { escapeCppKeyword } from "../utils/strings";
 
 export function calleeToText(expr: ts.LeftHandSideExpression): string {
@@ -71,6 +71,15 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return renderExprAsText(expr.expression);
     case "string_concat":
       return expr.parts.map(p => renderExprAsText(p)).join(" + ");
+    case "hal-expr": {
+      const strategy = getContext().activeStrategy;
+      if (strategy?.resolveHALOperation) {
+        const resolved = strategy.resolveHALOperation(expr.operation);
+        if (resolved?.expression) return resolved.expression;
+        if (resolved?.code) return resolved.code.replace(/;\s*$/, "");
+      }
+      return `/* unhandled hal-expr: ${expr.operation.operation} */`;
+    }
     default:
       return "0 /* unsupported_expr */";
   }

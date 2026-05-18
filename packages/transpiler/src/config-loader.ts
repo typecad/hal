@@ -79,22 +79,32 @@ export function findConfigFile(startDir: string): string | undefined {
 // AST helpers — extract scalar values from a TS object literal
 // ---------------------------------------------------------------------------
 
+function unwrapTypeCast(node: ts.Expression): ts.Expression {
+  let curr = node;
+  while (ts.isAsExpression(curr) || ts.isTypeAssertionExpression(curr)) {
+    curr = curr.expression;
+  }
+  return curr;
+}
+
 function getStringLiteral(node: ts.Expression): string | undefined {
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-    return node.text;
+  const unwrapped = unwrapTypeCast(node);
+  if (ts.isStringLiteral(unwrapped) || ts.isNoSubstitutionTemplateLiteral(unwrapped)) {
+    return unwrapped.text;
   }
   return undefined;
 }
 
 function getScalarValue(node: ts.Expression): string | number | boolean | undefined {
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-    return node.text;
+  const unwrapped = unwrapTypeCast(node);
+  if (ts.isStringLiteral(unwrapped) || ts.isNoSubstitutionTemplateLiteral(unwrapped)) {
+    return unwrapped.text;
   }
-  if (ts.isNumericLiteral(node)) {
-    return Number(node.text);
+  if (ts.isNumericLiteral(unwrapped)) {
+    return Number(unwrapped.text);
   }
-  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
-  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (unwrapped.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (unwrapped.kind === ts.SyntaxKind.FalseKeyword) return false;
   return undefined;
 }
 

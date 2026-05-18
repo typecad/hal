@@ -1,13 +1,165 @@
 import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "@typehal/core";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { BoardConstants, getDefaultBoardConstants } from "./board-resolver";
 
-// Module-level map of top-level class names to their IR for static method return type lookup.
-export const topLevelClasses = new Map<string, ClassIR>();
+// Registered callback structure
+export interface RegisteredCallback {
+  placeholderName: string;
+  callbackIR: ExpressionIR & { kind: "callback" };
+}
 
-// Track variables that are pointers (from 'new' expressions)
-// Maps variable name → class name (e.g., "b" → "Builder")
 export type PointerTracker = Map<string, string>;
 
-// Pin factory function names that should be constant-folded to the pin number
+let globalDefaultContextRef: CompilationContext | undefined;
+
+// 1. Define the Context class containing all former module-level mutable states.
+export class CompilationContext {
+  topLevelClasses = new Map<string, ClassIR>();
+  registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
+  
+  // Hoisted structures
+  hoistedNestedFunctions: FunctionIR[] = [];
+  hoistedNestedClasses: ClassIR[] = [];
+  hoistedNestedEnums: EnumIR[] = [];
+  hoistedNestedInterfaces: InterfaceIR[] = [];
+  hoistedNestedTypeAliases: TypeAliasIR[] = [];
+  nestedFunctionAliases = new Map<string, string>();
+  nestedClassAliases = new Map<string, string>();
+  
+  // Active trackers for transpilation
+  activeCArrayVars = new Set<string>();
+  activeArrayLiteralVars = new Set<string>();
+  activeStringVars = new Set<string>();
+  mutableArrayVars = new Set<string>();
+  arrayLiteralSizes = new Map<string, number>();
+  filteredArrayLengthVars = new Map<string, string>();
+  activeNamespaceNames = new Set<string>();
+  topLevelClassNames = new Set<string>();
+  activeEnumNames = new Set<string>();
+  
+  activePinUsage = new Map<string, { pinNumber: string; source: string }>();
+  activePeripheralUsage = new Map<string, { instance: number; source: string }>();
+  
+  // Board configuration maps
+  peripheralAliasMap = new Map<string, string>();
+  pinAliasMap = new Map<string, string>();
+  mcuPinForwardMap = new Map<string, string>();
+  mcuPinReverseMap = new Map<string, string>();
+  
+  requiredIncludes = new Set<string>();
+  registeredCallbacks: RegisteredCallback[] = [];
+  
+  _currentBoardConstants: BoardConstants | undefined = undefined;
+  
+  activeLocalTypes = new Map<string, string>();
+  activeGlobalTypes = new Map<string, string>();
+  
+  // HAL Resolver specific state (moved here for safe parallelization)
+  halInstances = new Map<string, any>(); // typed as Map<string, HALInstance> in resolver
+  floatVariables = new Set<string>();
+  snprintfCounter = 0;
+  callbackPlaceholderCounter = 0;
+  activeStrategy: any | null = null; // PlatformStrategy | null
+}
+
+// 2. Setup AsyncLocalStorage
+export const contextStorage = new AsyncLocalStorage<CompilationContext>();
+
+const globalDefaultContext = new CompilationContext();
+globalDefaultContextRef = globalDefaultContext;
+
+export function getContext(): CompilationContext {
+  return contextStorage.getStore() || globalDefaultContext;
+}
+
+// 3. Helper Proxy creators
+function createMapProxy<K, V>(getContextKey: (ctx: CompilationContext) => Map<K, V>): Map<K, V> {
+  return new Proxy(new Map<K, V>(), {
+    get(target, prop) {
+      const actual = getContextKey(getContext());
+      const value = Reflect.get(actual, prop, actual);
+      return typeof value === 'function' ? value.bind(actual) : value;
+    },
+    set(target, prop, value) {
+      const actual = getContextKey(getContext());
+      return Reflect.set(actual, prop, value, actual);
+    }
+  });
+}
+
+function createSetProxy<T>(getContextKey: (ctx: CompilationContext) => Set<T>): Set<T> {
+  return new Proxy(new Set<T>(), {
+    get(target, prop) {
+      const actual = getContextKey(getContext());
+      const value = Reflect.get(actual, prop, actual);
+      return typeof value === 'function' ? value.bind(actual) : value;
+    },
+    set(target, prop, value) {
+      const actual = getContextKey(getContext());
+      return Reflect.set(actual, prop, value, actual);
+    }
+  });
+}
+
+function createArrayProxy<T>(getContextKey: (ctx: CompilationContext) => T[]): T[] {
+  return new Proxy([] as T[], {
+    get(target, prop) {
+      const actual = getContextKey(getContext());
+      const value = Reflect.get(actual, prop, actual);
+      return typeof value === 'function' ? value.bind(actual) : value;
+    },
+    set(target, prop, value) {
+      const actual = getContextKey(getContext());
+      return Reflect.set(actual, prop, value, actual);
+    },
+    ownKeys(target) {
+      return Reflect.ownKeys(getContextKey(getContext()));
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      return Reflect.getOwnPropertyDescriptor(getContextKey(getContext()), prop);
+    }
+  }) as T[];
+}
+
+// 4. Export proxies matching the original module API
+export const topLevelClasses = createMapProxy(ctx => ctx.topLevelClasses);
+export const registerFieldMap = createMapProxy(ctx => ctx.registerFieldMap);
+export const halInstances = createMapProxy(ctx => ctx.halInstances);
+export const floatVariables = createSetProxy(ctx => ctx.floatVariables);
+
+export const hoistedNestedFunctions = createArrayProxy(ctx => ctx.hoistedNestedFunctions);
+export const hoistedNestedClasses = createArrayProxy(ctx => ctx.hoistedNestedClasses);
+export const hoistedNestedEnums = createArrayProxy(ctx => ctx.hoistedNestedEnums);
+export const hoistedNestedInterfaces = createArrayProxy(ctx => ctx.hoistedNestedInterfaces);
+export const hoistedNestedTypeAliases = createArrayProxy(ctx => ctx.hoistedNestedTypeAliases);
+export const nestedFunctionAliases = createMapProxy(ctx => ctx.nestedFunctionAliases);
+export const nestedClassAliases = createMapProxy(ctx => ctx.nestedClassAliases);
+
+export const activeCArrayVars = createSetProxy(ctx => ctx.activeCArrayVars);
+export const activeArrayLiteralVars = createSetProxy(ctx => ctx.activeArrayLiteralVars);
+export const activeStringVars = createSetProxy(ctx => ctx.activeStringVars);
+export const mutableArrayVars = createSetProxy(ctx => ctx.mutableArrayVars);
+export const arrayLiteralSizes = createMapProxy(ctx => ctx.arrayLiteralSizes);
+export const filteredArrayLengthVars = createMapProxy(ctx => ctx.filteredArrayLengthVars);
+export const activeNamespaceNames = createSetProxy(ctx => ctx.activeNamespaceNames);
+export const topLevelClassNames = createSetProxy(ctx => ctx.topLevelClassNames);
+export const activeEnumNames = createSetProxy(ctx => ctx.activeEnumNames);
+
+export const activePinUsage = createMapProxy(ctx => ctx.activePinUsage);
+export const activePeripheralUsage = createMapProxy(ctx => ctx.activePeripheralUsage);
+
+export const peripheralAliasMap = createMapProxy(ctx => ctx.peripheralAliasMap);
+export const pinAliasMap = createMapProxy(ctx => ctx.pinAliasMap);
+export const mcuPinForwardMap = createMapProxy(ctx => ctx.mcuPinForwardMap);
+export const mcuPinReverseMap = createMapProxy(ctx => ctx.mcuPinReverseMap);
+
+export const requiredIncludes = createSetProxy(ctx => ctx.requiredIncludes);
+export const registeredCallbacks = createArrayProxy(ctx => ctx.registeredCallbacks);
+
+export const activeLocalTypes = createMapProxy(ctx => ctx.activeLocalTypes);
+export const activeGlobalTypes = createMapProxy(ctx => ctx.activeGlobalTypes);
+
+// Static configurations
 export const PIN_FACTORY_FUNCTIONS = new Set([
   "createDigitalPin",
   "createPWMPin",
@@ -15,11 +167,8 @@ export const PIN_FACTORY_FUNCTIONS = new Set([
   "createInterruptPin",
 ]);
 
-// Helper functions that should be constant-folded to their first argument
 export const CONSTANT_FOLD_FUNCTIONS = new Set<string>([]);
 
-// Maps typed array constructor names to their C++ element types.
-// Used for: new expression handling, collectPointerVars, and function-level tracking.
 export const TYPED_ARRAY_ELEMENT_MAP: Record<string, string> = {
   Uint8Array:  "uint8_t",
   Int8Array:   "int8_t",
@@ -31,86 +180,14 @@ export const TYPED_ARRAY_ELEMENT_MAP: Record<string, string> = {
   Float64Array: "double",
 };
 
-/** Module-level register field map, populated during buildProgramIR. */
-export const registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
-
-// Module-level accumulators for nested function/class hoisting.
-// These are reset at the start of each buildProgramIR() call.
-export const hoistedNestedFunctions: FunctionIR[] = [];
-export const hoistedNestedClasses: ClassIR[] = [];
-export const hoistedNestedEnums: EnumIR[] = [];
-export const hoistedNestedInterfaces: InterfaceIR[] = [];
-export const hoistedNestedTypeAliases: TypeAliasIR[] = [];
-export const nestedFunctionAliases = new Map<string, string>();
-export const nestedClassAliases = new Map<string, string>();
-
-// Module-level C-array variable tracker for the current buildProgramIR invocation.
-// Tracks variable names initialized with new Uint8Array([...]) (or similar typed array
-// constructors) that transpile to C arrays rather than pointers. For these variables,
-// .length should become sizeof(arr)/sizeof(arr[0]) instead of arr.size().
-export const activeCArrayVars = new Set<string>();
-
-// Module-level array literal tracker for the current buildProgramIR invocation.
-// Tracks variable names initialized from array literals or spread arrays.
-// For these variables, .length should become sizeof(...)/sizeof(...[0]).
-export const activeArrayLiteralVars = new Set<string>();
-
-// Module-level string variable tracker for the current buildProgramIR invocation.
-// Tracks variable names whose inferred type is C-style string pointers.
-// For these variables, .length should become strlen() instead of .size().
-export const activeStringVars = new Set<string>();
-
-// Track array variables that need StaticArray (push, pop, indexOf).
-export const mutableArrayVars = new Set<string>();
-
-// Track array literal sizes: variable name → element count.
-export const arrayLiteralSizes = new Map<string, number>();
-
-// Track filter result length counters: array name → length counter var name.
-export const filteredArrayLengthVars = new Map<string, string>();
-
-// Module-level namespace name tracker for the current buildProgramIR invocation.
-// Tracks namespace identifiers so property access like Foo.bar renders as Foo::bar.
-export const activeNamespaceNames = new Set<string>();
-
-// Module-level set of top-level class names for the current buildProgramIR invocation.
-// Used to emit :: for static method calls on top-level classes (not just hoisted nested ones).
-export const topLevelClassNames = new Set<string>();
-
-export const activeEnumNames = new Set<string>();
-export const activePinUsage = new Map<string, { pinNumber: string; source: string }>();
-export const activePeripheralUsage = new Map<string, { instance: number; source: string }>();
-
-// Board-specific peripheral and pin alias mappings (populated from BoardConstants)
-export const peripheralAliasMap = new Map<string, string>();
-export const pinAliasMap = new Map<string, string>();
-
-// MCU pin maps: port name ↔ Arduino pin number (populated from BoardConstants)
-// Forward: "PB5" → "13", "PD0" → "0"  (port name → Arduino pin number string)
-export const mcuPinForwardMap = new Map<string, string>();
-// Reverse: "13" → "PB5", "0" → "PD0"  (Arduino pin number string → port name)
-export const mcuPinReverseMap = new Map<string, string>();
-
-// Module-level set of library includes required by inline evaluators (e.g., "<SPI.h>", "<Wire.h>").
-export const requiredIncludes = new Set<string>();
-
-// Module-level registry of callbacks registered via the callback() directive in HAL method bodies.
-export interface RegisteredCallback {
-  placeholderName: string;
-  callbackIR: ExpressionIR & { kind: "callback" };
-}
-export const registeredCallbacks: RegisteredCallback[] = [];
-
-import { BoardConstants, getDefaultBoardConstants } from "./board-resolver";
-
-// Module-level board constants for the current buildProgramIR invocation.
-// Resolved from the board package before IR building starts, so HAL resolver can access it.
-let _currentBoardConstants: BoardConstants | undefined;
+// 5. Getter/Setter for BoardConstants
 export function getCurrentBoardConstants(): BoardConstants { 
-  return _currentBoardConstants || getDefaultBoardConstants(); 
+  return getContext()._currentBoardConstants || getDefaultBoardConstants(); 
 }
+
 export function setCurrentBoardConstants(v: BoardConstants | undefined) { 
-  _currentBoardConstants = v; 
+  const ctx = getContext();
+  ctx._currentBoardConstants = v; 
   if (v) {
     // Populate peripheral aliases (e.g. UART0 -> Serial, I2C0 -> Wire)
     for (const [key, value] of v.entries()) {
@@ -121,7 +198,6 @@ export function setCurrentBoardConstants(v: BoardConstants | undefined) {
     }
 
     // Populate pin aliases (e.g. D0 -> 0, A0 -> 14, LED -> 13)
-    // We look for name/number pairs in pins.all.N.*
     const pinNames = new Map<number, string>();
     const pinNumbers = new Map<number, string>();
 
@@ -136,7 +212,6 @@ export function setCurrentBoardConstants(v: BoardConstants | undefined) {
         pinNumbers.set(parseInt(numMatch[1]), String(value));
         continue;
       }
-      // Also handle direct aliases if any (e.g. pins.led -> 13)
       const directMatch = key.match(/^pins\.([a-z_][a-z0-9_]*)$/);
       if (directMatch && typeof value !== 'object') {
         const pinName = directMatch[1].toUpperCase();
@@ -150,8 +225,6 @@ export function setCurrentBoardConstants(v: BoardConstants | undefined) {
       const num = pinNumbers.get(idx);
       if (num !== undefined) {
         pinAliasMap.set(name, num);
-        // Populate MCU pin maps: port name ↔ Arduino pin number
-        // name is the MCU port name (e.g. "PB5"), num is the Arduino pin number (e.g. "13")
         mcuPinForwardMap.set(name, num);
         mcuPinReverseMap.set(num, name);
       }
@@ -159,13 +232,7 @@ export function setCurrentBoardConstants(v: BoardConstants | undefined) {
   }
 }
 
-// Module-level local variable type tracker for typeof resolution.
-// Maps variable name → inferred C++ type string (e.g., "int", "std::string").
-export const activeLocalTypes = new Map<string, string>();
-
-// Module-level global variable type tracker (persists across function boundaries).
-export const activeGlobalTypes = new Map<string, string>();
-
+// 6. State management hooks
 export function resetBuildState(): void {
   hoistedNestedFunctions.length = 0;
   hoistedNestedClasses.length = 0;
@@ -188,10 +255,9 @@ export function resetBuildState(): void {
   activePeripheralUsage.clear();
   requiredIncludes.clear();
   registeredCallbacks.length = 0;
-  _currentBoardConstants = undefined;
+  getContext()._currentBoardConstants = undefined;
 }
 
-/** Clear state that should be scoped to a single function body. */
 export function resetFunctionScopeState(): void {
   activeCArrayVars.clear();
   activeArrayLiteralVars.clear();
