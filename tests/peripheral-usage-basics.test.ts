@@ -1,9 +1,9 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Peripheral Usage Analysis Tests: Defaults and Edge Cases
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { createEmptyPeripheralUsage } from '@typehal/transpiler/testing';
+import { createEmptyPeripheralUsage } from '@typecad/cuttlefish/testing';
 import { analyzeUsage } from './setup';
 
 describe('Peripheral Usage Analysis - Defaults and Edge Cases', () => {
@@ -54,7 +54,7 @@ describe('Peripheral Usage Analysis - Defaults and Edge Cases', () => {
 
     it('tracks timer0 usage for delay()', () => {
       const usage = analyzeUsage(`
-        import { delay } from '@typehal/board-arduino-uno';
+        import { delay } from '@typecad/board-arduino-uno';
         delay(10);
       `);
 
@@ -63,7 +63,7 @@ describe('Peripheral Usage Analysis - Defaults and Edge Cases', () => {
 
     it('tracks timer0 usage for millis() in expressions', () => {
       const usage = analyzeUsage(`
-        import { millis } from '@typehal/board-arduino-uno';
+        import { millis } from '@typecad/board-arduino-uno';
         const now = millis();
       `);
 

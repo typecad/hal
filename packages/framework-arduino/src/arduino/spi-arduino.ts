@@ -1,10 +1,10 @@
-// ---------------------------------------------------------------------------
-// @typehal/framework-arduino — SPI Arduino-compatible API interface
+﻿// ---------------------------------------------------------------------------
+// @typecad/framework-arduino — SPI Arduino-compatible API interface
 //
 // Arduino SPI-compatible methods for SPI communication.
 // ---------------------------------------------------------------------------
 
-import type { SPIMode, SPIBitOrder, SPISettings } from '@typehal/core';
+import type { SPIMode, SPIBitOrder, SPISettings } from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
 // Arduino SPI-compatible Interface
@@ -15,7 +15,7 @@ import type { SPIMode, SPIBitOrder, SPISettings } from '@typehal/core';
  *
  * Usage:
  * ```typescript
- * import { SPI0 } from '@typehal/framework-arduino/arduino';
+ * import { SPI0 } from '@typecad/framework-arduino/arduino';
  *
  * SPI0.begin();
  * SPI0.setMode(0);

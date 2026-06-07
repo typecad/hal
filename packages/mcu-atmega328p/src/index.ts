@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/mcu-atmega328p — MCU definition package
+// @typecad/mcu-atmega328p — MCU definition package
 //
 // Provides datasheet-level pin definitions, hardware peripheral descriptions,
 // and framework pin mappings for the ATmega328P microcontroller.
@@ -20,11 +20,11 @@ export * from './mcu';
 export * from './arduino-map';
 
 /**
- * Structured manifest consumed by the TypeHAL CLI for contract-based
+ * Structured manifest consumed by the TypeCAD CLI for contract-based
  * board generation. Provides pin names and peripheral instance names
  * without requiring the CLI to text-scrape compiled output.
  */
-export const typehalManifest = {
+export const TypeCADManifest = {
   /** All MCU port-level pin names (e.g. 'PB5', 'PC4'). */
   pinNames: [
     'PD0', 'PD1', 'PD2', 'PD3', 'PD4', 'PD5', 'PD6', 'PD7',

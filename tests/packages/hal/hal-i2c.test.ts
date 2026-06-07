@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // HAL I2C Bus Tests
 //
 // Tests for I2C Arduino-compatible API
@@ -11,7 +11,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
   describe('Initialization', () => {
     it('transpiles I2C0.begin() as master', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
       `);
 
@@ -22,7 +22,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
 
     it('transpiles I2C0.beginSlave(address) as slave', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.beginSlave(0x40);
       `);
 
@@ -31,7 +31,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
 
     it('transpiles I2C0.setClock()', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.setClock(400000);
       `);
@@ -43,7 +43,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
   describe('Write Operations', () => {
     it('transpiles beginTransmission/write/endTransmission sequence', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.beginTransmission(0x76);
         I2C0.write(0xFA);
@@ -56,7 +56,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
 
     it('transpiles write with array', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.beginTransmission(0x76);
         I2C0.write([0x01, 0x02, 0x03]);
@@ -69,7 +69,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
 
     it('transpiles endTransmission with stop parameter', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.beginTransmission(0x76);
         I2C0.write(0xFA);
@@ -83,7 +83,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
   describe('Read Operations', () => {
     it('transpiles requestFrom/read sequence', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         const count = I2C0.requestFrom(0x76, 4);
         const data = I2C0.read();
@@ -94,7 +94,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
 
     it('transpiles available() check', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.requestFrom(0x76, 4);
         while (I2C0.available() > 0) {
@@ -107,7 +107,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
 
     it('transpiles requestFrom with stop parameter', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         const count = I2C0.requestFrom(0x76, 4, true);
       `);
@@ -119,7 +119,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
   describe('Cleanup', () => {
     it('transpiles I2C0.end()', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.end();
       `);
@@ -132,7 +132,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
 describe('I2C HAL - Multiple Bus Support', () => {
   it('lowers the high-level I2C API to Wire calls on Arduino Uno', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       I2C0.begin();
     `);
     
@@ -144,7 +144,7 @@ describe('I2C HAL - Multiple Bus Support', () => {
 describe('I2C HAL - Device Accessor Pattern', () => {
   it('transpiles I2C0.device(addr).writeByte(reg, val)', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       I2C0.begin();
       I2C0.device(0x76).writeByte(0xFA, 0x55);
     `);
@@ -155,7 +155,7 @@ describe('I2C HAL - Device Accessor Pattern', () => {
 
   it('transpiles I2C0.device(addr).readByte(reg)', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       I2C0.begin();
       const val = I2C0.device(0x76).readByte(0xFA);
     `);
@@ -172,7 +172,7 @@ describe('I2C HAL - Device Accessor Pattern', () => {
 
   it('transpiles I2C0.device(addr).writeBytes(reg, data)', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       I2C0.begin();
       I2C0.device(0x76).writeBytes(0xFA, [0x01, 0x02, 0x03]);
     `);
@@ -183,7 +183,7 @@ describe('I2C HAL - Device Accessor Pattern', () => {
   // TODO: readBytes needs buffer allocation + read loop generation in inline evaluator
   it('transpiles I2C0.device(addr).readBytes(reg, count)', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       I2C0.begin();
       const buf = I2C0.device(0x76).readBytes(0xFA, 4);
     `);
@@ -205,7 +205,7 @@ describe('I2C HAL - Device Accessor Pattern', () => {
 describe('I2C HAL - Bus Variable Aliasing', () => {
   it('transpiles const i2c = I2C0.begin() without emitting C++ variable', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       const i2c = I2C0.begin();
     `);
 
@@ -215,7 +215,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
 
   it('transpiles bus alias with device accessor: const i2c = I2C0.begin(); i2c.device(addr).writeByte(reg, val)', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       const i2c = I2C0.begin();
       i2c.device(0x76).writeByte(0xFA, 0x55);
     `);
@@ -232,7 +232,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
 
   it('transpiles bus alias with setClock', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       const i2c = I2C0.begin();
       i2c.setClock(400000);
     `);
@@ -243,7 +243,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
 
   it('transpiles bus alias with beginTransmission/write/endTransmission', () => {
     const result = transpileArduino(`
-      import { I2C0 } from '@typehal/framework-arduino/arduino';
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
       const i2c = I2C0.begin();
       i2c.beginTransmission(0x76);
       i2c.write(0xFA);
@@ -258,7 +258,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
   describe('I2C HAL - Multi-Byte Write & Uint8Array', () => {
     it('transpiles new Uint8Array([...]) as uint8_t C array', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         const buf = new Uint8Array([0x01, 0x02, 0x03]);
       `);
@@ -269,7 +269,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
   
     it('transpiles device.writeBytes with array literal via resolver', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.device(0x76).writeBytes(0xF5, [0b10100000, 0b00100111]);
       `);
@@ -283,7 +283,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
   
     it('transpiles device.writeBytes with variable reference using sizeof', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         const data = new Uint8Array([0x10, 0x20]);
         I2C0.device(0x76).writeBytes(0xFA, data);
@@ -299,7 +299,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
     // Parameter renaming happens in the emitter, but __EMIT__ nodes bypass it.
     it('escapes C++ reserved keyword register in function parameters', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         function writeReg(register: number, value: number): void {
           I2C0.device(0x76).writeByte(register, value);
@@ -316,7 +316,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
 
     it('escapes Arduino macro names min and max in function parameters', () => {
       const result = transpileArduino(`
-        import { Pin } from '@typehal/core';
+        import { Pin } from '@typecad/hal';
         function clamp(value: number, min: number, max: number): number {
           return Math.max(min, Math.min(max, value));
         }
@@ -331,7 +331,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
   
     it('maps Uint8Array parameter type to uint8_t*', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         function send(register: number, data: Uint8Array): void {
           I2C0.device(0x76).writeBytes(register, data);
@@ -344,7 +344,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
   
     it('transpiles .length on number[] variable as .size() (std::vector)', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         const values = [10, 20, 30];
         const len = values.length;
@@ -356,7 +356,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
   
     it('transpiles .length on Uint8Array variable as sizeof expression', () => {
       const result = transpileArduino(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         const buf = new Uint8Array([0x01, 0x02, 0x03]);
         const len = buf.length;

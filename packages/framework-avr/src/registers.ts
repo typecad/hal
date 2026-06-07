@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/arch-avr-native — AVR register definitions and helpers
+// @typecad/arch-avr-native — AVR register definitions and helpers
 //
 // Provides register-level mappings for ATmega328P and similar AVR chips.
 // This module is architecture-specific but board-agnostic.

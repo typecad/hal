@@ -1,7 +1,7 @@
-// ---------------------------------------------------------------------------
-// @typehal/expect — Configuration loader
+﻿// ---------------------------------------------------------------------------
+// @typecad/expect — Configuration loader
 //
-// Reads the `typehal.config.ts` file to extract both the base transpiler
+// Reads the `cuttlefish.config.ts` file to extract both the base transpiler
 // configuration and the optional `test` section for test-specific settings.
 // ---------------------------------------------------------------------------
 
@@ -27,10 +27,10 @@ const DEFAULT_TEST_CONFIG: TestConfig = {
 // ---------------------------------------------------------------------------
 
 /**
- * Load configuration from `typehal.config.ts` in the given project root.
+ * Load configuration from `cuttlefish.config.ts` in the given project root.
  *
  * Parses the config file via the TypeScript AST (no dynamic import) to
- * extract scalar properties — consistent with how the typehal CLI does it.
+ * extract scalar properties — consistent with how the cuttlefish CLI does it.
  *
  * @param projectRoot  Absolute path to the project root.
  * @param overrides    CLI flag overrides for test config.
@@ -42,7 +42,7 @@ export function loadConfig(
   const configPath = findConfigFile(projectRoot);
   if (!configPath) {
     throw new Error(
-      `No typehal.config.ts found in ${projectRoot}. ` +
+      `No cuttlefish.config.ts found in ${projectRoot}. ` +
       `Create one or specify --port and --board on the command line.`
     );
   }
@@ -65,7 +65,7 @@ export function loadConfig(
   return {
     test,
     buildTarget: test.buildTarget ?? raw.frameworkData?.buildTarget ?? 'arduino:avr:uno',
-    board: test.board ?? raw.board ?? '@typehal/board-arduino-uno',
+    board: test.board ?? raw.board ?? '@typecad/board-arduino-uno',
     target: raw.target ?? 'avr',
     projectRoot,
   };
@@ -77,8 +77,8 @@ export function loadConfig(
 
 function findConfigFile(projectRoot: string): string | undefined {
   const candidates = [
-    path.join(projectRoot, 'typehal.config.ts'),
-    path.join(projectRoot, 'typehal.config.js'),
+    path.join(projectRoot, 'cuttlefish.config.ts'),
+    path.join(projectRoot, 'cuttlefish.config.js'),
   ];
   return candidates.find(c => fs.existsSync(c));
 }
@@ -114,7 +114,7 @@ export function parseConfigAST(configPath: string): RawConfig {
   const result: RawConfig = {};
 
   for (const stmt of sf.statements) {
-    // `const config: TypehalConfig = { ... };`
+    // `const config: CuttlefishConfig = { ... };`
     if (ts.isVariableStatement(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (decl.initializer && ts.isObjectLiteralExpression(decl.initializer)) {

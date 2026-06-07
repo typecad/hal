@@ -1,10 +1,10 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Arduino profile resolution
 //
 // Resolves Arduino-specific profile settings based on FQBN and program IR.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext } from "@typehal/core/shared";
+import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext } from "@typecad/cuttlefish/api/shared";
 import type { ArduinoPlatformContext } from "./strategy";
 
 function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
@@ -517,7 +517,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     if (!capabilities.builtinFunctions.has(functionName)) {
       diagnostics.push({
         severity: "warning",
-        code: "TYPEHAL_ARDUINO_FUNC_UNKNOWN",
+        code: "TypeCAD_ARDUINO_FUNC_UNKNOWN",
         message: `Function '${functionName}' is not in the known Arduino built-in function set for architecture '${capabilities.architecture}'.`,
       });
     }
@@ -540,7 +540,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
       if (!capabilities.builtinGlobals.has(identifier)) {
         diagnostics.push({
           severity: "warning",
-          code: "TYPEHAL_ARDUINO_GLOBAL_UNKNOWN",
+          code: "TypeCAD_ARDUINO_GLOBAL_UNKNOWN",
           message: `Global '${identifier}' is not in the known Arduino built-in set for architecture '${capabilities.architecture}'.`,
         });
       }
@@ -555,7 +555,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     shimLines.push("#ifndef HIGH", "#define HIGH 0x1", "#endif");
     diagnostics.push({
       severity: "warning",
-      code: "TYPEHAL_ARDUINO_SHIM_HIGH",
+      code: "TypeCAD_ARDUINO_SHIM_HIGH",
       message: "Injected fallback HIGH shim. Verify platform-specific value if your core overrides it.",
     });
   }
@@ -564,7 +564,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     shimLines.push("#ifndef LOW", "#define LOW 0x0", "#endif");
     diagnostics.push({
       severity: "warning",
-      code: "TYPEHAL_ARDUINO_SHIM_LOW",
+      code: "TypeCAD_ARDUINO_SHIM_LOW",
       message: "Injected fallback LOW shim. Verify platform-specific value if your core overrides it.",
     });
   }
@@ -574,7 +574,7 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     shimLines.push("#ifndef A0", `#define A0 ${a0Fallback}`, "#endif");
     diagnostics.push({
       severity: "warning",
-      code: "TYPEHAL_ARDUINO_SHIM_A0",
+      code: "TypeCAD_ARDUINO_SHIM_A0",
       message: `Injected fallback A0 shim as '${a0Fallback}'. Board-specific analog pin mapping may differ; set --fqbn for accurate pin mapping.`,
     });
   }

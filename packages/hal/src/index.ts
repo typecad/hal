@@ -1,5 +1,26 @@
-// Re-export commonly-used core types so consumers can import everything from @typehal/hal
-export type { IInputModePin, IOutputModePin, InterruptHandler, InterruptOptions, IToneAttachment } from '@typehal/core';
+﻿// Re-export commonly-used core types so consumers can import everything from @typecad/hal
+export type { DigitalValue, AnalogValue } from './core/gpio';
+export { PinMode, InterruptMode } from './core/gpio';
+export type { IPinGroup } from './core/gpio';
+export { createPinGroup } from './core/gpio';
+
+export type { PinCapabilityFlags } from './core/capabilities';
+
+export type { BasePin, PWMPin, AnalogPin, InterruptPin, IOutputModePin, IInputModePin, InterruptHandler, InterruptOptions, IToneAttachment } from './core/pin';
+
+export type { ArchitectureIdentifier } from './core/board-types';
+
+export type { ErrorPolicy } from './core/bus/error-policy';
+
+export { I2CStatus } from './core/bus/i2c';
+export type { I2CAddress, II2CBus, II2CDeviceAccessor, IUninitializedI2CBus, IOwnedI2CBus } from './core/bus/i2c';
+
+export type { SPIBitOrder, SPIMode } from './core/bus/spi';
+export { SPIStatus } from './core/bus/spi';
+export type { SPISettings, ISPIBus, ISPIDevice, IUninitializedSPIBus, IOwnedSPIBus } from './core/bus/spi';
+
+export { UARTParity, UARTStopBits, UARTFlowControl, UARTStatus } from './core/bus/uart';
+export type { UARTStatusInfo, IUARTBus, ISerialPort, IUninitializedUARTBus, IOwnedSerialPort } from './core/bus/uart';
 
 export { include } from './include';
 export { board } from './board';

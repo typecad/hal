@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Pin Validation Example
  * 
  * Demonstrates compile-time and runtime pin validation utilities:
@@ -9,9 +9,9 @@
  * before using features that require specific capabilities.
  */
 
-import { D2, D3, A0, LED, delay, UART0 } from '@typehal';
-import { hasPWM as isPWMPin, hasAnalogInput as isAnalogPin, hasInterrupt as isInterruptPin, assertPWM } from '@typehal/core';
-import type { PWMPin } from '@typehal/core';
+import { D2, D3, A0, LED, delay, UART0 } from '@typecad';
+import { hasPWM as isPWMPin, hasAnalogInput as isAnalogPin, hasInterrupt as isInterruptPin, assertPWM } from '@typecad/hal';
+import type { PWMPin } from '@typecad/hal';
 
 // Initialize serial for output
 const serial = UART0.begin(9600);

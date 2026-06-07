@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import { transpile } from './setup';
 
 describe('Pin Mode Configuration Validation', () => {
-  // Pin mode validation previously relied on typehal-call IR nodes that carried
+  // Pin mode validation previously relied on cuttlefish-call IR nodes that carried
   // receiver/method metadata. In the __EMIT__ system, pin operations are lowered
   // to C++ strings (pinMode, digitalWrite, etc.) and the structured receiver/method
   // information is no longer available to validators.
@@ -13,7 +13,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('does not generate false-positive pin-mode warnings', () => {
     const result = transpile(`
-      import { D4 } from '@typehal/board-arduino-uno';
+      import { D4 } from '@typecad/board-arduino-uno';
       D4.asInput();
       const value = D4.read();
     `);
@@ -26,7 +26,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('does not generate warning when asOutput() is called before toggle', () => {
     const result = transpile(`
-      import { LED } from '@typehal/board-arduino-uno';
+      import { LED } from '@typecad/board-arduino-uno';
       LED.asOutput(true);
       LED.toggle();
     `);
@@ -39,7 +39,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('does not generate warning for asOutput fluent API', () => {
     const result = transpile(`
-      import { D4 } from '@typehal/board-arduino-uno';
+      import { D4 } from '@typecad/board-arduino-uno';
       const out = D4.asOutput();
       out.high();
     `);
@@ -52,7 +52,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('does not generate warning for non-pin receivers', () => {
     const result = transpile(`
-      import { UART0 } from '@typehal/board-arduino-uno';
+      import { UART0 } from '@typecad/board-arduino-uno';
       const serial = UART0.begin(9600);
     `);
 
@@ -66,7 +66,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('emits pinMode for LED.asOutput()', () => {
     const result = transpile(`
-      import { LED } from '@typehal/board-arduino-uno';
+      import { LED } from '@typecad/board-arduino-uno';
       const led = LED.asOutput();
       led.toggle();
     `, { target: 'arduino' });
@@ -79,7 +79,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('emits pinMode for D3.asInput() and resolves alias for read()', () => {
     const result = transpile(`
-      import { D3 } from '@typehal/board-arduino-uno';
+      import { D3 } from '@typecad/board-arduino-uno';
       const d3in = D3.asInput();
       const value = d3in.read();
     `, { target: 'arduino' });
@@ -90,7 +90,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('emits pinMode + digitalWrite for LED.asOutput() and high()', () => {
     const result = transpile(`
-      import { LED, HIGH } from '@typehal/board-arduino-uno';
+      import { LED, HIGH } from '@typecad/board-arduino-uno';
       const led = LED.asOutput();
       led.high();
       led.toggle();
@@ -102,7 +102,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('no warning when using alias after asOutput()', () => {
     const result = transpile(`
-      import { LED } from '@typehal/board-arduino-uno';
+      import { LED } from '@typecad/board-arduino-uno';
       const led = LED.asOutput();
       led.toggle();
     `);
@@ -115,7 +115,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('no warning when using alias after asInput()', () => {
     const result = transpile(`
-      import { D2 } from '@typehal/board-arduino-uno';
+      import { D2 } from '@typecad/board-arduino-uno';
       const btn = D2.asInput();
       const pressed = btn.read();
     `);
@@ -128,7 +128,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('resolves alias inside while loop', () => {
     const result = transpile(`
-      import { LED, delay } from '@typehal/board-arduino-uno';
+      import { LED, delay } from '@typecad/board-arduino-uno';
       const led = LED.asOutput();
       while (true) {
         led.toggle();
@@ -147,7 +147,7 @@ describe('Pin Mode Configuration Validation', () => {
 
   it('emits pinMode for D2.asInputPullUp()', () => {
     const result = transpile(`
-      import { D2 } from '@typehal/board-arduino-uno';
+      import { D2 } from '@typecad/board-arduino-uno';
       const btn = D2.asInputPullUp();
       const pressed = btn.read();
     `, { target: 'arduino' });

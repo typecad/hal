@@ -1,11 +1,11 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 6c — SPI Shift Register (74HC595)
 //
 // Demonstrates using SPI to control a shift register for LED patterns.
 // Shows: write(), transfer() with Uint8Array, simple data output
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, D10, delay } from '@typehal';
+import { SPI0, UART0, D10, delay } from '@typecad';
 
 const serial = UART0.begin(9600);
 

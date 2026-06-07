@@ -1,20 +1,19 @@
-{
-  "name": "typehal-demo",
+﻿{
+  "name": "typecad-demo",
   "version": "1.0.0",
-  "description": "TypeHAL demo project for Arduino Uno (AVR)",
+  "description": "TypeCAD demo project for Arduino Uno (AVR)",
   "private": true,
   "scripts": {
-    "build": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --diagnostics",
-    "build:watch": "cd .. && node packages/transpiler/dist/cli.js build --project demo",
-    "compile": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile",
-    "upload": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --port COM7",
-    "debug": "cd .. && node packages/transpiler/dist/cli.js demo/src/sketch.ts --compile --upload --debug --monitor --port COM7"
+    "build": "cd .. && node packages/cuttlefish/dist/cli.js demo/src/sketch.ts --diagnostics",
+    "build:watch": "cd .. && node packages/cuttlefish/dist/cli.js build --project demo",
+    "compile": "cd .. && node packages/cuttlefish/dist/cli.js demo/src/sketch.ts --compile",
+    "upload": "cd .. && node packages/cuttlefish/dist/cli.js demo/src/sketch.ts --compile --upload --port COM7",
+    "debug": "cd .. && node packages/cuttlefish/dist/cli.js demo/src/sketch.ts --compile --upload --debug --monitor --port COM7"
   },
   "dependencies": {
-    "@typehal/core": "*",
-    "@typehal/hal": "*",
-    "@typehal/board-arduino-uno": "*",
-    "@typehal/framework-arduino": "*",
-    "@typehal/mcu-atmega328p": "*"
+    "@typecad/hal": "*",
+    "@typecad/board-arduino-uno": "*",
+    "@typecad/framework-arduino": "*",
+    "@typecad/mcu-atmega328p": "*"
   }
 }

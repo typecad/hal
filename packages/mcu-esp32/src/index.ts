@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typehal/mcu-esp32 — MCU definition manifest
+// @typecad/mcu-esp32 — MCU definition manifest
 // ---------------------------------------------------------------------------
 
-import type { MCUDefinition } from '@typehal/schema';
+import type { MCUDefinition } from '@typecad/cuttlefish/api/schema';
 import { MCU_PERIPHERALS } from './peripherals';
 
 // ---------------------------------------------------------------------------
@@ -272,11 +272,11 @@ export * from './pins';
 export * from './peripherals';
 
 /**
- * Structured manifest consumed by the TypeHAL CLI for contract-based
+ * Structured manifest consumed by the TypeCAD CLI for contract-based
  * board generation. Provides pin names and peripheral instance names
  * without requiring the CLI to text-scrape compiled output.
  */
-export const typehalManifest = {
+export const TypeCADManifest = {
   /** All MCU port-level pin names (e.g. 'GPIO0', 'GPIO1'). */
   pinNames: [
     'GPIO0', 'GPIO1', 'GPIO2', 'GPIO3', 'GPIO4', 'GPIO5',

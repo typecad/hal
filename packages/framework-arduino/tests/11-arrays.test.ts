@@ -1,4 +1,4 @@
-import { describe, done } from '@typehal/expect';
+﻿import { describe, done } from '@typecad/expect';
 
 describe("Array basics")
   .it("array literal and element access")

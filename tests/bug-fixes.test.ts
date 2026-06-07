@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { transpile, transpileArduino, expectCppContains, expectCppNotContains } from "./setup";
 
 // ===========================================================================
@@ -157,7 +157,7 @@ describe("Bug 9: String assertions preprocessor", () => {
   it("distinguishes expectString from expect in segment collection", async () => {
     const { preprocess } = await import("../packages/expect/src/host/preprocessor");
     const result = preprocess(`
-      import { describe, done } from '@typehal/expect';
+      import { describe, done } from '@typecad/expect';
       const greeting: string = "hello";
       describe("strings")
         .it("greeting")

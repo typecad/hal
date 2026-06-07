@@ -1,8 +1,8 @@
-import { describe, it } from "vitest";
+﻿import { describe, it } from "vitest";
 import { expectCppContains, expectCppNotContains, transpile, transpileArduino } from "./setup";
 
 // ---------------------------------------------------------------------------
-// The new HAL — mirrors @typehal/hal package, inlined for testing.
+// The new HAL — mirrors @typecad/hal package, inlined for testing.
 // This is the exact same code that lives in packages/hal/src/.
 // ---------------------------------------------------------------------------
 

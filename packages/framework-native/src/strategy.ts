@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // NativeStrategy — standard C++ target for portable Windows/Linux executables
 //
 // Outputs standard C++ with main(), std::cout, std::string, and std::thread-
@@ -15,8 +15,8 @@ import type {
   RuntimePolyfillIR,
   StdLibSupport,
   AsyncRuntimeConfig,
-} from '@typehal/core/shared';
-import { DEFAULT_STDLIB_SUPPORT } from '@typehal/core/shared';
+} from '@typecad/cuttlefish/api/shared';
+import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
 
 export class NativeStrategy implements PlatformStrategy {
   readonly id = 'native';
@@ -33,24 +33,17 @@ export class NativeStrategy implements PlatformStrategy {
 
   shimLines(): string[] {
     return [
-      '#ifndef TYPEHAL_UNDEFINED',
-      '#define TYPEHAL_UNDEFINED 0',
+      '#ifndef CUTTLEFISH_UNDEFINED',
+      '#define CUTTLEFISH_UNDEFINED 0',
       '#endif',
-      'template<typename T> inline bool typehal_is_nullish(const T& v) { return false; }',
-      'inline bool typehal_is_nullish(long long v) { return v == TYPEHAL_UNDEFINED; }',
-      'inline bool typehal_is_nullish(int v) { return v == TYPEHAL_UNDEFINED; }',
-      'inline bool typehal_is_nullish(double v) { return v == (double)TYPEHAL_UNDEFINED; }',
-      'inline bool typehal_is_nullish(bool v) { return v == false; }',
-      'template<typename T> inline bool typehal_is_nullish(T* v) { return v == nullptr; }',
-      'template<typename T> inline bool typehal_exists(const T& v) { return !typehal_is_nullish(v); }',
-      'template<typename T, typename U> inline T typehal_nullish(const T& a, U b) { return !typehal_is_nullish(a) ? a : (T)b; }',
-      'inline std::string String(const std::string& s) { return s; }',
-      'inline std::string String(const char* s) { return std::string(s); }',
-      'inline std::string String(int v) { return std::to_string(v); }',
-      'inline std::string String(long v) { return std::to_string(v); }',
-      'inline std::string String(long long v) { return std::to_string(v); }',
-      'inline std::string String(double v) { return std::to_string(v); }',
-      'inline std::string String(bool v) { return v ? std::string("true") : std::string("false"); }',
+      'template<typename T> inline bool cuttlefish_is_nullish(const T& v) { return false; }',
+      'inline bool cuttlefish_is_nullish(long long v) { return v == CUTTLEFISH_UNDEFINED; }',
+      'inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }',
+      'inline bool cuttlefish_is_nullish(double v) { return v == (double)CUTTLEFISH_UNDEFINED; }',
+      'inline bool cuttlefish_is_nullish(bool v) { return v == false; }',
+      'template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }',
+      'template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }',
+      'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
       'namespace Date { inline long now() { auto t = std::chrono::system_clock::now(); return (long)std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count(); } }',
       'inline unsigned long millis() { return (unsigned long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }',
     ];
@@ -93,6 +86,8 @@ export class NativeStrategy implements PlatformStrategy {
     if (typeName === 'float') return 'double';
     // Map StaticArray back to its alias name (handled by pipeline typedef)
     if (typeName.startsWith("__tc_StaticArray")) {
+      const match = typeName.match(/^__tc_StaticArray<(.+),\s*\d+>$/);
+      if (match) return `std::vector<${match[1]}>`;
       return typeName.replace("__tc_StaticArray", "StaticArray");
     }
     return typeName;
@@ -114,84 +109,71 @@ export class NativeStrategy implements PlatformStrategy {
   }
 
   mapFunctionName(originalName: string): string {
-    if (originalName === '__typehal_entrypoint__') return 'main';
+    if (originalName === '__cuttlefish_entrypoint__') return 'main';
     return originalName;
   }
 
   // ── Expression rendering ────────────────────────────────────────────────
 
   normalizeRawExpression(value: string): string {
+    let prev = '';
     let v = value;
-    v = v.replace(/\bundefined\b/g, 'TYPEHAL_UNDEFINED');
-    v = v.replace(/\bnull\b/g, 'TYPEHAL_UNDEFINED');
-    // Namespace-qualified calls: Date.now() → Date::now()
-    v = v.replace(/Date\.now\(\)/g, 'Date::now()');
-    // Timers are now handled via HAL resolver in timing.ts
-    // String method transforms using std::string helpers
-    v = v.replace(/(\w+)\.toUpperCase\(\)/g, '__tc_toUpperCase($1)');
-    v = v.replace(/(\w+)\.toLowerCase\(\)/g, '__tc_toLowerCase($1)');
-    v = v.replace(/(\w+)\.trim\(\)/g, '__tc_trim($1)');
-    v = v.replace(/(\w+)\.startsWith\(([^)]+)\)/g, '($1.rfind($2, 0) == 0)');
-    v = v.replace(/(\w+)\.endsWith\(([^)]+)\)/g, '__tc_endsWith($1, $2)');
-    // substring with two args must come before single-arg version
-    v = v.replace(/(\w+)\.substring\(([^,]+),\s*([^)]+)\)/g, '__tc_substring2($1, $2, $3)');
-    v = v.replace(/(\w+)\.substring\(([^)]+)\)/g, '__tc_substring1($1, $2)');
-    v = v.replace(/(\w+)\.replace\(([^,]+),\s*([^)]+)\)/g, '__tc_replace($1, $2, $3)');
-    v = v.replace(/(\w+)\.charAt\(([^)]+)\)/g, '__tc_charAt($1, $2)');
-    v = v.replace(/(\w+)\.charCodeAt\(([^)]+)\)/g, '__tc_charCodeAt($1, $2)');
-    // includes/indexOf — overloaded for both std::string and std::vector<T>
-    v = v.replace(/(\w+)\.includes\(([^)]+)\)/g, '__tc_includes($1, $2)');
-    v = v.replace(/(\w+)\.indexOf\(([^)]+)\)/g, '__tc_indexOf($1, $2)');
-    v = v.replace(/(\w+)\.lastIndexOf\(([^)]+)\)/g, '__tc_lastIndexOf($1, $2)');
-    // padStart/padEnd with fill string must come before single-arg versions
-    v = v.replace(/(\w+)\.padStart\(([^,]+),\s*([^)]+)\)/g, '__tc_padStart($1, $2, $3)');
-    v = v.replace(/(\w+)\.padStart\(([^)]+)\)/g, '__tc_padStart_default($1, $2)');
-    v = v.replace(/(\w+)\.padEnd\(([^,]+),\s*([^)]+)\)/g, '__tc_padEnd($1, $2, $3)');
-    v = v.replace(/(\w+)\.padEnd\(([^)]+)\)/g, '__tc_padEnd_default($1, $2)');
-    v = v.replace(/(\w+)\.repeat\(([^)]+)\)/g, '__tc_repeat($1, $2)');
-    // String.split(delim) → returns std::vector<std::string>
-    v = v.replace(/(\w+)\.split\(([^)]+)\)/g, '__tc_split($1, $2)');
-    // Array.join(delim) → concatenates vector with delimiter
-    v = v.replace(/(\w+)\.join\(([^)]+)\)/g, '__tc_join($1, $2)');
-    // Array.slice(start, end) and slice(start)
-    v = v.replace(/(\w+)\.slice\(([^,]+),\s*([^)]+)\)/g, '__tc_slice2($1, $2, $3)');
-    v = v.replace(/(\w+)\.slice\(([^)]+)\)/g, '__tc_slice1($1, $2)');
-    // String/Array reverse
-    v = v.replace(/(\w+)\.reverse\(\)/g, '__tc_reverse($1)');
-    // StaticArray/std::vector method renames
-    v = v.replace(/(\w+)\.push\(([^)]+)\)/g, '$1.push_back($2)');
-    v = v.replace(/(\w+)\.pop\(\)/g, '$1.pop_back()');
-    v = v.replace(/(\w+)\.length\b(?:\(\))?/g, '$1.size()');
-    // Array mutation methods
-    v = v.replace(/(\w+)\.shift\(\)/g, '__tc_shift($1)');
-    v = v.replace(/(\w+)\.pop\(\)/g, '__tc_pop($1)');
-    v = v.replace(/(\w+)\.unshift\(([^)]+)\)/g, '__tc_unshift($1, $2)');
-    // sort with comparator must come before sort()
-    v = v.replace(/(\w+)\.sort\(([^)]+)\)/g, '__tc_sort_fn($1, $2)');
-    v = v.replace(/(\w+)\.sort\(\)/g, '__tc_sort($1)');
-    // fill with range must come before fill with value only
-    v = v.replace(/(\w+)\.fill\(([^,]+),\s*([^,]+),\s*([^)]+)\)/g, '__tc_fill3($1, $2, $3, $4)');
-    v = v.replace(/(\w+)\.fill\(([^)]+)\)/g, '__tc_fill($1, $2)');
-    v = v.replace(/(\w+)\.concat\(([^)]+)\)/g, '__tc_concat($1, $2)');
-    // splice with deleteCount must come before splice with start only
-    v = v.replace(/(\w+)\.splice\(([^,]+),\s*([^)]+)\)/g, '__tc_splice2($1, $2, $3)');
-    v = v.replace(/(\w+)\.splice\(([^)]+)\)/g, '__tc_splice1($1, $2)');
-    // Array functional methods — note: inline arrow functions need IR-level
-    // support for full lambda translation; named function references work directly
-    v = v.replace(/(\w+)\.filter\(([^)]+)\)/g, '__tc_filter($1, $2)');
-    v = v.replace(/(\w+)\.map\(([^)]+)\)/g, '__tc_map($1, $2)');
-    // reduce with initial value must come before reduce without
-    v = v.replace(/(\w+)\.reduce\(([^,]+),\s*([^)]+)\)/g, '__tc_reduce($1, $2, $3)');
-    v = v.replace(/(\w+)\.reduce\(([^)]+)\)/g, '__tc_reduce_no_init($1, $2)');
-    v = v.replace(/(\w+)\.find\(([^)]+)\)/g, '__tc_find($1, $2)');
-    v = v.replace(/(\w+)\.findIndex\(([^)]+)\)/g, '__tc_findIndex($1, $2)');
-    v = v.replace(/(\w+)\.every\(([^)]+)\)/g, '__tc_every($1, $2)');
-    v = v.replace(/(\w+)\.some\(([^)]+)\)/g, '__tc_some($1, $2)');
+    while (prev !== v) {
+      prev = v;
+      v = v.replace(/\bundefined\b/g, 'CUTTLEFISH_UNDEFINED');
+      v = v.replace(/\bnull\b/g, 'CUTTLEFISH_UNDEFINED');
+      v = v.replace(/Date\.now\(\)/g, 'Date::now()');
+      const R = '(std::string\\([^)]*\\)|(?:[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*))';
+      v = v.replace(new RegExp(`${R}\\.toUpperCase\\(\\)`, 'g'), '__tc_toUpperCase($1)');
+      v = v.replace(new RegExp(`${R}\\.toLowerCase\\(\\)`, 'g'), '__tc_toLowerCase($1)');
+      v = v.replace(new RegExp(`${R}\\.trim\\(\\)`, 'g'), '__tc_trim($1)');
+      v = v.replace(new RegExp(`${R}\\.startsWith\\(([^)]+)\\)`, 'g'), '($1.rfind($2, 0) == 0)');
+      v = v.replace(new RegExp(`${R}\\.endsWith\\(([^)]+)\\)`, 'g'), '__tc_endsWith($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.substring\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_substring2($1, $2, $3)');
+      v = v.replace(new RegExp(`${R}\\.substring\\(([^)]+)\\)`, 'g'), '__tc_substring1($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.replace\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_replace($1, $2, $3)');
+      v = v.replace(new RegExp(`${R}\\.charAt\\(([^)]+)\\)`, 'g'), '__tc_charAt($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.charCodeAt\\(([^)]+)\\)`, 'g'), '__tc_charCodeAt($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.includes\\(([^)]+)\\)`, 'g'), '__tc_includes($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.indexOf\\(([^)]+)\\)`, 'g'), '__tc_indexOf($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.lastIndexOf\\(([^)]+)\\)`, 'g'), '__tc_lastIndexOf($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.padStart\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_padStart($1, $2, $3)');
+      v = v.replace(new RegExp(`${R}\\.padStart\\(([^)]+)\\)`, 'g'), '__tc_padStart_default($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.padEnd\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_padEnd($1, $2, $3)');
+      v = v.replace(new RegExp(`${R}\\.padEnd\\(([^)]+)\\)`, 'g'), '__tc_padEnd_default($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.repeat\\(([^)]+)\\)`, 'g'), '__tc_repeat($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.split\\(([^)]+)\\)`, 'g'), '__tc_split($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.join\\(([^)]+)\\)`, 'g'), '__tc_join($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.slice\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_slice2($1, $2, $3)');
+      v = v.replace(new RegExp(`${R}\\.slice\\(([^)]+)\\)`, 'g'), '__tc_slice1($1, $2)');
+      v = v.replace(new RegExp(`${R}\\.reverse\\(\\)`, 'g'), '__tc_reverse($1)');
+      v = v.replace(/(\w+)\.push\(([^)]+)\)/g, '$1.push_back($2)');
+      v = v.replace(/(\w+)\.length\b(?:\(\))?/g, '$1.size()');
+      v = v.replace(/(\w+)\.shift\(\)/g, '__tc_shift($1)');
+      v = v.replace(/(\w+)\.pop\(\)/g, '__tc_pop($1)');
+      // unshift: single-arg only — multi-arg unshift(a,b,c) is rare and not handled by polyfill
+      v = v.replace(/(\w+)\.unshift\(([^)]+)\)/g, '__tc_unshift($1, $2)');
+      v = v.replace(/(\w+)\.sort\((.+)\)/g, '__tc_sort_fn($1, $2)');
+      v = v.replace(/(\w+)\.sort\(\)/g, '__tc_sort($1)');
+      v = v.replace(/(\w+)\.fill\(([^,]+),\s*([^,]+),\s*([^)]+)\)/g, '__tc_fill3($1, $2, $3, $4)');
+      v = v.replace(/(\w+)\.fill\(([^)]+)\)/g, '__tc_fill($1, $2)');
+      v = v.replace(/(\w+)\.concat\(([^)]+)\)/g, '__tc_concat($1, $2)');
+      v = v.replace(/(\w+)\.splice\(([^,]+),\s*([^)]+)\)/g, '__tc_splice2($1, $2, $3)');
+      v = v.replace(/(\w+)\.splice\(([^)]+)\)/g, '__tc_splice1($1, $2)');
+      v = v.replace(/(\w+)\.filter\(([^)]+)\)/g, '__tc_filter($1, $2)');
+      v = v.replace(/(\w+)\.map\(([^)]+)\)/g, '__tc_map($1, $2)');
+      v = v.replace(/(\w+)\.reduce\(([^,]+),\s*([^)]+)\)/g, '__tc_reduce($1, $2, $3)');
+      v = v.replace(/(\w+)\.reduce\(([^)]+)\)/g, '__tc_reduce_no_init($1, $2)');
+      v = v.replace(/(\w+)\.find\(([^)]+)\)/g, '__tc_find($1, $2)');
+      v = v.replace(/(\w+)\.findIndex\(([^)]+)\)/g, '__tc_findIndex($1, $2)');
+      v = v.replace(/(\w+)\.every\(([^)]+)\)/g, '__tc_every($1, $2)');
+      v = v.replace(/(\w+)\.some\(([^)]+)\)/g, '__tc_some($1, $2)');
+    }
     return v;
   }
 
   nullValue(): string {
-    return 'TYPEHAL_UNDEFINED';
+    return 'CUTTLEFISH_UNDEFINED';
   }
 
   wrapStringConcat(): string | undefined {
@@ -199,11 +181,15 @@ export class NativeStrategy implements PlatformStrategy {
   }
 
   wrapStringObject(value: string): string {
-    return `String(${value})`;
+    return `std::to_string(${value})`;
   }
 
   useSnprintfForStrings(): boolean {
     return false;
+  }
+
+  promoteDivisionToDouble(): boolean {
+    return true;
   }
 
   renameEnumMember(_enumName: string, memberName: string): string {
@@ -230,17 +216,26 @@ export class NativeStrategy implements PlatformStrategy {
 
   transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? '' : ';';
+    const empty = !renderedArgs || renderedArgs.trim() === '';
     switch (method) {
       case 'log':
       case 'info':
       case 'debug':
-        return `std::cout << ${renderedArgs} << std::endl${semi}`;
+        return empty
+          ? `std::cout << std::endl${semi}`
+          : `std::cout << ${renderedArgs} << std::endl${semi}`;
       case 'error':
-        return `std::cerr << "[ERROR] " << ${renderedArgs} << std::endl${semi}`;
+        return empty
+          ? `std::cerr << "[ERROR] " << std::endl${semi}`
+          : `std::cerr << "[ERROR] " << ${renderedArgs} << std::endl${semi}`;
       case 'warn':
-        return `std::cerr << "[WARN] " << ${renderedArgs} << std::endl${semi}`;
+        return empty
+          ? `std::cerr << "[WARN] " << std::endl${semi}`
+          : `std::cerr << "[WARN] " << ${renderedArgs} << std::endl${semi}`;
       default:
-        return `std::cout << ${renderedArgs} << std::endl${semi}`;
+        return empty
+          ? `std::cout << std::endl${semi}`
+          : `std::cout << ${renderedArgs} << std::endl${semi}`;
     }
   }
 
@@ -320,7 +315,7 @@ export class NativeStrategy implements PlatformStrategy {
         lines.push(`    ${n}.run();`);
       }
       if (hasPromiseRuntime) {
-        lines.push('    typehal_pump_microtasks();');
+        lines.push('    cuttlefish_pump_microtasks();');
       }
       lines.push('    std::this_thread::sleep_for(std::chrono::milliseconds(1));');
       lines.push('  }');
@@ -360,7 +355,7 @@ export class NativeStrategy implements PlatformStrategy {
   // ── Native polyfills ────────────────────────────────────────────────────
 
   nativePolyfills(): Set<string> {
-    return new Set(['console', 'string_methods', 'timer_methods', 'array_methods']);
+    return new Set(['console', 'string_methods', 'timer_methods', 'array_methods', 'math_methods']);
   }
 
   generateNativePolyfills(): RuntimePolyfillIR[] {
@@ -419,9 +414,22 @@ export class NativeStrategy implements PlatformStrategy {
       },
       {
         kind: 'polyfill',
+        id: 'math_methods',
+        domain: 'standard' as const,
+        requiredIncludes: ['<cstdlib>'],
+        forwardDeclarations: [],
+        helperStructs: [],
+        helperFunctions: [
+          'inline double __tc_random() { return (double)rand() / RAND_MAX; }',
+        ],
+        shimMacros: [],
+        dependencies: [],
+      },
+      {
+        kind: 'polyfill',
         id: 'array_methods',
         domain: 'standard' as const,
-        requiredIncludes: ['<algorithm>'],
+        requiredIncludes: ['<algorithm>', '<map>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [
@@ -453,6 +461,10 @@ export class NativeStrategy implements PlatformStrategy {
           'template<typename T, typename F> int __tc_findIndex(const std::vector<T>& v, F pred) { for (int i = 0; i < (int)v.size(); i++) if (pred(v[i])) return i; return -1; }',
           'template<typename T, typename F> bool __tc_every(const std::vector<T>& v, F pred) { for (const auto& x : v) if (!pred(x)) return false; return true; }',
           'template<typename T, typename F> bool __tc_some(const std::vector<T>& v, F pred) { for (const auto& x : v) if (pred(x)) return true; return false; }',
+          // ── Map helper methods (Object.keys/values/entries) ──────────────
+          'template<typename K, typename V> std::vector<K> __tc_mapKeys(const std::map<K, V>& m) { std::vector<K> keys; for (const auto& p : m) keys.push_back(p.first); return keys; }',
+          'template<typename K, typename V> std::vector<V> __tc_mapValues(const std::map<K, V>& m) { std::vector<V> vals; for (const auto& p : m) vals.push_back(p.second); return vals; }',
+          'template<typename K, typename V> std::vector<std::pair<K, V>> __tc_mapEntries(const std::map<K, V>& m) { std::vector<std::pair<K, V>> entries; for (const auto& p : m) entries.push_back(p); return entries; }',
         ],
         shimMacros: [],
         dependencies: [],

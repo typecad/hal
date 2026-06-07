@@ -1,4 +1,4 @@
-import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit';
+﻿import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit';
 
 export class SerialPort {
   private _port: string;
@@ -70,7 +70,7 @@ export class SerialPort {
 }
 
 
-/** Map TypeHAL UART instance number to Arduino C++ object name. UART0→Serial, UART1→Serial1 */
+/** Map TypeCAD UART instance number to Arduino C++ object name. UART0→Serial, UART1→Serial1 */
 export function serialName(instance: number): string {
   return instance === 0 ? "Serial" : `Serial${instance}`;
 }

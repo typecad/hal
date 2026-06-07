@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Arduino Library Integration Tests
 //
 // Tests for Arduino library discovery, type definition generation, and
@@ -39,7 +39,7 @@ describe('Arduino Library Import Detection', () => {
     expect(isArduinoLibraryImport('../parent-module')).toBe(false);
     
     // NPM-style imports
-    expect(isArduinoLibraryImport('@typehal/core')).toBe(false);
+    expect(isArduinoLibraryImport('@typecad/hal')).toBe(false);
     expect(isArduinoLibraryImport('typescript')).toBe(false);
     expect(isArduinoLibraryImport('node/fs')).toBe(false);
     
@@ -263,7 +263,7 @@ describe('Usage Documentation Generation', () => {
     
     const doc = generateUsageDocumentation(parsed, 'TestSensor', mockLibrary);
     
-    expect(doc).toContain('# TestSensor - TypeHAL Usage Guide');
+    expect(doc).toContain('# TestSensor - TypeCAD Usage Guide');
     expect(doc).toContain('Test Author');
     expect(doc).toContain('A test sensor library');
   });
@@ -348,7 +348,7 @@ describe('Usage Documentation Generation', () => {
     
     const doc = generateUsageDocumentation(parsed, 'Sensor');
     
-    expect(doc).toContain("import { I2C0 } from '@typehal'");
+    expect(doc).toContain("import { I2C0 } from '@typecad'");
   });
 
   it('includes editing instructions', () => {

@@ -1,4 +1,4 @@
-import fs from "node:fs";
+﻿import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -396,8 +396,8 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       buttonPath,
       [
-        "import { D2, millis } from '@typehal';",
-        "import type { IInputModePin } from '@typehal/core';",
+        "import { D2, millis } from '@typecad';",
+        "import type { IInputModePin } from '@typecad/hal';",
         "",
         "export class Button {",
         "  private readonly pin: IInputModePin;",
@@ -438,7 +438,7 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { D2 } from '@typehal';",
+        "import { D2 } from '@typecad';",
         "import { Button } from './Button';",
         "",
         "const btn = Button.start(D2, 50).onPress(() => {",
@@ -453,7 +453,7 @@ describe("forward declarations", () => {
       inputFile: entryPath,
       emitMode: "split",
       target: "arduino",
-      mcu: "@typehal/mcu-atmega328p",
+      mcu: "@typecad/mcu-atmega328p",
       emitMaps: false,
       skipTypeCheck: true,
     });
@@ -496,7 +496,7 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { D2 } from '@typehal';",
+        "import { D2 } from '@typecad';",
         "import { Button } from './Button';",
         "",
         "Button.start(D2, 50).onPress(() => {",
@@ -511,7 +511,7 @@ describe("forward declarations", () => {
       inputFile: entryPath,
       emitMode: "split",
       target: "arduino",
-      mcu: "@typehal/mcu-atmega328p",
+      mcu: "@typecad/mcu-atmega328p",
       emitMaps: false,
       skipTypeCheck: true,
     });

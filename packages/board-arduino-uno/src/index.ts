@@ -1,5 +1,5 @@
-import type { BoardDefinition } from '@typehal/schema';
-import { ATmega328P } from '@typehal/mcu-atmega328p';
+import type { BoardDefinition } from '@typecad/cuttlefish/api/schema';
+import { ATmega328P } from '@typecad/mcu-atmega328p';
 
 // ---------------------------------------------------------------------------
 // Board definition
@@ -63,9 +63,9 @@ export default ArduinoUno;
 // ---------------------------------------------------------------------------
 
 // Silicon-level re-exports from MCU package (pure silicon)
-export * from '@typehal/mcu-atmega328p';
+export * from '@typecad/mcu-atmega328p';
 
-// Generic HAL re-exports from @typehal/hal
+// Generic HAL re-exports from @typecad/hal
 export {
   HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP,
   delay, millis, micros, delayMicroseconds,
@@ -76,14 +76,14 @@ export {
   randomSeed, random, Random,
   noInterrupts, interrupts, attachInterrupt, detachInterrupt,
   ADC, AsyncClass, Async
-} from '@typehal/hal';
+} from '@typecad/hal';
 
 // Board-level pin Discovery API (using silicon pins from MCU)
 import {
   PD0, PD1, PD2, PD3, PD4, PD5, PD6, PD7,
   PB0, PB1, PB2, PB3, PB4, PB5,
   PC0, PC1, PC2, PC3, PC4, PC5,
-} from '@typehal/mcu-atmega328p';
+} from '@typecad/mcu-atmega328p';
 
 /**
  * Pin collections for runtime capability discovery.

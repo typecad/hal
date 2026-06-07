@@ -1,7 +1,7 @@
 {
-  "name": "@typehal/framework-avr",
+  "name": "@typecad/framework-avr",
   "version": "0.1.0",
-  "description": "TypeHAL framework package for native AVR register-level code generation",
+  "description": "TypeCAD framework package for native AVR register-level code generation",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,8 +18,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typehal/core": "*",
-    "@typehal/framework-arduino": "*"
+    "@typecad/cuttlefish": "*",
+    "@typecad/framework-arduino": "*"
   },
   "license": "MIT",
   "publishConfig": {

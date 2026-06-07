@@ -1,13 +1,13 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // ArduinoStrategy — Arduino framework target (setup/loop, Serial, .ino …)
 //
 // Absorbs all Arduino-specific emit logic previously scattered across
-// cpp-emitter.ts, typehal-map.ts, and arduino-profile.ts.
+// cpp-emitter.ts, TypeCAD-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig } from "@typehal/core/shared";
-import type { StatementIR, HALOpIR } from "@typehal/core/shared";
-import { generatePromiseRuntime } from "@typehal/core/shared";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig } from "@typecad/cuttlefish/api/shared";
+import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
+import { generatePromiseRuntime } from "@typecad/cuttlefish/api/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
 import { resolveArduinoProfile } from "./profile";
 
@@ -34,7 +34,7 @@ function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
  */
 const ARDUINO_RESERVED_NAMES: ReadonlySet<string> = new Set([
   // Standard Arduino digital/analog pin-mode macros (all platforms)
-  // HIGH and LOW are phantom constants from @typehal that map directly to Arduino
+  // HIGH and LOW are phantom constants from @TypeCAD that map directly to Arduino
   // macros — they must pass through as-is in expressions.
   "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE",
   // ESP32-specific pin-mode macros (esp32-hal-gpio.h)
@@ -142,13 +142,13 @@ export class ArduinoStrategy implements PlatformStrategy {
     this._usesPinGroup = detectPinGroupUsage(program);
     const profileLines = this.getOrResolveProfile(program, ctx).shimLines;
     const lines: string[] = [
-      "// TypeHAL Core Shims",
-      "#ifndef TYPEHAL_UNDEFINED",
-      "#define TYPEHAL_UNDEFINED 0",
+      "// TypeCAD Core Shims",
+      "#ifndef CUTTLEFISH_UNDEFINED",
+      "#define CUTTLEFISH_UNDEFINED 0",
       "#endif",
       "",
-      "template<typename T> inline bool typehal_exists(T v) { return v != (T)TYPEHAL_UNDEFINED; }",
-      "template<typename T, typename U> inline T typehal_nullish(T a, U b) { return (a != (T)TYPEHAL_UNDEFINED) ? a : (T)b; }",
+      "template<typename T> inline bool cuttlefish_exists(T v) { return v != (T)CUTTLEFISH_UNDEFINED; }",
+      "template<typename T, typename U> inline T cuttlefish_nullish(T a, U b) { return (a != (T)CUTTLEFISH_UNDEFINED) ? a : (T)b; }",
       "",
     ];
 
@@ -189,7 +189,7 @@ export class ArduinoStrategy implements PlatformStrategy {
 
     // Comprehensive HAL polyfills in C++
     lines.push(
-      "// TypeHAL Native Polyfills",
+      "// TypeCAD Native Polyfills",
       "struct __tc_Num {",
       "    struct MapChain {",
       "        long v; long fl, fh;",
@@ -274,17 +274,17 @@ export class ArduinoStrategy implements PlatformStrategy {
 
     lines.push(
       "",
-      "#ifndef TYPEHAL_STR_BUF_SIZE",
-      "#define TYPEHAL_STR_BUF_SIZE 64",
+      "#ifndef CUTTLEFISH_STR_BUF_SIZE",
+      "#define CUTTLEFISH_STR_BUF_SIZE 64",
       "#endif",
       "",
       "// String helpers",
       "struct __tc_str_ptr {",
-      "    char buf[TYPEHAL_STR_BUF_SIZE];",
-      "    __tc_str_ptr(const char* s = \"\") { strncpy(buf, s, TYPEHAL_STR_BUF_SIZE - 1); buf[TYPEHAL_STR_BUF_SIZE - 1] = 0; }",
-      "    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, TYPEHAL_STR_BUF_SIZE); }",
-      "    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, TYPEHAL_STR_BUF_SIZE); return *this; }",
-      "    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, TYPEHAL_STR_BUF_SIZE - 1); buf[TYPEHAL_STR_BUF_SIZE - 1] = 0; return *this; }",
+      "    char buf[CUTTLEFISH_STR_BUF_SIZE];",
+      "    __tc_str_ptr(const char* s = \"\") { strncpy(buf, s, CUTTLEFISH_STR_BUF_SIZE - 1); buf[CUTTLEFISH_STR_BUF_SIZE - 1] = 0; }",
+      "    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, CUTTLEFISH_STR_BUF_SIZE); }",
+      "    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, CUTTLEFISH_STR_BUF_SIZE); return *this; }",
+      "    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, CUTTLEFISH_STR_BUF_SIZE - 1); buf[CUTTLEFISH_STR_BUF_SIZE - 1] = 0; return *this; }",
       "    const char* c_str() const { return buf; }",
       "    size_t size() const { return strlen(buf); }",
       "    size_t length() const { return strlen(buf); }",
@@ -313,24 +313,24 @@ export class ArduinoStrategy implements PlatformStrategy {
    * Board packages can override to provide native implementations.
    */
   nativePolyfills(): Set<string> {
-    return new Set(["string_methods", "typehal_halt", "timer_methods"]);
+    return new Set(["string_methods", "cuttlefish_halt", "timer_methods"]);
   }
 
   /**
-   * Generate native helpers: typehal_halt macro, Arduino string helpers,
+   * Generate native helpers: cuttlefish_halt macro, Arduino string helpers,
    * and (when stdlib supports it) the cooperative async Promise runtime.
    */
   generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
     const helpers: RuntimePolyfillIR[] = [{
       kind: "polyfill",
-      id: "typehal_halt",
+      id: "cuttlefish_halt",
       domain: "arduino",
       requiredIncludes: [],
       forwardDeclarations: [],
       helperStructs: [],
       helperFunctions: [
-        `#ifndef typehal_halt
-#define typehal_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
+        `#ifndef cuttlefish_halt
+#define cuttlefish_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
 #endif`,
       ],
       shimMacros: [],
@@ -343,17 +343,17 @@ export class ArduinoStrategy implements PlatformStrategy {
       forwardDeclarations: [],
       helperStructs: [],
       helperFunctions: [`
-// TYPEHAL_STR_BUF_SIZE now defined in shimLines
+// CUTTLEFISH_STR_BUF_SIZE now defined in shimLines
 // Arduino string method polyfills
 bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
-const char* __tc_toUpperCase(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
-const char* __tc_toLowerCase(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
-const char* __tc_trim(const char* s) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' || s[len-1] == '\n' || s[len-1] == '\r')) len--; int cplen = len < TYPEHAL_STR_BUF_SIZE - 1 ? len : TYPEHAL_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\0'; return b; }
-const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= TYPEHAL_STR_BUF_SIZE) len = TYPEHAL_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\0'; return b; }
+const char* __tc_toUpperCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
+const char* __tc_toLowerCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
+const char* __tc_trim(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' || s[len-1] == '\n' || s[len-1] == '\r')) len--; int cplen = len < CUTTLEFISH_STR_BUF_SIZE - 1 ? len : CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\0'; return b; }
+const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= CUTTLEFISH_STR_BUF_SIZE) len = CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\0'; return b; }
 const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
 const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
 const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][TYPEHAL_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= TYPEHAL_STR_BUF_SIZE) { strncpy(b, s, TYPEHAL_STR_BUF_SIZE - 1); b[TYPEHAL_STR_BUF_SIZE - 1] = '\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
+const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
 const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\0'; return buf[slot]; }
 int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx]; }
 `],
@@ -567,8 +567,8 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     return cppType.endsWith("*");
   }
   mapFunctionName(originalName: string): string {
-    if (originalName === "void" || originalName === "__typehal_entrypoint__") return "setup";
-    if (originalName === "main") return "typehal_main";
+    if (originalName === "void" || originalName === "__cuttlefish_entrypoint__") return "setup";
+    if (originalName === "main") return "cuttlefish_main";
     return originalName;
   }
 
@@ -593,8 +593,8 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       "$1",
     );
     v = v.replace(/\bDate\.now\(\)/g, "millis()");
-    v = v.replace(/\bundefined\b/g, "TYPEHAL_UNDEFINED");
-    v = v.replace(/\bnull\b/g, "TYPEHAL_UNDEFINED");
+    v = v.replace(/\bundefined\b/g, "CUTTLEFISH_UNDEFINED");
+    v = v.replace(/\bnull\b/g, "CUTTLEFISH_UNDEFINED");
 
     // String method transformations for Arduino (const char* → String wrapper calls)
     // Mutating methods that return void in Arduino are wrapped in helper functions
@@ -625,7 +625,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     return v;
   }
   nullValue(): string {
-    return "TYPEHAL_UNDEFINED";
+    return "CUTTLEFISH_UNDEFINED";
   }
   wrapStringConcat(leftRendered: string, rightRendered: string, leftIsString: boolean): string | undefined {
     // When snprintf mode is active, string concat is handled at the expression
@@ -656,7 +656,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     }
 
     const effectivePrecision = precision ?? 6;
-    const bufferName = `__typehal_float_${tempId}`;
+    const bufferName = `__cuttlefish_float_${tempId}`;
     const estimatedLength = Math.max(16, effectivePrecision + 8);
     return {
       format: "%s",
@@ -716,7 +716,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   // ── Statement rendering ─────────────────────────────────────────────────
 
   renderThrow(_valueExpr: string): string {
-    return "typehal_halt(\"PANIC\")";
+    return "cuttlefish_halt(\"PANIC\")";
   }
   isConsoleCall(callee: string): boolean {
     return callee.startsWith("console.");
@@ -771,7 +771,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   // ── Name guards ─────────────────────────────────────────────────────────
 
   forwardDeclarationExclusions(): string[] {
-    return ["setup", "loop", "typehal_main"];
+    return ["setup", "loop", "cuttlefish_main"];
   }
 
   ambientTypeDeclarations(): string[] {
@@ -818,13 +818,13 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       "    getString(key: string, defaultValue: string): string;",
       "    remove(key: string): void;",
       "  };",
-      // Augment the '@typehal' module to re-export ownership types so that
-      // `import { Owned, Shared } from '@typehal'` resolves correctly during
+      // Augment the '@TypeCAD' module to re-export ownership types so that
+      // `import { Owned, Shared } from '@TypeCAD'` resolves correctly during
       // the transpiler's pre-emit type-check.  The strings below close the
       // enclosing `declare global {`, open a module augmentation, then
       // re-open `declare global {` for the caller's closing brace.
       "}",
-      "declare module '@typehal' {",
+      "declare module '@TypeCAD' {",
       "  export type Owned<T = any> = T;",
       "  export type Shared<T = any> = T;",
       "  export type Mutable<T = any> = T;",
@@ -919,7 +919,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     for (const n of taskVarNames) {
       lines.push(`  ${n}.run();`);
     }
-    if (hasPromiseRuntime) lines.push("  typehal_pump_microtasks();");
+    if (hasPromiseRuntime) lines.push("  cuttlefish_pump_microtasks();");
     if (hasTimersVal) lines.push("  __tc_timer_runtime.run();");
     return lines;
   }

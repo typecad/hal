@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 5a — I2C Sensor Read (Basic Wire API)
 //
 // Demonstrates basic I2C master mode communication with a BME280 sensor.
@@ -6,7 +6,7 @@
 //        requestFrom(), available(), read()
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0, delay } from '@typehal';
+import { I2C0, UART0, delay } from '@typecad';
 
 // Initialize UART0 for debug output
 const serial = UART0.begin(9600);

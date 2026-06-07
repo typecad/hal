@@ -1,12 +1,12 @@
-// ---------------------------------------------------------------------------
-// @typehal/expect — Vitest-style console reporter
+﻿// ---------------------------------------------------------------------------
+// @typecad/expect — Vitest-style console reporter
 //
 // Renders test results to the console with ANSI colors, mimicking vitest's
 // output format.
 //
 // Example output:
 //
-//  typehal-test v0.1.0
+//  cuttlefish-test v0.1.0
 //
 //  ✓ A0 analog read (2 tests)
 //    ✓ reads zero when grounded          2ms

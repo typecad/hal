@@ -1,17 +1,17 @@
-{
-  "name": "typehal-native-demo",
+﻿{
+  "name": "typecad-native-demo",
   "version": "1.0.0",
-  "description": "TypeHAL native C++ demo — portable Windows/Linux executables",
+  "description": "TypeCAD native C++ demo — portable Windows/Linux executables",
   "private": true,
   "scripts": {
-    "build": "cd .. && node packages/transpiler/dist/cli.js native_demo/src/main.ts --framework @typehal/framework-native",
-    "build:watch": "cd .. && node packages/transpiler/dist/cli.js build --project native_demo",
-    "native": "cd .. && node packages/transpiler/dist/cli.js native_demo/src/main.ts --compile --framework @typehal/framework-native",
+    "build": "cd .. && node packages/cuttlefish/dist/cli.js native_demo/src/main.ts --framework @typecad/framework-native",
+    "build:watch": "cd .. && node packages/cuttlefish/dist/cli.js build --project native_demo",
+    "native": "cd .. && node packages/cuttlefish/dist/cli.js native_demo/src/main.ts --compile --framework @typecad/framework-native",
     "ts": "npx tsx src/main.ts"
   },
   "dependencies": {
-    "@typehal/core": "*",
-    "@typehal/framework-native": "*",
-    "@typehal/transpiler": "*"
+    "@typecad/hal": "*",
+    "@typecad/framework-native": "*",
+    "@typecad/cuttlefish": "*"
   }
 }

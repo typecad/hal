@@ -1,4 +1,4 @@
-import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit';
+﻿import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit';
 import { include } from './include';
 import type { Pin } from './gpio';
 
@@ -106,7 +106,7 @@ export class SPIBus {
   }
 }
 
-/** Map TypeHAL SPI instance number to Arduino C++ object name. SPI0→SPI, SPI1→SPI1 */
+/** Map TypeCAD SPI instance number to Arduino C++ object name. SPI0→SPI, SPI1→SPI1 */
 export function spiName(instance: number): string {
   return instance === 0 ? "SPI" : `SPI${instance}`;
 }

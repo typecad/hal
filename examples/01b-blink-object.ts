@@ -1,11 +1,11 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 1b — Blink: Object vs Legacy GPIO API
 //
 // Shows the recommended object-creation pattern alongside the legacy
 // direct API for pin configuration and toggling.
 // ---------------------------------------------------------------------------
 
-import { HIGH, LED, delay } from '@typehal';
+import { HIGH, LED, delay } from '@typecad';
 
 // Recommended pattern: alias-based GPIO usage.
 const led = LED.asOutput(HIGH);

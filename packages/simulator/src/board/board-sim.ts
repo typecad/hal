@@ -1,8 +1,8 @@
-// ---------------------------------------------------------------------------
-// @typehal/simulator — Simulated board factory
+﻿// ---------------------------------------------------------------------------
+// @typecad/simulator — Simulated board factory
 // ---------------------------------------------------------------------------
 
-import type { BasePin, AnalogPin, PWMPin, InterruptPin } from '@typehal/core';
+import type { BasePin, AnalogPin, PWMPin, InterruptPin } from '@typecad/hal';
 import type { SimBoardConfig } from '../types';
 import { SimDigitalPin } from '../gpio/digital-pin-sim';
 import { SimAnalogPin } from '../gpio/analog-pin-sim';

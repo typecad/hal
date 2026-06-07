@@ -1,8 +1,8 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Tests for ADC range validation
 //
 // ADC range validation previously relied on isAnalogRead() which detected
-// typehal-call IR nodes for analog pin reads. In the __EMIT__ system, analog
+// cuttlefish-call IR nodes for analog pin reads. In the __EMIT__ system, analog
 // reads are lowered to C++ calls and the structured metadata is no longer
 // available. These tests verify that no false ADC warnings are generated.
 // ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@ import { transpile } from './setup';
 describe('ADC Range Validation', () => {
   it('does not generate false warnings for ADC comparisons', () => {
     const result = transpile(`
-      import { A0 } from '@typehal/board-arduino-uno';
+      import { A0 } from '@typecad/board-arduino-uno';
       if (A0.read() > 2000) {
         // ADC range validation not available in __EMIT__ system
       }
@@ -28,7 +28,7 @@ describe('ADC Range Validation', () => {
 
   it('does not generate warning for comparison within ADC range', () => {
     const result = transpile(`
-      import { A0 } from '@typehal/board-arduino-uno';
+      import { A0 } from '@typecad/board-arduino-uno';
       if (A0.read() > 512) {
         // This is fine, 512 <= 1023
       }

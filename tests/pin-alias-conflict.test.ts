@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import { transpile } from './setup';
 
 describe('Pin Alias Conflict Validation', () => {
   it('does not generate warning when a pin is used through only one name', () => {
     const result = transpile(`
-      import { LED } from '@typehal/board-arduino-uno';
+      import { LED } from '@typecad/board-arduino-uno';
       LED.asOutput();
       LED.high();
     `, { target: 'arduino' });
@@ -22,7 +22,7 @@ describe('Pin Alias Conflict Validation', () => {
     // Pin alias conflicts are no longer detectable from __EMIT__ nodes
     // since both D13 and LED produce pin number 13, tracked as D13.
     const result = transpile(`
-      import { D13, LED } from '@typehal/board-arduino-uno';
+      import { D13, LED } from '@typecad/board-arduino-uno';
       D13.asOutput();
       LED.high();
     `, { target: 'arduino' });

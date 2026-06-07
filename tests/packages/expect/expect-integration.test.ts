@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Quick smoke test: verify the example hardware test preprocesses correctly
 // ---------------------------------------------------------------------------
 
@@ -21,8 +21,8 @@ describe('example test preprocessing', () => {
     expect(result).toContain('[TC:SUITE_START]');
 
     // Should preserve non-expect imports
-    expect(result).toContain("import { A0, A1 } from '@typehal'");
-    expect(result).not.toContain("@typehal/expect");
+    expect(result).toContain("import { A0, A1 } from '@typecad'");
+    expect(result).not.toContain("@typecad/expect");
 
     // Should have describe protocol lines
     expect(result).toContain('[TC:DESCRIBE:A0 analog read]');

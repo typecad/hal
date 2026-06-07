@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Arduino debug code generator — Serial-based debug output
 //
 // Generates Arduino Serial.print/println code for debug breakpoints,
@@ -25,7 +25,7 @@ export function generateSerialInitCode(): string[] {
     `while (!Serial) {`,
     `  delay(10);`,
     `}`,
-    `Serial.println("🔧 TypeHAL Debug Mode Active");`,
+    `Serial.println("🔧 TypeCAD Debug Mode Active");`,
     `Serial.println("");`,
     `// === END DEBUG INIT ===`,
     ``,

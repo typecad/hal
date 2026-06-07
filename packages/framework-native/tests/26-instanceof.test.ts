@@ -1,4 +1,4 @@
-import { describe, done } from '@typehal/expect';
+﻿import { describe, done } from '@typecad/expect';
 
 describe("Type checking patterns")
   .it("enum-based type discrimination")

@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // SIMULATOR DEMO: TESTING FIRMWARE WITHOUT HARDWARE
 //
 // This demo shows how "Software-Defined Hardware" allows you to develop and
@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from "vitest";
-import { createSimBoard, type SimAnalogPin, type SimPWMPin, type SimSerialPort } from "@typehal/simulator";
+import { createSimBoard, type SimAnalogPin, type SimPWMPin, type SimSerialPort } from "@typecad/simulator";
 
 // ===========================================================================
 // SECTION 1: FIRMWARE LOGIC

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-arduino-uno — Pin exports
+// @typecad/board-arduino-uno — Pin exports
 //
-// Each pin is a Pin instance from @typehal/hal. The transpiler inlines
+// Each pin is a Pin instance from @typecad/hal. The transpiler inlines
 // method calls (high(), low(), write(), etc.) as direct Arduino C++.
 // Pin names use MCU port identifiers (PD0, PB5, PC0) matching the
 // ATmega328P datasheet and KiCad symbol library.
@@ -17,14 +17,14 @@ export {
   PD0, PD1, PD2, PD3, PD4, PD5, PD6, PD7,
   PB0, PB1, PB2, PB3, PB4, PB5,
   PC0, PC1, PC2, PC3, PC4, PC5,
-} from '@typehal/mcu-atmega328p';
+} from '@typecad/mcu-atmega328p';
 
 // Re-import for local aliasing
 import {
   PD0, PD1, PD2, PD3, PD4, PD5, PD6, PD7,
   PB0, PB1, PB2, PB3, PB4, PB5,
   PC0, PC1, PC2, PC3, PC4, PC5,
-} from '@typehal/mcu-atmega328p';
+} from '@typecad/mcu-atmega328p';
 
 // ---------------------------------------------------------------------------
 // Arduino-style pin aliases (D0–D13, A0–A5)
@@ -60,4 +60,4 @@ export const A5 = PC5;
 export const LED  = PB5;
 
 // Re-export silicon-level aliases (SDA, MOSI, etc.) from MCU package
-export { SDA, SCL, MOSI, MISO, SCK, SS, TX, RX } from '@typehal/mcu-atmega328p';
+export { SDA, SCL, MOSI, MISO, SCK, SS, TX, RX } from '@typecad/mcu-atmega328p';

@@ -1,10 +1,10 @@
-// ---------------------------------------------------------------------------
-// @typehal/simulator — Simulated PWM pin
+﻿// ---------------------------------------------------------------------------
+// @typecad/simulator — Simulated PWM pin
 // ---------------------------------------------------------------------------
 
-import type { PWMPin, IToneAttachment, AnalogValue } from '@typehal/core';
-import { PinMode } from '@typehal/core';
-import type { DigitalValue } from '@typehal/core';
+import type { PWMPin, IToneAttachment, AnalogValue } from '@typecad/hal';
+import { PinMode } from '@typecad/hal';
+import type { DigitalValue } from '@typecad/hal';
 import { SimDigitalPin } from './digital-pin-sim';
 
 /**

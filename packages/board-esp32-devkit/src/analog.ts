@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-esp32-devkit — Analog constants
+// @typecad/board-esp32-devkit — Analog constants
 // ---------------------------------------------------------------------------
 
 /** Default reference (3.3V). */

@@ -1,11 +1,11 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 6b — SPI Transactions
 //
 // Demonstrates SPI transactions for time-critical communication.
 // Shows: Reconfiguring SPI between devices with different settings
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, D10, delay } from '@typehal';
+import { SPI0, UART0, D10, delay } from '@typecad';
 
 const serial = UART0.begin(9600);
 

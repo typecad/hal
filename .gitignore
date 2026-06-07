@@ -3,7 +3,7 @@ dist/
 **/.build/
 example/
 vitest.config.js
-demo/typehal.config.js
+demo/cuttlefish.config.js
 **/*.tsbuildinfo
 *.zip
 tmp-*.txt

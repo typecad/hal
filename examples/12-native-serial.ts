@@ -1,11 +1,11 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Native Serial/UART Example
 //
 // Demonstrates native UART communication on ATmega328P using direct register
 // access instead of the Arduino Serial library.
 // ---------------------------------------------------------------------------
 
-import { UART0, A0, delay } from '@typehal';
+import { UART0, A0, delay } from '@typecad';
 
 // Initialize UART0 at 9600 baud
 const serial = UART0.begin(9600);

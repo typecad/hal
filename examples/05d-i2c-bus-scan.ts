@@ -1,11 +1,11 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 5d — I2C Bus Scan
 //
 // Scans the I2C bus for connected devices.
 // Shows: Checking device presence, iterating through addresses, standard I2C address ranges
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0, delay } from '@typehal';
+import { I2C0, UART0, delay } from '@typecad';
 
 // Initialize UART0 for debug output
 const serial = UART0.begin(9600);

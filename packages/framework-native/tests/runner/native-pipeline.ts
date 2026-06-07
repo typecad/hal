@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Native test pipeline
 //
 // Full pipeline for one test fixture:
@@ -9,8 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { nativePreprocess } from './native-preprocessor';
-import { parseProtocolLines } from '@typehal/expect/parser';
-import type { DescribeResult } from '@typehal/expect/types';
+import { parseProtocolLines } from '@typecad/expect/parser';
+import type { DescribeResult } from '@typecad/expect/types';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -64,8 +64,8 @@ export function runNativeTest(fixturePath: string): NativeTestResult {
   // Always write config so the CLI discovers framework-native
   writeBuildConfig(buildDir, baseName);
 
-  // 4. Transpile via typehal CLI (always use build mode for config discovery)
-  const cliPath = path.resolve(packageRoot, '..', '..', 'packages', 'transpiler', 'dist', 'cli.js');
+  // 4. Transpile via TypeCAD CLI (always use build mode for config discovery)
+  const cliPath = path.resolve(packageRoot, '..', '..', 'packages', 'cuttlefish', 'dist', 'cli.js');
 
   const transpileResult = spawnSync(
     process.execPath,
@@ -164,20 +164,20 @@ function patchGeneratedCpp(cppPath: string): void {
   src = src.replace(/\bdouble\s+main\s*\(\)/g, 'int main()');
   src = src.replace(/\blong\s+main\s*\(\)/g, 'int main()');
 
-  // Replace bare 'undefined' with TYPEHAL_UNDEFINED sentinel
-  src = src.replace(/\bundefined\b/g, 'TYPEHAL_UNDEFINED');
+  // Replace bare 'undefined' with CUTTLEFISH_UNDEFINED sentinel
+  src = src.replace(/\bundefined\b/g, 'CUTTLEFISH_UNDEFINED');
 
   // Fix ||= and ??= patterns: when a variable is initialized to 0 but the next
-  // statement checks it against TYPEHAL_UNDEFINED, the initial value was undefined.
-  // Pattern: 'double x = 0;\n  x = (x == TYPEHAL_UNDEFINED ? ...' -> change 0 to TYPEHAL_UNDEFINED
+  // statement checks it against CUTTLEFISH_UNDEFINED, the initial value was undefined.
+  // Pattern: 'double x = 0;\n  x = (x == CUTTLEFISH_UNDEFINED ? ...' -> change 0 to CUTTLEFISH_UNDEFINED
   src = src.replace(
-    /(\b\w+\s+)(\w+)\s*=\s*0;\s*\n\s*\2\s*=\s*\(\s*\2\s*==\s*TYPEHAL_UNDEFINED/g,
-    '$1$2 = TYPEHAL_UNDEFINED;\n  $2 = ($2 == TYPEHAL_UNDEFINED',
+    /(\b\w+\s+)(\w+)\s*=\s*0;\s*\n\s*\2\s*=\s*\(\s*\2\s*==\s*CUTTLEFISH_UNDEFINED/g,
+    '$1$2 = CUTTLEFISH_UNDEFINED;\n  $2 = ($2 == CUTTLEFISH_UNDEFINED',
   );
 
   // Fix struct initializers for nullish coalescing: when a struct field has value 0
-  // in the initializer but is later used with typehal_nullish(), it means the original
-  // value was 'undefined' which the transpiler converted to 0. Replace with TYPEHAL_UNDEFINED.
+  // in the initializer but is later used with cuttlefish_nullish(), it means the original
+  // value was 'undefined' which the transpiler converted to 0. Replace with CUTTLEFISH_UNDEFINED.
   src = fixNullishStructInitializers(src);
 
   // Fix polyfill helper functions: emitter converts . to -> in function bodies.
@@ -243,15 +243,19 @@ function patchGeneratedCpp(cppPath: string): void {
     }
   }
 
+  // Fix string concatenation in cout: "a" + b + "c" → "a" << b << "c"
+  // In cout context, + for string concat should be << to avoid const char* + expr errors
+  src = fixCoutStringConcat(src);
+
   fs.writeFileSync(cppPath, src, 'utf8');
 }
 
 function fixNullishStructInitializers(src: string): string {
   // Find struct declarations with initializers where a field initialized to 0 is
-  // later used with typehal_nullish(). Pattern:
+  // later used with cuttlefish_nullish(). Pattern:
   //   struct _config_t { int low; int high; int timeout; } config = { 150, 700, 0 };
-  //   ... typehal_nullish(config.timeout, 500);
-  // The 0 for 'timeout' should be TYPEHAL_UNDEFINED since it was originally 'undefined'.
+  //   ... cuttlefish_nullish(config.timeout, 500);
+  // The 0 for 'timeout' should be CUTTLEFISH_UNDEFINED since it was originally 'undefined'.
 
   let result = src;
   const structPattern = /struct\s+(\w+)\s*\{([^}]+)\}\s*(\w+)\s*=\s*\{([^}]+)\}/g;
@@ -269,8 +273,8 @@ function fixNullishStructInitializers(src: string): string {
       if (!fieldName) continue;
       // Only consider fields initialized to 0
       if (values[i] !== '0') continue;
-      // Check if this field is used with typehal_nullish
-      if (new RegExp(`typehal_nullish\\(\\s*${varName}\\s*\\.\\s*${fieldName}\\s*,`).test(src)) {
+      // Check if this field is used with cuttlefish_nullish
+      if (new RegExp(`cuttlefish_nullish\\(\\s*${varName}\\s*\\.\\s*${fieldName}\\s*,`).test(src)) {
         replacements.push({ fieldIndex: i });
       }
     }
@@ -280,7 +284,7 @@ function fixNullishStructInitializers(src: string): string {
     // Apply replacements to the initializer
     const newValues = [...values];
     for (const r of replacements) {
-      newValues[r.fieldIndex] = 'TYPEHAL_UNDEFINED';
+      newValues[r.fieldIndex] = 'CUTTLEFISH_UNDEFINED';
     }
     const newInit = newValues.join(', ');
     const oldInit = values.join(', ');
@@ -672,15 +676,15 @@ function rewriteRelativeImports(source: string, originalFilePath: string, buildD
 }
 
 function writeBuildConfig(buildDir: string, entryFileName: string): void {
-  const configPath = path.join(buildDir, 'typehal.config.ts');
+  const configPath = path.join(buildDir, 'cuttlefish.config.ts');
   fs.writeFileSync(
     configPath,
     [
-      `import type { TypehalConfig } from '@typehal/core';`,
+      `import type { TypeCADConfig } from '@typecad/hal';`,
       '',
-      'const config: TypehalConfig = {',
+      'const config: TypeCADConfig = {',
       `  entry: './${entryFileName}.ts',`,
-      `  framework: '@typehal/framework-native',`,
+      `  framework: '@typecad/framework-native',`,
       `  target: 'generic',`,
       '  output: {',
       `    outDir: './out',`,
@@ -691,6 +695,40 @@ function writeBuildConfig(buildDir: string, entryFileName: string): void {
       '',
     ].join('\n'),
     'utf8',
+  );
+}
+
+function fixCoutStringConcat(src: string): string {
+  return src.replace(
+    /^(\s*std::cout\s*<<\s*)(.+?)(\s*<<\s*std::endl;)$/gm,
+    (_match, prefix: string, content: string, suffix: string) => {
+      if (!content.includes(' + ')) return _match;
+      let depth = 0;
+      let result = '';
+      for (let i = 0; i < content.length; i++) {
+        const ch = content[i];
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        if (
+          depth === 0 &&
+          i > 0 &&
+          i < content.length - 2 &&
+          content.substring(i, i + 3) === ' + '
+        ) {
+          const before = content.substring(0, i).trimEnd();
+          const after = content.substring(i + 3).trimStart();
+          if (before.endsWith('"') || after.startsWith('"')) {
+            result += ' << ';
+            i += 2;
+          } else {
+            result += ch;
+          }
+        } else {
+          result += ch;
+        }
+      }
+      return prefix + result + suffix;
+    },
   );
 }
 

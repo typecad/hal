@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { transpileAVR, transpileESP32, matchesCpp, expectDiagnosticsMatchSnapshot } from "./setup";
 
 describe("Multi-Platform Transpilation", () => {
   it("emits AVR-specific Preferences shim", () => {
     const result = transpileAVR(`
-      import { Preferences } from '@typehal/framework-arduino/arduino';
+      import { Preferences } from '@typecad/framework-arduino/arduino';
       const prefs = new Preferences();
       prefs.begin("test");
     `);
@@ -21,7 +21,7 @@ describe("Multi-Platform Transpilation", () => {
 
   it("emits ESP32-specific Preferences include", { timeout: 15_000 }, () => {
     const result = transpileESP32(`
-      import { Preferences } from '@typehal/framework-arduino/arduino';
+      import { Preferences } from '@typecad/framework-arduino/arduino';
       const prefs = new Preferences();
       prefs.begin("test");
     `);
@@ -63,7 +63,7 @@ describe("Diagnostic Snapshotting", () => {
   it("snapshots peripheral ownership conflicts", () => {
     // Deliberate double-take
     const result = transpileAVR(`
-      import { SPI0 } from '@typehal/framework-arduino/arduino';
+      import { SPI0 } from '@typecad/framework-arduino/arduino';
       SPI0.take();
       SPI0.take();
     `);
@@ -97,7 +97,7 @@ describe("Memory & Collection Engine", () => {
 
   it("emits heap monitoring routine", () => {
     const result = transpileAVR(`
-      import { Timing } from '@typehal/framework-arduino/arduino';
+      import { Timing } from '@typecad/framework-arduino/arduino';
       const free = Timing.freeHeap();
     `);
 

@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Native C++ compilation toolchain
 //
 // Compiles generated C++ into a native executable using g++ or clang++.
@@ -7,8 +7,8 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import type { CompileResult, ToolchainOptions } from "@typehal/core/shared";
-import { parseCompileErrors } from "@typehal/core/shared";
+import type { CompileResult, ToolchainOptions } from "@typecad/cuttlefish/api/shared";
+import { parseCompileErrors } from "@typecad/cuttlefish/api/shared";
 import type { NativeCompileConfig } from "./native-config";
 
 function findCppSource(outputDir: string, sourcePath: string): string {

@@ -1,10 +1,10 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Tests for try/catch validation on architectures without exception support
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { validateTryCatch } from '@typehal/transpiler/testing';
-import type { StatementIR } from '@typehal/transpiler/testing';
+import { validateTryCatch } from '@typecad/cuttlefish/testing';
+import type { StatementIR } from '@typecad/cuttlefish/testing';
 import { ArduinoStrategy } from '../../../packages/framework-arduino';
 
 const _arduinoStrategy = new ArduinoStrategy();

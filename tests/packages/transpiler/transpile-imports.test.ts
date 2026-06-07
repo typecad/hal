@@ -1,8 +1,8 @@
-import fs from "node:fs";
+﻿import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { transpileFile } from "@typehal/transpiler/testing";
+import { transpileFile } from "@typecad/cuttlefish/testing";
 
 const tempDirs: string[] = [];
 
@@ -49,7 +49,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "split",
       target: "generic",
-      mcu: "@typehal/mcu-generic",
+      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });
@@ -101,7 +101,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "split",
       target: "generic",
-      mcu: "@typehal/mcu-generic",
+      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });
@@ -164,7 +164,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
-      mcu: "@typehal/mcu-generic",
+      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });
@@ -207,7 +207,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
-      mcu: "@typehal/mcu-generic",
+      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });
@@ -259,7 +259,7 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
-      mcu: "@typehal/mcu-generic",
+      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });

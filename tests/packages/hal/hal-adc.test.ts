@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // HAL ADC Tests
 //
 // Tests for board-aware ADC methods using the board() compile-time function
@@ -10,7 +10,7 @@ import { transpile } from '../../setup';
 describe('InputPin - readAnalog', () => {
   it('transpiles adc.readAnalog() to analogRead', () => {
     const result = transpile(`
-      import { A0 } from '@typehal/board-arduino-uno';
+      import { A0 } from '@typecad/board-arduino-uno';
       const adc = A0.asInput();
       const raw = adc.readAnalog();
     `, { target: 'arduino' });
@@ -22,7 +22,7 @@ describe('InputPin - readAnalog', () => {
 describe('InputPin - readVoltage', () => {
   it('transpiles adc.readVoltage() with Arduino Uno ADC constants', () => {
     const result = transpile(`
-      import { A0 } from '@typehal/board-arduino-uno';
+      import { A0 } from '@typecad/board-arduino-uno';
       const adc = A0.asInput();
       const voltage = adc.readVoltage();
     `, { target: 'arduino' });
@@ -33,7 +33,7 @@ describe('InputPin - readVoltage', () => {
 
   it('transpiles D3.readVoltage() using asInput()', () => {
     const result = transpile(`
-      import { D3 } from '@typehal/board-arduino-uno';
+      import { D3 } from '@typecad/board-arduino-uno';
       const pin = D3.asInput();
       const v = pin.readVoltage();
     `, { target: 'arduino' });
@@ -44,7 +44,7 @@ describe('InputPin - readVoltage', () => {
 
   it('uses readVoltage result in an expression', () => {
     const result = transpile(`
-      import { A0, UART0 } from '@typehal/board-arduino-uno';
+      import { A0, UART0 } from '@typecad/board-arduino-uno';
       const serial = UART0.begin(9600);
       const adc = A0.asInput();
       const v = adc.readVoltage();
@@ -64,7 +64,7 @@ describe('InputPin - readVoltage with setAnalogReference', () => {
   // tracks the active reference and substitutes it into the formula.
   it('uses INTERNAL reference voltage after ADC.setAnalogReference', () => {
     const result = transpile(`
-      import { A0, ADC, INTERNAL } from '@typehal/board-arduino-uno';
+      import { A0, ADC, INTERNAL } from '@typecad/board-arduino-uno';
       ADC.setAnalogReference(INTERNAL);
       const adc = A0.asInput();
       const v = adc.readVoltage();
@@ -78,7 +78,7 @@ describe('InputPin - readVoltage with setAnalogReference', () => {
 describe('ADC - getAnalogResolution', () => {
   it('returns ADC resolution for Arduino Uno (10-bit)', () => {
     const result = transpile(`
-      import { ADC } from '@typehal/board-arduino-uno';
+      import { ADC } from '@typecad/board-arduino-uno';
       const res = ADC.getAnalogResolution();
     `, { target: 'arduino' });
 
@@ -87,7 +87,7 @@ describe('ADC - getAnalogResolution', () => {
 
   it('returns ADC resolution for ESP32 (12-bit)', () => {
     const result = transpile(`
-      import { ADC } from '@typehal/board-esp32-devkit';
+      import { ADC } from '@typecad/board-esp32-devkit';
       const res = ADC.getAnalogResolution();
     `, { target: 'arduino' });
 
@@ -98,7 +98,7 @@ describe('ADC - getAnalogResolution', () => {
 describe('ADC - setAnalogReference', () => {
   it('emits analogReference() call with phantom constant', () => {
     const result = transpile(`
-      import { ADC, INTERNAL } from '@typehal/board-arduino-uno';
+      import { ADC, INTERNAL } from '@typecad/board-arduino-uno';
       ADC.setAnalogReference(INTERNAL);
     `, { target: 'arduino' });
 
@@ -109,7 +109,7 @@ describe('ADC - setAnalogReference', () => {
 describe('ADC - getAnalogReference', () => {
   it('returns default reference voltage for Arduino Uno (5.0V)', () => {
     const result = transpile(`
-      import { ADC } from '@typehal/board-arduino-uno';
+      import { ADC } from '@typecad/board-arduino-uno';
       const ref = ADC.getAnalogReference();
     `, { target: 'arduino' });
 
@@ -118,7 +118,7 @@ describe('ADC - getAnalogReference', () => {
 
   it('returns default reference voltage for ESP32 (3.3V)', () => {
     const result = transpile(`
-      import { ADC } from '@typehal/board-esp32-devkit';
+      import { ADC } from '@typecad/board-esp32-devkit';
       const ref = ADC.getAnalogReference();
     `, { target: 'arduino' });
 
@@ -127,7 +127,7 @@ describe('ADC - getAnalogReference', () => {
 
   it('returns INTERNAL voltage after setAnalogReference on Arduino Uno', () => {
     const result = transpile(`
-      import { ADC, INTERNAL } from '@typehal/board-arduino-uno';
+      import { ADC, INTERNAL } from '@typecad/board-arduino-uno';
       ADC.setAnalogReference(INTERNAL);
       const ref = ADC.getAnalogReference();
     `, { target: 'arduino' });

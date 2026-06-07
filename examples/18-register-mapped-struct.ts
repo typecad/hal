@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 18 — Register-Mapped Structs with Bit Fields
 //
 // Demonstrates type-safe MMIO register access using @register and @bits
@@ -11,8 +11,8 @@
 //   (*USART1 >> 8) & 3UL                               // USART1.PS read
 // ---------------------------------------------------------------------------
 
-import { UART0 } from '@typehal';
-import { register, bits, type Bit, type Bits } from '@typehal/core';
+import { UART0 } from '@typecad';
+import { register, bits, type Bit, type Bits } from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
 // Define a USART peripheral at address 0x4001_1000

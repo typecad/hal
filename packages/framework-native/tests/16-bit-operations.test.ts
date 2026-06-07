@@ -1,4 +1,4 @@
-import { describe, done } from '@typehal/expect';
+﻿import { describe, done } from '@typecad/expect';
 
 describe("Bit mask constants")
   .it("named bit flags combined with OR")

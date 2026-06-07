@@ -1,5 +1,5 @@
-import { describe, done } from '@typehal/expect';
-import { LED, D13, A0, UART0, I2C0, SPI0 } from '@typehal';
+﻿import { describe, done } from '@typecad/expect';
+import { LED, D13, A0, UART0, I2C0, SPI0 } from '@TypeCAD';
 
 describe("Dynamic Board Aliases")
   .it("LED resolves to D13 on Uno")

@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { buildProgramIR, emitCpp, resolveStrategy } from "@typehal/transpiler/testing";
+﻿import { describe, it, expect } from "vitest";
+import { buildProgramIR, emitCpp, resolveStrategy } from "@typecad/cuttlefish/testing";
 
 const TARGET = "generic" as const;
 const STRATEGY = resolveStrategy("generic");

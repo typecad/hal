@@ -1,0 +1,13 @@
+{
+  "name": "my-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cuttlefish build",
+    "compile": "cuttlefish build --compile"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "^0.1.0",
+    "@typecad/framework-native": "^0.1.0"
+  }
+}

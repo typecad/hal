@@ -1,7 +1,7 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Tests for interrupt safety analysis
 //
-// Interrupt safety analysis previously relied on typehal-call IR nodes to detect
+// Interrupt safety analysis previously relied on cuttlefish-call IR nodes to detect
 // attachInterrupt calls and scan ISR callbacks for unsafe operations. In the
 // __EMIT__ system, interrupt handlers may be emitted as regular call nodes or
 // __EMIT__ nodes. These tests verify the current behavior.
@@ -14,7 +14,7 @@ describe('Interrupt Safety Analysis', () => {
   describe('Duplicate Interrupt Handler Detection', () => {
     it('does not generate false duplicate handler warnings for different pins', () => {
       const result = transpile(`
-        import { D2, D3 } from '@typehal/board-arduino-uno';
+        import { D2, D3 } from '@typecad/board-arduino-uno';
         D2.attachInterrupt(() => {}, 'RISING');
         D3.attachInterrupt(() => {}, 'RISING');
       `, { target: 'arduino' });
@@ -28,7 +28,7 @@ describe('Interrupt Safety Analysis', () => {
 
     it('does not warn for onFalling on D2 and onRising on D3 (different pins)', () => {
       const result = transpile(`
-        import { D2, D3 } from '@typehal/board-arduino-uno';
+        import { D2, D3 } from '@typecad/board-arduino-uno';
         D2.onFalling(() => {});
         D3.onRising(() => {});
       `, { target: 'arduino' });
@@ -44,7 +44,7 @@ describe('Interrupt Safety Analysis', () => {
   describe('Unsafe Operations in ISR', () => {
     it('does not generate warning for safe operations in ISR', () => {
       const result = transpile(`
-        import { D2, D13 } from '@typehal/board-arduino-uno';
+        import { D2, D13 } from '@typecad/board-arduino-uno';
         let counter = 0;
         D2.attachInterrupt(() => {
           counter++;
@@ -61,7 +61,7 @@ describe('Interrupt Safety Analysis', () => {
 
     it('does not generate warning for delay() outside ISR', () => {
       const result = transpile(`
-        import { delay } from '@typehal/board-arduino-uno';
+        import { delay } from '@typecad/board-arduino-uno';
         delay(1000);
       `, { target: 'arduino' });
 

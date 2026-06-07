@@ -1,5 +1,5 @@
-
-import { I2C0 } from '@typehal/board-arduino-uno';
+﻿
+import { I2C0 } from '@typecad/board-arduino-uno';
 
 // Take the bus
 const bus = I2C0.take();

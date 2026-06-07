@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 5c — I2C Multi-Byte Write
 //
 // Demonstrates writing multiple bytes to configure a device.
@@ -6,7 +6,7 @@
 //        writing arrays
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0, delay } from '@typehal';
+import { I2C0, UART0, delay } from '@typecad';
 
 // Initialize UART0 for debug output
 const serial = UART0.begin(9600);

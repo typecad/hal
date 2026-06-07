@@ -1,7 +1,7 @@
-// ---------------------------------------------------------------------------
-// @typehal/expect — Compiler
+﻿// ---------------------------------------------------------------------------
+// @typecad/expect — Compiler
 //
-// Wraps the typehal transpiler + arduino-cli compile/upload cycle.
+// Wraps the cuttlefish transpiler + arduino-cli compile/upload cycle.
 // Takes preprocessed TypeScript source, transpiles to C++, compiles, uploads.
 // ---------------------------------------------------------------------------
 
@@ -31,7 +31,7 @@ export interface UploadResult {
 /**
  * Transpile preprocessed TypeScript source to a C++ Arduino sketch.
  *
- * Writes the preprocessed source to a temp file, invokes the typehal
+ * Writes the preprocessed source to a temp file, invokes the cuttlefish
  * transpiler, and returns the path to the generated .ino file.
  */
 export function transpileTestFile(
@@ -57,9 +57,9 @@ export function transpileTestFile(
   const tsPath = path.join(buildDir, `${baseName}.ts`);
   fs.writeFileSync(tsPath, rewrittenSource, 'utf8');
 
-  // Invoke the typehal transpiler
+  // Invoke the cuttlefish transpiler
   // We call it as a CLI command rather than importing to avoid coupling
-  const typehalCmd = resolveTypehalCmd(projectRoot);
+  const cuttlefishCmd = resolveCuttlefishCmd(projectRoot);
   const useBuildMode = hasRelativeImports(rewrittenSource);
 
   if (useBuildMode) {
@@ -69,8 +69,8 @@ export function transpileTestFile(
   const result = spawnSync(
     process.execPath,
     useBuildMode
-      ? [typehalCmd, 'build', '--skip-type-check', '--force']
-      : [typehalCmd, tsPath, '--skip-type-check', '--force'],
+      ? [cuttlefishCmd, 'build', '--skip-type-check', '--force']
+      : [cuttlefishCmd, tsPath, '--skip-type-check', '--force'],
     {
       encoding: 'utf8',
       cwd: useBuildMode ? buildDir : projectRoot,
@@ -161,14 +161,14 @@ export function uploadSketch(
 // Internal
 // ---------------------------------------------------------------------------
 
-function resolveTypehalCmd(projectRoot: string): string {
-  // Try to find typehal CLI in the monorepo (current dir and parent dirs)
+function resolveCuttlefishCmd(projectRoot: string): string {
+  // Try to find cuttlefish CLI in the monorepo (current dir and parent dirs)
   let searchDir = projectRoot;
   for (let i = 0; i < 5; i++) {
     const candidates = [
       path.join(searchDir, 'packages', 'transpiler', 'dist', 'cli.js'),
-      path.join(searchDir, 'node_modules', '.bin', 'typehal'),
-      path.join(searchDir, 'node_modules', 'typehal', 'dist', 'cli.js'),
+      path.join(searchDir, 'node_modules', '.bin', 'cuttlefish'),
+      path.join(searchDir, 'node_modules', 'cuttlefish', 'dist', 'cli.js'),
     ];
 
     for (const c of candidates) {
@@ -181,11 +181,11 @@ function resolveTypehalCmd(projectRoot: string): string {
   }
 
   // Fallback: assume it's on PATH
-  return 'typehal';
+  return 'cuttlefish';
 }
 
 function findOutputDir(buildDir: string, baseName: string, projectRoot: string): string {
-  // The typehal transpiler writes output next to the source by default,
+  // The cuttlefish transpiler writes output next to the source by default,
   // or to the configured outDir.  Check common locations.
   const candidates = [
     buildDir,
@@ -254,17 +254,17 @@ function rewriteRelativeImports(source: string, originalFilePath: string, buildD
 }
 
 function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: string, buildTarget: string): void {
-  const baseConfigPath = path.join(projectRoot, 'typehal.config.ts');
-  const buildConfigPath = path.join(buildDir, 'typehal.config.ts');
+  const baseConfigPath = path.join(projectRoot, 'cuttlefish.config.ts');
+  const buildConfigPath = path.join(buildDir, 'cuttlefish.config.ts');
 
   if (fs.existsSync(baseConfigPath)) {
     // Parse base config via AST to extract scalar values, then inline them.
     // This avoids spreads (...baseConfig) which the config loader cannot evaluate.
     const baseValues = parseConfigAST(baseConfigPath);
     const lines = [
-      `import type { TypehalConfig } from '@typehal/core';`,
+      `import type { CuttlefishConfig } from '@typecad/hal';`,
       '',
-      'const config: TypehalConfig = {',
+      'const config: CuttlefishConfig = {',
       `  entry: './${entryFileName}',`,
     ];
     if (baseValues.target) lines.push(`  target: '${baseValues.target}',`);
@@ -296,9 +296,9 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
   fs.writeFileSync(
     buildConfigPath,
     [
-      `import type { TypehalConfig } from '@typehal/core';`,
+      `import type { CuttlefishConfig } from '@typecad/hal';`,
       '',
-      'const config: TypehalConfig = {',
+      'const config: CuttlefishConfig = {',
       `  entry: './${entryFileName}',`,
       `  target: 'avr',`,
       `  frameworkData: { buildTarget: '${buildTarget}' },`,

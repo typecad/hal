@@ -1,4 +1,4 @@
-{
+﻿{
   "compilerOptions": {
     "target": "ES2021",
     "module": "nodenext",
@@ -9,7 +9,7 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "paths": {
-      "@typehal/core": ["../packages/core/src/index.ts"]
+      "@typecad/hal": ["../packages/cuttlefish/src/api/index.ts"]
     },
     "typeRoots": ["./node_modules/@types"]
   },

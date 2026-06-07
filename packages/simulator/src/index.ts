@@ -1,5 +1,5 @@
-// ---------------------------------------------------------------------------
-// @typehal/simulator — Barrel export
+﻿// ---------------------------------------------------------------------------
+// @typecad/simulator — Barrel export
 // ---------------------------------------------------------------------------
 
 // --- GPIO simulation ---
@@ -20,7 +20,7 @@ export type { SPIOperationLog } from './bus/spi-sim';
 export { SimBoard, createSimBoard, attachSimulator } from './board/board-sim';
 
 // --- Types ---
-export { PinMode } from '@typehal/core';
+export { PinMode } from '@typecad/hal';
 export type {
   PinChangeCallback,
   InterruptCallback,

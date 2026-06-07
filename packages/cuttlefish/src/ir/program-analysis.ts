@@ -1,0 +1,505 @@
+﻿/**
+ * Combined program analysis - single-pass detection of multiple features.
+ * 
+ * Instead of traversing the IR multiple times for different checks
+ * (hasConsoleCalls, hasArrayInObjectLiteral, hasThrowStatements, etc.),
+ * this module performs all checks in a single traversal.
+ */
+
+import { ProgramIR, StatementIR, ExpressionIR, PlatformStrategy, Diagnostic } from "../api";
+import { POLYFILL_HELPER_MAP } from "../api/shared";
+import { analyzeResources } from "./resource-analysis";
+
+export interface ProgramAnalysisResult {
+  hasConsoleCalls: boolean;
+  hasArrayInObjectLiteral: boolean;
+  hasThrowStatements: boolean;
+  hasStdMathCalls: boolean;
+  usesVectorTypes: boolean;
+  usesStdString: boolean;
+  usesStdFunction: boolean;
+  declaredTypes: string[];
+  usedPolyfillHelpers: Set<string>;
+  usesStringConversion: boolean;
+  usesDateNow: boolean;
+  usesMillis: boolean;
+  usesNullish: boolean;
+  usesNum: boolean;
+  usesTiming: boolean;
+  usesWDT: boolean;
+  usesStrPtr: boolean;
+  hasSerialBegin: boolean;
+  hasGenerators: boolean;
+  usesStdMap: boolean;
+}
+
+// Regex for std:: math calls
+const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|abs|max|min)\b/;
+
+/**
+ * Analyze an expression for all features in a single pass.
+ */
+function analyzeExpression(
+  expr: ExpressionIR,
+  result: Pick<ProgramAnalysisResult, 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr'>,
+  strategy: PlatformStrategy
+): void {
+  if (!expr || typeof expr !== 'object' || !expr.kind) {
+    return;
+  }
+
+  switch (expr.kind) {
+    case "raw":
+      if (MATH_PATTERN.test(expr.value)) {
+        result.hasStdMathCalls = true;
+      }
+      for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+        if (expr.value.includes(pattern)) {
+          for (const name of helperNames) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+        // Also check for already-lowered __tc_ names
+        for (const name of helperNames) {
+          if (expr.value.includes(name)) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+      }
+      if (/\bString\s*\(/.test(expr.value)) {
+        result.usesStringConversion = true;
+      }
+      if (/Date\.now\s*\(/.test(expr.value) || /Date::now\s*\(/.test(expr.value)) {
+        result.usesDateNow = true;
+      }
+      if (/\bmillis\s*\(/.test(expr.value)) {
+        result.usesMillis = true;
+      }
+      if (expr.value.includes('cuttlefish_nullish(') || expr.value.includes('cuttlefish_exists(') || expr.value.includes('cuttlefish_is_nullish(')) {
+        result.usesNullish = true;
+      }
+      if (/\bNum\b/.test(expr.value)) {
+        result.usesNum = true;
+      }
+      if (/\bTiming\b/.test(expr.value)) {
+        result.usesTiming = true;
+      }
+      if (/\bWDT\b/.test(expr.value)) {
+        result.usesWDT = true;
+      }
+      if (expr.value.includes('__tc_str_ptr')) {
+        result.usesStrPtr = true;
+      }
+      break;
+
+    case "method-call":
+      if (/\bmillis\b/.test(expr.callee) || /\bdelay\b/.test(expr.callee) || /\bmicros\b/.test(expr.callee)) {
+        result.usesMillis = true;
+      }
+      if (expr.callee === "Date.now" || expr.callee === "Date::now") {
+        result.usesDateNow = true;
+      }
+      if (expr.callee === "String") {
+        result.usesStringConversion = true;
+      }
+      if (MATH_PATTERN.test(expr.callee)) {
+        result.hasStdMathCalls = true;
+      }
+      for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+        const methodName = pattern.startsWith('.') ? pattern.slice(1, -1) : pattern.slice(0, -1);
+        if (expr.callee.includes(pattern) || expr.callee.endsWith("." + methodName) || expr.callee === methodName) {
+          for (const name of helperNames) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+        for (const name of helperNames) {
+          if (expr.callee.includes(name)) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+      }
+      if (expr.callee.startsWith("Num.") || expr.callee === "Num") {
+        result.usesNum = true;
+      }
+      if (expr.callee.startsWith("Timing.") || expr.callee === "Timing") {
+        result.usesTiming = true;
+      }
+      if (expr.callee.startsWith("WDT.") || expr.callee === "WDT") {
+        result.usesWDT = true;
+      }
+      for (const arg of expr.args) {
+        analyzeExpression(arg, result, strategy);
+      }
+      break;
+
+    case "identifier":
+      if (expr.value === "null" || expr.value === "undefined" || expr.value === "CUTTLEFISH_UNDEFINED") {
+        result.usesNullish = true;
+      }
+      break;
+
+    case "string":
+      for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+        if (expr.value.includes(pattern)) {
+          for (const name of helperNames) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+        // Also check for already-lowered __tc_ names (e.g. in __EMIT__ calls from HAL resolver)
+        for (const name of helperNames) {
+          if (expr.value.includes(name)) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+      }
+      break;
+
+    case "array":
+      result.usesVectorTypes = true;
+      for (const element of expr.elements) {
+        analyzeExpression(element, result, strategy);
+      }
+      break;
+
+    case "object":
+      for (const field of expr.fields) {
+        analyzeExpression(field.value, result, strategy);
+      }
+      break;
+
+    case "ternary":
+      analyzeExpression(expr.condition, result, strategy);
+      analyzeExpression(expr.whenTrue, result, strategy);
+      analyzeExpression(expr.whenFalse, result, strategy);
+      break;
+
+    case "await":
+      analyzeExpression(expr.value, result, strategy);
+      break;
+
+    case "instanceof":
+      analyzeExpression(expr.object, result, strategy);
+      break;
+
+    case "spread_array":
+      analyzeExpression(expr.spreadExpr, result, strategy);
+      for (const element of expr.additionalElements) {
+        analyzeExpression(element, result, strategy);
+      }
+      break;
+
+    case "binary":
+      if (expr.operator === "**") {
+        result.hasStdMathCalls = true;
+      }
+      analyzeExpression(expr.left, result, strategy);
+      analyzeExpression(expr.right, result, strategy);
+      break;
+
+    case "unary":
+      analyzeExpression(expr.operand, result, strategy);
+      break;
+
+    case "property-access":
+      analyzeExpression(expr.object, result, strategy);
+      break;
+
+    case "element-access":
+      analyzeExpression(expr.object, result, strategy);
+      analyzeExpression(expr.index, result, strategy);
+      break;
+
+    case "string_concat":
+    case "template_string":
+      result.usesStringConversion = true;
+      if (expr.kind === "string_concat") {
+        for (const part of expr.parts) {
+          analyzeExpression(part, result, strategy);
+        }
+      } else {
+        analyzeExpression(expr.expression, result, strategy);
+      }
+      break;
+  }
+}
+
+/**
+ * Analyze a statement for all features in a single pass.
+ */
+function analyzeStatement(
+  statement: StatementIR,
+  result: ProgramAnalysisResult,
+  strategy: PlatformStrategy
+): void {
+  if (!statement || typeof statement !== 'object' || !statement.kind) {
+    return;
+  }
+
+  switch (statement.kind) {
+    case "call":
+      if (strategy.isConsoleCall(statement.callee)) {
+        result.hasConsoleCalls = true;
+      }
+      if (statement.callee === "Serial.begin" || statement.callee.endsWith(".begin")) {
+        result.hasSerialBegin = true;
+      }
+      if (statement.callee === "String") {
+        result.usesStringConversion = true;
+      }
+      if (statement.callee === "Date.now" || statement.callee === "Date::now") {
+        result.usesDateNow = true;
+      }
+      if (statement.callee === "millis" || statement.callee === "delay") {
+        result.usesMillis = true;
+      }
+      for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+        const methodName = pattern.startsWith('.') ? pattern.slice(1, -1) : pattern.slice(0, -1);
+        if (statement.callee === methodName || statement.callee.endsWith("." + methodName)) {
+          for (const name of helperNames) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
+      }
+      for (const arg of statement.args) {
+        analyzeExpression(arg, result, strategy);
+      }
+      break;
+
+    case "var_decl":
+      result.declaredTypes.push(statement.cppType);
+      if (statement.cppType.includes('__tc_str_ptr')) {
+        result.usesStrPtr = true;
+      }
+      if (statement.initializer) {
+        analyzeExpression(statement.initializer, result, strategy);
+        // Check for array in object literal
+        if (statement.initializer.kind === "array") {
+          result.hasArrayInObjectLiteral = true;
+        }
+      }
+      break;
+
+    case "assign":
+      analyzeExpression(statement.value, result, strategy);
+      break;
+
+    case "return":
+      if (statement.value) {
+        analyzeExpression(statement.value, result, strategy);
+      }
+      break;
+
+    case "throw":
+      result.hasThrowStatements = true;
+      analyzeExpression(statement.value, result, strategy);
+      break;
+
+    case "while":
+    case "do_while":
+      analyzeExpression(statement.condition, result, strategy);
+      for (const nested of statement.body) {
+        analyzeStatement(nested, result, strategy);
+      }
+      break;
+
+    case "if":
+      analyzeExpression(statement.condition, result, strategy);
+      for (const nested of statement.thenBranch) {
+        analyzeStatement(nested, result, strategy);
+      }
+      for (const nested of statement.elseBranch ?? []) {
+        analyzeStatement(nested, result, strategy);
+      }
+      break;
+
+    case "for":
+      if (statement.initializer) {
+        analyzeStatement(statement.initializer, result, strategy);
+      }
+      if (statement.condition) {
+        analyzeExpression(statement.condition, result, strategy);
+      }
+      if (statement.increment) {
+        analyzeStatement(statement.increment, result, strategy);
+      }
+      for (const nested of statement.body) {
+        analyzeStatement(nested, result, strategy);
+      }
+      break;
+
+    case "for_of":
+      analyzeStatement(statement.variable, result, strategy);
+      analyzeExpression(statement.iterable, result, strategy);
+      for (const nested of statement.body) {
+        analyzeStatement(nested, result, strategy);
+      }
+      break;
+
+    case "for_in":
+      analyzeStatement(statement.variable, result, strategy);
+      analyzeExpression(statement.object, result, strategy);
+      for (const nested of statement.body) {
+        analyzeStatement(nested, result, strategy);
+      }
+      break;
+
+    case "switch":
+      analyzeExpression(statement.expression, result, strategy);
+      for (const caseClause of statement.cases) {
+        if (caseClause.value) {
+          analyzeExpression(caseClause.value, result, strategy);
+        }
+        for (const nested of caseClause.body) {
+          analyzeStatement(nested, result, strategy);
+        }
+      }
+      break;
+
+    case "try":
+      for (const nested of statement.tryBlock) {
+        analyzeStatement(nested, result, strategy);
+      }
+      for (const nested of statement.catchBlock ?? []) {
+        analyzeStatement(nested, result, strategy);
+      }
+      for (const nested of statement.finallyBlock ?? []) {
+        analyzeStatement(nested, result, strategy);
+      }
+      break;
+
+    case "hal-op":
+      // Scan raw C++ code in HAL ops for polyfill helper usage
+      if (statement.operation && statement.operation.operation === "raw" && typeof statement.operation.code === "string") {
+        for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
+          if (statement.operation.code.includes(pattern)) {
+            for (const name of helperNames) {
+              result.usedPolyfillHelpers.add(name);
+            }
+          }
+          for (const name of helperNames) {
+            if (statement.operation.code.includes(name)) {
+              result.usedPolyfillHelpers.add(name);
+            }
+          }
+        }
+      }
+      break;
+
+    case "update":
+      // update statements just increment/decrement a variable
+      break;
+
+    case "break":
+    case "continue":
+      // no expressions to analyze
+      break;
+
+    case "labeled":
+    case "block":
+      const body = statement.kind === "labeled" ? statement.body : statement.body;
+      for (const nested of body) {
+        analyzeStatement(nested, result, strategy);
+      }
+      break;
+  }
+}
+
+
+/**
+ * Analyze a program IR in a single pass to detect all features.
+ * This replaces multiple separate traversals with one combined traversal.
+ */
+export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): ProgramAnalysisResult {
+  const result: ProgramAnalysisResult = {
+    hasConsoleCalls: false,
+    hasArrayInObjectLiteral: false,
+    hasThrowStatements: false,
+    hasStdMathCalls: false,
+    usesVectorTypes: false,
+    usesStdString: false,
+    usesStdFunction: false,
+    declaredTypes: [],
+    usedPolyfillHelpers: new Set(),
+    usesStringConversion: false,
+    usesDateNow: false,
+    usesMillis: false,
+    usesNullish: false,
+    usesNum: false,
+    usesTiming: false,
+    usesWDT: false,
+    usesStrPtr: false,
+    hasSerialBegin: false,
+    hasGenerators: false,
+    usesStdMap: false,
+  };
+
+  // Analyze type aliases
+  for (const typeAlias of program.typeAliases) {
+    result.declaredTypes.push(typeAlias.cppType);
+  }
+
+  // Analyze functions
+  for (const fn of program.functions) {
+    if (fn.isGenerator) result.hasGenerators = true;
+    result.declaredTypes.push(fn.returnType);
+    for (const parameter of fn.parameters) {
+      result.declaredTypes.push(parameter.cppType);
+    }
+    for (const statement of fn.statements) {
+      analyzeStatement(statement, result, strategy);
+    }
+  }
+
+  // Analyze top-level statements
+  for (const statement of program.topLevelStatements) {
+    analyzeStatement(statement, result, strategy);
+  }
+
+  // Analyze classes
+  for (const classDef of program.classes) {
+    for (const field of classDef.fields) {
+      result.declaredTypes.push(field.cppType);
+      if (field.initializer) {
+        analyzeExpression(field.initializer, result, strategy);
+        if (field.initializer.kind === "array") {
+          result.hasArrayInObjectLiteral = true;
+        }
+      }
+    }
+    for (const method of classDef.methods) {
+      result.declaredTypes.push(method.returnType);
+      for (const parameter of method.parameters) {
+        result.declaredTypes.push(parameter.cppType);
+      }
+      for (const statement of method.statements) {
+        analyzeStatement(statement, result, strategy);
+      }
+    }
+    if (classDef.constructor) {
+      for (const parameter of classDef.constructor.parameters) {
+        result.declaredTypes.push(parameter.cppType);
+      }
+      for (const statement of classDef.constructor.statements) {
+        analyzeStatement(statement, result, strategy);
+      }
+    }
+  }
+
+  // Post-process declared types to detect std:: usage
+  for (const typeName of result.declaredTypes) {
+    if (typeName.includes("std::vector<")) {
+      result.usesVectorTypes = true;
+    }
+    if (typeName.includes("std::string")) {
+      result.usesStdString = true;
+    }
+    if (typeName.includes("std::function<")) {
+      result.usesStdFunction = true;
+    }
+    if (typeName.includes("std::map<")) {
+      result.usesStdMap = true;
+    }
+  }
+
+  return result;
+}

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/mcu-atmega328p — Hardware peripheral descriptions
+// @typecad/mcu-atmega328p — Hardware peripheral descriptions
 //
 // Describes the peripherals built into the ATmega328P silicon.
 // These are properties of the chip, not the board — every ATmega328P has
@@ -13,7 +13,7 @@ import type {
   ADCDefinition,
   PWMDefinition,
   TimerDefinition,
-} from '@typehal/schema';
+} from '@typecad/cuttlefish/api/schema';
 import {
   I2CBus,
   SPIBus,
@@ -22,7 +22,7 @@ import {
   spiName,
   serialName,
   createHALInstances,
-} from '@typehal/hal';
+} from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
 // UART — 1 USART peripheral
@@ -182,7 +182,7 @@ export const EXTERNAL_INTERRUPTS = [
  * @example
  * ```typescript
  * // In a board package:
- * import { MCU_PERIPHERALS } from '@typehal/mcu-atmega328p';
+ * import { MCU_PERIPHERALS } from '@typecad/mcu-atmega328p';
  *
  * export const MyBoard: BoardDefinition = {
  *   // ...

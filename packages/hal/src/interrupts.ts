@@ -1,8 +1,9 @@
-// ---------------------------------------------------------------------------
-// @typehal/hal — Interrupt helpers
+﻿// ---------------------------------------------------------------------------
+// @typecad/hal — Interrupt helpers
 // ---------------------------------------------------------------------------
 
-import type { InterruptHandler, InterruptMode } from '@typehal/core';
+import type { InterruptHandler } from './core/pin';
+import type { InterruptMode } from './core/gpio';
 
 /**
  * Globally disable interrupts.

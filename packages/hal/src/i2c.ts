@@ -1,4 +1,4 @@
-import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit';
+﻿import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit';
 import { include } from './include';
 
 export class I2CDevice {
@@ -132,7 +132,7 @@ export class I2CBus {
 }
 
 
-/** Map TypeHAL I2C instance number to Arduino C++ object name. I2C0→Wire, I2C1→Wire1 */
+/** Map TypeCAD I2C instance number to Arduino C++ object name. I2C0→Wire, I2C1→Wire1 */
 export function i2cName(instance: number): string {
   return instance === 0 ? "Wire" : `Wire${instance}`;
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { transpile, normalizeCpp, hasInclude } from "./setup";
 
 describe("Polyfill Transpilation", () => {
@@ -348,6 +348,6 @@ describe("Async Runtime Polyfill", () => {
     expect(result.cpp).toContain("namespace typehal_async");
     expect(result.cpp).toContain("class MicrotaskQueue");
     expect(result.cpp).toContain("class Promise");
-    expect(result.cpp).toContain("inline void typehal_pump_microtasks()");
+    expect(result.cpp).toContain("inline void cuttlefish_pump_microtasks()");
   });
 });

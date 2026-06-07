@@ -1,4 +1,4 @@
-import { Board } from "@typehal/board-arduino-uno";
+﻿import { Board } from "@typecad/board-arduino-uno";
 
 let s1 = "Hello";
 let s2 = "World";

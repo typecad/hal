@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // HAL SPI Bus Tests
 //
 // Tests for SPI Arduino-compatible API
@@ -11,7 +11,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
   describe('Initialization', () => {
     it('transpiles SPI0.begin()', () => {
       const result = transpileArduino(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
       `);
 
@@ -22,7 +22,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
 
     it('transpiles SPI0.end()', () => {
       const result = transpileArduino(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         SPI0.end();
       `);
@@ -34,7 +34,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
   describe('Configuration', () => {
     it('transpiles setMode()', () => {
       const result = transpileArduino(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         SPI0.setMode(0);
       `);
@@ -44,7 +44,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
 
     it('transpiles setBitOrder()', () => {
       const result = transpileArduino(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         SPI0.setBitOrder('msb');
       `);
@@ -54,7 +54,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
 
     it('transpiles setFrequency()', () => {
       const result = transpileArduino(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         SPI0.setFrequency(1000000);
       `);
@@ -66,7 +66,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
   describe('Transactions', () => {
     it('transpiles beginTransaction/endTransaction', () => {
       const result = transpileArduino(`
-        import { SPI0, SPISettings } from '@typehal/framework-arduino/arduino';
+        import { SPI0, SPISettings } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         SPI0.beginTransaction({ frequency: 1000000, mode: 0, bitOrder: 'msb' });
         SPI0.transfer(0xFF);
@@ -82,7 +82,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
   describe('Transfer Operations', () => {
     it('transpiles single byte transfer', () => {
       const result = transpileArduino(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         const data = SPI0.transfer(0xFF);
       `);
@@ -92,7 +92,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
 
     it('transpiles write (transfer ignoring return)', () => {
       const result = transpileArduino(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         SPI0.write(0xFF);
       `);
@@ -102,7 +102,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
 
     it('transpiles write16', () => {
       const result = transpileArduino(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         SPI0.write16(0xABCD);
       `);
@@ -115,7 +115,7 @@ describe('SPI HAL - Arduino API Transpilation', () => {
 describe('SPI HAL - Multiple Bus Support', () => {
   it('lowers the high-level SPI API to SPI calls on Arduino Uno', () => {
     const result = transpileArduino(`
-      import { SPI0 } from '@typehal/framework-arduino/arduino';
+      import { SPI0 } from '@typecad/framework-arduino/arduino';
       SPI0.begin();
     `);
     

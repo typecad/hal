@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-arduino-uno — Analog constants
+// @typecad/board-arduino-uno — Analog constants
 // ---------------------------------------------------------------------------
 
 /** Default reference (VCC). */

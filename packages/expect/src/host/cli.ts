@@ -1,9 +1,9 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 // ---------------------------------------------------------------------------
-// @typehal/expect — CLI entry point
+// @typecad/expect — CLI entry point
 //
 // Usage:
-//   typehal-test [options] [files...]
+//   cuttlefish-test [options] [files...]
 //
 // Options:
 //   --port <port>       Serial port (e.g. COM3, /dev/ttyACM0)
@@ -110,10 +110,10 @@ function parseArgs(argv: string[]): CLIArgs {
 // ---------------------------------------------------------------------------
 
 const HELP = `
-\x1b[1m\x1b[36m typehal-test\x1b[0m — Hardware test runner for TypeHAL
+\x1b[1m\x1b[36m cuttlefish-test\x1b[0m — Hardware test runner for TypeCAD
 
 \x1b[1mUsage:\x1b[0m
-  typehal-test [options] [files...]
+  cuttlefish-test [options] [files...]
 
 \x1b[1mOptions:\x1b[0m
   --port, -p <port>     Serial port (e.g. COM4, /dev/ttyACM0)
@@ -126,15 +126,15 @@ const HELP = `
   --help, -h            Show this help
 
 \x1b[1mExamples:\x1b[0m
-  typehal-test --port COM4
-  typehal-test --port /dev/ttyACM0 tests/my-test.test.ts
-  typehal-test -p COM4 -v
+  cuttlefish-test --port COM4
+  cuttlefish-test --port /dev/ttyACM0 tests/my-test.test.ts
+  cuttlefish-test -p COM4 -v
 
 \x1b[1mConfiguration:\x1b[0m
-  Add a \`test\` section to your typehal.config.ts:
+  Add a \`test\` section to your cuttlefish.config.ts:
 
     const config = {
-      board: '@typehal/board-arduino-uno',
+      board: '@typecad/board-arduino-uno',
       test: {
         buildTarget: 'arduino:avr:uno',
         port: 'COM4',

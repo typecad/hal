@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 20 — GPIO Object-Creation Pattern
 //
 // Demonstrates the recommended way to configure GPIO pins using the
@@ -12,7 +12,7 @@
 // used the original pin name.
 // ---------------------------------------------------------------------------
 
-import { LED, D2, D3, D9, delay } from '@typehal';
+import { LED, D2, D3, D9, delay } from '@typecad';
 
 // ── Output pins ────────────────────────────────────────────────────────────
 // LED.asOutput(true) → pinMode(LED_BUILTIN, OUTPUT) + digitalWrite(LED_BUILTIN, HIGH)

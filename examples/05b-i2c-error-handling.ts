@@ -1,11 +1,11 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 5b — I2C Error Handling
 //
 // Demonstrates proper error handling for I2C operations.
 // Shows: Device accessor API, error checking patterns, bus recovery
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0, delay } from '@typehal';
+import { I2C0, UART0, delay } from '@typecad';
 
 // Initialize UART0 for debug output
 const serial = UART0.begin(9600);

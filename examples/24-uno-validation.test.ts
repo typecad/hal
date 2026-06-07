@@ -1,5 +1,5 @@
-import { describe, done } from '@typehal/expect';
-import { A0, LED } from '@typehal';
+﻿import { describe, done } from '@typecad/expect';
+import { A0, LED } from '@typecad';
 
 enum Mode {
   Idle = 0,

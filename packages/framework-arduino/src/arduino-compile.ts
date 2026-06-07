@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Arduino sketch compilation, upload, and monitoring
 //
 // Provides functions to flatten generated modules into an Arduino sketch,
@@ -8,8 +8,8 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import type { CompileError, CompileResult, UploadResult } from "@typehal/core/shared";
-import { parseCompileErrors, collectCppFiles } from "@typehal/core/shared";
+import type { CompileError, CompileResult, UploadResult } from "@typecad/cuttlefish/api/shared";
+import { parseCompileErrors, collectCppFiles } from "@typecad/cuttlefish/api/shared";
 
 export type ArduinoCompileResult = CompileResult;
 export type ArduinoUploadResult = UploadResult;

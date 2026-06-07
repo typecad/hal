@@ -1,28 +1,28 @@
-// ---------------------------------------------------------------------------
-// @typehal/framework-arduino — C++ Header Parser
+﻿// ---------------------------------------------------------------------------
+// @typecad/framework-arduino — C++ Header Parser
 //
 // Parses C++ header files from Arduino libraries into an IR that can be
 // used for TypeScript type declaration generation.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Arduino-to-TypeHAL type mappings
+// Arduino-to-TypeCAD type mappings
 // ---------------------------------------------------------------------------
 
 /**
- * Maps Arduino peripheral C++ types to TypeHAL equivalents.
+ * Maps Arduino peripheral C++ types to TypeCAD equivalents.
  * Uses the instance names (I2C0, SPI0, UART0) as types for simplicity.
  */
 const ARDUINO_TYPE_MAPPINGS: Record<string, string> = {
-  // I2C - TypeHAL uses I2C0 instance
+  // I2C - TypeCAD uses I2C0 instance
   "TwoWire": "I2C0",
   "TwoWire*": "I2C0",
   "TwoWire&": "I2C0",
-  // SPI - TypeHAL uses SPI0 instance
+  // SPI - TypeCAD uses SPI0 instance
   "SPIClass": "SPI0",
   "SPIClass*": "SPI0",
   "SPIClass&": "SPI0",
-  // Serial - TypeHAL uses UART0 instance
+  // Serial - TypeCAD uses UART0 instance
   "HardwareSerial": "UART0",
   "HardwareSerial*": "UART0",
   "HardwareSerial&": "UART0",

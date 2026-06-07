@@ -1,0 +1,339 @@
+﻿// ---------------------------------------------------------------------------
+// Heap / Memory Estimate Analysis
+//
+// Performs static analysis of the ProgramIR to estimate memory usage.
+// This is a conservative approximation — actual usage depends on compiler
+// optimizations and runtime behavior.
+// ---------------------------------------------------------------------------
+
+import type { ProgramIR, StructDefIR, ClassIR, FunctionIR, StatementIR, ExpressionIR, VariableDeclarationIR } from "../api";
+import type { HeapEstimate } from "../diagnostics/json-schema";
+
+/** Type sizes for common C++ types on AVR (8-bit) and ESP32 (32-bit) */
+const AVR_TYPE_SIZES: Record<string, number> = {
+  bool: 1,
+  char: 1,
+  "unsigned char": 1,
+  "signed char": 1,
+  uint8_t: 1,
+  int8_t: 1,
+  byte: 1,
+  short: 2,
+  "unsigned short": 2,
+  int16_t: 2,
+  uint16_t: 2,
+  int: 2,
+  "unsigned int": 2,
+  long: 4,
+  "unsigned long": 4,
+  float: 4,
+  double: 4,
+  "long long": 8,
+  size_t: 2,
+  ptrdiff_t: 2,
+  pointer: 2,
+  "char*": 2,
+  "const char*": 2,
+};
+
+const ESP32_TYPE_SIZES: Record<string, number> = {
+  bool: 1,
+  char: 1,
+  "unsigned char": 1,
+  "signed char": 1,
+  uint8_t: 1,
+  int8_t: 1,
+  byte: 1,
+  short: 2,
+  "unsigned short": 2,
+  int16_t: 2,
+  uint16_t: 2,
+  int: 4,
+  "unsigned int": 4,
+  long: 4,
+  "unsigned long": 4,
+  float: 4,
+  double: 8,
+  "long long": 8,
+  size_t: 4,
+  ptrdiff_t: 4,
+  pointer: 4,
+  "char*": 4,
+  "const char*": 4,
+};
+
+/**
+ * Determine the type size table based on the target architecture.
+ */
+function getTypeSizes(architecture?: string): Record<string, number> {
+  const arch = (architecture ?? "").toLowerCase();
+  if (arch === "avr" || arch === "atmega328p" || arch === "atmega2560") {
+    return AVR_TYPE_SIZES;
+  }
+  if (arch === "esp32" || arch === "esp32s3" || arch === "esp32c3" || arch === "xtensa" || arch === "riscv32") {
+    return ESP32_TYPE_SIZES;
+  }
+  // Default to ESP32 sizes (more conservative for 32-bit targets)
+  return ESP32_TYPE_SIZES;
+}
+
+/**
+ * Estimate the size of a C++ type string.
+ * Handles arrays like "int[10]" and pointers.
+ */
+function estimateTypeSize(cppType: string, typeSizes: Record<string, number>): number {
+  // Handle arrays: type[N]
+  const arrayMatch = cppType.match(/^(.+?)\[(\d+)\]$/);
+  if (arrayMatch) {
+    const elementType = arrayMatch[1].trim();
+    const count = parseInt(arrayMatch[2], 10);
+    return estimateTypeSize(elementType, typeSizes) * count;
+  }
+
+  // Handle pointers
+  if (cppType.endsWith("*")) {
+    return typeSizes.pointer ?? 2;
+  }
+
+  // Normalize: strip const, references, etc.
+  let normalized = cppType
+    .replace(/^const\s+/, "")
+    .replace(/&$/, "")
+    .replace(/volatile\s+/, "")
+    .trim();
+
+  // Check known sizes
+  if (typeSizes[normalized] !== undefined) {
+    return typeSizes[normalized];
+  }
+
+  // For struct/class types, we return 0 here and handle in struct size analysis
+  return 0;
+}
+
+/**
+ * Estimate the size of a struct or class from its fields.
+ */
+function estimateStructSize(
+  def: StructDefIR | ClassIR,
+  typeSizes: Record<string, number>,
+  structSizes: Record<string, number>,
+): number {
+  let total = 0;
+  const fields = "fields" in def ? def.fields : (def as ClassIR).fields;
+  if (fields) {
+    for (const field of fields) {
+      total += estimateTypeSize(field.cppType, typeSizes);
+    }
+  }
+  return total;
+}
+
+/**
+ * Walk expression IR to find string literals.
+ */
+function collectStringLiterals(
+  expr: ExpressionIR,
+  literals: { value: string; estimatedBytes: number }[],
+): void {
+  if (!expr) return;
+
+  // Work around type re-export issues with ExpressionIR union
+  const e = expr as any;
+  if (e.kind === "string") {
+    const value = e.value ?? "";
+    // C string: length + null terminator
+    const bytes = value.length + 1;
+    // Deduplicate (optional — keep simple for now)
+    literals.push({ value, estimatedBytes: bytes });
+  }
+
+  if (e.kind === "binary") {
+    collectStringLiterals(e.left, literals);
+    collectStringLiterals(e.right, literals);
+  }
+}
+
+/**
+ * Walk statements to find string literals in expressions.
+ */
+function collectStatementsStringLiterals(
+  stmts: StatementIR[],
+  literals: { value: string; estimatedBytes: number }[],
+): void {
+  if (!stmts || !Array.isArray(stmts)) return;
+  for (const stmt of stmts) {
+    const s = stmt as any;
+    if (s.kind === "var_decl") {
+      const vd = stmt as VariableDeclarationIR;
+      if (vd.initializer) {
+        collectStringLiterals(vd.initializer, literals);
+      }
+    } else if (s.kind === "expr_stmt") {
+      if (s.expression) {
+        collectStringLiterals(s.expression, literals);
+      }
+    }
+  }
+}
+
+/**
+ * Estimate stack depth and return the deepest paths.
+ */
+function estimateStackDepth(
+  callGraphNodes: Map<string, { dependencies: Set<string> }>,
+  entryPoints: string[],
+): { depth: number; paths: string[][] } {
+  const visited = new Set<string>();
+  let maxDepth = 0;
+  let deepestPaths: string[][] = [];
+
+  function dfs(name: string, depth: number, currentPath: string[]) {
+    if (depth > 30) return; // guard against infinite recursion
+    
+    const newPath = [...currentPath, name];
+    visited.add(name);
+
+    if (depth > maxDepth) {
+      maxDepth = depth;
+      deepestPaths = [newPath];
+    } else if (depth === maxDepth && maxDepth > 0) {
+      deepestPaths.push(newPath);
+    }
+
+    const node = callGraphNodes.get(name);
+    if (node) {
+      for (const dep of node.dependencies) {
+        if (!visited.has(dep)) {
+          dfs(dep, depth + 1, newPath);
+        }
+      }
+    }
+  }
+
+  for (const entry of entryPoints) {
+    visited.clear();
+    dfs(entry, 1, []);
+  }
+
+  return { depth: maxDepth, paths: deepestPaths.slice(0, 5) }; // Return top 5 deepest paths
+}
+
+/**
+ * Perform heap/memory estimate analysis on a ProgramIR.
+ */
+export function analyzeHeapUsage(
+  program: ProgramIR | null,
+  architecture?: string,
+  callGraphNodes?: Map<string, { dependencies: Set<string> }>,
+): HeapEstimate {
+  const typeSizes = getTypeSizes(architecture);
+  const globalVariables: { name: string; cppType: string; estimatedBytes: number }[] = [];
+  const structSizes: Record<string, number> = {};
+  const stringLiterals: { value: string; estimatedBytes: number }[] = [];
+  const notes: string[] = [];
+  let totalStaticBytes = 0;
+
+  if (!program) {
+    notes.push("No program IR available for heap analysis.");
+    return {
+      globalVariables: [],
+      structSizes: {},
+      stringLiterals: [],
+      totalStaticBytes: 0,
+      estimatedStackDepth: 0,
+      stackPaths: [],
+      notes,
+    };
+  }
+
+  // Analyze struct sizes
+  for (const struct of program.structs) {
+    const size = estimateStructSize(struct, typeSizes, structSizes);
+    structSizes[struct.name] = size;
+    totalStaticBytes += size;
+  }
+
+  // Analyze class sizes
+  for (const cls of program.classes) {
+    const size = estimateStructSize(cls, typeSizes, structSizes);
+    structSizes[cls.name] = size;
+    totalStaticBytes += size;
+  }
+
+  // Analyze global variable declarations from top-level statements
+  for (const stmt of program.topLevelStatements) {
+    if (stmt.kind === "var_decl") {
+      const vd = stmt as VariableDeclarationIR;
+      const size = estimateTypeSize(vd.cppType, typeSizes);
+      if (size > 0) {
+        globalVariables.push({
+          name: vd.name,
+          cppType: vd.cppType,
+          estimatedBytes: size,
+        });
+        totalStaticBytes += size;
+      } else {
+        // Unknown type — might be a struct/class
+        globalVariables.push({
+          name: vd.name,
+          cppType: vd.cppType,
+          estimatedBytes: 0,
+        });
+      }
+    }
+  }
+
+  // Analyze global variables declared inside functions (static locals)
+  // and string literals from function bodies
+  for (const fn of program.functions) {
+    for (const stmt of fn.statements) {
+      if (stmt.kind === "var_decl") {
+        const vd = stmt as VariableDeclarationIR;
+        const size = estimateTypeSize(vd.cppType, typeSizes);
+        globalVariables.push({
+          name: `${fn.originalName}::${vd.name}`,
+          cppType: vd.cppType,
+          estimatedBytes: size,
+        });
+        totalStaticBytes += size;
+      }
+    }
+    collectStatementsStringLiterals(fn.statements, stringLiterals);
+  }
+
+  // Collect string literals from top-level statements
+  collectStatementsStringLiterals(program.topLevelStatements, stringLiterals);
+
+  // Sum string literal sizes
+  let stringTotal = 0;
+  for (const sl of stringLiterals) {
+    stringTotal += sl.estimatedBytes;
+  }
+  totalStaticBytes += stringTotal;
+
+  // Estimate stack depth from call graph
+  const entryPoints = ["setup", "loop"];
+  const stackInfo = callGraphNodes
+    ? estimateStackDepth(callGraphNodes, entryPoints)
+    : { depth: 0, paths: [] };
+
+  // Add notes about approximations
+  notes.push("Heap estimate is static only — dynamic allocations (malloc/new) are not tracked.");
+  notes.push("String literals may be deduplicated by the compiler/linker.");
+  notes.push(
+    architecture === "avr"
+      ? "AVR sizes: int=2 bytes, pointer=2 bytes, float=4 bytes."
+      : `Default sizes: int=${typeSizes.int ?? "?"} bytes, pointer=${typeSizes.pointer ?? "?"} bytes, float=${typeSizes.float ?? "?"} bytes.`,
+  );
+
+  return {
+    globalVariables,
+    structSizes,
+    stringLiterals,
+    totalStaticBytes,
+    estimatedStackDepth: stackInfo.depth,
+    stackPaths: stackInfo.paths,
+    notes,
+  };
+}

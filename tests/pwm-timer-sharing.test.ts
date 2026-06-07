@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import { transpile } from './setup';
 
 describe('PWM Timer Sharing Validation', () => {
   it('generates info when two PWM pins share the same timer', () => {
     const result = transpile(`
-      import { D5, D6 } from '@typehal/board-arduino-uno';
+      import { D5, D6 } from '@typecad/board-arduino-uno';
       D5.pwm(25);
       D6.pwm(75);
     `, { target: 'arduino' });
@@ -22,7 +22,7 @@ describe('PWM Timer Sharing Validation', () => {
 
   it('generates info when a PWM alias shares a timer with another PWM pin', () => {
     const result = transpile(`
-      import { D3, MOSI } from '@typehal/board-arduino-uno';
+      import { D3, MOSI } from '@typecad/board-arduino-uno';
       D3.pwm(40);
       MOSI.pwm(60);
     `, { target: 'arduino' });
@@ -40,7 +40,7 @@ describe('PWM Timer Sharing Validation', () => {
 
   it('does not generate info when PWM pins use different timers', () => {
     const result = transpile(`
-      import { D5, D9 } from '@typehal/board-arduino-uno';
+      import { D5, D9 } from '@typecad/board-arduino-uno';
       D5.pwm(25);
       D9.pwm(75);
     `, { target: 'arduino' });

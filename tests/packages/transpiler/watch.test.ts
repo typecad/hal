@@ -1,10 +1,10 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Tests for the file watcher module (packages/transpiler/src/watch.ts)
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from "vitest";
 import path from "node:path";
-import { discoverWatchDirs, isRelevantChange, parseCommandLine } from "@typehal/transpiler/testing";
+import { discoverWatchDirs, isRelevantChange, parseCommandLine } from "@typecad/cuttlefish/testing";
 
 describe("watch", () => {
   describe("discoverWatchDirs", () => {
@@ -17,7 +17,7 @@ describe("watch", () => {
     it("includes config directory when config is in a different directory", () => {
       const dirs = discoverWatchDirs(
         "/project/src/sketch.ts",
-        "/project/typehal.config.ts",
+        "/project/cuttlefish.config.ts",
       );
       expect(dirs).toHaveLength(2);
       expect(dirs).toContain(path.resolve("/project/src"));
@@ -27,7 +27,7 @@ describe("watch", () => {
     it("deduplicates when entry and config are in the same directory", () => {
       const dirs = discoverWatchDirs(
         "/project/sketch.ts",
-        "/project/typehal.config.ts",
+        "/project/cuttlefish.config.ts",
       );
       expect(dirs).toHaveLength(1);
       expect(dirs[0]).toBe(path.resolve("/project"));
@@ -56,20 +56,20 @@ describe("watch", () => {
 
     it("rejects node_modules files", () => {
       expect(
-        isRelevantChange("/project/node_modules/@typehal/core/src/index.ts", entryDir),
+        isRelevantChange("/project/node_modules/@typecad/hal/src/index.ts", entryDir),
       ).toBe(false);
     });
 
-    it("accepts typehal.config.ts changes", () => {
-      const configPath = "/project/typehal.config.ts";
+    it("accepts cuttlefish.config.ts changes", () => {
+      const configPath = "/project/cuttlefish.config.ts";
       expect(
-        isRelevantChange("/project/typehal.config.ts", entryDir, configPath),
+        isRelevantChange("/project/cuttlefish.config.ts", entryDir, configPath),
       ).toBe(true);
     });
 
     it("rejects unrelated config file changes", () => {
       expect(
-        isRelevantChange("/project/tsconfig.json", entryDir, "/project/typehal.config.ts"),
+        isRelevantChange("/project/tsconfig.json", entryDir, "/project/cuttlefish.config.ts"),
       ).toBe(false);
     });
 

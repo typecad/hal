@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Peripheral Usage Analysis Tests: Pins and Channels
 // ---------------------------------------------------------------------------
 
@@ -14,7 +14,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
       // so ADC detection via A-pins requires explicit analogRead in the emit string.
       // For now, verify that the __EMIT__ parser can detect analogRead patterns.
       const usage = analyzeUsage(`
-        import { A0 } from '@typehal/board-arduino-uno';
+        import { A0 } from '@typecad/board-arduino-uno';
         A0.read();
       `);
 
@@ -29,7 +29,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
     it('detects PWM usage and records the pin number', () => {
       // D9.pwm() emits analogWrite via __EMIT__ node
       const usage = analyzeUsage(`
-        import { D9 } from '@typehal/board-arduino-uno';
+        import { D9 } from '@typecad/board-arduino-uno';
         D9.asOutput();
         D9.pwm(128);
       `);
@@ -42,7 +42,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
   describe('Pin Mode Detection', () => {
     it('detects output pin configuration', () => {
       const usage = analyzeUsage(`
-        import { D13 } from '@typehal/board-arduino-uno';
+        import { D13 } from '@typecad/board-arduino-uno';
         D13.output(false);
       `);
 
@@ -51,7 +51,7 @@ describe('Peripheral Usage Analysis - Pins and Channels', () => {
 
     it('detects input pullup configuration', () => {
       const usage = analyzeUsage(`
-        import { D2 } from '@typehal/board-arduino-uno';
+        import { D2 } from '@typecad/board-arduino-uno';
         D2.inputPullUp();
       `);
 

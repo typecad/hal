@@ -1,15 +1,15 @@
-// ---------------------------------------------------------------------------
-// @typehal/simulator — Serial port simulation
+﻿// ---------------------------------------------------------------------------
+// @typecad/simulator — Serial port simulation
 // ---------------------------------------------------------------------------
 
 import {
   UARTStatus,
-} from '@typehal/core';
+} from '@typecad/hal';
 import type {
   ISerialPort,
   UARTStatusInfo,
   ErrorPolicy,
-} from '@typehal/core';
+} from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
 // SimSerialPort

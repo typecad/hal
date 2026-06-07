@@ -1,12 +1,12 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 5f — I2C Slave Mode
 //
 // Configures the Arduino as an I2C slave device that responds to master
 // requests. Shows: begin(address), onReceive(), onRequest().
 // ---------------------------------------------------------------------------
 
-import { I2C0 } from '@typehal/framework-arduino/arduino';
-import { UART0, LED, delay } from '@typehal';
+import { I2C0 } from '@typecad/framework-arduino/arduino';
+import { UART0, LED, delay } from '@typecad';
 
 const serial = UART0.begin(9600);
 const SLAVE_ADDR = 0x08;

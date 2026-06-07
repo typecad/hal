@@ -1,4 +1,4 @@
-import { describe, done } from '@typehal/expect';
+﻿import { describe, done } from '@typecad/expect';
 
 describe("String literals")
   .it("string length")
@@ -30,10 +30,10 @@ describe("Template literals")
   .it("basic template literal")
   .expectString(
     (() => {
-      const name = "TypeHAL";
+      const name = "TypeCAD";
       return `Hello ${name}`;
     })
-  ).toBe("Hello TypeHAL")
+  ).toBe("Hello TypeCAD")
   .it("template literal with expression")
   .expectString(
     (() => {

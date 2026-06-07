@@ -1,5 +1,5 @@
-// ---------------------------------------------------------------------------
-// @typehal/framework-arduino — Arduino Library Discovery
+﻿// ---------------------------------------------------------------------------
+// @typecad/framework-arduino — Arduino Library Discovery
 //
 // Handles finding installed Arduino libraries via arduino-cli, locating
 // their headers and sources, and detecting Arduino library imports.
@@ -247,7 +247,7 @@ export function isArduinoLibraryImport(moduleSpecifier: string): boolean {
 
   // Skip known non-Arduino imports
   const skipList = new Set([
-    "typehal",
+    "TypeCAD",
     "typescript",
     "node",
     "fs",

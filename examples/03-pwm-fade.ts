@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 3 — PWM Fade
 //
 // Smoothly fade an LED on PWM pin D9.
@@ -6,7 +6,7 @@
 // A non-PWM pin like D4 would produce a compile error.
 // ---------------------------------------------------------------------------
 
-import { D9, delay } from '@typehal';
+import { D9, delay } from '@typecad';
 
 D9.asOutput(false);
 

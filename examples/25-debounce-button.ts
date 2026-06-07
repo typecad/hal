@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 25 — Debounced Button with Class Pattern
 //
 // A reusable Button class using hardware interrupts with software debounce.
@@ -11,8 +11,8 @@
 //   - Structural typing on the pin parameter (interrupt pins only)
 // ---------------------------------------------------------------------------
 
-import { D2, LED, millis } from '@typehal';
-import type { IInputModePin, InterruptHandler } from '@typehal/core';
+import { D2, LED, millis } from '@typecad';
+import type { IInputModePin, InterruptHandler } from '@typecad/hal';
 
 // ── Domain types ──────────────────────────────────────────────────────────
 

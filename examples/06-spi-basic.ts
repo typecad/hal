@@ -1,11 +1,11 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 6 — SPI Basic
 //
 // Demonstrates basic SPI communication using Arduino-compatible API.
 // Shows: begin(), transfer(), setMode(), setBitOrder(), setFrequency()
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, delay, D10 } from '@typehal';
+import { SPI0, UART0, delay, D10 } from '@typecad';
 
 const serial = UART0.begin(9600);
 

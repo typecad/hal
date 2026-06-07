@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { transpile, transpileAVR, normalizeCpp, hasInclude } from "./setup";
-import { inferSnprintfArg, createEmissionScopeState } from "@typehal/transpiler/testing";
+import { inferSnprintfArg, createEmissionScopeState } from "@typecad/cuttlefish/testing";
 
 describe("Expression Transpilation", () => {
   describe("Number Literals", () => {
@@ -118,11 +118,11 @@ describe("Expression Transpilation", () => {
       ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
       expect(hasInclude(result.cpp, "stdlib.h")).toBe(true);
-      expect(result.cpp).toContain("char __typehal_str_");
-      expect(result.cpp).toContain("char __typehal_float_");
-      expect(result.cpp).toContain("dtostrf(temp, 0, 1, __typehal_float_");
-      expect(result.cpp).toContain("snprintf(__typehal_str_");
-      expect(result.cpp).toContain("const auto msg = __typehal_str_");
+      expect(result.cpp).toContain("char __cuttlefish_str_");
+      expect(result.cpp).toContain("char __cuttlefish_float_");
+      expect(result.cpp).toContain("dtostrf(temp, 0, 1, __cuttlefish_float_");
+      expect(result.cpp).toContain("snprintf(__cuttlefish_str_");
+      expect(result.cpp).toContain("const auto msg = __cuttlefish_str_");
       expect(result.cpp).not.toContain("String(temp)");
     });
 
@@ -160,12 +160,12 @@ describe("Expression Transpilation", () => {
       ].join("\n"), { target: "arduino" });
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
       // Both variables should use unique snprintf buffers
-      expect(result.cpp).toContain("char __typehal_str_1[");
-      expect(result.cpp).toContain("char __typehal_str_2[");
-      expect(result.cpp).toContain("snprintf(__typehal_str_1,");
-      expect(result.cpp).toContain("snprintf(__typehal_str_2,");
-      expect(result.cpp).toContain("const auto a = __typehal_str_1;");
-      expect(result.cpp).toContain("const auto b = __typehal_str_2;");
+      expect(result.cpp).toContain("char __cuttlefish_str_1[");
+      expect(result.cpp).toContain("char __cuttlefish_str_2[");
+      expect(result.cpp).toContain("snprintf(__cuttlefish_str_1,");
+      expect(result.cpp).toContain("snprintf(__cuttlefish_str_2,");
+      expect(result.cpp).toContain("const auto a = __cuttlefish_str_1;");
+      expect(result.cpp).toContain("const auto b = __cuttlefish_str_2;");
     });
 
     it("keeps std::string for generic target", () => {
@@ -184,7 +184,7 @@ describe("Expression Transpilation", () => {
     // Re-enable when HAL method calls inside template literal interpolations are supported.
     it("resolves D3.read() inside template literal passed to println", () => {
       const result = transpile([
-        "import { D3, UART0 } from '@typehal/board-arduino-uno';",
+        "import { D3, UART0 } from '@typecad/board-arduino-uno';",
         "function test(): void {",
         "  const uart = UART0.begin(9600);",
         "  uart.println(`d3: ${D3.asInput().read()}`);",
@@ -204,8 +204,8 @@ describe("Expression Transpilation", () => {
         "}",
       ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
-      expect(result.cpp).toContain("char __typehal_str_");
-      expect(result.cpp).toContain("snprintf(__typehal_str_");
+      expect(result.cpp).toContain("char __cuttlefish_str_");
+      expect(result.cpp).toContain("snprintf(__cuttlefish_str_");
       expect(result.cpp).toContain("%d");
       expect(result.cpp).not.toContain("String(");
     });
@@ -219,9 +219,9 @@ describe("Expression Transpilation", () => {
       ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
       expect(hasInclude(result.cpp, "stdlib.h")).toBe(true);
-      expect(result.cpp).toContain("char __typehal_str_");
+      expect(result.cpp).toContain("char __cuttlefish_str_");
       expect(result.cpp).toContain("dtostrf(");
-      expect(result.cpp).toContain("snprintf(__typehal_str_");
+      expect(result.cpp).toContain("snprintf(__cuttlefish_str_");
       expect(result.cpp).not.toContain("String(");
     });
 
@@ -234,8 +234,8 @@ describe("Expression Transpilation", () => {
         "}",
       ].join("\n"));
       expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
-      expect(result.cpp).toContain("char __typehal_str_");
-      expect(result.cpp).toContain("snprintf(__typehal_str_");
+      expect(result.cpp).toContain("char __cuttlefish_str_");
+      expect(result.cpp).toContain("snprintf(__cuttlefish_str_");
       expect(result.cpp).not.toContain("String(");
     });
 

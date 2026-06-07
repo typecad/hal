@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/mcu-esp32 — Hardware peripheral descriptions
+// @typecad/mcu-esp32 — Hardware peripheral descriptions
 // ---------------------------------------------------------------------------
 
 import type {
@@ -7,7 +7,7 @@ import type {
   ADCDefinition,
   PWMDefinition,
   TimerDefinition,
-} from '@typehal/schema';
+} from '@typecad/cuttlefish/api/schema';
 import {
   I2CBus,
   SPIBus,
@@ -16,7 +16,7 @@ import {
   spiName,
   serialName,
   createHALInstances,
-} from '@typehal/hal';
+} from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
 // Peripheral definitions

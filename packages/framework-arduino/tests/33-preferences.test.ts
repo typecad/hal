@@ -1,4 +1,4 @@
-import { describe, done } from '@typehal/expect';
+﻿import { describe, done } from '@typecad/expect';
 
 describe("Preferences namespace")
   .it("Preferences.putInt then Preferences.getInt roundtrip")

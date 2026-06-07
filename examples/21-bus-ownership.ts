@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 21 — Bus Ownership Pattern (Opt-In)
 //
 // Demonstrates the opt-in bus ownership pattern for I2C, SPI, and UART buses.
@@ -18,7 +18,7 @@
 // Ownership is opt-in: if you never call take(), no diagnostics are generated.
 // ---------------------------------------------------------------------------
 
-import { I2C0, SPI0, UART0, delay } from '@typehal';
+import { I2C0, SPI0, UART0, delay } from '@typecad';
 
 // ── I2C with ownership ─────────────────────────────────────────────────────
 // take() claims exclusive access; returns undefined if already owned.

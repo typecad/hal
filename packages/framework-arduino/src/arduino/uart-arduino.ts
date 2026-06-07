@@ -1,5 +1,5 @@
-// ---------------------------------------------------------------------------
-// @typehal/framework-arduino — UART/Serial Arduino-compatible API interface
+﻿// ---------------------------------------------------------------------------
+// @typecad/framework-arduino — UART/Serial Arduino-compatible API interface
 //
 // Arduino Serial-compatible methods for UART communication.
 // ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@
  *
  * Usage:
  * ```typescript
- * import { UART0 } from '@typehal/framework-arduino/arduino';
+ * import { UART0 } from '@typecad/framework-arduino/arduino';
  *
  * UART0.begin(9600);
  * UART0.println("Hello, World!");

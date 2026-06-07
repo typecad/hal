@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// @typehal/mcu-esp32 — Datasheet pin definitions
+// @typecad/mcu-esp32 — Datasheet pin definitions
 //
-// Each pin is a Pin instance from @typehal/hal.
+// Each pin is a Pin instance from @typecad/hal.
 // Pin names use GPIO numbers matching the ESP32 datasheet.
 // ---------------------------------------------------------------------------
 
-import { Pin } from '@typehal/hal';
+import { Pin } from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
 // Output-capable GPIOs

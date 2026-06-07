@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Example 5e — I2C Multiple Devices
 //
 // Demonstrates communicating with multiple I2C devices on the same bus.
@@ -6,7 +6,7 @@
 //        device abstraction patterns
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0, delay } from '@typehal';
+import { I2C0, UART0, delay } from '@typecad';
 
 // Initialize UART0 for debug output
 const serial = UART0.begin(9600);

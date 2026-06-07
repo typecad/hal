@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Transpiler Type Gap Tests
 //
 // Tests for 7 identified gaps in the transpiler pipeline:
@@ -168,7 +168,7 @@ describe('Transpiler Type Gaps', () => {
         const x = sensor?.value;
       `);
 
-      expect(result.cpp).toContain('typehal_exists(sensor) ? sensor.value : 0');
+      expect(result.cpp).toContain('cuttlefish_exists(sensor) ? sensor.value : 0');
       expect(result.cpp).not.toContain('const int x = sensor.value;');
     });
 
@@ -177,7 +177,7 @@ describe('Transpiler Type Gaps', () => {
         const x = obj?.method();
       `);
 
-      expect(result.cpp).toContain('typehal_exists(obj) ? obj.method() : 0');
+      expect(result.cpp).toContain('cuttlefish_exists(obj) ? obj.method() : 0');
       expect(result.cpp).not.toContain('const int x = obj.method();');
     });
   });
@@ -190,7 +190,7 @@ describe('Transpiler Type Gaps', () => {
         const x = a ?? 0;
       `);
 
-      expect(result.cpp).toContain('typehal_nullish(a, 0)');
+      expect(result.cpp).toContain('cuttlefish_nullish(a, 0)');
       expectCppNotContains(result, ['a ? a : 0', '??']);
     });
 
@@ -199,7 +199,7 @@ describe('Transpiler Type Gaps', () => {
         const result = value ?? defaultValue;
       `);
 
-      expect(result.cpp).toContain('typehal_nullish(value, defaultValue)');
+      expect(result.cpp).toContain('cuttlefish_nullish(value, defaultValue)');
       expectCppNotContains(result, ['value ? value : defaultValue', '??']);
     });
 
@@ -209,8 +209,8 @@ describe('Transpiler Type Gaps', () => {
         const enabled = maybeEnabled ?? false;
       `);
 
-      expect(result.cpp).toContain('typehal_nullish(maybeCount, 0)');
-      expect(result.cpp).toContain('typehal_nullish(maybeEnabled, false)');
+      expect(result.cpp).toContain('cuttlefish_nullish(maybeCount, 0)');
+      expect(result.cpp).toContain('cuttlefish_nullish(maybeEnabled, false)');
       expectCppNotContains(result, ['maybeCount ? maybeCount : 0', 'maybeEnabled ? maybeEnabled : false']);
     });
 
@@ -222,7 +222,7 @@ describe('Transpiler Type Gaps', () => {
         }
       `);
 
-      expect(result.cpp).toContain('typehal_nullish(rawTimeout, 1000)');
+      expect(result.cpp).toContain('cuttlefish_nullish(rawTimeout, 1000)');
       expectCppNotContains(result, ['rawTimeout ? rawTimeout : 1000', '??']);
     });
   });
@@ -305,7 +305,7 @@ describe('Transpiler Type Gaps', () => {
         const { timeout = 1000 } = config;
       `);
 
-      expect(result.cpp).toContain('typehal_nullish(config.timeout, 1000)');
+      expect(result.cpp).toContain('cuttlefish_nullish(config.timeout, 1000)');
     });
 
     it('supports array destructuring defaults', () => {
@@ -313,7 +313,7 @@ describe('Transpiler Type Gaps', () => {
         const [first = 7, second] = values;
       `);
 
-      expect(result.cpp).toContain('const int first = typehal_nullish(values[0], 7)');
+      expect(result.cpp).toContain('const int first = cuttlefish_nullish(values[0], 7)');
       expect(result.cpp).toContain('const int second = values[1]');
     });
   });
@@ -375,7 +375,7 @@ describe('Transpiler Type Gaps', () => {
         const [startByte = 0] = packet;
       `);
 
-      expect(result.cpp).toContain('typehal_nullish(packet[0], 0)');
+      expect(result.cpp).toContain('cuttlefish_nullish(packet[0], 0)');
     });
 
     it('emits a function declaration when setup uses a helper defined later', () => {
@@ -456,7 +456,7 @@ describe('Transpiler Type Gaps', () => {
         serial.println(` + "`" + `raw=${1} ` + "`" + ` + ` + "`" + `sum=${2}` + "`" + `);
       `);
 
-      expect(result.cpp).not.toContain('__typehal_str_1 + __typehal_str_2');
+      expect(result.cpp).not.toContain('__cuttlefish_str_1 + __cuttlefish_str_2');
     });
 
     it('lowers spi.device(chipSelect).transfer(...) to an Arduino-safe SPI call', () => {

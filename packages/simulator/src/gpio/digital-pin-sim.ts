@@ -1,14 +1,14 @@
-// ---------------------------------------------------------------------------
-// @typehal/simulator — Simulated digital pin
+﻿// ---------------------------------------------------------------------------
+// @typecad/simulator — Simulated digital pin
 // ---------------------------------------------------------------------------
 
 import type {
   BasePin,
   IToneAttachment,
   PinCapabilityFlags,
-} from '@typehal/core';
-import { PinMode } from '@typehal/core';
-import type { DigitalValue } from '@typehal/core';
+} from '@typecad/hal';
+import { PinMode } from '@typecad/hal';
+import type { DigitalValue } from '@typecad/hal';
 
 /**
  * Tracks the history of pin state changes for test assertions.

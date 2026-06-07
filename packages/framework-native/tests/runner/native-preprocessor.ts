@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Native test preprocessor
 //
 // Rewrites describe/it/expect/done fluent chains into console.log("[TC:...]")
@@ -7,8 +7,8 @@
 // ---------------------------------------------------------------------------
 
 import ts from 'typescript';
-import { isDescribeChain, collectChainSegments } from '@typehal/expect/chain-collector';
-import type { ChainSegment } from '@typehal/expect/chain-collector';
+import { isDescribeChain, collectChainSegments } from '@typecad/expect/chain-collector';
+import type { ChainSegment } from '@typecad/expect/chain-collector';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,7 +64,7 @@ export function nativePreprocess(source: string, fileName: string = 'test.ts'): 
   for (const stmt of sf.statements) {
     if (ts.isImportDeclaration(stmt)) {
       const mod = (stmt.moduleSpecifier as ts.StringLiteral).text;
-      if (mod === '@typehal/expect') continue;
+      if (mod === '@typecad/expect') continue;
       ctx.emit(stmt.getText(sf));
     } else if (ts.isExpressionStatement(stmt)) {
       processStatement(stmt, sf, ctx);

@@ -1,17 +1,17 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-arduino-uno — Board namespace
+// @typecad/board-arduino-uno — Board namespace
 //
 // Convenience namespace that exposes every board feature under one object.
 // For method calls on pins/peripherals, prefer direct imports:
 //
-//   import { D13, UART0 } from '@typehal/board-arduino-uno';
+//   import { D13, UART0 } from '@typecad/board-arduino-uno';
 //   D13.high();
 //   UART0.begin(115200);
 //
 // The Board object is useful for pin iteration and metadata access.
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typehal/schema';
+import type { BoardDefinition } from '@typecad/cuttlefish/api/schema';
 
 import {
   D0, D1, D2, D3, D4, D5, D6, D7,
@@ -20,7 +20,7 @@ import {
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX,
 } from './pins';
 
-import { I2C0, SPI0, UART0 } from '@typehal/mcu-atmega328p';
+import { I2C0, SPI0, UART0 } from '@typecad/mcu-atmega328p';
 import { ArduinoUno } from './index';
 
 export const Board = {

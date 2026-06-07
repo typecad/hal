@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-esp32-devkit — Board definition manifest
+// @typecad/board-esp32-devkit — Board definition manifest
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typehal/schema';
-import { ESP32WROOM32 } from '@typehal/mcu-esp32';
+import type { BoardDefinition } from '@typecad/cuttlefish/api/schema';
+import { ESP32WROOM32 } from '@typecad/mcu-esp32';
 
 /** Arduino core API version for this board's build defines. */
 const ARDUINO_CORE_VERSION = '10819';
@@ -62,9 +62,9 @@ export default ESP32DevKit;
 // ---------------------------------------------------------------------------
 
 // Silicon-level re-exports from MCU package
-export * from '@typehal/mcu-esp32';
+export * from '@typecad/mcu-esp32';
 
-// Generic HAL re-exports from @typehal/hal
+// Generic HAL re-exports from @typecad/hal
 export {
   HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP,
   delay, millis, micros, delayMicroseconds,
@@ -75,7 +75,7 @@ export {
   randomSeed, random, Random,
   noInterrupts, interrupts, attachInterrupt, detachInterrupt,
   ADC, AsyncClass, Async
-} from '@typehal/hal';
+} from '@typecad/hal';
 
 // Board-level pin Discovery API overrides (using silicon pins from MCU)
 import {
@@ -83,7 +83,7 @@ import {
   GPIO12, GPIO13, GPIO14, GPIO15, GPIO16, GPIO17, GPIO18, GPIO19,
   GPIO21, GPIO22, GPIO23, GPIO25, GPIO26, GPIO27, GPIO32, GPIO33,
   GPIO34, GPIO35, GPIO36, GPIO39,
-} from '@typehal/mcu-esp32';
+} from '@typecad/mcu-esp32';
 
 /**
  * Pin collections for runtime capability discovery.

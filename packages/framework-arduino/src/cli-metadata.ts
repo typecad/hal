@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Arduino CLI metadata loader
 //
 // Loads board metadata from arduino-cli when available.
@@ -9,14 +9,14 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import type { Diagnostic } from "@typehal/core/shared";
+import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
 import type { ArduinoPlatformContext } from "./strategy";
 
 // ---------------------------------------------------------------------------
 // Disk cache for arduino-cli metadata
 // ---------------------------------------------------------------------------
 
-const CACHE_DIR = path.join(os.homedir(), ".typehal", "cache");
+const CACHE_DIR = path.join(os.homedir(), ".TypeCAD", "cache");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface CachedMetadata {

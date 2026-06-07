@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/mcu-atmega328p — Datasheet pin definitions
+// @typecad/mcu-atmega328p — Datasheet pin definitions
 //
 // Each pin is a Pin instance created via Pin.fromPort() using the MCU port
 // name from the ATmega328P datasheet. The port name is the canonical identity;
@@ -7,7 +7,7 @@
 // transpile time via the arduino-map.
 // ---------------------------------------------------------------------------
 
-import { Pin } from '@typehal/hal';
+import { Pin } from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
 // Port D (PD0–PD7) — 8-bit bidirectional I/O port

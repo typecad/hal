@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+﻿import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { transpileFile } from '../../../packages/transpiler/src/testing';
@@ -27,7 +27,7 @@ describe('Peripheral configuration', () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { UART0 } from '@typehal/board-arduino-uno';",
+        "import { UART0 } from '@typecad/board-arduino-uno';",
         '',
         'UART0.begin(115200);',
         '',
@@ -53,7 +53,7 @@ describe('Peripheral configuration', () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { UART0 } from '@typehal/board-arduino-uno';",
+        "import { UART0 } from '@typecad/board-arduino-uno';",
         '',
         'UART0.begin(9600);',
         '',
@@ -80,7 +80,7 @@ describe('Peripheral configuration', () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { I2C0 } from '@typehal/board-arduino-uno';",
+        "import { I2C0 } from '@typecad/board-arduino-uno';",
         '',
         'I2C0.begin();',
         'I2C0.setClock(400000);',

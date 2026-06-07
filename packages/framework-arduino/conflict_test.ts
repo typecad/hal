@@ -1,5 +1,5 @@
-
-import { SPI0, D13 } from '@typehal/board-arduino-uno';
+﻿
+import { SPI0, D13 } from '@typecad/board-arduino-uno';
 
 // SPI0 uses D11, D12, D13
 SPI0.begin();

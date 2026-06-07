@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/mcu-atmega328p — Arduino core pin mapping
+// @typecad/mcu-atmega328p — Arduino core pin mapping
 //
 // Maps MCU port names to Arduino framework pin numbers.
 // Source: Arduino AVR core, variants/standard/pins_arduino.h

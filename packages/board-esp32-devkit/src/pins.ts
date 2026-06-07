@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-esp32-devkit — Pin aliases and header mappings
+// @typecad/board-esp32-devkit — Pin aliases and header mappings
 // ---------------------------------------------------------------------------
 
 import {
@@ -7,7 +7,7 @@ import {
   GPIO12, GPIO13, GPIO14, GPIO15, GPIO16, GPIO17, GPIO18, GPIO19,
   GPIO21, GPIO22, GPIO23, GPIO25, GPIO26, GPIO27, GPIO32, GPIO33,
   GPIO34, GPIO35, GPIO36, GPIO39,
-} from '@typehal/mcu-esp32';
+} from '@typecad/mcu-esp32';
 
 // ---------------------------------------------------------------------------
 // Arduino-style pin aliases (D-numbers match GPIO numbers on ESP32 DevKit)
@@ -56,4 +56,4 @@ export const A5 = GPIO33;
 export const LED = GPIO2;
 
 // Re-export silicon-level aliases (SDA, MOSI, etc.) from MCU package
-export { SDA, SCL, MOSI, MISO, SCK, SS, TX, RX, TX2, RX2, DAC1, DAC2 } from '@typehal/mcu-esp32';
+export { SDA, SCL, MOSI, MISO, SCK, SS, TX, RX, TX2, RX2, DAC1, DAC2 } from '@typecad/mcu-esp32';

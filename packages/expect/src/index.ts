@@ -1,8 +1,8 @@
-// ---------------------------------------------------------------------------
-// @typehal/expect — Barrel re-export
+﻿// ---------------------------------------------------------------------------
+// @typecad/expect — Barrel re-export
 //
 // Users import from this package:
-//   import { describe, done } from '@typehal/expect';
+//   import { describe, done } from '@typecad/expect';
 // ---------------------------------------------------------------------------
 
 export type { Suite, Expectation, StringExpectation } from './types';

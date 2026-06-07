@@ -1,8 +1,8 @@
-import fs from "node:fs";
+﻿import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { findConfigFile, parseConfigFile, loadTypehalConfig, generateVirtualTypeDeclaration } from "@typehal/transpiler/testing";
+import { findConfigFile, parseConfigFile, loadCuttlefishConfig, generateVirtualTypeDeclaration } from "@typecad/cuttlefish/testing";
 
 const tempDirs: string[] = [];
 
@@ -14,21 +14,21 @@ afterEach(() => {
 
 describe("config-loader", () => {
   describe("findConfigFile", () => {
-    it("finds typehal.config.ts in the given directory", () => {
+    it("finds cuttlefish.config.ts in the given directory", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typehal.config.ts");
+      const configPath = path.join(dir, "cuttlefish.config.ts");
       fs.writeFileSync(configPath, "export default {};", "utf-8");
 
       expect(findConfigFile(dir)).toBe(configPath);
     });
 
-    it("walks up to find typehal.config.ts in a parent directory", () => {
+    it("walks up to find cuttlefish.config.ts in a parent directory", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typehal.config.ts");
+      const configPath = path.join(dir, "cuttlefish.config.ts");
       fs.writeFileSync(configPath, "export default {};", "utf-8");
 
       const subDir = path.join(dir, "src", "nested");
@@ -51,14 +51,14 @@ describe("config-loader", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typehal.config.ts");
+      const configPath = path.join(dir, "cuttlefish.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "const config = {",
           "  target: 'avr',",
-          "  mcu: '@typehal/mcu-atmega328p',",
-          "  board: '@typehal/board-arduino-uno',",
+          "  mcu: '@typecad/mcu-atmega328p',",
+          "  board: '@typecad/board-arduino-uno',",
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "  output: {",
           "    framework: 'arduino',",
@@ -74,7 +74,7 @@ describe("config-loader", () => {
       const result = parseConfigFile(configPath);
       expect(result).toBeDefined();
       expect(result!.target).toBe("avr");
-      expect(result!.board).toBe("@typehal/board-arduino-uno");
+      expect(result!.board).toBe("@typecad/board-arduino-uno");
       expect(result!.buildTarget).toBe("arduino:avr:uno");
       expect(result!.outputFramework).toBe("arduino");
       expect(result!.outputOptimize).toBe("size");
@@ -86,14 +86,14 @@ describe("config-loader", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typehal.config.ts");
+      const configPath = path.join(dir, "cuttlefish.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "export default {",
           "  target: 'esp32',",
-          "  mcu: '@typehal/mcu-esp32',",
-          "  board: '@typehal/board-esp32-devkit',",
+          "  mcu: '@typecad/mcu-esp32',",
+          "  board: '@typecad/board-esp32-devkit',",
           "  frameworkData: { buildTarget: 'esp32:esp32:esp32doit-devkit-v1' },",
           "};",
         ].join("\n"),
@@ -103,7 +103,7 @@ describe("config-loader", () => {
       const result = parseConfigFile(configPath);
       expect(result).toBeDefined();
       expect(result!.target).toBe("esp32");
-      expect(result!.board).toBe("@typehal/board-esp32-devkit");
+      expect(result!.board).toBe("@typecad/board-esp32-devkit");
       expect(result!.buildTarget).toBe("esp32:esp32:esp32doit-devkit-v1");
     });
 
@@ -111,7 +111,7 @@ describe("config-loader", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typehal.config.ts");
+      const configPath = path.join(dir, "cuttlefish.config.ts");
       fs.writeFileSync(configPath, "// empty config\n", "utf-8");
 
       const result = parseConfigFile(configPath);
@@ -122,14 +122,14 @@ describe("config-loader", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typehal.config.ts");
+      const configPath = path.join(dir, "cuttlefish.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "const config = {",
           "  target: 'avr',",
-          "  mcu: '@typehal/mcu-atmega328p',",
-          "  board: '@typehal/board-arduino-uno',",
+          "  mcu: '@typecad/mcu-atmega328p',",
+          "  board: '@typecad/board-arduino-uno',",
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
           "export default config;",
@@ -139,25 +139,25 @@ describe("config-loader", () => {
 
       const result = parseConfigFile(configPath);
       expect(result).toBeDefined();
-      expect(result!.board).toBe("@typehal/board-arduino-uno");
+      expect(result!.board).toBe("@typecad/board-arduino-uno");
       expect(result!.buildTarget).toBe("arduino:avr:uno");
       expect(result!.target).toBe("avr");
     });
   });
 
-  describe("loadTypehalConfig", () => {
-    it("returns config when typehal.config.ts exists", () => {
+  describe("loadCuttlefishConfig", () => {
+    it("returns config when cuttlefish.config.ts exists", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typehal.config.ts");
+      const configPath = path.join(dir, "cuttlefish.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "const config = {",
           "  target: 'avr',",
-          "  mcu: '@typehal/mcu-atmega328p',",
-          "  board: '@typehal/board-arduino-uno',",
+          "  mcu: '@typecad/mcu-atmega328p',",
+          "  board: '@typecad/board-arduino-uno',",
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
           "export default config;",
@@ -165,23 +165,23 @@ describe("config-loader", () => {
         "utf-8",
       );
 
-      const result = loadTypehalConfig(dir);
+      const result = loadCuttlefishConfig(dir);
       expect(result).toBeDefined();
-      expect(result!.board).toBe("@typehal/board-arduino-uno");
+      expect(result!.board).toBe("@typecad/board-arduino-uno");
     });
 
     it("generates typehal-env.d.ts with volatile helper declaration", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const configPath = path.join(dir, "typehal.config.ts");
+      const configPath = path.join(dir, "cuttlefish.config.ts");
       fs.writeFileSync(
         configPath,
         [
           "const config = {",
           "  target: 'avr',",
-          "  mcu: '@typehal/mcu-atmega328p',",
-          "  board: '@typehal/board-arduino-uno',",
+          "  mcu: '@typecad/mcu-atmega328p',",
+          "  board: '@typecad/board-arduino-uno',",
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "};",
           "export default config;",
@@ -202,7 +202,7 @@ describe("config-loader", () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
       tempDirs.push(dir);
 
-      const result = loadTypehalConfig(dir);
+      const result = loadCuttlefishConfig(dir);
       expect(result).toBeUndefined();
     });
   });

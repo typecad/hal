@@ -1,5 +1,5 @@
 ﻿// ---------------------------------------------------------------------------
-// @typehal/arch-avr-native — Native AVR platform strategy
+// @typecad/arch-avr-native — Native AVR platform strategy
 //
 // This strategy generates direct AVR register access instead of Arduino
 // framework function calls. For example:
@@ -7,8 +7,8 @@
 //   A0.read()   →  ADC register operations
 // ---------------------------------------------------------------------------
 
-import { ArduinoStrategy } from '@typehal/framework-arduino';
-import type { RuntimePolyfillIR } from '@typehal/core/shared';
+import { ArduinoStrategy } from '@typecad/framework-arduino';
+import type { RuntimePolyfillIR } from '@typecad/cuttlefish/api/shared';
 import {
   getPinInfo,
   parsePinFromReceiver,

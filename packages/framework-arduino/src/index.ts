@@ -1,5 +1,5 @@
-// ---------------------------------------------------------------------------
-// @typehal/framework-arduino — Arduino framework strategy
+﻿// ---------------------------------------------------------------------------
+// @typecad/framework-arduino — Arduino framework strategy
 //
 // Provides the ArduinoStrategy implementation for Arduino framework code
 // generation. This is the main entry point for the framework-arduino package.

@@ -1,8 +1,8 @@
-// ---------------------------------------------------------------------------
-// @typehal/simulator — Simulated analog input pin
+﻿// ---------------------------------------------------------------------------
+// @typecad/simulator — Simulated analog input pin
 // ---------------------------------------------------------------------------
 
-import type { AnalogPin, AnalogValue } from '@typehal/core';
+import type { AnalogPin, AnalogValue } from '@typecad/hal';
 import { SimDigitalPin } from './digital-pin-sim';
 
 /**

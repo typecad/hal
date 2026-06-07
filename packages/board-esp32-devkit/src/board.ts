@@ -1,17 +1,17 @@
 // ---------------------------------------------------------------------------
-// @typehal/board-esp32-devkit — Board namespace
+// @typecad/board-esp32-devkit — Board namespace
 //
 // Convenience namespace that exposes every board feature under one object.
 // For method calls on pins/peripherals, prefer direct imports:
 //
-//   import { D2, UART0 } from '@typehal/board-esp32-devkit';
+//   import { D2, UART0 } from '@typecad/board-esp32-devkit';
 //   D2.high();
 //   UART0.begin(115200);
 //
 // The Board object is useful for pin iteration and metadata access.
 // ---------------------------------------------------------------------------
 
-import type { BoardDefinition } from '@typehal/schema';
+import type { BoardDefinition } from '@typecad/cuttlefish/api/schema';
 
 import {
   D0, D1, D2, D3, D4, D5,
@@ -22,7 +22,7 @@ import {
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX, TX2, RX2, DAC1, DAC2,
 } from './pins';
 
-import { I2C0, I2C1, SPI0, SPI1, UART0, UART2 } from '@typehal/mcu-esp32';
+import { I2C0, I2C1, SPI0, SPI1, UART0, UART2 } from '@typecad/mcu-esp32';
 import { ESP32DevKit } from './index';
 
 export const Board = {

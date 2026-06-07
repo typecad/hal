@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Peripheral Usage Analysis Tests: Bus Detection
 // ---------------------------------------------------------------------------
 
@@ -9,7 +9,7 @@ describe('Peripheral Usage Analysis - Bus Detection', () => {
   describe('I2C Detection', () => {
     it('detects I2C0 usage with Arduino API', () => {
       const usage = analyzeUsage(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.beginTransmission(0x76);
         I2C0.write(0xFA);
@@ -23,7 +23,7 @@ describe('Peripheral Usage Analysis - Bus Detection', () => {
     it('detects I2C bus usage from __EMIT__ nodes', () => {
       // I2C usage at top level produces __EMIT__ nodes with Wire.begin() etc.
       const usage = analyzeUsage(`
-        import { I2C0 } from '@typehal/framework-arduino/arduino';
+        import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
         I2C0.requestFrom(0x76, 2);
       `);
@@ -35,7 +35,7 @@ describe('Peripheral Usage Analysis - Bus Detection', () => {
   describe('SPI Detection', () => {
     it('detects SPI0 usage with Arduino API', () => {
       const usage = analyzeUsage(`
-        import { SPI0 } from '@typehal/framework-arduino/arduino';
+        import { SPI0 } from '@typecad/framework-arduino/arduino';
         SPI0.begin();
         SPI0.transfer(0xFF);
       `);
@@ -48,7 +48,7 @@ describe('Peripheral Usage Analysis - Bus Detection', () => {
   describe('UART Detection', () => {
     it('detects UART0 usage with Arduino API', () => {
       const usage = analyzeUsage(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         UART0.println("Hello");
       `);
@@ -70,8 +70,8 @@ describe('Peripheral Usage Analysis - Bus Detection', () => {
   describe('Multiple Peripheral Detection', () => {
     it('detects multiple peripherals in the same program', () => {
       const usage = analyzeUsage(`
-        import { I2C0, UART0 } from '@typehal/framework-arduino/arduino';
-        import { D9 } from '@typehal/board-arduino-uno';
+        import { I2C0, UART0 } from '@typecad/framework-arduino/arduino';
+        import { D9 } from '@typecad/board-arduino-uno';
 
         UART0.begin(9600);
         I2C0.begin();

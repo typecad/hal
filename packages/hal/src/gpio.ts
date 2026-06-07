@@ -1,4 +1,4 @@
-import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp } from './emit';
+﻿import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp } from './emit';
 import { board } from './board';
 import { callback } from './callback';
 import { ADC } from './adc';
@@ -131,7 +131,7 @@ export class InputPin {
    *   rejects (or resolves with a false/error) after the timeout expires.
    */
   waitForRising(timeout?: number): Promise<void> {
-    rawCpp(`__typehal_wait_pin_edge(${this._pin}, RISING, ${timeout ?? -1})`);
+    rawCpp(`__cuttlefish_wait_pin_edge(${this._pin}, RISING, ${timeout ?? -1})`);
     return undefined as any;
   }
 
@@ -143,7 +143,7 @@ export class InputPin {
    *   rejects (or resolves with a false/error) after the timeout expires.
    */
   waitForFalling(timeout?: number): Promise<void> {
-    rawCpp(`__typehal_wait_pin_edge(${this._pin}, FALLING, ${timeout ?? -1})`);
+    rawCpp(`__cuttlefish_wait_pin_edge(${this._pin}, FALLING, ${timeout ?? -1})`);
     return undefined as any;
   }
 }

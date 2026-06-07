@@ -1,0 +1,57 @@
+﻿{
+  "name": "@typecad/cuttlefish",
+  "version": "0.1.0",
+  "description": "TypeScript to C++ transpiler — native, Arduino, and bare-metal targets",
+  "type": "commonjs",
+  "main": "./dist/transpile.js",
+  "types": "./dist/transpile.d.ts",
+  "bin": {
+    "cuttlefish": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/transpile.d.ts",
+      "default": "./dist/transpile.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "default": "./dist/api/index.js"
+    },
+    "./api/shared": {
+      "types": "./dist/api/shared/index.d.ts",
+      "default": "./dist/api/shared/index.js"
+    },
+    "./api/schema": {
+      "types": "./dist/api/schema/index.d.ts",
+      "default": "./dist/api/schema/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "typescript": "^5.7.3",
+    "zod": "^3.24.0"
+  },
+  "peerDependencies": {},
+  "peerDependenciesMeta": {},
+  "optionalDependencies": {
+    "@typecad/framework-native": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7"
+  },
+  "license": "MIT"
+}

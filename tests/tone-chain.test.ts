@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { transpileArduino } from "./setup";
 
 describe("Tone Chaining", () => {
   it("transpiles pin.tone(f).for(d) to Arduino tone calls", () => {
     const result = transpileArduino(`
-      import { D13 } from '@typehal/board-arduino-uno';
+      import { D13 } from '@typecad/board-arduino-uno';
       function test(): void {
         const led = D13.asOutput();
         led.tone(440).for(400);
@@ -18,7 +18,7 @@ describe("Tone Chaining", () => {
 
   it("transpiles bare pin.tone(f) correctly", () => {
     const result = transpileArduino(`
-      import { D13 } from '@typehal/board-arduino-uno';
+      import { D13 } from '@typecad/board-arduino-uno';
       function test(): void {
         const led = D13.asOutput();
         led.tone(880);

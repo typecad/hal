@@ -1,5 +1,5 @@
-// ---------------------------------------------------------------------------
-// @typehal/expect — Firmware-side types
+﻿// ---------------------------------------------------------------------------
+// @typecad/expect — Firmware-side types
 //
 // These interfaces define the fluent API that users write in test files.
 // They exist purely for TypeScript IntelliSense — the preprocessor rewrites

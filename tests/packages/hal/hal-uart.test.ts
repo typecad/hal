@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // HAL UART/Serial Tests
 //
 // Tests for UART Arduino-compatible API
@@ -11,7 +11,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
   describe('Initialization', () => {
     it('transpiles UART0.begin() (maps to Serial)', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
       `);
       
@@ -20,7 +20,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
 
     it('transpiles UART0.end() (maps to Serial)', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         UART0.end();
       `);
@@ -32,7 +32,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
   describe('Read Operations', () => {
     it('transpiles available()', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         const count = UART0.available();
       `);
@@ -42,7 +42,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
 
     it('transpiles read()', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         const data = UART0.read();
       `);
@@ -52,7 +52,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
 
     it('transpiles peek()', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         const data = UART0.peek();
       `);
@@ -64,7 +64,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
   describe('Write Operations', () => {
     it('transpiles write() with number', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         UART0.write(65);
       `);
@@ -74,7 +74,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
 
     it('transpiles write() with string', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         UART0.write("hello");
       `);
@@ -86,7 +86,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
   describe('Print Operations', () => {
     it('transpiles print()', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         UART0.print("Hello");
       `);
@@ -96,7 +96,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
 
     it('transpiles println()', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         UART0.println("Hello");
       `);
@@ -106,7 +106,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
 
     it('preserves UART aliases across later println calls', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         const serial = UART0.begin(115200);
         serial.println(` + "`value=${1}`" + `);
       `);
@@ -121,7 +121,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
   describe('Buffer Control', () => {
     it('transpiles flush()', () => {
       const result = transpileArduino(`
-        import { UART0 } from '@typehal/framework-arduino/arduino';
+        import { UART0 } from '@typecad/framework-arduino/arduino';
         UART0.begin(9600);
         UART0.flush();
       `);
@@ -134,7 +134,7 @@ describe('UART HAL - Arduino API Transpilation', () => {
 describe('UART HAL - Multiple Port Support', () => {
   it('lowers the high-level UART API to Serial calls on Arduino Uno', () => {
     const result = transpileArduino(`
-      import { UART0 } from '@typehal/framework-arduino/arduino';
+      import { UART0 } from '@typecad/framework-arduino/arduino';
       UART0.begin(9600);
     `);
     

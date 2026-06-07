@@ -1,7 +1,7 @@
-// ---------------------------------------------------------------------------
-// @typehal/framework-arduino/arduino — Arduino-compatible API types and stubs
+﻿// ---------------------------------------------------------------------------
+// @typecad/framework-arduino/arduino — Arduino-compatible API types and stubs
 //
-// Import from '@typehal/framework-arduino/arduino' to use Arduino-style APIs
+// Import from '@typecad/framework-arduino/arduino' to use Arduino-style APIs
 // (Wire, SPI, Serial) with full TypeScript type checking.
 // ---------------------------------------------------------------------------
 
@@ -11,8 +11,8 @@ export type { ISPIArduino } from './spi-arduino';
 export type { ISerialArduino } from './uart-arduino';
 
 // Supporting types from core (re-exported for convenience)
-export type { I2CAddress } from '@typehal/core';
-export type { SPIMode, SPIBitOrder, SPISettings } from '@typehal/core';
+export type { I2CAddress } from '@typecad/hal';
+export type { SPIMode, SPIBitOrder, SPISettings } from '@typecad/hal';
 
 // Arduino Uno stubs
 export { I2C0, SPI0, UART0 } from './stubs-uno';

@@ -1,5 +1,5 @@
-import { D2, LED, millis } from '@typehal';
-import type { IInputModePin, InterruptHandler } from '@typehal';
+﻿import { D2, LED, millis } from '@typecad';
+import type { IInputModePin, InterruptHandler } from '@typecad';
 
 // ── Domain types ──────────────────────────────────────────────────────────
 

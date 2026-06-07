@@ -1,5 +1,5 @@
-// ---------------------------------------------------------------------------
-// @typehal/expect — Protocol Emitter
+﻿// ---------------------------------------------------------------------------
+// @typecad/expect — Protocol Emitter
 //
 // Converts collected chain segments into Serial.print/println protocol lines.
 // All logic for the [TC:DESCRIBE:...], [TC:IT:...], [TC:EXPECT:...] wire

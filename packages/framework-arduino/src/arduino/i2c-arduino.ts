@@ -1,10 +1,10 @@
-// ---------------------------------------------------------------------------
-// @typehal/framework-arduino — I2C Arduino-compatible API interface
+﻿// ---------------------------------------------------------------------------
+// @typecad/framework-arduino — I2C Arduino-compatible API interface
 //
 // Arduino Wire-compatible methods for I2C communication.
 // ---------------------------------------------------------------------------
 
-import type { I2CAddress } from '@typehal/core';
+import type { I2CAddress } from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
 // Arduino Wire-compatible Interface
@@ -15,7 +15,7 @@ import type { I2CAddress } from '@typehal/core';
  *
  * Usage:
  * ```typescript
- * import { I2C0 } from '@typehal/framework-arduino/arduino';
+ * import { I2C0 } from '@typecad/framework-arduino/arduino';
  *
  * I2C0.begin();
  * I2C0.setClock(400000);

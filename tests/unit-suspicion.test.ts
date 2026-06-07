@@ -1,15 +1,15 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import { transpile } from './setup';
 
 describe('Unit Suspicion Validation', () => {
   it('no diagnostics for UART with standard baud rate', () => {
     const result = transpile(`
-      import { UART0 } from '@typehal/framework-arduino/arduino';
+      import { UART0 } from '@typecad/framework-arduino/arduino';
       UART0.begin(9600);
       UART0.println("hello");
     `, { target: 'arduino' });
 
-    // Unit suspicion validation previously relied on typehal-call IR nodes
+    // Unit suspicion validation previously relied on cuttlefish-call IR nodes
     // with structured config builder patterns. In the __EMIT__ system,
     // bus config is lowered to C++ calls and the structured metadata
     // is no longer available for validation.

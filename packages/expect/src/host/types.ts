@@ -1,5 +1,5 @@
-// ---------------------------------------------------------------------------
-// @typehal/expect — Host-side types
+﻿// ---------------------------------------------------------------------------
+// @typecad/expect — Host-side types
 //
 // Internal type definitions used by the host runner (Node.js process) to
 // represent parsed serial output, assertion results, and test reports.
@@ -126,7 +126,7 @@ export interface RunResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Test-specific configuration — the `test` section of `typehal.config.ts`.
+ * Test-specific configuration — the `test` section of `cuttlefish.config.ts`.
  */
 export interface TestConfig {
   /** Glob patterns for test files. Default: `['tests/**\/*.test.ts']`. */
@@ -152,7 +152,7 @@ export interface TestConfig {
  */
 export interface ResolvedConfig {
   test: TestConfig;
-  /** From typehal.config.ts root. */
+  /** From cuttlefish.config.ts root. */
   buildTarget: string;
   board: string;
   target: string;

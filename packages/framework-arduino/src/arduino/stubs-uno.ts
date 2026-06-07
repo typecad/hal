@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // Arduino Uno — Arduino-compatible API stub implementations
 //
 // Empty stubs for type checking. The transpiler replaces these with Arduino
@@ -6,9 +6,9 @@
 // ---------------------------------------------------------------------------
 
 import type { II2CArduino } from './i2c-arduino';
-import type { I2CAddress } from '@typehal/core';
+import type { I2CAddress } from '@typecad/hal';
 import type { ISPIArduino } from './spi-arduino';
-import type { SPIMode, SPIBitOrder, SPISettings } from '@typehal/core';
+import type { SPIMode, SPIBitOrder, SPISettings } from '@typecad/hal';
 import type { ISerialArduino } from './uart-arduino';
 
 // ---------------------------------------------------------------------------

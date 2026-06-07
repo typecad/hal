@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// @typehal/mcu-atmega328p — MCU hardware definition
+// @typecad/mcu-atmega328p — MCU hardware definition
 // ---------------------------------------------------------------------------
 
-import type { MCUDefinition } from '@typehal/schema';
+import type { MCUDefinition } from '@typecad/cuttlefish/api/schema';
 import { MCU_PERIPHERALS } from './peripherals';
 
 // ---------------------------------------------------------------------------
