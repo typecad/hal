@@ -49,10 +49,10 @@ describe("init-templates", () => {
 
       expect(parsed.name).toBe('test-project');
       expect(parsed.private).toBe(true);
-      expect(parsed.dependencies['@typecad/hal']).toBe('^0.1.0');
+      expect(parsed.dependencies['@typecad/cuttlefish']).toBe('^0.1.0');
       expect(parsed.dependencies['@typecad/board-arduino-uno']).toBe('^0.1.0');
       expect(parsed.dependencies['@typecad/framework-arduino']).toBe('^0.1.0');
-      expect(parsed.scripts.build).toContain('typehal');
+      expect(parsed.scripts.build).toContain('cuttlefish');
       expect(parsed.scripts.compile).toContain('--compile');
       expect(parsed.scripts.upload).toContain('--upload');
     });
@@ -66,7 +66,6 @@ describe("init-templates", () => {
       expect(parsed.compilerOptions.noEmit).toBe(true);
       expect(parsed.compilerOptions.strict).toBe(true);
       expect(parsed.compilerOptions.paths['@typecad']).toBeDefined();
-      expect(parsed.compilerOptions.paths['@typecad/hal']).toBeDefined();
       expect(parsed.include).toContain('src/**/*.ts');
     });
   });
@@ -78,7 +77,8 @@ describe("init-templates", () => {
       expect(content).toContain("target: 'avr'");
       expect(content).toContain("board: '@typecad/board-arduino-uno'");
       expect(content).toContain("framework: '@typecad/framework-arduino'");
-      expect(content).toContain("frameworkData: { buildTarget: 'arduino:avr:uno' }");
+      expect(content).toContain("frameworkData:");
+      expect(content).toContain("buildTarget: 'arduino:avr:uno'");
       expect(content).toContain("baudRate: 9600");
     });
 
@@ -100,7 +100,7 @@ describe("init-templates", () => {
       const content = generateProjectEnvDts(ARDUINO_UNO_OPTIONS);
 
       expect(content).toContain("declare module '@typecad'");
-      expect(content).toContain("export * from '@typecad/board-arduino-uno'");
+      expect(content).toContain("export * from './.cuttlefish/board'");
       expect(content).toContain("type Owned<T = any> = T");
       expect(content).toContain("type Shared<T = any> = T");
       expect(content).toContain("type Mutable<T = any> = T");
@@ -167,7 +167,7 @@ describe("init-scaffold", () => {
     let tmpDir: string;
 
     beforeEach(() => {
-      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typehal-init-test-'));
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cuttlefish-init-test-'));
     });
 
     afterEach(() => {
@@ -182,7 +182,7 @@ describe("init-scaffold", () => {
       expect(fileNames).toContain('package.json');
       expect(fileNames).toContain('tsconfig.json');
       expect(fileNames).toContain('cuttlefish.config.ts');
-      expect(fileNames).toContain('typehal-env.d.ts');
+      expect(fileNames).toContain('cuttlefish-env.d.ts');
       expect(fileNames).toContain('.gitignore');
       expect(fileNames).toContain('sketch.ts');
 

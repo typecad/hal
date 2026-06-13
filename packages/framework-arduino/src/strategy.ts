@@ -7,7 +7,7 @@
 
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig } from "@typecad/cuttlefish/api/shared";
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
-import { generatePromiseRuntime } from "@typecad/cuttlefish/api/shared";
+import { generatePromiseRuntime, applyStringMethodRewrites } from "@typecad/cuttlefish/api/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
 import { resolveArduinoProfile } from "./profile";
 
@@ -596,22 +596,16 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     v = v.replace(/\bundefined\b/g, "CUTTLEFISH_UNDEFINED");
     v = v.replace(/\bnull\b/g, "CUTTLEFISH_UNDEFINED");
 
-    // String method transformations for Arduino (const char* → String wrapper calls)
-    // Mutating methods that return void in Arduino are wrapped in helper functions
-    v = v.replace(/(\w+)\.toUpperCase\(\)/g, "__tc_toUpperCase($1)");
-    v = v.replace(/(\w+)\.toLowerCase\(\)/g, "__tc_toLowerCase($1)");
-    v = v.replace(/(\w+)\.trim\(\)/g, "__tc_trim($1)");
-    v = v.replace(/(\w+)\.includes\(([^)]+)\)/g, "(strstr($1, $2) != NULL)");
-    v = v.replace(/(\w+)\.startsWith\(([^)]+)\)/g, "(strncmp($1, $2, strlen($2)) == 0)");
-    v = v.replace(/(\w+)\.endsWith\(([^)]+)\)/g, "__tc_endsWith($1, $2)");
-    v = v.replace(/(\w+)\.substring\(([^,]+),\s*([^)]+)\)/g, "__tc_substring2($1, $2, $3)");
-    v = v.replace(/(\w+)\.substring\(([^)]+)\)/g, "__tc_substring1($1, $2)");
-    v = v.replace(/(\w+)\.slice\(([^,]+),\s*([^)]+)\)/g, "__tc_slice2($1, $2, $3)");
-    v = v.replace(/(\w+)\.slice\(([^)]+)\)/g, "__tc_slice1($1, $2)");
-    v = v.replace(/(\w+)\.replace\(([^,]+),\s*([^)]+)\)/g, "__tc_replace($1, $2, $3)");
-    v = v.replace(/(\w+)\.charAt\(([^)]+)\)/g, "__tc_charAt($1, $2)");
-    v = v.replace(/(\w+)\.charCodeAt\(([^)]+)\)/g, "__tc_charCodeAt($1, $2)");
-    v = v.replace(/(\w+)\.indexOf\(([^)]+)\)/g, "__tc_str_ptr($1).indexOf($2)");
+    // String-method lowering is shared across all targets (see
+    // string-method-registry). Arduino special-cases includes/startsWith
+    // (strstr/strncmp) and wraps the indexOf receiver in __tc_str_ptr.
+    v = applyStringMethodRewrites(v, {
+      wrapReceiverFor: new Set(["indexOf"]),
+      special: {
+        includes: (recv, args) => `(strstr(${recv}, ${args[0]}) != NULL)`,
+        startsWith: (recv, args) => `(strncmp(${recv}, ${args[0]}, strlen(${args[0]})) == 0)`,
+      },
+    });
 
     // Timer transformations are now handled via HAL resolver in timing.ts
 

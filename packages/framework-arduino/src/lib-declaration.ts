@@ -399,7 +399,7 @@ export function generateUsageDocumentation(
         }
         
         if (peripheralTypes.size > 0) {
-          lines.push(`import { ${[...peripheralTypes].join(", ")} } from '@TypeCAD';`);
+          lines.push(`import { ${[...peripheralTypes].join(", ")} } from '@typecad';`);
         }
         lines.push("");
         

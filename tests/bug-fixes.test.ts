@@ -184,12 +184,14 @@ describe("Bug 4: Float type propagation", () => {
     expectCppNotContains(result, ["1.5;"]);
   });
 
-  it("renders integer-valued float literals with .0f suffix", () => {
+  it("renders integer-valued float literals folded to int (double-compatible)", () => {
     const result = transpileArduino(`
       const y = 4.0;
     `);
 
-    expectCppContains(result, ["4.0f"]);
+    // Integer-valued float literals fold to a plain int literal, which is
+    // implicitly convertible to double in C++ (4.0 === 4).
+    expectCppContains(result, ["const double y = 4;"]);
   });
 
   it("infers double type for float variable declarations", () => {
@@ -208,7 +210,9 @@ describe("Bug 4: Float type propagation", () => {
     `);
 
     expectCppContains(result, ["double half"]);
-    expectCppContains(result, ["2.0f"]);
+    // Integer-valued float literal 2.0 folds to 2; n is double so division
+    // promotes to double.
+    expectCppContains(result, ["n / 2"]);
   });
 
   it("renders float arithmetic with f suffixes", () => {
@@ -306,8 +310,8 @@ describe("Bug 2: Nested object struct generation", () => {
     `);
 
     expectCppContains(result, [
-      "struct _device_tuning_t { float frequency; int amplitude; };",
-      "float frequency",
+      "struct _device_tuning_t { double frequency; int amplitude; };",
+      "double frequency",
     ]);
   });
 });

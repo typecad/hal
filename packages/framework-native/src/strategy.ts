@@ -16,7 +16,7 @@ import type {
   StdLibSupport,
   AsyncRuntimeConfig,
 } from '@typecad/cuttlefish/api/shared';
-import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
+import { DEFAULT_STDLIB_SUPPORT, applyStringMethodRewrites } from '@typecad/cuttlefish/api/shared';
 
 export class NativeStrategy implements PlatformStrategy {
   readonly id = 'native';
@@ -123,31 +123,17 @@ export class NativeStrategy implements PlatformStrategy {
       v = v.replace(/\bundefined\b/g, 'CUTTLEFISH_UNDEFINED');
       v = v.replace(/\bnull\b/g, 'CUTTLEFISH_UNDEFINED');
       v = v.replace(/Date\.now\(\)/g, 'Date::now()');
-      const R = '(std::string\\([^)]*\\)|([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*))';
-      v = v.replace(new RegExp(`${R}\\.toUpperCase\\(\\)`, 'g'), '__tc_toUpperCase($1)');
-      v = v.replace(new RegExp(`${R}\\.toLowerCase\\(\\)`, 'g'), '__tc_toLowerCase($1)');
-      v = v.replace(new RegExp(`${R}\\.trim\\(\\)`, 'g'), '__tc_trim($1)');
-      v = v.replace(new RegExp(`${R}\\.startsWith\\(([^)]+)\\)`, 'g'), '($1.rfind($2, 0) == 0)');
-      v = v.replace(new RegExp(`${R}\\.endsWith\\(([^)]+)\\)`, 'g'), '__tc_endsWith($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.substring\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_substring2($1, $2, $3)');
-      v = v.replace(new RegExp(`${R}\\.substring\\(([^)]+)\\)`, 'g'), '__tc_substring1($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.replace\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_replace($1, $2, $3)');
-      v = v.replace(new RegExp(`${R}\\.charAt\\(([^)]+)\\)`, 'g'), '__tc_charAt($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.charCodeAt\\(([^)]+)\\)`, 'g'), '__tc_charCodeAt($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.includes\\(([^)]+)\\)`, 'g'), '__tc_includes($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.indexOf\\(([^)]+)\\)`, 'g'), '__tc_indexOf($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.lastIndexOf\\(([^)]+)\\)`, 'g'), '__tc_lastIndexOf($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.padStart\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_padStart($1, $2, $3)');
-      v = v.replace(new RegExp(`${R}\\.padStart\\(([^)]+)\\)`, 'g'), '__tc_padStart_default($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.padEnd\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_padEnd($1, $2, $3)');
-      v = v.replace(new RegExp(`${R}\\.padEnd\\(([^)]+)\\)`, 'g'), '__tc_padEnd_default($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.repeat\\(([^)]+)\\)`, 'g'), '__tc_repeat($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.split\\(([^)]+)\\)`, 'g'), '__tc_split($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.join\\(([^)]+)\\)`, 'g'), '__tc_join($1, $2)');
-      v = v.replace(new RegExp(`${R}\\.slice\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_slice2($1, $2, $3)');
-      v = v.replace(new RegExp(`${R}\\.slice\\(([^)]+)\\)`, 'g'), '__tc_slice1($1, $2)');
+      // String-method lowering is shared across all targets (fixes the
+      // receiver-duplication bug the old per-strategy regex table had for
+      // substring/slice/charCodeAt). Native uses the standard __tc_* helpers,
+      // except startsWith which maps to std::string::rfind.
+      v = applyStringMethodRewrites(v, {
+        special: {
+          startsWith: (recv, args) => `(${recv}.rfind(${args[0]}, 0) == 0)`,
+        },
+      });
       v = v.replace(new RegExp(`([\\w.]+)\\.slice\\(\\)`), 'std::vector<typename std::decay<decltype($1)>::type>($1.begin(), $1.end())');
-      v = v.replace(new RegExp(`${R}\\.reverse\\(\\)`, 'g'), '__tc_reverse($1)');
+      v = v.replace(new RegExp(`${'([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)'}\\.reverse\\(\\)`, 'g'), '__tc_reverse($1)');
       v = v.replace(/(\w+)\.push\(([^)]+)\)/g, '$1.push_back($2)');
       v = v.replace(/sizeof\s*\(\s*(\w+)\s*\)\s*\/\s*sizeof\s*\(\s*\1\s*\[(\d+)\]\s*\)/g, '$1.size()');
       v = v.replace(/(\w+)\.length\b(?:\(\))?/g, '$1.size()');

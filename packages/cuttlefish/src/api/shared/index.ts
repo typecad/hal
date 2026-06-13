@@ -101,6 +101,10 @@ export type {
 // Polyfill helper registry
 export { POLYFILL_HELPER_MAP, filterPolyfillHelpers } from './polyfill-helper-registry';
 
+// Shared string-method lowering (used by all platform strategies)
+export { STRING_METHODS, STRING_METHOD_NAMES, applyStringMethodRewrites } from './string-method-registry';
+export type { StringMethodSpec, StringMethodArgForm } from './string-method-registry';
+
 // Runtime helpers
 export { isStringEnum } from './ir-declarations';
 

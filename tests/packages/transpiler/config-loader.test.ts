@@ -193,7 +193,7 @@ describe("config-loader", () => {
       expect(config).toBeDefined();
       generateVirtualTypeDeclaration(config!);
 
-      const envPath = path.join(dir, "typehal-env.d.ts");
+      const envPath = path.join(dir, "cuttlefish-env.d.ts");
       const envContent = fs.readFileSync(envPath, "utf-8");
       expect(envContent).toContain("declare function volatile<T>(value: T): T;");
     });
