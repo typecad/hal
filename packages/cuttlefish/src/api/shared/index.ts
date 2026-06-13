@@ -101,6 +101,9 @@ export type {
 // Polyfill helper registry
 export { POLYFILL_HELPER_MAP, filterPolyfillHelpers } from './polyfill-helper-registry';
 
+// Runtime helpers
+export { isStringEnum } from './ir-declarations';
+
 // Async types
 export type { AsyncRuntimeConfig } from './async-types';
 

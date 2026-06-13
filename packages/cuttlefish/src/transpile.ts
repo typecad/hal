@@ -156,6 +156,7 @@ function applyTreeShaking(
 }
 
 import type { PlatformStrategy } from "./api/shared";
+import { isStringEnum } from "./api/shared";
 import { resolveStrategy } from "./platform/registry";
 import { loadFrameworkPackage } from "./framework-package";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry";
@@ -546,6 +547,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // regardless of which file it's defined in or what order files are emitted.
   const allEnumIRs: { name: string; members: { name: string; value?: number | string }[] }[] = [];
   const allEnumNames = new Set<string>();
+  const allStringEnumNames = new Set<string>();
   // Also collect all class names across all files for forward declarations.
   const allClassNames = new Set<string>();
   const allClassFieldTypes = new Map<string, Map<string, string>>();
@@ -555,11 +557,13 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     for (const e of programIR.enums) {
       allEnumIRs.push(e);
       allEnumNames.add(e.name);
+      if (isStringEnum(e)) allStringEnumNames.add(e.name);
     }
     for (const ns of programIR.namespaces) {
       for (const e of ns.enums) {
         allEnumIRs.push(e);
         allEnumNames.add(e.name);
+        if (isStringEnum(e)) allStringEnumNames.add(e.name);
       }
     }
     for (const cls of programIR.classes) {
@@ -628,6 +632,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       crossModuleClassFieldTypes: allClassFieldTypes,
       crossModuleFunctionReturnTypes: allFunctionReturnTypes,
       crossModuleEnumNames: allEnumNames,
+      crossModuleStringEnumNames: allStringEnumNames,
       crossModuleVariableTypes: allVariableTypes,
     };
     // Pass the already-resolved strategy (framework-loaded or target-based)

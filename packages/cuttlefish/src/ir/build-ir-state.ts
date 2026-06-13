@@ -39,6 +39,7 @@ export class CompilationContext {
   topLevelClassNames = new Set<string>();
   classTypeNames = new Set<string>();
   activeEnumNames = new Set<string>();
+  activeStringEnumNames = new Set<string>();
 
   activePinUsage = new Map<string, { pinNumber: string; source: string }>();
   activePeripheralUsage = new Map<string, { instance: number; source: string }>();
@@ -158,6 +159,7 @@ export const activeNamespaceNames = createSetProxy(ctx => ctx.activeNamespaceNam
 export const topLevelClassNames = createSetProxy(ctx => ctx.topLevelClassNames);
 export const classTypeNames = createSetProxy(ctx => ctx.classTypeNames);
 export const activeEnumNames = createSetProxy(ctx => ctx.activeEnumNames);
+export const activeStringEnumNames = createSetProxy(ctx => ctx.activeStringEnumNames);
 
 export const activePinUsage = createMapProxy(ctx => ctx.activePinUsage);
 export const activePeripheralUsage = createMapProxy(ctx => ctx.activePeripheralUsage);
@@ -267,6 +269,7 @@ export function resetBuildState(): void {
   topLevelClassNames.clear();
   classTypeNames.clear();
   activeEnumNames.clear();
+  activeStringEnumNames.clear();
   topLevelClasses.clear();
   activeGlobalTypes.clear();
   peripheralAliasMap.clear();

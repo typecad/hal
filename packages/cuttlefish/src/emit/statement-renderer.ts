@@ -25,6 +25,8 @@ interface StatementRendererContext {
   classNameMap?: Map<string, string>;
   /** Set of enum names for scoped enum access (::) */
   enumNames: Set<string>;
+  /** Set of string enum names (lowered to const char* namespaces; members are const char*) */
+  stringEnumNames?: Set<string>;
   /** Set of enum names with values outside 16-bit int range */
   largeEnumNames: Set<string>;
   /** Map of function names to their return types */
@@ -87,6 +89,7 @@ export class StatementRenderer {
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
   private readonly crossModuleClassNames?: Set<string>;
   private readonly enumNames: Set<string>;
+  private readonly stringEnumNames: Set<string>;
   private readonly interfaceFieldTypes: Map<string, Map<string, string>>;
 
   constructor(context: StatementRendererContext) {
@@ -98,6 +101,7 @@ export class StatementRenderer {
     this.varAccessorNames = context.varAccessorNames ?? new Map();
     this.crossModuleClassNames = context.crossModuleClassNames;
     this.enumNames = context.enumNames;
+    this.stringEnumNames = context.stringEnumNames ?? new Set();
     this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
 
     // Create expression renderer with shared context
@@ -106,6 +110,7 @@ export class StatementRenderer {
       boardConstants: context.boardConstants,
       classNameMap: context.classNameMap,
       enumNames: context.enumNames,
+      stringEnumNames: context.stringEnumNames,
       largeEnumNames: context.largeEnumNames,
       knownFunctionReturnTypes: context.knownFunctionReturnTypes,
       knownVariableTypes: context.knownVariableTypes,
@@ -677,7 +682,23 @@ export class StatementRenderer {
       .join(", ");
   }
 
+  /**
+   * Public type-mapping entry point for emitters that emit types directly
+   * (function return types, forward declarations) rather than via
+   * renderTypedName. Applies the same string-enum → const char* substitution.
+   */
+  mapTypeForEmit(typeName: string): string {
+    return this.normalizeCppType(typeName);
+  }
+
   private normalizeCppType(typeName: string): string {
+    // A TS string-enum type name (e.g. `Color`) is lowered to a namespace of
+    // constexpr const char* constants, so values of that type are const char*.
+    // Substitute the type so declarations like `const Color c` become
+    // `const const char* c` (valid: const pointer to const char).
+    if (this.stringEnumNames.has(typeName)) {
+      return this.strategy.normalizeCppType("const char*");
+    }
     return this.strategy.normalizeCppType(typeName);
   }
 

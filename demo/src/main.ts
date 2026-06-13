@@ -1,116 +1,108 @@
-import {
-  addEntry,
-  receiveShipment,
-  fulfillOrder,
-  totalValue,
-} from './inventory';
-import {
-  printHeader,
-  printInventoryTable,
-  printStats,
-  printRestockReport,
-  printLowStock,
-  printCategory,
-} from './reports';
+import { Particle } from './Particle';
+import { randomRange } from './utils';
+import { Star } from './Star';
+import { runExtraTests } from './physics';
 
-let skus: string[] = [];
-let names: string[] = [];
-let categories: number[] = [];
-let quantities: number[] = [];
-let thresholds: number[] = [];
-let unitCosts: number[] = [];
-let locations: string[] = [];
-let statuses: number[] = [];
+const VIEWPORT_WIDTH = 80;
+const VIEWPORT_HEIGHT = 25;
+const STAR_COUNT = 30;
+const SIMULATION_STEPS = 100;
 
-let satSkus: string[] = [];
-let satNames: string[] = [];
-let satCategories: number[] = [];
-let satQuantities: number[] = [];
-let satThresholds: number[] = [];
-let satUnitCosts: number[] = [];
-let satLocations: string[] = [];
-let satStatuses: number[] = [];
-
-function seedMain(): void {
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'EL-1001', 'Multimeter', 0, 45, 10, 2999, 'A-12');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'EL-1002', 'Soldering Iron', 0, 8, 10, 4995, 'A-14');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'CL-2001', 'Safety Vest', 1, 120, 20, 1250, 'B-03');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'CL-2002', 'Work Gloves', 1, 3, 15, 875, 'B-05');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'FD-3001', 'Lubricant Spray', 2, 200, 30, 699, 'C-01');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'TL-4001', 'Wrench Set', 3, 0, 5, 3450, 'D-08');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'TL-4002', 'Wire Stripper', 3, 22, 8, 1500, 'D-09');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'MA-5001', 'Copper Wire', 4, 500, 100, 50, 'E-01');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'MA-5002', 'Heat Shrink', 4, 15, 50, 225, 'E-03');
-  addEntry(skus, names, categories, quantities, thresholds, unitCosts, locations, statuses,
-    'EL-1003', 'Oscilloscope', 0, 2, 3, 29999, 'A-20');
+function createStar(): Star {
+  const x = randomRange(-VIEWPORT_WIDTH, VIEWPORT_WIDTH);
+  const y = randomRange(0, VIEWPORT_HEIGHT);
+  const speed = randomRange(1, 5);
+  const color = randomRange(0, 4);
+  return new Star(x, y, speed, color);
 }
 
-function main(): void {
-  printHeader();
-  seedMain();
-
-  console.log('\n  === DAILY OPERATIONS ===');
-  console.log(`  ${receiveShipment(skus, names, quantities, thresholds, statuses, 'EL-1001', 20)}`);
-  console.log(`  ${receiveShipment(skus, names, quantities, thresholds, statuses, 'CL-2001', 50)}`);
-  console.log(`  ${fulfillOrder(skus, names, quantities, thresholds, statuses, 'EL-1001', 10)}`);
-  console.log(`  ${fulfillOrder(skus, names, quantities, thresholds, statuses, 'MA-5001', 150)}`);
-  console.log(`  ${fulfillOrder(skus, names, quantities, thresholds, statuses, 'TL-4002', 5)}`);
-  console.log(`  ${receiveShipment(skus, names, quantities, thresholds, statuses, 'CL-2002', 25)}`);
-
-  printInventoryTable(skus, names, categories, quantities, unitCosts, statuses, 'Main Depot');
-  printStats(quantities, unitCosts, statuses, categories, 'Main Depot');
-  printRestockReport(skus, names, quantities, thresholds, unitCosts, statuses);
-
-  console.log('\n  === TRANSFERS TO SATELLITE ===');
-  addEntry(satSkus, satNames, satCategories, satQuantities, satThresholds, satUnitCosts, satLocations, satStatuses,
-    'CL-2001', 'Safety Vest', 1, 30, 20, 1250, 'S-01');
-  addEntry(satSkus, satNames, satCategories, satQuantities, satThresholds, satUnitCosts, satLocations, satStatuses,
-    'EL-1001', 'Multimeter', 0, 15, 10, 2999, 'S-02');
-  addEntry(satSkus, satNames, satCategories, satQuantities, satThresholds, satUnitCosts, satLocations, satStatuses,
-    'TL-4002', 'Wire Stripper', 3, 5, 8, 1500, 'S-03');
-
-  const mainIdx1 = 2;
-  quantities[mainIdx1] = quantities[mainIdx1] - 30;
-  const mainIdx2 = 0;
-  quantities[mainIdx2] = quantities[mainIdx2] - 15;
-  const mainIdx3 = 6;
-  quantities[mainIdx3] = quantities[mainIdx3] - 5;
-
-  console.log('  Moved 30 Safety Vests -> Satellite');
-  console.log('  Moved 15 Multimeters -> Satellite');
-  console.log('  Moved 5 Wire Strippers -> Satellite');
-
-  addEntry(satSkus, satNames, satCategories, satQuantities, satThresholds, satUnitCosts, satLocations, satStatuses,
-    'TL-4003', 'Pliers', 3, 40, 10, 1125, 'S-04');
-  addEntry(satSkus, satNames, satCategories, satQuantities, satThresholds, satUnitCosts, satLocations, satStatuses,
-    'MA-5003', 'Electrical Tape', 4, 250, 50, 150, 'S-05');
-
-  printInventoryTable(satSkus, satNames, satCategories, satQuantities, satUnitCosts, satStatuses, 'Satellite Store');
-
-  console.log('\n  === CONSOLIDATED SUMMARY ===');
-  const mainVal = totalValue(quantities, unitCosts);
-  const satVal = totalValue(satQuantities, satUnitCosts);
-  console.log(`  Main Depot products:     ${skus.length}`);
-  console.log(`  Satellite products:      ${satSkus.length}`);
-  console.log(`  Main Depot value (cents):${mainVal}`);
-  console.log(`  Satellite value (cents): ${satVal}`);
-  console.log(`  Combined value (cents):  ${mainVal + satVal}`);
-
-  printLowStock(skus, names, quantities, thresholds, statuses, 'Main Depot');
-  printCategory(names, categories, quantities, unitCosts, 0);
-
-  console.log('\n============================================================');
-  console.log('  DEMO COMPLETE');
-  console.log('============================================================');
+function renderRow(stars: Star[], y: number): string {
+  let output = '';
+  for (let x = 0; x < VIEWPORT_WIDTH; x++) {
+    let char = ' ';
+    for (const star of stars) {
+      if (!star.active) continue;
+      const px = Math.floor(star.position.x);
+      const py = Math.floor(star.position.y);
+      if (px === x && py === y) {
+        if (star.color === 1) char = '+';
+        else if (star.color === 2) char = 'o';
+        else if (star.color === 3) char = '.';
+        else char = '*';
+      }
+    }
+    output += char;
+  }
+  return output;
 }
 
-main();
+function renderFrame(stars: Star[]): void {
+  console.log('\n--- Starfield ---\n');
+  for (let y = 0; y < VIEWPORT_HEIGHT; y++) {
+    console.log(renderRow(stars, y));
+  }
+}
+
+function testArrays(): void {
+  const nums: number[] = [10, 20, 30, 40, 50];
+  let sum = 0;
+  for (const n of nums) {
+    sum += n;
+  }
+  console.log('Array sum: ' + sum);
+}
+
+function testMath(): void {
+  const pi = 3.14159;
+  const radius = 5;
+  const area = pi * radius * radius;
+  console.log('Circle area: ' + area);
+}
+
+function testStringMethods(): void {
+  const text = 'Starfield';
+  const upper = text.toUpperCase();
+  const lower = text.toLowerCase();
+  console.log(upper);
+  console.log(lower);
+}
+
+function simulate(): void {
+  console.log('=== Starfield Simulation Demo ===\n');
+  console.log('Viewport: ' + VIEWPORT_WIDTH + 'x' + VIEWPORT_HEIGHT + '\n');
+
+  const stars: Star[] = [];
+  for (let i = 0; i < STAR_COUNT; i++) {
+    stars.push(createStar());
+  }
+
+  console.log('Created ' + STAR_COUNT + ' stars\n');
+
+  for (let step = 0; step < SIMULATION_STEPS; step++) {
+    for (const star of stars) {
+      star.update(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+    }
+    if (step % 10 === 0) {
+      renderFrame(stars);
+    }
+  }
+
+  const p1 = new Particle(10, 10, 1.5, 0.5);
+  const p2 = new Particle(20, 15, -0.5, 1.0);
+  
+  console.log('\n--- Physics ---\n');
+  console.log('Particle 1 KE: ' + p1.kineticEnergy());
+  console.log('Particle 2 KE: ' + p2.kineticEnergy());
+
+  console.log('\n--- Utility Tests ---\n');
+  testArrays();
+  testMath();
+  testStringMethods();
+
+  console.log('\n--- Extra Tests ---\n');
+  runExtraTests();
+
+  console.log('\n--- Demo Complete ---\n');
+}
+
+simulate();

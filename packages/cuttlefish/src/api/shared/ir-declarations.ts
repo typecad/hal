@@ -53,6 +53,24 @@ export interface EnumIR {
   isConst: boolean;
 }
 
+/**
+ * A "string enum" is a TypeScript enum whose members are all initialized to
+ * string literals, e.g. `enum Color { Red = "RED", Green = "GREEN" }`.
+ *
+ * String enums are lowered to a `namespace` of `constexpr const char*`
+ * constants so that member access (`Color::Red`) yields a `const char*`.
+ * This makes `===` comparisons against string literals and string
+ * concatenation behave like TypeScript without requiring reverse-mapping
+ * helpers or `std::to_string`.
+ *
+ * A mixed enum (some numeric, some string members) is NOT a string enum —
+ * it is emitted as a numeric `enum class` as before.
+ */
+export function isStringEnum(enumDef: { members: { value?: number | string }[] }): boolean {
+  if (enumDef.members.length === 0) return false;
+  return enumDef.members.every(m => typeof m.value === "string");
+}
+
 // ---------------------------------------------------------------------------
 // Classes
 // ---------------------------------------------------------------------------

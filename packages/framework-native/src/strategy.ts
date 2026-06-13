@@ -185,11 +185,17 @@ export class NativeStrategy implements PlatformStrategy {
   }
 
   wrapStringObject(value: string): string {
+    // With useSnprintfForStrings() = true, concat flows through the snprintf
+    // path and this fallback is rarely used. Keep std::to_string for safety,
+    // but it must never receive an enum/class instance in practice.
     return `std::to_string(${value})`;
   }
 
   useSnprintfForStrings(): boolean {
-    return false;
+    // Unify native with the Arduino/AVR snprintf path so string concatenation
+    // handles enums/floats/objects correctly and never emits std::to_string
+    // on non-arithmetic types. See inferFormatSpecifier for type handling.
+    return true;
   }
 
   promoteDivisionToDouble(): boolean {

@@ -2,6 +2,7 @@ import { emitCommentLines, isRuntimeExpression } from "../utils";
 import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender";
 import type { EmitterContext } from "./emitter-context";
 import { escapeCppKeyword } from "../../utils/strings";
+import { isStringEnum } from "../../api/shared";
 
 export function emitTypeDeclarations(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, emittedTopLevelStatements, topLevelScope } = ctx;
@@ -50,6 +51,29 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
   for (const enumDef of program.enums) {
     const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
     emitCommentLines(enumDef.leadingComments, "", (line) => appendLine(ctx, line));
+
+    // String enums are lowered to a namespace of `constexpr const char*`
+    // constants so member access yields a `const char*`. This makes `===`
+    // comparisons against string literals and string concatenation behave
+    // like TypeScript (see isStringEnum). Mixed enums fall through to the
+    // numeric `enum class` path below.
+    if (isStringEnum(enumDef)) {
+      appendLine(ctx, `namespace ${enumDef.name} {`);
+      for (const member of enumDef.members) {
+        const memberName = ctx.reservedNames.has(member.name)
+          ? `_${member.name}`
+          : member.name;
+        const renamed = strategy.renameEnumMember(enumDef.name, memberName);
+        // value is a string (guaranteed by isStringEnum); escape for C++ literal
+        const escaped = String(member.value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        appendLine(ctx, `  constexpr const char* ${renamed} = "${escaped}";`);
+      }
+      appendLine(ctx, "}");
+      emitCommentLines(enumDef.trailingComments, "", (line) => appendLine(ctx, line));
+      appendLine(ctx, "");
+      continue;
+    }
+
     const enumKeyword = "enum class";
     const needsLongUnderlying = strategy.needsLargeEnumUnderlying() &&
       enumDef.members.some(m => typeof m.value === "number" && (m.value > 32767 || m.value < -32768));

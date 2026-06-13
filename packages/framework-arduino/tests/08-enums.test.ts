@@ -81,4 +81,15 @@ describe("Const enum")
     })
   ).toBe(0xFF0000)
 
+describe("String enums")
+  .it("string enum compared to a literal and concatenated")
+  .expectString(
+    (() => {
+      enum Mode { Read = 'read', Write = 'write', Exec = 'exec' }
+      const m: Mode = Mode.Write;
+      if (m === 'read') { return 'no'; }
+      return 'mode ' + m;
+    })
+  ).toBe("mode write")
+
 done();

@@ -162,7 +162,8 @@ function patchGeneratedCpp(cppPath: string): void {
 
   // Fix main() return type: must be int per C++ standard
   src = src.replace(/\bdouble\s+main\s*\(\)/g, 'int main()');
-  src = src.replace(/\blong\s+main\s*\(\)/g, 'int main()');
+  src = src.replace(/\blong\s+(?:long\s+)?int\s+main\s*\(\)/g, 'int main()');
+  src = src.replace(/\blong\s+(?:long\s+)?main\s*\(\)/g, 'int main()');
 
   // Replace bare 'undefined' with CUTTLEFISH_UNDEFINED sentinel
   src = src.replace(/\bundefined\b/g, 'CUTTLEFISH_UNDEFINED');

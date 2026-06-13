@@ -26,6 +26,7 @@ export interface EmitterOptions {
   crossModuleClassFieldTypes?: Map<string, Map<string, string>>;
   crossModuleFunctionReturnTypes?: Map<string, string>;
   crossModuleEnumNames?: Set<string>;
+  crossModuleStringEnumNames?: Set<string>;
   crossModuleVariableTypes?: Map<string, string>;
 }
 
@@ -72,6 +73,7 @@ export interface EmitterContext {
   strategy: PlatformStrategy;
   programAnalysis: ProgramAnalysisResult;
   enumNames: Set<string>;
+  stringEnumNames: Set<string>;
   largeEnumNames: Set<string>;
   namespaceNames: Set<string>;
   symbolMap: Record<string, string>;

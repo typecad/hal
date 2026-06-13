@@ -2,7 +2,7 @@
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "../api";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeLocalTypes, activeGlobalTypes, activeClassFieldTypes, topLevelClassNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, activeLocalTypes, activeGlobalTypes, activeClassFieldTypes, topLevelClassNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
 import { halInstances } from "./hal-resolver";
@@ -357,6 +357,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       if (activeStringVars.has(e.text) || activeLocalTypes.get(e.text) === "std::string") return true;
       const varType = activeLocalTypes.get(e.text) ?? activeGlobalTypes.get(e.text);
       if (varType === "const char*" || varType === "char*") return true;
+      // A variable whose declared type is a string enum holds a const char*.
+      if (varType && activeStringEnumNames.has(varType)) return true;
+      if (process.env.CF_ENUM_DEBUG && e.text === "c") {
+        console.error("[CF_ENUM_DEBUG] c varType=", JSON.stringify(varType), "stringEnums=", JSON.stringify([...activeStringEnumNames]));
+      }
     }
     if (ts.isParenthesizedExpression(e)) {
       return isStringBearingConcatChain(e.expression);

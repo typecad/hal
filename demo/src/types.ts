@@ -1,14 +1,9 @@
-export enum ProductCategory {
-  Electronics = 0,
-  Clothing = 1,
-  Food = 2,
-  Tools = 3,
-  Materials = 4,
+export interface Point2D {
+  x: number;
+  y: number;
 }
 
-export enum StockStatus {
-  InStock = 0,
-  LowStock = 1,
-  OutOfStock = 2,
-  Discontinued = 3,
+export interface Velocity {
+  dx: number;
+  dy: number;
 }

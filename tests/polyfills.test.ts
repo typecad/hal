@@ -314,11 +314,13 @@ describe("String Method Polyfills", () => {
         const a = "hello";
         const b = "world";
         const c = a + " " + b;
+        console.log(c);
       }
     `);
+    // Native uses the unified snprintf concat path: literals fold into the
+    // format string and string operands are interpolated via %s with .c_str().
     expect(result.cpp).toContain('const std::string c =');
-    expect(result.cpp).toContain('" "');
-    expect(result.cpp).toContain('a + " " + b');
+    expect(result.cpp).toMatch(/snprintf\([^;]*"%s %s"/);
   });
 
   it("transpiles string comparison", () => {

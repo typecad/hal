@@ -1,11 +1,12 @@
 ﻿import ts from "typescript";
 import { Diagnostic, SourceSpan } from "../types";
 import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, HALOpIR, ParameterIR, StatementIR } from "../api";
+import { isStringEnum } from "../api/shared";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, activeGlobalTypes, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, activeGlobalTypes, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
@@ -268,6 +269,35 @@ export function lowerStatementList(
     }
   }
 
+  // Phase 1.6: Pre-scan for enum declarations (top-level within this scope and
+  // nested inside functions) so that string-concat chain detection during
+  // lowering knows which enum-typed variables are string-bearing (string enums
+  // lower to const char*). Must run BEFORE hoisting/lowers.
+  for (const statement of statements) {
+    const collectEnums = (node: ts.Node) => {
+      if (ts.isEnumDeclaration(node) && node.name) {
+        activeEnumNames.add(node.name.text);
+        // Determine string-enum-ness from the declaration.
+        let allString = true;
+        let any = false;
+        for (const member of node.members) {
+          if (member.initializer && ts.isStringLiteral(member.initializer)) {
+            any = true;
+          } else if (member.initializer && !ts.isStringLiteral(member.initializer)) {
+            allString = false;
+          } else {
+            allString = false;
+          }
+        }
+        if (any && allString) {
+          activeStringEnumNames.add(node.name.text);
+        }
+      }
+    };
+    collectEnums(statement);
+    ts.forEachChild(statement, collectEnums);
+  }
+
   // Phase 2: Hoist nested functions (process their bodies).
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name) {
@@ -308,6 +338,11 @@ export function lowerStatementList(
       const enumIR = enumDeclarationToIR(statement, fileName, sourceText);
       if (enumIR && !hoistedNestedEnums.some(e => e.name === enumIR.name)) {
         hoistedNestedEnums.push(enumIR);
+        // Register string-enum-ness so concat-chain detection (expression-to-ir)
+        // recognizes variables of this type as string-bearing.
+        if (isStringEnum(enumIR)) {
+          activeStringEnumNames.add(enumIR.name);
+        }
       }
     }
   }

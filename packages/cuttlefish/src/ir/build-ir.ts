@@ -4,12 +4,13 @@ import path from "node:path";
 import { parseSource } from "../ast/parse";
 import { Diagnostic } from "../types";
 import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api";
+import { isStringEnum } from "../api/shared";
 import { makeDiagnostic } from "./ast-node-utils";
 import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { prescanUnsupportedFeatures } from "./feature-prescan";
@@ -414,6 +415,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       if (enumIR) {
         enums.push(enumIR);
         activeEnumNames.add(enumIR.name);
+        if (isStringEnum(enumIR)) {
+          activeStringEnumNames.add(enumIR.name);
+        }
       }
       return;
     }

@@ -83,7 +83,11 @@ export class GenericStrategy implements PlatformStrategy {
     return `std::to_string(${expr})`;
   }
   useSnprintfForStrings(): boolean {
-    return false;
+    // Native uses snprintf for string concatenation so that non-arithmetic
+    // values (enums, class instances) never hit std::to_string() and floats
+    // get JS-compatible formatting. This unifies native with the Arduino/AVR
+    // snprintf path; see inferFormatSpecifier for per-type format specifiers.
+    return true;
   }
   renameEnumMember(_enumName: string, memberName: string): string {
     return memberName;

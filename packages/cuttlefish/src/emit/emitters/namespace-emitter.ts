@@ -3,6 +3,7 @@ import { emitCommentLines } from "../utils";
 import { appendSourceLine, appendRenderedStatement } from "./line-appender";
 import { createChildEmissionScope } from "../snprintf-helpers";
 import { escapeCppKeyword } from "../../utils/strings";
+import { isStringEnum } from "../../api/shared";
 import type { EmitterContext } from "./emitter-context";
 
 export function emitNamespaces(ctx: EmitterContext): void {
@@ -23,6 +24,25 @@ export function emitNamespaces(ctx: EmitterContext): void {
     // Namespace enums
     for (const enumDef of ns.enums) {
       emitCommentLines(enumDef.leadingComments, "  ", (line) => appendSourceLine(ctx, line));
+
+      // String enum → inner namespace of constexpr const char* constants
+      // (see type-decl-emitter.ts / isStringEnum for rationale).
+      if (isStringEnum(enumDef)) {
+        appendSourceLine(ctx, `  namespace ${enumDef.name} {`);
+        for (const member of enumDef.members) {
+          const memberName = ctx.reservedNames.has(member.name)
+            ? `_${member.name}`
+            : member.name;
+          const renamed = strategy.renameEnumMember(enumDef.name, memberName);
+          const escaped = String(member.value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          appendSourceLine(ctx, `    constexpr const char* ${renamed} = "${escaped}";`);
+        }
+        appendSourceLine(ctx, "  }");
+        emitCommentLines(enumDef.trailingComments, "  ", (line) => appendSourceLine(ctx, line));
+        appendSourceLine(ctx, "");
+        continue;
+      }
+
       const enumKeyword = "enum class";
       const needsLongUnderlying = strategy.needsLargeEnumUnderlying() &&
         enumDef.members.some(m => typeof m.value === "number" && (m.value > 32767 || m.value < -32768));

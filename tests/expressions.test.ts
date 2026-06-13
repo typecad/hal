@@ -168,15 +168,15 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).toContain("const auto b = __cuttlefish_str_2;");
     });
 
-    it("keeps std::string for generic target", () => {
+    it("uses snprintf for template literal on generic target (unified concat path)", () => {
       const result = transpile([
         "function test(): void {",
         "  const x = 42;",
         "  const msg = `value: ${x}`;",
         "}",
       ].join("\n"), { target: "generic" });
-      expect(result.cpp).not.toContain("snprintf(");
-      expect(result.cpp).not.toContain("char msg[");
+      // Native/generic now uses the snprintf concat path (unified with Arduino).
+      expect(result.cpp).toContain("snprintf(");
     });
 
     // TODO: D3.asInput().read() inside template literal is not yet resolved
@@ -239,15 +239,16 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).not.toContain("String(");
     });
 
-    it("does not use snprintf for string literal + int on generic target", () => {
+    it("uses snprintf for string literal + int on generic target (unified concat path)", () => {
       const result = transpile([
         "function test(): void {",
         "  const flash = 32768;",
         '  const msg = "Flash: " + flash + " bytes";',
         "}",
       ].join("\n"), { target: "generic" });
-      expect(result.cpp).not.toContain("snprintf(");
-      expect(result.cpp).not.toContain("char msg[");
+      // Native/generic now uses the snprintf concat path (unified with Arduino)
+      // so enums/floats/objects never hit std::to_string.
+      expect(result.cpp).toContain("snprintf(");
     });
   });
 
@@ -267,11 +268,12 @@ describe("Expression Transpilation", () => {
       const result = transpile([
         "function test(): void {",
         '  const msg = "a" + ("b" + "c");',
+        '  console.log(msg);',
         "}",
       ].join("\n"));
-      expect(result.cpp).toContain('"a"');
-      expect(result.cpp).toContain('"b"');
-      expect(result.cpp).toContain('"c"');
+      // Nested all-literal concat lowers to nested snprintf buffers.
+      expect(result.cpp).toContain('"bc"');
+      expect(result.cpp).toContain('"a%s"');
     });
 
     it("handles string concat with boolean", () => {
@@ -863,7 +865,9 @@ describe("String Property Access in Concatenation", () => {
       '  return `Hello ${s.name}`;',
       '}',
     ].join("\n"));
-    expect(result.cpp).toContain('"Hello " + s->name');
+    // Native uses the unified snprintf concat path: the field is interpolated
+    // directly as %s with .c_str(), never wrapped in std::to_string.
+    expect(result.cpp).toContain("s->name");
     expect(result.cpp).not.toContain("std::to_string(s->name)");
   });
 
@@ -910,7 +914,9 @@ describe("String Property Access in Concatenation", () => {
       'function getName(): string { return "Ada"; }',
       'function greet(): string { return `Hello ${getName()}`; }',
     ].join("\n"));
-    expect(result.cpp).toContain('"Hello " + getName()');
+    // Native uses the unified snprintf concat path: the string return is
+    // interpolated as %s with .c_str(), never wrapped in std::to_string.
+    expect(result.cpp).toContain("getName()");
     expect(result.cpp).not.toContain("std::to_string(getName())");
   });
 
@@ -921,8 +927,9 @@ describe("String Property Access in Concatenation", () => {
       '  return `${item.name}:${item.damage}`;',
       '}',
     ].join("\n"));
+    // String field interpolated as %s (no std::to_string); numeric field as %d.
     expect(result.cpp).not.toContain("std::to_string(item.name)");
-    expect(result.cpp).toContain("std::to_string(item.damage)");
+    expect(result.cpp).not.toContain("std::to_string(item.damage)");
   });
 
   it("uses typed snprintf arguments for Arduino member interpolation", () => {

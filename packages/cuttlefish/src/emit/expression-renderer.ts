@@ -25,6 +25,8 @@ interface ExpressionRendererContext {
   classNameMap?: Map<string, string>;
   /** Set of enum names for scoped enum access (::) */
   enumNames: Set<string>;
+  /** Set of string enum names (lowered to const char* namespaces; members are const char*) */
+  stringEnumNames?: Set<string>;
   /** Set of enum names with values outside 16-bit int range */
   largeEnumNames: Set<string>;
   /** Map of function names to their return types */
@@ -59,6 +61,7 @@ export class ExpressionRenderer {
   private readonly boardConstants?: BoardConstants;
   private readonly classNameMap?: Map<string, string>;
   private readonly enumNames: Set<string>;
+  private readonly stringEnumNames: Set<string>;
   private readonly largeEnumNames: Set<string>;
   private readonly knownFunctionReturnTypes?: Map<string, string>;
   private readonly knownVariableTypes?: Map<string, KnownVariableInfo>;
@@ -79,6 +82,7 @@ export class ExpressionRenderer {
     this.boardConstants = context.boardConstants;
     this.classNameMap = context.classNameMap;
     this.enumNames = context.enumNames;
+    this.stringEnumNames = context.stringEnumNames ?? new Set();
     this.largeEnumNames = context.largeEnumNames;
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.knownVariableTypes = context.knownVariableTypes;
@@ -304,6 +308,13 @@ export class ExpressionRenderer {
         return whenTrue ?? whenFalse;
       }
       case "property-access": {
+        // String enum member access (e.g. Color.Red) resolves to a const char*,
+        // because string enums are lowered to namespaces of constexpr const char*.
+        if ((expr.isEnum || (expr.object.kind === "identifier" && this.stringEnumNames.has(expr.object.value)))
+            && expr.object.kind === "identifier"
+            && this.stringEnumNames.has(expr.object.value)) {
+          return "const char*";
+        }
         if (expr.property === "length" || expr.property === "size") return "int";
         if (expr.object.kind === "raw" && expr.object.value === "this") {
           return effectiveKnownVariableTypes?.get(expr.property)?.cppType;
@@ -350,7 +361,7 @@ export class ExpressionRenderer {
         if (booleanOperators.has(expr.operator)) return "bool";
         const leftType = this.inferExpressionCppType(expr.left, knownVariableTypes);
         const rightType = this.inferExpressionCppType(expr.right, knownVariableTypes);
-        if (expr.operator === "+" && (this.strategy.isStringLikeType(leftType ?? "") || this.strategy.isStringLikeType(rightType ?? ""))) {
+        if (expr.operator === "+" && (this.isStringLikeCppType(leftType) || this.isStringLikeCppType(rightType))) {
           return "std::string";
         }
         if (leftType === "double" || leftType === "float" || rightType === "double" || rightType === "float") return "double";
@@ -363,9 +374,18 @@ export class ExpressionRenderer {
     }
   }
 
+  /**
+   * True when a C++ type name denotes a string value: either the strategy's
+   * built-in string-like types (std::string, const char*, Arduino String, …)
+   * OR a TypeScript string-enum name, which is lowered to `const char*`.
+   */
+  private isStringLikeCppType(cppType: string | undefined): boolean {
+    return !!cppType && (this.strategy.isStringLikeType(cppType) || this.stringEnumNames.has(cppType));
+  }
+
   private shouldSkipStringWrap(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): boolean {
     const cppType = this.inferExpressionCppType(expr, knownVariableTypes);
-    return !!cppType && this.strategy.isStringLikeType(cppType);
+    return this.isStringLikeCppType(cppType);
   }
 
   private renderKnownStringValue(rendered: string, cppType: string): string {
@@ -440,8 +460,8 @@ export class ExpressionRenderer {
     }
     const inferredType = this.inferExpressionCppType(expr.expression, knownVariableTypes);
     const rendered = this.render(expr.expression, exprTransformer, knownVariableTypes);
-    if (inferredType && this.strategy.isStringLikeType(inferredType)) {
-      return this.renderKnownStringValue(rendered, inferredType);
+    if (this.isStringLikeCppType(inferredType)) {
+      return this.renderKnownStringValue(rendered, inferredType ?? "");
     }
     if (expr.expression.kind === "boolean") {
       return `std::string(${expr.expression.value ? '"true"' : '"false"'})`;
@@ -522,7 +542,7 @@ export class ExpressionRenderer {
       if (inferredType) {
         const rendered = this.render(expr, exprTransformer, knownVariableTypes);
         const normalized = this.strategy.normalizeCppType(inferredType);
-        if (this.strategy.isStringLikeType(inferredType)) {
+        if (this.isStringLikeCppType(inferredType)) {
           const needsCStr = normalized === "std::string" || normalized === "String" || normalized === "__tc_str_ptr";
           return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 32 };
         }
@@ -535,7 +555,9 @@ export class ExpressionRenderer {
             : undefined;
           const floatArg = this.strategy.floatToSnprintfArg?.(rendered, knownPrecision, ++this._snprintfCounter.value);
           if (floatArg !== undefined) return floatArg;
-          return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : "%g", arg: rendered, estimatedLength: 16 };
+          // Use %.15g (not %g) so large integer-valued doubles don't collapse
+          // to scientific notation — matches JS Number.toString() more closely.
+          return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : "%.15g", arg: rendered, estimatedLength: 16 };
         }
         if (/^(?:unsigned\s+)?(?:char|short|int|long|long long)$/.test(normalized) || /^(?:u?int(?:8|16|32|64)_t|size_t)$/.test(normalized)) {
           if (normalized.includes("long long") || /64_t$/.test(normalized)) {
@@ -555,7 +577,7 @@ export class ExpressionRenderer {
           const rendered = str.includes('.') || str.includes('e') || str.includes('E')
             ? `${str}f`
             : `${str}.0f`;
-          return { format: "%g", arg: rendered, estimatedLength: 16 };
+          return { format: "%.15g", arg: rendered, estimatedLength: 16 };
         }
         return { format: "%d", arg: `${expr.value}`, estimatedLength: 12 };
       }
@@ -566,8 +588,8 @@ export class ExpressionRenderer {
       case "identifier": {
         const knownVar = effectiveKnownVariableTypes?.get(expr.value);
         const cppType = knownVar?.cppType ?? this.knownFunctionReturnTypes?.get(expr.value);
-        
-        if (this.strategy.isStringLikeType(cppType ?? "")) {
+
+        if (this.isStringLikeCppType(cppType)) {
           const normalized = this.strategy.normalizeCppType(cppType ?? "");
           const arg = normalized === "__tc_str_ptr" ? `${expr.value}.c_str()` : expr.value;
           return { format: "%s", arg, estimatedLength: 32 };
@@ -578,7 +600,7 @@ export class ExpressionRenderer {
         if (cppType === "float" || cppType === "double") {
           const floatArg = this.strategy.floatToSnprintfArg?.(expr.value, knownVar?.floatPrecision, ++this._snprintfCounter.value);
           if (floatArg !== undefined) return floatArg;
-          return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%g", arg: expr.value, estimatedLength: 16 };
+          return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%.15g", arg: expr.value, estimatedLength: 16 };
         }
         if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t") {
           return { format: "%d", arg: expr.value, estimatedLength: 12 };
@@ -591,6 +613,11 @@ export class ExpressionRenderer {
         }
         if (this.stringVarNames?.has(expr.value)) {
           return { format: "%s", arg: expr.value, estimatedLength: 32 };
+        }
+        // Numeric enum-typed variable: static_cast<int> for snprintf (%d).
+        // String enums are const char* (handled by isStringLikeType above).
+        if (cppType && this.enumNames.has(cppType) && !this.stringEnumNames.has(cppType)) {
+          return { format: "%d", arg: `static_cast<int>(${expr.value})`, estimatedLength: 12 };
         }
         // Default to %d for integers and unknowns
         return { format: "%d", arg: expr.value, estimatedLength: 12 };
@@ -610,13 +637,24 @@ export class ExpressionRenderer {
       case "ternary":
       case "raw": {
         const rendered = this.render(expr, exprTransformer);
-        // String-returning helpers (__tc_toUpperCase, etc.) use %s
-        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith|toFixed)\b/.test(rendered)) {
-          return { format: "%s", arg: rendered, estimatedLength: 32 };
+        // String-returning helpers (__tc_toUpperCase, etc.) use %s.
+        // These helpers return std::string, so snprintf needs .c_str().
+        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/.test(rendered)) {
+          return { format: "%s", arg: `${rendered}.c_str()`, estimatedLength: 32 };
         }
         // Check if it's a property access on a string (e.g. s.length)
         if (expr.kind === "property-access" && (expr.property === "length" || expr.property === "size")) {
           return { format: "%d", arg: rendered, estimatedLength: 10 };
+        }
+        // String enum member access → const char* → %s with c_str() for snprintf.
+        if (expr.kind === "property-access" && expr.object.kind === "identifier"
+            && this.stringEnumNames.has(expr.object.value)) {
+          return { format: "%s", arg: `${rendered}.c_str()`, estimatedLength: 32 };
+        }
+        // Numeric enum member access → static_cast<int> for %d.
+        if (expr.kind === "property-access" && expr.object.kind === "identifier"
+            && this.enumNames.has(expr.object.value) && !this.stringEnumNames.has(expr.object.value)) {
+          return { format: "%d", arg: `static_cast<int>(${rendered})`, estimatedLength: 12 };
         }
         // Fallback for expressions that render as string-like pointers
         if (this.stringVarNames?.has(rendered)) {
@@ -666,6 +704,18 @@ export class ExpressionRenderer {
     return false;
   }
 
+  /**
+   * Returns true when an expression is a string-enum member access, i.e. it
+   * resolves to a `constexpr const char*` (e.g. `Color.Red` where Color is a
+   * TS string enum). Such operands must NOT be static_cast<int>'d in
+   * comparisons — they compare as C-strings instead.
+   */
+  private isStringEnumOperand(expr: ExpressionIR, inferredType: string | undefined): boolean {
+    if (inferredType && this.stringEnumNames.has(inferredType)) return true;
+    if (expr.kind === "property-access" && expr.object.kind === "identifier" && this.stringEnumNames.has(expr.object.value)) return true;
+    return false;
+  }
+
   private renderBinary(expr: Extract<ExpressionIR, { kind: "binary" }>, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     const leftRendered = this.render(expr.left, exprTransformer, knownVariableTypes);
     const rightRendered = this.render(expr.right, exprTransformer, knownVariableTypes);
@@ -699,10 +749,48 @@ export class ExpressionRenderer {
     let finalLeft = leftRendered;
     let finalRight = rightRendered;
     if (comparisonOps.has(expr.operator)) {
-      if (this.isEnumComparisonOperand(expr.left, modLeftType)) {
+      const leftIsStringEnum = this.isStringEnumOperand(expr.left, modLeftType);
+      const rightIsStringEnum = this.isStringEnumOperand(expr.right, modRightType);
+      const leftIsStrLiteral = expr.left.kind === "string";
+      const rightIsStrLiteral = expr.right.kind === "string";
+
+      // Detect operands that render to a raw C-string value (char buffer from
+      // snprintf concat, or a string enum member) so equality against a string
+      // literal uses strcmp instead of pointer ==.
+      // Only snprintf buffers and string enums need this — std::string has
+      // operator==, and const char* variables retain their pre-existing ==
+      // behavior. Including std::string here would break valid comparisons.
+      const isRawCString = (e: ExpressionIR, t: string | undefined): boolean => {
+        if (e.kind === "string_concat" || e.kind === "template_string") return true;
+        if (e.kind === "string") return true;
+        return this.isStringEnumOperand(e, t);
+      };
+      const leftIsCStringValue = isRawCString(expr.left, modLeftType);
+      const rightIsCStringValue = isRawCString(expr.right, modRightType);
+
+      // String equality: any C-string operand compared with == / != must use
+      // strcmp (C++ pointer == on char* compares addresses, not contents).
+      // But std::string/String variables have operator==, so skip strcmp when
+      // an operand is a managed-string *variable* (would break valid ==).
+      // Note: string_concat/template_string render to char[] buffers even
+      // though their inferred type is std::string, so they still need strcmp.
+      const isManagedStringVar = (e: ExpressionIR, t: string | undefined): boolean => {
+        if (e.kind === "string_concat" || e.kind === "template_string" || e.kind === "string") return false;
+        const n = this.strategy.normalizeCppType(t ?? "");
+        return n === "std::string" || n === "String" || n === "__tc_str_ptr";
+      };
+      if ((expr.operator === "===" || expr.operator === "==" || expr.operator === "!==" || expr.operator === "!=") &&
+          (leftIsCStringValue || rightIsCStringValue) &&
+          !isManagedStringVar(expr.left, modLeftType) && !isManagedStringVar(expr.right, modRightType)) {
+        const wantEqual = expr.operator === "===" || expr.operator === "==";
+        finalLeft = `strcmp(${leftRendered}, ${rightRendered})`;
+        return `${finalLeft} ${wantEqual ? "==" : "!="} 0`;
+      }
+
+      if (!leftIsStringEnum && this.isEnumComparisonOperand(expr.left, modLeftType)) {
         finalLeft = `static_cast<int>(${leftRendered})`;
       }
-      if (this.isEnumComparisonOperand(expr.right, modRightType)) {
+      if (!rightIsStringEnum && this.isEnumComparisonOperand(expr.right, modRightType)) {
         finalRight = `static_cast<int>(${rightRendered})`;
       }
     }

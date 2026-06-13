@@ -123,7 +123,7 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
       if (fn.typeParameters && fn.typeParameters.length > 0) {
         appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
       }
-      appendSourceLine(ctx, `${fwdLinkagePrefix}${fn.returnType} ${fn.name}(${declarationParameterList});`, {
+      appendSourceLine(ctx, `${fwdLinkagePrefix}${ctx.statementRenderer.mapTypeForEmit(fn.returnType)} ${fn.name}(${declarationParameterList});`, {
         tsSpan: fn.sourceSpan,
         nodeKind: "function_declaration",
         symbolName: fn.name,
@@ -181,7 +181,7 @@ export function emitFunctions(ctx: EmitterContext): void {
       if (fn.typeParameters && fn.typeParameters.length > 0) {
         appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
       }
-      const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : fn.returnType}>` : `${readonlyPrefix}${fn.returnType}`;
+      const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : ctx.statementRenderer.mapTypeForEmit(fn.returnType)}>` : `${readonlyPrefix}${ctx.statementRenderer.mapTypeForEmit(fn.returnType)}`;
       appendSourceLine(ctx, `static ${fnReturnType} ${fn.name}(${declarationParameterList});`, {
         tsSpan: fn.sourceSpan,
         nodeKind: "function_declaration",
@@ -213,7 +213,7 @@ export function emitFunctions(ctx: EmitterContext): void {
         if (fn.typeParameters && fn.typeParameters.length > 0) {
           appendHeaderLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
         }
-        appendHeaderLine(ctx, `${readonlyPrefix}${fn.returnType} ${fn.name}(${declarationParameterList});`, {
+        appendHeaderLine(ctx, `${readonlyPrefix}${ctx.statementRenderer.mapTypeForEmit(fn.returnType)} ${fn.name}(${declarationParameterList});`, {
           tsSpan: fn.sourceSpan,
           nodeKind: "function_declaration",
           symbolName: fn.name,
@@ -226,7 +226,7 @@ export function emitFunctions(ctx: EmitterContext): void {
     if (fn.typeParameters && fn.typeParameters.length > 0) {
       appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
     }
-    const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : fn.returnType}>` : `${readonlyPrefix}${fn.returnType}`;
+    const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : ctx.statementRenderer.mapTypeForEmit(fn.returnType)}>` : `${readonlyPrefix}${ctx.statementRenderer.mapTypeForEmit(fn.returnType)}`;
     const linkagePrefix = needsStatic ? "static " : "";
     appendSourceLine(ctx, `${linkagePrefix}${fnReturnType} ${fn.name}(${definitionParameterList})`, {
       tsSpan: fn.sourceSpan,

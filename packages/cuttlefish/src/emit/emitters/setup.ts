@@ -1,6 +1,6 @@
 ﻿import path from "node:path";
 import type { ProgramIR, StatementIR } from "../../api";
-import { filterPolyfillHelpers } from "../../api/shared";
+import { filterPolyfillHelpers, isStringEnum } from "../../api/shared";
 import { analyzeProgram } from "../../ir/program-analysis";
 import { Diagnostic, EmitMode, SourceMapEntry } from "../../types";
 import { ensureDir } from "../../utils/fs";
@@ -59,8 +59,12 @@ export function buildEmitterContext(
 ): EmitterContext {
   const largeEnumNames = new Set<string>();
   const enumNames = new Set<string>();
+  const stringEnumNames = new Set<string>();
   for (const e of program.enums) {
     enumNames.add(e.name);
+    if (isStringEnum(e)) {
+      stringEnumNames.add(e.name);
+    }
     if (e.members.some(m => typeof m.value === "number" && (m.value > 32767 || m.value < -32768))) {
       largeEnumNames.add(e.name);
     }
@@ -70,6 +74,9 @@ export function buildEmitterContext(
     namespaceNames.add(ns.name);
     for (const e of ns.enums) {
       enumNames.add(e.name);
+      if (isStringEnum(e)) {
+        stringEnumNames.add(e.name);
+      }
       if (e.members.some(m => typeof m.value === "number" && (m.value > 32767 || m.value < -32768))) {
         largeEnumNames.add(e.name);
       }
@@ -78,6 +85,11 @@ export function buildEmitterContext(
   if (options.crossModuleEnumNames) {
     for (const name of options.crossModuleEnumNames) {
       enumNames.add(name);
+    }
+  }
+  if (options.crossModuleStringEnumNames) {
+    for (const name of options.crossModuleStringEnumNames) {
+      stringEnumNames.add(name);
     }
   }
 
@@ -398,6 +410,7 @@ export function buildEmitterContext(
     boardConstants: program.boardConstants,
     classNameMap,
     enumNames,
+    stringEnumNames,
     largeEnumNames,
     knownFunctionReturnTypes,
     knownVariableTypes: topLevelScope.knownVariableTypes,
@@ -414,6 +427,7 @@ export function buildEmitterContext(
     boardConstants: program.boardConstants,
     classNameMap,
     enumNames,
+    stringEnumNames,
     largeEnumNames,
     knownFunctionReturnTypes,
     knownVariableTypes: topLevelScope.knownVariableTypes,
@@ -449,6 +463,7 @@ export function buildEmitterContext(
               boardConstants: program.boardConstants,
               classNameMap,
               enumNames,
+              stringEnumNames,
               largeEnumNames,
               knownFunctionReturnTypes: knownReturnTypes ?? knownFunctionReturnTypes,
               knownVariableTypes: topLevelScope.knownVariableTypes,
@@ -513,6 +528,10 @@ export function buildEmitterContext(
   if (program.requiredIncludes) {
     includes.push(...program.requiredIncludes);
   }
+  // String enums lower to const char* and use strcmp() for === comparisons.
+  if (stringEnumNames.size > 0) {
+    includes.push("<cstring>");
+  }
 
   // Placeholder defaults for fields that are computed later by other phases
   const noopFixPointer: (callee: string) => string = (c) => c;
@@ -523,6 +542,7 @@ export function buildEmitterContext(
     strategy,
     programAnalysis,
     enumNames,
+    stringEnumNames,
     largeEnumNames,
     namespaceNames,
     symbolMap,
