@@ -41,7 +41,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -93,6 +93,9 @@ function analyzeExpression(
       break;
 
     case "method-call":
+      if (strategy.isConsoleCall(expr.callee)) {
+        result.hasConsoleCalls = true;
+      }
       if (/\bmillis\b/.test(expr.callee) || /\bdelay\b/.test(expr.callee) || /\bmicros\b/.test(expr.callee)) {
         result.usesMillis = true;
       }
@@ -394,6 +397,12 @@ function analyzeStatement(
       // no expressions to analyze
       break;
 
+    case "super_call":
+      for (const arg of statement.args) {
+        analyzeExpression(arg, result, strategy);
+      }
+      break;
+
     case "labeled":
     case "block":
       const body = statement.kind === "labeled" ? statement.body : statement.body;
@@ -436,6 +445,30 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
   // Analyze type aliases
   for (const typeAlias of program.typeAliases) {
     result.declaredTypes.push(typeAlias.cppType);
+    if (typeAlias.structFields) {
+      for (const field of typeAlias.structFields) {
+        result.declaredTypes.push(field.cppType);
+      }
+    }
+    if (typeAlias.variantStructs) {
+      for (const variant of typeAlias.variantStructs) {
+        for (const field of variant.fields) {
+          result.declaredTypes.push(field.cppType);
+        }
+      }
+    }
+  }
+
+  // Analyze interfaces for field types and index signatures
+  for (const iface of program.interfaces) {
+    for (const field of iface.fields) {
+      result.declaredTypes.push(field.cppType);
+    }
+    if (iface.indexSignature) {
+      result.usesStdMap = true;
+      result.declaredTypes.push(iface.indexSignature.keyType);
+      result.declaredTypes.push(iface.indexSignature.valueType);
+    }
   }
 
   // Analyze functions
@@ -488,6 +521,9 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
   // Post-process declared types to detect std:: usage
   for (const typeName of result.declaredTypes) {
     if (typeName.includes("std::vector<")) {
+      result.usesVectorTypes = true;
+    }
+    if (strategy.needsStdVector() && typeName.includes("__tc_StaticArray<")) {
       result.usesVectorTypes = true;
     }
     if (typeName.includes("std::string")) {

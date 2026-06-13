@@ -47,6 +47,8 @@ interface ExpressionRendererContext {
   exprTransformer?: (expr: string) => string;
   /** Shared counter for unique snprintf buffer names across statement renders */
   snprintfCounter?: { value: number };
+  /** Map of interface/type name to field C++ types */
+  interfaceFieldTypes?: Map<string, Map<string, string>>;
 }
 
 /**
@@ -65,6 +67,7 @@ export class ExpressionRenderer {
   private readonly cArrayVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
+  private readonly interfaceFieldTypes: Map<string, Map<string, string>>;
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
   private _preludeLines: string[] = [];
@@ -84,6 +87,7 @@ export class ExpressionRenderer {
     this.cArrayVarNames = context.cArrayVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
+    this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
     this._snprintfCounter = context.snprintfCounter ?? { value: 0 };
   }
 
@@ -187,7 +191,7 @@ export class ExpressionRenderer {
         rendered = `(${this.render(expr.inner, exprTransformer)})`;
         break;
       case "binary":
-        rendered = this.renderBinary(expr, exprTransformer);
+        rendered = this.renderBinary(expr, exprTransformer, knownVariableTypes);
         break;
       case "unary":
         rendered = this.renderUnary(expr, exprTransformer);
@@ -238,12 +242,12 @@ export class ExpressionRenderer {
     let result = exprTransformer
       ? normalizeRawExpression(exprTransformer(value), this.strategy, effectiveClassNameMap)
       : normalizeRawExpression(value, this.strategy, effectiveClassNameMap);
-    const escapedStringVarNames = new Set(Array.from(this.stringVarNames ?? []).map(name => escapeCppKeyword(name, this.strategy.reservedNames())));
-    const stringVarNames = this.stringVarNames ?? new Set();
     const cArrayNames = this.cArrayVarNames ?? new Set();
     result = result.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)(?:\(\))?/g, (match, varName) => {
-      if (stringVarNames.has(varName) || escapedStringVarNames.has(varName)) return `strlen(${varName})`;
       if (cArrayNames.has(varName)) return `(sizeof(${varName}) / sizeof(${varName}[0]))`;
+      // Only C-string pointers require strlen(); std::string vars keep member-call syntax.
+      const varInfo = this.knownVariableTypes?.get(varName);
+      if (varInfo?.cppType === "const char*" || varInfo?.cppType === "char*") return `strlen(${varName})`;
       return match;
     });
     // Rewrite getter property access: s->reading → s->getReading()
@@ -263,35 +267,113 @@ export class ExpressionRenderer {
     return `(${this.render(expr.condition, exprTransformer)} ? ${this.render(expr.whenTrue, exprTransformer)} : ${this.render(expr.whenFalse, exprTransformer)})`;
   }
 
-  private shouldSkipStringWrap(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): boolean {
+  private normalizeRecordType(cppType: string): string {
+    let normalized = cppType.trim().replace(/^const\s+/, "").replace(/\s+const$/, "").trim();
+    const smartPointer = normalized.match(/^std::(?:shared_ptr|unique_ptr)<\s*(.+)\s*>$/);
+    if (smartPointer) normalized = smartPointer[1].trim();
+    return normalized.replace(/[\s*&]+$/, "").trim();
+  }
+
+  private inferExpressionCppType(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): string | undefined {
     const effectiveKnownVariableTypes = knownVariableTypes ?? this.knownVariableTypes;
-    if (expr.kind === "string") return true;
-    if (!effectiveKnownVariableTypes) return false;
-    if (expr.kind === "identifier") {
-      const varInfo = effectiveKnownVariableTypes.get(expr.value);
-      return !!varInfo && this.strategy.isStringLikeType(varInfo.cppType);
+    switch (expr.kind) {
+      case "string":
+      case "string_concat":
+      case "template_string":
+        return "std::string";
+      case "number":
+        return expr.cppType ?? (Number.isInteger(expr.value) ? "int" : "double");
+      case "boolean":
+        return "bool";
+      case "identifier": {
+        const known = effectiveKnownVariableTypes?.get(expr.value)?.cppType;
+        if (known) return known;
+        if (this.stringVarNames?.has(expr.value)) return "std::string";
+        return undefined;
+      }
+      case "await":
+        return this.inferExpressionCppType(expr.value, knownVariableTypes);
+      case "paren":
+        return this.inferExpressionCppType(expr.inner, knownVariableTypes);
+      case "ternary": {
+        const whenTrue = this.inferExpressionCppType(expr.whenTrue, knownVariableTypes);
+        const whenFalse = this.inferExpressionCppType(expr.whenFalse, knownVariableTypes);
+        if (whenTrue && whenFalse && whenTrue === whenFalse) return whenTrue;
+        if (this.strategy.isStringLikeType(whenTrue ?? "") || this.strategy.isStringLikeType(whenFalse ?? "")) return "std::string";
+        if (whenTrue === "double" || whenTrue === "float" || whenFalse === "double" || whenFalse === "float") return "double";
+        return whenTrue ?? whenFalse;
+      }
+      case "property-access": {
+        if (expr.property === "length" || expr.property === "size") return "int";
+        if (expr.object.kind === "raw" && expr.object.value === "this") {
+          return effectiveKnownVariableTypes?.get(expr.property)?.cppType;
+        }
+        const objectType = this.inferExpressionCppType(expr.object, knownVariableTypes);
+        if (!objectType) return undefined;
+        return this.interfaceFieldTypes.get(this.normalizeRecordType(objectType))?.get(expr.property);
+      }
+      case "element-access": {
+        if (expr.elementType && expr.elementType !== "auto") return expr.elementType;
+        const objectType = this.inferExpressionCppType(expr.object, knownVariableTypes);
+        if (!objectType) return undefined;
+        const normalized = objectType.trim();
+        const vectorMatch = normalized.match(/^std::vector<(.+)>$/);
+        if (vectorMatch) return vectorMatch[1].trim();
+        const staticArrayMatch = normalized.match(/^(?:__tc_StaticArray|StaticArray)<\s*(.+),\s*\d+\s*>$/);
+        if (staticArrayMatch) return staticArrayMatch[1].trim();
+        const arrayMatch = normalized.match(/^(.+)\[\d*\]$/);
+        return arrayMatch?.[1].trim();
+      }
+      case "array":
+        return `std::vector<${expr.elementType}>`;
+      case "method-call": {
+        const helper = expr.callee.match(/^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/);
+        if (helper) return "std::string";
+        if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.callee)) return "bool";
+        if (/^__tc_(?:charCodeAt|indexOf|lastIndexOf)\b/.test(expr.callee)) return "int";
+        return expr.cppType ?? this.knownFunctionReturnTypes?.get(expr.callee);
+      }
+      case "raw": {
+        if (/^std::string\(/.test(expr.value) || /^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/.test(expr.value)) {
+          return "std::string";
+        }
+        if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.value)) return "bool";
+        if (/^__tc_(?:charCodeAt|indexOf|lastIndexOf)\b/.test(expr.value)) return "int";
+        if (/^std::(floor|ceil|round|abs|sqrt|sin|cos|tan|atan2|log|exp|pow|fmod)\b/.test(expr.value)) {
+          return "double";
+        }
+        const callMatch = expr.value.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+        return callMatch ? this.knownFunctionReturnTypes?.get(callMatch[1]) : undefined;
+      }
+      case "binary": {
+        const booleanOperators = new Set(["==", "===", "!=", "!==", "<", "<=", ">", ">=", "&&", "||"]);
+        if (booleanOperators.has(expr.operator)) return "bool";
+        const leftType = this.inferExpressionCppType(expr.left, knownVariableTypes);
+        const rightType = this.inferExpressionCppType(expr.right, knownVariableTypes);
+        if (expr.operator === "+" && (this.strategy.isStringLikeType(leftType ?? "") || this.strategy.isStringLikeType(rightType ?? ""))) {
+          return "std::string";
+        }
+        if (leftType === "double" || leftType === "float" || rightType === "double" || rightType === "float") return "double";
+        return leftType ?? rightType;
+      }
+      case "unary":
+        return expr.operator === "!" ? "bool" : this.inferExpressionCppType(expr.operand, knownVariableTypes);
+      default:
+        return undefined;
     }
-    if (expr.kind === "property-access" && expr.object.kind === "identifier") {
-      const objInfo = effectiveKnownVariableTypes.get(expr.object.value);
-      return !!objInfo && /^_\w+_t$/.test(objInfo.cppType);
+  }
+
+  private shouldSkipStringWrap(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): boolean {
+    const cppType = this.inferExpressionCppType(expr, knownVariableTypes);
+    return !!cppType && this.strategy.isStringLikeType(cppType);
+  }
+
+  private renderKnownStringValue(rendered: string, cppType: string): string {
+    const normalized = this.strategy.normalizeCppType(cppType);
+    if (!this.strategy.useSnprintfForStrings() && (normalized === "const char*" || normalized === "char*")) {
+      return `std::string(${rendered})`;
     }
-    if (expr.kind === "property-access" && expr.object.kind === "raw" && (expr.object as any).value === "this") {
-      const fieldInfo = effectiveKnownVariableTypes.get(expr.property);
-      if (fieldInfo && this.strategy.isStringLikeType(fieldInfo.cppType)) return true;
-    }
-    if (expr.kind === "method-call" && typeof expr.callee === "string" && expr.callee.startsWith("__tc_")) {
-      return true;
-    }
-    if (expr.kind === "raw" && /^__tc_/.test(expr.value)) {
-      return true;
-    }
-    if (expr.kind === "raw" && /^std::string\(/.test(expr.value)) {
-      return true;
-    }
-    if (expr.kind === "template_string") {
-      return this.shouldSkipStringWrap(expr.expression, knownVariableTypes);
-    }
-    return false;
+    return rendered;
   }
 
   private renderStringConcat(expr: Extract<ExpressionIR, { kind: "string_concat" }>, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
@@ -324,6 +406,16 @@ export class ExpressionRenderer {
           return `(${part.value} ? "true" : "false")`;
         }
       }
+      // Doubles/floats need JS-compatible formatting; std::to_string appends trailing zeros (3.000000).
+      const partType = this.inferExpressionCppType(part, knownVariableTypes);
+      if (partType === "double" || partType === "float") {
+        const bufferName = `__cuttlefish_str_${++this._snprintfCounter.value}`;
+        this._preludeLines.push(
+          `char ${bufferName}[32];`,
+          `snprintf(${bufferName}, sizeof(${bufferName}), "%.15g", ${rendered});`,
+        );
+        return `std::string(${bufferName})`;
+      }
       return this.strategy.wrapStringObject(rendered);
     });
     return renderedParts.join(" + ");
@@ -346,20 +438,26 @@ export class ExpressionRenderer {
         return bufferName;
       }
     }
-    if (this.shouldSkipStringWrap(expr.expression, knownVariableTypes)) {
-      return this.render(expr.expression, exprTransformer);
+    const inferredType = this.inferExpressionCppType(expr.expression, knownVariableTypes);
+    const rendered = this.render(expr.expression, exprTransformer, knownVariableTypes);
+    if (inferredType && this.strategy.isStringLikeType(inferredType)) {
+      return this.renderKnownStringValue(rendered, inferredType);
     }
     if (expr.expression.kind === "boolean") {
       return `std::string(${expr.expression.value ? '"true"' : '"false"'})`;
     }
-    if (expr.expression.kind === "identifier") {
-      const effectiveKnownVariableTypes = knownVariableTypes ?? this.knownVariableTypes;
-      const varInfo = effectiveKnownVariableTypes?.get(expr.expression.value);
-      if (varInfo?.cppType === "bool") {
-        return `std::string(${expr.expression.value} ? "true" : "false")`;
-      }
+    if (inferredType === "bool") {
+      return `std::string(${rendered} ? "true" : "false")`;
     }
-    return this.strategy.wrapStringObject(this.render(expr.expression, exprTransformer));
+    if (inferredType === "double" || inferredType === "float") {
+      const bufferName = `__cuttlefish_str_${++this._snprintfCounter.value}`;
+      this._preludeLines.push(
+        `char ${bufferName}[32];`,
+        `snprintf(${bufferName}, sizeof(${bufferName}), "%.15g", ${rendered});`,
+      );
+      return `std::string(${bufferName})`;
+    }
+    return this.strategy.wrapStringObject(rendered);
   }
 
   /**
@@ -416,6 +514,40 @@ export class ExpressionRenderer {
     knownVariableTypes?: Map<string, KnownVariableInfo>,
   ): { format: string; arg: string; estimatedLength: number; preludeLines?: string[] } | undefined {
     const effectiveKnownVariableTypes = knownVariableTypes ?? this.knownVariableTypes;
+    if (expr.kind === "template_string") {
+      return this.inferFormatSpecifier(expr.expression, exprTransformer, knownVariableTypes);
+    }
+    if (expr.kind !== "number" && expr.kind !== "boolean" && expr.kind !== "string") {
+      const inferredType = this.inferExpressionCppType(expr, knownVariableTypes);
+      if (inferredType) {
+        const rendered = this.render(expr, exprTransformer, knownVariableTypes);
+        const normalized = this.strategy.normalizeCppType(inferredType);
+        if (this.strategy.isStringLikeType(inferredType)) {
+          const needsCStr = normalized === "std::string" || normalized === "String" || normalized === "__tc_str_ptr";
+          return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 32 };
+        }
+        if (normalized === "bool") {
+          return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
+        }
+        if (normalized === "float" || normalized === "double") {
+          const knownPrecision = expr.kind === "identifier"
+            ? effectiveKnownVariableTypes?.get(expr.value)?.floatPrecision
+            : undefined;
+          const floatArg = this.strategy.floatToSnprintfArg?.(rendered, knownPrecision, ++this._snprintfCounter.value);
+          if (floatArg !== undefined) return floatArg;
+          return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : "%g", arg: rendered, estimatedLength: 16 };
+        }
+        if (/^(?:unsigned\s+)?(?:char|short|int|long|long long)$/.test(normalized) || /^(?:u?int(?:8|16|32|64)_t|size_t)$/.test(normalized)) {
+          if (normalized.includes("long long") || /64_t$/.test(normalized)) {
+            return { format: "%lld", arg: rendered, estimatedLength: 20 };
+          }
+          if (normalized.includes("long") || /32_t$/.test(normalized)) {
+            return { format: "%ld", arg: rendered, estimatedLength: 12 };
+          }
+          return { format: "%d", arg: rendered, estimatedLength: 12 };
+        }
+      }
+    }
     switch (expr.kind) {
       case "number": {
         if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
@@ -463,8 +595,6 @@ export class ExpressionRenderer {
         // Default to %d for integers and unknowns
         return { format: "%d", arg: expr.value, estimatedLength: 12 };
       }
-      case "template_string":
-        return this.inferFormatSpecifier(expr.expression, exprTransformer, knownVariableTypes);
       case "hal-expr": {
         const rendered = this.render(expr, exprTransformer);
         // HAL expressions that resolve to string-like outputs use %s
@@ -481,7 +611,7 @@ export class ExpressionRenderer {
       case "raw": {
         const rendered = this.render(expr, exprTransformer);
         // String-returning helpers (__tc_toUpperCase, etc.) use %s
-        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith)\b/.test(rendered)) {
+        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith|toFixed)\b/.test(rendered)) {
           return { format: "%s", arg: rendered, estimatedLength: 32 };
         }
         // Check if it's a property access on a string (e.g. s.length)
@@ -529,16 +659,25 @@ export class ExpressionRenderer {
     return `${objectText}[${indexText}]`;
   }
 
-  private renderBinary(expr: Extract<ExpressionIR, { kind: "binary" }>, exprTransformer?: (expr: string) => string): string {
-    const leftRendered = this.render(expr.left, exprTransformer);
-    const rightRendered = this.render(expr.right, exprTransformer);
+  private isEnumComparisonOperand(expr: ExpressionIR, inferredType: string | undefined): boolean {
+    if (inferredType && this.enumNames.has(inferredType)) return true;
+    // Property/element access on an enum name (e.g. Color::Green) is also enum-valued.
+    if (expr.kind === "property-access" && expr.object.kind === "identifier" && this.enumNames.has(expr.object.value)) return true;
+    return false;
+  }
+
+  private renderBinary(expr: Extract<ExpressionIR, { kind: "binary" }>, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
+    const leftRendered = this.render(expr.left, exprTransformer, knownVariableTypes);
+    const rightRendered = this.render(expr.right, exprTransformer, knownVariableTypes);
     // Platform-specific string concat wrapping (Arduino: String())
     if (expr.operator === "+") {
       const wrapped = this.strategy.wrapStringConcat(leftRendered, rightRendered, expr.left.kind === "string");
       if (wrapped !== undefined) return wrapped;
     }
     // C++ doesn't define % for double — use fmod
-    if (expr.operator === "%" && this.strategy.defaultNumericType() === "double") {
+    const modLeftType = this.inferExpressionCppType(expr.left, knownVariableTypes);
+    const modRightType = this.inferExpressionCppType(expr.right, knownVariableTypes);
+    if (expr.operator === "%" && (modLeftType === "double" || modLeftType === "float" || modRightType === "double" || modRightType === "float")) {
       const left = expr.left.kind === "binary" ? `(${leftRendered})` : leftRendered;
       const right = expr.right.kind === "binary" ? `(${rightRendered})` : rightRendered;
       return `fmod(${left}, ${right})`;
@@ -554,13 +693,27 @@ export class ExpressionRenderer {
       const right = expr.right.kind === "binary" ? `(${rightRendered})` : rightRendered;
       return `pow(${left}, ${right})`;
     }
+    // Wrap enum-class operands in static_cast<int>() for comparisons against
+    // integers, since C++ enum class values don't compare with int implicitly.
+    const comparisonOps = new Set(["==", "===", "!=", "!==", "<", "<=", ">", ">="]);
+    let finalLeft = leftRendered;
+    let finalRight = rightRendered;
+    if (comparisonOps.has(expr.operator)) {
+      if (this.isEnumComparisonOperand(expr.left, modLeftType)) {
+        finalLeft = `static_cast<int>(${leftRendered})`;
+      }
+      if (this.isEnumComparisonOperand(expr.right, modRightType)) {
+        finalRight = `static_cast<int>(${rightRendered})`;
+      }
+    }
     // Precedence-aware parenthesization to preserve TS semantics in C++.
+    const cppOp = expr.operator === "===" ? "==" : expr.operator === "!==" ? "!=" : expr.operator;
     const myPrec = operatorPrecedence(expr.operator);
     const leftNeedsParens = expr.left.kind === "binary" && operatorPrecedence((expr.left as any).operator) < myPrec;
     const rightNeedsParens = expr.right.kind === "binary" && operatorPrecedence((expr.right as any).operator) <= myPrec;
-    const left = leftNeedsParens ? `(${leftRendered})` : leftRendered;
-    const right = rightNeedsParens ? `(${rightRendered})` : rightRendered;
-    return `${left} ${expr.operator} ${right}`;
+    const left = leftNeedsParens ? `(${finalLeft})` : finalLeft;
+    const right = rightNeedsParens ? `(${finalRight})` : finalRight;
+    return `${left} ${cppOp} ${right}`;
   }
 
   private renderUnary(expr: Extract<ExpressionIR, { kind: "unary" }>, exprTransformer?: (expr: string) => string): string {
@@ -611,11 +764,16 @@ export class ExpressionRenderer {
       if (this.cArrayVarNames?.has(varName)) {
         return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
       }
-      if (this.stringVarNames?.has(varName)) {
-        return `strlen(${objStr})`;
-      }
       const varInfo = this.knownVariableTypes?.get(varName);
       if (varInfo?.cppType.startsWith("__tc_StaticArray")) {
+        return `${objStr}.${expr.property}()`;
+      }
+      // C-style strings (const char*, char*) require strlen().
+      if (varInfo?.cppType === "const char*" || varInfo?.cppType === "char*") {
+        return `strlen(${objStr})`;
+      }
+      // String variable detected via IR scan (Issue 2): std::string exposes length()/size().
+      if (this.stringVarNames?.has(varName)) {
         return `${objStr}.${expr.property}()`;
       }
     }
@@ -741,8 +899,6 @@ function transformClassNames(value: string, classNameMap: Map<string, string>): 
  */
 export function normalizeRawExpression(value: string, strategy: PlatformStrategy, classNameMap?: Map<string, string>): string {
   let normalized = value
-    .replace(/===/g, "==")
-    .replace(/!==/g, "!=")
     .replace(/\?\?/g, "/* ?? */"); // Fallback for raw expressions; usually handled at IR level
 
   // Apply platform-specific expression normalisation

@@ -31,4 +31,4 @@ export interface EmissionScopeState {
   nextSnprintfTempId: number;
 }
 
-export type SnprintfExpressionRenderer = (expr: any) => string;
+export type SnprintfExpressionRenderer = (expr: import('./ir-core').ExpressionIR) => string;

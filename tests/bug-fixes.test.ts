@@ -324,7 +324,7 @@ describe("Bug 6: Nested function hoisting", () => {
     `);
 
     expectCppContains(result, [
-      "int outer__inner(int x)",
+      "double outer__inner(double x)",
       "return x * 2;",
       "return outer__inner(5);",
     ]);
@@ -341,7 +341,7 @@ describe("Bug 6: Nested function hoisting", () => {
     `);
 
     expectCppContains(result, [
-      "int compute__helper(int n)",
+      "double compute__helper(double n)",
       "return n + 10;",
       "return compute__helper(3);",
     ]);
@@ -361,8 +361,8 @@ describe("Bug 6: Nested function hoisting", () => {
     `);
 
     expectCppContains(result, [
-      "int math__add(int a, int b)",
-      "int math__mul(int a, int b)",
+      "double math__add(double a, double b)",
+      "double math__mul(double a, double b)",
       "return math__add(math__mul(2, 3), 4);",
     ]);
   });
@@ -378,7 +378,40 @@ describe("Bug 6: Nested function hoisting", () => {
     `);
 
     expectCppContains(result, [
-      "int parent__child(int x)",
+      "double parent__child(double x)",
     ]);
+  });
+});
+
+describe("Bug 10: filter() element type inference", () => {
+  it("infers element type for filter on array literal", () => {
+    const result = transpileArduino(`
+      const data = [1, 2, 3, 4, 5];
+      const evens = data.filter(x => x % 2 === 0);
+    `);
+
+    expectCppContains(result, ["int evens[]"]);
+    expectCppNotContains(result, ["long long evens[]"]);
+  });
+
+  it("infers element type for filter on array of structs", () => {
+    const result = transpileArduino(`
+      interface CrewMember { id: number; name: string; }
+      const crew = [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }];
+      const active = crew.filter(c => c.id > 0);
+    `);
+
+    expectCppContains(result, ["_crew_t active[]"]);
+    expectCppNotContains(result, ["long long active[]"]);
+  });
+
+  it("infers element type for map on array literal", () => {
+    const result = transpileArduino(`
+      const values = [10, 20, 30];
+      const doubled = values.map(x => x * 2);
+    `);
+
+    expectCppContains(result, ["int doubled[]"]);
+    expectCppNotContains(result, ["long long doubled[]"]);
   });
 });

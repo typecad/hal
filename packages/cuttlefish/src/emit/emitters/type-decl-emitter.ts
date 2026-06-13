@@ -1,9 +1,10 @@
 import { emitCommentLines, isRuntimeExpression } from "../utils";
 import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender";
 import type { EmitterContext } from "./emitter-context";
+import { escapeCppKeyword } from "../../utils/strings";
 
 export function emitTypeDeclarations(ctx: EmitterContext): void {
-  const { program, strategy, effectiveEmitMode, platformReservedNames, emittedTopLevelStatements, topLevelScope } = ctx;
+  const { program, strategy, effectiveEmitMode, reservedNames, emittedTopLevelStatements, topLevelScope } = ctx;
   const normalizeCppTypeForTarget = (cppType: string) => strategy.normalizeCppType(cppType);
 
   // Split-mode header include + forward declarations
@@ -20,6 +21,17 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
       }
     }
     appendHeaderLine(ctx, "");
+  }
+  if (effectiveEmitMode !== "split" && program.classes.length > 0) {
+    for (const classDef of program.classes) {
+      if (classDef.typeParameters && classDef.typeParameters.length > 0) {
+        const templateParams = classDef.typeParameters.map((p: string) => `typename ${p}`).join(", ");
+        appendSourceLine(ctx, `template<${templateParams}> class ${classDef.name};`);
+      } else {
+        appendSourceLine(ctx, `class ${classDef.name};`);
+      }
+    }
+    appendSourceLine(ctx, "");
   }
 
   // Emit register-mapped structs
@@ -79,9 +91,25 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
   for (const typeAlias of program.typeAliases) {
     const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
     emitCommentLines(typeAlias.leadingComments, "", (line) => appendLine(ctx, line));
+
+    if (typeAlias.variantStructs && typeAlias.variantStructs.length > 0) {
+      for (const variant of typeAlias.variantStructs) {
+        appendLine(ctx, `struct ${variant.name} {`);
+        for (const field of variant.fields) {
+          const fieldType = normalizeCppTypeForTarget(field.cppType);
+          appendLine(ctx, `  ${fieldType} ${field.name};`);
+        }
+        appendLine(ctx, "};");
+      }
+      appendLine(ctx, `using ${typeAlias.name} = ${normalizeCppTypeForTarget(typeAlias.cppType)};`);
+      emitCommentLines(typeAlias.trailingComments, "", (line) => appendLine(ctx, line));
+      appendLine(ctx, "");
+      continue;
+    }
+
     if (typeAlias.structFields && typeAlias.structFields.length > 0) {
-      if ((typeAlias as any).typeParameters && (typeAlias as any).typeParameters.length > 0) {
-        appendLine(ctx, `template<typename ${(typeAlias as any).typeParameters.join(", typename ")}>`);
+      if (typeAlias.typeParameters && typeAlias.typeParameters.length > 0) {
+        appendLine(ctx, `template<typename ${typeAlias.typeParameters.join(", typename ")}>`);
       }
       appendLine(ctx, `struct ${typeAlias.name} {`);
       for (const field of typeAlias.structFields) {
@@ -105,7 +133,7 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
   for (const iface of program.interfaces) {
     const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
     emitCommentLines(iface.leadingComments, "", (line) => appendLine(ctx, line));
-    if (iface.fields.length > 0) {
+    if (iface.fields.length > 0 || iface.indexSignature) {
       if (iface.parentScope) {
         appendLine(ctx, `namespace ${iface.parentScope} {`);
         ctx.interfaceNamespaceMap.set(iface.name, iface.parentScope);
@@ -123,6 +151,11 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
       for (const field of iface.fields) {
         const fieldType = normalizeCppTypeForTarget(field.cppType);
         appendLine(ctx, `  ${fieldType} ${field.name};`);
+      }
+      if (iface.indexSignature) {
+        const keyType = normalizeCppTypeForTarget(iface.indexSignature.keyType);
+        const valueType = normalizeCppTypeForTarget(iface.indexSignature.valueType);
+        appendLine(ctx, `  std::map<${keyType}, ${valueType}> data;`);
       }
       appendLine(ctx, "};");
       if (iface.parentScope) {
@@ -145,5 +178,30 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
     !(s.initializer && isRuntimeExpression(s.initializer))
   )) {
     appendSourceLine(ctx, "");
+  }
+
+  // In split mode, emit extern declarations for exported top-level variables
+  if (effectiveEmitMode === "split") {
+    const platformReservedNames = strategy.reservedNames();
+    const crossModuleVarTypes = ctx.options.crossModuleVariableTypes;
+    let emitted = false;
+    for (const statement of emittedTopLevelStatements) {
+      if (statement.kind !== "var_decl") continue;
+      if (statement.initializer && isRuntimeExpression(statement.initializer)) continue;
+      let cppType = strategy.normalizeCppType(statement.cppType);
+      if (cppType === "auto" && crossModuleVarTypes) {
+        const resolved = crossModuleVarTypes.get(statement.name);
+        if (resolved) cppType = strategy.normalizeCppType(resolved);
+      }
+      if (cppType === "auto") continue;
+      const isConst = statement.storage === "const";
+      const constPrefix = isConst ? "const " : "";
+      const varName = escapeCppKeyword(statement.name, platformReservedNames);
+      appendHeaderLine(ctx, `extern ${constPrefix}${cppType} ${varName};`);
+      emitted = true;
+    }
+    if (emitted) {
+      appendHeaderLine(ctx, "");
+    }
   }
 }

@@ -19,7 +19,7 @@ export function calleeToText(expr: ts.LeftHandSideExpression): string {
 export function renderExprAsText(expr: ExpressionIR): string {
   switch (expr.kind) {
     case "number": {
-      if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+      if (expr.cppType === "float" || expr.cppType === "double" || !Number.isInteger(expr.value)) {
         const str = `${expr.value}`;
         return str.includes('.') || str.includes('e') || str.includes('E')
           ? `${str}f`
@@ -37,6 +37,8 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return expr.value;
     case "element-access":
       return `${renderExprAsText(expr.object)}[${renderExprAsText(expr.index)}]`;
+    case "tuple-access":
+      return `std::get<${expr.index}>(${renderExprAsText(expr.object)})`;
     case "await":
       return renderExprAsText(expr.value);
     case "ternary":
@@ -53,7 +55,10 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return `${expr.operator}${renderExprAsText(expr.operand)}`;
     case "property-access": {
       const objText = renderExprAsText(expr.object);
-      const isPointer = (expr as any).isPointer || (expr.object.kind === "raw" && expr.object.value === "this");
+      if (expr.isEnum || expr.isNamespace || expr.isStatic) {
+        return `${objText}::${expr.property}`;
+      }
+      const isPointer = expr.isPointer || (expr.object.kind === "raw" && expr.object.value === "this");
       const sep = isPointer ? "->" : ".";
       return `${objText}${sep}${expr.property}`;
     }

@@ -16,6 +16,7 @@ export {
   isRuntimeExpression,
   statementRequiresRuntime,
   collectPointerVarTypes,
+  collectExpressionIdentifiers,
 } from "./type-inference";
 
 // Async state machine utilities

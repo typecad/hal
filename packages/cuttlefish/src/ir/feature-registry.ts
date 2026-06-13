@@ -1,5 +1,19 @@
 import ts from "typescript";
 
+// ---------------------------------------------------------------------------
+// Transpiler feature registry
+//
+// Registers TypeScript syntax patterns that have no C++ equivalent or are only
+// approximated.  Used by feature-prescan.ts to emit build-time diagnostics.
+//
+// DUAL-MAINTENANCE CONTRACT:
+// Simple selector-based patterns (those added via add()) should be mirrored in
+// packages/cuttlefish/src/create/init-templates.ts generateEslintConfig() so
+// that users get real-time editor warnings via the scaffolded ESLint config.
+// Context-sensitive patterns (those in checkContextSensitive) generally cannot
+// be expressed as ESLint selectors and are build-time-only diagnostics.
+// ---------------------------------------------------------------------------
+
 export type FeatureStatus = "unsupported" | "approximation" | "unsupported-context";
 
 export interface FeatureEntry {
@@ -149,6 +163,44 @@ export function checkContextSensitive(node: ts.Node, sourceText: string): Diagno
     return null;
   }
 
+  if (node.kind === ts.SyntaxKind.VoidKeyword && node.parent) {
+    let current: ts.Node = node.parent;
+    while (current) {
+      if (
+        ts.isVariableDeclaration(current) ||
+        ts.isPropertyDeclaration(current) ||
+        ts.isParameter(current) ||
+        ts.isBindingElement(current)
+      ) {
+        return {
+          message: "void type annotation on variable/property is erased in C++ (C++ has no void type for variables).",
+          hint: "Use 'undefined' or 'null' for optional values, or omit the type annotation.",
+          code: "TS2CPP_APPROXIMATE",
+        };
+      }
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isFunctionExpression(current)
+      ) {
+        return null;
+      }
+      if (ts.isTypeReferenceNode(current)) {
+        return null;
+      }
+      if (current.parent) {
+        current = current.parent;
+      } else {
+        break;
+      }
+    }
+    return null;
+  }
+
   if (ts.isVoidExpression(node)) {
     return {
       message: "void expression is approximated as (void)(...) in C++.",
@@ -158,11 +210,40 @@ export function checkContextSensitive(node: ts.Node, sourceText: string): Diagno
   }
 
   if (node.kind === ts.SyntaxKind.SuperKeyword) {
-    return {
-      message: "super keyword outside of class method context has no valid C++ translation.",
-      hint: "Ensure super is only used inside class constructors or methods that have a base class.",
-      code: "TS2CPP_NO_EQUIVALENT",
-    };
+    // If parent pointers are not available (common with ts.createSourceFile),
+    // skip the validation — the transpiler's own super handling (via getActiveExtendsClass)
+    // correctly generates base class initializers when super() is valid.
+    if (!node.parent) {
+      return null;
+    }
+    let insideExtendingClass = false;
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isConstructorDeclaration(current) || ts.isMethodDeclaration(current)) {
+        const classParent = current.parent;
+        if (classParent && ts.isClassDeclaration(classParent) && classParent.heritageClauses) {
+          const hasExtends = classParent.heritageClauses.some(
+            (clause) => clause.token === ts.SyntaxKind.ExtendsKeyword && clause.types.length > 0,
+          );
+          if (hasExtends) {
+            insideExtendingClass = true;
+          }
+        }
+        break;
+      }
+      if (ts.isClassDeclaration(current)) {
+        break;
+      }
+      current = current.parent;
+    }
+    if (!insideExtendingClass) {
+      return {
+        message: "super keyword outside of class method context has no valid C++ translation.",
+        hint: "Ensure super is only used inside class constructors or methods that have a base class.",
+        code: "TS2CPP_NO_EQUIVALENT",
+      };
+    }
+    return null;
   }
 
   if (ts.isTypeOfExpression(node)) {

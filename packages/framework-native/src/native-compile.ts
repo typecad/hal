@@ -8,7 +8,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { CompileResult, ToolchainOptions } from "@typecad/cuttlefish/api/shared";
-import { parseCompileErrors } from "@typecad/cuttlefish/api/shared";
+import { parseCompileErrors, collectCppFiles } from "@typecad/cuttlefish/api/shared";
 import type { NativeCompileConfig } from "./native-config";
 
 function findCppSource(outputDir: string, sourcePath: string): string {
@@ -74,9 +74,13 @@ export const NativeToolchain = {
   compile(options: ToolchainOptions): CompileResult {
     const nativeConfig = (options.frameworkConfig ?? {}) as NativeCompileConfig;
 
-    const cppFile = findCppSource(options.outputDir, options.sourcePath);
+    let cppFiles = collectCppFiles(options.outputDir);
+    if (cppFiles.length === 0) {
+      const fallback = findCppSource(options.outputDir, options.sourcePath);
+      cppFiles.push(fallback);
+    }
     const exeExt = process.platform === "win32" ? ".exe" : ".out";
-    const exeFile = cppFile.replace(/\.cpp$/, exeExt);
+    const exeFile = cppFiles[0].replace(/\.cpp$/, exeExt);
 
     // Use configured compiler or auto-detect
     const detected = detectCompiler();
@@ -120,7 +124,7 @@ export const NativeToolchain = {
 
     // Build args: flags + source + output, then -l flags last (GCC ordering)
     const linkLibs = nativeConfig.libraries?.map(lib => `-l${lib}`) ?? [];
-    const args = [...flags, cppFile, "-o", exeFile, ...linkLibs];
+    const args = [...flags, ...cppFiles, "-o", exeFile, ...linkLibs];
 
     const result = spawnSync(compiler, args, {
       encoding: "utf8",

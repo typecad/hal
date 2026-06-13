@@ -9,6 +9,7 @@ import {
   ClassGetterIR,
   ClassSetterIR,
   CppType,
+  ExpressionIR,
 } from "../api";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
 import {
@@ -29,7 +30,128 @@ import {
   nestedClassAliases,
   nestedFunctionAliases,
   activeClassFieldTypes,
+  restParamFunctions,
 } from "./build-ir-state";
+import { renderExprAsText } from "./render-expr";
+
+type DestructuredParamResult = {
+  syntheticParam: ParameterIR;
+  extractionStatements: StatementIR[];
+  localVariableTypes: Map<string, CppTypeHint>;
+};
+
+function processDestructuredParameter(
+  parameter: ts.ParameterDeclaration,
+  typeAliasNodes: Map<string, ts.TypeNode>,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  paramIndex: number,
+): DestructuredParamResult | null {
+  const paramType = typeNodeToCppType(parameter.type, typeAliasNodes) || "auto";
+  const syntheticName = `__param_${paramIndex}`;
+  const ownershipKind = extractOwnershipKindFromTypeNode(parameter.type, typeAliasNodes);
+  
+  const syntheticParam: ParameterIR = {
+    name: syntheticName,
+    cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
+    isRest: !!parameter.dotDotDotToken,
+    ...(ownershipKind ? { ownershipKind } : {}),
+  };
+  
+  const localVariableTypes = new Map<string, CppTypeHint>();
+  const extractionStatements: StatementIR[] = [];
+  const isPointer = paramType.endsWith("*");
+  const accessor = isPointer ? "->" : ".";
+  
+  const processBindingElement = (element: ts.BindingElement, prefix: string): void => {
+    if (ts.isIdentifier(element.name)) {
+      const varName = element.name.text;
+      const propName = element.propertyName && ts.isIdentifier(element.propertyName) 
+        ? element.propertyName.text 
+        : varName;
+      const accessExpr: ExpressionIR = { kind: "raw", value: `${prefix}${accessor}${propName}` };
+      const initializer: ExpressionIR = element.initializer
+        ? { kind: "raw", value: `cuttlefish_nullish(${prefix}${accessor}${propName}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})` }
+        : accessExpr;
+      extractionStatements.push({
+        kind: "var_decl",
+        sourceSpan: makeSourceSpan(element, sourceText, sourceText),
+        leadingComments: [],
+        trailingComments: [],
+        name: varName,
+        storage: "const",
+        cppType: "auto",
+        initializer,
+      });
+      localVariableTypes.set(varName, "auto");
+    } else if (ts.isObjectBindingPattern(element.name)) {
+      const propName = element.propertyName && ts.isIdentifier(element.propertyName)
+        ? element.propertyName.text
+        : null;
+      const newPrefix = propName ? `${prefix}${accessor}${propName}` : prefix;
+      for (const nested of element.name.elements) {
+        if (ts.isBindingElement(nested) && ts.isIdentifier(nested.name)) {
+          const nestedVarName = nested.name.text;
+          const nestedPropName = nested.propertyName && ts.isIdentifier(nested.propertyName)
+            ? nested.propertyName.text
+            : nestedVarName;
+          const nestedAccess = `${newPrefix}${accessor}${nestedPropName}`;
+          const nestedInitializer: ExpressionIR = nested.initializer
+            ? { kind: "raw", value: `cuttlefish_nullish(${nestedAccess}, ${renderExprAsText(expressionToIR(nested.initializer, sourceText, diagnostics))})` }
+            : { kind: "raw", value: nestedAccess };
+          extractionStatements.push({
+            kind: "var_decl",
+            sourceSpan: makeSourceSpan(nested, sourceText, sourceText),
+            leadingComments: [],
+            trailingComments: [],
+            name: nestedVarName,
+            storage: "const",
+            cppType: "auto",
+            initializer: nestedInitializer,
+          });
+          localVariableTypes.set(nestedVarName, "auto");
+        }
+      }
+    }
+  };
+  
+  const bindingPattern = parameter.name;
+  if (ts.isObjectBindingPattern(bindingPattern)) {
+    for (const element of bindingPattern.elements) {
+      if (ts.isBindingElement(element)) {
+        processBindingElement(element, syntheticName);
+      }
+    }
+  } else if (ts.isArrayBindingPattern(bindingPattern)) {
+    for (let i = 0; i < bindingPattern.elements.length; i++) {
+      const element = bindingPattern.elements[i];
+      if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
+        const varName = element.name.text;
+        const accessExpr: ExpressionIR = { kind: "raw", value: `${syntheticName}[${i}]` };
+        const initializer: ExpressionIR = element.initializer
+          ? { kind: "raw", value: `cuttlefish_nullish(${syntheticName}[${i}], ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})` }
+          : accessExpr;
+        extractionStatements.push({
+          kind: "var_decl",
+          sourceSpan: makeSourceSpan(element, sourceText, sourceText),
+          leadingComments: [],
+          trailingComments: [],
+          name: varName,
+          storage: "const",
+          cppType: "auto",
+          initializer,
+        });
+        localVariableTypes.set(varName, "auto");
+      }
+    }
+  }
+  
+  return {
+    syntheticParam,
+    extractionStatements,
+    localVariableTypes,
+  };
+}
 
 export type LowerStatementListFn = (
   statements: readonly ts.Statement[] | ts.NodeArray<ts.Statement>,
@@ -64,6 +186,7 @@ export function functionDeclarationToIR(
 
   const isAsync = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
   const isGenerator = !!(node as any).asteriskToken;
+  const isExported = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
   if (isAsync) {
     boilerplates.add("async_stub");
     diagnostics.push(
@@ -79,12 +202,14 @@ export function functionDeclarationToIR(
 
   const localVariableTypes = new Map<string, CppTypeHint>();
   const parameters: ParameterIR[] = [];
+  const destructuredParamStatements: StatementIR[] = [];
 
-  for (const parameter of node.parameters) {
+  for (let paramIndex = 0; paramIndex < node.parameters.length; paramIndex++) {
+    const parameter = node.parameters[paramIndex];
     if (ts.isIdentifier(parameter.name)) {
       const parameterType = typeNodeToCppType(parameter.type, typeAliasNodes);
-      localVariableTypes.set(parameter.name.text, parameterType);
       const paramOwnershipKind = extractOwnershipKindFromTypeNode(parameter.type, typeAliasNodes);
+      localVariableTypes.set(parameter.name.text, parameterType as CppTypeHint);
       parameters.push({
         name: parameter.name.text,
         cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
@@ -94,6 +219,13 @@ export function functionDeclarationToIR(
         isRest: !!parameter.dotDotDotToken,
         ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
       });
+    } else if (ts.isObjectBindingPattern(parameter.name) || ts.isArrayBindingPattern(parameter.name)) {
+      const result = processDestructuredParameter(parameter, typeAliasNodes, sourceText, diagnostics, paramIndex);
+      if (result) {
+        parameters.push(result.syntheticParam);
+        destructuredParamStatements.push(...result.extractionStatements);
+        result.localVariableTypes.forEach((v, k) => localVariableTypes.set(k, v));
+      }
     }
   }
 
@@ -109,9 +241,19 @@ export function functionDeclarationToIR(
     pointerVars,
   );
 
+  const statements = destructuredParamStatements.length > 0
+    ? [...destructuredParamStatements, ...bodyStatements]
+    : bodyStatements;
+
   const fnTypeParams = node.typeParameters
     ? node.typeParameters.map(tp => tp.name.text)
     : undefined;
+
+  const restParam = parameters.find(p => p.isRest);
+  if (restParam && restParam.cppType.includes("std::vector<")) {
+    const elementType = restParam.cppType.replace(/^(?:const\s+)?std::vector<(.+)>&?$/, "$1");
+    restParamFunctions.set(node.name.text, elementType);
+  }
 
   return {
     originalName: node.name.text,
@@ -120,9 +262,10 @@ export function functionDeclarationToIR(
     sourceSpan: makeSourceSpan(node, fileName, sourceText),
     ...extractNodeComments(node, sourceText),
     parameters,
-    statements: bodyStatements,
+    statements,
     ...(fnTypeParams && fnTypeParams.length > 0 ? { typeParameters: fnTypeParams } : {}),
     ...(isGenerator ? { isGenerator: true } : {}),
+    ...(isExported ? { isExported: true } : {}),
   };
 }
 
@@ -152,6 +295,7 @@ export function variableAsFunctionToIR(
   }
 
   const declarationComments = extractNodeComments(node, sourceText);
+  const isExported = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
   let commentsAssigned = false;
   const results: FunctionIR[] = [];
 
@@ -168,28 +312,34 @@ export function variableAsFunctionToIR(
     const signatureFromAlias = resolveFunctionTypeSignature(declaration.type, typeAliasNodes);
     const localVariableTypes = new Map<string, CppTypeHint>();
     const parameters: ParameterIR[] = [];
+    const destructuredParamStatements: StatementIR[] = [];
 
     for (let index = 0; index < fnExpression.parameters.length; index++) {
       const parameter = fnExpression.parameters[index];
-      if (!ts.isIdentifier(parameter.name)) {
-        continue;
+      if (ts.isIdentifier(parameter.name)) {
+        const explicitParameterType = typeNodeToCppType(parameter.type, typeAliasNodes);
+        const aliasedParameterType = signatureFromAlias?.parameterTypes[index] ?? "auto";
+        const parameterType = explicitParameterType !== "auto" ? explicitParameterType : aliasedParameterType;
+
+        localVariableTypes.set(parameter.name.text, parameterType);
+        const paramOwnershipKind = extractOwnershipKindFromTypeNode(parameter.type, typeAliasNodes);
+        parameters.push({
+          name: parameter.name.text,
+          cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
+          defaultValue: parameter.initializer
+            ? expressionToIR(parameter.initializer, sourceText, diagnostics, pointerVars)
+            : undefined,
+          isRest: !!parameter.dotDotDotToken,
+          ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
+        });
+      } else if (ts.isObjectBindingPattern(parameter.name) || ts.isArrayBindingPattern(parameter.name)) {
+        const result = processDestructuredParameter(parameter, typeAliasNodes, sourceText, diagnostics, index);
+        if (result) {
+          parameters.push(result.syntheticParam);
+          destructuredParamStatements.push(...result.extractionStatements);
+          result.localVariableTypes.forEach((v, k) => localVariableTypes.set(k, v));
+        }
       }
-
-      const explicitParameterType = typeNodeToCppType(parameter.type, typeAliasNodes);
-      const aliasedParameterType = signatureFromAlias?.parameterTypes[index] ?? "auto";
-      const parameterType = explicitParameterType !== "auto" ? explicitParameterType : aliasedParameterType;
-
-      localVariableTypes.set(parameter.name.text, parameterType);
-      const paramOwnershipKind = extractOwnershipKindFromTypeNode(parameter.type, typeAliasNodes);
-      parameters.push({
-        name: parameter.name.text,
-        cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
-        defaultValue: parameter.initializer
-          ? expressionToIR(parameter.initializer, sourceText, diagnostics, pointerVars)
-          : undefined,
-        isRest: !!parameter.dotDotDotToken,
-        ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
-      });
     }
 
     const bodyStatements: StatementIR[] = ts.isBlock(fnExpression.body)
@@ -211,6 +361,10 @@ export function variableAsFunctionToIR(
             value: expressionToIR(fnExpression.body, sourceText, diagnostics, pointerVars),
           },
         ];
+
+    const statements = destructuredParamStatements.length > 0
+      ? [...destructuredParamStatements, ...bodyStatements]
+      : bodyStatements;
 
     const explicitReturnType = typeNodeToCppType(fnExpression.type, typeAliasNodes);
     let resolvedReturnType: CppTypeHint = explicitReturnType;
@@ -276,7 +430,7 @@ export function variableAsFunctionToIR(
     }
 
     const sourceSpanTarget = fnExpression.name ?? declaration;
-    results.push({
+    const fnIR = {
       originalName: declaration.name.text,
       isAsync,
       returnType: resolvedReturnType === "auto" ? "void" : resolvedReturnType,
@@ -284,9 +438,17 @@ export function variableAsFunctionToIR(
       leadingComments: commentsAssigned ? [] : declarationComments.leadingComments,
       trailingComments: commentsAssigned ? [] : declarationComments.trailingComments,
       parameters,
-      statements: bodyStatements,
+      statements,
       ...(isGenerator ? { isGenerator: true } : {}),
-    });
+      ...(isExported ? { isExported: true } : {}),
+    };
+    results.push(fnIR);
+
+    const restParam = parameters.find(p => p.isRest);
+    if (restParam && restParam.cppType.includes("std::vector<")) {
+      const elementType = restParam.cppType.replace(/^(?:const\s+)?std::vector<(.+)>&?$/, "$1");
+      restParamFunctions.set(declaration.name.text, elementType);
+    }
 
     functionReturnTypes.set(declaration.name.text, resolvedReturnType === "auto" ? "void" : resolvedReturnType);
     commentsAssigned = true;
@@ -389,8 +551,10 @@ export function hoistNestedFunction(
 
   const localVariableTypes = new Map<string, CppTypeHint>();
   const parameters: ParameterIR[] = [];
+  const destructuredParamStatements: StatementIR[] = [];
 
-  for (const parameter of statement.parameters) {
+  for (let paramIndex = 0; paramIndex < statement.parameters.length; paramIndex++) {
+    const parameter = statement.parameters[paramIndex];
     if (ts.isIdentifier(parameter.name)) {
       const parameterType = typeNodeToCppType(parameter.type, typeAliases);
       localVariableTypes.set(parameter.name.text, parameterType);
@@ -404,6 +568,13 @@ export function hoistNestedFunction(
         isRest: !!parameter.dotDotDotToken,
         ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
       });
+    } else if (ts.isObjectBindingPattern(parameter.name) || ts.isArrayBindingPattern(parameter.name)) {
+      const result = processDestructuredParameter(parameter, typeAliases ?? new Map(), sourceText, diagnostics, paramIndex);
+      if (result) {
+        parameters.push(result.syntheticParam);
+        destructuredParamStatements.push(...result.extractionStatements);
+        result.localVariableTypes.forEach((v, k) => localVariableTypes.set(k, v));
+      }
     }
   }
 
@@ -419,6 +590,10 @@ export function hoistNestedFunction(
     typeAliases,
     pointerVars,
   );
+
+  const statements = destructuredParamStatements.length > 0
+    ? [...destructuredParamStatements, ...bodyStatements]
+    : bodyStatements;
 
   const typeParams = statement.typeParameters
     ? statement.typeParameters.map(tp => tp.name.text)
@@ -444,7 +619,7 @@ export function hoistNestedFunction(
     sourceSpan: makeSourceSpan(statement, fileName, sourceText),
     ...extractNodeComments(statement, sourceText),
     parameters,
-    statements: bodyStatements,
+    statements,
     ...(typeParams && typeParams.length > 0 ? { typeParameters: typeParams } : {}),
     ...(constraints.size > 0 ? { typeParameterConstraints: constraints } : {}),
     ...(isReadonlyReturnType ? { isReadonlyReturnType: true } : {}),

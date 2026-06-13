@@ -11,7 +11,9 @@ import {
   generateStarterSketch,
   generateGitignore,
   generateBoardForwardingFile,
+  generateEslintConfig,
 } from "./init-templates";
+import { generateEslintRules } from "./eslint-rules-template";
 
 export interface KnownTarget {
   id: string;
@@ -123,6 +125,8 @@ export function scaffoldProject(
   writeFile('tsconfig.json', generateProjectTsconfig(options));
   writeFile('cuttlefish.config.ts', generateProjectConfig(options));
   writeFile('cuttlefish-env.d.ts', generateProjectEnvDts(options));
+  writeFile('eslint.config.mjs', generateEslintConfig(options));
+  writeFile('eslint-transpiler-rules.mjs', generateEslintRules(options));
   writeFile('.gitignore', generateGitignore(options));
 
   if (options.boardPackage) {

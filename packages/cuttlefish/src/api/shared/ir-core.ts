@@ -29,7 +29,7 @@ export interface ParameterIR {
 // ---------------------------------------------------------------------------
 
 export type ExpressionIR =
-  | { kind: "number"; value: number; cppType?: "int" | "float" }
+  | { kind: "number"; value: number; cppType?: "int" | "float" | "double" }
   | { kind: "string"; value: string }
   | { kind: "boolean"; value: boolean }
   | { kind: "identifier"; value: string }
@@ -39,7 +39,7 @@ export type ExpressionIR =
   | { kind: "array"; elementType: string; elements: ExpressionIR[] }
   | { kind: "string_concat"; parts: ExpressionIR[] }
   | { kind: "template_string"; expression: ExpressionIR }
-  | { kind: "object"; fields: { name: string; value: ExpressionIR }[] }
+  | { kind: "object"; fields: { name: string; value: ExpressionIR }[]; cppType?: CppType }
   | { kind: "instanceof"; object: ExpressionIR; className: string }
   | { kind: "spread_array"; elementType: string; spreadExpr: ExpressionIR; additionalElements: ExpressionIR[] }
   /** Binary expression: left OP right (e.g. `val + 100`, `a && b`). */
@@ -64,9 +64,11 @@ export type ExpressionIR =
   /** Arrow function or lambda expression: (params) => expression | { statements } */
   | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean }
   /** A general method call with structured argument IR (preserves callbacks/lambdas). */
-  | { kind: "method-call"; callee: string; args: ExpressionIR[]; isStatic?: boolean; isNamespace?: boolean; isPointer?: boolean }
+  | { kind: "method-call"; callee: string; args: ExpressionIR[]; isStatic?: boolean; isNamespace?: boolean; isPointer?: boolean; restElementType?: string; cppType?: string }
   /** Array element access: `object[index]`. */
-  | { kind: "element-access"; object: ExpressionIR; index: ExpressionIR }
+  | { kind: "element-access"; object: ExpressionIR; index: ExpressionIR; elementType?: string }
+  /** Tuple element access: `std::get<N>(object)` for std::tuple types. */
+  | { kind: "tuple-access"; object: ExpressionIR; index: number }
   /** Parenthesized expression: preserves explicit grouping from TS source (e.g. `(2+3)*4`). */
   | { kind: "paren"; inner: ExpressionIR }
   /**
@@ -295,8 +297,17 @@ export interface YieldIR {
   isDelegate?: boolean;
 }
 
+export interface SuperCallIR {
+  kind: "super_call";
+  sourceSpan: SourceSpan;
+  leadingComments?: string[];
+  trailingComments?: string[];
+  args: ExpressionIR[];
+}
+
 export type StatementIR =
   | CallExpressionIR
+  | SuperCallIR
   | VariableDeclarationIR
   | AssignmentIR
   | UpdateIR

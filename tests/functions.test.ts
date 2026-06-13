@@ -388,3 +388,84 @@ describe("Function Transpilation", () => {
     });
   });
 });
+
+describe("Destructured Function Parameters", () => {
+  describe("Object Destructuring", () => {
+    it("transpiles function with object destructured parameter", () => {
+      const result = transpile(`
+        function formatReading({ value, unit }: { value: int; unit: string }): void {
+          console.log(value);
+        }
+      `);
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("__param_0");
+      expect(cpp).toContain("const int value = __param_0.value");
+      expect(cpp).toContain("const int unit = __param_0.unit");
+    });
+
+    it("transpiles function with renamed object destructured parameter", () => {
+      const result = transpile(`
+        function formatReading({ value: v, unit }: { value: int; unit: string }): void {
+          console.log(v);
+        }
+      `);
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("__param_0");
+      expect(cpp).toContain("const int v = __param_0.value");
+      expect(cpp).toContain("const int unit = __param_0.unit");
+    });
+
+    it("transpiles function with nested object destructuring", () => {
+      const result = transpile(`
+        function process({ config: { id, mode } }: { config: { id: int; mode: string } }): void {
+          console.log(id);
+        }
+      `);
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("__param_0");
+      expect(cpp).toContain("const int id = __param_0.config.id");
+      expect(cpp).toContain("const int mode = __param_0.config.mode");
+    });
+  });
+
+  describe("Array Destructuring", () => {
+    it("transpiles function with array destructured parameter", () => {
+      const result = transpile(`
+        function formatStat([name, value]: [string, int]): void {
+          console.log(name);
+        }
+      `);
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("__param_0");
+      expect(cpp).toContain('const int name = __param_0[0]');
+      expect(cpp).toContain('const int value = __param_0[1]');
+    });
+
+    it("transpiles function with multiple array destructuring elements", () => {
+      const result = transpile(`
+        function process([a, b, c]: [int, int, int]): void {
+          console.log(a + b + c);
+        }
+      `);
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("__param_0");
+      expect(cpp).toContain("const int a = __param_0[0]");
+      expect(cpp).toContain("const int b = __param_0[1]");
+      expect(cpp).toContain("const int c = __param_0[2]");
+    });
+  });
+
+  describe("Mixed Parameters", () => {
+    it("transpiles function with destructured and regular parameters", () => {
+      const result = transpile(`
+        function formatReading({ value }: { value: int }, precision: int = 2): void {
+          console.log(value);
+        }
+      `);
+      const cpp = normalizeCpp(result.cpp);
+      expect(cpp).toContain("__param_0");
+      expect(cpp).toContain("const int value = __param_0.value");
+      expect(cpp).toContain("int precision = 2");
+    });
+  });
+});

@@ -47,6 +47,8 @@ interface StatementRendererContext {
   crossModuleClassNames?: Set<string>;
   /** Shared counter for unique snprintf buffer names across statement renders */
   snprintfCounter?: { value: number };
+  /** Map of interface/type name to field C++ types */
+  interfaceFieldTypes?: Map<string, Map<string, string>>;
 }
 
 /**
@@ -85,6 +87,7 @@ export class StatementRenderer {
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
   private readonly crossModuleClassNames?: Set<string>;
   private readonly enumNames: Set<string>;
+  private readonly interfaceFieldTypes: Map<string, Map<string, string>>;
 
   constructor(context: StatementRendererContext) {
     this.strategy = context.strategy;
@@ -95,6 +98,7 @@ export class StatementRenderer {
     this.varAccessorNames = context.varAccessorNames ?? new Map();
     this.crossModuleClassNames = context.crossModuleClassNames;
     this.enumNames = context.enumNames;
+    this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
 
     // Create expression renderer with shared context
     this.expressionRenderer = new ExpressionRenderer({
@@ -112,6 +116,7 @@ export class StatementRenderer {
       varAccessorNames: context.varAccessorNames,
       crossModuleClassNames: context.crossModuleClassNames,
       snprintfCounter: context.snprintfCounter,
+      interfaceFieldTypes: this.interfaceFieldTypes,
     });
   }
 
@@ -270,7 +275,18 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "switch") {
-        return `switch (${this.expressionRenderer.render(statement.expression, undefined, knownVariableTypes)})`;
+        const discExpr = statement.expression;
+        const discText = this.expressionRenderer.render(discExpr, undefined, knownVariableTypes);
+        // C++ switch requires an integral discriminant. Since `number` vars are now
+        // `double`/`float` (Issue 5), cast floating-point discriminants to int.
+        let needsIntCast = false;
+        if (discExpr.kind === "identifier") {
+          const t = knownVariableTypes?.get(discExpr.value)?.cppType;
+          needsIntCast = t === "double" || t === "float" || t === "long double";
+        } else if (discExpr.kind === "number" && !Number.isInteger(discExpr.value)) {
+          needsIntCast = true;
+        }
+        return `switch (${needsIntCast ? `static_cast<int>(${discText})` : discText})`;
       }
 
       if (statement.kind === "try") {
@@ -431,14 +447,22 @@ export class StatementRenderer {
             this.pointerVarTypes, this.knownFunctionReturnTypes,
           );
           if (nestedStructs.length > 0) {
+            for (const nested of nestedStructs) {
+              this.interfaceFieldTypes.set(nested.structName, new Map(nested.fields.map((field) => [field.name, field.type])));
+            }
             const nestedDefs = nestedStructs.map(
               (ns) => `struct ${ns.structName} { ${ns.fields.map((f) => `${f.type} ${f.name};`).join(" ")} };`
             );
             this.expressionRenderer.pushPrelude(nestedDefs);
           }
 
+          const fieldTypes = new Map(firstObj.fields.map((field) => [
+            field.name,
+            this.inferFieldType(field.value, statement.name, field.name),
+          ]));
+          this.interfaceFieldTypes.set(structName, fieldTypes);
           const fieldDefs = firstObj.fields
-            .map((f) => `${this.inferFieldType(f.value, statement.name, f.name)} ${f.name};`)
+            .map((f) => `${fieldTypes.get(f.name)} ${f.name};`)
             .join(" ");
           this.expressionRenderer.pushPrelude([`struct ${structName} { ${fieldDefs} };`]);
 
@@ -503,14 +527,22 @@ export class StatementRenderer {
           this.pointerVarTypes, this.knownFunctionReturnTypes,
         );
         if (nestedStructs.length > 0) {
+          for (const nested of nestedStructs) {
+            this.interfaceFieldTypes.set(nested.structName, new Map(nested.fields.map((field) => [field.name, field.type])));
+          }
           const nestedDefs = nestedStructs.map(
             (ns) => `struct ${ns.structName} { ${ns.fields.map((f) => `${f.type} ${f.name};`).join(" ")} };`
           );
           this.expressionRenderer.pushPrelude(nestedDefs);
         }
 
+        const fieldTypes = new Map(statement.initializer.fields.map((field) => [
+          field.name,
+          this.inferFieldType(field.value, statement.name, field.name),
+        ]));
+        this.interfaceFieldTypes.set(structName, fieldTypes);
         const fieldDefs = statement.initializer.fields
-          .map((f) => `${this.inferFieldType(f.value, statement.name, f.name)} ${f.name};`)
+          .map((f) => `${fieldTypes.get(f.name)} ${f.name};`)
           .join(" ");
         const initValues = statement.initializer.fields
           .map((f) => {
@@ -608,10 +640,23 @@ export class StatementRenderer {
     return parameters
       .map((parameter) => {
         const paramOwnershipKind = (parameter as any).ownershipKind as 'owned' | 'shared' | 'mutable' | undefined;
-        const isConst = paramOwnershipKind === 'shared';
-        const isRef = (paramOwnershipKind === 'shared' || paramOwnershipKind === 'mutable')
-          && !isPrimitiveCppType(parameter.cppType)
+        const hasOwnership = paramOwnershipKind === 'shared' || paramOwnershipKind === 'mutable';
+        const isNonPrimitiveNonPointer = !isPrimitiveCppType(parameter.cppType)
           && !isIndirectType(parameter.cppType, this.strategy);
+        const paramTypeName = parameter.cppType.trim();
+        // User-defined struct/interface types (not std:: containers, not enums)
+        // default to pass-by-const-reference to avoid expensive copies and surface
+        // accidental local mutations as errors. Shared<T>/Mutable<T> keep borrowing
+        // any non-primitive, non-pointer type (including std:: containers).
+        const isUserStructType = isNonPrimitiveNonPointer
+          && !paramTypeName.startsWith("std::")
+          && !this.enumNames.has(paramTypeName);
+        const isRef = (hasOwnership && isNonPrimitiveNonPointer) || isUserStructType;
+        // Refs default to a const borrow; Mutable<T> unlocks a mutable reference.
+        // Primitives only gain const when explicitly annotated with Shared<T>.
+        const isConst = isRef
+          ? (!hasOwnership || paramOwnershipKind === 'shared')
+          : paramOwnershipKind === 'shared';
         let cppType = parameter.cppType;
         if ((parameter as any).isRest) {
           const elementType = cppType.replace(/^std::vector<(.+)>$/, '$1') || 'auto';

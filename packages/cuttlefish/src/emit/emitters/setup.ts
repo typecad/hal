@@ -1,5 +1,5 @@
 ﻿import path from "node:path";
-import type { ProgramIR } from "../../api";
+import type { ProgramIR, StatementIR } from "../../api";
 import { filterPolyfillHelpers } from "../../api/shared";
 import { analyzeProgram } from "../../ir/program-analysis";
 import { Diagnostic, EmitMode, SourceMapEntry } from "../../types";
@@ -75,10 +75,14 @@ export function buildEmitterContext(
       }
     }
   }
+  if (options.crossModuleEnumNames) {
+    for (const name of options.crossModuleEnumNames) {
+      enumNames.add(name);
+    }
+  }
 
   const strategy = options.strategy ?? resolveStrategy(options.target ?? "generic");
   strategy.setLargeEnumNames?.(largeEnumNames);
-  const platformReservedNames = strategy.reservedNames();
   const reservedNames = strategy.reservedNames();
 
   ensureDir(options.outDir);
@@ -122,7 +126,7 @@ export function buildEmitterContext(
   const isEntryFileForPolyfills = isEntryFile;
   const nativePolyfills = isEntryFileForPolyfills
     ? (strategy.generateNativePolyfills?.(program, options.platformContext) ?? [])
-    : [];
+    : (strategy.generateNativePolyfills?.(program, options.platformContext) ?? []);
 
   let filteredNativePolyfills = filterPolyfillHelpers(nativePolyfills, programAnalysis.usedPolyfillHelpers);
   if (!programAnalysis.hasThrowStatements) {
@@ -140,7 +144,7 @@ export function buildEmitterContext(
     : undefined;
   const hasAsyncRuntime = program.functions.some(fn => fn.isAsync);
   const hasPromiseRuntime = nativePolyfills.some(
-    (p) => p.id === "async_runtime" && (p as any).hasPromiseRuntime === true
+    (p) => p.id === "async_runtime" && p.hasPromiseRuntime === true
   );
 
   if (!isNpmPackage) {
@@ -215,16 +219,57 @@ export function buildEmitterContext(
 
   const templateInterfaceNames = new Set<string>();
   const interfaceNamespaceMap = new Map<string, string>();
+  const interfaceFieldTypes = new Map<string, Map<string, string>>();
   for (const iface of program.interfaces) {
     if (iface.parentScope) {
       interfaceNamespaceMap.set(iface.name, iface.parentScope);
     }
-    for (const field of iface.fields) {
-      if (/^[A-Z]$/.test(field.cppType)) {
-        templateInterfaceNames.add(iface.name);
-        break;
+    if (iface.fields.length > 0) {
+      const fieldTypes = new Map<string, string>();
+      for (const field of iface.fields) {
+        fieldTypes.set(field.name, field.cppType);
+      }
+      interfaceFieldTypes.set(iface.name, fieldTypes);
+      for (const field of iface.fields) {
+        if (/^[A-Z]$/.test(field.cppType)) {
+          templateInterfaceNames.add(iface.name);
+          break;
+        }
       }
     }
+  }
+  for (const classDef of program.classes) {
+    if (classDef.fields.length > 0 || classDef.extendsClass) {
+      const fieldTypes = new Map<string, string>();
+      if (classDef.extendsClass) {
+        const parentFields = interfaceFieldTypes.get(classDef.extendsClass);
+        if (parentFields) {
+          for (const [fname, ftype] of parentFields) {
+            fieldTypes.set(fname, ftype);
+          }
+        }
+      }
+      for (const field of classDef.fields) {
+        fieldTypes.set(field.name, field.cppType);
+      }
+      interfaceFieldTypes.set(classDef.name, fieldTypes);
+    }
+  }
+  if (options.crossModuleClassFieldTypes) {
+    for (const [className, fieldTypes] of options.crossModuleClassFieldTypes) {
+      if (!interfaceFieldTypes.has(className)) {
+        interfaceFieldTypes.set(className, fieldTypes);
+      }
+    }
+  }
+
+  // Build the set of all known class names (local + cross-module).
+  // Class instances are always created with `new`, which returns a pointer;
+  // function parameters that reference these types must also be pointers.
+  const classNames = new Set<string>();
+  for (const cls of program.classes) classNames.add(cls.name);
+  if (options.crossModuleClasses) {
+    for (const name of options.crossModuleClasses) classNames.add(name);
   }
 
   const mappedFunctions: MappedFunction[] = program.functions.map((fn) => {
@@ -243,6 +288,8 @@ export function buildEmitterContext(
       typeParameters: fn.typeParameters,
       typeParameterConstraints: fn.typeParameterConstraints,
       isReadonlyReturnType: fn.isReadonlyReturnType,
+      isGenerator: fn.isGenerator,
+      isExported: fn.isExported,
       statements: fn.statements.map((stmt) => {
         if (stmt.kind === "call") {
           return { ...stmt, callee: applySymbolMap(stmt.callee, symbolMap) };
@@ -252,7 +299,7 @@ export function buildEmitterContext(
     };
   });
 
-  const knownFunctionReturnTypes = new Map<string, string>();
+  const knownFunctionReturnTypes = new Map<string, string>(options.crossModuleFunctionReturnTypes);
   for (const fn of mappedFunctions) {
     knownFunctionReturnTypes.set(fn.name, fn.returnType);
   }
@@ -263,7 +310,87 @@ export function buildEmitterContext(
 
   const snprintfCounter = { value: 0 };
   const topLevelScope = createEmissionScopeState();
+
+  if (options.crossModuleVariableTypes) {
+    for (const [name, cppType] of options.crossModuleVariableTypes) {
+      topLevelScope.knownVariableTypes.set(name, { cppType });
+    }
+  }
+
   const stringVarNames = new Set<string>();
+  // Pre-populate known string variable names from the program IR so that
+  // string-concat / template rendering can detect string identifiers even when
+  // the dynamic knownVariableTypes map doesn't yet hold them at render time.
+  const isStringCppType = (t: string | undefined): boolean =>
+    !!t && (t === "std::string" || t === "const char*");
+  const collectStringVars = (statements: StatementIR[]): void => {
+    for (const stmt of statements) {
+      switch (stmt.kind) {
+        case "var_decl":
+          if (isStringCppType(stmt.cppType)) stringVarNames.add(stmt.name);
+          break;
+        case "if":
+          collectStringVars(stmt.thenBranch);
+          if (stmt.elseBranch) collectStringVars(stmt.elseBranch);
+          break;
+        case "for":
+          if (stmt.initializer && stmt.initializer.kind === "var_decl" && isStringCppType(stmt.initializer.cppType)) {
+            stringVarNames.add(stmt.initializer.name);
+          }
+          collectStringVars(stmt.body);
+          break;
+        case "for_of":
+        case "for_in":
+          if (stmt.variable && stmt.variable.kind === "var_decl" && isStringCppType(stmt.variable.cppType)) {
+            stringVarNames.add(stmt.variable.name);
+          }
+          collectStringVars(stmt.body);
+          break;
+        case "while":
+        case "do_while":
+        case "block":
+        case "labeled":
+          collectStringVars(stmt.body);
+          break;
+        case "switch":
+          for (const c of stmt.cases) collectStringVars(c.body);
+          break;
+        case "try":
+          collectStringVars(stmt.tryBlock);
+          if (stmt.catchBlock) collectStringVars(stmt.catchBlock);
+          if (stmt.finallyBlock) collectStringVars(stmt.finallyBlock);
+          break;
+        default:
+          break;
+      }
+    }
+  };
+  for (const stmt of program.topLevelStatements) {
+    if (stmt.kind === "var_decl" && isStringCppType(stmt.cppType)) stringVarNames.add(stmt.name);
+  }
+  for (const fn of program.functions) {
+    for (const param of fn.parameters) {
+      if (isStringCppType(param.cppType)) stringVarNames.add(param.name);
+    }
+    collectStringVars(fn.statements);
+  }
+  for (const cls of program.classes) {
+    for (const field of cls.fields) {
+      if (isStringCppType(field.cppType)) stringVarNames.add(field.name);
+    }
+    for (const method of cls.methods) {
+      for (const param of method.parameters) {
+        if (isStringCppType(param.cppType)) stringVarNames.add(param.name);
+      }
+      collectStringVars(method.statements);
+    }
+    if (cls.constructor) {
+      for (const param of cls.constructor.parameters) {
+        if (isStringCppType(param.cppType)) stringVarNames.add(param.name);
+      }
+      collectStringVars(cls.constructor.statements);
+    }
+  }
   const varAccessorNames = new Map<string, Map<string, "getter" | "setter" | "both">>();
 
   const exprRenderer = new ExpressionRenderer({
@@ -278,6 +405,8 @@ export function buildEmitterContext(
     snprintfCounter,
     stringVarNames,
     varAccessorNames,
+    interfaceFieldTypes,
+    crossModuleClassNames: classNames,
   });
 
   const statementRenderer = new StatementRenderer({
@@ -292,6 +421,8 @@ export function buildEmitterContext(
     snprintfCounter,
     stringVarNames,
     varAccessorNames,
+    interfaceFieldTypes,
+    crossModuleClassNames: classNames,
   });
 
   const asyncFunctionOriginalNames = new Set(
@@ -402,7 +533,6 @@ export function buildEmitterContext(
     isEntryFile,
     isNpmPackage,
     isrPrefix,
-    platformReservedNames,
     reservedNames,
     knownFunctionReturnTypes,
     mappedFunctions,
@@ -414,6 +544,7 @@ export function buildEmitterContext(
     statementRenderer,
     classNameMap,
     boardConstants: program.boardConstants,
+    restParamFunctions: program.restParamFunctions,
     asyncTaskClasses,
     asyncFunctionOriginalNames,
     asyncFunctionMappedNames,
@@ -440,5 +571,6 @@ export function buildEmitterContext(
     profileDiagnostics,
     templateInterfaceNames,
     interfaceNamespaceMap,
+    interfaceFieldTypes,
   };
 }

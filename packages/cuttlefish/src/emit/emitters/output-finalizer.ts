@@ -4,7 +4,30 @@ import type { GeneratedOutputs, SourceMapEntry } from "../../types";
 import { writeText } from "../../utils/fs";
 import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map";
 import { dedupe, hasConsoleCalls, resolveTranspiledModuleInclude } from "../utils";
+import { appendHeaderLine } from "./line-appender";
 import type { EmitterContext } from "./emitter-context";
+
+/** Derives a unique C preprocessor guard name from a source file path. */
+function sanitizeGuardName(filePath: string): string {
+  // Use the basename minus extension, uppercased, with non-alphanumeric
+  // characters replaced by underscores.
+  const base = filePath.replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "");
+  return base.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+}
+
+/** Extracts a C preprocessor guard from a polyfill definition string. */
+function polyfillDefinitionGuard(definition: string): string | null {
+  // Match function names after 'inline', 'template<...>', or at start of line.
+  // Handles: "inline double __tc_random() { ... }"
+  //          "template<typename T> std::string __tc_join(...) { ... }"
+  //          "int __tc_setTimeout(...) { ... }"
+  //          "struct __tc_task_state { ... };"
+  const funcMatch = definition.match(/\b(__tc_\w+)\s*\(/);
+  if (funcMatch) return `__TC_POLYFILL_${funcMatch[1].toUpperCase()}`;
+  const structMatch = definition.match(/\b(struct|class)\s+(\w+)/);
+  if (structMatch) return `__TC_POLYFILL_${structMatch[2].toUpperCase()}`;
+  return null;
+}
 
 export function emitPreamble(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, program, shimLines, emittedPolyfills, asyncTaskClasses, includes, programAnalysis } = ctx;
@@ -22,9 +45,27 @@ export function emitPreamble(ctx: EmitterContext): void {
       appendSourceLineLocal(ctx, "");
     }
     if (emittedPolyfills.definitions.length > 0) {
-      for (const definition of emittedPolyfills.definitions) {
-        appendSourceLineLocal(ctx, definition.trimEnd());
-        appendSourceLineLocal(ctx, "");
+      if (effectiveEmitMode === "split") {
+        // Use per-definition guards based on function/struct names so that
+        // the same inline helper (e.g. __tc_random) is only defined once
+        // even when multiple headers are included by the same TU.
+        for (const definition of emittedPolyfills.definitions) {
+          const guard = polyfillDefinitionGuard(definition);
+          if (guard) {
+            appendHeaderLine(ctx, `#ifndef ${guard}`);
+            appendHeaderLine(ctx, `#define ${guard}`);
+          }
+          appendHeaderLine(ctx, definition.trimEnd());
+          if (guard) {
+            appendHeaderLine(ctx, `#endif // ${guard}`);
+          }
+        }
+        appendHeaderLine(ctx, "");
+      } else {
+        for (const definition of emittedPolyfills.definitions) {
+          appendSourceLineLocal(ctx, definition.trimEnd());
+          appendSourceLineLocal(ctx, "");
+        }
       }
     }
   }

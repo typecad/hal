@@ -13,6 +13,7 @@
 
 import type { BoardConstants } from './board-resolver';
 import type { Diagnostic } from './types';
+import type { RegisteredCallback } from '../../ir/build-ir-state';
 
 // Re-export everything from sub-modules so existing imports keep working.
 export type {
@@ -20,6 +21,7 @@ export type {
   ParameterIR,
   ExpressionIR,
   CallExpressionIR,
+  SuperCallIR,
   VariableDeclarationIR,
   AssignmentIR,
   UpdateIR,
@@ -228,5 +230,7 @@ export interface ProgramIR {
   /** The name of the default export, if this module has `export default <name>` */
   defaultExportName?: string;
   /** Registered callbacks from the HAL resolver */
-  registeredCallbacks?: any[];
+  registeredCallbacks?: RegisteredCallback[];
+  /** Map of function names to their rest parameter element types (e.g., "sum" -> "int") */
+  restParamFunctions?: Map<string, string>;
 }

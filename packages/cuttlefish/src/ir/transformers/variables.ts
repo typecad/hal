@@ -606,6 +606,13 @@ export function variableStatementToIR(
     if (nestedClassAliases.has(baseCppType)) {
       varCppType = nestedClassAliases.get(baseCppType)! + (isPtr ? "*" : "");
     }
+    // Object literals without a type annotation get "auto" from type resolution,
+    // but the emitter will generate a struct _name_t. Set the cppType early so
+    // that string-concat rendering (shouldSkipStringWrap) can recognise string
+    // fields by looking up the struct type in interfaceFieldTypes.
+    if (varCppType === "auto" && actualInitializer && ts.isObjectLiteralExpression(actualInitializer)) {
+      varCppType = `_${declaration.name.text}_t`;
+    }
     if (actualInitializer && ts.isArrayLiteralExpression(actualInitializer)) {
       const hasObjectElements = actualInitializer.elements.some(
         (e): e is ts.Expression => !ts.isSpreadElement(e) && ts.isObjectLiteralExpression(e)
@@ -632,6 +639,7 @@ export function variableStatementToIR(
       const varName = declaration.name.text;
 
       if (mutableArrayVars.has(varName) && ts.isArrayLiteralExpression(actualInitializer)) {
+        require("fs").appendFileSync("C:\\typecad\\typecode\\debug-push.log", `[StaticArray rewrite] var=${varName} mutableArrayVars has=true\n`);
         const elements = actualInitializer.elements;
         let elemType = "int";
         if (declarationType.resolvedType.startsWith("std::vector<")) {
@@ -663,6 +671,10 @@ export function variableStatementToIR(
         continue;
       }
 
+      if (mutableArrayVars.has(varName) && !ts.isArrayLiteralExpression(actualInitializer)) {
+        loweredDeclaration.storage = "let";
+      }
+
       if (ts.isCallExpression(actualInitializer) &&
           ts.isPropertyAccessExpression(actualInitializer.expression) &&
           actualInitializer.expression.name.text === "map" &&
@@ -676,6 +688,12 @@ export function variableStatementToIR(
           const bodyExpr = ts.isBlock(arrowFn.body) ? undefined : arrowFn.body;
           if (bodyExpr) {
             const span = loweredDeclaration.sourceSpan;
+            const srcType = activeLocalTypes.get(srcName) ?? activeGlobalTypes.get(srcName) ?? "auto";
+            const elemType = srcType.startsWith("std::vector<") 
+              ? srcType.slice("std::vector<".length, -1) 
+              : srcType.endsWith("[]") 
+                ? srcType.slice(0, -2) 
+                : srcType;
             const zeroElements: ExpressionIR[] = [];
             for (let zi = 0; zi < srcSize; zi++) zeroElements.push({ kind: "number", value: 0 });
             lowered.push({
@@ -686,7 +704,7 @@ export function variableStatementToIR(
               name: varName,
               storage: "let",
               cppType: "auto",
-              initializer: { kind: "array", elementType: "auto", elements: zeroElements },
+              initializer: { kind: "array", elementType: elemType, elements: zeroElements },
             });
             activeCArrayVars.add(varName);
             lowered.push(buildInlineForLoop(
@@ -713,13 +731,19 @@ export function variableStatementToIR(
           if (bodyExpr) {
             const span = loweredDeclaration.sourceSpan;
             const lenVar = `${varName}__len`;
+            const srcType = activeLocalTypes.get(srcName) ?? activeGlobalTypes.get(srcName) ?? "auto";
+            const elemType = srcType.startsWith("std::vector<") 
+              ? srcType.slice("std::vector<".length, -1) 
+              : srcType.endsWith("[]") 
+                ? srcType.slice(0, -2) 
+                : srcType;
             const zeroElements: ExpressionIR[] = [];
             for (let zi = 0; zi < srcSize; zi++) zeroElements.push({ kind: "number", value: 0 });
             lowered.push({
               kind: "var_decl", sourceSpan: span,
               leadingComments: loweredDeclaration.leadingComments, trailingComments: [],
               name: varName, storage: "let", cppType: "auto",
-              initializer: { kind: "array", elementType: "auto", elements: zeroElements },
+              initializer: { kind: "array", elementType: elemType, elements: zeroElements },
             });
             lowered.push({
               kind: "var_decl", sourceSpan: span,
@@ -768,6 +792,17 @@ export function variableStatementToIR(
           const accName = accParam && ts.isIdentifier(accParam.name) ? accParam.name.text : "__acc";
           const valName = valParam && ts.isIdentifier(valParam.name) ? valParam.name.text : "__val";
           const bodyExpr = ts.isBlock(arrowFn.body) ? undefined : arrowFn.body;
+          if (!initVal) {
+            diagnostics.push(
+              makeDiagnostic(
+                sourceText,
+                actualInitializer.pos,
+                "reduce() requires an initial value argument for C++ transpilation.",
+                "warning",
+                "TS2CPP_REDUCE_NO_INIT",
+              ),
+            );
+          }
           if (bodyExpr && initVal) {
             const span = loweredDeclaration.sourceSpan;
             lowered.push({
@@ -840,7 +875,7 @@ export function variableStatementToIR(
 
     const ownershipKind = extractOwnershipKindFromTypeNode(declaration.type, typeAliases);
     if (ownershipKind) {
-      (loweredDeclaration as any).ownershipKind = ownershipKind;
+      loweredDeclaration.ownershipKind = ownershipKind;
     }
 
     if (declarationType.shouldWarnUnmappedType) {
@@ -853,6 +888,10 @@ export function variableStatementToIR(
           "TS2CPP_UNMAPPED_TYPE",
         ),
       );
+    }
+
+    if (ts.isIdentifier(declaration.name) && !actualInitializer && mutableArrayVars.has(declaration.name.text)) {
+      loweredDeclaration.storage = "let";
     }
 
     lowered.push(loweredDeclaration);

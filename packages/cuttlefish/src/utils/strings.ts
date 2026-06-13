@@ -54,6 +54,33 @@ const CPP_RESERVED_KEYWORDS = new Set([
   "virtual", "wchar_t", "xor", "xor_eq",
 ]);
 
+const C_STDLIB_RESERVED_NAMES = new Set([
+  "abort", "abs", "acos", "asin", "atan", "atan2",
+  "atexit", "atof", "atoi", "atol",
+  "calloc", "ceil", "clearerr", "clock", "cos", "cosh", "ctime",
+  "div", "exit", "exp",
+  "fabs", "fclose", "feof", "ferror", "fflush", "fgetc", "fgetpos", "fgets",
+  "floor", "fmod", "fopen", "fprintf", "fputc", "fputs", "fread", "free",
+  "freopen", "frexp", "fscanf", "fseek", "fsetpos", "ftell", "fwrite",
+  "getc", "getchar", "getenv", "gets", "gmtime",
+  "isalnum", "isalpha", "iscntrl", "isdigit", "isgraph", "islower",
+  "isprint", "ispunct", "isspace", "isupper", "isxdigit",
+  "labs", "ldexp", "ldiv", "localtime", "log", "log10", "longjmp",
+  "malloc", "memchr", "memcmp", "memcpy", "memmove", "memset", "mktime", "modf",
+  "perror", "pow", "printf", "putc", "putchar", "puts",
+  "qsort",
+  "raise", "rand", "realloc", "remove", "rename", "rewind",
+  "scanf", "setbuf", "setjmp", "setvbuf", "signal", "sin", "sinh", "sprintf",
+  "sqrt", "srand", "sscanf", "strcat", "strchr", "strcmp", "strcoll",
+  "strcpy", "strcspn", "strerror", "strftime", "strlen", "strncat", "strncmp",
+  "strncpy", "strpbrk", "strrchr", "strspn", "strstr", "strtod", "strtok",
+  "strtol", "strtoul", "strxfrm", "system",
+  "tan", "tanh", "time", "tmpfile", "tmpnam", "tolower", "toupper",
+  "ungetc",
+  "va_arg", "va_end", "va_start",
+  "vfprintf", "vprintf", "vsprintf",
+]);
+
 /**
  * Escapes a name that conflicts with a C++ reserved keyword by appending `_`.
  * Additionally checks against the optional `platformNames` set, which should
@@ -66,10 +93,22 @@ export function escapeCppKeyword(name: string, platformNames?: ReadonlySet<strin
   if (CPP_RESERVED_KEYWORDS.has(name)) {
     return `${name}_`;
   }
+  if (C_STDLIB_RESERVED_NAMES.has(name)) {
+    return `${name}_`;
+  }
   if (platformNames?.has(name)) {
     return `${name}_`;
   }
   return name;
+}
+
+export function escapeCppStringLiteral(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
 }
 
 export function normalizeKebabName(name: string): string {

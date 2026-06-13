@@ -30,8 +30,8 @@ export function inferObjectFieldType(
   resolvePinType?: (objectName: string, fieldName: string) => string | undefined,
 ): string {
   if (value.kind === "number") {
-    if (value.cppType === "float" || !Number.isInteger(value.value)) {
-      return "float";
+    if (value.cppType === "float" || value.cppType === "double" || !Number.isInteger(value.value)) {
+      return value.cppType === "double" ? "double" : "float";
     }
     if (value.value > 32767 || value.value < -32768) {
       return "long";
@@ -58,6 +58,8 @@ export function inferObjectFieldType(
     if (pointerVarTypes && pointerVarTypes.has(value.value)) {
       return pointerVarTypes.get(value.value)!;
     }
+    // Default to the defaultIntType for unknown identifiers
+    // This will be overridden if knownVariableTypes is provided
     return defaultIntType;
   }
 
@@ -501,6 +503,30 @@ export function getConsoleMethod(callee: string): string {
  * @param expr The expression to check
  * @returns true if the expression requires runtime execution
  */
+export function collectExpressionIdentifiers(expr: ExpressionIR): Set<string> {
+  const names = new Set<string>();
+  function scan(e: ExpressionIR): void {
+    if (!e || typeof e !== 'object' || !e.kind) return;
+    if (e.kind === "identifier") {
+      names.add(e.value);
+      return;
+    }
+    for (const key of Object.keys(e)) {
+      if (key === "kind" || key === "loc" || key === "range" || key === "sourceSpan") continue;
+      const val = (e as any)[key];
+      if (Array.isArray(val)) {
+        for (const item of val) {
+          if (item && typeof item === 'object' && item.kind) scan(item);
+        }
+      } else if (val && typeof val === 'object' && val.kind) {
+        scan(val);
+      }
+    }
+  }
+  scan(expr);
+  return names;
+}
+
 export function isRuntimeExpression(expr: ExpressionIR): boolean {
   // Safety check
   if (!expr || typeof expr !== 'object' || !expr.kind) {

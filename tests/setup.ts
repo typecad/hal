@@ -6,10 +6,11 @@ import {
   registerPlatformStrategy,
   resolveStrategy,
   clearAllProfileCaches
-} from "../packages/transpiler/src/testing";
-import { setActiveStrategy } from "../packages/transpiler/src/ir/hal-resolver";
-import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/transpiler/src/types";
+} from "../packages/cuttlefish/src/testing";
+import { setActiveStrategy } from "../packages/cuttlefish/src/ir/hal-resolver";
+import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/cuttlefish/src/types";
 import { ArduinoStrategy } from "../packages/framework-arduino/src";
+import { NativeStrategy } from "../packages/framework-native/src";
 import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
@@ -17,8 +18,10 @@ import * as path from "path";
 // Load the default framework package so polyfill generators and emitters
 // can access framework functions without going through transpileFile().
 const _arduinoStrategy = new ArduinoStrategy();
+const _nativeStrategy = new NativeStrategy();
 setLoadedFramework({ strategy: _arduinoStrategy });
 registerPlatformStrategy(_arduinoStrategy);
+registerPlatformStrategy(_nativeStrategy);
 setActiveStrategy(_arduinoStrategy);
 
 // Ensure output directory exists
@@ -111,6 +114,10 @@ export function transpileESP32(tsCode: string): TranspileResult {
     target: "arduino", 
     platformContext: { frameworkData: { buildTarget: "esp32:esp32:devkitv1" } } 
   });
+}
+
+export function transpileNative(tsCode: string): TranspileResult {
+  return transpile(tsCode, { target: "native" });
 }
 
 /**

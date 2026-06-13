@@ -278,6 +278,16 @@ export interface PlatformStatementStrategy {
   ): string;
 
   /**
+   * Transform console expressions that return values (e.g., console.readLine, console.readCharacter).
+   * Returns the C++ expression that evaluates to the result.
+   * Return undefined to fall back to default rendering.
+   */
+  transformConsoleExpression?(
+    method: string,
+    renderedArgs: string,
+  ): string | undefined;
+
+  /**
    * Fallback value for an object initializer field on this platform.
    * Some targets use "0" for nested objects; hosted targets pass through.
    */

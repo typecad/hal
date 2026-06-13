@@ -7,7 +7,9 @@ import { mapPeripheralName } from "../../mapping/peripheral-names";
 
 export interface HALInstance {
   className: string;
-  fieldValues: Map<string, string>; // "_pin" → "LED_BUILTIN"
+  fieldValues: Map<string, string>;
+  _spreadParamName?: string;
+  [key: string]: unknown;
 }
 
 export interface HALMethodEntry {

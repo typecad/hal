@@ -76,7 +76,7 @@ export function generateAsyncTaskClass(
 
   if (fnStatements.length === 1 && fnStatements[0].kind === "while") {
     isCyclic = true;
-    bodyStatements = (fnStatements[0] as any).body as StatementIR[];
+    bodyStatements = fnStatements[0].body as StatementIR[];
   } else {
     bodyStatements = fnStatements;
   }
@@ -86,7 +86,7 @@ export function generateAsyncTaskClass(
   let currentPre: StatementIR[] = [];
 
   for (const stmt of bodyStatements) {
-    if (stmt.kind === "call" && (stmt as any).isAwaited) {
+    if (stmt.kind === "call" && stmt.isAwaited) {
       segments.push({ preStatements: currentPre, awaitedCallee: stmt.callee, awaitedArgs: stmt.args });
       currentPre = [];
     } else {
@@ -260,7 +260,7 @@ export function generateAsyncTaskClass(
 function renderExpression(expr: ExpressionIR, strategy: PlatformStrategy): string {
   switch (expr.kind) {
     case "number": {
-      if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+      if (expr.cppType === "float" || expr.cppType === "double" || !Number.isInteger(expr.value)) {
         const str = `${expr.value}`;
         return str.includes('.') || str.includes('e') || str.includes('E')
           ? `${str}f`

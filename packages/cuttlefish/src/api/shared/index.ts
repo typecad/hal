@@ -15,6 +15,7 @@ export type {
   ImportIR,
   ReExportIR,
   CallExpressionIR,
+  SuperCallIR,
   VariableDeclarationIR,
   AssignmentIR,
   UpdateIR,

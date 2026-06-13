@@ -5,7 +5,8 @@ import { escapeCppKeyword } from "../../utils/strings";
 import type { EmitterContext } from "./emitter-context";
 
 export function emitPostClassDeclarations(ctx: EmitterContext): void {
-  const { strategy, effectiveEmitMode, platformReservedNames, mappedFunctions, isEntryFile, topLevelScope } = ctx;
+  const { strategy, effectiveEmitMode, mappedFunctions, isEntryFile, topLevelScope } = ctx;
+  const platformReservedNames = strategy.reservedNames();
   const normalizeCppTypeForTarget = (cppType: string) => strategy.normalizeCppType(cppType);
 
   // Runtime variable declarations AFTER classes (for non-entry files)
@@ -114,11 +115,15 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
     }
     for (const fn of ctx.mappedFunctions) {
       if (excludedNames.has(fn.name)) continue;
+      const fnExported = fn.isExported === true;
+      const fnEntrypoint = fn.name === strategy.entrypointFunctionName();
+      const fnNeedsStatic = !fnExported && !fnEntrypoint;
       const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
+      const fwdLinkagePrefix = fnNeedsStatic ? "static " : "";
       if (fn.typeParameters && fn.typeParameters.length > 0) {
         appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
       }
-      appendSourceLine(ctx, `${fn.returnType} ${fn.name}(${declarationParameterList});`, {
+      appendSourceLine(ctx, `${fwdLinkagePrefix}${fn.returnType} ${fn.name}(${declarationParameterList});`, {
         tsSpan: fn.sourceSpan,
         nodeKind: "function_declaration",
         symbolName: fn.name,
@@ -161,23 +166,60 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
 export function emitFunctions(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, mappedFunctions, topLevelScope, hasPromiseRuntime, asyncTaskClasses, usesTimers } = ctx;
 
+  // Emit forward declarations for static (non-exported) functions in source file.
+  // In non-split mode, this is handled by emitCallbackFunctions. In split mode,
+  // we need to do it here because static functions don't go in the header.
+  if (effectiveEmitMode === "split") {
+    const excludedNames = new Set(strategy.forwardDeclarationExclusions?.() ?? []);
+    for (const fn of mappedFunctions) {
+      if (excludedNames.has(fn.name)) continue;
+      const isExported = fn.isExported === true;
+      const isEntrypoint = fn.name === strategy.entrypointFunctionName();
+      if (isExported || isEntrypoint) continue;
+      const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
+      const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
+      if (fn.typeParameters && fn.typeParameters.length > 0) {
+        appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
+      }
+      const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : fn.returnType}>` : `${readonlyPrefix}${fn.returnType}`;
+      appendSourceLine(ctx, `static ${fnReturnType} ${fn.name}(${declarationParameterList});`, {
+        tsSpan: fn.sourceSpan,
+        nodeKind: "function_declaration",
+        symbolName: fn.name,
+      });
+    }
+    const hasStaticFns = mappedFunctions.some(fn => {
+      const isExp = fn.isExported === true;
+      const isEp = fn.name === strategy.entrypointFunctionName();
+      return !isExp && !isEp && !new Set(strategy.forwardDeclarationExclusions?.() ?? []).has(fn.name);
+    });
+    if (hasStaticFns) {
+      appendSourceLine(ctx, "");
+    }
+  }
+
   for (let fi = 0; fi < mappedFunctions.length; fi++) {
     const fn = mappedFunctions[fi];
     const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
     const definitionParameterList = ctx.statementRenderer.renderParameters(fn.parameters, false);
     const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
+    const isExported = fn.isExported === true;
+    const isEntrypoint = fn.name === strategy.entrypointFunctionName();
+    const needsStatic = !isExported && !isEntrypoint;
 
     if (effectiveEmitMode === "split") {
-      emitCommentLines(fn.leadingComments, "", (line) => appendHeaderLine(ctx, line));
-      if (fn.typeParameters && fn.typeParameters.length > 0) {
-        appendHeaderLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
+      if (isExported) {
+        emitCommentLines(fn.leadingComments, "", (line) => appendHeaderLine(ctx, line));
+        if (fn.typeParameters && fn.typeParameters.length > 0) {
+          appendHeaderLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
+        }
+        appendHeaderLine(ctx, `${readonlyPrefix}${fn.returnType} ${fn.name}(${declarationParameterList});`, {
+          tsSpan: fn.sourceSpan,
+          nodeKind: "function_declaration",
+          symbolName: fn.name,
+        });
+        emitCommentLines(fn.trailingComments, "", (line) => appendHeaderLine(ctx, line));
       }
-      appendHeaderLine(ctx, `${readonlyPrefix}${fn.returnType} ${fn.name}(${declarationParameterList});`, {
-        tsSpan: fn.sourceSpan,
-        nodeKind: "function_declaration",
-        symbolName: fn.name,
-      });
-      emitCommentLines(fn.trailingComments, "", (line) => appendHeaderLine(ctx, line));
     }
 
     emitCommentLines(fn.leadingComments, "", (line) => appendSourceLine(ctx, line));
@@ -185,7 +227,8 @@ export function emitFunctions(ctx: EmitterContext): void {
       appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
     }
     const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : fn.returnType}>` : `${readonlyPrefix}${fn.returnType}`;
-    appendSourceLine(ctx, `${fnReturnType} ${fn.name}(${definitionParameterList})`, {
+    const linkagePrefix = needsStatic ? "static " : "";
+    appendSourceLine(ctx, `${linkagePrefix}${fnReturnType} ${fn.name}(${definitionParameterList})`, {
       tsSpan: fn.sourceSpan,
       nodeKind: "function_definition",
       symbolName: fn.name,
@@ -237,4 +280,8 @@ export function emitFunctions(ctx: EmitterContext): void {
     emitCommentLines(fn.trailingComments, "", (line) => appendSourceLine(ctx, line));
     appendSourceLine(ctx, "");
   }
+}
+
+export function emitFunctionForwardDeclarations(_ctx: EmitterContext): void {
+  // Placeholder — forward declarations are emitted inline by other functions.
 }

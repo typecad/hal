@@ -1,19 +1,20 @@
-﻿{
-  "name": "typecad-demo",
+{
+  "name": "demo-console-app",
   "version": "1.0.0",
-  "description": "TypeCAD demo project for Arduino Uno (AVR)",
-  "private": true,
+  "description": "Simple console application using TypeCAD transpiler",
+  "type": "module",
   "scripts": {
-    "build": "cd .. && node packages/cuttlefish/dist/cli.js demo/src/sketch.ts --diagnostics",
-    "build:watch": "cd .. && node packages/cuttlefish/dist/cli.js build --project demo",
-    "compile": "cd .. && node packages/cuttlefish/dist/cli.js demo/src/sketch.ts --compile",
-    "upload": "cd .. && node packages/cuttlefish/dist/cli.js demo/src/sketch.ts --compile --upload --port COM7",
-    "debug": "cd .. && node packages/cuttlefish/dist/cli.js demo/src/sketch.ts --compile --upload --debug --monitor --port COM7"
+    "build": "cuttlefish build",
+    "compile": "cuttlefish build --compile",
+    "transpile": "cuttlefish build --no-transpile",
+    "lint": "eslint src/"
   },
   "dependencies": {
-    "@typecad/hal": "*",
-    "@typecad/board-arduino-uno": "*",
-    "@typecad/framework-arduino": "*",
-    "@typecad/mcu-atmega328p": "*"
+    "@typecad/framework-native": "*"
+  },
+  "devDependencies": {
+    "eslint": "^10.4.1",
+    "@typescript-eslint/parser": "^8.61.0",
+    "@typescript-eslint/eslint-plugin": "^8.61.0"
   }
 }

@@ -4,6 +4,7 @@ import { StatementIR, ExpressionIR } from "../../api";
 import { arrayLiteralSizes, mutableArrayVars, activeCArrayVars } from "../build-ir-state";
 import { expressionToIR } from "../expression-to-ir";
 import { renderExprAsText } from "../render-expr";
+import { assignmentOperatorToString } from "./variables";
 
 // Methods that require StaticArray promotion (not all are mutating — indexOf is read-only
 // but needs StaticArray since C arrays don't have an indexOf method).
@@ -48,10 +49,25 @@ export function prescanExprForArrayMethods(expr: ts.Expression): void {
     const methodName = expr.expression.name.text;
     if (ARRAY_METHODS_REQUIRING_STATIC_ARRAY.has(methodName) && ts.isIdentifier(expr.expression.expression)) {
       const varName = expr.expression.expression.text;
-      if (arrayLiteralSizes.has(varName)) {
-        mutableArrayVars.add(varName);
-      }
+      mutableArrayVars.add(varName);
     }
+  }
+  // Detect indexed assignment (arr[i] = val and compounds like arr[i] += val).
+  // TypeScript const only locks the binding, not the array contents, so
+  // assigning to an element forces non-const C++ storage (matching the
+  // existing behaviour for .push() / .pop()).
+  if (ts.isBinaryExpression(expr)
+      && ts.isElementAccessExpression(expr.left)
+      && ts.isIdentifier(expr.left.expression)
+      && assignmentOperatorToString(expr.operatorToken.kind) !== undefined) {
+    mutableArrayVars.add(expr.left.expression.text);
+  }
+  // Detect element increment / decrement (arr[i]++ / arr[i]-- / ++arr[i] / --arr[i]).
+  if ((ts.isPostfixUnaryExpression(expr) || ts.isPrefixUnaryExpression(expr))
+      && ts.isElementAccessExpression(expr.operand)
+      && ts.isIdentifier(expr.operand.expression)
+      && (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken)) {
+    mutableArrayVars.add(expr.operand.expression.text);
   }
 }
 

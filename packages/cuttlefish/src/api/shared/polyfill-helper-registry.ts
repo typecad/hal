@@ -62,6 +62,11 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   '__tc_mapKeys(':   ['__tc_mapKeys'],
   '__tc_mapValues(': ['__tc_mapValues'],
   '__tc_mapEntries(': ['__tc_mapEntries'],
+  '__tc_fromEntries(': ['__tc_fromEntries'],
+
+  // JSON helpers
+  '__tc_jsonStringify(': ['__tc_jsonStringify'],
+  '__tc_jsonParse(': ['__tc_jsonParse'],
 };
 
 function extractHelperFunctionNames(funcDef: string): string[] {

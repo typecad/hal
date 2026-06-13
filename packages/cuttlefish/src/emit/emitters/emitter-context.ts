@@ -1,10 +1,10 @@
-﻿import type { ProgramIR, ExpressionIR, StatementIR } from "../../api";
+﻿import type { ProgramIR, ExpressionIR, StatementIR, ParameterIR } from "../../api";
 import type { PlatformStrategy, RuntimePolyfillIR } from "../../api/shared";
 import type { ProgramAnalysisResult } from "../../ir/program-analysis";
 import type { EmissionScopeState } from "../snprintf-helpers";
 import type { ExpressionRenderer } from "../expression-renderer";
 import type { StatementRenderer } from "../statement-renderer";
-import type { Diagnostic, EmitMode, SourceMapEntry } from "../../types";
+import type { Diagnostic, EmitMode, SourceMapEntry, SourceSpan } from "../../types";
 import type { ResolvedNpmPackage } from "../../transpile/resolution";
 import type { BoardConstants } from "../../ir/board-resolver";
 import type { LibraryDefinition } from "../../types";
@@ -16,27 +16,32 @@ export interface EmitterOptions {
   target: string;
   libdefs: Map<string, LibraryDefinition>;
   emitMaps: boolean;
-  platformContext?: any;
+  platformContext?: Record<string, unknown>;
   npmPackage?: ResolvedNpmPackage;
   npmPackages?: Map<string, ResolvedNpmPackage>;
   isEntryFile?: boolean;
   strategy?: PlatformStrategy;
   nativeModules?: Map<string, { declPath: string; cppPath: string; moduleKey: string }>;
   crossModuleClasses?: Set<string>;
+  crossModuleClassFieldTypes?: Map<string, Map<string, string>>;
+  crossModuleFunctionReturnTypes?: Map<string, string>;
+  crossModuleEnumNames?: Set<string>;
+  crossModuleVariableTypes?: Map<string, string>;
 }
 
 export interface MappedFunction {
   name: string;
   returnType: string;
-  sourceSpan: any;
+  sourceSpan: SourceSpan;
   leadingComments?: string[];
   trailingComments?: string[];
-  parameters: any[];
+  parameters: ParameterIR[];
   isAsync?: boolean;
   typeParameters?: string[];
   typeParameterConstraints?: Map<string, string>;
   isReadonlyReturnType?: boolean;
   isGenerator?: boolean;
+  isExported?: boolean;
   statements: StatementIR[];
 }
 
@@ -77,7 +82,6 @@ export interface EmitterContext {
   isEntryFile: boolean;
   isNpmPackage: boolean;
   isrPrefix: string;
-  platformReservedNames: ReadonlySet<string>;
   reservedNames: ReadonlySet<string>;
   knownFunctionReturnTypes: Map<string, string>;
   mappedFunctions: MappedFunction[];
@@ -89,6 +93,7 @@ export interface EmitterContext {
   statementRenderer: StatementRenderer;
   classNameMap?: Map<string, string>;
   boardConstants?: BoardConstants;
+  restParamFunctions?: Map<string, string>;
 
   // ── Computed during setup / async ─────────────────────────────────────────
   asyncTaskClasses: AsyncTaskClass[];
@@ -121,10 +126,16 @@ export interface EmitterContext {
   knownTopLevelObjectTypes: Map<string, string>;
   knownTopLevelObjectFields: Map<string, Map<string, string>>;
 
+  // ── Mutable per-class state for pointer field tracking ────────────────────
+  currentClassPointerFields?: string[];
+  currentClassPointerFieldTypes?: Map<string, string>;
+
   // ── Profile diagnostics ───────────────────────────────────────────────────
   profileDiagnostics: Diagnostic[];
 
   // ── Interface pre-scan data ───────────────────────────────────────────────
   templateInterfaceNames: Set<string>;
   interfaceNamespaceMap: Map<string, string>;
+  /** Map of interface name to its field types (e.g., "Task" -> Map("id" -> "std::string", "title" -> "std::string")) */
+  interfaceFieldTypes: Map<string, Map<string, string>>;
 }

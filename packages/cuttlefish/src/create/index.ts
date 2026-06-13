@@ -7,6 +7,7 @@ export {
   generateProjectEnvDts,
   generateStarterSketch,
   generateGitignore,
+  generateEslintConfig,
 } from './init-templates';
 export type { InitProjectOptions } from './init-templates';
 export { runInitWizard } from './init-wizard';

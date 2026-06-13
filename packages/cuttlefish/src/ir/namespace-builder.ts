@@ -35,7 +35,8 @@ export function namespaceToIR(
   const nsInterfaces: NamespaceIR['interfaces'] = [];
   const nsTypeAliases: NamespaceIR['typeAliases'] = [];
   const nsFunctions: FunctionIR[] = [];
-  const nsConstants: { name: string; cppType: CppType; value: ExpressionIR }[] = [];
+  const nsConstants: { name: string; cppType: CppType; value: ExpressionIR; storage?: "const" | "let" | "var" }[] = [];
+  const nsAssignments: { target: string; value: ExpressionIR }[] = [];
 
   const nsChildren: NamespaceIR[] = [];
 
@@ -153,8 +154,13 @@ export function namespaceToIR(
       continue;
     }
 
-    // Handle const variables in namespace
     if (ts.isVariableStatement(nsNode)) {
+      const storage: "const" | "let" | "var" =
+        nsNode.declarationList.flags & ts.NodeFlags.Const
+          ? "const"
+          : nsNode.declarationList.flags & ts.NodeFlags.Let
+            ? "let"
+            : "var";
       for (const decl of nsNode.declarationList.declarations) {
         if (ts.isIdentifier(decl.name) && decl.initializer) {
           const constType = typeNodeToCppType(decl.type, typeAliasNodes);
@@ -162,8 +168,20 @@ export function namespaceToIR(
             name: decl.name.text,
             cppType: constType,
             value: expressionToIR(decl.initializer, sourceText, diagnostics, pointerVars),
+            storage,
           });
         }
+      }
+      continue;
+    }
+
+    if (ts.isExpressionStatement(nsNode) && ts.isBinaryExpression(nsNode.expression)) {
+      const expr = nsNode.expression;
+      if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(expr.left)) {
+        nsAssignments.push({
+          target: expr.left.text,
+          value: expressionToIR(expr.right, sourceText, diagnostics, pointerVars),
+        });
       }
       continue;
     }
@@ -180,6 +198,7 @@ export function namespaceToIR(
     typeAliases: nsTypeAliases,
     functions: nsFunctions,
     constants: nsConstants,
+    ...(nsAssignments.length > 0 ? { assignments: nsAssignments } : {}),
     ...(nsChildren.length > 0 ? { children: nsChildren } : {}),
   };
 }

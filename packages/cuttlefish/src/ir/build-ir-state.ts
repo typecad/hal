@@ -1,8 +1,15 @@
 ﻿import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "../api";
+import type { PlatformStrategy } from "../api/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { BoardConstants, getDefaultBoardConstants } from "./board-resolver";
 
-// Registered callback structure
+export interface HALInstance {
+  className: string;
+  fieldValues: Map<string, string>;
+  _spreadParamName?: string;
+  [key: string]: unknown;
+}
+
 export interface RegisteredCallback {
   placeholderName: string;
   callbackIR: ExpressionIR & { kind: "callback" };
@@ -10,14 +17,10 @@ export interface RegisteredCallback {
 
 export type PointerTracker = Map<string, string>;
 
-let globalDefaultContextRef: CompilationContext | undefined;
-
-// 1. Define the Context class containing all former module-level mutable states.
 export class CompilationContext {
   topLevelClasses = new Map<string, ClassIR>();
   registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
-  
-  // Hoisted structures
+
   hoistedNestedFunctions: FunctionIR[] = [];
   hoistedNestedClasses: ClassIR[] = [];
   hoistedNestedEnums: EnumIR[] = [];
@@ -25,8 +28,7 @@ export class CompilationContext {
   hoistedNestedTypeAliases: TypeAliasIR[] = [];
   nestedFunctionAliases = new Map<string, string>();
   nestedClassAliases = new Map<string, string>();
-  
-  // Active trackers for transpilation
+
   activeCArrayVars = new Set<string>();
   activeArrayLiteralVars = new Set<string>();
   activeStringVars = new Set<string>();
@@ -35,41 +37,49 @@ export class CompilationContext {
   filteredArrayLengthVars = new Map<string, string>();
   activeNamespaceNames = new Set<string>();
   topLevelClassNames = new Set<string>();
+  classTypeNames = new Set<string>();
   activeEnumNames = new Set<string>();
-  
+
   activePinUsage = new Map<string, { pinNumber: string; source: string }>();
   activePeripheralUsage = new Map<string, { instance: number; source: string }>();
-  
-  // Board configuration maps
+
   peripheralAliasMap = new Map<string, string>();
   pinAliasMap = new Map<string, string>();
   mcuPinForwardMap = new Map<string, string>();
   mcuPinReverseMap = new Map<string, string>();
-  
+
   requiredIncludes = new Set<string>();
   registeredCallbacks: RegisteredCallback[] = [];
-  
+
   _currentBoardConstants: BoardConstants | undefined = undefined;
-  
+
   activeLocalTypes = new Map<string, string>();
   activeGlobalTypes = new Map<string, string>();
   activeClassFieldTypes = new Map<string, string>();
   activeExtendsClass: string | undefined = undefined;
   contextId = Math.random().toString(36).slice(2, 8);
-  
-  // HAL Resolver specific state (moved here for safe parallelization)
-  halInstances = new Map<string, any>(); // typed as Map<string, HALInstance> in resolver
+
+  halInstances = new Map<string, HALInstance>();
   floatVariables = new Set<string>();
   snprintfCounter = 0;
   callbackPlaceholderCounter = 0;
-  activeStrategy: any | null = null; // PlatformStrategy | null
+  activeStrategy: PlatformStrategy | null = null;
+
+  restParamFunctions = new Map<string, string>();
 }
 
-// 2. Setup AsyncLocalStorage
+/**
+ * AsyncLocalStorage for context isolation across parallel transpilations.
+ * When no store is active (e.g. in tests or non-async code paths), the
+ * globalDefaultContext is used as fallback.
+ *
+ * IMPORTANT: `resetBuildState()` must be called between transpilations to
+ * clear the globalDefaultContext. In watch mode, this is done automatically
+ * at the start of each `transpileFile()` call.
+ */
 export const contextStorage = new AsyncLocalStorage<CompilationContext>();
 
 const globalDefaultContext = new CompilationContext();
-globalDefaultContextRef = globalDefaultContext;
 
 export function getContext(): CompilationContext {
   return contextStorage.getStore() || globalDefaultContext;
@@ -146,6 +156,7 @@ export const arrayLiteralSizes = createMapProxy(ctx => ctx.arrayLiteralSizes);
 export const filteredArrayLengthVars = createMapProxy(ctx => ctx.filteredArrayLengthVars);
 export const activeNamespaceNames = createSetProxy(ctx => ctx.activeNamespaceNames);
 export const topLevelClassNames = createSetProxy(ctx => ctx.topLevelClassNames);
+export const classTypeNames = createSetProxy(ctx => ctx.classTypeNames);
 export const activeEnumNames = createSetProxy(ctx => ctx.activeEnumNames);
 
 export const activePinUsage = createMapProxy(ctx => ctx.activePinUsage);
@@ -162,6 +173,9 @@ export const registeredCallbacks = createArrayProxy(ctx => ctx.registeredCallbac
 export const activeLocalTypes = createMapProxy(ctx => ctx.activeLocalTypes);
 export const activeGlobalTypes = createMapProxy(ctx => ctx.activeGlobalTypes);
 export const activeClassFieldTypes = createMapProxy(ctx => ctx.activeClassFieldTypes);
+
+export const discriminatedUnionVariantNames = new Map<string, string[]>();
+export const restParamFunctions = createMapProxy(ctx => ctx.restParamFunctions);
 
 export function getActiveExtendsClass(): string | undefined { return getContext().activeExtendsClass; }
 export function setActiveExtendsClass(v: string | undefined): void { getContext().activeExtendsClass = v; }
@@ -251,6 +265,7 @@ export function resetBuildState(): void {
   resetFunctionScopeState();
   activeNamespaceNames.clear();
   topLevelClassNames.clear();
+  classTypeNames.clear();
   activeEnumNames.clear();
   topLevelClasses.clear();
   activeGlobalTypes.clear();
@@ -262,6 +277,8 @@ export function resetBuildState(): void {
   activePeripheralUsage.clear();
   requiredIncludes.clear();
   registeredCallbacks.length = 0;
+  discriminatedUnionVariantNames.clear();
+  restParamFunctions.clear();
   getContext()._currentBoardConstants = undefined;
 }
 

@@ -165,6 +165,19 @@ describe("Feature Pre-Scan", () => {
     expect(diag!.code).toBe("TS2CPP_APPROXIMATE");
   });
 
+  it("detects void type on variable declarations", () => {
+    const diags = prescan(`let x: void = undefined;\n`);
+    expect(diags.length).toBeGreaterThanOrEqual(1);
+    const diag = diags.find((d) => d.code === "TS2CPP_APPROXIMATE" && d.message.includes("void type annotation on variable/property"));
+    expect(diag).toBeDefined();
+  });
+
+  it("does not warn on void method return types", () => {
+    const diags = prescan(`class Foo { doThing(): void {} }\n`);
+    const voidDiag = diags.find((d) => d.message.includes("void type annotation"));
+    expect(voidDiag).toBeUndefined();
+  });
+
   it("detects unsupported features in demo project file", () => {
     const diags = prescan(`
       enum TaskStatus { Pending = 'PENDING', InProgress = 'IN_PROGRESS' }

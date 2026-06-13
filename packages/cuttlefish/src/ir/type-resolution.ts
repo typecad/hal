@@ -1,6 +1,6 @@
 ﻿import ts from "typescript";
 import { CppType } from "../api";
-import { topLevelClasses } from "./build-ir-state";
+import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeClassFieldTypes, activeLocalTypes, activeGlobalTypes, activeEnumNames } from "./build-ir-state";
 
 export type CppTypeHint =
   | "int"
@@ -118,7 +118,24 @@ function inferNumericCppType(literalText: string): CppTypeHint {
   return /[.eE]/.test(literalText) ? "double" : "int";
 }
 
-function getDirectCppType(typeName: string): CppTypeHint | undefined {
+function splitTemplateArgs(inner: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === '<') depth++;
+    else if (ch === '>') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push(inner.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(inner.slice(start));
+  return parts;
+}
+
+export function getDirectCppType(typeName: string): CppTypeHint | undefined {
   const directCppType = DIRECT_CPP_TYPE_MAP.get(typeName);
   return directCppType as CppTypeHint | undefined;
 }
@@ -244,6 +261,17 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     if (nonNullTypes.length === 1) {
       return typeNodeToCppType(nonNullTypes[0], typeAliases, typeParametersInScope);
     }
+
+    const allAreTypeLiterals = nonNullTypes.every(ts.isTypeLiteralNode);
+    if (allAreTypeLiterals) {
+      const variantNames = discriminatedUnionVariantNames.get(ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) ? node.typeName.text : "");
+      if (variantNames) {
+        return `std::variant<${variantNames.join(", ")}>` as CppTypeHint;
+      }
+      const variantNamesFallback = nonNullTypes.map((_, i) => `_Variant_${i}`);
+      return `std::variant<${variantNamesFallback.join(", ")}>` as CppTypeHint;
+    }
+
     const memberTypes = nonNullTypes
       .map(t => typeNodeToCppType(t, typeAliases, typeParametersInScope))
       .filter((t): t is CppTypeHint => t !== "auto" && t !== undefined);
@@ -273,7 +301,7 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   }
 
   if (resolvedNode.kind === ts.SyntaxKind.NumberKeyword) {
-    return "int";
+    return "double";
   }
 
   if (resolvedNode.kind === ts.SyntaxKind.BooleanKeyword) {
@@ -384,6 +412,19 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     }
     if (typeName === "ReturnType" || typeName === "Parameters" || typeName === "ConstructorParameters" || typeName === "InstanceType" || typeName === "Extract" || typeName === "Exclude") {
       return "auto";
+    }
+
+    // TypeScript class values are references. Keep that representation consistent
+    // across declarations, parameters, returns, fields, and containers so `new X()`
+    // is never assigned to a value-typed C++ `X` by accident.
+    if (classTypeNames.has(typeName)) {
+      const typeArgs = resolvedNode.typeArguments?.map((arg) =>
+        normalizeTypeHintForUse(typeNodeToCppType(arg, typeAliases, typeParametersInScope))
+      );
+      const classType = typeArgs && typeArgs.length > 0
+        ? `${typeName}<${typeArgs.join(", ")}>`
+        : typeName;
+      return `${classType}*` as CppTypeHint;
     }
 
     return resolvedNode.typeName.text as CppTypeHint;
@@ -516,6 +557,10 @@ export function inferExprCppType(
     return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
   }
 
+  if (ts.isNonNullExpression(expr) || ts.isParenthesizedExpression(expr)) {
+    return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
+  }
+
   if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) {
     return inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
   }
@@ -559,6 +604,10 @@ export function inferExprCppType(
     if (inferredElementTypes.includes("int") || inferredElementTypes.includes("bool")) {
       return "std::vector<int>";
     }
+    const firstElem = inferredElementTypes[0];
+    if (firstElem) {
+      return `std::vector<${firstElem}>`;
+    }
     return "std::vector<int>";
   }
 
@@ -576,6 +625,20 @@ export function inferExprCppType(
     if (ts.isPropertyAccessExpression(expr.expression)) {
       if (ts.isIdentifier(expr.expression.expression)) {
         const className = expr.expression.expression.text;
+        if (className === "Math") {
+          const method = expr.expression.name.text;
+          if (["floor", "ceil", "round", "abs", "sqrt", "sin", "cos", "tan", "atan2", "log", "exp", "pow", "fmod"].includes(method)) {
+            return "double";
+          }
+          if (method === "min" || method === "max") {
+            const leftType = expr.arguments.length > 0
+              ? inferExprCppType(expr.arguments[0], functionReturnTypes, localVariableTypes, sourceText)
+              : "auto";
+            if (leftType !== "auto") return leftType;
+            return "int";
+          }
+          if (method === "random") return "double";
+        }
         const classDef = topLevelClasses.get(className);
         if (classDef) {
           const method = expr.expression.name.text;
@@ -636,8 +699,42 @@ export function inferExprCppType(
     if (expr.name.text === "length") {
       return "int";
     }
-    if (ts.isIdentifier(expr.expression) && /^[A-Z]/.test(expr.expression.text)) {
-      return "int";
+    if (ts.isIdentifier(expr.expression)) {
+      const objName = expr.expression.text;
+      if (activeEnumNames.has(objName)) {
+        return objName as CppTypeHint;
+      }
+      if (/^[A-Z]/.test(objName)) {
+        return "int";
+      }
+    }
+    if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      const fieldKey = `this->${expr.name.text}`;
+      const fieldType = activeClassFieldTypes.get(fieldKey);
+      if (fieldType && fieldType !== "auto") return fieldType as CppTypeHint;
+    }
+    if (ts.isIdentifier(expr.expression)) {
+      const objType = activeLocalTypes.get(expr.expression.text) ?? activeGlobalTypes.get(expr.expression.text);
+      if (objType && objType !== "auto") {
+        const className = objType.replace(/\*$/, "");
+        const classDef = topLevelClasses.get(className);
+        if (classDef) {
+          const field = classDef.fields.find(f => f.name === expr.name.text);
+          if (field && field.cppType !== "auto") return field.cppType as CppTypeHint;
+        }
+      }
+    }
+    // Handle chained property access: s.player.weaponName
+    if (ts.isPropertyAccessExpression(expr.expression)) {
+      const receiverType = inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
+      if (receiverType && receiverType !== "auto") {
+        const className = receiverType.replace(/\*$/, "");
+        const classDef = topLevelClasses.get(className);
+        if (classDef) {
+          const field = classDef.fields.find(f => f.name === expr.name.text);
+          if (field && field.cppType !== "auto") return field.cppType as CppTypeHint;
+        }
+      }
     }
     return "auto";
   }
@@ -712,12 +809,32 @@ export function inferExprCppType(
     if (objectType === "uint8_t*") return "int";
     if (objectType === "int16_t*") return "int";
     if (objectType === "int32_t*") return "int";
+    // std::tuple<N> element access → extract Nth type
+    if (objectType.startsWith("std::tuple<")) {
+      const argExpr = expr.argumentExpression;
+      if (argExpr && ts.isNumericLiteral(argExpr)) {
+        const idx = parseInt(argExpr.text, 10);
+        const inner = objectType.slice("std::tuple<".length, -1);
+        const parts = splitTemplateArgs(inner);
+        if (idx >= 0 && idx < parts.length) {
+          return parts[idx].trim() as CppTypeHint;
+        }
+      }
+      return "auto";
+    }
     // std::vector<T> element access → T
     if (objectType.startsWith("std::vector<")) {
       const inner = objectType.slice("std::vector<".length, -1);
       if (inner === "uint8_t" || inner === "int8_t") return "int";
       if (inner === "float" || inner === "double") return "double";
       return inner as CppTypeHint;
+    }
+    if (objectType.startsWith("__tc_StaticArray<")) {
+      const inner = objectType.slice("__tc_StaticArray<".length, -1);
+      const [elementType] = splitTemplateArgs(inner);
+      if (elementType === "uint8_t" || elementType === "int8_t") return "int";
+      if (elementType === "float" || elementType === "double") return "double";
+      return elementType.trim() as CppTypeHint;
     }
     // C-array types like "uint8_t[]"
     if (objectType.endsWith("[]")) {
@@ -732,6 +849,32 @@ export function inferExprCppType(
       if (varType === "float*") return "float";
     }
     return "auto";
+  }
+
+  // Handle arrow functions and function expressions — infer return type from body
+  if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+    const body = expr.body;
+    if (ts.isBlock(body)) {
+      const returnTypes = collectReturns(body)
+        .filter((item) => item.expression)
+        .map((item) => inferExprCppType(item.expression as ts.Expression, functionReturnTypes, localVariableTypes, sourceText))
+        .filter((item) => item !== "auto");
+      if (returnTypes.includes("float") || returnTypes.includes("double")) {
+        return "double";
+      }
+      if (returnTypes.includes("std::string")) {
+        return "std::string";
+      }
+      if (returnTypes.includes("int") || returnTypes.includes("bool")) {
+        return "int";
+      }
+      if (returnTypes.length > 0) {
+        return returnTypes[0];
+      }
+      return "void";
+    }
+    // Expression body — infer from the expression
+    return inferExprCppType(body, functionReturnTypes, localVariableTypes, sourceText);
   }
 
   return "auto";

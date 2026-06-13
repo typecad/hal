@@ -2,13 +2,66 @@
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "../api";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeLocalTypes, activeGlobalTypes, topLevelClassNames, topLevelClasses, getActiveExtendsClass } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeLocalTypes, activeGlobalTypes, activeClassFieldTypes, topLevelClassNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
 import { halInstances } from "./hal-resolver";
 import { escapeCppKeyword } from "../utils/strings";
 import { tryLowerRegisterRead } from "./transformers/register-assignment";
 import { tryLowerArrayAndStringMethods } from "./transformers/array-methods";
+import { collectReturns, inferExprCppType, typeNodeToCppType } from "./type-resolution";
+
+function resolveExprCppType(expr: ts.Expression): string | undefined {
+  if (ts.isNonNullExpression(expr) || ts.isParenthesizedExpression(expr)) {
+    return resolveExprCppType(expr.expression);
+  }
+  if (ts.isIdentifier(expr)) {
+    const t = activeLocalTypes.get(expr.text) ?? activeGlobalTypes.get(expr.text);
+    return t && t !== "auto" ? t : undefined;
+  }
+  if (ts.isPropertyAccessExpression(expr)) {
+    if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      const fieldKey = `this->${expr.name.text}`;
+      const fieldType = activeClassFieldTypes.get(fieldKey) ?? activeLocalTypes.get(fieldKey);
+      return fieldType && fieldType !== "auto" ? fieldType : undefined;
+    }
+    const receiverType = resolveExprCppType(expr.expression);
+    if (!receiverType) return undefined;
+    const className = receiverType.replace(/\*$/, "");
+    const classDef = topLevelClasses.get(className);
+    if (!classDef) return undefined;
+    const field = classDef.fields.find(f => f.name === expr.name.text);
+    return field ? (field.cppType as string) : undefined;
+  }
+  if (ts.isElementAccessExpression(expr)) {
+    const containerType = resolveExprCppType(expr.expression);
+    if (!containerType) return undefined;
+    if (containerType.startsWith("std::vector<")) {
+      return containerType.slice("std::vector<".length, -1).trim();
+    }
+    if (containerType.startsWith("__tc_StaticArray<")) {
+      const inner = containerType.slice("__tc_StaticArray<".length, -1);
+      let depth = 0;
+      for (let i = 0; i < inner.length; i++) {
+        if (inner[i] === '<') depth++;
+        else if (inner[i] === '>') depth--;
+        else if (inner[i] === ',' && depth === 0) return inner.slice(0, i).trim();
+      }
+    }
+  }
+  if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
+    const receiver = expr.expression.expression;
+    const methodName = expr.expression.name.text;
+    if (ts.isIdentifier(receiver) && topLevelClasses.has(receiver.text)) {
+      return topLevelClasses.get(receiver.text)?.methods.find((method) => method.name === methodName)?.returnType;
+    }
+    const receiverType = resolveExprCppType(receiver);
+    if (!receiverType) return undefined;
+    const className = receiverType.replace(/\*$/, "");
+    return topLevelClasses.get(className)?.methods.find((method) => method.name === methodName)?.returnType;
+  }
+  return undefined;
+}
 
 export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
   function emitUnsupportedExpression(message: string): ExpressionIR {
@@ -36,6 +89,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
    * variable name prefixed with "__FILTERED_LEN__" so the caller can detect it.
    */
   function resolveLengthProperty(receiverNode: ts.Expression, objectText: string): string {
+    if (ts.isStringLiteral(receiverNode) || ts.isNoSubstitutionTemplateLiteral(receiverNode)) {
+      return `${receiverNode.text.length}`;
+    }
     // Escape C++ keywords in identifier texts for generated C++ output
     const safeText = ts.isIdentifier(receiverNode) ? escapeCppKeyword(objectText) : objectText;
     if (ts.isIdentifier(receiverNode) && filteredArrayLengthVars.has(receiverNode.text)) {
@@ -64,17 +120,19 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       if (returnType === "std::string") return `${safeText}.length()`;
       return `${safeText}.size()`;
     }
-    if (ts.isIdentifier(receiverNode) && activeStringVars.has(receiverNode.text)) {
-      return `strlen(${safeText})`;
-    }
-    // const char* / char* variables → strlen()
+    // Resolve by concrete cppType first so std::string vars render member calls
+    // even when their resolved type is const char* (string-literal initialized).
     if (ts.isIdentifier(receiverNode)) {
       const varType = activeLocalTypes.get(receiverNode.text);
+      if (varType === "std::string") {
+        return `${safeText}.length()`;
+      }
       if (varType === "const char*" || varType === "char*") {
         return `strlen(${safeText})`;
       }
-      if (varType === "std::string") {
-        return `${safeText}.length()`;
+      // Unresolved C-string variables (resolved const char*/char*/__tc_str_ptr) → strlen()
+      if (activeStringVars.has(receiverNode.text)) {
+        return `strlen(${safeText})`;
       }
     }
     // Handle this->field.length where field is a string (const char*)
@@ -204,7 +262,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // Use original source text to detect float literals â€” TypeScript normalizes "2.0" to "2" in expr.text
     const originalText = sourceText.substring(expr.pos, expr.end).trim();
     const isFloat = /[.eE]/.test(originalText);
-    return { kind: "number" as const, value: numValue, ...(isFloat ? { cppType: "float" as const } : {}) };
+    return { kind: "number" as const, value: numValue, ...(isFloat ? { cppType: "double" as const } : {}) };
   }
 
   if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
@@ -295,13 +353,80 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   ]);
   function isStringBearingConcatChain(e: ts.Expression): boolean {
     if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) || ts.isTemplateExpression(e)) return true;
-    if (ts.isIdentifier(e) && (activeStringVars.has(e.text) || activeLocalTypes.get(e.text) === "std::string")) return true;
-    // Recognize string-returning method calls like x.toUpperCase(), s.charAt(0)
-    if (ts.isCallExpression(e) && ts.isPropertyAccessExpression(e.expression)) {
-      const methodName = e.expression.name.text;
-      if (STRING_RETURNING_METHODS.has(methodName)) return true;
-      // Also detect when the receiver is a known string variable
-      if (ts.isIdentifier(e.expression.expression) && activeStringVars.has(e.expression.expression.text)) return true;
+    if (ts.isIdentifier(e)) {
+      if (activeStringVars.has(e.text) || activeLocalTypes.get(e.text) === "std::string") return true;
+      const varType = activeLocalTypes.get(e.text) ?? activeGlobalTypes.get(e.text);
+      if (varType === "const char*" || varType === "char*") return true;
+    }
+    if (ts.isParenthesizedExpression(e)) {
+      return isStringBearingConcatChain(e.expression);
+    }
+    if (ts.isConditionalExpression(e)) {
+      return isStringBearingConcatChain(e.whenTrue) || isStringBearingConcatChain(e.whenFalse);
+    }
+    if (ts.isPropertyAccessExpression(e)) {
+      if (e.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        const fieldType = activeLocalTypes.get(`this->${e.name.text}`);
+        if (fieldType === "std::string" || fieldType === "const char*" || fieldType === "char*") return true;
+      }
+      if (ts.isIdentifier(e.expression)) {
+        const objType = activeLocalTypes.get(e.expression.text) ?? activeGlobalTypes.get(e.expression.text);
+        if (objType) {
+          const className = objType.replace(/\*$/, "");
+          const classDef = topLevelClasses.get(className);
+          if (classDef) {
+            const field = classDef.fields.find(f => f.name === e.name.text);
+            if (field) {
+              const ft = field.cppType;
+              if (ft === "std::string" || ft === "const char*" || ft === "char*") return true;
+            }
+          }
+        }
+      }
+      // Handle chained property access: s.player.weaponName where the
+      // receiver is itself a property access (e.g. local pointer alias).
+      if (ts.isPropertyAccessExpression(e.expression)) {
+        const receiverType = resolveExprCppType(e.expression);
+        if (receiverType) {
+          const className = receiverType.replace(/\*$/, "");
+          const classDef = topLevelClasses.get(className);
+          if (classDef) {
+            const field = classDef.fields.find(f => f.name === e.name.text);
+            if (field) {
+              const ft = field.cppType;
+              if (ft === "std::string" || ft === "const char*" || ft === "char*") return true;
+            }
+          }
+        }
+      }
+    }
+    if (ts.isCallExpression(e)) {
+      const callType = resolveExprCppType(e);
+      if (callType === "std::string" || callType === "const char*" || callType === "char*") return true;
+      if (ts.isPropertyAccessExpression(e.expression)) {
+        const methodName = e.expression.name.text;
+        if (STRING_RETURNING_METHODS.has(methodName)) return true;
+        if (ts.isIdentifier(e.expression.expression)) {
+          const receiverType = activeLocalTypes.get(e.expression.expression.text);
+          if (receiverType === "std::string" || receiverType === "const char*" || activeStringVars.has(e.expression.expression.text)) return true;
+        }
+        if (ts.isPropertyAccessExpression(e.expression.expression) && e.expression.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
+          const fieldType = activeLocalTypes.get(`this->${e.expression.expression.name.text}`);
+          if (fieldType === "std::string" || fieldType === "const char*") return true;
+        }
+      }
+      if (ts.isIdentifier(e.expression)) {
+        const fnName = e.expression.text;
+        const returnType = activeLocalTypes.get(`fn:${fnName}`) ?? activeGlobalTypes.get(`fn:${fnName}`);
+        if (returnType === "std::string" || returnType === "const char*") return true;
+      }
+    }
+    if (ts.isElementAccessExpression(e) && ts.isIdentifier(e.expression)) {
+      const arrType = activeLocalTypes.get(e.expression.text) ?? activeGlobalTypes.get(e.expression.text);
+      if (arrType) {
+        const match = arrType.match(/^std::vector<(.+)>$/);
+        if (match && (match[1] === "std::string" || match[1] === "const char*")) return true;
+      }
     }
     if (
       ts.isBinaryExpression(e) &&
@@ -352,8 +477,33 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return { kind: "raw", value: `cuttlefish_nullish(${left}, ${right})` };
   }
 
+  // Detect type guard pattern: typeof x == "literal" or typeof x != "literal"
+  // where x has a known type. Emit a compile-time constant to avoid dead code.
+  if (ts.isBinaryExpression(expr) && (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
+    const leftIsTypeof = ts.isTypeOfExpression(expr.left);
+    const rightIsString = ts.isStringLiteral(expr.right);
+    if (leftIsTypeof && rightIsString) {
+      const typeofOperand = expr.left.expression;
+      if (ts.isIdentifier(typeofOperand)) {
+        const varType = activeLocalTypes.get(typeofOperand.text);
+        const expectedTypeName = expr.right.text;
+        const actualTypeName = varType === "int" || varType === "float" || varType === "double" || varType === "long" || varType === "long long" || varType === "unsigned long long" || varType === "unsigned" || varType === "size_t"
+          ? "number"
+          : varType === "bool"
+            ? "boolean"
+            : varType === "std::string"
+              ? "string"
+              : varType === "void"
+                ? "undefined"
+                : "object";
+        const isEquality = expr.operatorToken.kind === ts.SyntaxKind.EqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
+        const matches = actualTypeName === expectedTypeName;
+        return { kind: "boolean", value: isEquality ? matches : !matches };
+      }
+    }
+  }
+
   // Handle typeof expressions — at transpile time, typeof on a known variable
-  // can be resolved. For typeof x === "number", the binary handler will compare.
   // Standalone typeof x emits a type-name string literal.
   if (ts.isTypeOfExpression(expr)) {
     const operand = expr.expression;
@@ -599,6 +749,25 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           const srcText = renderExprAsText(srcIR);
           return { kind: "raw", value: `(${targetText} = ${srcText})` };
         }
+        if (methodName === "fromEntries" && expr.arguments.length === 1) {
+          const entriesNode = expr.arguments[0];
+          const entriesIR = expressionToIR(entriesNode, sourceText, diagnostics, pointerVars);
+          const entriesText = renderExprAsText(entriesIR);
+          return { kind: "raw", value: `__tc_fromEntries(${entriesText})` };
+        }
+      }
+
+      if (objName === "JSON") {
+        if (methodName === "stringify" && expr.arguments.length >= 1) {
+          const argIR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
+          const argText = renderExprAsText(argIR);
+          return { kind: "raw", value: `__tc_jsonStringify(${argText})` };
+        }
+        if (methodName === "parse" && expr.arguments.length >= 1) {
+          const argIR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
+          const argText = renderExprAsText(argIR);
+          return { kind: "raw", value: `__tc_jsonParse(${argText})` };
+        }
       }
     }
 
@@ -615,6 +784,25 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         ? `__priv_${expr.expression.name.text.substring(1)}`
         : expr.expression.name.text;
       const methodName = escapeCppKeyword(rawMethodName);
+
+      // --- .toFixed(digits) on numeric values ---
+      if (methodName === "toFixed" && expr.arguments.length >= 1) {
+        const receiverIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
+        const digitsArg = expr.arguments[0];
+        let digits: number;
+        if (ts.isNumericLiteral(digitsArg)) {
+          digits = parseInt(digitsArg.text, 10);
+        } else {
+          const digitsIR = expressionToIR(digitsArg, sourceText, diagnostics, pointerVars);
+          if (digitsIR.kind === "number" && Number.isInteger(digitsIR.value)) {
+            digits = digitsIR.value;
+          } else {
+            digits = 0;
+          }
+        }
+        const receiverText = renderExprAsText(receiverIR);
+        return { kind: "raw", value: `__tc_toFixed(${receiverText}, ${digits})` };
+      }
 
       // --- Map/Set method lowering ---
       if ((methodName === "set" || methodName === "get" || methodName === "has" || methodName === "delete" || methodName === "add") && expr.arguments.length >= 1) {
@@ -670,6 +858,19 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         const mathMethod = expr.expression.name.text;
         if (mathMethod === "random") {
           calleeText = "__tc_random";
+        } else if ((mathMethod === "max" || mathMethod === "min") && expr.arguments && expr.arguments.length >= 1) {
+          const op = mathMethod === "max" ? ">" : "<";
+          const args = expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+          let result = args[0];
+          for (let i = 1; i < args.length; i++) {
+            result = {
+              kind: "ternary",
+              condition: { kind: "binary", left: result, operator: op, right: args[i] } as ExpressionIR,
+              whenTrue: result,
+              whenFalse: args[i],
+            };
+          }
+          return result;
         } else {
           calleeText = `std::${mathMethod}`;
         }
@@ -685,6 +886,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         let accessor = ".";
         if (ts.isIdentifier(receiver) && (pointerVars.has(receiver.text) || activeLocalTypes.get(receiver.text)?.endsWith("*") || activeGlobalTypes.get(receiver.text)?.endsWith("*"))) {
           accessor = "->";
+        } else if (ts.isPropertyAccessExpression(receiver)
+                   && receiver.expression.kind === ts.SyntaxKind.ThisKeyword
+                   && ts.isIdentifier(receiver.name)) {
+          const fieldType = activeLocalTypes.get(`this->${receiver.name.text}`);
+          if (fieldType?.endsWith("*")) {
+            accessor = "->";
+          }
         } else if (ts.isCallExpression(receiver) && ts.isPropertyAccessExpression(receiver.expression)) {
           const innerReceiver = receiver.expression.expression;
           const innerMethodName = receiver.expression.name.text;
@@ -710,6 +918,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
                 accessor = "->";
               }
             }
+          }
+        }
+        if (accessor === ".") {
+          const receiverType = resolveExprCppType(receiver);
+          if (receiverType && receiverType.endsWith("*")) {
+            accessor = "->";
           }
         }
         calleeText = `${objText}${accessor}${methodName}`;
@@ -765,13 +979,15 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
     }
 
-    return { 
+    return {
       kind: "method-call", 
       callee: calleeText, 
       args: argIRs,
       isStatic,
       isNamespace,
-      isPointer: calleeText.includes("->")
+      isPointer: calleeText.includes("->"),
+      restElementType: restParamFunctions.get(calleeText),
+      cppType: resolveExprCppType(expr),
     };
   }
 
@@ -958,6 +1174,33 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       };
     }
 
+    // Use -> for this->pointerField in property access (e.g. this.player.name)
+    if (ts.isPropertyAccessExpression(expr.expression)
+        && expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword
+        && ts.isIdentifier(expr.expression.name)) {
+      const fieldName = expr.expression.name.text;
+      const fieldType = activeLocalTypes.get(`this->${fieldName}`);
+      if (fieldType?.endsWith("*")) {
+        return {
+          kind: "property-access",
+          object: expressionToIR(expr.expression, sourceText, diagnostics, pointerVars),
+          property: propName,
+          isPointer: true,
+        };
+      }
+    }
+
+    // General deep chain: resolve receiver type, use -> if receiver is a pointer
+    const receiverCppType = resolveExprCppType(expr.expression);
+    if (receiverCppType && receiverCppType.endsWith("*")) {
+      return {
+        kind: "property-access",
+        object,
+        property: propName,
+        isPointer: true,
+      };
+    }
+
     let isEnum = false;
     let isNamespace = false;
     let isStatic = false;
@@ -999,10 +1242,42 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     };
   }
 
-  // Handle element access expressions like arr[index]
   if (ts.isElementAccessExpression(expr)) {
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     const index = expressionToIR(expr.argumentExpression, sourceText, diagnostics, pointerVars);
+    if (index.kind === "number" && Number.isInteger(index.value)) {
+      let objectType: string | undefined;
+      let elementType: string | undefined;
+      if (ts.isIdentifier(expr.expression)) {
+        objectType = activeLocalTypes.get(expr.expression.text) ?? activeGlobalTypes.get(expr.expression.text);
+        if (objectType) {
+          const match = objectType.match(/^std::vector<(.+)>$/);
+          if (match) elementType = match[1];
+        }
+      } else if (ts.isPropertyAccessExpression(expr.expression)) {
+        const receiverNode = expr.expression.expression;
+        if (ts.isIdentifier(receiverNode)) {
+          const receiverType = activeLocalTypes.get(receiverNode.text) ?? activeGlobalTypes.get(receiverNode.text);
+          if (receiverType) {
+            const className = receiverType.replace(/\*$/, "");
+            const classDef = topLevelClasses.get(className);
+            if (classDef) {
+              const fieldName = expr.expression.name.text;
+              const field = classDef.fields.find((f) => f.name === fieldName);
+              if (field) {
+                objectType = field.cppType;
+                const match = field.cppType.match(/^std::vector<(.+)>$/);
+                if (match) elementType = match[1];
+              }
+            }
+          }
+        }
+      }
+      if (typeof objectType === "string" && objectType.startsWith("std::tuple<")) {
+        return { kind: "tuple-access", object, index: index.value };
+      }
+      return { kind: "element-access", object, index, elementType };
+    }
     return { kind: "element-access", object, index };
   }
 
@@ -1095,7 +1370,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
     }
     if (fields.length === 0 && spreadSources.length > 0) {
-      return spreadSources[0];
+      const allFields: { name: string; value: ExpressionIR }[] = [];
+      for (const src of spreadSources) {
+        allFields.push({ name: "__spread__", value: src });
+      }
+      return { kind: "object", fields: allFields };
     }
     if (spreadSources.length > 0 && fields.length > 0) {
       const allFields: { name: string; value: ExpressionIR }[] = [];
@@ -1109,7 +1388,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return { kind: "object", fields };
   }
 
-  // Handle function expressions and arrow functions in compile-time contexts
+// Handle function expressions and arrow functions in compile-time contexts
   // These are stubs in board package files that get replaced by transpiler magic
   // For interrupt handlers, we need to generate a proper callback function
   if (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) {
@@ -1146,10 +1425,38 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           kind: "return" as const,
           sourceSpan: makeSourceSpan(body, "", sourceText),
           value: expressionToIR(body, sourceText, diagnostics, pointerVars),
-        }];
+      }];
+
+    // Infer return type: use explicit annotation, or infer from body
+    let inferredReturnType: string;
+    const explicitReturnType = typeNodeToCppType(expr.type, undefined);
+    if (explicitReturnType !== "auto" && explicitReturnType !== "void") {
+      inferredReturnType = explicitReturnType;
+    } else if (isBlock) {
+      const returnTypes = collectReturns(body as ts.Block)
+        .filter((item) => item.expression)
+        .map((item) => inferExprCppType(item.expression as ts.Expression, new Map(), new Map(), sourceText))
+        .filter((item) => item !== "auto");
+      if (returnTypes.includes("float") || returnTypes.includes("double")) {
+        inferredReturnType = "double";
+      } else if (returnTypes.includes("std::string")) {
+        inferredReturnType = "std::string";
+      } else if (returnTypes.includes("int") || returnTypes.includes("bool")) {
+        inferredReturnType = "int";
+      } else if (returnTypes.length > 0) {
+        inferredReturnType = returnTypes[0];
+      } else {
+        inferredReturnType = "void";
+      }
+    } else {
+      inferredReturnType = inferExprCppType(body, new Map(), new Map(), sourceText);
+      if (inferredReturnType === "auto") {
+        inferredReturnType = "void";
+      }
+    }
     
     const lambdaParams = paramList.map(p => ({ name: p.name, cppType: p.cppType }));
-    return { kind: "lambda", params: lambdaParams, body: bodyStmts, returnType: "auto", isExpressionBody: !isBlock } as ExpressionIR;
+    return { kind: "lambda", params: lambdaParams, body: bodyStmts, returnType: inferredReturnType, isExpressionBody: !isBlock } as ExpressionIR;
   }
 
   // Handle instanceof expressions
@@ -1259,6 +1566,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       ...(ctor ? { constructor: ctor } : {}),
     });
     topLevelClassNames.add(className);
+    classTypeNames.add(className);
 
     const extendsClass = expr.heritageClauses
       ?.find((clause: ts.HeritageClause) => clause.token === ts.SyntaxKind.ExtendsKeyword)

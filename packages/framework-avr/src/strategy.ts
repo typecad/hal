@@ -785,6 +785,10 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         return `_uart_println(${renderedArgs})${semi}`;
     }
   }
+
+  override transformConsoleExpression(_method: string, _renderedArgs: string): string | undefined {
+    return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------

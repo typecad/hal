@@ -1,5 +1,11 @@
 ﻿import { describe, done } from '@typecad/expect';
 
+class TemplateState {
+  name: string = "TypeCAD";
+  level: number = 3;
+  ready: boolean = true;
+}
+
 describe("String literals")
   .it("string length")
   .expectString(
@@ -49,5 +55,12 @@ describe("Template literals")
       return template.length;
     })
   ).toBe(5)
+  .it("template literal with string, number, and boolean fields")
+  .expectString(
+    (() => {
+      const state = new TemplateState();
+      return `${state.name} level ${state.level} ready=${state.ready}`;
+    })
+  ).toBe("TypeCAD level 3 ready=true")
 
 done();

@@ -22,6 +22,17 @@ export function callToStatement(
   const halResolved = tryResolveHALMethod(call, fileName, sourceText, diagnostics, pointerVars);
   if (halResolved) return halResolved;
 
+  // Handle super() calls in constructors - transform to super_call IR for class emitter
+  if (call.expression.kind === ts.SyntaxKind.SuperKeyword) {
+    return {
+      kind: "super_call",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+    };
+  }
+
   // ── emit() — compile-time C++ injection ─────────────────────────────────
   if (ts.isIdentifier(call.expression) && call.expression.text === "emit") {
     return {
@@ -190,6 +201,21 @@ export function callToStatement(
       }
       calleeText = `${innerCallText}${accessor}${methodName}`;
     } else {
+      // Use expressionToIR for pointer-aware callee construction.
+      // expressionToIR's call handler correctly resolves -> for pointer variables
+      // and chained property access (e.g. s->player->printStats), avoiding
+      // the dot-only calleeToText fallback.
+      const callIR = expressionToIR(call, sourceText, diagnostics, pointerVars);
+      if (callIR.kind === "method-call" && typeof callIR.callee === "string") {
+        return {
+          kind: "call",
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+          leadingComments: comments.leadingComments,
+          trailingComments: comments.trailingComments,
+          callee: callIR.callee,
+          args: callIR.args,
+        };
+      }
       calleeText = calleeToText(call.expression);
     }
   } else {

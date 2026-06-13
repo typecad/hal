@@ -1,3 +1,4 @@
+import type { ExpressionIR, ParameterIR } from "../../api";
 import { emitCommentLines, isRuntimeExpression, collectNestedStructDefs, inferObjectFieldType } from "../utils";
 import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender";
 import { createChildEmissionScope } from "../snprintf-helpers";
@@ -6,11 +7,21 @@ import { accessorGetterName, accessorSetterName } from "../utils/cpp-helpers";
 import type { EmitterContext } from "./emitter-context";
 
 export function emitClasses(ctx: EmitterContext): void {
-  const { program, strategy, effectiveEmitMode, platformReservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer, isEntryFile } = ctx;
+  const { program, strategy, effectiveEmitMode, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer, isEntryFile } = ctx;
+
+  if (effectiveEmitMode === "split") {
+    const _swapLines = ctx.sourceLines;
+    ctx.sourceLines = ctx.headerLines;
+    ctx.headerLines = _swapLines;
+    const _swapMaps = ctx.sourceMapEntries;
+    ctx.sourceMapEntries = ctx.headerMapEntries;
+    ctx.headerMapEntries = _swapMaps;
+  }
+
   const normalizeCppTypeForTarget = (cppType: string) => strategy.normalizeCppType(cppType);
-  const renderExpression = (expr: any, calleeTransformer?: (callee: string) => string) =>
+  const renderExpression = (expr: ExpressionIR, calleeTransformer?: (callee: string) => string) =>
     exprRenderer.render(expr, calleeTransformer);
-  const renderParameters = (params: any[], forHeader: boolean = false) =>
+  const renderParameters = (params: ParameterIR[], forHeader: boolean = false) =>
     statementRenderer.renderParameters(params, forHeader);
   const renderTypedName = (cppType: string, name: string) =>
     statementRenderer.renderTypedName(cppType, name);
@@ -43,7 +54,7 @@ export function emitClasses(ctx: EmitterContext): void {
       if (method.isStatic) statics.add(method.name);
     }
     for (const field of classDef.fields) {
-      if ((field as any).isStatic) statics.add(field.name);
+      if (field.isStatic) statics.add(field.name);
     }
     for (const getter of classDef.getters) {
       if (getter.isStatic) statics.add(getter.name);
@@ -138,6 +149,33 @@ export function emitClasses(ctx: EmitterContext): void {
     }
   }
 
+  // Build virtual/override maps for inherited methods
+  const classMethodNames = new Map<string, Set<string>>();
+  for (const cls of program.classes) {
+    const names = new Set(
+      cls.methods
+        .filter(m => !m.isStatic && !m.isAbstract)
+        .map(m => m.name)
+    );
+    classMethodNames.set(cls.name, names);
+  }
+  const virtualMethodNames = new Map<string, Set<string>>();
+  for (const cls of program.classes) {
+    if (cls.extendsClass) {
+      const baseMethods = classMethodNames.get(cls.extendsClass);
+      if (baseMethods) {
+        for (const method of cls.methods) {
+          if (!method.isStatic && !method.isAbstract && baseMethods.has(method.name)) {
+            if (!virtualMethodNames.has(cls.extendsClass)) {
+              virtualMethodNames.set(cls.extendsClass, new Set());
+            }
+            virtualMethodNames.get(cls.extendsClass)!.add(method.name);
+          }
+        }
+      }
+    }
+  }
+
   const collectAllFields = (classDef: any): any[] => {
     const fields: any[] = [...classDef.fields];
     if (classDef.extendsClass) {
@@ -152,6 +190,13 @@ export function emitClasses(ctx: EmitterContext): void {
       const normalizedFieldType = strategy.normalizeCppType(f.cppType);
       scope.knownVariableTypes.set(f.name, { cppType: normalizedFieldType });
     }
+  };
+
+  const withThisAccessors = (classDef: any, isStatic: boolean, fn: () => void) => {
+    const classAccessors = classAccessorNames.get(classDef.name);
+    if (classAccessors && !isStatic) ctx.varAccessorNames.set("this", classAccessors);
+    fn();
+    if (classAccessors && !isStatic) ctx.varAccessorNames.delete("this");
   };
 
   // Emit each class
@@ -199,6 +244,18 @@ export function emitClasses(ctx: EmitterContext): void {
     const protectedGetters = classDef.getters.filter(g => g.visibility === "protected");
     const protectedSetters = classDef.setters.filter(s => s.visibility === "protected");
 
+    const classPointerFieldNames = classDef.fields
+      .filter(f => f.cppType.endsWith("*"))
+      .map(f => f.name);
+    ctx.currentClassPointerFields = classPointerFieldNames.length > 0 ? classPointerFieldNames : undefined;
+    const classPointerFieldTypes = new Map<string, string>();
+    for (const f of classDef.fields) {
+      if ((f.cppType as string).endsWith("*")) {
+        classPointerFieldTypes.set(f.name, f.cppType as string);
+      }
+    }
+    ctx.currentClassPointerFieldTypes = classPointerFieldTypes.size > 0 ? classPointerFieldTypes : undefined;
+
     const needsPublicSection = publicFields.length > 0 || publicMethods.length > 0 || publicGetters.length > 0 || publicSetters.length > 0 || classDef.constructor || ctx.callbackFunctions.length > 0;
 
     if (needsPublicSection) {
@@ -219,21 +276,29 @@ export function emitClasses(ctx: EmitterContext): void {
         let ctorInitializer = "";
         let ctorStatements = classDef.constructor.statements;
         const firstCtorStatement = ctorStatements[0];
-        if (classDef.extendsClass && firstCtorStatement && firstCtorStatement.kind === "call" && firstCtorStatement.callee === "super") {
+        if (classDef.extendsClass && firstCtorStatement && firstCtorStatement.kind === "super_call") {
           const baseArgs = firstCtorStatement.args.map((arg) => renderExpression(arg, ctx.fixPointerFieldAccess)).join(", ");
           ctorInitializer = ` : ${classDef.extendsClass}(${baseArgs})`;
           ctorStatements = ctorStatements.slice(1);
         }
         appendSourceLine(ctx, `  ${classDef.name}(${ctorParams})${ctorInitializer} {`);
         const ctorScope = createChildEmissionScope(topLevelScope, classDef.constructor.parameters);
+        addClassFieldsToScope(classDef, ctorScope);
+        const classAccessors = classAccessorNames.get(classDef.name);
+        if (classAccessors) ctx.varAccessorNames.set("this", classAccessors);
         for (const stmt of ctorStatements) {
           appendRenderedStatement(ctx, stmt, "    ", ctorScope);
         }
+        if (classAccessors) ctx.varAccessorNames.delete("this");
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
 
-      if (classDef.extendsClass) {
+      // Class-typed fields are references, not implicitly owned allocations.
+      // Deleting every pointer field here double-frees borrowed constructor
+      // parameters and breaks aliasing. Only bases used polymorphically need a
+      // generated destructor, and the default destructor is sufficient.
+      if (program.classes.some((candidate) => candidate.extendsClass === classDef.name)) {
         appendSourceLine(ctx, `  virtual ~${classDef.name}() = default;`);
         appendSourceLine(ctx, "");
       }
@@ -250,19 +315,28 @@ export function emitClasses(ctx: EmitterContext): void {
         const staticPrefix = method.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(method.returnType);
         if (method.isAbstract) {
-          appendSourceLine(ctx, `  virtual ${returnType} ${escapeCppKeyword(method.name, platformReservedNames)}(${methodParams}) = 0;`);
+          appendSourceLine(ctx, `  virtual ${returnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams}) = 0;`);
           appendSourceLine(ctx, "");
           continue;
         }
+        const virtualSet = virtualMethodNames.get(classDef.name);
+        const isVirtual = !method.isStatic && virtualSet?.has(method.name);
+        const virtualPrefix = isVirtual ? "virtual " : "";
+        const baseMethods = classDef.extendsClass ? classMethodNames.get(classDef.extendsClass) : undefined;
+        const isOverrideMethod = !method.isStatic && (method.isOverride || baseMethods?.has(method.name));
+        const overrideSuffix = isOverrideMethod ? " override" : "";
         if (method.typeParameters && method.typeParameters.length > 0) {
           appendSourceLine(ctx, `  template<typename ${method.typeParameters.join(", typename ")}>`);
         }
-        appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${escapeCppKeyword(method.name, platformReservedNames)}(${methodParams}) {`);
+        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${returnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         addClassFieldsToScope(classDef, methodScope);
+        const classAccessors = classAccessorNames.get(classDef.name);
+        if (classAccessors && !method.isStatic) ctx.varAccessorNames.set("this", classAccessors);
         for (const stmt of method.statements) {
           appendRenderedStatement(ctx, stmt, "    ", methodScope);
         }
+        if (classAccessors && !method.isStatic) ctx.varAccessorNames.delete("this");
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -274,9 +348,11 @@ export function emitClasses(ctx: EmitterContext): void {
         appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}() const {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         addClassFieldsToScope(classDef, getterScope);
-        for (const stmt of getter.statements) {
-          appendRenderedStatement(ctx, stmt, "    ", getterScope);
-        }
+        withThisAccessors(classDef, getter.isStatic, () => {
+          for (const stmt of getter.statements) {
+            appendRenderedStatement(ctx, stmt, "    ", getterScope);
+          }
+        });
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -288,9 +364,11 @@ export function emitClasses(ctx: EmitterContext): void {
         appendSourceLine(ctx, `  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
         const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
         addClassFieldsToScope(classDef, setterScope);
-        for (const stmt of setter.statements) {
-          appendRenderedStatement(ctx, stmt, "    ", setterScope);
-        }
+        withThisAccessors(classDef, setter.isStatic, () => {
+          for (const stmt of setter.statements) {
+            appendRenderedStatement(ctx, stmt, "    ", setterScope);
+          }
+        });
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -308,15 +386,23 @@ export function emitClasses(ctx: EmitterContext): void {
       for (const method of privateMethods) {
         const methodParams = renderParameters(method.parameters);
         const staticPrefix = method.isStatic ? "static " : "";
+        const virtualSet = virtualMethodNames.get(classDef.name);
+        const isVirtual = !method.isStatic && virtualSet?.has(method.name);
+        const virtualPrefix = isVirtual ? "virtual " : "";
+        const baseMethods = classDef.extendsClass ? classMethodNames.get(classDef.extendsClass) : undefined;
+        const isOverrideMethod = !method.isStatic && (method.isOverride || baseMethods?.has(method.name));
+        const overrideSuffix = isOverrideMethod ? " override" : "";
         if (method.typeParameters && method.typeParameters.length > 0) {
           appendSourceLine(ctx, `  template<typename ${method.typeParameters.join(", typename ")}>`);
         }
-        appendSourceLine(ctx, `  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, platformReservedNames)}(${methodParams}) {`);
+        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         addClassFieldsToScope(classDef, methodScope);
-        for (const stmt of method.statements) {
-          appendRenderedStatement(ctx, stmt, "    ", methodScope);
-        }
+        withThisAccessors(classDef, method.isStatic, () => {
+          for (const stmt of method.statements) {
+            appendRenderedStatement(ctx, stmt, "    ", methodScope);
+          }
+        });
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -327,9 +413,11 @@ export function emitClasses(ctx: EmitterContext): void {
         appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}() const {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         addClassFieldsToScope(classDef, getterScope);
-        for (const stmt of getter.statements) {
-          appendRenderedStatement(ctx, stmt, "    ", getterScope);
-        }
+        withThisAccessors(classDef, getter.isStatic, () => {
+          for (const stmt of getter.statements) {
+            appendRenderedStatement(ctx, stmt, "    ", getterScope);
+          }
+        });
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -340,9 +428,11 @@ export function emitClasses(ctx: EmitterContext): void {
         appendSourceLine(ctx, `  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
         const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
         addClassFieldsToScope(classDef, setterScope);
-        for (const stmt of setter.statements) {
-          appendRenderedStatement(ctx, stmt, "    ", setterScope);
-        }
+        withThisAccessors(classDef, setter.isStatic, () => {
+          for (const stmt of setter.statements) {
+            appendRenderedStatement(ctx, stmt, "    ", setterScope);
+          }
+        });
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -360,15 +450,23 @@ export function emitClasses(ctx: EmitterContext): void {
       for (const method of protectedMethods) {
         const methodParams = renderParameters(method.parameters);
         const staticPrefix = method.isStatic ? "static " : "";
+        const virtualSet = virtualMethodNames.get(classDef.name);
+        const isVirtual = !method.isStatic && virtualSet?.has(method.name);
+        const virtualPrefix = isVirtual ? "virtual " : "";
+        const baseMethods = classDef.extendsClass ? classMethodNames.get(classDef.extendsClass) : undefined;
+        const isOverrideMethod = !method.isStatic && (method.isOverride || baseMethods?.has(method.name));
+        const overrideSuffix = isOverrideMethod ? " override" : "";
         if (method.typeParameters && method.typeParameters.length > 0) {
           appendSourceLine(ctx, `  template<typename ${method.typeParameters.join(", typename ")}>`);
         }
-        appendSourceLine(ctx, `  ${staticPrefix}${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, platformReservedNames)}(${methodParams}) {`);
+        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         addClassFieldsToScope(classDef, methodScope);
-        for (const stmt of method.statements) {
-          appendRenderedStatement(ctx, stmt, "    ", methodScope);
-        }
+        withThisAccessors(classDef, method.isStatic, () => {
+          for (const stmt of method.statements) {
+            appendRenderedStatement(ctx, stmt, "    ", methodScope);
+          }
+        });
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -379,9 +477,11 @@ export function emitClasses(ctx: EmitterContext): void {
         appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}() const {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         addClassFieldsToScope(classDef, getterScope);
-        for (const stmt of getter.statements) {
-          appendRenderedStatement(ctx, stmt, "    ", getterScope);
-        }
+        withThisAccessors(classDef, getter.isStatic, () => {
+          for (const stmt of getter.statements) {
+            appendRenderedStatement(ctx, stmt, "    ", getterScope);
+          }
+        });
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -392,9 +492,11 @@ export function emitClasses(ctx: EmitterContext): void {
         appendSourceLine(ctx, `  ${staticPrefix}void ${setterName}(${paramType} ${setter.parameter.name}) {`);
         const setterScope = createChildEmissionScope(topLevelScope, [setter.parameter]);
         addClassFieldsToScope(classDef, setterScope);
-        for (const stmt of setter.statements) {
-          appendRenderedStatement(ctx, stmt, "    ", setterScope);
-        }
+        withThisAccessors(classDef, setter.isStatic, () => {
+          for (const stmt of setter.statements) {
+            appendRenderedStatement(ctx, stmt, "    ", setterScope);
+          }
+        });
         appendSourceLine(ctx, "  }");
         appendSourceLine(ctx, "");
       }
@@ -403,5 +505,16 @@ export function emitClasses(ctx: EmitterContext): void {
     appendSourceLine(ctx, "};");
     emitCommentLines(classDef.trailingComments, "", (line) => appendSourceLine(ctx, line));
     appendSourceLine(ctx, "");
+    ctx.currentClassPointerFields = undefined;
+    ctx.currentClassPointerFieldTypes = undefined;
+  }
+
+  if (effectiveEmitMode === "split") {
+    const _swapLines = ctx.sourceLines;
+    ctx.sourceLines = ctx.headerLines;
+    ctx.headerLines = _swapLines;
+    const _swapMaps = ctx.sourceMapEntries;
+    ctx.sourceMapEntries = ctx.headerMapEntries;
+    ctx.headerMapEntries = _swapMaps;
   }
 }

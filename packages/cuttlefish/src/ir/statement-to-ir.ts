@@ -350,8 +350,19 @@ export function lowerStatementList(
   }
 
   // Phase 2.7: Pre-scan for array methods requiring StaticArray promotion.
-  // Clear function-scoped state so variables from previous functions don't leak.
+  // Clear function-scoped state so variables from previous functions don't leak,
+  // but preserve file-level mutable array tracking (populated by build-ir.ts pre-scan).
+  const savedMutableArrayVars = new Set(mutableArrayVars);
+  const savedArrayLiteralSizes = new Map(arrayLiteralSizes);
   resetFunctionScopeState();
+  for (const v of savedMutableArrayVars) mutableArrayVars.add(v);
+  for (const [k, v] of savedArrayLiteralSizes) arrayLiteralSizes.set(k, v);
+
+  // Sync localVariableTypes to activeLocalTypes AFTER resetFunctionScopeState clears it
+  for (const [key, value] of localVariableTypes) {
+    activeLocalTypes.set(key, value);
+  }
+
   for (const statement of statements) {
     prescanArrayUsage(statement);
   }

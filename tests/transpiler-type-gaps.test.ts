@@ -387,7 +387,7 @@ describe('Transpiler Type Gaps', () => {
         }
       `);
 
-      expect(result.cpp).toContain('int clamp(int value, int min_ = 0, int max_ = 1023);');
+      expect(result.cpp).toContain('double clamp(double value, double min_ = 0, double max_ = 1023);');
     });
   });
 
@@ -408,9 +408,9 @@ describe('Transpiler Type Gaps', () => {
         const baseline: ReadonlyArray<number> = [120, 240, 360, 480];
       `);
 
-      expect(result.cpp).toContain('int baseline[] = { 120, 240, 360, 480 }');
+      expect(result.cpp).toContain('double baseline[] = { 120, 240, 360, 480 }');
       expect(result.cpp).not.toContain('#include <vector>');
-      expect(result.cpp).not.toContain('std::vector<int> baseline');
+      expect(result.cpp).not.toContain('std::vector<double> baseline');
     });
 
     it('treats begin() bus handles as aliases instead of assigning void to ints', () => {
@@ -447,7 +447,7 @@ describe('Transpiler Type Gaps', () => {
       `);
 
       expect(result.cpp).not.toContain('void classify(');
-      expect(result.cpp).toContain('SystemMode classify(int value)');
+      expect(result.cpp).toContain('SystemMode classify(double value)');
       expect(result.cpp).toContain('const SystemMode mode = classify(1);');
     });
 
@@ -574,7 +574,7 @@ describe('Transpiler Type Gaps', () => {
         }
       `);
 
-      expect(result.cpp).toContain('int getValue()');
+      expect(result.cpp).toContain('double getValue()');
       expect(result.cpp).not.toContain('auto getValue()');
     });
 
@@ -593,14 +593,14 @@ describe('Transpiler Type Gaps', () => {
   // ── Feature 7: ReadonlyArray / ReadonlyMap / ReadonlySet type mappings ─
 
   describe('Feature 7: ReadonlyArray / ReadonlyMap / ReadonlySet', () => {
-    it('maps ReadonlyArray<number> parameter to std::vector<int>', () => {
+    it('maps ReadonlyArray<number> parameter to std::vector<double>', () => {
       const result = transpile(`
         function process(items: ReadonlyArray<number>): void {
           const x = items;
         }
       `);
 
-      expect(result.cpp).toContain('std::vector<int>');
+      expect(result.cpp).toContain('std::vector<double>');
     });
 
     it('maps ReadonlyArray<string> parameter to std::vector<std::string>', () => {
@@ -613,24 +613,62 @@ describe('Transpiler Type Gaps', () => {
       expect(result.cpp).toContain('std::vector<std::string>');
     });
 
-    it('maps ReadonlySet<number> parameter to std::set<int>', () => {
+    it('maps ReadonlySet<number> parameter to std::set<double>', () => {
       const result = transpile(`
         function processSet(s: ReadonlySet<number>): void {
           const x = s;
         }
       `);
 
-      expect(result.cpp).toContain('std::set<int>');
+      expect(result.cpp).toContain('std::set<double>');
     });
 
-    it('maps ReadonlyMap<string, number> parameter to std::map<std::string, int>', () => {
+    it('maps ReadonlyMap<string, number> parameter to std::map<std::string, double>', () => {
       const result = transpile(`
         function processMap(m: ReadonlyMap<string, number>): void {
           const x = m;
         }
       `);
 
-      expect(result.cpp).toContain('std::map<std::string, int>');
+      expect(result.cpp).toContain('std::map<std::string, double>');
+    });
+  });
+
+  // ── Feature 8: Rest parameters wrapped in initializer lists ──────────────
+
+  describe('Feature 8: Rest parameters', () => {
+    it('wraps trailing arguments in initializer list for rest parameter calls', () => {
+      const result = transpile(`
+        function sum(...values: number[]): number {
+          return values.reduce((a, b) => a + b, 0);
+        }
+        const total = sum(1, 2, 3, 4, 5);
+      `);
+
+      expectCppContains(result, ['const std::vector<double>& values']);
+      expectCppContains(result, ['sum({1, 2, 3, 4, 5})']);
+    });
+
+    it('handles rest parameters with different element types', () => {
+      const result = transpile(`
+        function joinStrings(...parts: string[]): string {
+          return parts.join(' ');
+        }
+        const msg = joinStrings('hello', 'world');
+      `);
+
+      expectCppContains(result, ['const std::vector<std::string>& parts']);
+      expectCppContains(result, ['joinStrings({"hello", "world"})']);
+    });
+
+    it('handles rest parameters in arrow functions', () => {
+      const result = transpile(`
+        const product = (...nums: number[]) => nums.reduce((a, b) => a * b, 1);
+        const p = product(2, 3, 4);
+      `);
+
+      expectCppContains(result, ['const std::vector<double>& nums']);
+      expectCppContains(result, ['product({2, 3, 4})']);
     });
   });
 });

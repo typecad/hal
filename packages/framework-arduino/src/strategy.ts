@@ -672,7 +672,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     return ARDUINO_ENUM_MEMBER_RENAMES.has(memberName) ? `_${memberName}` : memberName;
   }
   enumCastType(enumName: string): string | undefined {
-    return _largeEnumNames.has(enumName) ? "long" : "int";
+    return undefined;
   }
   private static readonly _passthroughEnumNames = new Set(["AnalogReference"]);
   passthroughEnumNames(): ReadonlySet<string> {
@@ -740,6 +740,10 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       default:
         return `Serial.println(${safeArgs})${semi}`;
     }
+  }
+
+  transformConsoleExpression(_method: string, _renderedArgs: string): string | undefined {
+    return undefined;
   }
   objectFieldInitializer(fieldValue: ExpressionIR, _renderExpr: (e: ExpressionIR) => string): string | undefined {
     // Nested objects are now supported with proper nested struct definitions

@@ -107,6 +107,7 @@ function scanExpression(expr: ExpressionIR, parentLine: number | undefined, pare
     case 'identifier':
     case 'raw':
     case 'hal-expr':
+    case 'tuple-access':
       break;
     default:
       assertNever(expr);
@@ -206,6 +207,7 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   case 'continue':
   case 'hal-op':
   case 'yield':
+  case 'super_call':
     break;
 
   default:

@@ -31,6 +31,8 @@ export interface FunctionIR {
   isReadonlyReturnType?: boolean;
   /** True when this is a generator function (function*). */
   isGenerator?: boolean;
+  /** True when the function is exported (has `export` keyword). */
+  isExported?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +62,7 @@ export interface ClassFieldIR {
   cppType: CppType;
   visibility: "public" | "private" | "protected";
   initializer?: ExpressionIR;
+  isStatic?: boolean;
 }
 
 export interface ClassConstructorIR {
@@ -75,6 +78,7 @@ export interface ClassMethodIR {
   visibility: "public" | "private" | "protected";
   isStatic: boolean;
   isAbstract: boolean;
+  isOverride?: boolean;
   /** Generic type parameters (e.g. `["T"]` for `method<T>(...)`). */
   typeParameters?: string[];
   /** True when this is a generator method. */
@@ -128,11 +132,18 @@ export interface InterfaceIR {
   methods: { name: string; returnType: CppType; parameters: ParameterIR[] }[];
   /** Namespace scope for hoisted interfaces (e.g. "test_complex_types__types"). */
   parentScope?: string;
+  /** Index signature (e.g., `[key: string]: number`). */
+  indexSignature?: { keyType: string; valueType: CppType };
 }
 
 // ---------------------------------------------------------------------------
 // Namespaces and type aliases
 // ---------------------------------------------------------------------------
+
+export interface VariantStructIR {
+  name: string;
+  fields: { name: string; cppType: string }[];
+}
 
 export interface TypeAliasIR {
   name: string;
@@ -141,6 +152,7 @@ export interface TypeAliasIR {
   trailingComments?: string[];
   cppType: string;
   structFields?: { name: string; cppType: string }[];
+  variantStructs?: VariantStructIR[];
   typeParameters?: string[];
 }
 
@@ -154,7 +166,9 @@ export interface NamespaceIR {
   interfaces: InterfaceIR[];
   typeAliases: TypeAliasIR[];
   functions: FunctionIR[];
-  constants: { name: string; cppType: CppType; value: ExpressionIR }[];
+  constants: { name: string; cppType: CppType; value: ExpressionIR; storage?: "const" | "let" | "var" }[];
+  /** Reassignment statements inside the namespace (e.g. x = 5). */
+  assignments?: { target: string; value: ExpressionIR }[];
   children?: NamespaceIR[];
 }
 

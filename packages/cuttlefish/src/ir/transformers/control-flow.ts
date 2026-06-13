@@ -279,6 +279,26 @@ export function lowerControlFlowStatement(
       );
     }
 
+    // Resolve the iterable's element type so the loop variable carries a real
+    // type (e.g. `Product*`) instead of `auto`. This must happen before
+    // lowerStatementList for the body, which syncs localVariableTypes into
+    // activeLocalTypes so member access (item->name) renders with `->`.
+    if (variable && variable.kind === "var_decl") {
+      const iterableType = inferExprCppType(
+        statement.expression,
+        functionReturnTypes,
+        localVariableTypes,
+        sourceText,
+      );
+      if (iterableType && iterableType.startsWith("std::vector<")) {
+        const elementType = iterableType.slice("std::vector<".length, -1).trim();
+        if (elementType && elementType !== "auto" && elementType !== "void") {
+          variable.cppType = elementType as CppType;
+          localVariableTypes.set(variable.name, elementType as CppTypeHint);
+        }
+      }
+    }
+
     const bodyStatements = lowerStatementList(
       ts.isBlock(statement.statement) ? statement.statement.statements : [statement.statement],
       fileName,

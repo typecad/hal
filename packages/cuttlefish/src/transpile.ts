@@ -1,117 +1,16 @@
-﻿/*
-LLM TRANSPILER GUIDE
-====================
-
-This comment block is intended as a readme-style guide for language models and future maintainers
-who are investigating or extending the TypeCAD transpiler. It is deliberately placed at the top of
-`packages/transpiler/src/transpile.ts` so it is found during normal code exploration.
-
-Key files:
-  - packages/transpiler/src/cli.ts                : main CLI entry, command dispatch, build/watch flows
-  - packages/transpiler/src/utils/cli.ts          : CLI option parser, command validation, help text
-  - packages/transpiler/src/transpile.ts          : transpilation pipeline, import resolution, emit orchestration
-  - packages/transpiler/src/emit/cpp-emitter.ts   : C++ emission logic and platform-specific codegen
-  - packages/transpiler/src/config-loader.ts      : cuttlefish.config.ts loading and board/package config
-  - packages/transpiler/src/cli-utils.ts          : shared CLI helpers like expect test runner and error mapping
-  - packages/transpiler/src/mapping/source-map.ts : source map I/O and C++ → TypeScript error mapping
-  - packages/transpiler/src/watch.ts              : watch mode, directory discovery, rebuild callbacks
-
-Main code paths for creating or evaluating transpilation
---------------------------------------------------------
-1. CLI command entry
-   - `packages/transpiler/src/cli.ts` is the application's entrypoint.
-   - `main()` calls `parseCommandLine(process.argv)` from `packages/transpiler/src/utils/cli.ts`.
-   - CLI parsing produces one of: `default`, `build`, `gen-libdefs`, `gen-decls`, `map-error`, `create-board`, `init`.
-   - For `default` and `build`, CLI options are normalized and passed into the transpilation flow.
-
-2. Config loading and effective option resolution
-   - `loadCuttlefishConfig()` from `packages/transpiler/src/config-loader.ts` reads `cuttlefish.config.ts`.
-   - Config values override CLI-supplied flags for board package, fqbn, target, outDir, framework, and console settings.
-   - `generateVirtualTypeDeclaration()` is used to keep editor type resolution aligned with bare `@typecad` imports.
-
-3. Transpilation flow
-   - The main runtime entry is `transpileFile(options)` in this file.
-   - `transpileFile()` performs these high-level steps:
-       a. Resolve the input file and watch/config context.
-       b. Collect the dependency graph and resolve imports.
-       c. Type-check the candidate files (unless `skipTypeCheck` is set).
-       d. Build IR for every file via `buildProgramIR()`.
-       e. Tree-shake and filter the program IR.
-       f. Register enum metadata with `registerAllEnumNames()`.
-       g. Emit C++/headers with `emitCpp()`.
-       h. Write generated files and source maps.
-   - Output is a `GeneratedOutputs` object with generated paths and diagnostics.
-
-4. Import resolution and source discovery
-   - `resolveImport()` decides whether an import is local or npm-based.
-   - `resolveLocalImport()` handles relative TypeScript imports and `.js` / `.mjs` rewrite patterns.
-   - `resolveNpmPackageImport()` locates packages in `node_modules` and monorepo layouts, and tries exports-to-source mapping.
-   - `detectNativeCppModule()` identifies `.d.ts` + `.cpp` pairs used for native bindings.
-   - `getNpmPackageInfoForFile()` maps a file path back to its npm package metadata after resolution.
-
-5. Type-checking and diagnostics
-   - `typeCheckFiles()` performs TS compilation and reports errors before emission.
-   - Diagnostics are surfaced via `GeneratedOutputs.diagnostics`.
-   - CLI output uses `printDiagnostics()` in `packages/transpiler/src/cli-utils.ts`.
-   - A build may still produce generated outputs alongside warnings and errors.
-
-6. Emission and platform strategy
-   - `emitCpp()` in `packages/transpiler/src/emit/cpp-emitter.ts` is the emission engine.
-   - It consumes IR, platform strategy, board constants, and polyfills.
-   - `registerAllEnumNames()` is required before emission to keep enum access normalization correct.
-   - For Arduino, `flattenGeneratedModulesIntoSketch()` is used to create an `.ino` sketch.
-
-7. Source maps and error mapping
-   - Generated output may include source maps via `emitMaps`.
-   - `packages/transpiler/src/mapping/source-map.ts` reads and maps C++ error locations back to TypeScript.
-   - `printMappedCompileErrors()` in `packages/transpiler/src/cli-utils.ts` uses this mapping during Arduino compile failures.
-
-8. Watch mode and incremental rebuilds
-   - `packages/transpiler/src/watch.ts` handles filesystem watch events and rebuild callbacks.
-   - `discoverWatchDirs()` finds relevant directories for the entry file and config file.
-   - Incremental rebuilds use `packages/transpiler/src/incremental-cache.ts` when enabled.
-   - Watch mode still goes through `transpileFile()` on each rebuild, but may bypass unchanged files.
-
-9. @typecad/expect support and preprocessing
-   - Code that imports `@typecad/expect` is transformed by the preprocessor.
-   - `loadExpectPreprocessor()` loads `@typecad/expect/preprocessor` lazily to avoid startup dependency failures.
-   - `runExpectTests()` in `packages/transpiler/src/cli-utils.ts` is the runtime test harness invoked after transpilation/upload.
-
-Common extension checklist for new transpiler features
-------------------------------------------------------
-  1. Decide whether the feature belongs to CLI parsing, config behavior, transpile graph resolution, emit logic, or runtime support.
-  2. Add the new option/command to `packages/transpiler/src/types.ts`.
-  3. Parse CLI flags in `packages/transpiler/src/utils/cli.ts`.
-  4. Wire command behavior in `packages/transpiler/src/cli.ts`.
-  5. Implement transpilation behavior in `packages/transpiler/src/transpile.ts` or `packages/transpiler/src/emit/*`.
-  6. Preserve diagnostics, source maps, and default `watch` semantics.
-  7. Add tests under `tests/` for the new CLI behavior and transpilation path.
-
-Important design notes
-----------------------
-  - Keep the CLI surface separate from the transpiler runtime. CLI files should only handle parsing, config, and orchestration.
-  - Transpilation should be driven by a single `transpileFile()` entrypoint, with internal helpers for resolution and IR building.
-  - Avoid adding new global mutable state in the emitter; prefer explicit context objects.
-  - Maintain a clear distinction between TypeScript source imports, npm package source resolution, and native module declarations.
-
-Search tokens:
-  - LLM TRANSPILER GUIDE
-  - LLM API MAP
-  - TRANSPILE TASKS
-  - MAIN CODE PATHS
-  - TRANSPILE FLOW
-*/
+﻿// See TRANSPILER_GUIDE.md for architecture details.
 
 import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
 import { buildProgramIR } from "./ir/build-ir";
+import { classDeclarationToIR } from "./ir/declaration-builders";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter";
 import { GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types";
 import { readText } from "./utils/fs";
 import { debug as logDebug, info } from "./utils/logger";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry";
-import type { ProgramIR } from "./api";
+import type { ClassIR, ProgramIR } from "./api";
 import { buildCallGraph } from "./ir/call-graph";
 import {
   clearCaches,
@@ -134,6 +33,7 @@ import { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points"
 import { analyzeReachability } from "./ir/reachability";
 import { filterProgramIR } from "./ir/filter";
 import { setActiveStrategy } from "./ir/hal-resolver";
+import { CompilationContext, contextStorage } from "./ir/build-ir-state";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { collectTranspileGraph } from "./orchestrator/graph-builder";
 import { typeCheckFiles } from "./orchestrator/type-checker";
@@ -168,8 +68,8 @@ function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
 
 function cleanOutput(entryDir: string, outDir: string): void {
   const cachePath = path.join(entryDir, ".cuttlefish-cache.json");
-  try { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); } catch { /* ignore */ }
-  try { if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  try { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); } catch (e) { if (process.env.CUTTLEFISH_DEBUG) console.error("[transpile] Failed to clean cache:", e); }
+  try { if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true }); } catch (e) { if (process.env.CUTTLEFISH_DEBUG) console.error("[transpile] Failed to clean output dir:", e); }
 }
 
   
@@ -441,6 +341,56 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     filesToProcess = transpileFiles;
   }
 
+  // ── Phase 0: Pre-scan all files for class declarations to build a
+  // cross-module type registry. This is needed so that property access
+  // on imported class instances (e.g. player.weaponName) resolve to the
+  // correct C++ type during IR building, rather than falling back to "auto".
+  const prebuiltClassMap = new Map<string, ClassIR>();
+  const classSources: Array<{
+    filePath: string;
+    sourceText: string;
+    declarations: ts.ClassDeclaration[];
+  }> = [];
+  for (const filePath of transpileFiles) {
+    try {
+      const sourceText = await fs.promises.readFile(filePath, "utf8");
+      const source = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
+      classSources.push({
+        filePath,
+        sourceText,
+        declarations: source.statements.filter(ts.isClassDeclaration),
+      });
+    } catch {
+      // File read/parse errors will be caught during actual IR building
+    }
+  }
+
+  // Class annotations are reference types even when the referenced class is
+  // declared in another file or later in the graph. Register every class name
+  // before building any signatures so fields such as `player: Player` become
+  // `Player*` consistently in the cross-module registry.
+  const prebuildContext = new CompilationContext();
+  prebuildContext.activeStrategy = strategy;
+  for (const { declarations } of classSources) {
+    for (const declaration of declarations) {
+      if (!declaration.name) continue;
+      prebuildContext.topLevelClassNames.add(declaration.name.text);
+      prebuildContext.classTypeNames.add(declaration.name.text);
+    }
+  }
+  contextStorage.run(prebuildContext, () => {
+    for (const { filePath, sourceText, declarations } of classSources) {
+      for (const declaration of declarations) {
+        const classIR = classDeclarationToIR(
+          declaration, filePath, sourceText, [], new Map(), new Map(), [], new Map());
+        if (classIR && !prebuiltClassMap.has(classIR.name)) {
+          prebuiltClassMap.set(classIR.name, classIR);
+          prebuildContext.topLevelClasses.set(classIR.name, classIR);
+        }
+      }
+    }
+  });
+
   // ── Phase A: Build IR for all files (no tree-shaking yet) ────────────────
   // We need all IRs built before we can compute cross-module imports for
   // accurate tree-shaking across file boundaries.
@@ -479,7 +429,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
 
     profiler.startTimer(`ir:build-ir:${fileBasename}`);
-    const programIR = buildProgramIR(filePath, sourceText, options.boardPackage);
+    const programIR = buildProgramIR(filePath, sourceText, options.boardPackage, prebuiltClassMap);
     profiler.endTimer(`ir:build-ir:${fileBasename}`);
 
     const npmPackage = npmPackages.get(filePath);
@@ -595,19 +545,61 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // aware of every enum type (including its member values for AVR range checks)
   // regardless of which file it's defined in or what order files are emitted.
   const allEnumIRs: { name: string; members: { name: string; value?: number | string }[] }[] = [];
+  const allEnumNames = new Set<string>();
   // Also collect all class names across all files for forward declarations.
   const allClassNames = new Set<string>();
+  const allClassFieldTypes = new Map<string, Map<string, string>>();
+  const allFunctionReturnTypes = new Map<string, string>();
+  const allVariableTypes = new Map<string, string>();
   for (const { programIR } of preBuilt.values()) {
     for (const e of programIR.enums) {
       allEnumIRs.push(e);
+      allEnumNames.add(e.name);
     }
     for (const ns of programIR.namespaces) {
       for (const e of ns.enums) {
         allEnumIRs.push(e);
+        allEnumNames.add(e.name);
       }
     }
     for (const cls of programIR.classes) {
       allClassNames.add(cls.name);
+      if (cls.fields.length > 0 || cls.extendsClass) {
+        const fieldTypes = allClassFieldTypes.get(cls.name) ?? new Map<string, string>();
+        for (const field of cls.fields) {
+          fieldTypes.set(field.name, field.cppType);
+        }
+        allClassFieldTypes.set(cls.name, fieldTypes);
+      }
+    }
+    for (const fn of programIR.functions) {
+      allFunctionReturnTypes.set(fn.originalName, fn.returnType);
+    }
+    for (const stmt of programIR.topLevelStatements) {
+      if (stmt.kind === "var_decl" && stmt.cppType !== "auto") {
+        allVariableTypes.set(stmt.name, stmt.cppType);
+      }
+    }
+  }
+  for (const { programIR } of preBuilt.values()) {
+    for (const cls of programIR.classes) {
+      if (cls.extendsClass) {
+        const childFields = allClassFieldTypes.get(cls.name);
+        const parentFields = allClassFieldTypes.get(cls.extendsClass);
+        if (parentFields && childFields) {
+          for (const [fname, ftype] of parentFields) {
+            if (!childFields.has(fname)) {
+              childFields.set(fname, ftype);
+            }
+          }
+        } else if (parentFields && !childFields) {
+          const fieldTypes = new Map<string, string>();
+          for (const [fname, ftype] of parentFields) {
+            fieldTypes.set(fname, ftype);
+          }
+          allClassFieldTypes.set(cls.name, fieldTypes);
+        }
+      }
     }
   }
   profiler.startTimer("emit:register-enums");
@@ -633,6 +625,10 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       isEntryFile: filePath === entryFile,
       nativeModules: graphResult.nativeModules,
       crossModuleClasses: allClassNames,
+      crossModuleClassFieldTypes: allClassFieldTypes,
+      crossModuleFunctionReturnTypes: allFunctionReturnTypes,
+      crossModuleEnumNames: allEnumNames,
+      crossModuleVariableTypes: allVariableTypes,
     };
     // Pass the already-resolved strategy (framework-loaded or target-based)
     emitOptions.strategy = strategy;
@@ -728,8 +724,8 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     if (toolchain?.prepare) {
       try {
         toolchain.prepare(path.dirname(entryOutputs.sourcePath), entryOutputs.sourcePath);
-      } catch {
-        // Best-effort post-processing for compilation.
+      } catch (e) {
+        if (process.env.CUTTLEFISH_DEBUG) console.error("[transpile] Toolchain prepare failed:", e);
       }
     }
   }

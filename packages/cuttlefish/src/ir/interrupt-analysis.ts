@@ -8,6 +8,9 @@
 import type { ProgramIR, StatementIR, ExpressionIR } from '../api';
 import type { PeripheralUsage } from './peripheral-usage';
 import type { Diagnostic } from '../types';
+import { walkNestedStatements, walkProgramIR, walkExpressionsInExpression } from './utils/walk-ir';
+
+export { walkNestedStatements as scanNestedStatements } from './utils/walk-ir';
 
 /** ISR-unsafe operation entry. */
 export interface IsrUnsafeOp { reason: string; severity: 'warning' | 'info'; }
@@ -109,21 +112,15 @@ function scanStatementForInterruptHandler(
   const ATTACH_METHODS = new Set(['attachInterrupt', 'onFalling', 'onRising', 'onChange', 'onLow', 'onHigh']);
 
   // Recursively scan nested statements in control flow
-  scanNestedStatements(stmt, (s) => scanStatementForInterruptHandler(s, handlersByPin, diagnostics));
+  walkNestedStatements(stmt, (s) => scanStatementForInterruptHandler(s, handlersByPin, diagnostics));
 }
 
-/**
- * Scan the program for unsafe operations inside ISR callbacks.
- */
 function scanForUnsafeOperations(
   program: ProgramIR,
   diagnostics: Diagnostic[],
   unsafeOps: Map<string, IsrUnsafeOp>,
 ): void {
-  // Scan callback expressions that are interrupt handlers
   scanProgramForCallbacks(program, (callback, parentExpr) => {
-    // Check if this callback is an interrupt handler
-    // It's an ISR if it's an arg to attachInterrupt or has interruptMode on parent
     const isISR = isInterruptHandlerCallback(callback, parentExpr);
 
     if (isISR && callback.statements) {
@@ -134,19 +131,11 @@ function scanForUnsafeOperations(
   });
 }
 
-/**
- * Check if a callback is an interrupt handler.
- */
 function isInterruptHandlerCallback(callback: any, parentExpr: any): boolean {
-  // Check explicit flag
   if (callback.isInterruptHandler) return true;
-
   return false;
 }
 
-/**
- * Scan a statement for unsafe ISR operations.
- */
 function scanStatementForUnsafeOps(
   stmt: StatementIR,
   diagnostics: Diagnostic[],
@@ -154,14 +143,12 @@ function scanStatementForUnsafeOps(
 ): void {
   if (!stmt || typeof stmt !== 'object') return;
 
-  // Check for call statements
   if (stmt.kind === 'call') {
     const call = stmt as any;
     checkCalleeForUnsafeOp(call.callee, diagnostics, unsafeOps);
   }
 
-  // Recursively scan nested statements
-  scanNestedStatements(stmt, (s) => scanStatementForUnsafeOps(s, diagnostics, unsafeOps));
+  walkNestedStatements(stmt, (s) => scanStatementForUnsafeOps(s, diagnostics, unsafeOps));
 }
 
 /**
@@ -193,48 +180,6 @@ function checkCalleeForUnsafeOp(callee: string, diagnostics: Diagnostic[], unsaf
       });
       return;
     }
-  }
-}
-
-/**
- * Helper to scan nested statements in control flow structures.
- * Exported for reuse by other diagnostic passes.
- */
-export function scanNestedStatements(stmt: any, visitor: (s: StatementIR) => void): void {
-  if (!stmt) return;
-
-  // if statement
-  if (stmt.thenBranch) {
-    for (const s of stmt.thenBranch) visitor(s);
-  }
-  if (stmt.elseBranch) {
-    for (const s of stmt.elseBranch) visitor(s);
-  }
-
-  // loops
-  if (stmt.body && Array.isArray(stmt.body)) {
-    for (const s of stmt.body) visitor(s);
-  }
-
-  // for loop
-  if (stmt.initializer) visitor(stmt.initializer);
-  if (stmt.increment) visitor(stmt.increment);
-
-  // switch cases
-  if (stmt.cases && Array.isArray(stmt.cases)) {
-    for (const c of stmt.cases) {
-      if (c.body && Array.isArray(c.body)) {
-        for (const s of c.body) visitor(s);
-      }
-    }
-  }
-
-  // try/catch
-  if (stmt.tryBlock && Array.isArray(stmt.tryBlock)) {
-    for (const s of stmt.tryBlock) visitor(s);
-  }
-  if (stmt.catchBlock && Array.isArray(stmt.catchBlock)) {
-    for (const s of stmt.catchBlock) visitor(s);
   }
 }
 
@@ -299,8 +244,7 @@ function scanStatementForCallbacks(
     scanExpressionForCallbacks(stmt.value, callback, stmt);
   }
 
-  // Recursively scan nested statements
-  scanNestedStatements(stmt, (s) => scanStatementForCallbacks(s, callback, parentExpr));
+  walkNestedStatements(stmt as StatementIR, (s) => scanStatementForCallbacks(s, callback, parentExpr));
 }
 
 /**

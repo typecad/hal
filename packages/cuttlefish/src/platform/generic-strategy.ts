@@ -12,6 +12,7 @@ import { buildAsyncRuntimePolyfill } from "./async-runtime";
 
 export class GenericStrategy implements PlatformStrategy {
   readonly id = "generic";
+  private _largeEnumNames: ReadonlySet<string> = new Set();
 
   // ── Profile ─────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ export class GenericStrategy implements PlatformStrategy {
     return undefined;
   }
   wrapStringObject(expr: string): string {
-    return `std::string(${expr})`;
+    return `std::to_string(${expr})`;
   }
   useSnprintfForStrings(): boolean {
     return false;
@@ -87,7 +88,11 @@ export class GenericStrategy implements PlatformStrategy {
   renameEnumMember(_enumName: string, memberName: string): string {
     return memberName;
   }
-  enumCastType(_enumName: string): string | undefined {
+  setLargeEnumNames(names: ReadonlySet<string>): void {
+    this._largeEnumNames = names;
+  }
+
+  enumCastType(enumName: string): string | undefined {
     return undefined;
   }
   renderBoardDefinitionAccess(
@@ -116,8 +121,22 @@ export class GenericStrategy implements PlatformStrategy {
         return `std::cerr << "[ERROR] " << ${renderedArgs} << std::endl${semi}`;
       case "warn":
         return `std::cerr << "[WARN] " << ${renderedArgs} << std::endl${semi}`;
+      case "readLine":
+      case "readCharacter":
+        return this.transformConsoleExpression!(method, renderedArgs) + semi;
       default:
         return `std::cout << ${renderedArgs} << std::endl${semi}`;
+    }
+  }
+
+  transformConsoleExpression(method: string, _renderedArgs: string): string | undefined {
+    switch (method) {
+      case 'readLine':
+        return '([]() -> std::string { std::string s; std::getline(std::cin, s); return s; })()';
+      case 'readCharacter':
+        return '([&]() -> char { std::cout << "> " << std::flush; return std::cin.get(); })()';
+      default:
+        return undefined;
     }
   }
   objectFieldInitializer(_fieldValue: ExpressionIR, _renderExpr: (e: ExpressionIR) => string): string | undefined {

@@ -4,7 +4,7 @@ import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSett
 import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { getBitsRange, getRegisterAddress } from "./register-decorators";
-import { registerFieldMap, PointerTracker, setActiveExtendsClass, activeClassFieldTypes } from "./build-ir-state";
+import { registerFieldMap, PointerTracker, setActiveExtendsClass, activeClassFieldTypes, discriminatedUnionVariantNames } from "./build-ir-state";
 import { expressionToIR } from "./expression-to-ir";
 import { lowerStatementList } from "./statement-to-ir";
 
@@ -239,6 +239,7 @@ export function classDeclarationToIR(
 
       const isStatic = member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
       const isMethodAbstract = member.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+      const isOverride = member.modifiers?.some(m => m.kind === ts.SyntaxKind.OverrideKeyword) ?? false;
 
       if (extendsClass && !isStatic) {
         setActiveExtendsClass(extendsClass);
@@ -293,6 +294,7 @@ export function classDeclarationToIR(
         visibility: methodVisibility,
         isStatic,
         isAbstract: isMethodAbstract,
+        isOverride,
         ...(member.typeParameters && member.typeParameters.length > 0
           ? { typeParameters: member.typeParameters.map(tp => tp.name.text) }
           : {}),
@@ -567,6 +569,7 @@ export function interfaceDeclarationToIR(
 
   const fields: InterfaceIR['fields'] = [];
   const methods: InterfaceIR['methods'] = [];
+  let indexSignature: InterfaceIR['indexSignature'];
 
   for (const member of node.members) {
     if (ts.isPropertySignature(member) && member.name && ts.isIdentifier(member.name)) {
@@ -603,6 +606,19 @@ export function interfaceDeclarationToIR(
         returnType,
         parameters: params,
       });
+      continue;
+    }
+
+    if (ts.isIndexSignatureDeclaration(member)) {
+      let keyType = "string";
+      if (member.parameters.length > 0 && ts.isIdentifier(member.parameters[0].name)) {
+        const paramType = member.parameters[0].type;
+        if (paramType && ts.isTypeNode(paramType)) {
+          keyType = typeNodeToCppType(paramType, typeAliasNodes);
+        }
+      }
+      const valueType = typeNodeToCppType(member.type, typeAliasNodes);
+      indexSignature = { keyType, valueType };
     }
   }
 
@@ -614,6 +630,7 @@ export function interfaceDeclarationToIR(
     extendsInterfaces,
     fields,
     methods,
+    indexSignature,
   };
 }
 
@@ -627,10 +644,29 @@ export function typeAliasDeclarationToIR(
   const aliasTypeParams = node.typeParameters
     ? node.typeParameters.map(tp => tp.name.text)
     : undefined;
+
+  const resolved = node.type;
+
+  if (ts.isUnionTypeNode(resolved)) {
+    const variantStructs = extractDiscriminatedUnionVariants(resolved, typeAliasNodes, node.name.text);
+    if (variantStructs) {
+      const variantNames = variantStructs.map(v => v.name);
+      discriminatedUnionVariantNames.set(node.name.text, variantNames);
+      return {
+        name: node.name.text,
+        sourceSpan: makeSourceSpan(node, fileName, sourceText),
+        leadingComments: aliasComments.leadingComments,
+        trailingComments: aliasComments.trailingComments,
+        cppType: `std::variant<${variantNames.join(", ")}>`,
+        variantStructs,
+        ...(aliasTypeParams && aliasTypeParams.length > 0 ? { typeParameters: aliasTypeParams } : {}),
+      };
+    }
+  }
+
   const cppType = typeNodeToCppType(node.type, typeAliasNodes);
 
   let structFields;
-  const resolved = node.type;
   if (ts.isTypeLiteralNode(resolved)) {
     structFields = resolved.members
       .filter(ts.isPropertySignature)
@@ -650,4 +686,30 @@ export function typeAliasDeclarationToIR(
     structFields,
     ...(aliasTypeParams && aliasTypeParams.length > 0 ? { typeParameters: aliasTypeParams } : {}),
   };
+}
+
+function extractDiscriminatedUnionVariants(
+  unionNode: ts.UnionTypeNode,
+  typeAliasNodes: Map<string, ts.TypeNode>,
+  aliasName: string,
+): { name: string; fields: { name: string; cppType: string }[] }[] | null {
+  const typeLiterals = unionNode.types.filter(ts.isTypeLiteralNode);
+  if (typeLiterals.length === 0 || typeLiterals.length !== unionNode.types.length) {
+    return null;
+  }
+
+  const variants: { name: string; fields: { name: string; cppType: string }[] }[] = [];
+  for (let i = 0; i < typeLiterals.length; i++) {
+    const literal = typeLiterals[i];
+    const variantName = `_${aliasName}_Variant_${i}`;
+    const fields = literal.members
+      .filter(ts.isPropertySignature)
+      .filter(m => ts.isIdentifier(m.name!))
+      .map(m => ({
+        name: (m.name as ts.Identifier).text,
+        cppType: typeNodeToCppType(m.type, typeAliasNodes),
+      }));
+    variants.push({ name: variantName, fields });
+  }
+  return variants;
 }

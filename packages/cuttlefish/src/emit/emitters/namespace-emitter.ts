@@ -1,3 +1,4 @@
+import type { ExpressionIR, ParameterIR } from "../../api";
 import { emitCommentLines } from "../utils";
 import { appendSourceLine, appendRenderedStatement } from "./line-appender";
 import { createChildEmissionScope } from "../snprintf-helpers";
@@ -5,11 +6,11 @@ import { escapeCppKeyword } from "../../utils/strings";
 import type { EmitterContext } from "./emitter-context";
 
 export function emitNamespaces(ctx: EmitterContext): void {
-  const { program, strategy, platformReservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer } = ctx;
+  const { program, strategy, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer } = ctx;
   const normalizeCppTypeForTarget = (cppType: string) => strategy.normalizeCppType(cppType);
-  const renderExpression = (expr: any, calleeTransformer?: (callee: string) => string) =>
+  const renderExpression = (expr: ExpressionIR, calleeTransformer?: (callee: string) => string) =>
     exprRenderer.render(expr, calleeTransformer);
-  const renderParameters = (params: any[], forHeader: boolean = false) =>
+  const renderParameters = (params: ParameterIR[], forHeader: boolean = false) =>
     statementRenderer.renderParameters(params, forHeader);
   const renderTypedName = (cppType: string, name: string) =>
     statementRenderer.renderTypedName(cppType, name);
@@ -63,10 +64,24 @@ export function emitNamespaces(ctx: EmitterContext): void {
     // Namespace constants
     for (const constant of ns.constants) {
       const constType = normalizeCppTypeForTarget(constant.cppType);
+      const isConst = constant.storage === "const" || constant.storage === undefined;
       if (constType !== "auto") {
-        appendSourceLine(ctx, `  const ${constType} ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        if (isConst) {
+          appendSourceLine(ctx, `  const ${constType} ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        } else {
+          appendSourceLine(ctx, `  ${constType} ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        }
       } else {
-        appendSourceLine(ctx, `  const auto ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        if (isConst) {
+          appendSourceLine(ctx, `  const auto ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        } else {
+          appendSourceLine(ctx, `  auto ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        }
+      }
+    }
+    if (ns.assignments) {
+      for (const assign of ns.assignments) {
+        appendSourceLine(ctx, `  ${assign.target} = ${renderExpression(assign.value, undefined)};`);
       }
     }
     if (ns.constants.length > 0) {
@@ -118,11 +133,11 @@ export function emitNamespaces(ctx: EmitterContext): void {
           const staticPrefix = method.isStatic ? "static " : "";
           const returnType = normalizeCppTypeForTarget(method.returnType);
           if (method.isAbstract) {
-            appendSourceLine(ctx, `    virtual ${returnType} ${escapeCppKeyword(method.name, platformReservedNames)}(${methodParams}) = 0;`);
+            appendSourceLine(ctx, `    virtual ${returnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams}) = 0;`);
             appendSourceLine(ctx, "");
             continue;
           }
-          appendSourceLine(ctx, `    ${staticPrefix}${returnType} ${escapeCppKeyword(method.name, platformReservedNames)}(${methodParams}) {`);
+          appendSourceLine(ctx, `    ${staticPrefix}${returnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(ctx, stmt, "      ", methodScope);
@@ -141,7 +156,7 @@ export function emitNamespaces(ctx: EmitterContext): void {
         }
         for (const method of privateMethods) {
           const methodParams = renderParameters(method.parameters);
-          appendSourceLine(ctx, `    ${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, platformReservedNames)}(${methodParams}) {`);
+          appendSourceLine(ctx, `    ${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(ctx, stmt, "      ", methodScope);
@@ -159,7 +174,7 @@ export function emitNamespaces(ctx: EmitterContext): void {
         }
         for (const method of protectedMethods) {
           const methodParams = renderParameters(method.parameters);
-          appendSourceLine(ctx, `    ${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, platformReservedNames)}(${methodParams}) {`);
+          appendSourceLine(ctx, `    ${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
             appendRenderedStatement(ctx, stmt, "      ", methodScope);
@@ -201,11 +216,11 @@ export function emitNamespaces(ctx: EmitterContext): void {
 }
 
 function emitNestedNamespaces(ctx: EmitterContext, namespaces: import("../../api").NamespaceIR[], indent: string): void {
-  const { strategy, platformReservedNames, topLevelScope, exprRenderer, statementRenderer } = ctx;
+  const { strategy, reservedNames, topLevelScope, exprRenderer, statementRenderer } = ctx;
   const normalizeCppTypeForTarget = (cppType: string) => strategy.normalizeCppType(cppType);
-  const renderExpression = (expr: any, calleeTransformer?: (callee: string) => string) =>
+  const renderExpression = (expr: ExpressionIR, calleeTransformer?: (callee: string) => string) =>
     exprRenderer.render(expr, calleeTransformer);
-  const renderParameters = (params: any[], forHeader: boolean = false) =>
+  const renderParameters = (params: ParameterIR[], forHeader: boolean = false) =>
     statementRenderer.renderParameters(params, forHeader);
   const renderTypedName = (cppType: string, name: string) =>
     statementRenderer.renderTypedName(cppType, name);
@@ -245,10 +260,24 @@ function emitNestedNamespaces(ctx: EmitterContext, namespaces: import("../../api
 
     for (const constant of ns.constants) {
       const constType = normalizeCppTypeForTarget(constant.cppType);
+      const isConst = constant.storage === "const" || constant.storage === undefined;
       if (constType !== "auto") {
-        appendSourceLine(ctx, `${indent}  const ${constType} ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        if (isConst) {
+          appendSourceLine(ctx, `${indent}  const ${constType} ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        } else {
+          appendSourceLine(ctx, `${indent}  ${constType} ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        }
       } else {
-        appendSourceLine(ctx, `${indent}  const auto ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        if (isConst) {
+          appendSourceLine(ctx, `${indent}  const auto ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        } else {
+          appendSourceLine(ctx, `${indent}  auto ${constant.name} = ${renderExpression(constant.value, undefined)};`);
+        }
+      }
+    }
+    if (ns.assignments) {
+      for (const assign of ns.assignments) {
+        appendSourceLine(ctx, `${indent}  ${assign.target} = ${renderExpression(assign.value, undefined)};`);
       }
     }
 

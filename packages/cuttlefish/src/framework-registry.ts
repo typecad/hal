@@ -75,3 +75,7 @@ export function getLoadedFramework(): LoadedFramework {
 export function hasLoadedFramework(): boolean {
   return _framework !== undefined;
 }
+
+export function clearLoadedFramework(): void {
+  _framework = undefined;
+}

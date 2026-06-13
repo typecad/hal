@@ -150,7 +150,7 @@ export class IncrementalCache {
         }
       }
     } catch (error) {
-      // Corrupted cache, start fresh
+      if (process.env.CUTTLEFISH_DEBUG) console.error("[incremental-cache] Corrupted cache file:", error);
     }
 
     return this.createEmptyCache();
@@ -190,7 +190,7 @@ export class IncrementalCache {
       fs.writeFileSync(this.cachePath, JSON.stringify(this.cache, null, 2), "utf8");
       this.dirty = false;
     } catch (error) {
-      // Best effort save
+      if (process.env.CUTTLEFISH_DEBUG) console.error("[incremental-cache] Failed to save cache:", error);
     }
   }
 

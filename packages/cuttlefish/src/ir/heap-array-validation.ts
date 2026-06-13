@@ -12,8 +12,9 @@
 
 import type { Diagnostic } from '../types';
 import type { BoardConstants } from './board-resolver';
-import type { StatementIR } from '../api';
+import type { StatementIR, VariableDeclarationIR } from '../api';
 import type { PlatformStrategy } from '../api/shared';
+import { walkNestedStatements, walkProgramIR } from './utils/walk-ir';
 
 /**
  * Validate that user-written `new ClassName(...)` expressions are not used on
@@ -42,17 +43,9 @@ export function validateHeapArrayUsage(
     return diagnostics;
   }
 
-  const scanStatements = (stmts: StatementIR[]): void => {
-    for (const stmt of stmts) {
-      scanStatement(stmt);
-    }
-  };
-
-  const scanStatement = (stmt: StatementIR): void => {
-    if (!stmt || typeof stmt !== 'object') return;
-
+  const checkStatement = (stmt: StatementIR): void => {
     if (stmt.kind === 'var_decl') {
-      const decl = stmt as any;
+      const decl = stmt as VariableDeclarationIR;
       const init = decl.initializer;
       if (
         init &&
@@ -60,8 +53,7 @@ export function validateHeapArrayUsage(
         typeof init.value === 'string' &&
         /^new\s+\w/.test(init.value)
       ) {
-        // Extract the class name for a more helpful message
-        const match = (init.value as string).match(/^new\s+(\w+)/);
+        const match = init.value.match(/^new\s+(\w+)/);
         const className = match ? match[1] : 'unknown';
         diagnostics.push({
           severity: 'error',
@@ -75,67 +67,28 @@ export function validateHeapArrayUsage(
             `// const obj = new ${className}(args);\n` +
             `// Use a global or local struct/object:\n` +
             `// ${className} obj(args);  // stack-allocated in C++`,
-          line: (stmt as any).sourceSpan?.startLine,
-          column: (stmt as any).sourceSpan?.startColumn,
+          line: stmt.sourceSpan?.startLine,
+          column: stmt.sourceSpan?.startColumn,
           source: 'heap-array-validation',
         });
       }
     }
 
-    // Recurse into nested statement containers
-    scanNested(stmt, scanStatement);
+    walkNestedStatements(stmt, checkStatement);
   };
 
-  scanStatements(program.topLevelStatements);
-
+  for (const stmt of program.topLevelStatements) checkStatement(stmt);
   for (const fn of program.functions) {
-    scanStatements(fn.statements);
+    for (const stmt of fn.statements) checkStatement(stmt);
   }
-
   for (const cls of program.classes) {
     for (const method of cls.methods) {
-      scanStatements(method.statements);
+      for (const stmt of method.statements) checkStatement(stmt);
     }
     if (cls.constructor) {
-      scanStatements(cls.constructor.statements);
+      for (const stmt of cls.constructor.statements) checkStatement(stmt);
     }
   }
 
   return diagnostics;
-}
-
-/**
- * Recurse into nested statement containers of a given statement.
- */
-function scanNested(stmt: StatementIR, visitor: (s: StatementIR) => void): void {
-  const s = stmt as any;
-
-  if (s.thenBranch) {
-    for (const child of s.thenBranch) visitor(child);
-  }
-  if (s.elseBranch) {
-    for (const child of s.elseBranch) visitor(child);
-  }
-
-  if (s.body && Array.isArray(s.body)) {
-    for (const child of s.body) visitor(child);
-  }
-
-  if (s.tryBlock && Array.isArray(s.tryBlock)) {
-    for (const child of s.tryBlock) visitor(child);
-  }
-  if (s.catchBlock && Array.isArray(s.catchBlock)) {
-    for (const child of s.catchBlock) visitor(child);
-  }
-  if (s.finallyBlock && Array.isArray(s.finallyBlock)) {
-    for (const child of s.finallyBlock) visitor(child);
-  }
-
-  if (s.cases && Array.isArray(s.cases)) {
-    for (const c of s.cases) {
-      if (c.statements && Array.isArray(c.statements)) {
-        for (const child of c.statements) visitor(child);
-      }
-    }
-  }
 }

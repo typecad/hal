@@ -32,8 +32,12 @@ export function loadLibraryDefinitions(definitionsDir: string): Map<string, Libr
   const files = listFiles(definitionsDir, ".libdef.json");
 
   for (const filePath of files) {
-    const jsonText = readText(filePath);
-    const def = JSON.parse(jsonText) as LibraryDefinition;
+    let def: LibraryDefinition;
+    try {
+      def = JSON.parse(readText(filePath)) as LibraryDefinition;
+    } catch (e) {
+      throw new Error(`Failed to parse library definition ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
+    }
     if (!def.module || !def.include) {
       continue;
     }

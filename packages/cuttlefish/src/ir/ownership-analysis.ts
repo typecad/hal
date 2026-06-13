@@ -71,6 +71,9 @@ class OwnershipScope {
   /** Track parameter ownership kinds for the current function. */
   paramKinds = new Map<string, OwnershipKind>();
 
+  /** By-value struct parameters — mutations on their fields are invisible to callers. */
+  byValueStructParams = new Set<string>();
+
   /** Whether any ownership type is used in this scope. */
   usesOwnershipTypes = false;
 
@@ -150,7 +153,75 @@ class OwnershipScope {
 }
 
 /**
- * Validate ownership and borrowing rules for the entire program.
+ * Checks for mutations on by-value struct parameters (no Mutable<T> annotation).
+ * Emits ownership-mutate-copy warning — changes are local copies invisible to callers.
+ */
+function checkByValueParamMutations(program: ProgramIR, diagnostics: Diagnostic[]): void {
+  for (const fn of program.functions) {
+    const byValueParams = new Set<string>();
+    for (const param of fn.parameters) {
+      if (
+        !param.ownershipKind &&
+        param.cppType &&
+        !isPrimitiveCppType(param.cppType) &&
+        !param.cppType.includes('*') &&
+        !param.cppType.startsWith('std::')
+      ) {
+        byValueParams.add(param.name);
+      }
+    }
+    if (byValueParams.size === 0) continue;
+    scanStatementsForByValueMutation(fn.statements, fn.originalName, byValueParams, diagnostics);
+  }
+}
+
+/**
+ * Recursively scans statement lists for assign/update to fields of by-value params.
+ */
+function scanStatementsForByValueMutation(
+  stmts: StatementIR[],
+  fnName: string,
+  byValueParams: Set<string>,
+  diagnostics: Diagnostic[],
+): void {
+  for (const stmt of stmts) {
+    if (stmt.kind === 'assign' || stmt.kind === 'update') {
+      const target: string = (stmt as any).target;
+      if (target) {
+        const dotIdx = target.indexOf('.');
+        if (dotIdx > 0) {
+          const baseName = target.substring(0, dotIdx);
+          if (byValueParams.has(baseName)) {
+            diagnostics.push({
+              severity: 'warning',
+              message: `Mutating '${target}' on by-value parameter '${baseName}' in '${fnName}()' — changes are invisible to the caller.`,
+              hint: `Use '${baseName}: Mutable<T>' to pass by mutable reference (T&) instead of a copy.`,
+              line: stmt.sourceSpan.startLine,
+              column: stmt.sourceSpan.startColumn,
+              code: 'ownership-mutate-copy',
+              source: 'ownership-analysis',
+            });
+          }
+        }
+      }
+    }
+    // Recurse into nested statement blocks
+    if ('body' in stmt && Array.isArray(stmt.body)) scanStatementsForByValueMutation(stmt.body, fnName, byValueParams, diagnostics);
+    if ('thenBranch' in stmt && Array.isArray(stmt.thenBranch)) scanStatementsForByValueMutation(stmt.thenBranch, fnName, byValueParams, diagnostics);
+    if ('elseBranch' in stmt && Array.isArray(stmt.elseBranch)) scanStatementsForByValueMutation(stmt.elseBranch, fnName, byValueParams, diagnostics);
+    if ('cases' in stmt && Array.isArray(stmt.cases)) {
+      for (const c of stmt.cases) {
+        if (c.body) scanStatementsForByValueMutation(c.body, fnName, byValueParams, diagnostics);
+      }
+    }
+    if ('tryBlock' in stmt && Array.isArray(stmt.tryBlock)) scanStatementsForByValueMutation(stmt.tryBlock, fnName, byValueParams, diagnostics);
+    if ('catchBlock' in stmt && Array.isArray(stmt.catchBlock)) scanStatementsForByValueMutation(stmt.catchBlock, fnName, byValueParams, diagnostics);
+    if ('finallyBlock' in stmt && Array.isArray(stmt.finallyBlock)) scanStatementsForByValueMutation(stmt.finallyBlock, fnName, byValueParams, diagnostics);
+  }
+}
+
+/**
+ * Validates ownership rules across the entire program.
  *
  * @param program - The program IR to analyze
  * @returns Array of diagnostics for ownership violations
@@ -193,7 +264,11 @@ export function validateOwnership(program: ProgramIR): Diagnostic[] {
     }
   }
 
-  // If no ownership types are used, skip all validation (opt-in)
+  // If no ownership types are used, skip full ownership validation (opt-in).
+  // Still check for by-value struct param mutations — that diagnostic is
+  // useful whether or not the user has adopted ownership annotations.
+  checkByValueParamMutations(program, diagnostics);
+
   if (!usesOwnershipTypes) {
     // Still do const suggestion for all let variables
     validateConstSuggestions(program, diagnostics);
@@ -209,12 +284,21 @@ export function validateOwnership(program: ProgramIR): Diagnostic[] {
   // Validate each function
   for (const fn of program.functions) {
     const fnScope = new OwnershipScope(globalScope);
-    // Register parameters — only track those with explicit ownership annotations
+    // Register parameters — those with explicit ownership annotations get full
+    // borrow tracking; by-value non-primitive params are recorded so we can warn
+    // when their fields are mutated (changes won't be visible to the caller).
     for (const param of fn.parameters) {
       const kind = param.ownershipKind;
       if (kind) {
         fnScope.declare(param.name, kind, false, undefined, param.cppType);
         fnScope.usesOwnershipTypes = true;
+      } else if (
+        param.cppType &&
+        !isPrimitiveCppType(param.cppType) &&
+        !param.cppType.includes('*') &&
+        !param.cppType.startsWith('std::')
+      ) {
+        fnScope.byValueStructParams.add(param.name);
       }
     }
     analyzeStatements(fn.statements, fnScope, diagnostics);
@@ -382,6 +466,25 @@ function analyzeStatement(
       }
 
       scope.markAssigned(stmt.target);
+
+      // ownership-mutate-copy: mutating a field on a by-value struct parameter.
+      // Changes are local to the function and invisible to the caller.
+      const dotIdx = stmt.target.indexOf('.');
+      if (dotIdx > 0) {
+        const baseName = stmt.target.substring(0, dotIdx);
+        if (scope.byValueStructParams.has(baseName)) {
+          diagnostics.push({
+            severity: 'warning',
+            message: `Mutating '${stmt.target}' on by-value parameter '${baseName}' — changes are invisible to the caller.`,
+            hint: `Use '${baseName}: Mutable<T>' to pass by mutable reference (T&) instead of a copy.`,
+            line: span.startLine,
+            column: span.startColumn,
+            code: 'ownership-mutate-copy',
+            source: 'ownership-analysis',
+          });
+        }
+      }
+
       break;
     }
 
@@ -416,6 +519,24 @@ function analyzeStatement(
       }
 
       scope.markAssigned(stmt.target);
+
+      // ownership-mutate-copy (update path): same check as assign above
+      const upDotIdx = stmt.target.indexOf('.');
+      if (upDotIdx > 0) {
+        const upBaseName = stmt.target.substring(0, upDotIdx);
+        if (scope.byValueStructParams.has(upBaseName)) {
+          diagnostics.push({
+            severity: 'warning',
+            message: `Mutating '${stmt.target}' on by-value parameter '${upBaseName}' — changes are invisible to the caller.`,
+            hint: `Use '${upBaseName}: Mutable<T>' to pass by mutable reference (T&) instead of a copy.`,
+            line: span.startLine,
+            column: span.startColumn,
+            code: 'ownership-mutate-copy',
+            source: 'ownership-analysis',
+          });
+        }
+      }
+
       break;
     }
 
@@ -547,6 +668,7 @@ function analyzeStatement(
     case 'continue':
     case 'hal-op':
     case 'yield':
+    case 'super_call':
       break;
 
     default:
@@ -701,6 +823,11 @@ function analyzeExpression(
     case 'element-access': {
       analyzeExpression(expr.object, scope, diagnostics, span);
       analyzeExpression(expr.index, scope, diagnostics, span);
+      break;
+    }
+
+    case 'tuple-access': {
+      analyzeExpression(expr.object, scope, diagnostics, span);
       break;
     }
 
@@ -983,6 +1110,7 @@ function getNestedStatements(stmt: StatementIR): StatementIR[] | undefined {
     case 'throw':
     case 'hal-op':
     case 'yield':
+    case 'super_call':
       return undefined;
     default:
       assertNever(stmt);

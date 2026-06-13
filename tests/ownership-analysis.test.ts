@@ -180,7 +180,7 @@ describe('Ownership Analysis', () => {
         }
       `);
 
-      expectCppContains(result, ['const std::vector<int>& data']);
+      expectCppContains(result, ['const std::vector<double>& data']);
     });
 
     it('emits T& for non-primitive Mutable<T> parameters', () => {
@@ -191,7 +191,7 @@ describe('Ownership Analysis', () => {
         }
       `);
 
-      expectCppContains(result, ['std::vector<int>& buf']);
+      expectCppContains(result, ['std::vector<double>& buf']);
     });
 
     it('keeps primitive Shared<T> parameters by value (no reference)', () => {
@@ -202,8 +202,8 @@ describe('Ownership Analysis', () => {
         }
       `);
 
-      expectCppContains(result, ['const int data']);
-      expectCppNotContains(result, ['const int& data', 'int& data']);
+      expectCppContains(result, ['const double data']);
+      expectCppNotContains(result, ['const double& data', 'double& data']);
     });
 
     it('emits const T& for non-primitive Shared<T> local variable from named variable', () => {
@@ -216,7 +216,7 @@ describe('Ownership Analysis', () => {
         }
       `);
 
-      expectCppContains(result, ['const std::vector<int>& view = buffer']);
+      expectCppContains(result, ['const std::vector<double>& view = buffer']);
     });
 
     it('falls back to copy (not reference) when Shared<T> initialized from non-identifier', () => {
@@ -228,7 +228,7 @@ describe('Ownership Analysis', () => {
       `);
 
       // Should be a copy (no & suffix on the type)
-      expectCppNotContains(result, ['std::vector<int>& view']);
+      expectCppNotContains(result, ['std::vector<double>& view']);
     });
   });
 
@@ -244,7 +244,7 @@ describe('Ownership Analysis', () => {
       `);
 
       // Bare Shared should emit a const reference (concrete type deduced from initializer)
-      expectCppContains(result, ['const std::vector<int>& view = buffer']);
+      expectCppContains(result, ['const std::vector<double>& view = buffer']);
     });
   });
 

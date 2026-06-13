@@ -63,7 +63,7 @@ export function resolveExpressionText(
     const paramIdx = paramNames.indexOf(expr.text);
     if (paramIdx !== -1) {
       if (paramIdx < callArgTexts.length) {
-        const isSpread = expr.text === (instance as any)._spreadParamName;
+        const isSpread = expr.text === instance._spreadParamName;
         if (isSpread) {
           const spreadArgs = callArgTexts.slice(paramIdx);
           return spreadArgs.join(", ");
@@ -215,7 +215,7 @@ export function extractAndRegisterCallbacks(
           const callbackIR = callArgs[paramIdx];
           if (callbackIR.kind === "callback") {
             const placeholder = `__CALLBACK_${getContext().callbackPlaceholderCounter++}__`;
-            (callbackIR as any).isInterruptHandler = true;
+            callbackIR.isInterruptHandler = true;
             registeredCallbacks.push({ placeholderName: placeholder, callbackIR });
             callArgTexts[paramIdx] = placeholder;
           }
@@ -272,7 +272,7 @@ export function processHALMethodBody(
   const spreadParamName = methodEntry.spreadParamName;
   const callArgTexts = callArgs.map(a => renderExprAsText(a));
   
-  (instance as any)._spreadParamName = spreadParamName;
+  instance._spreadParamName = spreadParamName;
   const paramDefaults = methodEntry.paramDefaults;
 
   const body = methodEntry.methodNode.body;
@@ -598,7 +598,7 @@ export function buildSnprintfFromConcat(
       formatString += text.slice(1, -1).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       estimatedLength += part.value.length;
     } else if (part.kind === "number") {
-      const isFloat = part.cppType === "float" || !Number.isInteger(part.value);
+      const isFloat = part.cppType === "float" || part.cppType === "double" || !Number.isInteger(part.value);
       if (isFloat) {
         requiredIncludes.add("<stdlib.h>");
         const floatBuf = `__cuttlefish_float_${getContext().snprintfCounter++}`;

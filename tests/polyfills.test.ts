@@ -318,8 +318,7 @@ describe("String Method Polyfills", () => {
     `);
     expect(result.cpp).toContain('const std::string c =');
     expect(result.cpp).toContain('" "');
-    expect(result.cpp).toContain('std::string(std::string(a))');
-    expect(result.cpp).toContain('std::string(std::string(b))');
+    expect(result.cpp).toContain('a + " " + b');
   });
 
   it("transpiles string comparison", () => {
@@ -349,5 +348,28 @@ describe("Async Runtime Polyfill", () => {
     expect(result.cpp).toContain("class MicrotaskQueue");
     expect(result.cpp).toContain("class Promise");
     expect(result.cpp).toContain("inline void cuttlefish_pump_microtasks()");
+  });
+});
+
+describe("Console Input Methods", () => {
+  it("transpiles console.readLine() to std::getline", () => {
+    const result = transpile(`
+      function test(): void {
+        const name = console.readLine();
+        console.log("Hello, " + name);
+      }
+    `, { target: "native" });
+    expect(result.cpp).toContain("std::getline");
+    expect(result.cpp).toContain("Hello");
+  });
+
+  it("transpiles console.readCharacter() to std::cin.get()", () => {
+    const result = transpile(`
+      function test(): void {
+        const ch = console.readCharacter();
+        console.log("You typed: " + ch);
+      }
+    `, { target: "native" });
+    expect(result.cpp).toContain("std::cin.get()");
   });
 });

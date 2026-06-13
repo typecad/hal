@@ -1,176 +1,119 @@
-/**
- * Caching utilities for transpilation performance optimization.
- * 
- * This module provides session-scoped caches that live for the duration
- * of a single transpileFile() call, avoiding redundant I/O and parsing.
- */
-
 import ts from "typescript";
 import path from "path";
+import fs from "fs";
 import { clearAllProfileCaches } from "./platform/registry";
 
-/**
- * Cache for resolved npm package paths.
- * Key: `${fromFile}|${packageName}`
- */
-const npmPackageCache = new Map<string, string | undefined>();
+export class TranspileCache {
+  private readonly npmPackageCache = new Map<string, string | undefined>();
+  private readonly packageJsonCache = new Map<string, Record<string, unknown> | null>();
+  private readonly sourceFileCache = new Map<string, ts.SourceFile>();
+  private readonly fileExistsCache = new Map<string, boolean>();
+  private readonly fileContentCache = new Map<string, string>();
 
-/**
- * Cache for package.json contents.
- * Key: package directory path
- */
-const packageJsonCache = new Map<string, Record<string, unknown> | null>();
+  clear(): void {
+    this.npmPackageCache.clear();
+    this.packageJsonCache.clear();
+    this.sourceFileCache.clear();
+    this.fileExistsCache.clear();
+    this.fileContentCache.clear();
+    clearAllProfileCaches();
+  }
 
-/**
- * Cache for parsed TypeScript source files.
- * Key: resolved file path
- */
-const sourceFileCache = new Map<string, ts.SourceFile>();
+  getCachedNpmPackage(fromFile: string, packageName: string): string | undefined {
+    return this.npmPackageCache.get(`${fromFile}|${packageName}`);
+  }
 
-/**
- * Cache for file existence checks.
- * Key: resolved file path
- */
-const fileExistsCache = new Map<string, boolean>();
+  setCachedNpmPackage(fromFile: string, packageName: string, packageDir: string | undefined): void {
+    this.npmPackageCache.set(`${fromFile}|${packageName}`, packageDir);
+  }
 
-/**
- * Cache for file content.
- * Key: resolved file path
- */
-const fileContentCache = new Map<string, string>();
+  getCachedPackageJson(packageDir: string): Record<string, unknown> | null | undefined {
+    return this.packageJsonCache.get(packageDir);
+  }
 
-/**
- * Clear all caches. Call at the start of each transpileFile() call.
- */
+  setCachedPackageJson(packageDir: string, content: Record<string, unknown> | null): void {
+    this.packageJsonCache.set(packageDir, content);
+  }
+
+  getOrParseSourceFile(filePath: string, sourceText: string): ts.SourceFile {
+    const cached = this.sourceFileCache.get(filePath);
+    if (cached) return cached;
+
+    const extension = path.extname(filePath).toLowerCase();
+    const source = ts.createSourceFile(
+      filePath,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      extension === ".tsx" ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    this.sourceFileCache.set(filePath, source);
+    return source;
+  }
+
+  cachedFileExists(filePath: string): boolean {
+    const cached = this.fileExistsCache.get(filePath);
+    if (cached !== undefined) return cached;
+
+    const exists = fs.existsSync(filePath);
+    this.fileExistsCache.set(filePath, exists);
+    return exists;
+  }
+
+  cachedIsFile(filePath: string): boolean {
+    const cacheKey = `file:${filePath}`;
+    const cached = this.fileExistsCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const exists = fs.existsSync(filePath) && fs.statSync(filePath).isFile();
+    this.fileExistsCache.set(cacheKey, exists);
+    return exists;
+  }
+
+  getOrReadFile(filePath: string): string {
+    const cached = this.fileContentCache.get(filePath);
+    if (cached !== undefined) return cached;
+
+    const content = fs.readFileSync(filePath, "utf8");
+    this.fileContentCache.set(filePath, content);
+    return content;
+  }
+}
+
+const defaultCache = new TranspileCache();
+
 export function clearCaches(): void {
-  npmPackageCache.clear();
-  packageJsonCache.clear();
-  sourceFileCache.clear();
-  fileExistsCache.clear();
-  fileContentCache.clear();
-
-  // Clear all strategy profile caches to ensure fresh resolution
-  clearAllProfileCaches();
+  defaultCache.clear();
 }
 
-// ============================================
-// NPM Package Resolution Cache
-// ============================================
-
-/**
- * Get cached npm package directory path.
- */
 export function getCachedNpmPackage(fromFile: string, packageName: string): string | undefined {
-  const key = `${fromFile}|${packageName}`;
-  return npmPackageCache.get(key);
+  return defaultCache.getCachedNpmPackage(fromFile, packageName);
 }
 
-/**
- * Cache npm package directory path.
- */
 export function setCachedNpmPackage(fromFile: string, packageName: string, packageDir: string | undefined): void {
-  const key = `${fromFile}|${packageName}`;
-  npmPackageCache.set(key, packageDir);
+  defaultCache.setCachedNpmPackage(fromFile, packageName, packageDir);
 }
 
-// ============================================
-// Package.json Cache
-// ============================================
-
-/**
- * Get cached package.json contents.
- */
 export function getCachedPackageJson(packageDir: string): Record<string, unknown> | null | undefined {
-  return packageJsonCache.get(packageDir);
+  return defaultCache.getCachedPackageJson(packageDir);
 }
 
-/**
- * Cache package.json contents.
- */
 export function setCachedPackageJson(packageDir: string, content: Record<string, unknown> | null): void {
-  packageJsonCache.set(packageDir, content);
+  defaultCache.setCachedPackageJson(packageDir, content);
 }
 
-// ============================================
-// Source File Cache
-// ============================================
-
-/**
- * Get cached TypeScript source file, or parse and cache it.
- */
-export function getOrParseSourceFile(
-  filePath: string,
-  sourceText: string
-): ts.SourceFile {
-  const cached = sourceFileCache.get(filePath);
-  if (cached) {
-    return cached;
-  }
-
-  const extension = path.extname(filePath).toLowerCase();
-  const source = ts.createSourceFile(
-    filePath,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-    extension === ".tsx" ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
-
-  sourceFileCache.set(filePath, source);
-  return source;
+export function getOrParseSourceFile(filePath: string, sourceText: string): ts.SourceFile {
+  return defaultCache.getOrParseSourceFile(filePath, sourceText);
 }
 
-// ============================================
-// File Existence Cache
-// ============================================
-
-/**
- * Cached file existence check.
- */
 export function cachedFileExists(filePath: string): boolean {
-  const cached = fileExistsCache.get(filePath);
-  if (cached !== undefined) {
-    return cached;
-  }
-  
-  const fs = require("fs");
-  const exists = fs.existsSync(filePath);
-  fileExistsCache.set(filePath, exists);
-  return exists;
+  return defaultCache.cachedFileExists(filePath);
 }
 
-/**
- * Cached file existence check with file type validation.
- */
 export function cachedIsFile(filePath: string): boolean {
-  const cacheKey = `file:${filePath}`;
-  const cached = fileExistsCache.get(cacheKey);
-  if (cached !== undefined) {
-    return cached;
-  }
-  
-  const fs = require("fs");
-  const exists = fs.existsSync(filePath) && fs.statSync(filePath).isFile();
-  fileExistsCache.set(cacheKey, exists);
-  return exists;
+  return defaultCache.cachedIsFile(filePath);
 }
 
-// ============================================
-// File Content Cache
-// ============================================
-
-/**
- * Get cached file content, or read and cache it.
- */
 export function getOrReadFile(filePath: string): string {
-  const cached = fileContentCache.get(filePath);
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const fs = require("fs");
-  const content = fs.readFileSync(filePath, "utf8");
-  fileContentCache.set(filePath, content);
-  return content;
+  return defaultCache.getOrReadFile(filePath);
 }
-

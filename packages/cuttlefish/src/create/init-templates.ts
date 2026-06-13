@@ -278,3 +278,22 @@ dist/
 .cuttlefish-cache.json
 `;
 }
+
+export function generateEslintConfig(_options: InitProjectOptions): string {
+  return `import tseslint from "@typescript-eslint/eslint-plugin";
+import tsparser from "@typescript-eslint/parser";
+
+export default [
+  {
+    files: ["src/**/*.ts"],
+    languageOptions: {
+      parser: tsparser,
+    },
+    plugins: {
+      "@typescript-eslint": tseslint,
+    },
+    rules: {},
+  },
+];
+`;
+}

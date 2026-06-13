@@ -2,7 +2,7 @@
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { transpileFile, buildProgramIR, detectExportedEntryPoints } from "../../../packages/transpiler/src/testing";
+import { transpileFile, buildProgramIR, detectExportedEntryPoints } from "../../../packages/cuttlefish/src/testing";
 
 const tempDirs: string[] = [];
 
@@ -186,7 +186,7 @@ describe("cross-module tree-shaking", () => {
     const libCpp = fs.readFileSync(path.join(outDir, "lib.cpp"), "utf8");
 
     // `used` should survive tree-shaking because it's imported by main.ts
-    expect(libCpp).toContain("int used()");
+    expect(libCpp).toContain("double used()");
     expect(libCpp).not.toContain("notUsed()");
   });
 
@@ -520,6 +520,133 @@ describe("forward declarations", () => {
     expect(sketchText).toContain("Button::start(2, 50)->onPress");
     expect(sketchText).not.toContain("Button.start(2, 50).onPress");
   });
+
+  it("emits free function forward declarations before class definitions in split mode", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    tempDirs.push(workspaceDir);
+
+    const entryPath = path.join(workspaceDir, "main.ts");
+
+    fs.writeFileSync(
+      entryPath,
+      [
+        "function helper(x: number): number { return x + 1; }",
+        "",
+        "class Processor {",
+        "  public process(val: number): number {",
+        "    return helper(val);",
+        "  }",
+        "}",
+        "",
+        "export function main(): void {",
+        "  const p = new Processor();",
+        "  console.log(p.process(42));",
+        "}",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await transpileFile({
+      inputFile: entryPath,
+      emitMode: "split",
+      target: "generic",
+      emitMaps: false,
+    });
+
+    const outDir = path.join(workspaceDir, ".build");
+    const mainHeader = fs.readFileSync(path.join(outDir, "main.h"), "utf8");
+
+    const declIdx = mainHeader.indexOf("int helper(int");
+    const classIdx = mainHeader.indexOf("class Processor {");
+    expect(declIdx).toBeGreaterThanOrEqual(0);
+    expect(classIdx).toBeGreaterThanOrEqual(0);
+    expect(declIdx).toBeLessThan(classIdx);
+  });
+});
+
+describe("cross-module string interpolation", () => {
+  it("uses field and function return types instead of std::to_string heuristics", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    tempDirs.push(workspaceDir);
+
+    const statePath = path.join(workspaceDir, "State.ts");
+    const namesPath = path.join(workspaceDir, "names.ts");
+    const entryPath = path.join(workspaceDir, "main.ts");
+
+    fs.writeFileSync(statePath, [
+      'export class Player { name: string = "Ada"; level: number = 3; }',
+      'export class State { player: Player = new Player(); }',
+      '',
+    ].join("\n"), "utf8");
+    fs.writeFileSync(namesPath, [
+      'export function getTitle(): string { return "captain"; }',
+      '',
+    ].join("\n"), "utf8");
+    fs.writeFileSync(entryPath, [
+      'import { State } from "./State";',
+      'import { getTitle } from "./names";',
+      '',
+      'export function summary(s: State): string {',
+      '  return `${s.player.name} level ${s.player.level} ${getTitle()}`;',
+      '}',
+      'console.log(summary(new State()));',
+      '',
+    ].join("\n"), "utf8");
+
+    const result = await transpileFile({
+      inputFile: entryPath,
+      emitMode: "split",
+      target: "native",
+      emitMaps: false,
+      skipTypeCheck: true,
+    });
+
+    const cpp = [result.sourcePath, result.headerPath]
+      .filter((filePath): filePath is string => !!filePath && fs.existsSync(filePath))
+      .map((filePath) => fs.readFileSync(filePath, "utf8"))
+      .join("\n");
+    expect(cpp).toContain("s->player->name");
+    expect(cpp).not.toContain("std::to_string(s->player->name)");
+    expect(cpp).toMatch(/snprintf\([^;]*s->player->level/);
+    expect(cpp).toContain("getTitle()");
+    expect(cpp).not.toContain("std::to_string(getTitle())");
+  });
+
+  it("does not classify imported PascalCase interfaces as classes", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    tempDirs.push(workspaceDir);
+
+    const configPath = path.join(workspaceDir, "Config.ts");
+    const entryPath = path.join(workspaceDir, "main.ts");
+
+    fs.writeFileSync(configPath, [
+      "export interface Config { count: number; }",
+      "",
+    ].join("\n"), "utf8");
+    fs.writeFileSync(entryPath, [
+      'import { Config } from "./Config";',
+      "export function read(config: Config): number { return config.count; }",
+      "const config: Config = { count: 1 };",
+      "console.log(read(config));",
+      "",
+    ].join("\n"), "utf8");
+
+    const result = await transpileFile({
+      inputFile: entryPath,
+      emitMode: "split",
+      target: "native",
+      emitMaps: false,
+      skipTypeCheck: true,
+    });
+
+    const cpp = [result.sourcePath, result.headerPath]
+      .filter((filePath): filePath is string => !!filePath && fs.existsSync(filePath))
+      .map((filePath) => fs.readFileSync(filePath, "utf8"))
+      .join("\n");
+    expect(cpp).toContain("read(const Config& config)");
+    expect(cpp).not.toContain("read(Config* config)");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -569,5 +696,138 @@ describe("header guards", () => {
 
     expect(utilHeader).toContain("#pragma once");
     expect(mainHeader).toContain("#pragma once");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-module variable types
+// ---------------------------------------------------------------------------
+describe("cross-module variable types", () => {
+  it("uses concrete type in header for exported string constant", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    tempDirs.push(workspaceDir);
+
+    const libPath = path.join(workspaceDir, "lib.ts");
+    const entryPath = path.join(workspaceDir, "main.ts");
+
+    fs.writeFileSync(
+      libPath,
+      [
+        'export const GREETING = "hello";',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    fs.writeFileSync(
+      entryPath,
+      [
+        'import { GREETING } from "./lib";',
+        "",
+        "export function main(): void {",
+        '  console.log(GREETING);',
+        "}",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await transpileFile({
+      inputFile: entryPath,
+      emitMode: "split",
+      target: "generic",
+      emitMaps: false,
+    });
+
+    const outDir = path.join(workspaceDir, ".build");
+    const libHeader = fs.readFileSync(path.join(outDir, "lib.h"), "utf8");
+
+    expect(libHeader).toContain("extern const std::string GREETING");
+    expect(libHeader).not.toContain("extern const auto GREETING");
+  });
+
+  it("uses concrete type in header for exported number constant", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    tempDirs.push(workspaceDir);
+
+    const libPath = path.join(workspaceDir, "lib.ts");
+    const entryPath = path.join(workspaceDir, "main.ts");
+
+    fs.writeFileSync(
+      libPath,
+      [
+        "export const COUNT = 42;",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    fs.writeFileSync(
+      entryPath,
+      [
+        'import { COUNT } from "./lib";',
+        "",
+        "export function main(): void {",
+        "  console.log(COUNT);",
+        "}",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await transpileFile({
+      inputFile: entryPath,
+      emitMode: "split",
+      target: "generic",
+      emitMaps: false,
+    });
+
+    const outDir = path.join(workspaceDir, ".build");
+    const libHeader = fs.readFileSync(path.join(outDir, "lib.h"), "utf8");
+
+    expect(libHeader).toContain("extern const int COUNT");
+    expect(libHeader).not.toContain("extern const auto COUNT");
+  });
+
+  it("does not emit std::to_string for imported string constants in snprintf mode", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    tempDirs.push(workspaceDir);
+
+    const libPath = path.join(workspaceDir, "lib.ts");
+    const entryPath = path.join(workspaceDir, "main.ts");
+
+    fs.writeFileSync(
+      libPath,
+      [
+        'export const MISSION_NAME = "Voyager";',
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    fs.writeFileSync(
+      entryPath,
+      [
+        'import { MISSION_NAME } from "./lib";',
+        "",
+        "export function main(): void {",
+        "  console.log(`Mission: ${MISSION_NAME}`);",
+        "}",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await transpileFile({
+      inputFile: entryPath,
+      emitMode: "split",
+      target: "arduino",
+      emitMaps: false,
+    });
+
+    const mainCpp = fs.readFileSync(result.sourcePath, "utf8");
+
+    expect(mainCpp).not.toContain("std::to_string(MISSION_NAME)");
+    expect(mainCpp).not.toContain("String(MISSION_NAME)");
   });
 });

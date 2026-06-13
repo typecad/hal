@@ -326,7 +326,9 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
 
       expectCppContains(result, ['int min_', 'int max_']);
       expectCppNotContains(result, ['int min,', 'int max,']);
-      expect(result.cpp).toContain('max(min_, min(max_, value))');
+      expect(result.cpp).toContain('min_ >');
+      expect(result.cpp).toContain('max_ < value');
+      expectCppNotContains(result, ['std::max', 'std::min']);
     });
   
     it('maps Uint8Array parameter type to uint8_t*', () => {

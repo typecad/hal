@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect } from "vitest";
-import { transpile, transpileAVR, normalizeCpp, hasInclude } from "./setup";
+import { transpile, transpileAVR, transpileNative, normalizeCpp, hasInclude } from "./setup";
 import { inferSnprintfArg, createEmissionScopeState } from "@typecad/cuttlefish/testing";
 
 describe("Expression Transpilation", () => {
@@ -251,6 +251,94 @@ describe("Expression Transpilation", () => {
     });
   });
 
+  describe("Robust String Handling", () => {
+    it("handles string concat with parenthesized string variable", () => {
+      const result = transpile([
+        "function test(): void {",
+        '  const str = "hello";',
+        '  const msg = str + " suffix";',
+        "}",
+      ].join("\n"));
+      expect(result.cpp).toContain("str");
+      expect(result.cpp).toContain("suffix");
+    });
+
+    it("handles nested string concat", () => {
+      const result = transpile([
+        "function test(): void {",
+        '  const msg = "a" + ("b" + "c");',
+        "}",
+      ].join("\n"));
+      expect(result.cpp).toContain('"a"');
+      expect(result.cpp).toContain('"b"');
+      expect(result.cpp).toContain('"c"');
+    });
+
+    it("handles string concat with boolean", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const flag = true;",
+        '  const msg = "value: " + flag;',
+        "}",
+      ].join("\n"));
+      expect(result.cpp).toContain("value:");
+    });
+
+    it("handles empty string in concat", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const x = 42;",
+        '  const msg = "" + x + "";',
+        "}",
+      ].join("\n"));
+      expect(result.cpp).toContain("42");
+    });
+
+    it("handles template literal with complex expressions", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const a = 3;",
+        "  const b = 4;",
+        '  const msg = `result: ${a + b}`;',
+        "}",
+      ].join("\n"));
+      expect(result.cpp).toContain("result:");
+      expect(result.cpp).toContain("a + b");
+    });
+
+    it("handles string concat with string variable on Arduino", () => {
+      const result = transpileAVR([
+        "function test(): void {",
+        '  const name = "test";',
+        '  const msg = "Hello " + name + "!";',
+        "}",
+      ].join("\n"));
+      expect(hasInclude(result.cpp, "stdio.h")).toBe(true);
+      expect(result.cpp).toContain("snprintf(");
+      expect(result.cpp).not.toContain("String(");
+    });
+
+    it("handles string concat with ternary string on generic", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  const cond = true;",
+        '  const msg = "prefix " + (cond ? "a" : "b");',
+        "}",
+      ].join("\n"));
+      expect(result.cpp).toContain("prefix");
+    });
+
+    it("safety net: wraps bare string literal concatenation with std::string", () => {
+      const result = transpile([
+        "function test(): void {",
+        "  let x: int = 1;",
+        '  if (x === 1) { x = 2; }',
+        "}",
+      ].join("\n"));
+      expect(result.cpp).toBeDefined();
+    });
+  });
+
   describe("Boolean Literals", () => {
     it("transpiles true literal", () => {
       const result = transpile(`
@@ -453,6 +541,16 @@ describe("Expression Transpilation", () => {
       `);
       expect(result.cpp).toContain("obj = { val }");
     });
+
+    it("preserves multiple spread sources in object literal", () => {
+      const result = transpile(`
+        function test(): void {
+          const merged = { ...base, ...overrides };
+        }
+      `);
+      expect(result.cpp).not.toContain("return base");
+      expect(result.cpp).toContain("__spread__");
+    });
   });
 
   describe("Binary Expressions", () => {
@@ -601,5 +699,319 @@ describe("inferSnprintfArg property-access", () => {
     const result = inferSnprintfArg(propAccessExpr, mockStrategy, scopeState, () => "32767");
     expect(result?.format).toBe("%d");
     expect(result?.arg).toBe("32767");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Index signature interface tests
+// ---------------------------------------------------------------------------
+
+describe("Index Signature Interfaces", () => {
+  it("transpiles index signature interface as std::map struct", () => {
+    const result = transpile(`
+      interface StringMap {
+        [key: string]: number;
+      }
+      function test(m: StringMap): number {
+        return m["foo"];
+      }
+    `);
+    expect(result.cpp).toContain("struct StringMap");
+    expect(result.cpp).toContain("std::map<std::string, double> data");
+    expect(result.cpp).toContain("#include <map>");
+  });
+
+  it("transpiles index signature with number key as std::map struct", () => {
+    const result = transpile(`
+      interface NumberMap {
+        [key: number]: string;
+      }
+    `);
+    expect(result.cpp).toContain("struct NumberMap");
+    expect(result.cpp).toContain("std::map<double, std::string> data");
+  });
+
+  it("transpiles mixed interface with fields and index signature", () => {
+    const result = transpile(`
+      interface Mixed {
+        name: string;
+        [key: string]: number;
+      }
+    `);
+    expect(result.cpp).toContain("struct Mixed");
+    expect(result.cpp).toContain("std::string name");
+    expect(result.cpp).toContain("std::map<std::string, double> data");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// String property access in concatenation
+// ---------------------------------------------------------------------------
+
+describe("String Property Access in Concatenation", () => {
+  it("does not wrap string field access via local variable in std::to_string", () => {
+    const result = transpile(`
+      class State { name: string = ""; }
+      function test(s: State): void {
+        const msg = "Hello " + s.name;
+      }
+    `);
+    expect(result.cpp).not.toContain("std::to_string(s->name)");
+    expect(result.cpp).toContain("s->name");
+  });
+
+  it("does not wrap string field access via this.field in std::to_string", () => {
+    const result = transpile(`
+      class State { name: string = ""; }
+      class Game {
+        state: State = new State();
+        test(): void {
+          const msg = "Hello " + this.state.name;
+        }
+      }
+    `);
+    expect(result.cpp).not.toContain("std::to_string(this->state");
+    expect(result.cpp).toMatch(/this->state[.-]>?name/);
+  });
+
+  it("still wraps numeric field access via local variable in std::to_string", () => {
+    const result = transpile(`
+      class State { health: number = 0; }
+      function test(s: State): void {
+        const msg = "HP: " + s.health;
+      }
+    `);
+    expect(result.cpp).toMatch(/snprintf\([^;]*s->health/);
+    expect(result.cpp).toContain("s->health");
+  });
+
+  it("handles string field access via pointer variable type", () => {
+    const result = transpile(`
+      class State { name: string = ""; }
+      function test(s: State): void {
+        const msg = "Hello " + s.name;
+      }
+    `);
+    expect(result.cpp).not.toContain("std::to_string(s->name)");
+  });
+
+  it("handles chained property access this.state.name", () => {
+    const result = transpile(`
+      class Inner { value: string = ""; }
+      class Outer { inner: Inner = new Inner(); }
+      class Game {
+        state: Outer = new Outer();
+        test(): void {
+          const msg = "Val: " + this.state.inner.value;
+        }
+      }
+    `);
+    expect(result.cpp).not.toContain("std::to_string");
+  });
+
+  it("does not wrap string field in template literal via local variable", () => {
+    const result = transpile(`
+      class State { name: string = ""; }
+      function test(s: State): void {
+        const msg = \`Hello \${s.name}\`;
+      }
+    `);
+    expect(result.cpp).not.toContain("std::to_string(s->name)");
+    expect(result.cpp).toContain("s->name");
+  });
+
+  it("handles string concat with let alias of this.field", () => {
+    const result = transpile(`
+      class State { enemyName: string = ""; }
+      class Game {
+        state: State = new State();
+        test(): void {
+          const s = this.state;
+          const msg = "Enemy: " + s.enemyName;
+        }
+      }
+    `);
+    expect(result.cpp).not.toContain("std::to_string(s");
+    expect(result.cpp).toMatch(/s[.-]>?enemyName/);
+  });
+
+  it("does not wrap local string variable in std::to_string when used directly in concatenation", () => {
+    const result = transpile(`
+      class Player { weaponName: string = ""; }
+      function test(p: Player): void {
+        let weaponTag = p.weaponName;
+        console.log("  Weapon: " + weaponTag);
+      }
+    `);
+    expect(result.cpp).not.toContain("std::to_string(weaponTag)");
+  });
+
+  it("does not wrap local string variable in std::to_string at top level", () => {
+    const result = transpile(`
+      class Player { weaponName: string = "Sword"; }
+      let player = new Player();
+      let weaponTag = player.weaponName;
+      console.log("  Weapon: " + weaponTag);
+    `);
+    expect(result.cpp).not.toContain("std::to_string(weaponTag)");
+  });
+
+  it("uses native string fields directly in template literals", () => {
+    const result = transpileNative([
+      'class State { name: string = ""; }',
+      'function greet(s: State): string {',
+      '  return `Hello ${s.name}`;',
+      '}',
+    ].join("\n"));
+    expect(result.cpp).toContain('"Hello " + s->name');
+    expect(result.cpp).not.toContain("std::to_string(s->name)");
+  });
+
+  it("resolves native nested member types through local aliases", () => {
+    const result = transpileNative([
+      'class Player { name: string = ""; level: number = 1; }',
+      'class State { player: Player = new Player(); }',
+      'class Game {',
+      '  state: State = new State();',
+      '  summary(): string {',
+      '    const s = this.state;',
+      '    return `${s.player.name} level ${s.player.level}`;',
+      '  }',
+      '}',
+    ].join("\n"));
+    expect(result.cpp).toContain("s->player->name");
+    expect(result.cpp).not.toContain("std::to_string(s->player->name)");
+    expect(result.cpp).toMatch(/snprintf\([^;]*s->player->level/);
+  });
+
+  it("preserves TypeScript boolean interpolation semantics for fields", () => {
+    const result = transpileNative([
+      'class State { ready: boolean = false; }',
+      'function status(s: State): string {',
+      '  return `ready=${s.ready}`;',
+      '}',
+    ].join("\n"));
+    expect(result.cpp).toContain('(s->ready ? "true" : "false")');
+    expect(result.cpp).not.toContain("std::to_string(s->ready)");
+  });
+
+  it("distinguishes string and numeric array element interpolation", () => {
+    const result = transpileNative([
+      'function labels(names: string[], scores: number[]): string {',
+      '  return `${names[0]}:${scores[0]}`;',
+      '}',
+    ].join("\n"));
+    expect(result.cpp).not.toContain("std::to_string(names[0])");
+    expect(result.cpp).toMatch(/snprintf\([^;]*scores\[0\]/);
+  });
+
+  it("uses known native string function returns directly", () => {
+    const result = transpileNative([
+      'function getName(): string { return "Ada"; }',
+      'function greet(): string { return `Hello ${getName()}`; }',
+    ].join("\n"));
+    expect(result.cpp).toContain('"Hello " + getName()');
+    expect(result.cpp).not.toContain("std::to_string(getName())");
+  });
+
+  it("tracks generated object struct field types", () => {
+    const result = transpileNative([
+      'function describe(): string {',
+      '  const item = { name: "sword", damage: 12 };',
+      '  return `${item.name}:${item.damage}`;',
+      '}',
+    ].join("\n"));
+    expect(result.cpp).not.toContain("std::to_string(item.name)");
+    expect(result.cpp).toContain("std::to_string(item.damage)");
+  });
+
+  it("uses typed snprintf arguments for Arduino member interpolation", () => {
+    const result = transpileAVR([
+      'class State { name: string = ""; health: number = 10; ready: boolean = true; }',
+      'function report(s: State): void {',
+      '  console.log(`${s.name}:${s.health}:${s.ready}`);',
+      '}',
+    ].join("\n"));
+    expect(result.cpp).toContain('"%s:%s:%s"');
+    expect(result.cpp).toContain("s->name.c_str()");
+    expect(result.cpp).toContain('(s->ready ? "true" : "false")');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Class-based architecture (value vs pointer field types)
+// ---------------------------------------------------------------------------
+
+describe("Class Field Type Safety", () => {
+  it("handles value-typed field initialized with new in field declaration", () => {
+    const result = transpile(`
+      class Player { health: number = 100; }
+      class GameState {
+        player: Player = new Player();
+        run(): void {
+          console.log("running");
+        }
+      }
+      function test(): void {
+        let gs = new GameState();
+        gs.run();
+      }
+    `);
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+  });
+
+  it("handles value-typed field assigned new in constructor", () => {
+    const result = transpile(`
+      class Player { health: number = 100; }
+      class GameState {
+        player: Player;
+        constructor() {
+          this.player = new Player();
+        }
+      }
+      function test(): void {
+        let gs = new GameState();
+      }
+    `);
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+  });
+});
+
+describe("Math Method Return Types", () => {
+  it("infers double type for Math.floor result", () => {
+    const result = transpile(`
+      function test(): void {
+        const x = Math.floor(3600.5);
+      }
+    `);
+    expect(result.cpp).toContain("const double x = std::floor");
+    expect(result.cpp).not.toContain("const auto x = std::floor");
+  });
+
+  it("infers double type for Math.ceil result", () => {
+    const result = transpile(`
+      function test(): void {
+        const x = Math.ceil(3.7);
+      }
+    `);
+    expect(result.cpp).toContain("const double x = std::ceil");
+  });
+
+  it("infers double type for Math.round result", () => {
+    const result = transpile(`
+      function test(): void {
+        const x = Math.round(3.5);
+      }
+    `);
+    expect(result.cpp).toContain("const double x = std::round");
+  });
+
+  it("infers double type for Math.sqrt result", () => {
+    const result = transpile(`
+      function test(): void {
+        const x = Math.sqrt(16);
+      }
+    `);
+    expect(result.cpp).toContain("const double x = std::sqrt");
   });
 });

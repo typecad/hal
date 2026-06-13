@@ -221,6 +221,33 @@ describe('typeof Operator', () => {
     `);
     expectCppContains(result, ['"number"']);
   });
+
+  it('optimizes typeof type guard with matching type to true', () => {
+    const result = transpile(`
+      function check(x: number): boolean {
+        return typeof x === "number";
+      }
+    `);
+    expectCppContains(result, ['true']);
+  });
+
+  it('optimizes typeof type guard with mismatched type to false', () => {
+    const result = transpile(`
+      function check(x: number): boolean {
+        return typeof x === "string";
+      }
+    `);
+    expectCppContains(result, ['false']);
+  });
+
+  it('optimizes typeof type guard with negation', () => {
+    const result = transpile(`
+      function check(x: number): boolean {
+        return typeof x !== "string";
+      }
+    `);
+    expectCppContains(result, ['true']);
+  });
 });
 
 describe('Full Union Types (std::variant)', () => {
@@ -230,7 +257,7 @@ describe('Full Union Types (std::variant)', () => {
         return 42;
       }
     `);
-    expectCppContains(result, ['std::variant<int, std::string>']);
+    expectCppContains(result, ['std::variant<double, std::string>']);
   });
 
   it('strips null from multi-type union', () => {
@@ -239,7 +266,7 @@ describe('Full Union Types (std::variant)', () => {
         return 42;
       }
     `);
-    expectCppContains(result, ['std::variant<int, std::string>']);
+    expectCppContains(result, ['std::variant<double, std::string>']);
     expectCppNotContains(result, ['auto getMaybe']);
   });
 
@@ -249,7 +276,7 @@ describe('Full Union Types (std::variant)', () => {
         return 42;
       }
     `);
-    expectCppContains(result, ['int getValue()']);
+    expectCppContains(result, ['double getValue()']);
     expectCppNotContains(result, ['std::variant']);
   });
 
@@ -259,7 +286,38 @@ describe('Full Union Types (std::variant)', () => {
         return 42;
       }
     `);
-    expectCppContains(result, ['int getVal()']);
+    expectCppContains(result, ['double getVal()']);
+  });
+});
+
+describe('Discriminated unions', () => {
+  it('transpiles discriminated union to std::variant with struct variants', () => {
+    const result = transpile(`
+      type Event = 
+        | { type: "reading"; value: number }
+        | { type: "alert"; message: string };
+      function handleEvent(event: Event): string {
+        return event.type;
+      }
+    `);
+    expectCppContains(result, ['std::variant<_Event_Variant_0, _Event_Variant_1>']);
+    expectCppContains(result, ['struct _Event_Variant_0']);
+    expectCppContains(result, ['struct _Event_Variant_1']);
+  });
+
+  it('transpiles discriminated union with complex fields', () => {
+    const result = transpile(`
+      interface Reading { value: number; unit: string }
+      type Event = 
+        | { type: "reading"; data: Reading }
+        | { type: "alert"; message: string };
+      function handleEvent(event: Event): string {
+        return event.type;
+      }
+    `);
+    expectCppContains(result, ['std::variant<_Event_Variant_0, _Event_Variant_1>']);
+    expectCppContains(result, ['struct _Event_Variant_0']);
+    expectCppContains(result, ['data']);
   });
 });
 

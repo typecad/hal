@@ -11,6 +11,7 @@
 import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } from "../api/shared";
 import type { PlatformStrategy } from "../api/shared";
 import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "../api/shared";
+import { escapeCppStringLiteral } from "../utils/strings";
 
 export type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer };
 
@@ -115,15 +116,7 @@ export function recordVariableType(statement: VariableDeclarationIR, scopeState:
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function escapeCppStringLiteral(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/\t/g, "\\t");
-}
-
+export { escapeCppStringLiteral };
 
 // ---------------------------------------------------------------------------
 // Snprintf arg inference
@@ -136,10 +129,11 @@ export function inferSnprintfArg(
   renderExpression: SnprintfExpressionRenderer,
   pointerVarTypes?: Map<string, string>,
   knownFunctionReturnTypes?: Map<string, string>,
+  stringVarNames?: Set<string>,
 ): SnprintfArgRenderResult | undefined {
   switch (expr.kind) {
     case "number": {
-      if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+      if (expr.cppType === "float" || expr.cppType === "double" || !Number.isInteger(expr.value)) {
         const str = `${expr.value}`;
         const rendered = str.includes('.') || str.includes('e') || str.includes('E')
           ? `${str}f`
@@ -172,9 +166,10 @@ export function inferSnprintfArg(
       };
     case "identifier": {
       const knownVar = scopeState.knownVariableTypes.get(expr.value);
-      const cppType = knownVar?.cppType;
+      const cppType = knownVar?.cppType ?? knownFunctionReturnTypes?.get(expr.value);
       if (cppType && strategy.isStringLikeType(cppType)) {
-        const needsCStr = cppType === "std::string" || cppType === "String" || cppType === "__tc_str_ptr";
+        const normalized = strategy.normalizeCppType(cppType);
+        const needsCStr = normalized === "std::string" || normalized === "String" || normalized === "__tc_str_ptr";
         const arg = needsCStr ? `${expr.value}.c_str()` : expr.value;
         return { format: "%s", arg, estimatedLength: 24, preludeLines: [] };
       }
@@ -191,7 +186,7 @@ export function inferSnprintfArg(
           preludeLines: [],
         };
       }
-      if (cppType === "int" || cppType === "short" || cppType === "auto") {
+      if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t" || cppType === "auto") {
         return { format: "%d", arg: expr.value, estimatedLength: 12, preludeLines: [] };
       }
       if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t") {
@@ -206,13 +201,25 @@ export function inferSnprintfArg(
           return { format: "%s", arg: expr.value, estimatedLength: 24, preludeLines: [] };
         }
       }
-      return undefined;
+      if (stringVarNames?.has(expr.value)) {
+        return { format: "%s", arg: expr.value, estimatedLength: 32, preludeLines: [] };
+      }
+      return { format: "%d", arg: expr.value, estimatedLength: 12, preludeLines: [] };
     }
+    case "template_string":
+      return inferSnprintfArg(expr.expression, strategy, scopeState, renderExpression, pointerVarTypes, knownFunctionReturnTypes, stringVarNames);
+    case "paren":
+      return inferSnprintfArg(expr.inner, strategy, scopeState, renderExpression, pointerVarTypes, knownFunctionReturnTypes, stringVarNames);
     case "raw": {
+      if (/^__tc_/.test(expr.value)) {
+        return { format: "%s", arg: renderExpression(expr), estimatedLength: 32, preludeLines: [] };
+      }
+      if (/^std::string\(/.test(expr.value)) {
+        return { format: "%s", arg: renderExpression(expr), estimatedLength: 32, preludeLines: [] };
+      }
       const callMatch = expr.value.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
       if (callMatch) {
         const funcName = callMatch[1];
-        // Check user-defined function return types first
         if (knownFunctionReturnTypes) {
           const returnType = knownFunctionReturnTypes.get(funcName);
           if (returnType && strategy.isStringLikeType(returnType)) {
@@ -232,7 +239,6 @@ export function inferSnprintfArg(
             return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
           }
         }
-        // Known Arduino C functions that return int
         const arduinoIntFunctions = new Set([
           "digitalRead", "analogRead", "pulseIn", "pulseInLong",
           "Wire_available", "Serial_available",
@@ -244,13 +250,13 @@ export function inferSnprintfArg(
       return undefined;
     }
     case "property-access": {
-      // Render first so board constants are folded to their C++ literal values.
       const rendered = renderExpression(expr);
-      // String constant (e.g. Board.definition.mcu → "ATmega328P")
       if (rendered.startsWith('"')) {
         return { format: "%s", arg: rendered, estimatedLength: Math.max(rendered.length - 2, 1), preludeLines: [] };
       }
-      // Numeric constant that overflows AVR 16-bit signed int — emit as long.
+      if (expr.property === "length" || expr.property === "size") {
+        return { format: "%d", arg: rendered, estimatedLength: 10, preludeLines: [] };
+      }
       const numVal = Number(rendered);
       if (!isNaN(numVal)) {
         if (Number.isInteger(numVal) && (numVal > 32767 || numVal < -32768)) {
@@ -280,10 +286,9 @@ export function inferSnprintfArg(
       return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
     case "method-call": {
       const rendered = renderExpression(expr);
-      if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith)\b/.test(rendered)) {
+      if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|endsWith|toUpperCaseChar)\b/.test(rendered)) {
         return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
       }
-      // Check if the rendered value is a numeric literal (e.g. board constant like "1.1")
       const numVal = Number(rendered);
       if (!isNaN(numVal) && rendered.trim() !== "") {
         if (!Number.isInteger(numVal)) {
@@ -297,6 +302,38 @@ export function inferSnprintfArg(
             preludeLines: [],
           };
         }
+      }
+      if (typeof expr.callee === "string") {
+        const methodNameMatch = expr.callee.match(/->(\w+)\(\)$/);
+        if (methodNameMatch && knownFunctionReturnTypes) {
+          const methodReturn = knownFunctionReturnTypes.get(methodNameMatch[1]);
+          if (methodReturn && strategy.isStringLikeType(methodReturn)) {
+            return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
+          }
+        }
+      }
+      return { format: "%d", arg: rendered, estimatedLength: 12, preludeLines: [] };
+    }
+    case "element-access": {
+      const rendered = renderExpression(expr);
+      if (expr.elementType && strategy.isStringLikeType(expr.elementType)) {
+        return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
+      }
+      if (expr.object.kind === "identifier") {
+        const objInfo = scopeState.knownVariableTypes.get(expr.object.value);
+        if (objInfo) {
+          const match = objInfo.cppType.match(/^std::vector<(.+)>$/);
+          if (match && strategy.isStringLikeType(match[1])) {
+            return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
+          }
+        }
+      }
+      return { format: "%d", arg: rendered, estimatedLength: 12, preludeLines: [] };
+    }
+    case "hal-expr": {
+      const rendered = renderExpression(expr);
+      if (rendered.startsWith('"') || stringVarNames?.has(rendered)) {
+        return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
       }
       return { format: "%d", arg: rendered, estimatedLength: 12, preludeLines: [] };
     }
@@ -316,6 +353,7 @@ export function buildSnprintfRenderResult(
   renderExpression: SnprintfExpressionRenderer,
   pointerVarTypes?: Map<string, string>,
   knownFunctionReturnTypes?: Map<string, string>,
+  stringVarNames?: Set<string>,
 ): SnprintfRenderResult | undefined {
   if (expr.kind !== "string_concat") {
     return undefined;
@@ -333,17 +371,16 @@ export function buildSnprintfRenderResult(
       continue;
     }
 
-    if (part.kind !== "template_string") {
-      return undefined;
-    }
+    const innerExpr = part.kind === "template_string" ? part.expression : part;
 
     const arg = inferSnprintfArg(
-      part.expression,
+      innerExpr,
       strategy,
       scopeState,
       renderExpression,
       pointerVarTypes,
       knownFunctionReturnTypes,
+      stringVarNames,
     );
     if (!arg) {
       return undefined;

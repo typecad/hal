@@ -1,5 +1,7 @@
 ﻿import type { StatementIR } from "../../api";
+import type { SourceSpan } from "../../types";
 import { cloneEmissionScopeState, recordVariableType } from "../snprintf-helpers";
+import type { EmissionScopeState } from "../snprintf-helpers";
 import { emitCommentLines } from "../utils";
 import { escapeCppKeyword } from "../../utils/strings";
 import type { EmitterContext } from "./emitter-context";
@@ -7,7 +9,7 @@ import type { EmitterContext } from "./emitter-context";
 export function appendSourceLine(
   ctx: EmitterContext,
   line: string,
-  entry?: { tsSpan: any; nodeKind: string; symbolName?: string },
+  entry?: { tsSpan: SourceSpan; nodeKind: string; symbolName?: string },
 ): void {
   ctx.sourceLines.push(line);
   if (!entry) return;
@@ -27,7 +29,7 @@ export function appendSourceLine(
 export function appendHeaderLine(
   ctx: EmitterContext,
   line: string,
-  entry?: { tsSpan: any; nodeKind: string; symbolName?: string },
+  entry?: { tsSpan: SourceSpan; nodeKind: string; symbolName?: string },
 ): void {
   ctx.headerLines.push(line);
   if (!entry) return;
@@ -48,9 +50,9 @@ export function appendRenderedStatement(
   ctx: EmitterContext,
   statement: StatementIR,
   indent: string,
-  scopeState: any,
+  scopeState: EmissionScopeState,
 ): void {
-  const { statementRenderer, exprRenderer, fixPointerFieldAccess, platformReservedNames } = ctx;
+  const { statementRenderer, exprRenderer, fixPointerFieldAccess, reservedNames } = ctx;
 
   emitCommentLines(statement.leadingComments, indent, (line) => appendSourceLine(ctx, line));
 
@@ -96,7 +98,7 @@ export function appendRenderedStatement(
     if (statement.kind === "for_in" && statement.keys && statement.keys.length > 0 && statement.variable.kind === "var_decl") {
       const objName = statement.object.kind === "identifier" ? statement.object.value : "_obj";
       const idxVar = `_ki_${objName}`;
-      const safeName = escapeCppKeyword(statement.variable.name, platformReservedNames);
+      const safeName = escapeCppKeyword(statement.variable.name, reservedNames);
       appendSourceLine(ctx, `${indent}  const char* ${safeName} = ${idxVar}_keys[${idxVar}];`);
     }
     for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
@@ -121,10 +123,18 @@ export function appendRenderedStatement(
     const isStringSwitch =
       (switchExpr.kind === "identifier" &&
         scopeState.knownVariableTypes?.get(switchExpr.value) != null &&
-        ctx.strategy.isStringLikeType(scopeState.knownVariableTypes.get(switchExpr.value).cppType)) ||
+        ctx.strategy.isStringLikeType(scopeState.knownVariableTypes!.get(switchExpr.value)!.cppType)) ||
       statement.cases.some(c => c.value?.kind === "string");
 
-    if (isStringSwitch) {
+    const isBooleanSwitch = switchExpr.kind === "boolean" && switchExpr.value === true;
+    const hasNonConstantCase = statement.cases.some(c =>
+      c.value !== undefined &&
+      c.value.kind !== "number" &&
+      c.value.kind !== "boolean" &&
+      c.value.kind !== "string"
+    );
+
+    if (isStringSwitch || isBooleanSwitch || hasNonConstantCase) {
       let switchVar = exprRenderer.render(switchExpr, undefined, scopeState.knownVariableTypes);
       const needsStringWrap = switchExpr.kind === "identifier"
         ? (() => { const vi = scopeState.knownVariableTypes?.get(switchExpr.value); return vi && vi.cppType === "const char*"; })()
@@ -139,7 +149,10 @@ export function appendRenderedStatement(
         if (caseClause.value !== undefined) {
           const renderedValue = exprRenderer.render(caseClause.value, undefined, scopeState.knownVariableTypes);
           const keyword = isFirst ? "if" : "} else if";
-          appendSourceLine(ctx, `${indent}${keyword} (${switchVar} == ${renderedValue})`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
+          const condition = isBooleanSwitch
+            ? renderedValue
+            : `${switchVar} == ${renderedValue}`;
+          appendSourceLine(ctx, `${indent}${keyword} (${condition})`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
           appendSourceLine(ctx, `${indent}{`);
           isFirst = false;
         } else {
@@ -207,16 +220,6 @@ export function appendRenderedStatement(
   }
 
   if (statement.kind === "try") {
-    if (statement.finallyBlock && statement.finallyBlock.length > 0) {
-      const guardId = ctx.sourceLines.length;
-      const guardName = `__finally_guard_${guardId}`;
-      appendSourceLine(ctx, `${indent}struct ${guardName} {`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
-      appendSourceLine(ctx, `${indent}  ~${guardName}() {`);
-      const finallyScope = cloneEmissionScopeState(scopeState);
-      for (const nested of statement.finallyBlock) appendRenderedStatement(ctx, nested, `${indent}    `, finallyScope);
-      appendSourceLine(ctx, `${indent}  }`);
-      appendSourceLine(ctx, `${indent}} ${guardName};`);
-    }
     appendSourceLine(ctx, `${indent}try`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
     appendSourceLine(ctx, `${indent}{`);
     const tryScope = cloneEmissionScopeState(scopeState);
@@ -228,6 +231,12 @@ export function appendRenderedStatement(
       const catchScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.catchBlock) appendRenderedStatement(ctx, nested, `${indent}  `, catchScope);
       appendSourceLine(ctx, `${indent}}`);
+    }
+    // Render finally block inline immediately after catch (matching TypeScript semantics),
+    // instead of using an RAII guard that would defer execution to scope exit.
+    if (statement.finallyBlock && statement.finallyBlock.length > 0) {
+      const finallyScope = cloneEmissionScopeState(scopeState);
+      for (const nested of statement.finallyBlock) appendRenderedStatement(ctx, nested, `${indent}`, finallyScope);
     }
     emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(ctx, line));
     return;

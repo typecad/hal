@@ -1,13 +1,15 @@
-﻿import type { ExpressionIR, StatementIR } from "../../api";
+﻿import type { ExpressionIR, StatementIR, VariableDeclarationIR, AssignmentIR } from "../../api";
 import {
   applySymbolMap,
   statementRequiresRuntime,
   collectPointerVarTypes,
+  collectExpressionIdentifiers,
   inferObjectFieldType,
   isRuntimeExpression,
 } from "../utils";
 import { appendSourceLine } from "./line-appender";
 import type { EmitterContext } from "./emitter-context";
+import { topLevelClasses } from "../../ir/build-ir-state";
 
 function exprContainsTimingCall(expr: ExpressionIR, timingVarNames: Set<string>): boolean {
   if (!expr || typeof expr !== 'object' || !expr.kind) return false;
@@ -60,7 +62,7 @@ function promoteVarDecls(stmts: StatementIR[], timingVarNames: Set<string>): voi
     if (stmt.kind === "var_decl" && timingVarNames.has(stmt.name)) {
       const t = stmt.cppType;
       if (t === "auto" || t === "int" || t === "long" || t === "unsigned int" || t === "short" || t === "unsigned short") {
-        (stmt as any).cppType = "unsigned long";
+        (stmt as VariableDeclarationIR).cppType = "unsigned long";
       }
     }
     if ("body" in stmt && Array.isArray(stmt.body)) promoteVarDecls(stmt.body, timingVarNames);
@@ -73,6 +75,11 @@ function promoteVarDecls(stmts: StatementIR[], timingVarNames: Set<string>): voi
     if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) promoteVarDecls(stmt.catchBlock, timingVarNames);
     if ("finallyBlock" in stmt && Array.isArray(stmt.finallyBlock)) promoteVarDecls(stmt.finallyBlock, timingVarNames);
   }
+}
+
+function rewriteAsIdentifier(expr: ExpressionIR & Record<string, unknown>, callbackName: string): void {
+  expr.kind = "identifier";
+  expr.value = callbackName;
 }
 
 function collectCallbackFromExpression(
@@ -89,8 +96,18 @@ function collectCallbackFromExpression(
       statements: expr.statements,
       debounceMs: expr.debounceMs,
     });
-    (expr as any).kind = "identifier";
-    (expr as any).value = callbackName;
+    rewriteAsIdentifier(expr, callbackName);
+    return;
+  }
+  if (expr.kind === "lambda") {
+    const callbackName = `${isrPrefix}_isr_${counter.value++}`;
+    callbackFunctions.push({
+      name: callbackName,
+      params: (expr as any).params ?? [],
+      statements: (expr as any).statements ?? (expr as any).body ?? [],
+      debounceMs: (expr as any).debounceMs,
+    });
+    rewriteAsIdentifier(expr, callbackName);
     return;
   }
   if (expr.kind === "method-call") {
@@ -103,8 +120,7 @@ function collectCallbackFromExpression(
           statements: arg.statements,
           debounceMs: arg.debounceMs,
         });
-        (arg as any).kind = "identifier";
-        (arg as any).value = callbackName;
+        rewriteAsIdentifier(arg, callbackName);
       } else {
         collectCallbackFromExpression(arg, callbackFunctions, isrPrefix, counter);
       }
@@ -195,10 +211,52 @@ function replacePlaceholderInAllStatements(statements: StatementIR[], placeholde
   }
 }
 
+function removeShadowingVarDecls(
+  statements: StatementIR[],
+  globalVarNames: Set<string>,
+  isrIdentifiers: Set<string>
+): StatementIR[] {
+  const result: StatementIR[] = [];
+  for (const stmt of statements) {
+    if (stmt.kind === "var_decl" && globalVarNames.has(stmt.name) && isrIdentifiers.has(stmt.name)) {
+      continue;
+    }
+    result.push(stmt);
+    // Recursively process nested statements
+    if ("body" in stmt && Array.isArray(stmt.body)) {
+      (stmt as any).body = removeShadowingVarDecls(stmt.body, globalVarNames, isrIdentifiers);
+    }
+    if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) {
+      (stmt as any).thenBranch = removeShadowingVarDecls(stmt.thenBranch, globalVarNames, isrIdentifiers);
+    }
+    if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) {
+      (stmt as any).elseBranch = removeShadowingVarDecls(stmt.elseBranch, globalVarNames, isrIdentifiers);
+    }
+    if ("cases" in stmt && Array.isArray(stmt.cases)) {
+      for (const c of stmt.cases) {
+        if (c.body) {
+          c.body = removeShadowingVarDecls(c.body, globalVarNames, isrIdentifiers);
+        }
+      }
+    }
+    if ("tryBlock" in stmt && Array.isArray(stmt.tryBlock)) {
+      (stmt as any).tryBlock = removeShadowingVarDecls(stmt.tryBlock, globalVarNames, isrIdentifiers);
+    }
+    if ("catchBlock" in stmt && Array.isArray(stmt.catchBlock)) {
+      (stmt as any).catchBlock = removeShadowingVarDecls(stmt.catchBlock, globalVarNames, isrIdentifiers);
+    }
+    if ("finallyBlock" in stmt && Array.isArray(stmt.finallyBlock)) {
+      (stmt as any).finallyBlock = removeShadowingVarDecls(stmt.finallyBlock, globalVarNames, isrIdentifiers);
+    }
+  }
+  return result;
+}
+
 function collectIdentifierNames(statements: StatementIR[]): Set<string> {
   const names = new Set<string>();
   function scanStmt(stmt: StatementIR) {
     if (stmt.kind === "var_decl") { names.add(stmt.name); }
+    if (stmt.kind === "assign") { names.add(stmt.target); }
     if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) scanStmt(s); }
     if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) scanStmt(s); }
     if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) { for (const s of stmt.elseBranch) scanStmt(s); }
@@ -232,7 +290,7 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   const { program, strategy, symbolMap, isEntryFile, mappedFunctions } = ctx;
 
   // Compile-time vs runtime separation
-  const compiletimeVarNames = new Set<string>(
+  let compiletimeVarNames = new Set<string>(
     program.topLevelStatements
       .filter((stmt) => stmt.kind === "var_decl" && !statementRequiresRuntime(stmt))
       .map((stmt) => (stmt as { name: string }).name)
@@ -242,6 +300,60 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   const topLevelDeclarations = program.topLevelStatements.filter(
     (item) => !statementRequiresRuntime(item)
   );
+  const topLevelExecutables = program.topLevelStatements.filter(
+    (item) => statementRequiresRuntime(item)
+  );
+
+  // Reclassification pass: compile-time var_decls whose initializer references
+  // runtime variable names must be demoted to runtime so they stay inside main().
+  // This handles cases like `const arr = [runtimeVar1, runtimeVar2]` where the
+  // array literal itself looks compile-time (identifiers are not "runtime expressions")
+  // but it references variables that will only exist inside main().
+  {
+    const runtimeVarNames = new Set<string>();
+    for (const stmt of topLevelExecutables) {
+      if (stmt.kind === "var_decl") {
+        runtimeVarNames.add(stmt.name);
+      }
+    }
+    const demoted = new Set<string>();
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const stmt of topLevelDeclarations) {
+        if (stmt.kind !== "var_decl" || !stmt.initializer) continue;
+        if (demoted.has(stmt.name)) continue;
+        const referenced = collectExpressionIdentifiers(stmt.initializer);
+        for (const ref of referenced) {
+          if (runtimeVarNames.has(ref)) {
+            demoted.add(stmt.name);
+            runtimeVarNames.add(stmt.name);
+            changed = true;
+            break;
+          }
+        }
+      }
+    }
+    if (demoted.size > 0) {
+      compiletimeVarNames = new Set(
+        [...compiletimeVarNames].filter((n) => !demoted.has(n))
+      );
+      for (let i = topLevelDeclarations.length - 1; i >= 0; i--) {
+        const stmt = topLevelDeclarations[i];
+        if (stmt.kind === "var_decl" && demoted.has(stmt.name)) {
+          topLevelDeclarations.splice(i, 1);
+          topLevelExecutables.push(stmt);
+        }
+      }
+      topLevelExecutables.sort((a, b) => {
+        const aIdx = program.topLevelStatements.indexOf(a);
+        const bIdx = program.topLevelStatements.indexOf(b);
+        return aIdx - bIdx;
+      });
+      ctx.compiletimeVarNames = compiletimeVarNames;
+    }
+  }
+
   const filteredTopLevelDeclarations = ctx.reservedNames.size > 0
     ? topLevelDeclarations.filter((item) => {
       if (item.kind === "var_decl") {
@@ -250,9 +362,6 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
       return true;
     })
     : topLevelDeclarations;
-  const topLevelExecutables = program.topLevelStatements.filter(
-    (item) => statementRequiresRuntime(item)
-  );
   const filteredTopLevelExecutables_presuppress = ctx.reservedNames.size > 0
     ? topLevelExecutables.filter((item) => {
       if (item.kind === "var_decl") {
@@ -355,21 +464,40 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   }
   ctx.callbackFunctions = callbackFunctions;
 
-  // Promote ISR-referenced runtime var_decls to file scope
+  // Promote function-referenced runtime var_decls to file scope.
+  // Runtime top-level vars are emitted inside setup()/main(), which free
+  // functions cannot access. Promoting them to file-scope globals and
+  // replacing the declaration with an assignment inside the entrypoint
+  // makes them visible to all functions while preserving init order.
   const promotedVarDecls = new Map<string, { cppType: string; index: number }>();
-  if (callbackFunctions.length > 0 && filteredTopLevelExecutables.length > 0) {
-    const isrIdentifiers = new Set<string>();
-    for (const cb of callbackFunctions) {
-      for (const id of collectIdentifierNames(cb.statements)) {
-        isrIdentifiers.add(id);
-      }
+  const globalVarNames = new Set<string>();
+  for (const stmt of filteredTopLevelDeclarations) {
+    if (stmt.kind === "var_decl") {
+      globalVarNames.add(stmt.name);
     }
+  }
+  // Collect identifiers referenced by ALL functions (ISR callbacks + free functions)
+  const allFuncIdentifiers = new Set<string>();
+  for (const cb of callbackFunctions) {
+    for (const id of collectIdentifierNames(cb.statements)) {
+      allFuncIdentifiers.add(id);
+    }
+  }
+  for (const fn of mappedFunctions) {
+    for (const id of collectIdentifierNames(fn.statements)) {
+      allFuncIdentifiers.add(id);
+    }
+  }
+  if (allFuncIdentifiers.size > 0 && filteredTopLevelExecutables.length > 0) {
     for (let i = 0; i < filteredTopLevelExecutables.length; i++) {
       const stmt = filteredTopLevelExecutables[i];
-      if (stmt.kind === "var_decl" && isrIdentifiers.has(stmt.name)) {
+      if (stmt.kind === "var_decl" && allFuncIdentifiers.has(stmt.name)) {
+        if (globalVarNames.has(stmt.name)) {
+          continue;
+        }
         const varType = strategy.normalizeCppType(stmt.cppType);
         promotedVarDecls.set(stmt.name, { cppType: varType, index: i });
-        (filteredTopLevelExecutables[i] as any) = {
+        filteredTopLevelExecutables[i] = {
           kind: "assign",
           sourceSpan: stmt.sourceSpan,
           leadingComments: stmt.leadingComments,
@@ -377,11 +505,35 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
           target: stmt.name,
           operator: "=",
           value: stmt.initializer,
-        };
+        } as AssignmentIR;
       }
     }
   }
   ctx.promotedVarDecls = promotedVarDecls;
+
+  // Remove local var_decls that shadow global variables and are referenced by ISRs
+  // Re-collect names of global variables (now including promoted ones)
+  const globalVarNames2 = new Set<string>();
+  for (const stmt of filteredTopLevelDeclarations) {
+    if (stmt.kind === "var_decl") {
+      globalVarNames2.add(stmt.name);
+    }
+  }
+  for (const varName of promotedVarDecls.keys()) {
+    globalVarNames2.add(varName);
+  }
+  // Remove local var_decls that shadow globals and are ISR-referenced
+  if (callbackFunctions.length > 0) {
+    const isrIdentifiers = new Set<string>();
+    for (const cb of callbackFunctions) {
+      for (const id of collectIdentifierNames(cb.statements)) {
+        isrIdentifiers.add(id);
+      }
+    }
+    for (const fn of mappedFunctions) {
+      fn.statements = removeShadowingVarDecls(fn.statements, globalVarNames2, isrIdentifiers);
+    }
+  }
 
   // Collect pointer struct fields and build fixPointerFieldAccess
   const pointerStructFields = new Set<string>();
@@ -407,6 +559,30 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
     for (const pointerField of pointerStructFields) {
       const pattern = new RegExp(`(^|[^>])${pointerField.replace(".", "\\.")}\\.`, "g");
       callee = callee.replace(pattern, `$1${pointerField}->`);
+    }
+    if (ctx.currentClassPointerFields) {
+      for (const fieldName of ctx.currentClassPointerFields) {
+        callee = callee.replace(
+          new RegExp(`this->${fieldName}\\.`, "g"),
+          `this->${fieldName}->`
+        );
+      }
+    }
+    if (ctx.currentClassPointerFieldTypes) {
+      for (const [fieldName, fieldType] of ctx.currentClassPointerFieldTypes) {
+        const className = fieldType.replace(/\*$/, "");
+        const classDef = topLevelClasses.get(className);
+        if (classDef) {
+          for (const subField of classDef.fields) {
+            if ((subField.cppType as string).endsWith("*")) {
+              callee = callee.replace(
+                new RegExp(`->${fieldName}->${subField.name}\\.`, "g"),
+                `->${fieldName}->${subField.name}->`
+              );
+            }
+          }
+        }
+      }
     }
     return callee;
   };

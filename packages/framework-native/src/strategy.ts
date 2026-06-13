@@ -24,7 +24,7 @@ export class NativeStrategy implements PlatformStrategy {
   // ── Profile ─────────────────────────────────────────────────────────────
 
   forcedIncludes(): string[] {
-    return [];
+    return ['<cctype>'];
   }
 
   symbolAliases(): Record<string, string> {
@@ -123,7 +123,7 @@ export class NativeStrategy implements PlatformStrategy {
       v = v.replace(/\bundefined\b/g, 'CUTTLEFISH_UNDEFINED');
       v = v.replace(/\bnull\b/g, 'CUTTLEFISH_UNDEFINED');
       v = v.replace(/Date\.now\(\)/g, 'Date::now()');
-      const R = '(std::string\\([^)]*\\)|(?:[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*))';
+      const R = '(std::string\\([^)]*\\)|([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*))';
       v = v.replace(new RegExp(`${R}\\.toUpperCase\\(\\)`, 'g'), '__tc_toUpperCase($1)');
       v = v.replace(new RegExp(`${R}\\.toLowerCase\\(\\)`, 'g'), '__tc_toLowerCase($1)');
       v = v.replace(new RegExp(`${R}\\.trim\\(\\)`, 'g'), '__tc_trim($1)');
@@ -146,8 +146,10 @@ export class NativeStrategy implements PlatformStrategy {
       v = v.replace(new RegExp(`${R}\\.join\\(([^)]+)\\)`, 'g'), '__tc_join($1, $2)');
       v = v.replace(new RegExp(`${R}\\.slice\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_slice2($1, $2, $3)');
       v = v.replace(new RegExp(`${R}\\.slice\\(([^)]+)\\)`, 'g'), '__tc_slice1($1, $2)');
+      v = v.replace(new RegExp(`([\\w.]+)\\.slice\\(\\)`), 'std::vector<typename std::decay<decltype($1)>::type>($1.begin(), $1.end())');
       v = v.replace(new RegExp(`${R}\\.reverse\\(\\)`, 'g'), '__tc_reverse($1)');
       v = v.replace(/(\w+)\.push\(([^)]+)\)/g, '$1.push_back($2)');
+      v = v.replace(/sizeof\s*\(\s*(\w+)\s*\)\s*\/\s*sizeof\s*\(\s*\1\s*\[(\d+)\]\s*\)/g, '$1.size()');
       v = v.replace(/(\w+)\.length\b(?:\(\))?/g, '$1.size()');
       v = v.replace(/(\w+)\.shift\(\)/g, '__tc_shift($1)');
       v = v.replace(/(\w+)\.pop\(\)/g, '__tc_pop($1)');
@@ -168,6 +170,8 @@ export class NativeStrategy implements PlatformStrategy {
       v = v.replace(/(\w+)\.findIndex\(([^)]+)\)/g, '__tc_findIndex($1, $2)');
       v = v.replace(/(\w+)\.every\(([^)]+)\)/g, '__tc_every($1, $2)');
       v = v.replace(/(\w+)\.some\(([^)]+)\)/g, '__tc_some($1, $2)');
+      v = v.replace(/JSON\.stringify\(([^)]+)\)/g, '__tc_jsonStringify($1)');
+      v = v.replace(/JSON\.parse\(([^)]+)\)/g, '__tc_jsonParse($1)');
     }
     return v;
   }
@@ -196,7 +200,13 @@ export class NativeStrategy implements PlatformStrategy {
     return memberName;
   }
 
-  enumCastType(): string | undefined {
+  private _largeEnumNames = new Set<string>();
+
+  setLargeEnumNames(names: ReadonlySet<string>): void {
+    this._largeEnumNames = new Set(names);
+  }
+
+  enumCastType(enumName: string): string | undefined {
     return undefined;
   }
 
@@ -232,10 +242,24 @@ export class NativeStrategy implements PlatformStrategy {
         return empty
           ? `std::cerr << "[WARN] " << std::endl${semi}`
           : `std::cerr << "[WARN] " << ${renderedArgs} << std::endl${semi}`;
+      case 'readLine':
+      case 'readCharacter':
+        return this.transformConsoleExpression(method, renderedArgs) + semi;
       default:
         return empty
           ? `std::cout << std::endl${semi}`
           : `std::cout << ${renderedArgs} << std::endl${semi}`;
+    }
+  }
+
+  transformConsoleExpression(method: string, _renderedArgs: string): string | undefined {
+    switch (method) {
+      case 'readLine':
+        return '([]() -> std::string { std::string s; std::getline(std::cin, s); return s; })()';
+      case 'readCharacter':
+        return '([&]() -> char { std::cout << "> " << std::flush; return std::cin.get(); })()';
+      default:
+        return undefined;
     }
   }
 
@@ -259,6 +283,17 @@ export class NativeStrategy implements PlatformStrategy {
 
   apiReservedEnumGuard(): string {
     return '';
+  }
+
+  ambientTypeDeclarations(): string[] {
+    return [
+      "",
+      "  // Console input methods",
+      "  interface Console {",
+      "    readLine(): string;",
+      "    readCharacter(): string;",
+      "  }",
+    ];
   }
 
   // ── Includes ────────────────────────────────────────────────────────────
@@ -369,23 +404,23 @@ export class NativeStrategy implements PlatformStrategy {
         helperStructs: [],
         helperFunctions: [
           // ── Core string methods (existing) ─────────────────────────────
-          'std::string __tc_toUpperCase(const std::string& s) { std::string r = s; for (auto& c : r) c = (char)toupper((unsigned char)c); return r; }',
-          'std::string __tc_toLowerCase(const std::string& s) { std::string r = s; for (auto& c : r) c = (char)tolower((unsigned char)c); return r; }',
-          'std::string __tc_trim(const std::string& s) { size_t start = s.find_first_not_of(" \\t\\n\\r"); if (start == std::string::npos) return ""; size_t end = s.find_last_not_of(" \\t\\n\\r"); return s.substr(start, end - start + 1); }',
-          'std::string __tc_substring2(const std::string& s, int start, int end) { return s.substr(start, end - start); }',
-          'std::string __tc_substring1(const std::string& s, int start) { return s.substr(start); }',
-          'std::string __tc_replace(const std::string& s, const std::string& old, const std::string& repl) { std::string r = s; size_t pos = 0; while ((pos = r.find(old, pos)) != std::string::npos) { r.replace(pos, old.length(), repl); pos += repl.length(); } return r; }',
-          'std::string __tc_charAt(const std::string& s, int idx) { return std::string(1, s[idx]); }',
-          'int __tc_charCodeAt(const std::string& s, int idx) { return (int)(unsigned char)s[idx]; }',
-          'std::vector<std::string> __tc_split(const std::string& s, const std::string& delim) { std::vector<std::string> parts; if (delim.empty()) { for (char c : s) parts.push_back(std::string(1, c)); return parts; } size_t start = 0, end; while ((end = s.find(delim, start)) != std::string::npos) { parts.push_back(s.substr(start, end - start)); start = end + delim.length(); } parts.push_back(s.substr(start)); return parts; }',
+          'inline std::string __tc_toUpperCase(const std::string& s) { std::string r = s; for (auto& c : r) c = (char)toupper((unsigned char)c); return r; }',
+          'inline std::string __tc_toLowerCase(const std::string& s) { std::string r = s; for (auto& c : r) c = (char)tolower((unsigned char)c); return r; }',
+          'inline std::string __tc_trim(const std::string& s) { size_t start = s.find_first_not_of(" \\t\\n\\r"); if (start == std::string::npos) return ""; size_t end = s.find_last_not_of(" \\t\\n\\r"); return s.substr(start, end - start + 1); }',
+          'inline std::string __tc_substring2(const std::string& s, int start, int end) { return s.substr(start, end - start); }',
+          'inline std::string __tc_substring1(const std::string& s, int start) { return s.substr(start); }',
+          'inline std::string __tc_replace(const std::string& s, const std::string& old, const std::string& repl) { std::string r = s; size_t pos = 0; while ((pos = r.find(old, pos)) != std::string::npos) { r.replace(pos, old.length(), repl); pos += repl.length(); } return r; }',
+          'inline std::string __tc_charAt(const std::string& s, int idx) { return std::string(1, s[idx]); }',
+          'inline int __tc_charCodeAt(const std::string& s, int idx) { return (int)(unsigned char)s[idx]; }',
+          'inline std::vector<std::string> __tc_split(const std::string& s, const std::string& delim) { std::vector<std::string> parts; if (delim.empty()) { for (char c : s) parts.push_back(std::string(1, c)); return parts; } size_t start = 0, end; while ((end = s.find(delim, start)) != std::string::npos) { parts.push_back(s.substr(start, end - start)); start = end + delim.length(); } parts.push_back(s.substr(start)); return parts; }',
           // ── Extended string methods (Phase 1) ──────────────────────────
-          'bool __tc_endsWith(const std::string& s, const std::string& suffix) { if (suffix.size() > s.size()) return false; return s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0; }',
-          'int __tc_lastIndexOf(const std::string& s, const std::string& search) { size_t pos = s.rfind(search); return pos != std::string::npos ? (int)pos : -1; }',
-          'std::string __tc_padStart(const std::string& s, int len, const std::string& fill) { if ((int)s.size() >= len) return s; std::string result; int padLen = len - (int)s.size(); for (int i = 0; i < padLen; i++) result += fill[i % (int)fill.size()]; return result + s; }',
-          'std::string __tc_padStart_default(const std::string& s, int len) { return __tc_padStart(s, len, " "); }',
-          'std::string __tc_padEnd(const std::string& s, int len, const std::string& fill) { if ((int)s.size() >= len) return s; std::string result = s; int padLen = len - (int)s.size(); for (int i = 0; i < padLen; i++) result += fill[i % (int)fill.size()]; return result; }',
-          'std::string __tc_padEnd_default(const std::string& s, int len) { return __tc_padEnd(s, len, " "); }',
-          'std::string __tc_repeat(const std::string& s, int count) { std::string result; for (int i = 0; i < count; i++) result += s; return result; }',
+          'inline bool __tc_endsWith(const std::string& s, const std::string& suffix) { if (suffix.size() > s.size()) return false; return s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0; }',
+          'inline int __tc_lastIndexOf(const std::string& s, const std::string& search) { size_t pos = s.rfind(search); return pos != std::string::npos ? (int)pos : -1; }',
+          'inline std::string __tc_padStart(const std::string& s, int len, const std::string& fill) { if ((int)s.size() >= len) return s; std::string result; int padLen = len - (int)s.size(); for (int i = 0; i < padLen; i++) result += fill[i % (int)fill.size()]; return result + s; }',
+          'inline std::string __tc_padStart_default(const std::string& s, int len) { return __tc_padStart(s, len, " "); }',
+          'inline std::string __tc_padEnd(const std::string& s, int len, const std::string& fill) { if ((int)s.size() >= len) return s; std::string result = s; int padLen = len - (int)s.size(); for (int i = 0; i < padLen; i++) result += fill[i % (int)fill.size()]; return result; }',
+          'inline std::string __tc_padEnd_default(const std::string& s, int len) { return __tc_padEnd(s, len, " "); }',
+          'inline std::string __tc_repeat(const std::string& s, int count) { std::string result; for (int i = 0; i < count; i++) result += s; return result; }',
           // ── Overloaded includes/indexOf for std::string ────────────────
           'inline bool __tc_includes(const std::string& s, const std::string& search) { return s.find(search) != std::string::npos; }',
           'inline int __tc_indexOf(const std::string& s, const std::string& search) { size_t pos = s.find(search); return pos != std::string::npos ? (int)pos : -1; }',
@@ -416,11 +451,12 @@ export class NativeStrategy implements PlatformStrategy {
         kind: 'polyfill',
         id: 'math_methods',
         domain: 'standard' as const,
-        requiredIncludes: ['<cstdlib>'],
+        requiredIncludes: ['<cstdlib>', '<random>', '<iomanip>', '<sstream>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [
-          'inline double __tc_random() { return (double)rand() / RAND_MAX; }',
+          'inline double __tc_random() { static std::mt19937 gen(std::random_device{}()); static std::uniform_real_distribution<double> dist(0.0, 1.0); return dist(gen); }',
+          'inline std::string __tc_toFixed(double val, int digits) { std::ostringstream oss; oss << std::fixed << std::setprecision(digits) << val; return oss.str(); }',
         ],
         shimMacros: [],
         dependencies: [],
@@ -465,6 +501,12 @@ export class NativeStrategy implements PlatformStrategy {
           'template<typename K, typename V> std::vector<K> __tc_mapKeys(const std::map<K, V>& m) { std::vector<K> keys; for (const auto& p : m) keys.push_back(p.first); return keys; }',
           'template<typename K, typename V> std::vector<V> __tc_mapValues(const std::map<K, V>& m) { std::vector<V> vals; for (const auto& p : m) vals.push_back(p.second); return vals; }',
           'template<typename K, typename V> std::vector<std::pair<K, V>> __tc_mapEntries(const std::map<K, V>& m) { std::vector<std::pair<K, V>> entries; for (const auto& p : m) entries.push_back(p); return entries; }',
+          // ── Object.fromEntries helper ───────────────────────────────
+          'template<typename K, typename V> std::map<K, V> __tc_fromEntries(const std::vector<std::pair<K, V>>& entries) { std::map<K, V> result; for (const auto& p : entries) result[p.first] = p.second; return result; }',
+          // ── JSON helpers ─────────────────────────────────────────────
+          'inline std::string __tc_jsonStringify(const std::string& s) { return s; }',
+          'template<typename T> std::string __tc_jsonStringify(const T& v) { return std::to_string(v); }',
+          'inline std::string __tc_jsonParse(const std::string& s) { return s; }',
         ],
         shimMacros: [],
         dependencies: [],

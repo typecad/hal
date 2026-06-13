@@ -1,64 +1,14 @@
-﻿// ---------------------------------------------------------------------------
-// demo/cuttlefish.config.ts - Demo Project Configuration for Arduino Uno (AVR)
-// ---------------------------------------------------------------------------
-
-import type { CuttlefishConfig } from '@typecad/hal';
-
-const config: CuttlefishConfig = {
+const config = {
   // Entry point — the main TypeScript file to transpile
-  entry: './src/sketch.ts',
+  entry: './src/main.ts',
 
-  // Target architecture (AVR for ATmega328P)
-  target: 'avr',
+  // Framework package — controls code generation strategy
+  framework: '@typecad/framework-native',
 
-  // ── CORE CONFIGURATION (Required) ───────────────────────────────────────
-  // MCU package providing the underlying silicon definitions.
-  mcu: '@typecad/mcu-atmega328p',
-
-  // ── HARDWARE DEFINITION (Choose one) ────────────────────────────────────
-  // Option A: Use a standard board package (Arduino Uno, ESP32 DevKit, etc.)
-  board: '@typecad/board-arduino-uno',
-
-  // Option B: Use a TypeCAD contract for custom hardware (narrows pins)
-  // contract: './src/pro_mini.contract.json',
-
-  // Framework package - controls code generation strategy
-  framework: '@typecad/framework-arduino',
-
-  // Framework data containing build target for arduino-cli
-  frameworkData: {
-    buildTarget: 'arduino:avr:uno',
-  },
-
-  // Output / build options
+  // Output options
   output: {
-    framework: 'arduino',
-    optimize: 'size',
+    optimize: 'speed',
     outDir: './out',
-  },
-
-  // Toolchain configuration
-  toolchain: {
-    type: 'arduino-cli',
-    frameworkOptions: {
-      verbose: true,
-    },
-  },
-
-  // Console polyfill configuration
-  console: {
-    baudRate: 115200,
-  },
-
-  // Hardware test configuration (used by typehal-test / @typecad/expect)
-  test: {
-    port: 'COM7',
-    baudRate: 115200,
-    timeout: 30000,
-    include: [
-      'src/**/*.test.ts',
-      'src/sketch.ts',
-    ],
   },
 };
 

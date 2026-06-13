@@ -1,4 +1,6 @@
 ﻿import ts from "typescript";
+import fs from "node:fs";
+import path from "node:path";
 import { parseSource } from "../ast/parse";
 import { Diagnostic } from "../types";
 import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api";
@@ -7,7 +9,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { prescanUnsupportedFeatures } from "./feature-prescan";
@@ -19,7 +21,35 @@ function normalizeEntrypointSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __cuttlefish_entrypoint__(");
 }
 
-export function buildProgramIR(fileName: string, sourceText: string, boardPackage?: string): ProgramIR {
+function scanSourceForEnumNames(src: string): Set<string> {
+  const names = new Set<string>();
+  const re = /(?:export\s+)?enum\s+(\w+)\s*\{/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    names.add(m[1]);
+  }
+  return names;
+}
+
+function resolveRelativeImportPath(fromFile: string, moduleSpecifier: string): string | undefined {
+  let normalized = moduleSpecifier;
+  if (normalized.endsWith(".js")) normalized = normalized.slice(0, -3) + ".ts";
+  else if (normalized.endsWith(".mjs")) normalized = normalized.slice(0, -5) + ".ts";
+  const basePath = path.resolve(path.dirname(fromFile), normalized);
+  const candidates = [
+    basePath,
+    `${basePath}.ts`,
+    `${basePath}.tsx`,
+    path.join(basePath, "index.ts"),
+    path.join(basePath, "index.tsx"),
+  ];
+  for (const c of candidates) {
+    try { if (fs.statSync(c).isFile()) return c; } catch { /* skip */ }
+  }
+  return undefined;
+}
+
+export function buildProgramIR(fileName: string, sourceText: string, boardPackage?: string, prebuiltClassMap?: Map<string, ClassIR>): ProgramIR {
   const parentStrategy = getContext().activeStrategy;
   return contextStorage.run(new CompilationContext(), () => {
     getContext().activeStrategy = parentStrategy;
@@ -45,21 +75,71 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   resetHALResolver();
   registerFieldMap.clear();
 
-  // Phase 0: Pre-scan for top-level classes and register them so type inference can resolve them
-  for (const statement of source.statements) {
-    if (ts.isClassDeclaration(statement) && statement.name) {
-      topLevelClassNames.add(statement.name.text);
-      // We don't build full IR yet, just enough for type mapping
-      const classIR = classDeclarationToIR(statement, fileName, sourceText, [], new Map(), new Map(), [], new Map());
-      if (classIR) {
-        topLevelClasses.set(classIR.name, classIR);
-      }
+  // Phase 0: Pre-scan for top-level classes and register them so type inference can resolve them.
+  // Also register classes from other files in the transpile graph so that property accesses
+  // on imported class instances are correctly typed (e.g. player.weaponName → std::string).
+  if (prebuiltClassMap) {
+    for (const [name, classIR] of prebuiltClassMap) {
+      topLevelClassNames.add(name);
+      classTypeNames.add(name);
+      topLevelClasses.set(name, classIR);
+    }
+  }
+  const localClassDeclarations = source.statements.filter(ts.isClassDeclaration);
+  for (const statement of localClassDeclarations) {
+    if (!statement.name) continue;
+    topLevelClassNames.add(statement.name.text);
+    classTypeNames.add(statement.name.text);
+  }
+  for (const statement of localClassDeclarations) {
+    // We don't build full IR yet, just enough for type mapping. All local
+    // names are already registered so forward and mutually recursive fields
+    // use the same class-reference representation.
+    const classIR = classDeclarationToIR(statement, fileName, sourceText, [], new Map(), new Map(), [], new Map());
+    if (classIR) {
+      topLevelClasses.set(classIR.name, classIR);
     }
   }
 
   const functionReturnTypes = buildFunctionReturnTypeMap(source);
   const topLevelVariableTypes = new Map<string, CppTypeHint>();
   let defaultExportName: string | undefined;
+
+  // Pre-scan cross-module imports for enum names and function return types
+  // so that inferExprCppType can resolve imported enum members and function calls.
+  const earlyCrossModuleImports: ImportIR[] = [];
+  for (const stmt of source.statements) {
+    if (ts.isImportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
+      const namedImports: string[] = [];
+      if (stmt.importClause?.namedBindings && ts.isNamedImports(stmt.importClause.namedBindings)) {
+        namedImports.push(...stmt.importClause.namedBindings.elements.map((e) => e.name.text));
+      }
+      earlyCrossModuleImports.push({ moduleSpecifier: stmt.moduleSpecifier.text, namedImports });
+    }
+  }
+  for (const imp of earlyCrossModuleImports) {
+    if (!imp.moduleSpecifier.startsWith('./') && !imp.moduleSpecifier.startsWith('../')) continue;
+    const resolvedPath = resolveRelativeImportPath(fileName, imp.moduleSpecifier);
+    if (!resolvedPath) continue;
+    try {
+      const importedSource = fs.readFileSync(resolvedPath, "utf8");
+      const importedEnumNames = scanSourceForEnumNames(importedSource);
+      for (const name of imp.namedImports) {
+        if (importedEnumNames.has(name)) {
+          activeEnumNames.add(name);
+        }
+      }
+      const importedParsed = parseSource(resolvedPath, importedSource);
+      const importedFnReturnTypes = buildFunctionReturnTypeMap(importedParsed);
+      for (const [fnName, returnType] of importedFnReturnTypes) {
+        if (imp.namedImports.includes(fnName) && returnType !== "auto") {
+          functionReturnTypes.set(fnName, returnType);
+        }
+      }
+    } catch {
+      // Non-fatal — file might not be readable or parseable
+    }
+  }
   
   // Collect pointer variables at top level (for correct -> vs . usage)
   // This also populates activeCArrayVars for typed array variables
@@ -68,6 +148,10 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   for (const statement of source.statements) {
     if (ts.isTypeAliasDeclaration(statement)) {
       typeAliasNodes.set(statement.name.text, statement.type);
+      if (ts.isUnionTypeNode(statement.type) && statement.type.types.every(ts.isTypeLiteralNode)) {
+        const variantNames = statement.type.types.map((_, i) => `_${statement.name.text}_Variant_${i}`);
+        discriminatedUnionVariantNames.set(statement.name.text, variantNames);
+      }
     }
   }
 
@@ -290,7 +374,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           topLevelVariableTypes,
           typeAliasNodes,
           topLevelPointerVars,
-          "", // Top-level
+          "",
           lowerStatementList,
         ),
       );
@@ -318,6 +402,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       if (classIR) {
         classes.push(classIR);
         topLevelClassNames.add(classIR.name);
+        classTypeNames.add(classIR.name);
         topLevelClasses.set(classIR.name, classIR);
       }
       return;
@@ -456,6 +541,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   // Populate top-level class names for :: static method rendering
   for (const cls of classes) {
     topLevelClassNames.add(cls.name);
+    classTypeNames.add(cls.name);
   }
 
   // Board constants were already resolved before IR building (for HAL resolver access).
@@ -511,6 +597,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     interfaces,
     namespaces,
     registeredCallbacks: [...registeredCallbacks],
+    restParamFunctions: new Map(restParamFunctions),
     ...(defaultExportName ? { defaultExportName } : {}),
   };
   });

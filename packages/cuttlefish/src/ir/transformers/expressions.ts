@@ -1,7 +1,7 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types";
 import { StatementIR, ExpressionIR, CppType } from "../../api";
-import { makeSourceSpan, extractNodeComments } from "../ast-node-utils";
+import { makeSourceSpan, extractNodeComments, makeDiagnostic } from "../ast-node-utils";
 import { PointerTracker, arrayLiteralSizes } from "../build-ir-state";
 import { expressionToIR } from "../expression-to-ir";
 import { renderExprAsText } from "../render-expr";
@@ -190,6 +190,22 @@ export function expressionStatementToIR(
       return undefined;
     }
 
+    if (pointerVars.has(expr.left.text) && operator === "=") {
+      const rightExpr = expr.right;
+      const isReassigningNew = ts.isNewExpression(rightExpr);
+      if (!isReassigningNew) {
+        diagnostics.push(
+          makeDiagnostic(
+            sourceText,
+            statement.pos,
+            `Variable '${expr.left.text}' was declared with 'new' but is being reassigned; pointer semantics may be incorrect.`,
+            "warning",
+            "TS2CPP_PTR_REASSIGN",
+          ),
+        );
+      }
+    }
+
     const valueType = inferExprCppType(expr.right, functionReturnTypes, localVariableTypes, sourceText);
     updateLocalTypeFromAssignment(expr.left.text, operator, valueType, localVariableTypes);
     const comments = extractNodeComments(statement, sourceText);
@@ -229,6 +245,74 @@ export function expressionStatementToIR(
         leadingComments: comments.leadingComments,
         trailingComments: comments.trailingComments,
         target: expr.operand.text,
+        operator: expr.operator === ts.SyntaxKind.PlusPlusToken ? "++" : "--",
+        prefix: false,
+      };
+    }
+  }
+
+  if (ts.isPrefixUnaryExpression(expr) && ts.isPropertyAccessExpression(expr.operand)) {
+    if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
+      const comments = extractNodeComments(statement, sourceText);
+      const targetIR = expressionToIR(expr.operand, sourceText, diagnostics);
+      const targetText = renderExprAsText(targetIR);
+      return {
+        kind: "update",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
+        operator: expr.operator === ts.SyntaxKind.PlusPlusToken ? "++" : "--",
+        prefix: true,
+      };
+    }
+  }
+
+  if (ts.isPostfixUnaryExpression(expr) && ts.isPropertyAccessExpression(expr.operand)) {
+    if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
+      const comments = extractNodeComments(statement, sourceText);
+      const targetIR = expressionToIR(expr.operand, sourceText, diagnostics);
+      const targetText = renderExprAsText(targetIR);
+      return {
+        kind: "update",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
+        operator: expr.operator === ts.SyntaxKind.PlusPlusToken ? "++" : "--",
+        prefix: false,
+      };
+    }
+  }
+
+  if (ts.isPrefixUnaryExpression(expr) && ts.isElementAccessExpression(expr.operand)) {
+    if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
+      const comments = extractNodeComments(statement, sourceText);
+      const targetIR = expressionToIR(expr.operand, sourceText, diagnostics);
+      const targetText = renderExprAsText(targetIR);
+      return {
+        kind: "update",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
+        operator: expr.operator === ts.SyntaxKind.PlusPlusToken ? "++" : "--",
+        prefix: true,
+      };
+    }
+  }
+
+  if (ts.isPostfixUnaryExpression(expr) && ts.isElementAccessExpression(expr.operand)) {
+    if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
+      const comments = extractNodeComments(statement, sourceText);
+      const targetIR = expressionToIR(expr.operand, sourceText, diagnostics);
+      const targetText = renderExprAsText(targetIR);
+      return {
+        kind: "update",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
         operator: expr.operator === ts.SyntaxKind.PlusPlusToken ? "++" : "--",
         prefix: false,
       };

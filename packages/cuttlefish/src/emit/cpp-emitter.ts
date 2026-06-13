@@ -1,7 +1,5 @@
 ﻿import type { ProgramIR } from "../api";
-import type { EmitMode, GeneratedOutputs, PlatformContext, TargetProfile } from "../types";
-import type { LibraryDefinition } from "../types";
-import type { ResolvedNpmPackage } from "../transpile/resolution";
+import type { GeneratedOutputs } from "../types";
 
 import { buildEmitterContext } from "./emitters/setup";
 import type { EmitterOptions } from "./emitters/emitter-context";
@@ -13,22 +11,8 @@ import { synthesizeEntrypoints } from "./emitters/entrypoint-synthesizer";
 import { emitTypeDeclarations } from "./emitters/type-decl-emitter";
 import { emitNamespaces } from "./emitters/namespace-emitter";
 import { emitClasses } from "./emitters/class-emitter";
-import { emitPostClassDeclarations, emitCallbackFunctions, emitFunctions } from "./emitters/function-emitter-impl";
+import { emitPostClassDeclarations, emitCallbackFunctions, emitFunctions, emitFunctionForwardDeclarations } from "./emitters/function-emitter-impl";
 import { finalizeOutput } from "./emitters/output-finalizer";
-
-// ---------------------------------------------------------------------------
-// Pre-compiled regex patterns for performance
-// ---------------------------------------------------------------------------
-const PATH_BACKSLASH_PATTERN = /\\/g;
-const DOUBLE_QUOTE_PATTERN = /"/g;
-const DOUBLE_QUOTE_ESCAPE_PATTERN = /"/g;
-const JS_EXTENSION_PATTERN = /\.js$/;
-const MJS_EXTENSION_PATTERN = /\.mjs$/;
-const FILE_EXTENSION_PATTERN = /\.[^.]+$/;
-
-// ---------------------------------------------------------------------------
-// Emit-time context
-// ---------------------------------------------------------------------------
 
 const globalEnumNames = new Set<string>();
 const globalLargeEnumNames = new Set<string>();
@@ -60,6 +44,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // 6. Emit namespaces
   emitNamespaces(ctx);
+
+  // 6.5. Emit function forward declarations (split mode — must precede class definitions)
+  emitFunctionForwardDeclarations(ctx);
 
   // 7. Emit classes
   emitClasses(ctx);
