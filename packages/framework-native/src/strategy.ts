@@ -24,7 +24,10 @@ export class NativeStrategy implements PlatformStrategy {
   // ── Profile ─────────────────────────────────────────────────────────────
 
   forcedIncludes(): string[] {
-    return ['<cctype>'];
+    // <cstdint> is needed because DIRECT_CPP_TYPE_MAP (type-resolution.ts)
+    // passes int32_t/uint8_t/etc. through verbatim, and the native default
+    // include set doesn't otherwise pull in their definitions.
+    return ['<cctype>', '<cstdint>'];
   }
 
   symbolAliases(): Record<string, string> {

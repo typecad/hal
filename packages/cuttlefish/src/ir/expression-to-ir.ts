@@ -998,6 +998,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   if (ts.isNewExpression(expr)) {
     let ctorText = formatExpressionText(expr.expression);
+    // Base ctor name without type arguments — used for the Map/Set checks
+    // below, which must fire even when the user wrote `new Map<K, V>()`.
+    const baseCtorName = ctorText;
     if (expr.typeArguments && expr.typeArguments.length > 0) {
       const typeArgs = expr.typeArguments.map((ta: ts.TypeNode) => ta.getText()).join(", ");
       ctorText = `${ctorText}<${typeArgs}>`;
@@ -1052,10 +1055,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return { kind: "raw", value: `std::runtime_error(${message})` };
     }
 
-    if (ctorText === "Map") {
+    if (baseCtorName === "Map") {
       return { kind: "raw", value: "{}" };
     }
-    if (ctorText === "Set") {
+    if (baseCtorName === "Set") {
       return { kind: "raw", value: "{}" };
     }
 

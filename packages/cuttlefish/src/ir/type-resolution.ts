@@ -969,9 +969,16 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
 
       if (fn.type) {
         const annotatedType = typeNodeToCppType(fn.type);
-        if (annotatedType !== "auto") {
+        // For generic functions the annotated return type may reference a type
+        // parameter (e.g. `function clamp<T>(...): T`). At a call site we can't
+        // resolve `T` to a concrete C++ type, so store "auto" — the caller's
+        // declaration will then fall back to `auto`/template deduction rather
+        // than emitting a literal `T` (which is not a valid C++ type).
+        const typeParamNames = new Set((fn.typeParameters ?? []).map(tp => tp.name.text));
+        const resolvedAnnotated = typeParamNames.has(annotatedType) ? "auto" : annotatedType;
+        if (resolvedAnnotated !== "auto") {
           // Promote int → float when the function body returns float expressions
-          if (annotatedType === "int") {
+          if (resolvedAnnotated === "int") {
             const locals = collectLocalVarTypes(fn.body, result, sourceText);
             const returns = collectReturns(fn.body).filter((item) => item.expression);
             const inferredTypes = returns
@@ -987,7 +994,7 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
               continue;
             }
           }
-          result.set(fn.name.text, annotatedType);
+          result.set(fn.name.text, resolvedAnnotated);
           continue;
         }
       }

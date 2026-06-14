@@ -1,41 +1,87 @@
 {
   "version": 1,
-  "toolchainFingerprint": "a3183ec4ee64e844",
+  "toolchainFingerprint": "0eb835f818a5ea73",
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
-    "C:\\typecad\\typecode\\demo\\src\\models\\SensorTypes.ts": {
-      "hash": "f050320acfb2299f",
-      "mtime": 1781413792620.1067,
-      "size": 389,
+    "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts": {
+      "hash": "f3fc8d86d7ddf958",
+      "mtime": 1781456665633.6626,
+      "size": 2063,
       "dependencies": [],
       "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorTypes.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorTypes.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorTypes.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorTypes.h.thcppmap.json"
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Rng.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Rng.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Rng.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Rng.h.thcppmap.json"
       ]
     },
-    "C:\\typecad\\typecode\\demo\\src\\services\\SensorProcessor.ts": {
-      "hash": "7098d7cf3da3216d",
-      "mtime": 1781413813320.7842,
-      "size": 2584,
+    "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts": {
+      "hash": "8f301f9aa2881c7e",
+      "mtime": 1781456533630.9795,
+      "size": 1897,
+      "dependencies": [],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.h.thcppmap.json"
+      ]
+    },
+    "C:\\typecad\\typecode\\demo\\src\\services\\Dungeon.ts": {
+      "hash": "1b631d9ea239932c",
+      "mtime": 1781456787156.8623,
+      "size": 7081,
       "dependencies": [
-        "C:\\typecad\\typecode\\demo\\src\\models\\SensorTypes.ts"
+        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
+        "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts"
       ],
       "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorProcessor.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorProcessor.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorProcessor.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorProcessor.h.thcppmap.json"
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Dungeon.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Dungeon.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Dungeon.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Dungeon.h.thcppmap.json"
+      ]
+    },
+    "C:\\typecad\\typecode\\demo\\src\\services\\Combat.ts": {
+      "hash": "cf8b03fedddb15e8",
+      "mtime": 1781456731581.667,
+      "size": 2820,
+      "dependencies": [
+        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
+        "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts"
+      ],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Combat.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Combat.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Combat.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Combat.h.thcppmap.json"
+      ]
+    },
+    "C:\\typecad\\typecode\\demo\\src\\models\\Entities.ts": {
+      "hash": "bc64ed347d0a19ac",
+      "mtime": 1781450826603.9387,
+      "size": 3188,
+      "dependencies": [
+        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
+        "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts"
+      ],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Entities.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Entities.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Entities.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Entities.h.thcppmap.json"
       ]
     },
     "C:\\typecad\\typecode\\demo\\src\\main.ts": {
-      "hash": "0ec8a3545d4a22a5",
-      "mtime": 1781413830869.1792,
-      "size": 1642,
+      "hash": "46565c63bcb13f4c",
+      "mtime": 1781456834406.7615,
+      "size": 8482,
       "dependencies": [
-        "C:\\typecad\\typecode\\demo\\src\\services\\SensorProcessor.ts",
-        "C:\\typecad\\typecode\\demo\\src\\models\\SensorTypes.ts"
+        "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts",
+        "C:\\typecad\\typecode\\demo\\src\\services\\Dungeon.ts",
+        "C:\\typecad\\typecode\\demo\\src\\services\\Combat.ts",
+        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
+        "C:\\typecad\\typecode\\demo\\src\\models\\Entities.ts"
       ],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.cpp",
@@ -45,6 +91,6 @@
       ]
     }
   },
-  "createdAt": 1781413842005,
-  "updatedAt": 1781413843296
+  "createdAt": 1781457062584,
+  "updatedAt": 1781457064007
 }

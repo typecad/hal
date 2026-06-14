@@ -203,7 +203,11 @@ export function appendRenderedStatement(
     for (let i = 0; i < statement.body.length; i++) {
       appendRenderedStatement(ctx, statement.body[i], indent, nestedScope);
     }
-    appendSourceLine(ctx, `${indent}__break_${statement.label}:`);
+    // Emit a no-op statement (`;`) after the label so it is never the last
+    // token before a closing brace. Without this, g++ warns "label at end of
+    // compound statement only available with '-std=c++23'" and (when the label
+    // is unused in a particular code path) "label defined but not used".
+    appendSourceLine(ctx, `${indent}__break_${statement.label}: ;`);
     emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(ctx, line));
     return;
   }

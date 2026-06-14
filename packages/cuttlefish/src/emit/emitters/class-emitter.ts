@@ -306,7 +306,11 @@ export function emitClasses(ctx: EmitterContext): void {
       for (const field of publicFields) {
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-        appendSourceLine(ctx, `  ${renderTypedName(fieldType, field.name)}${initSuffix};`);
+        // `static inline` lets an initialized static field live entirely in the
+        // header (C++17) — required because this transpiler emits class bodies
+        // inline rather than splitting decl/defn across .h/.cpp.
+        const staticPrefix = field.isStatic ? "static inline " : "";
+        appendSourceLine(ctx, `  ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
       }
       if (publicFields.length > 0) appendSourceLine(ctx, "");
 
@@ -380,7 +384,8 @@ export function emitClasses(ctx: EmitterContext): void {
       for (const field of privateFields) {
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-        appendSourceLine(ctx, `  ${renderTypedName(fieldType, field.name)}${initSuffix};`);
+        const staticPrefix = field.isStatic ? "static inline " : "";
+        appendSourceLine(ctx, `  ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
       }
       if (privateFields.length > 0) appendSourceLine(ctx, "");
       for (const method of privateMethods) {
@@ -444,7 +449,8 @@ export function emitClasses(ctx: EmitterContext): void {
       for (const field of protectedFields) {
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-        appendSourceLine(ctx, `  ${renderTypedName(fieldType, field.name)}${initSuffix};`);
+        const staticPrefix = field.isStatic ? "static inline " : "";
+        appendSourceLine(ctx, `  ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
       }
       if (protectedFields.length > 0) appendSourceLine(ctx, "");
       for (const method of protectedMethods) {

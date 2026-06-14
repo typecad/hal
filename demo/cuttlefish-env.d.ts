@@ -33,6 +33,10 @@ declare global {
   // Compile-time C++ injection
   declare function emit(code: string): void;
 
+  // Compile-time C++ header registration — emits nothing at the call site,
+  // but adds the given header to the generated #include list.
+  declare function include(header: string): void;
+
   // JS-style timers
   declare function setInterval(handler: () => void, timeout?: number): number;
   declare function setTimeout(handler: () => void, timeout?: number): number;

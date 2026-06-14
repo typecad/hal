@@ -51,6 +51,10 @@ interface ExpressionRendererContext {
   snprintfCounter?: { value: number };
   /** Map of interface/type name to field C++ types */
   interfaceFieldTypes?: Map<string, Map<string, string>>;
+  /** Names of top-level const object variables (e.g. `const CONFIG = {...}`),
+   *  used to distinguish `.` member access on an instance from `::` on a
+   *  namespace/class. */
+  knownTopLevelObjectTypes?: Map<string, string>;
 }
 
 /**
@@ -71,6 +75,7 @@ export class ExpressionRenderer {
   private readonly namespaceNames: Set<string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
   private readonly interfaceFieldTypes: Map<string, Map<string, string>>;
+  private readonly knownTopLevelObjectTypes?: Map<string, string>;
 
   /** Accumulated snprintf prelude lines (buffer declarations, dtostrf calls, snprintf calls). */
   private _preludeLines: string[] = [];
@@ -92,6 +97,7 @@ export class ExpressionRenderer {
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
     this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
+    this.knownTopLevelObjectTypes = context.knownTopLevelObjectTypes;
     this._snprintfCounter = context.snprintfCounter ?? { value: 0 };
   }
 
@@ -235,7 +241,12 @@ export class ExpressionRenderer {
 
   private renderIdentifier(value: string): string {
     const nullVal = this.strategy.nullValue();
-    if (nullVal && (value === "null" || value === "undefined")) {
+    // expression-to-ir lowers the TS `null` literal to the identifier sentinel
+    // "nullptr" and `undefined` to "CUTTLEFISH_UNDEFINED". Both must route
+    // through nullValue() so the platform's chosen null representation is used
+    // — otherwise "nullptr" is mangled to "nullptr_" by escapeCppKeyword (since
+    // nullptr is a C++ keyword) and emitted as an undefined token.
+    if (nullVal && (value === "null" || value === "undefined" || value === "nullptr")) {
       return nullVal;
     }
     return escapeCppKeyword(value, this.strategy.reservedNames());
@@ -787,11 +798,28 @@ export class ExpressionRenderer {
         return `${finalLeft} ${wantEqual ? "==" : "!="} 0`;
       }
 
-      if (!leftIsStringEnum && this.isEnumComparisonOperand(expr.left, modLeftType)) {
+      const leftIsEnumOperand = !leftIsStringEnum && this.isEnumComparisonOperand(expr.left, modLeftType);
+      const rightIsEnumOperand = !rightIsStringEnum && this.isEnumComparisonOperand(expr.right, modRightType);
+      if (leftIsEnumOperand) {
         finalLeft = `static_cast<int>(${leftRendered})`;
       }
-      if (!rightIsStringEnum && this.isEnumComparisonOperand(expr.right, modRightType)) {
+      if (rightIsEnumOperand) {
         finalRight = `static_cast<int>(${rightRendered})`;
+      }
+      // Defensive symmetry: if exactly one side was detected as an enum and the
+      // other side's type is unknown (e.g. a local assigned from a method call
+      // whose enum return type wasn't propagated), cast the unknown side too.
+      // static_cast<int>(...) is always safe on a scalar operand and produces
+      // the required `int == int` form for `enum class` comparisons. This fixes
+      // cases like `const t = this.getTile(); t === TileKind.Wall` where the
+      // local `t` carries an enum value but no inferred type.
+      const isUnknownOrAuto = (t: string | undefined): boolean =>
+        t === undefined || t === "auto" || t === "";
+      if (leftIsEnumOperand && !rightIsEnumOperand && isUnknownOrAuto(modRightType)) {
+        finalRight = `static_cast<int>(${rightRendered})`;
+      }
+      if (rightIsEnumOperand && !leftIsEnumOperand && isUnknownOrAuto(modLeftType)) {
+        finalLeft = `static_cast<int>(${leftRendered})`;
       }
     }
     // Precedence-aware parenthesization to preserve TS semantics in C++.
@@ -843,6 +871,13 @@ export class ExpressionRenderer {
     }
 
     // Use C++ scope-resolution operator (::) for namespace or static member access.
+    // BUT: a top-level const object (e.g. `const CONFIG = {...}` lowered to an
+    // `extern _CONFIG_t CONFIG` variable) is an instance, not a namespace/class,
+    // even though the IR may flag it isStatic. Use `.` for those.
+    if (expr.object.kind === "identifier" && this.knownTopLevelObjectTypes?.has(expr.object.value)) {
+      const accessor = expr.isPointer ? "->" : ".";
+      return `${objStr}${accessor}${expr.property}`;
+    }
     if (expr.isNamespace || expr.isStatic || (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value))) {
       return `${objStr}::${expr.property}`;
     }

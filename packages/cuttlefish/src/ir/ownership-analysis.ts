@@ -902,6 +902,28 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
         const entry = letVars.get(stmt.target);
         if (entry) entry.everAssigned = true;
       }
+      // A `let` array mutated via a mutating method call (e.g. arr.push(x))
+      // is effectively reassigned — the C++ emitter must keep the binding
+      // non-const so push_back/splice/etc. compile. The callee is the lowered
+      // C++ name, e.g. "arr.push_back" or "arr.__tc_splice1".
+      if (stmt.kind === 'call' && typeof (stmt as any).callee === 'string') {
+        const callee: string = (stmt as any).callee;
+        const dot = callee.lastIndexOf('.');
+        if (dot > 0) {
+          const receiver = callee.slice(0, dot);
+          const method = callee.slice(dot + 1);
+          const MUTATING_METHODS = new Set([
+            'push', 'push_back', 'pop', 'pop_back', 'shift', '__tc_shift',
+            'unshift', '__tc_unshift', 'splice', '__tc_splice1', '__tc_splice2',
+            'sort', '__tc_sort', '__tc_sort_fn', 'fill', '__tc_fill',
+            '__tc_fill3', 'reverse', '__tc_reverse', 'clear',
+          ]);
+          if (MUTATING_METHODS.has(method)) {
+            const entry = letVars.get(receiver);
+            if (entry) entry.everAssigned = true;
+          }
+        }
+      }
       // Recurse
       const nested = getNestedStatements(stmt);
       if (nested) {

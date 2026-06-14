@@ -24,6 +24,11 @@ export interface ProgramAnalysisResult {
   usesDateNow: boolean;
   usesMillis: boolean;
   usesNullish: boolean;
+  /** True when this file actually emits a cuttlefish_nullish/exists/is_nullish CALL
+   *  (e.g. from a `??` lowering), as opposed to just referencing the
+   *  CUTTLEFISH_UNDEFINED macro via a `null`/`undefined` literal. Used to decide
+   *  whether non-entry headers need the full nullish shim block. */
+  usesNullishHelper: boolean;
   usesNum: boolean;
   usesTiming: boolean;
   usesWDT: boolean;
@@ -41,7 +46,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -77,6 +82,7 @@ function analyzeExpression(
       }
       if (expr.value.includes('cuttlefish_nullish(') || expr.value.includes('cuttlefish_exists(') || expr.value.includes('cuttlefish_is_nullish(')) {
         result.usesNullish = true;
+        result.usesNullishHelper = true;
       }
       if (/\bNum\b/.test(expr.value)) {
         result.usesNum = true;
@@ -136,7 +142,10 @@ function analyzeExpression(
       break;
 
     case "identifier":
-      if (expr.value === "null" || expr.value === "undefined" || expr.value === "CUTTLEFISH_UNDEFINED") {
+      // expression-to-ir lowers the TS `null` literal to the "nullptr" sentinel
+      // (routed through nullValue() at render time, which yields CUTTLEFISH_UNDEFINED
+      // on native/arduino). Include it so usesNullish triggers the defining shim.
+      if (expr.value === "null" || expr.value === "undefined" || expr.value === "nullptr" || expr.value === "CUTTLEFISH_UNDEFINED") {
         result.usesNullish = true;
       }
       break;
@@ -433,6 +442,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesDateNow: false,
     usesMillis: false,
     usesNullish: false,
+    usesNullishHelper: false,
     usesNum: false,
     usesTiming: false,
     usesWDT: false,

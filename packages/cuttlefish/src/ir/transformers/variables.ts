@@ -724,7 +724,13 @@ export function variableStatementToIR(
         const srcName = actualInitializer.expression.expression.text;
         const srcSize = arrayLiteralSizes.get(srcName);
         const arrowFn = actualInitializer.arguments[0];
-        if (srcSize !== undefined && arrowFn && (ts.isArrowFunction(arrowFn) || ts.isFunctionExpression(arrowFn))) {
+        // Only inline-lower filter when the source has a known, non-zero
+        // literal size. A source initialised as `[]` (size 0) or grown via
+        // .push() is runtime-sized: the inline lowering would emit a
+        // zero-length fixed C array and a `for (... < 0; ...)` loop that
+        // never runs. Fall through to the strategy's `__tc_filter` polyfill,
+        // which returns a std::vector<T> built up with push_back.
+        if (srcSize !== undefined && srcSize > 0 && arrowFn && (ts.isArrowFunction(arrowFn) || ts.isFunctionExpression(arrowFn))) {
           const param = arrowFn.parameters[0];
           const paramName = param && ts.isIdentifier(param.name) ? param.name.text : "__x";
           const bodyExpr = ts.isBlock(arrowFn.body) ? undefined : arrowFn.body;

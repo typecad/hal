@@ -53,6 +53,34 @@ function filterShimBlock(lines: string[], startMarker: string, endMarker: string
   return filtered;
 }
 
+/**
+ * Extract a `#ifndef MACRO ... #endif` include-guard block from a shim line
+ * list. Used to emit just the macro definition (e.g. CUTTLEFISH_UNDEFINED) in
+ * non-entry files of a split compilation, where the full helper shim belongs
+ * to the entry file but the macro token is still referenced here.
+ * Returns an empty array if no matching guard is found.
+ */
+function extractShimMacro(lines: string[], macroName: string): string[] {
+  const ifndefIdx = lines.findIndex(l => {
+    const trimmed = l.trim();
+    return trimmed.startsWith('#ifndef') && trimmed.endsWith(macroName);
+  });
+  if (ifndefIdx === -1) return [];
+  // Find the matching #endif that closes this guard.
+  let depth = 1;
+  let endIdx = -1;
+  for (let i = ifndefIdx + 1; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed.startsWith('#ifndef') || trimmed.startsWith('#ifdef')) depth++;
+    else if (trimmed.startsWith('#endif')) {
+      depth--;
+      if (depth === 0) { endIdx = i; break; }
+    }
+  }
+  if (endIdx === -1) return [];
+  return lines.slice(ifndefIdx, endIdx + 1);
+}
+
 export function buildEmitterContext(
   program: ProgramIR,
   options: EmitterOptions,
@@ -164,6 +192,21 @@ export function buildEmitterContext(
     Object.assign(symbolMap, strategy.symbolAliases(program, options.platformContext));
     if (isEntryFile) {
       shimLines = [...strategy.shimLines(program, options.platformContext)];
+    } else if (programAnalysis.usesNullish) {
+      // Non-entry files in split compilation: a class method body that uses
+      // `??` lowers to a cuttlefish_nullish(...) call, but the helper function
+      // lives in the entry file's shim — which isn't visible from this header.
+      // When this file actually emits such a call, emit the full shim block
+      // (idempotent via #ifndef guards). When it only references the macro via
+      // a `null`/`undefined` literal, emit just the macro definition.
+      if (programAnalysis.usesNullishHelper) {
+        shimLines = [...strategy.shimLines(program, options.platformContext)];
+      } else {
+        const nullishMacro = extractShimMacro(strategy.shimLines(program, options.platformContext), 'CUTTLEFISH_UNDEFINED');
+        if (nullishMacro) {
+          shimLines = [...nullishMacro];
+        }
+      }
     }
     if (!programAnalysis.usesStringConversion) {
       shimLines = shimLines.filter(l => !l.includes('std::string String('));
@@ -232,6 +275,10 @@ export function buildEmitterContext(
   const templateInterfaceNames = new Set<string>();
   const interfaceNamespaceMap = new Map<string, string>();
   const interfaceFieldTypes = new Map<string, Map<string, string>>();
+  // Shared map populated as top-level const object literals are emitted
+  // (function-emitter-impl.ts) and read by the expression renderer to decide
+  // `.` vs `::` member access on those variables.
+  const knownTopLevelObjectTypes = new Map<string, string>();
   for (const iface of program.interfaces) {
     if (iface.parentScope) {
       interfaceNamespaceMap.set(iface.name, iface.parentScope);
@@ -420,6 +467,7 @@ export function buildEmitterContext(
     varAccessorNames,
     interfaceFieldTypes,
     crossModuleClassNames: classNames,
+    knownTopLevelObjectTypes,
   });
 
   const statementRenderer = new StatementRenderer({
@@ -586,7 +634,7 @@ export function buildEmitterContext(
     emittedTopLevelStatements: [],
     compiletimeVarNames: new Set(),
     fixPointerFieldAccess: noopFixPointer,
-    knownTopLevelObjectTypes: new Map(),
+    knownTopLevelObjectTypes,
     knownTopLevelObjectFields: new Map(),
     profileDiagnostics,
     templateInterfaceNames,

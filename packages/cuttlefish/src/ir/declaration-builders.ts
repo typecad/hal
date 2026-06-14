@@ -216,6 +216,7 @@ export function classDeclarationToIR(
         initializer: member.initializer
           ? expressionToIR(member.initializer, sourceText, diagnostics, pointerVars)
           : undefined,
+        isStatic: member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false,
       });
       continue;
     }

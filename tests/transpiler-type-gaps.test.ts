@@ -13,6 +13,53 @@
 
 import { describe, it, expect } from 'vitest';
 import { expectCppContains, expectCppNotContains, findDiagnostics, transpile, transpileArduino } from './setup';
+import { buildProgramIR, emitCpp } from '../packages/cuttlefish/src/testing';
+import { NativeStrategy } from '../packages/framework-native/src';
+import * as fs from 'fs';
+
+/**
+ * Transpile a TypeScript snippet against the native target as an entry file,
+ * returning its emitted C++ source. The native strategy owns the
+ * CUTTLEFISH_UNDEFINED null model that the regression tests below exercise.
+ */
+function transpileNativeEntry(tsCode: string): string {
+  const ir = buildProgramIR('main.ts', tsCode);
+  const result = emitCpp(ir, {
+    outDir: '.build/tests',
+    emitMode: 'cpp',
+    target: 'native',
+    libdefs: new Map(),
+    emitMaps: false,
+    isEntryFile: true,
+    strategy: new NativeStrategy(),
+  });
+  const cpp = result.sourcePath ? fs.readFileSync(result.sourcePath, 'utf-8') : '';
+  if (result.sourcePath && fs.existsSync(result.sourcePath)) fs.unlinkSync(result.sourcePath);
+  if (result.headerPath && fs.existsSync(result.headerPath)) fs.unlinkSync(result.headerPath);
+  return cpp;
+}
+
+/**
+ * Transpile a TypeScript snippet as a non-entry file (split compilation) and
+ * return its emitted C++ source. Used to verify shims/macros are emitted in
+ * files that don't own the entrypoint.
+ */
+function transpileNonEntry(tsCode: string): string {
+  const ir = buildProgramIR('svc.ts', tsCode);
+  const result = emitCpp(ir, {
+    outDir: '.build/tests',
+    emitMode: 'cpp',
+    target: 'native',
+    libdefs: new Map(),
+    emitMaps: false,
+    isEntryFile: false,
+    strategy: new NativeStrategy(),
+  });
+  const cpp = result.sourcePath ? fs.readFileSync(result.sourcePath, 'utf-8') : '';
+  if (result.sourcePath && fs.existsSync(result.sourcePath)) fs.unlinkSync(result.sourcePath);
+  if (result.headerPath && fs.existsSync(result.headerPath)) fs.unlinkSync(result.headerPath);
+  return cpp;
+}
 
 describe('Transpiler Type Gaps', () => {
 
@@ -229,7 +276,78 @@ describe('Transpiler Type Gaps', () => {
     });
   });
 
-  // ── Feature 6: Function-level typed array vars for .length → sizeof ────
+  // ── Feature 5b: null/undefined literals must route through nullValue() ─
+  //
+  // The TS `null` literal lowers to the IR identifier sentinel "nullptr",
+  // which must be rendered through the strategy's nullValue() — otherwise
+  // escapeCppKeyword mangles it to the undefined token "nullptr_". Likewise,
+  // `undefined` lowers to "CUTTLEFISH_UNDEFINED", whose defining shim must be
+  // emitted in any file that references it (including non-entry files in split
+  // compilation). See entrypoint-synthesizer / setup.ts shim emission.
+
+  describe('Feature 5b: null/undefined literal lowering via nullValue()', () => {
+    it('renders a returned null literal as CUTTLEFISH_UNDEFINED (not nullptr_)', () => {
+      const cpp = transpileNativeEntry(`
+        function findOrNull(x: number): number | null {
+          if (x < 0) return null;
+          return x;
+        }
+      `);
+      expect(cpp).toContain('return CUTTLEFISH_UNDEFINED');
+      expect(cpp).not.toContain('nullptr_');
+    });
+
+    it('renders a returned undefined literal as CUTTLEFISH_UNDEFINED', () => {
+      const cpp = transpileNativeEntry(`
+        function findOrUndefined(x: number): number | undefined {
+          if (x < 0) return undefined;
+          return x;
+        }
+      `);
+      expect(cpp).toContain('return CUTTLEFISH_UNDEFINED');
+    });
+
+    it('defines CUTTLEFISH_UNDEFINED when a null literal is used', () => {
+      // Previously usesNullish did not detect the "nullptr" sentinel, so the
+      // defining shim was stripped even though the token was referenced.
+      const cpp = transpileNativeEntry(`
+        function f(x: number): number | null {
+          return x < 0 ? null : x;
+        }
+      `);
+      expect(cpp).toContain('#define CUTTLEFISH_UNDEFINED');
+    });
+
+    it('emits the CUTTLEFISH_UNDEFINED macro guard in a non-entry (split) file', () => {
+      // Regression: non-entry files referenced CUTTLEFISH_UNDEFINED / nullptr_
+      // without any defining shim, producing invalid C++ in split compilation.
+      const cpp = transpileNonEntry(`
+        function findOrNull(x: number): number | null {
+          if (x < 0) return null;
+          return x;
+        }
+      `);
+      expect(cpp).toContain('#ifndef CUTTLEFISH_UNDEFINED');
+      expect(cpp).toContain('#define CUTTLEFISH_UNDEFINED');
+      expect(cpp).toContain('return CUTTLEFISH_UNDEFINED');
+      expect(cpp).not.toContain('nullptr_');
+    });
+
+    it('does not emit the nullish helper functions in a non-entry file', () => {
+      // Only the macro token is needed in non-entry files; the cuttlefish_*
+      // helpers belong to the entry file's shim block.
+      const cpp = transpileNonEntry(`
+        function findOrNull(x: number): number | null {
+          if (x < 0) return null;
+          return x;
+        }
+      `);
+      expect(cpp).not.toContain('cuttlefish_is_nullish');
+      expect(cpp).not.toContain('cuttlefish_nullish');
+    });
+  });
+
+
 
   describe('Feature 6: Function-level typed array .length → sizeof', () => {
     it('transpiles .length on Uint8Array var inside function as sizeof expression', () => {

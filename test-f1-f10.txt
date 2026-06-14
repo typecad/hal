@@ -1,0 +1,312 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.5 [39m[90mC:/typecad/typecode[39m
+
+ [32m✓[39m tests/peripheral-usage-buses.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 5636[2mms[22m[39m
+       [33m[2m✓[22m[39m detects multiple peripherals in the same program [33m 5006[2mms[22m[39m
+ [32m✓[39m tests/adc-range.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 9436[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate false warnings for ADC comparisons [33m 5617[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning for comparison within ADC range [33m 3754[2mms[22m[39m
+ [32m✓[39m tests/bug-fixes.test.ts [2m([22m[2m40 tests[22m[2m)[22m[33m 10092[2mms[22m[39m
+     [33m[2m✓[22m[39m emits this->field = value in constructor body [33m 421[2mms[22m[39m
+     [33m[2m✓[22m[39m casts both sides of an enum equality comparison consistently [33m 2888[2mms[22m[39m
+     [33m[2m✓[22m[39m emits a single extern + definition using the interface struct [33m 2103[2mms[22m[39m
+     [33m[2m✓[22m[39m recognizes an interface defined in another file as a parameter type [33m 1873[2mms[22m[39m
+ [32m✓[39m tests/bus-ownership.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 10346[2mms[22m[39m
+       [33m[2m✓[22m[39m emits I2C operations with take/release calls [33m 344[2mms[22m[39m
+       [33m[2m✓[22m[39m emits I2C operations inside while loop [33m 5533[2mms[22m[39m
+     [33m[2m✓[22m[39m handles both patterns in the same program [33m 3970[2mms[22m[39m
+ [32m✓[39m tests/tone-chain.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 10985[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles pin.tone(f).for(d) to Arduino tone calls [33m 6596[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles bare pin.tone(f) correctly [33m 4385[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/transpile-imports.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 10841[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles imported local modules [33m 3866[2mms[22m[39m
+     [33m[2m✓[22m[39m uses case-preserving local header include for relative imports [33m 1953[2mms[22m[39m
+     [33m[2m✓[22m[39m lowers function-expression aliases without raw or unmapped type warnings [33m 1736[2mms[22m[39m
+     [33m[2m✓[22m[39m maps string and boolean array aliases to std types [33m 1637[2mms[22m[39m
+     [33m[2m✓[22m[39m does not warn for generic structural alias object literals [33m 1645[2mms[22m[39m
+ [32m✓[39m tests/pin-alias-conflict.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 12142[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning when a pin is used through only one name [33m 6931[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning when using D13 directly [33m 5208[2mms[22m[39m
+ [32m✓[39m tests/peripheral-usage-basics.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 11902[2mms[22m[39m
+       [33m[2m✓[22m[39m returns empty usage for a program without peripherals [33m 326[2mms[22m[39m
+       [33m[2m✓[22m[39m tracks timer0 usage for delay() [33m 6193[2mms[22m[39m
+       [33m[2m✓[22m[39m tracks timer0 usage for millis() in expressions [33m 5147[2mms[22m[39m
+ [32m✓[39m tests/timer0-pwm-timing-conflict.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 13711[2mms[22m[39m
+     [33m[2m✓[22m[39m generates info when D5 PWM is used with delay() [33m 6117[2mms[22m[39m
+     [33m[2m✓[22m[39m generates info when D6 PWM is used with millis() [33m 4140[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate info for non-Timer0 PWM pins with delay() [33m 3450[2mms[22m[39m
+ [32m✓[39m tests/targets.test.ts [2m([22m[2m24 tests[22m[2m)[22m[33m 1909[2mms[22m[39m
+ [32m✓[39m tests/statements.test.ts [2m([22m[2m46 tests[22m[2m)[22m[33m 2638[2mms[22m[39m
+ [32m✓[39m tests/functions.test.ts [2m([22m[2m33 tests[22m[2m)[22m[33m 2124[2mms[22m[39m
+ [32m✓[39m tests/ownership-analysis.test.ts [2m([22m[2m26 tests[22m[2m)[22m[33m 1415[2mms[22m[39m
+ [32m✓[39m tests/new-features.test.ts [2m([22m[2m26 tests[22m[2m)[22m[33m 1855[2mms[22m[39m
+ [32m✓[39m tests/polyfills.test.ts [2m([22m[2m31 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[33m 1557[2mms[22m[39m
+ [32m✓[39m tests/pwm-timer-sharing.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 16285[2mms[22m[39m
+     [33m[2m✓[22m[39m generates info when two PWM pins share the same timer [33m 6772[2mms[22m[39m
+     [33m[2m✓[22m[39m generates info when a PWM alias shares a timer with another PWM pin [33m 4803[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate info when PWM pins use different timers [33m 4707[2mms[22m[39m
+ [32m✓[39m tests/packages/hal/hal-i2c.test.ts [2m([22m[2m27 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 1208[2mms[22m[39m
+ [32m✓[39m tests/hal-new-system.test.ts [2m([22m[2m15 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 2379[2mms[22m[39m
+     [33m[2m✓[22m[39m digital read + write: button controls LED [33m 482[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/tree-shaking.test.ts [2m([22m[2m19 tests[22m[2m)[22m[33m 871[2mms[22m[39m
+ [32m✓[39m tests/interrupt-safety.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 17662[2mms[22m[39m
+       [33m[2m✓[22m[39m does not generate false duplicate handler warnings for different pins [33m 5717[2mms[22m[39m
+       [33m[2m✓[22m[39m does not warn for onFalling on D2 and onRising on D3 (different pins) [33m 3878[2mms[22m[39m
+       [33m[2m✓[22m[39m does not generate warning for safe operations in ISR [33m 3659[2mms[22m[39m
+       [33m[2m✓[22m[39m does not generate warning for delay() outside ISR [33m 4403[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/multi-file.test.ts [2m([22m[2m20 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[33m 17909[2mms[22m[39m
+     [33m[2m✓[22m[39m emits dependency files before dependent files in a three-file chain [33m 3248[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves functions imported by the entry file [33m 1844[2mms[22m[39m
+     [33m[2m✓[22m[39m preserves enums imported by the entry file [33m 1670[2mms[22m[39m
+     [33m[2m✓[22m[39m emits forward declarations for cross-module class types in headers [33m 1725[2mms[22m[39m
+     [33m[2m✓[22m[39m does not duplicate forward declarations for classes defined in the same file [33m 1419[2mms[22m[39m
+     [33m[2m✓[22m[39m emits #pragma once in every generated header [33m 1507[2mms[22m[39m
+     [33m[2m✓[22m[39m uses concrete type in header for exported string constant [33m 1631[2mms[22m[39m
+     [33m[2m✓[22m[39m uses concrete type in header for exported number constant [33m 1847[2mms[22m[39m
+     [33m[2m✓[22m[39m does not emit std::to_string for imported string constants in snprintf mode [33m 1784[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/units.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 18585[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles bare number peripheral configuration through the CLI pipeline [33m 8207[2mms[22m[39m
+     [33m[2m✓[22m[39m accepts bare number in baudRate config (no unit wrapping required) [33m 5411[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles I2C with bare number [33m 4965[2mms[22m[39m
+ [32m✓[39m tests/transpiler-type-gaps.test.ts [2m([22m[2m61 tests[22m[2m | [22m[33m3 skipped[39m[2m)[22m[33m 2834[2mms[22m[39m
+ [32m✓[39m tests/control-flow.test.ts [2m([22m[2m34 tests[22m[2m)[22m[33m 1885[2mms[22m[39m
+ [32m✓[39m tests/hal-direct-gpio.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 885[2mms[22m[39m
+ [32m✓[39m tests/classes.test.ts [2m([22m[2m37 tests[22m[2m)[22m[33m 2670[2mms[22m[39m
+ [32m✓[39m tests/packages/hal/hal-uart.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 1197[2mms[22m[39m
+ [32m✓[39m tests/expressions.test.ts [2m([22m[2m86 tests[22m[2m)[22m[33m 11180[2mms[22m[39m
+       [33m[2m✓[22m[39m resolves D3.read() inside template literal passed to println [33m 5940[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/register-struct.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 655[2mms[22m[39m
+ [32m✓[39m tests/packages/hal/hal-spi.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 618[2mms[22m[39m
+ [32m✓[39m tests/class-reference-semantics.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 778[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps annotated construction and function parameters pointer-consistent [33m 322[2mms[22m[39m
+ [32m✓[39m tests/peripheral-usage-pins.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 19946[2mms[22m[39m
+       [33m[2m✓[22m[39m detects ADC from analogRead __EMIT__ nodes [33m 6491[2mms[22m[39m
+       [33m[2m✓[22m[39m detects PWM usage and records the pin number [33m 4340[2mms[22m[39m
+       [33m[2m✓[22m[39m detects output pin configuration [33m 4800[2mms[22m[39m
+       [33m[2m✓[22m[39m detects input pullup configuration [33m 4309[2mms[22m[39m
+ [32m✓[39m tests/transpiler-showcase-example.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 433[2mms[22m[39m
+[90mstdout[2m | tests/duplicate-global.test.ts[2m > [22m[2mDuplicate Global Declarations[2m > [22m[2mhandles variable declared at global scope and inside main
+[22m[39mGenerated C++:
+ #include <iostream>
+
+const int x = 5;
+
+void main();
+
+void main()
+{
+  const int x = 10;
+  std::cout << x << std::endl;
+}
+
+
+[90mstdout[2m | tests/duplicate-global.test.ts[2m > [22m[2mDuplicate Global Declarations[2m > [22m[2mhandles same variable name declared globally and in setup/loop
+[22m[39mGenerated C++:
+ #include <Arduino.h>
+
+// TypeCAD Core Shims
+
+
+// TypeCAD Native Polyfills
+
+const int led = 13;
+
+void setup()
+{
+  const int led = 5;
+  Serial.println(led);
+}
+
+static void loop()
+{
+}
+
+
+[90mstdout[2m | tests/duplicate-global.test.ts[2m > [22m[2mDuplicate Global Declarations[2m > [22m[2mhandles var declarations at global scope and inside main
+[22m[39mGenerated C++:
+ #include <iostream>
+
+int x = 5;
+
+void main();
+
+void main()
+{
+  int x = 10;
+  std::cout << x << std::endl;
+}
+
+
+[90mstdout[2m | tests/duplicate-global.test.ts[2m > [22m[2mDuplicate Global Declarations[2m > [22m[2mdetects potential duplicate global declarations when using same mutable variable
+[22m[39mGenerated C++:
+ #include <iostream>
+
+int counter = 0;
+
+void main();
+
+void main()
+{
+  counter = 10;
+  std::cout << counter << std::endl;
+}
+
+
+[90mstdout[2m | tests/duplicate-global.test.ts[2m > [22m[2mDuplicate Global Declarations[2m > [22m[2mhandles ISR referencing a globally declared variable
+[22m[39mGenerated C++:
+ #include <Arduino.h>
+
+// TypeCAD Core Shims
+
+
+// TypeCAD Native Polyfills
+
+const int sensorPin = 13;
+
+void setup()
+{
+  pinMode(sensorPin, OUTPUT_);
+}
+
+static void loop()
+{
+  digitalWrite(sensorPin, HIGH);
+}
+
+
+ [32m✓[39m tests/enums.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 707[2mms[22m[39m
+[90mstdout[2m | tests/duplicate-global.test.ts[2m > [22m[2mDuplicate Global Declarations[2m > [22m[2mhandles ISR-promoted variable that was also declared globally (potential duplicate)
+[22m[39mGenerated C++:
+ #include <Arduino.h>
+
+// TypeCAD Core Shims
+
+
+// TypeCAD Native Polyfills
+
+int counter = 0;
+
+void main_isr_0();
+
+void main_isr_0() {
+  counter = digitalRead(3);
+}
+
+void setup()
+{
+  attachInterrupt(digitalPinToInterrupt(2), main_isr_0, RISING_);
+}
+
+static void loop()
+{
+}
+
+Diagnostics: [
+  {
+    severity: [32m'warning'[39m,
+    message: [32m"'counter' is never reassigned."[39m,
+    hint: [32m'const counter = ...;  // or annotate with Shared to also enforce const T& at the C++ level'[39m,
+    line: [33m5[39m,
+    column: [33m13[39m,
+    code: [32m'ownership-suggest-const'[39m,
+    source: [32m'ownership-analysis'[39m
+  }
+]
+Global declaration count: [33m1[39m
+
+ [32m✓[39m tests/duplicate-global.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 668[2mms[22m[39m
+ [32m✓[39m tests/type-aliases.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 250[2mms[22m[39m
+ [32m✓[39m tests/bug-a-mutable-array-vars.test.ts [2m([22m[2m3 tests[22m[2m)[22m[33m 461[2mms[22m[39m
+ [32m✓[39m tests/semantic-cpp.test.ts [2m([22m[2m7 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 20979[2mms[22m[39m
+     [33m[2m✓[22m[39m emits ESP32-specific Preferences include [33m 10213[2mms[22m[39m
+     [33m[2m✓[22m[39m optimizes float interpolation based on architecture [33m 10229[2mms[22m[39m
+ [32m✓[39m tests/peripheral-ownership.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 301[2mms[22m[39m
+ [32m✓[39m tests/unit-suspicion.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 263[2mms[22m[39m
+ [32m✓[39m tests/packages/expect/expect-preprocessor.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m tests/feature-prescan.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 42[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/init-scaffold.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 137[2mms[22m[39m
+ [32m✓[39m tests/arduino-avr-safety.test.ts [2m([22m[2m30 tests[22m[2m | [22m[33m1 skipped[39m[2m)[22m[33m 21676[2mms[22m[39m
+     [33m[2m✓[22m[39m emits a heap-allocation-avr diagnostic for `new ClassName()` on AVR [33m 5377[2mms[22m[39m
+     [33m[2m✓[22m[39m does not emit heap-allocation-avr diagnostic on ESP32 [33m 10235[2mms[22m[39m
+     [33m[2m✓[22m[39m does NOT emit IRAM_ATTR on AVR targets [33m 4106[2mms[22m[39m
+ [32m✓[39m tests/packages/simulator/simulator.test.ts [2m([22m[2m38 tests[22m[2m)[22m[32m 25[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/config-loader.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 64[2mms[22m[39m
+ [32m✓[39m tests/packages/expect/expect-integration.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m tests/packages/framework-arduino/arduino-libs.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m tests/packages/expect/expect-evaluator.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m tests/pulse-shift-random.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 22454[2mms[22m[39m
+       [33m[2m✓[22m[39m transpiles Pulse.in(pin, true) -> pulseIn(pin, HIGH) [33m 6990[2mms[22m[39m
+       [33m[2m✓[22m[39m transpiles Pulse.in(pin, true, timeout) [33m 5080[2mms[22m[39m
+       [33m[2m✓[22m[39m transpiles Pulse.long(pin, false) -> pulseInLong(pin, LOW) [33m 5361[2mms[22m[39m
+       [33m[2m✓[22m[39m transpiles Pulse.in(pin, false) -> pulseIn(pin, LOW) [33m 5019[2mms[22m[39m
+ [32m✓[39m tests/packages/expect/expect-parser.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/watch.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m tests/simulator-demo.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/packages/transpiler/try-catch-validation.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m tests/memory-reporting.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/packages/expect/expect-reporter.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/pin-safety.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 24461[2mms[22m[39m
+     [33m[2m✓[22m[39m generates warning when unsafe pin D0 is used [33m 7057[2mms[22m[39m
+     [33m[2m✓[22m[39m generates warning when unsafe pin D1 is used [33m 4578[2mms[22m[39m
+     [33m[2m✓[22m[39m generates warning when unsafe pin alias TX is used [33m 5411[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning for safe pins [33m 5221[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning for PWM pins that are not unsafe [33m 2190[2mms[22m[39m
+ [32m✓[39m tests/peripheral-pin-conflict.test.ts [2m([22m[2m6 tests[22m[2m)[22m[33m 25391[2mms[22m[39m
+     [33m[2m✓[22m[39m generates warning when I2C pin is used as GPIO while I2C is active [33m 6817[2mms[22m[39m
+     [33m[2m✓[22m[39m generates warning when I2C SCL pin is used as GPIO [33m 4576[2mms[22m[39m
+     [33m[2m✓[22m[39m generates warning when I2C alias SDA is used as GPIO while I2C is active [33m 4607[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning when I2C pin is used without I2C active [33m 4409[2mms[22m[39m
+     [33m[2m✓[22m[39m generates warning when SPI pin is used as GPIO while SPI is active [33m 2896[2mms[22m[39m
+     [33m[2m✓[22m[39m generates warning when UART TX pin is used as GPIO [33m 2081[2mms[22m[39m
+ [32m✓[39m tests/gpio-object-creation.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 31825[2mms[22m[39m
+       [33m[2m✓[22m[39m emits pinMode OUTPUT for LED.asOutput() [33m 6915[2mms[22m[39m
+       [33m[2m✓[22m[39m emits pinMode + digitalWrite for LED.asOutput() followed by write(true) [33m 5087[2mms[22m[39m
+       [33m[2m✓[22m[39m emits pinMode for D9.asOutput() and alias resolves for high()/low() [33m 5670[2mms[22m[39m
+       [33m[2m✓[22m[39m resolves alias inside while loop [33m 4793[2mms[22m[39m
+       [33m[2m✓[22m[39m emits pinMode INPUT for D2.asInput() [33m 2229[2mms[22m[39m
+       [33m[2m✓[22m[39m emits pinMode INPUT_PULLUP for D3.asInputPullUp() [33m 1800[2mms[22m[39m
+       [33m[2m✓[22m[39m emits pinMode INPUT_PULLUP for a pin parameter and resolves alias for btn.read() [33m 1769[2mms[22m[39m
+       [33m[2m✓[22m[39m propagates pin aliases through this.field assignment and handles this.pin.read() [33m 1823[2mms[22m[39m
+       [33m[2m✓[22m[39m tracks multiple aliases independently [33m 1733[2mms[22m[39m
+ [32m✓[39m tests/packages/hal/hal-pin-config.test.ts [2m([22m[2m19 tests[22m[2m | [22m[33m8 skipped[39m[2m)[22m[33m 33201[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles D13.asOutput() [33m 5717[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles const led = D13.asOutput(); led.write(true) [33m 3857[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles const led = D13.asOutput(); led.write(false) [33m 3558[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles const led = LED.asOutput(); led.high() [33m 4481[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles D2.asInput() [33m 4139[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles D2.inputPullUp() [33m 2309[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles D2.onFalling(callback) [33m 1922[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles an interrupt callback capturing a global pointer variable and emits pointer access correctly [33m 1845[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles D2.onRising(callback) [33m 1776[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles D2.onChange(callback) [33m 1809[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles const pin = D2.asInput(); pin.offAll() [33m 1781[2mms[22m[39m
+ [32m✓[39m tests/packages/hal/hal-adc.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 33859[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles adc.readAnalog() to analogRead [33m 6356[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles adc.readVoltage() with Arduino Uno ADC constants [33m 4539[2mms[22m[39m
+     [33m[2m✓[22m[39m transpiles D3.readVoltage() using asInput() [33m 4679[2mms[22m[39m
+     [33m[2m✓[22m[39m uses readVoltage result in an expression [33m 4138[2mms[22m[39m
+     [33m[2m✓[22m[39m uses INTERNAL reference voltage after ADC.setAnalogReference [33m 3155[2mms[22m[39m
+     [33m[2m✓[22m[39m returns ADC resolution for Arduino Uno (10-bit) [33m 2063[2mms[22m[39m
+     [33m[2m✓[22m[39m returns ADC resolution for ESP32 (12-bit) [33m 1878[2mms[22m[39m
+     [33m[2m✓[22m[39m emits analogReference() call with phantom constant [33m 1751[2mms[22m[39m
+     [33m[2m✓[22m[39m returns default reference voltage for Arduino Uno (5.0V) [33m 1858[2mms[22m[39m
+     [33m[2m✓[22m[39m returns default reference voltage for ESP32 (3.3V) [33m 1763[2mms[22m[39m
+     [33m[2m✓[22m[39m returns INTERNAL voltage after setAnalogReference on Arduino Uno [33m 1667[2mms[22m[39m
+ [32m✓[39m tests/pin-mode-validation.test.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 34976[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate false-positive pin-mode warnings [33m 6993[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning when asOutput() is called before toggle [33m 4802[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning for asOutput fluent API [33m 5583[2mms[22m[39m
+     [33m[2m✓[22m[39m does not generate warning for non-pin receivers [33m 4924[2mms[22m[39m
+     [33m[2m✓[22m[39m emits pinMode for LED.asOutput() [33m 2258[2mms[22m[39m
+     [33m[2m✓[22m[39m emits pinMode for D3.asInput() and resolves alias for read() [33m 1823[2mms[22m[39m
+     [33m[2m✓[22m[39m emits pinMode + digitalWrite for LED.asOutput() and high() [33m 1742[2mms[22m[39m
+     [33m[2m✓[22m[39m no warning when using alias after asOutput() [33m 1874[2mms[22m[39m
+     [33m[2m✓[22m[39m no warning when using alias after asInput() [33m 1765[2mms[22m[39m
+     [33m[2m✓[22m[39m resolves alias inside while loop [33m 1669[2mms[22m[39m
+     [33m[2m✓[22m[39m emits pinMode for D2.asInputPullUp() [33m 1536[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m62 passed[39m[22m[90m (62)[39m
+[2m      Tests [22m [1m[32m960 passed[39m[22m[2m | [22m[33m19 skipped[39m[90m (979)[39m
+[2m   Start at [22m 09:43:24
+[2m   Duration [22m 38.77s[2m (transform 34.96s, setup 120.34s, import 9.47s, tests 476.47s, environment 14ms)[22m
+
