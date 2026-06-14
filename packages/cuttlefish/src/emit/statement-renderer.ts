@@ -531,8 +531,49 @@ export class StatementRenderer {
       }
       // Handle object initializers with inline struct definition
       if (statement.initializer.kind === "object") {
-        const structName = `_${statement.name}_t`;
+        const placeholderStructName = `_${statement.name}_t`;
+        // When the source annotation names a concrete type (e.g. an exported
+        // interface referenced across modules: `const cfg: ThresholdConfig = {...}`),
+        // cppType already carries that interface/struct name. The struct is declared
+        // elsewhere (the interface declaration), so we must NOT emit an inline
+        // `struct _name_t {...}` here — that would conflict with the real type.
+        // Only synthesize when no explicit named type was provided.
+        const declaredCppType = statement.cppType;
+        const hasExplicitNamedType =
+          !!declaredCppType &&
+          declaredCppType !== "auto" &&
+          declaredCppType !== placeholderStructName &&
+          !declaredCppType.includes("<") &&   // templates (vector<...>) stay struct-inferred
+          !declaredCppType.endsWith("*") &&   // pointers stay struct-inferred
+          !declaredCppType.endsWith("]");     // arrays stay struct-inferred
 
+        const fieldTypes = new Map(statement.initializer.fields.map((field) => [
+          field.name,
+          this.inferFieldType(field.value, statement.name, field.name),
+        ]));
+        const initValues = statement.initializer.fields
+          .map((f) => {
+            const renderExpr = (e: ExpressionIR) => this.expressionRenderer.render(e, calleeTransformer, knownVariableTypes);
+            const overridden = this.strategy.objectFieldInitializer(f.value, renderExpr);
+            if (overridden !== undefined) return overridden;
+            return renderExpr(f.value);
+          })
+          .join(", ");
+        const safeObjName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
+
+        if (hasExplicitNamedType) {
+          // Emit the definition using the declared named type; no inline struct.
+          // const-ness follows the declared storage so it matches the extern.
+          const namedType = this.normalizeCppType(declaredCppType!);
+          const isConst = statement.storage === "const";
+          const constPrefix = isConst ? "const " : "";
+          this.interfaceFieldTypes.set(namedType, fieldTypes);
+          return forHeader
+            ? `${constPrefix}${namedType} ${safeObjName} = { ${initValues} }`
+            : `${constPrefix}${namedType} ${safeObjName} = { ${initValues} };`;
+        }
+
+        const structName = placeholderStructName;
         // Collect nested struct definitions (deepest first) and emit as prelude
         const nestedStructs = collectNestedStructDefs(
           statement.initializer, statement.name,
@@ -548,23 +589,10 @@ export class StatementRenderer {
           this.expressionRenderer.pushPrelude(nestedDefs);
         }
 
-        const fieldTypes = new Map(statement.initializer.fields.map((field) => [
-          field.name,
-          this.inferFieldType(field.value, statement.name, field.name),
-        ]));
         this.interfaceFieldTypes.set(structName, fieldTypes);
         const fieldDefs = statement.initializer.fields
           .map((f) => `${fieldTypes.get(f.name)} ${f.name};`)
           .join(" ");
-        const initValues = statement.initializer.fields
-          .map((f) => {
-            const renderExpr = (e: ExpressionIR) => this.expressionRenderer.render(e, calleeTransformer, knownVariableTypes);
-            const overridden = this.strategy.objectFieldInitializer(f.value, renderExpr);
-            if (overridden !== undefined) return overridden;
-            return renderExpr(f.value);
-          })
-          .join(", ");
-        const safeObjName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         return forHeader
           ? `struct ${structName} { ${fieldDefs} } ${safeObjName} = { ${initValues} }`
           : `struct ${structName} { ${fieldDefs} } ${safeObjName} = { ${initValues} };`;
@@ -696,6 +724,25 @@ export class StatementRenderer {
    */
   mapTypeForEmit(typeName: string): string {
     return this.normalizeCppType(typeName);
+  }
+
+  /**
+   * Map a function's return type for emission. Unlike {@link mapTypeForEmit},
+   * this respects the strategy's {@code mapReturnType} contract: the value
+   * produced by {@code mapReturnType} is already final and must NOT be
+   * re-normalised. This matters for entrypoints like {@code main}, whose
+   * mapped {@code int} return type would otherwise be turned back into
+   * {@code long long} by {@code normalizeCppType}.
+   *
+   * For non-entrypoint functions we still apply the string-enum → const char*
+   * substitution (which {@code mapReturnType} does not perform), preserving
+   * existing behaviour for ordinary functions.
+   */
+  mapReturnTypeForEmit(fnName: string, returnType: string): string {
+    if (fnName === this.strategy.entrypointFunctionName()) {
+      return returnType;
+    }
+    return this.mapTypeForEmit(returnType);
   }
 
   private normalizeCppType(typeName: string): string {

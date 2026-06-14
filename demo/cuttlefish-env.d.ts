@@ -23,6 +23,9 @@ declare global {
   type float = number;
   type double = number;
 
+  // Millis timer function (provided by native framework)
+  declare function millis(): number;
+
   // Convenience helper for volatile variables in TypeCAD programs.
   // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
   declare function volatile<T>(value: T): T;

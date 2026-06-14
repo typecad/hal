@@ -24,7 +24,12 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
       existingEp.statements = [...allSetupInitStmts, ...ctx.filteredTopLevelExecutables, ...existingEp.statements];
     } else {
       const isMain = epName === "main";
-      const returnType = isMain ? "int" : "void";
+      // Route through mapReturnType so platform strategies can special-case the
+      // entrypoint signature (e.g. NativeStrategy keeps main → int instead of
+      // normalizing int → long long). The emitted return type is then treated
+      // as final by mapReturnTypeForEmit (no re-normalisation).
+      const mapReturnType = (fnName: string, tsType: string) => ctx.statementRenderer.mapReturnType(fnName, tsType);
+      const returnType = mapReturnType(epName, isMain ? "int" : "void");
       const stmts: StatementIR[] = isMain
         ? [...allSetupInitStmts, ...ctx.filteredTopLevelExecutables, { kind: "return" as const, sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number" as const, value: 0 } } as StatementIR]
         : [...allSetupInitStmts, ...ctx.filteredTopLevelExecutables];

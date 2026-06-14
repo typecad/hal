@@ -38,19 +38,26 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
       statement.kind === "var_decl" &&
       statement.initializer?.kind === "object"
     ) {
-      const structName = `_${statement.name}_t`;
-      const nestedStructs = collectNestedStructDefs(
-        statement.initializer, statement.name,
-        ctx.globalPointerVarTypes, ctx.knownFunctionReturnTypes,
-        ctx.knownTopLevelObjectTypes, ctx.knownTopLevelObjectFields, ctx.largeEnumNames,
-      );
-      for (const ns of nestedStructs) {
-        const nestedFieldDefs = ns.fields
-          .map((f) => `${f.type} ${strategy.renameStructField(f.name)};`)
-          .join(" ");
-        appendHeaderLine(ctx, `struct ${ns.structName} { ${nestedFieldDefs} };`);
-      }
+      // When the source annotation names a concrete type (e.g. an exported
+      // interface referenced across modules: `const cfg: ThresholdConfig = {...}`),
+      // the variable's cppType already is that interface/struct name. The struct
+      // itself is declared by the interface declaration, and the extern + cpp
+      // definition are emitted by emitTypeDeclarations (via the extern block and
+      // appendRenderedStatement respectively). So we must skip synthesizing a
+      // local `_name_t` struct here — otherwise we'd emit a second, conflicting
+      // struct definition and a duplicate extern/definition.
+      const placeholderStructName = `_${statement.name}_t`;
+      const declaredCppType = statement.cppType;
+      const hasExplicitNamedType =
+        !!declaredCppType &&
+        declaredCppType !== "auto" &&
+        declaredCppType !== placeholderStructName &&
+        !declaredCppType.includes("<") &&   // templates (vector<...>) stay struct-inferred
+        !declaredCppType.endsWith("*") &&   // pointers stay struct-inferred
+        !declaredCppType.endsWith("]");     // arrays stay struct-inferred
 
+      // Still register the field types so downstream rendering (e.g. string-concat
+      // wrapping via interfaceFieldTypes) can resolve property accesses on the var.
       const fieldTypeEntries = statement.initializer.fields.map((field) => {
         const inferred = inferObjectFieldType(
           field.value,
@@ -66,6 +73,26 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
         );
         return [field.name, inferred] as const;
       });
+      if (hasExplicitNamedType) {
+        const namedType = declaredCppType!;
+        ctx.knownTopLevelObjectTypes.set(statement.name, namedType);
+        ctx.knownTopLevelObjectFields.set(statement.name, new Map(fieldTypeEntries));
+        continue;
+      }
+
+      const structName = placeholderStructName;
+      const nestedStructs = collectNestedStructDefs(
+        statement.initializer, statement.name,
+        ctx.globalPointerVarTypes, ctx.knownFunctionReturnTypes,
+        ctx.knownTopLevelObjectTypes, ctx.knownTopLevelObjectFields, ctx.largeEnumNames,
+      );
+      for (const ns of nestedStructs) {
+        const nestedFieldDefs = ns.fields
+          .map((f) => `${f.type} ${strategy.renameStructField(f.name)};`)
+          .join(" ");
+        appendHeaderLine(ctx, `struct ${ns.structName} { ${nestedFieldDefs} };`);
+      }
+
       const fieldDefs = fieldTypeEntries
         .map(([fieldName, inferredType]) => {
           const safeFieldName = strategy.renameStructField(fieldName);
@@ -123,7 +150,7 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
       if (fn.typeParameters && fn.typeParameters.length > 0) {
         appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
       }
-      appendSourceLine(ctx, `${fwdLinkagePrefix}${ctx.statementRenderer.mapTypeForEmit(fn.returnType)} ${fn.name}(${declarationParameterList});`, {
+      appendSourceLine(ctx, `${fwdLinkagePrefix}${ctx.statementRenderer.mapReturnTypeForEmit(fn.name, fn.returnType)} ${fn.name}(${declarationParameterList});`, {
         tsSpan: fn.sourceSpan,
         nodeKind: "function_declaration",
         symbolName: fn.name,
@@ -213,7 +240,7 @@ export function emitFunctions(ctx: EmitterContext): void {
         if (fn.typeParameters && fn.typeParameters.length > 0) {
           appendHeaderLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
         }
-        appendHeaderLine(ctx, `${readonlyPrefix}${ctx.statementRenderer.mapTypeForEmit(fn.returnType)} ${fn.name}(${declarationParameterList});`, {
+        appendHeaderLine(ctx, `${readonlyPrefix}${ctx.statementRenderer.mapReturnTypeForEmit(fn.name, fn.returnType)} ${fn.name}(${declarationParameterList});`, {
           tsSpan: fn.sourceSpan,
           nodeKind: "function_declaration",
           symbolName: fn.name,
@@ -226,7 +253,7 @@ export function emitFunctions(ctx: EmitterContext): void {
     if (fn.typeParameters && fn.typeParameters.length > 0) {
       appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
     }
-    const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : ctx.statementRenderer.mapTypeForEmit(fn.returnType)}>` : `${readonlyPrefix}${ctx.statementRenderer.mapTypeForEmit(fn.returnType)}`;
+    const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : ctx.statementRenderer.mapReturnTypeForEmit(fn.name, fn.returnType)}>` : `${readonlyPrefix}${ctx.statementRenderer.mapReturnTypeForEmit(fn.name, fn.returnType)}`;
     const linkagePrefix = needsStatic ? "static " : "";
     appendSourceLine(ctx, `${linkagePrefix}${fnReturnType} ${fn.name}(${definitionParameterList})`, {
       tsSpan: fn.sourceSpan,

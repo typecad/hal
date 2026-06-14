@@ -1,5 +1,9 @@
 ﻿import { describe, it, expect } from "vitest";
-import { transpile, transpileArduino, expectCppContains, expectCppNotContains } from "./setup";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { transpile, transpileArduino, transpileNative, expectCppContains, expectCppNotContains } from "./setup";
+import { transpileFile } from "../packages/cuttlefish/src/testing";
 
 // ===========================================================================
 // Bug fix regression tests
@@ -417,5 +421,306 @@ describe("Bug 10: filter() element type inference", () => {
 
     expectCppContains(result, ["int doubled[]"]);
     expectCppNotContains(result, ["long long doubled[]"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Native main() return type — must be `int`, never `long long`.
+// The NativeStrategy.normalizeCppType maps int → long long (JS numbers are
+// 64-bit), but that normalization must NOT apply to main()'s signature, which
+// the C++ standard requires to return int. NativeStrategy.mapReturnType
+// special-cases main → int, but the render path was re-normalizing the
+// already-mapped return type through normalizeCppType, turning int back into
+// long long. Regression guard for the render-path fix.
+// ---------------------------------------------------------------------------
+describe("Native main() return type", () => {
+  it("emits `int main()` for top-level statements (synthesized main)", () => {
+    const result = transpileNative(`console.log("hi");`);
+    expectCppContains(result, ["int main("]);
+    expectCppNotContains(result, ["long long main("]);
+  });
+
+  it("emits `int main()` when main is declared explicitly", () => {
+    const result = transpileNative(`
+      function main(): number {
+        console.log("hi");
+        return 0;
+      }
+    `);
+    expectCppContains(result, ["int main("]);
+    expectCppNotContains(result, ["long long main("]);
+  });
+
+  it("does not collapse non-main return types to int", () => {
+    const result = transpileNative(`
+      function greet(name: string): string {
+        return "hi " + name;
+      }
+      greet("world");
+    `);
+    // The entrypoint special-case must be scoped to main only.
+    expectCppNotContains(result, ["int greet("]);
+    expectCppContains(result, ["int main("]);
+    expectCppNotContains(result, ["long long main("]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Enum comparison across modules — comparing an enum-typed field on a class
+// instance against an enum member must render both sides of `==` with the
+// same type. Previously the enum member access was wrapped in
+// static_cast<int>(...) while the field access (whose type was unknown to the
+// renderer because the for-of loop variable's type wasn't propagated into the
+// body scope) was left as a raw `SensorStatus`, producing:
+//   error: no match for 'operator==' (operand types are 'SensorStatus' and 'int')
+// Regression guard for the for-of/for-in loop-variable type propagation fix.
+// ---------------------------------------------------------------------------
+describe("Enum comparison across modules", () => {
+  it("casts both sides of an enum equality comparison consistently", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-enum-"));
+    try {
+      const typesPath = path.join(workspaceDir, "SensorTypes.ts");
+      const procPath = path.join(workspaceDir, "SensorProcessor.ts");
+      const mainPath = path.join(workspaceDir, "main.ts");
+
+      fs.writeFileSync(
+        typesPath,
+        [
+          "export enum SensorStatus { Ok = 1, Warning = 2, Error = 3 }",
+          "export class SensorReading {",
+          "  value: number;",
+          "  status: SensorStatus;",
+          "  constructor(value: number, status: SensorStatus) {",
+          "    this.value = value;",
+          "    this.status = status;",
+          "  }",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      fs.writeFileSync(
+        procPath,
+        [
+          'import { SensorReading, SensorStatus } from "./SensorTypes";',
+          'export { SensorStatus } from "./SensorTypes";',
+          "export class SensorProcessor {",
+          "  readings: SensorReading[] = [];",
+          "  addReading(value: number, status: SensorStatus): void {",
+          "    const r = new SensorReading(value, status);",
+          "    this.readings.push(r);",
+          "  }",
+          "  getReadings(): SensorReading[] { return this.readings; }",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      fs.writeFileSync(
+        mainPath,
+        [
+          'import { SensorProcessor, SensorStatus } from "./SensorProcessor";',
+          "function main(): void {",
+          "  const p = new SensorProcessor();",
+          "  p.addReading(10, SensorStatus.Ok);",
+          "  p.addReading(99, SensorStatus.Warning);",
+          "  const readings = p.getReadings();",
+          "  let warnings = 0;",
+          "  for (const r of readings) {",
+          "    if (r.status == SensorStatus.Warning) { warnings++; }",
+          "  }",
+          "  console.log(warnings);",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const result = await transpileFile({
+        inputFile: mainPath,
+        emitMode: "split",
+        target: "native",
+        emitMaps: false,
+      });
+
+      const outDir = path.join(workspaceDir, ".build");
+      const mainCpp = fs.readFileSync(path.join(outDir, "main.cpp"), "utf8");
+
+      // Both operands of the equality must be wrapped in static_cast<int> so
+      // the comparison is int == int, not SensorStatus == int.
+      expect(mainCpp).toContain("static_cast<int>(r->status)");
+      expect(mainCpp).toContain("static_cast<int>(SensorStatus::Warning)");
+      // And the field access must NOT appear un-cast alongside the cast member.
+      expect(mainCpp).not.toContain("r->status == static_cast<int>");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("infers for-of element field types within a single module", () => {
+    // Single-file variant: the loop variable's type must still be propagated
+    // so property accesses on it resolve (here, used in a console.log format).
+    const result = transpileNative(`
+      enum Light { Red, Green }
+      class Sample { state: Light; constructor(s: Light) { this.state = s; } }
+      const items: Sample[] = [new Sample(Light.Red), new Sample(Light.Green)];
+      let greens = 0;
+      for (const it of items) {
+        if (it.state == Light.Green) { greens++; }
+      }
+      console.log(greens);
+    `);
+    // Both sides cast consistently to int.
+    expect(result.cpp).toContain("static_cast<int>(it->state)");
+    expect(result.cpp).toContain("static_cast<int>(Light::Green)");
+    expect(result.cpp).not.toContain("it->state == static_cast<int>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-module interface-typed const — an exported top-level const annotated
+// with an interface defined in (or re-exported by) another file must emit
+// exactly one extern + one definition using the interface's C++ struct type.
+// Previously the transpiler synthesized a local `struct _name_t { ... }` and
+// emitted a SECOND, conflicting struct, extern and definition, producing:
+//   Config.h:  struct _DEFAULT_t { ... };  extern _DEFAULT_t DEFAULT;
+//              extern const ThresholdConfig DEFAULT;          // from extern block
+//   Config.cpp: struct _DEFAULT_t { ... } DEFAULT = { ... };  // redefinition
+// Regression guard for the statement-renderer + emitPostClassDeclarations fix.
+// ---------------------------------------------------------------------------
+describe("Cross-module interface-typed const", () => {
+  it("emits a single extern + definition using the interface struct", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-iface-"));
+    try {
+      const configPath = path.join(workspaceDir, "Config.ts");
+      const svcPath = path.join(workspaceDir, "Service.ts");
+      const mainPath = path.join(workspaceDir, "main.ts");
+
+      fs.writeFileSync(
+        configPath,
+        [
+          "export interface ThresholdConfig { low: number; high: number; }",
+          "export const DEFAULT: ThresholdConfig = { low: 10, high: 100 };",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      fs.writeFileSync(
+        svcPath,
+        [
+          'import { ThresholdConfig } from "./Config";',
+          "export class Service {",
+          "  private limit: number;",
+          "  constructor(limit: number) { this.limit = limit; }",
+          "  isWithin(cfg: ThresholdConfig): boolean {",
+          "    return cfg.low <= this.limit && this.limit <= cfg.high;",
+          "  }",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      fs.writeFileSync(
+        mainPath,
+        [
+          'import { Service } from "./Service";',
+          'import { DEFAULT } from "./Config";',
+          "function main(): void {",
+          "  const s = new Service(50);",
+          "  console.log(s.isWithin(DEFAULT));",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      await transpileFile({
+        inputFile: mainPath,
+        emitMode: "split",
+        target: "native",
+        emitMaps: false,
+      });
+
+      const outDir = path.join(workspaceDir, ".build");
+      const configHeader = fs.readFileSync(path.join(outDir, "Config.h"), "utf8");
+      const configCpp = fs.readFileSync(path.join(outDir, "Config.cpp"), "utf8");
+
+      // Exactly ONE extern, using the interface struct type (not a synthesized struct).
+      const externMatches = configHeader.match(/extern\s+const\s+ThresholdConfig\s+DEFAULT\s*;/g) ?? [];
+      expect(externMatches.length).toBe(1);
+      expect(configHeader).not.toContain("_DEFAULT_t");
+
+      // Exactly ONE definition in the cpp, using the interface struct type.
+      const defMatches = configCpp.match(/const\s+ThresholdConfig\s+DEFAULT\s*=/g) ?? [];
+      expect(defMatches.length).toBe(1);
+      expect(configCpp).not.toContain("_DEFAULT_t");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes an interface defined in another file as a parameter type", async () => {
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-iface-param-"));
+    try {
+      const configPath = path.join(workspaceDir, "Config.ts");
+      const svcPath = path.join(workspaceDir, "Service.ts");
+      const mainPath = path.join(workspaceDir, "main.ts");
+
+      fs.writeFileSync(
+        configPath,
+        [
+          "export interface ThresholdConfig { low: number; high: number; }",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      fs.writeFileSync(
+        svcPath,
+        [
+          'import { ThresholdConfig } from "./Config";',
+          "export class Service {",
+          "  isWithin(cfg: ThresholdConfig, limit: number): boolean {",
+          "    return cfg.low <= limit && limit <= cfg.high;",
+          "  }",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      fs.writeFileSync(
+        mainPath,
+        [
+          'import { Service } from "./Service";',
+          "function main(): void {",
+          "  const s = new Service();",
+          "  console.log(s.isWithin({ low: 1, high: 9 }, 5));",
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      await transpileFile({
+        inputFile: mainPath,
+        emitMode: "split",
+        target: "native",
+        emitMaps: false,
+      });
+
+      const outDir = path.join(workspaceDir, ".build");
+      const svcHeader = fs.readFileSync(path.join(outDir, "Service.h"), "utf8");
+
+      // The imported interface must be recognized (not lowered to a local struct).
+      expect(svcHeader).toContain("isWithin(const ThresholdConfig& cfg");
+      expect(svcHeader).not.toContain("struct _cfg_t");
+    } finally {
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+    }
   });
 });

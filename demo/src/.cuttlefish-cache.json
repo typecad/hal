@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "toolchainFingerprint": "a3183ec4ee64e844",
+  "rootDir": "C:\\typecad\\typecode\\demo\\src",
+  "files": {
+    "C:\\typecad\\typecode\\demo\\src\\models\\SensorTypes.ts": {
+      "hash": "f050320acfb2299f",
+      "mtime": 1781413792620.1067,
+      "size": 389,
+      "dependencies": [],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorTypes.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorTypes.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorTypes.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorTypes.h.thcppmap.json"
+      ]
+    },
+    "C:\\typecad\\typecode\\demo\\src\\services\\SensorProcessor.ts": {
+      "hash": "7098d7cf3da3216d",
+      "mtime": 1781413813320.7842,
+      "size": 2584,
+      "dependencies": [
+        "C:\\typecad\\typecode\\demo\\src\\models\\SensorTypes.ts"
+      ],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorProcessor.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorProcessor.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorProcessor.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\SensorProcessor.h.thcppmap.json"
+      ]
+    },
+    "C:\\typecad\\typecode\\demo\\src\\main.ts": {
+      "hash": "0ec8a3545d4a22a5",
+      "mtime": 1781413830869.1792,
+      "size": 1642,
+      "dependencies": [
+        "C:\\typecad\\typecode\\demo\\src\\services\\SensorProcessor.ts",
+        "C:\\typecad\\typecode\\demo\\src\\models\\SensorTypes.ts"
+      ],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.h.thcppmap.json"
+      ]
+    }
+  },
+  "createdAt": 1781413842005,
+  "updatedAt": 1781413843296
+}

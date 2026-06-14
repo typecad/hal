@@ -95,6 +95,11 @@ export function appendRenderedStatement(
     appendSourceLine(ctx, `${indent}${rendered}`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
     appendSourceLine(ctx, `${indent}{`);
     const nestedScope = cloneEmissionScopeState(scopeState);
+    // Register the loop variable's type in the nested scope so the body can
+    // infer property-access types on it (e.g. for-of element field types).
+    if ((statement.kind === "for_of" || statement.kind === "for_in") && statement.variable.kind === "var_decl") {
+      recordVariableType(statement.variable, nestedScope);
+    }
     if (statement.kind === "for_in" && statement.keys && statement.keys.length > 0 && statement.variable.kind === "var_decl") {
       const objName = statement.object.kind === "identifier" ? statement.object.value : "_obj";
       const idxVar = `_ki_${objName}`;

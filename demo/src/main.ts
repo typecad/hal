@@ -1,108 +1,56 @@
-import { Particle } from './Particle';
-import { randomRange } from './utils';
-import { Star } from './Star';
-import { runExtraTests } from './physics';
+import { SensorProcessor, SensorStatus, calculateMovingAverage, formatReading, clampValue } from "./services/SensorProcessor";
+import { DEFAULT_THRESHOLD } from "./models/SensorTypes";
 
-const VIEWPORT_WIDTH = 80;
-const VIEWPORT_HEIGHT = 25;
-const STAR_COUNT = 30;
-const SIMULATION_STEPS = 100;
+function runSensorMonitor() {
+  const processor = new SensorProcessor(DEFAULT_THRESHOLD);
 
-function createStar(): Star {
-  const x = randomRange(-VIEWPORT_WIDTH, VIEWPORT_WIDTH);
-  const y = randomRange(0, VIEWPORT_HEIGHT);
-  const speed = randomRange(1, 5);
-  const color = randomRange(0, 4);
-  return new Star(x, y, speed, color);
-}
+  console.log("Sensor Monitor Started");
+  console.log("Monitoring: Temperature");
+  console.log("Default threshold: " + DEFAULT_THRESHOLD);
 
-function renderRow(stars: Star[], y: number): string {
-  let output = '';
-  for (let x = 0; x < VIEWPORT_WIDTH; x++) {
-    let char = ' ';
-    for (const star of stars) {
-      if (!star.active) continue;
-      const px = Math.floor(star.position.x);
-      const py = Math.floor(star.position.y);
-      if (px === x && py === y) {
-        if (star.color === 1) char = '+';
-        else if (star.color === 2) char = 'o';
-        else if (star.color === 3) char = '.';
-        else char = '*';
-      }
-    }
-    output += char;
-  }
-  return output;
-}
+  const rawValues: number[] = [22, 25, 30, 45, 85, 100, -1, 28];
 
-function renderFrame(stars: Star[]): void {
-  console.log('\n--- Starfield ---\n');
-  for (let y = 0; y < VIEWPORT_HEIGHT; y++) {
-    console.log(renderRow(stars, y));
-  }
-}
-
-function testArrays(): void {
-  const nums: number[] = [10, 20, 30, 40, 50];
-  let sum = 0;
-  for (const n of nums) {
-    sum += n;
-  }
-  console.log('Array sum: ' + sum);
-}
-
-function testMath(): void {
-  const pi = 3.14159;
-  const radius = 5;
-  const area = pi * radius * radius;
-  console.log('Circle area: ' + area);
-}
-
-function testStringMethods(): void {
-  const text = 'Starfield';
-  const upper = text.toUpperCase();
-  const lower = text.toLowerCase();
-  console.log(upper);
-  console.log(lower);
-}
-
-function simulate(): void {
-  console.log('=== Starfield Simulation Demo ===\n');
-  console.log('Viewport: ' + VIEWPORT_WIDTH + 'x' + VIEWPORT_HEIGHT + '\n');
-
-  const stars: Star[] = [];
-  for (let i = 0; i < STAR_COUNT; i++) {
-    stars.push(createStar());
+  for (const value of rawValues) {
+    processor.addReading(value);
   }
 
-  console.log('Created ' + STAR_COUNT + ' stars\n');
+  const readings = processor.getReadings();
+  console.log("Total readings: " + readings.length);
 
-  for (let step = 0; step < SIMULATION_STEPS; step++) {
-    for (const star of stars) {
-      star.update(VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
-    }
-    if (step % 10 === 0) {
-      renderFrame(stars);
+  const avg = processor.getAverage();
+  console.log("Average value: " + avg);
+
+  const movingAvg = calculateMovingAverage(rawValues, 3);
+  console.log("Moving average count: " + movingAvg.length);
+
+  let warnings = 0;
+  for (const r of readings) {
+    if (r.status == SensorStatus.Warning) {
+      warnings++;
     }
   }
+  console.log("Warnings count: " + warnings);
 
-  const p1 = new Particle(10, 10, 1.5, 0.5);
-  const p2 = new Particle(20, 15, -0.5, 1.0);
-  
-  console.log('\n--- Physics ---\n');
-  console.log('Particle 1 KE: ' + p1.kineticEnergy());
-  console.log('Particle 2 KE: ' + p2.kineticEnergy());
+  const errorCount = processor.countErrors();
+  console.log("Error count: " + errorCount);
 
-  console.log('\n--- Utility Tests ---\n');
-  testArrays();
-  testMath();
-  testStringMethods();
+  const lastIndex = processor.getLastIndex();
+  if (lastIndex >= 0) {
+    console.log("Last reading: " + formatReading(readings[lastIndex]));
+  }
 
-  console.log('\n--- Extra Tests ---\n');
-  runExtraTests();
+  const history = processor.getHistory();
+  console.log("History values: " + history.length);
 
-  console.log('\n--- Demo Complete ---\n');
+  const highReadings = processor.filterAbove(50);
+  console.log("Above 50: " + highReadings.length);
+
+  const normalized = clampValue(150, 0, 100);
+  console.log("Normalized value: " + normalized);
+
+  processor.clear();
+
+  console.log("Sensor Monitor Finished");
 }
 
-simulate();
+runSensorMonitor();
