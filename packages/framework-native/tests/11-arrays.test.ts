@@ -63,10 +63,10 @@ describe("Array push and pop")
   ).toBe(2)
 
 describe("Array indexOf and includes")
-  // KNOWN BUG: arr.indexOf(value) on a number array lowers to __tc_indexOf but
-  // C++ overload resolution picks the std::string overload instead of the
-  // std::vector template, so it fails to compile. Commented out until the
-  // indexOf overload is disambiguated for vector receivers.
+  // KNOWN BUG: indexOf on a number array — the array literal lowers to a
+  // C array (int[3]) which can't bind to the std::vector template overload of
+  // __tc_indexOf, so C++ picks the std::string overload and fails.
+  // Commented out until array literals used with indexOf become vectors.
   .it("indexOf finds element")
   // .expect(
   //   (() => {
@@ -121,9 +121,10 @@ describe("Array map")
       return doubled[1];
     })
   ).toBe(4)
-  // KNOWN BUG: arr.map(...) lowers the result to a C array (int[3]) instead of
-  // a std::vector, so doubled.length → doubled.size() fails to compile. The
-  // doubled[1] case above works because element access is valid on C arrays.
+  // KNOWN BUG: arr.map(...) lowers the result to a C array (int[3]), and
+  // cArrayVarNames isn't populated for generated function scopes, so
+  // doubled.length → doubled.size() (invalid for C arrays). The doubled[1]
+  // case above works because element access is valid on C arrays.
   // .expect(
   //   (() => {
   //     const arr = [1, 2, 3];

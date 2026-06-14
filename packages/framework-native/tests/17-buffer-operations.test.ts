@@ -42,10 +42,9 @@ describe("Buffer operations")
       return buf[0];
     })
   ).toBe(0x12)
-  // KNOWN BUG: buf.length on a Uint8Array (lowered to a C array uint8_t[N])
-  // becomes buf.size(), which fails to compile (C arrays have no .size()).
-  // Same root cause as the .map() result in 11-arrays. Commented out until
-  // .length on C arrays lowers to sizeof/sizeof.
+  // KNOWN BUG: buf.length on a Uint8Array (C array uint8_t[5]) — cArrayVarNames
+  // isn't populated for generated function scopes, so it renders as
+  // buf.size() (invalid for C arrays). Commented out until fixed.
   .it("buffer length in loop")
   // .expect(
   //   (() => {

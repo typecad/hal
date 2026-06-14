@@ -411,6 +411,13 @@ export class StatementRenderer {
   }
 
   private renderVarDecl(statement: Extract<StatementIR, { kind: "var_decl" }>, forHeader: boolean, calleeTransformer?: (callee: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
+    // Register this declaration's type in the active scope so that downstream
+    // expression rendering (e.g. `arr.length` → sizeof for C arrays) can look
+    // up the variable's C++ type. Without this, locals in top-level/generated
+    // functions aren't visible to renderPropertyAccess.
+    if (knownVariableTypes && statement.cppType) {
+      knownVariableTypes.set(statement.name, { cppType: statement.cppType });
+    }
     const declaredType = this.normalizeCppType(statement.cppType);
     const volatilePrefix = statement.isVolatile ? "volatile " : "";
     // Transform type name for Arduino library classes (add namespace prefix)

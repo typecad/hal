@@ -201,7 +201,7 @@ export class ExpressionRenderer {
         rendered = this.renderUnary(expr, exprTransformer);
         break;
       case "property-access":
-        rendered = this.renderPropertyAccess(expr, exprTransformer);
+        rendered = this.renderPropertyAccess(expr, exprTransformer, knownVariableTypes);
         break;
       case "callback":
         rendered = this.renderCallback(expr);
@@ -813,7 +813,7 @@ export class ExpressionRenderer {
     return `${expr.operator}${rendered}`;
   }
 
-  private renderPropertyAccess(expr: Extract<ExpressionIR, { kind: "property-access" }>, exprTransformer?: (expr: string) => string): string {
+  private renderPropertyAccess(expr: Extract<ExpressionIR, { kind: "property-access" }>, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     const chain = extractPropertyChain(expr);
     if (chain) {
       // Check for Board.definition.* access first
@@ -852,13 +852,17 @@ export class ExpressionRenderer {
       if (this.cArrayVarNames?.has(varName)) {
         return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
       }
-      const varInfo = this.knownVariableTypes?.get(varName);
+      const varInfo = knownVariableTypes?.get(varName) ?? this.knownVariableTypes?.get(varName);
       if (varInfo?.cppType.startsWith("__tc_StaticArray")) {
         return `${objStr}.${expr.property}()`;
       }
       // C-style strings (const char*, char*) require strlen().
       if (varInfo?.cppType === "const char*" || varInfo?.cppType === "char*") {
         return `strlen(${objStr})`;
+      }
+      // std::vector<T> exposes .size() (not .length).
+      if (varInfo && varInfo.cppType.startsWith("std::vector<")) {
+        return `${objStr}.size()`;
       }
       // String variable detected via IR scan (Issue 2): std::string exposes length()/size().
       if (this.stringVarNames?.has(varName)) {

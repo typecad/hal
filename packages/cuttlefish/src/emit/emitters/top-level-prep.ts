@@ -99,13 +99,20 @@ function collectCallbackFromExpression(
     rewriteAsIdentifier(expr, callbackName);
     return;
   }
+  // Extract lambda expressions as ISR/callback functions. This is needed for
+  // lambdas passed to HAL methods (onFalling(() => {...})) and other callback
+  // registrations. The ONLY case we must NOT extract is a lambda assigned to a
+  // variable as a value (e.g. `const square = (x) => x*x`), because extracting
+  // it strips the parameter and breaks the call site. That case is guarded by
+  // the caller (collectCallbackFromStatement) which skips var_decl initializers.
   if (expr.kind === "lambda") {
     const callbackName = `${isrPrefix}_isr_${counter.value++}`;
+    const lam = expr as any;
     callbackFunctions.push({
       name: callbackName,
-      params: (expr as any).params ?? [],
-      statements: (expr as any).statements ?? (expr as any).body ?? [],
-      debounceMs: (expr as any).debounceMs,
+      params: lam.params ?? [],
+      statements: lam.statements ?? lam.body ?? [],
+      debounceMs: lam.debounceMs,
     });
     rewriteAsIdentifier(expr, callbackName);
     return;
@@ -157,7 +164,13 @@ function collectCallbacks(
       }
     }
     if (stmt.kind === "var_decl" && stmt.initializer) {
-      collectCallbackFromExpression(stmt.initializer, callbackFunctions, isrPrefix, counter);
+      // A lambda directly assigned to a variable (e.g. `const square = (x) => x*x`)
+      // is a VALUE, not a callback — extracting it strips its parameters and
+      // breaks the call site. Skip direct-lambda initializers, but still
+      // recurse to find callbacks nested inside (e.g. `const f = foo(() => {})`).
+      if (stmt.initializer.kind !== "lambda") {
+        collectCallbackFromExpression(stmt.initializer, callbackFunctions, isrPrefix, counter);
+      }
     }
     if ("body" in stmt && Array.isArray(stmt.body)) {
       collectCallbacks(stmt.body, callbackFunctions, isrPrefix, counter);

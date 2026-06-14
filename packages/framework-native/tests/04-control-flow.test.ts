@@ -26,23 +26,19 @@ describe("Ternary expressions")
   ).toBe(2)
 
 describe("Arrow function")
-  // KNOWN BUG: arrow functions assigned to const (e.g. `const square = (x) => x*x`)
-  // are mis-extracted as ISR handlers (main_isr_N) with their parameter stripped,
-  // so the call fails to compile. The ISR-extraction pass misfires on arrow
-  // function expressions. These two assertions are commented out until fixed.
   .it("arrow function call")
-  // .expect(
-  //   (() => {
-  //     const square = (x: number): number => x * x;
-  //     return square(4);
-  //   })
-  // ).toBe(16)
-  // .expect(
-  //   (() => {
-  //     const square = (x: number): number => x * x;
-  //     return square(7);
-  //   })
-  // ).toBe(49)
+  .expect(
+    (() => {
+      const square = (x: number): number => x * x;
+      return square(4);
+    })
+  ).toBe(16)
+  .expect(
+    (() => {
+      const square = (x: number): number => x * x;
+      return square(7);
+    })
+  ).toBe(49)
 
 describe("For-of loop")
   .it("for-of accumulation")

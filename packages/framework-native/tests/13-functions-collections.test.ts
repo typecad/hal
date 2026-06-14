@@ -22,18 +22,15 @@ describe("Function completeness")
       return plusOne(twice(20));
     })
   ).toBe(41)
-  // KNOWN BUG: function expressions assigned to const are mis-extracted as
-  // ISR handlers (main_isr_N) with the parameter stripped. Same root cause as
-  // 04-control-flow / 12-modules-types. Commented out until fixed.
   .it("function expression assignment")
-  // .expect(
-  //   (() => {
-  //     const adjust = function(value: number): number {
-  //       return value - 2;
-  //     };
-  //     return adjust(44);
-  //   })
-  // ).toBe(42)
+  .expect(
+    (() => {
+      const adjust = function(value: number): number {
+        return value - 2;
+      };
+      return adjust(44);
+    })
+  ).toBe(42)
 
 describe("Collection lowering")
   .it("typed array indexing")
