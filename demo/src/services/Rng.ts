@@ -1,33 +1,40 @@
 // ---------------------------------------------------------------------------
-// Rng.ts — deterministic PRNG.
-// SUPPORT_MATRIX: §4.1 (private static), §5.1 (bitwise), §1.2 (uint32_t).
+// Rng.ts — seeded splitmix32 generator (deterministic).
+//
+// SUPPORT_MATRIX tour:
+//   §1.2  uint32_t pass-through (number→double would break bitwise, §1.3)
+//   §4.1  class with private field, static factory, instance methods
+//   §5.1  bitwise mix (*, ^, <<, >>>)
 // ---------------------------------------------------------------------------
 
 export class Rng {
-  private static state: uint32_t = 0x6D5A56A8;
+  private state: uint32_t;
 
-  public static seed(value: uint32_t): void {
-    Rng.state = (value ^ 0x9E3779B9) & 0xFFFFFFFF;
+  constructor(seed: uint32_t) {
+    this.state = seed === 0 ? 0x9E3779B9 : seed;
   }
 
-  private static next(): uint32_t {
-    let s: uint32_t = Rng.state;
-    s = (s ^ (s << 13)) & 0xFFFFFFFF;
-    s = (s ^ (s >> 17)) & 0xFFFFFFFF;
-    s = (s ^ (s << 5)) & 0xFFFFFFFF;
-    Rng.state = s;
-    return s;
+  static fromSeed(seed: uint32_t): Rng {
+    return new Rng(seed);
   }
 
-  public static nextInt(min: number, max: number): number {
-    if (max <= min) {
-      return min;
-    }
-    const span: uint32_t = (max - min) + 1;
-    return min + (Rng.next() % span);
+  next(): uint32_t {
+    let z: uint32_t = this.state + 0x9E3779B9;
+    this.state = z;
+    z = (z ^ (z >>> 16)) * 0x85EBCA6B;
+    z = (z ^ (z >>> 13)) * 0xC2B2AE35;
+    z = z ^ (z >>> 16);
+    return z >>> 0;
   }
 
-  public static nextUnit(): number {
-    return Rng.next() / 4294967296;
+  // int in [lo, hi] inclusive.
+  range(lo: int16_t, hi: int16_t): int16_t {
+    const span = hi - lo + 1;
+    return (this.next() % span) + lo;
+  }
+
+  // boolean with probability p in [0,1].
+  chance(p: number): boolean {
+    return this.next() / 4294967296 < p;
   }
 }

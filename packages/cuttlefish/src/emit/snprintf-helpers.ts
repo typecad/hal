@@ -109,6 +109,10 @@ export function recordVariableType(statement: VariableDeclarationIR, scopeState:
     floatPrecision: statement.initializer?.kind === "number"
       ? getFloatPrecisionFromNumber(statement.initializer.value)
       : (effectiveCppType === "float" || effectiveCppType === "double") ? findFloatPrecision(statement.initializer) : undefined,
+    // Retain the initializer for auto-deduced locals so the specifier picker
+    // can resolve the real C++ type lazily (e.g. `const name = loot.name`
+    // emits as `auto` but resolves to std::string).
+    initializer: effectiveCppType === "auto" ? statement.initializer : undefined,
   });
 }
 

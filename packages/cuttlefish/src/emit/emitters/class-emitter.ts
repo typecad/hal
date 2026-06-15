@@ -131,23 +131,10 @@ export function emitClasses(ctx: EmitterContext): void {
     }
   }
 
-  // Build variable → accessor map
-  const allVarDecls: { name: string; cppType: string }[] = [];
-  for (const stmt of program.topLevelStatements) {
-    if (stmt.kind === "var_decl") allVarDecls.push(stmt);
-  }
-  for (const fn of mappedFunctions) {
-    for (const stmt of fn.statements) {
-      if (stmt.kind === "var_decl") allVarDecls.push(stmt);
-    }
-  }
-  for (const v of allVarDecls) {
-    const bareType = v.cppType.replace(/\*$/, "").replace(/^const\s+/, "");
-    const accessors = classAccessorNames.get(bareType);
-    if (accessors) {
-      ctx.varAccessorNames.set(v.name, accessors);
-    }
-  }
+  // Build variable → accessor map. NOTE: the variable/parameter registration
+  // now lives in setup.ts so it runs before any emit pass. The classAccessorNames
+  // map built here is still used below for the per-method "this" registration.
+  // See SUPPORT_MATRIX §4.3 (demo #4 fix).
 
   // Build virtual/override maps for inherited methods
   const classMethodNames = new Map<string, Set<string>>();

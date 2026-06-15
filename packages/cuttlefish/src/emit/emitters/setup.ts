@@ -480,6 +480,61 @@ export function buildEmitterContext(
   }
   const varAccessorNames = new Map<string, Map<string, "getter" | "setter" | "both">>();
 
+  // Populate the variable → accessor map BEFORE constructing the renderers so
+  // every emit pass (free functions, class methods, top-level code) sees the
+  // full mapping. A getter read (`hero.alive`) must rewrite to `hero->getAlive()`
+  // regardless of whether `hero` is a local, a free-function parameter, a class
+  // method/ctor parameter, or a top-level binding. Previously only local
+  // var_decls were registered (in class-emitter), which ran too late for the
+  // free-function pass — leaving `hero->alive` unrewritten and failing g++.
+  // See SUPPORT_MATRIX §4.3 (demo #4 fix).
+  {
+    const classAccessorNames = new Map<string, Map<string, "getter" | "setter" | "both">>();
+    for (const classDef of program.classes) {
+      const accessors = new Map<string, "getter" | "setter" | "both">();
+      for (const g of classDef.getters) {
+        accessors.set(g.name, accessors.has(g.name) ? "both" : "getter");
+      }
+      for (const s of classDef.setters) {
+        accessors.set(s.name, accessors.has(s.name) ? "both" : "setter");
+      }
+      if (accessors.size > 0) {
+        classAccessorNames.set(classDef.name, accessors);
+      }
+    }
+    const allVarDecls: { name: string; cppType: string }[] = [];
+    for (const stmt of program.topLevelStatements) {
+      if (stmt.kind === "var_decl") allVarDecls.push(stmt);
+    }
+    for (const fn of mappedFunctions) {
+      for (const stmt of fn.statements) {
+        if (stmt.kind === "var_decl") allVarDecls.push(stmt);
+      }
+      for (const param of fn.parameters) {
+        allVarDecls.push({ name: param.name, cppType: param.cppType });
+      }
+    }
+    for (const cls of program.classes) {
+      for (const method of cls.methods) {
+        for (const param of method.parameters) {
+          allVarDecls.push({ name: param.name, cppType: param.cppType });
+        }
+      }
+      if (cls.constructor) {
+        for (const param of cls.constructor.parameters) {
+          allVarDecls.push({ name: param.name, cppType: param.cppType });
+        }
+      }
+    }
+    for (const v of allVarDecls) {
+      const bareType = v.cppType.replace(/\*$/, "").replace(/^const\s+/, "");
+      const accessors = classAccessorNames.get(bareType);
+      if (accessors) {
+        varAccessorNames.set(v.name, accessors);
+      }
+    }
+  }
+
   const exprRenderer = new ExpressionRenderer({
     strategy,
     boardConstants: program.boardConstants,

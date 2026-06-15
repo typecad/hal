@@ -76,14 +76,23 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
 
   return `{
   "compilerOptions": {
-    "target": "ES2021",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "dom"],
     "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "noPropertyAccessFromIndexSignature": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "noEmit": true${paths}
+    "noEmit": true,
+    "resolveJsonModule": true${paths}
   },
   "include": ["src/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', "cuttlefish-env.d.ts"' : ''}]
 }
@@ -280,19 +289,106 @@ dist/
 }
 
 export function generateEslintConfig(_options: InitProjectOptions): string {
-  return `import tseslint from "@typescript-eslint/eslint-plugin";
-import tsparser from "@typescript-eslint/parser";
+  return `import tsparser from "@typescript-eslint/parser";
+import transpilerPlugin from "./eslint-transpiler-rules.mjs";
+
+// no-restricted-syntax selectors sourced from SUPPORT_MATRIX ❌/🚫 rows.
+const transpilerRules = [
+  {
+    selector: "TaggedTemplateExpression",
+    message:
+      "[transpiler] Tagged template expressions have no C++ equivalent. Use regular template literals or string concatenation.",
+  },
+  {
+    selector: "MetaProperty",
+    message:
+      "[transpiler] import.meta and new.target have no C++ equivalent.",
+  },
+  {
+    selector: "TSEnumBody TSEnumMember Literal[raw=/[^0-9.]/]",
+    message:
+      "[transpiler] String-valued enum members have no C++ equivalent (C++ enums are integer-only). Use integer values or a Map.",
+  },
+  {
+    selector: "VariableDeclaration[kind='var']",
+    message:
+      "[transpiler] var declarations have no C++ equivalent. Use let or const instead.",
+  },
+  {
+    selector: "TSTypeAliasDeclaration > TSTypeReference[typeParameters]",
+    message:
+      "[transpiler] Type aliases to generic types (e.g. type X = Map<K,V>, Set<T>) are not emitted as C++ typedefs and vanish at the use site. Inline the concrete generic form (Map<K,V>) at each use site, or use a named interface.",
+  },
+  {
+    selector: "TSTypeAliasDeclaration > TSFunctionType",
+    message:
+      "[transpiler] Function-type aliases (type Fn = (...) => T) are not emitted as C++ typedefs. Inline the function signature at each use site, or use a named interface with a call signature.",
+  },
+  {
+    selector: "ObjectExpression > Property[computed=true]",
+    message:
+      "[transpiler] Computed property names ({ [expr]: value }) have no C++ equivalent. Use fixed property names, or a Map<string, T> with .set().",
+  },
+  // Matrix-derived ❌/🚫 patterns (SUPPORT_MATRIX §1.2, §1.12, §2.2, §2.6, §5.1, §5.4, §6.2, §7, §1.10).
+  { selector: "TSBigIntKeyword", message: "[transpiler] bigint is not supported (no C++ equivalent for embedded targets). Use number with an explicit fixed-width type." },
+  { selector: "TSNeverKeyword", message: "[transpiler] the \`never\` type has no meaningful C++ lowering. Avoid it." },
+  { selector: "ForOfStatement[await=true]", message: "[transpiler] for await...of is unsupported (requires an async runtime absent on bare metal)." },
+  { selector: "Identifier[name='Promise']", message: "[transpiler] Promise is not supported (no promise runtime on bare metal)." },
+  { selector: "CallExpression > MemberExpression.callee[property.name='then']", message: "[transpiler] .then() on a Promise is not supported (no promise runtime)." },
+  { selector: "FunctionDeclaration[async=true]", message: "[transpiler] async functions cannot produce correct embedded behavior (no event loop)." },
+  { selector: "FunctionExpression[async=true]", message: "[transpiler] async function expressions cannot produce correct embedded behavior (no event loop)." },
+  { selector: "ArrowFunctionExpression[async=true]", message: "[transpiler] async arrow functions cannot produce correct embedded behavior (no event loop)." },
+  { selector: "AwaitExpression", message: "[transpiler] await semantics are approximate; no event loop on bare metal. Avoid." },
+  { selector: "FunctionDeclaration[generator=true]", message: "[transpiler] generator functions (function*) have no coroutine runtime on bare metal. Avoid." },
+  { selector: "FunctionExpression[generator=true]", message: "[transpiler] generator expressions (function*) have no coroutine runtime on bare metal. Avoid." },
+  { selector: "YieldExpression", message: "[transpiler] yield lowers to co_yield but no coroutine runtime is wired. Avoid." },
+  { selector: "BinaryExpression[operator='**']", message: "[transpiler] the ** operator is not a first-class emit. Use Math.pow()." },
+  { selector: "MemberExpression[object.name='JSON']", message: "[transpiler] JSON.* is not supported (no JSON runtime on bare metal)." },
+  { selector: "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(assign|freeze|fromEntries)$/]", message: "[transpiler] Object.assign/freeze/fromEntries are not lowered to C++." },
+  { selector: "ImportExpression", message: "[transpiler] dynamic import() is unsupported (no runtime loader on bare metal). Use a static top-level import." },
+  { selector: "CallExpression[callee.name='require']", message: "[transpiler] require() is unsupported. Use ES \`import\`." },
+  { selector: "BinaryExpression[operator='instanceof']", message: "[transpiler] instanceof has no RTTI lowering and is treated loosely. Avoid it for user-class hierarchies." },
+  { selector: "TSEnumDeclaration[const!=true]", message: "[transpiler] only 'const enum' is supported. Add the \`const\` keyword." },
+];
 
 export default [
+  {
+    ignores: ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "out/**"],
+  },
   {
     files: ["src/**/*.ts"],
     languageOptions: {
       parser: tsparser,
     },
     plugins: {
-      "@typescript-eslint": tseslint,
+      cuttlefish: transpilerPlugin,
     },
-    rules: {},
+    rules: {
+      "no-restricted-syntax": ["error", ...transpilerRules],
+      // Core ESLint + @typescript-eslint AOT-safety rules.
+      "@typescript-eslint/no-explicit-any": "error",
+      "no-delete-var": "error",
+      "no-eval": "error",
+      "no-sparse-arrays": "error",
+      "no-restricted-globals": [
+        "error",
+        { "name": "Proxy", "message": "[transpiler] Proxy is not supported (no AOT lowering). Avoid." },
+        { "name": "Reflect", "message": "[transpiler] Reflect is not supported (no AOT lowering). Avoid." },
+      ],
+      // Cuttlefish transpiler-compatibility plugin rules.
+      "cuttlefish/no-delete-non-map": "error",
+      "cuttlefish/no-object-static-non-map": "error",
+      "cuttlefish/no-super-outside-method": "error",
+      "cuttlefish/no-typeof-non-primitive": "error",
+      "cuttlefish/no-destructured-without-init": "error",
+      "cuttlefish/no-fractional-to-number-type": "error",
+      "cuttlefish/no-array-param-content-mutation": "error",
+      "cuttlefish/no-container-functional-methods": "error",
+      "cuttlefish/no-undefined-compare-on-get": "error",
+      "cuttlefish/no-typed-array-param-length": "error",
+      "cuttlefish/no-typed-array-return": "error",
+      "cuttlefish/no-dynamic-property-access": "error",
+    },
   },
 ];
 `;

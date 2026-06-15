@@ -989,12 +989,26 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
 
     return {
-      kind: "method-call", 
-      callee: calleeText, 
+      kind: "method-call",
+      callee: calleeText,
       args: argIRs,
       isStatic,
       isNamespace,
-      isPointer: calleeText.includes("->"),
+      // isPointer when the callee text already uses ->, OR when the receiver
+      // resolves to a pointer type. The receiver is the object the method is
+      // called on: for `a.b.c()` it is `a.b`. resolveExprCppType walks
+      // class/interface fields to find the receiver's C++ type; if it ends
+      // with '*' (a class-pointer struct field, e.g. FloorState.monster), the
+      // method call must use ->. Without this, `dungeon.monster.bounty()`
+      // emits `.` and fails g++ ("request for member 'bounty' ... pointer
+      // type"). See SUPPORT_MATRIX §4.5 (demo #4 fix).
+      isPointer: calleeText.includes("->")
+        || (ts.isCallExpression(expr)
+          && ts.isPropertyAccessExpression(expr.expression)
+          && (() => {
+            const receiverType = resolveExprCppType(expr.expression.expression);
+            return !!receiverType && receiverType.endsWith("*");
+          })()),
       restElementType: restParamFunctions.get(calleeText),
       cppType: resolveExprCppType(expr),
     };

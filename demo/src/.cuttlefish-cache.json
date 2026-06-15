@@ -4,9 +4,9 @@
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
     "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts": {
-      "hash": "c027214eae73f856",
-      "mtime": 1781483186964.9597,
-      "size": 932,
+      "hash": "4749163ffc08fa55",
+      "mtime": 1781492906099.1648,
+      "size": 1125,
       "dependencies": [],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Rng.cpp",
@@ -16,9 +16,9 @@
       ]
     },
     "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts": {
-      "hash": "4d23e0a9fd7a6dfd",
-      "mtime": 1781483304732.4077,
-      "size": 1389,
+      "hash": "89d2fb7432031df2",
+      "mtime": 1781496549193.8022,
+      "size": 3531,
       "dependencies": [],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.cpp",
@@ -27,29 +27,44 @@
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.h.thcppmap.json"
       ]
     },
-    "C:\\typecad\\typecode\\demo\\src\\models\\Species.ts": {
-      "hash": "d2f2fcf8e62471dd",
-      "mtime": 1781483212902.9514,
-      "size": 5523,
+    "C:\\typecad\\typecode\\demo\\src\\services\\Crc.ts": {
+      "hash": "b460a47c6facc13f",
+      "mtime": 1781496795242.893,
+      "size": 2481,
       "dependencies": [
-        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
-        "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts"
+        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts"
       ],
       "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Species.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Species.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Species.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Species.h.thcppmap.json"
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Crc.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Crc.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Crc.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Crc.h.thcppmap.json"
+      ]
+    },
+    "C:\\typecad\\typecode\\demo\\src\\models\\Network.ts": {
+      "hash": "d44b3b3ee44c5286",
+      "mtime": 1781496778106.6523,
+      "size": 6218,
+      "dependencies": [
+        "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts",
+        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts"
+      ],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Network.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Network.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Network.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Network.h.thcppmap.json"
       ]
     },
     "C:\\typecad\\typecode\\demo\\src\\main.ts": {
-      "hash": "396cecc1d9f8d55e",
-      "mtime": 1781483380197.9666,
-      "size": 3409,
+      "hash": "e26f9b40286308b2",
+      "mtime": 1781496752990.5925,
+      "size": 4303,
       "dependencies": [
         "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts",
-        "C:\\typecad\\typecode\\demo\\src\\models\\Species.ts",
-        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts"
+        "C:\\typecad\\typecode\\demo\\src\\services\\Crc.ts",
+        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
+        "C:\\typecad\\typecode\\demo\\src\\models\\Network.ts"
       ],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.cpp",
@@ -59,6 +74,6 @@
       ]
     }
   },
-  "createdAt": 1781483985869,
-  "updatedAt": 1781483987049
+  "createdAt": 1781496817115,
+  "updatedAt": 1781496818418
 }

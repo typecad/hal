@@ -9,6 +9,13 @@
 export interface KnownVariableInfo {
   cppType: string;
   floatPrecision?: number;
+  /**
+   * The initializer expression for `auto`-deduced locals, retained so the
+   * snprintf specifier picker can infer the real C++ type (e.g. resolve
+   * `const name = loot.name` to `std::string` even though the decl emits as
+   * `auto`). Undefined for explicitly-typed decls and parameters.
+   */
+  initializer?: import('./ir-core').ExpressionIR;
 }
 
 export interface SnprintfArgRenderResult {

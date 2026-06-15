@@ -472,5 +472,368 @@ export default {
         };
       },
     },
+
+    // -------------------------------------------------------------------------
+    // A2: .forEach / .map / .filter / .reduce / .find / .some / .every on a
+    // Map/Set/Record. std::map and std::set have no such methods in C++, and
+    // the transpiler's forEach inlining only covers arrays (SUPPORT_MATRIX
+    // §3.5). Chained functional methods also drop lambda params. We detect by
+    // tracking which variables are declared with a Map/Set/Record type and
+    // flagging functional-method calls on them.
+    // -------------------------------------------------------------------------
+    "no-container-functional-methods": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Functional array methods (.forEach/.map/.filter/.reduce/.find/.some/.every) are not lowered on Map/Set/Record — use a for...of loop over a parallel key/value array.",
+        },
+      },
+      create(context) {
+        const FUNCTIONAL_METHODS = new Set([
+          "forEach", "map", "filter", "reduce", "reduceRight",
+          "find", "findIndex", "findLast", "some", "every", "flatMap",
+        ]);
+        // Type names whose lowered C++ form (std::map / std::set) lacks these
+        // functional methods. `Record<K,V>` lowers to std::map.
+        const CONTAINER_TYPE_RE = /^(Map|Set|ReadonlyMap|ReadonlySet|Record|WeakMap|WeakSet)\b/;
+
+        // Map of variable name -> true for variables declared with a container
+        // type annotation (or initialized with `new Map()`/`new Set()`).
+        const containerVars = new Map();
+
+        function typeText(node) {
+          if (!node) return "";
+          if (node.type === "TSTypeAnnotation" && node.typeAnnotation) {
+            return typeText(node.typeAnnotation);
+          }
+          if (node.type === "TSTypeReference" && node.typeName) {
+            return node.typeName.type === "Identifier" ? node.typeName.name : typeText(node.typeName);
+          }
+          if (node.type === "TSMapLikeType") {
+            return "Map";
+          }
+          return "";
+        }
+
+        function markContainerFromInit(name, init) {
+          if (!init) return;
+          // `new Map(...)` / `new Set(...)`
+          if (
+            init.type === "NewExpression" &&
+            init.callee.type === "Identifier" &&
+            CONTAINER_TYPE_RE.test(init.callee.name)
+          ) {
+            containerVars.set(name, true);
+          }
+        }
+
+        function isContainerVar(node) {
+          if (node.type === "Identifier" && containerVars.has(node.name)) {
+            return true;
+          }
+          // Chained call on the result of another functional method, or on a
+          // `.get()`/`.entries()` etc. — these are also not lowered. Catch any
+          // functional method whose receiver is itself a functional-method call.
+          if (
+            node.type === "CallExpression" &&
+            node.callee.type === "MemberExpression" &&
+            FUNCTIONAL_METHODS.has(node.callee.property.name)
+          ) {
+            return true;
+          }
+          return false;
+        }
+
+        return {
+          VariableDeclarator(node) {
+            if (node.id.type !== "Identifier") return;
+            const name = node.id.name;
+            // Type annotation path: `const x: Map<...> = ...`
+            if (node.id.typeAnnotation) {
+              const t = typeText(node.id.typeAnnotation);
+              if (CONTAINER_TYPE_RE.test(t)) {
+                containerVars.set(name, true);
+                return;
+              }
+            }
+            // Initializer path: `const x = new Map()`
+            markContainerFromInit(name, node.init);
+          },
+          CallExpression(node) {
+            const callee = node.callee;
+            if (
+              callee.type !== "MemberExpression" ||
+              callee.computed ||
+              callee.property.type !== "Identifier" ||
+              !FUNCTIONAL_METHODS.has(callee.property.name)
+            ) {
+              return;
+            }
+            if (isContainerVar(callee.object)) {
+              context.report({
+                node,
+                message:
+                  "[transpiler] ." + callee.property.name +
+                  "() is not lowered on Map/Set/Record (the C++ std::map/std::set has no such method, and lambda params are dropped). " +
+                  "Iterate a parallel key array with for...of instead.",
+              });
+            }
+          },
+        };
+      },
+    },
+
+    // -------------------------------------------------------------------------
+    // A6: `=== undefined` / `!== undefined` (and == / != null) on the result
+    // of a container .get() call. The transpiler flattens T | undefined to T
+    // (SUPPORT_MATRIX §1.8) and lowers `undefined` to the CUTTLEFISH_UNDEFINED
+    // macro (= 0). Comparing a struct-typed .get() result to 0 fails to
+    // compile ("no match for operator=="). Use .has(key) before .get(key).
+    // -------------------------------------------------------------------------
+    "no-undefined-compare-on-get": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Comparing a .get() result to undefined/null does not lower to valid C++ (struct-vs-int). Guard with .has() instead.",
+        },
+      },
+      create(context) {
+        const UNDEF_NULL_OPS = new Set([
+          "==", "!=", "===", "!==",
+        ]);
+
+        function isUndefinedOrNull(node) {
+          if (node.type === "Identifier" && (node.name === "undefined" || node.name === "null")) {
+            return true;
+          }
+          if (node.type === "Literal" && node.value === null) {
+            return true;
+          }
+          return false;
+        }
+
+        function isGetCall(node) {
+          return (
+            node.type === "CallExpression" &&
+            node.callee.type === "MemberExpression" &&
+            !node.callee.computed &&
+            node.callee.property.type === "Identifier" &&
+            (node.callee.property.name === "get" || node.callee.property.name === "at")
+          );
+        }
+
+        return {
+          BinaryExpression(node) {
+            if (!UNDEF_NULL_OPS.has(node.operator)) return;
+            const leftUndef = isUndefinedOrNull(node.left);
+            const rightUndef = isUndefinedOrNull(node.right);
+            if (!leftUndef && !rightUndef) return;
+            const otherSide = leftUndef ? node.right : node.left;
+            if (isGetCall(otherSide)) {
+              context.report({
+                node,
+                message:
+                  "[transpiler] Comparing ." + otherSide.callee.property.name +
+                  "() to undefined/null does not lower to valid C++ (the optional is flattened to T and compared to 0). " +
+                  "Guard with .has(key) before calling .get(key).",
+              });
+            }
+          },
+        };
+      },
+    },
+
+    // -------------------------------------------------------------------------
+    // .length on a typed-array (Uint8Array/Int16Array/Float32Array/...)
+    // PARAMETER. Such parameters lower to raw C pointers (uint8_t*), which
+    // decay and lose their element count. The .length lowering
+    // (sizeof(arr)/sizeof(arr[0])) is only valid on stack arrays, not on
+    // pointer parameters — it emits `param.size()` or a garbage sizeof ratio.
+    // Pass the length as an explicit number parameter instead.
+    // (SUPPORTED: .length on a locally-declared typed array still works.)
+    // -------------------------------------------------------------------------
+    "no-typed-array-param-length": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] .length on a typed-array parameter does not lower to valid C++ (the parameter decays to a raw pointer). Pass the length explicitly.",
+        },
+      },
+      create(context) {
+        const TYPED_ARRAYS = new Set([
+          "Uint8Array", "Int8Array", "Uint16Array", "Int16Array",
+          "Uint32Array", "Int32Array", "Float32Array", "Float64Array",
+          "BigUint64Array", "BigInt64Array",
+        ]);
+
+        // Collect names of function/method parameters whose type annotation
+        // is a typed array.
+        const typedArrayParams = new Set();
+
+        function isTypedArrayTypeAnnotation(typeAnnotation) {
+          if (!typeAnnotation) return false;
+          let t = typeAnnotation;
+          if (t.type === "TSTypeAnnotation") t = t.typeAnnotation;
+          if (t && t.type === "TSTypeReference" && t.typeName.type === "Identifier") {
+            return TYPED_ARRAYS.has(t.typeName.name);
+          }
+          return false;
+        }
+
+        function registerParams(params) {
+          for (const p of params) {
+            if (p.type === "Identifier" && isTypedArrayTypeAnnotation(p.typeAnnotation)) {
+              typedArrayParams.add(p.name);
+            }
+          }
+        }
+
+        return {
+          FunctionDeclaration: (node) => registerParams(node.params),
+          FunctionExpression: (node) => registerParams(node.params),
+          ArrowFunctionExpression: (node) => registerParams(node.params),
+          MemberExpression(node) {
+            // `param.length` where param is a typed-array parameter.
+            if (
+              !node.computed &&
+              node.object.type === "Identifier" &&
+              typedArrayParams.has(node.object.name) &&
+              node.property.type === "Identifier" &&
+              node.property.name === "length"
+            ) {
+              context.report({
+                node,
+                message:
+                  "[transpiler] ." + node.object.name +
+                  ".length on a typed-array parameter does not lower to valid C++ " +
+                  "(the parameter decays to a raw pointer and loses its count). " +
+                  "Pass the length as an explicit number parameter.",
+              });
+            }
+          },
+        };
+      },
+    },
+
+    // -------------------------------------------------------------------------
+    // A function/method that RETURNS a typed array (Uint8Array/Int16Array/...).
+    // Such a return lowers to a pointer to a stack-local C array, which dangles
+    // the moment the function returns — the caller dereferences freed stack
+    // memory (undefined behavior, often a crash). TS typed arrays are heap
+    // objects with value semantics; the C-style lowering can't model that.
+    // Write into a caller-provided output array (out-param) instead.
+    // -------------------------------------------------------------------------
+    "no-typed-array-return": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Returning a typed array dangles (it lowers to a pointer to a stack-local C array). Use an out-parameter instead.",
+        },
+      },
+      create(context) {
+        const TYPED_ARRAYS = new Set([
+          "Uint8Array", "Int8Array", "Uint16Array", "Int16Array",
+          "Uint32Array", "Int32Array", "Float32Array", "Float64Array",
+          "BigUint64Array", "BigInt64Array",
+        ]);
+
+        function isTypedArrayAnnotation(typeAnnotation) {
+          if (!typeAnnotation) return false;
+          let t = typeAnnotation;
+          if (t.type === "TSTypeAnnotation") t = t.typeAnnotation;
+          if (t && t.type === "TSTypeReference" && t.typeName.type === "Identifier") {
+            return TYPED_ARRAYS.has(t.typeName.name);
+          }
+          return false;
+        }
+
+        function checkReturnType(node) {
+          // Declared return type annotation on a function/method.
+          if (node.returnType && isTypedArrayAnnotation(node.returnType)) {
+            context.report({
+              node: node.returnType,
+              message:
+                "[transpiler] Returning a typed array dangles in C++ (the array is a stack-local that is destroyed when the function returns; the caller gets a wild pointer). " +
+                "Write into a caller-provided output-array parameter instead.",
+            });
+          }
+        }
+
+        return {
+          FunctionDeclaration: checkReturnType,
+          FunctionExpression: checkReturnType,
+          ArrowFunctionExpression: checkReturnType,
+        };
+      },
+    },
+
+    // -------------------------------------------------------------------------
+    // Dynamic string-key property access: obj["key"] on a non-map variable.
+    // The transpiler supports numeric indexing (arr[0], grid[y][x]) and
+    // map/struct associative access (map["key"] per SUPPORT_MATRIX §1.5), but
+    // dynamic string-key access on a plain struct/interface has no reliable
+    // lowering. We allow:
+    //   - numeric index access (arr[0], bytes[i]) — the property is a Literal
+    //     with a number value;
+    //   - access on identifiers whose name looks map-like (capitalized, or
+    //     `this`) — mirrors the no-delete-non-map heuristic;
+    //   - access on a known typed-array/Uint8Array variable.
+    // Everything else computed (`obj[someStringVar]`, `obj["dynamic"]) is
+    // rejected. This is the scoped replacement for the blanket
+    // `MemberExpression[computed=true]` selector, which would wrongly reject
+    // `arr[0]`.
+    // -------------------------------------------------------------------------
+    "no-dynamic-property-access": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Dynamic string-key property access (obj[key]) on non-map types is not reliably lowered. Use a Map or a numeric index.",
+        },
+      },
+      create(context) {
+        function isNumericLiteral(node) {
+          return (
+            node.type === "Literal" &&
+            (typeof node.value === "number" || /^-?\d+$/.test(String(node.value)))
+          );
+        }
+        function isStringLiteral(node) {
+          return node.type === "Literal" && typeof node.value === "string";
+        }
+        return {
+          "MemberExpression[computed=true]"(node) {
+            // Numeric index access (arr[0]) is always allowed.
+            if (isNumericLiteral(node.property)) return;
+            // Variable / expression index (arr[i], grid[y], map[getKey()]) is
+            // allowed: numeric loop-counter indexing is the overwhelmingly
+            // common case, and map/struct associative access is supported
+            // (SUPPORT_MATRIX §1.5). The linter has no type info to distinguish
+            // a numeric variable from a string variable, so we don't reject
+            // Identifier/computed indexes — only literal string keys below.
+            if (!isStringLiteral(node.property)) return;
+            // A literal string key on a map-like / this receiver is fine
+            // (map["key"], this["field"]).
+            if (
+              node.object.type === "Identifier" &&
+              (MAP_LIKE_RE.test(node.object.name) || node.object.name === "this")
+            ) {
+              return;
+            }
+            // A literal string key on a non-map (struct["field"]) is the risky
+            // case — it has no reliable lowering for a plain struct/interface.
+            context.report({
+              node,
+              message:
+                "[transpiler] dynamic string-key access (obj[\"key\"]) on non-map types is not reliably lowered. Use a Map<string, T> for dynamic keys, or a numeric index for arrays.",
+            });
+          },
+        };
+      },
+    },
   },
 };

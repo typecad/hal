@@ -322,7 +322,50 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   // This handles cases like `const arr = [runtimeVar1, runtimeVar2]` where the
   // array literal itself looks compile-time (identifiers are not "runtime expressions")
   // but it references variables that will only exist inside main().
+  //
+  // Additionally, a compile-time `const`/`let` that reads a top-level variable
+  // which is MUTATED at runtime (any `assign` target) must also be demoted.
+  // Otherwise the hoisted global captures the variable's startup value and never
+  // sees runtime mutations — e.g. `const reached = descended` freezes `reached`
+  // at `descended`'s initial value because both are emitted as file-scope globals
+  // initialized before main(), while the `descended = depth` assignments run
+  // inside main(). See SUPPORT_MATRIX §6.1.
   {
+    // Collect every variable name that is the target of an assignment anywhere
+    // in the program (top-level statements + function/method bodies). Such
+    // names carry runtime-dependent values even if their declaration looked
+    // compile-time (e.g. `let descended = 0`).
+    const mutatedNames = new Set<string>();
+    const scanStmtForAssigns = (stmt: any): void => {
+      if (!stmt || typeof stmt !== 'object' || !stmt.kind) return;
+      if (stmt.kind === "assign" && typeof stmt.target === "string") {
+        mutatedNames.add(stmt.target);
+      }
+      for (const key of Object.keys(stmt)) {
+        if (key === "kind" || key === "loc" || key === "range" || key === "sourceSpan") continue;
+        const val = stmt[key];
+        if (Array.isArray(val)) {
+          for (const item of val) {
+            if (item && typeof item === 'object') scanStmtForAssigns(item);
+          }
+        } else if (val && typeof val === 'object') {
+          scanStmtForAssigns(val);
+        }
+      }
+    };
+    for (const stmt of program.topLevelStatements) scanStmtForAssigns(stmt);
+    for (const fn of program.functions) {
+      for (const stmt of fn.statements) scanStmtForAssigns(stmt);
+    }
+    for (const cls of program.classes) {
+      for (const method of cls.methods) {
+        for (const stmt of method.statements) scanStmtForAssigns(stmt);
+      }
+      if (cls.constructor) {
+        for (const stmt of cls.constructor.statements) scanStmtForAssigns(stmt);
+      }
+    }
+
     const runtimeVarNames = new Set<string>();
     for (const stmt of topLevelExecutables) {
       if (stmt.kind === "var_decl") {
@@ -338,7 +381,9 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
         if (demoted.has(stmt.name)) continue;
         const referenced = collectExpressionIdentifiers(stmt.initializer);
         for (const ref of referenced) {
-          if (runtimeVarNames.has(ref)) {
+          // Demote if the reference is to a runtime-classified var OR to any
+          // mutated name (its value depends on runtime assignments).
+          if (runtimeVarNames.has(ref) || mutatedNames.has(ref)) {
             demoted.add(stmt.name);
             runtimeVarNames.add(stmt.name);
             changed = true;

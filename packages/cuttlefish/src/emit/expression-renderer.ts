@@ -513,7 +513,13 @@ export class ExpressionRenderer {
 
     for (const part of parts) {
       if (part.kind === "string") {
-        formatString += part.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+        // Escape literal text for the snprintf format string. Backslash/quote
+        // escapes are for the C string literal; the % → %% escape is for
+        // snprintf itself, since a bare % in the format string starts a
+        // conversion specifier (e.g. `hp=${x}%` would otherwise emit
+        // "hp=%.15g%" — a dangling conversion). MUST run before the other
+        // escapes so the doubled %% isn't itself touched.
+        formatString += part.value.replace(/%/g, "%%").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
         estimatedLength += part.value.length;
         continue;
       }
@@ -634,7 +640,20 @@ export class ExpressionRenderer {
         if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t") {
           return { format: "%d", arg: expr.value, estimatedLength: 12 };
         }
-        if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t" || cppType === "auto") {
+        // auto-deduced local: infer the real type from the retained initializer
+        // before falling back. Treating `auto` as `%ld` is wrong for locals
+        // deduced from a string/enum/float expression (e.g.
+        // `const name = loot.name` → std::string). Re-dispatch through the
+        // general inference path so the proper specifier is chosen.
+        if (cppType === "auto" && knownVar?.initializer) {
+          const inferredFromInit = this.inferFormatSpecifier(knownVar.initializer, exprTransformer, knownVariableTypes);
+          if (inferredFromInit) {
+            // Replace the placeholder arg with the local variable name, since
+            // the initializer's rendered form would re-evaluate side effects.
+            return { ...inferredFromInit, arg: expr.value };
+          }
+        }
+        if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t") {
           return { format: "%ld", arg: expr.value, estimatedLength: 12 };
         }
         if (cppType === "long long" || cppType === "unsigned long long" || cppType === "int64_t" || cppType === "uint64_t") {
@@ -734,6 +753,70 @@ export class ExpressionRenderer {
   }
 
   /**
+   * Render an expression value that will be assigned to a non-enum lvalue,
+   * passed as a non-enum argument, or otherwise consumed where C++ `enum class`
+   * won't implicitly convert. If the value is a numeric-enum operand, wrap it
+   * in `static_cast<int>(...)` so it composes with int-typed targets (e.g.
+   * `links[0] = LinkFlag.Wired` → `links[0] = static_cast<int>(LinkFlag::Wired)`).
+   * String-enum operands are passed through unchanged (they're `const char*`).
+   *
+   * This is the assignment/argument-site counterpart to the operator-level
+   * enum wrapping in renderBinary. SUPPORT_MATRIX §1.7: enum values used as
+   * integers need an explicit cast in C++.
+   */
+  public renderEnumSafeValue(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
+    const rendered = this.render(expr, undefined, knownVariableTypes);
+    const inferredType = this.inferExpressionCppType(expr, knownVariableTypes);
+    if (
+      !this.isStringEnumOperand(expr, inferredType) &&
+      this.isEnumComparisonOperand(expr, inferredType)
+    ) {
+      return `static_cast<int>(${rendered})`;
+    }
+    return rendered;
+  }
+
+  /**
+   * Shared enum-operand wrapping for binary operators. Detects whether each
+   * side is a numeric-enum operand (excluding string enums), casts it to int,
+   * and applies defensive symmetry: if exactly one side is an enum, the other
+   * side is also cast so the operator sees `int op int`. Returns the
+   * (possibly rewrapped) left and right strings.
+   *
+   * Used by the arithmetic, bitwise, and comparison branches of renderBinary
+   * so the enum-cast logic lives in one place rather than three.
+   */
+  private castEnumOperandsForOperator(
+    leftExpr: ExpressionIR,
+    rightExpr: ExpressionIR,
+    leftType: string | undefined,
+    rightType: string | undefined,
+    leftRendered: string,
+    rightRendered: string,
+  ): { left: string; right: string; leftIsEnum: boolean; rightIsEnum: boolean } {
+    const leftIsEnum = !this.isStringEnumOperand(leftExpr, leftType) && this.isEnumComparisonOperand(leftExpr, leftType);
+    const rightIsEnum = !this.isStringEnumOperand(rightExpr, rightType) && this.isEnumComparisonOperand(rightExpr, rightType);
+    let left = leftRendered;
+    let right = rightRendered;
+    if (leftIsEnum) {
+      left = `static_cast<int>(${leftRendered})`;
+    }
+    if (rightIsEnum) {
+      right = `static_cast<int>(${rightRendered})`;
+    }
+    // Defensive symmetry: static_cast<int> is always safe on a scalar (enum,
+    // int, double, bool all convert) and produces the matching-type `int op
+    // int` form C++ requires when one side is enum and the other isn't.
+    if (leftIsEnum && !rightIsEnum) {
+      right = `static_cast<int>(${rightRendered})`;
+    }
+    if (rightIsEnum && !leftIsEnum) {
+      left = `static_cast<int>(${leftRendered})`;
+    }
+    return { left, right, leftIsEnum, rightIsEnum };
+  }
+
+  /**
    * Returns true when an expression is a string-enum member access, i.e. it
    * resolves to a `constexpr const char*` (e.g. `Color.Red` where Color is a
    * TS string enum). Such operands must NOT be static_cast<int>'d in
@@ -773,20 +856,29 @@ export class ExpressionRenderer {
       return `pow(${left}, ${right})`;
     }
     // Wrap enum-class operands in static_cast<int>() for arithmetic operators
-    // (+, -, *, /). C++ enum class values don't support arithmetic with int
-    // implicitly, so `trophic - 1` fails to compile. Cast the enum operand(s)
-    // to int. This mirrors the comparison-operator enum handling below.
-    const arithmeticOps = new Set(["+", "-", "*", "/"]);
+    // (+, -, *, /) and bitwise operators (&, |, ^, <<, >>). C++ enum class
+    // values don't interoperate with int implicitly — `trophic - 1`, `a | b`,
+    // `x & MASK` all fail without the cast. SUPPORT_MATRIX §1.7/§5.1. The
+    // shared castEnumOperandsForOperator helper handles detection + defensive
+    // symmetry in one place.
+    const numericOps = new Set(["+", "-", "*", "/", "&", "|", "^", "<<", ">>"]);
     let preLeft = leftRendered;
     let preRight = rightRendered;
-    if (arithmeticOps.has(expr.operator) && expr.operator !== "+") {
-      // Skip "+" because it may be string concatenation (handled by the
-      // wrapStringConcat path above); only numeric arithmetic needs the cast.
-      if (this.isEnumComparisonOperand(expr.left, modLeftType)) {
-        preLeft = `static_cast<int>(${leftRendered})`;
-      }
-      if (this.isEnumComparisonOperand(expr.right, modRightType)) {
-        preRight = `static_cast<int>(${rightRendered})`;
+    if (numericOps.has(expr.operator)) {
+      // For "+", only cast when neither side is string-like — "+" may be
+      // string concatenation (handled by the wrapStringConcat path above),
+      // and casting a string operand to int would be wrong. Numeric "+"
+      // (e.g. `power + rarity`) still needs the enum-side cast. The other
+      // numeric ops are never string concat, so they always qualify.
+      const leftIsStringLike = this.isStringLikeCppType(modLeftType) || expr.left.kind === "string";
+      const rightIsStringLike = this.isStringLikeCppType(modRightType) || expr.right.kind === "string";
+      const isNumericContext = expr.operator !== "+" || (!leftIsStringLike && !rightIsStringLike);
+      if (isNumericContext) {
+        const cast = this.castEnumOperandsForOperator(
+          expr.left, expr.right, modLeftType, modRightType, leftRendered, rightRendered,
+        );
+        preLeft = cast.left;
+        preRight = cast.right;
       }
     }
     // Wrap enum-class operands in static_cast<int>() for comparisons against
@@ -833,32 +925,14 @@ export class ExpressionRenderer {
         return `${finalLeft} ${wantEqual ? "==" : "!="} 0`;
       }
 
-      const leftIsEnumOperand = !leftIsStringEnum && this.isEnumComparisonOperand(expr.left, modLeftType);
-      const rightIsEnumOperand = !rightIsStringEnum && this.isEnumComparisonOperand(expr.right, modRightType);
-      if (leftIsEnumOperand) {
-        finalLeft = `static_cast<int>(${leftRendered})`;
-      }
-      if (rightIsEnumOperand) {
-        finalRight = `static_cast<int>(${rightRendered})`;
-      }
-      // Defensive symmetry: if exactly one side was detected as an enum,
-      // cast the other side too unconditionally. static_cast<int>(...) is
-      // always safe on a scalar operand (enum, int, double, bool all
-      // convert) and produces the required matching-type form for
-      // `enum class` comparisons. The previous condition only cast the
-      // unknown side when its inferred type was undefined/auto/"" — but a
-      // struct field of enum type (e.g. `a.severity` on an `Alarm` struct)
-      // can resolve to the enum name `Severity` via interfaceFieldTypes
-      // WITHOUT isEnumComparisonOperand noticing (it only checks
-      // inferredType-against-enumNames for the whole expression, not for
-      // struct-field-access sub-expressions), leaving one side un-cast and
-      // producing `Severity >= int` errors.
-      if (leftIsEnumOperand && !rightIsEnumOperand) {
-        finalRight = `static_cast<int>(${rightRendered})`;
-      }
-      if (rightIsEnumOperand && !leftIsEnumOperand) {
-        finalLeft = `static_cast<int>(${leftRendered})`;
-      }
+      // After the strcmp path, apply the shared enum-operand cast (with
+      // defensive symmetry). The strcmp path above handles string-valued
+      // operands; this handles numeric-enum operands compared against ints.
+      const cast = this.castEnumOperandsForOperator(
+        expr.left, expr.right, modLeftType, modRightType, leftRendered, rightRendered,
+      );
+      finalLeft = cast.left;
+      finalRight = cast.right;
     }
     // Precedence-aware parenthesization to preserve TS semantics in C++.
     const cppOp = expr.operator === "===" ? "==" : expr.operator === "!==" ? "!=" : expr.operator;
@@ -971,7 +1045,20 @@ export class ExpressionRenderer {
         return `${objStr}->${getterName}()`;
       }
     }
-    const accessor = expr.isPointer ? "->" : ".";
+    // Decide -> vs "." for the member access. Prefer the IR's isPointer flag
+    // (set during IR build for pointer variables / this). When that's absent,
+    // fall back to resolving the object's C++ type: if it's a pointer (ends
+    // with '*'), the access must use ->. This catches struct/interface fields
+    // of class-pointer type (e.g. `dungeon.monster.name` where monster is a
+    // Monster* field) that the IR-build-time isPointer detection misses,
+    // because interface/struct field types aren't visible during IR build.
+    let accessor = expr.isPointer ? "->" : ".";
+    if (accessor === ".") {
+      const objectType = this.inferExpressionCppType(expr.object, knownVariableTypes);
+      if (objectType && objectType.endsWith("*")) {
+        accessor = "->";
+      }
+    }
     const rendered = `${objStr}${accessor}${expr.property}`;
     return rendered;
   }

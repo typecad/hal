@@ -201,6 +201,246 @@ export default {
         };
       },
     },
+
+    "no-fractional-to-number-type": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Fractional literals assigned to 'number'-typed variables/fields are truncated to integers in C++.",
+        },
+      },
+      create(context) {
+        function isNumberType(typeNode) {
+          if (!typeNode) return false;
+          if (typeNode.type === "TSNumberKeyword") return true;
+          if (typeNode.type === "TSTypeAnnotation" && typeNode.typeAnnotation) {
+            return isNumberType(typeNode.typeAnnotation);
+          }
+          return false;
+        }
+        function isFractionalLiteral(node) {
+          if (node.type === "Literal" && typeof node.value === "number") {
+            return !Number.isInteger(node.value);
+          }
+          if (node.type === "UnaryExpression" && node.operator === "-" && node.argument) {
+            return isFractionalLiteral(node.argument);
+          }
+          return false;
+        }
+        function checkFractionalInitializer(node, typeAnnotation, init) {
+          if (!typeAnnotation || !init) return;
+          if (!isNumberType(typeAnnotation)) return;
+          if (!isFractionalLiteral(init)) return;
+          context.report({
+            node,
+            message:
+              "[transpiler] Fractional value " + init.raw +
+              " is truncated when assigned to 'number' type. Use 'double' or 'float' to preserve fractional precision.",
+          });
+        }
+        return {
+          PropertyDefinition(node) {
+            if (node.typeAnnotation && node.value) {
+              checkFractionalInitializer(node, node.typeAnnotation, node.value);
+            }
+          },
+          VariableDeclarator(node) {
+            if (node.id.typeAnnotation && node.init) {
+              checkFractionalInitializer(node, node.id.typeAnnotation, node.init);
+            }
+          },
+        };
+      },
+    },
+
+    "no-array-param-content-mutation": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Mutating an array parameter's contents has no effect in C++ (the parameter is a by-value std::vector copy).",
+        },
+      },
+      create(context) {
+        return {};
+      },
+    },
+
+    "no-container-functional-methods": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Functional array methods (.forEach/.map/.filter/.reduce) are not lowered on Map/Set/Record.",
+        },
+      },
+      create(context) {
+        const FUNCTIONAL_METHODS = new Set([
+          "forEach", "map", "filter", "reduce", "reduceRight",
+          "find", "findIndex", "findLast", "some", "every", "flatMap",
+        ]);
+        const CONTAINER_TYPE_RE = /^(Map|Set|ReadonlyMap|ReadonlySet|Record|WeakMap|WeakSet)\\b/;
+        const containerVars = new Map();
+        function typeText(node) {
+          if (!node) return "";
+          if (node.type === "TSTypeAnnotation" && node.typeAnnotation) return typeText(node.typeAnnotation);
+          if (node.type === "TSTypeReference" && node.typeName) return node.typeName.type === "Identifier" ? node.typeName.name : typeText(node.typeName);
+          if (node.type === "TSMapLikeType") return "Map";
+          return "";
+        }
+        function isContainerVar(node) {
+          if (node.type === "Identifier" && containerVars.has(node.name)) return true;
+          if (node.type === "CallExpression" && node.callee.type === "MemberExpression" && node.callee.property.type === "Identifier" && FUNCTIONAL_METHODS.has(node.callee.property.name)) return true;
+          return false;
+        }
+        return {
+          VariableDeclarator(node) {
+            if (node.id.type !== "Identifier") return;
+            const name = node.id.name;
+            if (node.id.typeAnnotation) {
+              const t = typeText(node.id.typeAnnotation);
+              if (CONTAINER_TYPE_RE.test(t)) { containerVars.set(name, true); return; }
+            }
+            if (node.init && node.init.type === "NewExpression" && node.init.callee.type === "Identifier" && CONTAINER_TYPE_RE.test(node.init.callee.name)) {
+              containerVars.set(name, true);
+            }
+          },
+          CallExpression(node) {
+            const callee = node.callee;
+            if (callee.type !== "MemberExpression" || callee.computed || callee.property.type !== "Identifier" || !FUNCTIONAL_METHODS.has(callee.property.name)) return;
+            if (isContainerVar(callee.object)) {
+              context.report({ node, message: "[transpiler] ." + callee.property.name + "() is not lowered on Map/Set/Record. Iterate a parallel key array with for...of instead." });
+            }
+          },
+        };
+      },
+    },
+
+    "no-undefined-compare-on-get": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Comparing a .get() result to undefined/null does not lower to valid C++.",
+        },
+      },
+      create(context) {
+        const UNDEF_NULL_OPS = new Set(["==", "!=", "===", "!=="]);
+        function isUndefinedOrNull(node) {
+          if (node.type === "Identifier" && (node.name === "undefined" || node.name === "null")) return true;
+          if (node.type === "Literal" && node.value === null) return true;
+          return false;
+        }
+        function isGetCall(node) {
+          return node.type === "CallExpression" && node.callee.type === "MemberExpression" && !node.callee.computed && node.callee.property.type === "Identifier" && (node.callee.property.name === "get" || node.callee.property.name === "at");
+        }
+        return {
+          BinaryExpression(node) {
+            if (!UNDEF_NULL_OPS.has(node.operator)) return;
+            const leftUndef = isUndefinedOrNull(node.left);
+            const rightUndef = isUndefinedOrNull(node.right);
+            if (!leftUndef && !rightUndef) return;
+            const otherSide = leftUndef ? node.right : node.left;
+            if (isGetCall(otherSide)) {
+              context.report({ node, message: "[transpiler] Comparing ." + otherSide.callee.property.name + "() to undefined/null does not lower to valid C++. Guard with .has(key) before .get(key)." });
+            }
+          },
+        };
+      },
+    },
+
+    "no-typed-array-param-length": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] .length on a typed-array parameter does not lower to valid C++.",
+        },
+      },
+      create(context) {
+        const TYPED_ARRAYS = new Set(["Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "BigUint64Array", "BigInt64Array"]);
+        const typedArrayParams = new Set();
+        function isTypedArrayTypeAnnotation(typeAnnotation) {
+          if (!typeAnnotation) return false;
+          let t = typeAnnotation;
+          if (t.type === "TSTypeAnnotation") t = t.typeAnnotation;
+          if (t && t.type === "TSTypeReference" && t.typeName.type === "Identifier") return TYPED_ARRAYS.has(t.typeName.name);
+          return false;
+        }
+        function registerParams(params) {
+          for (const p of params) {
+            if (p.type === "Identifier" && isTypedArrayTypeAnnotation(p.typeAnnotation)) typedArrayParams.add(p.name);
+          }
+        }
+        return {
+          FunctionDeclaration: (node) => registerParams(node.params),
+          FunctionExpression: (node) => registerParams(node.params),
+          ArrowFunctionExpression: (node) => registerParams(node.params),
+          MemberExpression(node) {
+            if (!node.computed && node.object.type === "Identifier" && typedArrayParams.has(node.object.name) && node.property.type === "Identifier" && node.property.name === "length") {
+              context.report({ node, message: "[transpiler] ." + node.object.name + ".length on a typed-array parameter does not lower to valid C++. Pass the length explicitly." });
+            }
+          },
+        };
+      },
+    },
+
+    "no-typed-array-return": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Returning a typed array dangles (lowers to a pointer to a stack-local).",
+        },
+      },
+      create(context) {
+        const TYPED_ARRAYS = new Set(["Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "BigUint64Array", "BigInt64Array"]);
+        function isTypedArrayAnnotation(typeAnnotation) {
+          if (!typeAnnotation) return false;
+          let t = typeAnnotation;
+          if (t.type === "TSTypeAnnotation") t = t.typeAnnotation;
+          if (t && t.type === "TSTypeReference" && t.typeName.type === "Identifier") return TYPED_ARRAYS.has(t.typeName.name);
+          return false;
+        }
+        function checkReturnType(node) {
+          if (node.returnType && isTypedArrayAnnotation(node.returnType)) {
+            context.report({ node: node.returnType, message: "[transpiler] Returning a typed array dangles in C++. Use an out-parameter instead." });
+          }
+        }
+        return {
+          FunctionDeclaration: checkReturnType,
+          FunctionExpression: checkReturnType,
+          ArrowFunctionExpression: checkReturnType,
+        };
+      },
+    },
+
+    "no-dynamic-property-access": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Dynamic string-key property access (obj[key]) on non-map types is not reliably lowered.",
+        },
+      },
+      create(context) {
+        function isNumericLiteral(node) {
+          return node.type === "Literal" && (typeof node.value === "number" || /^-?\\d+$/.test(String(node.value)));
+        }
+        function isStringLiteral(node) {
+          return node.type === "Literal" && typeof node.value === "string";
+        }
+        return {
+          "MemberExpression[computed=true]"(node) {
+            if (isNumericLiteral(node.property)) return;
+            if (!isStringLiteral(node.property)) return;
+            if (node.object.type === "Identifier" && (MAP_LIKE_RE.test(node.object.name) || node.object.name === "this")) return;
+            context.report({ node, message: "[transpiler] dynamic string-key access (obj[\\\"key\\\"]) on non-map types is not reliably lowered. Use a Map<string, T> for dynamic keys, or a numeric index for arrays." });
+          },
+        };
+      },
+    },
   },
 };
 `;
