@@ -353,7 +353,14 @@ export class ExpressionRenderer {
         if (helper) return "std::string";
         if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.callee)) return "bool";
         if (/^__tc_(?:charCodeAt|indexOf|lastIndexOf)\b/.test(expr.callee)) return "int";
-        return expr.cppType ?? this.knownFunctionReturnTypes?.get(expr.callee);
+        if (expr.cppType) return expr.cppType;
+        // Look up the method's return type. The callee text may be a full
+        // receiver chain (`this->methodName`, `obj->methodName`), so strip
+        // any `->` / `.` prefix to get the bare method name, which is how
+        // class method return types are registered in setup.ts.
+        const bareName = expr.callee.replace(/^.*->|^.*\./, "");
+        return this.knownFunctionReturnTypes?.get(expr.callee)
+          ?? this.knownFunctionReturnTypes?.get(bareName);
       }
       case "raw": {
         if (/^std::string\(/.test(expr.value) || /^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/.test(expr.value)) {
@@ -555,7 +562,11 @@ export class ExpressionRenderer {
         const normalized = this.strategy.normalizeCppType(inferredType);
         if (this.isStringLikeCppType(inferredType)) {
           const needsCStr = normalized === "std::string" || normalized === "String" || normalized === "__tc_str_ptr";
-          return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 32 };
+          // std::string operands can be arbitrarily long (a method like
+          // statusLine() may return a 100+ char string), so budget a generous
+          // estimate. The previous value (32) truncated output whenever a
+          // string-returning method was interpolated into a concat.
+          return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 128 };
         }
         if (normalized === "bool") {
           return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
@@ -569,6 +580,13 @@ export class ExpressionRenderer {
           // Use %.15g (not %g) so large integer-valued doubles don't collapse
           // to scientific notation — matches JS Number.toString() more closely.
           return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : "%.15g", arg: rendered, estimatedLength: 16 };
+        }
+        // Enum-typed value (struct field, variable, etc. whose type resolves
+        // to a known numeric enum name). C++ enum class values need
+        // static_cast<int>(...) for %d — without it, -Wformat= warns that
+        // the argument type (enum) doesn't match %d (int).
+        if (this.enumNames.has(normalized) && !this.stringEnumNames.has(normalized)) {
+          return { format: "%d", arg: `static_cast<int>(${rendered})`, estimatedLength: 12 };
         }
         if (/^(?:unsigned\s+)?(?:char|short|int|long|long long)$/.test(normalized) || /^(?:u?int(?:8|16|32|64)_t|size_t)$/.test(normalized)) {
           if (normalized.includes("long long") || /64_t$/.test(normalized)) {
@@ -603,7 +621,7 @@ export class ExpressionRenderer {
         if (this.isStringLikeCppType(cppType)) {
           const normalized = this.strategy.normalizeCppType(cppType ?? "");
           const arg = normalized === "__tc_str_ptr" ? `${expr.value}.c_str()` : expr.value;
-          return { format: "%s", arg, estimatedLength: 32 };
+          return { format: "%s", arg, estimatedLength: 128 };
         }
         if (cppType === "bool") {
           return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5 };
@@ -754,11 +772,28 @@ export class ExpressionRenderer {
       const right = expr.right.kind === "binary" ? `(${rightRendered})` : rightRendered;
       return `pow(${left}, ${right})`;
     }
+    // Wrap enum-class operands in static_cast<int>() for arithmetic operators
+    // (+, -, *, /). C++ enum class values don't support arithmetic with int
+    // implicitly, so `trophic - 1` fails to compile. Cast the enum operand(s)
+    // to int. This mirrors the comparison-operator enum handling below.
+    const arithmeticOps = new Set(["+", "-", "*", "/"]);
+    let preLeft = leftRendered;
+    let preRight = rightRendered;
+    if (arithmeticOps.has(expr.operator) && expr.operator !== "+") {
+      // Skip "+" because it may be string concatenation (handled by the
+      // wrapStringConcat path above); only numeric arithmetic needs the cast.
+      if (this.isEnumComparisonOperand(expr.left, modLeftType)) {
+        preLeft = `static_cast<int>(${leftRendered})`;
+      }
+      if (this.isEnumComparisonOperand(expr.right, modRightType)) {
+        preRight = `static_cast<int>(${rightRendered})`;
+      }
+    }
     // Wrap enum-class operands in static_cast<int>() for comparisons against
     // integers, since C++ enum class values don't compare with int implicitly.
     const comparisonOps = new Set(["==", "===", "!=", "!==", "<", "<=", ">", ">="]);
-    let finalLeft = leftRendered;
-    let finalRight = rightRendered;
+    let finalLeft = preLeft;
+    let finalRight = preRight;
     if (comparisonOps.has(expr.operator)) {
       const leftIsStringEnum = this.isStringEnumOperand(expr.left, modLeftType);
       const rightIsStringEnum = this.isStringEnumOperand(expr.right, modRightType);
@@ -806,19 +841,22 @@ export class ExpressionRenderer {
       if (rightIsEnumOperand) {
         finalRight = `static_cast<int>(${rightRendered})`;
       }
-      // Defensive symmetry: if exactly one side was detected as an enum and the
-      // other side's type is unknown (e.g. a local assigned from a method call
-      // whose enum return type wasn't propagated), cast the unknown side too.
-      // static_cast<int>(...) is always safe on a scalar operand and produces
-      // the required `int == int` form for `enum class` comparisons. This fixes
-      // cases like `const t = this.getTile(); t === TileKind.Wall` where the
-      // local `t` carries an enum value but no inferred type.
-      const isUnknownOrAuto = (t: string | undefined): boolean =>
-        t === undefined || t === "auto" || t === "";
-      if (leftIsEnumOperand && !rightIsEnumOperand && isUnknownOrAuto(modRightType)) {
+      // Defensive symmetry: if exactly one side was detected as an enum,
+      // cast the other side too unconditionally. static_cast<int>(...) is
+      // always safe on a scalar operand (enum, int, double, bool all
+      // convert) and produces the required matching-type form for
+      // `enum class` comparisons. The previous condition only cast the
+      // unknown side when its inferred type was undefined/auto/"" — but a
+      // struct field of enum type (e.g. `a.severity` on an `Alarm` struct)
+      // can resolve to the enum name `Severity` via interfaceFieldTypes
+      // WITHOUT isEnumComparisonOperand noticing (it only checks
+      // inferredType-against-enumNames for the whole expression, not for
+      // struct-field-access sub-expressions), leaving one side un-cast and
+      // producing `Severity >= int` errors.
+      if (leftIsEnumOperand && !rightIsEnumOperand) {
         finalRight = `static_cast<int>(${rightRendered})`;
       }
-      if (rightIsEnumOperand && !leftIsEnumOperand && isUnknownOrAuto(modLeftType)) {
+      if (rightIsEnumOperand && !leftIsEnumOperand) {
         finalLeft = `static_cast<int>(${leftRendered})`;
       }
     }
@@ -854,7 +892,19 @@ export class ExpressionRenderer {
     }
     const objStr = this.render(expr.object, exprTransformer);
     // In C++, 'this' is a pointer — always use -> for member access.
+    // But first: if `this` has a getter for the accessed property, rewrite
+    // to a getter call (`this->getX()`). The class emitter registers the
+    // current class's accessors under the "this" key in varAccessorNames
+    // while emitting each non-static method. This must run before the
+    // plain `this->x` early-return below, otherwise getter access on
+    // `this` is never rewritten (the call site stays as `this->x` and
+    // fails to compile against the generated `getX()` method).
     if (expr.object.kind === "raw" && expr.object.value === "this") {
+      const thisAccessors = this.varAccessorNames.get("this");
+      if (thisAccessors?.has(expr.property)) {
+        const getterName = accessorGetterName(expr.property);
+        return `this->${getterName}()`;
+      }
       return `this->${expr.property}`;
     }
 

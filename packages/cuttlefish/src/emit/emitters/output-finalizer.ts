@@ -212,6 +212,37 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
       }
     }
 
+    // Non-entry split-file headers may contain inline class method bodies
+    // that emit cuttlefish_nullish(...) calls (from `??` lowering). The
+    // helper shim is appended to the .cpp source via appendHelpers above,
+    // but the .h header — which is #included by the entry .cpp and by other
+    // headers — also needs the shim, because the inline method bodies live
+    // in the header. The shim is wrapped in a single #ifndef guard so
+    // emitting it into every non-entry header is safe.
+    //
+    // To decide whether THIS header needs the shim, scan its already-emitted
+    // lines for an actual cuttlefish_nullish( call. The programAnalysis flag
+    // is unreliable here (it's computed per-file before emit, and class
+    // method bodies on abstract bases can produce cuttlefish_nullish calls
+    // the analysis didn't attribute). A post-emit text scan is exact.
+    if (!ctx.isEntryFile && shimLines.length > 0) {
+      const headerNeedsNullish = finalHeaderLines.some(l => l.includes('cuttlefish_nullish('));
+      if (headerNeedsNullish) {
+        let insertIdx = 1;
+        while (insertIdx < finalHeaderLines.length) {
+          const l = finalHeaderLines[insertIdx].trim();
+          // Skip blank lines, includes, comments, and forward declarations
+          // (e.g. `class Foo;`) — these are all preamble.
+          if (l === "" || l.startsWith("#include") || l.startsWith("//") || /^class\s+\w+\s*;$/.test(l)) {
+            insertIdx++;
+            continue;
+          }
+          break;
+        }
+        finalHeaderLines.splice(insertIdx, 0, ...shimLines, "");
+      }
+    }
+
     writeText(headerPath, finalHeaderLines.join("\n").trimEnd() + "\n");
     outputHeaderPath = headerPath;
     if (options.emitMaps) {

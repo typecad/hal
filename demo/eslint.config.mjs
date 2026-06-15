@@ -44,6 +44,7 @@ export default [
       "cuttlefish/no-typeof-non-primitive": "error",
       "cuttlefish/no-destructured-without-init": "error",
       "cuttlefish/no-fractional-to-number-type": "error",
+      "cuttlefish/no-array-param-content-mutation": "error",
     },
   },
 ];

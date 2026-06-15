@@ -207,7 +207,10 @@ export function appendRenderedStatement(
     // token before a closing brace. Without this, g++ warns "label at end of
     // compound statement only available with '-std=c++23'" and (when the label
     // is unused in a particular code path) "label defined but not used".
-    appendSourceLine(ctx, `${indent}__break_${statement.label}: ;`);
+    // The __attribute__((unused)) suppresses the -Wunused-label false
+    // positive (the label IS a goto target from the labelled break, but the
+    // compiler may prove the goto unreachable on some code paths).
+    appendSourceLine(ctx, `${indent}__attribute__((unused)) __break_${statement.label}: ;`);
     emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(ctx, line));
     return;
   }

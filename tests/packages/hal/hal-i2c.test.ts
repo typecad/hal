@@ -356,8 +356,9 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
         const len = values.length;
       `);
   
-      // number[] maps to std::vector<int>, so .length → .size()
-      expect(result.cpp).toContain('values.size()');
+      // number[] maps to std::vector<int>, so .length → .size() (cast to
+      // long long to avoid -Wsign-compare when used in loop conditions)
+      expect(result.cpp).toContain('static_cast<long long>(values.size())');
     });
   
     it('transpiles .length on Uint8Array variable as sizeof expression', () => {

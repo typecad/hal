@@ -303,7 +303,12 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "labeled") {
-        return `${statement.label}:`;
+        // The user's TS label is documentary only — actual control flow
+        // uses `goto __break_<label>`. Emitting it as a bare C++ label
+        // (`label:`) triggers -Wunused-label because no goto targets it
+        // directly. Emit as a comment to preserve the source mapping
+        // without the warning.
+        return `/* ${statement.label}: */`;
       }
 
       if (statement.kind === "yield") {
@@ -628,9 +633,35 @@ export class StatementRenderer {
           ? `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} }`
           : `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} };`;
       }
-      return forHeader 
-        ? `${declaration} = ${this.expressionRenderer.render(statement.initializer, calleeTransformer, knownVariableTypes)}`
-        : `${declaration} = ${this.expressionRenderer.render(statement.initializer, calleeTransformer, knownVariableTypes)};`;
+      // Enum → number implicit conversion. TS lets you write
+      // `const n: number = someEnumValue` (enums are numbers at runtime), but
+      // the lowered C++ `enum class` has no implicit conversion to int, so
+      // the emitted `int n = someEnumValue;` fails to compile. When the
+      // declared type is a numeric C++ type and the initializer is a known
+      // enum value (identifier of enum type, or an enum member access),
+      // wrap the initializer in `static_cast<int>(...)`. Mirrors the existing
+      // enum→int cast in console.log arg rendering above.
+      const isNumericTarget = /^(?:unsigned\s+)?(?:char|short|int|long|long\s+long|double|float)$/.test(declaredType)
+        || /^(?:u?int(?:8|16|32|64)_t|size_t)$/.test(declaredType);
+      const initializerIsEnumValue = (() => {
+        const init = statement.initializer;
+        if (!knownVariableTypes) return false;
+        if (init.kind === "identifier") {
+          const varInfo = knownVariableTypes.get(init.value);
+          return !!varInfo && this.enumNames.has(varInfo.cppType);
+        }
+        if (init.kind === "property-access" && init.isEnum) {
+          return true;
+        }
+        return false;
+      })();
+      const initRendered = this.expressionRenderer.render(statement.initializer, calleeTransformer, knownVariableTypes);
+      const finalInit = (isNumericTarget && initializerIsEnumValue)
+        ? `static_cast<int>(${initRendered})`
+        : initRendered;
+      return forHeader
+        ? `${declaration} = ${finalInit}`
+        : `${declaration} = ${finalInit};`;
     }
 
     return forHeader ? declaration : `${declaration};`;

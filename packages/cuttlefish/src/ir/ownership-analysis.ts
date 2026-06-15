@@ -12,7 +12,7 @@
 // in the program, no diagnostics are generated.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR } from '../api';
+import type { ProgramIR, StatementIR, ExpressionIR, VariableDeclarationIR } from '../api';
 import type { Diagnostic, SourceSpan } from '../types';
 
 /** Compile-time exhaustiveness check for switch statements on IR kinds. */
@@ -871,12 +871,24 @@ function extractBorrowSource(expr: ExpressionIR): string | undefined {
 function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[]): void {
   // Collect all let variable declarations and track assignments
   const letVars = new Map<string, { name: string; everAssigned: boolean; span: SourceSpan }>();
+  // Collect const variable declarations so we can detect when one is mutated
+  // via a method call (e.g. `const arr = []; arr.push(x)`). In TS the binding
+  // is const but the *contents* are mutable; in C++ the emitted `const
+  // std::vector<T>` rejects `.push_back`, so we must demote the binding to
+  // non-const when its contents are mutated.
+  const constVars = new Map<string, { stmt: VariableDeclarationIR; span: SourceSpan }>();
 
   const scanStmtsForLetDecls = (stmts: StatementIR[]): void => {
     for (const stmt of stmts) {
       if (stmt.kind === 'var_decl') {
         if (stmt.storage === 'let') {
           letVars.set(stmt.name, { name: stmt.name, everAssigned: false, span: stmt.sourceSpan });
+        } else if (stmt.storage === 'const') {
+          // Only track const decls whose type can be mutated via a method
+          // (vector/map/string/etc.). Field-of-const-struct mutation isn't a
+          // thing in TS, so this is mainly arrays/maps — track all and let
+          // the mutation scan below decide whether to demote.
+          constVars.set(stmt.name, { stmt, span: stmt.sourceSpan });
         }
       }
       // Recurse into nested statements
@@ -897,6 +909,27 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
       if (stmt.kind === 'assign') {
         const entry = letVars.get(stmt.target);
         if (entry) entry.everAssigned = true;
+        // Element assignment on a `const` array/map (e.g. `arr[i] = x` where
+        // `arr` is `const`) compiles in TS but fails against the emitted
+        // `const std::vector<T>` / `const std::map<K,V>`. Demote the binding
+        // the same way as the method-call mutation path above. The target
+        // string is the lowered C++ lvalue, e.g. `arr[0]` or `m[key]`.
+        const bracket = stmt.target.indexOf('[');
+        if (bracket > 0) {
+          const baseName = stmt.target.slice(0, bracket);
+          const constEntry = constVars.get(baseName);
+          if (constEntry && constEntry.stmt.storage === 'const') {
+            constEntry.stmt.storage = 'let';
+            diagnostics.push({
+              severity: 'info',
+              message: `'${baseName}' is declared 'const' but its contents are mutated via index assignment — demoted to non-const in C++ so the mutation compiles.`,
+              line: constEntry.span.startLine,
+              column: constEntry.span.startColumn,
+              code: 'ownership-const-content-mutated',
+              source: 'ownership-analysis',
+            });
+          }
+        }
       }
       if (stmt.kind === 'update') {
         const entry = letVars.get(stmt.target);
@@ -921,6 +954,24 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
           if (MUTATING_METHODS.has(method)) {
             const entry = letVars.get(receiver);
             if (entry) entry.everAssigned = true;
+            // Demote a `const` binding whose contents are mutated via a
+            // method call: TS permits this, but the emitted
+            // `const std::vector<T>` (or std::map/std::string) rejects
+            // `.push_back`/etc. Flip the IR storage to `let` so the
+            // emitter drops the `const` qualifier, and surface an
+            // info-diagnostic so the rewrite isn't silent.
+            const constEntry = constVars.get(receiver);
+            if (constEntry && constEntry.stmt.storage === 'const') {
+              constEntry.stmt.storage = 'let';
+              diagnostics.push({
+                severity: 'info',
+                message: `'${receiver}' is declared 'const' but its contents are mutated via .${method}() — demoted to non-const in C++ so the mutation compiles.`,
+                line: constEntry.span.startLine,
+                column: constEntry.span.startColumn,
+                code: 'ownership-const-content-mutated',
+                source: 'ownership-analysis',
+              });
+            }
           }
         }
       }

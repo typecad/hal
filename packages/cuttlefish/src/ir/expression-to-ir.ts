@@ -118,7 +118,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         ? activeLocalTypes.get(receiverNode.expression.expression.text)
         : undefined;
       if (returnType === "std::string") return `${safeText}.length()`;
-      return `${safeText}.size()`;
+      // Cast .size() to long long to match the loop-counter type (TS number ->
+      // long long). Without this, `i < vec.size()` compares long long vs
+      // size_t (unsigned) and g++ -Wall warns -Wsign-compare on every
+      // indexed loop over an array.
+      return `static_cast<long long>(${safeText}.size())`;
     }
     // Resolve by concrete cppType first so std::string vars render member calls
     // even when their resolved type is const char* (string-literal initialized).
@@ -139,10 +143,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
       const fieldType = activeLocalTypes.get(`this->${receiverNode.name.text}`);
       if (fieldType === "std::string") return `${safeText}.length()`;
-      if (fieldType && (fieldType.startsWith("std::vector<") || fieldType.startsWith("StaticArray<"))) return `${safeText}.size()`;
+      if (fieldType && (fieldType.startsWith("std::vector<") || fieldType.startsWith("StaticArray<"))) return `static_cast<long long>(${safeText}.size())`;
       return `strlen(${safeText})`;
     }
-    return `${safeText}.size()`;
+    return `static_cast<long long>(${safeText}.size())`;
   }
 
   function renderMemberAccessText(receiverNode: ts.Expression, memberName: string): string {
@@ -151,7 +155,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       (ts.isIdentifier(receiverNode) && receiverNode.text === "this");
     if (isThisAccess) {
       if (memberName === "length") {
-        return `this->size()`;
+        return `static_cast<long long>(this->size())`;
       }
       return `this->${escapedName}`;
     }

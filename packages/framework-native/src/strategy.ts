@@ -27,7 +27,15 @@ export class NativeStrategy implements PlatformStrategy {
     // <cstdint> is needed because DIRECT_CPP_TYPE_MAP (type-resolution.ts)
     // passes int32_t/uint8_t/etc. through verbatim, and the native default
     // include set doesn't otherwise pull in their definitions.
-    return ['<cctype>', '<cstdint>'];
+    //
+    // <vector> and <map> are pulled in unconditionally because the
+    // usage-driven include logic (setup.ts) only adds them when an inline
+    // array/Map *literal* is seen in the IR — but std::vector/std::map can
+    // also appear as a struct field type, function parameter, return type,
+    // or cross-module type with no literal at the use site, which would
+    // leave the type undefined. Including them here is cheap (header only)
+    // and matches how <cstdint> is already justified.
+    return ['<cctype>', '<cstdint>', '<vector>', '<map>', '<set>'];
   }
 
   symbolAliases(): Record<string, string> {
@@ -36,6 +44,14 @@ export class NativeStrategy implements PlatformStrategy {
 
   shimLines(): string[] {
     return [
+      '// cuttlefish runtime shim. Wrapped in a single include guard so the',
+      '// block is safe to emit into multiple headers and .cpp files within',
+      '// one translation unit (a .cpp may #include several headers that each',
+      '// carry the shim, e.g. when a class method body uses `??` which lowers',
+      '// to cuttlefish_nullish(...)). The guard ensures the definitions are',
+      '// seen exactly once per TU.',
+      '#ifndef CUTTLEFISH_SHIM_DEFINED',
+      '#define CUTTLEFISH_SHIM_DEFINED',
       '#ifndef CUTTLEFISH_UNDEFINED',
       '#define CUTTLEFISH_UNDEFINED 0',
       '#endif',
@@ -49,6 +65,7 @@ export class NativeStrategy implements PlatformStrategy {
       'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
       'namespace Date { inline long now() { auto t = std::chrono::system_clock::now(); return (long)std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count(); } }',
       'inline unsigned long millis() { return (unsigned long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }',
+      '#endif // CUTTLEFISH_SHIM_DEFINED',
     ];
   }
 

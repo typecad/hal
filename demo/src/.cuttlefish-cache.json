@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "toolchainFingerprint": "0eb835f818a5ea73",
+  "toolchainFingerprint": "0867808aac6e9fc2",
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
     "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts": {
-      "hash": "f3fc8d86d7ddf958",
-      "mtime": 1781456665633.6626,
-      "size": 2063,
+      "hash": "c027214eae73f856",
+      "mtime": 1781483186964.9597,
+      "size": 932,
       "dependencies": [],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Rng.cpp",
@@ -16,9 +16,9 @@
       ]
     },
     "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts": {
-      "hash": "8f301f9aa2881c7e",
-      "mtime": 1781456533630.9795,
-      "size": 1897,
+      "hash": "4d23e0a9fd7a6dfd",
+      "mtime": 1781483304732.4077,
+      "size": 1389,
       "dependencies": [],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.cpp",
@@ -27,61 +27,29 @@
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.h.thcppmap.json"
       ]
     },
-    "C:\\typecad\\typecode\\demo\\src\\services\\Dungeon.ts": {
-      "hash": "1b631d9ea239932c",
-      "mtime": 1781456787156.8623,
-      "size": 7081,
+    "C:\\typecad\\typecode\\demo\\src\\models\\Species.ts": {
+      "hash": "d2f2fcf8e62471dd",
+      "mtime": 1781483212902.9514,
+      "size": 5523,
       "dependencies": [
         "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
         "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts"
       ],
       "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Dungeon.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Dungeon.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Dungeon.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Dungeon.h.thcppmap.json"
-      ]
-    },
-    "C:\\typecad\\typecode\\demo\\src\\services\\Combat.ts": {
-      "hash": "cf8b03fedddb15e8",
-      "mtime": 1781456731581.667,
-      "size": 2820,
-      "dependencies": [
-        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
-        "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts"
-      ],
-      "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Combat.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Combat.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Combat.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Combat.h.thcppmap.json"
-      ]
-    },
-    "C:\\typecad\\typecode\\demo\\src\\models\\Entities.ts": {
-      "hash": "bc64ed347d0a19ac",
-      "mtime": 1781450826603.9387,
-      "size": 3188,
-      "dependencies": [
-        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
-        "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts"
-      ],
-      "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Entities.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Entities.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Entities.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Entities.h.thcppmap.json"
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Species.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Species.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Species.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Species.h.thcppmap.json"
       ]
     },
     "C:\\typecad\\typecode\\demo\\src\\main.ts": {
-      "hash": "46565c63bcb13f4c",
-      "mtime": 1781456834406.7615,
-      "size": 8482,
+      "hash": "396cecc1d9f8d55e",
+      "mtime": 1781483380197.9666,
+      "size": 3409,
       "dependencies": [
         "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts",
-        "C:\\typecad\\typecode\\demo\\src\\services\\Dungeon.ts",
-        "C:\\typecad\\typecode\\demo\\src\\services\\Combat.ts",
-        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts",
-        "C:\\typecad\\typecode\\demo\\src\\models\\Entities.ts"
+        "C:\\typecad\\typecode\\demo\\src\\models\\Species.ts",
+        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts"
       ],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.cpp",
@@ -91,6 +59,6 @@
       ]
     }
   },
-  "createdAt": 1781457062584,
-  "updatedAt": 1781457064007
+  "createdAt": 1781483985869,
+  "updatedAt": 1781483987049
 }

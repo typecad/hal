@@ -283,7 +283,7 @@ describe("Array Method Polyfills", () => {
         return arr.length;
       }
     `);
-    expect(result.cpp).toContain("return arr.size()");
+    expect(result.cpp).toContain("static_cast<long long>(arr.size())");
   });
 
   it("transpiles array access", () => {

@@ -576,6 +576,21 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         allClassFieldTypes.set(cls.name, fieldTypes);
       }
     }
+    // Interfaces lower to C++ structs, so their fields must be visible
+    // cross-module for type-driven emit decisions (e.g. picking the right
+    // snprintf format specifier for `record.name` where `record` is typed
+    // as an interface declared in another file). Classes are aggregated
+    // above; interfaces are aggregated here so the cross-module field-type
+    // map (crossModuleClassFieldTypes) carries both.
+    for (const iface of programIR.interfaces) {
+      if (iface.fields.length > 0) {
+        const fieldTypes = allClassFieldTypes.get(iface.name) ?? new Map<string, string>();
+        for (const field of iface.fields) {
+          fieldTypes.set(field.name, field.cppType);
+        }
+        allClassFieldTypes.set(iface.name, fieldTypes);
+      }
+    }
     for (const fn of programIR.functions) {
       allFunctionReturnTypes.set(fn.originalName, fn.returnType);
     }

@@ -192,21 +192,19 @@ export function buildEmitterContext(
     Object.assign(symbolMap, strategy.symbolAliases(program, options.platformContext));
     if (isEntryFile) {
       shimLines = [...strategy.shimLines(program, options.platformContext)];
-    } else if (programAnalysis.usesNullish) {
-      // Non-entry files in split compilation: a class method body that uses
-      // `??` lowers to a cuttlefish_nullish(...) call, but the helper function
-      // lives in the entry file's shim — which isn't visible from this header.
-      // When this file actually emits such a call, emit the full shim block
-      // (idempotent via #ifndef guards). When it only references the macro via
-      // a `null`/`undefined` literal, emit just the macro definition.
-      if (programAnalysis.usesNullishHelper) {
-        shimLines = [...strategy.shimLines(program, options.platformContext)];
-      } else {
-        const nullishMacro = extractShimMacro(strategy.shimLines(program, options.platformContext), 'CUTTLEFISH_UNDEFINED');
-        if (nullishMacro) {
-          shimLines = [...nullishMacro];
-        }
-      }
+    } else {
+      // Non-entry files in split compilation: always emit the full shim
+      // block. A class method body that uses `??` lowers to a
+      // cuttlefish_nullish(...) call, but the helper lives in the entry
+      // file's shim — which isn't visible from this header. We used to gate
+      // this on programAnalysis.usesNullish, but that flag is unreliable:
+      // the analysis runs before the expression renderer, which can
+      // introduce cuttlefish_nullish calls (e.g. for default-param
+      // destructuring, or `??` inside class methods on abstract bases)
+      // that the analysis pass didn't see, leaving the header referencing
+      // an undeclared helper. The shim is fully idempotent (#ifndef
+      // guards), so emitting it unconditionally is safe and cheap.
+      shimLines = [...strategy.shimLines(program, options.platformContext)];
     }
     if (!programAnalysis.usesStringConversion) {
       shimLines = shimLines.filter(l => !l.includes('std::string String('));
@@ -217,12 +215,22 @@ export function buildEmitterContext(
     if (!programAnalysis.usesMillis) {
       shimLines = shimLines.filter(l => !l.includes('millis()'));
     }
-    if (!programAnalysis.usesNullish) {
+    // Strip the nullish helper FUNCTIONS (not the CUTTLEFISH_UNDEFINED macro)
+    // when the file doesn't actually emit cuttlefish_nullish(...) calls. A
+    // file that only references `null`/`undefined` literals needs just the
+    // macro token, not the function definitions. The usesNullishHelper flag
+    // tracks files that lower `??` to cuttlefish_nullish(...) calls.
+    //
+    // Note: for split-file HEADERS, output-finalizer.ts separately injects
+    // the full shim when the header's emitted lines contain an actual
+    // cuttlefish_nullish( call (a more reliable post-emit check than the
+    // per-file pre-emit analysis flag). The logic here governs the .cpp
+    // source shim only.
+    if (!programAnalysis.usesNullishHelper) {
       const filtered: string[] = [];
       for (let i = 0; i < shimLines.length; i++) {
         const l = shimLines[i];
-        if (l.includes('cuttlefish_is_nullish') || l.includes('cuttlefish_exists') || l.includes('cuttlefish_nullish') || l.includes('CUTTLEFISH_UNDEFINED')) continue;
-        if (l.trim() === '#endif' && i > 0 && shimLines[i - 1].includes('CUTTLEFISH_UNDEFINED')) continue;
+        if (l.includes('cuttlefish_is_nullish') || l.includes('cuttlefish_exists') || l.includes('cuttlefish_nullish')) continue;
         filtered.push(l);
       }
       shimLines = filtered;
@@ -365,6 +373,26 @@ export function buildEmitterContext(
   for (const fn of program.functions) {
     const fnName = fn.originalName === "__cuttlefish_entrypoint__" ? strategy.entrypointFunctionName() : fn.originalName;
     knownFunctionReturnTypes.set(fn.originalName, strategy.mapReturnType(fnName, fn.returnType));
+  }
+  // Also register class method return types (keyed by bare method name) so
+  // downstream type inference — in particular snprintf format-specifier
+  // selection for `this->method()` / `obj->method()` operands in a string
+  // concat — can resolve a method's return type. Without this, a
+  // double-returning method like `cargoUsed()` defaults to `%d` in the
+  // emitted snprintf, which misaligns the format/arg list and corrupts
+  // output. The bare-name key is safe here because `inferExpressionCppType`
+  // looks up `expr.callee` which is the bare method name for member calls.
+  for (const cls of program.classes) {
+    for (const m of cls.methods) {
+      if (!knownFunctionReturnTypes.has(m.name)) {
+        knownFunctionReturnTypes.set(m.name, m.returnType);
+      }
+    }
+    for (const g of cls.getters) {
+      if (!knownFunctionReturnTypes.has(g.name)) {
+        knownFunctionReturnTypes.set(g.name, g.returnType);
+      }
+    }
   }
 
   const snprintfCounter = { value: 0 };

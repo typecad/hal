@@ -312,5 +312,165 @@ export default {
         };
       },
     },
+
+    "no-array-param-content-mutation": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Mutating an array-typed parameter (push/pop/splice/index-assign) is silently lost in C++ — the parameter is a by-value std::vector copy.",
+        },
+      },
+      create(context) {
+        const MUTATING_METHODS = new Set([
+          "push", "pop", "splice", "shift", "unshift", "sort",
+          "fill", "reverse", "copyWithin",
+        ]);
+
+        // Resolve a member-expression object chain down to a bare Identifier
+        // name (e.g. `arr`, or `this.arr` → "this.arr"), or null if it's not
+        // a simple receiver we can match against a parameter.
+        function receiverKey(node) {
+          if (node.type === "Identifier") return node.name;
+          if (
+            node.type === "MemberExpression" &&
+            !node.computed &&
+            node.object.type === "ThisExpression" &&
+            node.property.type === "Identifier"
+          ) {
+            return "this." + node.property.name;
+          }
+          return null;
+        }
+
+        // True if a type annotation node denotes an array type
+        // (T[], Array<T>, ReadonlyArray<T>). The transpiler lowers all of
+        // these to by-value std::vector<T> parameters.
+        function isArrayTypeAnnotation(typeNode) {
+          if (!typeNode) return false;
+          // TSArrayType: T[]
+          if (typeNode.type === "TSArrayType") return true;
+          // TSTypeReference: Array<T> / ReadonlyArray<T>
+          if (typeNode.type === "TSTypeReference" && typeNode.typeName) {
+            const name =
+              typeNode.typeName.type === "Identifier"
+                ? typeNode.typeName.name
+                : null;
+            if (name === "Array" || name === "ReadonlyArray") return true;
+          }
+          return false;
+        }
+
+        // For function-like nodes (FunctionDeclaration / FunctionExpression /
+        // ArrowFunctionExpression), collect the set of parameter names whose
+        // declared type is array-typed, then walk the body for mutations on
+        // those names. Nested function declarations reset the set.
+        function checkFunction(node) {
+          const sourceCode = context.sourceCode || context.getSourceCode();
+          const arrayParams = new Set();
+          for (const param of node.params || []) {
+            // Only simple Identifier params with a type annotation.
+            if (param.type === "Identifier" && param.typeAnnotation) {
+              if (isArrayTypeAnnotation(param.typeAnnotation.typeAnnotation)) {
+                arrayParams.add(param.name);
+              }
+            }
+          }
+          if (arrayParams.size === 0) return;
+
+          // Walk the function body, but stop at nested function boundaries
+          // (their params shadow ours).
+          const visit = (n) => {
+            if (!n || typeof n.type !== "string") return;
+            // Don't recurse into nested function scopes.
+            if (
+              n !== node &&
+              (n.type === "FunctionDeclaration" ||
+                n.type === "FunctionExpression" ||
+                n.type === "ArrowFunctionExpression")
+            ) {
+              return;
+            }
+
+            // `param.push(x)` / `param.splice(...)` / etc.
+            if (
+              n.type === "CallExpression" &&
+              n.callee.type === "MemberExpression" &&
+              !n.callee.computed &&
+              n.callee.property.type === "Identifier" &&
+              MUTATING_METHODS.has(n.callee.property.name)
+            ) {
+              const key = receiverKey(n.callee.object);
+              if (key !== null && arrayParams.has(key)) {
+                context.report({
+                  node: n,
+                  message:
+                    "[transpiler] Mutating array parameter '" + key +
+                    "' via ." + n.callee.property.name +
+                    "() has no effect in C++ (the parameter is a by-value std::vector copy). " +
+                    "Return a new array, or wrap the parameter in an object/interface field.",
+                });
+              }
+            }
+
+            // `param[i] = value`
+            if (
+              n.type === "AssignmentExpression" &&
+              n.left.type === "MemberExpression" &&
+              n.left.computed
+            ) {
+              const key = receiverKey(n.left.object);
+              if (key !== null && arrayParams.has(key)) {
+                context.report({
+                  node: n,
+                  message:
+                    "[transpiler] Index assignment on array parameter '" + key +
+                    "' has no effect in C++ (the parameter is a by-value std::vector copy). " +
+                    "Return a new array, or wrap the parameter in an object/interface field.",
+                });
+              }
+            }
+
+            // `param[i] += value` / `param[i]++` and other compound updates.
+            if (
+              n.type === "AssignmentExpression" &&
+              n.operator !== "=" &&
+              n.left.type === "MemberExpression" &&
+              n.left.computed
+            ) {
+              const key = receiverKey(n.left.object);
+              if (key !== null && arrayParams.has(key)) {
+                context.report({
+                  node: n,
+                  message:
+                    "[transpiler] Compound index update on array parameter '" + key +
+                    "' has no effect in C++ (the parameter is a by-value std::vector copy). " +
+                    "Return a new array, or wrap the parameter in an object/interface field.",
+                });
+              }
+            }
+
+            for (const key of Object.keys(n)) {
+              if (key === "parent") continue;
+              const child = n[key];
+              if (Array.isArray(child)) {
+                for (const c of child) {
+                  if (c && typeof c.type === "string") visit(c);
+                }
+              } else if (child && typeof child.type === "string") {
+                visit(child);
+              }
+            }
+          };
+          visit(node.body);
+        }
+
+        return {
+          FunctionDeclaration: checkFunction,
+          FunctionExpression: checkFunction,
+          ArrowFunctionExpression: checkFunction,
+        };
+      },
+    },
   },
 };
