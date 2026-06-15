@@ -84,6 +84,12 @@ export interface TranspileOptions {
   /** Skip TypeScript type-checking before transpilation (default: false) */
   skipTypeCheck?: boolean;
   /**
+   * Skip ESLint checks before transpilation (default: false).
+   * When false, ESLint errors in the user's `src/` abort the build, matching
+   * the type-check behavior. Mirrors `skipTypeCheck`.
+   */
+  skipLint?: boolean;
+  /**
    * Force retranspilation of all files, ignoring incremental cache.
    * (default: false)
    */

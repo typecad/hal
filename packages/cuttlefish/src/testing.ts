@@ -51,6 +51,13 @@ export { filterProgramIR } from "./ir/filter";
 export { validateTryCatch } from "./ir/try-catch-validation";
 export { prescanUnsupportedFeatures } from "./ir/feature-prescan";
 
+// ── ESLint gate ──────────────────────────────────────────────────────────────
+export { runEslintCheck } from "./eslint-check";
+export type { ESLintError } from "./eslint-check";
+
+// ── Semantic gates (TypeChecker-based) ──────────────────────────────────────
+export { runSemanticGates } from "./orchestrator/type-checker";
+
 // ── Watch & CLI utilities ───────────────────────────────────────────────────
 export { discoverWatchDirs, isRelevantChange } from "./watch";
 export { parseCommandLine } from "./utils/cli";

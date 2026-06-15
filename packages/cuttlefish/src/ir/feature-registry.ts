@@ -72,11 +72,48 @@ add(ts.SyntaxKind.ComputedPropertyName, {
   code: "TS2CPP_NO_EQUIVALENT",
 });
 
+add(ts.SyntaxKind.AnyKeyword, {
+  status: "unsupported",
+  message: "Explicit 'any' has no safe C++ lowering (transpiler would emit 'auto' and lose type safety).",
+  hint: "Annotate with a concrete type. For truly dynamic values, use 'unknown' and narrow with type guards.",
+  code: "TS2CPP_EXPLICIT_ANY",
+});
+
 export function getKindEntry(kind: ts.SyntaxKind): FeatureEntry | undefined {
   return KIND_REGISTRY.get(kind);
 }
 
 export function checkContextSensitive(node: ts.Node, sourceText: string): DiagnosticMatch | null {
+  if (ts.isNewExpression(node)) {
+    // Syntactic heuristic: `new Identifier()` where Identifier names an
+    // interface declared in the same file. Accurate cross-file symbol
+    // resolution is upgraded in the Phase 3 TypeChecker pass; this catches
+    // the common single-file case without any checker infrastructure.
+    const expr = node.expression;
+    if (ts.isIdentifier(expr)) {
+      const name = expr.text;
+      const sourceFile = node.getSourceFile();
+      let isInterface = false;
+      const visit = (n: ts.Node): void => {
+        if (ts.isInterfaceDeclaration(n) && n.name?.text === name) {
+          isInterface = true;
+        }
+        if (!isInterface) {
+          ts.forEachChild(n, visit);
+        }
+      };
+      ts.forEachChild(sourceFile, visit);
+      if (isInterface) {
+        return {
+          message: `Cannot instantiate interface '${name}' — only class constructors are supported in C++.`,
+          hint: `Change 'interface ${name}' to 'class ${name}', or call a factory that returns a concrete class instance.`,
+          code: "TS2CPP_NEW_ON_INTERFACE",
+        };
+      }
+    }
+    return null;
+  }
+
   if (ts.isDeleteExpression(node)) {
     const target = node.expression;
     let isMapLike = false;

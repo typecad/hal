@@ -108,6 +108,8 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `Record<K,V>` | ✅ → `std::map<K,V>` | |
 | 2D arrays `T[][]` | 🟡 | Lowered as `std::vector<std::vector<T>>`; works but uncommon on AVR (heap concern). |
 | Associative array access `obj["key"]` | ✅ when target is `std::map`/struct | |
+| Heterogeneous array literal `[1, "a"]` | 🚫 | **Build error** (`TS2CPP_HETEROGENEOUS_ARRAY`). The semantic-gate pass (`orchestrator/type-checker.ts runSemanticGates`) detects array literals whose elements resolve to >1 incompatible kind (numeric vs string vs object) and aborts the build with a source-located `Diagnostic`. Numeric/bool widening is accepted (`[1, true]` → `std::vector<int>`). Declare an explicit tuple type (`[number, string]`) for intentionally mixed elements — tuple contextual types are exempt. |
+| `any` annotation (explicit) | 🚫 | **Build error** (`TS2CPP_EXPLICIT_ANY`). Flagged by the syntactic feature-prescan (`feature-registry.ts AnyKeyword`) on every `any` token; also enforced as an ESLint error in scaffolded projects. Use a concrete type, or `unknown` with type-guard narrowing. (`any` previously lowered silently to `auto` — now a hard error.) |
 
 ### 1.6 Objects, interfaces, type aliases
 
@@ -122,6 +124,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `type Foo = SomeOther` | ✅ | Alias resolved through `resolveAliasedTypeNode`. |
 | `type Foo = number` | ✅ | Resolves to mapped C++ type. |
 | `implements Interface` | 🟡 | Recorded in IR (`implementsInterfaces`) but **not enforced** as virtual methods; struct shape is emitted. |
+| `new SomeInterface()` | 🚫 | **Build error** (`TS2CPP_NEW_ON_INTERFACE`). Interfaces are type-only (no value symbol); `new IFoo()` is rejected by the semantic-gate pass (`orchestrator/type-checker.ts runSemanticGates`) before emit, resolving the target across files via the TypeChecker and a program-wide interface-name set. Only `new SomeClass()` is supported. (Previously lowered verbatim and relied on the C++ compiler to fail with an opaque message.) |
 | Discriminated union of object literals | ✅ → `std::variant<...>` with generated variant structs | `tests/new-features.test.ts:293`. |
 | `keyof T` | 🟡 → `auto` | No C++ equivalent; lowered loosely. |
 | Indexed access type `T[K]` | 🟡 → `auto` | `:451`. |
@@ -205,7 +208,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 
 | Pattern | Status | Notes |
 |---|---|---|
-| `any` | 🟡 → `auto` | No runtime representation; emits best-effort. |
+| `any` | 🚫 | **Deprecated — now a build error** (`TS2CPP_EXPLICIT_ANY`, see §1.5). Previously lowered best-effort to `auto`; the syntactic feature-prescan now rejects every explicit `any` token. Use a concrete type or `unknown`. (Implicit `any` is still caught by the TypeScript type-checker when `noImplicitAny` is set, which scaffolded projects enable.) |
 | `unknown` | 🟡 → `auto` | |
 | `never` | 🚫 | No meaningful C++ lowering. Avoid. |
 | `Partial<T>` / `Required<T>` / `Readonly<T>` / `Pick` / `Omit` | ✅ → resolves to underlying `T` | `type-resolution.ts:391`. |

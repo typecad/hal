@@ -22,9 +22,17 @@ export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]
 
   let ESLintCls: any;
   try {
-    const projectRequire = createRequire(path.join(projectRoot, "package.json"));
-    const eslintPath = projectRequire.resolve("eslint");
-    const eslintModule = await import(pathToFileURL(eslintPath).href);
+    // Prefer the user project's own eslint install (handles pinned versions),
+    // then fall back to the cuttlefish package's install (monorepo / global).
+    let eslintPath: string | undefined;
+    try {
+      const projectRequire = createRequire(path.join(projectRoot, "package.json"));
+      eslintPath = projectRequire.resolve("eslint");
+    } catch {
+      const selfRequire = createRequire(__filename);
+      eslintPath = selfRequire.resolve("eslint");
+    }
+    const eslintModule = await import(pathToFileURL(eslintPath!).href);
     ESLintCls = eslintModule.ESLint;
   } catch {
     return [];

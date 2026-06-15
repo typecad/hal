@@ -37,7 +37,9 @@ import { CompilationContext, contextStorage } from "./ir/build-ir-state";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { collectTranspileGraph } from "./orchestrator/graph-builder";
 import { typeCheckFiles } from "./orchestrator/type-checker";
+import { runSemanticGates } from "./orchestrator/type-checker";
 import { autoGenerateMissingDecls } from "./orchestrator/dts-generator";
+import { runEslintCheck, printEslintErrors } from "./eslint-check";
 import { initProfiler, getProfiler } from "./profiler";
 import { buildDiagnosticsReport, writeDiagnosticsReport } from "./diagnostics/diagnostics-report";
 import {
@@ -265,6 +267,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   // ── Type-check all files before transpiling ────────────────────────────────
   // Skip type-checking if explicitly disabled
+  let typeCheckProgram: ts.Program | undefined;
   if (options.skipTypeCheck !== true && transpileFiles.length > 0) {
     profiler.startTimer("typecheck:full");
     let typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage, entryFile);
@@ -289,6 +292,27 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       const errorMessages = typeCheckResult.errors.map(e => `ERROR: ${e}`).join("\n");
       throw new Error(`TypeScript type-checking failed:\n${errorMessages}\n\nTranspilation aborted due to TypeScript errors.`);
     }
+    // Capture the program for the semantic-gates pass (Phase 3) so we don't
+    // rebuild it.
+    typeCheckProgram = typeCheckResult.program;
+  }
+
+  // ── ESLint gate ──────────────────────────────────────────────────────────
+  // ESLint catches what the type-checker cannot (idiom violations, banned
+  // globals, explicit `any`, etc.). Errors abort the build, mirroring the
+  // type-check behavior above. Skipped alongside type-checking when disabled.
+  if (options.skipLint !== true && options.skipTypeCheck !== true && transpileFiles.length > 0) {
+    profiler.startTimer("lint:eslint");
+    const eslintErrors = await runEslintCheck(entryDir);
+    profiler.endTimer("lint:eslint");
+
+    if (eslintErrors.length > 0) {
+      // Abort with a formatted message. The structured-diagnostic channel is
+      // not populated here because a thrown error discards the output anyway;
+      // printEslintErrors gives the user file/line/column/caret directly.
+      printEslintErrors(eslintErrors);
+      throw new Error(`ESLint reported ${eslintErrors.length} error${eslintErrors.length === 1 ? "" : "s"} — transpilation aborted.`);
+    }
   }
   const npmPackages = graphResult.npmPackages;
 
@@ -297,6 +321,24 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   let entryOutputs: GeneratedOutputs | undefined;
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
   const allRemovedSymbols: string[] = [];
+
+  // ── Semantic gates (Phase 3) ──────────────────────────────────────────────
+  // Type-resolved checks that the syntactic feature-prescan cannot express:
+  // heterogeneous array literals and cross-file new-on-interface. These reuse
+  // the program built by typeCheckFiles. Surfaced as structured diagnostics
+  // (severity "error"); if any are present, the build aborts below.
+  if (typeCheckProgram) {
+    profiler.startTimer("typecheck:semantic-gates");
+    const semanticDiagnostics = runSemanticGates(typeCheckProgram, transpileFiles);
+    profiler.endTimer("typecheck:semantic-gates");
+    if (semanticDiagnostics.length > 0) {
+      diagnostics.push(...semanticDiagnostics);
+      const messages = semanticDiagnostics
+        .map(d => `ERROR: ${d.source ?? "user code"}(${d.line ?? "?"}:${d.column ?? "?"}): [${d.code}] ${d.message}`)
+        .join("\n");
+      throw new Error(`Semantic gate failed — ${semanticDiagnostics.length} error${semanticDiagnostics.length === 1 ? "" : "s"}:\n${messages}\n\nTranspilation aborted.`);
+    }
+  }
 
   // ── Pass 1: build + tree-shake every IR and pre-compute polyfills ─────────
   // We need to process ALL files before emitting any of them so that
