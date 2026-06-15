@@ -170,6 +170,45 @@ const transpilerRules = [
     message:
       "[transpiler] only 'const enum' is supported. Add the `const` keyword to the enum declaration.",
   },
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Runtime / dynamic-shape patterns. These depend on JS runtime facilities
+  // (reflection, prototype chains, this-rebinding, dynamic code generation)
+  // that an AOT C++ lowering cannot model. Sourced from SUPPORT_MATRIX §7
+  // "never" themes (RTTI, JS runtime, dynamic shape).
+  // ────────────────────────────────────────────────────────────────────────
+
+  // Object.defineProperty/defineProperties/create/getPrototypeOf/setPrototypeOf/
+  // getOwnPropertyDescriptor — runtime shape mutation / prototype introspection.
+  // Plain structs have a fixed shape at emit time; these APIs have no lowering.
+  {
+    selector:
+      "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(defineProperty|defineProperties|create|getPrototypeOf|setPrototypeOf|getOwnPropertyDescriptor)$/]",
+    message:
+      "[transpiler] Object.defineProperty/defineProperties/create/getPrototypeOf/setPrototypeOf/getOwnPropertyDescriptor mutate or introspect object shape at runtime — no AOT C++ lowering. Avoid.",
+  },
+  // .bind/.call/.apply — rebind `this` at call time. The transpiler models
+  // `this` as a fixed C++ this-> pointer (§4.2); rebinding has no lowering.
+  {
+    selector:
+      "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]",
+    message:
+      "[transpiler] .bind/.call/.apply rebind `this` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly.",
+  },
+  // new Function(...) — compiles a string into a function at runtime. Same
+  // family as eval (§7 "needs a JS runtime").
+  {
+    selector: "NewExpression[callee.name='Function']",
+    message:
+      "[transpiler] new Function() compiles a string at runtime — no JS runtime on bare metal. Define a named function instead.",
+  },
+  // __proto__ assignment — mutates the prototype chain at runtime.
+  {
+    selector:
+      "AssignmentExpression[left.type='MemberExpression'][left.property.name='__proto__']",
+    message:
+      "[transpiler] __proto__ assignment mutates the prototype chain — no AOT C++ lowering. Use a class with extends, or a Map.",
+  },
 ];
 
 export default [
@@ -180,6 +219,11 @@ export default [
     files: ["src/**/*.ts"],
     languageOptions: {
       parser: tsparser,
+      parserOptions: {
+        // Type-aware parsing so @typescript-eslint/no-explicit-any resolves
+        // imported bindings to their real types instead of defaulting to any.
+        project: "./tsconfig.json",
+      },
     },
     plugins: {
       "@typescript-eslint": tseslint,
@@ -198,6 +242,9 @@ export default [
         "error",
         { "name": "Proxy", "message": "[transpiler] Proxy is not supported (no AOT lowering). Avoid." },
         { "name": "Reflect", "message": "[transpiler] Reflect is not supported (no AOT lowering). Avoid." },
+        { "name": "WeakRef", "message": "[transpiler] WeakRef depends on the GC schedule — bare metal has no GC. Avoid." },
+        { "name": "FinalizationRegistry", "message": "[transpiler] FinalizationRegistry depends on the GC schedule — bare metal has no GC. Avoid." },
+        { "name": "Symbol", "message": "[transpiler] Symbol depends on runtime symbol lookup / the iterator protocol, which has no AOT lowering. Avoid." },
       ],
       "cuttlefish/no-delete-non-map": "error",
       "cuttlefish/no-object-static-non-map": "error",
@@ -211,6 +258,7 @@ export default [
       "cuttlefish/no-typed-array-param-length": "error",
       "cuttlefish/no-typed-array-return": "error",
       "cuttlefish/no-dynamic-property-access": "error",
+      "cuttlefish/no-this-in-free-function": "error",
     },
   },
 ];

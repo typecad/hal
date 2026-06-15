@@ -41,8 +41,8 @@ export function manhattan(a: Point, b: Point): int16_t {
 // in-bounds (loop-bounded or known-valid), so we assert non-null centrally.
 export function gridAt(grid: Node[][], x: int16_t, y: int16_t): Node {
   const row = grid[y];
-  const node = row[x];
-  return node;
+  const node = row![x];
+  return node!;
 }
 
 // §1.5 — build a GRID_W × GRID_H grid of nodes. Each interior node gets wired

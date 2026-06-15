@@ -660,3 +660,7 @@
 [StaticArray rewrite] var=items mutableArrayVars has=true
 [StaticArray rewrite] var=data mutableArrayVars has=true
 [StaticArray rewrite] var=items mutableArrayVars has=true
+[StaticArray rewrite] var=grid mutableArrayVars has=true
+[StaticArray rewrite] var=row mutableArrayVars has=true
+[StaticArray rewrite] var=grid mutableArrayVars has=true
+[StaticArray rewrite] var=row mutableArrayVars has=true

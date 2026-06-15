@@ -183,9 +183,9 @@ export function generateProjectEnvDts(options: InitProjectOptions): string {
 // ---------------------------------------------------------------------------
 
 declare global {
-  type Owned<T = any> = T;
-  type Shared<T = any> = T;
-  type Mutable<T = any> = T;
+  type Owned<T = unknown> = T;
+  type Shared<T = unknown> = T;
+  type Mutable<T = unknown> = T;
 
   type uint8_t = number;
   type int8_t = number;
@@ -212,9 +212,9 @@ export {};
 // ---------------------------------------------------------------------------
 
 declare global {
-  type Owned<T = any> = T;
-  type Shared<T = any> = T;
-  type Mutable<T = any> = T;
+  type Owned<T = unknown> = T;
+  type Shared<T = unknown> = T;
+  type Mutable<T = unknown> = T;
 
   type uint8_t = number;
   type int8_t = number;
@@ -349,6 +349,11 @@ const transpilerRules = [
   { selector: "CallExpression[callee.name='require']", message: "[transpiler] require() is unsupported. Use ES \`import\`." },
   { selector: "BinaryExpression[operator='instanceof']", message: "[transpiler] instanceof has no RTTI lowering and is treated loosely. Avoid it for user-class hierarchies." },
   { selector: "TSEnumDeclaration[const!=true]", message: "[transpiler] only 'const enum' is supported. Add the \`const\` keyword." },
+  // Runtime / dynamic-shape patterns (SUPPORT_MATRIX §7 never themes).
+  { selector: "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(defineProperty|defineProperties|create|getPrototypeOf|setPrototypeOf|getOwnPropertyDescriptor)$/]", message: "[transpiler] Object.defineProperty/defineProperties/create/getPrototypeOf/setPrototypeOf/getOwnPropertyDescriptor mutate or introspect object shape at runtime. Avoid." },
+  { selector: "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]", message: "[transpiler] .bind/.call/.apply rebind \`this\` at call time, which has no C++ lowering. Call directly." },
+  { selector: "NewExpression[callee.name='Function']", message: "[transpiler] new Function() compiles a string at runtime — no JS runtime. Define a named function." },
+  { selector: "AssignmentExpression[left.type='MemberExpression'][left.property.name='__proto__']", message: "[transpiler] __proto__ assignment mutates the prototype chain — no AOT lowering. Use class extends or a Map." },
 ];
 
 export default [
@@ -374,6 +379,9 @@ export default [
         "error",
         { "name": "Proxy", "message": "[transpiler] Proxy is not supported (no AOT lowering). Avoid." },
         { "name": "Reflect", "message": "[transpiler] Reflect is not supported (no AOT lowering). Avoid." },
+        { "name": "WeakRef", "message": "[transpiler] WeakRef depends on the GC schedule — bare metal has no GC. Avoid." },
+        { "name": "FinalizationRegistry", "message": "[transpiler] FinalizationRegistry depends on the GC schedule — bare metal has no GC. Avoid." },
+        { "name": "Symbol", "message": "[transpiler] Symbol depends on runtime symbol lookup / the iterator protocol. Avoid." },
       ],
       // Cuttlefish transpiler-compatibility plugin rules.
       "cuttlefish/no-delete-non-map": "error",
@@ -388,6 +396,7 @@ export default [
       "cuttlefish/no-typed-array-param-length": "error",
       "cuttlefish/no-typed-array-return": "error",
       "cuttlefish/no-dynamic-property-access": "error",
+      "cuttlefish/no-this-in-free-function": "error",
     },
   },
 ];

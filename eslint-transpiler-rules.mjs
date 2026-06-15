@@ -835,5 +835,70 @@ export default {
         };
       },
     },
+
+    // -------------------------------------------------------------------------
+    // `this` in a free function (not a class method/constructor). In JS, a
+    // free function's `this` is determined by the call site (undefined in
+    // strict mode, the global object otherwise) — there is no fixed C++
+    // `this` pointer to lower to. SUPPORT_MATRIX §4.2 marks `this` in free
+    // function as ❌. Arrow functions inherit `this` lexically, so a `this`
+    // inside an arrow nested in a free function is still invalid (it resolves
+    // to the free function's call-site `this`). A `this` inside a class
+    // method, constructor, or an arrow nested in one is valid (mirrors
+    // no-super-outside-method's scope walk).
+    // -------------------------------------------------------------------------
+    "no-this-in-free-function": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] `this` in a free function has no fixed C++ this pointer to lower to.",
+        },
+      },
+      create(context) {
+        return {
+          ThisExpression(node) {
+            // Walk up the AST. We're looking for the nearest enclosing
+            // function that *binds* `this` (a free function / FunctionDeclaration),
+            // OR a valid class context (method/constructor) that makes `this` OK.
+            let current = node.parent;
+            while (current) {
+              // Class method / constructor / static block — valid `this`.
+              if (current.type === "MethodDefinition") return;
+              if (current.type === "PropertyDefinition") return;
+              if (current.type === "StaticBlock") return;
+              if (
+                current.type === "FunctionExpression" &&
+                current.parent &&
+                (current.parent.type === "MethodDefinition" ||
+                  current.parent.type === "PropertyDefinition")
+              ) {
+                return;
+              }
+              // ArrowFunctionExpression does NOT bind its own `this` — keep
+              // walking to find the enclosing real function.
+              if (current.type === "ArrowFunctionExpression") {
+                current = current.parent;
+                continue;
+              }
+              // Any other function (FunctionDeclaration, or a FunctionExpression
+              // NOT used as a method) binds `this` to its call site → invalid.
+              if (
+                current.type === "FunctionDeclaration" ||
+                current.type === "FunctionExpression"
+              ) {
+                context.report({
+                  node,
+                  message:
+                    "[transpiler] `this` in a free function has no fixed C++ this pointer to lower to. Move the code into a class method, or pass the needed value as a parameter.",
+                });
+                return;
+              }
+              current = current.parent;
+            }
+          },
+        };
+      },
+    },
   },
 };

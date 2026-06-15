@@ -42,9 +42,9 @@
       ]
     },
     "C:\\typecad\\typecode\\demo\\src\\models\\Network.ts": {
-      "hash": "d44b3b3ee44c5286",
-      "mtime": 1781496778106.6523,
-      "size": 6218,
+      "hash": "0afb957c6d304f71",
+      "mtime": 1781499451701.934,
+      "size": 6220,
       "dependencies": [
         "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts",
         "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts"
@@ -57,9 +57,9 @@
       ]
     },
     "C:\\typecad\\typecode\\demo\\src\\main.ts": {
-      "hash": "e26f9b40286308b2",
-      "mtime": 1781496752990.5925,
-      "size": 4303,
+      "hash": "df617aa5c754eb2f",
+      "mtime": 1781499465286.1497,
+      "size": 4326,
       "dependencies": [
         "C:\\typecad\\typecode\\demo\\src\\services\\Rng.ts",
         "C:\\typecad\\typecode\\demo\\src\\services\\Crc.ts",
@@ -74,6 +74,6 @@
       ]
     }
   },
-  "createdAt": 1781496817115,
-  "updatedAt": 1781496818418
+  "createdAt": 1781499492113,
+  "updatedAt": 1781499493458
 }

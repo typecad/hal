@@ -441,6 +441,35 @@ export default {
         };
       },
     },
+
+    "no-this-in-free-function": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] \`this\` in a free function has no fixed C++ this pointer to lower to.",
+        },
+      },
+      create(context) {
+        return {
+          ThisExpression(node) {
+            let current = node.parent;
+            while (current) {
+              if (current.type === "MethodDefinition") return;
+              if (current.type === "PropertyDefinition") return;
+              if (current.type === "StaticBlock") return;
+              if (current.type === "FunctionExpression" && current.parent && (current.parent.type === "MethodDefinition" || current.parent.type === "PropertyDefinition")) return;
+              if (current.type === "ArrowFunctionExpression") { current = current.parent; continue; }
+              if (current.type === "FunctionDeclaration" || current.type === "FunctionExpression") {
+                context.report({ node, message: "[transpiler] \`this\` in a free function has no fixed C++ this pointer to lower to. Move the code into a class method, or pass the value as a parameter." });
+                return;
+              }
+              current = current.parent;
+            }
+          },
+        };
+      },
+    },
   },
 };
 `;

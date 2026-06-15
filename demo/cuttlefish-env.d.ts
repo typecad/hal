@@ -8,9 +8,9 @@
 // ---------------------------------------------------------------------------
 
 declare global {
-  type Owned<T = any> = T;
-  type Shared<T = any> = T;
-  type Mutable<T = any> = T;
+  type Owned<T = unknown> = T;
+  type Shared<T = unknown> = T;
+  type Mutable<T = unknown> = T;
 
   // C-style explicit number types recognized by the transpiler
   type uint8_t = number;
