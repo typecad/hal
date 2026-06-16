@@ -278,6 +278,30 @@ export function runSemanticGates(
         }
       }
 
+      // 3. for...in over a Map / Record. `for (const k in m)` where `m` is a
+      //    Map or Record lowers to iterating std::map pairs and indexing by a
+      //    pair (malformed). Reject it at the semantic gate so users get a
+      //    clear error before the broken C++ is emitted. Plain-object for...in
+      //    is a separate path and is allowed.
+      if (ts.isForInStatement(node)) {
+        const iterType = checker.getTypeAtLocation(node.expression);
+        const typeStr = checker.typeToString(iterType);
+        const isMapOrRecord = /\b(Map|ReadonlyMap|Record)\b/.test(typeStr) || /\bstd::map\b/.test(typeStr);
+        if (isMapOrRecord) {
+          const diag = makeDiagnostic(
+            sourceText,
+            node.getStart(),
+            `for...in over a ${typeStr} is not supported — the Map lowering iterates key-value pairs, not keys.`,
+            "error",
+            "TS2CPP_FORIN_ON_MAP",
+          );
+          diag.hint = "Use Object.keys(m).forEach(...), a for...of over Object.keys(m), or m.forEach((v, k) => ...).";
+          diag.sourceLine = extractLine(sourceText, diag.line);
+          diag.source = "semantic-gate";
+          diagnostics.push(diag);
+        }
+      }
+
       ts.forEachChild(node, visit);
     };
     ts.forEachChild(sourceFile, visit);

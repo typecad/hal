@@ -102,7 +102,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | Array literal `[1, 2, 3]` | ✅ | Element type inferred from contents. |
 | Spread in array `[...a, b]` | ✅ | `tests/transpiler-type-gaps.test.ts:392`. |
 | Mutable array methods (`push`/`pop`/`indexOf`) | ✅ | Promotes backing storage to `StaticArray` (`ARRAY_METHODS_REQUIRING_STATIC_ARRAY`). |
-| `[T]` tuple type | ✅ → `std::tuple<T>` | `type-resolution.ts:374`. |
+| `[T]` tuple type | ✅ → `std::tuple<T>` | `type-resolution.ts:374`. Demo #8 fix F — a type alias to a tuple/container (`type P = [K, V]`) now survives tree-shaking and emits a `using` (was dropped because the resolved cppType contained no identifier for the call graph to see). **Caveat:** tuple *literals* (`const t: Tuple = ['a', 1]`) lower to a C array, not a `std::tuple` constructor — return an interface for tuple values. |
 | `Map<K,V>` / `ReadonlyMap` | ✅ → `std::map<K,V>` | |
 | `Set<T>` / `ReadonlySet` | ✅ → `std::set<T>` | |
 | `Record<K,V>` | ✅ → `std::map<K,V>` | |
@@ -122,7 +122,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | Interface with numeric keys | ✅ | |
 | `type Foo = { ... }` | ✅ | Object-literal aliases emit as struct under the alias name. |
 | `type Foo = SomeOther` | ✅ | Alias resolved through `resolveAliasedTypeNode`. |
-| `type Foo = number` | ✅ | Resolves to mapped C++ type. |
+| `type Foo = number` | ✅ | Resolves to mapped C++ type and emits a real `using Foo = <cpptype>;` (demo #7 fix E — the reachability pass now keeps aliases whose underlying type is concrete, so the typedef survives tree-shaking and is usable as a type name at every C++ emission site). |
 | `implements Interface` | 🟡 | Recorded in IR (`implementsInterfaces`) but **not enforced** as virtual methods; struct shape is emitted. |
 | `new SomeInterface()` | 🚫 | **Build error** (`TS2CPP_NEW_ON_INTERFACE`). Interfaces are type-only (no value symbol); `new IFoo()` is rejected by the semantic-gate pass (`orchestrator/type-checker.ts runSemanticGates`) before emit, resolving the target across files via the TypeChecker and a program-wide interface-name set. Only `new SomeClass()` is supported. (Previously lowered verbatim and relied on the C++ compiler to fail with an opaque message.) |
 | Discriminated union of object literals | ✅ → `std::variant<...>` with generated variant structs | `tests/new-features.test.ts:293`. |
@@ -160,8 +160,8 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `undefined` literal | ✅ → `CUTTLEFISH_UNDEFINED` | |
 | `a ?? b` nullish coalescing | ✅ → `cuttlefish_nullish(a, b)` helper | **Must** use the helper (not truthy ternary) so `0`/`false` are preserved. CLAUDE.md convention. |
 | `a?.b` optional chaining | 🟡 → `cuttlefish_exists(a) ? a.b : 0` | Emits `TS2CPP_OPTIONAL_CHAINING` warning; semantics approximate. `expression-to-ir.ts:595`. |
-| `a?.()` optional call | 🟡 | Same approximate null guard. |
-| `a ??= b` logical nullish assignment | ✅ | |
+| `a?.()` optional call | 🟡 → `cuttlefish_exists(fn) ? fn() : 0` | Demo #7 fix N — a null guard is now emitted for bare-identifier callees (was: no guard, so an empty `std::function` was called unconditionally → `std::bad_function_call`). **Runtime caveat:** the shim's `cuttlefish_is_nullish` has no `std::function` specialization, so an empty `std::function` still reads as non-null — pass a real callback until the shim gains a `std::function` overload. |
+| `a ??= b` logical nullish assignment | ✅ | Demo #8 fix I — now handled on property-access left sides (`obj.field ??= v` → `obj.field = cuttlefish_is_nullish(obj.field) ? v : obj.field`); was dropped. Identifier left sides worked before. **Caveat:** a `const`-ref param receiver is read-only — copy into a `let` local first. |
 | **True `Optional<T>` / `std::optional`** | ⚠️ Future | Currently flattened. Supporting real optionals would require a representational choice (sentinel vs `std::optional`, both costly on AVR) and is a non-obvious lowering decision. |
 
 ### 1.9 Destructuring
@@ -176,7 +176,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | Nested object destructure | ✅ | |
 | Array destructure `const [a, b] = arr` | ✅ | Index-based extraction. |
 | Array destructure default `[a = 5]` | ✅ | |
-| Rest element `const [a, ...rest]` | ✅ → `std::vector` slice | |
+| Rest element `const [a, ...rest]` | ✅ → `std::vector<T>` slice | Demo #7 fix D — the element type is now derived from the source array (was `std::vector<decltype(arr[0])>` which yielded an illegal `vector<T&>`). |
 | Destructure without initializer | ❌ → `TS2CPP_UNSUPPORTED_DECL` | `variables.ts:157`. |
 | Parameter destructure `function f({ a, b })` | ✅ | Synthetic `__param_N` + extraction statements. |
 | Mixed destructure + regular params | ✅ | |
@@ -191,7 +191,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `typeof x` | ✅ → string literal where statically known | `tests/new-features.test.ts:187`. Dynamic typeof falls back to `"object"`. |
 | `typeof` type guard optimization (`typeof x === "number"`) | ✅ → `true`/`false` when statically known | |
 | `instanceof` | 🟡 | No RTTI lowering; treated loosely. Avoid in firmware. |
-| `in` operator (`"k" in obj`) | ✅ → `map.count()` / vector find on containers | `expression-to-ir.ts:316`. |
+| `in` operator (`"k" in obj`) | ✅ → `map.count()` / vector find on containers | `expression-to-ir.ts:316`. Demo #7 fix K — enum-member keys into an integral-keyed `Map` are now wrapped in `static_cast<KeyType>(...)` so they match the comparator. |
 
 ### 1.11 Generics
 
@@ -199,7 +199,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 |---|---|---|
 | Generic function `function f<T>(x: T)` | ✅ → C++ `template<typename T>` | `tests/transpiler-type-gaps.test.ts:661`. |
 | Multiple type params | ✅ | |
-| Generic class `class C<T>` | ✅ | |
+| Generic class `class C<T>` | ✅ | Emits `template<typename T> class C`. Demo #8 fix A — a subclass `extends Generic<T>` now resolves the heritage type args (`: public Generic<std::string, double>`); was dropping them. **Caveat:** static members + `new Generic<T>()` static access on a template class still have emit gaps (static-getter emits `Cls<K,V>::getName()`; static-member access needs the substituted name). |
 | Generic constraint `T extends X` | ✅ → emitted as `static_assert` | `function-builder.ts:602`. |
 | Generic type param in scope | ✅ | `typeParametersInScope` tracking in `typeNodeToCppType`. |
 | Conditional/`infer` generic gymnastics | 🚫 | Far beyond what template lowering can express. |
@@ -242,7 +242,7 @@ Implemented in `transformers/control-flow.ts`; tested in `tests/control-flow.tes
 | Infinite `for (;;)` | ✅ | `tests/control-flow.test.ts:275`. |
 | `for...of` over array | ✅ | Element type resolved for class arrays (`->` access). |
 | Nested `for...of` | ✅ | |
-| `for...in` over object keys | ✅ | Keys enumerated at IR build time (`extractForInKeys`). |
+| `for...in` over object keys | ✅ | Keys enumerated at IR build time (`extractForInKeys`). **Caveat (demo #7):** `for...in` over a `Map`/`Record` is rejected by the `TS2CPP_FORIN_ON_MAP` semantic gate (the Map lowering iterates key-value pairs, not keys — use `Object.keys(m)` or `m.forEach((v, k) => ...)` instead). |
 | `while` | ✅ | |
 | `while` with `break`/`continue` | ✅ | |
 | `do...while` | ✅ | |
@@ -362,8 +362,8 @@ Implemented in `function-builder.ts`; tested in `tests/functions.test.ts`.
 | Function type alias `type Fn = () => void` | ✅ → `std::function<void()>` | |
 | Class method as callback | ✅ | |
 | `Math.method` callbacks (e.g. comparator) | ✅ | |
-| **Closures capturing outer variables** | 🟡 | Arrow/function expressions lower to lambdas, but capture semantics (`[=]` vs `[&]`) are not faithfully modeled. Captured-mutation patterns are unreliable. |
-| IIFE `(function(){})()` | ✅ | Lowered as an inline call. |
+| **Closures capturing outer variables** | 🟡 | Arrow/function expressions lower to lambdas, but capture semantics (`[=]` vs `[&]`) are not faithfully modeled. Captured-mutation patterns are unreliable — **in-class functional callbacks** (`.map`/`.reduce`/`.some` inside a class method) hoist to free `X_isr_N` functions that cannot capture the method's locals; move aggregations to module-level free functions. |
+| IIFE `(function(){})()` | ❌ | **Rejected at lint time** (demo #7 fix M). The body is not inlined and the `function` keyword was emitted verbatim into C++. Assign to a `const` or define a named top-level function instead. |
 
 ### 3.5 `forEach` inline expansion
 
@@ -391,7 +391,7 @@ tested in `tests/classes.test.ts` and `tests/class-reference-semantics.test.ts`.
 | Class with `static` fields/methods | ✅ | |
 | Static initializer block `static { ... }` | ✅ | Folded into synthetic constructor (`declaration-builders.ts:395`). |
 | Optional class field `x?: T` | ✅ → `T` (optionality dropped) | |
-| Generic class `class C<T>` | ✅ | |
+| Generic class `class C<T>` | ✅ | See §1.11 (demo #8 fix A for `extends Generic<T>`; static-member caveats). |
 | Nested class (inside function or class) | ✅ | Hoisted with mangled name. |
 | `export class` / `export default class` | ✅ | |
 
@@ -418,7 +418,7 @@ tested in `tests/classes.test.ts` and `tests/class-reference-semantics.test.ts`.
 | Getters `get x()` | ✅ | `tests/new-features.test.ts:13`. |
 | Setters `set x(v)` | ✅ | |
 | Getter/setter pair | ✅ | |
-| Static getter/setter | ✅ | |
+| Static getter/setter | ✅ | Demo #8 fix B — static getters no longer emit the illegal `() const` cv-qualifier (was `Cls::getName() cannot have cv-qualifier`). **Caveat:** accessing a static getter (`Cls.prop`) still emits `Cls::prop` instead of `Cls::getProp()` — access the static field directly until the access-name path is fixed. |
 | Abstract method | ✅ (recorded) | `= 0` pure virtual emitted for abstract methods. |
 
 ### 4.4 Inheritance & polymorphism
@@ -428,7 +428,7 @@ tested in `tests/classes.test.ts` and `tests/class-reference-semantics.test.ts`.
 | `class B extends A` | ✅ | `extendsClass` recorded. |
 | `super()` call | ✅ → C++ initializer list | `tests/classes.test.ts:149`. Body `super()` is NOT emitted as a statement. |
 | `super` with args | ✅ | |
-| `super.method()` | 🟡 | `super` keyword lowers to base class name (`expression-to-ir.ts:1663`); works for simple cases. |
+| `super.method()` | 🟡 | `super` keyword lowers to base class name (`expression-to-ir.ts:1663`); works for simple cases. Demo #8 — `super.method()` on a **generic base** cascades from the generic-subclass emit gaps (Finding A fixed the heritage type args; static-member access on templates is still incomplete). |
 | Virtual method override (polymorphism) | 🟡 | Methods are emitted; virtual-ness is inferred heuristically, not always correct. |
 | Virtual destructor on polymorphic base | ✅ | `tests/classes.test.ts:298`. |
 | **Multiple inheritance** | ❌ | Not modeled. |
@@ -492,9 +492,9 @@ analysis. They are erased at emit time but influence destructor/deletion decisio
 | Prefix/postfix `++ --` | ✅ | |
 | Comma operator `(a, b)` | ✅ → C++ comma expr | `expression-to-ir.ts:1641`. |
 | Unary `-x`, `+x`, `!x` | ✅ | |
-| `delete obj.key` | ✅ on map/set/vector → `erase` | ❌ on other types (`expression-to-ir.ts:1637`). |
-| `void expr` | 🟡 | |
-| Exponentiation `**` | 🟡 → may need `pow()` | Not a first-class operator in emit. |
+| `delete obj.key` | ✅ on map/set/vector → `erase` | ❌ on other types (`expression-to-ir.ts:1637`). Demo #8 fix D — the `m.delete(k)` Map METHOD now lowers to `.erase()` too (was emitting `m.delete_` because `escapeCppKeyword` ran before the map-method check). |
+| `void expr` | ✅ | Demo #8 — lowers correctly (discards the value). |
+| Exponentiation `**` | 🟡 → may need `pow()` | Not a first-class operator in emit. Use `Math.pow()` (the lint rule suggests this). |
 | **`new.target`, `import.meta`** | ❌ | Meta-properties unsupported (`:1655`). |
 
 ### 5.2 `Math.*`
@@ -504,7 +504,7 @@ analysis. They are erased at emit time but influence destructor/deletion decisio
 | `Math.floor/ceil/round/abs/sqrt/sin/cos/tan/atan2/log/exp/pow/fmod` | ✅ → `std::...` | Return type inferred as `double`. |
 | `Math.min/max` | ✅ | Return type follows operands. |
 | `Math.random` | ✅ → `__tc_random()` | |
-| `Math.PI`, `Math.E`, constants | ✅ → `std::`/literal | |
+| `Math.PI`, `Math.E`, constants | ✅ → numeric literal | Demo #7 fix L — `Math.PI`/`Math.E`/`LN2`/`LN10`/`LOG2E`/`LOG10E`/`SQRT2`/`SQRT1_2` lower to their literal values (was `std::PI`/`std::E`, which don't exist). |
 
 ### 5.3 Array & string methods
 
@@ -515,7 +515,7 @@ analysis. They are erased at emit time but influence destructor/deletion decisio
 | `push`, `pop` | ✅ | Promotes to `StaticArray`. |
 | `indexOf`, `lastIndexOf`, `includes` | ✅ | |
 | `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `concat`, `slice`, `join` | ✅ | Recognized in typeof context and lowered where supported. |
-| `map`, `filter`, `reduce`, `find`, `findIndex`, `every`, `some`, `forEach` | ✅ | `forEach` inlines; functional methods lower via `tryLowerArrayAndStringMethods`. `reduce` requires an init (`TS2CPP_REDUCE_NO_INIT` otherwise). |
+| `map`, `filter`, `reduce`, `find`, `findIndex`, `every`, `some`, `forEach` | ✅ | Functional methods lower via the `__tc_*` template helpers (`tryLowerArrayAndStringMethods` / `normalizeRawExpression`). Demo #7 fix A — callbacks now carry a real return type + typed params (resolved from the arrow's annotations/body, with C++14 `auto` return deduction as a fallback), so the `__tc_*` templates can deduce the result type. `reduce` requires an init (`TS2CPP_REDUCE_NO_INIT` otherwise). **Caveats:** (1) `.forEach` on a runtime `std::vector` is not yet in the rewrite table — use a manual `for` loop; (2) callbacks inside a **class method** are hoisted to free functions that can't capture the method's locals — move aggregations to module-level free functions; (3) the rewrite regex only matches single-identifier receivers (`arr.map`), not member access (`this.x.map`) — bind to a local first. |
 | `.length` on array/string/typed-array | ✅ | Context-aware (`resolveLengthProperty`). |
 | String methods `toUpperCase`, `toLowerCase`, `trim`, `replace`, `charAt`, `charCodeAt`, `substring`, `slice`, `endsWith`, `startsWith`, `padStart`, `padEnd`, `repeat`, `split`, `toString` | ✅ | All in `ALL_STRING_METHODS` set. |
 | `parseInt`, `parseFloat` | ✅ | `expression-to-ir.ts:664`. |
@@ -524,9 +524,9 @@ analysis. They are erased at emit time but influence destructor/deletion decisio
 
 | Pattern | Status | Notes |
 |---|---|---|
-| `Object.keys(map)` | ✅ → `__tc_mapKeys` | ❌ on non-map → `TS2CPP_UNSUPPORTED_EXPR` (`:731`). |
-| `Object.values(map)` | ✅ → `__tc_mapValues` | ❌ on non-map (`:743`). |
-| `Object.entries(map)` | ✅ → `__tc_mapEntries` | ❌ on non-map (`:749`). |
+| `Object.keys(map)` | ✅ → `__tc_mapKeys` | ❌ on non-map → `TS2CPP_UNSUPPORTED_EXPR` (`:731`). Demo #7 fix I — now also resolves `this.field`/`obj.field` member-access arguments (was: only bare uppercase-first identifiers). |
+| `Object.values(map)` | ✅ → `__tc_mapValues` | ❌ on non-map (`:743`). Member-access args resolved (demo #7 fix I). |
+| `Object.entries(map)` | ✅ → `__tc_mapEntries` | ❌ on non-map (`:749`). **Caveat:** returns `std::vector<std::pair<K,V>>`; a `[K,V][]` tuple-array return annotation lowers to `std::vector<std::tuple<K,V>>` (pair→tuple mismatch) — return the values vector or use `pair` explicitly. |
 | `Object.keys(plainStruct)` | 🟡 | Only when literal field names are statically known. |
 | `Object.assign`, `Object.freeze`, `Object.fromEntries` | ❌ | Not lowered. |
 | `JSON.*` | ❌ | No JSON runtime on bare metal. |

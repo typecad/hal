@@ -356,7 +356,7 @@ async function main(): Promise<void> {
             };
             ui.printCompiling(buildTarget ?? "native");
             const compileResult = compileSource(watchOpts);
-            printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath);
+            printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath, path.dirname(result.sourcePath));
 
             if (compileResult.success) {
               if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
@@ -442,7 +442,7 @@ async function main(): Promise<void> {
                 };
                 ui.printCompiling(buildTarget ?? "native");
                 const compileResult = compileSource(rebuildOpts);
-                printMappedCompileErrors(compileResult, rebuildResult.sourceMapPath, rebuildResult.sourcePath);
+                printMappedCompileErrors(compileResult, rebuildResult.sourceMapPath, rebuildResult.sourcePath, path.dirname(rebuildResult.sourcePath));
 
                 if (compileResult.success) {
                   if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
@@ -544,9 +544,17 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath);
+    const mapped = printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath, path.dirname(result.sourcePath));
     if (!compileResult.success) {
-      console.error(compileResult.output);
+      // Only dump the raw compiler output if the mapper produced nothing —
+      // e.g. linker errors or g++ diagnostics that didn't parse into structured
+      // errors. When errors were mapped, the mapper already rendered them
+      // against the TypeScript source (mapped primary + demoted C++ fallback),
+      // so re-dumping the raw g++ stderr would just repeat them at their C++
+      // locations and defeat the mapping.
+      if (!mapped.printed) {
+        console.error(compileResult.output);
+      }
       process.exitCode = 1;
       return;
     }

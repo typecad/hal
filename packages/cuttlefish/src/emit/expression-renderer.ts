@@ -45,6 +45,15 @@ interface ExpressionRendererContext {
   crossModuleClassNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
   varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
+  /**
+   * Map of class type names to their accessor map. Used as a fallback when a
+   * member access's receiver isn't in `varAccessorNames` (e.g. a for-of loop
+   * variable, a function-call return, or a chained access) but its resolved
+   * C++ type names a class with getters. Lets the getter rewrite
+   * (`obj.prop` → `obj->getProp()`) fire for any pointer-valued receiver of a
+   * known class type, not just `this` and explicitly-registered variables.
+   */
+  typeAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
   /** Optional transformer for expression values */
   exprTransformer?: (expr: string) => string;
   /** Shared counter for unique snprintf buffer names across statement renders */
@@ -74,6 +83,7 @@ export class ExpressionRenderer {
   private readonly cArrayVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
+  private readonly typeAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
   private readonly interfaceFieldTypes: Map<string, Map<string, string>>;
   private readonly knownTopLevelObjectTypes?: Map<string, string>;
 
@@ -96,6 +106,7 @@ export class ExpressionRenderer {
     this.cArrayVarNames = context.cArrayVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
+    this.typeAccessorNames = context.typeAccessorNames ?? new Map();
     this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
     this.knownTopLevelObjectTypes = context.knownTopLevelObjectTypes;
     this._snprintfCounter = context.snprintfCounter ?? { value: 0 };
@@ -1037,9 +1048,22 @@ export class ExpressionRenderer {
     if (expr.property === "size" || expr.property === "length") {
       // (Handled above for identified strings/arrays)
     }
-    // Rewrite property access to getter call if the property is an accessor
+    // Rewrite property access to getter call if the property is an accessor.
+    // Primary lookup: the receiver is an explicitly-registered variable
+    // (var_decl / param / top-level binding) in varAccessorNames. Fallback:
+    // the receiver's resolved C++ type names a class with getters
+    // (typeAccessorNames). The fallback covers for-of loop variables, function
+    // returns, and chained access — receivers whose variable name was never
+    // registered but whose type is a known class with accessors.
     if (expr.object.kind === "identifier") {
-      const accessors = this.varAccessorNames.get(expr.object.value);
+      let accessors = this.varAccessorNames.get(expr.object.value);
+      if (!accessors) {
+        const resolvedType = this.inferExpressionCppType(expr.object, knownVariableTypes);
+        if (resolvedType) {
+          const bareType = resolvedType.replace(/\*$/, "").replace(/^const\s+/, "").trim();
+          accessors = this.typeAccessorNames.get(bareType);
+        }
+      }
       if (accessors?.has(expr.property)) {
         const getterName = accessorGetterName(expr.property);
         return `${objStr}->${getterName}()`;

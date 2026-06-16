@@ -488,56 +488,60 @@ export function buildEmitterContext(
   // var_decls were registered (in class-emitter), which ran too late for the
   // free-function pass — leaving `hero->alive` unrewritten and failing g++.
   // See SUPPORT_MATRIX §4.3 (demo #4 fix).
-  {
-    const classAccessorNames = new Map<string, Map<string, "getter" | "setter" | "both">>();
-    for (const classDef of program.classes) {
-      const accessors = new Map<string, "getter" | "setter" | "both">();
-      for (const g of classDef.getters) {
-        accessors.set(g.name, accessors.has(g.name) ? "both" : "getter");
-      }
-      for (const s of classDef.setters) {
-        accessors.set(s.name, accessors.has(s.name) ? "both" : "setter");
-      }
-      if (accessors.size > 0) {
-        classAccessorNames.set(classDef.name, accessors);
-      }
+  // `classAccessorNames` is built at the outer scope (not inside a nested
+  // block) so it can also be passed to the expression renderer as
+  // `typeAccessorNames` — the type-keyed fallback used when a getter access's
+  // receiver isn't a registered variable (e.g. a for-of loop variable, a
+  // function return, or a chained member access). See demo #6 fix C.
+  const classAccessorNames = new Map<string, Map<string, "getter" | "setter" | "both">>();
+  for (const classDef of program.classes) {
+    const accessors = new Map<string, "getter" | "setter" | "both">();
+    for (const g of classDef.getters) {
+      accessors.set(g.name, accessors.has(g.name) ? "both" : "getter");
     }
-    const allVarDecls: { name: string; cppType: string }[] = [];
-    for (const stmt of program.topLevelStatements) {
+    for (const s of classDef.setters) {
+      accessors.set(s.name, accessors.has(s.name) ? "both" : "setter");
+    }
+    if (accessors.size > 0) {
+      classAccessorNames.set(classDef.name, accessors);
+    }
+  }
+  const allVarDecls: { name: string; cppType: string }[] = [];
+  for (const stmt of program.topLevelStatements) {
+    if (stmt.kind === "var_decl") allVarDecls.push(stmt);
+  }
+  for (const fn of mappedFunctions) {
+    for (const stmt of fn.statements) {
       if (stmt.kind === "var_decl") allVarDecls.push(stmt);
     }
-    for (const fn of mappedFunctions) {
-      for (const stmt of fn.statements) {
-        if (stmt.kind === "var_decl") allVarDecls.push(stmt);
-      }
-      for (const param of fn.parameters) {
+    for (const param of fn.parameters) {
+      allVarDecls.push({ name: param.name, cppType: param.cppType });
+    }
+  }
+  for (const cls of program.classes) {
+    for (const method of cls.methods) {
+      for (const param of method.parameters) {
         allVarDecls.push({ name: param.name, cppType: param.cppType });
       }
     }
-    for (const cls of program.classes) {
-      for (const method of cls.methods) {
-        for (const param of method.parameters) {
-          allVarDecls.push({ name: param.name, cppType: param.cppType });
-        }
-      }
-      if (cls.constructor) {
-        for (const param of cls.constructor.parameters) {
-          allVarDecls.push({ name: param.name, cppType: param.cppType });
-        }
+    if (cls.constructor) {
+      for (const param of cls.constructor.parameters) {
+        allVarDecls.push({ name: param.name, cppType: param.cppType });
       }
     }
-    for (const v of allVarDecls) {
-      const bareType = v.cppType.replace(/\*$/, "").replace(/^const\s+/, "");
-      const accessors = classAccessorNames.get(bareType);
-      if (accessors) {
-        varAccessorNames.set(v.name, accessors);
-      }
+  }
+  for (const v of allVarDecls) {
+    const bareType = v.cppType.replace(/\*$/, "").replace(/^const\s+/, "");
+    const accessors = classAccessorNames.get(bareType);
+    if (accessors) {
+      varAccessorNames.set(v.name, accessors);
     }
   }
 
   const exprRenderer = new ExpressionRenderer({
     strategy,
     boardConstants: program.boardConstants,
+    typeAccessorNames: classAccessorNames,
     classNameMap,
     enumNames,
     stringEnumNames,
@@ -566,6 +570,7 @@ export function buildEmitterContext(
     snprintfCounter,
     stringVarNames,
     varAccessorNames,
+    typeAccessorNames: classAccessorNames,
     interfaceFieldTypes,
     crossModuleClassNames: classNames,
   });
@@ -602,6 +607,7 @@ export function buildEmitterContext(
               snprintfCounter,
               stringVarNames,
               varAccessorNames,
+              typeAccessorNames: classAccessorNames,
               pointerVarTypes,
             });
             return contextRenderer.render(stmt, forHeader, calleeTransformer);

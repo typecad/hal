@@ -64,10 +64,25 @@ export default {
             ) {
               if (node.arguments.length > 0) {
                 const arg = node.arguments[0];
+                // Exempt a bare identifier whose name looks map-like (capitalized
+                // first letter) — the transpiler resolves it to std::map.
                 if (
                   arg.type === "Identifier" &&
                   MAP_LIKE_RE.test(arg.name) &&
                   arg.name !== "Object"
+                ) {
+                  return;
+                }
+                // Exempt a member-access argument (this.field, obj.field). The
+                // transpiler resolves the field's declared type and emits the
+                // __tc_mapKeys/Values/Entries helper when it's a std::map (demo
+                // #7 fix I — Object.keys(this.bus) now lowers correctly). The
+                // transpiler emits TS2CPP_UNSUPPORTED_EXPR for genuine non-maps,
+                // so non-map member access still fails the build with a clear msg.
+                if (
+                  arg.type === "MemberExpression" &&
+                  !arg.computed &&
+                  arg.property.type === "Identifier"
                 ) {
                   return;
                 }
@@ -638,6 +653,74 @@ export default {
                   "[transpiler] Comparing ." + otherSide.callee.property.name +
                   "() to undefined/null does not lower to valid C++ (the optional is flattened to T and compared to 0). " +
                   "Guard with .has(key) before calling .get(key).",
+              });
+            }
+          },
+        };
+      },
+    },
+
+    // -------------------------------------------------------------------------
+    // A7: `=== undefined` / `!== undefined` (and == / != null) on a struct or
+    // interface member access (`obj.prop`). An optional interface field
+    // (`prop?: T`) flattens to a plain `T` in the emitted C++ struct (SUPPORT
+    // MATRIX §1.8), so the "is it set?" check is semantically meaningless —
+    // `undefined` lowers to the CUTTLEFISH_UNDEFINED macro (= 0), and the
+    // comparison either compares a struct to 0 (compile error) or, for scalar
+    // fields, silently compares against 0 (wrong semantics). This is the
+    // struct-field analogue of A6 (no-undefined-compare-on-get). Workaround:
+    // use an explicit boolean flag on the interface instead of an optional
+    // field. NOTE: the .get()/.at() container case is covered by A6; this
+    // rule catches plain property access (`obj.prop`).
+    // -------------------------------------------------------------------------
+    "no-undefined-compare-on-struct-field": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Comparing a struct/interface field to undefined/null does not lower to valid C++ (optional fields flatten to T). Use an explicit boolean flag.",
+        },
+      },
+      create(context) {
+        const UNDEF_NULL_OPS = new Set([
+          "==", "!=", "===", "!==",
+        ]);
+
+        function isUndefinedOrNull(node) {
+          if (node.type === "Identifier" && (node.name === "undefined" || node.name === "null")) {
+            return true;
+          }
+          if (node.type === "Literal" && node.value === null) {
+            return true;
+          }
+          return false;
+        }
+
+        function isMemberAccess(node) {
+          // A property access that is NOT itself a call (the .get()/.at() call
+          // case is handled by no-undefined-compare-on-get). Element access
+          // (obj[key]) is Map-like and also excluded.
+          return node.type === "MemberExpression" && !node.computed;
+        }
+
+        return {
+          BinaryExpression(node) {
+            if (!UNDEF_NULL_OPS.has(node.operator)) return;
+            const leftUndef = isUndefinedOrNull(node.left);
+            const rightUndef = isUndefinedOrNull(node.right);
+            if (!leftUndef && !rightUndef) return;
+            const otherSide = leftUndef ? node.right : node.left;
+            if (isMemberAccess(otherSide)) {
+              const propName =
+                otherSide.property.type === "Identifier"
+                  ? otherSide.property.name
+                  : "<computed>";
+              context.report({
+                node,
+                message:
+                  "[transpiler] Comparing ." + propName +
+                  " to undefined/null does not lower to valid C++ (optional struct/interface fields flatten to their value type). " +
+                  "Use an explicit boolean flag on the interface instead of an optional field.",
               });
             }
           },

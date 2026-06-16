@@ -8,6 +8,25 @@ import { registerFieldMap, PointerTracker, setActiveExtendsClass, activeClassFie
 import { expressionToIR } from "./expression-to-ir";
 import { lowerStatementList } from "./statement-to-ir";
 
+/**
+ * Format an `ExpressionWithTypeArguments` (a heritage-clause type) as a C++
+ * base-class specifier, resolving each type argument through `typeNodeToCppType`.
+ * `extends Registry<string, number>` → `Registry<std::string, double>`.
+ * Without this, `.expression.getText()` drops the type arguments and leaves
+ * the base as an unsubstituted template.
+ */
+function formatHeritageType(
+  heritage: ts.ExpressionWithTypeArguments,
+  typeAliasNodes: Map<string, ts.TypeNode>,
+): string | undefined {
+  const baseName = heritage.expression.getText();
+  if (!heritage.typeArguments || heritage.typeArguments.length === 0) {
+    return baseName;
+  }
+  const args = heritage.typeArguments.map(ta => typeNodeToCppType(ta, typeAliasNodes));
+  return `${baseName}<${args.join(", ")}>`;
+}
+
 export function classDeclarationToIR(
   node: ts.ClassDeclaration,
   fileName: string,
@@ -61,11 +80,14 @@ export function classDeclarationToIR(
 
   const isAbstract = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
 
-  const extendsClass = node.heritageClauses
+  // Render the extends-clause type, INCLUDING type arguments, so a subclass of
+  // a generic base (`extends Registry<string, number>`) lowers to
+  // `: public Registry<std::string, double>` rather than dropping the
+  // instantiation (which would leave the base as an unsubstituted template).
+  const extendsHeritage = node.heritageClauses
     ?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)
-    ?.types[0]
-    ?.expression
-    ?.getText();
+    ?.types[0];
+  const extendsClass = extendsHeritage ? formatHeritageType(extendsHeritage, typeAliasNodes) : undefined;
 
   const implementsInterfaces = node.heritageClauses
     ?.find((clause) => clause.token === ts.SyntaxKind.ImplementsKeyword)

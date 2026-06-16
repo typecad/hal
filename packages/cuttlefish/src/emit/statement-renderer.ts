@@ -45,6 +45,8 @@ interface StatementRendererContext {
   namespaceNames?: Set<string>;
   /** Map of variable names to their class's accessor map for getter/setter rewriting */
   varAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
+  /** Map of class type names to their accessor map (type-keyed fallback for getter/setter rewriting). */
+  typeAccessorNames?: Map<string, Map<string, "getter" | "setter" | "both">>;
   /** Imported class names from other transpiled modules */
   crossModuleClassNames?: Set<string>;
   /** Shared counter for unique snprintf buffer names across statement renders */
@@ -119,6 +121,7 @@ export class StatementRenderer {
       cArrayVarNames: context.cArrayVarNames,
       namespaceNames: context.namespaceNames,
       varAccessorNames: context.varAccessorNames,
+      typeAccessorNames: context.typeAccessorNames,
       crossModuleClassNames: context.crossModuleClassNames,
       snprintfCounter: context.snprintfCounter,
       interfaceFieldTypes: this.interfaceFieldTypes,
@@ -245,7 +248,11 @@ export class StatementRenderer {
       if (statement.kind === "for_of") {
         const varDecl = statement.variable;
         if (varDecl.kind === "var_decl") {
-          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes)})`;
+          // Range-for by reference for non-primitive element types (structs,
+          // classes, strings) to avoid the per-iteration copy g++ warns about
+          // (-Wrange-loop-construct). Primitives stay by value.
+          const isRef = !isPrimitiveCppType(varDecl.cppType) && !isIndirectType(varDecl.cppType, this.strategy);
+          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const", isRef)} : ${this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes)})`;
         }
         return `for (auto item : ${this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes)})`;
       }
@@ -262,7 +269,8 @@ export class StatementRenderer {
         }
         const varDecl = statement.variable;
         if (varDecl.kind === "var_decl") {
-          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const")} : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;
+          const isRef = !isPrimitiveCppType(varDecl.cppType) && !isIndirectType(varDecl.cppType, this.strategy);
+          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const", isRef)} : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;
         }
         return `for (auto key : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;
       }

@@ -64,6 +64,30 @@ export function expressionStatementToIR(
         value: expressionToIR(expr.right, sourceText, diagnostics),
       };
     }
+    // Handle ??= on a property-access left side: obj.field ??= val →
+    // obj.field = cuttlefish_is_nullish(obj.field) ? val : obj.field
+    // (demo #8 Finding I — was dropped because ??= isn't in the compound-assign
+    // table, so the property-access assignment block returned nothing).
+    if (expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+      const targetIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
+      const targetText = renderExprAsText(targetIR);
+      const comments = extractNodeComments(statement, sourceText);
+      const valIR = expressionToIR(expr.right, sourceText, diagnostics);
+      return {
+        kind: "assign",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
+        operator: "=",
+        value: {
+          kind: "ternary",
+          condition: { kind: "raw", value: `cuttlefish_is_nullish(${targetText})` },
+          whenTrue: valIR,
+          whenFalse: { kind: "raw", value: targetText },
+        },
+      };
+    }
   }
 
   // Handle arr[index] = value and compound assignments (arr[i] += 5, etc.)

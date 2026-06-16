@@ -930,6 +930,28 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
             });
           }
         }
+        // Member assignment on a `const` struct local (e.g. `out.a = 5` where
+        // `out` is `const Pair`) compiles in TS but fails against the emitted
+        // `const Pair out` (read-only aggregate). Demote the binding the same
+        // way. The target is a dotted lvalue like `out.a` or `out->a`.
+        const dot = stmt.target.indexOf('.');
+        const arrow = stmt.target.indexOf('->');
+        const sepIdx = dot >= 0 ? dot : arrow;
+        if (sepIdx > 0) {
+          const baseName = stmt.target.slice(0, sepIdx);
+          const constEntry = constVars.get(baseName);
+          if (constEntry && constEntry.stmt.storage === 'const') {
+            constEntry.stmt.storage = 'let';
+            diagnostics.push({
+              severity: 'info',
+              message: `'${baseName}' is declared 'const' but a field is mutated via member assignment — demoted to non-const in C++ so the mutation compiles.`,
+              line: constEntry.span.startLine,
+              column: constEntry.span.startColumn,
+              code: 'ownership-const-content-mutated',
+              source: 'ownership-analysis',
+            });
+          }
+        }
       }
       if (stmt.kind === 'update') {
         const entry = letVars.get(stmt.target);

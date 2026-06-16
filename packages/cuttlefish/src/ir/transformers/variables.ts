@@ -181,6 +181,16 @@ export function variableStatementToIR(
             : undefined;
           if (nestedPropName) {
             const nestedObjText = `${objText}${accessor}${nestedPropName}`;
+            // The nested object (e.g. `stats.inner`) is itself a property-access
+            // on the root object. Build it as a structured node so the chained
+            // access renders correctly and is classified as runtime. See the
+            // non-nested case below for the same rationale (demo #6 fix D).
+            const nestedObjExpr: ExpressionIR = {
+              kind: "property-access",
+              object: objExpr,
+              property: nestedPropName,
+              isPointer: isPointerAccess,
+            };
             for (const nestedElement of element.name.elements) {
               if (!ts.isBindingElement(nestedElement) || !ts.isIdentifier(nestedElement.name)) continue;
               const nestedVarName = nestedElement.name.text;
@@ -188,7 +198,12 @@ export function variableStatementToIR(
               if (nestedElement.propertyName && ts.isIdentifier(nestedElement.propertyName)) {
                 nPropName = nestedElement.propertyName.text;
               }
-              const propAccess: ExpressionIR = { kind: "raw", value: `${nestedObjText}${accessor}${nPropName}` };
+              const propAccess: ExpressionIR = {
+                kind: "property-access",
+                object: nestedObjExpr,
+                property: nPropName,
+                isPointer: false,
+              };
               const initializer = nestedElement.initializer
                 ? { kind: "raw" as const, value: `cuttlefish_nullish(${renderExprAsText(propAccess)}, ${renderExprAsText(expressionToIR(nestedElement.initializer, sourceText, diagnostics))})` }
                 : propAccess;
@@ -221,8 +236,20 @@ export function variableStatementToIR(
           propName = varName;
         }
 
-        // Create individual variable declaration for each destructured property
-        const propAccess: ExpressionIR = { kind: "raw", value: `${objText}${accessor}${propName}` };
+        // Create individual variable declaration for each destructured property.
+        // Build a structured `property-access` IR node (NOT a `{kind:"raw"}`
+        // string) so that isRuntimeExpression() recognizes the initializer as
+        // runtime (a member access on a variable) and routes the declaration
+        // into the enclosing function body rather than file scope. A raw
+        // "stats.field" string was misclassified as compile-time, so top-level
+        // destructuring of a local hoisted the split decls out of main()'s
+        // scope ("'stats' was not declared in this scope"). See demo #6 fix D.
+        const propAccess: ExpressionIR = {
+          kind: "property-access",
+          object: objExpr,
+          property: propName,
+          isPointer: isPointerAccess,
+        };
         const initializer = element.initializer
           ? {
               kind: "raw" as const,
@@ -294,6 +321,26 @@ export function variableStatementToIR(
             activeCArrayVars.add(varName);
             commentsAssigned = true;
           } else {
+            // Derive the element type from the source array so the rest slice
+            // lowers to std::vector<ElemType> (NOT std::vector<ElemType&> —
+            // `decltype(arr[0])` yields a reference, and vector-of-references
+            // is illegal in C++). Fall back to std::remove_reference_t<decltype(...)>
+            // when the element type can't be statically resolved.
+            const srcType = activeLocalTypes.get(arrText) ?? activeGlobalTypes.get(arrText);
+            let elemType = "auto";
+            if (srcType) {
+              if (srcType.startsWith("std::vector<")) {
+                elemType = srcType.slice("std::vector<".length, -1).trim();
+              } else if (srcType.endsWith("[]")) {
+                elemType = srcType.slice(0, -2);
+              } else if (srcType.startsWith("__tc_StaticArray<")) {
+                const inner = srcType.slice("__tc_StaticArray<".length, -1);
+                elemType = inner.split(",")[0].trim();
+              }
+            }
+            const vectorType = elemType !== "auto"
+              ? `std::vector<${elemType}>`
+              : `std::vector<std::remove_reference_t<decltype(${arrText}[0])>>`;
             lowered.push({
               kind: "var_decl",
               sourceSpan: makeSourceSpan(element, fileName, sourceText),
@@ -302,7 +349,7 @@ export function variableStatementToIR(
               name: varName,
               storage,
               cppType: "auto",
-              initializer: { kind: "raw", value: `std::vector<decltype(${arrText}[0])>(${arrText}.begin() + ${i}, ${arrText}.end())` },
+              initializer: { kind: "raw", value: `${vectorType}(${arrText}.begin() + ${i}, ${arrText}.end())` },
             });
             localVariableTypes.set(varName, "auto");
             commentsAssigned = true;

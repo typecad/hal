@@ -1,12 +1,44 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types";
 import { StatementIR } from "../../api";
-import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeLocalTypes, activeGlobalTypes } from "../build-ir-state";
+import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeLocalTypes, activeGlobalTypes, activeEnumNames } from "../build-ir-state";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
 import { tryResolveHALMethod } from "./hal-call-resolver";
 import { expressionToIR } from "../expression-to-ir";
 import { escapeCppKeyword } from "../../utils/strings";
 import { renderExprAsText, calleeToText } from "../render-expr";
+
+/**
+ * When a Map/Set key is an enum-typed expression and the container's key type
+ * is an integral type, the lowered `map[key]` / `map.count(key)` would pass the
+ * enum operand directly, which fails against a non-transparent `std::less<int>`
+ * comparator. Wrap the key in `static_cast<KeyType>(...)` so it matches.
+ */
+function castEnumKeyIfNeeded(
+  keyText: string,
+  keyNode: ts.Expression,
+  receiverType: string,
+): string {
+  // Only relevant for std::map/std::set with an integral key type.
+  const isContainer = receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<");
+  if (!isContainer) return keyText;
+  const inner = receiverType.slice(receiverType.indexOf("<") + 1, -1);
+  const keyType = inner.split(",")[0].trim();
+  const isIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char)$/.test(keyType);
+  if (!isIntegral) return keyText;
+  // Detect an enum-typed key operand: an enum member access (Color.Red) or a
+  // bare identifier whose enum is known.
+  let isEnum = false;
+  if (ts.isPropertyAccessExpression(keyNode) && ts.isIdentifier(keyNode.expression)) {
+    isEnum = activeEnumNames.has(keyNode.expression.text);
+  } else if (ts.isIdentifier(keyNode)) {
+    // A bare enum value variable isn't directly knowable here without type
+    // info; only treat enum-member access as enum-typed.
+    isEnum = false;
+  }
+  if (!isEnum) return keyText;
+  return `static_cast<${keyType}>(${keyText})`;
+}
 
 export function callToStatement(
   statementNode: ts.ExpressionStatement,
@@ -111,12 +143,13 @@ export function callToStatement(
         if (receiverType.startsWith("std::map<") && mapMethodName === "set" && call.arguments.length >= 2) {
           const arg1IR = expressionToIR(call.arguments[1], sourceText, diagnostics, pointerVars);
           const arg1Text = renderExprAsText(arg1IR);
+          const castedKey = castEnumKeyIfNeeded(arg0Text, call.arguments[0], receiverType);
           return {
             kind: "assign" as const,
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
             leadingComments: comments.leadingComments,
             trailingComments: comments.trailingComments,
-            target: `${recText}[${arg0Text}]`,
+            target: `${recText}[${castedKey}]`,
             operator: "=",
             value: { kind: "raw" as const, value: arg1Text },
           };

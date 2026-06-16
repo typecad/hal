@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "toolchainFingerprint": "2b35973abe219fe7",
+  "rootDir": "C:\\typecad\\typecode\\demo\\src",
+  "files": {
+    "C:\\typecad\\typecode\\demo\\src\\models\\Layers.ts": {
+      "hash": "bd2d471c473c6cfa",
+      "mtime": 1781575805452.9778,
+      "size": 2175,
+      "dependencies": [],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Layers.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Layers.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Layers.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Layers.h.thcppmap.json"
+      ]
+    },
+    "C:\\typecad\\typecode\\demo\\src\\models\\StringRegistry.ts": {
+      "hash": "43e721c016999537",
+      "mtime": 1781575944746.5964,
+      "size": 2002,
+      "dependencies": [],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\StringRegistry.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\StringRegistry.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\StringRegistry.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\StringRegistry.h.thcppmap.json"
+      ]
+    },
+    "C:\\typecad\\typecode\\demo\\src\\main.ts": {
+      "hash": "79aa9562c23fb974",
+      "mtime": 1781575884650.3474,
+      "size": 2826,
+      "dependencies": [
+        "C:\\typecad\\typecode\\demo\\src\\models\\Layers.ts",
+        "C:\\typecad\\typecode\\demo\\src\\models\\StringRegistry.ts"
+      ],
+      "outputs": [
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.cpp",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.h",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.cpp.thcppmap.json",
+        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.h.thcppmap.json"
+      ]
+    }
+  },
+  "createdAt": 1781576380533,
+  "updatedAt": 1781576381538
+}

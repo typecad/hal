@@ -217,10 +217,25 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
         const resolved = crossModuleVarTypes.get(statement.name);
         if (resolved) cppType = strategy.normalizeCppType(resolved);
       }
-      if (cppType === "auto") continue;
       const isConst = statement.storage === "const";
       const constPrefix = isConst ? "const " : "";
       const varName = escapeCppKeyword(statement.name, platformReservedNames);
+      // Array-typed top-level consts (e.g. `export const ARR: T[] = [...]`)
+      // lower with cppType "auto" and a `{ kind: "array", elementType }`
+      // initializer. They emit as C-style arrays (`T name[] = {...}`), so the
+      // matching extern is `extern const T name[];` — not a scalar extern and
+      // not a std::vector extern. Without this, cross-file consumers fail with
+      // "was not declared in this scope" (the definition lives in the .cpp
+      // only). Mirror renderVarDecl's element-type fallback for "auto".
+      if (cppType === "auto" && statement.initializer && statement.initializer.kind === "array") {
+        const elemType = statement.initializer.elementType && statement.initializer.elementType !== "auto"
+          ? strategy.normalizeCppType(statement.initializer.elementType)
+          : strategy.defaultNumericType();
+        appendHeaderLine(ctx, `extern ${constPrefix}${elemType} ${varName}[];`);
+        emitted = true;
+        continue;
+      }
+      if (cppType === "auto") continue;
       appendHeaderLine(ctx, `extern ${constPrefix}${cppType} ${varName};`);
       emitted = true;
     }

@@ -714,7 +714,11 @@ export function inferExprCppType(
       if (fieldType && fieldType !== "auto") return fieldType as CppTypeHint;
     }
     if (ts.isIdentifier(expr.expression)) {
-      const objType = activeLocalTypes.get(expr.expression.text) ?? activeGlobalTypes.get(expr.expression.text);
+      // Prefer the caller-supplied local types (e.g. a lambda's param types)
+      // before the module-level active maps, so a callback body like
+      // `(n: Node) => n.capacity` resolves `n` -> Node -> capacity -> double.
+      const objType = localVariableTypes.get(expr.expression.text)
+        ?? activeLocalTypes.get(expr.expression.text) ?? activeGlobalTypes.get(expr.expression.text);
       if (objType && objType !== "auto") {
         const className = objType.replace(/\*$/, "");
         const classDef = topLevelClasses.get(className);

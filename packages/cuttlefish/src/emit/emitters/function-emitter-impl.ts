@@ -138,7 +138,7 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
   if (effectiveEmitMode !== "split") {
     const excludedNames = new Set(strategy.forwardDeclarationExclusions?.() ?? []);
     for (const callback of ctx.callbackFunctions) {
-      appendSourceLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}();`);
+      appendSourceLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}${renderCallbackSignature(callback)};`);
     }
     for (const fn of ctx.mappedFunctions) {
       if (excludedNames.has(fn.name)) continue;
@@ -168,13 +168,13 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
       appendSourceLine(ctx, `const unsigned long ${callback.name}_debounce = ${callback.debounceMs};`);
       appendSourceLine(ctx, "");
     }
-    appendSourceLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}() {`);
+    appendSourceLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}${renderCallbackSignature(callback)} {`);
     if (callback.debounceMs !== undefined && callback.debounceMs > 0) {
       appendSourceLine(ctx, `  volatile unsigned long now = ${strategy.currentTimeMillis()};`);
       appendSourceLine(ctx, `  if (now - ${callback.name}_lastTime < ${callback.name}_debounce) return;`);
       appendSourceLine(ctx, `  ${callback.name}_lastTime = now;`);
     }
-    const callbackScope = createChildEmissionScope(topLevelScope);
+    const callbackScope = createChildEmissionScope(topLevelScope, callback.typedParams);
     for (const stmt of callback.statements) {
       appendRenderedStatement(ctx, stmt, "  ", callbackScope);
     }
@@ -185,9 +185,25 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
   // Split-mode ISR callback forward declarations in header
   if (effectiveEmitMode === "split") {
     for (const callback of ctx.callbackFunctions) {
-      appendHeaderLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}void ${callback.name}();`);
+      appendHeaderLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}${renderCallbackSignature(callback)};`);
     }
   }
+}
+
+/**
+ * Render the C++ signature of a synthesized callback (ISR) free function.
+ *
+ * Historically every hoisted callback emitted as `void name()` — fine for
+ * parameter-less ISRs (the `onFalling(() => {...})` case) but wrong for a
+ * typed lambda passed as a `std::function<R(args)>` argument, where the
+ * function must carry the same return type and parameter list. We fall back
+ * to the historical `void name()` shape when the callback carries no
+ * returnType/typedParams (the common ISR path that populates neither).
+ */
+function renderCallbackSignature(callback: { name: string; returnType?: string; typedParams?: { name: string; cppType: string }[] }): string {
+  const ret = callback.returnType && callback.returnType !== "void" ? callback.returnType : "void";
+  const params = (callback.typedParams ?? []).map(p => `${p.cppType} ${p.name}`).join(", ");
+  return `${ret} ${callback.name}(${params})`;
 }
 
 export function emitFunctions(ctx: EmitterContext): void {
@@ -249,6 +265,30 @@ export function emitFunctions(ctx: EmitterContext): void {
       }
     }
 
+    // Generic (templated) functions must be DEFINED in the header — a C++
+    // template definition in a .cpp is not visible to other translation
+    // units, producing `undefined reference` at link time. So for an exported
+    // generic function in split mode we route the full definition (template
+    // line + signature + body) into the header. We use the same buffer-swap
+    // trick the class emitter uses (class-emitter.ts:13-18), so that
+    // appendSourceLine / appendRenderedStatement (which are hardwired to the
+    // source buffer) write to the header while the swap is active. Non-generic
+    // exported functions keep their historical decl-in-.h / def-in-.cpp split.
+    const isExportedGeneric =
+      effectiveEmitMode === "split" &&
+      isExported &&
+      !!fn.typeParameters && fn.typeParameters.length > 0 &&
+      !fn.isAsync; // async functions are driven via task classes, not templates
+
+    if (isExportedGeneric) {
+      const _swapLines = ctx.sourceLines;
+      ctx.sourceLines = ctx.headerLines;
+      ctx.headerLines = _swapLines;
+      const _swapMaps = ctx.sourceMapEntries;
+      ctx.sourceMapEntries = ctx.headerMapEntries;
+      ctx.headerMapEntries = _swapMaps;
+    }
+
     emitCommentLines(fn.leadingComments, "", (line) => appendSourceLine(ctx, line));
     if (fn.typeParameters && fn.typeParameters.length > 0) {
       appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
@@ -306,6 +346,18 @@ export function emitFunctions(ctx: EmitterContext): void {
     appendSourceLine(ctx, "}");
     emitCommentLines(fn.trailingComments, "", (line) => appendSourceLine(ctx, line));
     appendSourceLine(ctx, "");
+
+    // Restore the buffer swap we applied for exported generic functions (see
+    // isExportedGeneric above). After this point sourceLines/headerLines are
+    // back to their normal roles for the next function in the loop.
+    if (isExportedGeneric) {
+      const _swapLines = ctx.sourceLines;
+      ctx.sourceLines = ctx.headerLines;
+      ctx.headerLines = _swapLines;
+      const _swapMaps = ctx.sourceMapEntries;
+      ctx.sourceMapEntries = ctx.headerMapEntries;
+      ctx.headerMapEntries = _swapMaps;
+    }
   }
 }
 

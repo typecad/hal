@@ -103,7 +103,13 @@ export function emitClassSection(
 
   if (includeFriendCallbacks && ctx.callbackFunctions.length > 0) {
     for (const callback of ctx.callbackFunctions) {
-      appendSourceLine(ctx, `  friend void ${callback.name}();`);
+      // Friend declaration must match the synthesized callback's actual
+      // signature (void name() for ISRs, or R name(args) for typed
+      // std::function-callback lambdas). See renderCallbackSignature in
+      // function-emitter-impl.ts.
+      const fret = callback.returnType && callback.returnType !== "void" ? callback.returnType : "void";
+      const fparams = (callback.typedParams ?? []).map((p: { name: string; cppType: string }) => `${p.cppType} ${p.name}`).join(", ");
+      appendSourceLine(ctx, `  friend ${fret} ${callback.name}(${fparams});`);
     }
     appendSourceLine(ctx, "");
   }

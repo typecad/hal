@@ -2,7 +2,14 @@
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import chalk from "chalk";
-import { mapCppLocationToTs, readSourceMap, resolveSourceMapForSketch } from "./mapping/source-map";
+import {
+  buildSourceMapIndex,
+  mapCppErrorToTs,
+  mapCppLocationToTs,
+  readSourceMap,
+  resolveSourceMapForSketch,
+  type SourceMapIndex,
+} from "./mapping/source-map";
 import type { CompileResult, Diagnostic } from "./api/shared";
 
 function resolveExpectCliPath(): string {
@@ -103,51 +110,164 @@ export function printDiagnostics(diagnostics: Array<Diagnostic | { severity: str
   }
 }
 
+/**
+ * Print compiler (g++/native) errors mapped back to the TypeScript source
+ * that generated them.
+ *
+ * The mapped TypeScript errors are the PRIMARY output — shown in the same
+ * rich style as `printDiagnostics` (file:line:col + source line + caret).
+ * Errors that cannot be mapped (e.g. generated runtime shims/polyfills with
+ * no TS origin) are shown afterwards as a demoted, gray C++ fallback so no
+ * information is lost.
+ *
+ * Resolution strategy:
+ *  - If `buildDir` is supplied (native mode), build a per-file source-map
+ *    index over every `*.thcppmap.json` in the dir and map each error via
+ *    its own translation unit's map.
+ *  - Otherwise fall back to the single-map Arduino sketch path so non-native
+ *    frameworks keep their existing behavior.
+ */
 export function printMappedCompileErrors(
   compileResult: CompileResult,
   originalSourceMapPath?: string,
   sketchPath?: string,
-): void {
+  buildDir?: string,
+): { printed: boolean } {
   if (compileResult.errors.length === 0) {
-    return;
+    return { printed: false };
   }
 
-  let sourceMapPath = originalSourceMapPath;
-  if (sketchPath && !sourceMapPath) {
-    sourceMapPath = resolveSourceMapForSketch(sketchPath, originalSourceMapPath);
+  // Build the source-map index (native: per-file maps; otherwise single map).
+  let index: SourceMapIndex | undefined;
+  if (buildDir) {
+    index = buildSourceMapIndex(buildDir);
+    if (index.size === 0) index = undefined;
+  }
+  let singleMap: ReturnType<typeof readSourceMap> | undefined;
+  if (!index) {
+    let sourceMapPath = originalSourceMapPath;
+    if (sketchPath && !sourceMapPath) {
+      sourceMapPath = resolveSourceMapForSketch(sketchPath, originalSourceMapPath);
+    }
+    singleMap = sourceMapPath ? readSourceMap(sourceMapPath) : undefined;
   }
 
-  const sourceMap = sourceMapPath ? readSourceMap(sourceMapPath) : undefined;
+  const mapped: Array<{ error: typeof compileResult.errors[number]; tsFile: string; tsLine: number; tsColumn: number; sourceLine?: string; nodeKind?: string; symbolName?: string }> = [];
+  const unmapped: typeof compileResult.errors = [];
 
   for (const error of compileResult.errors) {
-    if (sourceMap) {
-      const mapped = mapCppLocationToTs(
-        sourceMap,
-        error.line,
-        error.column,
-        error.message,
-        error.filePath,
-      );
+    const mappedDiag = index
+      ? mapCppErrorToTs(index, error)
+      : singleMap
+        ? mapCppLocationToTs(singleMap, error.line, error.column, error.message, error.filePath)
+        : undefined;
 
-      if (mapped.mappedTsSpan) {
-        const formatted = `${mapped.mappedTsSpan.filePath}(${mapped.mappedTsSpan.startLine},${mapped.mappedTsSpan.startColumn}): ${error.severity}: ${error.message}`;
-        if (error.severity === "error") {
-          console.error(formatted);
-        } else {
-          console.warn(formatted);
-        }
-        continue;
+    const span = mappedDiag?.mappedTsSpan;
+    if (span) {
+      mapped.push({
+        error,
+        tsFile: span.filePath,
+        tsLine: span.startLine,
+        tsColumn: span.startColumn,
+        sourceLine: readSourceLine(span.filePath, span.startLine),
+        nodeKind: mappedDiag?.nodeKind,
+        symbolName: mappedDiag?.symbolName,
+      });
+    } else {
+      unmapped.push(error);
+    }
+  }
+
+  // Primary: mapped TypeScript errors (rich format, mirrors printDiagnostics).
+  for (const item of mapped) {
+    printMappedTsError(item.error, item.tsFile, item.tsLine, item.tsColumn, item.sourceLine, item.nodeKind, item.symbolName);
+  }
+
+  // Demoted fallback: raw C++ errors with no TS origin.
+  if (unmapped.length > 0) {
+    if (mapped.length > 0) {
+      console.error("");
+    }
+    console.error(chalk.gray(`Unmapped (generated-code) ${unmapped.length === 1 ? "error" : "errors"}:`));
+    for (const error of unmapped) {
+      const rel = relativeForDisplay(error.filePath);
+      const line = chalk.gray(`  \u21b3 (generated C++) ${rel}(${error.line},${error.column}): ${error.severity}: ${error.message}`);
+      if (error.severity === "error") {
+        console.error(line);
+      } else {
+        console.warn(line);
       }
     }
+  }
 
-    const fallback = `${error.filePath}(${error.line},${error.column}): ${error.severity}: ${error.message}`;
+  return { printed: mapped.length > 0 || unmapped.length > 0 };
+}
+
+/** Read a single 1-based source line for caret display; returns undefined on failure. */
+function readSourceLine(filePath: string, line: number): string | undefined {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    return content.split(/\r?\n/)[line - 1];
+  } catch {
+    return undefined;
+  }
+}
+
+/** Make a path relative to cwd for display, falling back to the original. */
+function relativeForDisplay(filePath: string): string {
+  try {
+    const rel = path.relative(process.cwd(), filePath);
+    return rel && !rel.startsWith("..") ? rel : filePath;
+  } catch {
+    return filePath;
+  }
+}
+
+/** Print one mapped error in the rich printDiagnostics style. */
+function printMappedTsError(
+  error: { severity: string; message: string },
+  tsFile: string,
+  tsLine: number,
+  tsColumn: number,
+  sourceLine?: string,
+  nodeKind?: string,
+  symbolName?: string,
+): void {
+  const rel = relativeForDisplay(tsFile);
+  const position = chalk.gray(`(${tsLine},${tsColumn})`);
+
+  let severityLabel: string;
+  if (error.severity === "error") {
+    severityLabel = chalk.red.bold("error");
+  } else if (error.severity === "warning") {
+    severityLabel = chalk.yellow.bold("warning");
+  } else {
+    severityLabel = chalk.cyan.bold(String(error.severity));
+  }
+
+  const origin = symbolName ? chalk.gray(` [${nodeKind ?? "generated"}: ${symbolName}]`) : nodeKind ? chalk.gray(` [${nodeKind}]`) : "";
+  const header = `${chalk.cyan(rel)} ${position} ${severityLabel}${origin}: ${chalk.white(error.message)}`;
+
+  if (error.severity === "error") {
+    console.error(header);
+  } else {
+    console.warn(header);
+  }
+
+  if (sourceLine) {
+    const prefix = "    ";
+    const col = tsColumn;
+    const sourceOutput = prefix + sourceLine;
     if (error.severity === "error") {
-      console.error(fallback);
-      if (sourceMapPath) {
-        console.error(`Note: Failed to map C++ error to TypeScript source. Source map: ${sourceMapPath}`);
-      }
+      console.error(sourceOutput);
     } else {
-      console.warn(fallback);
+      console.warn(sourceOutput);
+    }
+    const caret = prefix + " ".repeat(Math.max(0, col - 1)) + "^";
+    if (error.severity === "error") {
+      console.error(chalk.gray(caret));
+    } else {
+      console.warn(chalk.gray(caret));
     }
   }
 }

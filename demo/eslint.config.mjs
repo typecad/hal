@@ -74,6 +74,19 @@ const transpilerRules = [
     message:
       "[transpiler] for await...of is unsupported (requires an async runtime absent on bare metal). Use a synchronous for...of loop.",
   },
+  // §3.4 ❌ — IIFE ((function(){...})() / (() => {...})()) emits the literal
+  // `function` keyword into C++ (no inlining path). Assign to a const or use a
+  // named top-level function instead.
+  {
+    selector: "CallExpression[callee.type='FunctionExpression']",
+    message:
+      "[transpiler] immediately-invoked function expressions (IIFEs) are not supported — the body is not inlined and the `function` keyword is emitted verbatim. Assign to a const or define a named top-level function.",
+  },
+  {
+    selector: "CallExpression[callee.type='ArrowFunctionExpression']",
+    message:
+      "[transpiler] immediately-invoked arrow expressions (() => {...})() are not supported — the body is not inlined. Assign to a const or define a named top-level function.",
+  },
   // §2.6 🚫 — Promise / .then need a promise runtime. (Await/async are
   // approximated but flagged separately below.)
   {
@@ -255,6 +268,7 @@ export default [
       "cuttlefish/no-array-param-content-mutation": "error",
       "cuttlefish/no-container-functional-methods": "error",
       "cuttlefish/no-undefined-compare-on-get": "error",
+      "cuttlefish/no-undefined-compare-on-struct-field": "error",
       "cuttlefish/no-typed-array-param-length": "error",
       "cuttlefish/no-typed-array-return": "error",
       "cuttlefish/no-dynamic-property-access": "error",

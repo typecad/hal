@@ -249,7 +249,13 @@ export function emitClasses(ctx: EmitterContext): void {
       appendSourceLine(ctx, "public:");
       if (ctx.callbackFunctions.length > 0) {
         for (const callback of ctx.callbackFunctions) {
-          appendSourceLine(ctx, `  friend void ${callback.name}();`);
+          // Friend declaration must match the synthesized callback's actual
+          // signature (void name() for ISRs, or R name(args) for typed
+          // std::function-callback lambdas). See renderCallbackSignature in
+          // function-emitter-impl.ts.
+          const fret = callback.returnType && callback.returnType !== "void" ? callback.returnType : "void";
+          const fparams = (callback.typedParams ?? []).map((p: { name: string; cppType: string }) => `${p.cppType} ${p.name}`).join(", ");
+          appendSourceLine(ctx, `  friend ${fret} ${callback.name}(${fparams});`);
         }
         appendSourceLine(ctx, "");
       }
@@ -336,7 +342,11 @@ export function emitClasses(ctx: EmitterContext): void {
         const staticPrefix = getter.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(getter.returnType);
         const getterName = accessorGetterName(getter.name);
-        appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}() const {`);
+        // A `const` cv-qualifier is illegal on a static member function
+        // (g++: "static member function ... cannot have cv-qualifier"). Only
+        // add `const` for instance getters.
+        const constQualifier = getter.isStatic ? "" : " const";
+        appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}()${constQualifier} {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         addClassFieldsToScope(classDef, getterScope);
         withThisAccessors(classDef, getter.isStatic, () => {
@@ -402,7 +412,8 @@ export function emitClasses(ctx: EmitterContext): void {
         const staticPrefix = getter.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(getter.returnType);
         const getterName = accessorGetterName(getter.name);
-        appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}() const {`);
+        const constQualifier = getter.isStatic ? "" : " const";
+        appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}()${constQualifier} {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         addClassFieldsToScope(classDef, getterScope);
         withThisAccessors(classDef, getter.isStatic, () => {

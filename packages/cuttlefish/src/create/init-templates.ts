@@ -333,6 +333,8 @@ const transpilerRules = [
   { selector: "TSBigIntKeyword", message: "[transpiler] bigint is not supported (no C++ equivalent for embedded targets). Use number with an explicit fixed-width type." },
   { selector: "TSNeverKeyword", message: "[transpiler] the \`never\` type has no meaningful C++ lowering. Avoid it." },
   { selector: "ForOfStatement[await=true]", message: "[transpiler] for await...of is unsupported (requires an async runtime absent on bare metal)." },
+  { selector: "CallExpression[callee.type='FunctionExpression']", message: "[transpiler] immediately-invoked function expressions (IIFEs) are not supported — the body is not inlined. Assign to a const or define a named top-level function." },
+  { selector: "CallExpression[callee.type='ArrowFunctionExpression']", message: "[transpiler] immediately-invoked arrow expressions (() => {...})() are not supported — the body is not inlined. Assign to a const or define a named top-level function." },
   { selector: "Identifier[name='Promise']", message: "[transpiler] Promise is not supported (no promise runtime on bare metal)." },
   { selector: "CallExpression > MemberExpression.callee[property.name='then']", message: "[transpiler] .then() on a Promise is not supported (no promise runtime)." },
   { selector: "FunctionDeclaration[async=true]", message: "[transpiler] async functions cannot produce correct embedded behavior (no event loop)." },

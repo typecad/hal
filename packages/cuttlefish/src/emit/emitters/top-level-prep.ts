@@ -84,7 +84,7 @@ function rewriteAsIdentifier(expr: ExpressionIR & Record<string, unknown>, callb
 
 function collectCallbackFromExpression(
   expr: ExpressionIR,
-  callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[],
+  callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; returnType?: string; typedParams?: { name: string; cppType: string }[] }[],
   isrPrefix: string,
   counter: { value: number },
 ): void {
@@ -108,11 +108,27 @@ function collectCallbackFromExpression(
   if (expr.kind === "lambda") {
     const callbackName = `${isrPrefix}_isr_${counter.value++}`;
     const lam = expr as any;
+    // Preserve the lambda's return type and typed params so a
+    // `(x): int16_t => {...}` callback lowers to `int16_t name(int16_t)`
+    // rather than the default `void name()`. The historical ISR/HAL path
+    // leaves these unset (defaults to void()).
+    // Keep `auto` params (so the ISR isn't arity-stripped) and an `auto`
+    // return type (C++14 return-type deduction) — both let the __tc_*
+    // template helpers deduce types via decltype instead of failing on a
+    // void(auto) callable. Only drop a param when it has no cppType at all.
+    const lamParams: { name: string; cppType: string }[] = (lam.params ?? [])
+      .filter((p: { name: string; cppType: string }) => p && p.name && p.cppType && p.cppType !== "void");
+    const returnType =
+      lam.returnType && lam.returnType !== "void"
+        ? lam.returnType
+        : undefined;
     callbackFunctions.push({
       name: callbackName,
-      params: lam.params ?? [],
+      params: lamParams.map((p: { name: string }) => p.name),
       statements: lam.statements ?? lam.body ?? [],
       debounceMs: lam.debounceMs,
+      returnType,
+      typedParams: lamParams,
     });
     rewriteAsIdentifier(expr, callbackName);
     return;
@@ -153,7 +169,7 @@ function collectCallbackFromExpression(
 
 function collectCallbacks(
   statements: StatementIR[],
-  callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[],
+  callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; returnType?: string; typedParams?: { name: string; cppType: string }[] }[],
   isrPrefix: string,
   counter: { value: number },
 ): void {
@@ -484,7 +500,7 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   }
 
   // Collect callback functions
-  const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number }[] = [];
+  const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; returnType?: string; typedParams?: { name: string; cppType: string }[] }[] = [];
   const counter = { value: 0 };
 
   collectCallbacks(filteredTopLevelExecutables, callbackFunctions, ctx.isrPrefix, counter);

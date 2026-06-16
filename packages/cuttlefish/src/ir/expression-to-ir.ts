@@ -9,7 +9,7 @@ import { halInstances } from "./hal-resolver";
 import { escapeCppKeyword } from "../utils/strings";
 import { tryLowerRegisterRead } from "./transformers/register-assignment";
 import { tryLowerArrayAndStringMethods } from "./transformers/array-methods";
-import { collectReturns, inferExprCppType, typeNodeToCppType } from "./type-resolution";
+import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution";
 
 function resolveExprCppType(expr: ts.Expression): string | undefined {
   if (ts.isNonNullExpression(expr) || ts.isParenthesizedExpression(expr)) {
@@ -62,6 +62,23 @@ function resolveExprCppType(expr: ts.Expression): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * Math.* constant property accesses that lower to a numeric literal rather
+ * than `std::<name>` (which doesn't exist — `std::` has no PI/E members).
+ * Using literals avoids `<cmath>`/`M_PI` `_USE_MATH_DEFINES` portability
+ * issues on Windows/MSVC. Mirrors the TS `Math` constant values.
+ */
+const MATH_CONSTANT_LITERALS: Record<string, number> = {
+  PI: 3.141592653589793,
+  E: 2.718281828459045,
+  LN2: 0.6931471805599453,
+  LN10: 2.302585092994046,
+  LOG2E: 1.4426950408889634,
+  LOG10E: 0.4342944819032518,
+  SQRT2: 1.4142135623730951,
+  SQRT1_2: 0.7071067811865476,
+};
 
 export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
   function emitUnsupportedExpression(message: string): ExpressionIR {
@@ -164,6 +181,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
     if (ts.isIdentifier(receiverNode) && receiverNode.text === "Math") {
       if (memberName === "random") return `__tc_random()`;
+      const mathConst = MATH_CONSTANT_LITERALS[memberName];
+      if (mathConst !== undefined) return String(mathConst);
       return `std::${escapedName}`;
     }
     if (ts.isIdentifier(receiverNode) && activeNamespaceNames.has(receiverNode.text)) {
@@ -612,6 +631,20 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           value: renderOptionalGuardedAccess(expr.expression.expression, `${calleeText}(${argsText})`),
         };
       }
+      // Bare-identifier optional call: `fn?.()`. Without this branch the call
+      // falls through to the generic path and emits `fn()` unconditionally —
+      // calling an empty std::function throws std::bad_function_call. Wrap the
+      // call in the same null guard as the property-access case.
+      if (ts.isIdentifier(expr.expression)) {
+        const argsText = expr.arguments
+          .map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars)))
+          .join(", ");
+        const calleeText = expr.expression.text;
+        return {
+          kind: "raw",
+          value: renderOptionalGuardedAccess(expr.expression, `${calleeText}(${argsText})`),
+        };
+      }
     }
     // ---- Pin factory constant-folding ---------------------------------------
     // createDigitalPin(pin, gpio), createPWMPin(pin, gpio), etc. are folded to
@@ -719,6 +752,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         let argType: string | undefined;
         if (ts.isIdentifier(argNode)) {
           argType = activeLocalTypes.get(argNode.text) ?? activeGlobalTypes.get(argNode.text);
+        } else if (ts.isPropertyAccessExpression(argNode) && argNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
+          // `Object.keys(this.field)` — resolve the field's type via the
+          // this->field map populated during class IR build.
+          argType = activeLocalTypes.get(`this->${argNode.name.text}`);
+          if (!argType) {
+            argType = activeClassFieldTypes.get(`this->${argNode.name.text}`);
+          }
         }
 
         if (methodName === "keys") {
@@ -792,7 +832,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const rawMethodName = expr.expression.name.kind === ts.SyntaxKind.PrivateIdentifier
         ? `__priv_${expr.expression.name.text.substring(1)}`
         : expr.expression.name.text;
-      const methodName = escapeCppKeyword(rawMethodName);
+      // NOTE: do NOT escapeCppKeyword before the Map/Set method checks below —
+      // `m.delete(k)` would become `methodName === "delete_"` and miss the
+      // map→erase lowering (demo #8 Finding D). Escape only when building the
+      // final callee text for the generic path.
+      const methodName = rawMethodName;
 
       // --- .toFixed(digits) on numeric values ---
       if (methodName === "toFixed" && expr.arguments.length >= 1) {
@@ -828,7 +872,18 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           const recIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
           receiverText = renderExprAsText(recIR);
           const arg0IR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
-          const arg0Text = renderExprAsText(arg0IR);
+          let arg0Text = renderExprAsText(arg0IR);
+          // When the key is an enum member and the container's key type is
+          // integral, wrap it in static_cast so it matches the comparator.
+          const containerInner = receiverType.slice(receiverType.indexOf("<") + 1, -1);
+          const mapKeyType = containerInner.split(",")[0].trim();
+          const keyIsIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char)$/.test(mapKeyType);
+          const keyIsEnumMember = ts.isPropertyAccessExpression(expr.arguments[0])
+            && ts.isIdentifier(expr.arguments[0].expression)
+            && activeEnumNames.has(expr.arguments[0].expression.text);
+          if (keyIsIntegral && keyIsEnumMember) {
+            arg0Text = `static_cast<${mapKeyType}>(${arg0Text})`;
+          }
 
           if (receiverType.startsWith("std::map<")) {
             if (methodName === "set" && expr.arguments.length >= 2) {
@@ -862,7 +917,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
       // Check if it's a this.method() call - in C++, this is a pointer so use ->
       if (receiver.kind === ts.SyntaxKind.ThisKeyword) {
-        calleeText = `this->${methodName}`;
+        calleeText = `this->${escapeCppKeyword(methodName)}`;
       } else if (ts.isIdentifier(receiver) && receiver.text === "Math") {
         const mathMethod = expr.expression.name.text;
         if (mathMethod === "random") {
@@ -935,7 +990,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             accessor = "->";
           }
         }
-        calleeText = `${objText}${accessor}${methodName}`;
+        calleeText = `${objText}${accessor}${escapeCppKeyword(methodName)}`;
       }
     } else {
       const rawText = expr.expression.getText();
@@ -944,19 +999,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     const argIRs: ExpressionIR[] = [];
     for (const arg of expr.arguments) {
       if (ts.isSpreadElement(arg)) {
-        const spreadIR = expressionToIR(arg.expression, sourceText, diagnostics, pointerVars);
-        const spreadText = renderExprAsText(spreadIR);
-        let spreadType: string | undefined;
-        if (ts.isIdentifier(arg.expression)) {
-          spreadType = activeLocalTypes.get(arg.expression.text) ?? activeGlobalTypes.get(arg.expression.text);
-        }
-        if (spreadType && spreadType.startsWith("std::vector<")) {
-          const varName = ts.isIdentifier(arg.expression) ? arg.expression.text : spreadText;
-          argIRs.push({ kind: "raw", value: `${varName}.begin()`, cppType: "auto" } as any);
-          argIRs.push({ kind: "raw", value: `${varName}.end()`, cppType: "auto" } as any);
-        } else {
-          argIRs.push(spreadIR);
-        }
+        // Spreading into a call. Cuttlefish lowers every rest parameter
+        // (`...args: T[]`) to a SINGLE `const std::vector<T>&` parameter, so a
+        // spread of a vector variable (`sum(...arr)`) must pass the vector
+        // directly — NOT `arr.begin(), arr.end()` (which passes two iterators
+        // to one vector param and fails g++). For a non-vector spread we pass
+        // the rendered expression as-is. See demo #6 fix E.
+        argIRs.push(expressionToIR(arg.expression, sourceText, diagnostics, pointerVars));
       } else {
         argIRs.push(expressionToIR(arg, sourceText, diagnostics, pointerVars));
       }
@@ -1020,7 +1069,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // below, which must fire even when the user wrote `new Map<K, V>()`.
     const baseCtorName = ctorText;
     if (expr.typeArguments && expr.typeArguments.length > 0) {
-      const typeArgs = expr.typeArguments.map((ta: ts.TypeNode) => ta.getText()).join(", ");
+      // Resolve type args through typeNodeToCppType so `new Registry<string, int32_t>()`
+      // emits `Registry<std::string, int32_t>` (TS type names → C++ type names)
+      // rather than the raw source text or dropping the args entirely.
+      const typeArgs = expr.typeArguments.map((ta: ts.TypeNode) => typeNodeToCppType(ta, undefined)).join(", ");
       ctorText = `${ctorText}<${typeArgs}>`;
     }
 
@@ -1178,6 +1230,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
     if (ts.isIdentifier(expr.expression) && expr.expression.text === "Math") {
       if (propName === "random") return { kind: "raw", value: "__tc_random()" };
+      const mathConst = MATH_CONSTANT_LITERALS[propName];
+      if (mathConst !== undefined) return { kind: "number", value: mathConst };
       return { kind: "raw", value: `std::${propName}` };
     }
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
@@ -1188,6 +1242,19 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return { kind: "identifier", value: resolved.slice("__FILTERED_LEN__".length) };
       }
       return { kind: "raw", value: resolved };
+    }
+    // `.size` on a Map/Set (std::map/std::set) — these expose size as a method
+    // (`m.size()`), not a member. Map it to a method call so it doesn't fall
+    // through to the pointer-deref property-access path (which would emit
+    // `m->size`). Mirrors the `.length` → `.size()` lowering for vectors.
+    if (propName === "size") {
+      const receiverType = ts.isIdentifier(expr.expression)
+        ? (activeLocalTypes.get(expr.expression.text) ?? activeGlobalTypes.get(expr.expression.text))
+        : undefined;
+      if (receiverType && (receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<"))) {
+        const objectText = renderExprAsText(object);
+        return { kind: "raw", value: `static_cast<long long>(${objectText}.size())` };
+      }
     }
 
     // Use -> for pointer variables in property access
@@ -1419,17 +1486,30 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   // For interrupt handlers, we need to generate a proper callback function
   if (ts.isFunctionExpression(expr) || ts.isArrowFunction(expr)) {
     const body = expr.body;
-    
+
+    // Resolve each parameter's C++ type from its type annotation rather than
+    // hardcoding "auto". This matters for callbacks hoisted to free functions
+    // (top-level-prep.ts collectCallbackFromExpression): the ISR signature is
+    // rendered from these cppTypes, and an "auto" param is filtered out, so a
+    // `.map((n) => ...)` callback would lower to `void X_isr_N()` (no params)
+    // and the __tc_map template couldn't deduce the element/result types.
+    // Default to "auto" only when the param has no annotation.
     const paramList: {name: string; cppType: string}[] = [];
+    const lambdaLocalTypes = new Map<string, CppTypeHint>();
     for (const param of expr.parameters) {
       if (ts.isIdentifier(param.name)) {
+        const resolved = typeNodeToCppType(param.type, undefined);
+        const cppType = resolved && resolved !== "auto" ? resolved : "auto";
         paramList.push({
           name: param.name.text,
-          cppType: "auto",
+          cppType,
         });
+        if (cppType !== "auto") {
+          lambdaLocalTypes.set(param.name.text, cppType);
+        }
       }
     }
-    
+
     const isBlock = ts.isBlock(body);
     const bodyStmts: StatementIR[] = isBlock
       ? (body as ts.Block).statements.map(stmt => {
@@ -1453,15 +1533,22 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           value: expressionToIR(body, sourceText, diagnostics, pointerVars),
       }];
 
-    // Infer return type: use explicit annotation, or infer from body
+    // Infer return type: use explicit annotation, or infer from body. Thread
+    // the lambda's own param types into the inference so a body like
+    // `(n) => n.capacity` can resolve `n` and deduce the return type.
+    // When the body returns a value but the type can't be resolved (common when
+    // the param is an interface, whose fields aren't in the class registry),
+    // fall back to "auto" (C++14 return-type deduction) rather than "void" —
+    // this lets the __tc_map/__tc_filter template helpers deduce the result
+    // type via decltype(fn(v[0])) instead of failing on a void(auto) callable.
     let inferredReturnType: string;
     const explicitReturnType = typeNodeToCppType(expr.type, undefined);
     if (explicitReturnType !== "auto" && explicitReturnType !== "void") {
       inferredReturnType = explicitReturnType;
     } else if (isBlock) {
-      const returnTypes = collectReturns(body as ts.Block)
-        .filter((item) => item.expression)
-        .map((item) => inferExprCppType(item.expression as ts.Expression, new Map(), new Map(), sourceText))
+      const returns = collectReturns(body as ts.Block).filter((item) => item.expression);
+      const returnTypes = returns
+        .map((item) => inferExprCppType(item.expression as ts.Expression, new Map(), lambdaLocalTypes, sourceText))
         .filter((item) => item !== "auto");
       if (returnTypes.includes("float") || returnTypes.includes("double")) {
         inferredReturnType = "double";
@@ -1472,15 +1559,19 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       } else if (returnTypes.length > 0) {
         inferredReturnType = returnTypes[0];
       } else {
-        inferredReturnType = "void";
+        // Body has returns but the types didn't resolve (e.g. interface-typed
+        // param). Use C++14 auto return deduction so the callback is callable.
+        inferredReturnType = returns.length > 0 ? "auto" : "void";
       }
     } else {
-      inferredReturnType = inferExprCppType(body, new Map(), new Map(), sourceText);
+      inferredReturnType = inferExprCppType(body, new Map(), lambdaLocalTypes, sourceText);
       if (inferredReturnType === "auto") {
-        inferredReturnType = "void";
+        // Expression body whose type didn't resolve — still prefer auto over
+        // void so the value is returned (not dropped).
+        inferredReturnType = "auto";
       }
     }
-    
+
     const lambdaParams = paramList.map(p => ({ name: p.name, cppType: p.cppType }));
     return { kind: "lambda", params: lambdaParams, body: bodyStmts, returnType: inferredReturnType, isExpressionBody: !isBlock } as ExpressionIR;
   }

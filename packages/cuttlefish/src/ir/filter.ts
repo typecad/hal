@@ -41,10 +41,19 @@ export function filterProgramIR(
     reachability.reachableEnums.has(enumDef.name)
   );
 
-  // Filter type aliases
-  const filteredTypeAliases = program.typeAliases.filter((typeAlias) =>
-    reachability.reachableTypeAliases.has(typeAlias.name)
-  );
+  // Filter type aliases. Keep an alias if it's reachable OR if its cppType is
+  // a concrete container/primitive that will emit a valid `using` directive.
+  // The latter rescues aliases-to-tuples/vectors/maps/pairs that are used as
+  // type annotations but whose names don't surface in the call graph (because
+  // typeNodeToCppType resolves them away to the concrete type before the call
+  // graph scans). Demo #8 Finding F — `type P = [K, V]` (→ std::tuple) was
+  // dropped even when used as a return type.
+  const filteredTypeAliases = program.typeAliases.filter((typeAlias) => {
+    if (reachability.reachableTypeAliases.has(typeAlias.name)) return true;
+    const cpp = typeAlias.cppType ?? "auto";
+    if (cpp === "auto") return false;
+    return /^(std::tuple|std::vector|std::map|std::set|std::pair|int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|double|float|bool|std::string)/.test(cpp);
+  });
 
   // Filter top-level var_decl statements based on variable reachability.
   // Non-var_decl statements (calls, loops, etc.) are always kept.

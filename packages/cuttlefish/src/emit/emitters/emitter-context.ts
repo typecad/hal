@@ -51,6 +51,20 @@ export interface CallbackFunction {
   params: string[];
   statements: StatementIR[];
   debounceMs?: number;
+  /**
+   * Return type of the synthesized free function. Defaults to "void" (the
+   * historical ISR/HAL-callback case). Populated from a hoisted lambda's
+   * return-type annotation so a `(x): int16_t => {...}` callback lowers to
+   * `int16_t name(int16_t)` rather than `void name()`.
+   */
+  returnType?: string;
+  /**
+   * Typed parameters of the synthesized free function, carrying both the C++
+   * type and the name. Defaults to [] (the void() ISR case). Populated from a
+   * hoisted lambda's typed params. Used both to render the signature and to
+   * seed the body's emission scope so the params are resolvable.
+   */
+  typedParams?: { name: string; cppType: string }[];
 }
 
 export interface AsyncTaskClass {
