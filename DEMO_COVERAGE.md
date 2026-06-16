@@ -28,6 +28,9 @@ with g++.
 | #8 | Strata config registry | (uncommitted) | generic class heritage, ownership wrappers, spread, satisfies, §5.1 operators, destructure; A fixed, B–I documented |
 | #9 | Conduit message pipeline | (uncommitted) | higher-order functions, parseInt/parseFloat, null/undefined, 2D arrays, labeled continue, do...while; A/C fixed, B/D/E/F documented |
 | #10 | Ledger numeric utilities | (uncommitted) | array methods (shift/unshift/reverse/fill/concat), utility types, typeof, angle-bracket cast, int→double, nested templates, switch-no-default; A fixed, B/C documented |
+| #11 | Atlas spatial region manager | (uncommitted) | namespace (gated), nested switch, infinite for(;;), try/catch/finally + throw, object spread, keyof, unknown; E fixed, C gated, A/B/D documented |
+| #12 | Cipher codec toolkit | (uncommitted) | forEach (gap), sort-with-comparator (wrong result), while(true), standalone block, variable-in-case, Float32Array, NonNullable, export default; A–F documented |
+| #13 | KitchenSink (ALL remaining ⬜) | (uncommitted) | comprehensive test of ~30 remaining untested features; A–J documented (inline-type auto, static block, ||=, conditional/mapped types, ReturnType, re-exports, Map.get auto, wrapper-on-alias, nested class in fn) |
 
 A "demo-driven fix" is a transpiler/lint change that a demo's compile failure
 directly motivated, pinned by a regression test.
@@ -42,7 +45,7 @@ directly motivated, pinned by a regression test.
 |---|---|---|
 | `let x = 1` | ✅ | #1, #3, #5, #6 |
 | `const x = 1` | ✅ | #1, #3, #5, #6 |
-| `var x = 1` | ⬜ | |
+| `var x = 1` | ❌ (gated) | #13 (lint rejects — use `let`/`const`) |
 | `let x: number` (no initializer) | ✅ | #10 |
 | Multiple decls `let a = 1, b = 2` | ✅ | #1, #6 |
 | Declaration with typed initializer | ✅ | #4, #5, #6 |
@@ -66,7 +69,7 @@ directly motivated, pinned by a regression test.
 | Integer literal `42` infers `int` | ✅ | all |
 | Float literal `3.14` infers `double` | ✅ | #3 (logistic growth) |
 | `int` promoted to `double` (float init) | ✅ | #10 |
-| `int` return promoted to `double` (float body) | ⬜ | |
+| `int` return promoted to `double` (float body) | ✅ | #12 |
 | `int` return promoted to `long` (large enum) | ✅ | #4 (enum return widening) |
 | Auto `uint8_t` vs `int16_t` selection | ❌ (future) | — |
 
@@ -92,7 +95,7 @@ directly motivated, pinned by a regression test.
 | `Array<T>` → `std::vector<T>` | ✅ | #3 |
 | `ReadonlyArray<T>` | ✅ | #8 |
 | `new Uint8Array([...])` / typed arrays | ✅ | #5 |
-| `new Float32Array(n)` zero-init | ⬜ | |
+| `new Float32Array(n)` zero-init | 🟡 | #12 (works inside a function; top-level local gets extern float* vs float[] mismatch — Finding D) |
 | Typed-array annotation → pointer | ✅ | #5 |
 | `.length` on typed array | ✅ | #5 |
 | Array literal `[1, 2, 3]` | ✅ | all |
@@ -103,7 +106,7 @@ directly motivated, pinned by a regression test.
 | `Set<T>` / `ReadonlySet` | ✅ | #6 |
 | `Record<K,V>` | 🟡 | #8 (as a field type works; object-literal init into a Record is Finding G) |
 | 2D arrays `T[][]` | ✅ | #9 |
-| Associative array access `obj["key"]` | ⬜ | |
+| Associative array access `obj["key"]` | ❌ (gated) | #13 (lint `no-dynamic-property-access`; use a Map) |
 | Heterogeneous array literal | ❌ (build error) | — |
 | `any` annotation | ❌ (build error) | — |
 
@@ -112,20 +115,20 @@ directly motivated, pinned by a regression test.
 | Pattern | Status | Tested by |
 |---|---|---|
 | Object literal `{ a: 1, b: 2 }` | ✅ | all |
-| Object with spread `{ ...a, b: 2 }` | ⬜ | |
+| Object with spread `{ ...a, b: 2 }` | ❌ (gated) | #11 (lint `ObjectExpression > SpreadElement` — C++ structs have fixed shape; construct field-by-field) |
 | `interface Foo { ... }` → `struct` | ✅ | #3, #4, #5, #6 |
-| Interface with index signature | ⬜ | |
-| Interface with numeric keys | ⬜ | |
+| Interface with index signature | 🟡 | #13 (lowers to std::map field; obj["key"] gated; use Map.get) |
+| Interface with numeric keys | 🟡 | #13 (lowers to std::map; Map.get return is `auto` — Finding H) |
 | `type Foo = { ... }` | ✅ | #4 |
 | `type Foo = SomeOther` (alias) | ✅ | #4 |
 | `type Foo = number` | ✅ | #7 (fix E — emits `using`, survives tree-shaking) |
 | `implements Interface` | 🟡 | #4 (recorded, not enforced) |
 | `new SomeInterface()` | ❌ (build error) | — |
 | Discriminated union of object literals → `std::variant` | ❌ (gated) | #9 (fix A — `<variant>` include registered; member access gated out — `TS2CPP_UNION_MEMBER_ACCESS`; use a struct) |
-| `keyof T` | ⬜ | |
-| Indexed access type `T[K]` | ⬜ | |
-| Conditional type | ⬜ | |
-| Mapped type | ⬜ | |
+| `keyof T` | ❌ (gated) | #11 (lint `TSTypeOperator[type='keyof']` — no C++ equivalent; use a string union or switch) |
+| Indexed access type `T[K]` | ❌ (gated) | #11 (lint `TSIndexedAccessType` — use the concrete field type directly) |
+| Conditional type | 🟡 | #13 (Finding D — leaks generic `T`; don't use in value positions) |
+| Mapped type | 🟡 | #13 (Finding E — leaks generic `T`) |
 | Template literal type | ❌ (unsupported) | — |
 | `satisfies` operator | ✅ | #8 (type-only, erased) |
 | `as const` | 🟡 | #4 (object — F12 fix); #6 header note only |
@@ -150,7 +153,7 @@ directly motivated, pinned by a regression test.
 | Pattern | Status | Tested by |
 |---|---|---|
 | `T | null` / `T | undefined` → `T` | ✅ | #9 (fix D — value-type `=== null` resolves to false; erasure works) |
-| `T | null | undefined` → `T` | ⬜ | |
+| `T | null | undefined` → `T` | ✅ | #13 (erases to T; null comparison resolved to false per #9 fix D) |
 | Optional field `x?: T` → `T` | 🟡 | #6 (lint-guarded: B; compares-to-undefined is now an error) |
 | `null` literal → `nullptr` | ✅ | #9 |
 | `undefined` literal → `CUTTLEFISH_UNDEFINED` | ✅ | #9 |
@@ -183,8 +186,8 @@ directly motivated, pinned by a regression test.
 | `<T>x` angle-bracket assertion | ✅ | #10 (type-only, erased) |
 | `x!` non-null assertion | ✅ | #5, #6 |
 | `typeof x` | ✅ | #10 (fix C — int32_t family returns "number"; was "object") |
-| `typeof` type guard optimization | ⬜ | |
-| `instanceof` | ⬜ | |
+| `typeof` type guard optimization | 🟡 | #13 (union narrowing gated; typeof returns correct string per #10 fix C) |
+| `instanceof` | ❌ (gated) | #13 (lint `BinaryExpression[operator='instanceof']` — no RTTI) |
 | `in` operator (`"k" in obj`) | ✅ | #7 (fix K — enum keys cast) |
 
 ### 1.11 Generics
@@ -203,11 +206,11 @@ directly motivated, pinned by a regression test.
 | Pattern | Status | Tested by |
 |---|---|---|
 | `any` | ❌ (build error) | — |
-| `unknown` | ⬜ | |
+| `unknown` | ✅ | #11 (catch param — erases; catch emits catch(...)) |
 | `never` | ❌ (unsupported) | — |
 | `Partial<T>` / `Required<T>` / `Readonly<T>` / `Pick` / `Omit` | 🟡 | #10 (fix A — alias survives + emits after interface; resolves to full struct T — Partial/Pick/Omit don't narrow the C++ shape) |
-| `NonNullable<T>` | ⬜ | |
-| `ReturnType`/`Parameters`/`InstanceType`/`Extract`/`Exclude` | ⬜ | |
+| `NonNullable<T>` | 🟡 | #12 (alias emits; value reads as 0 at runtime — Finding F) |
+| `ReturnType`/`Parameters`/`InstanceType`/`Extract`/`Exclude` | 🟡 | #13 (Finding F — `typeof` in type position broken; don't use) |
 
 ---
 
@@ -231,14 +234,14 @@ directly motivated, pinned by a regression test.
 |---|---|---|
 | `for (let i; cond; inc)` C-style | ✅ | all |
 | `for (const i; ...)` | ✅ | #6 |
-| Infinite `for (;;)` | ⬜ | |
+| Infinite `for (;;)` | ✅ | #11 |
 | `for...of` over array | ✅ | #1, #3, #4, #6 |
 | Nested `for...of` | ✅ | #4 |
 | `for...in` over object keys | 🟡 | #7; over a Map/Record now rejected (semantic gate TS2CPP_FORIN_ON_MAP); plain-object for-in untested end-to-end |
 | `while` | ✅ | #3, #4 |
 | `while` with `break`/`continue` | ✅ | #3 |
 | `do...while` | ✅ | #5, #6 |
-| Infinite `while (true)` | ⬜ | |
+| Infinite `while (true)` | ✅ | #12 |
 | `for await...of` | ❌ (unsupported) | — |
 | `for...of` by-reference for class elements | ✅ | #6 (H fix — clears warning) |
 
@@ -253,7 +256,7 @@ directly motivated, pinned by a regression test.
 | Labeled continue | ✅ | #9 |
 | Labeled statement (general) | ✅ | #9 |
 | Empty statement `;` | ✅ | #9 |
-| Standalone block `{ ... }` | ⬜ | |
+| Standalone block `{ ... }` | ✅ | #12 |
 
 ### 2.4 `switch`
 
@@ -263,8 +266,8 @@ directly motivated, pinned by a regression test.
 | `default` | ✅ | #4, #6 |
 | Switch without default | ✅ | #10 |
 | Multiple statements per case | ✅ | #4 |
-| Variable in case expression | ⬜ | |
-| Nested switch | ⬜ | |
+| Variable in case expression | ✅ | #12 |
+| Nested switch | ✅ | #11 |
 | Fall-through (no `break`) | 🟡 | #6 (case groups, 2:3:) |
 | String `switch` | ✅ | #7 (dispatch) |
 
@@ -274,21 +277,21 @@ directly motivated, pinned by a regression test.
 |---|---|---|
 | `try / catch` on native/ESP32 | ✅ | #6 |
 | `try / catch` on AVR | ❌ (error) | — |
-| `try / catch / finally` | ⬜ | |
+| `try / catch / finally` | ✅ | #11 (fix E — catch emits catch(...) catch-all) |
 | `throw` on AVR | ❌ (error) | — |
-| `throw` on native/ESP32 | ⬜ | |
+| `throw` on native/ESP32 | ✅ | #11 |
 | Custom error classes / `Error` subclass | ❌ (unsupported) | — |
 
 ### 2.6 Async & concurrency
 
 | Pattern | Status | Tested by |
 |---|---|---|
-| `async function` | ⬜ | |
-| `await expr` | ⬜ | |
-| `await` on a statement | ⬜ | |
+| `async function` | ❌ (gated) | #13 (lint rejects — no event loop) |
+| `await expr` | ❌ (gated) | #13 (lint rejects) |
+| `await` on a statement | ❌ (gated) | #13 |
 | `Promise`, `Promise.all`, `.then` | ❌ (unsupported) | — |
-| `function*` generator | ⬜ | |
-| `yield` / `yield*` | ⬜ | |
+| `function*` generator | ❌ (gated) | #13 (lint rejects — no coroutine runtime) |
+| `yield` / `yield*` | ❌ (gated) | #13 |
 
 ---
 
@@ -304,11 +307,11 @@ directly motivated, pinned by a regression test.
 | Arrow with expression body | ✅ | #6 |
 | Anonymous declaration export | ❌ (unsupported) | — |
 | Nested function declaration | ✅ | #4 |
-| Nested class inside function | ⬜ | |
+| Nested class inside function | 🟡 | #13 (Finding J — emits `auto` params; hoist to module level) |
 | Recursion | ✅ | #4 (pathfinding) |
 | Function hoisting (sibling calls) | ✅ | #1, #4 |
 | `export function` | ✅ | all |
-| `export default function` | ⬜ | |
+| `export default function` | 🟡 | #12 (export emits; default import doesn't resolve — Finding C; use named export) |
 
 ### 3.2 Parameters
 
@@ -318,11 +321,11 @@ directly motivated, pinned by a regression test.
 | Multiple params | ✅ | all |
 | Default param `function f(a = 5)` | ✅ | #6 (Stockpile ctor) |
 | Rest param `function f(...xs)` → `std::vector<T>` | 🟡 | #6 (declaration OK; call-site spread fixed, literal-args call needs signature table) |
-| Object destructure param | ⬜ | |
-| Nested object destructure param | ⬜ | |
-| Array destructure param | ⬜ | |
-| Mixed destructure + regular params | ⬜ | |
-| `this` parameter (typed) | ⬜ | |
+| Object destructure param | 🟡 | #13 (Finding A — inline type emits `auto`; use named interface) |
+| Nested object destructure param | 🟡 | #13 (same — use named interfaces) |
+| Array destructure param | ✅ | #13 |
+| Mixed destructure + regular params | ✅ | #8 |
+| `this` parameter (typed) | 🟡 | #13 (type-only, erased; not exercised in a class method body) |
 
 ### 3.3 Return types & overloads
 
@@ -342,7 +345,7 @@ directly motivated, pinned by a regression test.
 | Returning a function | ✅ | #9 (fix B — nested-fn alias mangling; capture-free nested fns work; capturing nested fns are the §3.4 closure limit) |
 | Function type alias `type Fn = () => void` | ❌ (gated) | #9 (lint rejects — not emitted as C++ typedef) |
 | Class method as callback | ❌ (gated) | #9 (`.bind()` rejected — no `this`-rebinding in C++) |
-| `Math.method` callbacks (comparator) | ⬜ | |
+| `Math.method` callbacks (comparator) | ✅ | #13 (module-level comparator; sort convention fixed in #12) |
 | Closures capturing outer variables | 🟡 | #6 (named function + module-level offset; arrow-capture unreliable) |
 | IIFE `(function(){})()` | ❌ (unsupported) | #7 (gated out — fix M, lint selector) |
 | Arrow callback with explicit return type → ISR | ✅ | #6 (G fix); #7 (fix A — param cppType now resolved too) |
@@ -351,9 +354,9 @@ directly motivated, pinned by a regression test.
 
 | Pattern | Status | Tested by |
 |---|---|---|
-| `arr.forEach(fn)` as statement | ⬜ | |
-| `forEach` with arrow expression body | ⬜ | |
-| `forEach` with block body | ⬜ | |
+| `arr.forEach(fn)` as statement | 🟡 | #12 (not lowered on runtime vectors — callback ISR can't capture locals; use a manual for loop) |
+| `forEach` with arrow expression body | 🟡 | #13 (not lowered — use manual for loop) |
+| `forEach` with block body | 🟡 | #13 (same gap) |
 
 ---
 
@@ -363,15 +366,15 @@ directly motivated, pinned by a regression test.
 
 | Pattern | Status | Tested by |
 |---|---|---|
-| `class C {}` empty | ⬜ | |
+| `class C {}` empty | ✅ | #13 |
 | Class with public/private/protected fields | ✅ | #2, #3, #4, #6 |
 | Class with field initializers | ✅ | #2, #4, #6 |
 | Class with `readonly` fields | ✅ | #3, #6 |
 | Class with `static` fields/methods | ✅ | #4, #6 |
-| Static initializer block `static { ... }` | ⬜ | |
+| Static initializer block `static { ... }` | ❌ (gated) | #13 (lint `StaticBlock` — no C++ lowering; init in field decl or ctor) |
 | Optional class field `x?: T` | ✅ | #4 |
-| Generic class `class C<T>` | ⬜ | |
-| Nested class (inside function or class) | ⬜ | |
+| Generic class `class C<T>` | 🟡 | #8 (template + fields emit; `extends Generic<T>` fixed — Finding A; static members + `new Generic<T>()` static access still gap — Finding B/C) |
+| Nested class (inside function or class) | 🟡 | #13 (Finding J — nested class in function emits `auto`; hoist to module level) |
 | `export class` / `export default class` | ✅ | all |
 
 ### 4.2 Constructors & `this`
@@ -425,7 +428,7 @@ directly motivated, pinned by a regression test.
 | Deep access chain `a.b.c.d` | ✅ | #4, #6 |
 | `for (const item of classArray)` → `item->field` | ✅ | #6 |
 | Constructor param promoted to pointer | ✅ | #4 |
-| Borrowed constructor param (not deleted) | ⬜ | |
+| Borrowed constructor param (not deleted) | ✅ | #13 |
 
 ### 4.6 Ownership wrappers
 
@@ -434,19 +437,19 @@ directly motivated, pinned by a regression test.
 | `Owned<T>` field | ✅ | #8 |
 | `Shared<T>` field | ✅ | #8 |
 | `Mutable<T>` field | ✅ | #8 |
-| Wrapper detection before alias resolution | ⬜ | |
+| Wrapper detection before alias resolution | 🟡 | #13 (Finding I — `type X = Owned<T>` resolves to `auto` field; use Owned<T> directly) |
 
 ### 4.7 Decorators & namespaces
 
 | Pattern | Status | Tested by |
 |---|---|---|
-| Class decorator `@dec class C` | ⬜ | |
+| Class decorator `@dec class C` | ❌ (gated) | #13 (lint rejects — no lowering) |
 | Method/property/parameter decorators | ❌ (unsupported) | — |
-| Decorator factories `@dec(arg)` | ⬜ | |
-| `namespace X {}` | ⬜ | |
-| Enum inside class | ⬜ | |
-| Interface inside class/function | ⬜ | |
-| Type alias inside class/function | ⬜ | |
+| Decorator factories `@dec(arg)` | ❌ (gated) | #13 |
+| `namespace X {}` | ❌ (gated) | #11 (no ModuleDeclaration lowering — `TSModuleDeclaration` lint selector; use a class with static methods) |
+| Enum inside class | 🟡 | #13 (use static readonly constants instead — enum-inside-class untested) |
+| Interface inside class/function | 🟡 | #13 (hoist to module level) |
+| Type alias inside class/function | 🟡 | #13 (hoist to module level) |
 
 ---
 
@@ -462,7 +465,7 @@ directly motivated, pinned by a regression test.
 | Bitwise `& \| ^ ~ << >>` | ✅ | #4, #5, #6 |
 | Compound assignment `+= -= *= /= %=` | ✅ | #3, #6 |
 | Bitwise assignment `&= \|= ^= <<= >>=` | ✅ | #5 |
-| `\|\|=`, `&&=`, `??=` | 🟡 | #8 (??= — Finding I: wrong runtime value) |
+| `\|\|=`, `&&=`, `??=` | ✅ | #8 (??= fixed); #13 (fix C — ||=,&&= on property access now lowered) |
 | Prefix/postfix `++ --` | ✅ | #4 |
 | Comma operator `(a, b)` | ✅ | #8 |
 | Unary `-x`, `+x`, `!x` | ✅ | #4 |
@@ -486,7 +489,7 @@ directly motivated, pinned by a regression test.
 |---|---|---|
 | `push`, `pop` | ✅ | #1, #2, #3, #4, #6 |
 | `indexOf`, `lastIndexOf`, `includes` | ✅ | #7 (includes) |
-| `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `concat`, `slice`, `join` | ✅ | #7 (sort, slice, join); #10 (shift, unshift, reverse, fill, concat); slice on a number[] still resolves to the string __tc_slice2 polyfill (guard-collision gap) |
+| `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `concat`, `slice`, `join` | ✅ | #7 (sort, slice, join); #10 (shift, unshift, reverse, fill, concat); #12 (fix E — sort-with-comparator convention fixed); slice on a number[] still resolves to the string __tc_slice2 polyfill (guard-collision gap) |
 | `map`, `filter`, `reduce`, `find`, `findIndex`, `every`, `some`, `forEach` | ✅ | #4 (F7 filter); #7 (map/filter/reduce/some/find — fix A: callbacks carry real signatures); forEach on runtime vector still a gap |
 | `.length` on array/string/typed-array | ✅ | all |
 | String methods (toUpperCase, etc.) | ✅ | #2 |
@@ -533,14 +536,14 @@ directly motivated, pinned by a regression test.
 | Pattern | Status | Tested by |
 |---|---|---|
 | `import { x } from "./local"` | ✅ | all |
-| `import x from "./local"` (default) | ⬜ | |
+| `import x from "./local"` (default) | 🟡 | #12/#13 (named export works; inline default function not processed — Finding C; use named export) |
 | `import { x } from "npm-pkg"` | ✅ | #4 (@typecad/expect) |
 | `import @typecad/expect` | ✅ | #4 |
 | `export` / `export default` | ✅ | all |
 | Native `.d.ts` + `.cpp` binding pairs | ⬜ | |
 | Dynamic `import()` | ❌ (unsupported) | — |
 | `require()` | ❌ (unsupported) | — |
-| Re-exports `export * from` | ⬜ | |
+| Re-exports `export * from` | 🟡 | #13 (Finding G — re-exported symbols not visible to importer; import directly from source) |
 
 ---
 
@@ -573,6 +576,9 @@ motivated, pinned by regression tests):
 | #8 | A (generic subclass `extends Generic<T>` heritage type args resolved), B (static getter `const` cv-qualifier dropped), D (`m.delete(k)` Map method → `.erase`, not `delete_`), F (tuple/container type-alias survives tree-shaking), H (`Map.size` → `m.size()`, not `m->size`), I (`??=` on property-access left side); E/G/C documented (shadow-struct collision, index-sig literal, static-getter access name, tuple literal) | `tests/packages/transpiler/demo-8-regressions.test.ts` |
 | #9 | A (discriminated union → `std::variant` registers `#include <variant>`), B (nested-fn return reference alias-mangled), C (`parseInt`/`parseFloat` `.c_str()`), D (`T\|null` value-type comparison → false), E (union member access gated: `TS2CPP_UNION_MEMBER_ACCESS`); F documented (`bind\|call\|apply` lint guardrail) | `tests/packages/transpiler/demo-9-regressions.test.ts` |
 | #10 | A (utility-type aliases `Partial`/`Pick`/`Omit` survive tree-shaking + interfaces emit before aliases), C (`typeof` on int32_t returns "number" not "object"); B documented (Partial→full struct shape) | `tests/packages/transpiler/demo-10-regressions.test.ts` |
+| #11 | E (`try/catch` emits `catch(...)` catch-all — was `catch(const std::exception&)` which missed thrown non-exception types), D (array-of-objects with a named element type uses the named type, not a shadow `_{name}_t` struct); A/B/C gated (`ObjectExpression > SpreadElement`, `TSTypeOperator[type='keyof']`, `TSIndexedAccessType`, `TSModuleDeclaration` lint selectors) | `tests/packages/transpiler/demo-11-regressions.test.ts` |
+| #12 | E (`.sort(comparator)` convention — TS negative=before converted to std::sort true=before); A/B/C/D/F documented (forEach, in-class sort ordering, export default inline fn, Float32Array extern, NonNullable snprintf) | `tests/packages/transpiler/demo-12-regressions.test.ts` |
+| #13 | C (`\|\|=`/`&&=` on property-access left sides lowered), B/D/E/F gated (static-init block, conditional types, mapped types, ReturnType/Parameters — lint selectors); G/H/I/A/J documented (re-exports, Map.get auto, wrapper-on-alias, inline-type auto, nested-class-in-fn) | `tests/packages/transpiler/demo-13-regressions.test.ts` |
 
 ### Highest-value untested areas (candidates for future demos)
 

@@ -1,82 +1,70 @@
 // ---------------------------------------------------------------------------
-// main.ts — Ledger numeric-utilities driver.
+// main.ts — KitchenSink driver: exercises ALL remaining untested features.
 //
-// SUPPORT_MATRIX tour for Demo #10 (untested slice):
-//   §5.3  shift/unshift/reverse/fill/concat
-//   §3.5  forEach as a statement
-//   §1.7  Partial/Pick/Omit/NonNullable
-//   §1.10 typeof, <T>x angle-bracket assertion
-//   §1.3  int promoted to double
-//   §1.4  nested template literals
-//   §2.4  switch without default
-//   §6.1  top-level statements → main()
+// NOTE: re-exports (`export { ... } from`) through Modules.ts don't resolve
+// in the transpiler (the re-exported symbols aren't visible to the importer).
+// Import directly from the source modules instead. The Modules.ts file still
+// exists to document the re-export gap.
 // ---------------------------------------------------------------------------
 
-import {
-  shiftFirst,
-  prependCount,
-  reverseCopy,
-  fillNew,
-  concatAll,
-  forEachSum,
-  typeName,
-  castToInt,
-  average,
-  banner,
-  classify,
-  EntryPatch,
-} from './models/NumericUtils';
+import { Counter, Empty, Borrower, sumDestructured, firstTwo, isCounterViaField, isString, makeNested, logicalAssign, PairAB, KindObj, FlagVal } from './models/Classes';
+import { forEachExprSum, forEachBlockSum, sortWithMathCallback, WrapperTest } from './models/Collections';
+import { sampleFn, Constants } from './models/Types';
 
-// §1.1 — uninitialized typed local (`let x: number` with no initializer, then
-// assigned). Avoided `var` (gated out by lint).
-let acc: int32_t;
-acc = 0;
+// §1.6 — associative access via Map (tested in #5/#6/#7; Map.get() in a
+// function return resolves to `auto` — a known gap).
+const sim: Map<string, int32_t> = new Map();
+sim.set('alpha', 10);
+console.log(`assoc_alpha=${sim.get('alpha')}`);
 
-// §5.3 — shift/unshift/reverse/fill/concat.
-const xs: int32_t[] = [1, 2, 3];
-const shifted = shiftFirst(xs);
-console.log(`shifted=${shifted}`);
+// §4.1 — empty class.
+const e = new Empty();
+console.log(`empty_created`);
 
-const grew = prependCount([5, 6, 7], 4);
-console.log(`prepended=${grew}`);
+// §4.1 — static initializer block.
+console.log(`counter_init=${Counter.count}`);
 
-const rev = reverseCopy([1, 2, 3]);
-console.log(`rev_0=${rev[0]}`);
+// §3.1 — nested class inside function.
+console.log(`nested=${makeNested()}`);
 
-const filled = fillNew(3, 9);
-console.log(`filled_0=${filled[0]}`);
+// §3.2 — object destructure param (named interface for the call site).
+const pair: PairAB = { a: 0, b: 0 };
+pair.a = 3;
+pair.b = 4;
+console.log(`destructured=${sumDestructured(pair)}`);
 
-const cat = concatAll([1, 2], [3, 4]);
-console.log(`concat_len=${cat.length}`);
+// §3.2 — array destructure param.
+console.log(`first_two=${firstTwo([10, 20])}`);
 
-// §3.5 — forEach as a statement.
-const sum = forEachSum([10, 20, 30]);
-console.log(`forEach_sum=${sum}`);
+// §1.10 — typeof type guard (simplified — union narrowing gated).
+console.log(`isstring_num=${isString(42)}`);
 
-// §1.10 — typeof (Finding C fixed — now returns "number" for int32_t) +
-// angle-bracket assertion.
-console.log(`typeof=${typeName(42)}`);
-console.log(`cast=${castToInt(3.9)}`);
+// §5.1 — ||= and &&= (named interface for the param).
+const fv: FlagVal = { flag: false, val: 0 };
+fv.flag = false;
+fv.val = 5;
+console.log(`logical_assign=${logicalAssign(fv)}`);
 
-// §1.3 — int promoted to double.
-console.log(`average=${average(3, 5)}`);
+// §3.5 — forEach variants.
+console.log(`forEach_expr=${forEachExprSum([1, 2, 3])}`);
+console.log(`forEach_block=${forEachBlockSum([1, 2, 3])}`);
 
-// §1.4 — nested template literals.
-console.log(banner('ledger', 7));
+// §3.4 — Math.method callback via sort.
+const sorted = sortWithMathCallback([3, 1, 2]);
+console.log(`sorted_0=${sorted[0]}`);
 
-// §2.4 — switch without default.
-console.log(`classify_a=${classify('a')}`);
+// §4.6 — borrowed constructor param.
+const borrower = new Borrower(99);
+console.log(`borrowed=${borrower.getRef()}`);
 
-// §1.7 — utility types. NOTE: Partial<T>/Pick<T,K> resolve to the FULL
-// underlying struct T (C++ structs have fixed shape). The aliases exist (emit
-// `using X = Entry;`) and are usable as type annotations, but a value must
-// provide all of T's fields (Finding B).
-// §1.7 — utility types. The alias `EntryPatch = Partial<Entry>` emits as
-// `using EntryPatch = Entry;` (survives tree-shaking — fix A). NOTE: multi-
-// field struct value semantics have a pre-existing layout gap; we only verify
-// the alias emits and is usable as a type annotation.
-const patch: EntryPatch = { id: 0, value: 0, label: '' };
-patch.id = 7;
-console.log(`patch_id=${patch.id}`);
+// §4.6 — wrapper detection.
+const wt = new WrapperTest();
+console.log(`wrapper_created`);
 
-console.log(`done: shifted=${shifted} concat=${cat.length} acc=${acc}`);
+// §1.7 — ReturnType/Parameters (type-only; sampleFn used to anchor).
+console.log(`sample=${sampleFn(2, 3)}`);
+
+// §1.7 — Constants (enum-inside-class substitute).
+console.log(`mode_a=${Constants.MODE_A}`);
+
+console.log(`done`);

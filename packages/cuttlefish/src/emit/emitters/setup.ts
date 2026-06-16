@@ -251,16 +251,22 @@ export function buildEmitterContext(
   }
 
   for (const imported of program.imports) {
+    // Resolve the default import name (import X from "./mod") the same way as
+    // named imports — add it to the symbolMap so cross-module references
+    // resolve. Demo #12 Finding C — was skipped, so `encode` wasn't declared.
+    const defaultName = (imported as any).defaultImportName as string | undefined;
     if (isCuttlefishSDKImport(imported.moduleSpecifier, program.fileName)) {
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
       }
+      if (defaultName) symbolMap[defaultName] = defaultName;
       continue;
     }
     if (options.nativeModules && options.nativeModules.has(imported.moduleSpecifier)) {
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
       }
+      if (defaultName) symbolMap[defaultName] = defaultName;
       continue;
     }
     const transpiledInclude = resolveTranspiledModuleInclude(
@@ -273,10 +279,12 @@ export function buildEmitterContext(
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
       }
+      if (defaultName) symbolMap[defaultName] = defaultName;
     } else {
       const resolved = resolveImport(imported, options.libdefs, options.target, options.platformContext, program.fileName);
       includes.push(normalizeInclude(resolved.include));
       Object.assign(symbolMap, resolved.symbolMap);
+      if (defaultName) symbolMap[defaultName] = defaultName;
     }
   }
 

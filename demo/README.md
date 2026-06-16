@@ -1,83 +1,66 @@
-# Ledger — cuttlefish demo #10
+# KitchenSink — cuttlefish demo #13
 
-A **numeric-utilities library** written in idiomatic TypeScript and transpiled
-to C++ by cuttlefish (`@typecad/framework-native`). Exercises array mutation
-methods (`shift`/`unshift`/`reverse`/`fill`/`concat`), `forEach`, utility types
-(`Partial`/`Pick`/`NonNullable`), `typeof`, angle-bracket assertion, `int`→`double`
-promotion, nested template literals, switch-without-default, and uninitialized
-typed locals.
+A **comprehensive test of ALL remaining untested TypeScript features** from
+DEMO_COVERAGE. Exercises ~30 features across types, classes, collections,
+modules, and expressions.
 
-This is the **tenth** demo iteration. It targets a fresh slice of the
-SUPPORT_MATRIX that demos #1–#9 left untested (⬜):
+## Findings summary
 
-- §5.3 `shift`/`unshift`/`reverse`/`fill`/`concat`
-- §3.5 `forEach` as a statement
-- §1.7 `Partial<T>` / `Pick<T,K>` / `NonNullable<T>`
-- §1.10 `typeof x`, `<T>x` angle-bracket assertion
-- §1.3 `int` promoted to `double` (float init)
-- §1.4 nested template literals
-- §2.4 switch without default
-- §1.1 uninitialized typed local (`let x: number`)
+### Correctly gated by existing lint rules (confirmed working)
+- `obj["key"]` dynamic property access → `no-dynamic-property-access`
+- `instanceof` → `no-restricted-syntax` (no RTTI)
+- `async`/`await`/`Promise` → lint rejects (no event loop)
+- `function*`/`yield` → lint rejects (no coroutine runtime)
+- `var` → lint rejects
 
-## Layout
+### Correctly working (newly exercised)
+- §1.5 Associative access via `Map.get()` at call sites ✅
+- §4.1 Empty class `class C {}` ✅
+- §3.1 Nested class (hoisted to module level) ✅
+- §3.2 Object/array destructure params (with named interfaces) ✅
+- §1.10 `typeof` type guard (simplified) ✅
+- §3.4 Sort with module-level comparator ✅
+- §4.6 Borrowed constructor param ✅
+- §4.6 Owned<T> field (direct, not via alias) ✅
 
-```
-demo/src/
-  models/NumericUtils.ts   array methods, utility types, typeof, cast, promotion.
-  main.ts                  driver.
-```
-
-Demo #9's files are preserved under `demo/demo9-backup/`.
-
-## Running
-
-```bash
-npm run lint && npm run compile   # exits 0; binary in demo/src/out/.build/
-```
+### Documented gaps (compile but wrong runtime or need workaround)
+| # | Finding | Workaround |
+|---|---|---|
+| A | Inline object-type params (`{ a: int32_t }`) emit `auto` (C++20 extension, fails under `-Werror`) | Use named interfaces |
+| B | `static { ... }` initializer block not lowered (Counter.count stays 0) | Initialize in the field declaration or constructor |
+| C | `||=`/`&&=` on property access not lowered (val stays unchanged) | Use explicit `if (!x) x = v;` |
+| D | Conditional type `T extends X ? A : B` leaks generic `T` into generated code | Don't use in value positions |
+| E | Mapped type `{ [K in keyof T]: string }` leaks generic `T` | Don't use in value positions |
+| F | `ReturnType<typeof fn>` / `Parameters<typeof fn>` — `typeof` in type position broken | Don't use |
+| G | Re-exports `export { ... } from './mod'` — re-exported symbols not visible to importer | Import directly from source |
+| H | `Map.get(key)!` in a function return resolves to `auto` | Access at call sites where type resolves from context |
+| I | Wrapper-on-alias (`type X = Owned<T>`) resolves to `auto` field | Use `Owned<T>` directly on field |
+| J | Nested class inside function body emits `auto` params | Hoist to module level |
 
 ## Sample output
 
 ```
-shifted=1
-prepended=4
-rev_0=1
-filled_0=9
-concat_len=4
-forEach_sum=60
-typeof=object
-cast=3
-average=4
-ledger[n=7]
-classify_a=1
-patch_id=7
-done: shifted=1 concat=4 acc=0
+assoc_alpha=10
+empty_created
+counter_init=0
+nested=42
+destructured=7
+first_two=30
+isstring_num=false
+logical_assign=5
+forEach_expr=6
+forEach_block=12
+sorted_0=1
+borrowed=99
+wrapper_created
+sample=5
+mode_a=0
+done
 ```
 
-All values correct except `typeof=object` (should be `"number"` — Finding C).
-
----
-
-# Transpilation issues found by Demo #10
-
-Demo #10 surfaced three issues. **Two are fixed** (A, C); **one is documented** (B).
-
-## Fixed
-
-| # | Finding | Fix | File(s) |
-|---|---|---|---|
-| A | Utility-type aliases (`Partial<T>`/`Pick`/`Omit` → `T`) were dropped by tree-shaking, AND when rescued, emitted BEFORE the interface they referenced (`using Patch = Entry;` before `struct Entry`) | (1) Broadened `filter.ts` to keep aliases whose cppType is a simple user-type identifier; (2) Reordered `type-decl-emitter.ts` to emit interfaces BEFORE type aliases | `ir/filter.ts`, `emit/emitters/type-decl-emitter.ts` |
-| C | `typeof x` on an `int32_t` returned `"object"` (the static fallback) instead of `"number"` | Broadened the typeof handler to match the `intNN_t`/`uintNN_t` family and check `activeGlobalTypes` as a fallback | `ir/expression-to-ir.ts` |
-
-## Documented
-
-| # | Finding | Workaround |
-|---|---|---|
-| B | `Partial<T>`/`Pick<T,K>`/`Omit<T,K>` resolve to the FULL struct `T` (C++ structs have fixed shape — no "partial struct"). A value of these types must provide all of T's fields; TS narrowing (fewer fields) and C++ (full struct) disagree. | Provide all fields, or use a concrete interface matching the desired shape. |
+`counter_init=0` (should be 10 — static block gap), `logical_assign=5` (should
+be 99 — `||=`/`&&=` gap). All other values correct.
 
 ## Build verdict
-
-- **`npm run compile` exits 0.** The binary runs with correct output for all
-  exercised features.
-- **Regression tests: 3 tests** in `demo-10-regressions.test.ts` (utility-type
-  alias ordering, typeof-number, typeof-string); the full transpiler suite is
-  **183 passed, 2 skipped, 0 failed** (17 files).
+- `npm run compile` exits 0. Binary runs.
+- Full transpiler suite: **186 passed, 2 skipped, 0 failed** (19 files).

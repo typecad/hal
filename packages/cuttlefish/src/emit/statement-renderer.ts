@@ -464,6 +464,41 @@ export class StatementRenderer {
 
         const hasObjectElements = statement.initializer.elements.some(e => e.kind === "object");
         if (hasObjectElements) {
+          // Check if the declared array type's element is a known named type
+          // (e.g. `const pts: Point[]` → std::vector<Point>). If so, use Point
+          // directly instead of generating a shadow `_{name}_t` struct (which
+          // collides when the same shape appears at multiple sites — demo #11
+          // Finding D).
+          let elementTypeName: string | null = null;
+          // Match both the resolved C++ form (std::vector<T>) and the TS form
+          // (T[]). The cppType may not be fully resolved at this point.
+          const vecMatch = rawType.match(/^std::vector<(.+)>$/);
+          const tsArrMatch = !vecMatch ? rawType.match(/^(.+)\[\]$/) : null;
+          const elemType = vecMatch
+            ? vecMatch[1].trim()
+            : tsArrMatch
+              ? tsArrMatch[1].trim()
+              : null;
+          if (elemType && /^[A-Z]/.test(elemType)) {
+            elementTypeName = elemType;
+          }
+          if (elementTypeName) {
+            // Use the named element type directly — no shadow struct needed.
+            const elements = statement.initializer.elements.map((e) => {
+              if (e.kind === "object") {
+                const initValues = e.fields.map((f) => {
+                  const val = this.expressionRenderer.render(f.value, undefined);
+                  return val;
+                }).join(", ");
+                return `{ ${initValues} }`;
+              }
+              return this.expressionRenderer.render(e, undefined);
+            });
+            const vecType = `std::vector<${elementTypeName}>`;
+            const safeArrName2 = escapeCppKeyword(statement.name, this.strategy.reservedNames());
+            const constPrefix2 = isConst ? "const " : "";
+            return `${constPrefix2}${vecType} ${safeArrName2} = { ${elements} };`;
+          }
           const structName = `_${statement.name}_t`;
           const firstObj = statement.initializer.elements.find(e => e.kind === "object") as Extract<ExpressionIR, { kind: "object" }>;
 

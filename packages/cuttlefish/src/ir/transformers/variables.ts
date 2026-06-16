@@ -665,8 +665,22 @@ export function variableStatementToIR(
         (e): e is ts.Expression => !ts.isSpreadElement(e) && ts.isObjectLiteralExpression(e)
       );
       if (hasObjectElements) {
-        const structType = `_${declaration.name.text}_t`;
-        varCppType = `std::vector<${structType}>`;
+        // Only generate a shadow struct (_name_t) when the declared type isn't
+        // already a named-type vector (e.g. `const pts: Point[]` resolves to
+        // std::vector<Point> — use Point directly, don't override with a shadow
+        // struct that collides at multiple sites — demo #11 Finding D).
+        const vecElemMatch = varCppType.match(/^std::vector<(.+)>$/);
+        const tsArrMatch = !vecElemMatch ? varCppType.match(/^(.+)\[\]$/) : null;
+        const elemType = vecElemMatch
+          ? vecElemMatch[1].trim()
+          : tsArrMatch
+            ? tsArrMatch[1].trim()
+            : null;
+        const isNamedElementType = elemType && /^[A-Z]/.test(elemType);
+        if (!isNamedElementType) {
+          const structType = `_${declaration.name.text}_t`;
+          varCppType = `std::vector<${structType}>`;
+        }
       }
     }
     loweredDeclaration.cppType = varCppType as CppType;

@@ -494,7 +494,7 @@ export class NativeStrategy implements PlatformStrategy {
           'template<typename T> T __tc_pop(std::vector<T>& v) { T val = v.back(); v.pop_back(); return val; }',
           'template<typename T> void __tc_unshift(std::vector<T>& v, const T& val) { v.insert(v.begin(), val); }',
           'template<typename T> void __tc_sort(std::vector<T>& v) { std::sort(v.begin(), v.end()); }',
-          'template<typename T, typename F> void __tc_sort_fn(std::vector<T>& v, F comp) { std::sort(v.begin(), v.end(), comp); }',
+          'template<typename T, typename F> void __tc_sort_fn(std::vector<T>& v, F comp) { std::sort(v.begin(), v.end(), [&v, comp](const typename std::vector<T>::value_type& a, const typename std::vector<T>::value_type& b) { return comp(a, b) < 0; }); }',
           'template<typename T> void __tc_fill(std::vector<T>& v, const T& val) { std::fill(v.begin(), v.end(), val); }',
           'template<typename T> void __tc_fill3(std::vector<T>& v, const T& val, int start, int end) { if (end > (int)v.size()) end = (int)v.size(); std::fill(v.begin() + start, v.begin() + end, val); }',
           'template<typename T> std::vector<T> __tc_concat(const std::vector<T>& a, const std::vector<T>& b) { std::vector<T> result = a; result.insert(result.end(), b.begin(), b.end()); return result; }',

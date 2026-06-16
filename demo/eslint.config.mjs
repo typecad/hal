@@ -87,6 +87,62 @@ const transpilerRules = [
     message:
       "[transpiler] immediately-invoked arrow expressions (() => {...})() are not supported — the body is not inlined. Assign to a const or define a named top-level function.",
   },
+  // §4.7 ❌ — namespace declarations are not supported (no ModuleDeclaration
+  // lowering). Use a class with static methods or a module-level grouping.
+  {
+    selector: "TSModuleDeclaration",
+    message:
+      "[transpiler] namespace/module declarations are not supported. Use a class with static methods or group free functions in a file.",
+  },
+  // §1.5 ❌ — object spread { ...a, b } has no C++ aggregate equivalent (structs
+  // have fixed shape; spreading is dynamic). Construct field-by-field instead.
+  {
+    selector: "ObjectExpression > SpreadElement",
+    message:
+      "[transpiler] object spread ({ ...obj }) is not supported — C++ structs have fixed shape. Construct the object field-by-field instead.",
+  },
+  // §1.6 ❌ — keyof T / indexed access T[K] are type-level operators with no
+  // C++ equivalent. Use a plain string + a switch.
+  {
+    selector: "TSTypeOperator[type='keyof']",
+    message:
+      "[transpiler] the keyof operator is not supported (no C++ equivalent). Use a string union or a switch over field names.",
+  },
+  {
+    selector: "TSIndexedAccessType",
+    message:
+      "[transpiler] indexed access types (T[K]) are not supported (no C++ equivalent). Use the concrete field type directly.",
+  },
+  // §1.6 ❌ — conditional types leak generic T into generated code.
+  {
+    selector: "TSTypeAliasDeclaration > TSConditionalType",
+    message:
+      "[transpiler] conditional types (T extends X ? A : B) are not supported — they leak generic type parameters into generated C++. Use an explicit type or a function with overloads.",
+  },
+  // §1.6 ❌ — mapped types leak generic T.
+  {
+    selector: "TSTypeAliasDeclaration > TSMappedType",
+    message:
+      "[transpiler] mapped types ({ [K in keyof T]: U }) are not supported — they leak generic type parameters into generated C++. Construct the type explicitly.",
+  },
+  // §1.7 ❌ — ReturnType/Parameters use typeof-in-type-position (broken).
+  {
+    selector: "TSTypeReference[typeName.type='TSQualifiedName'][typeName.left.name='ReturnType']",
+    message:
+      "[transpiler] ReturnType<T> is not supported (typeof-in-type-position is not lowered). Declare the return type explicitly.",
+  },
+  {
+    selector: "TSTypeReference[typeName.type='TSQualifiedName'][typeName.left.name='Parameters']",
+    message:
+      "[transpiler] Parameters<T> is not supported (typeof-in-type-position is not lowered). Declare the parameter types explicitly.",
+  },
+  // §4.1 ❌ — static initializer block has no C++ lowering (C++ uses static
+  // field initializers, not a code block). Initialize in the field declaration.
+  {
+    selector: "StaticBlock",
+    message:
+      "[transpiler] static initializer blocks (static { ... }) are not supported. Initialize static fields in their declaration or the constructor.",
+  },
   // §2.6 🚫 — Promise / .then need a promise runtime. (Await/async are
   // approximated but flagged separately below.)
   {

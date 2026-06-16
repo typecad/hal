@@ -238,7 +238,14 @@ export function appendRenderedStatement(
     for (const nested of statement.tryBlock) appendRenderedStatement(ctx, nested, `${indent}  `, tryScope);
     appendSourceLine(ctx, `${indent}}`);
     if (statement.catchBlock) {
-      const catchDecl = statement.catchParam ? `catch (const std::exception& ${statement.catchParam}) {` : `catch (...) {`;
+      // TS `catch (e)` catches ANY thrown value (not just std::exception).
+      // Emit `catch (...)` (catch-all) so thrown pointers/values of non-
+      // std::exception types are caught. If the catch param is named, bind it
+      // via a rethrow-and-cast pattern OR just use catch(...) and leave the
+      // param unbound (accessing `.message` on an `unknown` catch value isn't
+      // type-safe in C++ anyway). Demo #11 Finding E — was `catch (const
+      // std::exception& e)` which missed a thrown `RegionError*`.
+      const catchDecl = `catch (...) {`;
       appendSourceLine(ctx, `${indent}${catchDecl}`);
       const catchScope = cloneEmissionScopeState(scopeState);
       for (const nested of statement.catchBlock) appendRenderedStatement(ctx, nested, `${indent}  `, catchScope);

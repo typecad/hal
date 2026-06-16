@@ -333,6 +333,18 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       // export default <identifier> — record the name for default import resolution
       if (ts.isIdentifier(node.expression)) {
         defaultExportName = node.expression.text;
+      } else if (ts.isFunctionExpression(node.expression) && node.expression.name) {
+        // export default function name() { ... } — extract the function name.
+        defaultExportName = node.expression.name.text;
+      } else if (ts.isFunctionExpression(node.expression)) {
+        // export default function() { ... } (anonymous) — synthesize a name.
+        defaultExportName = "__default_export__";
+      } else if (ts.isClassExpression(node.expression) && node.expression.name) {
+        // export default class Name { ... } — extract the class name.
+        defaultExportName = node.expression.name.text;
+      } else if (ts.isClassExpression(node.expression)) {
+        // export default class { ... } (anonymous) — synthesize a name.
+        defaultExportName = "__default_export__";
       }
       // For export default function/class, the declaration is already processed
       // by the function/class handlers above — we just record the name.

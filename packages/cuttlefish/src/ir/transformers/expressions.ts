@@ -88,9 +88,51 @@ export function expressionStatementToIR(
         },
       };
     }
+    // Handle ||= on a property-access left side: obj.field ||= val →
+    // obj.field = obj.field ? obj.field : val  (demo #13 Finding C)
+    if (expr.operatorToken.kind === ts.SyntaxKind.BarBarEqualsToken) {
+      const targetIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
+      const targetText = renderExprAsText(targetIR);
+      const comments = extractNodeComments(statement, sourceText);
+      const valIR = expressionToIR(expr.right, sourceText, diagnostics);
+      return {
+        kind: "assign",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
+        operator: "=",
+        value: {
+          kind: "ternary",
+          condition: { kind: "raw", value: targetText },
+          whenTrue: { kind: "raw", value: targetText },
+          whenFalse: valIR,
+        },
+      };
+    }
+    // Handle &&= on a property-access left side: obj.field &&= val →
+    // obj.field = obj.field ? val : obj.field  (demo #13 Finding C)
+    if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken) {
+      const targetIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
+      const targetText = renderExprAsText(targetIR);
+      const comments = extractNodeComments(statement, sourceText);
+      const valIR = expressionToIR(expr.right, sourceText, diagnostics);
+      return {
+        kind: "assign",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: targetText,
+        operator: "=",
+        value: {
+          kind: "ternary",
+          condition: { kind: "raw", value: targetText },
+          whenTrue: valIR,
+          whenFalse: { kind: "raw", value: targetText },
+        },
+      };
+    }
   }
-
-  // Handle arr[index] = value and compound assignments (arr[i] += 5, etc.)
   if (ts.isBinaryExpression(expr) && ts.isElementAccessExpression(expr.left)) {
     const operator = assignmentOperatorToString(expr.operatorToken.kind);
     if (operator) {
