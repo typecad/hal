@@ -42,17 +42,22 @@ export function filterProgramIR(
   );
 
   // Filter type aliases. Keep an alias if it's reachable OR if its cppType is
-  // a concrete container/primitive that will emit a valid `using` directive.
-  // The latter rescues aliases-to-tuples/vectors/maps/pairs that are used as
-  // type annotations but whose names don't surface in the call graph (because
-  // typeNodeToCppType resolves them away to the concrete type before the call
-  // graph scans). Demo #8 Finding F — `type P = [K, V]` (→ std::tuple) was
-  // dropped even when used as a return type.
+  // a concrete type that will emit a valid `using` directive. The latter
+  // rescues aliases-to-tuples/vectors/maps/pairs AND aliases-to-user-types
+  // (Partial<T>/Pick/Omit resolve to the underlying struct name) that are used
+  // as type annotations but whose names don't surface in the call graph
+  // (because typeNodeToCppType resolves them away before the call graph scans).
+  // Demo #8 fix F (tuples); demo #10 fix A (utility-type aliases).
   const filteredTypeAliases = program.typeAliases.filter((typeAlias) => {
     if (reachability.reachableTypeAliases.has(typeAlias.name)) return true;
     const cpp = typeAlias.cppType ?? "auto";
     if (cpp === "auto") return false;
-    return /^(std::tuple|std::vector|std::map|std::set|std::pair|int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|double|float|bool|std::string)/.test(cpp);
+    // Container/primitive prefixes (std::tuple, std::vector, etc.).
+    if (/^(std::tuple|std::vector|std::map|std::set|std::pair|int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|double|float|bool|std::string)/.test(cpp)) return true;
+    // A simple user-type identifier (e.g. `Entry` from `Partial<Entry>`) —
+    // `using X = Entry;` is valid C++ when Entry is a defined struct.
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(cpp)) return true;
+    return false;
   });
 
   // Filter top-level var_decl statements based on variable reachability.

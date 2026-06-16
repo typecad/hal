@@ -1,80 +1,82 @@
 // ---------------------------------------------------------------------------
-// main.ts — Strata layered-config driver.
+// main.ts — Ledger numeric-utilities driver.
 //
-// SUPPORT_MATRIX tour for Demo #8 (untested slice):
-//   §1.5  spread in array [...a, b], ReadonlyArray<T>
-//   §1.6  `satisfies` operator
-//   §1.8  `??=` logical nullish assignment
-//   §1.9  array destructure default, mixed destructure + regular params
-//   §1.10 m.delete(k) on a Map, Map.size (Findings D, H fixed)
-//   §4.3  static getter (Finding B fixed)
-//   §4.6  Owned<T>/Shared<T>/Mutable<T> fields (via Registry)
-//   §5.1  `**` (via Math.pow), comma operator, void
+// SUPPORT_MATRIX tour for Demo #10 (untested slice):
+//   §5.3  shift/unshift/reverse/fill/concat
+//   §3.5  forEach as a statement
+//   §1.7  Partial/Pick/Omit/NonNullable
+//   §1.10 typeof, <T>x angle-bracket assertion
+//   §1.3  int promoted to double
+//   §1.4  nested template literals
+//   §2.4  switch without default
 //   §6.1  top-level statements → main()
-//   §6.2  multi-file local imports
 // ---------------------------------------------------------------------------
 
-import { Registry, Layer, StringIntPair } from './models/Layers';
 import {
-  commaScore,
-  voidTest,
-  deleteKey,
-  nullishAssign,
-  mixedDestructure,
-  arrayDefault,
-  rawExponent,
-  Opts,
-  Spec,
-} from './models/StringRegistry';
+  shiftFirst,
+  prependCount,
+  reverseCopy,
+  fillNew,
+  concatAll,
+  forEachSum,
+  typeName,
+  castToInt,
+  average,
+  banner,
+  classify,
+  EntryPatch,
+} from './models/NumericUtils';
 
-// §1.5 — spread in array literal `[...a, b]`.
-const head: int32_t[] = [1, 2, 3];
-const combined: int32_t[] = [...head, 4, 5];
-console.log(`spread_len=${combined.length}`);
+// §1.1 — uninitialized typed local (`let x: number` with no initializer, then
+// assigned). Avoided `var` (gated out by lint).
+let acc: int32_t;
+acc = 0;
 
-// §1.5 — ReadonlyArray<T>.
-const fixed: ReadonlyArray<int32_t> = [10, 20, 30];
-console.log(`readonly_first=${fixed[0]}`);
+// §5.3 — shift/unshift/reverse/fill/concat.
+const xs: int32_t[] = [1, 2, 3];
+const shifted = shiftFirst(xs);
+console.log(`shifted=${shifted}`);
 
-// §1.6 — `satisfies` operator (type-only, erased).
-const cfg: Layer = { priority: 5, alpha: 1 } satisfies Layer;
-console.log(`satisfies_priority=${cfg.priority}`);
+const grew = prependCount([5, 6, 7], 4);
+console.log(`prepended=${grew}`);
 
-// §4.6 — Registry with Owned/Shared/Mutable fields. Access the static field
-// directly (static-getter ACCESS still emits `Registry::count` — Finding B
-// cascade; the getter EMITS correctly now, just the access name is wrong).
-const reg = new Registry();
-console.log(`registry_count=${Registry.created}`);
+const rev = reverseCopy([1, 2, 3]);
+console.log(`rev_0=${rev[0]}`);
 
-// §1.5 — pair return (interface).
-const pair: StringIntPair = reg.firstPair();
-console.log(`first_pair=${pair.key}:${pair.val}`);
+const filled = fillNew(3, 9);
+console.log(`filled_0=${filled[0]}`);
 
-// §5.1 — comma operator.
-console.log(`comma=${commaScore(3, 7)}`);
+const cat = concatAll([1, 2], [3, 4]);
+console.log(`concat_len=${cat.length}`);
 
-// §5.1 — void expr.
-console.log(`void=${voidTest()}`);
+// §3.5 — forEach as a statement.
+const sum = forEachSum([10, 20, 30]);
+console.log(`forEach_sum=${sum}`);
 
-// §1.10 — m.delete(k) on a Map param (Finding D fixed) + Map.size (Finding H fixed).
-const dm: Map<string, int32_t> = new Map();
-dm.set('x', 1);
-dm.set('y', 2);
-deleteKey(dm, 'x');
-console.log(`dm_size=${dm.size}`);
+// §1.10 — typeof (Finding C fixed — now returns "number" for int32_t) +
+// angle-bracket assertion.
+console.log(`typeof=${typeName(42)}`);
+console.log(`cast=${castToInt(3.9)}`);
 
-// §1.8 — ??= logical nullish assignment (Finding I fixed).
-const opts: Opts = { };
-console.log(`nullish_assign=${nullishAssign(opts)}`);
+// §1.3 — int promoted to double.
+console.log(`average=${average(3, 5)}`);
 
-// §1.9 — array destructure default.
-console.log(`array_default=${arrayDefault([5, 0])}`);
+// §1.4 — nested template literals.
+console.log(banner('ledger', 7));
 
-// §1.9 — mixed destructure + regular param.
-const spec: Spec = { a: 1, b: 2 };
-console.log(`mixed=${mixedDestructure(spec, 3)}`);
+// §2.4 — switch without default.
+console.log(`classify_a=${classify('a')}`);
 
-// §5.1 — exponentiation (via Math.pow).
-console.log(`exponent=${rawExponent(2.0, 10.0)}`);
+// §1.7 — utility types. NOTE: Partial<T>/Pick<T,K> resolve to the FULL
+// underlying struct T (C++ structs have fixed shape). The aliases exist (emit
+// `using X = Entry;`) and are usable as type annotations, but a value must
+// provide all of T's fields (Finding B).
+// §1.7 — utility types. The alias `EntryPatch = Partial<Entry>` emits as
+// `using EntryPatch = Entry;` (survives tree-shaking — fix A). NOTE: multi-
+// field struct value semantics have a pre-existing layout gap; we only verify
+// the alias emits and is usable as a type annotation.
+const patch: EntryPatch = { id: 0, value: 0, label: '' };
+patch.id = 7;
+console.log(`patch_id=${patch.id}`);
 
-console.log(`done: spread=${combined.length} count=${Registry.created}`);
+console.log(`done: shifted=${shifted} concat=${cat.length} acc=${acc}`);

@@ -290,6 +290,7 @@ dist/
 
 export function generateEslintConfig(_options: InitProjectOptions): string {
   return `import tsparser from "@typescript-eslint/parser";
+import tseslint from "@typescript-eslint/eslint-plugin";
 import transpilerPlugin from "./eslint-transpiler-rules.mjs";
 
 // no-restricted-syntax selectors sourced from SUPPORT_MATRIX ❌/🚫 rows.
@@ -366,8 +367,14 @@ export default [
     files: ["src/**/*.ts"],
     languageOptions: {
       parser: tsparser,
+      parserOptions: {
+        // Type-aware parsing so @typescript-eslint/no-explicit-any resolves
+        // imported bindings to their real types instead of defaulting to any.
+        project: "./tsconfig.json",
+      },
     },
     plugins: {
+      "@typescript-eslint": tseslint,
       cuttlefish: transpilerPlugin,
     },
     rules: {
@@ -395,6 +402,7 @@ export default [
       "cuttlefish/no-array-param-content-mutation": "error",
       "cuttlefish/no-container-functional-methods": "error",
       "cuttlefish/no-undefined-compare-on-get": "error",
+      "cuttlefish/no-undefined-compare-on-struct-field": "error",
       "cuttlefish/no-typed-array-param-length": "error",
       "cuttlefish/no-typed-array-return": "error",
       "cuttlefish/no-dynamic-property-access": "error",

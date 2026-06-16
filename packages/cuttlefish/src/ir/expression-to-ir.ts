@@ -531,13 +531,47 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
   }
 
-  // Handle typeof expressions — at transpile time, typeof on a known variable
+  // Handle `valueType === null` / `!== null` / `=== undefined` on a value type.
+  // `T | null` erases to a value type (vector/map/set/struct), which is never
+  // null in C++, so comparing it to nullptr is invalid (`no match for
+  // operator==`). Resolve to a compile-time boolean. Demo #9 Finding D.
+  if (ts.isBinaryExpression(expr)
+    && (expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken
+      || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+      || expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken
+      || expr.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
+    const isNullRhs = expr.right.kind === ts.SyntaxKind.NullKeyword || expr.right.kind === ts.SyntaxKind.UndefinedKeyword;
+    const isNullLhs = expr.left.kind === ts.SyntaxKind.NullKeyword || expr.left.kind === ts.SyntaxKind.UndefinedKeyword;
+    if (isNullRhs || isNullLhs) {
+      const valueNode = isNullRhs ? expr.left : expr.right;
+      if (ts.isIdentifier(valueNode)) {
+        const vt = activeLocalTypes.get(valueNode.text) ?? activeGlobalTypes.get(valueNode.text);
+        const isValueType = vt && (
+          vt.startsWith("std::vector<")
+          || vt.startsWith("std::map<")
+          || vt.startsWith("std::set<")
+          || vt.startsWith("std::string")
+          || topLevelClassNames.has(vt.replace(/\*$/, ""))
+        ) && !vt.endsWith("*");
+        if (isValueType) {
+          const isEquality = expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
+          // A value type is never null → `=== null` is false, `!== null` is true.
+          return { kind: "boolean", value: isEquality ? false : true };
+        }
+      }
+    }
+  }
   // Standalone typeof x emits a type-name string literal.
   if (ts.isTypeOfExpression(expr)) {
     const operand = expr.expression;
     if (ts.isIdentifier(operand)) {
-      const varType = activeLocalTypes.get(operand.text);
-      const typeName = varType === "int" || varType === "float" || varType === "double" || varType === "long" || varType === "long long" || varType === "unsigned long long" || varType === "unsigned" || varType === "size_t"
+      const varType = activeLocalTypes.get(operand.text) ?? activeGlobalTypes.get(operand.text);
+      // The cuttlefish intNN_t/uintNN_t family maps to TS `number`.
+      const isNumberType = varType === "int" || varType === "float" || varType === "double"
+        || varType === "long" || varType === "long long" || varType === "unsigned long long"
+        || varType === "unsigned" || varType === "size_t"
+        || (varType !== undefined && /^(int|uint)(8|16|32|64)_t$/.test(varType));
+      const typeName = isNumberType
         ? "number"
         : varType === "bool"
           ? "boolean"
@@ -700,11 +734,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const fnName = expr.expression.text;
       if (fnName === "parseInt" && expr.arguments.length >= 1) {
         const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
-        return { kind: "raw", value: `atoi(${argText})` };
+        // atoi/atof take const char*; the arg is typically a std::string.
+        // Use .c_str() so the conversion compiles.
+        return { kind: "raw", value: `atoi((${argText}).c_str())` };
       }
       if (fnName === "parseFloat" && expr.arguments.length >= 1) {
         const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
-        return { kind: "raw", value: `atof(${argText})` };
+        return { kind: "raw", value: `atof((${argText}).c_str())` };
       }
       if (fnName === "isNaN" && expr.arguments.length >= 1) {
         const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
@@ -1198,7 +1234,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return { kind: "raw", value: halInst.fieldValues.get("_pin")! };
       }
     }
-    return { kind: "identifier", value: expr.text };
+    // Apply nested-function-alias mangling so a `return dbl` reference to a
+    // nested function declaration resolves to its hoisted mangled name
+    // (makeScaler__dbl). Without this, the reference emits the bare name and
+    // g++ reports "'dbl' was not declared in scope" (demo #9 Finding B).
+    const nestedAlias = nestedFunctionAliases.get(expr.text);
+    return { kind: "identifier", value: nestedAlias ?? expr.text };
   }
 
   // Handle 'this' keyword

@@ -665,6 +665,18 @@ export function buildEmitterContext(
   if (program.requiredIncludes) {
     includes.push(...program.requiredIncludes);
   }
+  // std::variant (from discriminated-union type aliases) needs <variant>.
+  // Scan type aliases AND function signatures (params/return types) — a union
+  // used only as a param/return may not survive tree-shaking as an alias, but
+  // the resolved `std::variant<...>` cppType still appears in signatures.
+  const variantInAliases = program.typeAliases.some((a) => (a.cppType ?? "").includes("std::variant"));
+  const variantInFunctions = program.functions.some(
+    (f) => (f.returnType ?? "").includes("std::variant")
+      || f.parameters.some((p) => (p.cppType ?? "").includes("std::variant")),
+  );
+  if (variantInAliases || variantInFunctions) {
+    includes.push("<variant>");
+  }
   // String enums lower to const char* and use strcmp() for === comparisons.
   if (stringEnumNames.size > 0) {
     includes.push("<cstring>");

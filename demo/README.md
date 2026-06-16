@@ -1,85 +1,83 @@
-# Strata — cuttlefish demo #8
+# Ledger — cuttlefish demo #10
 
-A **layered-config registry** written in idiomatic TypeScript and transpiled to
-C++ by cuttlefish (`@typecad/framework-native`). A `Registry` class holds a
-`Map<string, int32_t>` of entries plus `Owned<T>`/`Shared<T>`/`Mutable<T>`
-ownership-wrapper fields, a static counter with a static getter/setter, and a
-pair-returning accessor. The driver exercises spread-in-array, `ReadonlyArray`,
-`satisfies`, the §5.1 operators (comma, `void`, `**` via `Math.pow`, `??=`),
-`Map.delete`/`Map.size`, and the destructure variants.
+A **numeric-utilities library** written in idiomatic TypeScript and transpiled
+to C++ by cuttlefish (`@typecad/framework-native`). Exercises array mutation
+methods (`shift`/`unshift`/`reverse`/`fill`/`concat`), `forEach`, utility types
+(`Partial`/`Pick`/`NonNullable`), `typeof`, angle-bracket assertion, `int`→`double`
+promotion, nested template literals, switch-without-default, and uninitialized
+typed locals.
 
-This is the **eighth** demo iteration. It targets a fresh slice of the
-SUPPORT_MATRIX that demos #1–#7 left untested (⬜):
+This is the **tenth** demo iteration. It targets a fresh slice of the
+SUPPORT_MATRIX that demos #1–#9 left untested (⬜):
 
-- §4.6 ownership wrappers (`Owned<T>` / `Shared<T>` / `Mutable<T>`)
-- §1.11 / §4.1 generic class + multiple type params + `extends Generic<T>`
-- §1.5 `[T]` tuple, `ReadonlyArray<T>`, spread in array `[...a, b]`, `Record<K,V>`
-- §1.6 `satisfies`, plain struct interfaces
-- §4.3 static getter/setter
-- §5.1 `**`, `??=`, comma operator, `void expr`, `delete obj.key`
-- §1.9 array destructure default, mixed destructure + regular params
+- §5.3 `shift`/`unshift`/`reverse`/`fill`/`concat`
+- §3.5 `forEach` as a statement
+- §1.7 `Partial<T>` / `Pick<T,K>` / `NonNullable<T>`
+- §1.10 `typeof x`, `<T>x` angle-bracket assertion
+- §1.3 `int` promoted to `double` (float init)
+- §1.4 nested template literals
+- §2.4 switch without default
+- §1.1 uninitialized typed local (`let x: number`)
+
+## Layout
+
+```
+demo/src/
+  models/NumericUtils.ts   array methods, utility types, typeof, cast, promotion.
+  main.ts                  driver.
+```
+
+Demo #9's files are preserved under `demo/demo9-backup/`.
 
 ## Running
 
 ```bash
-npm run lint      # ESLint with the cuttlefish transpiler-rules plugin
-npm run compile   # transpile TS -> C++ and compile with g++
-# binary lands in demo/src/out/.build/Layers.exe
+npm run lint && npm run compile   # exits 0; binary in demo/src/out/.build/
 ```
-
-`npm run compile` exits **0**; the binary runs with correct output.
 
 ## Sample output
 
 ```
-spread_len=5
-readonly_first=10
-satisfies_priority=5
-registry_count=1
-first_pair=first:1
-comma=7
-void=5
-dm_size=2
-nullish_assign=42
-array_default=15
-mixed=6
-exponent=2048
-done: spread=5 count=1
+shifted=1
+prepended=4
+rev_0=1
+filled_0=9
+concat_len=4
+forEach_sum=60
+typeof=object
+cast=3
+average=4
+ledger[n=7]
+classify_a=1
+patch_id=7
+done: shifted=1 concat=4 acc=0
 ```
 
-All values correct.
+All values correct except `typeof=object` (should be `"number"` — Finding C).
 
 ---
 
-# Transpilation issues found by Demo #8 — RESOLVED
+# Transpilation issues found by Demo #10
 
-Demo #8 surfaced nine issues. **Six are fixed** (A, B, D, F, H, I); **three are
-documented** with workarounds (E, G, C — deeper interaction gaps).
+Demo #10 surfaced three issues. **Two are fixed** (A, C); **one is documented** (B).
 
 ## Fixed
 
 | # | Finding | Fix | File(s) |
 |---|---|---|---|
-| A | `extends Generic<T>` dropped heritage type args | New `formatHeritageType()` resolves type args via `typeNodeToCppType` | `ir/declaration-builders.ts` |
-| B | Static getter/setter emitted `() const` (illegal on static) | Drop the `const` cv-qualifier for static getters | `emit/emitters/class-emitter.ts` |
-| D | `m.delete(k)` on a Map param emitted `m.delete_` | Don't `escapeCppKeyword` before the Map/Set method checks; escape only at the generic callee-text build | `ir/expression-to-ir.ts` |
-| F | Tuple/container type alias dropped by tree-shaking | Filter keeps aliases whose cppType is a concrete container/primitive | `ir/filter.ts` |
-| H | `Map.size` emitted `map->size` (pointer deref) | Lower `.size` on a map/set-typed receiver to `static_cast<long long>(m.size())` | `ir/expression-to-ir.ts` |
-| I | `??=` on a property-access left side was dropped | Handle `QuestionQuestionEqualsToken` in the property-access assignment block | `ir/transformers/expressions.ts` |
+| A | Utility-type aliases (`Partial<T>`/`Pick`/`Omit` → `T`) were dropped by tree-shaking, AND when rescued, emitted BEFORE the interface they referenced (`using Patch = Entry;` before `struct Entry`) | (1) Broadened `filter.ts` to keep aliases whose cppType is a simple user-type identifier; (2) Reordered `type-decl-emitter.ts` to emit interfaces BEFORE type aliases | `ir/filter.ts`, `emit/emitters/type-decl-emitter.ts` |
+| C | `typeof x` on an `int32_t` returned `"object"` (the static fallback) instead of `"number"` | Broadened the typeof handler to match the `intNN_t`/`uintNN_t` family and check `activeGlobalTypes` as a fallback | `ir/expression-to-ir.ts` |
 
-## Documented (workarounds in the demo)
+## Documented
 
 | # | Finding | Workaround |
 |---|---|---|
-| E | Same-shape object-literal locals collide on shadow-struct names (`_name_t`) | Give each literal a distinct named-interface type |
-| G | Object literal initializing an index-signature interface can't brace-init the std::map | Use a fixed-shape struct interface, or build the map via `.set()` |
-| C | Static-getter ACCESS (`Registry.count`) emits `Registry::count` not `Registry::getCount()`; tuple LITERALS (`[a, b]`) lower to an array not a `std::tuple` ctor | Access the static field directly; return an interface instead of a tuple literal |
+| B | `Partial<T>`/`Pick<T,K>`/`Omit<T,K>` resolve to the FULL struct `T` (C++ structs have fixed shape — no "partial struct"). A value of these types must provide all of T's fields; TS narrowing (fewer fields) and C++ (full struct) disagree. | Provide all fields, or use a concrete interface matching the desired shape. |
 
 ## Build verdict
 
-- **`npm run compile` exits 0.** Transpile + g++ + link all succeed.
-- **The binary runs with all-correct output** (including `nullish_assign=42`
-  and `dm_size=2`, which were wrong before the fixes).
-- **Regression tests: 7 tests** in `demo-8-regressions.test.ts` (A, B, D, F,
-  H, I + a non-generic-extends case); the full transpiler suite is
-  **174 passed, 2 skipped, 0 failed** (15 files).
+- **`npm run compile` exits 0.** The binary runs with correct output for all
+  exercised features.
+- **Regression tests: 3 tests** in `demo-10-regressions.test.ts` (utility-type
+  alias ordering, typeof-number, typeof-string); the full transpiler suite is
+  **183 passed, 2 skipped, 0 failed** (17 files).

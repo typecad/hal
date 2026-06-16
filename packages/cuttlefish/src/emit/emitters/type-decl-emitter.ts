@@ -111,7 +111,46 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
     appendLine(ctx, "");
   }
 
-  // Emit type aliases
+  // Emit interfaces as C++ structs BEFORE type aliases — an alias may
+  // reference an interface (`using EntryPatch = Entry;`), so the struct must
+  // be declared first (demo #10 fix A: alias-to-user-type ordering).
+  for (const iface of program.interfaces) {
+    const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
+    emitCommentLines(iface.leadingComments, "", (line) => appendLine(ctx, line));
+    if (iface.fields.length > 0 || iface.indexSignature) {
+      if (iface.parentScope) {
+        appendLine(ctx, `namespace ${iface.parentScope} {`);
+        ctx.interfaceNamespaceMap.set(iface.name, iface.parentScope);
+      }
+      const typeParams = new Set<string>();
+      for (const field of iface.fields) {
+        if (/^[A-Z]$/.test(field.cppType)) {
+          typeParams.add(field.cppType);
+        }
+      }
+      if (typeParams.size > 0) {
+        appendLine(ctx, `template<typename ${Array.from(typeParams).join(", typename ")}>`);
+      }
+      appendLine(ctx, `struct ${iface.name} {`);
+      for (const field of iface.fields) {
+        const fieldType = normalizeCppTypeForTarget(field.cppType);
+        appendLine(ctx, `  ${fieldType} ${field.name};`);
+      }
+      if (iface.indexSignature) {
+        const keyType = normalizeCppTypeForTarget(iface.indexSignature.keyType);
+        const valueType = normalizeCppTypeForTarget(iface.indexSignature.valueType);
+        appendLine(ctx, `  std::map<${keyType}, ${valueType}> data;`);
+      }
+      appendLine(ctx, "};");
+      if (iface.parentScope) {
+        appendLine(ctx, "}");
+      }
+    }
+    emitCommentLines(iface.trailingComments, "", (line) => appendLine(ctx, line));
+    appendLine(ctx, "");
+  }
+
+  // Emit type aliases (after interfaces, so alias-to-struct refs resolve).
   for (const typeAlias of program.typeAliases) {
     const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
     emitCommentLines(typeAlias.leadingComments, "", (line) => appendLine(ctx, line));
@@ -150,43 +189,6 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
     if (strategy.shouldSkipTypeAlias(cppType)) continue;
     appendLine(ctx, `using ${typeAlias.name} = ${cppType};`);
     emitCommentLines(typeAlias.trailingComments, "", (line) => appendLine(ctx, line));
-    appendLine(ctx, "");
-  }
-
-  // Emit interfaces as C++ structs
-  for (const iface of program.interfaces) {
-    const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
-    emitCommentLines(iface.leadingComments, "", (line) => appendLine(ctx, line));
-    if (iface.fields.length > 0 || iface.indexSignature) {
-      if (iface.parentScope) {
-        appendLine(ctx, `namespace ${iface.parentScope} {`);
-        ctx.interfaceNamespaceMap.set(iface.name, iface.parentScope);
-      }
-      const typeParams = new Set<string>();
-      for (const field of iface.fields) {
-        if (/^[A-Z]$/.test(field.cppType)) {
-          typeParams.add(field.cppType);
-        }
-      }
-      if (typeParams.size > 0) {
-        appendLine(ctx, `template<typename ${Array.from(typeParams).join(", typename ")}>`);
-      }
-      appendLine(ctx, `struct ${iface.name} {`);
-      for (const field of iface.fields) {
-        const fieldType = normalizeCppTypeForTarget(field.cppType);
-        appendLine(ctx, `  ${fieldType} ${field.name};`);
-      }
-      if (iface.indexSignature) {
-        const keyType = normalizeCppTypeForTarget(iface.indexSignature.keyType);
-        const valueType = normalizeCppTypeForTarget(iface.indexSignature.valueType);
-        appendLine(ctx, `  std::map<${keyType}, ${valueType}> data;`);
-      }
-      appendLine(ctx, "};");
-      if (iface.parentScope) {
-        appendLine(ctx, "}");
-      }
-    }
-    emitCommentLines(iface.trailingComments, "", (line) => appendLine(ctx, line));
     appendLine(ctx, "");
   }
 

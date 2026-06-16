@@ -26,6 +26,8 @@ with g++.
 | #6 | Forge factory/crafting | `c25dd5c` | class inheritance + polymorphism; A–H fixes |
 | #7 | Wattage power-grid sim | (uncommitted) | functional array methods, type aliases, Math.PI, optional call, enum casts, for-in/IIFE gates; A–N fixes |
 | #8 | Strata config registry | (uncommitted) | generic class heritage, ownership wrappers, spread, satisfies, §5.1 operators, destructure; A fixed, B–I documented |
+| #9 | Conduit message pipeline | (uncommitted) | higher-order functions, parseInt/parseFloat, null/undefined, 2D arrays, labeled continue, do...while; A/C fixed, B/D/E/F documented |
+| #10 | Ledger numeric utilities | (uncommitted) | array methods (shift/unshift/reverse/fill/concat), utility types, typeof, angle-bracket cast, int→double, nested templates, switch-no-default; A fixed, B/C documented |
 
 A "demo-driven fix" is a transpiler/lint change that a demo's compile failure
 directly motivated, pinned by a regression test.
@@ -41,7 +43,7 @@ directly motivated, pinned by a regression test.
 | `let x = 1` | ✅ | #1, #3, #5, #6 |
 | `const x = 1` | ✅ | #1, #3, #5, #6 |
 | `var x = 1` | ⬜ | |
-| `let x: number` (no initializer) | ⬜ | |
+| `let x: number` (no initializer) | ✅ | #10 |
 | Multiple decls `let a = 1, b = 2` | ✅ | #1, #6 |
 | Declaration with typed initializer | ✅ | #4, #5, #6 |
 
@@ -63,7 +65,7 @@ directly motivated, pinned by a regression test.
 |---|---|---|
 | Integer literal `42` infers `int` | ✅ | all |
 | Float literal `3.14` infers `double` | ✅ | #3 (logistic growth) |
-| `int` promoted to `double` (float init) | ⬜ | |
+| `int` promoted to `double` (float init) | ✅ | #10 |
 | `int` return promoted to `double` (float body) | ⬜ | |
 | `int` return promoted to `long` (large enum) | ✅ | #4 (enum return widening) |
 | Auto `uint8_t` vs `int16_t` selection | ❌ (future) | — |
@@ -78,7 +80,7 @@ directly motivated, pinned by a regression test.
 | String + number concat | ✅ | #1, #4, #6 |
 | String + boolean concat | ✅ | #1 |
 | Template literal `` `x = ${a}` `` | ✅ | #1, #6 |
-| Nested template literals | ⬜ | |
+| Nested template literals | ✅ | #10 |
 | Tagged template | ❌ (unsupported) | — |
 | `string` → `std::string` everywhere | ✅ | all |
 
@@ -100,7 +102,7 @@ directly motivated, pinned by a regression test.
 | `Map<K,V>` / `ReadonlyMap` | ✅ | #5, #6 |
 | `Set<T>` / `ReadonlySet` | ✅ | #6 |
 | `Record<K,V>` | 🟡 | #8 (as a field type works; object-literal init into a Record is Finding G) |
-| 2D arrays `T[][]` | 🟡 | #5 (lowered, heap concern noted) |
+| 2D arrays `T[][]` | ✅ | #9 |
 | Associative array access `obj["key"]` | ⬜ | |
 | Heterogeneous array literal | ❌ (build error) | — |
 | `any` annotation | ❌ (build error) | — |
@@ -119,7 +121,7 @@ directly motivated, pinned by a regression test.
 | `type Foo = number` | ✅ | #7 (fix E — emits `using`, survives tree-shaking) |
 | `implements Interface` | 🟡 | #4 (recorded, not enforced) |
 | `new SomeInterface()` | ❌ (build error) | — |
-| Discriminated union of object literals → `std::variant` | ⬜ | |
+| Discriminated union of object literals → `std::variant` | ❌ (gated) | #9 (fix A — `<variant>` include registered; member access gated out — `TS2CPP_UNION_MEMBER_ACCESS`; use a struct) |
 | `keyof T` | ⬜ | |
 | Indexed access type `T[K]` | ⬜ | |
 | Conditional type | ⬜ | |
@@ -147,11 +149,11 @@ directly motivated, pinned by a regression test.
 
 | Pattern | Status | Tested by |
 |---|---|---|
-| `T | null` / `T | undefined` → `T` | ⬜ | |
+| `T | null` / `T | undefined` → `T` | ✅ | #9 (fix D — value-type `=== null` resolves to false; erasure works) |
 | `T | null | undefined` → `T` | ⬜ | |
 | Optional field `x?: T` → `T` | 🟡 | #6 (lint-guarded: B; compares-to-undefined is now an error) |
-| `null` literal → `CUTTLEFISH_UNDEFINED` | ⬜ | |
-| `undefined` literal → `CUTTLEFISH_UNDEFINED` | ⬜ | |
+| `null` literal → `nullptr` | ✅ | #9 |
+| `undefined` literal → `CUTTLEFISH_UNDEFINED` | ✅ | #9 |
 | `a ?? b` nullish coalescing | ✅ | #4 (F6 helper-from-header fix) |
 | `a?.b` optional chaining | ✅ | #7 |
 | `a?.()` optional call | 🟡 | #7 (fix N — guard emitted; empty-std::function detection still a runtime gap) |
@@ -178,9 +180,9 @@ directly motivated, pinned by a regression test.
 | Pattern | Status | Tested by |
 |---|---|---|
 | `x as T` | ✅ | #4 |
-| `<T>x` angle-bracket assertion | ⬜ | |
+| `<T>x` angle-bracket assertion | ✅ | #10 (type-only, erased) |
 | `x!` non-null assertion | ✅ | #5, #6 |
-| `typeof x` | ⬜ | |
+| `typeof x` | ✅ | #10 (fix C — int32_t family returns "number"; was "object") |
 | `typeof` type guard optimization | ⬜ | |
 | `instanceof` | ⬜ | |
 | `in` operator (`"k" in obj`) | ✅ | #7 (fix K — enum keys cast) |
@@ -203,7 +205,7 @@ directly motivated, pinned by a regression test.
 | `any` | ❌ (build error) | — |
 | `unknown` | ⬜ | |
 | `never` | ❌ (unsupported) | — |
-| `Partial<T>` / `Required<T>` / `Readonly<T>` / `Pick` / `Omit` | ⬜ | |
+| `Partial<T>` / `Required<T>` / `Readonly<T>` / `Pick` / `Omit` | 🟡 | #10 (fix A — alias survives + emits after interface; resolves to full struct T — Partial/Pick/Omit don't narrow the C++ shape) |
 | `NonNullable<T>` | ⬜ | |
 | `ReturnType`/`Parameters`/`InstanceType`/`Extract`/`Exclude` | ⬜ | |
 
@@ -248,9 +250,9 @@ directly motivated, pinned by a regression test.
 | `continue` | ✅ | #3 |
 | `break` in switch | ✅ | #4, #6 |
 | Labeled break `outer:` | ✅ | #4 (F9 goto fix) |
-| Labeled continue | ⬜ | |
-| Labeled statement (general) | ⬜ | |
-| Empty statement `;` | ⬜ | |
+| Labeled continue | ✅ | #9 |
+| Labeled statement (general) | ✅ | #9 |
+| Empty statement `;` | ✅ | #9 |
 | Standalone block `{ ... }` | ⬜ | |
 
 ### 2.4 `switch`
@@ -259,7 +261,7 @@ directly motivated, pinned by a regression test.
 |---|---|---|
 | `switch` with cases | ✅ | #4, #6 |
 | `default` | ✅ | #4, #6 |
-| Switch without default | ⬜ | |
+| Switch without default | ✅ | #10 |
 | Multiple statements per case | ✅ | #4 |
 | Variable in case expression | ⬜ | |
 | Nested switch | ⬜ | |
@@ -337,9 +339,9 @@ directly motivated, pinned by a regression test.
 | Pattern | Status | Tested by |
 |---|---|---|
 | Passing function as argument → `std::function` | ✅ | #6 (Forge.report) |
-| Returning a function | ⬜ | |
-| Function type alias `type Fn = () => void` | ⬜ | |
-| Class method as callback | ⬜ | |
+| Returning a function | ✅ | #9 (fix B — nested-fn alias mangling; capture-free nested fns work; capturing nested fns are the §3.4 closure limit) |
+| Function type alias `type Fn = () => void` | ❌ (gated) | #9 (lint rejects — not emitted as C++ typedef) |
+| Class method as callback | ❌ (gated) | #9 (`.bind()` rejected — no `this`-rebinding in C++) |
 | `Math.method` callbacks (comparator) | ⬜ | |
 | Closures capturing outer variables | 🟡 | #6 (named function + module-level offset; arrow-capture unreliable) |
 | IIFE `(function(){})()` | ❌ (unsupported) | #7 (gated out — fix M, lint selector) |
@@ -484,11 +486,11 @@ directly motivated, pinned by a regression test.
 |---|---|---|
 | `push`, `pop` | ✅ | #1, #2, #3, #4, #6 |
 | `indexOf`, `lastIndexOf`, `includes` | ✅ | #7 (includes) |
-| `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `concat`, `slice`, `join` | 🟡 | #7 (sort, slice, join); slice on a number[] still resolves to the string __tc_slice2 polyfill (guard-collision gap) |
+| `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `concat`, `slice`, `join` | ✅ | #7 (sort, slice, join); #10 (shift, unshift, reverse, fill, concat); slice on a number[] still resolves to the string __tc_slice2 polyfill (guard-collision gap) |
 | `map`, `filter`, `reduce`, `find`, `findIndex`, `every`, `some`, `forEach` | ✅ | #4 (F7 filter); #7 (map/filter/reduce/some/find — fix A: callbacks carry real signatures); forEach on runtime vector still a gap |
 | `.length` on array/string/typed-array | ✅ | all |
 | String methods (toUpperCase, etc.) | ✅ | #2 |
-| `parseInt`, `parseFloat` | ⬜ | |
+| `parseInt`, `parseFloat` | ✅ | #9 (fix C — `.c_str()` for `atoi`/`atof`) |
 
 ### 5.4 `Object.*` and container ops
 
@@ -569,6 +571,8 @@ motivated, pinned by regression tests):
 | #6 | A (extern for const arrays), C (getter via pointer), D (destructure scope), E (rest spread call), F (generic def in header), G (callback return type), H (for...of by-ref); lint `no-undefined-compare-on-struct-field` | `tests/packages/transpiler/demo-6-regressions.test.ts` |
 | #7 | A (functional-method callback signatures: .map/.filter/.reduce/.some), D (array-rest `vector<T&>`→`vector<T>`), E (type-alias-to-primitive emitted as `using`), G (const-local struct mutation demoted), I (Object.keys/values on member-access + lint broadened), J (`for...in` over Map gated: `TS2CPP_FORIN_ON_MAP`), K (enum keys into Map `static_cast`), L (`Math.PI`/`E` literals), M (IIFE gated), N (optional call `fn?.()` null guard); broadened `no-object-static-non-map` lint rule | `tests/packages/transpiler/demo-7-regressions.test.ts` |
 | #8 | A (generic subclass `extends Generic<T>` heritage type args resolved), B (static getter `const` cv-qualifier dropped), D (`m.delete(k)` Map method → `.erase`, not `delete_`), F (tuple/container type-alias survives tree-shaking), H (`Map.size` → `m.size()`, not `m->size`), I (`??=` on property-access left side); E/G/C documented (shadow-struct collision, index-sig literal, static-getter access name, tuple literal) | `tests/packages/transpiler/demo-8-regressions.test.ts` |
+| #9 | A (discriminated union → `std::variant` registers `#include <variant>`), B (nested-fn return reference alias-mangled), C (`parseInt`/`parseFloat` `.c_str()`), D (`T\|null` value-type comparison → false), E (union member access gated: `TS2CPP_UNION_MEMBER_ACCESS`); F documented (`bind\|call\|apply` lint guardrail) | `tests/packages/transpiler/demo-9-regressions.test.ts` |
+| #10 | A (utility-type aliases `Partial`/`Pick`/`Omit` survive tree-shaking + interfaces emit before aliases), C (`typeof` on int32_t returns "number" not "object"); B documented (Partial→full struct shape) | `tests/packages/transpiler/demo-10-regressions.test.ts` |
 
 ### Highest-value untested areas (candidates for future demos)
 

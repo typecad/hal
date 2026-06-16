@@ -69,10 +69,22 @@ export default {
             ) {
               if (node.arguments.length > 0) {
                 const arg = node.arguments[0];
+                // Exempt a bare identifier whose name looks map-like (capitalized
+                // first letter) — the transpiler resolves it to std::map.
                 if (
                   arg.type === "Identifier" &&
                   MAP_LIKE_RE.test(arg.name) &&
                   arg.name !== "Object"
+                ) {
+                  return;
+                }
+                // Exempt a member-access argument (this.field, obj.field). The
+                // transpiler resolves the field's declared type and emits the
+                // __tc_mapKeys/Values/Entries helper when it's a std::map.
+                if (
+                  arg.type === "MemberExpression" &&
+                  !arg.computed &&
+                  arg.property.type === "Identifier"
                 ) {
                   return;
                 }
@@ -344,6 +356,40 @@ export default {
             const otherSide = leftUndef ? node.right : node.left;
             if (isGetCall(otherSide)) {
               context.report({ node, message: "[transpiler] Comparing ." + otherSide.callee.property.name + "() to undefined/null does not lower to valid C++. Guard with .has(key) before .get(key)." });
+            }
+          },
+        };
+      },
+    },
+
+    "no-undefined-compare-on-struct-field": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Comparing a struct/interface field to undefined/null does not lower to valid C++ (optional fields flatten to T). Use an explicit boolean flag.",
+        },
+      },
+      create(context) {
+        const UNDEF_NULL_OPS = new Set(["==", "!=", "===", "!=="]);
+        function isUndefinedOrNull(node) {
+          if (node.type === "Identifier" && (node.name === "undefined" || node.name === "null")) return true;
+          if (node.type === "Literal" && node.value === null) return true;
+          return false;
+        }
+        function isMemberAccess(node) {
+          return node.type === "MemberExpression" && !node.computed;
+        }
+        return {
+          BinaryExpression(node) {
+            if (!UNDEF_NULL_OPS.has(node.operator)) return;
+            const leftUndef = isUndefinedOrNull(node.left);
+            const rightUndef = isUndefinedOrNull(node.right);
+            if (!leftUndef && !rightUndef) return;
+            const otherSide = leftUndef ? node.right : node.left;
+            if (isMemberAccess(otherSide)) {
+              const propName = otherSide.property.type === "Identifier" ? otherSide.property.name : "<computed>";
+              context.report({ node, message: "[transpiler] Comparing ." + propName + " to undefined/null does not lower to valid C++ (optional struct/interface fields flatten to their value type). Use an explicit boolean flag on the interface instead of an optional field." });
             }
           },
         };

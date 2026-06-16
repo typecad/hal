@@ -302,6 +302,36 @@ export function runSemanticGates(
         }
       }
 
+      // 4. Member access on a discriminated-union (std::variant) type.
+      //    `m.kind` / `m.payload` where `m: A | B` lowers to a std::variant,
+      //    but member access doesn't lower to std::get_if/std::holds_alternative,
+      //    so dispatch is broken end-to-end. Reject it with a clear message.
+      //    (Nullable unions `T | null` are excluded — they erase to T and the
+      //    value-type null comparison is handled separately.)
+      if (ts.isPropertyAccessExpression(node)) {
+        const baseType = checker.getTypeAtLocation(node.expression);
+        const typeStr = checker.typeToString(baseType);
+        // A non-nullable union: either the typeStr shows "A | B", or the TS
+        // Type object is a union whose constituents aren't null/undefined.
+        const isNonNullableUnion = (baseType.isUnion() && baseType.types.every(t => {
+          const s = checker.typeToString(t);
+          return s !== "null" && s !== "undefined";
+        })) || (typeStr.includes(" | ") && !/\b(null|undefined)\b/.test(typeStr));
+        if (isNonNullableUnion) {
+          const diag = makeDiagnostic(
+            sourceText,
+            node.getStart(),
+            `Member access '${node.getText()}' on a union type '${typeStr}' is not supported — the union lowers to std::variant, but member access doesn't lower to std::get_if/std::holds_alternative.`,
+            "error",
+            "TS2CPP_UNION_MEMBER_ACCESS",
+          );
+          diag.hint = "Use a struct with a discriminator field, or narrow via a type guard before access.";
+          diag.sourceLine = extractLine(sourceText, diag.line);
+          diag.source = "semantic-gate";
+          diagnostics.push(diag);
+        }
+      }
+
       ts.forEachChild(node, visit);
     };
     ts.forEachChild(sourceFile, visit);

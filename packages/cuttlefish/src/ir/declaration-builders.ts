@@ -4,7 +4,7 @@ import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSett
 import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { getBitsRange, getRegisterAddress } from "./register-decorators";
-import { registerFieldMap, PointerTracker, setActiveExtendsClass, activeClassFieldTypes, discriminatedUnionVariantNames } from "./build-ir-state";
+import { registerFieldMap, PointerTracker, setActiveExtendsClass, activeClassFieldTypes, discriminatedUnionVariantNames, requiredIncludes } from "./build-ir-state";
 import { expressionToIR } from "./expression-to-ir";
 import { lowerStatementList } from "./statement-to-ir";
 
@@ -684,6 +684,12 @@ export function typeAliasDeclarationToIR(
         variantStructs,
         ...(aliasTypeParams && aliasTypeParams.length > 0 ? { typeParameters: aliasTypeParams } : {}),
       };
+      // std::variant requires <variant>; register the include so the header
+      // compiles (demo #9 Finding A — was emitting `std::variant<...>` with
+      // no include, giving "'variant' is not a member of 'std'").
+      if (variantNames.length > 0) {
+        requiredIncludes.add("<variant>");
+      }
     }
   }
 

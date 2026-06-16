@@ -125,7 +125,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `type Foo = number` | ✅ | Resolves to mapped C++ type and emits a real `using Foo = <cpptype>;` (demo #7 fix E — the reachability pass now keeps aliases whose underlying type is concrete, so the typedef survives tree-shaking and is usable as a type name at every C++ emission site). |
 | `implements Interface` | 🟡 | Recorded in IR (`implementsInterfaces`) but **not enforced** as virtual methods; struct shape is emitted. |
 | `new SomeInterface()` | 🚫 | **Build error** (`TS2CPP_NEW_ON_INTERFACE`). Interfaces are type-only (no value symbol); `new IFoo()` is rejected by the semantic-gate pass (`orchestrator/type-checker.ts runSemanticGates`) before emit, resolving the target across files via the TypeChecker and a program-wide interface-name set. Only `new SomeClass()` is supported. (Previously lowered verbatim and relied on the C++ compiler to fail with an opaque message.) |
-| Discriminated union of object literals | ✅ → `std::variant<...>` with generated variant structs | `tests/new-features.test.ts:293`. |
+| Discriminated union of object literals | 🟡 → `std::variant<...>` with generated variant structs | `tests/new-features.test.ts:293`. Demo #9 — the `<variant>` include is now registered. **Caveat:** member access on a union (`m.kind`, `m.payload`) is rejected by the `TS2CPP_UNION_MEMBER_ACCESS` semantic gate (`std::variant` has no direct member access — use a struct with a discriminator field). |
 | `keyof T` | 🟡 → `auto` | No C++ equivalent; lowered loosely. |
 | Indexed access type `T[K]` | 🟡 → `auto` | `:451`. |
 | Conditional type `T extends U ? X : Y` | 🟡 → resolves true branch optimistically | `:464`. Compile-time only; runtime behavior may surprise. |
@@ -153,7 +153,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 
 | Pattern | Status | Notes |
 |---|---|---|
-| `T | null` / `T | undefined` | ✅ → strips nullish, emits `T` | `type-resolution.ts:254`. There is **no** `std::optional` representation; see rationale below. |
+| `T | null` / `T | undefined` | ✅ → strips nullish, emits `T` | `type-resolution.ts:254`. There is **no** `std::optional` representation; see rationale below. Demo #9 fix D — comparing a value type (vector/struct) to `null` now resolves to a compile-time `false` (was emitting `valueType == nullptr`, which is invalid). |
 | `T | null | undefined` | ✅ → `T` | |
 | Optional field `x?: T` | ✅ → `T` (optionality not enforced at runtime) | |
 | `null` literal | ✅ → `CUTTLEFISH_UNDEFINED` macro | `tests/transpiler-type-gaps.test.ts:288`. |
