@@ -62,3 +62,7 @@
 [StaticArray rewrite] var=xs mutableArrayVars has=true
 [StaticArray rewrite] var=xs mutableArrayVars has=true
 [StaticArray rewrite] var=xs mutableArrayVars has=true
+[StaticArray rewrite] var=xs mutableArrayVars has=true
+[StaticArray rewrite] var=xs mutableArrayVars has=true
+[StaticArray rewrite] var=xs mutableArrayVars has=true
+[StaticArray rewrite] var=xs mutableArrayVars has=true
