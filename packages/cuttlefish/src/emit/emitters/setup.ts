@@ -514,6 +514,16 @@ export function buildEmitterContext(
       classAccessorNames.set(classDef.name, accessors);
     }
   }
+  // Merge cross-file (imported) class accessors so `obj.getter` and
+  // `Cls.staticGetter` accesses rewrite correctly when the class lives in
+  // another module (demo #14 Finding E).
+  if (options.crossModuleClassAccessors) {
+    for (const [className, accessors] of options.crossModuleClassAccessors) {
+      if (!classAccessorNames.has(className)) {
+        classAccessorNames.set(className, accessors);
+      }
+    }
+  }
   const allVarDecls: { name: string; cppType: string }[] = [];
   for (const stmt of program.topLevelStatements) {
     if (stmt.kind === "var_decl") allVarDecls.push(stmt);
@@ -693,6 +703,72 @@ export function buildEmitterContext(
   // Placeholder defaults for fields that are computed later by other phases
   const noopFixPointer: (callee: string) => string = (c) => c;
 
+  // Demo #18 Finding B: collect the names of non-exported free functions that
+  // are CALLED from at least one class method body (method/getter/setter/
+  // constructor). In split mode an inline class method body lives in the
+  // header, so such a function must be visible in the header too (a `static`
+  // forward decl in the .cpp is reached only after the header is processed).
+  // These functions are emitted non-static with a header prototype, like
+  // exported functions. The walk recurses through statement + expression IR.
+  const freeFunctionNames = new Set<string>();
+  for (const fn of program.functions) {
+    if (!fn.isExported) freeFunctionNames.add(fn.originalName);
+  }
+  const freeFunctionsCalledFromClassMethods = new Set<string>();
+  // Collect callees from an expression IR node, recursing into sub-expressions.
+  const collectFromExpr = (expr: any): void => {
+    if (!expr || typeof expr !== "object") return;
+    if (expr.kind === "call" && typeof expr.callee === "string") {
+      const bare = expr.callee.replace(/^.*->|^.*\./, "");
+      if (freeFunctionNames.has(expr.callee) || freeFunctionNames.has(bare)) {
+        freeFunctionsCalledFromClassMethods.add(freeFunctionNames.has(expr.callee) ? expr.callee : bare);
+      }
+    }
+    if (expr.kind === "method-call" && typeof expr.callee === "string") {
+      const bare = expr.callee.replace(/^.*->|^.*\./, "");
+      if (freeFunctionNames.has(bare)) {
+        freeFunctionsCalledFromClassMethods.add(bare);
+      }
+    }
+    // Recurse into every array-of-IR or IR-object child.
+    for (const value of Object.values(expr) as any[]) {
+      if (Array.isArray(value)) {
+        for (const item of value) collectFromExpr(item);
+      } else if (value && typeof value === "object" && typeof (value as any).kind === "string") {
+        collectFromExpr(value);
+      }
+    }
+  };
+  // Collect callees from a statement, recursing into nested statements + any
+  // expressions carried on the statement.
+  const collectFromStmt = (stmt: any): void => {
+    if (!stmt || typeof stmt !== "object") return;
+    if (stmt.kind === "call" && typeof stmt.callee === "string") {
+      const bare = stmt.callee.replace(/^.*->|^.*\./, "");
+      if (freeFunctionNames.has(stmt.callee)) freeFunctionsCalledFromClassMethods.add(stmt.callee);
+      else if (freeFunctionNames.has(bare)) freeFunctionsCalledFromClassMethods.add(bare);
+    }
+    for (const value of Object.values(stmt) as any[]) {
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item && typeof item === "object") {
+            if (typeof item.kind === "string") collectFromStmt(item);
+            collectFromExpr(item);
+          }
+        }
+      } else if (value && typeof value === "object" && typeof (value as any).kind === "string") {
+        collectFromStmt(value);
+        collectFromExpr(value);
+      }
+    }
+  };
+  for (const cls of program.classes) {
+    for (const m of cls.methods) for (const s of m.statements) collectFromStmt(s);
+    for (const g of cls.getters) for (const s of g.statements) collectFromStmt(s);
+    for (const st of cls.setters) for (const s of st.statements) collectFromStmt(s);
+    if (cls.constructor) for (const s of cls.constructor.statements) collectFromStmt(s);
+  }
+
   return {
     program,
     options,
@@ -713,6 +789,7 @@ export function buildEmitterContext(
     reservedNames,
     knownFunctionReturnTypes,
     mappedFunctions,
+    freeFunctionsCalledFromClassMethods,
     topLevelScope,
     snprintfCounter,
     stringVarNames,

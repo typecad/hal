@@ -362,6 +362,38 @@ export default {
       },
     },
 
+    "no-map-struct-mutation": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Mutating a field of a value fetched via Map.get()/.at() is lost (or a compile error) in C++ — the value is a copy. Use a separate primitive Map and .set() back.",
+        },
+      },
+      create(context) {
+        const getBindings = new Set();
+        function isContainerGetCall(node) {
+          return node.type === "CallExpression" && node.callee.type === "MemberExpression" && !node.callee.computed && node.callee.property.type === "Identifier" && (node.callee.property.name === "get" || node.callee.property.name === "at");
+        }
+        function reportIfMutatingGetBinding(node, target) {
+          if (target.type !== "MemberExpression") return;
+          if (target.object.type === "Identifier" && getBindings.has(target.object.name)) {
+            const propName = target.property.type === "Identifier" ? target.property.name : "[...]";
+            context.report({ node, message: "[transpiler] '" + target.object.name + "' is a value fetched from a Map; mutating its '" + propName + "' field is lost in C++ (the binding is a copy). Use a separate primitive Map and .set() back, or erase + re-insert the struct." });
+          }
+        }
+        return {
+          VariableDeclarator(node) {
+            if (node.init && isContainerGetCall(node.init) && node.id.type === "Identifier") {
+              getBindings.add(node.id.name);
+            }
+          },
+          AssignmentExpression(node) { reportIfMutatingGetBinding(node, node.left); },
+          UpdateExpression(node) { reportIfMutatingGetBinding(node, node.argument); },
+        };
+      },
+    },
+
     "no-undefined-compare-on-struct-field": {
       meta: {
         type: "problem",
@@ -484,6 +516,99 @@ export default {
             if (node.object.type === "Identifier" && (MAP_LIKE_RE.test(node.object.name) || node.object.name === "this")) return;
             context.report({ node, message: "[transpiler] dynamic string-key access (obj[\\\"key\\\"]) on non-map types is not reliably lowered. Use a Map<string, T> for dynamic keys, or a numeric index for arrays." });
           },
+        };
+      },
+    },
+
+    "no-mutating-method-on-const-collection": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] A const-bound Map/Set mutated via .set()/.add()/.delete()/.clear() is demoted to non-const in C++. Prefer a let binding to express intent, or avoid mutating a collection you declared const.",
+        },
+      },
+      create(context) {
+        // const bindings whose declared type is Map/Set/ReadonlyMap/ReadonlySet.
+        const constCollections = new Map(); // name -> typeName
+        const COLLECTION_TYPES = new Set(["Map", "Set", "ReadonlyMap", "ReadonlySet"]);
+        const MUTATORS = new Set(["set", "add", "delete", "clear"]);
+        function collectionName(typeAnnotation) {
+          if (!typeAnnotation) return null;
+          let t = typeAnnotation;
+          if (t.type === "TSTypeAnnotation") t = t.typeAnnotation;
+          if (t && t.type === "TSTypeReference" && t.typeName.type === "Identifier" && COLLECTION_TYPES.has(t.typeName.name)) {
+            return t.typeName.name;
+          }
+          return null;
+        }
+        return {
+          VariableDeclarator(node) {
+            if (node.parent && node.parent.kind === "const" && node.id.type === "Identifier") {
+              const cName = collectionName(node.id.typeAnnotation);
+              if (cName) constCollections.set(node.id.name, cName);
+            }
+          },
+          CallExpression(node) {
+            const callee = node.callee;
+            if (callee.type !== "MemberExpression" || callee.computed) return;
+            if (callee.object.type !== "Identifier") return;
+            if (!constCollections.has(callee.object.name)) return;
+            if (callee.property.type !== "Identifier" || !MUTATORS.has(callee.property.name)) return;
+            context.report({ node, message: "[transpiler] '" + callee.object.name + "' is a const " + constCollections.get(callee.object.name) + " mutated via ." + callee.property.name + "() — the C++ binding is demoted to non-const. Declare it with a let binding to express the mutation intent, or avoid mutating a collection you declared const." });
+          },
+        };
+      },
+    },
+
+    // A const for/for-in loop variable mutated in the body is demoted to a
+    // non-const C++ reference (T&) by the transpiler. Surface it at lint time
+    // so the author can express the intent with a let binding. (demo #17 fix)
+    "no-readonly-loop-variable-mutation": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] A const for/for-in loop variable mutated in the body is demoted to a non-const reference in C++. Prefer a let binding to express the mutation intent.",
+        },
+      },
+      create(context) {
+        // Stack of active const loop-variable names, scoped to each loop body.
+        const loopVarStack = [];
+        function baseIdentifierName(node) {
+          if (!node) return null;
+          if (node.type !== "MemberExpression") return null;
+          const obj = node.object;
+          if (obj.type === "Identifier") return obj.name;
+          return null;
+        }
+        function reportIfLoopVar(target, node) {
+          const name = baseIdentifierName(target);
+          if (!name) return;
+          const top = loopVarStack[loopVarStack.length - 1];
+          if (top && top.has(name)) {
+            context.report({ node, message: "[transpiler] '" + name + "' is a const loop variable mutated in the loop body — the C++ binding is demoted to a non-const reference (T&). Use a let binding to express the mutation intent." });
+          }
+        }
+        function pushLoopVars(node) {
+          const decl = node.left;
+          if (decl && decl.type === "VariableDeclaration" && decl.kind === "const") {
+            const names = new Set();
+            for (const d of decl.declarations) {
+              if (d.id && d.id.type === "Identifier") names.add(d.id.name);
+            }
+            loopVarStack.push(names);
+          } else {
+            loopVarStack.push(new Set());
+          }
+        }
+        return {
+          ForOfStatement(node) { pushLoopVars(node); },
+          "ForOfStatement:exit"() { loopVarStack.pop(); },
+          ForInStatement(node) { pushLoopVars(node); },
+          "ForInStatement:exit"() { loopVarStack.pop(); },
+          AssignmentExpression(node) { reportIfLoopVar(node.left, node); },
+          UpdateExpression(node) { reportIfLoopVar(node.argument, node); },
         };
       },
     },

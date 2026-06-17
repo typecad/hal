@@ -417,6 +417,19 @@ export class ExpressionRenderer {
     return this.isStringLikeCppType(cppType);
   }
 
+  /**
+   * Resolve an expression to its C++ type when possible (consulting
+   * `knownVariableTypes`, interface/class field type maps, enum/string-enum
+   * sets, etc.). Returns `undefined` when the type cannot be determined.
+   *
+   * Public so emit-layer callers (e.g. the switch emitter in line-appender)
+   * can make type-aware lowering decisions — see demo #16 gap #1: a `switch`
+   * on a struct field of enum type must not be wrapped in `std::string(...)`.
+   */
+  inferCppType(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): string | undefined {
+    return this.inferExpressionCppType(expr, knownVariableTypes);
+  }
+
   private renderKnownStringValue(rendered: string, cppType: string): string {
     const normalized = this.strategy.normalizeCppType(cppType);
     if (!this.strategy.useSnprintfForStrings() && (normalized === "const char*" || normalized === "char*")) {
@@ -609,8 +622,18 @@ export class ExpressionRenderer {
           if (normalized.includes("long long") || /64_t$/.test(normalized)) {
             return { format: "%lld", arg: rendered, estimatedLength: 20 };
           }
-          if (normalized.includes("long") || /32_t$/.test(normalized)) {
-            return { format: "%ld", arg: rendered, estimatedLength: 12 };
+          // `long` is its own C++ type and matches %ld regardless of width.
+          // int32_t/uint32_t are typedefs for int/unsigned int on every target
+          // cuttlefish supports (AVR/ARM), so they must use %d/%u — using %ld
+          // triggers -Wformat= ("expects long int, has int").
+          if (normalized.includes("long")) {
+            return { format: normalized.startsWith("unsigned") ? "%lu" : "%ld", arg: rendered, estimatedLength: 12 };
+          }
+          // 32_t/16_t/8_t and bare int/short/char. These are `int`-sized or
+          // narrower; unsigned variants are `unsigned int`-sized → %u. size_t
+          // is platform-dependent but unsigned int on the targets here → %u.
+          if (/^size_t$/.test(normalized) || normalized.startsWith("uint") || normalized.startsWith("unsigned")) {
+            return { format: "%u", arg: rendered, estimatedLength: 12 };
           }
           return { format: "%d", arg: rendered, estimatedLength: 12 };
         }
@@ -648,8 +671,11 @@ export class ExpressionRenderer {
           if (floatArg !== undefined) return floatArg;
           return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%.15g", arg: expr.value, estimatedLength: 16 };
         }
-        if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t") {
+        if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t" || cppType === "int32_t") {
           return { format: "%d", arg: expr.value, estimatedLength: 12 };
+        }
+        if (cppType === "uint32_t") {
+          return { format: "%u", arg: expr.value, estimatedLength: 12 };
         }
         // auto-deduced local: infer the real type from the retained initializer
         // before falling back. Treating `auto` as `%ld` is wrong for locals
@@ -664,8 +690,11 @@ export class ExpressionRenderer {
             return { ...inferredFromInit, arg: expr.value };
           }
         }
-        if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t") {
+        if (cppType === "long") {
           return { format: "%ld", arg: expr.value, estimatedLength: 12 };
+        }
+        if (cppType === "unsigned long") {
+          return { format: "%lu", arg: expr.value, estimatedLength: 12 };
         }
         if (cppType === "long long" || cppType === "unsigned long long" || cppType === "int64_t" || cppType === "uint64_t") {
           return { format: "%lld", arg: expr.value, estimatedLength: 20 };
@@ -782,7 +811,14 @@ export class ExpressionRenderer {
       !this.isStringEnumOperand(expr, inferredType) &&
       this.isEnumComparisonOperand(expr, inferredType)
     ) {
-      return `static_cast<int>(${rendered})`;
+      const enumName = this.getNumericEnumOperandName(expr, inferredType);
+      const castType = enumName
+        ? (this.strategy.enumCastType(enumName) ?? (this.largeEnumNames.has(enumName) ? "long" : "int"))
+        : "int";
+      if (/^static_cast<[^>]+>\(/.test(rendered)) {
+        return rendered;
+      }
+      return `static_cast<${castType}>(${rendered})`;
     }
     return rendered;
   }
@@ -837,6 +873,21 @@ export class ExpressionRenderer {
     if (inferredType && this.stringEnumNames.has(inferredType)) return true;
     if (expr.kind === "property-access" && expr.object.kind === "identifier" && this.stringEnumNames.has(expr.object.value)) return true;
     return false;
+  }
+
+  private getNumericEnumOperandName(expr: ExpressionIR, inferredType?: string): string | undefined {
+    if (inferredType && this.enumNames.has(inferredType) && !this.stringEnumNames.has(inferredType)) {
+      return inferredType;
+    }
+    if (
+      expr.kind === "property-access" &&
+      expr.object.kind === "identifier" &&
+      this.enumNames.has(expr.object.value) &&
+      !this.stringEnumNames.has(expr.object.value)
+    ) {
+      return expr.object.value;
+    }
+    return undefined;
   }
 
   private renderBinary(expr: Extract<ExpressionIR, { kind: "binary" }>, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
@@ -990,7 +1041,8 @@ export class ExpressionRenderer {
         const getterName = accessorGetterName(expr.property);
         return `this->${getterName}()`;
       }
-      return `this->${expr.property}`;
+      const safeProperty = escapeCppKeyword(expr.property, this.strategy.reservedNames());
+      return `this->${safeProperty}`;
     }
 
     // Use C++ scope-resolution operator (::) for enum class member access.
@@ -1011,10 +1063,23 @@ export class ExpressionRenderer {
     // even though the IR may flag it isStatic. Use `.` for those.
     if (expr.object.kind === "identifier" && this.knownTopLevelObjectTypes?.has(expr.object.value)) {
       const accessor = expr.isPointer ? "->" : ".";
-      return `${objStr}${accessor}${expr.property}`;
+      const safeProperty = escapeCppKeyword(expr.property, this.strategy.reservedNames());
+      return `${objStr}${accessor}${safeProperty}`;
     }
     if (expr.isNamespace || expr.isStatic || (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value))) {
-      return `${objStr}::${expr.property}`;
+      // Static getter access: `Counter.total` where `total` is a static getter
+      // lowers to `Counter::getTotal()`, not the raw field `Counter::total`.
+      // (Instance getters are handled below; this branch runs first for static
+      // access and would otherwise bypass the getter rewrite — demo #14 E.)
+      if (expr.isStatic && expr.object.kind === "identifier") {
+        const staticAccessors = this.typeAccessorNames.get(expr.object.value);
+        if (staticAccessors?.has(expr.property)) {
+          const getterName = accessorGetterName(expr.property);
+          return `${objStr}::${getterName}()`;
+        }
+      }
+      const safeProperty = escapeCppKeyword(expr.property, this.strategy.reservedNames());
+      return `${objStr}::${safeProperty}`;
     }
 
     if (expr.object.kind === "identifier" && (expr.property === "length" || expr.property === "size")) {
@@ -1083,7 +1148,8 @@ export class ExpressionRenderer {
         accessor = "->";
       }
     }
-    const rendered = `${objStr}${accessor}${expr.property}`;
+    const safeProperty = escapeCppKeyword(expr.property, this.strategy.reservedNames());
+    const rendered = `${objStr}${accessor}${safeProperty}`;
     return rendered;
   }
 
@@ -1133,7 +1199,17 @@ export class ExpressionRenderer {
     if (/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g.test(callee)) {
       return callee;
     }
+    callee = this.escapeFinalMemberName(callee);
     return `${callee}(${argsText})`;
+  }
+
+  private escapeFinalMemberName(callee: string): string {
+    if (callee.startsWith("std::")) {
+      return callee;
+    }
+    return callee.replace(/(->|::|\.)([A-Za-z_][A-Za-z0-9_]*)$/, (_match, separator: string, memberName: string) => {
+      return `${separator}${escapeCppKeyword(memberName, this.strategy.reservedNames())}`;
+    });
   }
 
 }

@@ -172,3 +172,167 @@ describe("semantic gates: new on interface, cross-file (TS2CPP_NEW_ON_INTERFACE)
     expect(diag!.hint).toContain("class");
   });
 });
+
+describe("semantic gates: deterministic transpiler subset", () => {
+  it("flags mutating a struct copy fetched from Map.get()", () => {
+    const file = writeFile("main.ts", `
+      interface Task { done: boolean; }
+      const tasks = new Map<string, Task>();
+      const task = tasks.get("a")!;
+      task.done = true;
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_MAP_VALUE_COPY_MUTATION");
+  });
+
+  it("does NOT flag primitive values fetched from Map.get()", () => {
+    const file = writeFile("main.ts", `
+      const counts = new Map<string, number>();
+      const count = counts.get("a")!;
+      const next = count + 1;
+      export { next };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).not.toContain("TS2CPP_MAP_VALUE_COPY_MUTATION");
+  });
+
+  it("flags nullish comparisons on Map.get()", () => {
+    const file = writeFile("main.ts", `
+      const counts = new Map<string, number>();
+      if (counts.get("a") === undefined) {
+        console.log("missing");
+      }
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_GET_NULLISH_COMPARE");
+  });
+
+  it("flags nullish comparisons on optional struct fields", () => {
+    const file = writeFile("main.ts", `
+      interface User { name?: string; }
+      const user: User = {};
+      if (user.name === undefined) {
+        console.log("missing");
+      }
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_OPTIONAL_FIELD_NULLISH");
+  });
+
+  it("flags .length on typed-array parameters", () => {
+    const file = writeFile("main.ts", `
+      function size(data: Uint8Array): number {
+        return data.length;
+      }
+      export { size };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_TYPED_ARRAY_PARAM_LENGTH");
+  });
+
+  it("does NOT flag .length on a local typed array", () => {
+    const file = writeFile("main.ts", `
+      const data = new Uint8Array([1, 2, 3]);
+      const n = data.length;
+      export { n };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).not.toContain("TS2CPP_TYPED_ARRAY_PARAM_LENGTH");
+  });
+
+  it("flags typed-array returns", () => {
+    const file = writeFile("main.ts", `
+      function makeBuffer(): Uint8Array {
+        return new Uint8Array(4);
+      }
+      export { makeBuffer };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_TYPED_ARRAY_RETURN");
+  });
+
+  it("flags dynamic string-key access on non-map values", () => {
+    const file = writeFile("main.ts", `
+      interface User { name: string; }
+      const user: User = { name: "Ada" };
+      const key = "name";
+      const value = user[key];
+      export { value };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_DYNAMIC_OBJECT_KEY");
+  });
+
+  it("does NOT flag numeric indexing into arrays", () => {
+    const file = writeFile("main.ts", `
+      const values = [1, 2, 3];
+      const value = values[0];
+      export { value };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).not.toContain("TS2CPP_DYNAMIC_OBJECT_KEY");
+  });
+
+  it("flags content mutation of array parameters", () => {
+    const file = writeFile("main.ts", `
+      function update(values: number[]): void {
+        values[0] = 1;
+        values.push(2);
+      }
+      export { update };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_ARRAY_PARAM_MUTATION");
+  });
+
+  it("flags functional methods on Map/Set/Record containers", () => {
+    const file = writeFile("main.ts", `
+      const counts = new Map<string, number>();
+      counts.forEach((value, key) => {
+        console.log(key, value);
+      });
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_CONTAINER_FUNCTIONAL_METHOD");
+  });
+
+  it("flags callbacks inside class methods when they capture this or locals", () => {
+    const file = writeFile("main.ts", `
+      class Accumulator {
+        scale = 2;
+        total(values: number[]): number {
+          return values.map(value => value * this.scale).reduce((a, b) => a + b, 0);
+        }
+      }
+      export { Accumulator };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).toContain("TS2CPP_CALLBACK_CAPTURE_UNSUPPORTED");
+  });
+
+  it("does NOT flag non-capturing callbacks inside class methods", () => {
+    const file = writeFile("main.ts", `
+      class Doubler {
+        values(input: number[]): number[] {
+          return input.map(value => value * 2);
+        }
+      }
+      export { Doubler };
+    `);
+    const program = buildProgram([file]);
+    const diags = runSemanticGates(program, [file]);
+    expect(codes(diags)).not.toContain("TS2CPP_CALLBACK_CAPTURE_UNSUPPORTED");
+  });
+});

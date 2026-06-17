@@ -190,11 +190,17 @@ export function inferSnprintfArg(
           preludeLines: [],
         };
       }
-      if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t" || cppType === "auto") {
+      if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "int32_t" || cppType === "auto") {
         return { format: "%d", arg: expr.value, estimatedLength: 12, preludeLines: [] };
       }
-      if (cppType === "long" || cppType === "int32_t" || cppType === "uint32_t") {
+      if (cppType === "uint16_t" || cppType === "uint32_t") {
+        return { format: "%u", arg: expr.value, estimatedLength: 12, preludeLines: [] };
+      }
+      if (cppType === "long") {
         return { format: "%ld", arg: expr.value, estimatedLength: 12, preludeLines: [] };
+      }
+      if (cppType === "unsigned long") {
+        return { format: "%lu", arg: expr.value, estimatedLength: 12, preludeLines: [] };
       }
       if (cppType === "long long" || cppType === "unsigned long long" || cppType === "int64_t" || cppType === "uint64_t") {
         return { format: "%lld", arg: expr.value, estimatedLength: 20, preludeLines: [] };

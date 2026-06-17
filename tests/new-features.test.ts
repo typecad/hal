@@ -132,7 +132,11 @@ describe('Get/Set Accessors', () => {
         return Config.version;
       }
     `);
-    expectCppContains(result, ['static int getVersion() const']);
+    // Static methods cannot be `const` (no `this`); the cv-qualifier is dropped
+    // (demo #8 fix B). The call site `Config.version` rewrites to
+    // `Config::getVersion()` (demo #14 Finding E).
+    expectCppContains(result, ['static int getVersion()']);
+    expectCppContains(result, ['Config::getVersion()']);
   });
 
   it('transpiles accessor with computed return', () => {

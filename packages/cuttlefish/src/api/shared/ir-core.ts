@@ -144,6 +144,14 @@ export interface ReturnIR {
   leadingComments?: string[];
   trailingComments?: string[];
   value?: ExpressionIR;
+  /**
+   * The C++ return type of the enclosing function, when known at IR-build
+   * time. Used by the renderer to lower `return null`/`return undefined` to a
+   * value-initialized `return {};` when the function returns a struct (a
+   * `nullptr`/`CUTTLEFISH_UNDEFINED` literal cannot convert to a struct type).
+   * Demo #14 Finding A.
+   */
+  functionReturnType?: CppType;
 }
 
 export interface WhileIR {

@@ -1,5 +1,7 @@
 import { describe, done } from '@typecad/expect';
 
+// @cuttlefish-expect-transpile-error TS2CPP_NO_EQUIVALENT
+// @cuttlefish-expect-transpile-error delete on non-map types is unsupported
 describe("Delete on struct fields")
   .it("delete returns true")
   .expect(

@@ -58,11 +58,14 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   '.every(':        ['__tc_every'],
   '.some(':         ['__tc_some'],
 
-  // Map helper methods (Object.keys/values/entries)
+  // Map helper methods (Object.keys/values/entries AND Map.values/keys/entries)
   '__tc_mapKeys(':   ['__tc_mapKeys'],
   '__tc_mapValues(': ['__tc_mapValues'],
   '__tc_mapEntries(': ['__tc_mapEntries'],
   '__tc_fromEntries(': ['__tc_fromEntries'],
+  // Set helper methods (Set.values()/keys()/entries()) — demo #15 fix A
+  '__tc_setValues(':   ['__tc_setValues'],
+  '__tc_setEntries(':   ['__tc_setEntries'],
 
   // JSON helpers
   '__tc_jsonStringify(': ['__tc_jsonStringify'],

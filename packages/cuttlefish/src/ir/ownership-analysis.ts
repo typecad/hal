@@ -869,125 +869,141 @@ function extractBorrowSource(expr: ExpressionIR): string | undefined {
  * This runs regardless of whether ownership types are used.
  */
 function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[]): void {
-  // Collect all let variable declarations and track assignments
-  const letVars = new Map<string, { name: string; everAssigned: boolean; span: SourceSpan }>();
-  // Collect const variable declarations so we can detect when one is mutated
-  // via a method call (e.g. `const arr = []; arr.push(x)`). In TS the binding
-  // is const but the *contents* are mutable; in C++ the emitted `const
-  // std::vector<T>` rejects `.push_back`, so we must demote the binding to
-  // non-const when its contents are mutated.
-  const constVars = new Map<string, { stmt: VariableDeclarationIR; span: SourceSpan }>();
+  // Methods whose C++ lowering mutates the receiver (so a `const` binding
+  // mutated through them must be demoted to non-const).
+  const MUTATING_METHODS = new Set([
+    'push', 'push_back', 'pop', 'pop_back', 'shift', '__tc_shift',
+    'unshift', '__tc_unshift', 'splice', '__tc_splice1', '__tc_splice2',
+    'sort', '__tc_sort', '__tc_sort_fn', 'fill', '__tc_fill',
+    '__tc_fill3', 'reverse', '__tc_reverse', 'clear',
+    // Set.add() -> insert, Map/Set.delete() -> erase (demo #15 fix C)
+    'insert', 'erase',
+  ]);
 
-  const scanStmtsForLetDecls = (stmts: StatementIR[]): void => {
+  type LetEntry = { name: string; everAssigned: boolean; span: SourceSpan };
+  type ConstEntry = { stmt: VariableDeclarationIR; span: SourceSpan };
+
+  // Every lexical statement body in the program. Demotion (const-content-
+  // mutated) and the suggest-const global-assignment scan must reach class
+  // methods, getters, setters, constructors, and namespace-scoped functions —
+  // not just top-level statements and free `function`s. Without this, a
+  // `const`-bound loop variable (or collection) mutated inside a class method
+  // is never demoted, so the emitter keeps `const T&` and g++ rejects the
+  // mutation (demo #17). Each body is analyzed with its own scope-local maps
+  // (see analyzeScope below), so this only enumerates the bodies; it does not
+  // merge their scopes.
+  const allStatementBodies: StatementIR[][] = [program.topLevelStatements];
+  for (const fn of program.functions) allStatementBodies.push(fn.statements);
+  for (const cls of program.classes) {
+    for (const method of cls.methods) allStatementBodies.push(method.statements);
+    for (const getter of cls.getters) allStatementBodies.push(getter.statements);
+    for (const setter of cls.setters) allStatementBodies.push(setter.statements);
+    if (cls.constructor) allStatementBodies.push(cls.constructor.statements);
+  }
+  // Namespaces are recursive (a namespace can nest classes/namespaces).
+  const collectNamespaceBodies = (ns: typeof program.namespaces[number]): void => {
+    for (const fn of ns.functions) allStatementBodies.push(fn.statements);
+    for (const cls of ns.classes) {
+      for (const method of cls.methods) allStatementBodies.push(method.statements);
+      for (const getter of cls.getters) allStatementBodies.push(getter.statements);
+      for (const setter of cls.setters) allStatementBodies.push(setter.statements);
+      if (cls.constructor) allStatementBodies.push(cls.constructor.statements);
+    }
+    for (const child of ns.children ?? []) collectNamespaceBodies(child);
+  };
+  for (const ns of program.namespaces) collectNamespaceBodies(ns);
+
+  // Collect every plain-identifier assignment / update target across the whole
+  // program. A `let` declared in one scope may be reassigned by a *different*
+  // function that closes over it (e.g. a top-level `let counter` reassigned in
+  // `main()`), so the suggest-const check must be suppressed for any name that
+  // is assigned anywhere. Demotion (const-content-mutated), by contrast, is
+  // resolved scope-locally below — a mutation in one function must not demote a
+  // same-named `const` in a sibling function (demo #16 gap #2).
+  const globallyAssignedNames = new Set<string>();
+  const collectAssignedNames = (stmts: StatementIR[]): void => {
     for (const stmt of stmts) {
-      if (stmt.kind === 'var_decl') {
-        if (stmt.storage === 'let') {
-          letVars.set(stmt.name, { name: stmt.name, everAssigned: false, span: stmt.sourceSpan });
-        } else if (stmt.storage === 'const') {
-          // Only track const decls whose type can be mutated via a method
-          // (vector/map/string/etc.). Field-of-const-struct mutation isn't a
-          // thing in TS, so this is mainly arrays/maps — track all and let
-          // the mutation scan below decide whether to demote.
-          constVars.set(stmt.name, { stmt, span: stmt.sourceSpan });
+      if (stmt.kind === 'assign' || stmt.kind === 'update') {
+        // Only a bare-identifier target counts as "this var is reassigned";
+        // dotted/bracket targets (out.a, arr[i]) mutate contents, not the binding.
+        if (/^[A-Za-z_$][\w$]*$/.test(stmt.target)) {
+          globallyAssignedNames.add(stmt.target);
         }
       }
-      // Recurse into nested statements
-      scanNestedForLetDecls(stmt);
+      const nested = getNestedStatements(stmt);
+      if (nested) collectAssignedNames(nested);
     }
   };
+  for (const body of allStatementBodies) collectAssignedNames(body);
 
-  const scanNestedForLetDecls = (stmt: StatementIR): void => {
-    const nested = getNestedStatements(stmt);
-    if (nested) {
-      scanStmtsForLetDecls(nested);
-    }
-  };
+  // Walk one lexical scope (a top-level or function body) in a single pass,
+  // registering declarations and detecting mutations against the SAME
+  // scope-local maps. This is critical: the previous implementation ran two
+  // separate passes over all functions with flat name-keyed maps, so a
+  // `const labels` in one function collided with a `let labels` in another
+  // (demo #16 gap #2 — a read-only `const` Map was wrongly demoted because a
+  // same-named binding in a sibling function was mutated). Scope-local maps
+  // make declaration and mutation resolve within their own function.
+  const analyzeScope = (stmts: StatementIR[]): void => {
+    const letVars = new Map<string, LetEntry>();
+    const constVars = new Map<string, ConstEntry>();
 
-  // Scan for assignments to mark let vars as assigned
-  const scanStmtsForAssignments = (stmts: StatementIR[]): void => {
-    for (const stmt of stmts) {
-      if (stmt.kind === 'assign') {
-        const entry = letVars.get(stmt.target);
-        if (entry) entry.everAssigned = true;
-        // Element assignment on a `const` array/map (e.g. `arr[i] = x` where
-        // `arr` is `const`) compiles in TS but fails against the emitted
-        // `const std::vector<T>` / `const std::map<K,V>`. Demote the binding
-        // the same way as the method-call mutation path above. The target
-        // string is the lowered C++ lvalue, e.g. `arr[0]` or `m[key]`.
-        const bracket = stmt.target.indexOf('[');
-        if (bracket > 0) {
-          const baseName = stmt.target.slice(0, bracket);
-          const constEntry = constVars.get(baseName);
-          if (constEntry && constEntry.stmt.storage === 'const') {
-            constEntry.stmt.storage = 'let';
-            diagnostics.push({
-              severity: 'info',
-              message: `'${baseName}' is declared 'const' but its contents are mutated via index assignment — demoted to non-const in C++ so the mutation compiles.`,
-              line: constEntry.span.startLine,
-              column: constEntry.span.startColumn,
-              code: 'ownership-const-content-mutated',
-              source: 'ownership-analysis',
-            });
+    const walk = (statements: StatementIR[]): void => {
+      for (const stmt of statements) {
+        if (stmt.kind === 'var_decl') {
+          if (stmt.storage === 'let') {
+            letVars.set(stmt.name, { name: stmt.name, everAssigned: false, span: stmt.sourceSpan });
+          } else if (stmt.storage === 'const') {
+            // Track const decls whose contents could be mutated via a method
+            // or element/member assignment; the mutation checks below decide
+            // whether to demote.
+            constVars.set(stmt.name, { stmt, span: stmt.sourceSpan });
           }
         }
-        // Member assignment on a `const` struct local (e.g. `out.a = 5` where
-        // `out` is `const Pair`) compiles in TS but fails against the emitted
-        // `const Pair out` (read-only aggregate). Demote the binding the same
-        // way. The target is a dotted lvalue like `out.a` or `out->a`.
-        const dot = stmt.target.indexOf('.');
-        const arrow = stmt.target.indexOf('->');
-        const sepIdx = dot >= 0 ? dot : arrow;
-        if (sepIdx > 0) {
-          const baseName = stmt.target.slice(0, sepIdx);
-          const constEntry = constVars.get(baseName);
-          if (constEntry && constEntry.stmt.storage === 'const') {
-            constEntry.stmt.storage = 'let';
-            diagnostics.push({
-              severity: 'info',
-              message: `'${baseName}' is declared 'const' but a field is mutated via member assignment — demoted to non-const in C++ so the mutation compiles.`,
-              line: constEntry.span.startLine,
-              column: constEntry.span.startColumn,
-              code: 'ownership-const-content-mutated',
-              source: 'ownership-analysis',
-            });
-          }
-        }
-      }
-      if (stmt.kind === 'update') {
-        const entry = letVars.get(stmt.target);
-        if (entry) entry.everAssigned = true;
-      }
-      // A `let` array mutated via a mutating method call (e.g. arr.push(x))
-      // is effectively reassigned — the C++ emitter must keep the binding
-      // non-const so push_back/splice/etc. compile. The callee is the lowered
-      // C++ name, e.g. "arr.push_back" or "arr.__tc_splice1".
-      if (stmt.kind === 'call' && typeof (stmt as any).callee === 'string') {
-        const callee: string = (stmt as any).callee;
-        const dot = callee.lastIndexOf('.');
-        if (dot > 0) {
-          const receiver = callee.slice(0, dot);
-          const method = callee.slice(dot + 1);
-          const MUTATING_METHODS = new Set([
-            'push', 'push_back', 'pop', 'pop_back', 'shift', '__tc_shift',
-            'unshift', '__tc_unshift', 'splice', '__tc_splice1', '__tc_splice2',
-            'sort', '__tc_sort', '__tc_sort_fn', 'fill', '__tc_fill',
-            '__tc_fill3', 'reverse', '__tc_reverse', 'clear',
-          ]);
-          if (MUTATING_METHODS.has(method)) {
-            const entry = letVars.get(receiver);
-            if (entry) entry.everAssigned = true;
-            // Demote a `const` binding whose contents are mutated via a
-            // method call: TS permits this, but the emitted
-            // `const std::vector<T>` (or std::map/std::string) rejects
-            // `.push_back`/etc. Flip the IR storage to `let` so the
-            // emitter drops the `const` qualifier, and surface an
-            // info-diagnostic so the rewrite isn't silent.
-            const constEntry = constVars.get(receiver);
+        if (stmt.kind === 'assign') {
+          const entry = letVars.get(stmt.target);
+          if (entry) entry.everAssigned = true;
+          // Element assignment on a `const` array/map (e.g. `arr[i] = x` where
+          // `arr` is `const`) compiles in TS but fails against the emitted
+          // `const std::vector<T>` / `const std::map<K,V>`. Demote the binding.
+          // The target string is the lowered C++ lvalue, e.g. `arr[0]`/`m[key]`.
+          const bracket = stmt.target.indexOf('[');
+          if (bracket > 0) {
+            const baseName = stmt.target.slice(0, bracket);
+            // A let array/map mutated via element assignment (arr[i] = x or
+            // m.set(k,v), which lowers to m[k]=v) is effectively reassigned —
+            // mark it so ownership-suggest-const does not wrongly recommend
+            // making it const (which would then fail g++). (demo #15 fix C)
+            const letEntry = letVars.get(baseName);
+            if (letEntry) letEntry.everAssigned = true;
+            const constEntry = constVars.get(baseName);
             if (constEntry && constEntry.stmt.storage === 'const') {
               constEntry.stmt.storage = 'let';
               diagnostics.push({
                 severity: 'info',
-                message: `'${receiver}' is declared 'const' but its contents are mutated via .${method}() — demoted to non-const in C++ so the mutation compiles.`,
+                message: `'${baseName}' is declared 'const' but its contents are mutated via index assignment — demoted to non-const in C++ so the mutation compiles.`,
+                line: constEntry.span.startLine,
+                column: constEntry.span.startColumn,
+                code: 'ownership-const-content-mutated',
+                source: 'ownership-analysis',
+              });
+            }
+          }
+          // Member assignment on a `const` struct local (e.g. `out.a = 5` where
+          // `out` is `const Pair`) compiles in TS but fails against the emitted
+          // `const Pair out` (read-only aggregate). Demote the binding. The
+          // target is a dotted lvalue like `out.a` or `out->a`.
+          const dot = stmt.target.indexOf('.');
+          const arrow = stmt.target.indexOf('->');
+          const sepIdx = dot >= 0 ? dot : arrow;
+          if (sepIdx > 0) {
+            const baseName = stmt.target.slice(0, sepIdx);
+            const constEntry = constVars.get(baseName);
+            if (constEntry && constEntry.stmt.storage === 'const') {
+              constEntry.stmt.storage = 'let';
+              diagnostics.push({
+                severity: 'info',
+                message: `'${baseName}' is declared 'const' but a field is mutated via member assignment — demoted to non-const in C++ so the mutation compiles.`,
                 line: constEntry.span.startLine,
                 column: constEntry.span.startColumn,
                 code: 'ownership-const-content-mutated',
@@ -996,39 +1012,97 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
             }
           }
         }
+        if (stmt.kind === 'update') {
+          const entry = letVars.get(stmt.target);
+          if (entry) entry.everAssigned = true;
+          // A `++`/`--` on a member of a `const` local (e.g. `t.hits++` where
+          // `t` is a const loop variable) is the UpdateExpression analogue of
+          // the member-assignment demotion above. The target string is the
+          // lowered lvalue, e.g. `t.hits` / `t->hits`. Demote the const base.
+          const dot = stmt.target.indexOf('.');
+          const arrow = stmt.target.indexOf('->');
+          const sepIdx = dot >= 0 ? dot : arrow;
+          if (sepIdx > 0) {
+            const baseName = stmt.target.slice(0, sepIdx);
+            const constEntry = constVars.get(baseName);
+            if (constEntry && constEntry.stmt.storage === 'const') {
+              constEntry.stmt.storage = 'let';
+              diagnostics.push({
+                severity: 'info',
+                message: `'${baseName}' is declared 'const' but a field is mutated via ++/-- — demoted to non-const in C++ so the mutation compiles.`,
+                line: constEntry.span.startLine,
+                column: constEntry.span.startColumn,
+                code: 'ownership-const-content-mutated',
+                source: 'ownership-analysis',
+              });
+            }
+          }
+        }
+        // A `let`/`const` collection mutated via a mutating method call
+        // (e.g. arr.push(x)) is effectively reassigned — the C++ emitter must
+        // keep the binding non-const so push_back/splice/etc. compile. The
+        // callee is the lowered C++ name, e.g. "arr.push_back".
+        if (stmt.kind === 'call' && typeof (stmt as any).callee === 'string') {
+          const callee: string = (stmt as any).callee;
+          const dot = callee.lastIndexOf('.');
+          if (dot > 0) {
+            const receiver = callee.slice(0, dot);
+            const method = callee.slice(dot + 1);
+            if (MUTATING_METHODS.has(method)) {
+              const entry = letVars.get(receiver);
+              if (entry) entry.everAssigned = true;
+              // Demote a `const` binding whose contents are mutated via a
+              // method call: TS permits this, but the emitted
+              // `const std::vector<T>` (or std::map/std::string) rejects
+              // `.push_back`/etc. Flip the IR storage to `let` so the
+              // emitter drops the `const` qualifier, and surface an
+              // info-diagnostic so the rewrite isn't silent.
+              const constEntry = constVars.get(receiver);
+              if (constEntry && constEntry.stmt.storage === 'const') {
+                constEntry.stmt.storage = 'let';
+                diagnostics.push({
+                  severity: 'info',
+                  message: `'${receiver}' is declared 'const' but its contents are mutated via .${method}() — demoted to non-const in C++ so the mutation compiles.`,
+                  line: constEntry.span.startLine,
+                  column: constEntry.span.startColumn,
+                  code: 'ownership-const-content-mutated',
+                  source: 'ownership-analysis',
+                });
+              }
+            }
+          }
+        }
+        // Recurse into nested statements (shares this scope's maps — a nested
+        // block can see and mutate the enclosing function's locals).
+        const nested = getNestedStatements(stmt);
+        if (nested) {
+          walk(nested);
+        }
       }
-      // Recurse
-      const nested = getNestedStatements(stmt);
-      if (nested) {
-        scanStmtsForAssignments(nested);
+    };
+
+    walk(stmts);
+
+    // Generate suggestions for let vars that were never assigned. A `let`
+    // reassigned in *this* scope (everAssigned) or in any other scope
+    // (globallyAssignedNames — e.g. a top-level `let` reassigned inside a
+    // function) is not a suggest-const candidate.
+    for (const entry of letVars.values()) {
+      if (!entry.everAssigned && !globallyAssignedNames.has(entry.name)) {
+        diagnostics.push({
+          severity: 'warning',
+          message: `'${entry.name}' is never reassigned.`,
+          hint: `const ${entry.name} = ...;  // or annotate with Shared to also enforce const T& at the C++ level`,
+          line: entry.span.startLine,
+          column: entry.span.startColumn,
+          code: 'ownership-suggest-const',
+          source: 'ownership-analysis',
+        });
       }
     }
   };
 
-  scanStmtsForLetDecls(program.topLevelStatements);
-  for (const fn of program.functions) {
-    scanStmtsForLetDecls(fn.statements);
-  }
-
-  scanStmtsForAssignments(program.topLevelStatements);
-  for (const fn of program.functions) {
-    scanStmtsForAssignments(fn.statements);
-  }
-
-  // Generate suggestions for let vars that were never assigned
-  for (const entry of letVars.values()) {
-    if (!entry.everAssigned) {
-      diagnostics.push({
-        severity: 'warning',
-        message: `'${entry.name}' is never reassigned.`,
-        hint: `const ${entry.name} = ...;  // or annotate with Shared to also enforce const T& at the C++ level`,
-        line: entry.span.startLine,
-        column: entry.span.startColumn,
-        code: 'ownership-suggest-const',
-        source: 'ownership-analysis',
-      });
-    }
-  }
+  for (const body of allStatementBodies) analyzeScope(body);
 }
 
 /**

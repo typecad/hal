@@ -485,7 +485,7 @@ describe("forward declarations", () => {
       [
         "export class Button {",
         "  static start(pin: number, debounceMs: number): Button {",
-        "    return null as any;",
+        "    return new Button();",
         "  }",
         "",
         "  onPress(handler: () => void): this {",
@@ -525,10 +525,13 @@ describe("forward declarations", () => {
     expect(sketchText).not.toContain("Button.start(2, 50).onPress");
   });
 
-  // KNOWN BUG: split mode no longer emits free-function forward declarations
-  // (`int helper(int ...)`) ahead of class definitions in the header, so the
-  // ordering assertion fails. Tracked here as .skip.
-  it.skip("emits free function forward declarations before class definitions in split mode", async () => {
+  // Demo #18 Finding B: split mode now emits a non-static forward declaration
+  // for a free function called from an inline class method body into the
+  // HEADER (ahead of the class definition), so the method can see the symbol.
+  // Previously the only forward decl was `static` in the .cpp, emitted after
+  // `#include "main.h"`, so the inline method body failed with
+  // "'helper' was not declared in this scope".
+  it("emits free function forward declarations before class definitions in split mode", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
@@ -564,7 +567,9 @@ describe("forward declarations", () => {
     const outDir = path.join(workspaceDir, ".build");
     const mainHeader = fs.readFileSync(path.join(outDir, "main.h"), "utf8");
 
-    const declIdx = mainHeader.indexOf("int helper(int");
+    // `number` lowers to `double`, so the forward declaration is
+    // `double helper(double x);`. It must appear BEFORE the class definition.
+    const declIdx = mainHeader.indexOf("helper(double");
     const classIdx = mainHeader.indexOf("class Processor {");
     expect(declIdx).toBeGreaterThanOrEqual(0);
     expect(classIdx).toBeGreaterThanOrEqual(0);

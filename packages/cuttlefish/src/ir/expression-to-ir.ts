@@ -2,7 +2,7 @@
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "../api";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, activeLocalTypes, activeGlobalTypes, activeClassFieldTypes, topLevelClassNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, activeLocalTypes, activeGlobalTypes, activeClassFieldTypes, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions } from "./build-ir-state";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
 import { halInstances } from "./hal-resolver";
@@ -80,13 +80,75 @@ const MATH_CONSTANT_LITERALS: Record<string, number> = {
   SQRT1_2: 0.7071067811865476,
 };
 
+/**
+ * Resolve the declared C++ return type of a call expression, for the sole
+ * purpose of the `valueType === null` null-comparison guard. Returns the type
+ * (null-stripped, e.g. `Account` for `Account | null`) or `undefined`.
+ *
+ * Handles the two inline-call forms the guard needs:
+ *  - `freeFn(args)` — a top-level `function` declaration's annotated return
+ *    type, looked up from the source file (the IR `functionReturnTypes` map is
+ *    not reachable here).
+ *  - `this.method(args)` / `expr.method(args)` — a class method's return type,
+ *    resolved via the top-level class registry (methods carry `returnType`).
+ *
+ * Demo #18 Finding A: without this, `findAccount(1) === null` and
+ * `this.find(1) === null` lower to the invalid `call() == CUTTLEFISH_UNDEFINED`.
+ */
+function resolveCallReturnTypeForNullGuard(call: ts.CallExpression, sourceText: string): string | undefined {
+  const callee = call.expression;
+  // `this.method(...)` or `someExpr.method(...)`.
+  if (ts.isPropertyAccessExpression(callee)) {
+    const methodName = callee.name.text;
+    // Resolve the receiver class. `this` could be any top-level class; look up
+    // the method name across all of them (method names are usually unique
+    // within a file). For an identifier receiver, infer its class from the
+    // active type maps.
+    let candidateClassNames: string[] = [];
+    if (callee.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      candidateClassNames = Array.from(topLevelClassNames);
+    } else if (ts.isIdentifier(callee.expression)) {
+      const recvType = activeLocalTypes.get(callee.expression.text) ?? activeGlobalTypes.get(callee.expression.text);
+      if (recvType) candidateClassNames = [recvType.replace(/\*$/, "").replace(/^const\s+/, "")];
+    }
+    for (const className of candidateClassNames) {
+      const classDef = topLevelClasses.get(className);
+      if (classDef) {
+        const method = classDef.methods.find(m => m.name === methodName);
+        if (method) return method.returnType as string | undefined;
+      }
+    }
+    return undefined;
+  }
+  // `freeFn(...)` — scan the source file for the function declaration.
+  if (ts.isIdentifier(callee)) {
+    const fnName = callee.text;
+    const sourceFile = call.getSourceFile();
+    let declaredReturnType: ts.TypeNode | undefined;
+    const visit = (node: ts.Node): void => {
+      if (declaredReturnType) return;
+      if (ts.isFunctionDeclaration(node) && node.name?.text === fnName) {
+        declaredReturnType = node.type;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(sourceFile, visit);
+    if (declaredReturnType) {
+      return typeNodeToCppType(declaredReturnType);
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
 export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
   function emitUnsupportedExpression(message: string): ExpressionIR {
     diagnostics.push(makeDiagnostic(
       sourceText,
       expr.pos,
       message,
-      "warning",
+      "error",
       "TS2CPP_UNSUPPORTED_EXPR",
     ));
     return { kind: "raw", value: "0 /* unsupported_expr */" };
@@ -535,6 +597,15 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   // `T | null` erases to a value type (vector/map/set/struct), which is never
   // null in C++, so comparing it to nullptr is invalid (`no match for
   // operator==`). Resolve to a compile-time boolean. Demo #9 Finding D.
+  //
+  // A value type here is any non-pointer C++ type: the STL containers, strings,
+  // and — critically — *interface names*, because an `interface Foo` lowers to
+  // a C++ `struct Foo` (a value), not a pointer. Classes are always reference
+  // types (pointers), so they are excluded by the `!vt.endsWith("*")` filter
+  // (and by not being in topLevelInterfaceNames). Demo #18 Finding A: a struct
+  // returned from a function/method and stored in a local (`let s: Account |
+  // null = find(); s === null`) is now recognised as a value type and lowers to
+  // a compile-time `false` instead of the invalid `s == CUTTLEFISH_UNDEFINED`.
   if (ts.isBinaryExpression(expr)
     && (expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken
       || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
@@ -544,20 +615,35 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     const isNullLhs = expr.left.kind === ts.SyntaxKind.NullKeyword || expr.left.kind === ts.SyntaxKind.UndefinedKeyword;
     if (isNullRhs || isNullLhs) {
       const valueNode = isNullRhs ? expr.left : expr.right;
+      // Resolve the operand's C++ type. Identifiers read it from the active
+      // local/global type maps; an inline call (`findAccount(1) === null` or
+      // `this.find(1) === null`) is resolved from the callee's declared return
+      // type — see resolveCallReturnTypeForNullGuard below.
+      let vt: string | undefined;
       if (ts.isIdentifier(valueNode)) {
-        const vt = activeLocalTypes.get(valueNode.text) ?? activeGlobalTypes.get(valueNode.text);
-        const isValueType = vt && (
-          vt.startsWith("std::vector<")
-          || vt.startsWith("std::map<")
-          || vt.startsWith("std::set<")
-          || vt.startsWith("std::string")
-          || topLevelClassNames.has(vt.replace(/\*$/, ""))
-        ) && !vt.endsWith("*");
-        if (isValueType) {
-          const isEquality = expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
-          // A value type is never null → `=== null` is false, `!== null` is true.
-          return { kind: "boolean", value: isEquality ? false : true };
+        vt = activeLocalTypes.get(valueNode.text) ?? activeGlobalTypes.get(valueNode.text);
+      } else if (ts.isCallExpression(valueNode)) {
+        vt = resolveCallReturnTypeForNullGuard(valueNode, sourceText);
+      } else if (ts.isParenthesizedExpression(valueNode) || ts.isNonNullExpression(valueNode)) {
+        const inner = ts.isParenthesizedExpression(valueNode) ? valueNode.expression : valueNode.expression;
+        if (ts.isIdentifier(inner)) {
+          vt = activeLocalTypes.get(inner.text) ?? activeGlobalTypes.get(inner.text);
+        } else if (ts.isCallExpression(inner)) {
+          vt = resolveCallReturnTypeForNullGuard(inner, sourceText);
         }
+      }
+      const isValueType = vt && (
+        vt.startsWith("std::vector<")
+        || vt.startsWith("std::map<")
+        || vt.startsWith("std::set<")
+        || vt.startsWith("std::string")
+        || topLevelInterfaceNames.has(vt.replace(/\*$/, ""))
+        || topLevelClassNames.has(vt.replace(/\*$/, ""))
+      ) && !vt.endsWith("*");
+      if (isValueType) {
+        const isEquality = expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
+        // A value type is never null → `=== null` is false, `!== null` is true.
+        return { kind: "boolean", value: isEquality ? false : true };
       }
     }
   }
@@ -893,6 +979,34 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return { kind: "raw", value: `__tc_toFixed(${receiverText}, ${digits})` };
       }
 
+      // --- Map/Set iteration methods: .values() / .keys() / .entries() ---
+      // These lower to the same __tc_mapValues/__tc_mapKeys/__tc_mapEntries
+      // helpers used for Object.values(map) etc. (defined in the native
+      // strategy). They return std::vector<V/K/pair>, so a downstream
+      // for...of iterates the values/keys/pairs correctly — NOT the raw
+      // std::pair entries of the underlying std::map (demo #15 fix A).
+      if ((methodName === "values" || methodName === "keys" || methodName === "entries") && expr.arguments.length === 0) {
+        let receiverType: string | undefined;
+        if (ts.isIdentifier(receiver)) {
+          receiverType = activeLocalTypes.get(receiver.text) ?? activeGlobalTypes.get(receiver.text);
+        } else if (ts.isPropertyAccessExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
+          receiverType = activeLocalTypes.get(`this->${receiver.name.text}`);
+        }
+        if (receiverType && (receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<"))) {
+          const recIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
+          const recText = renderExprAsText(recIR);
+          // Set.values()/keys() both yield the elements; entries() yields
+          // pair<elem,elem>. Map.values()/keys()/entries() are as expected.
+          const isSet = receiverType.startsWith("std::set<");
+          const helper = methodName === "values"
+            ? (isSet ? "__tc_setValues" : "__tc_mapValues")
+            : methodName === "keys"
+              ? (isSet ? "__tc_setValues" : "__tc_mapKeys")
+              : (isSet ? "__tc_setEntries" : "__tc_mapEntries");
+          return { kind: "raw", value: `${helper}(${recText})` };
+        }
+      }
+
       // --- Map/Set method lowering ---
       if ((methodName === "set" || methodName === "get" || methodName === "has" || methodName === "delete" || methodName === "add") && expr.arguments.length >= 1) {
         let receiverType: string | undefined;
@@ -928,7 +1042,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
               return { kind: "raw", value: `(${receiverText}[${arg0Text}] = ${arg1Text})` };
             }
             if (methodName === "get") {
-              return { kind: "raw", value: `${receiverText}[${arg0Text}]` };
+              // Use .at() (const-correct, throws on miss) rather than operator[]
+              // (non-const, fails on a const-bound Map, silently inserts on miss).
+              // The idiomatic m.get(k)! asserts presence, matching .at() contract. (demo #15 fix B)
+              return { kind: "raw", value: `${receiverText}.at(${arg0Text})` };
             }
             if (methodName === "has") {
               return { kind: "raw", value: `(${receiverText}.count(${arg0Text}) > 0)` };
@@ -1050,15 +1167,6 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     let isStatic = false;
     let isNamespace = false;
     if (ts.isPropertyAccessExpression(expr.expression)) {
-      const methodName = expr.expression.name.text;
-      const receiver = expr.expression.expression;
-      if (methodName === "values" || methodName === "keys" || methodName === "entries") {
-        if (expr.arguments === undefined || expr.arguments.length === 0) {
-          const receiverIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
-          const receiverText = renderExprAsText(receiverIR);
-          return receiverIR;
-        }
-      }
       let root: ts.Expression = expr.expression;
       while (ts.isPropertyAccessExpression(root)) {
         root = root.expression;

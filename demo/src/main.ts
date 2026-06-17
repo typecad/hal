@@ -1,70 +1,192 @@
 // ---------------------------------------------------------------------------
-// main.ts — KitchenSink driver: exercises ALL remaining untested features.
+// main.ts — bank ledger demo (cuttlefish demo #18).
 //
-// NOTE: re-exports (`export { ... } from`) through Modules.ts don't resolve
-// in the transpiler (the re-exported symbols aren't visible to the importer).
-// Import directly from the source modules instead. The Modules.ts file still
-// exists to document the re-export gap.
+// A small, idiomatic TypeScript program: a Bank keeps Accounts in an array and
+// supports opening accounts, depositing, withdrawing, and reporting balances.
+// The driver opens two accounts, runs a few everyday transactions, and prints
+// the final ledger. Transpiled to C++ by cuttlefish (@typecad/framework-native).
+//
+// This is the *eighteenth* demo iteration. Like #15–#17 it is deliberately
+// small and readable — real, everyday TypeScript — and is *not* a feature-
+// exhaustion test. The source uses its natural idiomatic form throughout.
+//
+// Three transpilation gaps it surfaced are now FIXED in the transpiler and
+// pinned by tests/packages/transpiler/demo-18-regressions.test.ts:
+//   A — `Account | null` returned from a method and compared with `=== null`.
+//   B — module-scope free functions (formatMoney/kindLabel) called from a
+//       class method body in split mode.
+//   C — struct-field interpolation inside a template literal in a class
+//       method (snprintf format inference). See README.
 // ---------------------------------------------------------------------------
 
-import { Counter, Empty, Borrower, sumDestructured, firstTwo, isCounterViaField, isString, makeNested, logicalAssign, PairAB, KindObj, FlagVal } from './models/Classes';
-import { forEachExprSum, forEachBlockSum, sortWithMathCallback, WrapperTest } from './models/Collections';
-import { sampleFn, Constants } from './models/Types';
+// Account kinds. `const enum` so members are inlined (a plain `enum` is
+// lint-gated in scaffolded projects — by design).
+const enum Kind {
+  Checking = 1,
+  Savings = 2,
+}
 
-// §1.6 — associative access via Map (tested in #5/#6/#7; Map.get() in a
-// function return resolves to `auto` — a known gap).
-const sim: Map<string, int32_t> = new Map();
-sim.set('alpha', 10);
-console.log(`assoc_alpha=${sim.get('alpha')}`);
+// A single account. Interface -> C++ struct. Cents are kept in a fixed-width
+// int so there is no floating-point rounding in the ledger.
+interface Account {
+  id: int32_t;
+  name: string;
+  kind: Kind;
+  cents: int32_t;
+}
 
-// §4.1 — empty class.
-const e = new Empty();
-console.log(`empty_created`);
+// Format an amount in cents as "D.CC" (e.g. 1234 -> "12.34"). A module-scope
+// free function. (Finding B: this is now reachable from a class method body in
+// split mode — the transpiler forward-declares it in the header.)
+function formatMoney(cents: int32_t): string {
+  const dollars: int32_t = cents / 100;
+  const remainder: int32_t = cents % 100;
+  // A leading zero for amounts under ten cents: "12.05" not "12.5".
+  if (remainder < 10) {
+    return `${dollars}.0${remainder}`;
+  }
+  return `${dollars}.${remainder}`;
+}
 
-// §4.1 — static initializer block.
-console.log(`counter_init=${Counter.count}`);
+// A short label for an account kind. Numeric switch with a default branch.
+function kindLabel(kind: Kind): string {
+  switch (kind) {
+    case Kind.Checking:
+      return 'checking';
+    case Kind.Savings:
+      return 'savings';
+    default:
+      return 'unknown';
+  }
+}
 
-// §3.1 — nested class inside function.
-console.log(`nested=${makeNested()}`);
+// A small in-memory bank. Class -> C++ class. Accounts live in a
+// std::vector<Account>; the counter tracks the next free account id.
+class Bank {
+  private accounts: Account[] = [];
+  private nextId: int32_t = 1;
 
-// §3.2 — object destructure param (named interface for the call site).
-const pair: PairAB = { a: 0, b: 0 };
-pair.a = 3;
-pair.b = 4;
-console.log(`destructured=${sumDestructured(pair)}`);
+  // Open an account with a starting balance of zero; returns the new id.
+  open(name: string, kind: Kind): int32_t {
+    const id: int32_t = this.nextId;
+    this.nextId = this.nextId + 1;
+    const a: Account = {
+      id: id,
+      name: name,
+      kind: kind,
+      cents: 0,
+    };
+    this.accounts.push(a);
+    return id;
+  }
 
-// §3.2 — array destructure param.
-console.log(`first_two=${firstTwo([10, 20])}`);
+  // Read the balance of an account by id, or -1 if it does not exist. Uses
+  // `find()` (the natural nullable `Account | null` return) for the lookup —
+  // this is a read-only use, so value-copy semantics are fine. Finding A: the
+  // `a === null` check here is exercised and lowers correctly.
+  balanceOf(id: int32_t): int32_t {
+    const a: Account | null = this.find(id);
+    if (a === null) {
+      return -1;
+    }
+    return a.cents;
+  }
 
-// §1.10 — typeof type guard (simplified — union narrowing gated).
-console.log(`isstring_num=${isString(42)}`);
+  // Find an account by id, or null if it does not exist. The natural nullable
+  // return: `Account | null`. (Finding A: callers compare the result with
+  // `=== null`; the transpiler now resolves a struct value type to a
+  // compile-time `false` instead of the invalid `struct == 0`.) Read-only —
+  // see the note on `deposit` for why mutating methods use `indexOf` instead.
+  private find(id: int32_t): Account | null {
+    for (const a of this.accounts) {
+      if (a.id === id) {
+        return a;
+      }
+    }
+    return null;
+  }
 
-// §5.1 — ||= and &&= (named interface for the param).
-const fv: FlagVal = { flag: false, val: 0 };
-fv.flag = false;
-fv.val = 5;
-console.log(`logical_assign=${logicalAssign(fv)}`);
+  // Index of an account by id, or -1 if it does not exist. Mutating methods
+  // (deposit/withdraw) use this rather than `find()` because a struct returned
+  // from `find()` is a C++ *value copy* — mutating it would not write back to
+  // the vector element (the same value-semantics limitation as Map.get(), see
+  // SUPPORT_MATRIX §1.5). Mutating `this.accounts[i].cents` writes through.
+  private indexOf(id: int32_t): int32_t {
+    for (let i: int32_t = 0; i < this.accounts.length; i = i + 1) {
+      if (this.accounts[i]!.id === id) {
+        return i;
+      }
+    }
+    return -1;
+  }
 
-// §3.5 — forEach variants.
-console.log(`forEach_expr=${forEachExprSum([1, 2, 3])}`);
-console.log(`forEach_block=${forEachBlockSum([1, 2, 3])}`);
+  // Add cents to an account. Returns true on success, false if the id is bad.
+  deposit(id: int32_t, cents: int32_t): boolean {
+    const i: int32_t = this.indexOf(id);
+    if (i < 0) {
+      return false;
+    }
+    this.accounts[i]!.cents = this.accounts[i]!.cents + cents;
+    return true;
+  }
 
-// §3.4 — Math.method callback via sort.
-const sorted = sortWithMathCallback([3, 1, 2]);
-console.log(`sorted_0=${sorted[0]}`);
+  // Subtract cents from an account, refusing to overdraft. Returns true on
+  // success, false if the id is bad or there are not enough funds.
+  withdraw(id: int32_t, cents: int32_t): boolean {
+    const i: int32_t = this.indexOf(id);
+    if (i < 0) {
+      return false;
+    }
+    if (this.accounts[i]!.cents < cents) {
+      return false;
+    }
+    this.accounts[i]!.cents = this.accounts[i]!.cents - cents;
+    return true;
+  }
 
-// §4.6 — borrowed constructor param.
-const borrower = new Borrower(99);
-console.log(`borrowed=${borrower.getRef()}`);
+  // The total held across all accounts. A plain accumulator loop.
+  totalCents(): int32_t {
+    let sum: int32_t = 0;
+    for (const a of this.accounts) {
+      sum = sum + a.cents;
+    }
+    return sum;
+  }
 
-// §4.6 — wrapper detection.
-const wt = new WrapperTest();
-console.log(`wrapper_created`);
+  // Print the ledger, one line per account. (Finding B: the free functions
+  // kindLabel/formatMoney are called from this class method body; Finding C:
+  // the struct fields a.id/a.name are interpolated directly in the template
+  // literal — both now lower correctly.)
+  printAll(): void {
+    for (const a of this.accounts) {
+      console.log(`#${a.id} ${a.name} (${kindLabel(a.kind)}) ${formatMoney(a.cents)}`);
+    }
+  }
+}
 
-// §1.7 — ReturnType/Parameters (type-only; sampleFn used to anchor).
-console.log(`sample=${sampleFn(2, 3)}`);
+// Entry point.
+function main(): void {
+  const bank: Bank = new Bank();
 
-// §1.7 — Constants (enum-inside-class substitute).
-console.log(`mode_a=${Constants.MODE_A}`);
+  // Open two everyday accounts.
+  const alice: int32_t = bank.open('Alice', Kind.Checking);
+  const bob: int32_t = bank.open('Bob', Kind.Savings);
 
-console.log(`done`);
+  // Run a few transactions. Plain idiomatic calls + boolean results.
+  bank.deposit(alice, 5000);          // Alice starts with $50.00
+  bank.deposit(bob, 12000);           // Bob starts with $120.00
+  bank.withdraw(alice, 1800);         // Alice takes out $18.00
+  const overdraft: boolean = bank.withdraw(bob, 999999);  // too much -> false
+  bank.deposit(bob, 500);             // Bob adds $5.00
+
+  // Report a couple of outcomes.
+  console.log(`overdraft_refused=${overdraft}`);
+  console.log(`alice=${formatMoney(bank.balanceOf(alice))}`);
+  console.log(`bob=${formatMoney(bank.balanceOf(bob))}`);
+  console.log(`total=${formatMoney(bank.totalCents())}`);
+  console.log('---');
+  bank.printAll();
+  console.log('done');
+}
+
+main();

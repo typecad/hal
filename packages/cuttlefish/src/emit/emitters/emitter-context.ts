@@ -24,6 +24,10 @@ export interface EmitterOptions {
   nativeModules?: Map<string, { declPath: string; cppPath: string; moduleKey: string }>;
   crossModuleClasses?: Set<string>;
   crossModuleClassFieldTypes?: Map<string, Map<string, string>>;
+  /** Getters/setters declared on classes in OTHER files, keyed by class name.
+   * Lets `obj.getter` access rewrite to `obj->getX()`/`Cls::getX()` even when
+   * the class is imported (demo #14 Finding E — cross-file getter access). */
+  crossModuleClassAccessors?: Map<string, Map<string, "getter" | "setter" | "both">>;
   crossModuleFunctionReturnTypes?: Map<string, string>;
   crossModuleEnumNames?: Set<string>;
   crossModuleStringEnumNames?: Set<string>;
@@ -101,6 +105,16 @@ export interface EmitterContext {
   reservedNames: ReadonlySet<string>;
   knownFunctionReturnTypes: Map<string, string>;
   mappedFunctions: MappedFunction[];
+  /**
+   * Names of non-exported free functions that are CALLED from at least one
+   * class method body (a getter/setter/method/constructor). In split mode an
+   * inline class method body lives in the header, so such a function must be
+   * visible in the header too — otherwise the method body sees
+   * "'fn' was not declared in this scope". These functions are therefore
+   * emitted non-static with a header prototype (like exported functions).
+   * Demo #18 Finding B.
+   */
+  freeFunctionsCalledFromClassMethods: Set<string>;
   topLevelScope: EmissionScopeState;
   snprintfCounter: { value: number };
   stringVarNames: Set<string>;

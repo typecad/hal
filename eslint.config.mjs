@@ -54,20 +54,10 @@ const transpilerRules = [
       "[transpiler] RegExp literals are approximated with std::regex in C++, which has different syntax and performance.",
   },
   {
-    selector: "TSEnumBody TSEnumMember Literal[raw=/[^0-9.]/]",
-    message:
-      "[transpiler] String-valued enum members have no C++ equivalent (C++ enums are integer-only). Use integer values or a Map.",
-  },
-  {
     selector:
-      "TSTypeReference > Identifier[name=/^(Partial|Required|Readonly|Pick|Omit|Record|Exclude|Extract|NonNullable|ReturnType|InstanceType|Parameters|ConstructorParameters)$/]",
+      "TSTypeReference > Identifier[name=/^(Exclude|Extract|ReturnType|InstanceType|Parameters|ConstructorParameters)$/]",
     message:
-      "[transpiler] TypeScript utility types have no C++ equivalent and will be erased during transpilation. Define explicit interfaces or structs instead.",
-  },
-  {
-    selector: "VariableDeclaration[kind='var']",
-    message:
-      "[transpiler] var declarations have no C++ equivalent. Use let or const instead.",
+      "[transpiler] ReturnType/Parameters/InstanceType/Extract/Exclude utility types fall back to auto and are not deterministic enough for C++ emission. Declare the concrete type explicitly.",
   },
   {
     selector: "FunctionDeclaration[generator=true]",
@@ -127,6 +117,8 @@ export default [
       "cuttlefish/no-typeof-non-primitive": "error",
       "cuttlefish/no-destructured-without-init": "error",
       "cuttlefish/no-fractional-to-number-type": "error",
+      "cuttlefish/no-mutating-method-on-const-collection": "warn",
+      "cuttlefish/no-readonly-loop-variable-mutation": "warn",
     },
   },
 ];

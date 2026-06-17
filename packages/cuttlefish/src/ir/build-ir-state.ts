@@ -37,6 +37,12 @@ export class CompilationContext {
   filteredArrayLengthVars = new Map<string, string>();
   activeNamespaceNames = new Set<string>();
   topLevelClassNames = new Set<string>();
+  // Names of top-level interfaces. Interfaces lower to C++ structs (value
+  // types), so a variable of an interface type is a value — never a pointer,
+  // never null. Tracked separately from topLevelClassNames (classes are always
+  // reference types / pointers) so the null-comparison guard in
+  // expression-to-ir can recognize an interface-typed value as a value type.
+  topLevelInterfaceNames = new Set<string>();
   classTypeNames = new Set<string>();
   activeEnumNames = new Set<string>();
   activeStringEnumNames = new Set<string>();
@@ -157,6 +163,7 @@ export const arrayLiteralSizes = createMapProxy(ctx => ctx.arrayLiteralSizes);
 export const filteredArrayLengthVars = createMapProxy(ctx => ctx.filteredArrayLengthVars);
 export const activeNamespaceNames = createSetProxy(ctx => ctx.activeNamespaceNames);
 export const topLevelClassNames = createSetProxy(ctx => ctx.topLevelClassNames);
+export const topLevelInterfaceNames = createSetProxy(ctx => ctx.topLevelInterfaceNames);
 export const classTypeNames = createSetProxy(ctx => ctx.classTypeNames);
 export const activeEnumNames = createSetProxy(ctx => ctx.activeEnumNames);
 export const activeStringEnumNames = createSetProxy(ctx => ctx.activeStringEnumNames);
@@ -267,6 +274,7 @@ export function resetBuildState(): void {
   resetFunctionScopeState();
   activeNamespaceNames.clear();
   topLevelClassNames.clear();
+  topLevelInterfaceNames.clear();
   classTypeNames.clear();
   activeEnumNames.clear();
   activeStringEnumNames.clear();

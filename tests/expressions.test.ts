@@ -544,14 +544,15 @@ describe("Expression Transpilation", () => {
       expect(result.cpp).toContain("obj = { val }");
     });
 
-    it("preserves multiple spread sources in object literal", () => {
+    it("reports object spread as unsupported", () => {
       const result = transpile(`
         function test(): void {
           const merged = { ...base, ...overrides };
         }
       `);
-      expect(result.cpp).not.toContain("return base");
-      expect(result.cpp).toContain("__spread__");
+      const diag = result.diagnostics.find(d => d.code === "TS2CPP_NO_EQUIVALENT" && d.message.includes("Object spread"));
+      expect(diag).toBeDefined();
+      expect(diag!.severity).toBe("error");
     });
   });
 

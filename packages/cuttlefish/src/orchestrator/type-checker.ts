@@ -167,6 +167,374 @@ function classifyElementType(type: ts.Type): "numeric" | "string" | "object" | n
   return "object";
 }
 
+const TYPED_ARRAY_NAMES = new Set([
+  "Uint8Array",
+  "Int8Array",
+  "Uint16Array",
+  "Int16Array",
+  "Uint32Array",
+  "Int32Array",
+  "Float32Array",
+  "Float64Array",
+  "BigUint64Array",
+  "BigInt64Array",
+]);
+
+const FUNCTIONAL_METHOD_NAMES = new Set([
+  "forEach",
+  "map",
+  "filter",
+  "reduce",
+  "reduceRight",
+  "find",
+  "findIndex",
+  "findLast",
+  "some",
+  "every",
+  "flatMap",
+]);
+
+const MUTATING_ARRAY_METHOD_NAMES = new Set([
+  "push",
+  "pop",
+  "shift",
+  "unshift",
+  "splice",
+  "sort",
+  "reverse",
+  "fill",
+  "copyWithin",
+]);
+
+type FunctionLikeNode =
+  | ts.FunctionDeclaration
+  | ts.MethodDeclaration
+  | ts.ConstructorDeclaration
+  | ts.GetAccessorDeclaration
+  | ts.SetAccessorDeclaration
+  | ts.FunctionExpression
+  | ts.ArrowFunction;
+
+type FunctionLikeWithBody = FunctionLikeNode & { body: ts.Block | ts.Expression };
+
+interface GateScope {
+  parent?: GateScope;
+  declaredNames: Set<string>;
+  mapValueCopyBindings: Set<string>;
+  arrayParams: Set<string>;
+  typedArrayParams: Set<string>;
+  functionNode?: FunctionLikeWithBody;
+  inClassMethod: boolean;
+}
+
+function createChildScope(parent?: GateScope, overrides: Partial<GateScope> = {}): GateScope {
+  return {
+    parent,
+    declaredNames: new Set(),
+    mapValueCopyBindings: new Set(),
+    arrayParams: new Set(),
+    typedArrayParams: new Set(),
+    functionNode: parent?.functionNode,
+    inClassMethod: parent?.inClassMethod ?? false,
+    ...overrides,
+  };
+}
+
+function lookupScopedSet(scope: GateScope, name: string, key: "mapValueCopyBindings" | "arrayParams" | "typedArrayParams"): boolean {
+  let current: GateScope | undefined = scope;
+  while (current) {
+    if (current[key].has(name)) return true;
+    if (current.declaredNames.has(name)) return false;
+    current = current.parent;
+  }
+  return false;
+}
+
+function declareBinding(scope: GateScope, name: string): void {
+  scope.declaredNames.add(name);
+  scope.mapValueCopyBindings.delete(name);
+  scope.arrayParams.delete(name);
+  scope.typedArrayParams.delete(name);
+}
+
+function isFunctionLikeWithBody(node: ts.Node): node is FunctionLikeWithBody {
+  return (
+    (ts.isFunctionDeclaration(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node)) &&
+    !!node.body
+  );
+}
+
+function isClassMethodLike(node: ts.Node): boolean {
+  return (
+    (ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node)) &&
+    (ts.isClassDeclaration(node.parent) || ts.isClassExpression(node.parent))
+  );
+}
+
+function unwrapExpression(expr: ts.Expression): ts.Expression {
+  let current = expr;
+  while (true) {
+    if (
+      ts.isParenthesizedExpression(current) ||
+      ts.isNonNullExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isTypeAssertionExpression(current)
+    ) {
+      current = current.expression;
+      continue;
+    }
+    if ((ts as any).isSatisfiesExpression?.(current)) {
+      current = (current as ts.Expression & { expression: ts.Expression }).expression;
+      continue;
+    }
+    return current;
+  }
+}
+
+function typeText(checker: ts.TypeChecker, type: ts.Type): string {
+  return checker.typeToString(type);
+}
+
+function typeHasName(checker: ts.TypeChecker, type: ts.Type, names: Set<string>): boolean {
+  if (type.isUnion()) {
+    return type.types.some(t => typeHasName(checker, t, names));
+  }
+  const symbolName = type.getSymbol()?.getName();
+  const aliasName = type.aliasSymbol?.getName();
+  if ((symbolName && names.has(symbolName)) || (aliasName && names.has(aliasName))) {
+    return true;
+  }
+  const text = typeText(checker, type);
+  for (const name of names) {
+    if (new RegExp(`\\b${name}\\b`).test(text)) return true;
+  }
+  return false;
+}
+
+function isMapLikeType(checker: ts.TypeChecker, type: ts.Type): boolean {
+  return typeHasName(checker, type, new Set(["Map", "ReadonlyMap", "Record"])) ||
+    /\bstd::map\b/.test(typeText(checker, type));
+}
+
+function isSetLikeType(checker: ts.TypeChecker, type: ts.Type): boolean {
+  return typeHasName(checker, type, new Set(["Set", "ReadonlySet"]));
+}
+
+function isTypedArrayType(checker: ts.TypeChecker, type: ts.Type): boolean {
+  return typeHasName(checker, type, TYPED_ARRAY_NAMES);
+}
+
+function isArrayLikeType(checker: ts.TypeChecker, type: ts.Type): boolean {
+  if (type.isUnion()) return type.types.some(t => isArrayLikeType(checker, t));
+  const typeCheckerWithArray = checker as ts.TypeChecker & { isArrayType?: (candidate: ts.Type) => boolean };
+  if (typeCheckerWithArray.isArrayType?.(type)) return true;
+  if (checker.isTupleType(type)) return true;
+  const text = typeText(checker, type);
+  return /\bReadonlyArray\b|\bArray\b/.test(text) || /\[\]$/.test(text);
+}
+
+function isStringLikeType(type: ts.Type): boolean {
+  return (type.flags & ts.TypeFlags.StringLike) !== 0;
+}
+
+function isContainerType(checker: ts.TypeChecker, type: ts.Type): boolean {
+  return isMapLikeType(checker, type) || isSetLikeType(checker, type);
+}
+
+function typeIncludesNullish(type: ts.Type): boolean {
+  if (type.isUnion()) return type.types.some(typeIncludesNullish);
+  return (type.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) !== 0;
+}
+
+function isPrimitiveLikeValueType(type: ts.Type): boolean {
+  if (type.isUnion()) return type.types.every(isPrimitiveLikeValueType);
+  return (type.flags & (
+    ts.TypeFlags.NumberLike |
+    ts.TypeFlags.StringLike |
+    ts.TypeFlags.BooleanLike |
+    ts.TypeFlags.BigIntLike |
+    ts.TypeFlags.EnumLike |
+    ts.TypeFlags.Null |
+    ts.TypeFlags.Undefined |
+    ts.TypeFlags.Void |
+    ts.TypeFlags.Never |
+    ts.TypeFlags.Any |
+    ts.TypeFlags.Unknown
+  )) !== 0;
+}
+
+function isObjectLikeValueType(type: ts.Type): boolean {
+  if (type.isUnion()) {
+    return type.types.some(t => !typeIncludesNullish(t) && isObjectLikeValueType(t));
+  }
+  return !isPrimitiveLikeValueType(type);
+}
+
+function isNullishExpression(node: ts.Expression): boolean {
+  const expr = unwrapExpression(node);
+  return expr.kind === ts.SyntaxKind.NullKeyword ||
+    (ts.isIdentifier(expr) && expr.text === "undefined");
+}
+
+function isNullishCompareOperator(kind: ts.SyntaxKind): boolean {
+  return kind === ts.SyntaxKind.EqualsEqualsToken ||
+    kind === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    kind === ts.SyntaxKind.ExclamationEqualsToken ||
+    kind === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+}
+
+function isAssignmentOperatorKind(kind: ts.SyntaxKind): boolean {
+  return kind === ts.SyntaxKind.EqualsToken ||
+    kind === ts.SyntaxKind.PlusEqualsToken ||
+    kind === ts.SyntaxKind.MinusEqualsToken ||
+    kind === ts.SyntaxKind.AsteriskEqualsToken ||
+    kind === ts.SyntaxKind.AsteriskAsteriskEqualsToken ||
+    kind === ts.SyntaxKind.SlashEqualsToken ||
+    kind === ts.SyntaxKind.PercentEqualsToken ||
+    kind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
+    kind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
+    kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken ||
+    kind === ts.SyntaxKind.AmpersandEqualsToken ||
+    kind === ts.SyntaxKind.BarEqualsToken ||
+    kind === ts.SyntaxKind.CaretEqualsToken ||
+    kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
+    kind === ts.SyntaxKind.BarBarEqualsToken ||
+    kind === ts.SyntaxKind.QuestionQuestionEqualsToken;
+}
+
+function getRootIdentifierFromAccess(expr: ts.Expression): ts.Identifier | undefined {
+  const current = unwrapExpression(expr);
+  if (ts.isIdentifier(current)) return current;
+  if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    return getRootIdentifierFromAccess(current.expression);
+  }
+  return undefined;
+}
+
+function isCompoundAccess(expr: ts.Expression): boolean {
+  const current = unwrapExpression(expr);
+  return ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current);
+}
+
+function isContainerLookupCall(node: ts.Expression, checker: ts.TypeChecker): boolean {
+  const expr = unwrapExpression(node);
+  if (!ts.isCallExpression(expr)) return false;
+  const callee = unwrapExpression(expr.expression);
+  if (!ts.isPropertyAccessExpression(callee)) return false;
+  const methodName = callee.name.text;
+  if (methodName !== "get" && methodName !== "at") return false;
+
+  const receiverType = checker.getTypeAtLocation(callee.expression);
+  if (methodName === "get") {
+    return isMapLikeType(checker, receiverType);
+  }
+  return isMapLikeType(checker, receiverType) ||
+    isArrayLikeType(checker, receiverType) ||
+    isTypedArrayType(checker, receiverType) ||
+    isStringLikeType(receiverType);
+}
+
+function getContainerLookupMethodName(node: ts.Expression): string | undefined {
+  const expr = unwrapExpression(node);
+  if (!ts.isCallExpression(expr)) return undefined;
+  const callee = unwrapExpression(expr.expression);
+  return ts.isPropertyAccessExpression(callee) ? callee.name.text : undefined;
+}
+
+function isMapValueLookupExpression(node: ts.Expression, checker: ts.TypeChecker): boolean {
+  const expr = unwrapExpression(node);
+  if (ts.isCallExpression(expr)) {
+    const callee = unwrapExpression(expr.expression);
+    if (ts.isPropertyAccessExpression(callee) && (callee.name.text === "get" || callee.name.text === "at")) {
+      return isMapLikeType(checker, checker.getTypeAtLocation(callee.expression));
+    }
+  }
+  if (ts.isElementAccessExpression(expr)) {
+    return isMapLikeType(checker, checker.getTypeAtLocation(expr.expression));
+  }
+  return false;
+}
+
+function isOptionalFieldAccess(node: ts.Expression, checker: ts.TypeChecker): boolean {
+  const expr = unwrapExpression(node);
+  if (!ts.isPropertyAccessExpression(expr)) return false;
+  const symbol = checker.getSymbolAtLocation(expr.name);
+  const declarations = symbol?.declarations ?? [];
+  if (declarations.some(decl =>
+    (ts.isPropertySignature(decl) || ts.isPropertyDeclaration(decl) || ts.isParameter(decl)) &&
+    !!decl.questionToken
+  )) {
+    return true;
+  }
+  return typeIncludesNullish(checker.getTypeAtLocation(expr));
+}
+
+function getFunctionReturnTypeNode(node: FunctionLikeWithBody): ts.TypeNode | undefined {
+  if (ts.isConstructorDeclaration(node)) return undefined;
+  return node.type;
+}
+
+function getCallbackFunction(node: ts.Expression): FunctionLikeWithBody | undefined {
+  const expr = unwrapExpression(node);
+  if ((ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) && expr.body) {
+    return expr;
+  }
+  return undefined;
+}
+
+function nodeContains(container: ts.Node, candidate: ts.Node): boolean {
+  return candidate.pos >= container.pos && candidate.end <= container.end;
+}
+
+function isCaptureInsideCallback(callback: FunctionLikeWithBody, enclosingFunction: FunctionLikeWithBody, checker: ts.TypeChecker): boolean {
+  let captured = false;
+  const visit = (node: ts.Node): void => {
+    if (captured) return;
+    if (node.kind === ts.SyntaxKind.ThisKeyword) {
+      captured = true;
+      return;
+    }
+    if (ts.isIdentifier(node)) {
+      const symbol = checker.getSymbolAtLocation(node);
+      const declarations = symbol?.declarations ?? [];
+      if (declarations.some(decl =>
+        nodeContains(enclosingFunction, decl) &&
+        !nodeContains(callback, decl) &&
+        decl.getSourceFile() === callback.getSourceFile()
+      )) {
+        captured = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(callback.body, visit);
+  return captured;
+}
+
+function makeSemanticGateDiagnostic(
+  sourceText: string,
+  node: ts.Node,
+  message: string,
+  code: string,
+  hint: string,
+): Diagnostic {
+  const diag = makeDiagnostic(sourceText, node.getStart(), message, "error", code);
+  diag.hint = hint;
+  diag.sourceLine = extractLine(sourceText, diag.line);
+  diag.source = "semantic-gate";
+  return diag;
+}
+
 /**
  * Run semantic gates against the user files of a type-checked program.
  *
@@ -182,6 +550,7 @@ export function runSemanticGates(
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const checker = program.getTypeChecker();
+  const seenDiagnostics = new Set<string>();
 
   // Normalise the user-file set for membership lookup.
   const userFileSet = new Set(userFiles.map(f => f.replace(/\\/g, "/")));
@@ -214,7 +583,57 @@ export function runSemanticGates(
     }
     const sourceText = sourceFile.getFullText();
 
-    const visit = (node: ts.Node): void => {
+    const pushDiag = (node: ts.Node, message: string, code: string, hint: string): void => {
+      const key = `${filePath}:${code}:${node.getStart(sourceFile)}`;
+      if (seenDiagnostics.has(key)) return;
+      seenDiagnostics.add(key);
+      diagnostics.push(makeSemanticGateDiagnostic(sourceText, node, message, code, hint));
+    };
+
+    const visit = (node: ts.Node, scope: GateScope): void => {
+      if (ts.isSourceFile(node)) {
+        ts.forEachChild(node, child => visit(child, scope));
+        return;
+      }
+
+      if (isFunctionLikeWithBody(node)) {
+        const functionScope = createChildScope(scope, {
+          functionNode: node,
+          inClassMethod: isClassMethodLike(node),
+        });
+
+        const returnTypeNode = getFunctionReturnTypeNode(node);
+        if (returnTypeNode && isTypedArrayType(checker, checker.getTypeFromTypeNode(returnTypeNode))) {
+          pushDiag(
+            returnTypeNode,
+            "Returning a typed array is not supported because typed arrays lower to pointer-like storage in C++.",
+            "TS2CPP_TYPED_ARRAY_RETURN",
+            "Use an out-parameter plus an explicit length, or return a fixed-shape struct that owns its storage.",
+          );
+        }
+
+        for (const param of node.parameters) {
+          if (!ts.isIdentifier(param.name)) continue;
+          const name = param.name.text;
+          declareBinding(functionScope, name);
+          const paramType = checker.getTypeAtLocation(param);
+          if (isTypedArrayType(checker, paramType)) {
+            functionScope.typedArrayParams.add(name);
+          } else if (isArrayLikeType(checker, paramType)) {
+            functionScope.arrayParams.add(name);
+          }
+        }
+
+        visit(node.body, functionScope);
+        return;
+      }
+
+      if (ts.isBlock(node)) {
+        const blockScope = createChildScope(scope);
+        ts.forEachChild(node, child => visit(child, blockScope));
+        return;
+      }
+
       // 1. Heterogeneous array literals.
       if (ts.isArrayLiteralExpression(node)) {
         const contextual = checker.getContextualType(node);
@@ -230,17 +649,12 @@ export function runSemanticGates(
             if (bucket) buckets.add(bucket);
           }
           if (buckets.size > 1) {
-            const diag = makeDiagnostic(
-              sourceText,
-              node.getStart(),
+            pushDiag(
+              node,
               "Heterogeneous array literal has no single C++ element type.",
-              "error",
               "TS2CPP_HETEROGENEOUS_ARRAY",
+              "Use a uniform element type (all numbers, all strings, or all objects), or declare an explicit tuple type: [number, string].",
             );
-            diag.hint = "Use a uniform element type (all numbers, all strings, or all objects), or declare an explicit tuple type: [number, string].";
-            diag.sourceLine = extractLine(sourceText, diag.line);
-            diag.source = "semantic-gate";
-            diagnostics.push(diag);
           }
         }
       }
@@ -263,17 +677,12 @@ export function runSemanticGates(
           const isInterfaceDecl = !!decl && ts.isInterfaceDeclaration(decl);
           const isInterfaceByName = !sym && interfaceNames.has(name);
           if (isInterfaceDecl || isInterfaceByName) {
-            const diag = makeDiagnostic(
-              sourceText,
-              node.getStart(),
+            pushDiag(
+              node,
               `Cannot instantiate interface '${name}' — only class constructors are supported in C++.`,
-              "error",
               "TS2CPP_NEW_ON_INTERFACE",
+              `Change 'interface ${name}' to 'class ${name}', or call a factory that returns a concrete class instance.`,
             );
-            diag.hint = `Change 'interface ${name}' to 'class ${name}', or call a factory that returns a concrete class instance.`;
-            diag.sourceLine = extractLine(sourceText, diag.line);
-            diag.source = "semantic-gate";
-            diagnostics.push(diag);
           }
         }
       }
@@ -285,20 +694,14 @@ export function runSemanticGates(
       //    is a separate path and is allowed.
       if (ts.isForInStatement(node)) {
         const iterType = checker.getTypeAtLocation(node.expression);
-        const typeStr = checker.typeToString(iterType);
-        const isMapOrRecord = /\b(Map|ReadonlyMap|Record)\b/.test(typeStr) || /\bstd::map\b/.test(typeStr);
-        if (isMapOrRecord) {
-          const diag = makeDiagnostic(
-            sourceText,
-            node.getStart(),
+        if (isMapLikeType(checker, iterType)) {
+          const typeStr = checker.typeToString(iterType);
+          pushDiag(
+            node,
             `for...in over a ${typeStr} is not supported — the Map lowering iterates key-value pairs, not keys.`,
-            "error",
             "TS2CPP_FORIN_ON_MAP",
+            "Use a for...of loop over Object.keys(m), Object.values(m), or Object.entries(m), depending on which part of the Map you need.",
           );
-          diag.hint = "Use Object.keys(m).forEach(...), a for...of over Object.keys(m), or m.forEach((v, k) => ...).";
-          diag.sourceLine = extractLine(sourceText, diag.line);
-          diag.source = "semantic-gate";
-          diagnostics.push(diag);
         }
       }
 
@@ -318,23 +721,212 @@ export function runSemanticGates(
           return s !== "null" && s !== "undefined";
         })) || (typeStr.includes(" | ") && !/\b(null|undefined)\b/.test(typeStr));
         if (isNonNullableUnion) {
-          const diag = makeDiagnostic(
-            sourceText,
-            node.getStart(),
+          pushDiag(
+            node,
             `Member access '${node.getText()}' on a union type '${typeStr}' is not supported — the union lowers to std::variant, but member access doesn't lower to std::get_if/std::holds_alternative.`,
-            "error",
             "TS2CPP_UNION_MEMBER_ACCESS",
+            "Use a struct with a discriminator field, or narrow via a type guard before access.",
           );
-          diag.hint = "Use a struct with a discriminator field, or narrow via a type guard before access.";
-          diag.sourceLine = extractLine(sourceText, diag.line);
-          diag.source = "semantic-gate";
-          diagnostics.push(diag);
         }
       }
 
-      ts.forEachChild(node, visit);
+      // 5. Track locals initialized from a Map/Record value. They are C++
+      //    value copies, so mutating fields on them cannot write back to the
+      //    container.
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+        const name = node.name.text;
+        declareBinding(scope, name);
+        if (node.initializer && isMapValueLookupExpression(node.initializer, checker)) {
+          const valueType = checker.getTypeAtLocation(node.name);
+          if (isObjectLikeValueType(valueType)) {
+            scope.mapValueCopyBindings.add(name);
+          }
+        }
+      }
+
+      // 6. Nullish checks on container lookup calls. `.get()` / `.at()` lower
+      //    to presence-asserting lookups (for example `std::map::at`), not an
+      //    optional value.
+      if (ts.isBinaryExpression(node) && isNullishCompareOperator(node.operatorToken.kind)) {
+        const leftNullish = isNullishExpression(node.left);
+        const rightNullish = isNullishExpression(node.right);
+        const otherSide = leftNullish ? node.right : rightNullish ? node.left : undefined;
+        if (otherSide && isContainerLookupCall(otherSide, checker)) {
+          const methodName = getContainerLookupMethodName(otherSide);
+          pushDiag(
+            node,
+            `Comparing .${methodName ?? "get"}() to null or undefined is not supported by the C++ lowering.`,
+            "TS2CPP_GET_NULLISH_COMPARE",
+            "Use .has(key) before .get(key), or restructure the value as an explicit { present, value } result.",
+          );
+        }
+        if (otherSide && isOptionalFieldAccess(otherSide, checker)) {
+          pushDiag(
+            node,
+            "Comparing an optional struct/interface field to null or undefined is not supported because optionality is flattened in C++.",
+            "TS2CPP_OPTIONAL_FIELD_NULLISH",
+            "Use an explicit boolean flag, sentinel enum, or separate Map/Set membership check instead of relying on x?: T.",
+          );
+        }
+      }
+
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+        if (isContainerLookupCall(node.left, checker)) {
+          pushDiag(
+            node,
+            "Nullish coalescing on .get()/.at() is not supported by the C++ lowering.",
+            "TS2CPP_GET_NULLISH_COMPARE",
+            "Use .has(key) before .get(key), or restructure the value as an explicit { present, value } result.",
+          );
+        }
+        if (isOptionalFieldAccess(node.left, checker)) {
+          pushDiag(
+            node,
+            "Nullish coalescing on an optional struct/interface field is not supported because optionality is flattened in C++.",
+            "TS2CPP_OPTIONAL_FIELD_NULLISH",
+            "Use an explicit boolean flag, sentinel enum, or separate Map/Set membership check instead of relying on x?: T.",
+          );
+        }
+      }
+
+      // 7. Mutating fields of a Map/Record-fetched copy.
+      if (ts.isBinaryExpression(node) && isAssignmentOperatorKind(node.operatorToken.kind) && isCompoundAccess(node.left)) {
+        const root = getRootIdentifierFromAccess(node.left);
+        if (root && lookupScopedSet(scope, root.text, "mapValueCopyBindings")) {
+          pushDiag(
+            node.left,
+            `'${root.text}' is a value copy fetched from a Map/Record; mutating a field on it will not update the container.`,
+            "TS2CPP_MAP_VALUE_COPY_MUTATION",
+            "Store primitive mutable state in a separate Map and .set() it back, or replace the whole struct entry with .set(key, nextValue).",
+          );
+        }
+        if (root && lookupScopedSet(scope, root.text, "arrayParams")) {
+          pushDiag(
+            node.left,
+            `Mutating '${root.text}' through an indexed/property access mutates only the C++ parameter copy.`,
+            "TS2CPP_ARRAY_PARAM_MUTATION",
+            "Return the updated array, pass a mutable owner object, or move the mutation to the caller-side container.",
+          );
+        }
+      }
+
+      if (
+        (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+        (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) &&
+        isCompoundAccess(node.operand)
+      ) {
+        const root = getRootIdentifierFromAccess(node.operand);
+        if (root && lookupScopedSet(scope, root.text, "mapValueCopyBindings")) {
+          pushDiag(
+            node.operand,
+            `'${root.text}' is a value copy fetched from a Map/Record; mutating a field on it will not update the container.`,
+            "TS2CPP_MAP_VALUE_COPY_MUTATION",
+            "Store primitive mutable state in a separate Map and .set() it back, or replace the whole struct entry with .set(key, nextValue).",
+          );
+        }
+        if (root && lookupScopedSet(scope, root.text, "arrayParams")) {
+          pushDiag(
+            node.operand,
+            `Mutating '${root.text}' through an indexed/property access mutates only the C++ parameter copy.`,
+            "TS2CPP_ARRAY_PARAM_MUTATION",
+            "Return the updated array, pass a mutable owner object, or move the mutation to the caller-side container.",
+          );
+        }
+      }
+
+      // 8. Typed-array parameters lower pointer-like; their length is not
+      //    recoverable from the parameter expression.
+      if (ts.isPropertyAccessExpression(node) && node.name.text === "length") {
+        const receiver = unwrapExpression(node.expression);
+        if (ts.isIdentifier(receiver) && lookupScopedSet(scope, receiver.text, "typedArrayParams")) {
+          pushDiag(
+            node,
+            `.${node.name.text} on typed-array parameter '${receiver.text}' has no valid C++ lowering.`,
+            "TS2CPP_TYPED_ARRAY_PARAM_LENGTH",
+            "Pass the length as a separate parameter, or wrap the buffer and size in an explicit struct.",
+          );
+        }
+      }
+
+      // 9. Returning typed arrays is unsafe because storage ownership is not
+      //    represented in the emitted pointer-like C++ type.
+      if (ts.isReturnStatement(node) && node.expression) {
+        const returnType = checker.getTypeAtLocation(node.expression);
+        if (isTypedArrayType(checker, returnType)) {
+          pushDiag(
+            node,
+            "Returning a typed array is not supported because typed arrays lower to pointer-like storage in C++.",
+            "TS2CPP_TYPED_ARRAY_RETURN",
+            "Use an out-parameter plus an explicit length, or return a fixed-shape struct that owns its storage.",
+          );
+        }
+      }
+
+      // 10. String-key computed access is only deterministic on Map/Record.
+      if (ts.isElementAccessExpression(node) && node.argumentExpression) {
+        const argument = unwrapExpression(node.argumentExpression);
+        const argumentType = checker.getTypeAtLocation(argument);
+        const isStringKey = ts.isStringLiteralLike(argument) ||
+          (argumentType.flags & ts.TypeFlags.StringLike) !== 0;
+        const isNumericKey = ts.isNumericLiteral(argument) ||
+          (argumentType.flags & ts.TypeFlags.NumberLike) !== 0;
+        const objectType = checker.getTypeAtLocation(node.expression);
+        if (isStringKey && !isNumericKey &&
+          !isMapLikeType(checker, objectType) &&
+          !isArrayLikeType(checker, objectType) &&
+          !isTypedArrayType(checker, objectType)) {
+          pushDiag(
+            node,
+            "Dynamic string-key access on a non-map value is not supported by the C++ lowering.",
+            "TS2CPP_DYNAMIC_OBJECT_KEY",
+            "Use property access for fixed struct fields (obj.field), or use Map<string, T>/Record<string, T> for dynamic keys.",
+          );
+        }
+      }
+
+      // 11. Array parameters are by-value std::vector copies in the current
+      //     lowering, so content mutation does not affect the caller.
+      if (ts.isCallExpression(node)) {
+        const callee = unwrapExpression(node.expression);
+        if (ts.isPropertyAccessExpression(callee)) {
+          const receiver = unwrapExpression(callee.expression);
+          const methodName = callee.name.text;
+          if (MUTATING_ARRAY_METHOD_NAMES.has(methodName) && ts.isIdentifier(receiver) && lookupScopedSet(scope, receiver.text, "arrayParams")) {
+            pushDiag(
+              node,
+              `Calling .${methodName}() on array parameter '${receiver.text}' mutates only the C++ parameter copy.`,
+              "TS2CPP_ARRAY_PARAM_MUTATION",
+              "Return the updated array, pass a mutable owner object, or move the mutation to the caller-side container.",
+            );
+          }
+
+          const receiverType = checker.getTypeAtLocation(callee.expression);
+          if (FUNCTIONAL_METHOD_NAMES.has(methodName) && isContainerType(checker, receiverType)) {
+            pushDiag(
+              node,
+              `.${methodName}() is not supported on Map/Set/Record in the C++ lowering.`,
+              "TS2CPP_CONTAINER_FUNCTIONAL_METHOD",
+              "Use a manual for...of loop over keys/values/entries, or convert to an array before applying functional array methods.",
+            );
+          }
+
+          if (scope.inClassMethod && FUNCTIONAL_METHOD_NAMES.has(methodName) && isArrayLikeType(checker, receiverType)) {
+            const callback = node.arguments.map(getCallbackFunction).find((arg): arg is FunctionLikeWithBody => Boolean(arg));
+            if (callback && scope.functionNode && isCaptureInsideCallback(callback, scope.functionNode, checker)) {
+              pushDiag(
+                callback,
+                "Capturing callbacks inside class-method functional array calls are not supported by the current C++ lowering.",
+                "TS2CPP_CALLBACK_CAPTURE_UNSUPPORTED",
+                "Move the aggregation into a manual loop in the method, or call a module-level helper that does not capture method locals or this.",
+              );
+            }
+          }
+        }
+      }
+
+      ts.forEachChild(node, child => visit(child, scope));
     };
-    ts.forEachChild(sourceFile, visit);
+    visit(sourceFile, createChildScope());
   }
 
   return diagnostics;

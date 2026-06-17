@@ -155,7 +155,7 @@ export function variableStatementToIR(
             sourceText,
             declaration.pos,
             "Destructured declaration without initializer is unsupported.",
-            "warning",
+            "error",
             "TS2CPP_UNSUPPORTED_DECL",
           ),
         );
@@ -282,7 +282,7 @@ export function variableStatementToIR(
             sourceText,
             declaration.pos,
             "Destructured declaration without initializer is unsupported.",
-            "warning",
+            "error",
             "TS2CPP_UNSUPPORTED_DECL",
           ),
         );
@@ -401,7 +401,7 @@ export function variableStatementToIR(
           sourceText,
           declaration.pos,
           "Destructured declarations are currently unsupported.",
-          "warning",
+          "error",
           "TS2CPP_UNSUPPORTED_DECL",
         ),
       );

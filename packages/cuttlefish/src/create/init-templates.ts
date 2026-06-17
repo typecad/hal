@@ -31,6 +31,16 @@ export function generateProjectPackageJson(options: InitProjectOptions): string 
     .map(([k, v]) => `    "${k}": "${v}"`)
     .join(',\n');
 
+  // The scaffolded eslint.config.mjs imports @typescript-eslint/parser and the
+  // eslint-transpiler-rules plugin (which is plain JS, no dep). Without these
+  // devDependencies `npm run lint` fails to resolve the parser/plugin in a
+  // freshly created project. Versions mirror the repo demo's package.json.
+  const devDepsJson = [
+    '    "eslint": "^10.4.1"',
+    '    "@typescript-eslint/parser": "^8.61.0"',
+    '    "@typescript-eslint/eslint-plugin": "^8.61.0"',
+  ].join(',\n');
+
   if (options.isNative) {
     return `{
   "name": "${projectName}",
@@ -38,10 +48,14 @@ export function generateProjectPackageJson(options: InitProjectOptions): string 
   "private": true,
   "scripts": {
     "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile"
+    "compile": "cuttlefish build --compile",
+    "lint": "eslint src/"
   },
   "dependencies": {
 ${depsJson}
+  },
+  "devDependencies": {
+${devDepsJson}
   }
 }
 `;
@@ -57,10 +71,14 @@ ${depsJson}
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
     "upload": "cuttlefish build --compile --upload --port ${portHint}",
-    "monitor": "cuttlefish build --compile --upload --monitor --port ${portHint}"
+    "monitor": "cuttlefish build --compile --upload --monitor --port ${portHint}",
+    "lint": "eslint src/"
   },
   "dependencies": {
 ${depsJson}
+  },
+  "devDependencies": {
+${devDepsJson}
   }
 }
 `;
@@ -306,26 +324,6 @@ const transpilerRules = [
       "[transpiler] import.meta and new.target have no C++ equivalent.",
   },
   {
-    selector: "TSEnumBody TSEnumMember Literal[raw=/[^0-9.]/]",
-    message:
-      "[transpiler] String-valued enum members have no C++ equivalent (C++ enums are integer-only). Use integer values or a Map.",
-  },
-  {
-    selector: "VariableDeclaration[kind='var']",
-    message:
-      "[transpiler] var declarations have no C++ equivalent. Use let or const instead.",
-  },
-  {
-    selector: "TSTypeAliasDeclaration > TSTypeReference[typeParameters]",
-    message:
-      "[transpiler] Type aliases to generic types (e.g. type X = Map<K,V>, Set<T>) are not emitted as C++ typedefs and vanish at the use site. Inline the concrete generic form (Map<K,V>) at each use site, or use a named interface.",
-  },
-  {
-    selector: "TSTypeAliasDeclaration > TSFunctionType",
-    message:
-      "[transpiler] Function-type aliases (type Fn = (...) => T) are not emitted as C++ typedefs. Inline the function signature at each use site, or use a named interface with a call signature.",
-  },
-  {
     selector: "ObjectExpression > Property[computed=true]",
     message:
       "[transpiler] Computed property names ({ [expr]: value }) have no C++ equivalent. Use fixed property names, or a Map<string, T> with .set().",
@@ -336,14 +334,12 @@ const transpilerRules = [
   { selector: "ForOfStatement[await=true]", message: "[transpiler] for await...of is unsupported (requires an async runtime absent on bare metal). Use a synchronous for...of loop." },
   { selector: "CallExpression[callee.type='FunctionExpression']", message: "[transpiler] immediately-invoked function expressions (IIFEs) are not supported — the body is not inlined and the \`function\` keyword is emitted verbatim. Assign to a const or define a named top-level function." },
   { selector: "CallExpression[callee.type='ArrowFunctionExpression']", message: "[transpiler] immediately-invoked arrow expressions (() => {...})() are not supported — the body is not inlined. Assign to a const or define a named top-level function." },
-  { selector: "TSModuleDeclaration", message: "[transpiler] namespace/module declarations are not supported. Use a class with static methods or group free functions in a file." },
   { selector: "ObjectExpression > SpreadElement", message: "[transpiler] object spread ({ ...obj }) is not supported — C++ structs have fixed shape. Construct the object field-by-field instead." },
   { selector: "TSTypeOperator[type='keyof']", message: "[transpiler] the keyof operator is not supported (no C++ equivalent). Use a string union or a switch over field names." },
   { selector: "TSIndexedAccessType", message: "[transpiler] indexed access types (T[K]) are not supported (no C++ equivalent). Use the concrete field type directly." },
   { selector: "TSTypeAliasDeclaration > TSConditionalType", message: "[transpiler] conditional types (T extends X ? A : B) are not supported — they leak generic type parameters into generated C++." },
   { selector: "TSTypeAliasDeclaration > TSMappedType", message: "[transpiler] mapped types ({ [K in keyof T]: U }) are not supported — they leak generic type parameters into generated C++." },
-  { selector: "TSTypeReference[typeName.type='TSQualifiedName'][typeName.left.name='ReturnType']", message: "[transpiler] ReturnType<T> is not supported (typeof-in-type-position is not lowered)." },
-  { selector: "TSTypeReference[typeName.type='TSQualifiedName'][typeName.left.name='Parameters']", message: "[transpiler] Parameters<T> is not supported (typeof-in-type-position is not lowered)." },
+  { selector: "TSTypeReference > Identifier[name=/^(ReturnType|Parameters|InstanceType|ConstructorParameters|Extract|Exclude)$/]", message: "[transpiler] ReturnType/Parameters/InstanceType/Extract/Exclude utility types fall back to auto and are not deterministic enough for C++ emission. Declare the concrete type explicitly." },
   { selector: "StaticBlock", message: "[transpiler] static initializer blocks (static { ... }) are not supported. Initialize static fields in their declaration or the constructor." },
   { selector: "Identifier[name='Promise']", message: "[transpiler] Promise is not supported (no promise runtime on bare metal). Use synchronous return values or callbacks." },
   { selector: "CallExpression > MemberExpression.callee[property.name='then']", message: "[transpiler] .then() on a Promise is not supported (no promise runtime). Use synchronous return values or callbacks." },
@@ -360,7 +356,6 @@ const transpilerRules = [
   { selector: "ImportExpression", message: "[transpiler] dynamic import() is unsupported (no runtime loader on bare metal). Use a static top-level import." },
   { selector: "CallExpression[callee.name='require']", message: "[transpiler] require() is unsupported. Use ES \`import\`." },
   { selector: "BinaryExpression[operator='instanceof']", message: "[transpiler] instanceof has no RTTI lowering and is treated loosely. Avoid it for user-class hierarchies in firmware." },
-  { selector: "TSEnumDeclaration[const!=true]", message: "[transpiler] only 'const enum' is supported. Add the \`const\` keyword to the enum declaration." },
   // Runtime / dynamic-shape patterns (SUPPORT_MATRIX §7 never themes).
   { selector: "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(defineProperty|defineProperties|create|getPrototypeOf|setPrototypeOf|getOwnPropertyDescriptor)$/]", message: "[transpiler] Object.defineProperty/defineProperties/create/getPrototypeOf/setPrototypeOf/getOwnPropertyDescriptor mutate or introspect object shape at runtime — no AOT C++ lowering. Avoid." },
   { selector: "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]", message: "[transpiler] .bind/.call/.apply rebind \`this\` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly." },
@@ -411,6 +406,9 @@ export default [
       "cuttlefish/no-array-param-content-mutation": "error",
       "cuttlefish/no-container-functional-methods": "error",
       "cuttlefish/no-undefined-compare-on-get": "error",
+      "cuttlefish/no-map-struct-mutation": "error",
+      "cuttlefish/no-mutating-method-on-const-collection": "warn",
+      "cuttlefish/no-readonly-loop-variable-mutation": "warn",
       "cuttlefish/no-undefined-compare-on-struct-field": "error",
       "cuttlefish/no-typed-array-param-length": "error",
       "cuttlefish/no-typed-array-return": "error",

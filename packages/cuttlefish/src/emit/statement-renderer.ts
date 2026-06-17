@@ -79,6 +79,47 @@ function isIndirectType(cppType: string, strategy: PlatformStrategy): boolean {
 }
 
 /**
+ * True if a C++ return type denotes a STRUCT (value class/interface) rather
+ * than a primitive, pointer, void, container, or enum. Used to decide whether
+ * `return null` must lower to `return {};` (value-init) instead of a nullish
+ * literal. Demo #14 Finding A.
+ */
+function isStructReturnType(cppType: string, strategy: PlatformStrategy): boolean {
+  const t = cppType.trim();
+  if (!t || t === "void" || t === "auto") return false;
+  if (isPrimitiveCppType(t)) return false;
+  if (isIndirectType(t, strategy)) return false;
+  // Containers lower to std::vector/std::map/std::set/std::string — those
+  // already value-initialize from {} or their own defaults, but a `return
+  // null` for them is rare; restrict this path to plain struct names (an
+  // identifier, optionally const-qualified) to avoid surprising conversions.
+  if (t.startsWith("std::") || t.startsWith("__tc_")) return false;
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(t.replace(/^const\s+/, "").trim());
+}
+
+/**
+ * True if a return-value expression lowers to a nullish literal — `null`
+ * (`nullptr`), `undefined` (`CUTTLEFISH_UNDEFINED`), or a nullish-coalescing
+ * `cuttlefish_nullish(x, nullptr)`/`typehal_nullish(...)` whose fallback is
+ * nullish. Such a value cannot convert to a struct return type. Demo #14 A.
+ */
+function isNullishReturnValue(value: ExpressionIR): boolean {
+  if (value.kind === "identifier") {
+    // `null` → "nullptr" (escaped to nullptr_ at render), `undefined` → the
+    // literal identifier "undefined" or the CUTTLEFISH_UNDEFINED macro.
+    return value.value === "nullptr" || value.value === "nullptr_" || value.value === "undefined" || value.value === "CUTTLEFISH_UNDEFINED";
+  }
+  // `x ?? null` lowers to a raw `cuttlefish_nullish(x, nullptr)` /
+  // `typehal_nullish(x, nullptr)`. The fallback is the struct-incompatible
+  // part; treat the whole expression as nullish for return purposes.
+  if (value.kind === "raw") {
+    const v = value.value;
+    return /(?:cuttlefish|typehal)_nullish\([^,]*,\s*(?:nullptr|CUTTLEFISH_UNDEFINED)\s*\)/.test(v);
+  }
+  return false;
+}
+
+/**
  * Renders StatementIR nodes to C++ code strings.
  */
 export class StatementRenderer {
@@ -215,7 +256,24 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "return") {
-        return statement.value ? `return ${this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)};` : "return;";
+        if (!statement.value) return "return;";
+        // When the enclosing function returns a STRUCT (a non-primitive,
+        // non-pointer value type such as an interface), a `return null` /
+        // `return undefined` (or `return map.get(k) ?? null`) cannot lower to
+        // `return nullptr;` / `return CUTTLEFISH_UNDEFINED;` — those are
+        // integer/pointer literals that won't convert to the struct type.
+        // Lower to a value-initialized `return {};` instead. The `T | null`
+        // union already strips to `T` (SUPPORT_MATRIX §1.8), so the function
+        // signature really does return the struct. Demo #14 Finding A.
+        const retType = statement.functionReturnType;
+        if (retType && isStructReturnType(retType, this.strategy) && isNullishReturnValue(statement.value)) {
+          return `return {};`;
+        }
+        const renderedValue =
+          retType && this.enumNames.has(retType)
+            ? this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)
+            : this.expressionRenderer.renderEnumSafeValue(statement.value, knownVariableTypes);
+        return `return ${renderedValue};`;
       }
 
       if (statement.kind === "while") {
@@ -615,7 +673,18 @@ export class StatementRenderer {
           const namedType = this.normalizeCppType(declaredCppType!);
           const isConst = statement.storage === "const";
           const constPrefix = isConst ? "const " : "";
-          this.interfaceFieldTypes.set(namedType, fieldTypes);
+          // Demo #18 Finding C: do NOT overwrite an existing authoritative
+          // field-type map for this named type (registered in setup.ts from the
+          // interface/class declaration). The inferred fieldTypes here come from
+          // the initializer VALUES and, after strategy normalization, can be
+          // wider/incorrect (e.g. int32_t + name -> all "long long" under the
+          // native strategy). Clobbering the correct declared types then makes
+          // downstream snprintf format inference pick wrong specifiers
+          // (e.g. "%lld" + missing .c_str() for a std::string field). Only seed
+          // the map when no declared entry exists (e.g. an anonymous struct).
+          if (!this.interfaceFieldTypes.has(namedType)) {
+            this.interfaceFieldTypes.set(namedType, fieldTypes);
+          }
           return forHeader
             ? `${constPrefix}${namedType} ${safeObjName} = { ${initValues} }`
             : `${constPrefix}${namedType} ${safeObjName} = { ${initValues} };`;

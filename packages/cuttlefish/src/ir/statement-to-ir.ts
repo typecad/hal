@@ -201,7 +201,7 @@ export function lowerStatement(
       sourceText,
       statement.pos,
       `Unsupported statement in function '${functionNameForDiagnostics}'.`,
-      "warning",
+      "error",
       "TS2CPP_UNSUPPORTED_STMT",
     ),
   );

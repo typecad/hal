@@ -18,8 +18,21 @@ export function prescanUnsupportedFeatures(
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
-  function addDiag(position: number, message: string, code: string, hint?: string): void {
-    const diag = makeDiagnostic(sourceText, position, message, "warning", code);
+  function severityFor(code: string, status?: string): Diagnostic["severity"] {
+    if (status === "approximation" || code === "TS2CPP_APPROXIMATE") {
+      return "warning";
+    }
+    return "error";
+  }
+
+  function addDiag(
+    position: number,
+    message: string,
+    code: string,
+    hint?: string,
+    status?: string,
+  ): void {
+    const diag = makeDiagnostic(sourceText, position, message, severityFor(code, status), code);
     if (hint) {
       diag.hint = hint;
     }
@@ -32,12 +45,12 @@ export function prescanUnsupportedFeatures(
   function visit(node: ts.Node): void {
     const kindEntry = getKindEntry(node.kind);
     if (kindEntry) {
-      addDiag(node.pos, kindEntry.message, kindEntry.code, kindEntry.hint);
+      addDiag(node.pos, kindEntry.message, kindEntry.code, kindEntry.hint, kindEntry.status);
     }
 
     const contextMatch = checkContextSensitive(node, sourceText);
     if (contextMatch) {
-      addDiag(node.pos, contextMatch.message, contextMatch.code, contextMatch.hint);
+      addDiag(node.pos, contextMatch.message, contextMatch.code, contextMatch.hint, contextMatch.status);
     }
 
     ts.forEachChild(node, visit);

@@ -125,6 +125,7 @@ export function lowerControlFlowStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
+      ...(functionReturnTypes.get(functionNameForDiagnostics) ? { functionReturnType: functionReturnTypes.get(functionNameForDiagnostics) } : {}),
     }];
   }
 
@@ -136,6 +137,7 @@ export function lowerControlFlowStatement(
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
       value: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
+      ...(functionReturnTypes.get(functionNameForDiagnostics) ? { functionReturnType: functionReturnTypes.get(functionNameForDiagnostics) } : {}),
     }];
   }
 

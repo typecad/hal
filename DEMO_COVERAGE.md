@@ -31,6 +31,12 @@ with g++.
 | #11 | Atlas spatial region manager | (uncommitted) | namespace (gated), nested switch, infinite for(;;), try/catch/finally + throw, object spread, keyof, unknown; E fixed, C gated, A/B/D documented |
 | #12 | Cipher codec toolkit | (uncommitted) | forEach (gap), sort-with-comparator (wrong result), while(true), standalone block, variable-in-case, Float32Array, NonNullable, export default; A–F documented |
 | #13 | KitchenSink (ALL remaining ⬜) | (uncommitted) | comprehensive test of ~30 remaining untested features; A–J documented (inline-type auto, static block, ||=, conditional/mapped types, ReturnType, re-exports, Map.get auto, wrapper-on-alias, nested class in fn) |
+| #14 | Round-robin task scheduler | (uncommitted) | abstract base + subclass (no explicit ctor), instance/static getters (incl. cross-file), struct-returning `peek(): T \| null`, `Map`+`Set`, `try/catch/throw`, `Array.sort` comparator, `int32_t` template interp; A/B/D/E/G FIXED in transpiler, C lint-gated (`no-map-struct-mutation`), F stale-diag removed |
+
+| #15 | Inventory stock tracker | (uncommitted) | simple idiomatic TS: Map catalog + Map.values() iteration, const Map reads, const Set; A/B/C FIXED in transpiler (Map.values→__tc_mapValues helpers, Map.get→const-correct .at, const-collection mutation demoted + suggest-const contradiction resolved), D documented (const enum lint-gated); new lint rule `no-mutating-method-on-const-collection` |
+| #16 | Unit converter | (uncommitted) | simple idiomatic TS: const enum + interface + Map lookup + switch on an enum-valued struct field; A/B FIXED in transpiler (switch on a property-access discriminant now type-aware — no illegal `std::string(enum)` wrap; ownership demotion now scope-local — a read-only `const` Map no longer demoted due to a same-named binding mutated in a sibling function) |
+| #17 | Task-list tracker | (uncommitted) | simple idiomatic TS: a `TaskList` class with a `const enum`/`interface` model, `for...of` over a struct array with a mutated loop variable inside a **class method**; A FIXED in transpiler (const for-of loop var mutation + const-collection mutation now demote inside class methods/getters/setters/ctors and namespace functions — the ownership walk previously only reached free functions; `++`/`--` on a const loop-var member also now demotes), new lint rule `no-readonly-loop-variable-mutation` |
+| #18 | Bank ledger | (uncommitted) | simple idiomatic TS: a `Bank` class with a `const enum`/`interface Account` model, a nullable `find(): Account \| null` return compared with `=== null`, module-scope free functions called from a class method, and struct-field interpolation in a template literal; **A/B/C all FIXED** in transpiler — (A) `struct === null` now recognizes *interface* value types and resolves to `false` (was the invalid `struct == 0`); (B) a free function called from a class method is forward-declared **non-static in the header** in split mode (was only `static` in the .cpp, unreachable from the inline method body); (C) emitting a named-typed object literal no longer clobbers the interface's declared field-type map, so struct-field template interpolation picks the correct snprintf specifier instead of collapsing every field to `%lld`. Pinned by `tests/packages/transpiler/demo-18-regressions.test.ts` (8 tests); also un-skipped `multi-file.test.ts`'s free-function-forward-decl case. |
 
 A "demo-driven fix" is a transpiler/lint change that a demo's compile failure
 directly motivated, pinned by a regression test.
@@ -102,8 +108,8 @@ directly motivated, pinned by a regression test.
 | Spread in array `[...a, b]` | ✅ | #8 |
 | Mutable array methods (`push`/`pop`/`indexOf`) | ✅ | #1, #2, #3, #4 |
 | `[T]` tuple type | ✅ | #8 (fix F — alias-to-tuple now emits `using`; tuple-literal caveat remains) |
-| `Map<K,V>` / `ReadonlyMap` | ✅ | #5, #6 |
-| `Set<T>` / `ReadonlySet` | ✅ | #6 |
+| `Map<K,V>` / `ReadonlyMap` | ✅ | #5, #6, #15 |
+| `Set<T>` / `ReadonlySet` | ✅ | #6, #15 (const Set mutated via .add() demoted); #16 (fix B — demotion is now scope-local, so a read-only const Map is not demoted due to a sibling function's same-named binding); #17 (demotion now reaches class methods/getters/setters/ctors + namespace functions, not just free functions) |
 | `Record<K,V>` | 🟡 | #8 (as a field type works; object-literal init into a Record is Finding G) |
 | 2D arrays `T[][]` | ✅ | #9 |
 | Associative array access `obj["key"]` | ❌ (gated) | #13 (lint `no-dynamic-property-access`; use a Map) |
@@ -139,7 +145,7 @@ directly motivated, pinned by a regression test.
 |---|---|---|
 | Numeric enum `enum E { A, B }` | ✅ | #1, #4 |
 | Enum with explicit values | ✅ | #6 (StationKind) |
-| `const enum` | ✅ | #5, #6 |
+| `const enum` | ✅ | #5, #6, #15 |
 | Mixed explicit/implicit values | ✅ | #6 (StationKind computed) |
 | String enum | ✅ | #4 (GameStatus, Outcome) |
 | Enum relational comparison | ✅ | #4; fix in #3 (enum arithmetic `-`) |
@@ -235,8 +241,9 @@ directly motivated, pinned by a regression test.
 | `for (let i; cond; inc)` C-style | ✅ | all |
 | `for (const i; ...)` | ✅ | #6 |
 | Infinite `for (;;)` | ✅ | #11 |
-| `for...of` over array | ✅ | #1, #3, #4, #6 |
+| `for...of` over array | ✅ | #1, #3, #4, #6, #17 |
 | Nested `for...of` | ✅ | #4 |
+| `for...of` loop variable mutated in body (const → T&) | ✅ | #17 (fix A — const loop var mutated via `t.field=`/`t[i]=`/`t.field++` now demotes to a non-const reference, in all scopes incl. class methods/namespaces; new lint rule `no-readonly-loop-variable-mutation`) |
 | `for...in` over object keys | 🟡 | #7; over a Map/Record now rejected (semantic gate TS2CPP_FORIN_ON_MAP); plain-object for-in untested end-to-end |
 | `while` | ✅ | #3, #4 |
 | `while` with `break`/`continue` | ✅ | #3 |
@@ -270,6 +277,7 @@ directly motivated, pinned by a regression test.
 | Nested switch | ✅ | #11 |
 | Fall-through (no `break`) | 🟡 | #6 (case groups, 2:3:) |
 | String `switch` | ✅ | #7 (dispatch) |
+| `switch` on enum/numeric **struct field** (`switch (m.unit)`) | ✅ | #16 (fix A — type-aware discriminant, no `std::string(enum)` wrap) |
 
 ### 2.5 Exceptions
 
@@ -397,10 +405,10 @@ directly motivated, pinned by a regression test.
 | Private/protected method | ✅ | #6 (craft) |
 | Static method | ✅ | #4, #6 (Stockpile.format) |
 | Method calling free function | ✅ | #4 |
-| Getters `get x()` | ✅ | #4, #6 (C fix: pointer receiver) |
+| Getters `get x()` | ✅ | #4, #6 (C fix: pointer receiver); #14 (instance + cross-file access now rewrites to getX()) |
 | Setters `set x(v)` | ✅ | #6 |
 | Getter/setter pair | ✅ | #6 |
-| Static getter/setter | ✅ | #8 (fix B — cv-qualifier dropped; access-name caveat remains) |
+| Static getter/setter | ✅ | #8 (fix B — cv-qualifier dropped); #14 (fix E — `Cls.x` now rewrites to `Cls::getX()`; access-name caveat resolved) |
 | Abstract method → pure virtual | ✅ | #6 (Workstation.produces) |
 
 ### 4.4 Inheritance & polymorphism
@@ -579,6 +587,9 @@ motivated, pinned by regression tests):
 | #11 | E (`try/catch` emits `catch(...)` catch-all — was `catch(const std::exception&)` which missed thrown non-exception types), D (array-of-objects with a named element type uses the named type, not a shadow `_{name}_t` struct); A/B/C gated (`ObjectExpression > SpreadElement`, `TSTypeOperator[type='keyof']`, `TSIndexedAccessType`, `TSModuleDeclaration` lint selectors) | `tests/packages/transpiler/demo-11-regressions.test.ts` |
 | #12 | E (`.sort(comparator)` convention — TS negative=before converted to std::sort true=before); A/B/C/D/F documented (forEach, in-class sort ordering, export default inline fn, Float32Array extern, NonNullable snprintf) | `tests/packages/transpiler/demo-12-regressions.test.ts` |
 | #13 | C (`\|\|=`/`&&=` on property-access left sides lowered), B/D/E/F gated (static-init block, conditional types, mapped types, ReturnType/Parameters — lint selectors); G/H/I/A/J documented (re-exports, Map.get auto, wrapper-on-alias, inline-type auto, nested-class-in-fn) | `tests/packages/transpiler/demo-13-regressions.test.ts` |
+| #14 | A (struct-return-of-null/`?? null` lowers to `return {};` — `ReturnIR.functionReturnType`, free fns AND methods), B (subclass with no ctor gets a synthesized forwarding ctor), D (free fns forward-declared BEFORE class bodies), E (static-getter `Cls::getX()` rewrite + cross-file accessor aggregation), G (`int32_t`→`%d`, `uint32_t`→`%u`, not `%ld`); C lint-gated (`no-map-struct-mutation` — no TS→C++ reference binding for map values), F stale `TS2CPP_NO_EQUIVALENT` string-enum warning removed | `tests/packages/transpiler/demo-14-regressions.test.ts` |
+| #15 | A (`Map.values()`/`.keys()`/`.entries()` and `Set.values()`/`.entries()` lower to `__tc_mapValues`/`__tc_mapKeys`/`__tc_mapEntries`/`__tc_setValues`/`__tc_setEntries` helpers — was: `.values()` dropped, for-of iterated raw `std::pair` entries), B (`Map.get(k)` lowers to const-correct `m.at(k)` — was: non-const `operator[]`, failed on a const-bound Map and silently inserted on miss), C (const-bound `Map`/`Set` mutated via `.set()`/`.add()`/`.delete()` now demoted; `insert`/`erase` added to mutation set; index-assignment marks `let` vars `everAssigned` so the contradictory `ownership-suggest-const` no longer fires); D documented (`const enum` lint-gated in scaffolded projects). New lint rule `no-mutating-method-on-const-collection` (warn) persists into new projects. | `tests/packages/transpiler/demo-15-regressions.test.ts` |
+| #16 | A (`switch` on a property-access discriminant — e.g. `switch (m.unit)` on an enum/numeric struct field — is now type-aware: the `std::string(...)` wrap is decided by the discriminant's resolved C++ type via a new public `inferCppType` on the expression renderer, so enum/numeric fields emit a plain comparison instead of the illegal `std::string(enum)`; was: property-access wrapped unconditionally → `no matching function for call to 'std::string::basic_string(const Unit&)'`), B (ownership const-content demotion is now resolved **per lexical scope** in a single combined pass with scope-local maps — was: two separate global passes over flat name-keyed maps, so a read-only `const` Map in one function collided with a same-named binding mutated in a sibling function and was wrongly demoted; cross-scope `let` reassignment still suppresses `ownership-suggest-const` via a program-wide assigned-names set). No new lint rule (compile-time fixes). | `tests/packages/transpiler/demo-16-regressions.test.ts` |
 
 ### Highest-value untested areas (candidates for future demos)
 

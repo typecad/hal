@@ -1,53 +1,13 @@
 {
   "version": 1,
-  "toolchainFingerprint": "ff82d50c093f4e7a",
+  "toolchainFingerprint": "9c985bf730523939",
   "rootDir": "C:\\typecad\\typecode\\demo\\src",
   "files": {
-    "C:\\typecad\\typecode\\demo\\src\\models\\Classes.ts": {
-      "hash": "defad57d1df7d248",
-      "mtime": 1781623586478.8447,
-      "size": 3558,
-      "dependencies": [],
-      "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Classes.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Classes.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Classes.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Classes.h.thcppmap.json"
-      ]
-    },
-    "C:\\typecad\\typecode\\demo\\src\\models\\Collections.ts": {
-      "hash": "7fb510bc2fb881e0",
-      "mtime": 1781621579363.8237,
-      "size": 1727,
-      "dependencies": [],
-      "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Collections.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Collections.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Collections.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Collections.h.thcppmap.json"
-      ]
-    },
-    "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts": {
-      "hash": "0d4997950f9c7330",
-      "mtime": 1781621104361.375,
-      "size": 1528,
-      "dependencies": [],
-      "outputs": [
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.cpp",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.h",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.cpp.thcppmap.json",
-        "C:\\typecad\\typecode\\demo\\src\\out\\.build\\Types.h.thcppmap.json"
-      ]
-    },
     "C:\\typecad\\typecode\\demo\\src\\main.ts": {
-      "hash": "b55b2a573af90be5",
-      "mtime": 1781621782135.4963,
-      "size": 2659,
-      "dependencies": [
-        "C:\\typecad\\typecode\\demo\\src\\models\\Classes.ts",
-        "C:\\typecad\\typecode\\demo\\src\\models\\Collections.ts",
-        "C:\\typecad\\typecode\\demo\\src\\models\\Types.ts"
-      ],
+      "hash": "b267c3d14999396a",
+      "mtime": 1781654791220.978,
+      "size": 6940,
+      "dependencies": [],
       "outputs": [
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.cpp",
         "C:\\typecad\\typecode\\demo\\src\\out\\.build\\main.h",
@@ -56,6 +16,6 @@
       ]
     }
   },
-  "createdAt": 1781623603422,
-  "updatedAt": 1781623604507
+  "createdAt": 1781655372944,
+  "updatedAt": 1781655373954
 }

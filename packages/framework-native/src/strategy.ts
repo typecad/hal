@@ -513,6 +513,11 @@ export class NativeStrategy implements PlatformStrategy {
           'template<typename K, typename V> std::vector<K> __tc_mapKeys(const std::map<K, V>& m) { std::vector<K> keys; for (const auto& p : m) keys.push_back(p.first); return keys; }',
           'template<typename K, typename V> std::vector<V> __tc_mapValues(const std::map<K, V>& m) { std::vector<V> vals; for (const auto& p : m) vals.push_back(p.second); return vals; }',
           'template<typename K, typename V> std::vector<std::pair<K, V>> __tc_mapEntries(const std::map<K, V>& m) { std::vector<std::pair<K, V>> entries; for (const auto& p : m) entries.push_back(p); return entries; }',
+          // ── Set helper methods (Set.values()/keys()/entries()) ───────────
+          // Set.values()/keys() both yield the elements; entries() yields
+          // pair<elem,elem>. (demo #15 fix A)
+          'template<typename T> std::vector<T> __tc_setValues(const std::set<T>& s) { std::vector<T> vals; for (const auto& x : s) vals.push_back(x); return vals; }',
+          'template<typename T> std::vector<std::pair<T, T>> __tc_setEntries(const std::set<T>& s) { std::vector<std::pair<T, T>> entries; for (const auto& x : s) entries.push_back({x, x}); return entries; }',
           // ── Object.fromEntries helper ───────────────────────────────
           'template<typename K, typename V> std::map<K, V> __tc_fromEntries(const std::vector<std::pair<K, V>>& entries) { std::map<K, V> result; for (const auto& p : entries) result[p.first] = p.second; return result; }',
           // ── JSON helpers ─────────────────────────────────────────────

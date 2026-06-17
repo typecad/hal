@@ -661,6 +661,241 @@ export default {
     },
 
     // -------------------------------------------------------------------------
+    // A_MAP_MUT: Mutating a field of a value fetched from a Map/Record. The
+    // transpiler lowers `const t: Task = map.get(k)` to `const Task t = map[k]`
+    // — a VALUE copy of the map element (there is no TS→C++ reference binding).
+    // So `t.field = ...` (or `t.field += ...`, `t.field++`) either mutates a
+    // local copy (silently lost) or, because the binding is `const`, is a hard
+    // C++ compile error (`assignment of member in read-only object`). Catching
+    // this at lint time avoids an opaque g++ error. Workaround: keep mutable
+    // per-entry state in a separate primitive `Map` and `.set()` it back, or
+    // erase + re-insert the whole struct. (demo #14 Finding C.)
+    // -------------------------------------------------------------------------
+    "no-map-struct-mutation": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] Mutating a field of a value fetched via Map.get() / map[key] is lost (or a compile error) in C++ — the value is a copy. Use a separate primitive Map and .set() back.",
+        },
+      },
+      create(context) {
+        // Names of variables declared via `const/let x = <expr>.get(...)` or
+        // `const/let x = someMap[key]`. Scoped per-function.
+        const mutatedGetBindings = new Set();
+
+        function isContainerGetCall(node) {
+          return (
+            node.type === "CallExpression" &&
+            node.callee.type === "MemberExpression" &&
+            !node.callee.computed &&
+            node.callee.property.type === "Identifier" &&
+            (node.callee.property.name === "get" ||
+              node.callee.property.name === "at")
+          );
+        }
+
+        function isContainerIndex(node) {
+          // `someMap[key]` element access — only meaningful as a container
+          // fetch when the object is an identifier/property-access (not an
+          // array index, which is a separate, supported case). We restrict to
+          // receivers whose name heuristically looks like a map to avoid
+          // false positives on plain arrays, but still flag `.get()`/`.at()`
+          // unconditionally below.
+          return node.type === "MemberExpression" && node.computed;
+        }
+
+        return {
+          VariableDeclarator(node) {
+            if (!node.init) return;
+            if (isContainerGetCall(node.init) && node.id.type === "Identifier") {
+              mutatedGetBindings.add(node.id.name);
+            }
+          },
+          AssignmentExpression(node) {
+            const target = node.left;
+            if (target.type !== "MemberExpression") return;
+            // `t.field = ...` where `t` is a tracked get-binding.
+            if (
+              target.object.type === "Identifier" &&
+              mutatedGetBindings.has(target.object.name)
+            ) {
+              context.report({
+                node,
+                message:
+                  "[transpiler] '" + target.object.name +
+                  "' is a value fetched from a Map (Map.get()/.at()); mutating its '" +
+                  (target.property.type === "Identifier" ? target.property.name : "[...]") +
+                  "' field is lost in C++ (the binding is a copy). Use a separate primitive Map and .set() back, or erase + re-insert the struct.",
+              });
+            }
+          },
+          UpdateExpression(node) {
+            // `t.field++` / `t.field--`
+            const target = node.argument;
+            if (target.type !== "MemberExpression") return;
+            if (
+              target.object.type === "Identifier" &&
+              mutatedGetBindings.has(target.object.name)
+            ) {
+              context.report({
+                node,
+                message:
+                  "[transpiler] '" + target.object.name +
+                  "' is a value fetched from a Map; mutating its field is lost in C++. Use a separate primitive Map and .set() back.",
+              });
+            }
+          },
+        };
+      },
+    },
+
+    // -------------------------------------------------------------------------
+    // A_const_coll: a `const`-bound Map/Set/ReadonlyMap/ReadonlySet mutated
+    // via .set()/.add()/.delete()/.clear(). TS permits this (const binds the
+    // reference, not the contents), but the emitted `const std::map`/`std::set`
+    // rejects these mutators, so the transpiler demotes the binding to non-const
+    // (ownership-const-content-mutated info). This rule surfaces it at lint time
+    // so the author can express the intent with `let` instead. (demo #15 fix C)
+    // -------------------------------------------------------------------------
+    "no-mutating-method-on-const-collection": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] A const-bound Map/Set mutated via .set()/.add()/.delete()/.clear() is demoted to non-const in C++. Prefer `let` to express intent, or don't mutate a collection you declared const.",
+        },
+      },
+      create(context) {
+        const constCollections = new Map(); // name -> typeName
+        const COLLECTION_TYPES = new Set(["Map", "Set", "ReadonlyMap", "ReadonlySet"]);
+        const MUTATORS = new Set(["set", "add", "delete", "clear"]);
+        function collectionName(typeAnnotation) {
+          if (!typeAnnotation) return null;
+          let t = typeAnnotation;
+          if (t.type === "TSTypeAnnotation") t = t.typeAnnotation;
+          if (t && t.type === "TSTypeReference" && t.typeName.type === "Identifier" && COLLECTION_TYPES.has(t.typeName.name)) {
+            return t.typeName.name;
+          }
+          return null;
+        }
+        return {
+          VariableDeclarator(node) {
+            if (node.parent && node.parent.kind === "const" && node.id.type === "Identifier") {
+              const cName = collectionName(node.id.typeAnnotation);
+              if (cName) constCollections.set(node.id.name, cName);
+            }
+          },
+          CallExpression(node) {
+            const callee = node.callee;
+            if (callee.type !== "MemberExpression" || callee.computed) return;
+            if (callee.object.type !== "Identifier") return;
+            if (!constCollections.has(callee.object.name)) return;
+            if (callee.property.type !== "Identifier" || !MUTATORS.has(callee.property.name)) return;
+            context.report({ node, message: "[transpiler] '" + callee.object.name + "' is a const " + constCollections.get(callee.object.name) + " mutated via ." + callee.property.name + "() — the C++ binding is demoted to non-const. Declare it with `let` to express the mutation intent, or avoid mutating a collection you declared const." });
+          },
+        };
+      },
+    },
+
+    // -------------------------------------------------------------------------
+    // A_loop_var: a `for (const t of arr)` (or `for...in`) loop whose body
+    // mutates a field or index of `t` (`t.field = ...`, `t[i] = ...`,
+    // `t.field++`). TypeScript permits this (`const` binds the name, not the
+    // value's contents), and the transpiler auto-demotes the loop variable to
+    // a non-const C++ reference (`for (T& t : ...)`) so the mutation compiles
+    // and writes through to the container element (matching TS semantics).
+    // This rule surfaces that auto-demotion at lint time so the author can
+    // express the intent with `let` — the same surfacing pattern as
+    // `no-mutating-method-on-const-collection` (demo #15 fix C). (demo #17 fix)
+    // -------------------------------------------------------------------------
+    "no-readonly-loop-variable-mutation": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] A const for/for-in loop variable mutated in the body is demoted to a non-const reference in C++. Prefer `let` to express the mutation intent.",
+        },
+      },
+      create(context) {
+        // Stack of active `const` loop-variable names, scoped to each loop
+        // body. A name is pushed on entering a `for (const t of/in ...)` and
+        // popped on exit, so it never leaks to sibling loops or outer code.
+        // A nested loop shadows an outer same-named loop var correctly because
+        // the inner name is pushed on top.
+        const loopVarStack = [];
+
+        function baseIdentifierName(node) {
+          // Resolve the base identifier being mutated: the object of a member
+          // access (`t.f` -> "t") or the object of a computed/index access
+          // (`t[i]` -> "t"). Returns null for anything that isn't a direct
+          // member/index of a bare identifier.
+          if (!node) return null;
+          if (node.type !== "MemberExpression") return null;
+          const obj = node.object;
+          if (obj.type === "Identifier") return obj.name;
+          // `this.x` etc. are not plain loop variables.
+          return null;
+        }
+
+        function reportIfLoopVar(target, node) {
+          const name = baseIdentifierName(target);
+          if (!name) return;
+          const top = loopVarStack[loopVarStack.length - 1];
+          if (top && top.has(name)) {
+            context.report({
+              node,
+              message:
+                "[transpiler] '" + name +
+                "' is a const loop variable mutated in the loop body — the C++ binding is demoted to a non-const reference (T&). Use `let` to express the mutation intent.",
+            });
+          }
+        }
+
+        return {
+          ForOfStatement(node) {
+            const decl = node.left;
+            if (decl && decl.type === "VariableDeclaration" && decl.kind === "const") {
+              const names = new Set();
+              for (const d of decl.declarations) {
+                if (d.id && d.id.type === "Identifier") names.add(d.id.name);
+              }
+              loopVarStack.push(names);
+            } else {
+              loopVarStack.push(new Set());
+            }
+          },
+          "ForOfStatement:exit"() {
+            loopVarStack.pop();
+          },
+          ForInStatement(node) {
+            const decl = node.left;
+            if (decl && decl.type === "VariableDeclaration" && decl.kind === "const") {
+              const names = new Set();
+              for (const d of decl.declarations) {
+                if (d.id && d.id.type === "Identifier") names.add(d.id.name);
+              }
+              loopVarStack.push(names);
+            } else {
+              loopVarStack.push(new Set());
+            }
+          },
+          "ForInStatement:exit"() {
+            loopVarStack.pop();
+          },
+          AssignmentExpression(node) {
+            // `t.field = ...` or `t[i] = ...`
+            reportIfLoopVar(node.left, node);
+          },
+          UpdateExpression(node) {
+            // `t.field++` / `t[i]--`
+            reportIfLoopVar(node.argument, node);
+          },
+        };
+      },
+    },
+
+    // -------------------------------------------------------------------------
     // A7: `=== undefined` / `!== undefined` (and == / != null) on a struct or
     // interface member access (`obj.prop`). An optional interface field
     // (`prop?: T`) flattens to a plain `T` in the emitted C++ struct (SUPPORT

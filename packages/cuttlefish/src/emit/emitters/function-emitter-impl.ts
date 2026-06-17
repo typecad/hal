@@ -134,32 +134,10 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
 export function emitCallbackFunctions(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, topLevelScope } = ctx;
 
-  // Forward declarations (non-split mode)
-  if (effectiveEmitMode !== "split") {
-    const excludedNames = new Set(strategy.forwardDeclarationExclusions?.() ?? []);
-    for (const callback of ctx.callbackFunctions) {
-      appendSourceLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}${renderCallbackSignature(callback)};`);
-    }
-    for (const fn of ctx.mappedFunctions) {
-      if (excludedNames.has(fn.name)) continue;
-      const fnExported = fn.isExported === true;
-      const fnEntrypoint = fn.name === strategy.entrypointFunctionName();
-      const fnNeedsStatic = !fnExported && !fnEntrypoint;
-      const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
-      const fwdLinkagePrefix = fnNeedsStatic ? "static " : "";
-      if (fn.typeParameters && fn.typeParameters.length > 0) {
-        appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
-      }
-      appendSourceLine(ctx, `${fwdLinkagePrefix}${ctx.statementRenderer.mapReturnTypeForEmit(fn.name, fn.returnType)} ${fn.name}(${declarationParameterList});`, {
-        tsSpan: fn.sourceSpan,
-        nodeKind: "function_declaration",
-        symbolName: fn.name,
-      });
-    }
-    if (ctx.callbackFunctions.length > 0 || ctx.mappedFunctions.some((fn) => !new Set(strategy.forwardDeclarationExclusions?.() ?? []).has(fn.name))) {
-      appendSourceLine(ctx, "");
-    }
-  }
+  // NOTE: forward declarations for callbacks and free functions are now emitted
+  // BEFORE class bodies by emitFunctionForwardDeclarations (cpp-emitter step
+  // 6.5). This function emits only the callback DEFINITIONS (plus split-mode
+  // header prototypes, which belong with the public API).
 
   // Emit callback functions
   for (const callback of ctx.callbackFunctions) {
@@ -209,37 +187,11 @@ function renderCallbackSignature(callback: { name: string; returnType?: string; 
 export function emitFunctions(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, mappedFunctions, topLevelScope, hasPromiseRuntime, asyncTaskClasses, usesTimers } = ctx;
 
-  // Emit forward declarations for static (non-exported) functions in source file.
-  // In non-split mode, this is handled by emitCallbackFunctions. In split mode,
-  // we need to do it here because static functions don't go in the header.
-  if (effectiveEmitMode === "split") {
-    const excludedNames = new Set(strategy.forwardDeclarationExclusions?.() ?? []);
-    for (const fn of mappedFunctions) {
-      if (excludedNames.has(fn.name)) continue;
-      const isExported = fn.isExported === true;
-      const isEntrypoint = fn.name === strategy.entrypointFunctionName();
-      if (isExported || isEntrypoint) continue;
-      const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
-      const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
-      if (fn.typeParameters && fn.typeParameters.length > 0) {
-        appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
-      }
-      const fnReturnType = fn.isGenerator ? `__tc_Generator<${fn.returnType === "void" ? "void" : ctx.statementRenderer.mapTypeForEmit(fn.returnType)}>` : `${readonlyPrefix}${ctx.statementRenderer.mapTypeForEmit(fn.returnType)}`;
-      appendSourceLine(ctx, `static ${fnReturnType} ${fn.name}(${declarationParameterList});`, {
-        tsSpan: fn.sourceSpan,
-        nodeKind: "function_declaration",
-        symbolName: fn.name,
-      });
-    }
-    const hasStaticFns = mappedFunctions.some(fn => {
-      const isExp = fn.isExported === true;
-      const isEp = fn.name === strategy.entrypointFunctionName();
-      return !isExp && !isEp && !new Set(strategy.forwardDeclarationExclusions?.() ?? []).has(fn.name);
-    });
-    if (hasStaticFns) {
-      appendSourceLine(ctx, "");
-    }
-  }
+  // NOTE: source-level forward declarations (non-split free fns + split-mode
+  // static fns) are now emitted BEFORE class bodies by
+  // emitFunctionForwardDeclarations (cpp-emitter step 6.5). This function
+  // emits function DEFINITIONS and the split-mode header prototypes for
+  // exported functions (which ride along with their definition below).
 
   for (let fi = 0; fi < mappedFunctions.length; fi++) {
     const fn = mappedFunctions[fi];
@@ -248,7 +200,14 @@ export function emitFunctions(ctx: EmitterContext): void {
     const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
     const isExported = fn.isExported === true;
     const isEntrypoint = fn.name === strategy.entrypointFunctionName();
-    const needsStatic = !isExported && !isEntrypoint;
+    // Demo #18 Finding B: a non-exported free function that is CALLED from a
+    // class method body must be visible in the header (inline method bodies
+    // live there in split mode) and defined non-static in the .cpp (a `static`
+    // definition would clash with the header's extern prototype). The header
+    // prototype is emitted in emitFunctionForwardDeclarations (which runs
+    // before classes); here we only drop the `static` from the definition.
+    const calledFromClassMethod = ctx.freeFunctionsCalledFromClassMethods.has(fn.name);
+    const needsStatic = !isExported && !isEntrypoint && !calledFromClassMethod;
 
     if (effectiveEmitMode === "split") {
       if (isExported) {
@@ -361,6 +320,102 @@ export function emitFunctions(ctx: EmitterContext): void {
   }
 }
 
-export function emitFunctionForwardDeclarations(_ctx: EmitterContext): void {
-  // Placeholder — forward declarations are emitted inline by other functions.
+/**
+ * Emit forward declarations for ALL free functions (and ISR callbacks) BEFORE
+ * class bodies. A class method may call a free function declared later in the
+ * same source file; if that function's forward declaration only appears after
+ * the class (as it did historically via emitCallbackFunctions/emitFunctions),
+ * g++ reports "'fn' was not declared in this scope" inside the class body.
+ *
+ * This runs at cpp-emitter.ts step 6.5, ahead of emitClasses (step 7). The
+ * definition-only emission in emitCallbackFunctions/emitFunctions below no
+ * longer re-emits these declarations (they are dropped there to avoid
+ * duplicates). Template/generic functions get template prototypes here so
+ * earlier functions can call them before their definitions later in the same
+ * translation unit.
+ */
+export function emitFunctionForwardDeclarations(ctx: EmitterContext): void {
+  const { strategy, effectiveEmitMode } = ctx;
+  const excludedNames = new Set(strategy.forwardDeclarationExclusions?.() ?? []);
+
+  // ISR callback forward declarations.
+  if (effectiveEmitMode !== "split") {
+    for (const callback of ctx.callbackFunctions) {
+      appendSourceLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}${renderCallbackSignature(callback)};`);
+    }
+  }
+
+  let emittedAnyFn = false;
+  for (const fn of ctx.mappedFunctions) {
+    if (excludedNames.has(fn.name)) continue;
+    const isExported = fn.isExported === true;
+    const isEntrypoint = fn.name === strategy.entrypointFunctionName();
+    // Demo #18 Finding B: a free function called from a class method body is
+    // forward-declared in the HEADER (like an exported function) — this step
+    // runs BEFORE emitClasses, so the prototype precedes the class body that
+    // references it. It must NOT also get a `static` source-level forward decl.
+    const calledFromClassMethod = ctx.freeFunctionsCalledFromClassMethods.has(fn.name);
+
+    // Exported functions and class-method-called free functions are forward-
+    // declared in the HEADER (above). Only static (non-exported) functions
+    // that are NOT called from a class method need a source-level forward decl.
+    if (effectiveEmitMode === "split" && calledFromClassMethod) {
+      const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
+      const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
+      const fnReturnType = fn.isGenerator
+        ? `__tc_Generator<${fn.returnType === "void" ? "void" : ctx.statementRenderer.mapTypeForEmit(fn.returnType)}>`
+        : `${readonlyPrefix}${ctx.statementRenderer.mapReturnTypeForEmit(fn.name, fn.returnType)}`;
+      if (fn.typeParameters && fn.typeParameters.length > 0) {
+        const typeParams = fn.typeParameters.join(", typename ");
+        appendHeaderLine(ctx, `template<typename ${typeParams}>`);
+      }
+      appendHeaderLine(ctx, `${fnReturnType} ${fn.name}(${declarationParameterList});`, {
+        tsSpan: fn.sourceSpan,
+        nodeKind: "function_declaration",
+        symbolName: fn.name,
+      });
+      emittedAnyFn = true;
+      continue;
+    }
+    if (effectiveEmitMode === "split" && (isExported || isEntrypoint)) continue;
+
+    const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
+    const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
+    const fnReturnType = fn.isGenerator
+      ? `__tc_Generator<${fn.returnType === "void" ? "void" : ctx.statementRenderer.mapTypeForEmit(fn.returnType)}>`
+      : `${readonlyPrefix}${ctx.statementRenderer.mapReturnTypeForEmit(fn.name, fn.returnType)}`;
+
+    if (fn.typeParameters && fn.typeParameters.length > 0) {
+      const fnNeedsStatic = !isExported && !isEntrypoint;
+      const typeParams = fn.typeParameters.join(", typename ");
+      appendSourceLine(ctx, `template<typename ${typeParams}>`);
+      appendSourceLine(ctx, `${fnNeedsStatic ? "static " : ""}${fnReturnType} ${fn.name}(${declarationParameterList});`, {
+        tsSpan: fn.sourceSpan,
+        nodeKind: "function_declaration",
+        symbolName: fn.name,
+      });
+      emittedAnyFn = true;
+      continue;
+    }
+
+    if (effectiveEmitMode === "split") {
+      appendSourceLine(ctx, `static ${fnReturnType} ${fn.name}(${declarationParameterList});`, {
+        tsSpan: fn.sourceSpan,
+        nodeKind: "function_declaration",
+        symbolName: fn.name,
+      });
+    } else {
+      const fnNeedsStatic = !isExported && !isEntrypoint;
+      appendSourceLine(ctx, `${fnNeedsStatic ? "static " : ""}${fnReturnType} ${fn.name}(${declarationParameterList});`, {
+        tsSpan: fn.sourceSpan,
+        nodeKind: "function_declaration",
+        symbolName: fn.name,
+      });
+    }
+    emittedAnyFn = true;
+  }
+
+  if (ctx.callbackFunctions.length > 0 || emittedAnyFn) {
+    appendSourceLine(ctx, "");
+  }
 }

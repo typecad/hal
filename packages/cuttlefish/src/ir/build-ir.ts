@@ -5,12 +5,13 @@ import { parseSource } from "../ast/parse";
 import { Diagnostic } from "../types";
 import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api";
 import { isStringEnum } from "../api/shared";
+import type { ParameterIR } from "../api/shared/ir-core";
 import { makeDiagnostic } from "./ast-node-utils";
 import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { prescanUnsupportedFeatures } from "./feature-prescan";
@@ -20,6 +21,73 @@ import { functionDeclarationToIR, variableAsFunctionToIR } from "./function-buil
 
 function normalizeEntrypointSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __cuttlefish_entrypoint__(");
+}
+
+/**
+ * Synthesize forwarding constructors for subclasses that declare none.
+ *
+ * C++ does not inherit constructors. A TS subclass `class B extends A {}` with
+ * no explicit `constructor` previously lowered to a C++ class with NO
+ * constructor at all, so `new B(args)` failed (`no matching function for call`)
+ * and base parameter-property initialization was skipped. For each such
+ * subclass we synthesize a constructor that mirrors the base's parameter
+ * signature and forwards every argument via a synthesized `super_call`. If the
+ * base is default-constructible (no constructor), we synthesize an empty
+ * constructor so `new B()` still works.
+ *
+ * Bases may live in another file; they are resolved from the local `classes`
+ * list first, then from `topLevelClasses` (which carries prebuilt/cross-file
+ * ClassIR). Demo #14 Finding B.
+ */
+function synthesizeSubclassConstructors(classes: ClassIR[]): void {
+  for (const cls of classes) {
+    if (cls.constructor || !cls.extendsClass) continue;
+    // The extendsClass text may carry template args (e.g. "Generic<std::string>");
+    // the base class name is the identifier before any '<'.
+    const baseName = cls.extendsClass.split("<")[0].trim();
+    const base =
+      classes.find((c) => c.name === baseName) ??
+      topLevelClasses.get(baseName);
+    if (!base) continue;
+
+    if (base.constructor && base.constructor.parameters.length > 0) {
+      // Mirror the base parameter list, forwarding each as a super_call arg.
+      const fwdParams: ParameterIR[] = base.constructor.parameters.map((p) => ({
+        name: p.name,
+        cppType: p.cppType,
+        defaultValue: p.defaultValue,
+        isRest: p.isRest,
+        ...(p.ownershipKind ? { ownershipKind: p.ownershipKind } : {}),
+      }));
+      const superArgs = base.constructor.parameters.map((p) => ({
+        kind: "identifier" as const,
+        value: p.name,
+      }));
+      const syntheticSpan = {
+        filePath: cls.name,
+        startOffset: 0,
+        endOffset: 0,
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 1,
+      };
+      cls.constructor = {
+        parameters: fwdParams,
+        statements: [
+          {
+            kind: "super_call",
+            sourceSpan: syntheticSpan,
+            args: superArgs,
+          },
+        ],
+      };
+    } else {
+      // Base is default-constructible; synthesize an empty ctor so the
+      // emitter produces `B() { }` rather than nothing.
+      cls.constructor = { parameters: [], statements: [] };
+    }
+  }
 }
 
 function scanSourceForEnumNames(src: string): Set<string> {
@@ -91,6 +159,16 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     if (!statement.name) continue;
     topLevelClassNames.add(statement.name.text);
     classTypeNames.add(statement.name.text);
+  }
+  // Phase 0b: Pre-scan for top-level interface names. Interfaces lower to C++
+  // structs (value types), so a variable of an interface type is a value —
+  // never null. Registering the names here (before any statement lowering)
+  // lets the null-comparison guard in expression-to-ir recognise such values
+  // as value types. Demo #18 Finding A.
+  for (const statement of source.statements) {
+    if (ts.isInterfaceDeclaration(statement) && statement.name) {
+      topLevelInterfaceNames.add(statement.name.text);
+    }
   }
   for (const statement of localClassDeclarations) {
     // We don't build full IR yet, just enough for type mapping. All local
@@ -481,7 +559,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         normalizedSourceText,
         node.pos,
         "Top-level node currently unsupported and skipped.",
-        "warning",
+        "error",
         "TS2CPP_UNSUPPORTED_TOPLEVEL",
       ),
     );
@@ -492,6 +570,14 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
   // Collect any nested classes that were hoisted during IR building
   classes.push(...hoistedNestedClasses);
+
+  // Synthesize forwarding constructors for subclasses that don't declare one.
+  // A subclass `class B extends A {}` with no explicit constructor previously
+  // emitted NO constructor, so `new B(args)` failed (no matching ctor) and any
+  // base parameter-property initialization was lost. C++ has no implicit
+  // inherited constructor: we must synthesize one that mirrors the base's
+  // signature and forwards via a super_call. See demo #14 Finding B.
+  synthesizeSubclassConstructors(classes);
 
   // Collect any nested enums that were hoisted during IR building
   enums.push(...hoistedNestedEnums);
@@ -524,6 +610,15 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
     interfaces.length = 0;
     interfaces.push(...ifaceMap.values());
+  }
+
+  // Record top-level interface names. Interfaces lower to C++ structs (value
+  // types), so a local/param of an interface type is a value — never null. The
+  // null-comparison guard in expression-to-ir consults this set to recognise
+  // such a value as a value type (topLevelClassNames holds only classes, which
+  // are always pointer/reference types). Demo #18 Finding A.
+  for (const iface of interfaces) {
+    topLevelInterfaceNames.add(iface.name);
   }
 
   // Merge duplicate namespace declarations

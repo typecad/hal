@@ -50,6 +50,8 @@ export function filterProgramIR(
   // Demo #8 fix F (tuples); demo #10 fix A (utility-type aliases).
   const filteredTypeAliases = program.typeAliases.filter((typeAlias) => {
     if (reachability.reachableTypeAliases.has(typeAlias.name)) return true;
+    if (typeAlias.structFields && typeAlias.structFields.length > 0) return true;
+    if (typeAlias.variantStructs && typeAlias.variantStructs.length > 0) return true;
     const cpp = typeAlias.cppType ?? "auto";
     if (cpp === "auto") return false;
     // Container/primitive prefixes (std::tuple, std::vector, etc.).

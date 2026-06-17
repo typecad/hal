@@ -132,7 +132,8 @@ describe("Feature Pre-Scan", () => {
     expect(diags.length).toBeGreaterThanOrEqual(1);
     const diag = diags.find((d) => d.message.includes("Partial"));
     expect(diag).toBeDefined();
-    expect(diag!.code).toBe("TS2CPP_NO_EQUIVALENT");
+    expect(diag!.code).toBe("TS2CPP_APPROXIMATE");
+    expect(diag!.severity).toBe("warning");
   });
 
   it("detects Pick utility type", () => {
@@ -140,15 +141,27 @@ describe("Feature Pre-Scan", () => {
     expect(diags.length).toBeGreaterThanOrEqual(1);
     const diag = diags.find((d) => d.message.includes("Pick"));
     expect(diag).toBeDefined();
-    expect(diag!.code).toBe("TS2CPP_NO_EQUIVALENT");
+    expect(diag!.code).toBe("TS2CPP_APPROXIMATE");
+    expect(diag!.severity).toBe("warning");
   });
 
-  it("detects string enum values", () => {
-    const diags = prescan(`enum Status { Active = 'ACTIVE', Inactive = 'INACTIVE' }\n`);
+  it("rejects ReturnType utility type", () => {
+    const diags = prescan(`type R = ReturnType<() => number>;\n`);
     expect(diags.length).toBeGreaterThanOrEqual(1);
-    const diag = diags.find((d) => d.message.includes("String-valued enum"));
+    const diag = diags.find((d) => d.message.includes("ReturnType"));
     expect(diag).toBeDefined();
     expect(diag!.code).toBe("TS2CPP_NO_EQUIVALENT");
+    expect(diag!.severity).toBe("error");
+  });
+
+  it("does not flag string enum values (lowered to a namespace of constexpr)", () => {
+    // String enums ARE supported: type-decl-emitter lowers them to
+    // `namespace EnumName { constexpr const char* Member = "..."; }`. The
+    // historical TS2CPP_NO_EQUIVALENT warning was stale and is removed
+    // (demo #14 Finding F). Prescan must NOT warn.
+    const diags = prescan(`enum Status { Active = 'ACTIVE', Inactive = 'INACTIVE' }\n`);
+    const stringEnumDiag = diags.find((d) => d.message.includes("String-valued enum"));
+    expect(stringEnumDiag).toBeUndefined();
   });
 
   it("does not flag integer enum values", () => {
@@ -186,10 +199,12 @@ describe("Feature Pre-Scan", () => {
       const merged = { ...{ id: '1' }, ...{ status: 'ok' } } as any;
     `);
     const messages = diags.map((d) => d.message);
-    expect(messages.some((m) => m.includes("String-valued enum"))).toBe(true);
+    // String enums are now SUPPORTED (lowered to a namespace of constexpr),
+    // so they must NOT be flagged here (demo #14 Finding F).
+    expect(messages.some((m) => m.includes("String-valued enum"))).toBe(false);
     expect(messages.some((m) => m.includes("Partial"))).toBe(true);
     expect(messages.some((m) => m.includes("keyof"))).toBe(true);
     expect(messages.some((m) => m.includes("spread"))).toBe(true);
-    expect(diags.length).toBeGreaterThanOrEqual(4);
+    expect(diags.length).toBeGreaterThanOrEqual(3);
   });
 });

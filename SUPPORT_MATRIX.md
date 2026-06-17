@@ -11,7 +11,7 @@ This document is the canonical reference used to classify any reported behavior 
   as bugs; report *missing* lowering as a feature request.
 - ⚠️ **Future / stretch** — known gap with a plausible path to support, but not implemented.
   Not a bug.
-- ❌ **Unsupported by design** — lowered to a placeholder and emits `TS2CPP_UNSUPPORTED_*`.
+- ❌ **Unsupported by design** — rejected by the transpiler or lint gate with a source-located diagnostic.
   This is intentional; do not file as a bug. See the rationale.
 - 🚫 **Never** — cannot meaningfully be transpiled due to a fundamental language/platform
   mismatch. Out of scope, permanently.
@@ -83,9 +83,9 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | String + string concat | ✅ | Lowers to `snprintf` on all targets (unified concat path — native and Arduino/AVR share one snprintf-based lowering so enums, floats, and objects never hit `std::to_string`). `tests/expressions.test.ts:198`. |
 | String + number concat | ✅ | |
 | String + boolean concat | ✅ | |
-| Template literal `` `x = ${a}` `` | ✅ | Lowers to stack `char[]` + `snprintf`, preserving TS var names (CLAUDE.md convention). |
+| Template literal `` `x = ${a}` `` | ✅ | Lowers to stack `char[]` + `snprintf`, preserving TS var names (CLAUDE.md convention). The format specifier (`%d`/`%s`/`%lld`/`%f`) and `.c_str()` for `std::string` operands are inferred from each interpolation's resolved C++ type. **Demo #18 fix C** — interpolating a **struct field** (e.g. `${a.id}`, `${a.name}`) inside a class method now infers the correct specifier from the field's *declared* type, not a value-inferred/strategy-normalized one. Previously, emitting a named-typed object literal (`const a: Account = {...}`) clobbered the interface's authoritative field-type map with inferred types that — after the native `normalizeCppType` (`int`→`long long`) — collapsed every field to `long long`, silently producing `%lld` for everything and omitting `.c_str()` for strings. The object-literal emitter no longer overwrites an existing declared field-type entry. `tests/packages/transpiler/demo-18-regressions.test.ts` (Finding C). |
 | Nested template literals / complex `${}` | ✅ | |
-| **Tagged template** `` tag`...` `` | ❌ | `emitUnsupportedExpression("Tagged template expressions are unsupported…")` (`expression-to-ir.ts:1651`). There is no meaningful C++ lowering for a tag function. |
+| **Tagged template** `` tag`...` `` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). There is no meaningful C++ lowering for a tag function; use an untagged template literal or string concatenation. |
 | `string` type → `std::string` everywhere | ✅ | |
 
 ### 1.5 Arrays & collections
@@ -98,16 +98,25 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `new Uint8Array([...])`, `Int16Array`, etc. | ✅ → C-style `uint8_t[]` | `TYPED_ARRAY_ELEMENT_MAP`. `tests/transpiler-type-gaps.test.ts:68`. |
 | `new Float32Array(n)` zero-init | ✅ | |
 | Typed array type annotation → pointer (`uint8_t*`) | ✅ | |
-| `.length` on typed array | ✅ → `sizeof(arr)/sizeof(arr[0])` | `tests/transpiler-type-gaps.test.ts:352`. |
+| `.length` on local typed array | ✅ → `sizeof(arr)/sizeof(arr[0])` | `tests/transpiler-type-gaps.test.ts:352`. `.length` on a typed-array **parameter** is a **build error** (`TS2CPP_TYPED_ARRAY_PARAM_LENGTH`) because the pointer-like C++ parameter does not carry length; pass length explicitly. |
 | Array literal `[1, 2, 3]` | ✅ | Element type inferred from contents. |
 | Spread in array `[...a, b]` | ✅ | `tests/transpiler-type-gaps.test.ts:392`. |
 | Mutable array methods (`push`/`pop`/`indexOf`) | ✅ | Promotes backing storage to `StaticArray` (`ARRAY_METHODS_REQUIRING_STATIC_ARRAY`). |
 | `[T]` tuple type | ✅ → `std::tuple<T>` | `type-resolution.ts:374`. Demo #8 fix F — a type alias to a tuple/container (`type P = [K, V]`) now survives tree-shaking and emits a `using` (was dropped because the resolved cppType contained no identifier for the call graph to see). **Caveat:** tuple *literals* (`const t: Tuple = ['a', 1]`) lower to a C array, not a `std::tuple` constructor — return an interface for tuple values. |
 | `Map<K,V>` / `ReadonlyMap` | ✅ → `std::map<K,V>` | |
+| `Map.get(k)` / `map.get(k)!` | ✅ → `m.at(k)` | Const-correct `std::map::at` (has a `const` overload, throws on miss) — NOT `operator[]`, which is non-const (fails on a `const`-bound Map) and silently inserts a default on a miss. The idiomatic `map.get(k)!` asserts presence, matching `.at()`'s contract. Comparing `.get()`/`.at()` to `null`/`undefined` or using it as the left side of `??` is a **build error** (`TS2CPP_GET_NULLISH_COMPARE`); use `.has(key)` first or return an explicit presence/value struct. Demo #15 fix B (`ir/expression-to-ir.ts`). |
+| `Map.set(k,v)` | ✅ → `(m[k] = v)` | Statement form lowers to an `assign` with target `m[k]`. |
+| `Map.has(k)` / `Set.has(k)` | ✅ → `m.count(k) > 0` | |
+| `Map.delete(k)` / `Set.delete(k)` | ✅ → `m.erase(k) > 0` | |
+| `Map.values()` / `.keys()` / `.entries()` | ✅ → `__tc_mapValues` / `__tc_mapKeys` / `__tc_mapEntries` | Lowered to the same runtime helpers as `Object.values(map)` (defined in `framework-native/src/strategy.ts`), returning `std::vector<V>`/`<K>`/`<std::pair<K,V>>`. A `for...of` therefore iterates the **values/keys/pairs**, not the raw `std::pair` entries of the underlying `std::map`. Demo #15 fix A (`ir/expression-to-ir.ts`). Native only (helpers are `std::vector`/`std::map` based). |
+| `Set.values()` / `.keys()` / `.entries()` | ✅ → `__tc_setValues` / `__tc_setEntries` | `values()`/`keys()` both yield the elements; `entries()` yields `pair<elem,elem>`. Demo #15 fix A. Native only. |
+| `Set.add(k)` | ✅ → `s.insert(k)` | |
+| Mutating a struct fetched via `Map.get()` / `map[key]` | 🚫 | **Build error** (`TS2CPP_MAP_VALUE_COPY_MUTATION`) and lint error (`cuttlefish/no-map-struct-mutation`). There is no TS→C++ reference binding: `const t: Task = map.get(k)` lowers to `const Task t = map.at(k)` — a VALUE copy of the element. Mutating `t.field` is silently lost, and on a `const` binding is a hard g++ error. **Workaround:** keep mutable per-entry state in a separate primitive `Map<K, V>` and `.set()` it back, or replace the whole struct entry with `.set(key, nextValue)`. Demo #14 Finding C. |
+| `const`-bound `Map`/`Set` mutated via `.set()`/`.add()`/`.delete()`/`.clear()` | ✅ (auto-demoted, scope-local) | TS permits this (`const` binds the reference, not the contents), but the emitted `const std::map`/`std::set` rejects these mutators, so the binding is **demoted to non-const** with an `ownership-const-content-mutated` info diagnostic (`ir/ownership-analysis.ts`). Demotion is resolved **per lexical scope** (each function body walked in a single combined pass with scope-local maps), so a mutation in one function never demotes a same-named `const` in a sibling function (demo #16 fix B). The demotion walk now reaches **class methods, getters, setters, constructors, and namespace-scoped functions** (not just top-level statements and free `function`s) — demo #17 fix. The ESLint rule **`no-mutating-method-on-const-collection`** (warn) surfaces it at lint time so the author can use `let` to express intent. Demo #15 fix C + demo #16 fix B + demo #17. |
 | `Set<T>` / `ReadonlySet` | ✅ → `std::set<T>` | |
 | `Record<K,V>` | ✅ → `std::map<K,V>` | |
 | 2D arrays `T[][]` | 🟡 | Lowered as `std::vector<std::vector<T>>`; works but uncommon on AVR (heap concern). |
-| Associative array access `obj["key"]` | ✅ when target is `std::map`/struct | |
+| Associative array access `obj["key"]` | ✅ when target is `std::map`/`Record` | Dynamic string-key access on fixed-shape structs/interfaces is a **build error** (`TS2CPP_DYNAMIC_OBJECT_KEY`); use `obj.field` for fixed fields or `Map<string, T>` / `Record<string, T>` for dynamic keys. |
 | Heterogeneous array literal `[1, "a"]` | 🚫 | **Build error** (`TS2CPP_HETEROGENEOUS_ARRAY`). The semantic-gate pass (`orchestrator/type-checker.ts runSemanticGates`) detects array literals whose elements resolve to >1 incompatible kind (numeric vs string vs object) and aborts the build with a source-located `Diagnostic`. Numeric/bool widening is accepted (`[1, true]` → `std::vector<int>`). Declare an explicit tuple type (`[number, string]`) for intentionally mixed elements — tuple contextual types are exempt. |
 | `any` annotation (explicit) | 🚫 | **Build error** (`TS2CPP_EXPLICIT_ANY`). Flagged by the syntactic feature-prescan (`feature-registry.ts AnyKeyword`) on every `any` token; also enforced as an ESLint error in scaffolded projects. Use a concrete type, or `unknown` with type-guard narrowing. (`any` previously lowered silently to `auto` — now a hard error.) |
 
@@ -116,7 +125,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | Pattern | Status | Notes |
 |---|---|---|
 | Object literal `{ a: 1, b: 2 }` | ✅ | Emitted as struct initializer. `tests/expressions.test.ts:517`. |
-| Object with spread `{ ...a, b: 2 }` | ✅ | Multiple spread sources supported. |
+| Object with spread `{ ...a, b: 2 }` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`) and ESLint error. The previous `__spread__` lowering did not implement JS spread semantics and could produce malformed C++; construct the object field-by-field instead. |
 | `interface Foo { ... }` | ✅ → C++ `struct` | `declaration-builders.ts` via `interfaceDeclarationToIR`. |
 | Interface with index signature | ✅ → `std::map` field inside struct | `tests/expressions.test.ts:711`. |
 | Interface with numeric keys | ✅ | |
@@ -126,11 +135,11 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `implements Interface` | 🟡 | Recorded in IR (`implementsInterfaces`) but **not enforced** as virtual methods; struct shape is emitted. |
 | `new SomeInterface()` | 🚫 | **Build error** (`TS2CPP_NEW_ON_INTERFACE`). Interfaces are type-only (no value symbol); `new IFoo()` is rejected by the semantic-gate pass (`orchestrator/type-checker.ts runSemanticGates`) before emit, resolving the target across files via the TypeChecker and a program-wide interface-name set. Only `new SomeClass()` is supported. (Previously lowered verbatim and relied on the C++ compiler to fail with an opaque message.) |
 | Discriminated union of object literals | 🟡 → `std::variant<...>` with generated variant structs | `tests/new-features.test.ts:293`. Demo #9 — the `<variant>` include is now registered. **Caveat:** member access on a union (`m.kind`, `m.payload`) is rejected by the `TS2CPP_UNION_MEMBER_ACCESS` semantic gate (`std::variant` has no direct member access — use a struct with a discriminator field). |
-| `keyof T` | 🟡 → `auto` | No C++ equivalent; lowered loosely. |
-| Indexed access type `T[K]` | 🟡 → `auto` | `:451`. |
-| Conditional type `T extends U ? X : Y` | 🟡 → resolves true branch optimistically | `:464`. Compile-time only; runtime behavior may surprise. |
-| Mapped type `{ [P in keyof T]: ... }` | 🟡 → resolves to source type name | `:235`. |
-| Template literal type `` `${X}` `` | 🚫 → `auto` | No C++ equivalent (`:470`). |
+| `keyof T` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). Use an enum or explicit string union/switch. |
+| Indexed access type `T[K]` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). Use the concrete field type directly. |
+| Conditional type `T extends U ? X : Y` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). Write an explicit alias or overload with concrete types. |
+| Mapped type `{ [P in keyof T]: ... }` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). Define an explicit interface/struct. |
+| Template literal type `` `${X}` `` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). Use `string` at runtime or explicit string enum values. |
 | `satisfies` operator | ✅ | Type-only, erased at emit. |
 | `as const` | ✅ | Type-only, erased. |
 
@@ -140,11 +149,11 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 
 | Pattern | Status | Notes |
 |---|---|---|
-| Numeric enum `enum E { A, B }` | ✅ | `tests/enums.test.ts:6`. |
+| Numeric enum `enum E { A, B }` | ✅ | `tests/enums.test.ts:6`. **Lint note:** scaffolded projects gate this to `const enum` only (`no-restricted-syntax: TSEnumDeclaration[const!=true]`) so enum members are inlined; plain `enum` transpiles but the scaffold eslint flags it. Use `const enum` in new code. Demo #15 note D. |
 | Enum with explicit values | ✅ | |
 | `const enum` | ✅ | |
 | Mixed explicit/implicit values | ✅ | |
-| String enum | ✅ → members as `const char*` | `activeStringEnumNames` tracking. |
+| String enum | ✅ → `namespace EnumName { constexpr const char* Member = "..."; }` | `type-decl-emitter.ts:60` lowers a string enum to a namespace of `constexpr const char*` so member access yields a `const char*` and `===`/concatenation behave like TS. `activeStringEnumNames` tracking. (Demo #14 fix F — the stale `TS2CPP_NO_EQUIVALENT` "no C++ equivalent" warning that contradicted this working lowering has been removed.) |
 | Enum relational comparison | ✅ → wraps in `static_cast<int>` | `tests/enums.test.ts:65`. |
 | Enum type preserved across decls/returns | ✅ | |
 | `enum` nested inside function/class | ✅ | Hoisted to file scope. |
@@ -153,9 +162,9 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 
 | Pattern | Status | Notes |
 |---|---|---|
-| `T | null` / `T | undefined` | ✅ → strips nullish, emits `T` | `type-resolution.ts:254`. There is **no** `std::optional` representation; see rationale below. Demo #9 fix D — comparing a value type (vector/struct) to `null` now resolves to a compile-time `false` (was emitting `valueType == nullptr`, which is invalid). |
+| `T | null` / `T | undefined` | ✅ → strips nullish, emits `T` | `type-resolution.ts:254`. There is **no** `std::optional` representation; see rationale below. Demo #9 fix D — comparing a value type (vector/struct) to `null` now resolves to a compile-time `false` (was emitting `valueType == nullptr`, which is invalid). Demo #14 fix A — `return null`/`undefined` in a function/method whose return type is a struct now lowers to a value-initialized `return {};` (was emitting `return CUTTLEFISH_UNDEFINED;`/`return nullptr;`, which cannot convert to a struct type). The `ReturnIR` carries the enclosing return type; free functions AND methods annotate it. **Demo #18 fix A** — the null-comparison guard now also recognizes **interface names** (an `interface Foo` lowers to a value-typed `struct Foo`, never a pointer), so a struct returned from a function/method and stored in a local (`let s: Foo \| null = find(); s === null`) lowers to `false` instead of the invalid `s == CUTTLEFISH_UNDEFINED`. Inline-call forms (`find(id) === null`, `this.find(id) === null`) are resolved too via the callee's declared return type (`ir/expression-to-ir.ts`). `map.get(k) ?? fallback` is now rejected by `TS2CPP_GET_NULLISH_COMPARE`; guard with `.has(k)` first. |
 | `T | null | undefined` | ✅ → `T` | |
-| Optional field `x?: T` | ✅ → `T` (optionality not enforced at runtime) | |
+| Optional field `x?: T` | ✅ → `T` (optionality not enforced at runtime) | Comparing an optional field to `null`/`undefined`, or using it as the left side of `??`, is a **build error** (`TS2CPP_OPTIONAL_FIELD_NULLISH`). Use an explicit `hasX` boolean, sentinel enum, or Map/Set membership instead. |
 | `null` literal | ✅ → `CUTTLEFISH_UNDEFINED` macro | `tests/transpiler-type-gaps.test.ts:288`. |
 | `undefined` literal | ✅ → `CUTTLEFISH_UNDEFINED` | |
 | `a ?? b` nullish coalescing | ✅ → `cuttlefish_nullish(a, b)` helper | **Must** use the helper (not truthy ternary) so `0`/`false` are preserved. CLAUDE.md convention. |
@@ -177,7 +186,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | Array destructure `const [a, b] = arr` | ✅ | Index-based extraction. |
 | Array destructure default `[a = 5]` | ✅ | |
 | Rest element `const [a, ...rest]` | ✅ → `std::vector<T>` slice | Demo #7 fix D — the element type is now derived from the source array (was `std::vector<decltype(arr[0])>` which yielded an illegal `vector<T&>`). |
-| Destructure without initializer | ❌ → `TS2CPP_UNSUPPORTED_DECL` | `variables.ts:157`. |
+| Destructure without initializer | 🚫 | **Build error** (`TS2CPP_UNSUPPORTED_DECL`). Provide an initializer so the transpiler can lower each binding. |
 | Parameter destructure `function f({ a, b })` | ✅ | Synthetic `__param_N` + extraction statements. |
 | Mixed destructure + regular params | ✅ | |
 
@@ -190,7 +199,7 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `x!` non-null assertion | ✅ | Erased. |
 | `typeof x` | ✅ → string literal where statically known | `tests/new-features.test.ts:187`. Dynamic typeof falls back to `"object"`. |
 | `typeof` type guard optimization (`typeof x === "number"`) | ✅ → `true`/`false` when statically known | |
-| `instanceof` | 🟡 | No RTTI lowering; treated loosely. Avoid in firmware. |
+| `instanceof` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). No portable RTTI-based lowering across targets; use an explicit discriminator field or enum. |
 | `in` operator (`"k" in obj`) | ✅ → `map.count()` / vector find on containers | `expression-to-ir.ts:316`. Demo #7 fix K — enum-member keys into an integral-keyed `Map` are now wrapped in `static_cast<KeyType>(...)` so they match the comparator. |
 
 ### 1.11 Generics
@@ -211,9 +220,9 @@ Number literal inference is in `inferExprCppType` (`type-resolution.ts:550`) and
 | `any` | 🚫 | **Deprecated — now a build error** (`TS2CPP_EXPLICIT_ANY`, see §1.5). Previously lowered best-effort to `auto`; the syntactic feature-prescan now rejects every explicit `any` token. Use a concrete type or `unknown`. (Implicit `any` is still caught by the TypeScript type-checker when `noImplicitAny` is set, which scaffolded projects enable.) |
 | `unknown` | 🟡 → `auto` | |
 | `never` | 🚫 | No meaningful C++ lowering. Avoid. |
-| `Partial<T>` / `Required<T>` / `Readonly<T>` / `Pick` / `Omit` | ✅ → resolves to underlying `T` | `type-resolution.ts:391`. |
+| `Partial<T>` / `Required<T>` / `Readonly<T>` / `Pick` / `Omit` | 🟡 → resolves to underlying `T` | Emits `TS2CPP_APPROXIMATE`: these utility types are erased to the base type and do not preserve TypeScript optional/readonly/picked-field semantics. Prefer an explicit interface/struct when the shape matters. |
 | `NonNullable<T>` | ✅ → inner type | |
-| `ReturnType`/`Parameters`/`InstanceType`/`Extract`/`Exclude` | 🟡 → `auto` | `:413`. |
+| `ReturnType`/`Parameters`/`InstanceType`/`Extract`/`Exclude` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). These fall back to `auto`, which is not deterministic enough for C++ emission; write the concrete type explicitly. |
 
 ---
 
@@ -240,9 +249,9 @@ Implemented in `transformers/control-flow.ts`; tested in `tests/control-flow.tes
 | `for (let i; cond; inc)` C-style | ✅ | |
 | `for (const i; ...)` | ✅ | |
 | Infinite `for (;;)` | ✅ | `tests/control-flow.test.ts:275`. |
-| `for...of` over array | ✅ | Element type resolved for class arrays (`->` access). |
+| `for...of` over array | ✅ | Element type resolved for class arrays (`->` access). **Mutation of the loop variable:** a `const` loop variable whose body mutates a field/index (`t.done = true`, `t[i] = v`, `t.hits++`) is auto-demoted to a non-const C++ reference (`for (T& t : ...)`) so the mutation compiles and writes through to the container element — matching TS semantics. Works in **all** scopes (top-level, free function, class method/getter/setter/constructor, namespace function) — demo #17 fix (`ir/ownership-analysis.ts`: the const-content-mutation walk now reaches class and namespace bodies, not just `program.functions`). A read-only loop var stays `const T&` (no over-demotion). The ESLint rule **`no-readonly-loop-variable-mutation`** (warn) surfaces the demotion at lint time so the author can express intent with `let`. |
 | Nested `for...of` | ✅ | |
-| `for...in` over object keys | ✅ | Keys enumerated at IR build time (`extractForInKeys`). **Caveat (demo #7):** `for...in` over a `Map`/`Record` is rejected by the `TS2CPP_FORIN_ON_MAP` semantic gate (the Map lowering iterates key-value pairs, not keys — use `Object.keys(m)` or `m.forEach((v, k) => ...)` instead). |
+| `for...in` over object keys | ✅ | Keys enumerated at IR build time (`extractForInKeys`). **Caveat (demo #7):** `for...in` over a `Map`/`Record` is rejected by the `TS2CPP_FORIN_ON_MAP` semantic gate (the Map lowering iterates key-value pairs, not keys — use `for...of` over `Object.keys(m)`, `Object.values(m)`, or `Object.entries(m)` instead). |
 | `while` | ✅ | |
 | `while` with `break`/`continue` | ✅ | |
 | `do...while` | ✅ | |
@@ -272,6 +281,7 @@ Implemented in `transformers/control-flow.ts`; tested in `tests/control-flow.tes
 | Multiple statements per case | ✅ | |
 | Variable in case expression | ✅ | |
 | Nested switch | ✅ | |
+| `switch` on an enum/numeric **struct field** (`switch (m.unit)`) | ✅ | The discriminant's `std::string(...)` wrap is decided by its **resolved C++ type**, not its syntactic form — only string-like discriminants (`std::string`/`const char*`) are wrapped; enum/numeric fields emit a plain comparison, and an unknown type defaults to no wrap (always valid C++). Demo #16 fix A (`emit/emitters/line-appender.ts` + `emit/expression-renderer.ts:inferCppType`). Pinned by `tests/packages/transpiler/demo-16-regressions.test.ts`. |
 | Fall-through (no `break`) | 🟡 | Emitted verbatim — C++ fall-through matches TS, but no diagnostic warns about it. |
 | String `switch` | 🟡 | Works only if discriminator lowers to an integral/string-comparable form. |
 
@@ -298,7 +308,7 @@ platform-driven **by-design** restriction, not a transpiler limitation.
 | `async function` | 🟡 | Adds `async_stub` boilerplate + `TS2CPP_ASYNC_STUB` warning; **semantics approximate** — there is no event loop on bare metal. `function-builder.ts:191`. |
 | `await expr` | 🟡 | Await stripped, expression emitted inline. `tests/functions.test.ts:220`. |
 | `await` on a statement | ✅ → call statement | |
-| `Promise`, `Promise.all`, `.then` | 🚫 | No promise runtime. Avoid in firmware. |
+| `Promise`, `Promise.all`, `.then` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). User-authored Promise APIs require a JS/event-loop runtime. Use synchronous values, explicit callbacks, or framework-provided async primitives. |
 | `function*` generator | 🟡 | Tracked (`isGenerator`), `yield` lowers to `co_yield`, but **no coroutine runtime** is wired for AVR — effectively unusable. |
 | `yield` / `yield*` | 🟡 → `co_yield` | Same caveat. `expression-to-ir.ts:1675`. |
 
@@ -335,6 +345,7 @@ Implemented in `function-builder.ts`; tested in `tests/functions.test.ts`.
 | Multiple params | ✅ | |
 | Default param `function f(a = 5)` | ✅ | Default goes on prototype, not later definition (CLAUDE.md). |
 | Rest param `function f(...xs: number[])` | ✅ → `std::vector<T>` | `restParamFunctions` tracking. `tests/transpiler-type-gaps.test.ts:759`. |
+| Mutating array parameter contents (`xs[0] = v`, `xs.push(v)`) | 🚫 | **Build error** (`TS2CPP_ARRAY_PARAM_MUTATION`). Array parameters lower as by-value `std::vector` copies, so content mutation would not affect the caller. Return the updated array, mutate the caller-side owner, or pass an explicit mutable owner object. |
 | Object destructure param `f({ a, b })` | ✅ | Synthetic `__param_N` + extraction. |
 | Nested object destructure param | ✅ | |
 | Array destructure param `f([a, b])` | ✅ | |
@@ -350,6 +361,7 @@ Implemented in `function-builder.ts`; tested in `tests/functions.test.ts`.
 | Multiple `return`s with differing types | ✅ | Widened (e.g. `int` + `float` → `double`). |
 | Early return | ✅ | |
 | Return type with ownership wrapper | ✅ | |
+| Returning typed arrays (`Uint8Array`, etc.) | 🚫 | **Build error** (`TS2CPP_TYPED_ARRAY_RETURN`). Typed arrays lower to pointer-like C++ storage, so returning them does not carry ownership/lifetime safely. Use an out-parameter plus explicit length, or return a fixed-shape struct that owns storage. |
 | **Function overloads** | 🟡 | Overload *signatures without bodies* are skipped (`function-builder.ts:180`); only the implementation emits. TS overloads do not map to C++ overloading cleanly — return-type-based dispatch is lost. |
 | Variance / currying / partial application | 🚫 | No C++ equivalent that composes sensibly. |
 
@@ -362,8 +374,8 @@ Implemented in `function-builder.ts`; tested in `tests/functions.test.ts`.
 | Function type alias `type Fn = () => void` | ✅ → `std::function<void()>` | |
 | Class method as callback | ✅ | |
 | `Math.method` callbacks (e.g. comparator) | ✅ | |
-| **Closures capturing outer variables** | 🟡 | Arrow/function expressions lower to lambdas, but capture semantics (`[=]` vs `[&]`) are not faithfully modeled. Captured-mutation patterns are unreliable — **in-class functional callbacks** (`.map`/`.reduce`/`.some` inside a class method) hoist to free `X_isr_N` functions that cannot capture the method's locals; move aggregations to module-level free functions. |
-| IIFE `(function(){})()` | ❌ | **Rejected at lint time** (demo #7 fix M). The body is not inlined and the `function` keyword was emitted verbatim into C++. Assign to a `const` or define a named top-level function instead. |
+| **Closures capturing outer variables** | 🟡 | Arrow/function expressions lower to lambdas, but capture semantics (`[=]` vs `[&]`) are not faithfully modeled. Captured-mutation patterns are unreliable. Capturing callbacks inside class-method functional array calls are a **build error** (`TS2CPP_CALLBACK_CAPTURE_UNSUPPORTED`); use a manual loop in the method or call a module-level helper that does not capture method locals or `this`. |
+| IIFE `(function(){})()` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`) and ESLint error. The body is not inlined and the `function` keyword can leak into C++; assign to a `const` or define a named top-level function instead. |
 
 ### 3.5 `forEach` inline expansion
 
@@ -389,8 +401,8 @@ tested in `tests/classes.test.ts` and `tests/class-reference-semantics.test.ts`.
 | Class with field initializers | ✅ | |
 | Class with `readonly` fields | ✅ | |
 | Class with `static` fields/methods | ✅ | |
-| Static initializer block `static { ... }` | ✅ | Folded into synthetic constructor (`declaration-builders.ts:395`). |
-| Optional class field `x?: T` | ✅ → `T` (optionality dropped) | |
+| Static initializer block `static { ... }` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`) and ESLint error. Although there is an internal lowering path, this is outside the deterministic safe subset until compile/runtime coverage proves it reliable. Initialize static fields directly or use an explicit static setup method. |
+| Optional class field `x?: T` | ✅ → `T` (optionality dropped) | Nullish checks on the field are rejected by `TS2CPP_OPTIONAL_FIELD_NULLISH`; model presence explicitly. |
 | Generic class `class C<T>` | ✅ | See §1.11 (demo #8 fix A for `extends Generic<T>`; static-member caveats). |
 | Nested class (inside function or class) | ✅ | Hoisted with mangled name. |
 | `export class` / `export default class` | ✅ | |
@@ -414,11 +426,11 @@ tested in `tests/classes.test.ts` and `tests/class-reference-semantics.test.ts`.
 | Instance method | ✅ | |
 | Private/protected method | ✅ | |
 | Static method | ✅ | |
-| Method calling free function | ✅ | `tests/classes.test.ts:516`. |
-| Getters `get x()` | ✅ | `tests/new-features.test.ts:13`. |
+| Method calling free function | ✅ | Works in **both** emit modes. In single-file (cpp) mode the free function's forward declaration precedes the class. In **split** mode a non-exported free function called from a class method body gets a **non-static forward declaration in the header** (ahead of the class definition) plus a non-static definition in the .cpp — the inline method body lives in the header, so it needs the symbol visible there. A free function NOT called from any class body stays `static` in the .cpp. `tests/packages/transpiler/demo-18-regressions.test.ts` (Finding B); also pinned by `tests/packages/transpiler/multi-file.test.ts` ("emits free function forward declarations before class definitions in split mode", previously `.skip`). |
+| Getters `get x()` | ✅ | `tests/new-features.test.ts:13`. Access rewrites to `obj->getX()` for identifier, method-call, and chained receivers; demo #14 fix E also aggregates accessor names across the module graph so getter access on an **imported** class rewrites in the importer. |
 | Setters `set x(v)` | ✅ | |
 | Getter/setter pair | ✅ | |
-| Static getter/setter | ✅ | Demo #8 fix B — static getters no longer emit the illegal `() const` cv-qualifier (was `Cls::getName() cannot have cv-qualifier`). **Caveat:** accessing a static getter (`Cls.prop`) still emits `Cls::prop` instead of `Cls::getProp()` — access the static field directly until the access-name path is fixed. |
+| Static getter/setter | ✅ | Demo #8 fix B — static getters no longer emit the illegal `() const` cv-qualifier. Demo #14 fix E — accessing a static getter (`Cls.prop`) now rewrites to `Cls::getProp()` (was emitting `Cls::prop`). |
 | Abstract method | ✅ (recorded) | `= 0` pure virtual emitted for abstract methods. |
 
 ### 4.4 Inheritance & polymorphism
@@ -515,7 +527,7 @@ analysis. They are erased at emit time but influence destructor/deletion decisio
 | `push`, `pop` | ✅ | Promotes to `StaticArray`. |
 | `indexOf`, `lastIndexOf`, `includes` | ✅ | |
 | `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `concat`, `slice`, `join` | ✅ | Recognized in typeof context and lowered where supported. |
-| `map`, `filter`, `reduce`, `find`, `findIndex`, `every`, `some`, `forEach` | ✅ | Functional methods lower via the `__tc_*` template helpers (`tryLowerArrayAndStringMethods` / `normalizeRawExpression`). Demo #7 fix A — callbacks now carry a real return type + typed params (resolved from the arrow's annotations/body, with C++14 `auto` return deduction as a fallback), so the `__tc_*` templates can deduce the result type. `reduce` requires an init (`TS2CPP_REDUCE_NO_INIT` otherwise). **Caveats:** (1) `.forEach` on a runtime `std::vector` is not yet in the rewrite table — use a manual `for` loop; (2) callbacks inside a **class method** are hoisted to free functions that can't capture the method's locals — move aggregations to module-level free functions; (3) the rewrite regex only matches single-identifier receivers (`arr.map`), not member access (`this.x.map`) — bind to a local first. |
+| `map`, `filter`, `reduce`, `find`, `findIndex`, `every`, `some`, `forEach` | ✅ on arrays | Functional methods lower via the `__tc_*` template helpers (`tryLowerArrayAndStringMethods` / `normalizeRawExpression`). Demo #7 fix A — callbacks now carry a real return type + typed params (resolved from the arrow's annotations/body, with C++14 `auto` return deduction as a fallback), so the `__tc_*` templates can deduce the result type. `reduce` requires an init (`TS2CPP_REDUCE_NO_INIT` otherwise). **Caveats:** (1) `.forEach` on a runtime `std::vector` is not yet in the rewrite table — use a manual `for` loop; (2) capturing callbacks inside class methods are rejected by `TS2CPP_CALLBACK_CAPTURE_UNSUPPORTED`; (3) functional methods on `Map`/`Set`/`Record` are rejected by `TS2CPP_CONTAINER_FUNCTIONAL_METHOD`; (4) the rewrite regex only matches single-identifier receivers (`arr.map`), not member access (`this.x.map`) — bind to a local first. |
 | `.length` on array/string/typed-array | ✅ | Context-aware (`resolveLengthProperty`). |
 | String methods `toUpperCase`, `toLowerCase`, `trim`, `replace`, `charAt`, `charCodeAt`, `substring`, `slice`, `endsWith`, `startsWith`, `padStart`, `padEnd`, `repeat`, `split`, `toString` | ✅ | All in `ALL_STRING_METHODS` set. |
 | `parseInt`, `parseFloat` | ✅ | `expression-to-ir.ts:664`. |
@@ -528,8 +540,10 @@ analysis. They are erased at emit time but influence destructor/deletion decisio
 | `Object.values(map)` | ✅ → `__tc_mapValues` | ❌ on non-map (`:743`). Member-access args resolved (demo #7 fix I). |
 | `Object.entries(map)` | ✅ → `__tc_mapEntries` | ❌ on non-map (`:749`). **Caveat:** returns `std::vector<std::pair<K,V>>`; a `[K,V][]` tuple-array return annotation lowers to `std::vector<std::tuple<K,V>>` (pair→tuple mismatch) — return the values vector or use `pair` explicitly. |
 | `Object.keys(plainStruct)` | 🟡 | Only when literal field names are statically known. |
-| `Object.assign`, `Object.freeze`, `Object.fromEntries` | ❌ | Not lowered. |
-| `JSON.*` | ❌ | No JSON runtime on bare metal. |
+| `Object.assign`, `Object.freeze`, `Object.fromEntries` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). Runtime object-shape operations are not lowered; construct fixed-shape structs explicitly or use a Map. |
+| `Object.defineProperty`, `Object.create`, prototype/reflection APIs | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). No AOT lowering for runtime object-shape mutation/introspection. |
+| `JSON.*` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). No JSON runtime on bare metal. Parse/format explicitly or pass structured values. |
+| `.bind()`, `.call()`, `.apply()` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). C++ has fixed receiver/call semantics; call directly or pass the receiver explicitly. |
 
 ### 5.5 HAL / hardware-specific
 
@@ -585,7 +599,7 @@ Use this when a report comes in. Find the closest row above, then:
 3. **🟡 Partial + a pattern isn't lowered at all** → **Feature request.** Route to the Future
    backlog.
 4. **⚠️ Future** → **Not a bug.** Acknowledge and link this doc.
-5. **❌ Unsupported by design** (emits `TS2CPP_UNSUPPORTED_*`) → **Wontfix.** The diagnostic is
+5. **❌ Unsupported by design** (emits a fatal transpiler/lint diagnostic) → **Wontfix.** The diagnostic is
    the intended behavior.
 6. **🚫 Never** → **Wontfix, permanent.** These violate a language/platform invariant and
    supporting them would require an alternate runtime (e.g. a JS engine on the MCU).

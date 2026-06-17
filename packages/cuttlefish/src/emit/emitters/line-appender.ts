@@ -141,9 +141,20 @@ export function appendRenderedStatement(
 
     if (isStringSwitch || isBooleanSwitch || hasNonConstantCase) {
       let switchVar = exprRenderer.render(switchExpr, undefined, scopeState.knownVariableTypes);
+      // Wrap the discriminant in std::string(...) ONLY when it is genuinely a
+      // bare string-like value that needs promoting for a correct `==`
+      // comparison. A bare `const char*` identifier compares by pointer, not
+      // by contents, so it must be wrapped; a `std::string`, an enum, or a
+      // number already compares correctly and wrapping a non-string is a hard
+      // g++ error (demo #16 gap #1: `std::string(enumValue)` is ill-formed).
+      // Resolve the discriminant's real type and wrap iff string-like; when
+      // the type is unknown, default to NO wrap (always valid C++).
+      const discCppType = exprRenderer.inferCppType?.(switchExpr, scopeState.knownVariableTypes);
       const needsStringWrap = switchExpr.kind === "identifier"
         ? (() => { const vi = scopeState.knownVariableTypes?.get(switchExpr.value); return vi && vi.cppType === "const char*"; })()
-        : switchExpr.kind === "property-access";
+        : switchExpr.kind === "property-access"
+          ? ctx.strategy.isStringLikeType(discCppType ?? "")
+          : false;
       if (needsStringWrap) {
         switchVar = `std::string(${switchVar})`;
       }

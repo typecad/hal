@@ -268,6 +268,19 @@ export function classDeclarationToIR(
         setActiveExtendsClass(extendsClass);
       }
 
+      // Resolve this method's declared return type and register it under the
+      // same qualified key used as functionNameForDiagnostics below, so that
+      // return statements inside the body get the enclosing return type
+      // annotated on the ReturnIR (used by the emitter to lower
+      // `return null`/`undefined` to `return {};` for struct returns — demo
+      // #14 Finding A). Top-level functions get this via buildFunctionReturnTypeMap;
+      // methods do not, so we add it here.
+      const methodQualifiedKey = `${qualifiedName}.${methodName}`;
+      const preMethodReturnType = typeNodeToCppType(member.type, typeAliasNodes);
+      if (preMethodReturnType && preMethodReturnType !== "void") {
+        functionReturnTypes.set(methodQualifiedKey, preMethodReturnType);
+      }
+
       const methodParams: ParameterIR[] = [];
       const methodLocalTypes = new Map<string, CppTypeHint>(preScannedFieldTypes);
 

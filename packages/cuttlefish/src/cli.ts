@@ -19,6 +19,10 @@ import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCom
 import * as ui from "./utils/ui";
 import chalk from "chalk";
 
+function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
+  return result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
+}
+
 async function handleCreate(options: CreateCommandOptions): Promise<void> {
   const targetId = options.target ?? options.board;
   const hasTarget = !!targetId;
@@ -505,6 +509,12 @@ async function main(): Promise<void> {
 
       printDiagnostics(result.diagnostics);
       ui.printTasks(result.asyncTaskNames ?? [], result.usesTimers ?? false);
+    }
+
+    if (hasFatalDiagnostics(result)) {
+      ui.printError("Transpilation failed. Fix the transpiler diagnostics above before compiling.");
+      process.exitCode = 1;
+      return;
     }
 
     if (!options.compile) {

@@ -6,7 +6,7 @@ import ts from "typescript";
 import { buildProgramIR } from "./ir/build-ir";
 import { classDeclarationToIR } from "./ir/declaration-builders";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter";
-import { GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types";
+import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types";
 import { readText } from "./utils/fs";
 import { debug as logDebug, info } from "./utils/logger";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry";
@@ -162,6 +162,48 @@ import { isStringEnum } from "./api/shared";
 import { resolveStrategy } from "./platform/registry";
 import { loadFrameworkPackage } from "./framework-package";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry";
+
+type LocatedDiagnostic = {
+  filePath?: string;
+  diagnostic: Diagnostic;
+};
+
+function formatFatalDiagnostics(entries: LocatedDiagnostic[]): string {
+  const errors = entries.filter(({ diagnostic }) => diagnostic.severity === "error");
+  const lines = [
+    `Transpilation aborted because ${errors.length} unsupported pattern${errors.length === 1 ? "" : "s"} were found.`,
+  ];
+
+  for (const { filePath, diagnostic } of errors) {
+    const locationBase = filePath
+      ? path.relative(process.cwd(), filePath) || filePath
+      : diagnostic.source ?? "user code";
+    const position = diagnostic.line != null
+      ? `(${diagnostic.line}:${diagnostic.column ?? 1})`
+      : "";
+    const code = diagnostic.code ? `[${diagnostic.code}] ` : "";
+    lines.push(`ERROR: ${locationBase}${position}: ${code}${diagnostic.message}`);
+
+    if (diagnostic.sourceLine) {
+      lines.push(`  ${diagnostic.sourceLine}`);
+      if (diagnostic.column != null && diagnostic.column > 0) {
+        lines.push(`  ${" ".repeat(Math.max(0, diagnostic.column - 1))}^`);
+      }
+    }
+
+    if (diagnostic.hint) {
+      lines.push(`  hint: ${diagnostic.hint}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function throwIfFatalDiagnostics(entries: LocatedDiagnostic[]): void {
+  if (entries.some(({ diagnostic }) => diagnostic.severity === "error")) {
+    throw new Error(formatFatalDiagnostics(entries));
+  }
+}
 
 /**
  * Load the platform strategy from the configured framework package.
@@ -333,10 +375,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     profiler.endTimer("typecheck:semantic-gates");
     if (semanticDiagnostics.length > 0) {
       diagnostics.push(...semanticDiagnostics);
-      const messages = semanticDiagnostics
-        .map(d => `ERROR: ${d.source ?? "user code"}(${d.line ?? "?"}:${d.column ?? "?"}): [${d.code}] ${d.message}`)
-        .join("\n");
-      throw new Error(`Semantic gate failed — ${semanticDiagnostics.length} error${semanticDiagnostics.length === 1 ? "" : "s"}:\n${messages}\n\nTranspilation aborted.`);
+      throwIfFatalDiagnostics(semanticDiagnostics.map((diagnostic) => ({ diagnostic })));
     }
   }
 
@@ -486,6 +525,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.captureMemorySnapshot("ir:post-build");
   profiler.endTimer("ir:build-all");
 
+  throwIfFatalDiagnostics(
+    rawIRArray.flatMap(({ filePath, programIR }) =>
+      programIR.diagnostics.map((diagnostic) => ({ filePath, diagnostic })),
+    ),
+  );
+
   // ── Phase B: Compute cross-module import map ─────────────────────────────
   // For each file, determine which of its symbols are imported by other files
   // in the project. Those symbols become additional entry points for tree-shaking
@@ -593,6 +638,10 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // Also collect all class names across all files for forward declarations.
   const allClassNames = new Set<string>();
   const allClassFieldTypes = new Map<string, Map<string, string>>();
+  // Cross-file getter/setter names per class, so `obj.getter` and
+  // `Cls.staticGetter` accesses rewrite to getX()/Cls::getX() even when the
+  // class lives in an imported module (demo #14 Finding E).
+  const allClassAccessors = new Map<string, Map<string, "getter" | "setter" | "both">>();
   const allFunctionReturnTypes = new Map<string, string>();
   const allVariableTypes = new Map<string, string>();
   for (const { programIR } of preBuilt.values()) {
@@ -616,6 +665,15 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
           fieldTypes.set(field.name, field.cppType);
         }
         allClassFieldTypes.set(cls.name, fieldTypes);
+      }
+      // Aggregate getters/setters so cross-file `obj.getter` /
+      // `Cls.staticGetter` accesses can rewrite to getX()/Cls::getX()
+      // (demo #14 Finding E).
+      if (cls.getters.length > 0 || cls.setters.length > 0) {
+        const accessors = allClassAccessors.get(cls.name) ?? new Map<string, "getter" | "setter" | "both">();
+        for (const g of cls.getters) accessors.set(g.name, accessors.has(g.name) ? "both" : "getter");
+        for (const s of cls.setters) accessors.set(s.name, accessors.has(s.name) ? "both" : "setter");
+        allClassAccessors.set(cls.name, accessors);
       }
     }
     // Interfaces lower to C++ structs, so their fields must be visible
@@ -687,6 +745,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       nativeModules: graphResult.nativeModules,
       crossModuleClasses: allClassNames,
       crossModuleClassFieldTypes: allClassFieldTypes,
+      crossModuleClassAccessors: allClassAccessors,
       crossModuleFunctionReturnTypes: allFunctionReturnTypes,
       crossModuleEnumNames: allEnumNames,
       crossModuleStringEnumNames: allStringEnumNames,
@@ -697,6 +756,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     const emitted = emitCpp(programIR, emitOptions);
 
     diagnostics.push(...emitted.diagnostics);
+    throwIfFatalDiagnostics(emitted.diagnostics.map((diagnostic) => ({ filePath, diagnostic })));
     if (filePath === entryFile) {
       entryOutputs = emitted;
     }

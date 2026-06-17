@@ -29,7 +29,9 @@ function codes(diagnostics: { code?: string }[]): string[] {
 describe("feature-prescan: explicit any (TS2CPP_EXPLICIT_ANY)", () => {
   it("flags explicit any on a variable", () => {
     const diags = prescan("const x: any = 1;");
-    expect(codes(diags)).toContain("TS2CPP_EXPLICIT_ANY");
+    const diag = diags.find(d => d.code === "TS2CPP_EXPLICIT_ANY");
+    expect(diag).toBeDefined();
+    expect(diag!.severity).toBe("error");
   });
 
   it("flags explicit any on a parameter", () => {
@@ -100,5 +102,63 @@ describe("feature-prescan: supported tuple annotations", () => {
     // type annotations.
     const diags = prescan("const x: [number, string] = [1, \"a\"];");
     expect(codes(diags)).not.toContain("TS2CPP_HETEROGENEOUS_ARRAY");
+  });
+});
+
+describe("feature-prescan: severity classification", () => {
+  it("reports no-equivalent syntax as errors", () => {
+    const diags = prescan("const merged = { ...base, b: 1 };\n");
+    const diag = diags.find(d => d.code === "TS2CPP_NO_EQUIVALENT");
+    expect(diag).toBeDefined();
+    expect(diag!.severity).toBe("error");
+  });
+
+  it("keeps documented approximations as warnings", () => {
+    const diags = prescan("const x = value ?? 0;\n");
+    const diag = diags.find(d => d.code === "TS2CPP_APPROXIMATE");
+    expect(diag).toBeDefined();
+    expect(diag!.severity).toBe("warning");
+  });
+});
+
+describe("feature-prescan: unsupported JavaScript runtime APIs", () => {
+  it("rejects Promise APIs and .then chains", () => {
+    const diags = prescan(`
+      const p: Promise<number> = Promise.resolve(1);
+      p.then(value => value + 1);
+    `);
+    const errors = diags.filter(d => d.code === "TS2CPP_NO_EQUIVALENT");
+    expect(errors.length).toBeGreaterThanOrEqual(2);
+    expect(errors.some(d => d.message.includes("Promise"))).toBe(true);
+    expect(errors.every(d => d.severity === "error")).toBe(true);
+  });
+
+  it("rejects JSON and runtime object-shape APIs", () => {
+    const diags = prescan(`
+      const text = JSON.stringify({ x: 1 });
+      const merged = Object.assign({}, { x: 1 });
+      Object.defineProperty(merged, "y", { value: 2 });
+    `);
+    const messages = diags.filter(d => d.code === "TS2CPP_NO_EQUIVALENT").map(d => d.message);
+    expect(messages.some(m => m.includes("JSON"))).toBe(true);
+    expect(messages.some(m => m.includes("Object.assign"))).toBe(true);
+    expect(messages.some(m => m.includes("Object.defineProperty"))).toBe(true);
+  });
+
+  it("rejects dynamic invocation and prototype mutation", () => {
+    const diags = prescan(`
+      const rebound = fn.bind(ctx);
+      obj.__proto__ = base;
+    `);
+    const messages = diags.filter(d => d.code === "TS2CPP_NO_EQUIVALENT").map(d => d.message);
+    expect(messages.some(m => m.includes(".bind()"))).toBe(true);
+    expect(messages.some(m => m.includes("__proto__"))).toBe(true);
+  });
+
+  it("rejects anonymous function declarations that would be skipped", () => {
+    const diags = prescan("export default function () { return 1; }");
+    const diag = diags.find(d => d.code === "TS2CPP_NO_EQUIVALENT");
+    expect(diag).toBeDefined();
+    expect(diag!.message).toContain("Anonymous function declarations");
   });
 });

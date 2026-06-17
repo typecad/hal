@@ -13,31 +13,6 @@ const transpilerRules = [
     message:
       "[transpiler] import.meta and new.target have no C++ equivalent.",
   },
-  {
-    selector: "TSEnumBody TSEnumMember Literal[raw=/[^0-9.]/]",
-    message:
-      "[transpiler] String-valued enum members have no C++ equivalent (C++ enums are integer-only). Use integer values or a Map.",
-  },
-  {
-    selector: "VariableDeclaration[kind='var']",
-    message:
-      "[transpiler] var declarations have no C++ equivalent. Use let or const instead.",
-  },
-  // A1: generic type aliases (type X = Map<K,V> / Set<T> / (...)=>T) are not
-  // emitted as C++ typedefs — the alias name silently disappears and use sites
-  // fail with "does not name a type". Inline the concrete generic form instead.
-  // `type X = NamedInterface` and `type X = number` still work (no type args).
-  {
-    selector:
-      "TSTypeAliasDeclaration > TSTypeReference[typeParameters]",
-    message:
-      "[transpiler] Type aliases to generic types (e.g. type X = Map<K,V>, Set<T>) are not emitted as C++ typedefs and vanish at the use site. Inline the concrete generic form (Map<K,V>) at each use site, or use a named interface.",
-  },
-  {
-    selector: "TSTypeAliasDeclaration > TSFunctionType",
-    message:
-      "[transpiler] Function-type aliases (type Fn = (...) => T) are not emitted as C++ typedefs. Inline the function signature at each use site, or use a named interface with a call signature.",
-  },
   // A3: computed property keys in object literals ({ [expr]: value }) have no
   // C++ equivalent — the SUPPORT_MATRIX marks them as "no C++ equivalent", and
   // combined with Record<K,V> they lower to a malformed struct. Use fixed
@@ -89,11 +64,6 @@ const transpilerRules = [
   },
   // §4.7 ❌ — namespace declarations are not supported (no ModuleDeclaration
   // lowering). Use a class with static methods or a module-level grouping.
-  {
-    selector: "TSModuleDeclaration",
-    message:
-      "[transpiler] namespace/module declarations are not supported. Use a class with static methods or group free functions in a file.",
-  },
   // §1.5 ❌ — object spread { ...a, b } has no C++ aggregate equivalent (structs
   // have fixed shape; spreading is dynamic). Construct field-by-field instead.
   {
@@ -127,14 +97,10 @@ const transpilerRules = [
   },
   // §1.7 ❌ — ReturnType/Parameters use typeof-in-type-position (broken).
   {
-    selector: "TSTypeReference[typeName.type='TSQualifiedName'][typeName.left.name='ReturnType']",
+    selector:
+      "TSTypeReference > Identifier[name=/^(ReturnType|Parameters|InstanceType|ConstructorParameters|Extract|Exclude)$/]",
     message:
-      "[transpiler] ReturnType<T> is not supported (typeof-in-type-position is not lowered). Declare the return type explicitly.",
-  },
-  {
-    selector: "TSTypeReference[typeName.type='TSQualifiedName'][typeName.left.name='Parameters']",
-    message:
-      "[transpiler] Parameters<T> is not supported (typeof-in-type-position is not lowered). Declare the parameter types explicitly.",
+      "[transpiler] ReturnType/Parameters/InstanceType/Extract/Exclude utility types fall back to auto and are not deterministic enough for C++ emission. Declare the concrete type explicitly.",
   },
   // §4.1 ❌ — static initializer block has no C++ lowering (C++ uses static
   // field initializers, not a code block). Initialize in the field declaration.
@@ -234,11 +200,6 @@ const transpilerRules = [
   },
   // Only `const enum` is supported — non-const enums don't get the inlining
   // optimization and behave less reliably across the TS→C++ boundary.
-  {
-    selector: "TSEnumDeclaration[const!=true]",
-    message:
-      "[transpiler] only 'const enum' is supported. Add the `const` keyword to the enum declaration.",
-  },
 
   // ────────────────────────────────────────────────────────────────────────
   // Runtime / dynamic-shape patterns. These depend on JS runtime facilities
@@ -324,6 +285,9 @@ export default [
       "cuttlefish/no-array-param-content-mutation": "error",
       "cuttlefish/no-container-functional-methods": "error",
       "cuttlefish/no-undefined-compare-on-get": "error",
+      "cuttlefish/no-map-struct-mutation": "error",
+      "cuttlefish/no-mutating-method-on-const-collection": "warn",
+      "cuttlefish/no-readonly-loop-variable-mutation": "warn",
       "cuttlefish/no-undefined-compare-on-struct-field": "error",
       "cuttlefish/no-typed-array-param-length": "error",
       "cuttlefish/no-typed-array-return": "error",
