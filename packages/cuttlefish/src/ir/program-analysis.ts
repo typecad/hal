@@ -272,6 +272,16 @@ function analyzeStatement(
             result.usedPolyfillHelpers.add(name);
           }
         }
+        // Also detect already-lowered __tc_* helper calls — including raw-statement
+        // wrappers (`__RAW_STMT____tc_pop(...)`) produced by the structural
+        // vector-method lowering in call-statement.ts. Without this, a statement
+        // form like `arr.pop();` (lowered to `__RAW_STMT____tc_pop(arr)`) wouldn't
+        // register the polyfill, and the helper definition would be filtered out.
+        for (const name of helperNames) {
+          if (statement.callee.includes(name)) {
+            result.usedPolyfillHelpers.add(name);
+          }
+        }
       }
       for (const arg of statement.args) {
         analyzeExpression(arg, result, strategy);

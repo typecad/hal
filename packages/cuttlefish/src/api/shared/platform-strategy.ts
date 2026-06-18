@@ -363,6 +363,16 @@ export interface PlatformSafetyStrategy {
    * Frameworks return true for targets compiled with -fno-exceptions (e.g. AVR-GCC).
    */
   isExceptionSupportDisabled?(architecture: string): boolean;
+
+  /**
+   * Whether an array literal (`const a: T[] = [...]`) lowers to a fixed-capacity
+   * `__tc_StaticArray<T, N>` (true) or a `std::vector<T>` (false). Embedded and
+   * generic targets return true (StaticArray avoids heap); the native/hosted
+   * target returns false (std::vector). Defaults to true. Used by the structural
+   * array-method lowering to decide whether `.push`/`.pop`/`.indexOf` emit the
+   * StaticArray wrapper's methods or the std::vector/__tc_* helper form.
+   */
+  promotesArrayLiteralsToStaticArray?(): boolean;
 }
 
 // ---------------------------------------------------------------------------

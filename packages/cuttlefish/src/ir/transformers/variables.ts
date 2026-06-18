@@ -24,7 +24,8 @@ import {
   filteredArrayLengthVars,
   halInstances,
   nestedClassAliases,
-  registerFieldMap
+  registerFieldMap,
+  getContext,
 } from "../build-ir-state";
 import { getCurrentIrTypeScope, setScopeLocalType } from "../symbol-types";
 import { renderExprAsText } from "../render-expr";
@@ -719,7 +720,8 @@ export function variableStatementToIR(
     if (ts.isIdentifier(declaration.name) && actualInitializer) {
       const varName = declaration.name.text;
 
-      if (mutableArrayVars.has(varName) && ts.isArrayLiteralExpression(actualInitializer)) {
+      if (mutableArrayVars.has(varName) && ts.isArrayLiteralExpression(actualInitializer)
+          && (getContext().activeStrategy?.promotesArrayLiteralsToStaticArray?.() ?? true)) {
         const elements = actualInitializer.elements;
         let elemType = "int";
         // Extract element type via structured elementOf rather than slice.
@@ -757,6 +759,16 @@ export function variableStatementToIR(
         }
         commentsAssigned = true;
         continue;
+      }
+
+      // Native target lowers array literals to std::vector (not StaticArray), so
+      // the promotion block above is skipped — but a `const` array mutated via
+      // .push/.pop/[i]= must STILL be demoted to non-const storage, or the
+      // emitted `const std::vector` rejects push_back/operator[]. This mirrors
+      // the `storage: "let"` the promotion block sets for StaticArray.
+      if (mutableArrayVars.has(varName) && ts.isArrayLiteralExpression(actualInitializer)
+          && !(getContext().activeStrategy?.promotesArrayLiteralsToStaticArray?.() ?? true)) {
+        loweredDeclaration.storage = "let";
       }
 
       if (mutableArrayVars.has(varName) && !ts.isArrayLiteralExpression(actualInitializer)) {

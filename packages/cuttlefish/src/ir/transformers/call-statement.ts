@@ -5,6 +5,7 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
 import { tryResolveHALMethod } from "./hal-call-resolver";
+import { tryLowerArrayAndStringMethods } from "./array-methods";
 import { expressionToIR } from "../expression-to-ir";
 import { escapeCppKeyword } from "../../utils/strings";
 import { renderExprAsText, calleeToText } from "../render-expr";
@@ -91,6 +92,46 @@ export function callToStatement(
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
       body: [],
+    };
+  }
+
+  // ── Structural vector/array method lowering (shared with expressionToIR) ─
+  // Lower .push/.pop/.map/.filter/.splice/... on a std::vector receiver to the
+  // __tc_* helper form (or push_back) BEFORE the generic call handling below.
+  // This mirrors expressionToIR's call to tryLowerArrayAndStringMethods, so the
+  // statement form (`out.push(x);`) and the expression form (`x = arr.pop()`)
+  // share one structural lowering. Previously only the StaticArray case was
+  // handled here (mutableArrayVars branch below); the std::vector case was left
+  // as a raw `out.push` callee and patched to `push_back` by a regex in the
+  // native strategy's normalizeRawExpression. Demo #22 / Tier-2 cleanup.
+  const lowered = tryLowerArrayAndStringMethods(call, sourceText, diagnostics, pointerVars);
+  if (lowered) {
+    if (lowered.kind === "method-call") {
+      // Callback-arg methods (.map/.filter/.sort(fn)/...): preserve the
+      // structured method-call node as a `call` statement so (a) the emit-time
+      // callback hoister finds the callback in `args` and names it, and (b)
+      // program-analysis detects the __tc_* helper usage from `callee`.
+      return {
+        kind: "call",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        callee: lowered.callee,
+        args: lowered.args,
+      };
+    }
+    // Value-arg methods (.push/.pop/.fill/.concat/...): the lowering produced a
+    // fully-formed C++ expression (e.g. `out.push_back(x)` or `__tc_pop(arr)`);
+    // emit it as a raw statement. The __tc_* helper usage is detected by
+    // program-analysis via the `includes(name)` check on the call callee.
+    const loweredText = renderExprAsText(lowered);
+    return {
+      kind: "call",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      callee: "__RAW_STMT__" + loweredText,
+      args: [],
     };
   }
 
