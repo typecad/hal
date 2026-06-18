@@ -13,9 +13,20 @@ import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet 
 
 /**
  * When a Map/Set key is an enum-typed expression and the container's key type
- * is an integral type, the lowered `map[key]` / `map.count(key)` would pass the
- * enum operand directly, which fails against a non-transparent `std::less<int>`
- * comparator. Wrap the key in `static_cast<KeyType>(...)` so it matches.
+ * is an integral type, the lowered `map[key]` / `map.count(key)` / `map.at(key)`
+ * would pass the enum operand directly. A C++ `enum class` does not implicitly
+ * convert to the map's integral key type, so g++ rejects it ("no match for
+ * 'operator[]' ... 'K' to 'const int&'"). Wrap the key in
+ * `static_cast<KeyType>(...)` so it matches.
+ *
+ * This handles BOTH shapes of enum-typed key operand:
+ *   - an enum member access (`Color.Red`, `Op.Inc`) — detected via
+ *     `activeEnumNames` on the object identifier; and
+ *   - a bare identifier whose declared type is an enum (`k` where `k: K`) —
+ *     resolved through the in-scope IR type map (the gap demo #28 Finding E
+ *     surfaced: previously only enum-member access was cast, so a bare
+ *     enum-typed key variable on `.set`/`.has`/`.get`/`.delete` compiled to an
+ *     uncast `map[k]`/`map.count(k)`/`map.at(k)` and failed at g++ time).
  */
 function castEnumKeyIfNeeded(
   keyText: string,
@@ -23,20 +34,23 @@ function castEnumKeyIfNeeded(
   receiverType: string,
 ): string {
   // Only relevant for std::map/std::set with an integral key type.
-  if (!parsedIsMap(receiverType)) return keyText;
-  const mapIr = parseCppType(receiverType);
-  const keyType = mapIr.kind === "map" ? renderCppType(mapIr.key) : "";
+  if (!parsedIsMap(receiverType) && !parsedIsSet(receiverType)) return keyText;
+  const containerIr = parseCppType(receiverType);
+  const keyType = containerIr.kind === "map" ? renderCppType(containerIr.key) : "";
   const isIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char)$/.test(keyType);
   if (!isIntegral) return keyText;
-  // Detect an enum-typed key operand: an enum member access (Color.Red) or a
-  // bare identifier whose enum is known.
+  // Detect an enum-typed key operand.
   let isEnum = false;
   if (ts.isPropertyAccessExpression(keyNode) && ts.isIdentifier(keyNode.expression)) {
+    // Enum member access: `Color.Red`.
     isEnum = activeEnumNames.has(keyNode.expression.text);
   } else if (ts.isIdentifier(keyNode)) {
-    // A bare enum value variable isn't directly knowable here without type
-    // info; only treat enum-member access as enum-typed.
-    isEnum = false;
+    // Bare identifier: resolve its declared type through the IR type scope.
+    // If it is an enum name, the operand is enum-typed and needs the cast.
+    const varType = getCurrentIrTypeScope()?.locals.get(keyNode.text) ?? getCurrentIrTypeScope()?.globals.get(keyNode.text);
+    if (varType && activeEnumNames.has(varType)) {
+      isEnum = true;
+    }
   }
   if (!isEnum) return keyText;
   return `static_cast<${keyType}>(${keyText})`;
@@ -197,33 +211,36 @@ export function callToStatement(
           };
         }
         if (parsedIsMap(receiverType) && mapMethodName === "get") {
+          const castedKey = castEnumKeyIfNeeded(arg0Text, call.arguments[0], receiverType);
           return {
             kind: "call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
             leadingComments: comments.leadingComments,
             trailingComments: comments.trailingComments,
             callee: `${recText}.at`,
-            args: [{ kind: "raw" as const, value: arg0Text }],
+            args: [{ kind: "raw" as const, value: castedKey }],
           };
         }
         if ((parsedIsMap(receiverType) || parsedIsSet(receiverType)) && mapMethodName === "has") {
+          const castedKey = castEnumKeyIfNeeded(arg0Text, call.arguments[0], receiverType);
           return {
             kind: "call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
             leadingComments: comments.leadingComments,
             trailingComments: comments.trailingComments,
             callee: `${recText}.count`,
-            args: [{ kind: "raw" as const, value: arg0Text }],
+            args: [{ kind: "raw" as const, value: castedKey }],
           };
         }
         if ((parsedIsMap(receiverType) || parsedIsSet(receiverType)) && mapMethodName === "delete") {
+          const castedKey = castEnumKeyIfNeeded(arg0Text, call.arguments[0], receiverType);
           return {
             kind: "call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
             leadingComments: comments.leadingComments,
             trailingComments: comments.trailingComments,
             callee: `${recText}.erase`,
-            args: [{ kind: "raw" as const, value: arg0Text }],
+            args: [{ kind: "raw" as const, value: castedKey }],
           };
         }
         if (parsedIsSet(receiverType) && mapMethodName === "add") {

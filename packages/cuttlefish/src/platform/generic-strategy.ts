@@ -6,6 +6,7 @@ import type { PlatformStrategy, AsyncRuntimeConfig } from "../api/shared";
 import type { ExpressionIR, ProgramIR } from "../api";
 import type { BoardConstants } from "../api/shared";
 import type { Diagnostic, PlatformContext } from "../types";
+import { escapeCppStringLiteral } from "../utils/strings";
 import type { RuntimePolyfillIR, StdLibSupport } from "../api/shared";
 import { DEFAULT_STDLIB_SUPPORT } from "../api/shared";
 import { parsedIsPointer } from "../api/shared/cpp-type-ir";
@@ -300,10 +301,10 @@ export class GenericStrategy implements PlatformStrategy {
     const parts: string[] = [`"[LOG ${params.fileName}:${params.lineNum}] "`];
     for (const part of params.parts) {
       if (part.type === 'text') {
-        parts.push(`"${part.value.replace(/"/g, '\\"')}"`);
+        parts.push(`"${escapeCppStringLiteral(part.value)}"`);
       } else {
         const varExists = params.variables.some(v => v.name === part.value && !v.isFunction);
-        parts.push(varExists ? part.value : `"${part.value}"`);
+        parts.push(varExists ? part.value : `"${escapeCppStringLiteral(part.value)}"`);
       }
     }
     lines.push(`  std::cout << ${parts.join(' << ')} << std::endl;`);

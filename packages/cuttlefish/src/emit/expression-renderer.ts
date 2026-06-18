@@ -10,7 +10,7 @@ import type { BoardConstants } from "../ir/board-resolver";
 import type { KnownVariableInfo } from "../api/shared";
 import type { Diagnostic } from "../types";
 import { extractPropertyChain } from "../ir/extract-property-chain";
-import { escapeCppKeyword } from "../utils/strings";
+import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
 import { renderPeripheralProperty } from "../mapping/peripheral-names";
 import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike } from "../api/shared/cpp-type-ir";
@@ -252,7 +252,7 @@ export class ExpressionRenderer {
         rendered = this.renderMethodCall(expr, exprTransformer);
         break;
       case "element-access":
-        rendered = this.renderElementAccess(expr, exprTransformer);
+        rendered = this.renderElementAccess(expr, exprTransformer, knownVariableTypes);
         break;
       case "hal-expr": {
         const resolved = this.strategy.resolveHALOperation?.(expr.operation);
@@ -712,7 +712,13 @@ export class ExpressionRenderer {
       case "boolean":
         return { format: "%s", arg: expr.value ? '"true"' : '"false"', estimatedLength: 5 };
       case "string":
-        return { format: "%s", arg: `"${expr.value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`, estimatedLength: Math.max(expr.value.length, 1) };
+        // Route through the shared `escapeCppStringLiteral` (handles `\`, `"`,
+        // `\n`, `\r`, `\t`) so a string-literal template/concat part carrying a
+        // control char renders as the escape sequence, not a raw char inside the
+        // C++ string literal. Demo #29 Finding A sibling — this path was reached
+        // by a standalone `${'x\ny'}` template part: the partial escape here
+        // (only `\` and `"`) emitted a raw newline → an unterminated C++ literal.
+        return { format: "%s", arg: `"${escapeCppStringLiteral(expr.value)}"`, estimatedLength: Math.max(expr.value.length, 1) };
       case "identifier": {
         const knownVar = effectiveKnownVariableTypes?.get(expr.value);
         const cppType = knownVar?.cppType ?? this.knownFunctionReturnTypes?.get(expr.value);
@@ -791,7 +797,26 @@ export class ExpressionRenderer {
         }
         // Check if it's a property access on a string (e.g. s.length)
         if (expr.kind === "property-access" && (expr.property === "length" || expr.property === "size")) {
-          return { format: "%d", arg: rendered, estimatedLength: 10 };
+          // Demo #30 Finding B — `.length`/`.size` now ALWAYS render as
+          // `static_cast<long long>(...)` (the array/vector `.size()` path was
+          // already cast; the std::string `.length()` path was cast in the same
+          // demo so the two are uniform). The rendered arg is therefore a
+          // signed `long long`, so the format specifier MUST be `%lld`. The
+          // previous hardcoded `%d` mismatched the unsigned `size_type` returned
+          // by `std::string::length()`, triggering g++ -Wformat=
+          // ("expects int, has size_type").
+          return { format: "%lld", arg: rendered, estimatedLength: 20 };
+        }
+        // Demo #30 Finding B (raw-node sibling) — `.length`/`.size` on an
+        // array/vector/string receiver lowers to a `raw` IR node whose text is
+        // `static_cast<long long>(x.size())` / `static_cast<long long>(s.length())`
+        // (the lowering in resolveLengthProperty casts to long long). That raw
+        // text is a signed `long long`, so the snprintf specifier must be `%lld`
+        // — the previous fall-through to the `%d` default mismatched the cast
+        // type and tripped g++ -Wformat=. This catches the lowered form; the
+        // `property-access` branch above catches the (rare) un-lowered form.
+        if (expr.kind === "raw" && /^static_cast<long long>\(.*\.(?:size|length)\(\)\)$/.test(rendered)) {
+          return { format: "%lld", arg: rendered, estimatedLength: 20 };
         }
         // String enum member access → const char* → %s with c_str() for snprintf.
         if (expr.kind === "property-access" && expr.object.kind === "identifier"
@@ -838,9 +863,17 @@ export class ExpressionRenderer {
     return `(typeid(*${this.render(expr.object, exprTransformer)}) == typeid(${expr.className}))`;
   }
 
-  private renderElementAccess(expr: Extract<ExpressionIR, { kind: "element-access" }>, exprTransformer?: (expr: string) => string): string {
+  private renderElementAccess(expr: Extract<ExpressionIR, { kind: "element-access" }>, exprTransformer?: (expr: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     const objectText = this.render(expr.object, exprTransformer);
-    const indexText = this.render(expr.index, exprTransformer);
+    // An enum-typed index (e.g. `GLYPHS[op]` where `op: Op`, a `const enum`)
+    // must be cast to an integral type — a C++ `enum class` does not
+    // implicitly convert to `size_t`, so `vector[enumValue]` fails to compile.
+    // `renderEnumSafeValue` already wraps numeric-enum operands in
+    // `static_cast<int>(...)` (SUPPORT_MATRIX §1.7); route the index through it
+    // (with the in-scope variable types so a bare enum-typed identifier
+    // resolves) so enum indices lower correctly. Non-enum indices are passed
+    // through unchanged. Demo #28 Finding E.
+    const indexText = this.renderEnumSafeValue(expr.index, knownVariableTypes);
     return `${objectText}[${indexText}]`;
   }
 

@@ -221,6 +221,18 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
       // Extract function/method name from callee
       const calleeParts = statement.callee.split(/->|::|[.(]/);
       identifiers.add(calleeParts[0]);
+      // Add EVERY callee part, not just the first. A `call` statement's callee
+      // can be a lowered raw wrapper (`__RAW_STMT__out.push_back(glyphFor(op))`,
+      // produced by ir/transformers/call-statement.ts when an outer call wraps
+      // an inner free-function call). Only adding `calleeParts[0]` left the
+      // inner callee (`glyphFor`) invisible to the call graph, so a free
+      // function called only as a nested argument was tree-shaken and g++
+      // reported it "not declared in this scope". Demo #28 Finding C.
+      for (const part of calleeParts) {
+        if (part.length > 0) {
+          identifiers.add(part);
+        }
+      }
       // Also add the full callee (e.g. "Serial.begin") for polyfill detection
       identifiers.add(statement.callee);
       for (const arg of statement.args) {

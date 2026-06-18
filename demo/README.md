@@ -1,35 +1,53 @@
-# Priority-queue job scheduler — cuttlefish demo #23
+# Markdown flattener + word-frequency analyzer — cuttlefish demo #30
 
-A **mid-complexity, idiomatic TypeScript** program implementing a **binary
-min-heap** that schedules jobs by priority. Jobs are inserted with an
-integer priority (lower = sooner) and a small payload, then drained in
-priority order. Transpiled to C++ by cuttlefish
-(`@typecad/framework-native`).
+A **mid-complexity, idiomatic TypeScript** program built around two cooperating
+text-processing utilities that share one line-based model:
 
-This is the **twenty-third** demo iteration. Like #15–#22 it is deliberately
-**readable** — real, everyday TypeScript — and is **not** a
-feature-exhaustion test. It is a single self-contained `main.ts`. It
-deliberately picks a **different data shape** from #15–#22:
+1. **A markdown flattener** — `class Markdown` walks a small, hand-written
+   markdown document line-by-line, classifies each line by a leading marker
+   (`#`, `-`, `*`, `>`, digit+`.`), strips the marker, removes inline emphasis
+   (`*foo*`, `_foo_`), and emits a plain-text line. A `const enum Block` +
+   numeric `switch` is the classifier.
+2. **A word-frequency analyzer** — `class WordFreq` ingests the flattened text,
+   splits it on whitespace, lowercases each token, drops stop words against a
+   `Set<string>`, and tallies the survivors in a `Map<string, number>`. The
+   top-N entries are reported via a small selection sort over a `WordCount[]`
+   array of structs.
 
-- a **`class MinHeap`** that owns a **`Job[]` instance field** and does
-  heavy **indexed array read / write / swap** on `this.heap[i]`
-  (`swap`, `siftUp`, `siftDown`, parent/child index arithmetic),
-- **struct mutation through an array index** (`this.heap[i] = tmp`),
-- a **`Map<string, int32_t>` per-kind cost table** keyed by a short tag,
-  with `.has`-guarded `.get` (the idiomatic keyed-table shape),
-- a **`const enum JobKind`** + a **`switch`** on it (numeric enum
-  dispatch — re-exercises §1.7/§2.4 in a different context than #22),
-- module-scope free functions called from class methods, a `while` loop
-  with `break`, `Math.min` / `Math.max`, and template literals interpolating
-  struct fields.
+Transpiled to C++ by cuttlefish (`@typecad/framework-native`).
 
-The first compile attempt surfaced **two real issues** (Findings A and B).
-**Finding B is a genuine transpiler bug** — a name collision between a class
-value-field and a same-named pointer variable — now **FIXED** in the
-transpiler and pinned by `tests/packages/transpiler/demo-23-regressions.test.ts`
-(5 tests). **Finding A is a TypeScript-level author pitfall** (not a
-transpiler gap), corrected in the source. The previous iteration (#22,
-infix→RPN shunting-yard) is preserved in `demo22-backup/`.
+This is the **thirtieth** demo iteration. Like #15–#29 it is deliberately
+**readable** — real, everyday TypeScript — and is **not** a feature-exhaustion
+test. It deliberately picks a **different data shape** from #15–#29
+(CRUD-over-struct-array, container maps, byte sieve, token stream, min-heap,
+prefix-trie, doubly-linked list, disjoint-set forest, Vigenère cipher,
+Brainfuck interpreter, CRC-32 + INI parser):
+
+- **chained string methods** — `.split(...)` whose `string[]` result is
+  indexed and then has `.charAt`/`.charCodeAt`/`.slice` called on the
+  *element*, and `freeFn(x).trim().toLowerCase()` chained where a free
+  function's result feeds a string-method lowering. No prior demo built a
+  method chain whose intermediate result reaches a free function the
+  transpiler must resolve by walking a lowered `raw` wrapper.
+- **`Set<string>` membership filtering** of tokens — `stop.has(word)` drives a
+  keep/drop decision.
+- **a `Map<string, number>` tally** with `.has`-guarded `.get` +
+  `.set(..., count + 1)` increments.
+- **a `WordCount[]` struct array** built by `push` and sorted by a hand-rolled
+  selection sort (sort-with-comparator had gaps in demo #12).
+- a **`const enum` + `switch` with a `case X: default:` fall-through body** —
+  the Plain and default branches share one body. No prior demo used the
+  fall-through-into-default idiom.
+- **`new Set([...])` constructor-with-initial-elements** — the idiomatic TS
+  way to seed a stop-word set. No prior demo used the populated Set/Map
+  constructor.
+- a `class` with BOTH a `Map` field AND a `number[]`/`string[]` field, a
+  module-scope free function called from a class method, `for...of` over
+  `string[]`, C-style `for` loops, and template literals interpolating
+  `number`/`string`/`boolean` values.
+
+The previous iteration (#29, CRC-32 + INI parser) is preserved in
+`demo29-backup/`.
 
 ## Running
 
@@ -40,206 +58,287 @@ npm run compile   # transpile TS -> C++ and compile with g++
 ```
 
 - **`npm run lint` exits 0** with no warnings.
-- **`npm run compile` exits 0**. `g++` emits no errors and no warnings.
-  The transpiler emits no diagnostics.
-- When `g++` *does* emit errors they are surfaced verbatim and mapped back
-  to TypeScript source spans — that is exactly how Finding B was discovered
-  on the first compile attempt.
+- **`npm run compile` exits 0**. `g++` emits **no errors and no warnings**.
+- When `g++` *does* emit errors they are surfaced verbatim and mapped back to
+  TypeScript source spans (see *Findings* below for the ones this demo hit on
+  its first compile, and how each was fixed in the transpiler).
 
 ## Sample output
 
 ```
---- loading ---
-loaded 6 jobs
---- draining (priority order) ---
-#1 [ALARM] pri=1 cost=50 over-temp!
-#3 [HOUSE] pri=1 cost=3 gc sweep
-#4 [LOG] pri=2 cost=1 link up
-#2 [LOG] pri=3 cost=1 boot complete
-#0 [TELE] pri=5 cost=5 read sensors
-#5 [TELE] pri=5 cost=5 read sensors (2)
---- summary ---
-drained 6 jobs; pri range [1 .. 5]
+--- Markdown + word-frequency demo ---
+[md] lines    = 8
+[md] chars    = 223
+[md] flat     = begin
+Demo Document
+This is a short paragraph with emphasis in it.
+first bullet point here
+second bullet has words
+ordered item one
+ordered item two
+a quoted sentence with several words
+Final paragraph wraps up the demo document.
+[md] flat     = end
+[wf] distinct = 21
+[wf] total    = 54
+[wf] top5     = begin
+  bullet (4)
+  demo (4)
+  item (4)
+  ordered (4)
+  paragraph (4)
+[wf] top5     = end
 done
 ```
 
-Verified by hand — the heap orders on `(priority, seq)`:
+Verified by hand:
 
-- **pri 1** → `#1` (ALARM, seq 1) before `#3` (HOUSE, seq 3) ✓
-- **pri 2** → `#4` (LOG) ✓
-- **pri 3** → `#2` (LOG) ✓
-- **pri 5** → `#0` (TELE, seq 0) before `#5` (TELE, seq 5) ✓
-- per-kind costs (`ALARM=50`, `HOUSE=3`, `LOG=1`, `TELE=5`) match `COST` ✓
-
-## What the source exercises
-
-Idiomatic patterns that lower cleanly (all confirmed by this demo's clean
-compile):
-
-- §1.2  `int32_t`; `boolean` → `bool`; `string` → `std::string`
-- §1.5  `Job[]` → `std::vector<Job>`; indexed read/write on a member
-        receiver (`this->heap[i]`, `this->heap[i] = tmp`); `.push`/`.pop`
-        on a member receiver; `Map<string,int32_t>` → `std::map`;
-        `Map.has` → `.count(k) > 0`; `Map.get(k)!` → `.at(k)`
-- §1.6  `interface Job` → value-typed `struct Job`; struct literal
-        `{ priority, kind, label, seq }` → brace-init
-- §1.7  `const enum JobKind` (inlined); enum equality comparison
-- §1.4  template literals interpolating top-level `const std::string` and
-        struct fields (`job.seq`, `job.priority`, `job.label`, etc.)
-- §2.4  numeric `switch` on a `const enum` (plain comparison, no
-        `std::string(...)` wrap)
-- §2.2  `while (true)` with `break`; C-style `for (let i; i < n; i = i+1)`
-- §5.1  `Math.min` / `Math.max` → ternary chains
-- §3.1  module-scope free functions (`kindTag`, `costFor`, `comesBefore`,
-        `formatJob`)
-- §4.1  `class MinHeap` with private `Job[]` + `int32_t` fields + initializers
-- §4.2  `this.heap` / `this.counter` read/write → `this->...`
-- §4.3  class methods calling module-scope free functions (`comesBefore`)
-- §4.5  `new MinHeap()` → pointer
+1. **Markdown flattening** — all 8 content lines survive (heading, paragraph
+   with emphasis, 2 bullets, 2 ordered items, blockquote, final paragraph).
+   Inline `*short*`/`_emphasis_` markers are stripped; `#`, `-`, `>`, `1.`
+   leading markers are dropped; the heading case does not strip emphasis (it
+   has none). ✓
+2. **Stop-word filtering** — `STOP_WORDS` (a 20-word set: a, an, the, in, on,
+   of, to, is, it, with, and, or, has, have, here, up, this, that, these,
+   those) is correctly seeded by `new Set([...])` and filters those tokens
+   out. `distinct = 21` (27 content tokens minus stop words), `total = 54`
+   (ingested twice). ✓
+3. **Top-5 by count** — five words tie at count 4 (`bullet`, `demo`, `item`,
+   `ordered`, `paragraph`); ties break alphabetically (ascending) for
+   deterministic output. ✓
 
 ---
 
-# Transpilation issues found by Demo #23
+# Transpilation issues found by Demo #30
 
-Demo #23 was written in its natural idiomatic shape. The **first**
-`npm run compile` surfaced one TypeScript-level author pitfall (Finding A)
-and, after that was corrected, one **hard `g++` error** from a genuine
-transpiler bug (Finding B). **Finding B is now FIXED** in the transpiler
-source and pinned by a regression test. The source is in its fully
-idiomatic shape (no workarounds).
+Demo #30 was written in its natural idiomatic shape. Its first compile surfaced
+**four distinct issues — all four real transpiler gaps**, now **FIXED in the
+transpiler** and pinned by `tests/packages/transpiler/demo-30-regressions.test.ts`
+(14 tests). The demo source has been reverted to its natural idiomatic form (it
+carries no workarounds) and recompiles clean, producing correct output. Two of
+the four (A and the B raw-node sibling) share one underlying theme — **the
+emit layer had a parallel, hand-rolled walk / hardcoded specifier that
+diverged from the canonical lowering path** — noted as the common root cause at
+the end.
 
-## Finding A — `Record<K,V>` has no `.has()` (TypeScript-level pitfall, corrected in source)
+## Finding A — a free function called from a class method ONLY through a lowered `raw` wrapper was invisible to the class-method visibility walk
 
-The natural first draft of the cost table was a `Record<string, int32_t>`
-looked up with `.has`:
+```
+src\main.ts (109,27) error [block]: 'stripLeading' was not declared in this scope
+            case Block.Quote: {
+                            ^
+src\main.ts (115,29) error [block]: 'stripEmphasis' was not declared in this scope
+            case Block.Ordered: {
+                                ^
+... (~6 more errors of the same shape, plus matching -Wunused-function warnings)
+```
+
+The idiomatic TS expression `stripLeading(line, '#').trim()` inside
+`Markdown.flatten` lowers to `__tc_trim(stripLeading(line, "#"))` — the inner
+`stripLeading(...)` call lives INSIDE the `raw` IR text that the string-method
+lowering produces. `stripLeading`, `stripEmphasis`, `stripOrdered`,
+`isOrderedItem`, `isDigit`, and `compareStrings` are all module-scope free
+functions called from `Markdown`/`WordFreq` method bodies, but ONLY through
+such lowered `raw` wrappers.
+
+**Root cause (generalizable):** the class-method visibility decision (which
+free functions need a non-`static` header prototype vs. can stay `static` in
+the .cpp, per demo #18 fix B) lived in `emit/emitters/setup.ts` and had its
+OWN hand-rolled IR walk (`collectFromExpr`/`collectFromStmt`) that inspected
+only structured `call`/`method-call` IR nodes. It did NOT extract identifiers
+from `raw` IR text. The canonical walk in `ir/identifier-collector.ts`
+(`collectExpressionIdentifiers`/`collectStatementIdentifiers`) DOES extract
+from `raw` (it has a `case "raw"` that regex-extracts identifier tokens). So a
+free function reached only through a `raw` wrapper was visible to the
+**tree-shaking** walk (which used the canonical collector) but invisible to
+the **class-method visibility** walk (which used its own). The two parallel
+walks over the same IR diverged.
+
+This is the **same blind-spot family** as demo #22 Finding B (a call nested in
+a `paren` IR node, fixed in the canonical collector) and demo #28 Finding C (a
+call nested in a `__RAW_STMT__` wrapper, fixed in the canonical collector) —
+each demo found the divergence in a *different* walk that had re-implemented
+the traversal instead of reusing the canonical one.
+
+**Fix:** `setup.ts` now reuses the canonical `collectStatementIdentifiers`
+instead of its own hand-rolled recursion. This is the widest fix — it covers
+every IR shape the canonical collector knows (`raw`, `paren`, `lambda`,
+`tuple-access`, `hal-expr`, ...), so any free function reached through ANY
+lowering is visible to the class-method walk. The idiomatic source uses the
+natural `freeFn(x).trim()` form.
+
+## Finding B — `.length` on a `std::string` returned an unsigned `size_type`; the snprintf format for `.length`/`.size` was hardcoded `%d`
+
+```
+src\main.ts (419,3) warning [call]: format '%d' expects argument of type 'int', but argument 4 has type 'std::__cxx11::basic_string<char>::size_type' {aka 'long long unsigned int'} [-Wformat=]
+      console.log(`[md] chars    = ${flat.length}`);
+      ^
+```
+
+`flat` is a `std::string` local; `${flat.length}` interpolates `flat.length()`
+into a template literal. `std::string::length()` returns `size_type` (unsigned
+`long long` on this target), but the snprintf format specifier inferred for a
+`.length`/`.size` property access was hardcoded to `%d` (signed `int`).
+
+**Root cause (generalizable):** two divergences in one:
+
+1. **The lowering diverged across receiver kinds.** `.length` on an array/
+   vector lowered to `static_cast<long long>(x.size())` (signed, cast to match
+   loop-counter type — demos #22/#27). But `.length` on a `std::string`
+   lowered to the bare `s.length()` (unsigned, no cast). The two paths that
+   both implement "TS `.length`" produced values of different signedness.
+2. **The format specifier diverged from the rendered arg.** The snprintf
+   format inference (`expression-renderer.ts` `inferFormatSpecifier`) hardcoded
+   `%d` for ANY `.length`/`.size` property access, regardless of whether the
+   rendered arg was the unsigned `s.length()` or the signed
+   `static_cast<long long>(x.size())`. Either way it was wrong for one of them.
+
+**Fix:** `.length` on a `std::string` now ALSO casts to
+`static_cast<long long>(s.length())`, making `.length`/`.size` **uniform**
+across every receiver (array/vector/string/Map/Set — all signed `long long`).
+The snprintf specifier for `.length`/`.size` is now `%lld` to match, in BOTH
+the `property-access` IR path AND the lowered `raw`-node path (a `.length` on
+a local array lowers to a `raw` IR node whose text is
+`static_cast<long long>(x.size())`; the `raw` case in `inferFormatSpecifier`
+now recognizes that shape and returns `%lld`). The idiomatic source uses the
+natural `${s.length}` form.
+
+## Finding D — a `switch` with `case X: default: { body }` lowered the shared body into the `else` branch only, so `case X` ran nothing
+
+```
+(no g++ error — this was a SILENT runtime bug)
+```
+
+The `Markdown.flatten` switch has a `case Block.Plain: default: { push(line) }`
+arm — the Plain case and the default share one body. After fixing A and B, the
+demo compiled clean but produced **wrong output**: the two Plain lines ("This
+is a short paragraph..." and "Final paragraph...") were MISSING, and `[md]
+lines` was 6 instead of 8.
+
+**Root cause (generalizable):** TS parses `case X: default: { body }` as TWO
+clauses: a `case X` with an EMPTY body (it falls through) and a `default`
+carrying the shared body. The switch→`if/else if` lowering
+(`emit/emitters/line-appender.ts`) emitted one branch per clause: an empty
+`if (kind == Plain) { }` and a `} else { body }`. So `kind == Plain` matched
+the empty branch and ran NOTHING — the shared body only ran in the default.
+TS semantics: `kind == Plain` falls through into `default`'s body, so the body
+runs for BOTH Plain and default.
+
+An `if/else if` chain cannot express "X OR default → body" (default is the
+mutually-exclusive catch-all). The faithful lowering must GROUP consecutive
+fall-through cases (empty-body cases) with the next clause that HAS a body.
+
+**Fix:** the chain builder now pre-groups the cases before emitting. A group
+is one or more conditions (from empty-body named cases) plus optionally a
+`default`, terminated by the first clause that has a real body. The group
+emits as one branch: named conditions OR-joined (`if (x==A || x==B) { body }`),
+and a `default` in the group makes the whole group the catch-all `else`
+(`case X: default: body` → the body runs for X AND anything else, i.e.
+always — which is exactly the semantics). This is the general fix: it handles
+`case X: default:` AND chained `case A: case B: body` AND
+`case A: case B: default: body`. The idiomatic source uses the natural
+`case X: default: { body }` form.
+
+## Finding E — `new Set([...])` / `new Map([...])` constructor-with-initial-elements dropped the initializer and emitted `{}`
+
+```
+(no g++ error — this was a SILENT runtime bug)
+```
+
+After fixing D, the demo produced 8 lines but the word-frequency output was
+wrong: stop words were NOT filtered (e.g. `with (4)` appeared in the top 5
+despite `with` being in `STOP_WORDS`). `distinct` and `total` were too high.
+
+**Root cause (generalizable):** `const STOP_WORDS: Set<string> = new Set([...])`
+lowered to `const std::set<std::string> STOP_WORDS = {};` — **EMPTY**. The
+Set/Map constructor lowering in `ir/expression-to-ir.ts` returned a hardcoded
+`{}` regardless of arguments:
 
 ```ts
-let COST: Record<string, int32_t> = {};
-function costFor(kind: JobKind): int32_t {
-  if (!COST.has(tag)) { return 0; }   // ← COST.has does not exist
-  return COST[tag];
+if (baseCtorName === "Set") {
+  return { kind: "raw", value: "{}" };   // ← dropped the [...]
 }
 ```
 
-This is a **TypeScript type error** (caught by the cuttlefish type-checker
-before any transpilation), not a transpiler gap:
+So every `new Set([a, b, c])` and `new Map([[k, v]])` produced an empty
+container. The `argsText` (the rendered argument list) was already computed
+just above for the general `new` path but never consulted for Set/Map.
 
-```
-ERROR: src\main.ts(92,8): 'COST.has' is possibly 'undefined'.
-ERROR: src\main.ts(92,13): This expression is not callable.
-  Type 'Number' has no call signatures.
-ERROR: src\main.ts(95,3): Type 'number | undefined' is not assignable to type 'number'.
-```
-
-**Why:** a `Record<K,V>` is, at the TypeScript level, a *plain indexed
-object* — `.has()` is a `Map` API, not an object API. The SUPPORT_MATRIX
-lists `Record<K,V>` and `Map<K,V>` as both lowering to `std::map` (§1.5),
-but at the **TypeScript** level their APIs differ: `Record` is indexed
-(`rec[k]`, no `.has`), `Map` is method-based (`.has`/`.get`/`.set`). Under
-`noUncheckedIndexedAccess` (set in the demo `tsconfig`), `rec[k]` is also
-`V | undefined` even after an `in` guard, so the index form needs a
-non-null assertion.
-
-**Fix applied in source:** `COST` is a `Map<string, int32_t>` with
-`.has`/`.get`/`.set` — the idiomatic, type-safe keyed-table shape for a
-table that is built at module scope and read with a membership guard. This
-is a source-level idiom, not a transpiler change. (A `Record` would also
-work with the `in` operator + `!` assertion, but `Map` is clearer here.)
-
-## Finding B — a class value-field was arrowed to `->` when a same-named pointer variable existed elsewhere (FIXED)
-
-After the Finding A correction, the compile produced **hard `g++` errors**:
-
-```
-src\main.ts (190,7) error [call]: base operand of '->' has non-pointer type 'std::vector<Job>'
-          this.siftDown(0);
-src\main.ts (198,11) error [var_decl]: base operand of '->' has non-pointer type 'std::vector<Job>'
-        const tmp: Job = this.heap[i]!;
-src\main.ts (229,9) error [if]: base operand of '->' has non-pointer type 'std::vector<Job>'
-            if (comesBefore(lc, cur)) {
-```
-
-The class field `private heap: Job[] = []` lowers to a `std::vector<Job>`
-**value** field (not a pointer). But inside `MinHeap`'s methods, every
-`this.heap.X` access was being rendered with an arrow:
-
-- `this.heap.push(job)` → `this->heap->push(job)`   (WRONG)
-- `this.heap.pop()!`   → `this->heap->pop()`         (WRONG)
-- `this.heap.length`   → `this->heap->size()`        (WRONG)
-
-while the *same* `this.heap.length` in the first method rendered correctly
-as `this->heap.size()`. The errors above are the g++ messages for those
-stray `->` on a value type, mapped back to their TS statement context.
-
-**Root cause — a name collision, plus an unguarded regex.**
-`main()` holds a pointer-typed local:
-
-```ts
-const heap: MinHeap = new MinHeap();   // heap is a MinHeap* (new C() → C*)
-```
-
-That variable is registered in `globalPointerVarTypes`. During emit,
-`fixPointerFieldAccess` (assigned in `emit/emitters/top-level-prep.ts` and
-threaded through `statement-renderer.ts` `renderCall` as the
-`calleeTransformer`) rewrites a standalone pointer-variable method call
-`heap.method` → `heap->method`. It did so with the regex
-
-```
-\b${varName}\.
-```
-
-The `\b` word boundary also matches **between `->` and the name** in a
-member-access chain, so a class field `this->heap` was wrongly rewritten to
-`this->heap->` whenever a pointer variable of the same name (`heap`)
-existed anywhere in the program. The name-based rewrite could not
-distinguish the pointer **variable** `heap` from a same-named class
-**field** reached through `this->heap`.
-
-This corrupted every `this.heap.X` access inside `MinHeap`'s methods
-(`.push`, `.pop`, `.length`, `.size()`). The intermittent-looking symptom
-(some `.size()` correct, some `->size()`) was because the rewrite fires
-per-call-statement through the calleeTransformer, and the same
-`this.heap.length` rendered correctly when it was the whole return
-expression of `size()` (no call statement, no transformer) but wrongly
-when it was the callee of a subsequent statement.
-
-Notably, the **`pointerStructFields`** loop in the *same* function already
-used a `(^|[^>])` guard and was unaffected — only the **global-pointer-var**
-loop used the unguarded `\b` form.
-
-**Why this is hard to trigger by accident:** it requires a **name
-collision** between a class value-field and a pointer variable of the same
-name. Minimal probes with a differently-named local (e.g. `const pq`)
-compiled cleanly, which is what made the bug resist simple isolation.
-
-**Fix applied** (`packages/cuttlefish/src/emit/emitters/top-level-prep.ts`,
-`fixPointerFieldAccess`, the `globalPointerVarTypes` loop): the regex now
-uses the same `(^|[^>.])${varName}\.` guard as the `pointerStructFields`
-loop, so `this->heap.x` / `obj->heap.x` (preceded by `>`) and `a.heap.x`
-(preceded by `.`) are left alone; only a standalone `heap.x` (start of
-string, or preceded by a non-`.`/non-`>` character) is rewritten to
-`heap->x`. Pinned by `tests/packages/transpiler/demo-23-regressions.test.ts`
-(5 tests: `.push`, `.pop`, `.length`, indexed `[i]`, and a regression guard
-that a standalone pointer-var call is still arrowed).
+**Fix:** when an initializer argument is present, it is rendered into the
+brace-init-list. `argsText` already renders a single array-literal argument as
+exactly the form the STL constructors accept: `{ a, b, c }` for `std::set`
+(`std::initializer_list<T>`) and `{ {k, v}, ... }` for `std::map`
+(`std::initializer_list<std::pair>`). The empty-ctor form (`new Set()` /
+`new Map()`) still lowers to `{}`. The idiomatic source uses the natural
+`new Set([...])` form.
 
 ---
 
-# Summary
+## Common root cause: the emit layer diverged from the canonical lowering paths
 
-| # | Finding | Severity | Status |
-|---|---|---|---|
-| A | `Record<K,V>` has no `.has()` (TS-level author pitfall; `rec[k]` is `V \| undefined` under `noUncheckedIndexedAccess`) | TS type error | **fixed in source** — `COST` is a `Map<string, int32_t>` |
-| B | A class **value-field** `this->heap.X` was arrowed to `this->heap->X` whenever a same-named **pointer variable** existed, via an unguarded `\b` regex in `fixPointerFieldAccess` | error (raw `g++`) | **FIXED** — `(^|[^>.])` guard added to the global-pointer-var loop (`emit/emitters/top-level-prep.ts`) |
+Two of the four findings (A and the B raw-node sibling) are the same
+underlying theme. The transpiler has **canonical** implementations of
+recurring operations — the identifier collector (`identifier-collector.ts`),
+the `.length` lowering (`resolveLengthProperty`), the string escaper
+(`escapeCppStringLiteral`) — but the **emit layer** (`setup.ts`,
+`expression-renderer.ts`) had re-implemented pieces of them inline, and those
+inline copies drifted:
 
-## Build verdict
+- **A:** `setup.ts` had its own IR walk that didn't extract from `raw`, while
+  the canonical collector did. The two walks over the same IR disagreed.
+- **B (raw sibling):** `expression-renderer.ts` hardcoded `%d` for `.length`,
+  while the lowering rendered either unsigned `size_type` or signed
+  `static_cast<long long>`. The specifier and the rendering disagreed.
 
-- **`npm run lint` exits 0** (no warnings).
-- **`npm run compile` exits 0**. `g++` emits **no errors and no warnings**.
-  The transpiler emits no diagnostics.
-- The binary runs with **all-correct output**, verified by hand against the
-  known `(priority, seq)` ordering of the seeded jobs.
-- **One transpiler fix was applied for this demo** (Finding B), pinned by
-  5 regression tests in `tests/packages/transpiler/demo-23-regressions.test.ts`.
-  The full vitest suite passes (**89 files, 1286 tests passed, 18 skipped,
-  0 failed**) — the fix introduced no regressions. The demo source carries
-  no workarounds; it is in its fully idiomatic shape.
+The fixes close each divergence by routing the emit-layer decision through the
+canonical path: `setup.ts` reuses `collectStatementIdentifiers`; the specifier
+recognizes the lowered `static_cast<long long>(...size())` shape. **A and B
+were "the canonical path was right, the inline copy was wrong" failures.**
+
+D and E are a different theme — **silent runtime bugs** (not g++ errors). The
+demo's first compile surfaced A and B as compile errors; fixing those let the
+program build and run, at which point the wrong output revealed D and E. Both
+were the transpiler producing *valid C++ with wrong semantics* (a switch that
+skipped a case, an empty container). Regression tests for D and E assert on
+the **emitted text shape**, not just compilation, so a future regression is
+caught at transpile time even if it would still compile.
+
+## What lowered correctly (the point of this demo)
+
+With A/B/D/E fixed in the transpiler, every data shape the demo was written to
+stress lowers and runs correctly from its natural idiomatic source:
+
+- **chained string methods** — `raw.trim().toLowerCase()` lowers to
+  `__tc_toLowerCase(__tc_trim(raw))` and the chained result feeds the
+  `.has`-guarded `Map.set` increment correctly (Finding A made the free-fn
+  variant work too).
+- **`Set<string>` membership** — `stop.has(word)` lowers to
+  `stop.count(word) > 0` and drives the keep/drop (Finding E made the set
+  actually contain its elements).
+- **`Map<string, number>` tally** — `.has`-guarded `.get` + `.set(..., n+1)`
+  lower to `std::map` const-correct `.at()` + `operator[]`.
+- **`.length` interpolation** — `${s.length}` lowers to
+  `static_cast<long long>(s.length())` with `%lld` (Finding B).
+- **`switch` with `case X: default:`** — the shared body runs for X AND
+  default (Finding D).
+- **`const enum Block` + numeric `switch`**, **`for...of` over `string[]`**,
+  **C-style `for` loops**, **selection sort over a `WordCount[]` struct
+  array**, **template literals** interpolating `number`/`string`/`boolean`
+  all lower cleanly.
+
+---
+
+## What this demo intentionally does NOT cover
+
+To keep the program mid-complexity and idiomatic rather than a
+feature-exhaustion test, demo #30 deliberately does **not** exercise:
+
+- `Array.sort(comparator)` (not used — the comparator path had lowering gaps in
+  #12; a hand-rolled selection sort is used instead),
+- generic classes / functions,
+- `extends` / `super` inheritance (covered by earlier demos),
+- `try`/`catch` (no exception path in a flattener/analyzer),
+- deep recursion (the flattener is iterative by nature),
+- multi-file modules (the whole program is one `main.ts`).
+
+Each of those is its own future demo with its own data shape.

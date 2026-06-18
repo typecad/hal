@@ -189,6 +189,36 @@ const transpilerRules = [
     message:
       "[transpiler] JSON.* is not supported (no JSON runtime on bare metal). Parse/format manually, or avoid.",
   },
+  // §5.4 ❌ — String.* statics (fromCharCode/fromCodePoint/raw) have no C++
+  // lowering and no JS string runtime on bare metal. Build the string from an
+  // explicit single-char-string lookup table instead. (Demo #28 Finding A.)
+  {
+    selector:
+      "CallExpression > MemberExpression.callee[object.name='String'][property.name=/^(fromCharCode|fromCodePoint|raw)$/] | MemberExpression[object.name='String']",
+    message:
+      "[transpiler] String.* static methods (fromCharCode, fromCodePoint, raw, ...) are not lowered to C++. Build the string from an explicit single-char-string lookup table instead.",
+  },
+  // §5.4 ❌ — Number.* statics have no JS number runtime on bare metal.
+  {
+    selector:
+      "CallExpression > MemberExpression.callee[object.name='Number'][property.name=/^(parseInt|parseFloat|isFinite|isNaN|isInteger|isSafeInteger)$/]",
+    message:
+      "[transpiler] Number.* static methods are not lowered to C++ (no JS number-runtime on bare metal). Use an explicit cast or a fixed-width numeric type.",
+  },
+  // §5.4 ❌ — Array.from / Array.of have no JS array runtime on bare metal.
+  // (Array.isArray IS supported — a compile-time type check.)
+  {
+    selector:
+      "CallExpression > MemberExpression.callee[object.name='Array'][property.name=/^(from|of)$/]",
+    message:
+      "[transpiler] Array.from / Array.of are not lowered to C++ (no JS array runtime). Construct the std::vector directly (a literal, a sized loop, or std::vector<...>). Array.isArray IS supported.",
+  },
+  // §5.4 ❌ — new Date() has no Date/calendar runtime on bare metal.
+  {
+    selector: "NewExpression[callee.name='Date']",
+    message:
+      "[transpiler] new Date() is not supported — no Date/calendar runtime on bare metal. Use millis()/micros() for elapsed time or pass an explicit value.",
+  },
   // §5.4 ❌ — Object.assign / Object.freeze / Object.fromEntries are not lowered.
   {
     selector:

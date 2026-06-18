@@ -85,13 +85,19 @@ describe("Memory & Collection Engine", () => {
 
     // Should use StaticArray instead of std::vector or plain C array
     expect(result.cpp).toContain("__tc_StaticArray<int, 4>");
-    
+
     matchesCpp(result.cpp, [
       "__tc_StaticArray<int, 4> items;",
       "items.push(10);",
       "items.push(20);",
       "items.push(30);",
-      "items.length();"
+      // Demo #27 Finding C — `.length` on a mutable local array now uniformly
+      // lowers to `.size()` (cast to long long to match loop-counter type and
+      // avoid -Wsign-compare). `__tc_StaticArray` exposes BOTH `.length()` and
+      // `.size()`, and `std::vector` (the native spelling) only has `.size()`,
+      // so `.size()` is the single correct spelling across targets. Previously
+      // this emitted the invalid-on-`std::vector` `.length()`.
+      "static_cast<long long>(items.size());"
     ]);
   });
 

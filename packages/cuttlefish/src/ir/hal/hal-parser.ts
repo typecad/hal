@@ -4,6 +4,7 @@ import ts from "typescript";
 import { parseSource } from "../../ast/parse";
 import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances } from "../build-ir-state";
 import { mapPeripheralName } from "../../mapping/peripheral-names";
+import { escapeCppStringLiteral } from "../../utils/strings";
 
 export interface HALInstance {
   className: string;
@@ -135,7 +136,7 @@ export function extractParams(node: ts.FunctionLikeDeclarationBase): { paramName
       paramNames.push(name);
       if (p.initializer) {
         if (ts.isNumericLiteral(p.initializer)) paramDefaults.set(name, p.initializer.text);
-        else if (ts.isStringLiteral(p.initializer)) paramDefaults.set(name, `"${p.initializer.text}"`);
+        else if (ts.isStringLiteral(p.initializer)) paramDefaults.set(name, `"${escapeCppStringLiteral(p.initializer.text)}"`);
         else if (p.initializer.kind === ts.SyntaxKind.TrueKeyword) paramDefaults.set(name, "true");
         else if (p.initializer.kind === ts.SyntaxKind.FalseKeyword) paramDefaults.set(name, "false");
       }

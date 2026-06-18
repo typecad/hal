@@ -19,11 +19,20 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
     }
   }
 
-  // Forward declarations for promoted runtime var_decls
+  // Forward declarations for promoted runtime var_decls.
+  //
+  // A promoted top-level variable (one classified runtime AND referenced by a
+  // free function, so it must live at file scope) is forward-declared here and
+  // assigned its real initializer inside the entrypoint. The default
+  // initializer must be value-initialization (`{}`), which is valid for every
+  // C++ type: scalars/pointers zero/null-initialize, class types
+  // (std::string, std::vector, std::map, user structs) default-construct.
+  // Previously this emitted `= 0` for every non-pointer type, which is invalid
+  // for class types (`std::vector<...>` has no implicit conversion from int)
+  // and failed at g++ time. Demo #28 Finding B.
   if (ctx.promotedVarDecls.size > 0) {
     for (const [varName, info] of ctx.promotedVarDecls) {
-      const defaultInit = info.cppType.includes('*') ? 'nullptr' : '0';
-      appendSourceLine(ctx, `${info.cppType} ${escapeCppKeyword(varName, platformReservedNames)} = ${defaultInit};`);
+      appendSourceLine(ctx, `${info.cppType} ${escapeCppKeyword(varName, platformReservedNames)} = {};`);
     }
     appendSourceLine(ctx, "");
   }

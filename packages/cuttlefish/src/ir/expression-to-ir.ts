@@ -65,6 +65,43 @@ function resolveExprCppType(expr: ts.Expression): string | undefined {
 }
 
 /**
+ * Infer the C++ element type of an array literal from its first element's
+ * resolved cppType. Used so an INLINE array literal that flows into a
+ * `__tc_*` template helper (`[...].join(sep)`, `[...].concat(x)`, ...) renders
+ * as a TYPED `std::vector<ElemType>{...}` — a bare brace-init-list cannot drive
+ * template argument deduction, but a typed temporary can.
+ *
+ * Returns the resolved cppType of the first element (e.g. `"std::string"` for
+ * `['a', 'b']`, `"int32_t"` for `[1, 2]`), or `"auto"` if no element carries a
+ * resolvable type. The `"auto"` fallback preserves the historical behavior for
+ * direct-initialization contexts (`const T x = {...}`), where a bare brace list
+ * is correct. Demo #29 Finding D.
+ */
+function inferArrayElementType(tsElements: ts.Expression[]): string {
+  for (const elem of tsElements) {
+    const t = resolveExprCppType(elem);
+    if (t && t !== "auto") {
+      // A typed element (identifier/member-access/element-access) carries its
+      // declared cppType. Use it directly.
+      return t;
+    }
+    // Literal elements: resolve their cppType from the literal kind so a
+    // numeric/string/boolean literal array also gets a typed vector.
+    if (ts.isStringLiteral(elem) || ts.isNoSubstitutionTemplateLiteral(elem)) {
+      return "std::string";
+    }
+    if (ts.isNumericLiteral(elem)) {
+      // Float-looking literal → double, else int. Mirrors inferNumericCppType.
+      return /[.eE]/.test(elem.text) ? "double" : "int";
+    }
+    if (elem.kind === ts.SyntaxKind.TrueKeyword || elem.kind === ts.SyntaxKind.FalseKeyword) {
+      return "bool";
+    }
+  }
+  return "auto";
+}
+
+/**
  * Math.* constant property accesses that lower to a numeric literal rather
  * than `std::<name>` (which doesn't exist — `std::` has no PI/E members).
  * Using literals avoids `<cmath>`/`M_PI` `_USE_MATH_DEFINES` portability
@@ -178,7 +215,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return `__FILTERED_LEN__${filteredArrayLengthVars.get(receiverNode.text)!}`;
     }
     if (ts.isIdentifier(receiverNode) && mutableArrayVars.has(receiverNode.text)) {
-      return `${safeText}.length()`;
+      // std::vector has no `.length()` member (that's std::string); use
+      // `.size()`. Cast to long long to match loop-counter type and avoid
+      // -Wsign-compare. Demo #27 Finding C — this branch (function-local
+      // mutable array) and the array-literal branch below previously emitted
+      // the invalid `vector.length()`. The `this->field` path was already
+      // corrected by demo #22 fix F; this closes the bare-local-identifier
+      // hole.
+      return `static_cast<long long>(${safeText}.size())`;
     }
     if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
@@ -186,7 +230,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isIdentifier(receiverNode) && activeArrayLiteralVars.has(receiverNode.text)) {
       const varType = getCurrentIrTypeScope()?.locals.get(receiverNode.text);
       if (typeof varType === 'string' && (varType.startsWith('std::vector<') || varType.startsWith('StaticArray<'))) {
-        return `${safeText}.length()`;
+        // Demo #27 Finding C — `.size()` not `.length()` on a vector/StaticArray
+        // local (see the mutableArrayVars comment above).
+        return `static_cast<long long>(${safeText}.size())`;
       }
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
@@ -197,7 +243,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const returnType = ts.isPropertyAccessExpression(receiverNode.expression) && ts.isIdentifier(receiverNode.expression.expression)
         ? getCurrentIrTypeScope()?.locals.get(receiverNode.expression.expression.text)
         : undefined;
-      if (returnType === "std::string") return `${safeText}.length()`;
+      if (returnType === "std::string") return `static_cast<long long>(${safeText}.length())`;
       // Cast .size() to long long to match the loop-counter type (TS number ->
       // long long). Without this, `i < vec.size()` compares long long vs
       // size_t (unsigned) and g++ -Wall warns -Wsign-compare on every
@@ -209,7 +255,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isIdentifier(receiverNode)) {
       const varType = getCurrentIrTypeScope()?.locals.get(receiverNode.text);
       if (varType === "std::string") {
-        return `${safeText}.length()`;
+        // Demo #30 Finding B — cast `std::string::length()` to `long long` so
+        // it matches the array/vector `.size()` lowering (also `long long`)
+        // AND the snprintf `%lld` format specifier. `std::string::length()`
+        // returns `size_type` (unsigned), which g++ -Wformat= rejects against
+        // `%d`/`%lld` and against `static_cast<long long>` only when NOT cast.
+        // Casting here makes `.length` uniform across every string/array/
+        // container receiver — one signed integral type, one format specifier.
+        return `static_cast<long long>(${safeText}.length())`;
       }
       if (varType === "const char*" || varType === "char*") {
         return `strlen(${safeText})`;
@@ -228,7 +281,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // adjacency probe surfaced this pre-existing bug.
     if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
       const fieldType = getCurrentIrTypeScope()?.locals.get(`this->${receiverNode.name.text}`);
-      if (fieldType === "std::string") return `${safeText}.length()`;
+      if (fieldType === "std::string") return `static_cast<long long>(${safeText}.length())`;
       if (fieldType === "const char*" || fieldType === "char*") return `strlen(${safeText})`;
       // Container-like field (.size() applies). Covers std::vector, std::map,
       // std::set, and both __tc_StaticArray<T,N> and the bare StaticArray<T,N>
@@ -1048,16 +1101,31 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           receiverText = renderExprAsText(recIR);
           const arg0IR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
           let arg0Text = renderExprAsText(arg0IR);
-          // When the key is an enum member and the container's key type is
-          // integral, wrap it in static_cast so it matches the comparator.
-          // Key type is the first template arg of the std::map.
+          // When the key is an enum-typed operand and the container's key type
+          // is integral, wrap it in static_cast so it matches the comparator /
+          // converts the enum class to the integral key. Handles BOTH shapes:
+          //   - an enum member access (Color.Red) — detected via activeEnumNames; and
+          //   - a bare identifier whose declared type is an enum (k where k: K)
+          //     — resolved through the in-scope IR type map. Demo #28 Finding E
+          //     review: previously only the enum-member shape was cast, so a
+          //     bare enum-typed key variable on .has/.get/.delete (expression
+          //     form) compiled to an uncast map.count(k)/map.at(k) and failed.
           const receiverIr = parseCppType(receiverType);
           const mapKeyType = receiverIr.kind === "map" ? renderCppType(receiverIr.key) : "";
           const keyIsIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char)$/.test(mapKeyType);
-          const keyIsEnumMember = ts.isPropertyAccessExpression(expr.arguments[0])
-            && ts.isIdentifier(expr.arguments[0].expression)
-            && activeEnumNames.has(expr.arguments[0].expression.text);
-          if (keyIsIntegral && keyIsEnumMember) {
+          let keyIsEnum = false;
+          if (keyIsIntegral) {
+            const keyArg = expr.arguments[0];
+            if (ts.isPropertyAccessExpression(keyArg) && ts.isIdentifier(keyArg.expression)) {
+              keyIsEnum = activeEnumNames.has(keyArg.expression.text);
+            } else if (ts.isIdentifier(keyArg)) {
+              const keyVarType = getCurrentIrTypeScope()?.locals.get(keyArg.text) ?? getCurrentIrTypeScope()?.globals.get(keyArg.text);
+              if (keyVarType && activeEnumNames.has(keyVarType)) {
+                keyIsEnum = true;
+              }
+            }
+          }
+          if (keyIsEnum) {
             arg0Text = `static_cast<${mapKeyType}>(${arg0Text})`;
           }
 
@@ -1296,10 +1364,65 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
 
     if (baseCtorName === "Map") {
+      // Demo #30 Finding E — `new Map()` lowers to `{}` (an empty
+      // std::map), but `new Map([[k, v], ...])` (the idiomatic TS
+      // constructor-with-initial-entries form) previously had its argument
+      // DROPPED and also lowered to `{}`, so the map started empty. The fix:
+      // when an initializer argument is present, render it into the
+      // brace-init-list. `argsText` already renders a single array-literal
+      // argument as `{ {k1, v1}, {k2, v2}, ... }` (renderExprAsText of an
+      // array of arrays), which is exactly the `std::initializer_list<pair>`
+      // form `std::map`'s constructor accepts. A non-iterable argument
+      // (`new Map(otherMap)`) has no clean C++ equivalent and falls back to
+      // `{}` — matching the prior behavior. This mirrors the Set fix below.
+      if ((expr.arguments ?? []).length === 1) {
+        return { kind: "raw", value: argsText };
+      }
       return { kind: "raw", value: "{}" };
     }
     if (baseCtorName === "Set") {
+      // Demo #30 Finding E — `new Set()` lowers to `{}` (an empty std::set),
+      // but `new Set([a, b, c])` (the idiomatic TS constructor-with-initial-
+      // elements form) previously had its argument DROPPED and also lowered to
+      // `{}`, so the set started empty. The fix: when an initializer argument
+      // is present, render it into the brace-init-list. `argsText` already
+      // renders a single array-literal argument as `{ a, b, c }`
+      // (renderExprAsText of an array), which is exactly the
+      // `std::initializer_list<T>` form `std::set`'s constructor accepts. A
+      // non-iterable argument (`new Set(otherSet)`) has no clean C++
+      // equivalent and falls back to `{}` — matching the prior behavior.
+      if ((expr.arguments ?? []).length === 1) {
+        return { kind: "raw", value: argsText };
+      }
       return { kind: "raw", value: "{}" };
+    }
+
+    // `new Array<E>(...)` — the idiomatic TS pre-sized/empty array constructor.
+    // Demo #29 Finding B: this was previously emitted verbatim
+    // (`new Array<uint32_t>(256)`) and failed at g++ time ("'Array' does not
+    // name a type"), because the `Array` constructor — unlike `Array.from`/
+    // `Array.of` (which are intentionally rejected) — had neither a lowering
+    // nor a gate. The clean C++ equivalent is a `std::vector<E>`:
+    //   `new Array<E>(n)`     → `std::vector<E>(n)`   (n value-initialized elems)
+    //   `new Array<E>()`      → `std::vector<E>()`    (empty)
+    //   `new Array<E>(a,b,c)` → `std::vector<E>{a,b,c}` (element list)
+    // The element type comes from the type argument; without one we cannot
+    // pick a C++ element type, so fall through to the unsupported-ctor path
+    // (gated by feature-registry) rather than guess.
+    if (baseCtorName === "Array" && expr.typeArguments && expr.typeArguments.length === 1) {
+      const elemCpp = typeNodeToCppType(expr.typeArguments[0], undefined);
+      const args = expr.arguments ?? [];
+      if (args.length === 0) {
+        return { kind: "raw", value: `std::vector<${elemCpp}>()` };
+      }
+      if (args.length === 1) {
+        // Sized constructor: n value-initialized elements. The size argument
+        // is rendered through the normal expression path.
+        const sizeText = renderExprAsText(expressionToIR(args[0], sourceText, diagnostics, pointerVars));
+        return { kind: "raw", value: `std::vector<${elemCpp}>(${sizeText})` };
+      }
+      // Two+ args: treat as an element list (TS `new Array<E>(a, b, c)`).
+      return { kind: "raw", value: `std::vector<${elemCpp}>{ ${argsText} }` };
     }
 
     const resolvedCtorText = nestedClassAliases.get(ctorText) ?? ctorText;
@@ -1421,11 +1544,19 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // `.size` on a Map/Set (std::map/std::set) — these expose size as a method
     // (`m.size()`), not a member. Map it to a method call so it doesn't fall
     // through to the pointer-deref property-access path (which would emit
-    // `m->size`). Mirrors the `.length` → `.size()` lowering for vectors.
+    // `m->size` / `this->field.size`). Mirrors the `.length` → `.size()`
+    // lowering for vectors.
+    //
+    // Demo #29 Finding C: this previously resolved the receiver type ONLY for a
+    // bare identifier, so `this.field.size` / `obj.field.size` on a Map/Set
+    // field fell through to the generic property-access path and emitted the
+    // bare member `this->field.size` (g++: "has no member named 'size'"). The
+    // `.length` path (resolveLengthProperty) was already extended to member
+    // receivers in demos #22/#27; this closes the parallel `.size` gap. We now
+    // resolve the receiver via the shared `resolveExprCppType`, which covers
+    // bare identifiers, `this.field`, `obj.field`, and element access uniformly.
     if (propName === "size") {
-      const receiverType = ts.isIdentifier(expr.expression)
-        ? (getCurrentIrTypeScope()?.locals.get(expr.expression.text) ?? getCurrentIrTypeScope()?.globals.get(expr.expression.text))
-        : undefined;
+      const receiverType = resolveExprCppType(expr.expression);
       if (receiverType && (parsedIsMap(receiverType) || parsedIsSet(receiverType))) {
         const objectText = renderExprAsText(object);
         return { kind: "raw", value: `static_cast<long long>(${objectText}.size())` };
@@ -1594,11 +1725,18 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
     }
     
-    const elements = expr.elements
-      .filter(e => e.kind !== ts.SyntaxKind.OmittedExpression)
+    const nonOmittedElements = expr.elements.filter(e => e.kind !== ts.SyntaxKind.OmittedExpression);
+    const elements = nonOmittedElements
       .map((e) => expressionToIR(e, sourceText, diagnostics));
-    // Default element type to "auto" - could be enhanced with type inference
-    return { kind: "array", elementType: "auto", elements };
+    // Resolve the element cppType when possible so downstream renderers can emit
+    // a TYPED `std::vector<ElemType>{...}`. This matters when an inline array
+    // literal is the receiver of a `__tc_*` template helper
+    // (`[...].join(sep)`, `[...].concat(x)`, ...): a bare `{...}` cannot drive
+    // template argument deduction, but `std::vector<std::string>{...}` can.
+    // Infer from the first element's resolved cppType; fall back to `"auto"`
+    // (the historical default) when no element carries a type. Demo #29 Finding D.
+    const elementType = inferArrayElementType(nonOmittedElements);
+    return { kind: "array", elementType, elements };
   }
 
   // Handle object literals - suppress warning for compile-time type contexts

@@ -2,6 +2,7 @@
 import type { ProgramIR, StatementIR } from "../../api";
 import { filterPolyfillHelpers, isStringEnum } from "../../api/shared";
 import { analyzeProgram } from "../../ir/program-analysis";
+import { collectStatementIdentifiers } from "../../ir/identifier-collector";
 import { Diagnostic, EmitMode, SourceMapEntry } from "../../types";
 import { ensureDir } from "../../utils/fs";
 import { resolveImport } from "../../libdef/registry";
@@ -726,64 +727,37 @@ export function buildEmitterContext(
   // header, so such a function must be visible in the header too (a `static`
   // forward decl in the .cpp is reached only after the header is processed).
   // These functions are emitted non-static with a header prototype, like
-  // exported functions. The walk recurses through statement + expression IR.
+  // exported functions.
+  //
+  // Demo #30 Finding A: this previously had its OWN hand-rolled IR walk that
+  // only inspected structured `call`/`method-call` nodes. A free function
+  // reached through a `raw` IR wrapper — the lowering of
+  // `freeFn(x).trim()` / `__tc_trim(freeFn(x))` — was invisible to it, so the
+  // function was emitted `static` with no header prototype and g++ reported it
+  // "not declared in this scope" from the inline class-method body. This is
+  // the SAME blind spot demo #28 Finding C fixed in the tree-shaking walk
+  // (`identifier-collector.ts`): two parallel walks over the same IR diverged.
+  // The fix is to stop duplicating the walk and reuse the canonical collector
+  // — which already extracts identifiers from `raw` text, recurses through
+  // `paren`/`lambda`/`tuple-access`/`hal-expr`, and is the single place that
+  // knows every IR shape. Any free function reached through ANY lowering
+  // (raw wrapper, parenthesized call, lambda capture, HAL op) is now visible.
   const freeFunctionNames = new Set<string>();
   for (const fn of program.functions) {
     if (!fn.isExported) freeFunctionNames.add(fn.originalName);
   }
   const freeFunctionsCalledFromClassMethods = new Set<string>();
-  // Collect callees from an expression IR node, recursing into sub-expressions.
-  const collectFromExpr = (expr: any): void => {
-    if (!expr || typeof expr !== "object") return;
-    if (expr.kind === "call" && typeof expr.callee === "string") {
-      const bare = expr.callee.replace(/^.*->|^.*\./, "");
-      if (freeFunctionNames.has(expr.callee) || freeFunctionNames.has(bare)) {
-        freeFunctionsCalledFromClassMethods.add(freeFunctionNames.has(expr.callee) ? expr.callee : bare);
-      }
-    }
-    if (expr.kind === "method-call" && typeof expr.callee === "string") {
-      const bare = expr.callee.replace(/^.*->|^.*\./, "");
-      if (freeFunctionNames.has(bare)) {
-        freeFunctionsCalledFromClassMethods.add(bare);
-      }
-    }
-    // Recurse into every array-of-IR or IR-object child.
-    for (const value of Object.values(expr) as any[]) {
-      if (Array.isArray(value)) {
-        for (const item of value) collectFromExpr(item);
-      } else if (value && typeof value === "object" && typeof (value as any).kind === "string") {
-        collectFromExpr(value);
-      }
-    }
-  };
-  // Collect callees from a statement, recursing into nested statements + any
-  // expressions carried on the statement.
-  const collectFromStmt = (stmt: any): void => {
-    if (!stmt || typeof stmt !== "object") return;
-    if (stmt.kind === "call" && typeof stmt.callee === "string") {
-      const bare = stmt.callee.replace(/^.*->|^.*\./, "");
-      if (freeFunctionNames.has(stmt.callee)) freeFunctionsCalledFromClassMethods.add(stmt.callee);
-      else if (freeFunctionNames.has(bare)) freeFunctionsCalledFromClassMethods.add(bare);
-    }
-    for (const value of Object.values(stmt) as any[]) {
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          if (item && typeof item === "object") {
-            if (typeof item.kind === "string") collectFromStmt(item);
-            collectFromExpr(item);
-          }
-        }
-      } else if (value && typeof value === "object" && typeof (value as any).kind === "string") {
-        collectFromStmt(value);
-        collectFromExpr(value);
-      }
-    }
-  };
   for (const cls of program.classes) {
-    for (const m of cls.methods) for (const s of m.statements) collectFromStmt(s);
-    for (const g of cls.getters) for (const s of g.statements) collectFromStmt(s);
-    for (const st of cls.setters) for (const s of st.statements) collectFromStmt(s);
-    if (cls.constructor) for (const s of cls.constructor.statements) collectFromStmt(s);
+    const methodBodies: StatementIR[] = [];
+    for (const m of cls.methods) for (const s of m.statements) methodBodies.push(s);
+    for (const g of cls.getters) for (const s of g.statements) methodBodies.push(s);
+    for (const st of cls.setters) for (const s of st.statements) methodBodies.push(s);
+    if (cls.constructor) for (const s of cls.constructor.statements) methodBodies.push(s);
+    for (const stmt of methodBodies) {
+      for (const id of collectStatementIdentifiers(stmt)) {
+        if (freeFunctionNames.has(id)) freeFunctionsCalledFromClassMethods.add(id);
+      }
+    }
   }
 
   return {

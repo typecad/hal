@@ -559,6 +559,35 @@ function isObjectLikeValueType(type: ts.Type): boolean {
   return (flags & primitiveFlags) === 0;
 }
 
+/**
+ * True iff `type` is the instance type of a `class` declaration (or a union
+ * whose non-nullish constituent is). A TypeScript class is a *reference* type,
+ * and the transpiler lowers it to a C++ pointer (`C*`, see
+ * `ir/type-resolution.ts` `classTypeNames`). That distinction matters for the
+ * `TS2CPP_MAP_VALUE_COPY_MUTATION` gate: a `map.get(k)` whose value type is a
+ * class returns a *pointer*, so a field write `node.value = v` lowers to
+ * `node->value = v` and **persists** through the pointer — it is NOT a value
+ * copy the way an `interface`/struct-typed fetch is. Only struct-valued
+ * (interface / object-literal) map entries are value copies; class entries are
+ * exempt. (Demo #25 Finding A.)
+ */
+function isClassInstanceType(type: ts.Type): boolean {
+  if (type.isUnion()) {
+    return type.types.some((t) => !typeIncludesNullish(t) && isClassInstanceType(t));
+  }
+  // A class instance type's symbol carries SymbolFlags.Class. Resolve through
+  // aliases (e.g. `type Alias = SomeClass`) so an aliased class is still seen
+  // as a class.
+  let symbol = type.getSymbol();
+  if (symbol && symbol.flags & ts.SymbolFlags.TypeAlias) {
+    // For an alias, the aliased type is reachable via the checker; fall back to
+    // a flag check on the alias target by walking type.aliasSymbol.
+    symbol = type.aliasSymbol ?? symbol;
+  }
+  if (!symbol) return false;
+  return (symbol.flags & ts.SymbolFlags.Class) !== 0;
+}
+
 function typeIncludesNullish(type: ts.Type): boolean {
   if (type.isUnion()) return type.types.some(typeIncludesNullish);
   return (type.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) !== 0;
@@ -716,9 +745,13 @@ export function buildSemanticFacts(
     if (isMapValueLookupExpression(init, checker)) {
       // Only struct-typed values count as "map-value copies" — primitive
       // values fetched from a map are not mutated-through, matching the old
-      // isObjectLikeValueType gate.
+      // isObjectLikeValueType gate. A *class*-typed value is also exempt: a TS
+      // class is a reference type that lowers to a C++ pointer, so
+      // `map.get(k)` returns a pointer and a field write through it persists
+      // (it is not a value copy). Only interface / object-literal entries are
+      // value copies. (Demo #25 Finding A.)
       const bindingType = checker.getTypeAtLocation(name);
-      if (isObjectLikeValueType(bindingType)) {
+      if (isObjectLikeValueType(bindingType) && !isClassInstanceType(bindingType)) {
         recordBindingName(name, "map-value-lookup");
         return;
       }
@@ -744,7 +777,7 @@ export function buildSemanticFacts(
     const init = unwrapExpression(right);
     if (isMapValueLookupExpression(init, checker)) {
       const valueType = checker.getTypeAtLocation(left);
-      if (isObjectLikeValueType(valueType)) {
+      if (isObjectLikeValueType(valueType) && !isClassInstanceType(valueType)) {
         recordOrigin(declarator, "map-value-lookup");
         return;
       }

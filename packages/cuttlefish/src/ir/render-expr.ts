@@ -1,7 +1,7 @@
 ﻿import ts from "typescript";
 import { ExpressionIR } from "../api";
 import { nestedFunctionAliases, getContext } from "./build-ir-state";
-import { escapeCppKeyword } from "../utils/strings";
+import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings";
 
 export function calleeToText(expr: ts.LeftHandSideExpression): string {
   if (ts.isIdentifier(expr)) {
@@ -39,7 +39,15 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return `${expr.value}`;
     }
     case "string":
-      return `"${expr.value.replace(/"/g, '\\"')}"`;
+      // Route through the shared `escapeCppStringLiteral` helper (the SAME one
+      // the template-literal / snprintf path uses) so a standalone-rendered
+      // string literal is escaped identically to one rendered inside a template
+      // literal. Previously this only escaped `"` — so a literal whose decoded
+      // text held a control char or backslash (e.g. a `'\n'`/`'\t'`/`'\\'`
+      // argument to an array/string method) emitted a RAW newline/tab/backslash
+      // inside the C++ string literal, producing an unterminated literal that
+      // corrupted lexing of the entire rest of the file. Demo #29 Finding A.
+      return `"${escapeCppStringLiteral(expr.value)}"`;
     case "boolean":
       return expr.value ? "true" : "false";
     case "identifier":
@@ -54,9 +62,10 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return renderExprAsText(expr.value);
     case "ternary":
       return `(${renderExprAsText(expr.condition)} ? ${renderExprAsText(expr.whenTrue)} : ${renderExprAsText(expr.whenFalse)})`;
-    case "array":
+    case "array": {
       const elements = expr.elements.map((e) => renderExprAsText(e)).join(", ");
       return `{ ${elements} }`;
+    }
     case "object":
       const fieldValues = expr.fields.map((f) => `${renderExprAsText(f.value)}`).join(", ");
       return `{ ${fieldValues} }`;

@@ -76,6 +76,77 @@ function runGates(source: string): { byCode: Map<string, ReturnType<typeof runSe
   return { byCode, all: diags };
 }
 
+/**
+ * Like `runGates`, but injects extra ambient declaration files at the given
+ * slash-paths (mimicking third-party `@types/*` packages or other non-user
+ * program files). Used to test the `TS2CPP_GLOBAL_NAME_COLLISION` gate's
+ * filtering of opted-out ambient declarations (demo #27 Finding F): the gate
+ * must ignore names declared under `/node_modules/@types/` while still
+ * catching DOM globals from TS's own `lib.*.d.ts` files (which live under
+ * `node_modules/typescript/lib/`).
+ */
+function runGatesWithAmbientTypes(
+  source: string,
+  ambientFiles: Record<string, string>,
+): { byCode: Map<string, ReturnType<typeof runSemanticGates>>; all: ReturnType<typeof runSemanticGates> } {
+  const fileName = "/semantic-gates-test.ts";
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const ambientSourceFiles = new Map<string, ts.SourceFile>();
+  for (const [p, content] of Object.entries(ambientFiles)) {
+    ambientSourceFiles.set(p.replace(/\\/g, "/"), ts.createSourceFile(p, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));
+  }
+  const baseHost = ts.createCompilerHost({
+    target: ts.ScriptTarget.ES2021,
+    module: ts.ModuleKind.Node16,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
+  }, true);
+  const host: ts.CompilerHost = {
+    ...baseHost,
+    getSourceFile: (f, lang, onError) => {
+      const norm = f.replace(/\\/g, "/");
+      if (norm === fileName) return sourceFile;
+      const amb = ambientSourceFiles.get(norm);
+      if (amb) return amb;
+      return baseHost.getSourceFile(f, lang, onError);
+    },
+    fileExists: (f) => {
+      const norm = f.replace(/\\/g, "/");
+      if (norm === fileName) return true;
+      if (ambientSourceFiles.has(norm)) return true;
+      return baseHost.fileExists(f);
+    },
+    readFile: (f) => {
+      const norm = f.replace(/\\/g, "/");
+      if (norm === fileName) return source;
+      const amb = ambientSourceFiles.get(norm);
+      if (amb) return amb.getFullText();
+      return baseHost.readFile(f);
+    },
+  };
+  const program = ts.createProgram({
+    rootNames: [fileName, ...ambientSourceFiles.keys()],
+    options: {
+      noEmit: true,
+      strict: true,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ES2021,
+      module: ts.ModuleKind.Node16,
+      moduleResolution: ts.ModuleResolutionKind.Node10,
+      types: [],
+    },
+    host,
+  });
+  const diags = runSemanticGates(program, [fileName]);
+  const byCode = new Map<string, typeof diags>();
+  for (const d of diags) {
+    if (!d.code) continue;
+    const arr = byCode.get(d.code) ?? [];
+    arr.push(d);
+    byCode.set(d.code, arr);
+  }
+  return { byCode, all: diags };
+}
+
 describe("runSemanticGates — TS2CPP_MAP_VALUE_COPY_MUTATION", () => {
   it("flags field assignment on a map.get(k)! copy", () => {
     const { byCode } = runGates(`
@@ -184,6 +255,71 @@ describe("runSemanticGates — TS2CPP_MAP_VALUE_COPY_MUTATION", () => {
     `);
     expect(byCode.get("TS2CPP_MAP_VALUE_COPY_MUTATION")?.length).toBe(1);
   });
+
+  // ── Demo #25 Finding A: class-typed map values are pointers, not value copies ──
+  // A TS `class` is a reference type that lowers to a C++ pointer (C*), so a
+  // `map.get(k)` returns a pointer and a field write through it persists. The
+  // gate must NOT fire for class-typed entries — only for interface/struct
+  // (value-typed) entries.
+
+  it("does NOT flag field mutation on a class-typed map.get(k)! (it is a pointer, not a copy)", () => {
+    const { byCode } = runGates(`
+      class Entry { value: number; }
+      function f(m: Map<string, Entry>, id: string) {
+        const entry = m.get(id)!;
+        entry.value = 42;
+      }
+    `);
+    expect(byCode.has("TS2CPP_MAP_VALUE_COPY_MUTATION")).toBe(false);
+  });
+
+  it("does NOT flag postfix ++ on a class-typed map.get(k)! field (pointer)", () => {
+    const { byCode } = runGates(`
+      class Counter { n: number; }
+      function f(m: Map<string, Counter>, id: string) {
+        const c = m.get(id)!;
+        c.n++;
+      }
+    `);
+    expect(byCode.has("TS2CPP_MAP_VALUE_COPY_MUTATION")).toBe(false);
+  });
+
+  it("does NOT flag compound assignment on a class-typed map.get(k)! field (pointer)", () => {
+    const { byCode } = runGates(`
+      class Counter { n: number; }
+      function f(m: Map<string, Counter>, id: string) {
+        const c = m.get(id)!;
+        c.n += 1;
+      }
+    `);
+    expect(byCode.has("TS2CPP_MAP_VALUE_COPY_MUTATION")).toBe(false);
+  });
+
+  it("does NOT flag mutation after reassignment to a class-typed map.get(k)!", () => {
+    const { byCode } = runGates(`
+      class Entry { value: number; }
+      function f(m: Map<string, Entry>, id: string, placeholder: Entry) {
+        let entry = placeholder;
+        entry = m.get(id)!;
+        entry.value = 7;
+      }
+    `);
+    expect(byCode.has("TS2CPP_MAP_VALUE_COPY_MUTATION")).toBe(false);
+  });
+
+  it("still flags an interface-typed map.get(k)! copy when a class of the same shape exists elsewhere", () => {
+    // Guard against the exemption being too broad: an interface value IS a copy
+    // even if a structurally-identical class exists in the program.
+    const { byCode } = runGates(`
+      class Counter { n: number; }
+      interface ICounter { n: number; }
+      function f(m: Map<string, ICounter>, id: string) {
+        const c = m.get(id)!;
+        c.n = 9;
+      }
+    `);
+    expect(byCode.get("TS2CPP_MAP_VALUE_COPY_MUTATION")?.length).toBe(1);
+  });
 });
 
 describe("runSemanticGates — TS2CPP_ARRAY_PARAM_MUTATION", () => {
@@ -283,7 +419,102 @@ describe("runSemanticGates — clean code produces no diagnostics", () => {
         return x + y;
       }
     `);
-    expect(all.length).toBe(0);
+    // The clean-code expectation excludes the DOM-lib name-collision check,
+    // which has nothing to flag here.
+    const nonCollision = all.filter((d) => d.code !== "TS2CPP_GLOBAL_NAME_COLLISION");
+    expect(nonCollision.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Demo #25 Finding B — global name collision.
+// A user class/interface/enum/type alias whose name matches a global type from
+// a lib (the DOM `Node`, `Element`, `Event`, ...) is shadowed at every use
+// site, producing a cascade of spurious TS errors. The check surfaces one clear
+// diagnostic per colliding declaration.
+// ---------------------------------------------------------------------------
+describe("runSemanticGates — TS2CPP_GLOBAL_NAME_COLLISION", () => {
+  it("flags a class named like a DOM global (Node)", () => {
+    const { byCode } = runGates(`
+      class Node {
+        value: number;
+      }
+    `);
+    expect(byCode.get("TS2CPP_GLOBAL_NAME_COLLISION")?.length).toBe(1);
+  });
+
+  it("flags an interface named like a DOM global (Element)", () => {
+    const { byCode } = runGates(`
+      interface Element {
+        tag: string;
+      }
+    `);
+    expect(byCode.get("TS2CPP_GLOBAL_NAME_COLLISION")?.length).toBe(1);
+  });
+
+  it("flags an enum named like a DOM global (Event)", () => {
+    const { byCode } = runGates(`
+      enum Event { A, B }
+    `);
+    expect(byCode.get("TS2CPP_GLOBAL_NAME_COLLISION")?.length).toBe(1);
+  });
+
+  it("does NOT flag a class whose name is not a global", () => {
+    const { byCode } = runGates(`
+      class MyEntry {
+        value: number;
+      }
+    `);
+    expect(byCode.has("TS2CPP_GLOBAL_NAME_COLLISION")).toBe(false);
+  });
+
+  it("reports a colliding name only once per file", () => {
+    const { byCode } = runGates(`
+      class Node { a: number; }
+      class Node { b: number; }
+    `);
+    // Two declarations of the same colliding name in one file → a single
+    // diagnostic (deduplicated by file:name) pointing at the first.
+    expect(byCode.get("TS2CPP_GLOBAL_NAME_COLLISION")?.length).toBe(1);
+  });
+
+  // Demo #27 Finding F — the gate previously walked EVERY non-user program
+  // file for declared names, so a third-party `@types/*` package pulled into
+  // the TS Program from the repo-root `node_modules` (e.g. `@types/node`,
+  // which is loaded even when the user's tsconfig sets `"types": []`) leaked
+  // common short names (`Mode`, `CipherMode`, `Direction`, ...) into the
+  // globals set and false-tripped the gate on idiomatic user enums. The fix
+  // excludes `/node_modules/@types/` (but NOT all of `node_modules` — TS's own
+  // `lib.*.d.ts` files live under `node_modules/typescript/lib/` and define
+  // the DOM globals the gate exists to catch).
+  it("does NOT flag a user enum whose name matches an @types/node global (demo #27 Finding F)", () => {
+    const { byCode } = runGatesWithAmbientTypes(
+      // User code: an idiomatic short-named enum. `Mode` is declared in
+      // @types/node, so before the fix this tripped the gate.
+      `const enum Mode { Read = 0, Write = 1 }`,
+      // A synthetic ambient declaration mimicking @types/node/crypto.d.ts,
+      // placed under an absolute node_modules/@types/ path (as TS resolves it
+      // in practice from the repo-root node_modules) so the fix's filter
+      // excludes it from the globals set.
+      {
+        "/project/node_modules/@types/node/crypto.d.ts": `type Mode = number; type CipherMode = number;`,
+      },
+    );
+    expect(byCode.has("TS2CPP_GLOBAL_NAME_COLLISION")).toBe(false);
+  });
+
+  it("still flags a user class matching a DOM lib global when @types is also present (lib.* not excluded)", () => {
+    // Regression guard: the fix excludes only @types/*, not TS's own lib files.
+    // `Element` comes from lib.dom.d.ts (under node_modules/typescript/lib/),
+    // so a user `class Element` must STILL trip the gate even when an
+    // unrelated @types package is loaded.
+    const { byCode } = runGatesWithAmbientTypes(
+      `class Element { tag: string; }`,
+      {
+        "/project/node_modules/@types/node/crypto.d.ts": `type Mode = number;`,
+      },
+    );
+    expect(byCode.get("TS2CPP_GLOBAL_NAME_COLLISION")?.length).toBe(1);
   });
 });
 

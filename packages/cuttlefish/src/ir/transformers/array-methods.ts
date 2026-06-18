@@ -6,6 +6,8 @@ import { getCurrentIrTypeScope } from "../symbol-types";
 import { expressionToIR } from "../expression-to-ir";
 import { renderExprAsText } from "../render-expr";
 import { assignmentOperatorToString } from "./variables";
+import { STRING_METHODS, STRING_METHOD_NAMES, StringMethodSpec, StringMethodArgForm } from "../../api/shared/string-method-registry";
+import { parsedElementString } from "../../api/shared/cpp-type-ir";
 
 // Methods that require StaticArray promotion (not all are mutating — indexOf is read-only
 // but needs StaticArray since C arrays don't have an indexOf method).
@@ -153,6 +155,39 @@ const VECTOR_CALLBACK_METHOD_HELPERS: Record<string, string> = {
   sort: "__tc_sort_fn",      // .sort(fn); bare .sort() → __tc_sort (below)
 };
 
+/**
+ * Render an array/string-method RECEIVER for use as a `__tc_*` helper argument.
+ *
+ * The only difference from a plain `renderExprAsText(expressionToIR(receiver))`
+ * is the INLINE ARRAY LITERAL case: `[...].join(sep)`, `[...].concat(x)`, ....
+ * The `__tc_*` helpers are templates, and a bare brace-init-list (`{ ... }`)
+ * CANNOT drive template argument deduction (g++: "couldn't deduce template
+ * parameter 'T'"). A typed `std::vector<ElemType>{ ... }` temporary CAN. So
+ * when the receiver is an inline array literal whose element type we can infer
+ * (from a literal element), we wrap it in `std::vector<ElemType>{ ... }`. A
+ * NAMED receiver (`x.join(...)` where `x: string[]`) already has a concrete
+ * `std::vector<...>` type and is rendered verbatim.
+ *
+ * Demo #29 Finding D. This is intentionally scoped to the method-receiver
+ * position: a bare `{ ... }` is correct in direct-initialization
+ * (`const T x = {...}`) and HAL argument (`Wire.write({...})`) contexts, so the
+ * type-qualification happens ONLY here, not in the generic array renderer.
+ */
+function renderArrayMethodReceiver(
+  receiverNode: ts.Expression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: any,
+): string {
+  const ir = expressionToIR(receiverNode, sourceText, diagnostics, pointerVars);
+  const text = renderExprAsText(ir);
+  // Only an inline array literal needs type-qualification for deduction.
+  if (ir.kind === "array" && ir.elementType && ir.elementType !== "auto") {
+    return `std::vector<${ir.elementType}>${text}`;
+  }
+  return text;
+}
+
 export function tryLowerArrayAndStringMethods(
   expr: ts.CallExpression,
   sourceText: string,
@@ -244,11 +279,11 @@ export function tryLowerArrayAndStringMethods(
     }
     // `sort()` with no arg and `reduce` with one arg have distinct helpers.
     if (methodName === "sort" && expr.arguments.length === 0) {
-      const receiverText = renderExprAsText(expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars));
+      const receiverText = renderArrayMethodReceiver(expr.expression.expression, sourceText, diagnostics, pointerVars);
       return { kind: "raw", value: `__tc_sort(${receiverText})` };
     }
     if (methodName === "reduce" && expr.arguments.length === 1) {
-      const receiverText = renderExprAsText(expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars));
+      const receiverText = renderArrayMethodReceiver(expr.expression.expression, sourceText, diagnostics, pointerVars);
       const cbText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
       return { kind: "raw", value: `__tc_reduce_no_init(${receiverText}, ${cbText})` };
     }
@@ -258,21 +293,190 @@ export function tryLowerArrayAndStringMethods(
     // function, and substitute the name. A raw node is opaque to the hoister.
     const cbHelper = VECTOR_CALLBACK_METHOD_HELPERS[methodName];
     if (cbHelper) {
-      const receiverIR = expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars);
+      // An inline array-literal receiver must be type-qualified so the
+      // `__tc_*` template helper can deduce its element type (demo #29 Finding D).
+      // Wrap an array-literal receiverIR into a typed raw node.
+      const receiverIR = (() => {
+        const ir = expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars);
+        if (ir.kind === "array" && ir.elementType && ir.elementType !== "auto") {
+          return { kind: "raw" as const, value: `std::vector<${ir.elementType}>${renderExprAsText(ir)}` };
+        }
+        return ir;
+      })();
       const argIRs = expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars));
       return { kind: "method-call", callee: cbHelper, args: [receiverIR, ...argIRs] };
     }
     // Value-arg methods: collapse to a raw helper call (no callbacks to hoist).
     const lowering = VECTOR_VALUE_METHOD_LOWERINGS[methodName];
     if (lowering) {
-      const receiverText = renderExprAsText(expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars));
+      const receiverText = renderArrayMethodReceiver(expr.expression.expression, sourceText, diagnostics, pointerVars);
       const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars)));
       const lowered = lowering(receiverText, argsText, expr.arguments.length);
       if (lowered !== null) {
         return { kind: "raw", value: lowered };
       }
     }
+
+    // ---- String-method lowering (structural) ------------------------------
+    // Demo #27 Findings D/E — string methods (`s.toLowerCase()`,
+    // `s.substring(0,2)`, `s.charAt(i)`, ...) were previously lowered by a
+    // post-emit text rewrite (`applyStringMethodRewrites`) whose
+    // `RECEIVER_PATTERN` only matched bare identifiers and `.member` chains —
+    // NOT `X[i]` element access or `X->member` pointer chains. So
+    // `ALPHABET[i].toLowerCase()` was left verbatim (g++: "no member
+    // 'toLowerCase'"), and even on a bare local the emitted `__tc_toLowerCase`
+    // helper was never registered (the text scan missed it). Array mutators
+    // were migrated off the same regex family in demo #22 into this
+    // structural path; string methods are routed through the identical path
+    // here, so the receiver is rendered via `expressionToIR` (handling
+    // bare id / `this.field` / `obj.field` / `X[i]` / chains uniformly) and
+    // the helper lands in a `raw` IR node that `program-analysis.ts` scans to
+    // register the polyfill.
+    //
+    // Gate: only fire for a KNOWN string method whose receiver is NOT a known
+    // array (the array paths above already handled array `indexOf`/`slice`/
+    // etc.). For methods that exist on BOTH strings and arrays
+    // (`indexOf`/`includes`/`startsWith`/`endsWith`/`slice`/`substring`), gate
+    // on the receiver's resolved C++ type being string-like, so an array
+    // `indexOf` is never mis-lowered to the string helper.
+    const isStringMethod = STRING_METHOD_NAMES.has(methodName);
+    if (isStringMethod) {
+      const receiverNode = expr.expression.expression;
+      // Use renderArrayMethodReceiver so an INLINE array-literal receiver of an
+      // ambiguous string/array method (`.join`, `.concat`, `.slice`, ...) is
+      // type-qualified into `std::vector<ElemType>{...}` — the `__tc_*` helpers
+      // are templates and a bare brace-init-list cannot drive deduction. A
+      // genuine string receiver passes through unchanged. Demo #29 Finding D.
+      const receiverText = renderArrayMethodReceiver(receiverNode, sourceText, diagnostics, pointerVars);
+      if (shouldLowerAsStringMethod(receiverNode, methodName)) {
+        const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars)));
+        const lowered = lowerStringMethod(methodName, receiverText, argsText, expr.arguments.length);
+        if (lowered !== null) {
+          return { kind: "raw", value: lowered };
+        }
+      }
+    }
   }
 
+  return null;
+}
+
+// Methods that exist on BOTH std::string and std::vector (so the receiver
+// type must be consulted to decide). All other STRING_METHOD_NAMES are
+// unambiguously string-only.
+const AMBIGUOUS_STRING_METHODS = new Set(["indexOf", "includes", "startsWith", "endsWith", "slice", "substring"]);
+
+/**
+ * Decide whether `receiver.methodName(...)` should lower as a STRING method
+ * (→ `__tc_*` helper) rather than being left for the array path. Returns true
+ * for unambiguously-string methods (toLowerCase, charAt, ...), and for the
+ * ambiguous overlap methods only when the receiver's resolved C++ type is
+ * string-like (`std::string`/`const char*`/`char*`). Known arrays
+ * (`mutableArrayVars`/`activeCArrayVars`) are always rejected so an array
+ * `indexOf` is never mis-lowered.
+ */
+function shouldLowerAsStringMethod(receiverNode: ts.Expression, methodName: string): boolean {
+  // Known array receivers are never string-method receivers.
+  if (ts.isIdentifier(receiverNode)) {
+    if (mutableArrayVars.has(receiverNode.text) || activeCArrayVars.has(receiverNode.text)) {
+      return false;
+    }
+  }
+  if (!AMBIGUOUS_STRING_METHODS.has(methodName)) {
+    // Unambiguously a string method (toLowerCase/trim/charAt/charCodeAt/...).
+    return true;
+  }
+  // Ambiguous: decide by the receiver's resolved C++ type.
+  const resolvedType = resolveReceiverCppType(receiverNode);
+  return resolvedType === "std::string" || resolvedType === "const char*" || resolvedType === "char*";
+}
+
+/**
+ * Resolve the C++ type of a receiver expression for the string/array
+ * disambiguation. Handles bare identifiers (scope lookup), `this.field`
+ * (`this->field` in the scope map), element access (`arr[i]` — derives the
+ * container's element type), and `obj.field` chains (best-effort). Returns
+ * undefined if unknown.
+ *
+ * Element access is the case demo #27 Finding D stressed: `words[i].substring`
+ * where `words: string[]`. The container resolves to `std::vector<std::string>`
+ * and the element type is `std::string`, so the ambiguous `substring`/`slice`
+ * methods lower as string methods. Without this, an indexed receiver resolved
+ * to `undefined` and the ambiguous-method gate rejected the lowering.
+ */
+function resolveReceiverCppType(receiverNode: ts.Expression): string | undefined {
+  const scope = getCurrentIrTypeScope();
+  if (!scope) return undefined;
+  if (ts.isIdentifier(receiverNode)) {
+    return scope.locals.get(receiverNode.text) ?? scope.globals.get(receiverNode.text);
+  }
+  if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    return scope.locals.get(`this->${receiverNode.name.text}`);
+  }
+  if (ts.isElementAccessExpression(receiverNode)) {
+    // Derive the element type of the indexed container.
+    const containerType = resolveReceiverCppType(receiverNode.expression);
+    if (containerType) {
+      const element = parsedElementString(containerType);
+      if (element) return element;
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Lower a string method to its `__tc_*` helper call, picking the helper by
+ * method name AND argument count (so `substring(0,2)` → `__tc_substring2` and
+ * `substring(2)` → `__tc_substring1`). Returns null if no spec matches the
+ * call's arity (e.g. the demo's `slice()` zero-arg copy form belongs to the
+ * vector path, not here).
+ *
+ * Built from `STRING_METHODS`, which encodes arity in the helper name
+ * (`__tc_substring2` / `__tc_substring1`) and argForm. The original
+ * `STRING_METHOD_BY_NAME` map in `string-method-registry.ts` collapses both
+ * arities onto one key (fine for the names-set, wrong for lowering), so this
+ * lookup is keyed by `${name}:${argForm}` instead.
+ *
+ * Native `startsWith` maps to `std::string::rfind` (the prior `special`
+ * override) instead of the `__tc_*` helper.
+ */
+const STRING_HELPER_BY_NAME_FORM: Map<string, StringMethodSpec> = new Map();
+for (const spec of STRING_METHODS) {
+  const name = spec.methodName ?? spec.helper.replace(/^__tc_/, "").replace(/_default$/, "").replace(/\d+$/, "");
+  STRING_HELPER_BY_NAME_FORM.set(`${name}:${spec.argForm}`, spec);
+}
+
+function lowerStringMethod(
+  methodName: string,
+  receiver: string,
+  args: string[],
+  argCount: number,
+): string | null {
+  // Native special case: startsWith → rfind prefix test (no helper).
+  if (methodName === "startsWith" && argCount >= 1) {
+    return `(${receiver}.rfind(${args[0]}, 0) == 0)`;
+  }
+  // Map the observed arg count to the argForm that handles it. Methods with a
+  // default (`padStart`/`padEnd`) have BOTH a binary and a unaryDefault spec;
+  // prefer the binary form when 2 args are given, else the default form.
+  const formsForCount: StringMethodArgForm[] =
+    argCount === 0 ? ["receiverOnly"]
+    : argCount === 1 ? ["unary", "unaryDefault"]
+    : argCount === 2 ? ["binary"]
+    : [];
+  for (const form of formsForCount) {
+    const spec = STRING_HELPER_BY_NAME_FORM.get(`${methodName}:${form}`);
+    if (!spec) continue;
+    switch (form) {
+      case "receiverOnly":
+        return `${spec.helper}(${receiver})`;
+      case "unary":
+      case "unaryDefault":
+        return `${spec.helper}(${receiver}, ${args[0]})`;
+      case "binary":
+        return `${spec.helper}(${receiver}, ${args[0]}, ${args[1]})`;
+    }
+  }
   return null;
 }

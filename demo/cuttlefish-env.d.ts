@@ -43,15 +43,25 @@ declare global {
   declare function clearInterval(id: number): void;
   declare function clearTimeout(id: number): void;
 
-  // Console input methods
+  // console — declared here (not pulled from lib.dom) so this project does not
+  // need "dom" in tsconfig lib just to type console.log. Avoiding lib.dom also
+  // keeps DOM global type names (Node, Element, Event, ...) out of scope, so a
+  // user class named e.g. Node is not shadowed by the DOM global. Platforms may
+  // declaration-merge extra members onto this interface.
   interface Console {
+    log(...args: unknown[]): void;
+    info(...args: unknown[]): void;
+    debug(...args: unknown[]): void;
+    warn(...args: unknown[]): void;
+    error(...args: unknown[]): void;
     readLine(): string;
     readCharacter(): string;
   }
+  const console: Console;
 }
 
 declare module '@typecad' {
-  
+
 }
 
 export {};

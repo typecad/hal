@@ -298,14 +298,20 @@ describe("Array Method Polyfills", () => {
 });
 
 describe("String Method Polyfills", () => {
-  it("transpiles string.length to size()", () => {
+  it("transpiles string.length to length() cast to long long", () => {
+    // Demo #30 Finding B — `.length` on a `std::string` now lowers to
+    // `static_cast<long long>(s.length())`, matching the array/vector `.size()`
+    // lowering. `std::string::length()` returns `size_type` (unsigned); casting
+    // to `long long` makes `.length` uniform across every string/array/container
+    // receiver AND matches the snprintf `%lld` format specifier (the previous
+    // bare `s.length()` triggered g++ -Wformat= against `%d`/`%lld`).
     const result = transpile(`
       function test(): int {
         const s = "hello";
         return s.length;
       }
     `);
-    expect(result.cpp).toContain("return s.length()");
+    expect(result.cpp).toContain("return static_cast<long long>(s.length())");
   });
 
   it("transpiles string concatenation", () => {

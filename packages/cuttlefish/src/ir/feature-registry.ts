@@ -73,6 +73,10 @@ const UNSUPPORTED_OBJECT_RUNTIME_METHODS = new Set([
 
 const UNSUPPORTED_DYNAMIC_CALL_METHODS = new Set(["bind", "call", "apply"]);
 const UNSUPPORTED_RUNTIME_GLOBALS = new Set(["Proxy", "Reflect", "Symbol", "WeakRef", "FinalizationRegistry"]);
+// Array.* constructor statics that are not lowered (no JS array runtime). Note
+// `Array.isArray` IS lowered (a type check that resolves at compile time), so
+// it is intentionally absent here. Demo #28 Finding A review.
+const UNSUPPORTED_ARRAY_STATIC_METHODS = new Set(["from", "of"]);
 
 const ASSIGNMENT_OPERATOR_KINDS = new Set<number>([
   ts.SyntaxKind.EqualsToken,
@@ -362,6 +366,26 @@ const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
     source: "context",
   },
   {
+    selector: "CallExpression > MemberExpression.callee[object.name='String'][property.name=/^(fromCharCode|fromCodePoint|raw)$/] | MemberExpression[object.name='String']",
+    message: "[transpiler] String.* static methods (fromCharCode, fromCodePoint, raw, ...) are not lowered to C++. Build the string from an explicit single-char-string lookup table instead.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression > MemberExpression.callee[object.name='Number'][property.name=/^(parseInt|parseFloat|isFinite|isNaN|isInteger|isSafeInteger)$/]",
+    message: "[transpiler] Number.* static methods are not lowered to C++ (no JS number-runtime on bare metal). Use an explicit cast or a fixed-width numeric type.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression > MemberExpression.callee[object.name='Array'][property.name=/^(from|of)$/]",
+    message: "[transpiler] Array.from / Array.of are not lowered to C++ (no JS array runtime). Construct the std::vector directly (a literal, a sized loop, or std::vector<...>). Array.isArray IS supported.",
+    source: "context",
+  },
+  {
+    selector: "NewExpression[callee.name='Date']",
+    message: "[transpiler] new Date() is not supported — no Date/calendar runtime on bare metal. Use millis()/micros() for elapsed time or pass an explicit value.",
+    source: "context",
+  },
+  {
     selector: "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(assign|freeze|fromEntries)$/]",
     message: "[transpiler] Object.assign/freeze/fromEntries are not lowered to C++. Construct objects explicitly or use a Map.",
     source: "context",
@@ -478,6 +502,27 @@ export function checkContextSensitive(node: ts.Node, sourceText: string): Diagno
           code: "TS2CPP_NO_EQUIVALENT",
         };
       }
+      if (receiverName === "String") {
+        return {
+          message: `String.${methodName}() is a JavaScript String-constructor static with no C++ lowering (no JS string runtime on bare metal).`,
+          hint: "Build the string from an explicit single-char-string lookup table (e.g. const GLYPHS: string[] = [...]) rather than String.fromCharCode/fromCodePoint/raw.",
+          code: "TS2CPP_NO_EQUIVALENT",
+        };
+      }
+      if (receiverName === "Number") {
+        return {
+          message: `Number.${methodName}() is a JavaScript Number-constructor static with no C++ lowering (no JS number runtime on bare metal).`,
+          hint: "Use an explicit C++ cast (static_cast<int>), an explicit fixed-width numeric type, or a manual implementation.",
+          code: "TS2CPP_NO_EQUIVALENT",
+        };
+      }
+      if (receiverName === "Array" && UNSUPPORTED_ARRAY_STATIC_METHODS.has(methodName)) {
+        return {
+          message: `Array.${methodName}() is a JavaScript Array-constructor static with no C++ lowering.`,
+          hint: "Construct the std::vector directly: a literal ([...]), a sized loop, or std::vector<...> directly. Array.from/of are not lowered.",
+          code: "TS2CPP_NO_EQUIVALENT",
+        };
+      }
       if (receiverName === "Object" && UNSUPPORTED_OBJECT_RUNTIME_METHODS.has(methodName)) {
         return {
           message: `Object.${methodName}() mutates or introspects runtime object shape and has no deterministic C++ lowering.`,
@@ -522,6 +567,31 @@ export function checkContextSensitive(node: ts.Node, sourceText: string): Diagno
       return {
         message: `new ${node.expression.text}() requires JavaScript runtime behavior that generated C++ does not provide.`,
         hint: "Use explicit classes/functions or synchronous values instead.",
+        code: "TS2CPP_NO_EQUIVALENT",
+      };
+    }
+    // new Date() — there is no Date/calendar runtime on bare metal. Lowering
+    // previously emitted `Date* d = new Date();` verbatim (an undefined `Date`
+    // type), failing at g++ time. Demo #28 Finding A review.
+    if (ts.isIdentifier(node.expression) && node.expression.text === "Date") {
+      return {
+        message: "new Date() requires a Date/calendar runtime that generated C++ does not provide.",
+        hint: "Use millis()/micros() for elapsed time, or pass an explicit time value.",
+        code: "TS2CPP_NO_EQUIVALENT",
+      };
+    }
+    // new Array(...) WITHOUT a type argument. The TYPED form
+    // `new Array<E>(n)` IS lowered (→ `std::vector<E>(n)`, demo #29 Finding B),
+    // but the UNTYPED `new Array(n)` carries no element type to lower to, so it
+    // cannot pick a C++ element type. Reject it at build time with a clear
+    // source-located diagnostic and a one-line fix (add the `<E>` argument),
+    // rather than letting it fall through to the verbatim `new Array(...)` emit
+    // that fails at g++ time with the opaque "'Array' does not name a type".
+    if (ts.isIdentifier(node.expression) && node.expression.text === "Array"
+        && (!node.typeArguments || node.typeArguments.length === 0)) {
+      return {
+        message: "new Array(...) without an explicit element type cannot be lowered: the C++ element type is unknown.",
+        hint: "Use the typed form new Array<ElementType>(n) (lowered to std::vector<ElementType>(n)), or an array literal [].",
         code: "TS2CPP_NO_EQUIVALENT",
       };
     }

@@ -16,7 +16,7 @@ import type {
   StdLibSupport,
   AsyncRuntimeConfig,
 } from '@typecad/cuttlefish/api/shared';
-import { DEFAULT_STDLIB_SUPPORT, applyStringMethodRewrites } from '@typecad/cuttlefish/api/shared';
+import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
 
 export class NativeStrategy implements PlatformStrategy {
   readonly id = 'native';
@@ -156,15 +156,15 @@ export class NativeStrategy implements PlatformStrategy {
       v = v.replace(/\bundefined\b/g, 'CUTTLEFISH_UNDEFINED');
       v = v.replace(/\bnull\b/g, 'CUTTLEFISH_UNDEFINED');
       v = v.replace(/Date\.now\(\)/g, 'Date::now()');
-      // String-method lowering is shared across all targets (fixes the
-      // receiver-duplication bug the old per-strategy regex table had for
-      // substring/slice/charCodeAt). Native uses the standard __tc_* helpers,
-      // except startsWith which maps to std::string::rfind.
-      v = applyStringMethodRewrites(v, {
-        special: {
-          startsWith: (recv, args) => `(${recv}.rfind(${args[0]}, 0) == 0)`,
-        },
-      });
+      // String-method lowering now happens at IR-build time
+      // (tryLowerArrayAndStringMethods in array-methods.ts, demo #27 Findings
+      // D/E), so it handles every receiver shape (bare id / this.field /
+      // obj.field / X[i]) structurally. The old text-level
+      // `applyStringMethodRewrites` call is removed; its RECEIVER_PATTERN only
+      // matched bare identifiers and `.member` chains, which left
+      // `ALPHABET[i].toLowerCase()` verbatim and failed to register the
+      // `__tc_toLowerCase` helper. The native `startsWith` → `rfind` special
+      // case is preserved inside the structural lowering (lowerStringMethod).
       v = v.replace(/JSON\.stringify\(([^)]+)\)/g, '__tc_jsonStringify($1)');
       v = v.replace(/JSON\.parse\(([^)]+)\)/g, '__tc_jsonParse($1)');
     }

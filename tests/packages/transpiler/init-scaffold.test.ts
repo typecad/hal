@@ -68,6 +68,36 @@ describe("init-templates", () => {
       expect(parsed.compilerOptions.paths['@typecad']).toBeDefined();
       expect(parsed.include).toContain('src/**/*.ts');
     });
+
+    it("omits 'dom' from lib (console typings come from cuttlefish-env.d.ts)", () => {
+      // Demo #25 Finding B — shipping lib.dom pulls in DOM global type names
+      // (Node, Element, Event, ...) that shadow user classes of the same name.
+      // The scaffolded project must not include "dom" in lib; the console
+      // global is declared in cuttlefish-env.d.ts instead.
+      const content = generateProjectTsconfig(ARDUINO_UNO_OPTIONS);
+      const parsed = JSON.parse(content);
+
+      expect(parsed.compilerOptions.lib).toBeDefined();
+      expect(parsed.compilerOptions.lib).not.toContain('dom');
+      expect(parsed.compilerOptions.lib).toContain('ES2022');
+    });
+
+    it("does NOT enable noUncheckedIndexedAccess (dense-array target)", () => {
+      // Demo #26 — this transpiler targets dense storage (std::vector built by
+      // push_back / array literals, never sparse), and idiomatic array code
+      // uses indices bounded by `.length` by construction. noUncheckedIndexedAccess
+      // forces an unverified `arr[i]!` assertion on every index read without
+      // catching real OOB (the assertion is unchecked), so it adds friction with
+      // ~zero safety payoff here. The flag is left off the scaffold; `strict`
+      // + `strictNullChecks` are kept, so genuine null/undefined holes are still
+      // caught. Projects that want the stricter mode can re-enable it locally.
+      const content = generateProjectTsconfig(ARDUINO_UNO_OPTIONS);
+      const parsed = JSON.parse(content);
+
+      expect(parsed.compilerOptions.strict).toBe(true);
+      expect(parsed.compilerOptions.strictNullChecks).toBe(true);
+      expect(parsed.compilerOptions.noUncheckedIndexedAccess).toBeFalsy();
+    });
   });
 
   describe("generateProjectConfig", () => {
@@ -104,6 +134,19 @@ describe("init-templates", () => {
       expect(content).toContain("type Owned<T = unknown> = T");
       expect(content).toContain("type Shared<T = unknown> = T");
       expect(content).toContain("type Mutable<T = unknown> = T");
+    });
+
+    it("declares the console global so lib.dom is not required (demo #25 Finding B)", () => {
+      // Both the board-package and native branches must declare a `console`
+      // value + Console interface so console.log types without lib.dom.
+      const withBoard = generateProjectEnvDts(ARDUINO_UNO_OPTIONS);
+      const native = generateProjectEnvDts({ ...ARDUINO_UNO_OPTIONS, boardPackage: undefined });
+
+      for (const content of [withBoard, native]) {
+        expect(content).toContain('interface Console');
+        expect(content).toContain('log(...args: unknown[]): void');
+        expect(content).toContain('const console: Console');
+      }
     });
   });
 

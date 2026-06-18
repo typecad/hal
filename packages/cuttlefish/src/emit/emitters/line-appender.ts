@@ -159,25 +159,107 @@ export function appendRenderedStatement(
         switchVar = `std::string(${switchVar})`;
       }
       let isFirst = true;
+      // Demo #30 Finding D — handle TS switch fall-through into a shared body.
+      // `case A: case B: default: { body }` parses as three clauses where A
+      // and B have EMPTY bodies and `default` carries the shared body. A naive
+      // `if/else if` chain would emit `if (x==A) {} else if (x==B) {} else
+      // { body }`, so x==A and x==B run NOTHING — semantically wrong (TS
+      // falls through A and B into the shared body). The faithful lowering
+      // groups consecutive fall-through cases (empty-body cases) with the
+      // next clause that HAS a body, joining their conditions with `||`. A
+      // `default` in a group makes the whole group the catch-all `else`. This
+      // is the general fix for the `case X: default:` idiom AND for chained
+      // `case A: case B: body` (which a bare-identifier or empty-body case
+      // also represents).
+      //
+      // A case body whose only statement is a `break` also counts as empty
+      // (it terminates with no real work) — that is the canonical fall-through
+      // terminator. `stripBreaks` already removes breaks, so after stripping
+      // such a body is empty too.
+      const stripBreaks = (stmts: StatementIR[]): StatementIR[] =>
+        stmts.filter((s) => s.kind !== "break").map((s) => {
+          if (s.kind === "block") {
+            return { ...s, body: stripBreaks(s.body) };
+          }
+          return s;
+        });
+      // Build groups: each group is { conditions: value-renderings for named
+      // cases that fall through, hasDefault: whether `default` is in the
+      // group, body: the shared body of the clause that terminates the run }.
+      type SwitchGroup = {
+        conditions: string[];
+        hasDefault: boolean;
+        body: StatementIR[];
+        leadingComments: string[];
+        trailingComments: string[];
+      };
+      const groups: SwitchGroup[] = [];
+      let pendingConditions: string[] = [];
+      let pendingHasDefault = false;
+      let pendingLeadingComments: string[] = [];
+      const flushGroup = (terminatingClause: typeof statement.cases[number], body: StatementIR[]) => {
+        groups.push({
+          conditions: pendingConditions,
+          hasDefault: pendingHasDefault,
+          body,
+          leadingComments: pendingLeadingComments,
+          trailingComments: terminatingClause.trailingComments ?? [],
+        });
+        pendingConditions = [];
+        pendingHasDefault = false;
+        pendingLeadingComments = [];
+      };
       for (const caseClause of statement.cases) {
-        emitCommentLines(caseClause.leadingComments, `${indent}  `, (line) => appendSourceLine(ctx, line));
-        const bodyWithoutBreak = caseClause.body.filter((s) => s.kind !== "break");
+        const bodyWithoutBreak = stripBreaks(caseClause.body);
+        const isEmpty = bodyWithoutBreak.length === 0;
         if (caseClause.value !== undefined) {
+          // Named case. Accumulate its condition; if its body is empty it
+          // falls through to the next clause, otherwise it terminates a run.
+          if (pendingLeadingComments.length === 0) {
+            pendingLeadingComments = caseClause.leadingComments ?? [];
+          }
           const renderedValue = exprRenderer.render(caseClause.value, undefined, scopeState.knownVariableTypes);
-          const keyword = isFirst ? "if" : "} else if";
-          const condition = isBooleanSwitch
-            ? renderedValue
-            : `${switchVar} == ${renderedValue}`;
-          appendSourceLine(ctx, `${indent}${keyword} (${condition})`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
-          appendSourceLine(ctx, `${indent}{`);
-          isFirst = false;
+          pendingConditions.push(isBooleanSwitch ? renderedValue : `${switchVar} == ${renderedValue}`);
+          if (!isEmpty) {
+            flushGroup(caseClause, bodyWithoutBreak);
+          }
         } else {
+          // Default clause. If it has a body it terminates the run (the body
+          // is shared with all accumulated fall-through conditions); if not,
+          // it itself falls through (rare, but `default: case X: body`).
+          pendingHasDefault = true;
+          if (pendingLeadingComments.length === 0) {
+            pendingLeadingComments = caseClause.leadingComments ?? [];
+          }
+          if (!isEmpty) {
+            flushGroup(caseClause, bodyWithoutBreak);
+          }
+        }
+      }
+      // Emit each group as one branch of the if/else-if/else chain.
+      for (const group of groups) {
+        emitCommentLines(group.leadingComments, `${indent}  `, (line) => appendSourceLine(ctx, line));
+        if (group.hasDefault && group.conditions.length === 0) {
+          // Pure default (no fall-through into it): the final `else`.
           appendSourceLine(ctx, `${indent}} else`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
           appendSourceLine(ctx, `${indent}{`);
+        } else if (group.hasDefault) {
+          // `case X: default: body` — X OR anything-else runs the body, which
+          // is equivalent to "always run the body". Emit it as a final else
+          // (the catch-all), which is both correct and the simplest form.
+          appendSourceLine(ctx, `${indent}} else`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
+          appendSourceLine(ctx, `${indent}{`);
+        } else {
+          // One or more named conditions sharing a body. Join with `||`.
+          const condition = group.conditions.join(" || ");
+          const keyword = isFirst ? "if" : "} else if";
+          appendSourceLine(ctx, `${indent}${keyword} (${condition})`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
+          appendSourceLine(ctx, `${indent}{`);
         }
+        isFirst = false;
         const nestedScope = cloneEmissionScopeState(scopeState);
-        for (const nested of bodyWithoutBreak) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
-        emitCommentLines(caseClause.trailingComments, `${indent}  `, (line) => appendSourceLine(ctx, line));
+        for (const nested of group.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
+        emitCommentLines(group.trailingComments, `${indent}  `, (line) => appendSourceLine(ctx, line));
       }
       if (!isFirst) {
         appendSourceLine(ctx, `${indent}}`);

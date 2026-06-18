@@ -98,12 +98,11 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "dom"],
+    "lib": ["ES2022"],
     "strict": true,
     "strictNullChecks": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
-    "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": true,
     "noPropertyAccessFromIndexSignature": true,
@@ -215,6 +214,21 @@ declare global {
   type size_t = number;
   type float = number;
   type double = number;
+
+  // console — declared here (not pulled from lib.dom) so this project does not
+  // need "dom" in tsconfig lib just to type console.log. Avoiding lib.dom also
+  // keeps DOM global type names (Node, Element, Event, ...) out of scope, so a
+  // user class named e.g. Node is not shadowed by the DOM global. The
+  // transpiler regenerates this file on build and may merge extra members
+  // (readLine/readCharacter) onto the Console interface.
+  interface Console {
+    log(...args: unknown[]): void;
+    info(...args: unknown[]): void;
+    debug(...args: unknown[]): void;
+    warn(...args: unknown[]): void;
+    error(...args: unknown[]): void;
+  }
+  const console: Console;
 }
 
 export {};
@@ -244,6 +258,21 @@ declare global {
   type size_t = number;
   type float = number;
   type double = number;
+
+  // console — declared here (not pulled from lib.dom) so this project does not
+  // need "dom" in tsconfig lib just to type console.log. Avoiding lib.dom also
+  // keeps DOM global type names (Node, Element, Event, ...) out of scope, so a
+  // user class named e.g. Node is not shadowed by the DOM global. The
+  // transpiler regenerates this file on build and may merge extra members
+  // (readLine/readCharacter) onto the Console interface.
+  interface Console {
+    log(...args: unknown[]): void;
+    info(...args: unknown[]): void;
+    debug(...args: unknown[]): void;
+    warn(...args: unknown[]): void;
+    error(...args: unknown[]): void;
+  }
+  const console: Console;
 }
 
 declare module '@typecad' {

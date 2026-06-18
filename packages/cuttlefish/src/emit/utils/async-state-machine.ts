@@ -6,6 +6,7 @@
 
 import type { StatementIR, ExpressionIR } from "../../api";
 import type { PlatformStrategy } from "../../api/shared";
+import { escapeCppStringLiteral } from "../../utils/strings";
 
 /**
  * Converts a string to PascalCase.
@@ -269,7 +270,10 @@ function renderExpression(expr: ExpressionIR, strategy: PlatformStrategy): strin
       return `${expr.value}`;
     }
     case "string":
-      return `"${expr.value.replace(/"/g, '\\"')}"`;
+      // Shared escaper — see render-expr.ts / expression-renderer.ts (demo #29
+      // Finding A family). The prior quote-only escape emitted a raw control
+      // char inside the C++ string literal for any `\n`/`\t`/`\\` value.
+      return `"${escapeCppStringLiteral(expr.value)}"`;
     case "boolean":
       return expr.value ? "true" : "false";
     case "identifier":

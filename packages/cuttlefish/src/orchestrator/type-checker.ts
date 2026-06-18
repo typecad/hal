@@ -510,6 +510,85 @@ export function runSemanticGates(
     ts.forEachChild(sf, collect);
   }
 
+  // ── Global name-collision pre-scan (demo #25 Finding B) ──────────────────
+  // A user `class Node {}` (or interface/enum/type alias) whose name collides
+  // with a globally-visible lib declaration (the DOM `Node`, `Element`,
+  // `Event`, etc.) is shadowed by that global at every unqualified use site,
+  // producing a cascade of spurious "property does not exist" / "duplicate
+  // identifier" errors from the TS type-checker that obscure the real cause.
+  // Detect the collision up front and report one clear diagnostic per
+  // colliding declaration.
+  //
+  // We build the set of global names declared across the non-user program
+  // files (lib.d.ts, lib.dom.d.ts, ambient .d.ts) and flag any user top-level
+  // type declaration (class / interface / enum / type alias) whose name
+  // appears in that set. This is deterministic and does not depend on the
+  // checker's name-resolution quirks. (The scaffolded tsconfig no longer
+  // ships with "dom" in lib, so new projects never collide; this check is
+  // defense-in-depth for projects that add it back or otherwise pull in DOM
+  // globals.)
+  const globalNames = new Set<string>();
+  for (const sf of program.getSourceFiles()) {
+    const p = sf.fileName.replace(/\\/g, "/");
+    // Only NON-user files contribute globals (lib + ambient declarations).
+    if (userFileSet.has(p)) continue;
+    // Demo #27 Finding F — third-party `@types/*` packages (e.g.
+    // `@types/node`) are loaded into the TS Program from the repo-root
+    // `node_modules` even when the user's tsconfig sets `"types": []` (TS
+    // still *loads* the files for transitive resolution; `types: []` only
+    // suppresses their automatic global-visibility). Without this filter,
+    // common short names declared in `@types/node` (`Mode`, `CipherMode`,
+    // `Direction`, `Event`, ...) leak into `globalNames` and false-trip this
+    // gate on idiomatic user enums.
+    //
+    // We exclude ONLY `/node_modules/@types/` — NOT all of `node_modules`,
+    // because TypeScript's own default-lib files (`lib.dom.d.ts`,
+    // `lib.es2021.d.ts`, ...) live under `node_modules/typescript/lib/` and
+    // DEFINE the globals this gate exists to catch (the DOM `Node`/`Element`
+    // /`Event` that shadow a user class when a project adds `"dom"` back to
+    // lib). Internal `packages/` are also excluded (they ship the transpiler
+    // itself, not user-visible globals).
+    if (p.includes("/node_modules/@types/") || p.includes("/packages/")) continue;
+    const collectGlobals = (n: ts.Node): void => {
+      if (ts.isVariableStatement(n)) {
+        for (const d of n.declarationList.declarations) {
+          if (ts.isIdentifier(d.name)) globalNames.add(d.name.text);
+        }
+      } else if (
+        (ts.isInterfaceDeclaration(n) ||
+          ts.isClassDeclaration(n) ||
+          ts.isEnumDeclaration(n) ||
+          ts.isTypeAliasDeclaration(n) ||
+          ts.isFunctionDeclaration(n)) &&
+        n.name
+      ) {
+        globalNames.add(n.name.text);
+      }
+      ts.forEachChild(n, collectGlobals);
+    };
+    ts.forEachChild(sf, collectGlobals);
+  }
+  const reportedCollisions = new Set<string>();
+  const reportNameCollision = (nameNode: ts.Identifier, kindLabel: string): void => {
+    const name = nameNode.text;
+    if (!globalNames.has(name)) return;
+    const filePath = nameNode.getSourceFile().fileName.replace(/\\/g, "/");
+    if (!userFileSet.has(filePath)) return;
+    const key = `${filePath}:${name}`;
+    if (reportedCollisions.has(key)) return;
+    reportedCollisions.add(key);
+    const sourceText = nameNode.getSourceFile().getFullText();
+    diagnostics.push(
+      makeSemanticGateDiagnostic(
+        sourceText,
+        nameNode,
+        `${kindLabel} '${name}' collides with a global type of the same name from a lib/ambient declaration. The global shadows this declaration at every unqualified use site, producing spurious type errors.`,
+        "TS2CPP_GLOBAL_NAME_COLLISION",
+        "Rename the declaration, or remove the colliding lib (e.g. drop \"dom\" from tsconfig \"lib\" — the scaffolded console typings live in cuttlefish-env.d.ts).",
+      ),
+    );
+  };
+
   for (const sourceFile of program.getSourceFiles()) {
     const filePath = sourceFile.fileName.replace(/\\/g, "/");
     // Only scan user code — skip lib.d.ts, node_modules, and internal packages.
@@ -531,6 +610,13 @@ export function runSemanticGates(
         ts.forEachChild(node, child => visit(child, scope));
         return;
       }
+
+      // Global name-collision pre-scan: a user class/interface/enum/type alias
+      // whose name matches a lib global is shadowed at every use site.
+      if (ts.isClassDeclaration(node) && node.name) reportNameCollision(node.name, "Class");
+      else if (ts.isInterfaceDeclaration(node) && node.name) reportNameCollision(node.name, "Interface");
+      else if (ts.isEnumDeclaration(node) && node.name) reportNameCollision(node.name, "Enum");
+      else if (ts.isTypeAliasDeclaration(node) && node.name) reportNameCollision(node.name, "Type alias");
 
       if (isFunctionLikeWithBody(node)) {
         const functionScope = createChildScope(scope, {

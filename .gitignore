@@ -7,3 +7,6 @@ demo/cuttlefish.config.js
 **/*.tsbuildinfo
 *.zip
 tmp-*.txt
+
+# website is a separate repo (was orphaned submodule gitlink)
+website/
