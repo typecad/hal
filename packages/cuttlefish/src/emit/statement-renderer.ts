@@ -37,8 +37,12 @@ interface StatementRendererContext {
   knownVariableTypes?: Map<string, KnownVariableInfo>;
   /** Map of variable names to their pointer types */
   pointerVarTypes?: Map<string, string>;
-  /** Set of pointer struct fields for -> access */
-  pointerStructFields?: Set<string>;
+  /** Module-scope (file-global) pointer variables, consulted to arrow assign/
+   *  update targets (`btn.lastPress = 1` → `btn->lastPress = 1`) when the
+   *  target's receiver is a global pointer (e.g. ISR-captured). Threaded from
+   *  EmitterContext; replaces the file-wide text sweep formerly in
+   *  output-finalizer.ts. */
+  globalPointerVarTypes?: Map<string, string>;
   /** Set of variable names known to hold string values */
   stringVarNames?: Set<string>;
   /** Set of variable names known to be emitted as C arrays */
@@ -157,7 +161,7 @@ export class StatementRenderer {
   private readonly expressionRenderer: ExpressionRenderer;
   private readonly knownFunctionReturnTypes: Map<string, string>;
   private readonly pointerVarTypes?: Map<string, string>;
-  private readonly pointerStructFields?: Set<string>;
+  private readonly globalPointerVarTypes?: Map<string, string>;
   private readonly classNameMap?: Map<string, string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
   private readonly crossModuleClassNames?: Set<string>;
@@ -171,7 +175,7 @@ export class StatementRenderer {
     this.strategy = context.strategy;
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.pointerVarTypes = context.pointerVarTypes;
-    this.pointerStructFields = context.pointerStructFields;
+    this.globalPointerVarTypes = context.globalPointerVarTypes;
     this.classNameMap = context.classNameMap;
     this.varAccessorNames = context.varAccessorNames ?? new Map();
     this.crossModuleClassNames = context.crossModuleClassNames;
@@ -249,7 +253,7 @@ export class StatementRenderer {
 
       if (statement.kind === "assign") {
         let target = escapeCppKeyword(statement.target, this.strategy.reservedNames());
-        target = this.fixPointerFieldAccess(target);
+        target = this.arrowGlobalPointerTarget(target);
         // Rewrite setter assignments: c->count = val → c->setCount(val)
         if (statement.operator === "=" || statement.operator === "+=" || statement.operator === "-=") {
           const setterMatch = target.match(/^(.+?)(->|\.)(\w+)$/);
@@ -283,7 +287,7 @@ export class StatementRenderer {
 
       if (statement.kind === "update") {
         let target = escapeCppKeyword(statement.target, this.strategy.reservedNames());
-        target = this.fixPointerFieldAccess(target);
+        target = this.arrowGlobalPointerTarget(target);
         return statement.prefix
           ? `${statement.operator}${target}${forHeader ? "" : ";"}`
           : `${target}${statement.operator}${forHeader ? "" : ";"}`;
@@ -468,8 +472,25 @@ export class StatementRenderer {
       return this.renderVarDecl(statement, forHeader, calleeTransformer, knownVariableTypes);
     })();
 
-    const fixed = this.fixPointerFieldAccess(rendered);
-    return normalizeRawExpression(fixed, this.strategy, this.classNameMap);
+    return normalizeRawExpression(rendered, this.strategy, this.classNameMap);
+  }
+
+  /**
+   * Arrow the leading receiver of an assign/update target when it is a
+   * module-scope (file-global) pointer variable: `btn.lastPress` →
+   * `btn->lastPress`. This covers ISR-captured globals whose pointer type
+   * wasn't visible at IR build time (the target is a plain string here, not a
+   * property-access IR node). Only the leading receiver is rewritten — a
+   * chain like `btn->field.x` is left alone. Replaces the file-wide text sweep
+   * formerly in output-finalizer.ts.
+   */
+  private arrowGlobalPointerTarget(target: string): string {
+    if (!this.globalPointerVarTypes || this.globalPointerVarTypes.size === 0) return target;
+    const m = target.match(/^([A-Za-z_$][\w$]*)\./);
+    if (m && this.globalPointerVarTypes.has(m[1])) {
+      return target.replace(/^([A-Za-z_$][\w$]*)\./, "$1->");
+    }
+    return target;
   }
 
   private fixCrossModuleMethodCall(callee: string): string {
@@ -529,7 +550,7 @@ export class StatementRenderer {
       callee = calleeTransformer(callee);
     }
     callee = this.fixCrossModuleMethodCall(callee);
-    callee = this.fixPointerFieldAccess(callee);
+    callee = this.arrowGlobalPointerTarget(callee);
     const renderedArgs = statement.args.map((arg) => this.expressionRenderer.render(arg, undefined, knownVariableTypes)).join(", ");
     return forHeader ? `${callee}(${renderedArgs})` : `${callee}(${renderedArgs});`;
   }
@@ -956,34 +977,6 @@ export class StatementRenderer {
       this.strategy.defaultNumericType(),
       (o, n) => this.strategy.resolvePinType?.(o, n),
     );
-  }
-
-  /**
-   * Transform method calls on pointer variables and pointer struct fields from '.' to '->'
-   */
-  private fixPointerFieldAccess(callee: string): string {
-    // In C++, 'this' is a pointer — always use -> for member access.
-    callee = callee.replace(/\bthis\./g, "this->");
-    // Handle top-level pointer variables (e.g., sensor.method() -> sensor->method())
-    if (this.pointerVarTypes) {
-      for (const [varName, varType] of this.pointerVarTypes) {
-        if (this.strategy.isPointerType(varType)) {
-          // Match patterns like "varName.method" and transform to "varName->method"
-          const pattern = new RegExp(`\\b${varName}\\.`, "g");
-          callee = callee.replace(pattern, `${varName}->`);
-        }
-      }
-    }
-    
-    // Then, handle pointer struct fields (e.g., Board.A0.method() -> Board.A0->method())
-    if (this.pointerStructFields) {
-      for (const pointerField of this.pointerStructFields) {
-        // Match patterns like "Board.A0.method" and transform to "Board.A0->method"
-        const pattern = new RegExp(`(^|[^>])${pointerField.replace(".", "\\.")}\\.`, "g");
-        callee = callee.replace(pattern, `$1${pointerField}->`);
-      }
-    }
-    return callee;
   }
 
   /**

@@ -4,13 +4,11 @@ import {
   statementRequiresRuntime,
   collectPointerVarTypes,
   collectExpressionIdentifiers,
-  inferObjectFieldType,
   isRuntimeExpression,
 } from "../utils";
 import { appendSourceLine } from "./line-appender";
 import type { EmitterContext } from "./emitter-context";
 import { topLevelClasses } from "../../ir/build-ir-state";
-import { parsedIsPointer, parsedBareString } from "../../api/shared/cpp-type-ir";
 
 function exprContainsTimingCall(expr: ExpressionIR, timingVarNames: Set<string>): boolean {
   if (!expr || typeof expr !== 'object' || !expr.kind) return false;
@@ -483,7 +481,12 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
     allExecutableStatements.push(...fn.statements);
   }
   const globalPointerVarTypes = collectPointerVarTypes(allExecutableStatements, ctx.classNameMap);
-  ctx.globalPointerVarTypes = globalPointerVarTypes;
+  // Populate the existing ctx.globalPointerVarTypes map in place (rather than
+  // reassigning) so the ExpressionRenderer — constructed earlier in setup with
+  // the same Map reference — observes the resolved pointer types when it later
+  // decides `->` vs `.` for bare identifiers (e.g. ISR-captured globals).
+  ctx.globalPointerVarTypes.clear();
+  for (const [k, v] of globalPointerVarTypes) ctx.globalPointerVarTypes.set(k, v);
 
   // Promote timing variables to unsigned long
   {
@@ -610,64 +613,34 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
     }
   }
 
-  // Collect pointer struct fields and build fixPointerFieldAccess
-  const pointerStructFields = new Set<string>();
-  for (const stmt of allExecutableStatements) {
-    if (stmt.kind === "var_decl" && stmt.initializer?.kind === "object") {
-      const structName = stmt.name;
-      for (const field of stmt.initializer.fields) {
-        const fieldType = inferObjectFieldType(field.value, globalPointerVarTypes, ctx.knownFunctionReturnTypes, undefined, undefined, ctx.largeEnumNames, structName, field.name, strategy.defaultNumericType(), (o, n) => strategy.resolvePinType?.(o, n));
-        if (parsedIsPointer(fieldType)) {
-          pointerStructFields.add(`${structName}.${field.name}`);
-        }
-      }
-    }
-  }
-
+  // fixPointerFieldAccess was a post-hoc string rewriter that converted
+  // already-rendered `.` member access to `->` when the receiver resolved to a
+  // pointer. It has been REMOVED. The pointer/value decision is now made once,
+  // structurally, where the resolved C++ type of the receiver is known:
+  //
+  //   - For `property-access` / `method-call` IR nodes, `expressionToIR` sets
+  //     `isPointer` via `resolveExprCppType` + `parsedIsPointer`, and the IR
+  //     also falls back to the module-scope `globalPointerVarTypes` registry
+  //     (threaded into ExpressionRenderer / StatementRenderer) for receivers
+  //     whose type wasn't visible at IR build time — notably ISR-captured
+  //     globals (`const btn = new Button()` accessed inside a hoisted callback).
+  //   - For assign/update targets and free `call` statements, the renderer
+  //     arrows the leading receiver when it is a known global pointer.
+  //
+  // Why the rewriter had to go: it operated on rendered C++ text and keyed off
+  // *names*, not symbols. A name collision between a class value-field and a
+  // same-named pointer local (demo #23 Finding B: `this.heap` value field vs.
+  // a `heap` pointer local) let the `\b`/`(^|[^>.])` regex rewrite
+  // `this->heap.x` → `this->heap->x` (wrong: heap is a value), producing
+  // `base operand of '->' has non-pointer type 'std::vector<Job>'`. The demo
+  // history (#15–#23) is a series of these name-vs-symbol mismatches; each fix
+  // tightened one regex and exposed the next. Removing the rewriter (and its
+  // three duplicate copies) eliminates the whole class of bug.
+  //
+  // The field on EmitterContext remains as a permanent identity no-op because
+  // several render call sites still thread it as `calleeTransformer`; it no
+  // longer inspects or mutates its argument.
   ctx.fixPointerFieldAccess = function fixPointerFieldAccess(callee: string): string {
-    for (const [varName, varType] of globalPointerVarTypes) {
-      if (parsedIsPointer(varType)) {
-        // Only rewrite a *standalone* use of the pointer variable
-        // (`heap.method` -> `heap->method`), not a member of the same name
-        // reached through a pointer chain (`this->heap.method` or
-        // `obj->heap.method`). Without the `(^|[^>.])` guard the `\b` word
-        // boundary also matches between `->` and the name, so a class field
-        // `this->heap` was wrongly arrowed to `this->heap->` whenever a
-        // same-named pointer variable existed elsewhere in the program
-        // (demo #23 Finding B). The `pointerStructFields` loop below already
-        // used this guard; the global-var loop did not.
-        const pattern = new RegExp("(^|[^>.])" + varName + "\\.", "g");
-        callee = callee.replace(pattern, "$1" + varName + "->");
-      }
-    }
-    for (const pointerField of pointerStructFields) {
-      const pattern = new RegExp(`(^|[^>])${pointerField.replace(".", "\\.")}\\.`, "g");
-      callee = callee.replace(pattern, `$1${pointerField}->`);
-    }
-    if (ctx.currentClassPointerFields) {
-      for (const fieldName of ctx.currentClassPointerFields) {
-        callee = callee.replace(
-          new RegExp(`this->${fieldName}\\.`, "g"),
-          `this->${fieldName}->`
-        );
-      }
-    }
-    if (ctx.currentClassPointerFieldTypes) {
-      for (const [fieldName, fieldType] of ctx.currentClassPointerFieldTypes) {
-        const className = parsedBareString(fieldType);
-        const classDef = topLevelClasses.get(className);
-        if (classDef) {
-          for (const subField of classDef.fields) {
-            if (parsedIsPointer(subField.cppType as string)) {
-              callee = callee.replace(
-                new RegExp(`->${fieldName}->${subField.name}\\.`, "g"),
-                `->${fieldName}->${subField.name}->`
-              );
-            }
-          }
-        }
-      }
-    }
     return callee;
   };
 }

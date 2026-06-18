@@ -720,7 +720,6 @@ export function variableStatementToIR(
       const varName = declaration.name.text;
 
       if (mutableArrayVars.has(varName) && ts.isArrayLiteralExpression(actualInitializer)) {
-        require("fs").appendFileSync("C:\\typecad\\typecode\\debug-push.log", `[StaticArray rewrite] var=${varName} mutableArrayVars has=true\n`);
         const elements = actualInitializer.elements;
         let elemType = "int";
         // Extract element type via structured elementOf rather than slice.

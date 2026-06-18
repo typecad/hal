@@ -299,6 +299,13 @@ export function buildEmitterContext(
   // (function-emitter-impl.ts) and read by the expression renderer to decide
   // `.` vs `::` member access on those variables.
   const knownTopLevelObjectTypes = new Map<string, string>();
+  // Module-scope pointer variables, populated by runTopLevelPreprocessing
+  // (top-level-prep.ts) into THIS map (in place, by reference) so the
+  // ExpressionRenderer — constructed below with this same reference — can
+  // decide `->` vs `.` for bare identifiers that resolve to file-global
+  // pointers (e.g. ISR-captured `const btn = new Button()`). Replaces the
+  // file-wide text sweep formerly in output-finalizer.ts.
+  const globalPointerVarTypes = new Map<string, string>();
   for (const iface of program.interfaces) {
     if (iface.parentScope) {
       interfaceNamespaceMap.set(iface.name, iface.parentScope);
@@ -570,6 +577,7 @@ export function buildEmitterContext(
     largeEnumNames,
     knownFunctionReturnTypes,
     knownVariableTypes: topLevelScope.knownVariableTypes,
+    globalPointerVarTypes,
     namespaceNames,
     snprintfCounter,
     stringVarNames,
@@ -589,6 +597,7 @@ export function buildEmitterContext(
     largeEnumNames,
     knownFunctionReturnTypes,
     knownVariableTypes: topLevelScope.knownVariableTypes,
+    globalPointerVarTypes,
     namespaceNames,
     snprintfCounter,
     stringVarNames,
@@ -627,6 +636,7 @@ export function buildEmitterContext(
               largeEnumNames,
               knownFunctionReturnTypes: knownReturnTypes ?? knownFunctionReturnTypes,
               knownVariableTypes: topLevelScope.knownVariableTypes,
+              globalPointerVarTypes,
               namespaceNames,
               snprintfCounter,
               stringVarNames,
@@ -819,7 +829,7 @@ export function buildEmitterContext(
     headerMapEntries: [],
     cArrayVarNames: new Set(),
     fnCArrayVarNames: new Map(),
-    globalPointerVarTypes: new Map(),
+    globalPointerVarTypes,
     promotedVarDecls: new Map(),
     callbackFunctions: [],
     filteredTopLevelExecutables: [],

@@ -37,6 +37,13 @@ interface ExpressionRendererContext {
   knownVariableTypes?: Map<string, KnownVariableInfo>;
   /** Map of variable names to their pointer types */
   pointerVarTypes?: Map<string, string>;
+  /** Module-scope (file-global) variables resolved to pointer C++ types, used
+   *  to decide `->` vs `.` when a bare identifier resolves to a global pointer
+   *  (e.g. an ISR-captured `const btn = new Button()` accessed inside a hoisted
+   *  callback, where the local-scope type map is empty). Replaces the
+   *  file-wide `\b${name}\.` → `${name}->` text sweep that previously patched
+   *  this in output-finalizer.ts. */
+  globalPointerVarTypes?: Map<string, string>;
   /** Set of variable names known to hold string values (for snprintf %s) */
   stringVarNames?: Set<string>;
   /** Set of variable names known to be emitted as C arrays */
@@ -89,6 +96,7 @@ export class ExpressionRenderer {
   private readonly knownFunctionReturnTypes?: Map<string, string>;
   private readonly knownVariableTypes?: Map<string, KnownVariableInfo>;
   private readonly pointerVarTypes?: Map<string, string>;
+  private readonly globalPointerVarTypes?: Map<string, string>;
   private readonly stringVarNames?: Set<string>;
   private readonly cArrayVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
@@ -114,6 +122,7 @@ export class ExpressionRenderer {
     this.knownFunctionReturnTypes = context.knownFunctionReturnTypes;
     this.knownVariableTypes = context.knownVariableTypes;
     this.pointerVarTypes = context.pointerVarTypes;
+    this.globalPointerVarTypes = context.globalPointerVarTypes;
     this.stringVarNames = context.stringVarNames;
     this.cArrayVarNames = context.cArrayVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
@@ -348,6 +357,14 @@ export class ExpressionRenderer {
       case "identifier": {
         const known = effectiveKnownVariableTypes?.get(expr.value)?.cppType;
         if (known) return known;
+        // A bare identifier that resolves to a module-scope (file-global)
+        // pointer variable — e.g. an ISR-captured `const btn = new Button()`
+        // accessed inside a hoisted callback, where the local type map is
+        // empty. Its C++ type is a pointer (e.g. `Button*`), so member access
+        // must use `->`. Previously patched by the output-finalizer file-wide
+        // text sweep; now resolved structurally here.
+        const globalPtrType = this.globalPointerVarTypes?.get(expr.value);
+        if (globalPtrType) return globalPtrType;
         if (this.stringVarNames?.has(expr.value)) return "std::string";
         return undefined;
       }
@@ -1236,6 +1253,20 @@ export class ExpressionRenderer {
     // Convert . to -> for pointer method calls if the IR flagged them.
     if (expr.isPointer && !callee.includes("->")) {
       callee = callee.replace(/\./g, "->");
+    } else if (!callee.includes("->")) {
+      // Fallback: the IR's isPointer flag is unset when the receiver is a
+      // module-scope (file-global) pointer variable accessed from a scope
+      // where its type wasn't visible at IR build time — notably an
+      // ISR-captured `const btn = new Button()` referenced inside the hoisted
+      // callback. Consult globalPointerVarTypes (threaded from EmitterContext)
+      // to recover the pointer-ness and arrow the leading `obj.` → `obj->`.
+      // This is the structural replacement for the file-wide text sweep that
+      // formerly lived in output-finalizer.ts. Only the leading receiver is
+      // rewritten: a chain like `btn->field.method` keeps its inner `.`.
+      const m = callee.match(/^([A-Za-z_$][\w$]*)\./);
+      if (m && this.globalPointerVarTypes?.has(m[1])) {
+        callee = callee.replace(/^([A-Za-z_$][\w$]*)\./, "$1->");
+      }
     }
 
     if (/\b([A-Za-z_][A-Za-z0-9_]*)\.(?:length|size)$/g.test(callee)) {

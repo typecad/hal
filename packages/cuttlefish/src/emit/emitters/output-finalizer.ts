@@ -6,7 +6,6 @@ import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map";
 import { dedupe, hasConsoleCalls, resolveTranspiledModuleInclude } from "../utils";
 import { appendHeaderLine } from "./line-appender";
 import type { EmitterContext } from "./emitter-context";
-import { parsedIsPointer } from "../../api/shared/cpp-type-ir";
 
 /** Derives a unique C preprocessor guard name from a source file path. */
 function sanitizeGuardName(filePath: string): string {
@@ -145,7 +144,7 @@ export function emitPreamble(ctx: EmitterContext): void {
 }
 
 export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
-  const { program, strategy, options, effectiveEmitMode, isNpmPackage, baseName, includes, shimLines, emittedPolyfills, globalPointerVarTypes } = ctx;
+  const { program, strategy, options, effectiveEmitMode, isNpmPackage, baseName, includes, shimLines, emittedPolyfills } = ctx;
   const outDir = options.outDir;
   const sourceExtension = strategy.sourceExtension(ctx.isEntryFile, isNpmPackage);
   const headerPath = path.join(outDir, `${baseName}.h`);
@@ -257,41 +256,15 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
     ctx.sourceLines.unshift("#pragma once", "");
   }
 
-  // Post-process pointer -> transform
-  if (typeof globalPointerVarTypes !== "undefined" && globalPointerVarTypes.size > 0) {
-    const pointerNames = Array.from(globalPointerVarTypes.keys()).filter((varName) => {
-      const varType = globalPointerVarTypes.get(varName);
-      return typeof varType === "string" && parsedIsPointer(varType);
-    });
-    if (pointerNames.length > 0) {
-      const shimLineCount = shimLines.length + (shimLines.length > 0 ? 1 : 0);
-      const polyfillLineCount = emittedPolyfills
-        ? emittedPolyfills.declarations.join("\n").split("\n").length +
-          emittedPolyfills.definitions.join("\n").split("\n").length
-        : 0;
-      const protectedLineCount = shimLineCount + polyfillLineCount;
-
-      let userCodeStartIdx = 0;
-      for (let i = 0; i < ctx.sourceLines.length; i++) {
-        const line = ctx.sourceLines[i];
-        if (line.includes("// TypeCAD Native Polyfills") || line.includes("// String helpers")) {
-          userCodeStartIdx = i + protectedLineCount;
-          break;
-        }
-      }
-
-      if (userCodeStartIdx > 0 && userCodeStartIdx < ctx.sourceLines.length) {
-        const protectedLines = ctx.sourceLines.slice(0, userCodeStartIdx);
-        const userLines = ctx.sourceLines.slice(userCodeStartIdx);
-        const userText = userLines.join("\n");
-        const fixedUserText = pointerNames.reduce((text, varName) => {
-          const pattern = new RegExp(`\\b${varName}\\.`, "g");
-          return text.replace(pattern, `${varName}->`);
-        }, userText);
-        ctx.sourceLines = [...protectedLines, ...fixedUserText.split("\n")];
-      }
-    }
-  }
+  // NOTE: The file-wide `\b${varName}\.` → `${varName}->` text sweep that lived
+  // here has been REMOVED. The `->`/`.` decision for global pointer variables
+  // (including ISR-captured ones like `const btn = new Button()` accessed inside
+  // a hoisted callback) is now made structurally by ExpressionRenderer, which
+  // consults `globalPointerVarTypes` (threaded in from this context) in
+  // inferExpressionCppType. That decision runs per-IR-node with the resolved
+  // symbol/type, replacing the name-keyed regex that operated on joined output
+  // text and could not distinguish a global pointer variable from a same-named
+  // value field/member (the demo #15–#23 failure class).
 
   writeText(sourcePath, ctx.sourceLines.join("\n").trimEnd() + "\n");
   const outputSourceMapPath = options.emitMaps
