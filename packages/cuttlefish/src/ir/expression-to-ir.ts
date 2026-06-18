@@ -2,7 +2,8 @@
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "../api";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, activeLocalTypes, activeGlobalTypes, activeClassFieldTypes, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions } from "./build-ir-state";
+import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
 import { halInstances } from "./hal-resolver";
@@ -10,19 +11,22 @@ import { escapeCppKeyword } from "../utils/strings";
 import { tryLowerRegisterRead } from "./transformers/register-assignment";
 import { tryLowerArrayAndStringMethods } from "./transformers/array-methods";
 import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution";
+import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir";
 
 function resolveExprCppType(expr: ts.Expression): string | undefined {
   if (ts.isNonNullExpression(expr) || ts.isParenthesizedExpression(expr)) {
     return resolveExprCppType(expr.expression);
   }
   if (ts.isIdentifier(expr)) {
-    const t = activeLocalTypes.get(expr.text) ?? activeGlobalTypes.get(expr.text);
+    const scope = getCurrentIrTypeScope();
+    const t = scope?.locals.get(expr.text) ?? scope?.globals.get(expr.text);
     return t && t !== "auto" ? t : undefined;
   }
   if (ts.isPropertyAccessExpression(expr)) {
     if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
       const fieldKey = `this->${expr.name.text}`;
-      const fieldType = activeClassFieldTypes.get(fieldKey) ?? activeLocalTypes.get(fieldKey);
+      const scope = getCurrentIrTypeScope();
+      const fieldType = scope?.classFields.get(fieldKey) ?? scope?.locals.get(fieldKey);
       return fieldType && fieldType !== "auto" ? fieldType : undefined;
     }
     const receiverType = resolveExprCppType(expr.expression);
@@ -36,18 +40,11 @@ function resolveExprCppType(expr: ts.Expression): string | undefined {
   if (ts.isElementAccessExpression(expr)) {
     const containerType = resolveExprCppType(expr.expression);
     if (!containerType) return undefined;
-    if (containerType.startsWith("std::vector<")) {
-      return containerType.slice("std::vector<".length, -1).trim();
-    }
-    if (containerType.startsWith("__tc_StaticArray<")) {
-      const inner = containerType.slice("__tc_StaticArray<".length, -1);
-      let depth = 0;
-      for (let i = 0; i < inner.length; i++) {
-        if (inner[i] === '<') depth++;
-        else if (inner[i] === '>') depth--;
-        else if (inner[i] === ',' && depth === 0) return inner.slice(0, i).trim();
-      }
-    }
+    // One structured elementOf lookup replaces the vector / __tc_StaticArray
+    // inline parsers (the latter was a hand-rolled depth counter for the
+    // first template arg).
+    const elemIr = elementOf(parseCppType(containerType));
+    if (elemIr) return renderCppType(elemIr);
   }
   if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
     const receiver = expr.expression.expression;
@@ -57,7 +54,11 @@ function resolveExprCppType(expr: ts.Expression): string | undefined {
     }
     const receiverType = resolveExprCppType(receiver);
     if (!receiverType) return undefined;
-    const className = receiverType.replace(/\*$/, "");
+    // Peel pointer via structured bareType to recover the class name.
+    const className = (() => {
+      const bare = bareType(parseCppType(receiverType));
+      return bare.kind === "named" ? bare.name : "";
+    })();
     return topLevelClasses.get(className)?.methods.find((method) => method.name === methodName)?.returnType;
   }
   return undefined;
@@ -108,7 +109,7 @@ function resolveCallReturnTypeForNullGuard(call: ts.CallExpression, sourceText: 
     if (callee.expression.kind === ts.SyntaxKind.ThisKeyword) {
       candidateClassNames = Array.from(topLevelClassNames);
     } else if (ts.isIdentifier(callee.expression)) {
-      const recvType = activeLocalTypes.get(callee.expression.text) ?? activeGlobalTypes.get(callee.expression.text);
+      const recvType = getCurrentIrTypeScope()?.locals.get(callee.expression.text) ?? getCurrentIrTypeScope()?.globals.get(callee.expression.text);
       if (recvType) candidateClassNames = [recvType.replace(/\*$/, "").replace(/^const\s+/, "")];
     }
     for (const className of candidateClassNames) {
@@ -183,18 +184,18 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
     if (ts.isIdentifier(receiverNode) && activeArrayLiteralVars.has(receiverNode.text)) {
-      const varType = activeLocalTypes.get(receiverNode.text);
+      const varType = getCurrentIrTypeScope()?.locals.get(receiverNode.text);
       if (typeof varType === 'string' && (varType.startsWith('std::vector<') || varType.startsWith('StaticArray<'))) {
         return `${safeText}.length()`;
       }
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
-    if (ts.isIdentifier(receiverNode) && activeLocalTypes.get(receiverNode.text) === "auto") {
+    if (ts.isIdentifier(receiverNode) && getCurrentIrTypeScope()?.locals.get(receiverNode.text) === "auto") {
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
     if (ts.isCallExpression(receiverNode)) {
       const returnType = ts.isPropertyAccessExpression(receiverNode.expression) && ts.isIdentifier(receiverNode.expression.expression)
-        ? activeLocalTypes.get(receiverNode.expression.expression.text)
+        ? getCurrentIrTypeScope()?.locals.get(receiverNode.expression.expression.text)
         : undefined;
       if (returnType === "std::string") return `${safeText}.length()`;
       // Cast .size() to long long to match the loop-counter type (TS number ->
@@ -206,7 +207,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // Resolve by concrete cppType first so std::string vars render member calls
     // even when their resolved type is const char* (string-literal initialized).
     if (ts.isIdentifier(receiverNode)) {
-      const varType = activeLocalTypes.get(receiverNode.text);
+      const varType = getCurrentIrTypeScope()?.locals.get(receiverNode.text);
       if (varType === "std::string") {
         return `${safeText}.length()`;
       }
@@ -218,12 +219,32 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return `strlen(${safeText})`;
       }
     }
-    // Handle this->field.length where field is a string (const char*)
+    // Handle this->field.length — route by the field's resolved C++ type. Every
+    // STL container exposes .size(), so vector/map/set all lower correctly; only
+    // a C-string field lowers to strlen. Previously a std::map/std::set field
+    // fell through to the strlen default (the field type didn't match the
+    // std::vector/StaticArray prefix), emitting strlen(this->m) on a struct —
+    // invalid C++ that g++ rejects (or, worse, silently miscompiles). Demo #22
+    // adjacency probe surfaced this pre-existing bug.
     if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      const fieldType = activeLocalTypes.get(`this->${receiverNode.name.text}`);
+      const fieldType = getCurrentIrTypeScope()?.locals.get(`this->${receiverNode.name.text}`);
       if (fieldType === "std::string") return `${safeText}.length()`;
-      if (fieldType && (fieldType.startsWith("std::vector<") || fieldType.startsWith("StaticArray<"))) return `static_cast<long long>(${safeText}.size())`;
-      return `strlen(${safeText})`;
+      if (fieldType === "const char*" || fieldType === "char*") return `strlen(${safeText})`;
+      // Container-like field (.size() applies). Covers std::vector, std::map,
+      // std::set, and both __tc_StaticArray<T,N> and the bare StaticArray<T,N>
+      // spelling (the latter parses as a named template, so check explicitly).
+      if (fieldType) {
+        const ir = parseCppType(fieldType);
+        const isBareStaticArray = ir.kind === "named" && ir.name === "StaticArray";
+        if (isContainer(ir) || isBareStaticArray) {
+          return `static_cast<long long>(${safeText}.size())`;
+        }
+      }
+      // Unknown field type — .size() is valid on every STL container and on
+      // std::string, so default to it rather than the C-string strlen (which is
+      // only correct for const char*). This matches the bare-identifier
+      // fallback at the end of this function.
+      return `static_cast<long long>(${safeText}.size())`;
     }
     return `static_cast<long long>(${safeText}.size())`;
   }
@@ -260,7 +281,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         className = nestedClassAliases.get(className) ?? className;
         const cls = hoistedNestedClasses.find(c => c.name === className);
         const chainMethod = cls?.methods.find(m => m.name === innerMethodName);
-        if (chainMethod && (chainMethod.returnType as string).endsWith("*")) {
+        if (chainMethod && parsedIsPointer(chainMethod.returnType as string)) {
           return `${objectText}->${escapedName}`;
         }
       }
@@ -404,15 +425,15 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     const rightNode = expr.right;
     let rightVarType: string | undefined;
     if (ts.isIdentifier(rightNode)) {
-      rightVarType = activeLocalTypes.get(rightNode.text) ?? activeGlobalTypes.get(rightNode.text);
+      rightVarType = getCurrentIrTypeScope()?.locals.get(rightNode.text) ?? getCurrentIrTypeScope()?.globals.get(rightNode.text);
     }
-    if (rightVarType && rightVarType.startsWith("std::map<")) {
+    if (rightVarType && parsedIsMap(rightVarType)) {
       return { kind: "raw", value: `(${rightNode.getText()}.count(${left}) > 0)` };
     }
-    if (rightVarType && rightVarType.startsWith("std::vector<")) {
+    if (rightVarType && parsedIsVector(rightVarType)) {
       return { kind: "raw", value: `(std::find(${rightNode.getText()}.begin(), ${rightNode.getText()}.end(), ${left}) != ${rightNode.getText()}.end())` };
     }
-    if (rightVarType && rightVarType.startsWith("std::set<")) {
+    if (rightVarType && parsedIsSet(rightVarType)) {
       return { kind: "raw", value: `(${rightNode.getText()}.count(${left}) > 0)` };
     }
     return { kind: "raw", value: `(std::find(${rightNode.getText()}.begin(), ${rightNode.getText()}.end(), ${left}) != ${rightNode.getText()}.end())` };
@@ -439,8 +460,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   function isStringBearingConcatChain(e: ts.Expression): boolean {
     if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) || ts.isTemplateExpression(e)) return true;
     if (ts.isIdentifier(e)) {
-      if (activeStringVars.has(e.text) || activeLocalTypes.get(e.text) === "std::string") return true;
-      const varType = activeLocalTypes.get(e.text) ?? activeGlobalTypes.get(e.text);
+      if (activeStringVars.has(e.text) || getCurrentIrTypeScope()?.locals.get(e.text) === "std::string") return true;
+      const varType = getCurrentIrTypeScope()?.locals.get(e.text) ?? getCurrentIrTypeScope()?.globals.get(e.text);
       if (varType === "const char*" || varType === "char*") return true;
       // A variable whose declared type is a string enum holds a const char*.
       if (varType && activeStringEnumNames.has(varType)) return true;
@@ -456,11 +477,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
     if (ts.isPropertyAccessExpression(e)) {
       if (e.expression.kind === ts.SyntaxKind.ThisKeyword) {
-        const fieldType = activeLocalTypes.get(`this->${e.name.text}`);
+        const fieldType = getCurrentIrTypeScope()?.locals.get(`this->${e.name.text}`);
         if (fieldType === "std::string" || fieldType === "const char*" || fieldType === "char*") return true;
       }
       if (ts.isIdentifier(e.expression)) {
-        const objType = activeLocalTypes.get(e.expression.text) ?? activeGlobalTypes.get(e.expression.text);
+        const objType = getCurrentIrTypeScope()?.locals.get(e.expression.text) ?? getCurrentIrTypeScope()?.globals.get(e.expression.text);
         if (objType) {
           const className = objType.replace(/\*$/, "");
           const classDef = topLevelClasses.get(className);
@@ -497,25 +518,26 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         const methodName = e.expression.name.text;
         if (STRING_RETURNING_METHODS.has(methodName)) return true;
         if (ts.isIdentifier(e.expression.expression)) {
-          const receiverType = activeLocalTypes.get(e.expression.expression.text);
+          const receiverType = getCurrentIrTypeScope()?.locals.get(e.expression.expression.text);
           if (receiverType === "std::string" || receiverType === "const char*" || activeStringVars.has(e.expression.expression.text)) return true;
         }
         if (ts.isPropertyAccessExpression(e.expression.expression) && e.expression.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
-          const fieldType = activeLocalTypes.get(`this->${e.expression.expression.name.text}`);
+          const fieldType = getCurrentIrTypeScope()?.locals.get(`this->${e.expression.expression.name.text}`);
           if (fieldType === "std::string" || fieldType === "const char*") return true;
         }
       }
       if (ts.isIdentifier(e.expression)) {
         const fnName = e.expression.text;
-        const returnType = activeLocalTypes.get(`fn:${fnName}`) ?? activeGlobalTypes.get(`fn:${fnName}`);
+        const returnType = getCurrentIrTypeScope()?.locals.get(`fn:${fnName}`) ?? getCurrentIrTypeScope()?.globals.get(`fn:${fnName}`);
         if (returnType === "std::string" || returnType === "const char*") return true;
       }
     }
     if (ts.isElementAccessExpression(e) && ts.isIdentifier(e.expression)) {
-      const arrType = activeLocalTypes.get(e.expression.text) ?? activeGlobalTypes.get(e.expression.text);
+      const arrType = getCurrentIrTypeScope()?.locals.get(e.expression.text) ?? getCurrentIrTypeScope()?.globals.get(e.expression.text);
       if (arrType) {
-        const match = arrType.match(/^std::vector<(.+)>$/);
-        if (match && (match[1] === "std::string" || match[1] === "const char*")) return true;
+        // Element type of a vector, checked for string-ness.
+        const elemStr = parsedElementString(arrType);
+        if (elemStr && (elemStr === "std::string" || elemStr === "const char*")) return true;
       }
     }
     if (
@@ -575,7 +597,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (leftIsTypeof && rightIsString) {
       const typeofOperand = expr.left.expression;
       if (ts.isIdentifier(typeofOperand)) {
-        const varType = activeLocalTypes.get(typeofOperand.text);
+        const varType = getCurrentIrTypeScope()?.locals.get(typeofOperand.text);
         const expectedTypeName = expr.right.text;
         const actualTypeName = varType === "int" || varType === "float" || varType === "double" || varType === "long" || varType === "long long" || varType === "unsigned long long" || varType === "unsigned" || varType === "size_t"
           ? "number"
@@ -601,7 +623,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   // A value type here is any non-pointer C++ type: the STL containers, strings,
   // and — critically — *interface names*, because an `interface Foo` lowers to
   // a C++ `struct Foo` (a value), not a pointer. Classes are always reference
-  // types (pointers), so they are excluded by the `!vt.endsWith("*")` filter
+  // types (pointers), so they are excluded by the `!parsedIsPointer(vt)` filter
   // (and by not being in topLevelInterfaceNames). Demo #18 Finding A: a struct
   // returned from a function/method and stored in a local (`let s: Account |
   // null = find(); s === null`) is now recognised as a value type and lowers to
@@ -621,25 +643,28 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // type — see resolveCallReturnTypeForNullGuard below.
       let vt: string | undefined;
       if (ts.isIdentifier(valueNode)) {
-        vt = activeLocalTypes.get(valueNode.text) ?? activeGlobalTypes.get(valueNode.text);
+        vt = getCurrentIrTypeScope()?.locals.get(valueNode.text) ?? getCurrentIrTypeScope()?.globals.get(valueNode.text);
       } else if (ts.isCallExpression(valueNode)) {
         vt = resolveCallReturnTypeForNullGuard(valueNode, sourceText);
       } else if (ts.isParenthesizedExpression(valueNode) || ts.isNonNullExpression(valueNode)) {
         const inner = ts.isParenthesizedExpression(valueNode) ? valueNode.expression : valueNode.expression;
         if (ts.isIdentifier(inner)) {
-          vt = activeLocalTypes.get(inner.text) ?? activeGlobalTypes.get(inner.text);
+          vt = getCurrentIrTypeScope()?.locals.get(inner.text) ?? getCurrentIrTypeScope()?.globals.get(inner.text);
         } else if (ts.isCallExpression(inner)) {
           vt = resolveCallReturnTypeForNullGuard(inner, sourceText);
         }
       }
-      const isValueType = vt && (
-        vt.startsWith("std::vector<")
-        || vt.startsWith("std::map<")
-        || vt.startsWith("std::set<")
-        || vt.startsWith("std::string")
-        || topLevelInterfaceNames.has(vt.replace(/\*$/, ""))
-        || topLevelClassNames.has(vt.replace(/\*$/, ""))
-      ) && !vt.endsWith("*");
+      // A "value type" for null-comparison purposes: a container, std::string,
+      // or a value-typed interface/class name. Pointers are excluded (they
+      // compare against nullptr, not {}).
+      const isValueType = vt && !parsedIsPointer(vt) && (
+        parsedIsVector(vt)
+        || parsedIsMap(vt)
+        || parsedIsSet(vt)
+        || parsedIsStdString(vt)
+        || topLevelInterfaceNames.has(parsedBareString(vt))
+        || topLevelClassNames.has(parsedBareString(vt))
+      );
       if (isValueType) {
         const isEquality = expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
         // A value type is never null → `=== null` is false, `!== null` is true.
@@ -651,7 +676,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   if (ts.isTypeOfExpression(expr)) {
     const operand = expr.expression;
     if (ts.isIdentifier(operand)) {
-      const varType = activeLocalTypes.get(operand.text) ?? activeGlobalTypes.get(operand.text);
+      const varType = getCurrentIrTypeScope()?.locals.get(operand.text) ?? getCurrentIrTypeScope()?.globals.get(operand.text);
       // The cuttlefish intNN_t/uintNN_t family maps to TS `number`.
       const isNumberType = varType === "int" || varType === "float" || varType === "double"
         || varType === "long" || varType === "long long" || varType === "unsigned long long"
@@ -796,7 +821,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const receiver = expr.expression.expression;
       const isStringLiteralReceiver = ts.isStringLiteral(receiver) || ts.isNoSubstitutionTemplateLiteral(receiver);
       const isTemplateExprReceiver = ts.isTemplateExpression(receiver);
-      const isStringVarReceiver = ts.isIdentifier(receiver) && (activeStringVars.has(receiver.text) || activeLocalTypes.get(receiver.text) === "std::string");
+      const isStringVarReceiver = ts.isIdentifier(receiver) && (activeStringVars.has(receiver.text) || getCurrentIrTypeScope()?.locals.get(receiver.text) === "std::string");
       if (isStringLiteralReceiver || isTemplateExprReceiver || isStringVarReceiver) {
         const receiverIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
         let receiverText = renderExprAsText(receiverIR);
@@ -859,9 +884,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         const argText = renderExprAsText(argIR);
         let argType: string | undefined;
         if (ts.isIdentifier(expr.arguments[0])) {
-          argType = activeLocalTypes.get(expr.arguments[0].text) ?? activeGlobalTypes.get(expr.arguments[0].text);
+          argType = getCurrentIrTypeScope()?.locals.get(expr.arguments[0].text) ?? getCurrentIrTypeScope()?.globals.get(expr.arguments[0].text);
         }
-        if (argType && argType.startsWith("std::vector<")) {
+        if (argType && parsedIsVector(argType)) {
           return { kind: "boolean", value: true };
         }
         return { kind: "boolean", value: false };
@@ -873,18 +898,18 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         const argText = renderExprAsText(argIR);
         let argType: string | undefined;
         if (ts.isIdentifier(argNode)) {
-          argType = activeLocalTypes.get(argNode.text) ?? activeGlobalTypes.get(argNode.text);
+          argType = getCurrentIrTypeScope()?.locals.get(argNode.text) ?? getCurrentIrTypeScope()?.globals.get(argNode.text);
         } else if (ts.isPropertyAccessExpression(argNode) && argNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
           // `Object.keys(this.field)` — resolve the field's type via the
           // this->field map populated during class IR build.
-          argType = activeLocalTypes.get(`this->${argNode.name.text}`);
+          argType = getCurrentIrTypeScope()?.locals.get(`this->${argNode.name.text}`);
           if (!argType) {
-            argType = activeClassFieldTypes.get(`this->${argNode.name.text}`);
+            argType = getCurrentIrTypeScope()?.classFields.get(`this->${argNode.name.text}`);
           }
         }
 
         if (methodName === "keys") {
-          if (argType && argType.startsWith("std::map<")) {
+          if (argType && parsedIsMap(argType)) {
             return { kind: "raw", value: `__tc_mapKeys(${argText})` };
           }
           if (ts.isObjectLiteralExpression(argNode)) {
@@ -897,7 +922,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           return emitUnsupportedExpression("Object.keys on non-map types is unsupported.");
         }
         if (methodName === "values") {
-          if (argType && argType.startsWith("std::map<")) {
+          if (argType && parsedIsMap(argType)) {
             return { kind: "raw", value: `__tc_mapValues(${argText})` };
           }
           if (ts.isObjectLiteralExpression(argNode)) {
@@ -909,7 +934,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           return emitUnsupportedExpression("Object.values on non-map types is unsupported.");
         }
         if (methodName === "entries") {
-          if (argType && argType.startsWith("std::map<")) {
+          if (argType && parsedIsMap(argType)) {
             return { kind: "raw", value: `__tc_mapEntries(${argText})` };
           }
           return emitUnsupportedExpression("Object.entries on non-map types is unsupported.");
@@ -988,16 +1013,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       if ((methodName === "values" || methodName === "keys" || methodName === "entries") && expr.arguments.length === 0) {
         let receiverType: string | undefined;
         if (ts.isIdentifier(receiver)) {
-          receiverType = activeLocalTypes.get(receiver.text) ?? activeGlobalTypes.get(receiver.text);
+          receiverType = getCurrentIrTypeScope()?.locals.get(receiver.text) ?? getCurrentIrTypeScope()?.globals.get(receiver.text);
         } else if (ts.isPropertyAccessExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
-          receiverType = activeLocalTypes.get(`this->${receiver.name.text}`);
+          receiverType = getCurrentIrTypeScope()?.locals.get(`this->${receiver.name.text}`);
         }
-        if (receiverType && (receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<"))) {
+        if (receiverType && (parsedIsMap(receiverType) || parsedIsSet(receiverType))) {
           const recIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
           const recText = renderExprAsText(recIR);
           // Set.values()/keys() both yield the elements; entries() yields
           // pair<elem,elem>. Map.values()/keys()/entries() are as expected.
-          const isSet = receiverType.startsWith("std::set<");
+          const isSet = parsedIsSet(receiverType);
           const helper = methodName === "values"
             ? (isSet ? "__tc_setValues" : "__tc_mapValues")
             : methodName === "keys"
@@ -1013,20 +1038,21 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         let receiverText: string | undefined;
 
         if (ts.isIdentifier(receiver)) {
-          receiverType = activeLocalTypes.get(receiver.text) ?? activeGlobalTypes.get(receiver.text);
+          receiverType = getCurrentIrTypeScope()?.locals.get(receiver.text) ?? getCurrentIrTypeScope()?.globals.get(receiver.text);
         } else if (ts.isPropertyAccessExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
-          receiverType = activeLocalTypes.get(`this->${receiver.name.text}`);
+          receiverType = getCurrentIrTypeScope()?.locals.get(`this->${receiver.name.text}`);
         }
 
-        if (receiverType && (receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<"))) {
+        if (receiverType && (parsedIsMap(receiverType) || parsedIsSet(receiverType))) {
           const recIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
           receiverText = renderExprAsText(recIR);
           const arg0IR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
           let arg0Text = renderExprAsText(arg0IR);
           // When the key is an enum member and the container's key type is
           // integral, wrap it in static_cast so it matches the comparator.
-          const containerInner = receiverType.slice(receiverType.indexOf("<") + 1, -1);
-          const mapKeyType = containerInner.split(",")[0].trim();
+          // Key type is the first template arg of the std::map.
+          const receiverIr = parseCppType(receiverType);
+          const mapKeyType = receiverIr.kind === "map" ? renderCppType(receiverIr.key) : "";
           const keyIsIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char)$/.test(mapKeyType);
           const keyIsEnumMember = ts.isPropertyAccessExpression(expr.arguments[0])
             && ts.isIdentifier(expr.arguments[0].expression)
@@ -1035,7 +1061,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             arg0Text = `static_cast<${mapKeyType}>(${arg0Text})`;
           }
 
-          if (receiverType.startsWith("std::map<")) {
+          if (parsedIsMap(receiverType)) {
             if (methodName === "set" && expr.arguments.length >= 2) {
               const arg1IR = expressionToIR(expr.arguments[1], sourceText, diagnostics, pointerVars);
               const arg1Text = renderExprAsText(arg1IR);
@@ -1054,7 +1080,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
               return { kind: "raw", value: `(${receiverText}.erase(${arg0Text}) > 0)` };
             }
           }
-          if (receiverType.startsWith("std::set<")) {
+          if (parsedIsSet(receiverType)) {
             if (methodName === "add") {
               return { kind: "raw", value: `${receiverText}.insert(${arg0Text})` };
             }
@@ -1101,13 +1127,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       } else {
         const objText = renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars));
         let accessor = ".";
-        if (ts.isIdentifier(receiver) && (pointerVars.has(receiver.text) || activeLocalTypes.get(receiver.text)?.endsWith("*") || activeGlobalTypes.get(receiver.text)?.endsWith("*"))) {
+        if (ts.isIdentifier(receiver) && (pointerVars.has(receiver.text) || parsedIsPointer(getCurrentIrTypeScope()?.locals.get(receiver.text) ?? "") || parsedIsPointer(getCurrentIrTypeScope()?.globals.get(receiver.text) ?? ""))) {
           accessor = "->";
         } else if (ts.isPropertyAccessExpression(receiver)
                    && receiver.expression.kind === ts.SyntaxKind.ThisKeyword
                    && ts.isIdentifier(receiver.name)) {
-          const fieldType = activeLocalTypes.get(`this->${receiver.name.text}`);
-          if (fieldType?.endsWith("*")) {
+          const fieldType = getCurrentIrTypeScope()?.locals.get(`this->${receiver.name.text}`);
+          if (fieldType && parsedIsPointer(fieldType)) {
             accessor = "->";
           }
         } else if (ts.isCallExpression(receiver) && ts.isPropertyAccessExpression(receiver.expression)) {
@@ -1120,7 +1146,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             if (className) className = nestedClassAliases.get(className) ?? className;
             const cls = className ? hoistedNestedClasses.find(c => c.name === className) : undefined;
             const chainMethod = cls?.methods.find(m => m.name === innerMethodName);
-            if (chainMethod && (chainMethod.returnType as string).endsWith("*")) {
+            if (chainMethod && parsedIsPointer(chainMethod.returnType as string)) {
               accessor = "->";
             }
           } else if (ts.isIdentifier(innerReceiver) && topLevelClassNames.has(innerReceiver.text)) {
@@ -1131,7 +1157,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
               accessor = "->";
             } else {
               const chainMethod = cls.methods.find(m => m.name === innerMethodName);
-              if (chainMethod && ((chainMethod.returnType as string).endsWith("*") || (chainMethod.returnType as string) === innerReceiver.text)) {
+              if (chainMethod && (parsedIsPointer(chainMethod.returnType as string) || (chainMethod.returnType as string) === innerReceiver.text)) {
                 accessor = "->";
               }
             }
@@ -1139,7 +1165,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         }
         if (accessor === ".") {
           const receiverType = resolveExprCppType(receiver);
-          if (receiverType && receiverType.endsWith("*")) {
+          if (receiverType && parsedIsPointer(receiverType)) {
             accessor = "->";
           }
         }
@@ -1200,7 +1226,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           && ts.isPropertyAccessExpression(expr.expression)
           && (() => {
             const receiverType = resolveExprCppType(expr.expression.expression);
-            return !!receiverType && receiverType.endsWith("*");
+            return !!receiverType && parsedIsPointer(receiverType);
           })()),
       restElementType: restParamFunctions.get(calleeText),
       cppType: resolveExprCppType(expr),
@@ -1398,19 +1424,19 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // `m->size`). Mirrors the `.length` → `.size()` lowering for vectors.
     if (propName === "size") {
       const receiverType = ts.isIdentifier(expr.expression)
-        ? (activeLocalTypes.get(expr.expression.text) ?? activeGlobalTypes.get(expr.expression.text))
+        ? (getCurrentIrTypeScope()?.locals.get(expr.expression.text) ?? getCurrentIrTypeScope()?.globals.get(expr.expression.text))
         : undefined;
-      if (receiverType && (receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<"))) {
+      if (receiverType && (parsedIsMap(receiverType) || parsedIsSet(receiverType))) {
         const objectText = renderExprAsText(object);
         return { kind: "raw", value: `static_cast<long long>(${objectText}.size())` };
       }
     }
 
     // Use -> for pointer variables in property access
-    if (ts.isIdentifier(expr.expression) && (pointerVars.has(expr.expression.text) || activeLocalTypes.get(expr.expression.text)?.endsWith("*") || activeGlobalTypes.get(expr.expression.text)?.endsWith("*"))) {
-      return { 
-        kind: "property-access", 
-        object: { kind: "identifier", value: expr.expression.text }, 
+    if (ts.isIdentifier(expr.expression) && (pointerVars.has(expr.expression.text) || parsedIsPointer(getCurrentIrTypeScope()?.locals.get(expr.expression.text) ?? "") || parsedIsPointer(getCurrentIrTypeScope()?.globals.get(expr.expression.text) ?? ""))) {
+      return {
+        kind: "property-access",
+        object: { kind: "identifier", value: expr.expression.text },
         property: propName,
         isPointer: true
       };
@@ -1421,8 +1447,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         && expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword
         && ts.isIdentifier(expr.expression.name)) {
       const fieldName = expr.expression.name.text;
-      const fieldType = activeLocalTypes.get(`this->${fieldName}`);
-      if (fieldType?.endsWith("*")) {
+      const fieldType = getCurrentIrTypeScope()?.locals.get(`this->${fieldName}`);
+      if (fieldType && parsedIsPointer(fieldType)) {
         return {
           kind: "property-access",
           object: expressionToIR(expr.expression, sourceText, diagnostics, pointerVars),
@@ -1434,7 +1460,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
     // General deep chain: resolve receiver type, use -> if receiver is a pointer
     const receiverCppType = resolveExprCppType(expr.expression);
-    if (receiverCppType && receiverCppType.endsWith("*")) {
+    if (receiverCppType && parsedIsPointer(receiverCppType)) {
       return {
         kind: "property-access",
         object,
@@ -1491,31 +1517,29 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       let objectType: string | undefined;
       let elementType: string | undefined;
       if (ts.isIdentifier(expr.expression)) {
-        objectType = activeLocalTypes.get(expr.expression.text) ?? activeGlobalTypes.get(expr.expression.text);
+        objectType = getCurrentIrTypeScope()?.locals.get(expr.expression.text) ?? getCurrentIrTypeScope()?.globals.get(expr.expression.text);
         if (objectType) {
-          const match = objectType.match(/^std::vector<(.+)>$/);
-          if (match) elementType = match[1];
+          elementType = parsedElementString(objectType);
         }
       } else if (ts.isPropertyAccessExpression(expr.expression)) {
         const receiverNode = expr.expression.expression;
         if (ts.isIdentifier(receiverNode)) {
-          const receiverType = activeLocalTypes.get(receiverNode.text) ?? activeGlobalTypes.get(receiverNode.text);
+          const receiverType = getCurrentIrTypeScope()?.locals.get(receiverNode.text) ?? getCurrentIrTypeScope()?.globals.get(receiverNode.text);
           if (receiverType) {
-            const className = receiverType.replace(/\*$/, "");
+            const className = parsedBareString(receiverType);
             const classDef = topLevelClasses.get(className);
             if (classDef) {
               const fieldName = expr.expression.name.text;
               const field = classDef.fields.find((f) => f.name === fieldName);
               if (field) {
                 objectType = field.cppType;
-                const match = field.cppType.match(/^std::vector<(.+)>$/);
-                if (match) elementType = match[1];
+                elementType = parsedElementString(field.cppType);
               }
             }
           }
         }
       }
-      if (typeof objectType === "string" && objectType.startsWith("std::tuple<")) {
+      if (typeof objectType === "string" && parsedIsTuple(objectType)) {
         return { kind: "tuple-access", object, index: index.value };
       }
       return { kind: "element-access", object, index, elementType };
@@ -1853,12 +1877,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const objText = renderExprAsText(expressionToIR(objNode, sourceText, diagnostics, pointerVars));
       let objType: string | undefined;
       if (ts.isIdentifier(objNode)) {
-        objType = activeLocalTypes.get(objNode.text) ?? activeGlobalTypes.get(objNode.text);
+        objType = getCurrentIrTypeScope()?.locals.get(objNode.text) ?? getCurrentIrTypeScope()?.globals.get(objNode.text);
       }
-      if (objType && (objType.startsWith("std::map<") || objType.startsWith("std::set<"))) {
+      if (objType && (parsedIsMap(objType) || parsedIsSet(objType))) {
         return { kind: "raw", value: `(${objText}.erase(${keyText}), true)` };
       }
-      if (objType && objType.startsWith("std::vector<")) {
+      if (objType && parsedIsVector(objType)) {
         const elemText = renderExprAsText(expressionToIR(target, sourceText, diagnostics, pointerVars));
         return { kind: "raw", value: `(${objText}.erase(std::find(${objText}.begin(), ${objText}.end(), ${keyText})), true)` };
       }
@@ -1870,9 +1894,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const keyText = renderExprAsText(keyIR);
       let objType: string | undefined;
       if (ts.isIdentifier(objNode)) {
-        objType = activeLocalTypes.get(objNode.text) ?? activeGlobalTypes.get(objNode.text);
+        objType = getCurrentIrTypeScope()?.locals.get(objNode.text) ?? getCurrentIrTypeScope()?.globals.get(objNode.text);
       }
-      if (objType && objType.startsWith("std::map<")) {
+      if (objType && parsedIsMap(objType)) {
         return { kind: "raw", value: `(${objText}.erase(${keyText}) > 0)` };
       }
     }
@@ -1883,14 +1907,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const objText = renderExprAsText(expressionToIR(objNode, sourceText, diagnostics, pointerVars));
       let objType: string | undefined;
       if (ts.isIdentifier(objNode)) {
-        objType = activeLocalTypes.get(objNode.text) ?? activeGlobalTypes.get(objNode.text);
+        objType = getCurrentIrTypeScope()?.locals.get(objNode.text) ?? getCurrentIrTypeScope()?.globals.get(objNode.text);
       }
       if (objType) {
         const fieldTypeName = objType;
         let defaultValue = "0";
         if (fieldTypeName === "std::string" || fieldTypeName === "const char*") defaultValue = "\"\"";
         else if (fieldTypeName === "bool") defaultValue = "false";
-        else if (fieldTypeName.endsWith("*")) defaultValue = "nullptr";
+        else if (parsedIsPointer(fieldTypeName)) defaultValue = "nullptr";
         return { kind: "raw", value: `(${objText}.${keyText} = ${defaultValue}, true)` };
       }
     }

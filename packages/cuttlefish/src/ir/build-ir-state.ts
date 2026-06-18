@@ -1,7 +1,21 @@
 ﻿import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "../api";
 import type { PlatformStrategy } from "../api/shared";
+import type { Diagnostic } from "../types";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { BoardConstants, getDefaultBoardConstants } from "./board-resolver";
+// IrTypeScope replaces the three proxied globals (activeLocalTypes,
+// activeGlobalTypes, activeClassFieldTypes) that previously lived on this
+// module as createMapProxy exports. The scope lifecycle is managed here via
+// the reset hooks (resetBuildState creates a fresh scope per file;
+// resetFunctionScopeState re-seeds locals from classFields between functions).
+// See symbol-types.ts for the full design.
+import {
+  createIrTypeScope,
+  setCurrentIrTypeScope,
+  getCurrentIrTypeScope,
+  resetIrTypeScopeFunctionState,
+} from "./symbol-types";
+export type { IrTypeScope } from "./symbol-types";
 
 export interface HALInstance {
   className: string;
@@ -60,9 +74,11 @@ export class CompilationContext {
 
   _currentBoardConstants: BoardConstants | undefined = undefined;
 
-  activeLocalTypes = new Map<string, string>();
-  activeGlobalTypes = new Map<string, string>();
-  activeClassFieldTypes = new Map<string, string>();
+  // The three type maps that used to live here (activeLocalTypes,
+  // activeGlobalTypes, activeClassFieldTypes) now live on the IrTypeScope
+  // managed in symbol-types.ts. They are NOT context-scoped: the IR build is
+  // synchronous per file and the scope pointer is a module-local variable.
+  // See symbol-types.ts for the full rationale.
   activeExtendsClass: string | undefined = undefined;
   contextId = Math.random().toString(36).slice(2, 8);
 
@@ -73,6 +89,16 @@ export class CompilationContext {
   activeStrategy: PlatformStrategy | null = null;
 
   restParamFunctions = new Map<string, string>();
+
+  /**
+   * Diagnostics sink for the current file build. Populated by buildProgramIR
+   * with the same array returned in ProgramIR.diagnostics, so diagnostics
+   * pushed from deep in IR lowering (e.g. renderExprAsText's fallback paths)
+   * flow into the fatal-gate check in transpile.ts without that diagnostic
+   * array having to be threaded through ~80 call sites. May be empty before
+   * buildProgramIR assigns it; callers must null-check.
+   */
+  diagnostics: Diagnostic[] = [];
 }
 
 /**
@@ -179,9 +205,9 @@ export const mcuPinReverseMap = createMapProxy(ctx => ctx.mcuPinReverseMap);
 export const requiredIncludes = createSetProxy(ctx => ctx.requiredIncludes);
 export const registeredCallbacks = createArrayProxy(ctx => ctx.registeredCallbacks);
 
-export const activeLocalTypes = createMapProxy(ctx => ctx.activeLocalTypes);
-export const activeGlobalTypes = createMapProxy(ctx => ctx.activeGlobalTypes);
-export const activeClassFieldTypes = createMapProxy(ctx => ctx.activeClassFieldTypes);
+// activeLocalTypes / activeGlobalTypes / activeClassFieldTypes were proxied
+// globals; they now live on the IrTypeScope (symbol-types.ts). Callers that
+// still reference these by name must migrate to getCurrentIrTypeScope().
 
 export const discriminatedUnionVariantNames = new Map<string, string[]>();
 export const restParamFunctions = createMapProxy(ctx => ctx.restParamFunctions);
@@ -279,7 +305,11 @@ export function resetBuildState(): void {
   activeEnumNames.clear();
   activeStringEnumNames.clear();
   topLevelClasses.clear();
-  activeGlobalTypes.clear();
+  // Start a fresh IrTypeScope for this file. The old activeGlobalTypes was a
+  // file-scoped map cleared here; activeLocalTypes/activeClassFieldTypes were
+  // function/class-scoped and cleared in resetFunctionScopeState. Creating a
+  // new scope object clears all three at once and re-binds the current scope.
+  setCurrentIrTypeScope(createIrTypeScope());
   peripheralAliasMap.clear();
   pinAliasMap.clear();
   mcuPinForwardMap.clear();
@@ -300,9 +330,14 @@ export function resetFunctionScopeState(): void {
   mutableArrayVars.clear();
   arrayLiteralSizes.clear();
   filteredArrayLengthVars.clear();
-  activeLocalTypes.clear();
-  for (const [key, value] of activeClassFieldTypes) {
-    activeLocalTypes.set(key, value);
+  // Clear the function-scoped portion of the current IrTypeScope (locals) and
+  // re-seed it from classFields so `this->field` lookups keep resolving in the
+  // next method. Mirrors the old behavior where resetFunctionScopeState copied
+  // activeClassFieldTypes into activeLocalTypes. globals/classFields survive
+  // (they are file-scoped, not function-scoped).
+  const scope = getCurrentIrTypeScope();
+  if (scope) {
+    resetIrTypeScopeFunctionState(scope);
   }
   getContext().activeExtendsClass = undefined;
 }

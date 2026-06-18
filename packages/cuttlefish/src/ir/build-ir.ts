@@ -126,6 +126,12 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     const normalizedSourceText = normalizeEntrypointSyntax(sourceText);
   const source = parseSource(fileName, normalizedSourceText);
   const diagnostics: Diagnostic[] = [];
+  // Expose the diagnostics sink on the context so deep IR-lowering helpers
+  // (renderExprAsText, HAL fallbacks) that don't receive diagnostics as a
+  // parameter can still report unsupported patterns. This is the same array
+  // returned in ProgramIR.diagnostics, so throwIfFatalDiagnostics in
+  // transpile.ts will abort the build on any error pushed here.
+  getContext().diagnostics = diagnostics;
   diagnostics.push(...prescanUnsupportedFeatures(source, normalizedSourceText));
   const imports: ImportIR[] = [];
   const reExports: ReExportIR[] = [];

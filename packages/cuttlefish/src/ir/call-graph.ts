@@ -1,5 +1,6 @@
 ﻿import { ProgramIR, StatementIR } from "../api";
 import { collectExpressionIdentifiers, collectStatementIdentifiers } from "./identifier-collector";
+import { parsedCollectNamedTypes } from "../api/shared/cpp-type-ir";
 
 /**
  * Represents a node in the call graph
@@ -52,13 +53,8 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
 
     // Collect type references from parameter types (e.g. SampleWindow)
     for (const param of fn.parameters) {
-      const typeMatches = param.cppType.match(/[A-Za-z_][A-Za-z0-9_]*/g);
-      if (typeMatches) {
-        for (const match of typeMatches) {
-          if (!["int", "float", "bool", "void", "auto", "const", "char", "std", "vector", "string", "function", "map", "set"].includes(match)) {
-            dependencies.add(match);
-          }
-        }
+      for (const match of parsedCollectNamedTypes(param.cppType)) {
+        dependencies.add(match);
       }
     }
 
@@ -99,13 +95,8 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
         }
       }
       // Field type might reference other classes
-      const typeMatches = field.cppType.match(/[A-Za-z_][A-Za-z0-9_]*/g);
-      if (typeMatches) {
-        for (const match of typeMatches) {
-          if (match !== cls.name && !["int", "float", "bool", "void", "auto", "const", "char"].includes(match)) {
-            dependencies.add(match);
-          }
-        }
+      for (const match of parsedCollectNamedTypes(field.cppType)) {
+        if (match !== cls.name) dependencies.add(match);
       }
     }
 
@@ -166,13 +157,8 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
   // Process type aliases
   for (const typeAlias of program.typeAliases) {
     const dependencies = new Set<string>();
-    const typeMatches = typeAlias.cppType.match(/[A-Za-z_][A-Za-z0-9_]*/g);
-    if (typeMatches) {
-      for (const match of typeMatches) {
-        if (!["int", "float", "bool", "void", "auto", "const", "char", "std", "vector", "string", "function", "map", "set"].includes(match)) {
-          dependencies.add(match);
-        }
-      }
+    for (const match of parsedCollectNamedTypes(typeAlias.cppType)) {
+      dependencies.add(match);
     }
 
     nodes.set(typeAlias.name, {

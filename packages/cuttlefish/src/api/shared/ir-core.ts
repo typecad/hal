@@ -13,6 +13,17 @@ import type { SourceSpan } from './types';
 // Shared primitive types
 // ---------------------------------------------------------------------------
 
+/**
+ * The C++ type carried on every IR declaration field. Stored as a string at
+ * the IR level (so construction sites read naturally: `cppType: "int"`), but
+ * every *consumer* parses it once via `parseCppType` and inspects the resulting
+ * `CppTypeIR` structurally (by `kind`) instead of re-parsing with
+ * startsWith/endsWith/slice. See `cpp-type-ir.ts`.
+ *
+ * Keeping the field a string preserves readable IR construction; the structural
+ * value is realized at inspection sites, which is where the historical ad-hoc
+ * string parsing was concentrated.
+ */
 export type CppType = string;
 
 export interface ParameterIR {

@@ -23,17 +23,12 @@ import {
   cachedIsFile,
   getOrReadFile,
 } from "./cache";
-import {
-  IncrementalCache,
-  initIncrementalCache,
-  getIncrementalCache,
-  saveAndClearIncrementalCache,
-} from "./incremental-cache";
 import { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points";
 import { analyzeReachability } from "./ir/reachability";
 import { filterProgramIR } from "./ir/filter";
 import { setActiveStrategy } from "./ir/hal-resolver";
 import { CompilationContext, contextStorage } from "./ir/build-ir-state";
+import { buildSymbolTable, mergeSymbolTable, resolveInheritance, createSymbolTable } from "./ir/symbol-table";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
 import { collectTranspileGraph } from "./orchestrator/graph-builder";
 import { typeCheckFiles } from "./orchestrator/type-checker";
@@ -68,9 +63,10 @@ function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
   }
 }
 
-function cleanOutput(entryDir: string, outDir: string): void {
-  const cachePath = path.join(entryDir, ".cuttlefish-cache.json");
-  try { if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath); } catch (e) { if (process.env.CUTTLEFISH_DEBUG) console.error("[transpile] Failed to clean cache:", e); }
+function cleanOutput(_entryDir: string, outDir: string): void {
+  // NOTE: incremental transpilation is disabled (see incremental-cache.ts).
+  // Only the output directory is cleaned; do not delete .cuttlefish-cache.json
+  // here so a future incremental implementation can read prior metadata.
   try { if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true }); } catch (e) { if (process.env.CUTTLEFISH_DEBUG) console.error("[transpile] Failed to clean output dir:", e); }
 }
 
@@ -289,17 +285,9 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   setActiveStrategy(strategy);
   const outDir = path.join(outBaseDir, strategy.outputSubdirectory(sketchBaseName));
 
-  // Always start fresh: delete cache and output directory
+  // Start fresh: clean the output directory. (Incremental builds are disabled —
+  // see incremental-cache.ts — so we always transpile the full graph.)
   cleanOutput(entryDir, outDir);
-
-  // Initialize incremental cache (always starts empty since we deleted the file)
-  let incrementalCache: IncrementalCache | null = null;
-  if (!options.force) {
-    incrementalCache = initIncrementalCache({
-      rootDir: entryDir,
-      enabled: true,
-    });
-  }
 
   profiler.startTimer("graph:collect");
   const graphResult = collectTranspileGraph(entryFile, options.boardPackage);
@@ -395,33 +383,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // Load breakpoints if debug mode is enabled
   const breakpoints = options.debug ? loadBreakpoints(sourceDir) : undefined;
 
-  // ── Incremental cache: determine which files need retranspilation ─────────
-  let filesToProcess: string[];
-  const cachedOutputs = new Map<string, string[]>();
-  
-  if (incrementalCache && incrementalCache.isEnabled()) {
-    const changeStatuses = incrementalCache.getFilesNeedingRetranspile(transpileFiles);
-    
-    filesToProcess = [];
-    for (const status of changeStatuses) {
-      if (status.needsRetranspile) {
-        filesToProcess.push(status.filePath);
-      } else {
-        // File is unchanged - get cached outputs
-        const outputs = incrementalCache.getCachedOutputs(status.filePath);
-        if (outputs) {
-          cachedOutputs.set(status.filePath, outputs);
-        }
-      }
-    }
-    
-    if (options.debug && filesToProcess.length < transpileFiles.length) {
-      const skipped = transpileFiles.length - filesToProcess.length;
-      logDebug(`Incremental: skipping ${skipped} unchanged file(s)`, true);
-    }
-  } else {
-    filesToProcess = transpileFiles;
-  }
+  // ── Determine files to transpile ─────────────────────────────────────────
+  // Incremental builds are disabled, so every file in the graph is processed.
+  // See incremental-cache.ts for why a partial rebuild cannot be sound without
+  // rehydrating cached IR/metadata for the entire graph.
+  const filesToProcess = transpileFiles;
 
   // ── Phase 0: Pre-scan all files for class declarations to build a
   // cross-module type registry. This is needed so that property access
@@ -635,15 +601,14 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const allEnumIRs: { name: string; members: { name: string; value?: number | string }[] }[] = [];
   const allEnumNames = new Set<string>();
   const allStringEnumNames = new Set<string>();
-  // Also collect all class names across all files for forward declarations.
-  const allClassNames = new Set<string>();
-  const allClassFieldTypes = new Map<string, Map<string, string>>();
-  // Cross-file getter/setter names per class, so `obj.getter` and
-  // `Cls.staticGetter` accesses rewrite to getX()/Cls::getX() even when the
-  // class lives in an imported module (demo #14 Finding E).
-  const allClassAccessors = new Map<string, Map<string, "getter" | "setter" | "both">>();
-  const allFunctionReturnTypes = new Map<string, string>();
-  const allVariableTypes = new Map<string, string>();
+  // Cross-file symbol/type aggregation. This used to be ~90 lines of hand-rolled
+  // loops building allClassFieldTypes / allClassAccessors /
+  // allFunctionReturnTypes / allVariableTypes / allClassNames in two passes
+  // (own fields, then extendsClass inheritance). It is now a single
+  // SymbolTable built per file, merged across files, with inheritance resolved
+  // once — see ir/symbol-table.ts. The projected maps below keep the exact
+  // names/shapes the emit phase consumes, so this is a behavior-neutral swap.
+  const crossModuleTable = createSymbolTable();
   for (const { programIR } of preBuilt.values()) {
     for (const e of programIR.enums) {
       allEnumIRs.push(e);
@@ -657,70 +622,14 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         if (isStringEnum(e)) allStringEnumNames.add(e.name);
       }
     }
-    for (const cls of programIR.classes) {
-      allClassNames.add(cls.name);
-      if (cls.fields.length > 0 || cls.extendsClass) {
-        const fieldTypes = allClassFieldTypes.get(cls.name) ?? new Map<string, string>();
-        for (const field of cls.fields) {
-          fieldTypes.set(field.name, field.cppType);
-        }
-        allClassFieldTypes.set(cls.name, fieldTypes);
-      }
-      // Aggregate getters/setters so cross-file `obj.getter` /
-      // `Cls.staticGetter` accesses can rewrite to getX()/Cls::getX()
-      // (demo #14 Finding E).
-      if (cls.getters.length > 0 || cls.setters.length > 0) {
-        const accessors = allClassAccessors.get(cls.name) ?? new Map<string, "getter" | "setter" | "both">();
-        for (const g of cls.getters) accessors.set(g.name, accessors.has(g.name) ? "both" : "getter");
-        for (const s of cls.setters) accessors.set(s.name, accessors.has(s.name) ? "both" : "setter");
-        allClassAccessors.set(cls.name, accessors);
-      }
-    }
-    // Interfaces lower to C++ structs, so their fields must be visible
-    // cross-module for type-driven emit decisions (e.g. picking the right
-    // snprintf format specifier for `record.name` where `record` is typed
-    // as an interface declared in another file). Classes are aggregated
-    // above; interfaces are aggregated here so the cross-module field-type
-    // map (crossModuleClassFieldTypes) carries both.
-    for (const iface of programIR.interfaces) {
-      if (iface.fields.length > 0) {
-        const fieldTypes = allClassFieldTypes.get(iface.name) ?? new Map<string, string>();
-        for (const field of iface.fields) {
-          fieldTypes.set(field.name, field.cppType);
-        }
-        allClassFieldTypes.set(iface.name, fieldTypes);
-      }
-    }
-    for (const fn of programIR.functions) {
-      allFunctionReturnTypes.set(fn.originalName, fn.returnType);
-    }
-    for (const stmt of programIR.topLevelStatements) {
-      if (stmt.kind === "var_decl" && stmt.cppType !== "auto") {
-        allVariableTypes.set(stmt.name, stmt.cppType);
-      }
-    }
+    mergeSymbolTable(crossModuleTable, buildSymbolTable(programIR));
   }
-  for (const { programIR } of preBuilt.values()) {
-    for (const cls of programIR.classes) {
-      if (cls.extendsClass) {
-        const childFields = allClassFieldTypes.get(cls.name);
-        const parentFields = allClassFieldTypes.get(cls.extendsClass);
-        if (parentFields && childFields) {
-          for (const [fname, ftype] of parentFields) {
-            if (!childFields.has(fname)) {
-              childFields.set(fname, ftype);
-            }
-          }
-        } else if (parentFields && !childFields) {
-          const fieldTypes = new Map<string, string>();
-          for (const [fname, ftype] of parentFields) {
-            fieldTypes.set(fname, ftype);
-          }
-          allClassFieldTypes.set(cls.name, fieldTypes);
-        }
-      }
-    }
-  }
+  resolveInheritance(crossModuleTable);
+  const allClassNames = crossModuleTable.classNames;
+  const allClassFieldTypes = crossModuleTable.classFieldTypes;
+  const allClassAccessors = crossModuleTable.classAccessors;
+  const allFunctionReturnTypes = crossModuleTable.functionReturnTypes;
+  const allVariableTypes = crossModuleTable.variableTypes;
   profiler.startTimer("emit:register-enums");
   registerAllEnumNames(allEnumIRs);
   profiler.endTimer("emit:register-enums");
@@ -761,59 +670,16 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       entryOutputs = emitted;
     }
 
-    // Update incremental cache with the emitted outputs
-    if (incrementalCache && incrementalCache.isEnabled()) {
-      const outputs = [
-        emitted.sourcePath,
-        emitted.headerPath,
-        emitted.sourceMapPath,
-        emitted.headerMapPath,
-      ].filter((p): p is string => p !== undefined);
-
-      // Get dependencies from program IR imports
-      const dependencies = programIR.imports
-        .map(imp => resolveImport(filePath, imp.moduleSpecifier, options.boardPackage)?.sourcePath)
-        .filter((p): p is string => p !== undefined);
-
-      // Read the source file content for hashing
-      const sourceContent = await fs.promises.readFile(filePath, "utf8");
-      incrementalCache.updateFile(filePath, sourceContent, dependencies, outputs);
-    }
     profiler.endTimer(`emit:file:${fileBasename}`);
   }
   profiler.captureMemorySnapshot("emit:post");
   profiler.endTimer("emit:all");
 
-  // ── Handle fully cached builds ────────────────────────────────────────────
+  // The entry file is always emitted above (incremental builds are disabled,
+  // so every graph file is processed). Guard against the impossible case where
+  // emit somehow produced no entry output.
   if (!entryOutputs) {
-    // Check if the entry file was cached (no files needed retranspilation)
-    const cachedEntryOutputs = cachedOutputs.get(entryFile);
-    if (cachedEntryOutputs && cachedEntryOutputs.length > 0) {
-      // All files were cached - return the cached entry file outputs
-      const sourcePath = cachedEntryOutputs.find(p => p.endsWith(".cpp") || p.endsWith(".ino"));
-      const headerPath = cachedEntryOutputs.find(p => p.endsWith(".h"));
-      const sourceMapPath = cachedEntryOutputs.find(p => p.endsWith(".cpp.map") || p.endsWith(".ino.thcppmap.json"));
-      const headerMapPath = cachedEntryOutputs.find(p => p.endsWith(".h.map"));
-      
-      if (sourcePath) {
-        // Log that we're using cached outputs
-        if (options.debug) {
-          logDebug(`Incremental: all files unchanged, using cached outputs`, true);
-        }
-        
-        entryOutputs = {
-          sourcePath,
-          headerPath,
-          sourceMapPath,
-          headerMapPath,
-          diagnostics: [],
-        };
-      }
-    }
-    
-    if (!entryOutputs) {
-      throw new Error(`Unable to transpile entry file '${entryFile}'.`);
-    }
+    throw new Error(`Unable to transpile entry file '${entryFile}'.`);
   }
 
   // ── Copy native C++ modules to output ─────────────────────────────────────
@@ -852,13 +718,6 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
   }
   profiler.endTimer("post:flatten");
-
-  profiler.startTimer("post:save-cache");
-  // Save incremental cache to disk
-  if (incrementalCache) {
-    incrementalCache.save();
-  }
-  profiler.endTimer("post:save-cache");
   // Profiler session ends (profiling disabled - no report generation)
 
   // ── Generate diagnostics report if enabled ──────────────────────────────

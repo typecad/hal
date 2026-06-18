@@ -1,12 +1,14 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types";
 import { StatementIR } from "../../api";
-import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeLocalTypes, activeGlobalTypes, activeEnumNames } from "../build-ir-state";
+import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames } from "../build-ir-state";
+import { getCurrentIrTypeScope } from "../symbol-types";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
 import { tryResolveHALMethod } from "./hal-call-resolver";
 import { expressionToIR } from "../expression-to-ir";
 import { escapeCppKeyword } from "../../utils/strings";
 import { renderExprAsText, calleeToText } from "../render-expr";
+import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir";
 
 /**
  * When a Map/Set key is an enum-typed expression and the container's key type
@@ -20,10 +22,9 @@ function castEnumKeyIfNeeded(
   receiverType: string,
 ): string {
   // Only relevant for std::map/std::set with an integral key type.
-  const isContainer = receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<");
-  if (!isContainer) return keyText;
-  const inner = receiverType.slice(receiverType.indexOf("<") + 1, -1);
-  const keyType = inner.split(",")[0].trim();
+  if (!parsedIsMap(receiverType)) return keyText;
+  const mapIr = parseCppType(receiverType);
+  const keyType = mapIr.kind === "map" ? renderCppType(mapIr.key) : "";
   const isIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char)$/.test(keyType);
   if (!isIntegral) return keyText;
   // Detect an enum-typed key operand: an enum member access (Color.Red) or a
@@ -129,18 +130,18 @@ export function callToStatement(
       let receiverType: string | undefined;
 
       if (ts.isIdentifier(mapReceiver)) {
-        receiverType = activeLocalTypes.get(mapReceiver.text) ?? activeGlobalTypes.get(mapReceiver.text);
+        receiverType = getCurrentIrTypeScope()?.locals.get(mapReceiver.text) ?? getCurrentIrTypeScope()?.globals.get(mapReceiver.text);
       } else if (ts.isPropertyAccessExpression(mapReceiver) && mapReceiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
-        receiverType = activeLocalTypes.get(`this->${mapReceiver.name.text}`);
+        receiverType = getCurrentIrTypeScope()?.locals.get(`this->${mapReceiver.name.text}`);
       }
 
-      if (receiverType && (receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<"))) {
+      if (receiverType && (parsedIsMap(receiverType) || parsedIsSet(receiverType))) {
         const recIR = expressionToIR(mapReceiver, sourceText, diagnostics, pointerVars);
         const recText = renderExprAsText(recIR);
         const arg0IR = expressionToIR(call.arguments[0], sourceText, diagnostics, pointerVars);
         const arg0Text = renderExprAsText(arg0IR);
 
-        if (receiverType.startsWith("std::map<") && mapMethodName === "set" && call.arguments.length >= 2) {
+        if (parsedIsMap(receiverType) && mapMethodName === "set" && call.arguments.length >= 2) {
           const arg1IR = expressionToIR(call.arguments[1], sourceText, diagnostics, pointerVars);
           const arg1Text = renderExprAsText(arg1IR);
           const castedKey = castEnumKeyIfNeeded(arg0Text, call.arguments[0], receiverType);
@@ -154,7 +155,7 @@ export function callToStatement(
             value: { kind: "raw" as const, value: arg1Text },
           };
         }
-        if (receiverType.startsWith("std::map<") && mapMethodName === "get") {
+        if (parsedIsMap(receiverType) && mapMethodName === "get") {
           return {
             kind: "call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
@@ -164,7 +165,7 @@ export function callToStatement(
             args: [{ kind: "raw" as const, value: arg0Text }],
           };
         }
-        if ((receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<")) && mapMethodName === "has") {
+        if ((parsedIsMap(receiverType) || parsedIsSet(receiverType)) && mapMethodName === "has") {
           return {
             kind: "call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
@@ -174,7 +175,7 @@ export function callToStatement(
             args: [{ kind: "raw" as const, value: arg0Text }],
           };
         }
-        if ((receiverType.startsWith("std::map<") || receiverType.startsWith("std::set<")) && mapMethodName === "delete") {
+        if ((parsedIsMap(receiverType) || parsedIsSet(receiverType)) && mapMethodName === "delete") {
           return {
             kind: "call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
@@ -184,7 +185,7 @@ export function callToStatement(
             args: [{ kind: "raw" as const, value: arg0Text }],
           };
         }
-        if (receiverType.startsWith("std::set<") && mapMethodName === "add") {
+        if (parsedIsSet(receiverType) && mapMethodName === "add") {
           return {
             kind: "call",
             sourceSpan: makeSourceSpan(call, fileName, sourceText),
@@ -216,7 +217,7 @@ export function callToStatement(
         if (className) className = nestedClassAliases.get(className) ?? className;
         const cls = className ? hoistedNestedClasses.find(c => c.name === className) : undefined;
         const method = cls?.methods.find(m => m.name === innerMethodName);
-        if (method && (method.returnType as string).endsWith("*")) {
+        if (method && parsedIsPointer(method.returnType as string)) {
           accessor = "->";
         }
       } else if (ts.isIdentifier(innerReceiver) && topLevelClassNames.has(innerReceiver.text)) {
@@ -227,7 +228,7 @@ export function callToStatement(
           accessor = "->";
         } else {
           const chainMethod = cls.methods.find(m => m.name === innerMethodName);
-          if (chainMethod && ((chainMethod.returnType as string).endsWith("*") || (chainMethod.returnType as string) === innerReceiver.text)) {
+          if (chainMethod && (parsedIsPointer(chainMethod.returnType as string) || (chainMethod.returnType as string) === innerReceiver.text)) {
             accessor = "->";
           }
         }

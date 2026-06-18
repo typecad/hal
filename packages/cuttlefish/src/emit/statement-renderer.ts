@@ -8,10 +8,12 @@ import type { StatementIR, ExpressionIR } from "../api";
 import type { PlatformStrategy } from "../api/shared";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { KnownVariableInfo } from "../api/shared";
+import type { Diagnostic } from "../types";
 import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
+import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsVector, parsedElementString, parsedIsPlainStructType } from "../api/shared/cpp-type-ir";
 
 /**
  * Context needed for statement rendering.
@@ -53,6 +55,14 @@ interface StatementRendererContext {
   snprintfCounter?: { value: number };
   /** Map of interface/type name to field C++ types */
   interfaceFieldTypes?: Map<string, Map<string, string>>;
+  /**
+   * Shared sink for emit-time diagnostics. When provided, the renderer's
+   * fallback paths (e.g. an unregistered HAL operation) push structured
+   * warnings here instead of silently emitting placeholder comments. The
+   * array is the same one finalizeOutput merges into the final diagnostics
+   * list. Optional so ad-hoc/test constructions still work.
+   */
+  diagnostics?: Diagnostic[];
 }
 
 /**
@@ -74,8 +84,24 @@ function isPrimitiveCppType(cppType: string): boolean {
 }
 
 function isIndirectType(cppType: string, strategy: PlatformStrategy): boolean {
-  const t = cppType.trim();
-  return strategy.isPointerType(t) || /\[\d*\]$/.test(t);
+  // Pointer or C-array. Detected structurally rather than by regex.
+  if (strategy.isPointerType(cppType)) return true;
+  const ir = parseCppType(cppType);
+  return ir.kind === "cArray" || ir.kind === "staticArray";
+}
+
+/** True for any `std::`-prefixed type (vector/map/set/tuple/variant/function/string).
+ *  Replaces the historical `cppType.startsWith('std::')` check. */
+function parsedIsStdContainer(cppType: string): boolean {
+  const ir = parseCppType(cppType);
+  switch (ir.kind) {
+    case "vector": case "map": case "set":
+    case "tuple": case "variant": case "function":
+    case "string": case "smartPointer":
+      return true;
+    default:
+      return false;
+  }
 }
 
 /**
@@ -89,12 +115,16 @@ function isStructReturnType(cppType: string, strategy: PlatformStrategy): boolea
   if (!t || t === "void" || t === "auto") return false;
   if (isPrimitiveCppType(t)) return false;
   if (isIndirectType(t, strategy)) return false;
-  // Containers lower to std::vector/std::map/std::set/std::string — those
-  // already value-initialize from {} or their own defaults, but a `return
-  // null` for them is rare; restrict this path to plain struct names (an
-  // identifier, optionally const-qualified) to avoid surprising conversions.
-  if (t.startsWith("std::") || t.startsWith("__tc_")) return false;
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(t.replace(/^const\s+/, "").trim());
+  // Containers and pseudo-types (std::vector, std::string, __tc_StaticArray,
+  // __tc_str_ptr, std::function, …) already value-initialize from {} or their
+  // own defaults. Restrict this path to plain struct names. Detected by "the
+  // parsed IR is a bare named type (no std::/__tc_ wrapper)".
+  const ir = parseCppType(t);
+  const bare = bareType(ir);
+  if (bare.kind !== "named") return false;
+  // Exclude the pseudo-type markers themselves (which parse to their own kinds,
+  // not `named`, so this is belt-and-braces).
+  return !t.startsWith("__tc_");
 }
 
 /**
@@ -134,6 +164,8 @@ export class StatementRenderer {
   private readonly enumNames: Set<string>;
   private readonly stringEnumNames: Set<string>;
   private readonly interfaceFieldTypes: Map<string, Map<string, string>>;
+  /** Shared emit-time diagnostics sink (see StatementRendererContext.diagnostics). */
+  private readonly _diagnostics: Diagnostic[];
 
   constructor(context: StatementRendererContext) {
     this.strategy = context.strategy;
@@ -146,6 +178,7 @@ export class StatementRenderer {
     this.enumNames = context.enumNames;
     this.stringEnumNames = context.stringEnumNames ?? new Set();
     this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
+    this._diagnostics = context.diagnostics ?? [];
 
     // Create expression renderer with shared context
     this.expressionRenderer = new ExpressionRenderer({
@@ -166,6 +199,7 @@ export class StatementRenderer {
       crossModuleClassNames: context.crossModuleClassNames,
       snprintfCounter: context.snprintfCounter,
       interfaceFieldTypes: this.interfaceFieldTypes,
+      diagnostics: this._diagnostics,
     });
   }
 
@@ -405,11 +439,30 @@ export class StatementRenderer {
         if (resolved?.expression) {
           return forHeader ? resolved.expression : `${resolved.expression};`;
         }
+        // Unregistered HAL op: surface as a warning so the user sees it, but
+        // keep HAL as an extensibility point. The bare comment is retained as
+        // a visual marker in the generated C++.
+        this._diagnostics.push({
+          severity: "warning",
+          code: "TS2CPP_UNHANDLED_HAL",
+          message: `HAL operation '${statement.operation.operation}' is not registered with the platform strategy; emitting a placeholder comment.`,
+        });
         return `/* unhandled hal-op: ${statement.operation.operation} */`;
       }
 
       if (statement.kind !== "var_decl") {
-        return "/* unsupported_statement */";
+        // A StatementIR kind the renderer doesn't know how to render is a
+        // transpiler bug — the renderer should cover every kind the IR
+        // statement builders produce. This arm is unreachable in the normal
+        // transpileFile path (IR lowering marks unsupported statements as
+        // errors and the build aborts before emit). Throw so any path that
+        // does reach here fails loudly instead of emitting
+        // "/* unsupported_statement */" into the C++.
+        const kind = (statement as { kind?: string }).kind ?? "<unknown>";
+        throw new Error(
+          `StatementRenderer: unsupported StatementIR kind '${kind}' reached emission. ` +
+            `This is a transpiler bug; the renderer is missing a case for this kind.`,
+        );
       }
 
       return this.renderVarDecl(statement, forHeader, calleeTransformer, knownVariableTypes);
@@ -528,15 +581,8 @@ export class StatementRenderer {
           // collides when the same shape appears at multiple sites — demo #11
           // Finding D).
           let elementTypeName: string | null = null;
-          // Match both the resolved C++ form (std::vector<T>) and the TS form
-          // (T[]). The cppType may not be fully resolved at this point.
-          const vecMatch = rawType.match(/^std::vector<(.+)>$/);
-          const tsArrMatch = !vecMatch ? rawType.match(/^(.+)\[\]$/) : null;
-          const elemType = vecMatch
-            ? vecMatch[1].trim()
-            : tsArrMatch
-              ? tsArrMatch[1].trim()
-              : null;
+          // Element type of std::vector<T> or T[], detected structurally.
+          const elemType = parsedElementString(rawType) ?? null;
           if (elemType && /^[A-Z]/.test(elemType)) {
             elementTypeName = elemType;
           }
@@ -612,18 +658,18 @@ export class StatementRenderer {
 
         const elements = statement.initializer.elements.map((e) => this.expressionRenderer.render(e, undefined, knownVariableTypes)).join(", ");
 
-        if (this.strategy.needsStdVector() && rawType.startsWith("std::vector<")) {
+        if (this.strategy.needsStdVector() && parsedIsVector(rawType)) {
           return forHeader
             ? `${declaration} = { ${elements} }`
             : `${declaration} = { ${elements} };`;
         }
 
-        if (!this.strategy.needsStdVector() && rawType.startsWith("std::vector<")) {
+        if (!this.strategy.needsStdVector() && parsedIsVector(rawType)) {
           // Non-mutable arrays annotated as Array<T> or ReadonlyArray<T> on platforms
           // that don't support std::vector → emit as a plain C-style array.
           // Mutable arrays (.push/.pop/.indexOf) are rewritten to StaticArray<int> in
           // the IR builder (via mutableArrayVars) and never reach this branch.
-          const elementType = rawType.slice("std::vector<".length, -1) || this.strategy.defaultNumericType();
+          const elementType = parsedElementString(rawType) ?? this.strategy.defaultNumericType();
           return forHeader
             ? `${elementType} ${safeArrName}[] = { ${elements} }`
             : `${elementType} ${safeArrName}[] = { ${elements} };`;
@@ -649,9 +695,7 @@ export class StatementRenderer {
           !!declaredCppType &&
           declaredCppType !== "auto" &&
           declaredCppType !== placeholderStructName &&
-          !declaredCppType.includes("<") &&   // templates (vector<...>) stay struct-inferred
-          !declaredCppType.endsWith("*") &&   // pointers stay struct-inferred
-          !declaredCppType.endsWith("]");     // arrays stay struct-inferred
+          parsedIsPlainStructType(declaredCppType);
 
         const fieldTypes = new Map(statement.initializer.fields.map((field) => [
           field.name,
@@ -721,9 +765,9 @@ export class StatementRenderer {
         if (statement.initializer.elementType === "auto" && knownVariableTypes && statement.initializer.spreadExpr.kind === "identifier") {
           const srcInfo = knownVariableTypes.get(statement.initializer.spreadExpr.value);
           if (srcInfo) {
-            const vectorMatch = srcInfo.cppType.match(/^std::vector<(.+)>$/);
-            if (vectorMatch) {
-              arrayType = vectorMatch[1];
+            const vectorElem = parsedElementString(srcInfo.cppType);
+            if (vectorElem) {
+              arrayType = vectorElem;
             }
           }
         }
@@ -800,7 +844,7 @@ export class StatementRenderer {
       const constPrefix = isConst && !alreadyConstQualified ? "const " : "";
       return `${constPrefix}${baseType} ${safeName}[${size}]`;
     }
-    if (isConst && !alreadyConstQualified && normalizedType.endsWith("*")) {
+    if (isConst && !alreadyConstQualified && parsedIsPointer(normalizedType)) {
       return `${normalizedType} ${safeName}`;
     }
     const constPrefix = isConst && !alreadyConstQualified ? "const " : "";
@@ -832,7 +876,7 @@ export class StatementRenderer {
         // accidental local mutations as errors. Shared<T>/Mutable<T> keep borrowing
         // any non-primitive, non-pointer type (including std:: containers).
         const isUserStructType = isNonPrimitiveNonPointer
-          && !paramTypeName.startsWith("std::")
+          && !parsedIsStdContainer(paramTypeName)
           && !this.enumNames.has(paramTypeName);
         const isRef = (hasOwnership && isNonPrimitiveNonPointer) || isUserStructType;
         // Refs default to a const borrow; Mutable<T> unlocks a mutable reference.

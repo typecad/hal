@@ -50,6 +50,13 @@ export { filterProgramIR } from "./ir/filter";
 // ── Validation ──────────────────────────────────────────────────────────────
 export { validateTryCatch } from "./ir/try-catch-validation";
 export { prescanUnsupportedFeatures } from "./ir/feature-prescan";
+// Feature registry + ESLint selector source-of-truth (parity-tested).
+export {
+  LINT_RULES,
+  ESLINT_OPT_OUT_KINDS,
+  kindRegistryEntries,
+} from "./ir/feature-registry";
+export type { LintRule, FeatureEntry, FeatureStatus, DiagnosticMatch } from "./ir/feature-registry";
 
 // ── ESLint gate ──────────────────────────────────────────────────────────────
 export { runEslintCheck } from "./eslint-check";
@@ -57,7 +64,29 @@ export type { ESLintError } from "./eslint-check";
 
 // ── Semantic gates (TypeChecker-based) ──────────────────────────────────────
 export { runSemanticGates } from "./orchestrator/type-checker";
+export {
+  canonicalize,
+  buildSemanticFacts,
+} from "./orchestrator/semantic-facts";
+export type {
+  CanonicalType,
+  SemanticFacts,
+  FactStore,
+  ValueCategory,
+  Lifetime,
+  Nullable,
+  SemanticOrigin,
+  AnalysisResult,
+  BindingResolver,
+} from "./orchestrator/semantic-facts";
+export { verifyFacts } from "./orchestrator/semantic-facts-verifier";
+export type { VerifierOptions, VerifierResult, UnknownTypeSeverity } from "./orchestrator/semantic-facts-verifier";
 
 // ── Watch & CLI utilities ───────────────────────────────────────────────────
 export { discoverWatchDirs, isRelevantChange } from "./watch";
 export { parseCommandLine } from "./utils/cli";
+
+// ── IR rendering internals (for fail-closed regression tests) ───────────────
+export { renderExprAsText } from "./ir/render-expr";
+export { contextStorage, CompilationContext } from "./ir/build-ir-state";
+export type { ExpressionIR } from "./api";

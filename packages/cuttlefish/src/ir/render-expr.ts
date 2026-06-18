@@ -16,6 +16,17 @@ export function calleeToText(expr: ts.LeftHandSideExpression): string {
   return expr.getText();
 }
 
+/**
+ * Push a diagnostic onto the current build's diagnostics sink (the same array
+ * returned in ProgramIR.diagnostics). No-op if no build is in progress (e.g.
+ * ad-hoc calls from tests), so renderExprAsText remains usable in isolation.
+ */
+function pushDiagnostic(severity: "error" | "warning", code: string, message: string): void {
+  const diagnostics = getContext().diagnostics;
+  if (!diagnostics) return;
+  diagnostics.push({ severity, message, code });
+}
+
 export function renderExprAsText(expr: ExpressionIR): string {
   switch (expr.kind) {
     case "number": {
@@ -83,13 +94,35 @@ export function renderExprAsText(expr: ExpressionIR): string {
         if (resolved?.expression) return resolved.expression;
         if (resolved?.code) return resolved.code.replace(/;\s*$/, "");
       }
+      // Unregistered HAL op: surface as a warning so the user sees it, but keep
+      // HAL as an extensibility point (a strategy may intentionally leave some
+      // ops unimplemented). The bare comment is retained as a visual marker.
+      pushDiagnostic(
+        "warning",
+        "TS2CPP_UNHANDLED_HAL",
+        `HAL operation '${expr.operation.operation}' is not registered with the platform strategy; emitting a placeholder comment.`,
+      );
       return `/* unhandled hal-expr: ${expr.operation.operation} */`;
     }
     case "instanceof":
       return `(typeid(*${renderExprAsText(expr.object)}) == typeid(${expr.className}))`;
     case "spread_array":
       return renderExprAsText(expr.spreadExpr);
-    default:
-      return "0 /* unsupported_expr */";
+    default: {
+      // An ExpressionIR kind renderExprAsText doesn't know how to render is a
+      // transpiler bug (the renderer should cover every kind the IR builders
+      // can produce). Previously this silently emitted "0 /* unsupported_expr */"
+      // into the C++ output. Now we push an error diagnostic — the fatal-gate
+      // check in transpile.ts aborts the build — and throw so that callers
+      // running outside the build (e.g. tests) fail loudly rather than
+      // continuing with placeholder C++.
+      const kind = (expr as { kind?: string }).kind ?? "<unknown>";
+      pushDiagnostic(
+        "error",
+        "TS2CPP_UNSUPPORTED_EXPR",
+        `Expression IR kind '${kind}' has no renderer and cannot be emitted to C++.`,
+      );
+      throw new Error(`renderExprAsText: unsupported ExpressionIR kind '${kind}'`);
+    }
   }
 }

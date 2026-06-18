@@ -4,7 +4,8 @@ import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSett
 import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
 import { getBitsRange, getRegisterAddress } from "./register-decorators";
-import { registerFieldMap, PointerTracker, setActiveExtendsClass, activeClassFieldTypes, discriminatedUnionVariantNames, requiredIncludes } from "./build-ir-state";
+import { registerFieldMap, PointerTracker, setActiveExtendsClass, discriminatedUnionVariantNames, requiredIncludes } from "./build-ir-state";
+import { getCurrentIrTypeScope } from "./symbol-types";
 import { expressionToIR } from "./expression-to-ir";
 import { lowerStatementList } from "./statement-to-ir";
 
@@ -112,7 +113,7 @@ export function classDeclarationToIR(
       if (fName) {
         const fType = typeNodeToCppType(member.type, typeAliasNodes);
         preScannedFieldTypes.set(`this->${fName}`, fType);
-        activeClassFieldTypes.set(`this->${fName}`, fType);
+        getCurrentIrTypeScope()?.classFields.set(`this->${fName}`, fType);
       }
     }
   }

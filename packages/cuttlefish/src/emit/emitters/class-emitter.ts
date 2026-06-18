@@ -5,6 +5,7 @@ import { createChildEmissionScope } from "../snprintf-helpers";
 import { escapeCppKeyword } from "../../utils/strings";
 import { accessorGetterName, accessorSetterName } from "../utils/cpp-helpers";
 import type { EmitterContext } from "./emitter-context";
+import { parseCppType, parsedIsPointer, parsedIsVector, parsedIsStringLike } from "../../api/shared/cpp-type-ir";
 
 export function emitClasses(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer, isEntryFile } = ctx;
@@ -76,6 +77,8 @@ export function emitClasses(ctx: EmitterContext): void {
       target.add(name);
     }
   };
+  // Note: this intentionally matches only const char*/char*/String, NOT
+  // std::string — the latter is tracked separately as a "managed" string var.
   const isStringLikeType = (t: string) => t === "const char*" || t === "char*" || t === "String";
   for (const stmt of program.topLevelStatements) {
     if (stmt.kind === "var_decl") {
@@ -84,7 +87,7 @@ export function emitClasses(ctx: EmitterContext): void {
         stringVarTypes.add(stmt.name);
       }
       if (stmt.initializer?.kind === "array") {
-        if (!normalizedType.startsWith("std::vector<") || !strategy.needsStdVector()) {
+        if (!parsedIsVector(normalizedType) || !strategy.needsStdVector()) {
           addCArrayIfNotMutable(stmt.name, normalizedType, ctx.cArrayVarNames);
         }
       }
@@ -103,7 +106,7 @@ export function emitClasses(ctx: EmitterContext): void {
           stringVarTypes.add(stmt.name);
         }
         if (stmt.initializer?.kind === "array") {
-          if (!normalizedType.startsWith("std::vector<") || !strategy.needsStdVector()) {
+          if (!parsedIsVector(normalizedType) || !strategy.needsStdVector()) {
             addCArrayIfNotMutable(stmt.name, normalizedType, fnSet);
           }
         }
@@ -232,12 +235,12 @@ export function emitClasses(ctx: EmitterContext): void {
     const protectedSetters = classDef.setters.filter(s => s.visibility === "protected");
 
     const classPointerFieldNames = classDef.fields
-      .filter(f => f.cppType.endsWith("*"))
+      .filter(f => parsedIsPointer(f.cppType))
       .map(f => f.name);
     ctx.currentClassPointerFields = classPointerFieldNames.length > 0 ? classPointerFieldNames : undefined;
     const classPointerFieldTypes = new Map<string, string>();
     for (const f of classDef.fields) {
-      if ((f.cppType as string).endsWith("*")) {
+      if (parsedIsPointer(f.cppType)) {
         classPointerFieldTypes.set(f.name, f.cppType as string);
       }
     }

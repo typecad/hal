@@ -190,11 +190,12 @@ describe("cross-module tree-shaking", () => {
     expect(libCpp).not.toContain("notUsed()");
   });
 
-    // KNOWN BUG: cross-module class tree-shaking drops a class imported by the
-    // entry file — `Point` (imported + `new Point()`-ed in main) is shaken out
-    // of shapes.cpp. The function/enum/constant variants of this test pass;
-    // only class preservation is broken. Tracked here as .skip.
-    it.skip("preserves classes imported by the entry file", async () => {
+    // A class imported by the entry file is preserved by cross-module tree-
+    // shaking. In split mode a class with only field initializers (no methods
+    // requiring out-of-line bodies) is emitted entirely in the header, so the
+    // correctness invariant is checked against `shapes.h` (the sibling enum
+    // test below follows the same convention).
+    it("preserves classes imported by the entry file", async () => {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
     tempDirs.push(workspaceDir);
 
@@ -235,10 +236,11 @@ describe("cross-module tree-shaking", () => {
     });
 
     const outDir = path.join(workspaceDir, ".build");
-    const shapesCpp = fs.readFileSync(path.join(outDir, "shapes.cpp"), "utf8");
+    const shapesH = fs.readFileSync(path.join(outDir, "shapes.h"), "utf8");
 
-    // Point class should survive tree-shaking
-    expect(shapesCpp).toContain("Point");
+    // Point class should survive tree-shaking. The class body (fields only,
+    // no methods) is emitted in the header in split mode.
+    expect(shapesH).toContain("class Point");
   });
 
   it("preserves enums imported by the entry file", async () => {

@@ -3,6 +3,7 @@ import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./l
 import { createChildEmissionScope } from "../snprintf-helpers";
 import { escapeCppKeyword } from "../../utils/strings";
 import type { EmitterContext } from "./emitter-context";
+import { parsedIsPlainStructType } from "../../api/shared/cpp-type-ir";
 
 export function emitPostClassDeclarations(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, mappedFunctions, isEntryFile, topLevelScope } = ctx;
@@ -52,9 +53,7 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
         !!declaredCppType &&
         declaredCppType !== "auto" &&
         declaredCppType !== placeholderStructName &&
-        !declaredCppType.includes("<") &&   // templates (vector<...>) stay struct-inferred
-        !declaredCppType.endsWith("*") &&   // pointers stay struct-inferred
-        !declaredCppType.endsWith("]");     // arrays stay struct-inferred
+        parsedIsPlainStructType(declaredCppType);
 
       // Still register the field types so downstream rendering (e.g. string-concat
       // wrapping via interfaceFieldTypes) can resolve property accesses on the var.

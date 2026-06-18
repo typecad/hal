@@ -4,6 +4,16 @@ import { StatementIR, ExpressionIR, ParameterIR, CppType } from "../../api";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "../ast-node-utils";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "../type-resolution";
 import {
+  type CppTypeIR,
+  parseCppType,
+  renderCppType,
+  bareType,
+  elementOf,
+  isPointer,
+  isVector,
+  isStringLike,
+} from "../../api/shared/cpp-type-ir";
+import {
   PointerTracker,
   TYPED_ARRAY_ELEMENT_MAP,
   activeCArrayVars,
@@ -12,12 +22,11 @@ import {
   mutableArrayVars,
   arrayLiteralSizes,
   filteredArrayLengthVars,
-  activeLocalTypes,
-  activeGlobalTypes,
   halInstances,
   nestedClassAliases,
   registerFieldMap
 } from "../build-ir-state";
+import { getCurrentIrTypeScope, setScopeLocalType } from "../symbol-types";
 import { renderExprAsText } from "../render-expr";
 import { expressionToIR } from "../expression-to-ir";
 import { buildInlineForLoop } from "./array-methods";
@@ -165,9 +174,9 @@ export function variableStatementToIR(
       const objExpr = expressionToIR(declaration.initializer, sourceText, diagnostics);
       const objText = renderExprAsText(objExpr);
       const objType = ts.isIdentifier(declaration.initializer)
-        ? activeLocalTypes.get(declaration.initializer.text) ?? activeGlobalTypes.get(declaration.initializer.text)
+        ? getCurrentIrTypeScope()?.locals.get(declaration.initializer.text) ?? getCurrentIrTypeScope()?.globals.get(declaration.initializer.text)
         : undefined;
-      const isPointerAccess = objType?.endsWith("*");
+      const isPointerAccess = objType ? isPointer(parseCppType(objType)) : false;
       const accessor = isPointerAccess ? "->" : ".";
       
       for (let i = 0; i < declaration.name.elements.length; i++) {
@@ -326,17 +335,12 @@ export function variableStatementToIR(
             // `decltype(arr[0])` yields a reference, and vector-of-references
             // is illegal in C++). Fall back to std::remove_reference_t<decltype(...)>
             // when the element type can't be statically resolved.
-            const srcType = activeLocalTypes.get(arrText) ?? activeGlobalTypes.get(arrText);
+            const srcType = getCurrentIrTypeScope()?.locals.get(arrText) ?? getCurrentIrTypeScope()?.globals.get(arrText);
             let elemType = "auto";
             if (srcType) {
-              if (srcType.startsWith("std::vector<")) {
-                elemType = srcType.slice("std::vector<".length, -1).trim();
-              } else if (srcType.endsWith("[]")) {
-                elemType = srcType.slice(0, -2);
-              } else if (srcType.startsWith("__tc_StaticArray<")) {
-                const inner = srcType.slice("__tc_StaticArray<".length, -1);
-                elemType = inner.split(",")[0].trim();
-              }
+              // One structured lookup replaces the vector/[]/StaticArray branch ladder.
+              const elemIr = elementOf(parseCppType(srcType));
+              if (elemIr) elemType = renderCppType(elemIr);
             }
             const vectorType = elemType !== "auto"
               ? `std::vector<${elemType}>`
@@ -648,11 +652,23 @@ export function variableStatementToIR(
     );
 
     let varCppType: string = declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType;
-    const isPtr = varCppType.endsWith("*");
-    const baseCppType = isPtr ? varCppType.slice(0, -1) : varCppType;
-    if (nestedClassAliases.has(baseCppType)) {
-      varCppType = nestedClassAliases.get(baseCppType)! + (isPtr ? "*" : "");
+
+    // Resolve the base type (with pointer/const stripped) via structured IR so
+    // the nestedClassAliases lookup compares against the bare name.
+    {
+      const varIr = parseCppType(varCppType);
+      const ptr = isPointer(varIr);
+      const bare = bareType(varIr);
+      const bareName = bare.kind === "named" ? bare.name : renderCppType(bare);
+      if (nestedClassAliases.has(bareName)) {
+        const aliased = nestedClassAliases.get(bareName)!;
+        const aliasedIr: CppTypeIR = ptr
+          ? { kind: "pointer", base: parseCppType(aliased) }
+          : parseCppType(aliased);
+        varCppType = renderCppType(aliasedIr);
+      }
     }
+
     // Object literals without a type annotation get "auto" from type resolution,
     // but the emitter will generate a struct _name_t. Set the cppType early so
     // that string-concat rendering (shouldSkipStringWrap) can recognise string
@@ -669,30 +685,34 @@ export function variableStatementToIR(
         // already a named-type vector (e.g. `const pts: Point[]` resolves to
         // std::vector<Point> — use Point directly, don't override with a shadow
         // struct that collides at multiple sites — demo #11 Finding D).
-        const vecElemMatch = varCppType.match(/^std::vector<(.+)>$/);
-        const tsArrMatch = !vecElemMatch ? varCppType.match(/^(.+)\[\]$/) : null;
-        const elemType = vecElemMatch
-          ? vecElemMatch[1].trim()
-          : tsArrMatch
-            ? tsArrMatch[1].trim()
-            : null;
-        const isNamedElementType = elemType && /^[A-Z]/.test(elemType);
+        const varIr = parseCppType(varCppType);
+        const elemIr = elementOf(varIr);
+        const elemType = elemIr ? renderCppType(elemIr) : null;
+        const isNamedElementType = elemType ? /^[A-Z]/.test(elemType) : false;
         if (!isNamedElementType) {
           const structType = `_${declaration.name.text}_t`;
-          varCppType = `std::vector<${structType}>`;
+          const ir: CppTypeIR = { kind: "vector", element: parseCppType(structType) };
+          varCppType = renderCppType(ir);
         }
       }
     }
     loweredDeclaration.cppType = varCppType as CppType;
     localVariableTypes.set(declaration.name.text, varCppType as CppTypeHint);
-    activeLocalTypes.set(declaration.name.text, varCppType as CppTypeHint);
+    // Mirror into the scope's locals view so getCurrentIrTypeScope().locals
+    // readers (in expression-to-ir) see this binding. localVariableTypes is the
+    // accumulating threaded map; scope.locals is the function-resettable view —
+    // both must be written because a nested lowerStatementList reset clears
+    // scope.locals (not localVariableTypes) and re-syncs from it.
+    setScopeLocalType(declaration.name.text, varCppType as CppTypeHint);
 
+    // Top-level (module-scope) declarations also go into the file-scoped globals
+    // map so they resolve from any function in the file.
     if (!functionNameForDiagnostics || functionNameForDiagnostics === "") {
-      activeGlobalTypes.set(declaration.name.text, varCppType as CppTypeHint);
+      getCurrentIrTypeScope()?.globals.set(declaration.name.text, varCppType as CppTypeHint);
     }
 
-    const cleanTypeForStringVar = declarationType.resolvedType.replace(/\bconst\b\s*/g, "").trim();
-    if (cleanTypeForStringVar === "const char*" || cleanTypeForStringVar === "char*" || cleanTypeForStringVar === "__tc_str_ptr") {
+    // String-var detection via structured isStringLike rather than a string-equality ladder.
+    if (isStringLike(parseCppType(declarationType.resolvedType))) {
       activeStringVars.add(declaration.name.text);
     }
 
@@ -703,13 +723,21 @@ export function variableStatementToIR(
         require("fs").appendFileSync("C:\\typecad\\typecode\\debug-push.log", `[StaticArray rewrite] var=${varName} mutableArrayVars has=true\n`);
         const elements = actualInitializer.elements;
         let elemType = "int";
-        if (declarationType.resolvedType.startsWith("std::vector<")) {
-          elemType = declarationType.resolvedType.slice("std::vector<".length, -1);
+        // Extract element type via structured elementOf rather than slice.
+        const resolvedIr = parseCppType(declarationType.resolvedType);
+        const elemIr = elementOf(resolvedIr);
+        if (elemIr) {
+          elemType = renderCppType(elemIr);
         } else if (declarationType.resolvedType === "auto" && elements.length > 0) {
           elemType = inferExprCppType(elements[0], functionReturnTypes, localVariableTypes, sourceText);
         }
 
         const capacity = elements.length + 2;
+        const staticArrayIr: CppTypeIR = {
+          kind: "staticArray",
+          element: parseCppType(elemType),
+          size: capacity,
+        };
         lowered.push({
           kind: "var_decl",
           sourceSpan: loweredDeclaration.sourceSpan,
@@ -717,7 +745,7 @@ export function variableStatementToIR(
           trailingComments: [],
           name: varName,
           storage: "let",
-          cppType: `__tc_StaticArray<${elemType}, ${capacity}>` as any,
+          cppType: renderCppType(staticArrayIr) as any,
           initializer: undefined,
         });
         for (let ei = 0; ei < elements.length; ei++) {
@@ -749,12 +777,12 @@ export function variableStatementToIR(
           const bodyExpr = ts.isBlock(arrowFn.body) ? undefined : arrowFn.body;
           if (bodyExpr) {
             const span = loweredDeclaration.sourceSpan;
-            const srcType = activeLocalTypes.get(srcName) ?? activeGlobalTypes.get(srcName) ?? "auto";
-            const elemType = srcType.startsWith("std::vector<") 
-              ? srcType.slice("std::vector<".length, -1) 
-              : srcType.endsWith("[]") 
-                ? srcType.slice(0, -2) 
-                : srcType;
+            const srcType = getCurrentIrTypeScope()?.locals.get(srcName) ?? getCurrentIrTypeScope()?.globals.get(srcName) ?? "auto";
+            // Element type of a vector/staticArray/cArray, else the type itself.
+            const elemType = (() => {
+              const e = elementOf(parseCppType(srcType));
+              return e ? renderCppType(e) : srcType;
+            })();
             const zeroElements: ExpressionIR[] = [];
             for (let zi = 0; zi < srcSize; zi++) zeroElements.push({ kind: "number", value: 0 });
             lowered.push({
@@ -798,12 +826,12 @@ export function variableStatementToIR(
           if (bodyExpr) {
             const span = loweredDeclaration.sourceSpan;
             const lenVar = `${varName}__len`;
-            const srcType = activeLocalTypes.get(srcName) ?? activeGlobalTypes.get(srcName) ?? "auto";
-            const elemType = srcType.startsWith("std::vector<") 
-              ? srcType.slice("std::vector<".length, -1) 
-              : srcType.endsWith("[]") 
-                ? srcType.slice(0, -2) 
-                : srcType;
+            const srcType = getCurrentIrTypeScope()?.locals.get(srcName) ?? getCurrentIrTypeScope()?.globals.get(srcName) ?? "auto";
+            // Element type of a vector/staticArray/cArray, else the type itself.
+            const elemType = (() => {
+              const e = elementOf(parseCppType(srcType));
+              return e ? renderCppType(e) : srcType;
+            })();
             const zeroElements: ExpressionIR[] = [];
             for (let zi = 0; zi < srcSize; zi++) zeroElements.push({ kind: "number", value: 0 });
             lowered.push({
@@ -923,19 +951,19 @@ export function variableStatementToIR(
       }
 
       if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
-        const vecMatch = varCppType.startsWith("std::vector<");
-        const inferredVecMatch = declarationType.inferredType.startsWith("std::vector<");
+        const vecMatch = isVector(parseCppType(varCppType));
+        const inferredVecMatch = isVector(parseCppType(declarationType.inferredType));
         if (!vecMatch && inferredVecMatch) {
           activeArrayLiteralVars.add(varName);
           loweredDeclaration.cppType = "auto" as any;
           localVariableTypes.set(varName, declarationType.inferredType);
-          activeLocalTypes.set(varName, declarationType.inferredType);
+          setScopeLocalType(varName, declarationType.inferredType);
         } else if (!vecMatch) {
           activeArrayLiteralVars.add(varName);
           activeCArrayVars.add(varName);
           loweredDeclaration.cppType = "auto" as any;
           localVariableTypes.set(varName, "auto");
-          activeLocalTypes.set(varName, "auto");
+          setScopeLocalType(varName, "auto");
         }
       }
     }

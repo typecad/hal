@@ -6,12 +6,15 @@ import ts from "typescript";
 // Registers TypeScript syntax patterns that have no C++ equivalent or are only
 // approximated.  Used by feature-prescan.ts to emit build-time diagnostics.
 //
-// DUAL-MAINTENANCE CONTRACT:
-// Simple selector-based patterns (those added via add()) should be mirrored in
-// packages/cuttlefish/src/create/init-templates.ts generateEslintConfig() so
-// that users get real-time editor warnings via the scaffolded ESLint config.
-// Context-sensitive patterns (those in checkContextSensitive) generally cannot
-// be expressed as ESLint selectors and are build-time-only diagnostics.
+// SINGLE SOURCE OF TRUTH FOR ESLint SELECTORS:
+// The scaffolded eslint.config.mjs (generateEslintConfig in create/init-templates.ts)
+// renders its `no-restricted-syntax` entries from LINT_RULES below, which is in turn
+// derived from KIND_REGISTRY (kind-based patterns) plus CONTEXT_LINT_RULES (patterns
+// that also appear in checkContextSensitive but are expressible as static selectors).
+// To add or change an editor-time selector, edit this file — the parity test
+// (tests/packages/transpiler/eslint-parity.test.ts) guards against drift.
+// Patterns that genuinely require AST traversal and cannot be a selector stay
+// build-time-only diagnostics in checkContextSensitive with no LINT_RULES entry.
 // ---------------------------------------------------------------------------
 
 export type FeatureStatus = "unsupported" | "approximation" | "unsupported-context";
@@ -21,6 +24,24 @@ export interface FeatureEntry {
   message: string;
   hint?: string;
   code: string;
+  // Optional ESLint `no-restricted-syntax` selector rendered into the
+  // scaffolded eslint.config.mjs so the editor warns in real time about the
+  // same pattern that prescan flags at build time. Omit for kinds that cannot
+  // be expressed as a selector (see ESLINT_OPT_OUT_KINDS) or are owned by a
+  // dedicated core rule (e.g. AnyKeyword → @typescript-eslint/no-explicit-any).
+  eslint?: { selector: string; message: string };
+}
+
+// A single `no-restricted-syntax` entry, generated from the registry and
+// interpolated verbatim into the scaffolded eslint.config.mjs.
+export interface LintRule {
+  selector: string;
+  message: string;
+  // Discriminator for the parity test and human readers.
+  // "kind"     — derived from a KIND_REGISTRY entry's `.eslint`.
+  // "context"  — a static selector that mirrors a checkContextSensitive branch
+  //              (kept here so all editor selectors live in one place).
+  source: "kind" | "context";
 }
 
 type FeatureRegistryKey = ts.SyntaxKind | ((node: ts.Node, sourceText: string) => DiagnosticMatch | null);
@@ -77,6 +98,10 @@ add(ts.SyntaxKind.TaggedTemplateExpression, {
   message: "Tagged template expressions have no C++ equivalent.",
   hint: "Use a regular template literal (backtick string) or string concatenation instead.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "TaggedTemplateExpression",
+    message: "[transpiler] Tagged template expressions have no C++ equivalent. Use regular template literals or string concatenation.",
+  },
 });
 
 add(ts.SyntaxKind.MetaProperty, {
@@ -84,6 +109,10 @@ add(ts.SyntaxKind.MetaProperty, {
   message: "Meta-property expressions (import.meta, new.target) have no C++ equivalent.",
   hint: "Avoid import.meta and new.target; they rely on JS runtime reflection.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "MetaProperty",
+    message: "[transpiler] import.meta and new.target have no C++ equivalent.",
+  },
 });
 
 add(ts.SyntaxKind.RegularExpressionLiteral, {
@@ -91,6 +120,10 @@ add(ts.SyntaxKind.RegularExpressionLiteral, {
   message: "Regular expression literals are approximated with std::regex in C++.",
   hint: "std::regex has different syntax and performance characteristics than JS RegExp.",
   code: "TS2CPP_APPROXIMATE",
+  eslint: {
+    selector: "Literal[regex]",
+    message: "[transpiler] regex literals are approximated with std::regex in C++ — JS RegExp syntax/perf do not carry over.",
+  },
 });
 
 add(ts.SyntaxKind.SpreadAssignment, {
@@ -98,6 +131,10 @@ add(ts.SyntaxKind.SpreadAssignment, {
   message: "Object spread ({...obj}) has no C++ equivalent.",
   hint: "Manually copy each property, or use a Map with an insert/merge method.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "ObjectExpression > SpreadElement",
+    message: "[transpiler] object spread ({ ...obj }) is not supported — C++ structs have fixed shape. Construct the object field-by-field instead.",
+  },
 });
 
 add(ts.SyntaxKind.ComputedPropertyName, {
@@ -105,8 +142,14 @@ add(ts.SyntaxKind.ComputedPropertyName, {
   message: "Computed property names ({ [expr]: value }) have no C++ equivalent.",
   hint: "Use a Map<string, T> for dynamic keys, or use fixed property names.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "ObjectExpression > Property[computed=true]",
+    message: "[transpiler] Computed property names ({ [expr]: value }) have no C++ equivalent. Use fixed property names, or a Map<string, T> with .set().",
+  },
 });
 
+// No `.eslint`: explicit `any` is owned by the core @typescript-eslint/no-explicit-any
+// rule configured separately in the scaffolded eslint.config.mjs.
 add(ts.SyntaxKind.AnyKeyword, {
   status: "unsupported",
   message: "Explicit 'any' has no safe C++ lowering (transpiler would emit 'auto' and lose type safety).",
@@ -119,6 +162,10 @@ add(ts.SyntaxKind.BigIntKeyword, {
   message: "The 'bigint' type has no supported embedded C++ lowering.",
   hint: "Use number with an explicit fixed-width type such as int32_t, uint32_t, or int64_t.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "TSBigIntKeyword",
+    message: "[transpiler] bigint is not supported (no C++ equivalent for embedded targets). Use number with an explicit fixed-width type (int32_t/int64_t).",
+  },
 });
 
 add(ts.SyntaxKind.BigIntLiteral, {
@@ -126,6 +173,10 @@ add(ts.SyntaxKind.BigIntLiteral, {
   message: "BigInt literals have no supported embedded C++ lowering.",
   hint: "Use a number literal with an explicit fixed-width type annotation.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "Literal[bigInt=true]",
+    message: "[transpiler] BigInt literals are not supported (no C++ equivalent for embedded targets). Use a number literal with an explicit fixed-width type.",
+  },
 });
 
 add(ts.SyntaxKind.NeverKeyword, {
@@ -133,6 +184,10 @@ add(ts.SyntaxKind.NeverKeyword, {
   message: "The 'never' type has no meaningful C++ lowering.",
   hint: "Use void for functions that do not return a value, or an explicit error/result type.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "TSNeverKeyword",
+    message: "[transpiler] the `never` type has no meaningful C++ lowering. Avoid it.",
+  },
 });
 
 add(ts.SyntaxKind.IndexedAccessType, {
@@ -140,6 +195,10 @@ add(ts.SyntaxKind.IndexedAccessType, {
   message: "Indexed access types (T[K]) have no deterministic C++ lowering.",
   hint: "Use the concrete field type directly.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "TSIndexedAccessType",
+    message: "[transpiler] indexed access types (T[K]) are not supported (no C++ equivalent). Use the concrete field type directly.",
+  },
 });
 
 add(ts.SyntaxKind.ConditionalType, {
@@ -147,6 +206,10 @@ add(ts.SyntaxKind.ConditionalType, {
   message: "Conditional types (T extends U ? X : Y) are type-level logic with no deterministic C++ lowering.",
   hint: "Write an explicit type alias or overload with concrete types.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "TSTypeAliasDeclaration > TSConditionalType",
+    message: "[transpiler] conditional types (T extends X ? A : B) are not supported — they leak generic type parameters into generated C++.",
+  },
 });
 
 add(ts.SyntaxKind.MappedType, {
@@ -154,6 +217,10 @@ add(ts.SyntaxKind.MappedType, {
   message: "Mapped types ({ [K in keyof T]: U }) have no deterministic C++ lowering.",
   hint: "Define an explicit interface or struct with the fields you need.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "TSTypeAliasDeclaration > TSMappedType",
+    message: "[transpiler] mapped types ({ [K in keyof T]: U }) are not supported — they leak generic type parameters into generated C++.",
+  },
 });
 
 add(ts.SyntaxKind.TemplateLiteralType, {
@@ -161,11 +228,191 @@ add(ts.SyntaxKind.TemplateLiteralType, {
   message: "Template literal types have no C++ equivalent.",
   hint: "Use string at runtime, or define an explicit string enum/union pattern.",
   code: "TS2CPP_NO_EQUIVALENT",
+  eslint: {
+    selector: "TSTemplateLiteralType",
+    message: "[transpiler] template literal types have no C++ equivalent. Use a string union or an explicit enum.",
+  },
 });
 
 export function getKindEntry(kind: ts.SyntaxKind): FeatureEntry | undefined {
   return KIND_REGISTRY.get(kind);
 }
+
+// Iterate the kind registry (used by the eslint-parity test to assert every
+// kind either contributes a selector or is explicitly opted out).
+export function kindRegistryEntries(): ReadonlyArray<[ts.SyntaxKind, FeatureEntry]> {
+  return [...KIND_REGISTRY.entries()];
+}
+
+// Kinds deliberately without an `.eslint` selector. Each must be documented:
+// - AnyKeyword — owned by the @typescript-eslint/no-explicit-any core rule.
+const ESLINT_OPT_OUT_KINDS: ReadonlySet<ts.SyntaxKind> = new Set<ts.SyntaxKind>([
+  ts.SyntaxKind.AnyKeyword,
+]);
+
+// Kind-based selectors: one per KIND_REGISTRY entry that has `.eslint` set.
+function kindBasedLintRules(): LintRule[] {
+  const rules: LintRule[] = [];
+  for (const entry of KIND_REGISTRY.values()) {
+    if (entry.eslint) {
+      rules.push({
+        selector: entry.eslint.selector,
+        message: entry.eslint.message,
+        source: "kind",
+      });
+    }
+  }
+  return rules;
+}
+
+// Context-sensitive selectors: patterns that also live in checkContextSensitive
+// as imperative visitors, but CAN additionally be expressed as a static
+// `no-restricted-syntax` selector for real-time editor warnings. Kept here so
+// that all editor-time selectors live in one place.
+//
+// NOTE on async/generator/yield severity: these are flagged as `"error"` by
+// ESLint (matching the prior hand-maintained config) but the transpiler only
+// emits a `TS2CPP_ASYNC_STUB` *warning* at build time and emits stub code.
+// The severity mismatch is intentional and documented here — it is not a bug
+// this refactor introduces or should silently "fix".
+const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
+  {
+    selector: "ForOfStatement[await=true]",
+    message: "[transpiler] for await...of is unsupported (requires an async runtime absent on bare metal). Use a synchronous for...of loop.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression[callee.type='FunctionExpression']",
+    message: "[transpiler] immediately-invoked function expressions (IIFEs) are not supported — the body is not inlined and the `function` keyword is emitted verbatim. Assign to a const or define a named top-level function.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression[callee.type='ArrowFunctionExpression']",
+    message: "[transpiler] immediately-invoked arrow expressions (() => {...})() are not supported — the body is not inlined. Assign to a const or define a named top-level function.",
+    source: "context",
+  },
+  {
+    selector: "TSTypeOperator[type='keyof']",
+    message: "[transpiler] the keyof operator is not supported (no C++ equivalent). Use a string union or a switch over field names.",
+    source: "context",
+  },
+  {
+    selector: "TSTypeReference > Identifier[name=/^(ReturnType|Parameters|InstanceType|ConstructorParameters|Extract|Exclude)$/]",
+    message: "[transpiler] ReturnType/Parameters/InstanceType/Extract/Exclude utility types fall back to auto and are not deterministic enough for C++ emission. Declare the concrete type explicitly.",
+    source: "context",
+  },
+  {
+    selector: "StaticBlock",
+    message: "[transpiler] static initializer blocks (static { ... }) are not supported. Initialize static fields in their declaration or the constructor.",
+    source: "context",
+  },
+  {
+    selector: "Identifier[name='Promise']",
+    message: "[transpiler] Promise is not supported (no promise runtime on bare metal). Use synchronous return values or callbacks.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression > MemberExpression.callee[property.name='then']",
+    message: "[transpiler] .then() on a Promise is not supported (no promise runtime). Use synchronous return values or callbacks.",
+    source: "context",
+  },
+  {
+    selector: "FunctionDeclaration[async=true]",
+    message: "[transpiler] async functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function.",
+    source: "context",
+  },
+  {
+    selector: "FunctionExpression[async=true]",
+    message: "[transpiler] async function expressions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function.",
+    source: "context",
+  },
+  {
+    selector: "ArrowFunctionExpression[async=true]",
+    message: "[transpiler] async arrow functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous arrow function.",
+    source: "context",
+  },
+  {
+    selector: "AwaitExpression",
+    message: "[transpiler] await is stripped to an inline expression — semantics are approximate and there is no event loop on bare metal. Avoid in firmware.",
+    source: "context",
+  },
+  {
+    selector: "FunctionDeclaration[generator=true]",
+    message: "[transpiler] generator functions (function*) have no coroutine runtime on bare metal and are effectively unusable. Avoid.",
+    source: "context",
+  },
+  {
+    selector: "FunctionExpression[generator=true]",
+    message: "[transpiler] generator expressions (function*) have no coroutine runtime on bare metal and are effectively unusable. Avoid.",
+    source: "context",
+  },
+  {
+    selector: "YieldExpression",
+    message: "[transpiler] yield lowers to co_yield but no coroutine runtime is wired for embedded targets. Avoid.",
+    source: "context",
+  },
+  {
+    selector: "BinaryExpression[operator='**']",
+    message: "[transpiler] the ** exponentiation operator is not a first-class emit. Use Math.pow() for reliable lowering.",
+    source: "context",
+  },
+  {
+    selector: "MemberExpression[object.name='JSON']",
+    message: "[transpiler] JSON.* is not supported (no JSON runtime on bare metal). Parse/format manually, or avoid.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(assign|freeze|fromEntries)$/]",
+    message: "[transpiler] Object.assign/freeze/fromEntries are not lowered to C++. Construct objects explicitly or use a Map.",
+    source: "context",
+  },
+  {
+    selector: "ImportExpression",
+    message: "[transpiler] dynamic import() is unsupported (no runtime loader on bare metal). Use a static top-level import.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression[callee.name='require']",
+    message: "[transpiler] require() is unsupported. Use ES `import`.",
+    source: "context",
+  },
+  {
+    selector: "BinaryExpression[operator='instanceof']",
+    message: "[transpiler] instanceof has no RTTI lowering and is treated loosely. Avoid it for user-class hierarchies in firmware.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(defineProperty|defineProperties|create|getPrototypeOf|setPrototypeOf|getOwnPropertyDescriptor)$/]",
+    message: "[transpiler] Object.defineProperty/defineProperties/create/getPrototypeOf/setPrototypeOf/getOwnPropertyDescriptor mutate or introspect object shape at runtime — no AOT C++ lowering. Avoid.",
+    source: "context",
+  },
+  {
+    selector: "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]",
+    message: "[transpiler] .bind/.call/.apply rebind `this` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly.",
+    source: "context",
+  },
+  {
+    selector: "NewExpression[callee.name='Function']",
+    message: "[transpiler] new Function() compiles a string at runtime — no JS runtime on bare metal. Define a named function instead.",
+    source: "context",
+  },
+  {
+    selector: "AssignmentExpression[left.type='MemberExpression'][left.property.name='__proto__']",
+    message: "[transpiler] __proto__ assignment mutates the prototype chain — no AOT C++ lowering. Use a class with extends, or a Map.",
+    source: "context",
+  },
+];
+
+// The canonical list of ESLint `no-restricted-syntax` entries rendered into
+// the scaffolded eslint.config.mjs by generateEslintConfig().
+export const LINT_RULES: ReadonlyArray<LintRule> = [
+  ...kindBasedLintRules(),
+  ...CONTEXT_LINT_RULES,
+];
+
+// Exported so the parity test can assert that every KIND_REGISTRY entry either
+// contributes a selector here or is explicitly opted out.
+export { ESLINT_OPT_OUT_KINDS };
 
 export function checkContextSensitive(node: ts.Node, sourceText: string): DiagnosticMatch | null {
   if (ts.isFunctionDeclaration(node) && node.body && !node.name) {

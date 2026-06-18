@@ -12,6 +12,7 @@ import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } f
 import type { PlatformStrategy } from "../api/shared";
 import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "../api/shared";
 import { escapeCppStringLiteral } from "../utils/strings";
+import { formatKindOf, parseCppType, parsedElementString, parsedIsStringLike } from "../api/shared/cpp-type-ir";
 
 export type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer };
 
@@ -173,10 +174,13 @@ export function inferSnprintfArg(
       const cppType = knownVar?.cppType ?? knownFunctionReturnTypes?.get(expr.value);
       if (cppType && strategy.isStringLikeType(cppType)) {
         const normalized = strategy.normalizeCppType(cppType);
-        const needsCStr = normalized === "std::string" || normalized === "String" || normalized === "__tc_str_ptr";
+        const needsCStr = parsedIsStringLike(normalized);
         const arg = needsCStr ? `${expr.value}.c_str()` : expr.value;
         return { format: "%s", arg, estimatedLength: 24, preludeLines: [] };
       }
+      // Format-specifier ladder. Kept as explicit per-name branches because
+      // printf specifiers distinguish widths that a coarse kind-bucket would
+      // collapse (e.g. `unsigned long` → %lu vs `long long` → %lld).
       if (cppType === "bool") {
         return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
       }
@@ -332,8 +336,8 @@ export function inferSnprintfArg(
       if (expr.object.kind === "identifier") {
         const objInfo = scopeState.knownVariableTypes.get(expr.object.value);
         if (objInfo) {
-          const match = objInfo.cppType.match(/^std::vector<(.+)>$/);
-          if (match && strategy.isStringLikeType(match[1])) {
+          const elemStr = parsedElementString(objInfo.cppType);
+          if (elemStr && strategy.isStringLikeType(elemStr)) {
             return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
           }
         }

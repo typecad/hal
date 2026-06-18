@@ -22,6 +22,7 @@ import {
   resolveFunctionTypeSignature,
   resolveAliasedTypeNode,
 } from "./type-resolution";
+import { parsedIsPointer } from "../api/shared/cpp-type-ir";
 import { expressionToIR } from "./expression-to-ir";
 import {
   PointerTracker,
@@ -29,9 +30,9 @@ import {
   hoistedNestedClasses,
   nestedClassAliases,
   nestedFunctionAliases,
-  activeClassFieldTypes,
   restParamFunctions,
 } from "./build-ir-state";
+import { getCurrentIrTypeScope } from "./symbol-types";
 import { renderExprAsText } from "./render-expr";
 
 type DestructuredParamResult = {
@@ -60,7 +61,7 @@ function processDestructuredParameter(
   
   const localVariableTypes = new Map<string, CppTypeHint>();
   const extractionStatements: StatementIR[] = [];
-  const isPointer = paramType.endsWith("*");
+  const isPointer = parsedIsPointer(paramType);
   const accessor = isPointer ? "->" : ".";
   
   const processBindingElement = (element: ts.BindingElement, prefix: string): void => {
@@ -664,7 +665,7 @@ export function hoistNestedClass(
   for (const member of node.members) {
     if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       const fType = typeNodeToCppType(member.type, typeAliases);
-      activeClassFieldTypes.set(`this->${member.name.text}`, fType);
+      getCurrentIrTypeScope()?.classFields.set(`this->${member.name.text}`, fType);
     }
   }
 

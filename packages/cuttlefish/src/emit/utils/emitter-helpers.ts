@@ -4,6 +4,7 @@ import type { EmitterContext } from "../emitters/emitter-context";
 import type { EmissionScopeState } from "../../api/shared/snprintf-types";
 import { appendSourceLine, appendRenderedStatement } from "../emitters/line-appender";
 import { accessorGetterName, accessorSetterName } from "./cpp-helpers";
+import { parsedIsPointer } from "../../api/shared/cpp-type-ir";
 import { escapeCppKeyword } from "../../utils/strings";
 import { createChildEmissionScope } from "../snprintf-helpers";
 import { emitCommentLines } from "../utils";
@@ -66,7 +67,7 @@ export function fixPointerFieldAccess(
 ): string {
   callee = callee.replace(/\bthis\./g, "this->");
   for (const [varName, varType] of pointerVarTypes) {
-    if (varType.endsWith("*")) {
+    if (parsedIsPointer(varType)) {
       const pattern = new RegExp(`\\b${varName}\\.`, "g");
       callee = callee.replace(pattern, `${varName}->`);
     }

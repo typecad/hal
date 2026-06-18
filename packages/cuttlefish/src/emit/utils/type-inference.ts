@@ -4,6 +4,7 @@
  */
 
 import type { ExpressionIR, StatementIR, PlatformStrategy } from "../../api";
+import { parsedIsPointer } from "../../api/shared/cpp-type-ir";
 
 /**
  * Infers the C++ type for an object field based on its initializer value.
@@ -637,7 +638,7 @@ export function collectPointerVarTypes(
   for (const statement of statements) {
     if (statement.kind === "var_decl" && statement.initializer) {
       const declaredType = statement.cppType;
-      if (declaredType.endsWith("*")) {
+      if (parsedIsPointer(declaredType)) {
         pointerVarTypes.set(statement.name, declaredType);
         continue;
       }

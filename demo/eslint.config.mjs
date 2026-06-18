@@ -13,6 +13,13 @@ const transpilerRules = [
     message:
       "[transpiler] import.meta and new.target have no C++ equivalent.",
   },
+  // Regex literals are approximated with std::regex in C++ — JS RegExp
+  // syntax/perf do not carry over. (Sourced from feature-registry LINT_RULES.)
+  {
+    selector: "Literal[regex]",
+    message:
+      "[transpiler] regex literals are approximated with std::regex in C++ — JS RegExp syntax/perf do not carry over.",
+  },
   // A3: computed property keys in object literals ({ [expr]: value }) have no
   // C++ equivalent — the SUPPORT_MATRIX marks them as "no C++ equivalent", and
   // combined with Record<K,V> they lower to a malformed struct. Use fixed
@@ -36,6 +43,12 @@ const transpilerRules = [
     selector: "TSBigIntKeyword",
     message:
       "[transpiler] bigint is not supported (no C++ equivalent for embedded targets). Use number with an explicit fixed-width type (int32_t/int64_t).",
+  },
+  // §1.2 🚫 — BigInt literals (123n) have the same lack of lowering as the type.
+  {
+    selector: "Literal[bigInt=true]",
+    message:
+      "[transpiler] BigInt literals are not supported (no C++ equivalent for embedded targets). Use a number literal with an explicit fixed-width type.",
   },
   // §1.12 🚫 — `never` has no meaningful C++ lowering.
   {
@@ -94,6 +107,12 @@ const transpilerRules = [
     selector: "TSTypeAliasDeclaration > TSMappedType",
     message:
       "[transpiler] mapped types ({ [K in keyof T]: U }) are not supported — they leak generic type parameters into generated C++. Construct the type explicitly.",
+  },
+  // §1.6 ❌ — template literal types have no C++ equivalent.
+  {
+    selector: "TSTemplateLiteralType",
+    message:
+      "[transpiler] template literal types have no C++ equivalent. Use a string union or an explicit enum.",
   },
   // §1.7 ❌ — ReturnType/Parameters use typeof-in-type-position (broken).
   {
@@ -291,6 +310,7 @@ export default [
       "cuttlefish/no-undefined-compare-on-struct-field": "error",
       "cuttlefish/no-typed-array-param-length": "error",
       "cuttlefish/no-typed-array-return": "error",
+      "cuttlefish/no-typed-array-field": "error",
       "cuttlefish/no-dynamic-property-access": "error",
       "cuttlefish/no-this-in-free-function": "error",
     },

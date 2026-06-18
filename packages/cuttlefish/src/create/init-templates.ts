@@ -1,4 +1,5 @@
 import type { ArchitectureIdentifier } from '../api';
+import { LINT_RULES } from '../ir/feature-registry';
 
 export interface InitProjectOptions {
   projectName: string;
@@ -307,61 +308,22 @@ dist/
 }
 
 export function generateEslintConfig(_options: InitProjectOptions): string {
+  // `no-restricted-syntax` selectors are generated from LINT_RULES
+  // (packages/cuttlefish/src/ir/feature-registry.ts), the single source of
+  // truth shared with build-time prescan diagnostics. See SUPPORT_MATRIX for
+  // the per-pattern ❌/🚫 rationale. Do not hand-edit the array below.
+  const transpilerRulesJson = JSON.stringify(
+    LINT_RULES.map(({ selector, message }) => ({ selector, message })),
+    null,
+    2,
+  ).replace(/\n/g, "\n  ");
+
   return `import tsparser from "@typescript-eslint/parser";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import transpilerPlugin from "./eslint-transpiler-rules.mjs";
 
-// no-restricted-syntax selectors sourced from SUPPORT_MATRIX ❌/🚫 rows.
-const transpilerRules = [
-  {
-    selector: "TaggedTemplateExpression",
-    message:
-      "[transpiler] Tagged template expressions have no C++ equivalent. Use regular template literals or string concatenation.",
-  },
-  {
-    selector: "MetaProperty",
-    message:
-      "[transpiler] import.meta and new.target have no C++ equivalent.",
-  },
-  {
-    selector: "ObjectExpression > Property[computed=true]",
-    message:
-      "[transpiler] Computed property names ({ [expr]: value }) have no C++ equivalent. Use fixed property names, or a Map<string, T> with .set().",
-  },
-  // Matrix-derived ❌/🚫 patterns (SUPPORT_MATRIX §1.2, §1.12, §2.2, §2.6, §5.1, §5.4, §6.2, §7, §1.10).
-  { selector: "TSBigIntKeyword", message: "[transpiler] bigint is not supported (no C++ equivalent for embedded targets). Use number with an explicit fixed-width type (int32_t/int64_t)." },
-  { selector: "TSNeverKeyword", message: "[transpiler] the \`never\` type has no meaningful C++ lowering. Avoid it." },
-  { selector: "ForOfStatement[await=true]", message: "[transpiler] for await...of is unsupported (requires an async runtime absent on bare metal). Use a synchronous for...of loop." },
-  { selector: "CallExpression[callee.type='FunctionExpression']", message: "[transpiler] immediately-invoked function expressions (IIFEs) are not supported — the body is not inlined and the \`function\` keyword is emitted verbatim. Assign to a const or define a named top-level function." },
-  { selector: "CallExpression[callee.type='ArrowFunctionExpression']", message: "[transpiler] immediately-invoked arrow expressions (() => {...})() are not supported — the body is not inlined. Assign to a const or define a named top-level function." },
-  { selector: "ObjectExpression > SpreadElement", message: "[transpiler] object spread ({ ...obj }) is not supported — C++ structs have fixed shape. Construct the object field-by-field instead." },
-  { selector: "TSTypeOperator[type='keyof']", message: "[transpiler] the keyof operator is not supported (no C++ equivalent). Use a string union or a switch over field names." },
-  { selector: "TSIndexedAccessType", message: "[transpiler] indexed access types (T[K]) are not supported (no C++ equivalent). Use the concrete field type directly." },
-  { selector: "TSTypeAliasDeclaration > TSConditionalType", message: "[transpiler] conditional types (T extends X ? A : B) are not supported — they leak generic type parameters into generated C++." },
-  { selector: "TSTypeAliasDeclaration > TSMappedType", message: "[transpiler] mapped types ({ [K in keyof T]: U }) are not supported — they leak generic type parameters into generated C++." },
-  { selector: "TSTypeReference > Identifier[name=/^(ReturnType|Parameters|InstanceType|ConstructorParameters|Extract|Exclude)$/]", message: "[transpiler] ReturnType/Parameters/InstanceType/Extract/Exclude utility types fall back to auto and are not deterministic enough for C++ emission. Declare the concrete type explicitly." },
-  { selector: "StaticBlock", message: "[transpiler] static initializer blocks (static { ... }) are not supported. Initialize static fields in their declaration or the constructor." },
-  { selector: "Identifier[name='Promise']", message: "[transpiler] Promise is not supported (no promise runtime on bare metal). Use synchronous return values or callbacks." },
-  { selector: "CallExpression > MemberExpression.callee[property.name='then']", message: "[transpiler] .then() on a Promise is not supported (no promise runtime). Use synchronous return values or callbacks." },
-  { selector: "FunctionDeclaration[async=true]", message: "[transpiler] async functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function." },
-  { selector: "FunctionExpression[async=true]", message: "[transpiler] async function expressions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function." },
-  { selector: "ArrowFunctionExpression[async=true]", message: "[transpiler] async arrow functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous arrow function." },
-  { selector: "AwaitExpression", message: "[transpiler] await is stripped to an inline expression — semantics are approximate and there is no event loop on bare metal. Avoid in firmware." },
-  { selector: "FunctionDeclaration[generator=true]", message: "[transpiler] generator functions (function*) have no coroutine runtime on bare metal and are effectively unusable. Avoid." },
-  { selector: "FunctionExpression[generator=true]", message: "[transpiler] generator expressions (function*) have no coroutine runtime on bare metal and are effectively unusable. Avoid." },
-  { selector: "YieldExpression", message: "[transpiler] yield lowers to co_yield but no coroutine runtime is wired for embedded targets. Avoid." },
-  { selector: "BinaryExpression[operator='**']", message: "[transpiler] the ** exponentiation operator is not a first-class emit. Use Math.pow() for reliable lowering." },
-  { selector: "MemberExpression[object.name='JSON']", message: "[transpiler] JSON.* is not supported (no JSON runtime on bare metal). Parse/format manually, or avoid." },
-  { selector: "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(assign|freeze|fromEntries)$/]", message: "[transpiler] Object.assign/freeze/fromEntries are not lowered to C++. Construct objects explicitly or use a Map." },
-  { selector: "ImportExpression", message: "[transpiler] dynamic import() is unsupported (no runtime loader on bare metal). Use a static top-level import." },
-  { selector: "CallExpression[callee.name='require']", message: "[transpiler] require() is unsupported. Use ES \`import\`." },
-  { selector: "BinaryExpression[operator='instanceof']", message: "[transpiler] instanceof has no RTTI lowering and is treated loosely. Avoid it for user-class hierarchies in firmware." },
-  // Runtime / dynamic-shape patterns (SUPPORT_MATRIX §7 never themes).
-  { selector: "CallExpression > MemberExpression.callee[object.name='Object'][property.name=/^(defineProperty|defineProperties|create|getPrototypeOf|setPrototypeOf|getOwnPropertyDescriptor)$/]", message: "[transpiler] Object.defineProperty/defineProperties/create/getPrototypeOf/setPrototypeOf/getOwnPropertyDescriptor mutate or introspect object shape at runtime — no AOT C++ lowering. Avoid." },
-  { selector: "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]", message: "[transpiler] .bind/.call/.apply rebind \`this\` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly." },
-  { selector: "NewExpression[callee.name='Function']", message: "[transpiler] new Function() compiles a string at runtime — no JS runtime on bare metal. Define a named function instead." },
-  { selector: "AssignmentExpression[left.type='MemberExpression'][left.property.name='__proto__']", message: "[transpiler] __proto__ assignment mutates the prototype chain — no AOT C++ lowering. Use a class with extends, or a Map." },
-];
+// Auto-generated from feature-registry.ts LINT_RULES — do not edit by hand.
+const transpilerRules = ${transpilerRulesJson};
 
 export default [
   {
@@ -412,6 +374,7 @@ export default [
       "cuttlefish/no-undefined-compare-on-struct-field": "error",
       "cuttlefish/no-typed-array-param-length": "error",
       "cuttlefish/no-typed-array-return": "error",
+      "cuttlefish/no-typed-array-field": "error",
       "cuttlefish/no-dynamic-property-access": "error",
       "cuttlefish/no-this-in-free-function": "error",
     },

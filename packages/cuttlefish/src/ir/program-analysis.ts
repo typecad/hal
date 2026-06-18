@@ -8,6 +8,7 @@
 
 import { ProgramIR, StatementIR, ExpressionIR, PlatformStrategy, Diagnostic } from "../api";
 import { POLYFILL_HELPER_MAP } from "../api/shared";
+import { parseCppType } from "../api/shared/cpp-type-ir";
 import { analyzeResources } from "./resource-analysis";
 
 export interface ProgramAnalysisResult {
@@ -279,7 +280,7 @@ function analyzeStatement(
 
     case "var_decl":
       result.declaredTypes.push(statement.cppType);
-      if (statement.cppType.includes('__tc_str_ptr')) {
+      if (parseCppType(statement.cppType).kind === "strPtr") {
         result.usesStrPtr = true;
       }
       if (statement.initializer) {

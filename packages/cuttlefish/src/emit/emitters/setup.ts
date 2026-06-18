@@ -161,6 +161,10 @@ export function buildEmitterContext(
   const includes: string[] = [];
   const symbolMap: Record<string, string> = {};
   let profileDiagnostics: Diagnostic[] = [];
+  // Shared sink for emit-time diagnostics (HAL warnings, etc.). Passed by
+  // reference to the renderers and merged into the final diagnostics list by
+  // finalizeOutput.
+  const emitDiagnostics: Diagnostic[] = [];
   let shimLines: string[] = [];
 
   const isEntryFileForPolyfills = isEntryFile;
@@ -573,6 +577,7 @@ export function buildEmitterContext(
     interfaceFieldTypes,
     crossModuleClassNames: classNames,
     knownTopLevelObjectTypes,
+    diagnostics: emitDiagnostics,
   });
 
   const statementRenderer = new StatementRenderer({
@@ -591,6 +596,7 @@ export function buildEmitterContext(
     typeAccessorNames: classAccessorNames,
     interfaceFieldTypes,
     crossModuleClassNames: classNames,
+    diagnostics: emitDiagnostics,
   });
 
   const asyncFunctionOriginalNames = new Set(
@@ -627,6 +633,7 @@ export function buildEmitterContext(
               varAccessorNames,
               typeAccessorNames: classAccessorNames,
               pointerVarTypes,
+              diagnostics: emitDiagnostics,
             });
             return contextRenderer.render(stmt, forHeader, calleeTransformer);
           },
@@ -823,6 +830,7 @@ export function buildEmitterContext(
     knownTopLevelObjectTypes,
     knownTopLevelObjectFields: new Map(),
     profileDiagnostics,
+    emitDiagnostics,
     templateInterfaceNames,
     interfaceNamespaceMap,
     interfaceFieldTypes,

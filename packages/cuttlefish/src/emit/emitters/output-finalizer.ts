@@ -6,6 +6,7 @@ import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map";
 import { dedupe, hasConsoleCalls, resolveTranspiledModuleInclude } from "../utils";
 import { appendHeaderLine } from "./line-appender";
 import type { EmitterContext } from "./emitter-context";
+import { parsedIsPointer } from "../../api/shared/cpp-type-ir";
 
 /** Derives a unique C preprocessor guard name from a source file path. */
 function sanitizeGuardName(filePath: string): string {
@@ -260,7 +261,7 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
   if (typeof globalPointerVarTypes !== "undefined" && globalPointerVarTypes.size > 0) {
     const pointerNames = Array.from(globalPointerVarTypes.keys()).filter((varName) => {
       const varType = globalPointerVarTypes.get(varName);
-      return typeof varType === "string" && varType.trim().endsWith("*");
+      return typeof varType === "string" && parsedIsPointer(varType);
     });
     if (pointerNames.length > 0) {
       const shimLineCount = shimLines.length + (shimLines.length > 0 ? 1 : 0);
@@ -297,7 +298,7 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
     ? writeSourceMap(makeGeneratedMap(sourcePath, program.fileName, ctx.sourceMapEntries))
     : undefined;
 
-  const diagnostics = [...program.diagnostics, ...ctx.profileDiagnostics];
+  const diagnostics = [...program.diagnostics, ...ctx.profileDiagnostics, ...ctx.emitDiagnostics];
   diagnostics.push(...strategy.emitDiagnostics(options.emitMode));
 
   return {

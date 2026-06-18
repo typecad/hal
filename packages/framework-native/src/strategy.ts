@@ -138,6 +138,14 @@ export class NativeStrategy implements PlatformStrategy {
   normalizeRawExpression(value: string): string {
     let prev = '';
     let v = value;
+    // A "receiver" for an array/collection method call in emitted C++. Matches
+    // a bare identifier OR a full member-access chain — `this->ops`, `obj.field`,
+    // `a->b->c`, `a.b.c` — but NOT a call result (`f().pop()`) or a literal.
+    // The trailing `(?:->\w+|\.\w+)*` is what lets `this->ops.pop()` lower to
+    // `__tc_pop(this->ops)` instead of the broken `this->__tc_pop(ops)` produced
+    // by the old `(\w+)` capture (which stopped at the `>` and left `this->`
+    // dangling in front of the helper). Demo #22 Finding A.
+    const RECV = '([A-Za-z_$][\\w$]*(?:->[A-Za-z_$]\\w*|\\.[A-Za-z_$]\\w*)*)';
     while (prev !== v) {
       prev = v;
       v = v.replace(/\bundefined\b/g, 'CUTTLEFISH_UNDEFINED');
@@ -152,30 +160,33 @@ export class NativeStrategy implements PlatformStrategy {
           startsWith: (recv, args) => `(${recv}.rfind(${args[0]}, 0) == 0)`,
         },
       });
-      v = v.replace(new RegExp(`([\\w.]+)\\.slice\\(\\)`), 'std::vector<typename std::decay<decltype($1)>::type>($1.begin(), $1.end())');
-      v = v.replace(new RegExp(`${'([A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)'}\\.reverse\\(\\)`, 'g'), '__tc_reverse($1)');
-      v = v.replace(/(\w+)\.push\(([^)]+)\)/g, '$1.push_back($2)');
+      v = v.replace(new RegExp(`${RECV}\\.slice\\(\\)`), 'std::vector<typename std::decay<decltype($1)>::type>($1.begin(), $1.end())');
+      v = v.replace(new RegExp(`${RECV}\\.reverse\\(\\)`, 'g'), '__tc_reverse($1)');
+      v = v.replace(new RegExp(`${RECV}\\.push\\(([^)]+)\\)`, 'g'), '$1.push_back($2)');
       v = v.replace(/sizeof\s*\(\s*(\w+)\s*\)\s*\/\s*sizeof\s*\(\s*\1\s*\[(\d+)\]\s*\)/g, '$1.size()');
-      v = v.replace(/(\w+)\.length\b(?:\(\))?/g, '$1.size()');
-      v = v.replace(/(\w+)\.shift\(\)/g, '__tc_shift($1)');
-      v = v.replace(/(\w+)\.pop\(\)/g, '__tc_pop($1)');
+      // .length → .size() for bare identifiers AND member chains (this->ops.length,
+      // obj.field.length). The trailing \b prevents matching .length on a name
+      // that merely ends in "length" (e.g. a field named "byLength").
+      v = v.replace(new RegExp(`${RECV}\\.length\\b(?:\\(\\))?`, 'g'), '$1.size()');
+      v = v.replace(new RegExp(`${RECV}\\.shift\\(\\)`, 'g'), '__tc_shift($1)');
+      v = v.replace(new RegExp(`${RECV}\\.pop\\(\\)`, 'g'), '__tc_pop($1)');
       // unshift: single-arg only — multi-arg unshift(a,b,c) is rare and not handled by polyfill
-      v = v.replace(/(\w+)\.unshift\(([^)]+)\)/g, '__tc_unshift($1, $2)');
-      v = v.replace(/(\w+)\.sort\((.+)\)/g, '__tc_sort_fn($1, $2)');
-      v = v.replace(/(\w+)\.sort\(\)/g, '__tc_sort($1)');
-      v = v.replace(/(\w+)\.fill\(([^,]+),\s*([^,]+),\s*([^)]+)\)/g, '__tc_fill3($1, $2, $3, $4)');
-      v = v.replace(/(\w+)\.fill\(([^)]+)\)/g, '__tc_fill($1, $2)');
-      v = v.replace(/(\w+)\.concat\(([^)]+)\)/g, '__tc_concat($1, $2)');
-      v = v.replace(/(\w+)\.splice\(([^,]+),\s*([^)]+)\)/g, '__tc_splice2($1, $2, $3)');
-      v = v.replace(/(\w+)\.splice\(([^)]+)\)/g, '__tc_splice1($1, $2)');
-      v = v.replace(/(\w+)\.filter\(([^)]+)\)/g, '__tc_filter($1, $2)');
-      v = v.replace(/(\w+)\.map\(([^)]+)\)/g, '__tc_map($1, $2)');
-      v = v.replace(/(\w+)\.reduce\(([^,]+),\s*([^)]+)\)/g, '__tc_reduce($1, $2, $3)');
-      v = v.replace(/(\w+)\.reduce\(([^)]+)\)/g, '__tc_reduce_no_init($1, $2)');
-      v = v.replace(/(\w+)\.find\(([^)]+)\)/g, '__tc_find($1, $2)');
-      v = v.replace(/(\w+)\.findIndex\(([^)]+)\)/g, '__tc_findIndex($1, $2)');
-      v = v.replace(/(\w+)\.every\(([^)]+)\)/g, '__tc_every($1, $2)');
-      v = v.replace(/(\w+)\.some\(([^)]+)\)/g, '__tc_some($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.unshift\\(([^)]+)\\)`, 'g'), '__tc_unshift($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.sort\\((.+)\\)`, 'g'), '__tc_sort_fn($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.sort\\(\\)`, 'g'), '__tc_sort($1)');
+      v = v.replace(new RegExp(`${RECV}\\.fill\\(([^,]+),\\s*([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_fill3($1, $2, $3, $4)');
+      v = v.replace(new RegExp(`${RECV}\\.fill\\(([^)]+)\\)`, 'g'), '__tc_fill($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.concat\\(([^)]+)\\)`, 'g'), '__tc_concat($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.splice\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_splice2($1, $2, $3)');
+      v = v.replace(new RegExp(`${RECV}\\.splice\\(([^)]+)\\)`, 'g'), '__tc_splice1($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.filter\\(([^)]+)\\)`, 'g'), '__tc_filter($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.map\\(([^)]+)\\)`, 'g'), '__tc_map($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.reduce\\(([^,]+),\\s*([^)]+)\\)`, 'g'), '__tc_reduce($1, $2, $3)');
+      v = v.replace(new RegExp(`${RECV}\\.reduce\\(([^)]+)\\)`, 'g'), '__tc_reduce_no_init($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.find\\(([^)]+)\\)`, 'g'), '__tc_find($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.findIndex\\(([^)]+)\\)`, 'g'), '__tc_findIndex($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.every\\(([^)]+)\\)`, 'g'), '__tc_every($1, $2)');
+      v = v.replace(new RegExp(`${RECV}\\.some\\(([^)]+)\\)`, 'g'), '__tc_some($1, $2)');
       v = v.replace(/JSON\.stringify\(([^)]+)\)/g, '__tc_jsonStringify($1)');
       v = v.replace(/JSON\.parse\(([^)]+)\)/g, '__tc_jsonParse($1)');
     }

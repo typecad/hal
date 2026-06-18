@@ -8,10 +8,12 @@ import type { ExpressionIR } from "../api";
 import type { PlatformStrategy } from "../api/shared";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { KnownVariableInfo } from "../api/shared";
+import type { Diagnostic } from "../types";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import { escapeCppKeyword } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
 import { renderPeripheralProperty } from "../mapping/peripheral-names";
+import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike } from "../api/shared/cpp-type-ir";
 
 /**
  * Context needed for expression rendering.
@@ -64,6 +66,14 @@ interface ExpressionRendererContext {
    *  used to distinguish `.` member access on an instance from `::` on a
    *  namespace/class. */
   knownTopLevelObjectTypes?: Map<string, string>;
+  /**
+   * Shared sink for emit-time diagnostics. When provided, the renderer's
+   * fallback paths (e.g. an unregistered HAL operation) push structured
+   * warnings here instead of silently emitting placeholder comments. The
+   * array is the same one finalizeOutput merges into the final diagnostics
+   * list. Optional so ad-hoc/test constructions still work.
+   */
+  diagnostics?: Diagnostic[];
 }
 
 /**
@@ -91,6 +101,8 @@ export class ExpressionRenderer {
   private _preludeLines: string[] = [];
   /** Monotonic counter for unique snprintf buffer names. Shared across renders when provided. */
   private _snprintfCounter: { value: number };
+  /** Shared emit-time diagnostics sink (see ExpressionRendererContext.diagnostics). */
+  private readonly _diagnostics: Diagnostic[];
 
   constructor(context: ExpressionRendererContext) {
     this.strategy = context.strategy;
@@ -110,6 +122,7 @@ export class ExpressionRenderer {
     this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
     this.knownTopLevelObjectTypes = context.knownTopLevelObjectTypes;
     this._snprintfCounter = context.snprintfCounter ?? { value: 0 };
+    this._diagnostics = context.diagnostics ?? [];
   }
 
   /**
@@ -240,12 +253,31 @@ export class ExpressionRenderer {
           // Strip trailing semicolon if present for expression context
           rendered = resolved.code.replace(/;\s*$/, "");
         } else {
+          // Unregistered HAL op: surface as a warning so the user sees it, but
+          // keep HAL as an extensibility point. The bare comment is retained
+          // as a visual marker in the generated C++.
+          this._diagnostics.push({
+            severity: "warning",
+            code: "TS2CPP_UNHANDLED_HAL",
+            message: `HAL operation '${expr.operation.operation}' is not registered with the platform strategy; emitting a placeholder comment.`,
+          });
           rendered = `/* unhandled hal-expr: ${expr.operation.operation} */`;
         }
         break;
       }
-      default:
-        rendered = "0 /* unsupported_expr */";
+      default: {
+        // An ExpressionIR kind the renderer doesn't know how to render is a
+        // transpiler bug — the renderer should cover every kind the IR builders
+        // produce. This arm is unreachable in the normal transpileFile path
+        // (IR lowering marks unsupported expressions as errors and the build
+        // aborts before emit). Throw so any path that does reach here fails
+        // loudly instead of emitting "0 /* unsupported_expr */" into the C++.
+        const kind = (expr as { kind?: string }).kind ?? "<unknown>";
+        throw new Error(
+          `ExpressionRenderer: unsupported ExpressionIR kind '${kind}' reached emission. ` +
+            `This is a transpiler bug; the renderer is missing a case for this kind.`,
+        );
+      }
     }
     return normalizeRawExpression(rendered, this.strategy, this.classNameMap);
   }
@@ -294,10 +326,12 @@ export class ExpressionRenderer {
   }
 
   private normalizeRecordType(cppType: string): string {
-    let normalized = cppType.trim().replace(/^const\s+/, "").replace(/\s+const$/, "").trim();
-    const smartPointer = normalized.match(/^std::(?:shared_ptr|unique_ptr)<\s*(.+)\s*>$/);
-    if (smartPointer) normalized = smartPointer[1].trim();
-    return normalized.replace(/[\s*&]+$/, "").trim();
+    // Strip const/pointer/reference qualifiers and unwrap smart-pointer
+    // wrappers, returning the bare underlying type name. Used to look up
+    // interface field types by struct name.
+    let ir = parseCppType(cppType);
+    if (ir.kind === "smartPointer") ir = ir.inner;
+    return renderCppType(bareType(ir));
   }
 
   private inferExpressionCppType(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): string | undefined {
@@ -349,13 +383,18 @@ export class ExpressionRenderer {
         if (expr.elementType && expr.elementType !== "auto") return expr.elementType;
         const objectType = this.inferExpressionCppType(expr.object, knownVariableTypes);
         if (!objectType) return undefined;
-        const normalized = objectType.trim();
-        const vectorMatch = normalized.match(/^std::vector<(.+)>$/);
-        if (vectorMatch) return vectorMatch[1].trim();
-        const staticArrayMatch = normalized.match(/^(?:__tc_StaticArray|StaticArray)<\s*(.+),\s*\d+\s*>$/);
-        if (staticArrayMatch) return staticArrayMatch[1].trim();
-        const arrayMatch = normalized.match(/^(.+)\[\d*\]$/);
-        return arrayMatch?.[1].trim();
+        // Element type of vector/staticArray/cArray, detected structurally.
+        // The bare StaticArray<T,N> spelling (without __tc_ prefix) also flows
+        // through here as a named template; elementOf doesn't cover it, so
+        // fall back to rendering the first arg.
+        const objIr = parseCppType(objectType);
+        if (objIr.kind === "named" && objIr.name === "StaticArray" && objIr.args?.[0]) {
+          return renderCppType(objIr.args[0]);
+        }
+        const elemIr = objIr.kind === "vector" || objIr.kind === "staticArray" || objIr.kind === "cArray"
+          ? objIr.element
+          : undefined;
+        return elemIr ? renderCppType(elemIr) : undefined;
       }
       case "array":
         return `std::vector<${expr.elementType}>`;
@@ -591,7 +630,10 @@ export class ExpressionRenderer {
         const rendered = this.render(expr, exprTransformer, knownVariableTypes);
         const normalized = this.strategy.normalizeCppType(inferredType);
         if (this.isStringLikeCppType(inferredType)) {
-          const needsCStr = normalized === "std::string" || normalized === "String" || normalized === "__tc_str_ptr";
+          // .c_str() is needed for std::string-like types (which own a buffer)
+          // but NOT for const char* / char* (already C-strings). Detect via the
+          // structured IR: string/strPtr/string-enum need it; char pointers don't.
+          const needsCStr = needsCStrForStringLike(normalized);
           // std::string operands can be arbitrarily long (a method like
           // statusLine() may return a 100+ char string), so budget a generous
           // estimate. The previous value (32) truncated output whenever a
@@ -976,8 +1018,7 @@ export class ExpressionRenderer {
       // though their inferred type is std::string, so they still need strcmp.
       const isManagedStringVar = (e: ExpressionIR, t: string | undefined): boolean => {
         if (e.kind === "string_concat" || e.kind === "template_string" || e.kind === "string") return false;
-        const n = this.strategy.normalizeCppType(t ?? "");
-        return n === "std::string" || n === "String" || n === "__tc_str_ptr";
+        return needsCStrForStringLike(this.strategy.normalizeCppType(t ?? ""));
       };
       if ((expr.operator === "===" || expr.operator === "==" || expr.operator === "!==" || expr.operator === "!=") &&
           (leftIsCStringValue || rightIsCStringValue) &&
@@ -1088,15 +1129,15 @@ export class ExpressionRenderer {
         return `(sizeof(${objStr}) / sizeof(${objStr}[0]))`;
       }
       const varInfo = knownVariableTypes?.get(varName) ?? this.knownVariableTypes?.get(varName);
-      if (varInfo?.cppType.startsWith("__tc_StaticArray")) {
+      if (varInfo && parseCppType(varInfo.cppType).kind === "staticArray") {
         return `${objStr}.${expr.property}()`;
       }
       // C-style strings (const char*, char*) require strlen().
-      if (varInfo?.cppType === "const char*" || varInfo?.cppType === "char*") {
+      if (varInfo && (varInfo.cppType === "const char*" || varInfo.cppType === "char*")) {
         return `strlen(${objStr})`;
       }
       // std::vector<T> exposes .size() (not .length).
-      if (varInfo && varInfo.cppType.startsWith("std::vector<")) {
+      if (varInfo && parsedIsVector(varInfo.cppType)) {
         return `${objStr}.size()`;
       }
       // String variable detected via IR scan (Issue 2): std::string exposes length()/size().
@@ -1125,8 +1166,9 @@ export class ExpressionRenderer {
       if (!accessors) {
         const resolvedType = this.inferExpressionCppType(expr.object, knownVariableTypes);
         if (resolvedType) {
-          const bareType = resolvedType.replace(/\*$/, "").replace(/^const\s+/, "").trim();
-          accessors = this.typeAccessorNames.get(bareType);
+          // Bare class name (pointer/const stripped) via structured IR.
+          const bareTypeStr = renderCppType(bareType(parseCppType(resolvedType)));
+          accessors = this.typeAccessorNames.get(bareTypeStr);
         }
       }
       if (accessors?.has(expr.property)) {
@@ -1144,7 +1186,7 @@ export class ExpressionRenderer {
     let accessor = expr.isPointer ? "->" : ".";
     if (accessor === ".") {
       const objectType = this.inferExpressionCppType(expr.object, knownVariableTypes);
-      if (objectType && objectType.endsWith("*")) {
+      if (objectType && parsedIsPointer(objectType)) {
         accessor = "->";
       }
     }

@@ -7,6 +7,55 @@
 // Base types
 export type { Diagnostic, PlatformContext, SourceSpan, TargetProfile } from './types';
 
+// C++ type IR (structured replacement for stringly-typed CppType)
+export type {
+  CppTypeIR,
+  CppTypeKind,
+  CppPrimitiveName,
+  CppFormatKind,
+} from './cpp-type-ir';
+export {
+  parseCppType,
+  renderCppType,
+  splitTemplateArgs,
+  isPointer,
+  isReference,
+  isContainer,
+  isVector,
+  isMap,
+  isSet,
+  isTuple,
+  isVariant,
+  isStdFunction,
+  isStaticArray,
+  isCArray,
+  isStringLike,
+  isPrimitive,
+  bareType,
+  elementOf,
+  formatKindOf,
+  CppTypeIR as cppTypeIRBuilder,
+  parsedIsPointer,
+  parsedIsStringLike,
+  parsedIsPrimitive,
+  parsedIsContainer,
+  parsedIsVector,
+  parsedIsMap,
+  parsedIsSet,
+  parsedIsTuple,
+  parsedIsVariant,
+  parsedIsStaticArray,
+  parsedIsStdString,
+  parsedElementOf,
+  parsedElementString,
+  parsedBareString,
+  parsedBareType,
+  collectNamedTypes,
+  parsedCollectNamedTypes,
+  needsCStrForStringLike,
+  parsedIsPlainStructType,
+} from './cpp-type-ir';
+
 // IR types
 export type {
   ExpressionIR,

@@ -1,6 +1,7 @@
 ﻿import ts from "typescript";
 import { ExpressionIR, HALOpIR } from "../../api";
-import { requiredIncludes, registeredCallbacks, activeStringVars, activeLocalTypes, activeGlobalTypes, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants } from "../build-ir-state";
+import { requiredIncludes, registeredCallbacks, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants } from "../build-ir-state";
+import { getCurrentIrTypeScope } from "../symbol-types";
 import { renderExprAsText } from "../render-expr";
 import { escapeCppKeyword } from "../../utils/strings";
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser";
@@ -616,7 +617,7 @@ export function buildSnprintfFromConcat(
       // Check for string variable reference: template_string wrapping an identifier
       const isStringVar = part.kind === "template_string"
         && part.expression.kind === "identifier"
-        && (activeStringVars.has((part.expression as any).value) || activeLocalTypes.get((part.expression as any).value) === "std::string" || activeGlobalTypes.get((part.expression as any).value) === "std::string");
+        && (activeStringVars.has((part.expression as any).value) || getCurrentIrTypeScope()?.locals.get((part.expression as any).value) === "std::string" || getCurrentIrTypeScope()?.globals.get((part.expression as any).value) === "std::string");
 
       // Check for float variable reference: template_string wrapping an identifier
       const isFloatVar = part.kind === "template_string"
@@ -626,7 +627,7 @@ export function buildSnprintfFromConcat(
       if (isStringVar) {
         formatString += "%s";
         const varName = (part.expression as any).value;
-        const varType = activeLocalTypes.get(varName) || activeGlobalTypes.get(varName) || "";
+        const varType = getCurrentIrTypeScope()?.locals.get(varName) || getCurrentIrTypeScope()?.globals.get(varName) || "";
         const cleanType = varType.replace(/\bconst\b\s*/g, "").trim();
         if (cleanType && cleanType !== "char*" && cleanType !== "const char*") {
           args.push(`${text}.c_str()`);

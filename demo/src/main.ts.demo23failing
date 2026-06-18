@@ -1,0 +1,95 @@
+// Probe v3: probe v2 + second interface + module-scope array of it + a Map.
+interface Item {
+  v: int32_t;
+  seq: int32_t;
+}
+interface Seed {
+  v: int32_t;
+}
+const SEEDS: Seed[] = [
+  { v: 3 },
+  { v: 1 },
+];
+let COST: Map<string, int32_t> = new Map();
+function comesBefore(a: Item, b: Item): boolean {
+  if (a.v !== b.v) {
+    return a.v < b.v;
+  }
+  return a.seq < b.seq;
+}
+class Probe {
+  private data: Item[] = [];
+  private counter: int32_t = 0;
+  size(): int32_t {
+    return this.data.length;
+  }
+  push(v: int32_t): void {
+    const it: Item = { v: v, seq: this.counter };
+    this.counter = this.counter + 1;
+    this.data.push(it);
+    this.siftUp(this.data.length - 1);
+  }
+  pop(): Item {
+    const top: Item = this.data[0]!;
+    const last: Item = this.data.pop()!;
+    if (this.data.length > 0) {
+      this.data[0] = last;
+      this.siftDown(0);
+    }
+    return top;
+  }
+  private swap(i: int32_t, j: int32_t): void {
+    const tmp: Item = this.data[i]!;
+    this.data[i] = this.data[j]!;
+    this.data[j] = tmp;
+  }
+  private siftUp(i: int32_t): void {
+    while (i > 0) {
+      const parent: int32_t = (i - 1) / 2;
+      const cur: Item = this.data[i]!;
+      const par: Item = this.data[parent]!;
+      if (comesBefore(cur, par)) {
+        this.swap(i, parent);
+        i = parent;
+      } else {
+        break;
+      }
+    }
+  }
+  private siftDown(i: int32_t): void {
+    const n: int32_t = this.data.length;
+    while (true) {
+      const left: int32_t = 2 * i + 1;
+      const right: int32_t = 2 * i + 2;
+      let best: int32_t = i;
+      const cur: Item = this.data[best]!;
+      if (left < n) {
+        const lc: Item = this.data[left]!;
+        if (comesBefore(lc, cur)) {
+          best = left;
+        }
+      }
+      if (right < n) {
+        const bc: Item = this.data[best]!;
+        const rc: Item = this.data[right]!;
+        if (comesBefore(rc, bc)) {
+          best = right;
+        }
+      }
+      if (best !== i) {
+        this.swap(i, best);
+        i = best;
+      } else {
+        break;
+      }
+    }
+  }
+}
+function probeMain(): void {
+  const p: Probe = new Probe();
+  p.push(3);
+  p.push(1);
+  const x: Item = p.pop();
+  console.log(`${x.v}`);
+}
+probeMain();

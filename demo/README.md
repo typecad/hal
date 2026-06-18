@@ -1,16 +1,35 @@
-# Bank Ledger — cuttlefish demo #18
+# Priority-queue job scheduler — cuttlefish demo #23
 
-A **simple, idiomatic TypeScript** program: a small in-memory `Bank` that keeps
-`Account` structs in an array and supports opening accounts, depositing,
-withdrawing (with overdraft refusal), totaling, and printing the ledger. The
-driver opens two accounts, runs a few everyday transactions, and prints the
-results. Transpiled to C++ by cuttlefish (`@typecad/framework-native`).
+A **mid-complexity, idiomatic TypeScript** program implementing a **binary
+min-heap** that schedules jobs by priority. Jobs are inserted with an
+integer priority (lower = sooner) and a small payload, then drained in
+priority order. Transpiled to C++ by cuttlefish
+(`@typecad/framework-native`).
 
-This is the **eighteenth** demo iteration. Like #15–#17 it is deliberately
-**small and readable** — real, everyday TypeScript — and is **not** a
-feature-exhaustion test. It is a single self-contained `main.ts`. It surfaced
-**three** transpilation gaps, all now **fixed in the transpiler** and pinned by
-`tests/packages/transpiler/demo-18-regressions.test.ts`.
+This is the **twenty-third** demo iteration. Like #15–#22 it is deliberately
+**readable** — real, everyday TypeScript — and is **not** a
+feature-exhaustion test. It is a single self-contained `main.ts`. It
+deliberately picks a **different data shape** from #15–#22:
+
+- a **`class MinHeap`** that owns a **`Job[]` instance field** and does
+  heavy **indexed array read / write / swap** on `this.heap[i]`
+  (`swap`, `siftUp`, `siftDown`, parent/child index arithmetic),
+- **struct mutation through an array index** (`this.heap[i] = tmp`),
+- a **`Map<string, int32_t>` per-kind cost table** keyed by a short tag,
+  with `.has`-guarded `.get` (the idiomatic keyed-table shape),
+- a **`const enum JobKind`** + a **`switch`** on it (numeric enum
+  dispatch — re-exercises §1.7/§2.4 in a different context than #22),
+- module-scope free functions called from class methods, a `while` loop
+  with `break`, `Math.min` / `Math.max`, and template literals interpolating
+  struct fields.
+
+The first compile attempt surfaced **two real issues** (Findings A and B).
+**Finding B is a genuine transpiler bug** — a name collision between a class
+value-field and a same-named pointer variable — now **FIXED** in the
+transpiler and pinned by `tests/packages/transpiler/demo-23-regressions.test.ts`
+(5 tests). **Finding A is a TypeScript-level author pitfall** (not a
+transpiler gap), corrected in the source. The previous iteration (#22,
+infix→RPN shunting-yard) is preserved in `demo22-backup/`.
 
 ## Running
 
@@ -21,110 +40,206 @@ npm run compile   # transpile TS -> C++ and compile with g++
 ```
 
 - **`npm run lint` exits 0** with no warnings.
-- **`npm run compile` exits 0** with no diagnostics.
-- When `g++` *does* emit errors they are surfaced verbatim and mapped back to
-  TypeScript source spans (see the "raw g++ errors" excerpts in *Findings*).
-- The binary runs with correct output.
+- **`npm run compile` exits 0**. `g++` emits no errors and no warnings.
+  The transpiler emits no diagnostics.
+- When `g++` *does* emit errors they are surfaced verbatim and mapped back
+  to TypeScript source spans — that is exactly how Finding B was discovered
+  on the first compile attempt.
 
 ## Sample output
 
 ```
-overdraft_refused=false
-alice=32.00
-bob=125.00
-total=157.00
----
-#1 Alice (checking) 32.00
-#2 Bob (savings) 125.00
+--- loading ---
+loaded 6 jobs
+--- draining (priority order) ---
+#1 [ALARM] pri=1 cost=50 over-temp!
+#3 [HOUSE] pri=1 cost=3 gc sweep
+#4 [LOG] pri=2 cost=1 link up
+#2 [LOG] pri=3 cost=1 boot complete
+#0 [TELE] pri=5 cost=5 read sensors
+#5 [TELE] pri=5 cost=5 read sensors (2)
+--- summary ---
+drained 6 jobs; pri range [1 .. 5]
 done
 ```
 
-Verified by hand: Alice (checking) gets +5000 −1800 = 3200¢ = $32.00; Bob
-(savings) gets +12000 +500 = 12500¢ = $125.00; Bob's $9,999.99 withdrawal is
-refused (`overdraft_refused=false`); total = 15700¢ = $157.00.
+Verified by hand — the heap orders on `(priority, seq)`:
+
+- **pri 1** → `#1` (ALARM, seq 1) before `#3` (HOUSE, seq 3) ✓
+- **pri 2** → `#4` (LOG) ✓
+- **pri 3** → `#2` (LOG) ✓
+- **pri 5** → `#0` (TELE, seq 0) before `#5` (TELE, seq 5) ✓
+- per-kind costs (`ALARM=50`, `HOUSE=3`, `LOG=1`, `TELE=5`) match `COST` ✓
 
 ## What the source exercises
 
-Idiomatic patterns that lower cleanly:
+Idiomatic patterns that lower cleanly (all confirmed by this demo's clean
+compile):
 
-- §1.2  fixed-width ints (`int32_t`) and `boolean` → `bool`
-- §1.4  template literals (`${...}`) → `snprintf` — incl. **struct-field**
-        interpolation inside a class method (Finding C, now fixed)
-- §1.6  `interface Account` → C++ `struct`; object-literal construction
-- §1.7  `const enum Kind` (inlined); numeric `switch` / `default`
-- §1.8  `find(): Account | null` + `a === null` (Finding A, now fixed)
-- §3.1  module-scope free functions (`formatMoney`/`kindLabel`)
-- §4.1  `class Bank` with private fields + field initializers
-- §4.2  `this.field` read/write; `this->` lowering; `new Bank()` → pointer
-- §4.3  instance methods; **a class method calling module-scope free
-        functions** (Finding B, now fixed)
-- §5.1  comparison `===`/`<`; relational; compound arithmetic; indexed access
-- §5.3  `Array.push` (promotes backing storage); `.length` on array
-- §2.2  classic C-style `for (let i; i < arr.length; i = i + 1)`; indexed
-        array mutation (`this.accounts[i].cents = ...`) writes through to the
-        vector element
+- §1.2  `int32_t`; `boolean` → `bool`; `string` → `std::string`
+- §1.5  `Job[]` → `std::vector<Job>`; indexed read/write on a member
+        receiver (`this->heap[i]`, `this->heap[i] = tmp`); `.push`/`.pop`
+        on a member receiver; `Map<string,int32_t>` → `std::map`;
+        `Map.has` → `.count(k) > 0`; `Map.get(k)!` → `.at(k)`
+- §1.6  `interface Job` → value-typed `struct Job`; struct literal
+        `{ priority, kind, label, seq }` → brace-init
+- §1.7  `const enum JobKind` (inlined); enum equality comparison
+- §1.4  template literals interpolating top-level `const std::string` and
+        struct fields (`job.seq`, `job.priority`, `job.label`, etc.)
+- §2.4  numeric `switch` on a `const enum` (plain comparison, no
+        `std::string(...)` wrap)
+- §2.2  `while (true)` with `break`; C-style `for (let i; i < n; i = i+1)`
+- §5.1  `Math.min` / `Math.max` → ternary chains
+- §3.1  module-scope free functions (`kindTag`, `costFor`, `comesBefore`,
+        `formatJob`)
+- §4.1  `class MinHeap` with private `Job[]` + `int32_t` fields + initializers
+- §4.2  `this.heap` / `this.counter` read/write → `this->...`
+- §4.3  class methods calling module-scope free functions (`comesBefore`)
+- §4.5  `new MinHeap()` → pointer
 
 ---
 
-# Transpilation issues found by Demo #18 — all RESOLVED
+# Transpilation issues found by Demo #23
 
-Demo #18 is plain everyday TypeScript. It surfaced **three** transpiler gaps,
-each now **fixed** and pinned by a regression test. The demo source uses the
-natural idiomatic form for all three.
+Demo #23 was written in its natural idiomatic shape. The **first**
+`npm run compile` surfaced one TypeScript-level author pitfall (Finding A)
+and, after that was corrected, one **hard `g++` error** from a genuine
+transpiler bug (Finding B). **Finding B is now FIXED** in the transpiler
+source and pinned by a regression test. The source is in its fully
+idiomatic shape (no workarounds).
 
-## Fix A — a struct returned from a function/method and compared with `=== null`
+## Finding A — `Record<K,V>` has no `.has()` (TypeScript-level pitfall, corrected in source)
 
-| Finding | Fix | File(s) |
-|---|---|---|
-| A private helper `find(): Account \| null` returning `null` when not found, with callers `if (a === null)`. The generated C++ lowered `a === null` to `a == CUTTLEFISH_UNDEFINED` (`== 0`), but `Account` is a struct with no `operator==(int)` → g++ `no match for 'operator==' (operand types are 'Account' and 'int')`. | The value-type null-comparison guard (`expressionToIR`) recognized *class* names (always pointer types) as value types, but never *interface* names — which lower to value-typed `struct`s. A `topLevelInterfaceNames` set is now populated in a pre-pass (`build-ir.ts`) and the guard recognizes it, so `struct === null` resolves to a compile-time `false`. Inline-call forms (`find(id) === null`, `this.find(id) === null`) are resolved too via the callee's declared return type (`resolveCallReturnTypeForNullGuard`). | `ir/build-ir-state.ts`, `ir/build-ir.ts`, `ir/expression-to-ir.ts` |
+The natural first draft of the cost table was a `Record<string, int32_t>`
+looked up with `.has`:
 
-Raw g++ error that motivated the fix (before):
+```ts
+let COST: Record<string, int32_t> = {};
+function costFor(kind: JobKind): int32_t {
+  if (!COST.has(tag)) { return 0; }   // ← COST.has does not exist
+  return COST[tag];
+}
+```
+
+This is a **TypeScript type error** (caught by the cuttlefish type-checker
+before any transpilation), not a transpiler gap:
 
 ```
-main.h: In member function 'bool Bank::deposit(int32_t, int32_t)':
-main.h:XX:XX: error: no match for 'operator==' (operand types are 'Account' and 'int')
-   XX |     if (a == CUTTLEFISH_UNDEFINED)
+ERROR: src\main.ts(92,8): 'COST.has' is possibly 'undefined'.
+ERROR: src\main.ts(92,13): This expression is not callable.
+  Type 'Number' has no call signatures.
+ERROR: src\main.ts(95,3): Type 'number | undefined' is not assignable to type 'number'.
 ```
 
-After: `if (a === null)` lowers to `if (false)` — a value type is never null.
+**Why:** a `Record<K,V>` is, at the TypeScript level, a *plain indexed
+object* — `.has()` is a `Map` API, not an object API. The SUPPORT_MATRIX
+lists `Record<K,V>` and `Map<K,V>` as both lowering to `std::map` (§1.5),
+but at the **TypeScript** level their APIs differ: `Record` is indexed
+(`rec[k]`, no `.has`), `Map` is method-based (`.has`/`.get`/`.set`). Under
+`noUncheckedIndexedAccess` (set in the demo `tsconfig`), `rec[k]` is also
+`V | undefined` even after an `in` guard, so the index form needs a
+non-null assertion.
 
-## Fix B — a module-scope free function called from a class method body (split mode)
+**Fix applied in source:** `COST` is a `Map<string, int32_t>` with
+`.has`/`.get`/`.set` — the idiomatic, type-safe keyed-table shape for a
+table that is built at module scope and read with a membership guard. This
+is a source-level idiom, not a transpiler change. (A `Record` would also
+work with the `in` operator + `!` assertion, but `Map` is clearer here.)
 
-| Finding | Fix | File(s) |
-|---|---|---|
-| A module-scope free function (`formatMoney`/`kindLabel`) called from inside a `Bank` method body. In split mode the class method body is emitted **inline in the header**, but the free function's only forward declaration was `static` in the `.cpp`, written *after* `#include "main.h"` → g++ `'formatMoney' was not declared in this scope`. | `setup.ts` now walks class method/getter/setter/constructor IR to find free-function call sites. A free function called from a class body is emitted with a **non-static forward declaration in the header** (in `emitFunctionForwardDeclarations`, which precedes class emission) and a **non-static definition** in the .cpp (a `static` definition would clash with the header's extern prototype). A free function *not* called from any class body stays `static`. | `emit/emitters/setup.ts`, `emit/emitters/function-emitter-impl.ts`, `emit/emitters/emitter-context.ts` |
+## Finding B — a class value-field was arrowed to `->` when a same-named pointer variable existed elsewhere (FIXED)
 
-Before: header had no prototype; method body → `'fn' was not declared in this scope`.
-After: header carries `std::string formatMoney(int32_t cents);` ahead of the class.
+After the Finding A correction, the compile produced **hard `g++` errors**:
 
-## Fix C — struct-field interpolation in a class-method template literal (silent runtime corruption)
+```
+src\main.ts (190,7) error [call]: base operand of '->' has non-pointer type 'std::vector<Job>'
+          this.siftDown(0);
+src\main.ts (198,11) error [var_decl]: base operand of '->' has non-pointer type 'std::vector<Job>'
+        const tmp: Job = this.heap[i]!;
+src\main.ts (229,9) error [if]: base operand of '->' has non-pointer type 'std::vector<Job>'
+            if (comesBefore(lc, cur)) {
+```
 
-| Finding | Fix | File(s) |
-|---|---|---|
-| Interpolating struct fields (`${a.id}`, `${a.name}`) in a template literal inside a class method compiled cleanly but printed **garbage** (`%lld` for every field, no `.c_str()` for the `std::string` field). Root cause: emitting a named-typed object literal (`const a: Account = {...}`) **clobbered** the interface's authoritative `interfaceFieldTypes` entry (registered from the declaration) with types inferred from the initializer *values* — which, after the native strategy's `normalizeCppType` (`int`→`long long`), collapsed every field to `long long`, so the snprintf format inference picked `%lld` for everything. | The object-literal emitter no longer overwrites an existing declared field-type entry; it only seeds the map for anonymous struct types that have no declared entry. Field-type inference now consistently sees the declared types (`int32_t`, `std::string`, enum). | `emit/statement-renderer.ts` |
+The class field `private heap: Job[] = []` lowers to a `std::vector<Job>`
+**value** field (not a pointer). But inside `MinHeap`'s methods, every
+`this.heap.X` access was being rendered with an arrow:
 
-Before: `snprintf(buf, n, "#%lld %lld (%s) %s", a.id, a.name, ...);` (silent — compiles, corrupts output).
-After:  `snprintf(buf, n, "#%d %s (%s) %s", a.id, a.name.c_str(), ...);` — correct.
+- `this.heap.push(job)` → `this->heap->push(job)`   (WRONG)
+- `this.heap.pop()!`   → `this->heap->pop()`         (WRONG)
+- `this.heap.length`   → `this->heap->size()`        (WRONG)
 
-This was the most dangerous of the three: it type-checked and compiled with no
-diagnostic, corrupting output only at runtime.
+while the *same* `this.heap.length` in the first method rendered correctly
+as `this->heap.size()`. The errors above are the g++ messages for those
+stray `->` on a value type, mapped back to their TS statement context.
 
-## Notes
+**Root cause — a name collision, plus an unguarded regex.**
+`main()` holds a pointer-typed local:
 
-- The `deposit`/`withdraw` methods mutate the account **by index**
-  (`this.accounts[i].cents = ...`) rather than via the `find()` helper's
-  return. This is not a workaround for a bug — it reflects a deliberate,
-  documented design choice: a struct returned from a function is a C++ *value
-  copy* (same value-semantics limitation as `Map.get()`, SUPPORT_MATRIX §1.5),
-  so mutating it would not write back to the vector element. `find()` is kept
-  for **read-only** lookups (`balanceOf`) where the copy is fine.
+```ts
+const heap: MinHeap = new MinHeap();   // heap is a MinHeap* (new C() → C*)
+```
+
+That variable is registered in `globalPointerVarTypes`. During emit,
+`fixPointerFieldAccess` (assigned in `emit/emitters/top-level-prep.ts` and
+threaded through `statement-renderer.ts` `renderCall` as the
+`calleeTransformer`) rewrites a standalone pointer-variable method call
+`heap.method` → `heap->method`. It did so with the regex
+
+```
+\b${varName}\.
+```
+
+The `\b` word boundary also matches **between `->` and the name** in a
+member-access chain, so a class field `this->heap` was wrongly rewritten to
+`this->heap->` whenever a pointer variable of the same name (`heap`)
+existed anywhere in the program. The name-based rewrite could not
+distinguish the pointer **variable** `heap` from a same-named class
+**field** reached through `this->heap`.
+
+This corrupted every `this.heap.X` access inside `MinHeap`'s methods
+(`.push`, `.pop`, `.length`, `.size()`). The intermittent-looking symptom
+(some `.size()` correct, some `->size()`) was because the rewrite fires
+per-call-statement through the calleeTransformer, and the same
+`this.heap.length` rendered correctly when it was the whole return
+expression of `size()` (no call statement, no transformer) but wrongly
+when it was the callee of a subsequent statement.
+
+Notably, the **`pointerStructFields`** loop in the *same* function already
+used a `(^|[^>])` guard and was unaffected — only the **global-pointer-var**
+loop used the unguarded `\b` form.
+
+**Why this is hard to trigger by accident:** it requires a **name
+collision** between a class value-field and a pointer variable of the same
+name. Minimal probes with a differently-named local (e.g. `const pq`)
+compiled cleanly, which is what made the bug resist simple isolation.
+
+**Fix applied** (`packages/cuttlefish/src/emit/emitters/top-level-prep.ts`,
+`fixPointerFieldAccess`, the `globalPointerVarTypes` loop): the regex now
+uses the same `(^|[^>.])${varName}\.` guard as the `pointerStructFields`
+loop, so `this->heap.x` / `obj->heap.x` (preceded by `>`) and `a.heap.x`
+(preceded by `.`) are left alone; only a standalone `heap.x` (start of
+string, or preceded by a non-`.`/non-`>` character) is rewritten to
+`heap->x`. Pinned by `tests/packages/transpiler/demo-23-regressions.test.ts`
+(5 tests: `.push`, `.pop`, `.length`, indexed `[i]`, and a regression guard
+that a standalone pointer-var call is still arrowed).
+
+---
+
+# Summary
+
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| A | `Record<K,V>` has no `.has()` (TS-level author pitfall; `rec[k]` is `V \| undefined` under `noUncheckedIndexedAccess`) | TS type error | **fixed in source** — `COST` is a `Map<string, int32_t>` |
+| B | A class **value-field** `this->heap.X` was arrowed to `this->heap->X` whenever a same-named **pointer variable** existed, via an unguarded `\b` regex in `fixPointerFieldAccess` | error (raw `g++`) | **FIXED** — `(^|[^>.])` guard added to the global-pointer-var loop (`emit/emitters/top-level-prep.ts`) |
 
 ## Build verdict
 
 - **`npm run lint` exits 0** (no warnings).
-- **`npm run compile` exits 0** (no diagnostics). The binary runs with
-  **all-correct output**, verified by hand.
-- **Full transpiler suite: 1123 passed, 1 pre-existing unrelated failure
-  (`null as any` fixture in `multi-file.test.ts`), 18 skipped.** The 8 new
-  demo-18 tests pass; the previously-`.skip`ed free-function-forward-decl test
-  in `multi-file.test.ts` is now enabled and passing.
+- **`npm run compile` exits 0**. `g++` emits **no errors and no warnings**.
+  The transpiler emits no diagnostics.
+- The binary runs with **all-correct output**, verified by hand against the
+  known `(priority, seq)` ordering of the seeded jobs.
+- **One transpiler fix was applied for this demo** (Finding B), pinned by
+  5 regression tests in `tests/packages/transpiler/demo-23-regressions.test.ts`.
+  The full vitest suite passes (**89 files, 1286 tests passed, 18 skipped,
+  0 failed**) — the fix introduced no regressions. The demo source carries
+  no workarounds; it is in its fully idiomatic shape.

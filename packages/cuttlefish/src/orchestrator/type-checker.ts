@@ -3,6 +3,9 @@ import fs from "node:fs";
 import ts from "typescript";
 import { Diagnostic } from "../types";
 import { makeDiagnostic } from "../ir/ast-node-utils";
+import { canonicalize, buildSemanticFacts } from "./semantic-facts";
+import type { BindingResolver } from "./semantic-facts";
+import { verifyFacts } from "./semantic-facts-verifier";
 
 /**
  * Result of type-checking files
@@ -167,19 +170,6 @@ function classifyElementType(type: ts.Type): "numeric" | "string" | "object" | n
   return "object";
 }
 
-const TYPED_ARRAY_NAMES = new Set([
-  "Uint8Array",
-  "Int8Array",
-  "Uint16Array",
-  "Int16Array",
-  "Uint32Array",
-  "Int32Array",
-  "Float32Array",
-  "Float64Array",
-  "BigUint64Array",
-  "BigInt64Array",
-]);
-
 const FUNCTIONAL_METHOD_NAMES = new Set([
   "forEach",
   "map",
@@ -217,12 +207,16 @@ type FunctionLikeNode =
 
 type FunctionLikeWithBody = FunctionLikeNode & { body: ts.Block | ts.Expression };
 
+/**
+ * Function-context carried through the gate visitor. Slimmed down from the
+ * pre-Phase-1 GateScope: the per-name binding Sets (mapValueCopyBindings,
+ * arrayParams, typedArrayParams) and the declaredNames shadowing machinery
+ * have moved to the SemanticFacts binding pass (orchestrator/semantic-facts.ts),
+ * resolved per-identifier via BindingResolver. What remains is the enclosing
+ * function context that the callback-capture gate (gate 11) still needs.
+ */
 interface GateScope {
   parent?: GateScope;
-  declaredNames: Set<string>;
-  mapValueCopyBindings: Set<string>;
-  arrayParams: Set<string>;
-  typedArrayParams: Set<string>;
   functionNode?: FunctionLikeWithBody;
   inClassMethod: boolean;
 }
@@ -230,31 +224,10 @@ interface GateScope {
 function createChildScope(parent?: GateScope, overrides: Partial<GateScope> = {}): GateScope {
   return {
     parent,
-    declaredNames: new Set(),
-    mapValueCopyBindings: new Set(),
-    arrayParams: new Set(),
-    typedArrayParams: new Set(),
     functionNode: parent?.functionNode,
     inClassMethod: parent?.inClassMethod ?? false,
     ...overrides,
   };
-}
-
-function lookupScopedSet(scope: GateScope, name: string, key: "mapValueCopyBindings" | "arrayParams" | "typedArrayParams"): boolean {
-  let current: GateScope | undefined = scope;
-  while (current) {
-    if (current[key].has(name)) return true;
-    if (current.declaredNames.has(name)) return false;
-    current = current.parent;
-  }
-  return false;
-}
-
-function declareBinding(scope: GateScope, name: string): void {
-  scope.declaredNames.add(name);
-  scope.mapValueCopyBindings.delete(name);
-  scope.arrayParams.delete(name);
-  scope.typedArrayParams.delete(name);
 }
 
 function isFunctionLikeWithBody(node: ts.Node): node is FunctionLikeWithBody {
@@ -300,46 +273,26 @@ function unwrapExpression(expr: ts.Expression): ts.Expression {
   }
 }
 
-function typeText(checker: ts.TypeChecker, type: ts.Type): string {
-  return checker.typeToString(type);
-}
-
-function typeHasName(checker: ts.TypeChecker, type: ts.Type, names: Set<string>): boolean {
-  if (type.isUnion()) {
-    return type.types.some(t => typeHasName(checker, t, names));
-  }
-  const symbolName = type.getSymbol()?.getName();
-  const aliasName = type.aliasSymbol?.getName();
-  if ((symbolName && names.has(symbolName)) || (aliasName && names.has(aliasName))) {
-    return true;
-  }
-  const text = typeText(checker, type);
-  for (const name of names) {
-    if (new RegExp(`\\b${name}\\b`).test(text)) return true;
-  }
-  return false;
-}
+// Type classification now lives in semantic-facts.ts#canonicalize, which is
+// the single source of truth for "what kind of C++ concept does this type
+// lower to?" These wrappers preserve the existing call sites exactly while
+// routing through canonicalize(). Flag-based helpers (isStringLikeType,
+// typeIncludesNullish) stay here because they test bit flags, not categories.
 
 function isMapLikeType(checker: ts.TypeChecker, type: ts.Type): boolean {
-  return typeHasName(checker, type, new Set(["Map", "ReadonlyMap", "Record"])) ||
-    /\bstd::map\b/.test(typeText(checker, type));
+  return canonicalize(checker, type) === "map";
 }
 
 function isSetLikeType(checker: ts.TypeChecker, type: ts.Type): boolean {
-  return typeHasName(checker, type, new Set(["Set", "ReadonlySet"]));
+  return canonicalize(checker, type) === "set";
 }
 
 function isTypedArrayType(checker: ts.TypeChecker, type: ts.Type): boolean {
-  return typeHasName(checker, type, TYPED_ARRAY_NAMES);
+  return canonicalize(checker, type) === "typed-array";
 }
 
 function isArrayLikeType(checker: ts.TypeChecker, type: ts.Type): boolean {
-  if (type.isUnion()) return type.types.some(t => isArrayLikeType(checker, t));
-  const typeCheckerWithArray = checker as ts.TypeChecker & { isArrayType?: (candidate: ts.Type) => boolean };
-  if (typeCheckerWithArray.isArrayType?.(type)) return true;
-  if (checker.isTupleType(type)) return true;
-  const text = typeText(checker, type);
-  return /\bReadonlyArray\b|\bArray\b/.test(text) || /\[\]$/.test(text);
+  return canonicalize(checker, type) === "array";
 }
 
 function isStringLikeType(type: ts.Type): boolean {
@@ -347,36 +300,13 @@ function isStringLikeType(type: ts.Type): boolean {
 }
 
 function isContainerType(checker: ts.TypeChecker, type: ts.Type): boolean {
-  return isMapLikeType(checker, type) || isSetLikeType(checker, type);
+  const c = canonicalize(checker, type);
+  return c === "map" || c === "set";
 }
 
 function typeIncludesNullish(type: ts.Type): boolean {
   if (type.isUnion()) return type.types.some(typeIncludesNullish);
   return (type.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) !== 0;
-}
-
-function isPrimitiveLikeValueType(type: ts.Type): boolean {
-  if (type.isUnion()) return type.types.every(isPrimitiveLikeValueType);
-  return (type.flags & (
-    ts.TypeFlags.NumberLike |
-    ts.TypeFlags.StringLike |
-    ts.TypeFlags.BooleanLike |
-    ts.TypeFlags.BigIntLike |
-    ts.TypeFlags.EnumLike |
-    ts.TypeFlags.Null |
-    ts.TypeFlags.Undefined |
-    ts.TypeFlags.Void |
-    ts.TypeFlags.Never |
-    ts.TypeFlags.Any |
-    ts.TypeFlags.Unknown
-  )) !== 0;
-}
-
-function isObjectLikeValueType(type: ts.Type): boolean {
-  if (type.isUnion()) {
-    return type.types.some(t => !typeIncludesNullish(t) && isObjectLikeValueType(t));
-  }
-  return !isPrimitiveLikeValueType(type);
 }
 
 function isNullishExpression(node: ts.Expression): boolean {
@@ -448,20 +378,6 @@ function getContainerLookupMethodName(node: ts.Expression): string | undefined {
   if (!ts.isCallExpression(expr)) return undefined;
   const callee = unwrapExpression(expr.expression);
   return ts.isPropertyAccessExpression(callee) ? callee.name.text : undefined;
-}
-
-function isMapValueLookupExpression(node: ts.Expression, checker: ts.TypeChecker): boolean {
-  const expr = unwrapExpression(node);
-  if (ts.isCallExpression(expr)) {
-    const callee = unwrapExpression(expr.expression);
-    if (ts.isPropertyAccessExpression(callee) && (callee.name.text === "get" || callee.name.text === "at")) {
-      return isMapLikeType(checker, checker.getTypeAtLocation(callee.expression));
-    }
-  }
-  if (ts.isElementAccessExpression(expr)) {
-    return isMapLikeType(checker, checker.getTypeAtLocation(expr.expression));
-  }
-  return false;
 }
 
 function isOptionalFieldAccess(node: ts.Expression, checker: ts.TypeChecker): boolean {
@@ -552,6 +468,26 @@ export function runSemanticGates(
   const checker = program.getTypeChecker();
   const seenDiagnostics = new Set<string>();
 
+  // Build the SemanticFacts store + binding resolver once. The mutation gates
+  // (TS2CPP_MAP_VALUE_COPY_MUTATION, TS2CPP_ARRAY_PARAM_MUTATION,
+  // TS2CPP_TYPED_ARRAY_PARAM_LENGTH) consume the resolver instead of the old
+  // name-based scope-chain Sets, which were shadowing-fragile.
+  const { facts, diagnostics: analysisDiagnostics, resolver } = buildSemanticFacts(program, userFiles);
+  diagnostics.push(...analysisDiagnostics);
+
+  // Phase 3 completeness verifier. Walks every expression and reports any
+  // whose canonical type is "unknown" (any/unknown leak or an unclassified
+  // type). Severity defaults to "warning" so existing builds aren't broken —
+  // see semantic-facts-verifier.ts header for the rationale. This is the last
+  // producer of analysis diagnostics; the gates below produce rule diagnostics.
+  //
+  // The FactStore is passed in so the verifier's existing walk also POPULATES
+  // the concrete per-expression type facts (SemanticFacts.type + cppType) —
+  // Phase 3 of the type-resolution consolidation. Gate rules can then read
+  // facts.cppType without re-deriving it from the ts.TypeChecker.
+  const verifierResult = verifyFacts(program, userFiles, { facts });
+  diagnostics.push(...verifierResult.diagnostics);
+
   // Normalise the user-file set for membership lookup.
   const userFileSet = new Set(userFiles.map(f => f.replace(/\\/g, "/")));
 
@@ -612,17 +548,8 @@ export function runSemanticGates(
           );
         }
 
-        for (const param of node.parameters) {
-          if (!ts.isIdentifier(param.name)) continue;
-          const name = param.name.text;
-          declareBinding(functionScope, name);
-          const paramType = checker.getTypeAtLocation(param);
-          if (isTypedArrayType(checker, paramType)) {
-            functionScope.typedArrayParams.add(name);
-          } else if (isArrayLikeType(checker, paramType)) {
-            functionScope.arrayParams.add(name);
-          }
-        }
+        // Function-parameter origins (array-param / typed-array-param) are
+        // now recorded by the SemanticFacts binding pass — no scope tracking.
 
         visit(node.body, functionScope);
         return;
@@ -730,19 +657,10 @@ export function runSemanticGates(
         }
       }
 
-      // 5. Track locals initialized from a Map/Record value. They are C++
-      //    value copies, so mutating fields on them cannot write back to the
-      //    container.
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-        const name = node.name.text;
-        declareBinding(scope, name);
-        if (node.initializer && isMapValueLookupExpression(node.initializer, checker)) {
-          const valueType = checker.getTypeAtLocation(node.name);
-          if (isObjectLikeValueType(valueType)) {
-            scope.mapValueCopyBindings.add(name);
-          }
-        }
-      }
+      // 5. (Removed) Locals initialized from a Map/Record value were tracked
+      //    here by name into scope.mapValueCopyBindings. That origin is now
+      //    recorded on the binding node by the SemanticFacts binding pass and
+      //    consumed via resolver.resolveOrigin() in gate 7 below.
 
       // 6. Nullish checks on container lookup calls. `.get()` / `.at()` lower
       //    to presence-asserting lookups (for example `std::map::at`), not an
@@ -789,25 +707,34 @@ export function runSemanticGates(
         }
       }
 
-      // 7. Mutating fields of a Map/Record-fetched copy.
-      if (ts.isBinaryExpression(node) && isAssignmentOperatorKind(node.operatorToken.kind) && isCompoundAccess(node.left)) {
-        const root = getRootIdentifierFromAccess(node.left);
-        if (root && lookupScopedSet(scope, root.text, "mapValueCopyBindings")) {
+      // 7. Mutating fields of a Map/Record-fetched copy, or of a by-value
+      //    array/typed-array parameter. One rule over the root identifier's
+      //    resolved origin — covers assignment (=, op=, ??=, ...) and
+      //    prefix/postfix ++/--, instead of two near-identical branches.
+      //    Origin comes from the SemanticFacts binding pass, not scope Sets.
+      const reportMutationOnLValue = (lvalue: ts.Expression): void => {
+        const root = getRootIdentifierFromAccess(lvalue);
+        if (!root) return;
+        const origin = resolver.resolveOrigin(root);
+        if (origin === "map-value-lookup") {
           pushDiag(
-            node.left,
+            lvalue,
             `'${root.text}' is a value copy fetched from a Map/Record; mutating a field on it will not update the container.`,
             "TS2CPP_MAP_VALUE_COPY_MUTATION",
             "Store primitive mutable state in a separate Map and .set() it back, or replace the whole struct entry with .set(key, nextValue).",
           );
-        }
-        if (root && lookupScopedSet(scope, root.text, "arrayParams")) {
+        } else if (origin === "array-param") {
           pushDiag(
-            node.left,
+            lvalue,
             `Mutating '${root.text}' through an indexed/property access mutates only the C++ parameter copy.`,
             "TS2CPP_ARRAY_PARAM_MUTATION",
             "Return the updated array, pass a mutable owner object, or move the mutation to the caller-side container.",
           );
         }
+      };
+
+      if (ts.isBinaryExpression(node) && isAssignmentOperatorKind(node.operatorToken.kind) && isCompoundAccess(node.left)) {
+        reportMutationOnLValue(node.left);
       }
 
       if (
@@ -815,30 +742,15 @@ export function runSemanticGates(
         (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) &&
         isCompoundAccess(node.operand)
       ) {
-        const root = getRootIdentifierFromAccess(node.operand);
-        if (root && lookupScopedSet(scope, root.text, "mapValueCopyBindings")) {
-          pushDiag(
-            node.operand,
-            `'${root.text}' is a value copy fetched from a Map/Record; mutating a field on it will not update the container.`,
-            "TS2CPP_MAP_VALUE_COPY_MUTATION",
-            "Store primitive mutable state in a separate Map and .set() it back, or replace the whole struct entry with .set(key, nextValue).",
-          );
-        }
-        if (root && lookupScopedSet(scope, root.text, "arrayParams")) {
-          pushDiag(
-            node.operand,
-            `Mutating '${root.text}' through an indexed/property access mutates only the C++ parameter copy.`,
-            "TS2CPP_ARRAY_PARAM_MUTATION",
-            "Return the updated array, pass a mutable owner object, or move the mutation to the caller-side container.",
-          );
-        }
+        reportMutationOnLValue(node.operand);
       }
 
       // 8. Typed-array parameters lower pointer-like; their length is not
-      //    recoverable from the parameter expression.
+      //    recoverable from the parameter expression. Origin comes from the
+      //    SemanticFacts binding pass.
       if (ts.isPropertyAccessExpression(node) && node.name.text === "length") {
         const receiver = unwrapExpression(node.expression);
-        if (ts.isIdentifier(receiver) && lookupScopedSet(scope, receiver.text, "typedArrayParams")) {
+        if (ts.isIdentifier(receiver) && resolver.resolveOrigin(receiver) === "typed-array-param") {
           pushDiag(
             node,
             `.${node.name.text} on typed-array parameter '${receiver.text}' has no valid C++ lowering.`,
@@ -891,7 +803,7 @@ export function runSemanticGates(
         if (ts.isPropertyAccessExpression(callee)) {
           const receiver = unwrapExpression(callee.expression);
           const methodName = callee.name.text;
-          if (MUTATING_ARRAY_METHOD_NAMES.has(methodName) && ts.isIdentifier(receiver) && lookupScopedSet(scope, receiver.text, "arrayParams")) {
+          if (MUTATING_ARRAY_METHOD_NAMES.has(methodName) && ts.isIdentifier(receiver) && resolver.resolveOrigin(receiver) === "array-param") {
             pushDiag(
               node,
               `Calling .${methodName}() on array parameter '${receiver.text}' mutates only the C++ parameter copy.`,
@@ -921,6 +833,26 @@ export function runSemanticGates(
               );
             }
           }
+        }
+      }
+
+      // 12. Typed-array class fields have no safe C++ lowering. A typed array
+      //     lowers to pointer-like storage (uint8_t*), but a class field needs
+      //     owned, copyable storage with a valid initializer — a raw pointer
+      //     member has neither (its `new Uint8Array(N)` initializer lowers to a
+      //     brace-init-list that cannot initialize a pointer, and the field has
+      //     no new[]/delete[] lifecycle). Typed arrays are supported only as
+      //     function-local stack buffers; see also gates 8 (param .length) and
+      //     9 (return). This is the same ownership boundary, applied to fields.
+      if (ts.isPropertyDeclaration(node) && node.type) {
+        const fieldType = checker.getTypeFromTypeNode(node.type);
+        if (isTypedArrayType(checker, fieldType)) {
+          pushDiag(
+            node.type,
+            "A typed-array class field is not supported because typed arrays lower to pointer-like storage with no owned backing buffer in C++.",
+            "TS2CPP_TYPED_ARRAY_FIELD",
+            "Use a function-local typed array for a stack buffer, or store the buffer in a std::vector field (number[]/int8_t[]) that owns its storage.",
+          );
         }
       }
 

@@ -10,6 +10,7 @@ import {
 import { appendSourceLine } from "./line-appender";
 import type { EmitterContext } from "./emitter-context";
 import { topLevelClasses } from "../../ir/build-ir-state";
+import { parsedIsPointer, parsedBareString } from "../../api/shared/cpp-type-ir";
 
 function exprContainsTimingCall(expr: ExpressionIR, timingVarNames: Set<string>): boolean {
   if (!expr || typeof expr !== 'object' || !expr.kind) return false;
@@ -616,7 +617,7 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
       const structName = stmt.name;
       for (const field of stmt.initializer.fields) {
         const fieldType = inferObjectFieldType(field.value, globalPointerVarTypes, ctx.knownFunctionReturnTypes, undefined, undefined, ctx.largeEnumNames, structName, field.name, strategy.defaultNumericType(), (o, n) => strategy.resolvePinType?.(o, n));
-        if (fieldType.endsWith("*")) {
+        if (parsedIsPointer(fieldType)) {
           pointerStructFields.add(`${structName}.${field.name}`);
         }
       }
@@ -625,9 +626,18 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
 
   ctx.fixPointerFieldAccess = function fixPointerFieldAccess(callee: string): string {
     for (const [varName, varType] of globalPointerVarTypes) {
-      if (varType.endsWith("*")) {
-        const pattern = new RegExp(`\\b${varName}\\.`, "g");
-        callee = callee.replace(pattern, `${varName}->`);
+      if (parsedIsPointer(varType)) {
+        // Only rewrite a *standalone* use of the pointer variable
+        // (`heap.method` -> `heap->method`), not a member of the same name
+        // reached through a pointer chain (`this->heap.method` or
+        // `obj->heap.method`). Without the `(^|[^>.])` guard the `\b` word
+        // boundary also matches between `->` and the name, so a class field
+        // `this->heap` was wrongly arrowed to `this->heap->` whenever a
+        // same-named pointer variable existed elsewhere in the program
+        // (demo #23 Finding B). The `pointerStructFields` loop below already
+        // used this guard; the global-var loop did not.
+        const pattern = new RegExp("(^|[^>.])" + varName + "\\.", "g");
+        callee = callee.replace(pattern, "$1" + varName + "->");
       }
     }
     for (const pointerField of pointerStructFields) {
@@ -644,11 +654,11 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
     }
     if (ctx.currentClassPointerFieldTypes) {
       for (const [fieldName, fieldType] of ctx.currentClassPointerFieldTypes) {
-        const className = fieldType.replace(/\*$/, "");
+        const className = parsedBareString(fieldType);
         const classDef = topLevelClasses.get(className);
         if (classDef) {
           for (const subField of classDef.fields) {
-            if ((subField.cppType as string).endsWith("*")) {
+            if (parsedIsPointer(subField.cppType as string)) {
               callee = callee.replace(
                 new RegExp(`->${fieldName}->${subField.name}\\.`, "g"),
                 `->${fieldName}->${subField.name}->`

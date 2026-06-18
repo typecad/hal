@@ -14,6 +14,21 @@
 
 import type { ProgramIR, StatementIR, ExpressionIR, VariableDeclarationIR } from '../api';
 import type { Diagnostic, SourceSpan } from '../types';
+import { parseCppType, parsedIsPointer } from '../api/shared/cpp-type-ir';
+
+/** True for any `std::`-prefixed type (vector/map/set/tuple/variant/function/string).
+ *  Replaces the historical `cppType.startsWith('std::')` check. */
+function isStdContainerType(cppType: string): boolean {
+  const ir = parseCppType(cppType);
+  switch (ir.kind) {
+    case "vector": case "map": case "set":
+    case "tuple": case "variant": case "function":
+    case "string": case "smartPointer":
+      return true;
+    default:
+      return false;
+  }
+}
 
 /** Compile-time exhaustiveness check for switch statements on IR kinds. */
 function assertNever(x: never): never {
@@ -164,8 +179,8 @@ function checkByValueParamMutations(program: ProgramIR, diagnostics: Diagnostic[
         !param.ownershipKind &&
         param.cppType &&
         !isPrimitiveCppType(param.cppType) &&
-        !param.cppType.includes('*') &&
-        !param.cppType.startsWith('std::')
+        !parsedIsPointer(param.cppType) &&
+        !isStdContainerType(param.cppType)
       ) {
         byValueParams.add(param.name);
       }
@@ -295,8 +310,8 @@ export function validateOwnership(program: ProgramIR): Diagnostic[] {
       } else if (
         param.cppType &&
         !isPrimitiveCppType(param.cppType) &&
-        !param.cppType.includes('*') &&
-        !param.cppType.startsWith('std::')
+        !parsedIsPointer(param.cppType) &&
+        !isStdContainerType(param.cppType)
       ) {
         fnScope.byValueStructParams.add(param.name);
       }

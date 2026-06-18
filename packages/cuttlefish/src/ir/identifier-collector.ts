@@ -156,6 +156,48 @@ export function collectExpressionIdentifiers(expr: ExpressionIR | null | undefin
       break;
     }
 
+    // Parenthesized expression — recurse into the inner expression. The `paren`
+    // IR node exists to preserve explicit TS grouping (e.g. `(a + b) * c`), and
+    // any free-function call nested inside parens (such as `!fn(x)` inside an
+    // `(cond && !fn(x))` clause) MUST be visible to the call-graph/reachability
+    // pass, or the function is tree-shaken and g++ reports "not declared in
+    // this scope". Demo #22 Finding B — the root cause was the absence of this
+    // case, not a forward-declaration or return-type gap.
+    case "paren":
+      for (const id of collectExpressionIdentifiers(expr.inner)) {
+        identifiers.add(id);
+      }
+      break;
+
+    // Tuple element access `std::get<N>(object)` — the object may reference a
+    // reachable symbol.
+    case "tuple-access":
+      for (const id of collectExpressionIdentifiers(expr.object)) {
+        identifiers.add(id);
+      }
+      break;
+
+    // Arrow/lambda expression used as a value — walk its body for captured
+    // identifiers (the call graph must see free functions/vars a lambda uses).
+    case "lambda":
+      for (const param of expr.params) {
+        identifiers.add(param.name);
+      }
+      for (const stmt of expr.body) {
+        for (const id of collectStatementIdentifiers(stmt)) {
+          identifiers.add(id);
+        }
+      }
+      break;
+
+    // HAL operation used as an expression — delegate to the HAL identifier
+    // collector (same logic as the hal-op statement case).
+    case "hal-expr":
+      for (const id of collectHALOpIdentifiers(expr.operation)) {
+        identifiers.add(id);
+      }
+      break;
+
     // number, string, boolean have no identifiers
   }
 

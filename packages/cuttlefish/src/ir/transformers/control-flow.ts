@@ -4,6 +4,7 @@ import { StatementIR, ExpressionIR, CppType } from "../../api";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
 import { CppTypeHint, resolveDeclarationType, inferExprCppType } from "../type-resolution";
 import { PointerTracker, nestedClassAliases } from "../build-ir-state";
+import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedElementString } from "../../api/shared/cpp-type-ir";
 import { expressionToIR } from "../expression-to-ir";
 import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir";
 import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys } from "./variables";
@@ -41,10 +42,19 @@ export function forInitializerToIR(
 
   // Resolve type through nested class aliases for hoisted class names.
   let resolvedType: string = declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType;
-  const isPointer = resolvedType.endsWith("*");
-  const baseType = isPointer ? resolvedType.slice(0, -1) : resolvedType;
-  if (nestedClassAliases.has(baseType)) {
-    resolvedType = nestedClassAliases.get(baseType)! + (isPointer ? "*" : "");
+  {
+    const ir = parseCppType(resolvedType);
+    const ptr = isPointer(ir);
+    const baseName = (() => {
+      const b = ir.kind === "pointer" ? ir.base : ir;
+      return b.kind === "named" ? b.name : renderCppType(b);
+    })();
+    if (nestedClassAliases.has(baseName)) {
+      const aliasedIr: CppTypeIR = ptr
+        ? { kind: "pointer", base: parseCppType(nestedClassAliases.get(baseName)!) }
+        : parseCppType(nestedClassAliases.get(baseName)!);
+      resolvedType = renderCppType(aliasedIr);
+    }
   }
 
   return {
@@ -283,8 +293,8 @@ export function lowerControlFlowStatement(
 
     // Resolve the iterable's element type so the loop variable carries a real
     // type (e.g. `Product*`) instead of `auto`. This must happen before
-    // lowerStatementList for the body, which syncs localVariableTypes into
-    // activeLocalTypes so member access (item->name) renders with `->`.
+    // lowerStatementList for the body, which binds localVariableTypes as the
+    // IrTypeScope's locals so member access (item->name) renders with `->`.
     if (variable && variable.kind === "var_decl") {
       const iterableType = inferExprCppType(
         statement.expression,
@@ -292,8 +302,8 @@ export function lowerControlFlowStatement(
         localVariableTypes,
         sourceText,
       );
-      if (iterableType && iterableType.startsWith("std::vector<")) {
-        const elementType = iterableType.slice("std::vector<".length, -1).trim();
+      if (iterableType && parsedIsVector(iterableType)) {
+        const elementType = parsedElementString(iterableType);
         if (elementType && elementType !== "auto" && elementType !== "void") {
           variable.cppType = elementType as CppType;
           localVariableTypes.set(variable.name, elementType as CppTypeHint);

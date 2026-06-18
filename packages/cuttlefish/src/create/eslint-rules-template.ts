@@ -494,6 +494,33 @@ export default {
       },
     },
 
+    "no-typed-array-field": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] A typed-array class field has no safe C++ lowering (pointer-like storage with no owned buffer).",
+        },
+      },
+      create(context) {
+        const TYPED_ARRAYS = new Set(["Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array", "Float32Array", "Float64Array", "BigUint64Array", "BigInt64Array"]);
+        function isTypedArrayAnnotation(typeAnnotation) {
+          if (!typeAnnotation) return false;
+          let t = typeAnnotation;
+          if (t.type === "TSTypeAnnotation") t = t.typeAnnotation;
+          if (t && t.type === "TSTypeReference" && t.typeName.type === "Identifier") return TYPED_ARRAYS.has(t.typeName.name);
+          return false;
+        }
+        return {
+          PropertyDefinition(node) {
+            if (node.typeAnnotation && isTypedArrayAnnotation(node.typeAnnotation)) {
+              context.report({ node: node.typeAnnotation, message: "[transpiler] A typed-array class field has no owned backing buffer in C++. Use a function-local typed array for a stack buffer, or store the data in a number[]/int8_t[] field (a std::vector) that owns its storage." });
+            }
+          },
+        };
+      },
+    },
+
     "no-dynamic-property-access": {
       meta: {
         type: "problem",

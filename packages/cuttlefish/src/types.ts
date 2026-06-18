@@ -91,6 +91,8 @@ export interface TranspileOptions {
   skipLint?: boolean;
   /**
    * Force retranspilation of all files, ignoring incremental cache.
+   * Currently a no-op: incremental builds are disabled and every build already
+   * transpiles the full graph. Retained on the API for forward compatibility.
    * (default: false)
    */
   force?: boolean;
@@ -159,7 +161,7 @@ export interface CommandLineOptions {
   debug?: boolean;
   /** Skip TypeScript type-checking before transpilation */
   skipTypeCheck?: boolean;
-  /** Force retranspilation of all files, ignoring cache */
+  /** Force retranspilation of all files, ignoring cache. Currently a no-op: incremental builds are disabled. */
   force?: boolean;
   /** Watch for file changes and retranspile automatically */
   watch: boolean;

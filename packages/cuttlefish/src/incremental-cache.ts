@@ -1,6 +1,15 @@
 ﻿/**
  * Incremental transpilation cache for persistent file change detection.
- * 
+ *
+ * NOTE: This module is currently UNUSED. The transpile pipeline does not import
+ * it because incremental builds were unsound: the pipeline wiped the cache and
+ * the output directory before loading, and even on a partial rebuild it built
+ * raw IR only for changed files, so cross-module metadata (enums, class field
+ * types, accessors, function return types) was incomplete for unchanged graph
+ * files. Re-enabling incremental builds safely requires rehydrating cached
+ * IR/metadata for EVERY file in the graph before the aggregation passes in
+ * transpile.ts, not just the changed ones.
+ *
  * This module enables incremental builds by:
  * 1. Tracking file content hashes across sessions
  * 2. Detecting which files have changed

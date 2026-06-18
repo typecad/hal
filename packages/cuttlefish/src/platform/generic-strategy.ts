@@ -8,6 +8,7 @@ import type { BoardConstants } from "../api/shared";
 import type { Diagnostic, PlatformContext } from "../types";
 import type { RuntimePolyfillIR, StdLibSupport } from "../api/shared";
 import { DEFAULT_STDLIB_SUPPORT } from "../api/shared";
+import { parsedIsPointer } from "../api/shared/cpp-type-ir";
 import { buildAsyncRuntimePolyfill } from "./async-runtime";
 
 export class GenericStrategy implements PlatformStrategy {
@@ -58,10 +59,15 @@ export class GenericStrategy implements PlatformStrategy {
     return this.normalizeCppType(returnType);
   }
   isStringLikeType(cppType: string): boolean {
+    // Note: this is the platform-policy definition of "string-like" — kept as
+    // an exact set (std::string, const char*, char*) because platform overrides
+    // (Arduino's `String`, etc.) extend it with platform-specific types. The
+    // broader structural `parsedIsStringLike` is used at consumer sites that
+    // don't depend on platform policy.
     return cppType === "std::string" || cppType === "const char*" || cppType === "char*";
   }
   isPointerType(cppType: string): boolean {
-    return cppType.endsWith("*");
+    return parsedIsPointer(cppType);
   }
   mapFunctionName(originalName: string): string {
     if (originalName === "__cuttlefish_entrypoint__") return "main";

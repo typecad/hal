@@ -1,6 +1,16 @@
 ﻿import ts from "typescript";
 import { CppType } from "../api";
-import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeClassFieldTypes, activeLocalTypes, activeGlobalTypes, activeEnumNames } from "./build-ir-state";
+import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeEnumNames } from "./build-ir-state";
+import { getCurrentIrTypeScope } from "./symbol-types";
+import {
+  type CppTypeIR,
+  parseCppType,
+  renderCppType,
+  splitTemplateArgs,
+  bareType,
+  elementOf,
+  isPointer,
+} from "../api/shared/cpp-type-ir";
 
 export type CppTypeHint =
   | "int"
@@ -118,23 +128,6 @@ function inferNumericCppType(literalText: string): CppTypeHint {
   return /[.eE]/.test(literalText) ? "double" : "int";
 }
 
-function splitTemplateArgs(inner: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < inner.length; i++) {
-    const ch = inner[i];
-    if (ch === '<') depth++;
-    else if (ch === '>') depth--;
-    else if (ch === ',' && depth === 0) {
-      parts.push(inner.slice(start, i));
-      start = i + 1;
-    }
-  }
-  parts.push(inner.slice(start));
-  return parts;
-}
-
 export function getDirectCppType(typeName: string): CppTypeHint | undefined {
   const directCppType = DIRECT_CPP_TYPE_MAP.get(typeName);
   return directCppType as CppTypeHint | undefined;
@@ -190,11 +183,18 @@ function normalizeTypeHintForUse(typeHint: CppTypeHint): string {
 }
 
 function functionTypeNodeToCppType(node: ts.FunctionTypeNode, typeAliases?: Map<string, ts.TypeNode>, typeParametersInScope?: Set<string>): CppTypeHint {
+  // Build via CppTypeIR so the function signature is structured, then flatten
+  // to the canonical `std::function<R(P...)>` string at the boundary.
   const returnType = normalizeTypeHintForUse(typeNodeToCppType(node.type, typeAliases, typeParametersInScope));
-  const parameterTypes = node.parameters
-    .map((parameter) => normalizeTypeHintForUse(typeNodeToCppType(parameter.type, typeAliases, typeParametersInScope)))
-    .join(", ");
-  return `std::function<${returnType}(${parameterTypes})>`;
+  const params = node.parameters.map((parameter) =>
+    normalizeTypeHintForUse(typeNodeToCppType(parameter.type, typeAliases, typeParametersInScope)),
+  );
+  const ir: CppTypeIR = {
+    kind: "function",
+    returnType: parseCppType(returnType),
+    params: params.map((p) => parseCppType(p)),
+  };
+  return renderCppType(ir) as CppTypeHint;
 }
 
 export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: Map<string, ts.TypeNode>, typeParametersInScope?: Set<string>): CppTypeHint {
@@ -277,7 +277,13 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
       .filter((t): t is CppTypeHint => t !== "auto" && t !== undefined);
     const uniqueTypes = [...new Set(memberTypes)];
     if (uniqueTypes.length >= 2) {
-      return `std::variant<${uniqueTypes.join(", ")}>` as CppTypeHint;
+      // Build via CppTypeIR.variant so the members are parsed structure, not
+      // a hand-joined string. Renders byte-identically to the old form.
+      const ir: CppTypeIR = {
+        kind: "variant",
+        members: uniqueTypes.map((t) => parseCppType(t)),
+      };
+      return renderCppType(ir) as CppTypeHint;
     }
     if (uniqueTypes.length === 1) {
       return uniqueTypes[0];
@@ -287,13 +293,15 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
 
   if (ts.isArrayTypeNode(resolvedNode)) {
     const elementType = normalizeTypeHintForUse(typeNodeToCppType(resolvedNode.elementType, typeAliases, typeParametersInScope));
-    return `std::vector<${elementType}>`;
+    const ir: CppTypeIR = { kind: "vector", element: parseCppType(elementType) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Array") {
     const elementTypeNode = resolvedNode.typeArguments?.[0];
     const elementType = normalizeTypeHintForUse(typeNodeToCppType(elementTypeNode, typeAliases, typeParametersInScope));
-    return `std::vector<${elementType}>`;
+    const ir: CppTypeIR = { kind: "vector", element: parseCppType(elementType) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   if (ts.isFunctionTypeNode(resolvedNode)) {
@@ -331,13 +339,15 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Set") {
     const elementTypeNode = resolvedNode.typeArguments?.[0];
     const elementType = normalizeTypeHintForUse(typeNodeToCppType(elementTypeNode, typeAliases, typeParametersInScope));
-    return `std::set<${elementType}>`;
+    const ir: CppTypeIR = { kind: "set", element: parseCppType(elementType) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "ReadonlySet") {
     const elementTypeNode = resolvedNode.typeArguments?.[0];
     const elementType = normalizeTypeHintForUse(typeNodeToCppType(elementTypeNode, typeAliases, typeParametersInScope));
-    return `std::set<${elementType}>`;
+    const ir: CppTypeIR = { kind: "set", element: parseCppType(elementType) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Map") {
@@ -345,7 +355,8 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     const valueTypeNode = resolvedNode.typeArguments?.[1];
     const keyType = normalizeTypeHintForUse(typeNodeToCppType(keyTypeNode, typeAliases, typeParametersInScope));
     const valueType = normalizeTypeHintForUse(typeNodeToCppType(valueTypeNode, typeAliases, typeParametersInScope));
-    return `std::map<${keyType}, ${valueType}>`;
+    const ir: CppTypeIR = { kind: "map", key: parseCppType(keyType), value: parseCppType(valueType) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "ReadonlyMap") {
@@ -353,7 +364,8 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     const valueTypeNode = resolvedNode.typeArguments?.[1];
     const keyType = normalizeTypeHintForUse(typeNodeToCppType(keyTypeNode, typeAliases, typeParametersInScope));
     const valueType = normalizeTypeHintForUse(typeNodeToCppType(valueTypeNode, typeAliases, typeParametersInScope));
-    return `std::map<${keyType}, ${valueType}>`;
+    const ir: CppTypeIR = { kind: "map", key: parseCppType(keyType), value: parseCppType(valueType) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "Record") {
@@ -361,13 +373,15 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     const valueTypeNode = resolvedNode.typeArguments?.[1];
     const keyType = normalizeTypeHintForUse(typeNodeToCppType(keyTypeNode, typeAliases, typeParametersInScope));
     const valueType = normalizeTypeHintForUse(typeNodeToCppType(valueTypeNode, typeAliases, typeParametersInScope));
-    return `std::map<${keyType}, ${valueType}>`;
+    const ir: CppTypeIR = { kind: "map", key: parseCppType(keyType), value: parseCppType(valueType) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName) && resolvedNode.typeName.text === "ReadonlyArray") {
     const elementTypeNode = resolvedNode.typeArguments?.[0];
     const elementType = normalizeTypeHintForUse(typeNodeToCppType(elementTypeNode, typeAliases, typeParametersInScope));
-    return `std::vector<${elementType}>`;
+    const ir: CppTypeIR = { kind: "vector", element: parseCppType(elementType) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   // Tuple types: [A, B, C] → std::tuple<A, B, C>
@@ -381,7 +395,8 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
       }
       return normalizeTypeHintForUse(typeNodeToCppType(el, typeAliases, typeParametersInScope));
     });
-    return `std::tuple<${elementTypes.join(", ")}>` as CppTypeHint;
+    const ir: CppTypeIR = { kind: "tuple", elements: elementTypes.map((t) => parseCppType(t)) };
+    return renderCppType(ir) as CppTypeHint;
   }
 
   // User-defined types (interfaces, classes, enums) pass through as their C++ type name.
@@ -408,7 +423,10 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
       return normalizeTypeHintForUse(typeNodeToCppType(resolvedNode.typeArguments[0], typeAliases, typeParametersInScope)) as CppTypeHint;
     }
     if (typeName === "Record" && resolvedNode.typeArguments?.length === 2) {
-      return ("std::map<" + typeNodeToCppType(resolvedNode.typeArguments[0], typeAliases, typeParametersInScope) + ", " + typeNodeToCppType(resolvedNode.typeArguments[1], typeAliases, typeParametersInScope) + ">") as CppTypeHint;
+      const keyType = typeNodeToCppType(resolvedNode.typeArguments[0], typeAliases, typeParametersInScope);
+      const valueType = typeNodeToCppType(resolvedNode.typeArguments[1], typeAliases, typeParametersInScope);
+      const ir: CppTypeIR = { kind: "map", key: parseCppType(keyType), value: parseCppType(valueType) };
+      return renderCppType(ir) as CppTypeHint;
     }
     if (typeName === "ReturnType" || typeName === "Parameters" || typeName === "ConstructorParameters" || typeName === "InstanceType" || typeName === "Extract" || typeName === "Exclude") {
       return "auto";
@@ -416,15 +434,20 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
 
     // TypeScript class values are references. Keep that representation consistent
     // across declarations, parameters, returns, fields, and containers so `new X()`
-    // is never assigned to a value-typed C++ `X` by accident.
+    // is never assigned to a value-typed C++ `X` by accident. Modeled as a
+    // `pointer(named(typeName, args?))` so the class-vs-value distinction is
+    // structural, not a trailing `*` to be re-parsed.
     if (classTypeNames.has(typeName)) {
       const typeArgs = resolvedNode.typeArguments?.map((arg) =>
         normalizeTypeHintForUse(typeNodeToCppType(arg, typeAliases, typeParametersInScope))
       );
-      const classType = typeArgs && typeArgs.length > 0
-        ? `${typeName}<${typeArgs.join(", ")}>`
-        : typeName;
-      return `${classType}*` as CppTypeHint;
+      const namedIr: CppTypeIR = {
+        kind: "named",
+        name: typeName,
+        args: typeArgs && typeArgs.length > 0 ? typeArgs.map((t) => parseCppType(t)) : undefined,
+      };
+      const ir: CppTypeIR = { kind: "pointer", base: namedIr };
+      return renderCppType(ir) as CppTypeHint;
     }
 
     return resolvedNode.typeName.text as CppTypeHint;
@@ -650,13 +673,13 @@ export function inferExprCppType(
       }
 
       const receiverType = inferExprCppType(expr.expression.expression, functionReturnTypes, localVariableTypes, sourceText);
-      let receiverClassName = receiverType as string;
-      if (receiverClassName.endsWith("*")) {
-        receiverClassName = receiverClassName.slice(0, -1);
-      }
-      if (receiverClassName.startsWith("const ")) {
-        receiverClassName = receiverClassName.slice("const ".length);
-      }
+      // Peel pointer/const off the receiver to recover the bare class name.
+      // Uses the structured bareType() rather than ad-hoc slice/replace.
+      const receiverIr = parseCppType(receiverType);
+      const receiverClassName = (() => {
+        const bare = bareType(receiverIr);
+        return bare.kind === "named" ? bare.name : renderCppType(bare);
+      })();
       const classDef = topLevelClasses.get(receiverClassName);
       if (classDef) {
         const method = expr.expression.name.text;
@@ -710,17 +733,24 @@ export function inferExprCppType(
     }
     if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
       const fieldKey = `this->${expr.name.text}`;
-      const fieldType = activeClassFieldTypes.get(fieldKey);
+      const fieldType = getCurrentIrTypeScope()?.classFields.get(fieldKey);
       if (fieldType && fieldType !== "auto") return fieldType as CppTypeHint;
     }
     if (ts.isIdentifier(expr.expression)) {
       // Prefer the caller-supplied local types (e.g. a lambda's param types)
-      // before the module-level active maps, so a callback body like
+      // before the module-level scope maps, so a callback body like
       // `(n: Node) => n.capacity` resolves `n` -> Node -> capacity -> double.
+      // `scope.locals` is the same Map the caller threaded as
+      // localVariableTypes, so the prior activeLocalTypes fallback is subsumed.
+      const scope = getCurrentIrTypeScope();
       const objType = localVariableTypes.get(expr.expression.text)
-        ?? activeLocalTypes.get(expr.expression.text) ?? activeGlobalTypes.get(expr.expression.text);
+        ?? scope?.locals.get(expr.expression.text) ?? scope?.globals.get(expr.expression.text);
       if (objType && objType !== "auto") {
-        const className = objType.replace(/\*$/, "");
+        // Peel pointer to recover the bare class name via the structured IR.
+        const className = (() => {
+          const bare = bareType(parseCppType(objType));
+          return bare.kind === "named" ? bare.name : "";
+        })();
         const classDef = topLevelClasses.get(className);
         if (classDef) {
           const field = classDef.fields.find(f => f.name === expr.name.text);
@@ -732,7 +762,10 @@ export function inferExprCppType(
     if (ts.isPropertyAccessExpression(expr.expression)) {
       const receiverType = inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
       if (receiverType && receiverType !== "auto") {
-        const className = receiverType.replace(/\*$/, "");
+        const className = (() => {
+          const bare = bareType(parseCppType(receiverType));
+          return bare.kind === "named" ? bare.name : "";
+        })();
         const classDef = topLevelClasses.get(className);
         if (classDef) {
           const field = classDef.fields.find(f => f.name === expr.name.text);
@@ -796,12 +829,15 @@ export function inferExprCppType(
       if (directType) {
         return directType;
       }
-      let fullCtorName = ctorName;
-      if (expr.typeArguments && expr.typeArguments.length > 0) {
-        const typeArgs = expr.typeArguments.map((ta: ts.TypeNode) => ta.getText()).join(", ");
-        fullCtorName = `${ctorName}<${typeArgs}>`;
-      }
-      return `${fullCtorName}*`;
+      // Build the class pointer via structured IR: pointer(named(ctorName, args?)).
+      const typeArgs = expr.typeArguments?.map((ta: ts.TypeNode) => ta.getText());
+      const namedIr: CppTypeIR = {
+        kind: "named",
+        name: ctorName,
+        args: typeArgs && typeArgs.length > 0 ? typeArgs.map((t) => parseCppType(t)) : undefined,
+      };
+      const ir: CppTypeIR = { kind: "pointer", base: namedIr };
+      return renderCppType(ir) as CppTypeHint;
     }
     return "auto";
   }
@@ -813,39 +849,33 @@ export function inferExprCppType(
     if (objectType === "uint8_t*") return "int";
     if (objectType === "int16_t*") return "int";
     if (objectType === "int32_t*") return "int";
+
+    const objectIr = parseCppType(objectType);
+
     // std::tuple<N> element access → extract Nth type
-    if (objectType.startsWith("std::tuple<")) {
+    if (objectIr.kind === "tuple") {
       const argExpr = expr.argumentExpression;
       if (argExpr && ts.isNumericLiteral(argExpr)) {
         const idx = parseInt(argExpr.text, 10);
-        const inner = objectType.slice("std::tuple<".length, -1);
-        const parts = splitTemplateArgs(inner);
-        if (idx >= 0 && idx < parts.length) {
-          return parts[idx].trim() as CppTypeHint;
+        if (idx >= 0 && idx < objectIr.elements.length) {
+          return renderCppType(objectIr.elements[idx]) as CppTypeHint;
         }
       }
       return "auto";
     }
-    // std::vector<T> element access → T
-    if (objectType.startsWith("std::vector<")) {
-      const inner = objectType.slice("std::vector<".length, -1);
-      if (inner === "uint8_t" || inner === "int8_t") return "int";
-      if (inner === "float" || inner === "double") return "double";
-      return inner as CppTypeHint;
+
+    // Element type of vector / staticArray / cArray, or value type of map.
+    // Replaces the three duplicated inline parsers (vector / __tc_StaticArray /
+    // C-array) with one structured lookup. The uint8_t/int8_t → int and
+    // float/double → double promotions are preserved for element access.
+    const elemIr = elementOf(objectIr);
+    if (elemIr) {
+      const elemStr = renderCppType(elemIr);
+      if (elemStr === "uint8_t" || elemStr === "int8_t") return "int";
+      if (elemStr === "float" || elemStr === "double") return "double";
+      return elemStr as CppTypeHint;
     }
-    if (objectType.startsWith("__tc_StaticArray<")) {
-      const inner = objectType.slice("__tc_StaticArray<".length, -1);
-      const [elementType] = splitTemplateArgs(inner);
-      if (elementType === "uint8_t" || elementType === "int8_t") return "int";
-      if (elementType === "float" || elementType === "double") return "double";
-      return elementType.trim() as CppTypeHint;
-    }
-    // C-array types like "uint8_t[]"
-    if (objectType.endsWith("[]")) {
-      const elemType = objectType.slice(0, -2);
-      if (elemType === "uint8_t" || elemType === "int8_t") return "int";
-      return elemType as CppTypeHint;
-    }
+
     // Check local variable declarations for typed array constructors
     if (ts.isIdentifier(expr.expression)) {
       const varName = expr.expression.text;

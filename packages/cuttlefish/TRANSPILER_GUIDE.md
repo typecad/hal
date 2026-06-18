@@ -99,3 +99,33 @@ Output is a `GeneratedOutputs` object with generated paths and diagnostics.
 - Transpilation should be driven by a single `transpileFile()` entrypoint, with internal helpers for resolution and IR building.
 - Avoid adding new global mutable state in the emitter; prefer explicit context objects.
 - Maintain a clear distinction between TypeScript source imports, npm package source resolution, and native module declarations.
+
+## C++ type representation (`CppTypeIR`)
+
+C++ types flow through the transpiler on every IR declaration field (`ParameterIR.cppType`, `VariableDeclarationIR.cppType`, `FunctionIR.returnType`, `ClassFieldIR.cppType`, etc.). These fields are typed `CppType = string` for readable construction at IR-build sites (`cppType: "int"` is clearer than a literal IR object), but **every consumer inspects types structurally** via the `CppTypeIR` module rather than re-parsing the string.
+
+### The module: `packages/cuttlefish/src/api/shared/cpp-type-ir.ts`
+
+- **`CppTypeIR`** — a discriminated union with 19 variants covering every C++ shape the transpiler emits: `primitive`, `auto`, `string`, `strPtr`, `named`, `pointer`, `reference`, `qualified`, `vector`, `set`, `map`, `tuple`, `variant`, `function`, `staticArray`, `cArray`, `generator`, `smartPointer`, `opaque`. Qualifiers (`const`, `&`, `*`) are orthogonal wrappers, matching how they compose in `const std::vector<T>&`.
+- **`parseCppType(s): CppTypeIR`** — the single parser. Promotes the previously-private `splitTemplateArgs` as its core; correct for nested templates and multi-arg containers (`std::map<K,V>`, `std::tuple<...>`, `std::function<R(P...)>`).
+- **`renderCppType(ir): string`** — the single renderer. Byte-identical round trip (`renderCppType(parseCppType(s)) === s`) for every type string in the test corpus.
+- **Predicates** — `isPointer`, `isVector`, `isMap`, `isSet`, `isTuple`, `isContainer`, `isStringLike`, `isPrimitive`, `bareType`, `elementOf`, `formatKindOf`, plus string-in wrappers (`parsedIsPointer(s)`, `parsedElementString(s)`, `parsedBareString(s)`, `parsedIsPlainStructType(s)`, `needsCStrForStringLike(s)`, `collectNamedTypes(ir)`).
+- **Builders** — `CppTypeIR.vector(t)`, `.pointer(t)`, `.map(k,v)`, `.reference(t, {isConst})`, etc., replace `` `std::vector<${x}>` `` string construction at producer sites.
+
+### Conventions documented here for the first time
+
+These were previously tribal knowledge enforced only in code:
+
+- **Class types are always pointers.** A TypeScript class reference is emitted as `ClassName*` so `new X()` never assigns to a value-typed `X` (see `type-resolution.ts`, the `classTypeNames` branch). The parser preserves this — it does not unwrap pointers.
+- **`__tc_StaticArray<T,N>`** is a compile-time fixed-size array (lowered from `new Array(N)` to avoid heap `std::vector`). First-class `staticArray` kind.
+- **`__tc_str_ptr`** marks an expression that must be passed as `.c_str()`. First-class `strPtr` kind.
+- **`__tc_Generator<T>`** is the coroutine generator pseudo-type. First-class `generator` kind.
+- **`const` prefix vs suffix.** The producer emits `const T` (prefix). `T const` (suffix) is legal C++ but rare in this codebase; both parse to the same `qualified` variant.
+- **`auto` promotion.** `normalizeTypeHintForUse` maps unresolved `auto` to `double` at use sites in `type-resolution.ts`.
+
+### Where parsing happens (and where it doesn't)
+
+- **Producer** (`ir/type-resolution.ts`): builds `CppTypeIR` internally via builders, flattens to string at the public boundary.
+- **Consumers** (`ir/`, `emit/`): call `parseCppType` once, then inspect by `kind` or via predicates. The ~60+ historical ad-hoc `startsWith("std::vector<")` / `endsWith("*")` / `slice(len, -1)` / `/^std::vector<(.+)>$/` sites have been eliminated.
+- **Out of scope**: `libdef/cpp-to-decl.ts` parses raw C++ *source text* (not IR `CppType`) along a separate pipeline; it does not consume this module.
+

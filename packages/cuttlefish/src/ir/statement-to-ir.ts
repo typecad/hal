@@ -6,7 +6,8 @@ import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";
 import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeLocalTypes, activeGlobalTypes, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state";
+import { getCurrentIrTypeScope, bindIrTypeScopeLocals } from "./symbol-types";
 import { calleeToText, renderExprAsText } from "./render-expr";
 import { expressionToIR } from "./expression-to-ir";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
@@ -393,9 +394,16 @@ export function lowerStatementList(
   for (const v of savedMutableArrayVars) mutableArrayVars.add(v);
   for (const [k, v] of savedArrayLiteralSizes) arrayLiteralSizes.set(k, v);
 
-  // Sync localVariableTypes to activeLocalTypes AFTER resetFunctionScopeState clears it
-  for (const [key, value] of localVariableTypes) {
-    activeLocalTypes.set(key, value);
+  // resetFunctionScopeState re-seeded scope.locals from classFields. Now bind
+  // the threaded localVariableTypes map as the scope's locals storage (folding
+  // both the re-seeded classFields entries and any entries the threaded map
+  // already carried, e.g. function parameters). After this, the threaded
+  // `localVariableTypes` param and getCurrentIrTypeScope().locals are the SAME
+  // Map, so writes through either are visible to both — eliminating the old
+  // shadow-sync that copied localVariableTypes into the global activeLocalTypes.
+  const scope = getCurrentIrTypeScope();
+  if (scope) {
+    bindIrTypeScopeLocals(scope, localVariableTypes);
   }
 
   for (const statement of statements) {

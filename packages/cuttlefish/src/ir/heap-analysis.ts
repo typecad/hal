@@ -8,6 +8,7 @@
 
 import type { ProgramIR, StructDefIR, ClassIR, FunctionIR, StatementIR, ExpressionIR, VariableDeclarationIR } from "../api";
 import type { HeapEstimate } from "../diagnostics/json-schema";
+import { parseCppType, renderCppType, bareType } from "../api/shared/cpp-type-ir";
 
 /** Type sizes for common C++ types on AVR (8-bit) and ESP32 (32-bit) */
 const AVR_TYPE_SIZES: Record<string, number> = {
@@ -82,25 +83,20 @@ function getTypeSizes(architecture?: string): Record<string, number> {
  * Handles arrays like "int[10]" and pointers.
  */
 function estimateTypeSize(cppType: string, typeSizes: Record<string, number>): number {
-  // Handle arrays: type[N]
-  const arrayMatch = cppType.match(/^(.+?)\[(\d+)\]$/);
-  if (arrayMatch) {
-    const elementType = arrayMatch[1].trim();
-    const count = parseInt(arrayMatch[2], 10);
-    return estimateTypeSize(elementType, typeSizes) * count;
+  const ir = parseCppType(cppType);
+
+  // Fixed-size arrays: element[N] → element size × N.
+  if (ir.kind === "staticArray" && ir.size !== undefined) {
+    return estimateTypeSize(renderCppType(ir.element), typeSizes) * ir.size;
   }
 
-  // Handle pointers
-  if (cppType.endsWith("*")) {
+  // Pointers.
+  if (ir.kind === "pointer") {
     return typeSizes.pointer ?? 2;
   }
 
-  // Normalize: strip const, references, etc.
-  let normalized = cppType
-    .replace(/^const\s+/, "")
-    .replace(/&$/, "")
-    .replace(/volatile\s+/, "")
-    .trim();
+  // Normalize: strip const, references, etc., then look up the bare name.
+  const normalized = renderCppType(bareType(ir));
 
   // Check known sizes
   if (typeSizes[normalized] !== undefined) {

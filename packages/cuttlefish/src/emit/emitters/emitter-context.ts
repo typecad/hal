@@ -163,6 +163,15 @@ export interface EmitterContext {
   // ── Profile diagnostics ───────────────────────────────────────────────────
   profileDiagnostics: Diagnostic[];
 
+  /**
+   * Diagnostics produced during emission (e.g. an unregistered HAL operation
+   * the strategy couldn't resolve, surfaced as a warning). Kept separate from
+   * profileDiagnostics for clarity; merged into the final diagnostics list by
+   * finalizeOutput. Shared by reference with ExpressionRenderer /
+   * StatementRenderer so their fallback paths can report without throwing.
+   */
+  emitDiagnostics: Diagnostic[];
+
   // ── Interface pre-scan data ───────────────────────────────────────────────
   templateInterfaceNames: Set<string>;
   interfaceNamespaceMap: Map<string, string>;
