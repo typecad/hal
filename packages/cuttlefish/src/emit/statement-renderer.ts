@@ -11,7 +11,7 @@ import type { KnownVariableInfo } from "../api/shared";
 import type { Diagnostic } from "../types";
 import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
-import { escapeCppKeyword } from "../utils/strings";
+import { escapeCppKeyword, escapeTrailingMember } from "../utils/strings";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
 import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsVector, parsedElementString, parsedIsPlainStructType } from "../api/shared/cpp-type-ir";
 
@@ -167,6 +167,8 @@ export class StatementRenderer {
   private readonly crossModuleClassNames?: Set<string>;
   private readonly enumNames: Set<string>;
   private readonly stringEnumNames: Set<string>;
+  /** Namespace names — used to rewrite assign-target `Ns.x` to `Ns::x`. */
+  private readonly namespaceNames: Set<string>;
   private readonly interfaceFieldTypes: Map<string, Map<string, string>>;
   /** Shared emit-time diagnostics sink (see StatementRendererContext.diagnostics). */
   private readonly _diagnostics: Diagnostic[];
@@ -181,6 +183,7 @@ export class StatementRenderer {
     this.crossModuleClassNames = context.crossModuleClassNames;
     this.enumNames = context.enumNames;
     this.stringEnumNames = context.stringEnumNames ?? new Set();
+    this.namespaceNames = context.namespaceNames ?? new Set();
     this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
     this._diagnostics = context.diagnostics ?? [];
 
@@ -252,8 +255,27 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "assign") {
-        let target = escapeCppKeyword(statement.target, this.strategy.reservedNames());
+        // `statement.target` may be a compound member-access string
+        // (`this.field`, `obj->field`, `obj.field`) — NOT a bare identifier.
+        // escapeCppKeyword renames only WHOLE identifiers that are in the
+        // reserved set, so applying it to `this.min` leaves `min` untouched
+        // even when `min` is a reserved Arduino macro. That diverged from
+        // renderPropertyAccess (which escapes just the trailing property
+        // name), so a field declared `min_` (via renameStructField) was
+        // written as `this->min = ...` on assignment but read as
+        // `this->min_` on access — a declaration/access rename mismatch that
+        // fails at g++ time. Escape the trailing member name uniformly here.
+        let target = escapeTrailingMember(statement.target, this.strategy.reservedNames());
         target = this.arrowGlobalPointerTarget(target);
+        // A namespace member used as an ASSIGNMENT TARGET must use `::`
+        // (scope resolution), not `.` — a namespace is not an object. The
+        // property-READ path already does this via namespaceNames; the
+        // assign-target path did not, so `Devices.total = ...` emitted with
+        // `.` and failed at g++ time (namespace stress test Finding 3).
+        const nsTargetMatch = target.match(/^([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)/);
+        if (nsTargetMatch && this.namespaceNames.has(nsTargetMatch[1])) {
+          target = target.replace(/^([A-Za-z_$][\w$]*)\./, "$1::");
+        }
         // Rewrite setter assignments: c->count = val → c->setCount(val)
         if (statement.operator === "=" || statement.operator === "+=" || statement.operator === "-=") {
           const setterMatch = target.match(/^(.+?)(->|\.)(\w+)$/);
@@ -280,9 +302,19 @@ export class StatementRenderer {
             }
           }
         }
+        // Render the assigned value type-aware: when the target's resolved
+        // C++ type sits on the other side of an enum↔integral boundary from
+        // the value (e.g. `this->nxt[r][c] = next` where `nxt` is
+        // `vector<vector<uint8_t>>` and `next` is an `enum class Cell`),
+        // `renderValueForTarget` inserts the required `static_cast`. Falls
+        // through to plain rendering when the target type is unknown. Demo #32 A.
+        const assignTargetType = this.expressionRenderer.inferLvalueCppType(statement.target, knownVariableTypes);
+        const renderedAssignValue = assignTargetType
+          ? this.expressionRenderer.renderValueForTarget(statement.value, assignTargetType, knownVariableTypes)
+          : this.expressionRenderer.render(statement.value, undefined, knownVariableTypes);
         return forHeader
-          ? `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)}`
-          : `${target} ${statement.operator} ${this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)};`;
+          ? `${target} ${statement.operator} ${renderedAssignValue}`
+          : `${target} ${statement.operator} ${renderedAssignValue};`;
       }
 
       if (statement.kind === "update") {
@@ -549,6 +581,18 @@ export class StatementRenderer {
     if (calleeTransformer) {
       callee = calleeTransformer(callee);
     }
+    // Apply the strategy's user-function rename to BARE free-function callees
+    // (no `.`/`->`/`::` — those are method/qualified calls, not free fns). This
+    // is the single chokepoint through which every call statement is rendered
+    // (function bodies, class methods, AND top-level executables spliced into
+    // the auto-generated entrypoint), so a rename like Arduino's `main` →
+    // `cuttlefish_main` propagates to every call site uniformly, including the
+    // `main()` call a top-level executable flows into `setup()`. Routed through
+    // mapFunctionName (which the entrypoint sentinel and the strategy both
+    // weigh in on), so it stays a no-op on targets with no rename.
+    if (!callee.includes('.') && !callee.includes("->") && !callee.includes("::")) {
+      callee = this.mapFunctionName(callee);
+    }
     callee = this.fixCrossModuleMethodCall(callee);
     callee = this.arrowGlobalPointerTarget(callee);
     const renderedArgs = statement.args.map((arg) => this.expressionRenderer.render(arg, undefined, knownVariableTypes)).join(", ");
@@ -810,32 +854,17 @@ export class StatementRenderer {
           ? `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} }`
           : `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} };`;
       }
-      // Enum → number implicit conversion. TS lets you write
-      // `const n: number = someEnumValue` (enums are numbers at runtime), but
-      // the lowered C++ `enum class` has no implicit conversion to int, so
-      // the emitted `int n = someEnumValue;` fails to compile. When the
-      // declared type is a numeric C++ type and the initializer is a known
-      // enum value (identifier of enum type, or an enum member access),
-      // wrap the initializer in `static_cast<int>(...)`. Mirrors the existing
-      // enum→int cast in console.log arg rendering above.
-      const isNumericTarget = /^(?:unsigned\s+)?(?:char|short|int|long|long\s+long|double|float)$/.test(declaredType)
-        || /^(?:u?int(?:8|16|32|64)_t|size_t)$/.test(declaredType);
-      const initializerIsEnumValue = (() => {
-        const init = statement.initializer;
-        if (!knownVariableTypes) return false;
-        if (init.kind === "identifier") {
-          const varInfo = knownVariableTypes.get(init.value);
-          return !!varInfo && this.enumNames.has(varInfo.cppType);
-        }
-        if (init.kind === "property-access" && init.isEnum) {
-          return true;
-        }
-        return false;
-      })();
-      const initRendered = this.expressionRenderer.render(statement.initializer, calleeTransformer, knownVariableTypes);
-      const finalInit = (isNumericTarget && initializerIsEnumValue)
-        ? `static_cast<int>(${initRendered})`
-        : initRendered;
+      // Enum ↔ integral storage boundary (SUPPORT_MATRIX §1.7). TS lets an
+      // enum and a number flow into each other freely (enums ARE numbers at
+      // runtime), but the lowered C++ `enum class` has NO implicit conversion
+      // in EITHER direction: `const n: int = Color.Red` AND
+      // `const c: Color = intCell` both fail. Route the initializer through
+      // the shared target-type-aware helper so both directions lower with the
+      // right `static_cast`, replacing the prior point-specific enum→int-only
+      // inline check. Demo #32 Finding A.
+      const finalInit = this.expressionRenderer.renderValueForTarget(
+        statement.initializer, declaredType, knownVariableTypes, calleeTransformer,
+      );
       return forHeader
         ? `${declaration} = ${finalInit}`
         : `${declaration} = ${finalInit};`;
@@ -1013,13 +1042,24 @@ export class StatementRenderer {
   }
 
   /**
-   * Map a function name to its platform-specific name (e.g. __cuttlefish_entrypoint__ -> setup/main).
+   * Map a function name to its platform-specific name.
+   *
+   * The entrypoint sentinel `__cuttlefish_entrypoint__` maps to the strategy's
+   * entrypoint name (`main` on native, `setup` on Arduino). For every OTHER
+   * name we delegate to `strategy.mapFunctionName`, which is where a target
+   * can rename a user function that would otherwise collide with a C++/
+   * framework reserved name — e.g. the Arduino strategy renames a user
+   * `function main()` to `cuttlefish_main`, because Arduino has no `main()`
+   * (the entrypoints are the auto-generated `setup()`/`loop()`), and a
+   * file-scope `static void main()` collides with C++'s required `int main()`
+   * signature. Routing every name through the strategy here is the single
+   * place that makes such renames actually take effect at emit time.
    */
   public mapFunctionName(originalName: string): string {
     if (originalName === "__cuttlefish_entrypoint__") {
       return this.strategy.entrypointFunctionName();
     }
-    return originalName;
+    return this.strategy.mapFunctionName(originalName);
   }
 
   /**

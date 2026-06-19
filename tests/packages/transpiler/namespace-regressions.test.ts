@@ -26,3 +26,27 @@ console.log('' + Devices.Registry.bump());
     expect(res.cpp).not.toMatch(/^\s+int32_t\s+count\s*=\s*0;/m);
   });
 });
+
+// ── Fix 2: namespace member access on an assignment target uses :: ─────────
+// `Devices.x = ...` must emit `Devices::x = ...`. A namespace is not an
+// object, so `.` is a parse error. The property-READ path already does this
+// (expression-renderer uses namespaceNames); the assign-TARGET path did not.
+describe("namespace: member access on assignment target uses ::", () => {
+  it("emits Devices::x on assignment (not Devices.x)", () => {
+    const src = `
+namespace Devices {
+  export let total: int32_t = 0;
+  export function add(n: int32_t): void {
+    Devices.total = Devices.total + n;
+  }
+}
+Devices.add(5);
+console.log('' + (Devices.total as int32_t));
+`;
+    const res = transpileArduino(src);
+    // Every Devices member access — including the assignment TARGET — must
+    // use ::, never a bare `Devices.`.
+    expect(res.cpp).not.toMatch(/Devices\./);
+    expect(res.cpp).toMatch(/Devices::total/);
+  });
+});
