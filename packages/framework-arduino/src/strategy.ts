@@ -7,7 +7,7 @@
 
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig } from "@typecad/cuttlefish/api/shared";
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
-import { generatePromiseRuntime, applyStringMethodRewrites } from "@typecad/cuttlefish/api/shared";
+import { generatePromiseRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
 import { resolveArduinoProfile } from "./profile";
 
@@ -147,8 +147,18 @@ export class ArduinoStrategy implements PlatformStrategy {
       "#define CUTTLEFISH_UNDEFINED 0",
       "#endif",
       "",
-      "template<typename T> inline bool cuttlefish_exists(T v) { return v != (T)CUTTLEFISH_UNDEFINED; }",
-      "template<typename T, typename U> inline T cuttlefish_nullish(T a, U b) { return (a != (T)CUTTLEFISH_UNDEFINED) ? a : (T)b; }",
+      "// Nullish helpers — overload set so value/struct types (which always",
+      "// exist) return false from the generic template, while scalars compare",
+      "// against CUTTLEFISH_UNDEFINED. The generic catch-all must NOT cast",
+      "// (T)CUTTLEFISH_UNDEFINED — that fails to compile for non-scalar T.",
+      "template<typename T> inline bool cuttlefish_is_nullish(const T&) { return false; }",
+      "inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }",
+      "inline bool cuttlefish_is_nullish(long v) { return v == CUTTLEFISH_UNDEFINED; }",
+      "inline bool cuttlefish_is_nullish(double v) { return v == (double)CUTTLEFISH_UNDEFINED; }",
+      "inline bool cuttlefish_is_nullish(bool v) { return v == false; }",
+      "template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }",
+      "template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }",
+      "template<typename T, typename U> inline T cuttlefish_nullish(const T& a, const U& b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }",
       "",
     ];
 
@@ -286,8 +296,8 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, CUTTLEFISH_STR_BUF_SIZE); return *this; }",
       "    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, CUTTLEFISH_STR_BUF_SIZE - 1); buf[CUTTLEFISH_STR_BUF_SIZE - 1] = 0; return *this; }",
       "    const char* c_str() const { return buf; }",
-      "    size_t size() const { return strlen(buf); }",
-      "    size_t length() const { return strlen(buf); }",
+      "    size_t size() const { return ::strlen(buf); }",
+      "    size_t length() const { return ::strlen(buf); }",
       "    int indexOf(const char* s) const { const char* p = strstr(buf, s); return p ? p - buf : -1; }",
       "    operator const char*() const { return buf; }",
       "    bool operator==(const char* o) const { return strcmp(buf, o) == 0; }",
@@ -295,15 +305,56 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }",
       "    bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }",
       "};",
-      "inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }",
-      "inline size_t (strlen)(const char* s) { return ::strlen(s); }"
+      "inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }"
     );
 
     lines.push(...profileLines);
     return lines;
   }
   profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
-    return this.getOrResolveProfile(program, ctx).diagnostics;
+    // Copy the cached profile's diagnostics into a FRESH array — the profile
+    // is cached by buildTarget (getOrResolveProfile), so mutating its
+    // `.diagnostics` array (by pushing the architecture-specific gates below)
+    // would accumulate diagnostics across transpilations on a shared strategy
+    // instance (the test harness reuses one ArduinoStrategy). Snapshot first.
+    const base = [...this.getOrResolveProfile(program, ctx).diagnostics];
+    // AVR-class targets (ATmega, megaAVR) ship NO <vector>/<string>/<iostream>
+    // and discourage heap allocation (see STDLIB_SUPPORT: hasVector=false,
+    // recommendedArrayImpl="static_array"). A function-LOCAL array initialized
+    // from a literal lowers to a fixed-size __tc_StaticArray<T,N> (the literal
+    // supplies N) and is fully supported — but a CLASS FIELD, a FUNCTION
+    // PARAMETER, or a RETURN TYPE annotated `T[]` / `Array<T>` resolves to
+    // `std::vector<T>`, which has NO valid lowering on these targets:
+    //   • there is no literal at the declaration site to recover a compile-time
+    //     size for __tc_StaticArray<T,N>, AND
+    //   • the storage is dynamically grown (.push in a loop) in the idiomatic
+    //     case, which a fixed-size buffer cannot model.
+    // Rather than emit `std::vector<T>` and let avr-g++ fail with an opaque
+    // "'vector' in namespace 'std' does not name a template type", surface a
+    // single clear, source-located error per offending site. This catches the
+    // whole family (fields, params, returns) at transpile time. The general
+    // `isHeapAllocationUnsafe` / `isExceptionSupportDisabled` AVR guards below
+    // follow the same architecture-gating pattern.
+    const arch = (ctx?.architecture ?? arduinoCtx(ctx)?.buildTarget?.split(":")?.[1] ?? "").toLowerCase();
+    const stdlib = this.getStdLibSupport(arch);
+    if (!stdlib.hasVector) {
+      base.push(...collectNoVectorStorageDiagnostics(program));
+    }
+    // Heap allocation via `new` is unsafe on no-heap architectures (AVR has
+    // 2 KB SRAM and no heap manager). This is a TARGET-AWARE gate, so it lives
+    // here in profileDiagnostics (which sees the FQBN-derived `arch`) rather
+    // than in the build-time IR validator — that validator only sees
+    // `boardConstants.architecture`, which is populated by the MCU/board
+    // import and is therefore ABSENT for programs with no such import (so the
+    // build-time gate silently missed `new` sites in import-less programs).
+    // Surfacing it here makes detection independent of import structure
+    // (demo #34 Finding A). Detection keys off the `newClassName` marker a
+    // user-class `new` now tags its raw IR node with, falling back to the
+    // text regex for untagged/hand-built IR.
+    if (this.isHeapAllocationUnsafe(arch)) {
+      base.push(...collectHeapAllocationDiagnostics(program, arch));
+    }
+    return base;
   }
 
   // ── Polyfill overrides ──────────────────────────────────────────────────
@@ -343,19 +394,25 @@ export class ArduinoStrategy implements PlatformStrategy {
       forwardDeclarations: [],
       helperStructs: [],
       helperFunctions: [`
-// CUTTLEFISH_STR_BUF_SIZE now defined in shimLines
 // Arduino string method polyfills
+// CUTTLEFISH_STR_BUF_SIZE guard is idempotent — shimLines re-declares it,
+// but polyfill helperFunctions emit BEFORE shimLines, so we must define it
+// here too for the static buffers below to compile.
+#ifndef CUTTLEFISH_STR_BUF_SIZE
+#define CUTTLEFISH_STR_BUF_SIZE 64
+#endif
 bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
-const char* __tc_toUpperCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
-const char* __tc_toLowerCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
-const char* __tc_trim(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t' || s[len-1] == '\n' || s[len-1] == '\r')) len--; int cplen = len < CUTTLEFISH_STR_BUF_SIZE - 1 ? len : CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\0'; return b; }
-const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= CUTTLEFISH_STR_BUF_SIZE) len = CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\0'; return b; }
+const char* __tc_toUpperCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = toupper(*p); return b; }
+const char* __tc_toLowerCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) *p = tolower(*p); return b; }
+const char* __tc_trim(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < CUTTLEFISH_STR_BUF_SIZE - 1 ? len : CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
+const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= CUTTLEFISH_STR_BUF_SIZE) len = CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
 const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
 const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
 const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
-const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\0'; return buf[slot]; }
+const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
+const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
 int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx]; }
+int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? (int)(p - s) : -1; }
 `],
       shimMacros: [],
       dependencies: [],
@@ -366,7 +423,15 @@ int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx];
       requiredIncludes: [],
       forwardDeclarations: [],
       helperStructs: [],
+      // __tc_StaticArray is also defined in transpiler-support.h (when that
+      // header is emitted). To be safe in BOTH cases (header present or not),
+      // wrap the definition in an idempotent guard so a redefinition is a
+      // no-op rather than an error. Emitted via helperFunctions with a marker
+      // fn so filterPolyfillHelpers keeps it when __tc_StaticArray appears in
+      // user code. Demo #23 Finding A (revised).
       helperFunctions: [`
+#ifndef __TC_STATIC_ARRAY_DEFINED
+#define __TC_STATIC_ARRAY_DEFINED
 template<typename T, int N>
 struct __tc_StaticArray {
     T data[N];
@@ -384,6 +449,7 @@ struct __tc_StaticArray {
     const T* begin() const { return &data[0]; }
     const T* end() const { return &data[_size]; }
 };
+#endif
 `],
       shimMacros: [],
       dependencies: [],
@@ -862,6 +928,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   needsStdExcept(): boolean { return false; }
   needsStdFunction(): boolean { return false; }
   mathHeader(): string { return "<math.h>"; }
+  cstringHeader(): string { return "<string.h>"; }
   needsVectorOverload(): boolean { return false; }
 
   // ── Enum underlying type ────────────────────────────────────────────────
@@ -1212,6 +1279,159 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 // ---------------------------------------------------------------------------
 // Module-level helpers used by ArduinoStrategy
 // ---------------------------------------------------------------------------
+
+/**
+ * On no-`std::vector` architectures (AVR/megaAVR), surface a clear,
+ * source-located error for every storage site whose type lowers to
+ * `std::vector<T>` — class FIELDS, function PARAMETERS, and function RETURN
+ * TYPES. A function-LOCAL array initialized from a literal is exempt: it
+ * lowers to a fixed-size `__tc_StaticArray<T,N>` (the literal supplies N).
+ *
+ * This is the family-wide gate for "dynamically-grown array storage is not
+ * supportable on a no-heap / no-STL target". Without it the transpiler emits
+ * `std::vector<T>` verbatim and the user sees an opaque avr-g++ error
+ * ("'vector' in namespace 'std' does not name a template type").
+ *
+ * Reused across the three storage classes so the rule stays consistent: any
+ * `T[]` / `Array<T>` / `ReadonlyArray<T>` that resolves to `std::vector<T>`
+ * (via parsedIsVector) and lives in a non-local storage slot is rejected.
+ */
+function collectNoVectorStorageDiagnostics(program: ProgramIR): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+
+  const vectorError = (site: string, typeName: string, span?: { filePath: string; startLine: number; startColumn: number }): Diagnostic => ({
+    severity: "error" as const,
+    code: "TS2CPP_NO_VECTOR_STORAGE",
+    message:
+      `${site} of type '${typeName}' lowers to 'std::vector<...>', which is not available on this target ` +
+      `(ATmega AVR has no <vector> and discourages heap allocation). Dynamically-grown array storage ` +
+      `cannot lower to the target's fixed-size '__tc_StaticArray<T,N>' (no compile-time size is recoverable).`,
+    hint:
+      "Use a function-local array (initialized from a literal — it lowers to a fixed-size buffer), " +
+      "a Map/Set for keyed storage, or a fixed-shape interface/struct field. See SUPPORT_MATRIX §1.5 (AVR note).",
+    line: span?.startLine,
+    column: span?.startColumn,
+    source: span?.filePath,
+  });
+
+  // Class fields — `class C { data: int32_t[]; }`.
+  for (const cls of program.classes) {
+    for (const field of cls.fields) {
+      // A field with a literal initializer is still typed by its ANNOTATION
+      // (which resolves to std::vector), so the initializer does not rescue
+      // it. Only the declared type matters here.
+      if (parsedIsVector(field.cppType)) {
+        diagnostics.push(vectorError(
+          `Class field '${cls.name}.${field.name}'`,
+          field.cppType,
+          { filePath: cls.sourceSpan.filePath, startLine: cls.sourceSpan.startLine, startColumn: cls.sourceSpan.startColumn },
+        ));
+      }
+    }
+  }
+
+  // Free-function parameters and return types.
+  for (const fn of program.functions) {
+    for (const param of fn.parameters) {
+      if (parsedIsVector(param.cppType)) {
+        diagnostics.push(vectorError(
+          `Parameter '${fn.originalName}(${param.name})'`,
+          param.cppType,
+          { filePath: fn.sourceSpan.filePath, startLine: fn.sourceSpan.startLine, startColumn: fn.sourceSpan.startColumn },
+        ));
+      }
+    }
+    if (parsedIsVector(fn.returnType)) {
+      diagnostics.push(vectorError(
+        `Return type of '${fn.originalName}'`,
+        fn.returnType,
+        { filePath: fn.sourceSpan.filePath, startLine: fn.sourceSpan.startLine, startColumn: fn.sourceSpan.startColumn },
+      ));
+    }
+  }
+
+  return diagnostics;
+}
+
+/**
+ * On no-heap architectures (AVR/megaAVR), surface a clear, source-located
+ * error for every `new ClassName(...)` heap allocation. AVR has only 2 KB of
+ * SRAM and no heap manager; `operator new` corrupts memory or silently fails.
+ *
+ * This is the target-aware companion to the build-time heap validator
+ * (`ir/heap-array-validation.ts`). The build-time gate keys off
+ * `boardConstants.architecture`, which is only populated when an MCU/board
+ * import is present — so import-less programs silently bypassed it. This
+ * profile-time gate derives `arch` from the FQBN (via `profileDiagnostics`)
+ * and therefore fires regardless of import structure (demo #34 Finding A).
+ *
+ * Detection keys off the `newClassName` marker a user-class `new` tags its
+ * raw IR node with (set in `expression-to-ir.ts`), falling back to a text
+ * regex for untagged / hand-built raw IR. The marker makes the detection
+ * structural (by construct) rather than textual.
+ */
+function collectHeapAllocationDiagnostics(program: ProgramIR, arch: string): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+
+  // Walk compound-statement bodies recursively (mirrors the small set of
+  // container kinds the build-time validator's walkNestedStatements recurses
+  // into). Kept local and minimal — the public walk helpers live in the
+  // cuttlefish package's ir/utils and are not exported through the api surface
+  // the strategy consumes.
+  const visit = (stmts: StatementIR[]): void => {
+    for (const stmt of stmts) {
+      if (stmt.kind === "var_decl") {
+        const init = (stmt as { initializer?: ExpressionIR }).initializer;
+        if (init && init.kind === "raw") {
+          const tagged = (init as { newClassName?: string }).newClassName;
+          const isHeapNew = !!tagged || /^new\s+\w/.test(init.value);
+          if (isHeapNew) {
+            const match = init.value.match(/^new\s+(\w+)/);
+            const className = tagged ?? (match ? match[1] : "unknown");
+            diagnostics.push({
+              severity: "error" as const,
+              code: "heap-allocation-avr",
+              message:
+                `Heap allocation (\`new ${className}()\`) is unsafe on ${arch.toUpperCase()} targets. ` +
+                `AVR has only 2 KB of SRAM and no heap manager; \`operator new\` will corrupt memory ` +
+                `or silently fail. Declare the object as a local or global variable instead.`,
+              hint:
+                `// Instead of:\n` +
+                `// const obj = new ${className}(args);\n` +
+                `// Use a global or local struct/object:\n` +
+                `// ${className} obj(args);  // stack-allocated in C++`,
+              line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
+              column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
+              source: "framework-arduino",
+            });
+          }
+        }
+      }
+      // Recurse into nested compound bodies.
+      const nested = (stmt as Record<string, unknown>);
+      if (Array.isArray(nested.body)) visit(nested.body as StatementIR[]);
+      if (Array.isArray(nested.thenBranch)) visit(nested.thenBranch as StatementIR[]);
+      if (Array.isArray(nested.elseBranch)) visit(nested.elseBranch as StatementIR[]);
+      if (Array.isArray(nested.tryBlock)) visit(nested.tryBlock as StatementIR[]);
+      if (Array.isArray(nested.catchBlock)) visit(nested.catchBlock as StatementIR[]);
+      if (Array.isArray(nested.finallyBlock)) visit(nested.finallyBlock as StatementIR[]);
+      if (Array.isArray(nested.cases)) {
+        for (const c of nested.cases as Array<{ body?: StatementIR[] }>) {
+          if (Array.isArray(c.body)) visit(c.body);
+        }
+      }
+    }
+  };
+
+  visit(program.topLevelStatements);
+  for (const fn of program.functions) visit(fn.statements);
+  for (const cls of program.classes) {
+    for (const m of cls.methods) visit(m.statements);
+    if (cls.constructor) visit(cls.constructor.statements);
+  }
+
+  return diagnostics;
+}
 
 /**
  * Detect whether the program uses console.* calls.

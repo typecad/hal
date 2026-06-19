@@ -1,31 +1,37 @@
 ﻿// ---------------------------------------------------------------------------
-// Heap Allocation Validator
+// Heap Allocation Validator (retired — moved to the emit-time profile gate)
 //
-// Validates that heap allocation via `new` is not used on architectures
-// where it is unsafe. The platform strategy determines which architectures
-// lack safe heap support (e.g. AVR with 2 KB SRAM, no heap manager).
+// Heap allocation via `new` on no-heap architectures (AVR, etc.) is now
+// rejected by the Arduino strategy's `profileDiagnostics`
+// (`framework-arduino/src/strategy.ts` `collectHeapAllocationDiagnostics`).
 //
-// Arrays and class instances that are managed by the TypeCAD framework
-// (StaticArray, peripheral objects created by board-init, compile-time-only
-// strategy instances) are intentionally excluded from this check.
+// WHY THE MOVE: this build-time validator keyed off `boardConstants.architecture`,
+// which is only populated when an MCU/board `import` is present. Programs with
+// no such import silently bypassed it — so demo #33's `new Accumulator()`
+// passed while a HAL-importing demo's `new Blinker()` failed, for the same
+// source pattern. The profile-time gate derives `arch` from the FQBN
+// (`frameworkData.buildTarget`), so it fires regardless of import structure
+// (demo #34 Finding A). It also keys off the `newClassName` marker a user-class
+// `new` tags its raw IR node with (set in `expression-to-ir.ts`), making
+// detection structural rather than textual.
+//
+// The export is kept (returns `[]`) so `validation-orchestrator.ts`'s import
+// stays valid; the real work happens at emit time.
 // ---------------------------------------------------------------------------
 
 import type { Diagnostic } from '../types';
 import type { BoardConstants } from './board-resolver';
-import type { StatementIR, VariableDeclarationIR } from '../api';
+import type { StatementIR } from '../api';
 import type { PlatformStrategy } from '../api/shared';
-import { walkNestedStatements, walkProgramIR } from './utils/walk-ir';
 
 /**
- * Validate that user-written `new ClassName(...)` expressions are not used on
- * architectures that lack safe heap support.
- *
- * @param program - The program IR to validate
- * @param boardConstants - Board constants containing architecture info
- * @returns Array of error diagnostics for heap-allocation usage
+ * @deprecated Heap allocation is now validated at emit time by the platform
+ * strategy's `profileDiagnostics` (see framework-arduino `collectHeapAllocationDiagnostics`).
+ * This build-time stub returns no diagnostics. Kept to preserve the
+ * `validation-orchestrator.ts` import; remove that call site when convenient.
  */
 export function validateHeapArrayUsage(
-  program: {
+  _program: {
     topLevelStatements: StatementIR[];
     functions: Array<{ statements: StatementIR[] }>;
     classes: Array<{
@@ -33,62 +39,8 @@ export function validateHeapArrayUsage(
       constructor?: { statements: StatementIR[] };
     }>;
   },
-  boardConstants: BoardConstants | undefined,
-  strategy?: PlatformStrategy,
+  _boardConstants: BoardConstants | undefined,
+  _strategy?: PlatformStrategy,
 ): Diagnostic[] {
-  const diagnostics: Diagnostic[] = [];
-
-  const arch = boardConstants?.get('architecture') as string | undefined;
-  if (!arch || !strategy?.isHeapAllocationUnsafe?.(arch)) {
-    return diagnostics;
-  }
-
-  const checkStatement = (stmt: StatementIR): void => {
-    if (stmt.kind === 'var_decl') {
-      const decl = stmt as VariableDeclarationIR;
-      const init = decl.initializer;
-      if (
-        init &&
-        init.kind === 'raw' &&
-        typeof init.value === 'string' &&
-        /^new\s+\w/.test(init.value)
-      ) {
-        const match = init.value.match(/^new\s+(\w+)/);
-        const className = match ? match[1] : 'unknown';
-        diagnostics.push({
-          severity: 'error',
-          code: 'heap-allocation-avr',
-          message:
-            `Heap allocation (\`new ${className}()\`) is unsafe on ${arch.toUpperCase()} targets. ` +
-            `AVR has only 2 KB of SRAM and no heap manager; \`operator new\` will corrupt memory or ` +
-            `silently fail. Declare the object as a local or global variable instead.`,
-          hint:
-            `// Instead of:\n` +
-            `// const obj = new ${className}(args);\n` +
-            `// Use a global or local struct/object:\n` +
-            `// ${className} obj(args);  // stack-allocated in C++`,
-          line: stmt.sourceSpan?.startLine,
-          column: stmt.sourceSpan?.startColumn,
-          source: 'heap-array-validation',
-        });
-      }
-    }
-
-    walkNestedStatements(stmt, checkStatement);
-  };
-
-  for (const stmt of program.topLevelStatements) checkStatement(stmt);
-  for (const fn of program.functions) {
-    for (const stmt of fn.statements) checkStatement(stmt);
-  }
-  for (const cls of program.classes) {
-    for (const method of cls.methods) {
-      for (const stmt of method.statements) checkStatement(stmt);
-    }
-    if (cls.constructor) {
-      for (const stmt of cls.constructor.statements) checkStatement(stmt);
-    }
-  }
-
-  return diagnostics;
+  return [];
 }

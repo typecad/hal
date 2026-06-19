@@ -2,7 +2,7 @@
 import { Diagnostic } from "../types";
 import { ExpressionIR, StatementIR } from "../api";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions } from "./build-ir-state";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext } from "./build-ir-state";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
@@ -214,6 +214,19 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isIdentifier(receiverNode) && filteredArrayLengthVars.has(receiverNode.text)) {
       return `__FILTERED_LEN__${filteredArrayLengthVars.get(receiverNode.text)!}`;
     }
+    // Demo #17 Finding C — activeCArrayVars is FUNCTION-SCOPED (cleared by
+    // resetFunctionScopeState per function), so it is the authoritative signal
+    // for THIS function's typed-array / raw-C-array locals. mutableArrayVars,
+    // by contrast, is FILE-SCOPED (populated by a pre-scan and survives across
+    // functions), so a name like `buf` that was mutated in fn1-fn4 stays in
+    // mutableArrayVars when a DIFFERENT `buf` (a `new Uint8Array([...])`
+    // literal) is declared in fn5. Checking activeCArrayVars FIRST prevents the
+    // stale file-level mutableArrayVars entry from forcing the function-local
+    // raw C array down the `.size()` path (avr-g++: "request for member 'size'
+    // in 'buf', which is of non-class type 'uint8_t [5]'").
+    if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
+      return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
+    }
     if (ts.isIdentifier(receiverNode) && mutableArrayVars.has(receiverNode.text)) {
       // std::vector has no `.length()` member (that's std::string); use
       // `.size()`. Cast to long long to match loop-counter type and avoid
@@ -224,12 +237,28 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // hole.
       return `static_cast<long long>(${safeText}.size())`;
     }
-    if (ts.isIdentifier(receiverNode) && activeCArrayVars.has(receiverNode.text)) {
-      return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
-    }
     if (ts.isIdentifier(receiverNode) && activeArrayLiteralVars.has(receiverNode.text)) {
-      const varType = getCurrentIrTypeScope()?.locals.get(receiverNode.text);
-      if (typeof varType === 'string' && (varType.startsWith('std::vector<') || varType.startsWith('StaticArray<'))) {
+      const varName = receiverNode.text;
+      const varType = getCurrentIrTypeScope()?.locals.get(varName);
+      // `.size()` is valid ONLY when the local actually lowered to something
+      // with a `.size()` METHOD — a std::vector OR a promoted
+      // __tc_StaticArray. A NON-mutated local array literal on a target that
+      // does NOT need std::vector (`!strategy.needsStdVector()`, e.g. Arduino
+      // AVR) lowers to a RAW C array (`T name[] = {...}`), even though its
+      // varType still resolves to `std::vector<...>`, and a raw C array has NO
+      // `.size()` member. The emit-side discriminator (class-emitter.ts
+      // `addCArrayIfNotMutable`) uses exactly `!needsStdVector()` to decide
+      // raw-C-array vs std::vector, so we mirror it here. Previously this
+      // branch tested only the varType prefix, so a read-only local literal
+      // emitted `name.size()` on a raw C array → avr-g++ "request for member
+      // 'size' in 'name', which is of non-class type". `mutableArrayVars`
+      // membership is the second signal: a mutated local is promoted to
+      // __tc_StaticArray (variables.ts), which DOES have `.size()`. Demo #33.
+      const emitsRawCArray = !getContext().activeStrategy?.needsStdVector();
+      const loweredToContainer =
+        (typeof varType === 'string' && varType.startsWith('StaticArray<')) ||
+        (typeof varType === 'string' && varType.startsWith('std::vector<') && (!emitsRawCArray || mutableArrayVars.has(varName)));
+      if (loweredToContainer) {
         // Demo #27 Finding C — `.size()` not `.length()` on a vector/StaticArray
         // local (see the mutableArrayVars comment above).
         return `static_cast<long long>(${safeText}.size())`;
@@ -253,7 +282,28 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // Resolve by concrete cppType first so std::string vars render member calls
     // even when their resolved type is const char* (string-literal initialized).
     if (ts.isIdentifier(receiverNode)) {
-      const varType = getCurrentIrTypeScope()?.locals.get(receiverNode.text);
+      // locals holds function-scoped bindings; globals holds top-level
+      // (module-scope) bindings, which survive resetFunctionScopeState. A
+      // top-level `const S: int32_t[] = [...]` accessed inside a function is
+      // only in globals, so fall back to it.
+      const varType = getCurrentIrTypeScope()?.locals.get(receiverNode.text)
+        ?? getCurrentIrTypeScope()?.globals.get(receiverNode.text);
+      // Demo #17 Finding B — a typed-array local (`new Uint8Array([...])` /
+      // `new Int8Array(N)`) lowers to a RAW C array whose cppType is a static
+      // array spelling (`uint8_t[5]`, `int32_t[8]`) OR a bare element pointer
+      // (`uint8_t*`). Both forms have NO `.size()` member, so `.length` must
+      // lower to sizeof. The activeCArrayVars set is the canonical signal
+      // (populated by the variable transformer for `new <TypedArray>(...)`);
+      // the cppType shape check is a belt-and-braces fallback for cases where
+      // registration was missed (e.g. initializer took a non-standard path).
+      // Without this, `.length` fell through to the default `.size()` and
+      // avr-g++ rejected it ("request for member 'size' in 'buf', which is of
+      // non-class type 'uint8_t [5]'").
+      const isRawCArrayType = typeof varType === 'string'
+        && /\]\s*$/.test(varType); // ends with `[N]` or `[]`
+      if (activeCArrayVars.has(receiverNode.text) || isRawCArrayType) {
+        return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
+      }
       if (varType === "std::string") {
         // Demo #30 Finding B — cast `std::string::length()` to `long long` so
         // it matches the array/vector `.size()` lowering (also `long long`)
@@ -263,6 +313,30 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         // Casting here makes `.length` uniform across every string/array/
         // container receiver — one signed integral type, one format specifier.
         return `static_cast<long long>(${safeText}.length())`;
+      }
+      // Demo #33 Finding B — a top-level `const` array literal on a target
+      // that does NOT need std::vector (`!strategy.needsStdVector()`, e.g.
+      // Arduino AVR) emits as a RAW C array (`int32_t S[] = {...}`), even
+      // though its declared type resolves to `std::vector<...>`. It is NOT in
+      // `mutableArrayVars` (only mutated locals promote to StaticArray) NOR
+      // in `activeArrayLiteralVars` (which resetFunctionScopeState clears
+      // before each function, so a top-level array isn't visible from inside
+      // a function body). So `.length` fell through to the default `.size()`
+      // — invalid for a raw C array (avr-g++: "request for member 'size' in
+      // 'S', which is of non-class type"). The emit-side discriminator
+      // (class-emitter.ts `addCArrayIfNotMutable`) uses `!needsStdVector()`,
+      // mirrored here: a top-level const array on a no-std::vector target is
+      // a raw C array → sizeof. On native/generic (`needsStdVector()` true)
+      // it really is a std::vector → .size(). The function-local path is
+      // handled by the activeArrayLiteralVars branch above (FIX-4).
+      if (typeof varType === 'string' && varType.startsWith('std::vector<')) {
+        const emitsRawCArray = !getContext().activeStrategy?.needsStdVector();
+        const isTopLevel = !getCurrentIrTypeScope()?.locals.has(receiverNode.text)
+          && getCurrentIrTypeScope()?.globals.has(receiverNode.text);
+        if (emitsRawCArray && isTopLevel) {
+          return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
+        }
+        return `static_cast<long long>(${safeText}.size())`;
       }
       if (varType === "const char*" || varType === "char*") {
         return `strlen(${safeText})`;
@@ -1426,7 +1500,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
 
     const resolvedCtorText = nestedClassAliases.get(ctorText) ?? ctorText;
-    return { kind: "raw", value: `new ${resolvedCtorText}(${argsText})` };
+    // Tag the node with the constructed class name so the heap-allocation
+    // validator can detect heap allocation by CONSTRUCT (demo #34 Finding A),
+    // not by pattern-matching the `raw` text (whose presence depended on
+    // unrelated import structure).
+    return { kind: "raw", value: `new ${resolvedCtorText}(${argsText})`, newClassName: resolvedCtorText };
   }
   if (ts.isStringLiteral(expr)) {
     return { kind: "string", value: expr.text };

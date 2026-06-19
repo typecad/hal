@@ -44,7 +44,7 @@ export type ExpressionIR =
   | { kind: "string"; value: string }
   | { kind: "boolean"; value: boolean }
   | { kind: "identifier"; value: string }
-  | { kind: "raw"; value: string }
+  | { kind: "raw"; value: string; newClassName?: string }
   | { kind: "await"; value: ExpressionIR }
   | { kind: "ternary"; condition: ExpressionIR; whenTrue: ExpressionIR; whenFalse: ExpressionIR }
   | { kind: "array"; elementType: string; elements: ExpressionIR[] }
