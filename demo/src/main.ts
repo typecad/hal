@@ -20,25 +20,17 @@ namespace Devices {
     return DEFAULT_LABEL + ":" + id;
   }
 
-  // Nested class inside a namespace. The `static count` field now emits
-  // `static inline` correctly (Finding 2 fix). REMAINING GAP: a three-level
-  // access `Devices.Registry.count` (namespace → class static → field) emits
-  // `Devices::Registry.count` — mixed `::`/`.`. The static-class member needs
-  // `Devices::Registry::count`. The Finding-3 assign-target fix covered
-  // single-level `Ns.x`; the multi-level `Ns.Class.member` case (across
-  // reads/conditions/assigns) is a distinct remaining sub-finding. Worked
-  // around here with a namespace-level let so the rest of the showcase
-  // compiles.
+  // Nested class inside a namespace.
   export class Registry {
+    static count: int32_t = 0;
     static register(): int32_t {
-      Devices.registryCount = Devices.registryCount + 1;
-      if (Devices.registryCount > Devices.MAX_COUNT) {
-        Devices.registryCount = Devices.MAX_COUNT;
+      Devices.Registry.count = Devices.Registry.count + 1;
+      if (Devices.Registry.count > Devices.MAX_COUNT) {
+        Devices.Registry.count = Devices.MAX_COUNT;
       }
-      return Devices.registryCount;
+      return Devices.Registry.count;
     }
   }
-  export let registryCount: int32_t = 0;
 }
 
 // ── Abstract base with an abstract method + a concrete method ──────────────
