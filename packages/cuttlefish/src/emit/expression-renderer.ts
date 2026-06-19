@@ -12,6 +12,7 @@ import type { Diagnostic } from "../types";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings";
 import { accessorGetterName } from "./utils/cpp-helpers";
+import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers";
 import { renderPeripheralProperty } from "../mapping/peripheral-names";
 import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike } from "../api/shared/cpp-type-ir";
 
@@ -259,8 +260,13 @@ export class ExpressionRenderer {
         if (resolved?.expression) {
           rendered = resolved.expression;
         } else if (resolved?.code) {
-          // Strip trailing semicolon if present for expression context
-          rendered = resolved.code.replace(/;\s*$/, "");
+          // Strip trailing semicolon and a leading `return ` for expression
+          // context. HAL rawCpp definitions (e.g. Preferences.getString) bake
+          // in `return X;` for statement context; in expression context the
+          // `return` keyword is invalid (avr-g++: "expected primary-expression
+          // before 'return'") and would leak as
+          // `strcmp(return Preferences.getString(...), ...)`. Demo #33 Finding C.
+          rendered = resolved.code.replace(/;\s*$/, "").replace(/^\s*return\s+/, "");
         } else {
           // Unregistered HAL op: surface as a warning so the user sees it, but
           // keep HAL as an extensibility point. The bare comment is retained
@@ -373,6 +379,16 @@ export class ExpressionRenderer {
       case "paren":
         return this.inferExpressionCppType(expr.inner, knownVariableTypes);
       case "ternary": {
+        // A ternary of two string LITERALS renders as `(c ? "a" : "b")` — a
+        // const char*, which has no .c_str() member. inferExpressionCppType
+        // returns "std::string" for a `string` IR node, and the equality check
+        // below would then short-circuit to "std::string", so the
+        // concat/snprintf path wraps the ternary in an invalid `.c_str()`
+        // (demo #34 Finding D). Guard the both-branches-are-string-literals
+        // case FIRST. Only literal string operands are narrowed; a branch that
+        // is a real std::string variable keeps the std::string widening.
+        const bothStringLiterals = expr.whenTrue.kind === "string" && expr.whenFalse.kind === "string";
+        if (bothStringLiterals) return "const char*";
         const whenTrue = this.inferExpressionCppType(expr.whenTrue, knownVariableTypes);
         const whenFalse = this.inferExpressionCppType(expr.whenFalse, knownVariableTypes);
         if (whenTrue && whenFalse && whenTrue === whenFalse) return whenTrue;
@@ -387,6 +403,21 @@ export class ExpressionRenderer {
             && expr.object.kind === "identifier"
             && this.stringEnumNames.has(expr.object.value)) {
           return "const char*";
+        }
+        // Numeric enum member access (e.g. Cell.Dead) resolves to the enum
+        // type itself, so a wrapping expression (ternary, paren, call result)
+        // whose branches are enum members infers to the enum and the
+        // enum↔integral storage boundary can fire. Without this, `Cell.Dead`
+        // inferred to `undefined` (Cell is an enum name, not a variable, so
+        // neither the known-variable map nor interface-field map hit), and a
+        // ternary `(c ? Cell.Dead : Cell.Alive)` stored into `uint8_t`
+        // storage missed the boundary cast. Demo #32 Finding A.
+        if (
+          expr.object.kind === "identifier"
+          && this.enumNames.has(expr.object.value)
+          && !this.stringEnumNames.has(expr.object.value)
+        ) {
+          return expr.object.value;
         }
         if (expr.property === "length" || expr.property === "size") return "int";
         if (expr.object.kind === "raw" && expr.object.value === "this") {
@@ -791,9 +822,15 @@ export class ExpressionRenderer {
       case "raw": {
         const rendered = this.render(expr, exprTransformer);
         // String-returning helpers (__tc_toUpperCase, etc.) use %s.
-        // These helpers return std::string, so snprintf needs .c_str().
+        // On hosted targets these return std::string, so snprintf needs
+        // .c_str(). On targets WITHOUT std::string (e.g. Arduino AVR) the
+        // helpers already return const char*, so .c_str() would be a redundant
+        // member access on a non-class type (avr-g++: "request for member
+        // 'c_str' in '__tc_trim(...)', which is of non-class type 'const
+        // char*'"). Demo #35 Finding A.
         if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/.test(rendered)) {
-          return { format: "%s", arg: `${rendered}.c_str()`, estimatedLength: 32 };
+          const needsCStr = this.strategy.needsStdString();
+          return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 32 };
         }
         // Check if it's a property access on a string (e.g. s.length)
         if (expr.kind === "property-access" && (expr.property === "length" || expr.property === "size")) {
@@ -914,6 +951,158 @@ export class ExpressionRenderer {
     }
     return rendered;
   }
+
+  /**
+   * Render a value that will be stored into an lvalue of a known C++ type
+   * (an `assign` target, a `var_decl` initializer, a `push_back` argument,
+   * ...). Centralizes the **enum ↔ integral storage boundary** so every
+   * assignment/initialization site lowers consistently:
+   *
+   *   - target is a numeric C++ type, value is a numeric-enum operand →
+   *     `static_cast<int>(value)` (enum → int). This is the existing
+   *     `renderEnumSafeValue` direction, now driven by the target type
+   *     instead of duplicated per site.
+   *   - target is a C++ `enum class`, value is a numeric/element-access
+   *     operand → `static_cast<EnumType>(value)` (int → enum). C++ `enum
+   *     class` does not implicitly convert FROM an integral storage type
+   *     either, so reading an `int`/`uint8_t` cell back into an enum-typed
+   *     local needs the reverse cast. SUPPORT_MATRIX §1.7.
+   *
+   * This closes the "enum↔integral storage boundary" family — the previous
+   * point-specific casts handled enum-as-array-index (demo #28 E) and
+   * enum-as-Map-key (demo #28 E review) but NOT enum stored into integral
+   * storage, integral storage read back into an enum, or an enum value
+   * passed to `push_back` on an integral-element vector. Demo #32 Finding A.
+   *
+   * String enums (`const char*`) and string-like targets are passed through
+   * unchanged. Unknown/auto target types are passed through unchanged
+   * (safer than a wrong cast).
+   */
+  public renderValueForTarget(
+    expr: ExpressionIR,
+    targetType: string | undefined,
+    knownVariableTypes?: Map<string, KnownVariableInfo>,
+    exprTransformer?: (expr: string) => string,
+  ): string {
+    const rendered = this.render(expr, exprTransformer, knownVariableTypes);
+    if (!targetType) return rendered;
+    const normalizedTarget = targetType.trim();
+    // Never cast into string-like storage — enums that lower to const char*
+    // (string enums) already match, and a string target is never an enum boundary.
+    if (this.isStringLikeCppType(normalizedTarget)) return rendered;
+
+    const valueIsEnum = !this.isStringEnumOperand(expr, undefined)
+      && this.isEnumComparisonOperand(expr, this.inferExpressionCppType(expr, knownVariableTypes));
+    const targetIsEnum = this.enumNames.has(normalizedTarget) && !this.stringEnumNames.has(normalizedTarget);
+    const targetIsIntegral = INTEGRAL_CPP_TYPE_RE.test(normalizedTarget);
+
+    // enum value → integral storage: cast the value to int.
+    if (targetIsIntegral && valueIsEnum && !/^static_cast<[^>]+>\(/.test(rendered)) {
+      return this.renderEnumSafeValue(expr, knownVariableTypes);
+    }
+    // integral value → enum storage: cast the value to the enum type.
+    if (targetIsEnum && !valueIsEnum) {
+      const valueType = this.inferExpressionCppType(expr, knownVariableTypes);
+      const valueIsIntegral = valueType !== undefined && INTEGRAL_CPP_TYPE_RE.test(valueType);
+      if (valueIsIntegral && !/^static_cast<[^>]+>\(/.test(rendered)) {
+        return `static_cast<${normalizedTarget}>(${rendered})`;
+      }
+    }
+    return rendered;
+  }
+
+  /**
+   * Resolve a rendered C++ lvalue STRING (the `target` carried by an `assign`
+   * IR node, e.g. `this->nxt[r][c]`, `cells[i]`, `flag`) to its declared C++
+   * element/value type. This is the string-target counterpart to
+   * `inferExpressionCppType`'s element-access / property-access / identifier
+   * branches: the assign target is already rendered to text at IR-build time,
+   * so the emit layer must recover its type from the text + the shared type
+   * maps (the same maps `inferExpressionCppType` consults).
+   *
+   * Structural, not regex-rewrite: it splits the base from trailing `[...]`
+   * subscripts, resolves the base via the class-field / local / global-pointer
+   * maps, then unwraps one `std::vector<T>` / `StaticArray<T,N>` layer per
+   * subscript. Returns `undefined` when the type can't be resolved confidently
+   * — callers fall through to plain rendering (never an incorrect cast).
+   * Demo #32 Finding A.
+   */
+  public inferLvalueCppType(
+    target: string,
+    knownVariableTypes?: Map<string, KnownVariableInfo>,
+  ): string | undefined {
+    let depth = 0;
+    let base = target.trim();
+    // Strip trailing `[...]` subscripts (balanced: a subscript body holds no
+    // nested brackets in practice because element-access lowers one level at a
+    // time; a `this->m[a[b]]` would render `this->m[a[b]]` whose outermost
+    // `[a[b]]` we still strip correctly via the greedy-non-bracket regex below
+    // — the inner `[b]` is left on `a` and resolved as a separate base, which
+    // is fine because we only need the OUTER element type here).
+    while (/\[[^\[\]]*\]\s*$/.test(base)) {
+      base = base.replace(/\[[^\[\]]*\]\s*$/, "").trim();
+      depth++;
+    }
+    const baseType = this.resolveLvalueBaseType(base, knownVariableTypes);
+    if (!baseType) return undefined;
+    if (depth === 0) return baseType;
+    // Unwrap `depth` layers of std::vector<T> / StaticArray<T,N>.
+    let inner = baseType;
+    for (let i = 0; i < depth; i++) {
+      const parsed = parseCppType(inner);
+      if (parsed.kind === "vector" || parsed.kind === "staticArray" || parsed.kind === "cArray") {
+        inner = renderCppType(parsed.element);
+      } else if (parsed.kind === "named" && parsed.name === "StaticArray" && parsed.args?.[0]) {
+        inner = renderCppType(parsed.args[0]);
+      } else {
+        return undefined;
+      }
+    }
+    return inner;
+  }
+
+  /**
+   * Resolve a subscript-free rendered base (`this->field`, `obj->field`,
+   * `obj.field`, or a bare local name) to its declared C++ type. The string
+   * counterpart of `inferExpressionCppType`'s identifier / property-access
+   * branches. Demo #32 Finding A.
+   */
+  private resolveLvalueBaseType(
+    base: string,
+    knownVariableTypes?: Map<string, KnownVariableInfo>,
+  ): string | undefined {
+    const memberMatch = base.match(/^(.+?)(?:->|\.)(\w+)$/);
+    if (memberMatch) {
+      const [, objStr, propName] = memberMatch;
+      const objBase = objStr.trim();
+      // `this->field` / `(*this).field`: class fields are seeded into the
+      // known-variable-types map under their bare name (mirrors how
+      // inferExpressionCppType's property-access `this` branch resolves), so a
+      // `this->prop` lookup hits `knownVariableTypes.get(prop)`.
+      if (objBase === "this" || objBase === "(*this)") {
+        return knownVariableTypes?.get(propName)?.cppType;
+      }
+      // `obj->field` / `obj.field`: resolve the object's type, then look the
+      // field up in the interface-field-type map for that struct.
+      const objType = this.resolveLvalueBaseType(objBase, knownVariableTypes);
+      if (objType) {
+        const structName = this.normalizeRecordType(objType).replace(/\s*\*$/, "").trim();
+        const fieldType = this.interfaceFieldTypes.get(structName)?.get(propName);
+        if (fieldType) return fieldType;
+      }
+      return undefined;
+    }
+    // Bare local / parameter / global.
+    if (/^\w+$/.test(base)) {
+      const local = knownVariableTypes?.get(base)?.cppType;
+      if (local) return local;
+      const ptr = this.globalPointerVarTypes?.get(base);
+      if (ptr) return ptr;
+      if (this.stringVarNames?.has(base)) return "std::string";
+    }
+    return undefined;
+  }
+
 
   /**
    * Shared enum-operand wrapping for binary operators. Detects whether each
