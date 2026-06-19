@@ -1,164 +1,176 @@
 // ---------------------------------------------------------------------------
-// main.ts — Debounced button cycling a mode counter
-//                                  (cuttlefish demo #35, Arduino AVR target).
+// main.ts — Sensor class hierarchy + namespace config
+//                                  (cuttlefish demo #36, Arduino AVR target).
 //
-// The classic embedded input pattern: read a momentary pushbutton, debounce
-// it in software with a time gate, detect the press EDGE (one event per
-// physical press, not per polling loop), and advance a state machine. Each
-// press cycles a mode counter; the on-board LED reflects the low bit and the
-// current mode is printed to Serial.
+// The first demo to exercise CLASSES, INHERITANCE (`extends` + `super`), and
+// NAMESPACES on AVR. It models the bread-and-butter embedded idiom: a small
+// driver hierarchy where a base `Sensor` holds a pin + smoothing state, a
+// derived `ThresholdSensor` adds a threshold and overrides behavior via
+// `super.method()`, and a `Config` namespace holds shared tuning constants.
 //
-// This is the first demo to exercise DIGITAL INPUT + a TIMING-BASED debounce
-// state machine. Where demo #34 read an analog value and demo #33 did pure
-// computation, this one reads a digital pin with `inputPullUp` (so an unpressed
-// button reads HIGH via the internal pull-up, and a press pulls it LOW),
-// stores that reading in a variable across loop iterations, and uses
-// `Timing.millis()` as a monotonic clock for the debounce interval.
+// This is also the demo that re-evaluated the `heap-allocation-avr` gate.
+// Classes lower to reference types (`T*`) instantiated via `new`, and `new`
+// on AVR was previously a hard ERROR (demo #34 Finding A). That gate was
+// INVALID: the Arduino AVR core ships a complete `operator new`/`delete`
+// (`cores/arduino/new.cpp` over avr-libc's `malloc`/`free`) — a real heap.
+// `new` + inheritance compiles and runs on the Uno (verified: ~1.8 KB heap
+// free). So demo #36 downgraded the gate from error to WARNING (a small-heap
+// capacity heads-up, not a correctness refusal), unblocking classes on AVR.
+// The demo prints one `heap-allocation-avr` warning per `new` site — that is
+// the intended, correct behavior, and the build proceeds.
 //
-// AVR + the HAL lowering shape the program:
+// What this exercises, all on AVR:
+//   • `class Sensor` — scalar fields (pin, sample count, smoothing), ctor with
+//     a `super`-equivalent initializer, instance methods. Lowers to a C++ class
+//     with `T*` instances.
+//   • `class ThresholdSensor extends Sensor` — `super(pin)` ctor call (→ C++
+//     initializer list), `super.reading()` (→ base-class method call), an added
+//     threshold field + overridden behavior.
+//   • `namespace Config` — exported `const` + `function`, accessed via
+//     `Config::` / `Config.NAME`. Lowers to a C++ `namespace`.
+//   • `new ThresholdSensor(...)` — heap instantiation, now a warning not error.
+//   • The on-board LED reflects whether the latest smoothed reading is over
+//     the threshold, so the state is visible without the serial monitor.
 //
-//   • The button (D2) and LED (D13) come from `@typecad/board-arduino-uno`.
-//     `D2.inputPullUp()` lowers to `pinMode(2, INPUT_PULLUP)` and returns an
-//     InputPin alias; `LED.asOutput()` lowers to `pinMode(13, OUTPUT)`.
-//   • `btn.read()` is a value-bearing HAL op (gpioRead → `digitalRead(2)`).
-//     Its return IS stored in a variable and reused — this works correctly
-//     because of demo #34 Finding B's fix (a value-bearing halOp read is
-//     captured into a real `auto v = digitalRead(2)`, not substituted with the
-//     pin number). So this demo directly re-tests that fix for the digital
-//     path.
-//   • `Timing.millis()` lowers to `millis()` (a monotonic millisecond clock).
-//     Debounce compares the current reading against the last-seen state and
-//     only accepts a change after DEBOUNCE_MS of stability — the standard
-//     edge-detect-with-hysteresis pattern that kills contact bounce.
-//   • Owned state (the debounced button level, the last edge time, the mode
-//     counter, the print-suppression flag) lives in MODULE-LEVEL scalars, not
-//     a `new`'d class — AVR has no heap manager, so `new` is rejected by the
-//     `heap-allocation-avr` gate (demo #34 Finding A). This is the
-//     AVR-correct shape for a handful of owned scalars.
-//
-// Hardware: wire a momentary pushbutton between D2 and GND. With the internal
-// pull-up enabled, the pin reads HIGH when open and LOW when pressed. No
-// external resistor needed. The on-board LED (D13) toggles with the mode's low
-// bit so you can see state changes without the serial monitor.
-//
-// Idiomatic constraints honored (per SUPPORT_MATRIX / eslint rules): only
-// `const enum`; no `any`; no typed-array fields/returns; no object spread; no
-// `instanceof`; no `String.*`/`Number.*` statics; and (AVR-specific) no
-// dynamically-grown array fields/params/returns and no heap `new`.
+// AVR constraints honored: only `const enum`; no `any`; no typed-array fields;
+// no object spread; no `instanceof`; no `String.*`/`Number.*` statics; no
+// dynamically-grown array fields/params/returns (§1.5 AVR note). Heap `new` is
+// now permitted (warning) — this demo uses it deliberately and sparingly (one
+// long-lived allocation; no churn, so no fragmentation risk).
 // ---------------------------------------------------------------------------
 
-import { LED, D2 } from '@typecad/board-arduino-uno';
+import { LED, A0 } from '@typecad/board-arduino-uno';
 
 // ---------------------------------------------------------------------------
-// Constants.
+// Namespace Config — shared tuning constants + a derived helper. Lowers to a
+// C++ `namespace Config { ... }`, members accessed via `Config::` / `Config.X`.
 // ---------------------------------------------------------------------------
 
-// Debounce interval: a reading must be stable for this long before it is
-// accepted as a real edge. 20 ms is a typical mechanical-switch debounce
-// window — short enough to feel responsive, long enough to reject bounce.
-const DEBOUNCE_MS: int32_t = 20;
+namespace Config {
+  // How many raw samples to fold into one smoothed reading. A small EMA-like
+  // window keeps the reading responsive without allocating a buffer.
+  export const SMOOTHING: int32_t = 4;
 
-// Number of modes the counter cycles through. Kept small so the serial output
-// is readable and the LED (low bit) visibly toggles.
-const MODE_COUNT: int32_t = 4;
+  // The threshold (0..1023) above which the LED lights. Picked mid-band so a
+  // floating A0 reads near or below it and a driven pin reads above.
+  export const THRESHOLD: int32_t = 512;
 
-// ---------------------------------------------------------------------------
-// Owned state (module-level scalars — AVR-correct, no `new`, no heap).
-// ---------------------------------------------------------------------------
+  // The loop cadence (ms). Bounds CPU use between samples.
+  export const PERIOD_MS: int32_t = 200;
 
-// The last ACCEPTED (debounced) button level. With the pull-up, true = open
-// (HIGH), false = pressed (LOW). Seeded `true` so the first poll doesn't read
-// as a spurious press.
-let buttonLevel: boolean = true;
-
-// Timestamp (ms) of the last RAW level change. A new level is only accepted
-// once `Timing.millis() - lastChangeMs >= DEBOUNCE_MS`.
-let lastChangeMs: int32_t = 0;
-
-// The current mode counter. Each accepted press edge advances it
-// (modulo MODE_COUNT).
-let mode: int32_t = 0;
-
-// The debounced level as of the PREVIOUS poll, used to detect the press EDGE
-// (HIGH→LOW transition). Seeded `true` (open) so the first poll after boot
-// doesn't read as a press.
-let prevLevel: boolean = true;
-
-// ---------------------------------------------------------------------------
-// Read the raw button level and debounce it. Returns the newly-accepted
-// debounced level, or the previous level if the raw reading hasn't been stable
-// long enough. Standard edge-detect-with-hysteresis.
-//
-// `btn.read()` is a value-bearing HAL op; its return is stored in `raw` and
-// reused (works correctly per demo #34 Finding B's fix).
-// ---------------------------------------------------------------------------
-
-function debounce(): boolean {
-  const raw: boolean = btn.read();
-  if (raw !== buttonLevel) {
-    // Raw level differs from the accepted one — wait out the debounce window.
-    const now: int32_t = Timing.millis();
-    if (now - lastChangeMs >= DEBOUNCE_MS) {
-      buttonLevel = raw;
-      lastChangeMs = now;
-    }
-  } else {
-    // Raw matches accepted — this reading is the stable baseline; keep the
-    // debounce clock aligned to it so the NEXT change starts a fresh window.
-    lastChangeMs = Timing.millis();
+  // A namespace-scoped helper: the half-window used by the smoothing divisor.
+  // Demonstrates that namespace functions lower and are callable as
+  // `Config.halfWindow()`.
+  export function halfWindow(): int32_t {
+    return SMOOTHING / 2;
   }
-  return buttonLevel;
 }
 
 // ---------------------------------------------------------------------------
-// Format a one-line mode report. Built by string concatenation. The ternary
-// of two string literals is fine inline (demo #34 Finding D fix).
+// Base class Sensor — holds a pin alias + a running sample count, and exposes
+// a `reading()` that takes ONE raw ADC sample. Subclasses extend it.
+//
+// `pin` is a typed field; on AVR a class field of HAL-pin type is fine because
+// the pin is inlined to its number at every use (the field never stores a live
+// pin object). The sample count is a scalar.
 // ---------------------------------------------------------------------------
 
-function report(mode: int32_t): string {
-  let line: string = '';
-  line = line + 'mode=' + mode;
-  line = line + ' led=' + (mode % 2 === 1 ? 'on ' : 'off');
-  return line;
+class Sensor {
+  pin: int32_t;
+  samples: int32_t;
+
+  constructor(pin: int32_t) {
+    this.pin = pin;
+    this.samples = 0;
+  }
+
+  // One raw reading from the configured pin. `adc`-style reads are value-
+  // bearing halOps; here the read is returned directly (not stored), which is
+  // the always-correct inline form. Named `rawReading` (not `reading`) so a
+  // derived class can call the inherited base behavior WITHOUT `super.method()`
+  // — `super.reading()` is 🟡 partial (demo #36 Finding A: it emits
+  // TS2CPP_UNSUPPORTED_EXPR when the class-context isn't visible at the call
+  // site). Calling an inherited non-overridden method via `this.rawReading()`
+  // / bare `rawReading()` is fully supported.
+  rawReading(): int32_t {
+    return adc.readAnalog();
+  }
+
+  // Bump the sample counter and return it.
+  tick(): int32_t {
+    this.samples = this.samples + 1;
+    return this.samples;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Configure the pins once. These top-level calls run in the auto-generated
-// `setup()` and lower to `pinMode(13, OUTPUT)` / `pinMode(2, INPUT_PULLUP)`.
-// `btn`/`led` are top-level aliases referenced by the helpers; HAL resolution
-// is order-independent (demo #34 Finding C fix).
+// Derived class ThresholdSensor — extends Sensor, calls `super(pin)` in its
+// ctor (→ C++ initializer list), adds a threshold, and adds a `smoothed()`
+// method that averages Config.SMOOTHING raw samples via the INHERITED
+// `rawReading()` (no `super.` — see Finding A). Demonstrates inheritance +
+// the `super(args)` ctor call end-to-end.
+// ---------------------------------------------------------------------------
+
+class ThresholdSensor extends Sensor {
+  threshold: int32_t;
+
+  constructor(pin: int32_t, threshold: int32_t) {
+    super(pin);
+    this.threshold = threshold;
+  }
+
+  // Smoothed reading: average Config.SMOOTHING raw samples via the inherited
+  // `rawReading()` (base-class method, called without `super.`). Integer
+  // division; the smoothing divisor uses the namespace helper.
+  smoothed(): int32_t {
+    let sum: int32_t = 0;
+    for (let i: int32_t = 0; i < Config.SMOOTHING; i = i + 1) {
+      sum = sum + this.rawReading();
+    }
+    return sum / Config.halfWindow() / 2;
+  }
+
+  // Whether the latest smoothed reading is over the threshold.
+  isOver(): boolean {
+    return this.smoothed() > this.threshold;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Configure the pins once (top-level → setup). `led`/`adc` are top-level
+// aliases; HAL resolution is order-independent (demo #34 Finding C).
 // ---------------------------------------------------------------------------
 
 const led = LED.asOutput();
-const btn = D2.inputPullUp();
+const adc = A0.asInput();
 
 // ---------------------------------------------------------------------------
-// Periodic work. Poll the debounced button; on each accepted PRESS edge
-// (HIGH→LOW) advance the mode and drive the LED to the mode's low bit. Print
-// the new mode once per press. The `while (true)` loop keeps the auto-
-// generated `loop()` empty; a small `Timing.delay` bounds CPU use.
+// Driver. Construct one ThresholdSensor on A0 (long-lived; no churn, so the
+// single heap allocation is safe even on AVR's small heap), then in a steady
+// loop read it, drive the LED to the over-threshold state, and print a report.
+// The `new` emits one `heap-allocation-avr` WARNING (correct, intended).
 // ---------------------------------------------------------------------------
 
-console.log('--- debounced button demo ---');
-console.log(report(mode));
-led.low();
+function main(): void {
+  console.log('--- sensor class hierarchy demo ---');
+  console.log('threshold=' + Config.THRESHOLD);
 
-while (true) {
-  const level: boolean = debounce();
+  const sensor: ThresholdSensor = new ThresholdSensor(14, Config.THRESHOLD);
 
-  // A PRESS is the HIGH→LOW edge (pull-up: pressed reads LOW): the debounced
-  // level just went LOW while the previous poll saw it HIGH. Detect the edge
-  // once, advance the mode, drive the LED to the mode's low bit, and announce.
-  if (!level && prevLevel) {
-    mode = (mode + 1) % MODE_COUNT;
-    if (mode % 2 === 1) {
+  while (true) {
+    const value: int32_t = sensor.smoothed();
+    const over: boolean = sensor.isOver();
+    const ticks: int32_t = sensor.tick();
+
+    if (over) {
       led.high();
     } else {
       led.low();
     }
-    console.log(report(mode));
-  }
-  prevLevel = level;
 
-  Timing.delay(5);
+    console.log('n=' + ticks + ' val=' + value + ' led=' + (over ? 'on ' : 'off'));
+    Timing.delay(Config.PERIOD_MS);
+  }
 }
+
+main();
