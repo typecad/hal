@@ -1,306 +1,338 @@
-# Roman numerals ↔ integer + English number-words converter — cuttlefish demo #31
+# Blink + ADC read — cuttlefish demo #34 (Arduino AVR)
 
-A **mid-complexity, idiomatic TypeScript** program built around three cooperating
-utilities that translate between small symbolic representations and the integer
-they denote:
+The **second AVR demo** and the **first to exercise the TypeCAD HAL end-to-end
+on real hardware**. Where demo #33 was pure in-process computation (sensor
+statistics), this one reaches the silicon: it configures a digital output (the
+on-board LED) and an analog input (A0), then in a steady loop it blinks the
+LED, reads A0, and prints the raw count + computed voltage to Serial.
 
-1. **`class RomanNumerals`** — encodes an `int32_t` (1..3999) to its Roman-numeral
-   string and back. The encoder walks a **descending parallel-array value/symbol
-   table** (`ROMAN_VALUES: int32_t[]` + `ROMAN_SYMBOLS: string[]`, indexed in
-   lockstep — the classic C "struct-of-arrays" pattern that avoids any
-   `Map`/struct allocation in the hot loop) subtracting each value as many times
-   as it fits. The decoder walks the input string left-to-right with an `i`
-   index, peeking 2 chars at a time for the subtractive pairs (`CM`, `CD`, `XC`,
-   `XL`, `IX`, `IV`). Both methods are **`static`** — the class is a pure
-   namespace of conversions.
-2. **`class NumberWords`** — converts an `int32_t` (1..9999) to its English
-   spoken form (`"two thousand three hundred forty-five"`). It composes a small
-   lookup of `ONES_TEENS`, `TENS_PLACE` word tables (each a `string[]`) plus a
-   `THOUSANDS`/`HUNDREDS` suffix and joins the parts with
-   `parts.push(...) → parts.join(' ')`.
-3. The driver — round-trips a handful of culturally-salient numbers through
-   Roman ↔ int, spells each in English, and decodes a few sample Roman inputs
-   (including a bogus one to exercise the reject path).
-
-This is the **thirty-first** demo iteration. Like #15–#30 it is deliberately
-**readable** — real, everyday TypeScript — and is **not** a feature-exhaustion
-test. It deliberately picks a **different data shape** from #15–#30
-(`Map`-over-struct, container-valued map, byte sieve, token stream, min-heap,
-prefix-trie, doubly-linked list, disjoint-set forest, Vigenère cipher,
-Brainfuck interpreter, CRC-32 + INI parser, markdown flattener):
-
-- **parallel `int32_t[]` + `string[]` arrays indexed in lockstep** — the
-  struct-of-arrays pattern. No prior demo used this shape; all of them leaned
-  on a `Map` or a `struct[]`.
-- **a `static` factory and `static` lookup-table fields** on a class, reached
-  only through `Cls.method(...)`.
-- **a `for (const r of TOP_LEVEL_STRING_ARR)`** whose element type must flow
-  into a template-literal format specifier.
-- **a `.join(' ')` on a `.push`-built `string[]`**.
-
-Transpiled to C++ by cuttlefish (`@typecad/framework-native`).
-
-The previous iteration (#30, markdown flattener + word-frequency analyzer) is
-preserved in `demo30-backup/`.
+Transpiled to C++ by cuttlefish (`@typecad/framework-arduino`), compiled for
+`arduino:avr:uno`, uploaded, and verified live on a connected Uno.
 
 ## Running
 
 ```bash
 npm run lint      # ESLint with the cuttlefish transpiler-rules plugin
-npm run compile   # transpile TS -> C++ and compile with g++
-# binary lands in demo/src/out/.build/main.exe
+npm run compile   # transpile TS -> C++ (.ino) and compile with avr-gcc
+npm run upload    # compile + upload to the Uno on COM7 + open serial monitor
 ```
 
-- **`npm run lint` exits 0** with no warnings.
-- **`npm run compile` exits 0** with one info diagnostic (`ownership-suggest-const`,
-  a hint). `g++` emits no errors and no warnings.
-- When `g++` *does* emit errors they are surfaced verbatim and mapped back to
-  TypeScript source spans — that is exactly how the three findings below were
-  discovered on the first compile attempt.
-- The binary runs with correct output.
+- **`npm run compile` exits 0.** `avr-gcc` emits **no errors and no warnings**.
+  Memory usage on an ATmega328P (Arduino Uno):
 
-## Sample output
+  ```
+  Flash: 4.2 KB / 31.5 KB (13%)
+  RAM:   225 B / 2.0 KB (11%)
+  Heap:  1.8 KB available
+  ```
 
-```
---- Roman numerals + English number words demo ---
-[enc] begin
-1 -> I -> 1 ok=true | one
-4 -> IV -> 4 ok=true | four
-9 -> IX -> 9 ok=true | nine
-40 -> XL -> 40 ok=true | forty
-49 -> XLIX -> 49 ok=true | forty-nine
-90 -> XC -> 90 ok=true | ninety
-99 -> XCIX -> 99 ok=true | ninety-nine
-400 -> CD -> 400 ok=true | four hundred
-444 -> CDXLIV -> 444 ok=true | four hundred forty-four
-900 -> CM -> 900 ok=true | nine hundred
-999 -> CMXCIX -> 999 ok=true | nine hundred ninety-nine
-2024 -> MMXXIV -> 2024 ok=true | two thousand twenty-four
-3999 -> MMMCMXCIX -> 3999 ok=true | three thousand nine hundred ninety-nine
-[enc] end
-[dec] begin
-MCB -> not Roman
-IIX -> 10
-XLVII -> 47
-[dec] end
-[spell] begin
-1 = one
-19 = nineteen
-20 = twenty
-21 = twenty-one
-100 = one hundred
-101 = one hundred one
-1000 = one thousand
-9999 = nine thousand nine hundred ninety-nine
-[spell] end
-done
-```
+- **`npm run upload`** flashes the Uno and streams the serial monitor at 9600
+  baud. Captured live output (A0 left floating, so the reading drifts then
+  settles as the pin's charge bleeds off):
 
-Verified by hand:
+  ```
+  --- blink + ADC demo ---
+  led=on  adc=439 mV=2145
+  led=off adc=434 mV=2116
+  led=on  adc=429 mV=2096
+  led=off adc=426 mV=2082
+  ...
+  led=on  adc=412 mV=2013
+  led=off adc=412 mV=2013
+  ```
 
-- Every Roman round-trip matches (`ok=true`). The greedy encoder produces the
-  canonical subtractive forms (`IV`, `IX`, `XL`, `XC`, `CD`, `CM`).
-- `MCB` → not Roman (`B` is not a Roman glyph; decode rejects via the
-  `ROMAN_CHARS.has(ch)` membership check).
-- `IIX` → 10 (not strictly canonical, but every char IS Roman so the decoder
-  accepts it: reads `I`+`I` then `X`, and `1+1+(10-2)=10` by the left-to-right
-  `next < cur ⇒ subtract` rule; the demo deliberately includes it to exercise
-  the permissive path).
-- `XLVII` → 47 (`(50-10)+5+1+1`).
+  The on-board LED blinks once per line, `adc` is the live 10-bit count from
+  `analogRead(14)`, and `mV = adc * 5000 / 1023` (so `412 → 2013`). These are
+  real ADC values — **not** the pin number `14` — which is what confirms the
+  Finding-B workaround below is correct on hardware.
 
-## What the source exercises
+## Why the program is shaped the way it is
 
-Idiomatic patterns that lower cleanly:
+The HAL lowering and the AVR target together force the structure:
 
-- §1.2  fixed-width `int32_t`, `double`, `boolean` → `bool`
-- §1.4  template literals interpolating `number`/`string`/`boolean` values,
-  including a `${r}` where `r` is a `for...of` element of a top-level
-  `const string[]` (the loop variable must carry its real `std::string` type
-  so the snprintf specifier resolves to `%s`, not the default `%d`).
-- §2.2  C-style `for (let i; i < N; i = i + 1)`, read-only `for...of` over a
-  `string[]`, `while` loop with a peek-2-char condition.
-- §3.1  module-scope free functions (`peekPair`, `indexOfSymbol`) called from
-  a class method, including one called inside a `while` condition.
-- §4.1  two `class`es with **`static` methods** and **no instance state**.
-- §4.3  `Cls.method(...)` static-call lowering.
-- §5.3  `.charAt`, `.length`, indexed `arr[i]` reads, and `.join(' ')` /
-  `.join('')` on a `.push`-built `string[]`.
-- §6.1  **module-scope `const` arrays** (`ROMAN_VALUES`, `ROMAN_SYMBOLS`,
-  `ROMAN_CHARS`, `ONES_TEENS`, `TENS_PLACE`, `SAMPLE_NUMBERS`, `SAMPLE_ROMAN`)
-  emitted at file scope with matching `extern` declarations in the header (so
-  the inline class-method bodies that read them see them).
+- **All pin I/O is at the top level.** Pins come from
+  `@typecad/board-arduino-uno` (`LED`, `A0`) as typed `Pin` instances, and the
+  transpiler inlines pin method calls to direct Arduino C++ — but only at the
+  top level (which flows into the auto-generated `setup()`). See Finding C for
+  why pin calls inside a function do not work.
+- **`adc.readAnalog()` is called inline at each point of use, never stored.**
+  See Finding B (the most serious finding — a correctness bug).
+- **Owned blink state is a module-level scalar (`let ledOn`), not a class.**
+  AVR has no heap manager, so `new Blinker()` is rejected (Finding A).
+- **The report is built by string concatenation**, with the LED-state ternary
+  assigned to a typed `const state: string` first (Finding D).
 
 ---
 
-# Transpilation issues found by Demo #31
+# Transpilation issues found by Demo #34
 
-Demo #31 was written around a `static` class method that reads **indexed
-top-level const arrays** through a `parts.push(globalArr[i])` call. The
-**first** compile attempt failed with three distinct `g++` errors. They are
-reproduced verbatim below (as the CLI surfaced them, mapped to TS spans). All
-three were traced to root cause, **fixed in the transpiler** (not worked around
-in source), and the demo now compiles and runs cleanly in its natural idiomatic
-form.
+Demo #34 is the **first HAL-on-hardware demo**. It surfaced four distinct
+issues, all reproduced verbatim from `npm run compile`. Three are transpiler
+bugs/gaps and one is an inconsistent-safety-gate. They are grouped into two
+larger families at the end — the families are where the "large fixes" should
+land, not the individual sites.
 
-## Finding A — top-level `const` reached only via a `__RAW_STMT__` callee containing an array index was tree-shaken (NEW)
+## Finding A — the `heap-allocation-avr` gate's coverage depends on whether a HAL `import` is present
 
-`parts.push(ONES_TEENS[thousands])` is the natural idiomatic TS for "append the
-thousands-place word to the phrase under construction". The transpiler lowers
-`.push(arg)` on a `std::vector` to a fully-formed C++ raw statement:
+```
+src\main.ts (152,7) error [heap-allocation-avr]: Heap allocation
+    (`new Blinker()`) is unsafe on AVR targets. AVR has only 2 KB of SRAM and
+    no heap manager; `operator new` will corrupt memory or silently fail.
+    Declare the object as a local or global variable instead.
+```
 
+A top-level (and, once a HAL import is present, also function-scoped)
+`new ClassName()` is rejected by `validateHeapArrayUsage`
+(`ir/heap-array-validation.ts`). The rule itself is correct in spirit — AVR has
+no heap. The problem is its **coverage is inconsistent**:
+
+- demo #33's `const acc: Accumulator = new Accumulator();` (inside
+  `computeStats`) **compiled cleanly** — no diagnostic.
+- the same `new Blinker()` (a class with one `boolean` field) is **rejected**
+  the moment `import { LED } from '@typecad/board-arduino-uno'` is in the file.
+
+**Root cause (bisected):** the validator pattern-matches `var_decl` whose
+initializer is a `raw` IR node matching `/^new\s+\w/`. A user-class `new`
+always lowers to a `raw` node (`ir/expression-to-ir.ts:1503`). What flips the
+gate on/off is whether the HAL/board `import` is present — that import pulls
+the board module's transpiled IR into the program, which restructures the
+function bodies such that the validator's walk reaches the `new`. With no
+import, the same `new Blinker()` lowers to the same `raw` text but the walk
+does not flag it (verified: test6, no import → `Blinker* b = new Blinker()` is
+emitted with no diagnostic).
+
+So the gate catches some AVR `new` sites and silently lets identically-shaped
+others through, depending on unrelated program structure. Demo #33 passed only
+because it had no HAL import; a demo that mixes HAL + classes would have hit
+this.
+
+**Demo fix (workaround, not a transpiler fix):** owned state is a module-level
+scalar (`let ledOn: boolean`) rather than a `new Blinker()`. This is the
+AVR-idiomatic shape the gate's own hint recommends and is what real AVR
+firmware does for a single bit of owned state.
+
+**Large fix (Family I):** the gate should detect heap allocation **semantically**
+(any `var_decl`/expression whose initializer constructs a class instance,
+regardless of whether it lowered to a `raw` node and regardless of import
+structure), not by pattern-matching `raw` text. See **Family I** below.
+
+## Finding B — storing the return value of a pin method call MISCOMPILES (correctness bug)
+
+```
+const raw: int32_t = adc.readAnalog();
+console.log('' + raw);            // source
+```
+emits
 ```cpp
-__RAW_STMT__parts.push_back(ONES_TEENS[thousands])
+pinMode(14, INPUT);
+snprintf(__cuttlefish_str_1, ..., "%d", 14);   // BUG: literal 14, not the read
+Serial.println(__cuttlefish_str_1);
 ```
 
-with `args: []` — the argument expression `ONES_TEENS[thousands]` is **baked
-into the callee text**, not preserved as a structured IR arg. The identifier
-collector (`collectStatementIdentifiers`'s `call` case) then tried to recover
-the embedded identifiers by splitting the callee on `/->|::|[.(]/`. That split
-breaks at `[`, `(`, and `.`, but **not at `]` or `)`** — so the token
-`"ONES_TEENS[thousands])"` survived as ONE compound string and the identifier
-`ONES_TEENS` was never added to the call graph as a dependency of the
-`NumberWords` class. `filterProgramIR` then tree-shook `ONES_TEENS` (and
-`TENS_PLACE`, reached the same way) — they were emitted in NEITHER the `.cpp`
-definition NOR the `.h` extern — and `g++` rejected the inline class-method
-body:
-
-```
-src\main.ts (230,5) error [if]: 'ONES_TEENS' was not declared in this scope
-        if (below100 >= 20) {
-        ^
-src\main.ts (236,9) error [call]: 'ONES_TEENS' was not declared in this scope
-            parts.push(TENS_PLACE[tens] + '-' + ONES_TEENS[ones]);
-            ^
-src\main.ts (242,12) error [if]: 'TENS_PLACE' was not declared in this scope
-        } else if (below100 > 0) {
-               ^
-```
-
-This is the **same blind-spot family** as demo #22 B (paren wrapper),
-demo #28 C (call statement with nested callee), and demo #30 A (raw wrapper
-from a class-method visibility walk) — each found a different IR walk that
-under-extracted identifiers from a lowered raw/paren wrapper. The convergence
-point is the canonical `collectStatementIdentifiers`; this finding adds the
-`__RAW_STMT__`-callee arm to it.
-
-**Fix:** when a `call` statement's callee is a `__RAW_STMT__` wrapper, scan its
-raw text with the SAME identifier regex the `raw` expression case already uses
-(`/[A-Za-z_][A-Za-z0-9_]*/g`), so every identifier embedded in the raw
-expression is collected regardless of bracket/paren structure.
-`packages/cuttlefish/src/ir/identifier-collector.ts`.
-
-## Finding B — `.join(sep)` on a `std::vector` was emitted verbatim (NEW)
-
-`parts.join(' ')` is the natural idiomatic TS for "concatenate the phrase
-pieces with single spaces". The transpiler emitted it **verbatim**:
-
-```cpp
-return parts.join(" ");
-```
-
-— and `g++` rejected it:
-
-```
-src\main.ts (246,5) error [return]: 'class std::vector<std::__cxx11::basic_string<char> >' has no member named 'join'
-        return parts.join(' ');
-```
-
-**Root cause:** `__tc_join` was misclassified in the **STRING**-method registry
-(`api/shared/string-method-registry.ts` `STRING_METHODS`), even though `.join`
-operates on a `std::vector`, not a `std::string`. The string-method lowering
-path was therefore the only path that recognized the name. But
-`shouldLowerAsStringMethod` **correctly** rejects known-array receivers — a
-`.push`-built `string[]` is in `mutableArrayVars`, and an array is never a
-string-method receiver. And the vector-method table
-(`VECTOR_VALUE_METHOD_LOWERINGS`) had **no `join` entry**. So BOTH paths
-declined the call, and it fell through to verbatim emit.
-
-A NAMED, NON-MUTATED `const ARR: string[] = [...]; ARR.join('-')` happened to
-work, because such a receiver is NOT in `mutableArrayVars`, so the (incorrect)
-string-method path fired and emitted `__tc_join` by accident. The bug only
-surfaced on the idiomatic `.push`-then-`.join` shape.
-
-**Fix:** removed `__tc_join` from `STRING_METHODS` and added a `join` entry to
-`VECTOR_VALUE_METHOD_LOWERINGS` in `ir/transformers/array-methods.ts`. The
-polyfill helper is still registered via `POLYFILL_HELPER_MAP['.join(']`
-(`api/shared/polyfill-helper-registry.ts`), so the `__tc_join` template is
-emitted when needed.
-
-## Finding C — `for (const r of GLOBAL_STRING_ARR)` interpolated into a template picked `%d` instead of `%s` (NEW)
+The `const raw = adc.readAnalog()` **declaration vanishes** — no
+`analogRead(14)` call is emitted at all — and **every later reference to `raw`
+is replaced with the pin's number `14`**. Verified across variable names
+(`raw`, `v`, `measurement`) and across `const`/`let`: it is not name- or
+storage-class-specific. With a reassignment the bug is even starker:
 
 ```ts
-const SAMPLE_ROMAN: string[] = ['MCB', 'IIX', 'XLVII'];
-for (const r of SAMPLE_ROMAN) {
-  console.log(`${r} -> not Roman`);   // r is std::string
-}
+let v: int32_t = adc.readAnalog();
+v = v + 1;
+console.log('' + v);
 ```
-
-The emitted C++:
-
+emits
 ```cpp
-for (const auto& r : SAMPLE_ROMAN)              // ← r is `auto`, not std::string
-{
-  char __cuttlefish_str_4[26];
-  snprintf(__cuttlefish_str_4, sizeof(__cuttlefish_str_4), "%d -> not Roman", r);   // ← %d, not %s
-  std::cout << __cuttlefish_str_4 << std::endl;
-}
+auto v = analogRead(14);          // correct: runtime read
+v = 14 + 1;                       // BUG: `v + 1` -> `14 + 1`
+snprintf(..., "%d", 14);          // BUG: `v` -> `14`
 ```
 
-— and `g++ -Wformat=` flagged it:
+So the declaration keeps the real call, but every **subsequent use** of a
+variable that was assigned from a pin method is clobbered to the pin's number.
+On hardware this would print `14` forever instead of the ADC reading.
+
+This is the same root cause the test file already flags as known-but-skipped:
+`hal-pin-config.test.ts` notes *"pin variables are substituted by their
+numeric pin value, so `led.pwm(50)` lowers to `9.pwm(50)`"* and `.skip`s the
+PWM tests on exactly those grounds. And `hal-adc.test.ts:50-58` **asserts**
+`Serial.println(14)` (the pin number, not the voltage variable) as the expected
+output — i.e. the test encodes the buggy behavior as correct.
+
+**Root cause (generalizable):** the HAL pin-resolution pass substitutes the
+resolved pin number for the pin variable at use sites. It treats
+`const x = pin.method()` as "`x` is an alias for the pin" and substitutes the
+pin number for `x` — but `x` holds the method's **return value**, not the pin.
+There is no distinction between "this variable *is* a pin" and "this variable
+holds the *result* of a pin operation."
+
+**Demo fix (workaround):** call `adc.readAnalog()` **inline at each point of
+use** (never store it). The emitted code is then correct:
+```cpp
+const Reading reading = { analogRead(14), toMillivolts(analogRead(14)) };
+```
+This does two ADC conversions per blink (once for the raw count, once for the
+millivolt conversion). Harmless for a demo; the cost is documented in the
+source header.
+
+**Large fix (Family II):** pin-variable substitution must only fire for
+variables whose value **is** a pin (the `Pin`/`InputPin`/`OutputPin` identity
+returned by `asOutput`/`asInput`/`fromPort`), never for variables that merely
+hold the **return value** of a method called on a pin. The discriminator is the
+assignment RHS shape (`x = pin` vs `x = pin.method(...)`), which the pass can
+see. This one fix would also un-`.skip` the PWM tests and fix the
+`hal-adc.test.ts:50-58` assertion (which currently encodes the bug). See
+**Family II** below.
+
+## Finding C — pin method calls inside a function are not inlined (`'led' was not declared in this scope`)
 
 ```
-src\main.ts (292,7) warning [call]: format '%d' expects argument of type 'int', but argument 4 has type 'const std::__cxx11::basic_string<char>' [-Wformat=]
-          console.log(`${r} -> not Roman`);
-          ^
+src\main.ts (96,5) error [call]: 'led' was not declared in this scope
+        led.high();
+src\main.ts (98,5) error [call]: 'led' was not declared in this scope
+        led.low();
 ```
 
-(And at runtime the `%d` would read the `std::string`'s first bytes as an int —
-garbage.)
+A pin configured at the top level (`const led = LED.asOutput()`) has its
+**declaration** inlined to `pinMode(13, OUTPUT)` inside `setup()` — the `led`
+variable is compile-time-substituted away at the declaration site. But a
+**method call on that pin from inside a function** (`toggleLed` calling
+`led.high()`) is emitted verbatim as `led.high()`, referencing a `led` variable
+that no longer exists. (At the top level the same call inlines correctly:
+`led.high()` → `digitalWrite(13, HIGH)`.)
 
-**Root cause:** `inferExprCppType` (`ir/type-resolution.ts`) for a bare
-`ts.Identifier` consulted ONLY the function-local types map
-(`localVariableTypes`). It did not consult the IR type scope's `globals` map
-(populated for every top-level decl in `transformers/variables.ts`). So a
-top-level `const ARR: string[]` resolved to `"auto"` when used as a `for...of`
-iterable; the element-type inference then saw `auto` (not a vector); the loop
-variable kept `auto`; and because a `for...of` variable has **no initializer**
-(the value comes from the C++ range-for), the snprintf specifier picker's
-`auto`-recovery branch (which re-infers from `knownVar.initializer`) had
-nothing to recover from — it defaulted to `%d`.
+**Root cause (generalizable):** HAL inlining is **scope-local** — it only fires
+where the pin variable is in the same (top-level → setup) scope as its
+configuration. A function that references a top-level pin const does not see
+the inlining; the call is rendered against the (now-substituted-away)
+identifier.
 
-A `for (const n of SAMPLE_NUMBERS)` over an `int32_t[]` worked **only by
-accident**: the `auto` defaulted to `%d`, which happens to be correct for an
-integer.
+**Demo fix (workaround):** all pin I/O is at the top level (inside the
+`while (true)` loop). The pure helpers (`toMillivolts`, `formatState`,
+`report`) contain no pin calls.
 
-**Fix:** `inferExprCppType` now consults `getCurrentIrTypeScope().globals` as a
-fallback for bare identifiers, matching what `resolveReceiverCppType` (in
-`ir/transformers/array-methods.ts`) already does for the string/array-method
-disambiguation. `packages/cuttlefish/src/ir/type-resolution.ts`.
+**Large fix (Family II):** this is the other face of the pin-resolution pass
+(Finding B's family). If pin variables were resolved consistently — substituting
+the pin number at **every** use site regardless of scope, OR keeping the
+variable live and rewriting `pin.method()` → `digitalWrite(num, ...)` at every
+call site — then both Finding B (don't substitute for return-value variables)
+and Finding C (do substitute consistently across scopes) fall out of one
+resolution model. See **Family II** below.
+
+## Finding D — inline ternary of two string literals as a `+` operand emits an invalid `.c_str()`
+
+```
+src\main.ts (126,3) error [assign]: request for member 'c_str' in
+    '(ledOn ? "on " : "off")', which is of non-class type 'const char [4]'
+      line = line + 'led=' + (ledOn ? 'on ' : 'off');
+```
+
+Reproduced in isolation (no HAL, no AVR-specific anything):
+```ts
+let line: string = '';
+line = line + 'led=' + (ledOn ? 'on ' : 'off');
+```
+The string-concat lowering wraps the ternary operand in `.c_str()`, as if it
+were a `std::string`. But a ternary whose two branches are string literals has
+common type `const char*` (no `.c_str()` member), so avr-g++ rejects it.
+
+**Root cause (generalizable):** the snprintf/concat operand-type inference
+classifies a parenthesized conditional expression as "string-typed, needs
+`.c_str()`" without checking that its common type is already a `const char*`
+(the case that must NOT be wrapped). It is specifically the **inline** ternary
+as a direct `+` operand; assigning the ternary to a typed `const s: string`
+first resolves the type correctly.
+
+**Demo fix (workaround):** `formatState` assigns the ternary to a typed
+`const state: string` before concatenation.
+
+**Large fix:** the concat operand-type resolver must treat a `cond ? "lit" :
+"lit"` operand as `const char*` (no `.c_str()`) rather than `std::string`. The
+discriminator already exists for plain string-literal operands; the conditional
+case just isn't routed through it.
 
 ---
 
-## Sibling scan
+# The two larger families (where the large fixes land)
 
-- **Finding A's** root cause (an under-tokenizing raw-text split that left
-  `name[...]` glued together) is a no-sibling recurrence of the
-  raw-wrapper blind-spot family (demos #22 B / #28 C / #30 A). Each IR walk
-  has its own raw-text handling, so each was patched individually; the
-  convergence point is the canonical `collectStatementIdentifiers`, which is
-  now used by `setup.ts` (demo #30 A) and patched for `__RAW_STMT__` callees
-  here. No other walk in the tree splits raw text on an incomplete separator
-  set — the `raw` expression case already uses the identifier regex, and
-  `method-call` callees are helper names (`__tc_pop`) with structured args.
-- **Finding B's** root cause (a method misclassified into the wrong lowering
-  table) was scanned across `STRING_METHODS`: no other entry is a vector
-  method in disguise (every other listed helper genuinely operates on a
-  `std::string` receiver — `__tc_toUpperCase`, `__tc_charAt`, etc.). `.join`
-  was the lone misclassification.
-- **Finding C's** root cause (an identifier-type lookup that ignored
-  module-scope globals) was scanned for siblings: `resolveReceiverCppType` in
-  `array-methods.ts` already consults globals; the member-access branch of
-  `inferExprCppType` already consults globals (line ~747); the bare-identifier
-  branch was the lone holdout.
+The user asked to categorize the findings into larger families so fixes are
+structural, not point-for-point. The four findings collapse into two families:
 
-All three fixes are pinned by `tests/packages/transpiler/demo-31-regressions.test.ts`
-(14 tests). The demo source carries no workarounds — it is in its natural
-idiomatic form.
+## Family I — diagnostics that detect a pattern by string-matching `raw` IR text, not semantically
+
+**Members:** Finding A (`heap-allocation-avr`).
+
+**The shared defect:** a validator pattern-matches the **textual form** of a
+lowered `raw` IR node (`/^new\s+\w/`) instead of recognizing the **construct**
+("a class is being heap-allocated"). Because whether a construct lowers to a
+`raw` node depends on unrelated upstream IR structure (here: whether a HAL
+`import` is present), the same source pattern is caught in some programs and
+silently allowed in others.
+
+**The single large fix:** make every such validator key off the **source
+construct** (an AST `NewExpression` whose class is a user type, on a
+heap-unsafe architecture), independent of how that construct later lowers.
+Concretely for Finding A: walk `NewExpression` nodes (or tag var_decls with a
+structured `new-class` IR kind instead of `raw` text) and gate on
+`strategy.isHeapAllocationUnsafe(arch)`. Then demo #33's `new Accumulator()`
+and a HAL demo's `new Blinker()` are treated identically — both correctly
+rejected on AVR (or both correctly allowed if the heap rule is relaxed), with
+no dependence on import structure.
+
+This same structural principle (detect the construct, not the lowered text)
+prevents the whole class of "the gate fires depending on what else is in the
+file" bugs.
+
+## Family II — the HAL pin-resolution pass conflates "a variable that IS a pin" with "a variable that HOLDS a pin operation's result"
+
+**Members:** Finding B (correctness — stored return value clobbered to pin
+number) and Finding C (`'led' not in scope` — method call on a pin from a
+function isn't inlined).
+
+**The shared defect:** the pass substitutes the resolved pin number for a
+variable name at use sites, with no model of whether the variable's **value**
+is the pin itself or merely the **result** of calling a method on a pin. It
+also only performs this substitution in the scope where the pin was declared,
+so the same pin variable is resolved in one scope and unresolved in another.
+
+The two findings are opposite symptoms of one missing distinction:
+
+- Finding B: the pass substitutes the pin number for a variable that holds a
+  **return value** (`x = pin.readAnalog()` → `x` wrongly becomes `14`),
+  *over*-substituting.
+- Finding C: the pass fails to substitute (or inline) for a pin variable
+  referenced in a **different scope** than its declaration
+  (`led.high()` inside a function → `led` is unresolved), *under*-substituting.
+
+**The single large fix:** give the pin-resolution pass a real model of pin
+identity vs. pin-derived values, applied uniformly across all scopes:
+
+1. Track which variables hold a **pin identity** (the `Pin`/`InputPin`/
+   `OutputPin` returned by `asOutput`/`asInput`/`fromPort`/`Pin(n)`). For
+   those, substitute the pin number (or inline `pin.method()` → the Arduino
+   call) at **every** use site, in every scope — fixing Finding C.
+2. Do **not** substitute for variables whose initializer is a **method call**
+   on a pin (`x = pin.method(...)`) — those hold the return value, not the pin.
+   That fixes Finding B.
+3. As a consequence, the `.skip`'d PWM tests un-skip, and the
+   `hal-adc.test.ts:50-58` assertion (which currently encodes the bug by
+   expecting `Serial.println(14)`) must be corrected to expect the actual
+   voltage variable.
+
+One resolution model, two bugs fixed, and the HAL tests stop encoding the bug
+as correct.
+
+---
+
+## What this demo intentionally does NOT cover
+
+To keep the program mid-complexity and focused on the HAL, demo #34 does
+**not** exercise:
+
+- PWM output (`led.pwm(n)`) — blocked by Family II (the `.skip`'d PWM tests);
+  a future demo can stress it once the pin-resolution pass is fixed.
+- `Map`/`Set` (AVR has no `<map>`/`<set>` — same family as demo #33 Finding E).
+- interrupts / `onFalling` (the `.skip`'d ISR-extraction tests track a separate
+  gap there).
+- `extends`/`super`, `try`/`catch`, async — out of scope for a HAL demo.
+
+Each of those is its own future demo.
