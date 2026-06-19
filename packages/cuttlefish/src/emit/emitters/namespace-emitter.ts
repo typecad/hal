@@ -151,7 +151,13 @@ export function emitNamespaces(ctx: EmitterContext): void {
         for (const field of publicFields) {
           const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
           const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-          appendSourceLine(ctx, `    ${renderTypedName(fieldType, field.name)}${initSuffix};`);
+          // Mirror the method-render prefix (line ~159) and the top-level
+          // class-emitter: a static field renders as `static inline` so a
+          // static method's `Cls::field` access resolves. Without this, a
+          // static field on a namespace-nested class silently dropped to an
+          // instance field (namespace stress test Finding 2).
+          const staticPrefix = field.isStatic ? "static inline " : "";
+          appendSourceLine(ctx, `    ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
         }
         if (publicFields.length > 0) appendSourceLine(ctx, "");
         for (const method of publicMethods) {
@@ -178,7 +184,13 @@ export function emitNamespaces(ctx: EmitterContext): void {
         for (const field of privateFields) {
           const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
           const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-          appendSourceLine(ctx, `    ${renderTypedName(fieldType, field.name)}${initSuffix};`);
+          // Mirror the method-render prefix (line ~159) and the top-level
+          // class-emitter: a static field renders as `static inline` so a
+          // static method's `Cls::field` access resolves. Without this, a
+          // static field on a namespace-nested class silently dropped to an
+          // instance field (namespace stress test Finding 2).
+          const staticPrefix = field.isStatic ? "static inline " : "";
+          appendSourceLine(ctx, `    ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
         }
         for (const method of privateMethods) {
           const methodParams = renderParameters(method.parameters);
@@ -196,7 +208,13 @@ export function emitNamespaces(ctx: EmitterContext): void {
         for (const field of protectedFields) {
           const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
           const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-          appendSourceLine(ctx, `    ${renderTypedName(fieldType, field.name)}${initSuffix};`);
+          // Mirror the method-render prefix (line ~159) and the top-level
+          // class-emitter: a static field renders as `static inline` so a
+          // static method's `Cls::field` access resolves. Without this, a
+          // static field on a namespace-nested class silently dropped to an
+          // instance field (namespace stress test Finding 2).
+          const staticPrefix = field.isStatic ? "static inline " : "";
+          appendSourceLine(ctx, `    ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
         }
         for (const method of protectedMethods) {
           const methodParams = renderParameters(method.parameters);
