@@ -77,7 +77,17 @@ export const STRING_METHODS: StringMethodSpec[] = [
   { helper: "__tc_lastIndexOf",argForm: "unary" },
   { helper: "__tc_repeat",     argForm: "unary" },
   { helper: "__tc_split",      argForm: "unary" },
-  { helper: "__tc_join",       argForm: "unary" },
+  // NOTE: `__tc_join` is intentionally NOT in this table. `.join(sep)` is a
+  // std::VECTOR method (it returns a std::string built from the vector's
+  // elements), NOT a std::string method. Listing it here previously caused
+  // `parts.join(' ')` on a `mutableArrayVars` receiver (a string[] built via
+  // .push) to fall through BOTH lowering paths: `shouldLowerAsStringMethod`
+  // returns false for a known array (correct), and the vector-method table
+  // `VECTOR_VALUE_METHOD_LOWERINGS` had no `join` entry, so the call was
+  // emitted verbatim (`parts.join(" ")`) and g++ rejected it ("no member
+  // named 'join'"). `join` is now lowered in the VECTOR path
+  // (ir/transformers/array-methods.ts), and the polyfill helper is still
+  // registered via POLYFILL_HELPER_MAP['.join(']. Demo #31 Finding B.
 ];
 
 /** JS method name → spec (for the names set). */

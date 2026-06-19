@@ -235,6 +235,29 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
       }
       // Also add the full callee (e.g. "Serial.begin") for polyfill detection
       identifiers.add(statement.callee);
+      // Demo #31 Finding A — a `__RAW_STMT__` callee carries a fully-formed
+      // C++ expression in its raw text (e.g. `parts.push_back(ONES_TEENS[i])`
+      // or `__tc_pop(map[k])`), and the split on `/->|::|[.(]/` does NOT fully
+      // tokenize it: it stops splitting once it hits `]` or `)`, so an indexed
+      // identifier like `ONES_TEENS` survives glued to its suffix
+      // (`"ONES_TEENS[i])"`) and is never added. The result: a top-level
+      // variable referenced ONLY through `arr.push(globalArr[i])` from a class
+      // method is tree-shaken, then g++ reports it "not declared in this
+      // scope" from the inline method body. Same blind-spot family as demo
+      // #22 B / demo #28 C, but in a DIFFERENT shape: those missed a free
+      // FUNCTION buried in raw/paren text; this misses a free VARIABLE buried
+      // in raw text behind an index. Fix: when the callee is a raw wrapper,
+      // scan its raw text with the SAME identifier regex the `raw` expression
+      // case uses (`case "raw"` above), so EVERY identifier in the embedded
+      // expression is collected regardless of bracket/paren structure.
+      if (statement.callee.startsWith("__RAW_STMT__")) {
+        const matches = statement.callee.match(/[A-Za-z_][A-Za-z0-9_]*/g);
+        if (matches) {
+          for (const match of matches) {
+            identifiers.add(match);
+          }
+        }
+      }
       for (const arg of statement.args) {
         // Special case: if this is an __EMIT__ call, scan string literals for identifiers
         if (statement.callee === "__EMIT__" && arg.kind === "string") {

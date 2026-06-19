@@ -692,7 +692,24 @@ export function inferExprCppType(
   }
 
   if (ts.isIdentifier(expr)) {
-    return localVariableTypes.get(expr.text) ?? "auto";
+    // Demo #31 Finding C — a bare identifier may resolve to a MODULE-SCOPE
+    // (top-level const/let) variable, not just a function local. The prior
+    // code consulted `localVariableTypes` only, so a `for (const r of ARR)`
+    // over a top-level `const ARR: string[]` resolved `ARR` to "auto" (the
+    // for-of element-type inference then couldn't see the vector element
+    // type, the loop variable carried `auto`, and because a for-of var has
+    // no initializer the snprintf specifier picker couldn't recover the real
+    // type — defaulting to `%d` for a `std::string`, tripping g++ -Wformat=
+    // and producing garbage at runtime). The fix consults the IR type scope's
+    // `globals` map (populated for every top-level decl in variables.ts) as a
+    // fallback, matching what `resolveReceiverCppType` in array-methods.ts
+    // already does for the string/array-method disambiguation. This is the
+    // same lookup shape used at line ~747 for member-access receivers.
+    const fromLocals = localVariableTypes.get(expr.text);
+    if (fromLocals && fromLocals !== "auto") return fromLocals;
+    const fromGlobals = getCurrentIrTypeScope()?.globals.get(expr.text);
+    if (fromGlobals && fromGlobals !== "auto") return fromGlobals as CppTypeHint;
+    return fromLocals ?? "auto";
   }
 
   if (ts.isParenthesizedExpression(expr)) {

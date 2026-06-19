@@ -138,6 +138,15 @@ const VECTOR_VALUE_METHOD_LOWERINGS: Record<string, ValueMethodLowering> = {
   slice: (r, _args, n) => n === 0
     ? `std::vector<typename std::decay<decltype(${r})>::type>(${r}.begin(), ${r}.end())`
     : null,
+  // .join(delim) — folds a std::vector<T> into a std::string with `delim`
+  // between elements (the __tc_join template helper). Demo #31 Finding B —
+  // `join` was previously misclassified as a STRING method (it was listed in
+  // STRING_METHODS even though it operates on a vector), so on a known
+  // `mutableArrayVars` receiver (a `string[]` built via .push) BOTH lowering
+  // paths declined it: the string path rejects known arrays, and this vector
+  // table had no `join` entry. The call was then emitted verbatim and g++
+  // rejected it. `join` is a vector→string transformation; it lives here.
+  join: (r, [a]) => `__tc_join(${r}, ${a ?? '""'})`,
 };
 
 // Callback-arg methods: map method name → helper callee. The receiver and all
