@@ -672,6 +672,25 @@ export class ExpressionRenderer {
     if (expr.kind === "template_string") {
       return this.inferFormatSpecifier(expr.expression, exprTransformer, knownVariableTypes);
     }
+    // Namespace-const access (`Ns.MEMBER`) lowers to a `property-access` IR
+    // node whose `property` is the member name. Resolve the member's type from
+    // knownVariableTypes (namespace consts are registered there by bare name
+    // in setup.ts) so a namespace `const string` operand formats as %s with
+    // .c_str(), not the %d default (namespace stress test Finding 3b).
+    if (expr.kind === "property-access") {
+      const memberType = effectiveKnownVariableTypes?.get(expr.property);
+      if (memberType) {
+        const rendered = this.render(expr, exprTransformer, knownVariableTypes);
+        if (this.isStringLikeCppType(memberType.cppType)) {
+          const normalized = this.strategy.normalizeCppType(memberType.cppType);
+          const needsCStr = needsCStrForStringLike(normalized);
+          return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 128 };
+        }
+        if (memberType.cppType === "bool") {
+          return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
+        }
+      }
+    }
     if (expr.kind !== "number" && expr.kind !== "boolean" && expr.kind !== "string") {
       const inferredType = this.inferExpressionCppType(expr, knownVariableTypes);
       if (inferredType) {

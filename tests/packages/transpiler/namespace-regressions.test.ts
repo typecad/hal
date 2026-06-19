@@ -50,3 +50,28 @@ console.log('' + (Devices.total as int32_t));
     expect(res.cpp).toMatch(/Devices::total/);
   });
 });
+
+// ── Fix 3: namespace const in a string concat formats with the right spec ─
+// A namespace-scope `const string` used in a concat must be `%s` (with
+// .c_str()), not the `%d` default. Today namespace consts aren't in the
+// knownVariableTypes map the snprintf operand resolver consults.
+describe("namespace: const in concat uses correct snprintf specifier", () => {
+  it("formats a namespace const string as %s (not %d)", () => {
+    const src = `
+namespace Devices {
+  export const LABEL: string = "dev";
+  export function tag(id: int32_t): string {
+    return Devices.LABEL + ":" + id;
+  }
+}
+console.log(Devices.tag(3));
+`;
+    const res = transpileArduino(src);
+    // The LABEL operand must drive a %s slot (string), not %d. The snprintf
+    // format for `LABEL + ":" + id` must contain %s and LABEL.c_str().
+    expect(res.cpp).toMatch(/%s.*%d|%d.*%s/);
+    expect(res.cpp).toMatch(/LABEL\.c_str\(\)/);
+    // Must NOT pass LABEL straight to a %d slot.
+    expect(res.cpp).not.toMatch(/"%d:%d",\s*Devices::LABEL/);
+  });
+});

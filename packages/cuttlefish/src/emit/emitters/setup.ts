@@ -250,7 +250,7 @@ export function buildEmitterContext(
       shimLines = filterShimBlock(shimLines, '#include <avr/wdt.h>', '} WDT;');
     }
     if (!programAnalysis.usesStrPtr) {
-      shimLines = filterShimBlock(shimLines, '#ifndef CUTTLEFISH_STR_BUF_SIZE', 'inline size_t (strlen)(const char* s) { return ::strlen(s); }');
+      shimLines = filterShimBlock(shimLines, '#ifndef CUTTLEFISH_STR_BUF_SIZE', 'inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }');
     }
     profileDiagnostics = [...strategy.profileDiagnostics(program, options.platformContext)];
   }
@@ -359,8 +359,27 @@ export function buildEmitterContext(
     for (const name of options.crossModuleClasses) classNames.add(name);
   }
 
+  // Map a function's original TS name to its emitted C++ name, applying the
+  // strategy's user-function renames. The entrypoint sentinel
+  // `__cuttlefish_entrypoint__` maps to the strategy's entrypoint name
+  // (`main` on native, `setup` on Arduino); every other name is routed through
+  // `strategy.mapFunctionName`, which is where a target renames a user
+  // function that would otherwise collide with a C++/framework reserved name
+  // — e.g. Arduino renames a user `function main()` to `cuttlefish_main`,
+  // because Arduino has no `main()` (the entrypoints are the auto-generated
+  // `setup()`/`loop()`), and a file-scope `static void main()` collides with
+  // C++'s required `int main()` signature. Call-site renames are applied
+  // uniformly in StatementRenderer.renderCall (the single call-rendering
+  // chokepoint), so every reference — definition, forward decl, and every call
+  // site including the top-level `main()` call spliced into `setup()` —
+  // follows the rename.
+  const mapEmittedFnName = (originalName: string): string =>
+    originalName === "__cuttlefish_entrypoint__"
+      ? strategy.entrypointFunctionName()
+      : strategy.mapFunctionName(originalName);
+
   const mappedFunctions: MappedFunction[] = program.functions.map((fn) => {
-    const fnName = fn.originalName === "__cuttlefish_entrypoint__" ? strategy.entrypointFunctionName() : fn.originalName;
+    const fnName = mapEmittedFnName(fn.originalName);
     return {
       name: fnName,
       returnType: resolveTemplateReturnType(
@@ -423,6 +442,19 @@ export function buildEmitterContext(
       topLevelScope.knownVariableTypes.set(name, { cppType });
     }
   }
+
+  // Register namespace-scope const/let types in knownVariableTypes so the
+  // snprintf operand resolver (and other type-resolution consumers) see them
+  // — otherwise a namespace `const string` used in a concat fell through to
+  // the %d default (namespace stress test Finding 3b). Mirrors the cross-
+  // module registration above; walks nested namespaces recursively.
+  const registerNsConstants = (ns: typeof program.namespaces[number]): void => {
+    for (const c of ns.constants) {
+      topLevelScope.knownVariableTypes.set(c.name, { cppType: c.cppType });
+    }
+    for (const child of ns.children ?? []) registerNsConstants(child);
+  };
+  for (const ns of program.namespaces) registerNsConstants(ns);
 
   const stringVarNames = new Set<string>();
   // Pre-populate known string variable names from the program IR so that
@@ -714,8 +746,9 @@ export function buildEmitterContext(
     includes.push("<variant>");
   }
   // String enums lower to const char* and use strcmp() for === comparisons.
+  // Header name is platform-specific: <cstring> on hosted, <string.h> on AVR.
   if (stringEnumNames.size > 0) {
-    includes.push("<cstring>");
+    includes.push(strategy.cstringHeader());
   }
 
   // Placeholder defaults for fields that are computed later by other phases

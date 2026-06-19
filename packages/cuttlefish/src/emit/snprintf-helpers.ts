@@ -261,6 +261,26 @@ export function inferSnprintfArg(
           return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
         }
       }
+      // Namespace-const access lowers to a raw `Ns::member` string (see
+      // expression-to-ir.ts ~line 398). Resolve the member's type from
+      // knownVariableTypes (namespace consts are registered there by bare
+      // name in setup.ts) so a namespace `const string` formats as %s with
+      // .c_str(), not the %d default (namespace stress test Finding 3b).
+      const nsConstMatch = expr.value.match(/^[A-Za-z_$][\w$]*::([A-Za-z_$][\w$]*)$/);
+      if (nsConstMatch) {
+        const memberType = scopeState.knownVariableTypes.get(nsConstMatch[1]);
+        if (memberType) {
+          const rendered = renderExpression(expr);
+          if (strategy.isStringLikeType(memberType.cppType)) {
+            const normalized = strategy.normalizeCppType(memberType.cppType);
+            const needsCStr = parsedIsStringLike(normalized);
+            return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 32, preludeLines: [] };
+          }
+          if (memberType.cppType === "bool") {
+            return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
+          }
+        }
+      }
       return undefined;
     }
     case "property-access": {
@@ -286,6 +306,22 @@ export function inferSnprintfArg(
             estimatedLength: 8,
             preludeLines: [],
           };
+        }
+      }
+      // Namespace-const (or other registered) member access: resolve the
+      // member's type from knownVariableTypes (namespace consts are
+      // registered there by their bare name in setup.ts). Without this, a
+      // namespace `const string` used in a concat fell through to the %d
+      // default below (namespace stress test Finding 3b).
+      const nsMemberType = scopeState.knownVariableTypes.get(expr.property);
+      if (nsMemberType) {
+        const normalized = strategy.normalizeCppType(nsMemberType.cppType);
+        if (strategy.isStringLikeType(nsMemberType.cppType)) {
+          const needsCStr = parsedIsStringLike(normalized);
+          return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 32, preludeLines: [] };
+        }
+        if (nsMemberType.cppType === "bool") {
+          return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
         }
       }
       return { format: "%d", arg: rendered, estimatedLength: 12, preludeLines: [] };
