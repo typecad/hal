@@ -276,6 +276,18 @@ export class StatementRenderer {
         if (nsTargetMatch && this.namespaceNames.has(nsTargetMatch[1])) {
           target = target.replace(/^([A-Za-z_$][\w$]*)\./, "$1::");
         }
+        // Multi-level static access target: `Ns::Class.member` (a namespace,
+        // then a static class member). After the single-level rewrite above,
+        // a `Devices.Registry.count = ...` target is `Devices::Registry.count`.
+        // `Registry.count` is a static class member, so the second access is
+        // also `::` → `Devices::Registry::count` (namespace stress test
+        // Finding 4). Only fires when the target begins with a `::`-qualified
+        // namespace path (so a genuine `obj.field` instance access is
+        // untouched).
+        const nsClassTargetMatch = target.match(/^([A-Za-z_$][\w$]*)::([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)/);
+        if (nsClassTargetMatch && this.namespaceNames.has(nsClassTargetMatch[1])) {
+          target = target.replace(/^([A-Za-z_$][\w$]*)::([A-Za-z_$][\w$]*)\./, "$1::$2::");
+        }
         // Rewrite setter assignments: c->count = val → c->setCount(val)
         if (statement.operator === "=" || statement.operator === "+=" || statement.operator === "-=") {
           const setterMatch = target.match(/^(.+?)(->|\.)(\w+)$/);

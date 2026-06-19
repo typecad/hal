@@ -1365,6 +1365,19 @@ export class ExpressionRenderer {
       const safeProperty = escapeCppKeyword(expr.property, this.strategy.reservedNames());
       return `${objStr}${accessor}${safeProperty}`;
     }
+    // Multi-level static access through a namespace: `Ns.Class.member`. The
+    // outer `Ns.Class` renders via the namespace branch below as `Ns::Class`
+    // (a namespace-qualified class path). The INNER `.member` access has an
+    // `expr.object` that is itself a property-access (not an identifier), so
+    // the `namespaceNames.has(...)` check below misses it — it fell through to
+    // the instance `.` default and emitted `Ns::Class.member` (mixed), failing
+    // at g++ time for a static member (needs `Ns::Class::member`). When the
+    // object rendered to a `::`-form it names a namespace/class, not an
+    // instance, so the member access is also `::`.
+    if (objStr.includes("::") && expr.object.kind === "property-access") {
+      const safeProperty = escapeCppKeyword(expr.property, this.strategy.reservedNames());
+      return `${objStr}::${safeProperty}`;
+    }
     if (expr.isNamespace || expr.isStatic || (expr.object.kind === "identifier" && this.namespaceNames.has(expr.object.value))) {
       // Static getter access: `Counter.total` where `total` is a static getter
       // lowers to `Counter::getTotal()`, not the raw field `Counter::total`.

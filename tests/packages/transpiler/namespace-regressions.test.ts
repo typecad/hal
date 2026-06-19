@@ -75,3 +75,31 @@ console.log(Devices.tag(3));
     expect(res.cpp).not.toMatch(/"%d:%d",\s*Devices::LABEL/);
   });
 });
+
+// ── Fix 4: multi-level namespace→class static access uses :: at every level ─
+// `Devices.Registry.count` (namespace → class static → field) must render
+// `Devices::Registry::count`. Today the inner `Registry.count` access has a
+// non-identifier object (a nested property-access), so the namespace/static
+// branch is skipped and it emits `Devices::Registry.count` (mixed), failing
+// at g++ time.
+describe("namespace: multi-level Ns.Class.staticMember uses :: throughout", () => {
+  it("renders Devices::Registry::count on reads and assigns", () => {
+    const src = `
+namespace Devices {
+  export class Registry {
+    static count: int32_t = 0;
+    static bump(): int32_t {
+      Devices.Registry.count = Devices.Registry.count + 1;
+      return Devices.Registry.count;
+    }
+  }
+}
+console.log('' + Devices.Registry.bump());
+`;
+    const res = transpileArduino(src);
+    // Every Devices.Registry.count access (read AND assign target) must use
+    // :: at both levels — never a bare `Registry.count`.
+    expect(res.cpp).toMatch(/Devices::Registry::count/);
+    expect(res.cpp).not.toMatch(/Registry\.count/);
+  });
+});
