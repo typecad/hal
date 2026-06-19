@@ -1,43 +1,45 @@
 // ---------------------------------------------------------------------------
-// main.ts — Blink the on-board LED while sampling an analog input
-//                                  (cuttlefish demo #34, Arduino AVR target).
+// main.ts — Debounced button cycling a mode counter
+//                                  (cuttlefish demo #35, Arduino AVR target).
 //
-// The FIRST demo to exercise the TypeCAD HAL end-to-end on real hardware.
-// It configures a digital output (the on-board LED) and an analog input (A0),
-// then in a steady loop it blinks the LED, reads A0 once, and prints the raw
-// count + computed voltage to Serial.
+// The classic embedded input pattern: read a momentary pushbutton, debounce
+// it in software with a time gate, detect the press EDGE (one event per
+// physical press, not per polling loop), and advance a state machine. Each
+// press cycles a mode counter; the on-board LED reflects the low bit and the
+// current mode is printed to Serial.
 //
-// This is written in its NATURAL, idiomatic TypeScript form. An earlier
-// iteration carried four workarounds for transpiler bugs (demo #34 Findings
-// A–D); all four are now FIXED in the transpiler, so the workarounds are gone:
+// This is the first demo to exercise DIGITAL INPUT + a TIMING-BASED debounce
+// state machine. Where demo #34 read an analog value and demo #33 did pure
+// computation, this one reads a digital pin with `inputPullUp` (so an unpressed
+// button reads HIGH via the internal pull-up, and a press pulls it LOW),
+// stores that reading in a variable across loop iterations, and uses
+// `Timing.millis()` as a monotonic clock for the debounce interval.
 //
-//   • Finding B (fixed): `const raw = adc.readAnalog()` is now stored ONCE and
-//     reused — the read is captured into a real `auto raw = analogRead(14)`
-//     and `raw` is referenced at every use site (it no longer collapses to the
-//     pin number). Single ADC conversion per loop.
-//   • Finding C (fixed): LED drive is factored into a helper function
-//     `toggleLed()` declared BEFORE the `const led` pin alias. HAL resolution
-//     is now order-independent (lazy top-level alias resolution), so the
-//     helper's `led.high()`/`led.low()` inline to `digitalWrite(13, ...)` no
-//     matter where the function sits.
-//   • Finding D (fixed): the LED-state ternary is used INLINE in the string
-//     concat (`'led=' + (ledOn ? 'on ' : 'off')`) — a ternary of two string
-//     literals now infers `const char*` and is no longer wrapped in an invalid
-//     `.c_str()`.
-//   • Finding A (the rule stands, by design): owned blink state stays a
-//     MODULE-LEVEL scalar (`let ledOn`), not a `new Blinker()` class instance.
-//     AVR has no heap manager, so `new` on AVR is correctly rejected
-//     (`heap-allocation-avr`) — now detected consistently regardless of
-//     imports. A module-level scalar is the genuinely AVR-correct shape for
-//     one bit of owned state, independent of the gate.
+// AVR + the HAL lowering shape the program:
 //
-// AVR (ATmega328P, 2KB RAM, no `<vector>`, no heap, 10-bit ADC) and the HAL
-// lowering lower this to exactly what you'd hand-write:
-//     LED.asOutput()    → pinMode(13, OUTPUT);
-//     led.high()/low()  → digitalWrite(13, HIGH / LOW);
-//     A0.asInput()      → pinMode(14, INPUT);
-//     adc.readAnalog()  → analogRead(14)
-// No class is emitted for the pins.
+//   • The button (D2) and LED (D13) come from `@typecad/board-arduino-uno`.
+//     `D2.inputPullUp()` lowers to `pinMode(2, INPUT_PULLUP)` and returns an
+//     InputPin alias; `LED.asOutput()` lowers to `pinMode(13, OUTPUT)`.
+//   • `btn.read()` is a value-bearing HAL op (gpioRead → `digitalRead(2)`).
+//     Its return IS stored in a variable and reused — this works correctly
+//     because of demo #34 Finding B's fix (a value-bearing halOp read is
+//     captured into a real `auto v = digitalRead(2)`, not substituted with the
+//     pin number). So this demo directly re-tests that fix for the digital
+//     path.
+//   • `Timing.millis()` lowers to `millis()` (a monotonic millisecond clock).
+//     Debounce compares the current reading against the last-seen state and
+//     only accepts a change after DEBOUNCE_MS of stability — the standard
+//     edge-detect-with-hysteresis pattern that kills contact bounce.
+//   • Owned state (the debounced button level, the last edge time, the mode
+//     counter, the print-suppression flag) lives in MODULE-LEVEL scalars, not
+//     a `new`'d class — AVR has no heap manager, so `new` is rejected by the
+//     `heap-allocation-avr` gate (demo #34 Finding A). This is the
+//     AVR-correct shape for a handful of owned scalars.
+//
+// Hardware: wire a momentary pushbutton between D2 and GND. With the internal
+// pull-up enabled, the pin reads HIGH when open and LOW when pressed. No
+// external resistor needed. The on-board LED (D13) toggles with the mode's low
+// bit so you can see state changes without the serial monitor.
 //
 // Idiomatic constraints honored (per SUPPORT_MATRIX / eslint rules): only
 // `const enum`; no `any`; no typed-array fields/returns; no object spread; no
@@ -45,104 +47,118 @@
 // dynamically-grown array fields/params/returns and no heap `new`.
 // ---------------------------------------------------------------------------
 
-import { LED, A0 } from '@typecad/board-arduino-uno';
+import { LED, D2 } from '@typecad/board-arduino-uno';
 
 // ---------------------------------------------------------------------------
 // Constants.
 // ---------------------------------------------------------------------------
 
-// The LED blink interval and the inter-sample delay share one period: the LED
-// toggles, then we wait, then we sample. A half-second cadence keeps the blink
-// visible to the eye and the serial output readable.
-const BLINK_PERIOD_MS: int32_t = 500;
+// Debounce interval: a reading must be stable for this long before it is
+// accepted as a real edge. 20 ms is a typical mechanical-switch debounce
+// window — short enough to feel responsive, long enough to reject bounce.
+const DEBOUNCE_MS: int32_t = 20;
 
-// ADC reference for the Arduino Uno is the supply rail (DEFAULT ≈ 5 V), and the
-// ADC is 10-bit, so the full-scale count is 1023. Used to turn a raw count into
-// a millivolt figure with plain integer math (see `toMillivolts`).
-const ADC_MAX: int32_t = 1023;
-const VREF_MILLIVOLTS: int32_t = 5000;
+// Number of modes the counter cycles through. Kept small so the serial output
+// is readable and the LED (low bit) visibly toggles.
+const MODE_COUNT: int32_t = 4;
 
 // ---------------------------------------------------------------------------
-// Records.
+// Owned state (module-level scalars — AVR-correct, no `new`, no heap).
 // ---------------------------------------------------------------------------
 
-// One sampled reading: the raw ADC count and the derived voltage in
-// millivolts. A plain `interface` lowers to a POD C++ struct returned by value.
-interface Reading {
-  raw: int32_t;
-  millivolts: int32_t;
-}
+// The last ACCEPTED (debounced) button level. With the pull-up, true = open
+// (HIGH), false = pressed (LOW). Seeded `true` so the first poll doesn't read
+// as a spurious press.
+let buttonLevel: boolean = true;
+
+// Timestamp (ms) of the last RAW level change. A new level is only accepted
+// once `Timing.millis() - lastChangeMs >= DEBOUNCE_MS`.
+let lastChangeMs: int32_t = 0;
+
+// The current mode counter. Each accepted press edge advances it
+// (modulo MODE_COUNT).
+let mode: int32_t = 0;
+
+// The debounced level as of the PREVIOUS poll, used to detect the press EDGE
+// (HIGH→LOW transition). Seeded `true` (open) so the first poll after boot
+// doesn't read as a press.
+let prevLevel: boolean = true;
 
 // ---------------------------------------------------------------------------
-// Owned blink state. A single module-level boolean — the AVR-idiomatic shape
-// for one bit of owned mutable state (no `new`, no heap; see file header).
+// Read the raw button level and debounce it. Returns the newly-accepted
+// debounced level, or the previous level if the raw reading hasn't been stable
+// long enough. Standard edge-detect-with-hysteresis.
+//
+// `btn.read()` is a value-bearing HAL op; its return is stored in `raw` and
+// reused (works correctly per demo #34 Finding B's fix).
 // ---------------------------------------------------------------------------
 
-let ledOn: boolean = false;
-
-// ---------------------------------------------------------------------------
-// Pure / pin helpers. `toggleLed` references the top-level `led` pin alias;
-// HAL resolution is order-independent (Finding C fix) so it inlines correctly
-// even though it is declared before `const led`.
-// ---------------------------------------------------------------------------
-
-// Convert a raw ADC count (0..ADC_MAX) into millivolts (0..VREF_MILLIVOLTS)
-// with plain integer math. Millivolts (not volts) avoids floating point
-// entirely, which is cheaper on AVR and prints cleanly via `Serial`.
-function toMillivolts(raw: int32_t): int32_t {
-  if (raw < 0) {
-    return 0;
-  }
-  if (raw > ADC_MAX) {
-    return VREF_MILLIVOLTS;
-  }
-  return raw * VREF_MILLIVOLTS / ADC_MAX;
-}
-
-// Toggle the on-board LED and return whether it is now lit. `led.high()`/
-// `led.low()` inline to `digitalWrite(13, HIGH/LOW)`.
-function toggleLed(): boolean {
-  ledOn = !ledOn;
-  if (ledOn) {
-    led.high();
+function debounce(): boolean {
+  const raw: boolean = btn.read();
+  if (raw !== buttonLevel) {
+    // Raw level differs from the accepted one — wait out the debounce window.
+    const now: int32_t = Timing.millis();
+    if (now - lastChangeMs >= DEBOUNCE_MS) {
+      buttonLevel = raw;
+      lastChangeMs = now;
+    }
   } else {
-    led.low();
+    // Raw matches accepted — this reading is the stable baseline; keep the
+    // debounce clock aligned to it so the NEXT change starts a fresh window.
+    lastChangeMs = Timing.millis();
   }
-  return ledOn;
+  return buttonLevel;
 }
 
-// Build a one-line report for a blink state + a reading. Built by STRING
-// CONCATENATION (the inline ternary of two string literals is fine post-
-// Finding D). No growable array storage is required.
-function report(ledOn: boolean, r: Reading): string {
+// ---------------------------------------------------------------------------
+// Format a one-line mode report. Built by string concatenation. The ternary
+// of two string literals is fine inline (demo #34 Finding D fix).
+// ---------------------------------------------------------------------------
+
+function report(mode: int32_t): string {
   let line: string = '';
-  line = line + 'led=' + (ledOn ? 'on ' : 'off');
-  line = line + ' adc=' + r.raw;
-  line = line + ' mV=' + r.millivolts;
+  line = line + 'mode=' + mode;
+  line = line + ' led=' + (mode % 2 === 1 ? 'on ' : 'off');
   return line;
 }
 
 // ---------------------------------------------------------------------------
 // Configure the pins once. These top-level calls run in the auto-generated
-// `setup()` and lower to `pinMode(13, OUTPUT)` / `pinMode(14, INPUT)`.
+// `setup()` and lower to `pinMode(13, OUTPUT)` / `pinMode(2, INPUT_PULLUP)`.
+// `btn`/`led` are top-level aliases referenced by the helpers; HAL resolution
+// is order-independent (demo #34 Finding C fix).
 // ---------------------------------------------------------------------------
 
 const led = LED.asOutput();
-const adc = A0.asInput();
+const btn = D2.inputPullUp();
 
 // ---------------------------------------------------------------------------
-// Periodic work. Toggle the LED, read A0 ONCE (Finding B fix — the read is
-// captured into `raw` and reused, a single ADC conversion per loop), print the
-// report, wait. The `while (true)` loop is the natural Arduino shape for "do
-// this forever" and keeps the auto-generated `loop()` empty.
+// Periodic work. Poll the debounced button; on each accepted PRESS edge
+// (HIGH→LOW) advance the mode and drive the LED to the mode's low bit. Print
+// the new mode once per press. The `while (true)` loop keeps the auto-
+// generated `loop()` empty; a small `Timing.delay` bounds CPU use.
 // ---------------------------------------------------------------------------
 
-console.log('--- blink + ADC demo ---');
+console.log('--- debounced button demo ---');
+console.log(report(mode));
+led.low();
 
 while (true) {
-  const on: boolean = toggleLed();
-  const raw: int32_t = adc.readAnalog();
-  const reading: Reading = { raw: raw, millivolts: toMillivolts(raw) };
-  console.log(report(on, reading));
-  Timing.delay(BLINK_PERIOD_MS);
+  const level: boolean = debounce();
+
+  // A PRESS is the HIGH→LOW edge (pull-up: pressed reads LOW): the debounced
+  // level just went LOW while the previous poll saw it HIGH. Detect the edge
+  // once, advance the mode, drive the LED to the mode's low bit, and announce.
+  if (!level && prevLevel) {
+    mode = (mode + 1) % MODE_COUNT;
+    if (mode % 2 === 1) {
+      led.high();
+    } else {
+      led.low();
+    }
+    console.log(report(mode));
+  }
+  prevLevel = level;
+
+  Timing.delay(5);
 }
