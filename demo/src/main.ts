@@ -16,27 +16,26 @@ namespace Devices {
   export const MAX_COUNT: int32_t = 8;
   export const DEFAULT_LABEL: string = "dev";
 
-  // STRESS-NOTE: `DEFAULT_LABEL + ":" + id` emitted snprintf "%d:%d" — the
-  // namespace-scope string const DEFAULT_LABEL was mis-classified as %d
-  // (not in the snprintf operand-type map). Rebuilt via explicit pieces to
-  // get past it; the bug is notated.
   export function makeLabel(id: int32_t): string {
-    let s: string = '';
-    s = s + id;
-    return s;
+    return DEFAULT_LABEL + ":" + id;
   }
 
-  // Nested class inside a namespace.
-  // STRESS-NOTE: a `static count` field here lost its `static` qualifier in
-  // emission (emitted as an instance field), so `Registry.count` from the
-  // static method failed. Moved to a namespace-level let — BUT that surfaced
-  // a second bug: `Devices.registryCount` from the static method emitted with
-  // `.` (Devices.registryCount) instead of `::` (Devices::registryCount),
-  // which is invalid for a namespace. Both bugs notated; Registry.register
-  // neutralized to a no-op to let the rest compile.
+  // Nested class inside a namespace. The `static count` field now emits
+  // `static inline` correctly (Finding 2 fix). REMAINING GAP: a three-level
+  // access `Devices.Registry.count` (namespace → class static → field) emits
+  // `Devices::Registry.count` — mixed `::`/`.`. The static-class member needs
+  // `Devices::Registry::count`. The Finding-3 assign-target fix covered
+  // single-level `Ns.x`; the multi-level `Ns.Class.member` case (across
+  // reads/conditions/assigns) is a distinct remaining sub-finding. Worked
+  // around here with a namespace-level let so the rest of the showcase
+  // compiles.
   export class Registry {
     static register(): int32_t {
-      return Devices.MAX_COUNT;
+      Devices.registryCount = Devices.registryCount + 1;
+      if (Devices.registryCount > Devices.MAX_COUNT) {
+        Devices.registryCount = Devices.MAX_COUNT;
+      }
+      return Devices.registryCount;
     }
   }
   export let registryCount: int32_t = 0;
@@ -45,15 +44,9 @@ namespace Devices {
 // ── Abstract base with an abstract method + a concrete method ──────────────
 abstract class Shape {
   abstract area(): int32_t;
-  // Concrete method. STRESS-NOTE: `"shape area=" + this.area()` emitted
-  // "shape area=%d" with this->area() which looks correct, yet avr-g++ threw
-  // "expected primary-expression before '.' token" — a cascade. Neutralized
-  // to surface other errors; the concat-in-method-return path is notated.
+  // Concrete method intended to be called via super.method() from a subclass.
   describe(): string {
-    const a: int32_t = this.area();
-    let s: string = 'shape area=';
-    s = s + a;
-    return s;
+    return "shape area=" + this.area();
   }
 }
 
