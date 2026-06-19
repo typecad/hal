@@ -2,7 +2,7 @@
 import path from "path";
 import ts from "typescript";
 import { parseSource } from "../../ast/parse";
-import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances } from "../build-ir-state";
+import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances, topLevelAliasReceivers } from "../build-ir-state";
 import { mapPeripheralName } from "../../mapping/peripheral-names";
 import { escapeCppStringLiteral } from "../../utils/strings";
 
@@ -388,6 +388,31 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
       const fieldValues = resolveCtorFieldValues(classEntry.ctorFieldMap, args, classEntry.ctorDefaults);
       if (fieldValues) {
         return { className, fieldValues };
+      }
+    }
+
+    // Lazy top-level alias follow (demo #34 Finding C): if `receiver` is an
+    // identifier that names a top-level `const x = <pin>.<modeSetter>(...)`
+    // alias, resolve the recorded receiver name instead. This makes HAL
+    // resolution order-independent — a function referencing `led` resolves it
+    // even when declared before `const led = LED.asOutput()`. Only mode-setter
+    // aliases are recorded (build-ir.ts Phase 0d), so a value-bearing-read
+    // variable is never followed here (Finding B). Follow the chain with a
+    // visited-set to guard against cycles.
+    if (ts.isIdentifier(receiver) && topLevelAliasReceivers.has(receiver.text)) {
+      const visited = new Set<string>([receiver.text]);
+      let cur = receiver.text;
+      while (topLevelAliasReceivers.has(cur) && !visited.has(topLevelAliasReceivers.get(cur)!)) {
+        const next = topLevelAliasReceivers.get(cur)!;
+        visited.add(next);
+        const inst = halInstances.get(next);
+        if (inst) {
+          // Cache the resolved instance under the original alias so later
+          // lookups are direct.
+          halInstances.set(receiver.text, inst);
+          return inst;
+        }
+        cur = next;
       }
     }
 

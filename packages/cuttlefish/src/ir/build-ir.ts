@@ -11,7 +11,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
 import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions } from "./build-ir-state";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { prescanUnsupportedFeatures } from "./feature-prescan";
@@ -267,6 +267,32 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         // Non-fatal
       }
       break;
+    }
+  }
+
+  // Phase 0d: record top-level HAL alias declarations (varName → receiver text)
+  // in a cheap, resolution-free pass. `resolveHALReceiver` follows this map
+  // lazily so a function that references an alias (`led.high()`) resolves it
+  // even when declared before the `const led = LED.asOutput()` — making HAL
+  // resolution order-independent (demo #34 Finding C). Only mode-SETTER calls
+  // (which return the pin itself) are recorded; value-bearing reads are
+  // excluded so their variables don't alias the pin (Finding B). The receiver
+  // is resolved at lookup time (after imports have registered `LED` etc.), not
+  // here, so import order doesn't matter.
+  const HAL_ALIASING_METHODS = new Set([
+    "asOutput", "asInput", "asInputPullUp", "asInputPullDown",
+    "output", "inputPullUp", "inputPullDown",
+  ]);
+  for (const node of source.statements) {
+    if (!ts.isVariableStatement(node)) continue;
+    for (const decl of node.declarationList.declarations) {
+      if (!decl.initializer || !ts.isIdentifier(decl.name)) continue;
+      const init = decl.initializer;
+      if (ts.isCallExpression(init) && ts.isPropertyAccessExpression(init.expression)
+          && HAL_ALIASING_METHODS.has(init.expression.name.text)
+          && ts.isIdentifier(init.expression.expression)) {
+        topLevelAliasReceivers.set(decl.name.text, init.expression.expression.text);
+      }
     }
   }
 

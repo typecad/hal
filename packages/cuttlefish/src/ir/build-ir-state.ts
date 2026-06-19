@@ -83,6 +83,16 @@ export class CompilationContext {
   contextId = Math.random().toString(36).slice(2, 8);
 
   halInstances = new Map<string, HALInstance>();
+  /**
+   * Top-level `const x = <receiver>.<method>(...)` alias declarations, recorded
+   * as varName → receiver source text in a cheap up-front pass (no resolution).
+   * `resolveHALReceiver` follows this lazily so a function that references `x`
+   * resolves correctly even when declared before the `const x = ...`. This makes
+   * HAL resolution order-independent (demo #34 Finding C). Only mode-setter
+   * methods (asOutput/asInput/...) are recorded here — value-bearing reads are
+   * excluded so they don't alias the pin (Finding B).
+   */
+  topLevelAliasReceivers = new Map<string, string>();
   floatVariables = new Set<string>();
   snprintfCounter = 0;
   callbackPlaceholderCounter = 0;
@@ -171,6 +181,7 @@ function createArrayProxy<T>(getContextKey: (ctx: CompilationContext) => T[]): T
 export const topLevelClasses = createMapProxy(ctx => ctx.topLevelClasses);
 export const registerFieldMap = createMapProxy(ctx => ctx.registerFieldMap);
 export const halInstances = createMapProxy(ctx => ctx.halInstances);
+export const topLevelAliasReceivers = createMapProxy(ctx => ctx.topLevelAliasReceivers);
 export const floatVariables = createSetProxy(ctx => ctx.floatVariables);
 
 export const hoistedNestedFunctions = createArrayProxy(ctx => ctx.hoistedNestedFunctions);
@@ -296,6 +307,7 @@ export function resetBuildState(): void {
   hoistedNestedInterfaces.length = 0;
   hoistedNestedTypeAliases.length = 0;
   nestedFunctionAliases.clear();
+  topLevelAliasReceivers.clear();
   nestedClassAliases.clear();
   resetFunctionScopeState();
   activeNamespaceNames.clear();

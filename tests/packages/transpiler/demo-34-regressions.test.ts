@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { transpile, transpileAVR, transpileNative } from "../../setup";
+import { transpile, transpileAVR, transpileNative, transpileArduino } from "../../setup";
 
 // ── D: inline ternary of two string literals as a `+` operand ───────────────
 // A ternary whose two branches are string literals must infer `const char*`
@@ -59,5 +59,36 @@ run();
     const res = transpileNative(src);
     const errs = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
     expect(errs).toEqual([]);
+  });
+});
+
+// ── C: pin method call from a function resolves regardless of declaration order
+// HAL resolution is order-dependent today: a function body lowered before the
+// `const led = LED.asOutput()` that registers `led` fails to inline and emits
+// `led.high()` verbatim (avr-g++: 'led' was not declared in this scope).
+describe("C: pin call from a function resolves regardless of declaration order", () => {
+  it("inlines led.high() when the function is declared AFTER const led (already worked)", () => {
+    const src = `
+import { LED } from '@typecad/board-arduino-uno';
+const led = LED.asOutput();
+function driveLed(): void { led.high(); }
+driveLed();
+`;
+    const res = transpileArduino(src);
+    expect(res.cpp).toContain("digitalWrite(13, HIGH)");
+  });
+
+  it("inlines led.high() when the function is declared BEFORE const led (currently fails)", () => {
+    const src = `
+import { LED } from '@typecad/board-arduino-uno';
+function driveLed(): void { led.high(); }
+const led = LED.asOutput();
+driveLed();
+`;
+    const res = transpileArduino(src);
+    // Must inline — NOT emit the bare `led.high()` that references a
+    // non-existent C++ variable.
+    expect(res.cpp).toContain("digitalWrite(13, HIGH)");
+    expect(res.cpp).not.toMatch(/\bled\.high\(\)/);
   });
 });
