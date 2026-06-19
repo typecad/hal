@@ -505,7 +505,15 @@ export function variableStatementToIR(
           } else if (ts.isPropertyAccessExpression(init.expression)) {
             const receiver = init.expression.expression;
             const instance = resolveHALReceiver(receiver);
-            if (instance && (!result.returnValue || result.returnValue === "this" || isHalOpReturn)) {
+            // Register the variable as the receiver instance ONLY when the
+            // method returns the pin itself ("this", e.g. asOutput/asInput) or
+            // returns nothing (a pure side-effect). A value-bearing halOp
+            // (readAnalog/readVoltage — returnValue === "__hal_op_return__")
+            // must NOT alias the variable to the pin: the variable holds the
+            // READ RESULT, and aliasing it makes every later use substitute the
+            // pin number (demo #34 Finding B). The value is captured into a
+            // real var_decl below (the isHalOpReturn branch).
+            if (instance && (!result.returnValue || result.returnValue === "this") && !isHalOpReturn) {
               halInstances.set(varName, instance);
             }
           }
@@ -975,6 +983,22 @@ export function variableStatementToIR(
           loweredDeclaration.cppType = "auto" as any;
           localVariableTypes.set(varName, "auto");
           setScopeLocalType(varName, "auto");
+        } else if (vecMatch && !(getContext().activeStrategy?.needsStdVector() ?? true)) {
+          // Demo #33 Finding B — an explicitly array-TYPED non-mutated literal
+          // (`const SAMPLES: int32_t[] = [...]`) keeps its `std::vector<...>`
+          // cppType (so emit renders the right element type), but on a target
+          // that does NOT need std::vector (`!needsStdVector()`, e.g. Arduino
+          // AVR) it STILL emits as a RAW C array `T name[] = {...}` (the
+          // emit-side discriminator class-emitter.ts addCArrayIfNotMutable
+          // uses exactly `!needsStdVector()`). Without tracking it in
+          // activeArrayLiteralVars, `.length` resolution fell through to the
+          // default `.size()` — invalid for a raw C array (avr-g++: "request
+          // for member 'size' in 'SAMPLES', which is of non-class type").
+          // The localVariableTypes entry keeps the `std::vector<...>` spelling
+          // so resolveLengthProperty's container-vs-sizeof decision (which
+          // checks needsStdVector + mutableArrayVars membership) routes
+          // correctly.
+          activeArrayLiteralVars.add(varName);
         }
       }
     }

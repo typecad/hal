@@ -53,8 +53,10 @@ describe('InputPin - readVoltage', () => {
 
     expect(result.cpp).toContain('analogRead(14)');
     expect(result.cpp).toContain('5 / 1023');
-    // println receives the resolved pin number, not the voltage variable
-    expect(result.cpp).toContain('Serial.println(14)');
+    // println receives the voltage variable (the read result), not the pin
+    // number — demo #34 Finding B fixed the stored-read substitution bug that
+    // previously made every use of `v` resolve to the pin number `14`.
+    expect(result.cpp).toContain('Serial.println(v)');
   });
 });
 

@@ -92,3 +92,38 @@ driveLed();
     expect(res.cpp).not.toMatch(/\bled\.high\(\)/);
   });
 });
+
+// ── B: storing the return of a pin read captures the real value ────────────
+// `const v = adc.readAnalog()` must emit `auto v = analogRead(14)` and
+// reference `v` at use sites. Today the read is dropped and every use of `v`
+// becomes the pin number `14` (the variable is wrongly registered as the pin
+// instance).
+describe("B: stored pin-method return value is captured, not substituted with the pin number", () => {
+  it("emits auto v = analogRead(14) and references v", () => {
+    const src = `
+import { A0 } from '@typecad/board-arduino-uno';
+const adc = A0.asInput();
+const v: int32_t = adc.readAnalog();
+console.log('' + v);
+`;
+    const res = transpileArduino(src);
+    // The read must be captured into the variable.
+    expect(res.cpp).toMatch(/auto v = analogRead\(14\)/);
+    // The use site must reference `v`, NOT the literal pin number 14.
+    expect(res.cpp).not.toMatch(/"%d", 14/);
+  });
+
+  it("a reassigned stored read keeps using the variable", () => {
+    const src = `
+import { A0 } from '@typecad/board-arduino-uno';
+const adc = A0.asInput();
+let v: int32_t = adc.readAnalog();
+v = v + 1;
+console.log('' + v);
+`;
+    const res = transpileArduino(src);
+    expect(res.cpp).toMatch(/(auto|int32_t) v = analogRead\(14\)/);
+    // `v + 1` must stay `v + 1`, not become `14 + 1`.
+    expect(res.cpp).not.toMatch(/14 \+ 1/);
+  });
+});
