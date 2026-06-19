@@ -1,5 +1,14 @@
 # Blink + ADC read — cuttlefish demo #34 (Arduino AVR)
 
+> **Status (2026-06-19): all four transpiler findings (A–D) are FIXED.** The
+> demo source is now in its natural, idiomatic form — the four workarounds the
+> first iteration carried are gone. See `demo/src/main.ts` header for which
+> workaround each fix removed. The "Transpilation issues found by Demo #34"
+> section below is preserved as the historical record of the bugs and their
+> root causes; each finding's fix is noted at its heading. Hardware-verified:
+> the natural form prints real, varying ADC readings (e.g. `led=on adc=410
+> mV=2003`), confirming the stored read is captured (not the pin number).
+
 The **second AVR demo** and the **first to exercise the TypeCAD HAL end-to-end
 on real hardware**. Where demo #33 was pure in-process computation (sensor
 statistics), this one reaches the silicon: it configures a digital output (the
@@ -72,7 +81,7 @@ bugs/gaps and one is an inconsistent-safety-gate. They are grouped into two
 larger families at the end — the families are where the "large fixes" should
 land, not the individual sites.
 
-## Finding A — the `heap-allocation-avr` gate's coverage depends on whether a HAL `import` is present
+## Finding A — the `heap-allocation-avr` gate's coverage depends on whether a HAL `import` is present  *(FIXED — commit d170798)*
 
 ```
 src\main.ts (152,7) error [heap-allocation-avr]: Heap allocation
@@ -116,7 +125,7 @@ firmware does for a single bit of owned state.
 regardless of whether it lowered to a `raw` node and regardless of import
 structure), not by pattern-matching `raw` text. See **Family I** below.
 
-## Finding B — storing the return value of a pin method call MISCOMPILES (correctness bug)
+## Finding B — storing the return value of a pin method call MISCOMPILES (correctness bug)  *(FIXED — commit 1228d83)*
 
 ```
 const raw: int32_t = adc.readAnalog();
@@ -183,7 +192,7 @@ see. This one fix would also un-`.skip` the PWM tests and fix the
 `hal-adc.test.ts:50-58` assertion (which currently encodes the bug). See
 **Family II** below.
 
-## Finding C — pin method calls inside a function are not inlined (`'led' was not declared in this scope`)
+## Finding C — pin method calls inside a function are not inlined (`'led' was not declared in this scope`)  *(FIXED — commit 55adf60)*
 
 ```
 src\main.ts (96,5) error [call]: 'led' was not declared in this scope
@@ -218,7 +227,7 @@ call site — then both Finding B (don't substitute for return-value variables)
 and Finding C (do substitute consistently across scopes) fall out of one
 resolution model. See **Family II** below.
 
-## Finding D — inline ternary of two string literals as a `+` operand emits an invalid `.c_str()`
+## Finding D — inline ternary of two string literals as a `+` operand emits an invalid `.c_str()`  *(FIXED — commit 3228827)*
 
 ```
 src\main.ts (126,3) error [assign]: request for member 'c_str' in
