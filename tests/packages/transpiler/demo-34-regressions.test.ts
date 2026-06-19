@@ -25,19 +25,28 @@ console.log(tag(true));
 // `new MyClass()` on AVR must be flagged whether or not a HAL/board import is
 // present. Today the no-import case is silently allowed (the gate keys off
 // `raw` IR text whose presence depends on import structure).
-describe("A: heap-allocation-avr detected regardless of HAL import", () => {
-  it("flags new Blinker() WITHOUT a HAL import (currently silently allowed)", () => {
+// ── A: heap-allocation-avr is a WARNING (not an error) on AVR ───────────────
+// `new`/`delete` ARE supported on the Arduino AVR core (it ships operator
+// new/delete over avr-libc malloc/free — a real heap). The gate is a capacity
+// heads-up (small heap ~1.5-1.8 KB), NOT a correctness refusal. It must fire
+// as a WARNING regardless of HAL import structure (demo #34 Finding A made
+// detection import-independent; demo #36 downgraded it from error to warning
+// after verifying new+inheritance compiles and runs on the Uno).
+describe("A: heap-allocation-avr fires as a warning regardless of HAL import", () => {
+  it("warns about new Blinker() WITHOUT a HAL import", () => {
     const src = `
 class Blinker { on: boolean; constructor() { this.on = false; } }
 function run(): void { const b: Blinker = new Blinker(); }
 run();
 `;
     const res = transpileAVR(src);
-    const errs = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
-    expect(errs.length).toBeGreaterThanOrEqual(1);
+    const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
+    expect(diags.length).toBeGreaterThanOrEqual(1);
+    // Must be a WARNING, not a hard error — new is valid on AVR.
+    expect(diags[0].severity).toBe("warning");
   });
 
-  it("flags new Blinker() WITH a HAL import (already worked)", () => {
+  it("warns about new Blinker() WITH a HAL import", () => {
     const src = `
 import { LED } from '@typecad/board-arduino-uno';
 class Blinker { on: boolean; constructor() { this.on = false; } }
@@ -46,19 +55,20 @@ function run(): void { const b: Blinker = new Blinker(); }
 run();
 `;
     const res = transpileAVR(src);
-    const errs = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
-    expect(errs.length).toBeGreaterThanOrEqual(1);
+    const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
+    expect(diags.length).toBeGreaterThanOrEqual(1);
+    expect(diags[0].severity).toBe("warning");
   });
 
-  it("does NOT flag new on native (heap is safe there)", () => {
+  it("does NOT warn on native (heap is ample there)", () => {
     const src = `
 class Blinker { on: boolean; constructor() { this.on = false; } }
 function run(): void { const b: Blinker = new Blinker(); }
 run();
 `;
     const res = transpileNative(src);
-    const errs = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
-    expect(errs).toEqual([]);
+    const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
+    expect(diags).toEqual([]);
   });
 });
 

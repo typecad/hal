@@ -1354,21 +1354,31 @@ function collectNoVectorStorageDiagnostics(program: ProgramIR): Diagnostic[] {
 }
 
 /**
- * On no-heap architectures (AVR/megaAVR), surface a clear, source-located
- * error for every `new ClassName(...)` heap allocation. AVR has only 2 KB of
- * SRAM and no heap manager; `operator new` corrupts memory or silently fails.
+ * Surface an informational heads-up for every `new ClassName(...)` heap
+ * allocation on small-RAM architectures (AVR/megaAVR). This is a WARNING, not
+ * an error: `operator new` / `delete` ARE supported on the Arduino AVR core
+ * (the core ships `cores/arduino/new.cpp`, which wraps avr-libc's
+ * `malloc`/`free` — a real heap manager). `new` compiles, links, and runs; the
+ * transpiler's own memory report prints the available heap (e.g. "Heap: 1.8 KB
+ * available"). So heap allocation is routine and valid Arduino C++.
  *
- * This is the target-aware companion to the build-time heap validator
- * (`ir/heap-array-validation.ts`). The build-time gate keys off
- * `boardConstants.architecture`, which is only populated when an MCU/board
- * import is present — so import-less programs silently bypassed it. This
- * profile-time gate derives `arch` from the FQBN (via `profileDiagnostics`)
- * and therefore fires regardless of import structure (demo #34 Finding A).
+ * The genuine constraint is the heap is SMALL (a Uno has ~1.5–1.8 KB usable
+ * after globals/the stack), so heavy or churning allocation risks
+ * fragmentation and exhaustion. That is a capacity/performance caveat the
+ * author should own — hence a warning with a measured hint, not a hard error
+ * that rejects correct, platform-supported code.
+ *
+ * (History: a prior version of this gate was a hard `error` whose message
+ * claimed AVR had "no heap manager" and that `new` would "corrupt memory or
+ * silently fail" — both factually wrong for the Arduino core. Demo #36
+ * downgraded it to a warning and corrected the message after verifying
+ * `new`+inheritance compiles and runs on the Uno.)
  *
  * Detection keys off the `newClassName` marker a user-class `new` tags its
  * raw IR node with (set in `expression-to-ir.ts`), falling back to a text
  * regex for untagged / hand-built raw IR. The marker makes the detection
- * structural (by construct) rather than textual.
+ * structural (by construct) rather than textual. The profile-time location
+ * derives `arch` from the FQBN so it fires regardless of import structure.
  */
 function collectHeapAllocationDiagnostics(program: ProgramIR, arch: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
@@ -1389,17 +1399,20 @@ function collectHeapAllocationDiagnostics(program: ProgramIR, arch: string): Dia
             const match = init.value.match(/^new\s+(\w+)/);
             const className = tagged ?? (match ? match[1] : "unknown");
             diagnostics.push({
-              severity: "error" as const,
+              // WARNING, not error: `new`/`delete` are supported on the Arduino
+              // AVR core (it ships operator new/delete over avr-libc malloc/free).
+              // The only real concern is the small heap (~1.5-1.8 KB on a Uno),
+              // so this is a capacity heads-up, not a correctness refusal.
+              severity: "warning" as const,
               code: "heap-allocation-avr",
               message:
-                `Heap allocation (\`new ${className}()\`) is unsafe on ${arch.toUpperCase()} targets. ` +
-                `AVR has only 2 KB of SRAM and no heap manager; \`operator new\` will corrupt memory ` +
-                `or silently fail. Declare the object as a local or global variable instead.`,
+                `Heap allocation (\`new ${className}()\`) on ${arch.toUpperCase()} uses the small ` +
+                `runtime heap (~1.5-1.8 KB usable on a Uno). \`new\`/\`delete\` are supported by the ` +
+                `Arduino core, but heavy or churning allocation risks fragmentation/exhaustion.`,
               hint:
-                `// Instead of:\n` +
-                `// const obj = new ${className}(args);\n` +
-                `// Use a global or local struct/object:\n` +
-                `// ${className} obj(args);  // stack-allocated in C++`,
+                `This compiles and runs. For long-lived or frequently-allocated objects on a small-RAM ` +
+                `target, consider a stack/global instance (auto ${className} obj(...);) or reusing a ` +
+                `single allocation to avoid heap fragmentation.`,
               line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
               column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
               source: "framework-arduino",
@@ -1408,7 +1421,7 @@ function collectHeapAllocationDiagnostics(program: ProgramIR, arch: string): Dia
         }
       }
       // Recurse into nested compound bodies.
-      const nested = (stmt as Record<string, unknown>);
+      const nested = (stmt as unknown as Record<string, unknown>);
       if (Array.isArray(nested.body)) visit(nested.body as StatementIR[]);
       if (Array.isArray(nested.thenBranch)) visit(nested.thenBranch as StatementIR[]);
       if (Array.isArray(nested.elseBranch)) visit(nested.elseBranch as StatementIR[]);
