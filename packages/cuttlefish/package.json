@@ -44,6 +44,10 @@
     "./ui/css-parser": {
       "types": "./dist/ui/css-parser.d.ts",
       "default": "./dist/ui/css-parser.js"
+    },
+    "./ui/style-resolver": {
+      "types": "./dist/ui/style-resolver.d.ts",
+      "default": "./dist/ui/style-resolver.js"
     }
   },
   "files": [
