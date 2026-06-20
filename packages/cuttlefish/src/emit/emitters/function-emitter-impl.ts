@@ -4,6 +4,7 @@ import { createChildEmissionScope } from "../snprintf-helpers";
 import { escapeCppKeyword } from "../../utils/strings";
 import type { EmitterContext } from "./emitter-context";
 import { parsedIsPlainStructType } from "../../api/shared/cpp-type-ir";
+import { entryHasUI } from "../../ui/ui-registry";
 
 export function emitPostClassDeclarations(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, mappedFunctions, isEntryFile, topLevelScope } = ctx;
@@ -207,7 +208,18 @@ export function emitFunctions(ctx: EmitterContext): void {
     const definitionParameterList = ctx.statementRenderer.renderParameters(fn.parameters, false);
     const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
     const isExported = fn.isExported === true;
-    const isEntrypoint = fn.name === strategy.entrypointFunctionName();
+    // A function is an entrypoint if it is the strategy's primary entrypoint
+    // (e.g. `setup` on Arduino, `main` on native) OR one of the platform's
+    // reserved entrypoint names the strategy excludes from forward declarations
+    // (e.g. `loop` on Arduino, whose `void loop(void)` is forward-declared
+    // extern by the Arduino core — emitting `static void loop()` redeclares it
+    // with conflicting linkage, which ESP32's GCC rejects; see
+    // arduino-loop-linkage.test.ts). Treating these as entrypoints drops the
+    // `static` qualifier, matching how `setup`/`main` already emit.
+    const platformEntrypoints = strategy.forwardDeclarationExclusions?.() ?? [];
+    const isEntrypoint =
+      fn.name === strategy.entrypointFunctionName() ||
+      platformEntrypoints.includes(fn.name);
     // Demo #18 Finding B: a non-exported free function that is CALLED from a
     // class method body must be visible in the header (inline method bodies
     // live there in split mode) and defined non-static in the .cpp (a `static`
@@ -272,6 +284,12 @@ export function emitFunctions(ctx: EmitterContext): void {
     const asyncDriverFn = strategy.asyncDriverFunctionName();
     if (hasPromiseRuntime && fn.name === asyncDriverFn) {
       appendSourceLine(ctx, "  cuttlefish_pump_microtasks();");
+    }
+    // Drive the UI runtime each frame. Fires only in the driver function when
+    // a UI is mounted (entryHasUI). Uses a separate gate from the async pump
+    // so a pure-UI program (no async/timers) still animates.
+    if (entryHasUI() && fn.name === asyncDriverFn) {
+      appendSourceLine(ctx, "  ui_tick(16);");
     }
     if (fn.isAsync && ctx.hasAsyncRuntime) {
       appendSourceLine(ctx, `  // driven as cooperative task in ${asyncDriverFn}()`);
@@ -357,7 +375,18 @@ export function emitFunctionForwardDeclarations(ctx: EmitterContext): void {
   for (const fn of ctx.mappedFunctions) {
     if (excludedNames.has(fn.name)) continue;
     const isExported = fn.isExported === true;
-    const isEntrypoint = fn.name === strategy.entrypointFunctionName();
+    // A function is an entrypoint if it is the strategy's primary entrypoint
+    // (e.g. `setup` on Arduino, `main` on native) OR one of the platform's
+    // reserved entrypoint names the strategy excludes from forward declarations
+    // (e.g. `loop` on Arduino, whose `void loop(void)` is forward-declared
+    // extern by the Arduino core — emitting `static void loop()` redeclares it
+    // with conflicting linkage, which ESP32's GCC rejects; see
+    // arduino-loop-linkage.test.ts). Treating these as entrypoints drops the
+    // `static` qualifier, matching how `setup`/`main` already emit.
+    const platformEntrypoints = strategy.forwardDeclarationExclusions?.() ?? [];
+    const isEntrypoint =
+      fn.name === strategy.entrypointFunctionName() ||
+      platformEntrypoints.includes(fn.name);
     // Demo #18 Finding B: a free function called from a class method body is
     // forward-declared in the HEADER (like an exported function) — this step
     // runs BEFORE emitClasses, so the prototype precedes the class body that
