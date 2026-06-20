@@ -336,6 +336,25 @@ export function variableStatementToIR(
             // `decltype(arr[0])` yields a reference, and vector-of-references
             // is illegal in C++). Fall back to std::remove_reference_t<decltype(...)>
             // when the element type can't be statically resolved.
+            //
+            // AVR note: a rest element from a VARIABLE lowers to a std::vector
+            // slice (no recoverable size from a runtime array), which AVR can't
+            // express (no <vector>). Emit a clean, located TS2CPP_NO_VECTOR_STORAGE
+            // diagnostic instead of letting it reach g++ as a raw
+            // "'vector' is not a member of 'std'" (destructure stress test
+            // Finding B). A rest from a LITERAL still works (the literal branch
+            // above) because the size is recoverable.
+            if (!(getContext().activeStrategy?.needsStdVector() ?? true)) {
+              diagnostics.push(
+                makeDiagnostic(
+                  sourceText,
+                  element.pos,
+                  `Rest element \`${varName}\` lowers to std::vector<ElemType> (a runtime slice of \`${arrText}\`), which is not available on this target (ATmega AVR has no <vector>). Use a rest element from an array LITERAL (whose size is recoverable) or index the source array directly.`,
+                  "error",
+                  "TS2CPP_NO_VECTOR_STORAGE",
+                ),
+              );
+            }
             const srcType = getCurrentIrTypeScope()?.locals.get(arrText) ?? getCurrentIrTypeScope()?.globals.get(arrText);
             let elemType = "auto";
             if (srcType) {

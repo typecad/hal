@@ -70,3 +70,37 @@ f();
     expect(res.cpp).toMatch(/for\s*\(/);
   });
 });
+
+// ── Finding B: rest element from a variable emits a clean AVR diagnostic ──
+// `const [head, ...tail] = arr` (arr a variable) lowers `tail` to a
+// std::vector slice, which AVR can't express. Today it reaches avr-g++ as a
+// raw "'vector' is not a member of 'std'". It should emit a clean, located
+// TS2CPP_NO_VECTOR_STORAGE diagnostic instead (like array-param destructure).
+describe("B: rest element from variable emits NO_VECTOR diagnostic on AVR", () => {
+  it("flags rest-from-variable with TS2CPP_NO_VECTOR_STORAGE", () => {
+    const src = `
+function f(): void {
+  const arr: int32_t[] = [1, 2, 3, 4, 5];
+  const [head, ...tail]: int32_t[] = arr;
+  console.log('' + head);
+}
+f();
+`;
+    const res = transpileArduino(src);
+    const diags = res.diagnostics.filter(d => d.code === "TS2CPP_NO_VECTOR_STORAGE");
+    expect(diags.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("rest-from-LITERAL still works on AVR (size recoverable)", () => {
+    const src = `
+function f(): void {
+  const [head, ...tail]: int32_t[] = [1, 2, 3, 4, 5];
+  console.log('' + head);
+}
+f();
+`;
+    const res = transpileArduino(src);
+    const diags = res.diagnostics.filter(d => d.code === "TS2CPP_NO_VECTOR_STORAGE");
+    expect(diags).toEqual([]);
+  });
+});
