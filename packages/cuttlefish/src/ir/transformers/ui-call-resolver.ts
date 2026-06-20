@@ -48,6 +48,11 @@ export function uiSignalNames(): string[] {
   return [...signals.keys()];
 }
 
+/** Is `name` a recorded UI signal? Used to lower `temp()` reads → `temp`. */
+export function isSignalName(name: string): boolean {
+  return signals.has(name);
+}
+
 export function uiSignalDecls(): string[] {
   return [...signals.values()].map((s) => s.decl);
 }

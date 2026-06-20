@@ -6,6 +6,7 @@ import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_A
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types";
 import { renderExprAsText } from "./render-expr";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
+import { isSignalName } from "./transformers/ui-call-resolver";
 import { halInstances } from "./hal-resolver";
 import { escapeCppKeyword } from "../utils/strings";
 import { tryLowerRegisterRead } from "./transformers/register-assignment";
@@ -928,6 +929,17 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // ---- HAL inline evaluator for expression context ----
     const halResult = tryResolveHALExpression(expr, sourceText, diagnostics, pointerVars);
     if (halResult) return halResult.ir;
+
+    // ---- UI signal read: temp() → temp (the device variable) ----
+    // A signal lowers to a plain variable, so calling it (the Signal<T>()
+    // accessor) is just a read of that variable.
+    if (
+      ts.isIdentifier(expr.expression) &&
+      expr.arguments.length === 0 &&
+      isSignalName(expr.expression.text)
+    ) {
+      return { kind: "identifier", value: expr.expression.text };
+    }
 
     // Warn about optional chaining on call expressions â€” we preserve a null guard,
     // but the runtime semantics are still only approximate compared to TypeScript.

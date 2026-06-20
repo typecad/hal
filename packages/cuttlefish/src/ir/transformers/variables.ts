@@ -40,6 +40,7 @@ import {
   isHALSingleton
 } from "../hal-resolver";
 import { resolveHALCallForVarInit } from "./hal-call-resolver";
+import { recordSignal } from "./ui-call-resolver";
 
 export function assignmentOperatorToString(kind: ts.SyntaxKind): Extract<StatementIR, { kind: "assign" }>['operator'] | undefined {
   switch (kind) {
@@ -436,6 +437,46 @@ export function variableStatementToIR(
     // ── HAL resolver for variable declarations ──────────────────────────────
     if (declaration.initializer && ts.isIdentifier(declaration.name)) {
       const varName = declaration.name.text;
+
+      // ── ui.signal(v): record the signal under the declaration name and emit
+      // a plain device variable. The const X = ui.signal(v) binding gives the
+      // signal an author-chosen name (preferred over synthesized names).
+      if (
+        ts.isCallExpression(declaration.initializer) &&
+        ts.isPropertyAccessExpression(declaration.initializer.expression) &&
+        ts.isIdentifier(declaration.initializer.expression.expression) &&
+        declaration.initializer.expression.expression.text === "ui" &&
+        declaration.initializer.expression.name.text === "signal"
+      ) {
+        const valueArg = declaration.initializer.arguments[0];
+        let initialValue: number | string | boolean = 0;
+        let cppType = "int";
+        if (valueArg) {
+          if (ts.isNumericLiteral(valueArg)) {
+            initialValue = Number(valueArg.text);
+            cppType = Number.isInteger(initialValue) ? "int" : "double";
+          } else if (ts.isStringLiteral(valueArg)) {
+            initialValue = valueArg.text;
+            cppType = "const char*";
+          } else if (valueArg.kind === ts.SyntaxKind.TrueKeyword || valueArg.kind === ts.SyntaxKind.FalseKeyword) {
+            initialValue = valueArg.kind === ts.SyntaxKind.TrueKeyword;
+            cppType = "bool";
+          }
+        }
+        recordSignal(varName, cppType, initialValue);
+        lowered.push({
+          kind: "var_decl",
+          name: varName,
+          storage,
+          cppType: cppType as CppType,
+          initializer: { kind: "raw", value: String(initialValue) },
+          sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
+          leadingComments: !commentsAssigned ? statementComments.leadingComments : [],
+        });
+        commentsAssigned = true;
+        localVariableTypes.set(varName, cppType as CppTypeHint);
+        continue;
+      }
 
       if (ts.isNewExpression(declaration.initializer) && ts.isIdentifier(declaration.initializer.expression)) {
         const className = declaration.initializer.expression.text;
