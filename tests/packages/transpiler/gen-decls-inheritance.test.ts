@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { stripPreprocessorBlocks, parseHeader, BaseClassResolver } from "@typecad/cuttlefish/testing";
+import { stripPreprocessorBlocks, parseHeader, BaseClassResolver, buildClassIndex } from "@typecad/cuttlefish/testing";
+import path from "node:path";
 
 describe("stripPreprocessorBlocks", () => {
   it("removes a single #if ... #endif block", () => {
@@ -116,5 +117,14 @@ describe("BaseClassResolver", () => {
   it("returns external when the index is empty", () => {
     const resolver = new BaseClassResolver(new Map());
     expect(resolver.resolve("Anything")).toEqual({ kind: "external" });
+  });
+});
+
+describe("buildClassIndex", () => {
+  it("indexes classes from .h files across subdirectories", () => {
+    const root = path.resolve(__dirname, "../../../tests/fixtures/cpp-inheritance");
+    const index = buildClassIndex(root);
+    expect(index.get("Base")).toBe(path.join(root, "libB", "Base.h"));
+    expect(index.get("Dependent")).toBe(path.join(root, "libA", "Dependent.h"));
   });
 });
