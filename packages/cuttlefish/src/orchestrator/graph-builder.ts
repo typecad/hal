@@ -11,6 +11,7 @@ import {
   resolveImport,
   isCuttlefishSDKPath,
 } from "../transpile/resolution";
+import { loadUIModule } from "../ui/ui-registry";
 
 /**
  * Sort files in dependency order using Kahn's algorithm.
@@ -91,6 +92,7 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
   const visited = new Set<string>();
   const npmPackages = new Map<string, ResolvedNpmPackage>();
   const nativeModules = new Map<string, NativeCppModule>();
+  const uiModules = new Set<string>();
   // Track dependency edges for topological sorting
   const dependencies = new Map<string, Set<string>>();
 
@@ -148,6 +150,16 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
       }
 
       const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
+      // .ui.html modules: load into the UI registry, record the path, and don't
+      // push onto `pending` (they are never parsed as TypeScript).
+      if (resolved?.uiModule) {
+        loadUIModule(resolved.sourcePath);
+        uiModules.add(resolved.sourcePath);
+        // Track the dependency edge so topological sort orders the importer
+        // after the (virtual) UI module.
+        fileDeps.add(resolved.sourcePath);
+        continue;
+      }
       if (resolved) {
         // Track dependency edge for topological sorting
         fileDeps.add(resolved.sourcePath);
@@ -172,5 +184,5 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
 
   // Sort files in dependency order (dependencies before dependents)
   const sorted = topologicalSortFiles(ordered, dependencies);
-  return { files: sorted, npmPackages, nativeModules };
+  return { files: sorted, npmPackages, nativeModules, uiModules };
 }

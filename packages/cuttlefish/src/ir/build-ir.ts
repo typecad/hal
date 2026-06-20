@@ -101,6 +101,9 @@ function scanSourceForEnumNames(src: string): Set<string> {
 }
 
 function resolveRelativeImportPath(fromFile: string, moduleSpecifier: string): string | undefined {
+  // .ui.html modules export no TS symbols (enums/functions) — skip them in the
+  // early cross-module pre-scan so they aren't parsed as TypeScript.
+  if (moduleSpecifier.endsWith(".ui.html")) return undefined;
   let normalized = moduleSpecifier;
   if (normalized.endsWith(".js")) normalized = normalized.slice(0, -3) + ".ts";
   else if (normalized.endsWith(".mjs")) normalized = normalized.slice(0, -5) + ".ts";

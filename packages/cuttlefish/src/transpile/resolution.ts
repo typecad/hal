@@ -20,6 +20,8 @@ export interface TranspileGraphResult {
   files: string[];
   npmPackages: Map<string, ResolvedNpmPackage>;
   nativeModules: Map<string, NativeCppModule>;
+  /** `.ui.html` modules discovered during graph build, keyed by resolved path. */
+  uiModules: Set<string>;
 }
 
 function resolveLocalImport(fromFile: string, moduleSpecifier: string): string | undefined {
@@ -50,6 +52,11 @@ function resolveLocalImport(fromFile: string, moduleSpecifier: string): string |
 
     const extension = path.extname(candidate).toLowerCase();
     if (extension === ".ts" || extension === ".tsx") {
+      return path.resolve(candidate);
+    }
+    // .ui.html resolves as a UI module (not TypeScript). Only the .ui.html
+    // convention is accepted — plain .html is not a UI module.
+    if (candidate.toLowerCase().endsWith(".ui.html")) {
       return path.resolve(candidate);
     }
   }
@@ -237,7 +244,7 @@ export function resolveImport(
   fromFile: string,
   moduleSpecifier: string,
   boardPackage?: string,
-): { sourcePath: string; npmPackage?: ResolvedNpmPackage } | undefined {
+): { sourcePath: string; npmPackage?: ResolvedNpmPackage; uiModule?: boolean } | undefined {
   let effectiveSpecifier = moduleSpecifier;
   if (moduleSpecifier === "@typecad" && boardPackage) {
     effectiveSpecifier = boardPackage;
@@ -245,6 +252,11 @@ export function resolveImport(
 
   const localResolved = resolveLocalImport(fromFile, effectiveSpecifier);
   if (localResolved) {
+    // .ui.html files resolve as UI modules, not TypeScript sources. Only set
+    // the flag when true, so `undefined` cleanly means "regular TS module".
+    if (localResolved.toLowerCase().endsWith(".ui.html")) {
+      return { sourcePath: localResolved, uiModule: true };
+    }
     return { sourcePath: localResolved };
   }
 
