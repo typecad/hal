@@ -785,6 +785,32 @@ export function variableStatementToIR(
         const shouldPromote = mutableArrayVars.has(varName) || isStructElement;
 
         if (shouldPromote) {
+          // When the element type is a shadow struct (anonymous object), emit
+          // the struct definition BEFORE the StaticArray var_decl. The
+          // non-promotion path emits it via the object-literal initializer;
+          // the promotion path replaces that initializer, so the definition
+          // must be emitted here explicitly.
+          if (/^_[A-Za-z0-9_]+_t$/.test(elemType)) {
+            const firstObj = elements.find(
+              (e): e is ts.Expression => !ts.isSpreadElement(e) && ts.isObjectLiteralExpression(e),
+            );
+            if (firstObj && ts.isObjectLiteralExpression(firstObj)) {
+              const fieldDefs = firstObj.properties
+                .filter(ts.isPropertyAssignment)
+                .map((p) => {
+                  const fname = ts.isIdentifier(p.name) ? p.name.text : p.name.getText();
+                  const ftype = inferExprCppType(p.initializer, functionReturnTypes, localVariableTypes, sourceText);
+                  return `${ftype || "auto"} ${fname};`;
+                })
+                .join("  ");
+              lowered.push({
+                kind: "call",
+                sourceSpan: loweredDeclaration.sourceSpan,
+                callee: "__EMIT__",
+                args: [{ kind: "string", value: `struct ${elemType} { ${fieldDefs} };` }],
+              });
+            }
+          }
           const capacity = elements.length + 2;
           const staticArrayIr: CppTypeIR = {
             kind: "staticArray",

@@ -127,3 +127,23 @@ function f(): number {
     expect(res.cpp).toMatch(/__swap_1/);
   });
 });
+
+// ── Bug: anonymous-object shadow struct (_name_t) not emitted on AVR ───────
+// A `const pts: { x: number; y: number }[] = [...]` on AVR lowers to
+// __tc_StaticArray<_pts_t,N> but never emits `struct _pts_t { ... }`,
+// so avr-g++ fails ("_pts_t does not name a type"). Named interfaces work.
+describe("anonymous-object shadow struct on AVR", () => {
+  it("emits the shadow struct definition when promoted to StaticArray", () => {
+    const src = `
+function f(): number {
+  const pts: { x: number; y: number }[] = [{ x: 2, y: 3 }, { x: 4, y: 5 }];
+  return pts[0].x;
+}
+`;
+    const res = transpileArduino(src);
+    // The shadow struct MUST be defined, not just referenced.
+    expect(res.cpp).toMatch(/struct\s+_pts_t\s*\{/);
+    const errs = res.diagnostics.filter(d => d.severity === "error");
+    expect(errs).toEqual([]);
+  });
+});
