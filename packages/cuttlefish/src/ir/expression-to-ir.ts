@@ -504,7 +504,51 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr)) {
-    return expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
+    const inner = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
+    // When the cast involves an `enum class` on one side and an integral type
+    // on the other, emit a `static_cast<T>(...)` instead of erasing. C++ enum
+    // class has NO implicit conversion, so the erased cast produces invalid
+    // C++. The SUPPORT_MATRIX handles this for specific sites (relational,
+    // index, Map key, storage boundary) but NOT for the general `as` cast —
+    // the user's explicit escape hatch (enum stress test Finding C).
+    const targetTypeName = expr.type && ts.isTypeReferenceNode(expr.type) && ts.isIdentifier(expr.type.typeName)
+      ? expr.type.typeName.text : "";
+    const isTargetEnum = targetTypeName && activeEnumNames.has(targetTypeName) && !activeStringEnumNames.has(targetTypeName);
+    if (isTargetEnum) {
+      // int → enum: static_cast<EnumType>(value)
+      return { kind: "raw", value: `static_cast<${targetTypeName}>(${renderExprAsText(inner)})` };
+    }
+    // enum → int: detect if the source expression is an enum-typed identifier
+    // or enum member access, and the target is an integral C++ type.
+    const isIntegralTarget = targetTypeName && /^(int|long|short|char|double|float|uint|int8|int16|int32|int64|size_t)/.test(targetTypeName);
+    if (isIntegralTarget) {
+      // Check if the inner expression is an enum-typed value. An identifier
+      // may be an enum-typed VARIABLE (param, local) — resolve its type from
+      // the IR type scope's locals/globals. An enum member access
+      // (Mode.Run) resolves via the enum name on the object.
+      const innerExpr = expr.expression;
+      let sourceEnumName = "";
+      if (ts.isIdentifier(innerExpr)) {
+        // Direct enum name (e.g. `Mode` used as a value).
+        if (activeEnumNames.has(innerExpr.text) && !activeStringEnumNames.has(innerExpr.text)) {
+          sourceEnumName = innerExpr.text;
+        } else {
+          // Variable whose type is an enum — resolve from locals/globals.
+          const varType = getCurrentIrTypeScope()?.locals.get(innerExpr.text)
+            ?? getCurrentIrTypeScope()?.globals.get(innerExpr.text);
+          if (varType && activeEnumNames.has(varType) && !activeStringEnumNames.has(varType)) {
+            sourceEnumName = varType;
+          }
+        }
+      } else if (ts.isPropertyAccessExpression(innerExpr) && ts.isIdentifier(innerExpr.expression)
+                 && activeEnumNames.has(innerExpr.expression.text) && !activeStringEnumNames.has(innerExpr.expression.text)) {
+        sourceEnumName = innerExpr.expression.text;
+      }
+      if (sourceEnumName) {
+        return { kind: "raw", value: `static_cast<${targetTypeName}>(${renderExprAsText(inner)})` };
+      }
+    }
+    return inner;
   }
 
   if (ts.isAwaitExpression(expr)) {

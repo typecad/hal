@@ -26,6 +26,7 @@ import {
   nestedClassAliases,
   registerFieldMap,
   getContext,
+  activeStringEnumNames,
 } from "../build-ir-state";
 import { getCurrentIrTypeScope, setScopeLocalType } from "../symbol-types";
 import { renderExprAsText } from "../render-expr";
@@ -680,6 +681,16 @@ export function variableStatementToIR(
     );
 
     let varCppType: string = declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType;
+
+    // A string enum lowers to a C++ namespace (not a type), so a variable
+    // whose declared TS type is a string enum must use `const char*` as its
+    // C++ type — the actual type of a string-enum member. Without this,
+    // `const currentColor: Color = Color.Green` emits `Color currentColor = {}`
+    // where `Color` is a namespace name, not a valid C++ type (enum stress
+    // test Finding A).
+    if (activeStringEnumNames.has(varCppType)) {
+      varCppType = "const char*";
+    }
 
     // Resolve the base type (with pointer/const stripped) via structured IR so
     // the nestedClassAliases lookup compares against the bare name.

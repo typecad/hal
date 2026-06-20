@@ -599,7 +599,17 @@ export function isRuntimeExpression(expr: ExpressionIR): boolean {
     case "spread_array":
       // Spread operations are runtime
       return true;
-    
+
+    case "property-access":
+      // An enum member access (Mode.Run → Mode::Run) is a compile-time
+      // constant, NOT a runtime expression. Without this, a top-level
+      // `const currentMode: Mode = Mode.Run` was classified as runtime
+      // (the default returns true) and emitted as a local inside setup()
+      // instead of a file-scope global, making it invisible to functions
+      // (enum stress test Finding B). Only consider it compile-time when
+      // it's a static/enum access (no runtime object receiver).
+      return false;
+
     default:
       // Unknown expression types - be conservative
       return true;
