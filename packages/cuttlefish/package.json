@@ -60,6 +60,10 @@
     "./ir/transformers/ui-lowering": {
       "types": "./dist/ir/transformers/ui-lowering.d.ts",
       "default": "./dist/ir/transformers/ui-lowering.js"
+    },
+    "./ir/transformers/ui-mount": {
+      "types": "./dist/ir/transformers/ui-mount.d.ts",
+      "default": "./dist/ir/transformers/ui-mount.js"
     }
   },
   "files": [
