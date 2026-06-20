@@ -8,6 +8,7 @@ import type { ExpressionIR } from "../api";
 import type { PlatformStrategy } from "../api/shared";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { KnownVariableInfo } from "../api/shared";
+import { routeHALOp } from "./route-hal-op";
 import type { Diagnostic } from "../types";
 import { extractPropertyChain } from "../ir/extract-property-chain";
 import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings";
@@ -256,7 +257,7 @@ export class ExpressionRenderer {
         rendered = this.renderElementAccess(expr, exprTransformer, knownVariableTypes);
         break;
       case "hal-expr": {
-        const resolved = this.strategy.resolveHALOperation?.(expr.operation);
+        const resolved = routeHALOp(expr.operation, this.strategy);
         if (resolved?.expression) {
           rendered = resolved.expression;
         } else if (resolved?.code) {

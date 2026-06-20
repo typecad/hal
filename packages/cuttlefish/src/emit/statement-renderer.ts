@@ -8,6 +8,7 @@ import type { StatementIR, ExpressionIR } from "../api";
 import type { PlatformStrategy } from "../api/shared";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { KnownVariableInfo } from "../api/shared";
+import { routeHALOp } from "./route-hal-op";
 import type { Diagnostic } from "../types";
 import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
@@ -475,7 +476,7 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "hal-op") {
-        const resolved = this.strategy.resolveHALOperation?.(statement.operation);
+        const resolved = routeHALOp(statement.operation, this.strategy);
         if (resolved?.code) {
           // Strip leading 'return ' from raw hal-op code when emitted as a
           // standalone statement.  The HAL definition includes `return` because

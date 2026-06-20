@@ -2,6 +2,7 @@
 import { ExpressionIR } from "../api";
 import { nestedFunctionAliases, getContext } from "./build-ir-state";
 import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings";
+import { routeHALOp } from "../emit/route-hal-op";
 
 export function calleeToText(expr: ts.LeftHandSideExpression): string {
   if (ts.isIdentifier(expr)) {
@@ -98,8 +99,8 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return expr.parts.map(p => renderExprAsText(p)).join(" + ");
     case "hal-expr": {
       const strategy = getContext().activeStrategy;
-      if (strategy?.resolveHALOperation) {
-        const resolved = strategy.resolveHALOperation(expr.operation);
+      if (strategy?.resolveHALOperation || strategy?.resolveDisplayOp) {
+        const resolved = routeHALOp(expr.operation, strategy);
         if (resolved?.expression) return resolved.expression;
         if (resolved?.code) return resolved.code.replace(/;\s*$/, "");
       }

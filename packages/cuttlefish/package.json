@@ -28,6 +28,10 @@
     "./api/schema": {
       "types": "./dist/api/schema/index.d.ts",
       "default": "./dist/api/schema/index.js"
+    },
+    "./emit/route-hal-op": {
+      "types": "./dist/emit/route-hal-op.d.ts",
+      "default": "./dist/emit/route-hal-op.js"
     }
   },
   "files": [
