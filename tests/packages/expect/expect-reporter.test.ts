@@ -35,6 +35,7 @@ describe('reporter', () => {
       totalPassed: 1,
       totalFailed: 0,
       totalErrors: 0,
+      totalSkipped: 0,
       durationMs: 5000,
     };
 
@@ -113,6 +114,7 @@ describe('reporter', () => {
       totalPassed: 0,
       totalFailed: 1,
       totalErrors: 0,
+      totalSkipped: 0,
       durationMs: 6000,
     };
 
@@ -139,6 +141,7 @@ describe('reporter', () => {
       totalPassed: 0,
       totalFailed: 0,
       totalErrors: 0,
+      totalSkipped: 0,
       durationMs: 100,
     };
 
@@ -147,6 +150,63 @@ describe('reporter', () => {
     const output = logSpy.mock.calls.map(c => c.join(' ')).join('\n');
     expect(output).toContain('Arduino Uno');
     expect(output).toContain('COM4');
+
+    logSpy.mockRestore();
+  });
+
+  it('reports skipped files and skipped summary count', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const file: RunResult['files'][number] = {
+      filePath: 'tests/32-wdt.test.ts',
+      describes: [],
+      passed: true,
+      durationMs: 1,
+      debugOutput: [],
+      skipped: true,
+      skipReason: 'ESP32 does not expose the AVR watchdog API.',
+    };
+
+    const result: RunResult = {
+      files: [file],
+      totalTests: 0,
+      totalPassed: 0,
+      totalFailed: 0,
+      totalErrors: 0,
+      totalSkipped: 1,
+      durationMs: 1,
+    };
+
+    reportFileResult(file);
+    reportSummary(result);
+
+    const output = logSpy.mock.calls.map(c => c.join(' ')).join('\n');
+    expect(output).toContain('tests/32-wdt.test.ts');
+    expect(output).toContain('skipped');
+    expect(output).toContain('1 skipped');
+    expect(output).toContain('Test Files');
+    expect(output).toContain('(1)');
+    expect(output).not.toContain('ESP32 does not expose');
+    expect(output).toContain('PASS');
+
+    logSpy.mockRestore();
+  });
+
+  it('shows skipped file reasons in verbose mode', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    reportFileResult({
+      filePath: 'tests/32-wdt.test.ts',
+      describes: [],
+      passed: true,
+      durationMs: 1,
+      debugOutput: [],
+      skipped: true,
+      skipReason: 'ESP32 does not expose the AVR watchdog API.',
+    }, { verbose: true });
+
+    const output = logSpy.mock.calls.map(c => c.join(' ')).join('\n');
+    expect(output).toContain('ESP32 does not expose the AVR watchdog API.');
 
     logSpy.mockRestore();
   });

@@ -1,5 +1,7 @@
 ﻿import { describe, done } from '@typecad/expect';
 
+// @typecad-skip-target esp32: ESP32 does not expose the AVR watchdog API.
+
 describe("WDT namespace")
   .it("WDT.reset() is callable without crashing")
   .expect(

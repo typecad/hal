@@ -1,6 +1,8 @@
 ﻿import { describe, done } from '@typecad/expect';
 import { LED, D13, A0, UART0, I2C0, SPI0 } from '@TypeCAD';
 
+// @typecad-skip-target esp32: This fixture covers the legacy Uno @TypeCAD aliases.
+
 describe("Dynamic Board Aliases")
   .it("LED resolves to D13 on Uno")
   .expect(

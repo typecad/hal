@@ -162,12 +162,15 @@ export function uploadSketch(
 // ---------------------------------------------------------------------------
 
 function resolveCuttlefishCmd(projectRoot: string): string {
-  // Try to find cuttlefish CLI in the monorepo (current dir and parent dirs)
+  // Try to find cuttlefish CLI in the monorepo (current dir and parent dirs).
+  // We prefer the JS entry point over the .bin shims because the shell wrapper
+  // (no extension) cannot be passed to `node process.execPath` on Windows, and
+  // invoking it via the shell would require platform-specific handling.
   let searchDir = projectRoot;
   for (let i = 0; i < 5; i++) {
     const candidates = [
-      path.join(searchDir, 'packages', 'transpiler', 'dist', 'cli.js'),
-      path.join(searchDir, 'node_modules', '.bin', 'cuttlefish'),
+      path.join(searchDir, 'packages', 'cuttlefish', 'dist', 'cli.js'),
+      path.join(searchDir, 'node_modules', '@typecad', 'cuttlefish', 'dist', 'cli.js'),
       path.join(searchDir, 'node_modules', 'cuttlefish', 'dist', 'cli.js'),
     ];
 

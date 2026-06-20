@@ -285,11 +285,11 @@ export function buildEmitterContext(
       if (defaultName) symbolMap[defaultName] = defaultName;
       continue;
     }
-    // Compile-time-only packages (@typehal/ui, @typecad/ui): their calls are
+    // Compile-time-only packages (@typecad/ui, @typecad/ui): their calls are
     // intercepted at IR-build time; the package emits NO C++ module/header.
     // Register the imported symbols so references resolve, but skip the
     // #include generation (there is no Ui.h to include).
-    if (imported.moduleSpecifier === "@typehal/ui" || imported.moduleSpecifier === "@typecad/ui") {
+    if (imported.moduleSpecifier === "@typecad/ui" || imported.moduleSpecifier === "@typecad/ui") {
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
       }

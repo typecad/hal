@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typehal/ui — public authoring API.
+// @typecad/ui — public authoring API.
 //
 // These functions are compile-time constructs: the transpiler intercepts
 // ui.mount / ui.signal / ui.bind and lowers them to device variables and

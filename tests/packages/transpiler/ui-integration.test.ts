@@ -14,7 +14,7 @@ import { transpileFile } from "@typecad/cuttlefish/testing";
 import { resetUIRegistry } from "@typecad/cuttlefish/ui/ui-registry";
 import { resetUICallState } from "../../../packages/cuttlefish/src/ir/transformers/ui-call-resolver";
 
-// Tests must run inside the repo tree so @typehal/ui (a workspace package
+// Tests must run inside the repo tree so @typecad/ui (a workspace package
 // symlinked into node_modules) resolves during the type-check phase.
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const TMP_ROOT = path.join(REPO_ROOT, ".build", "ui-e2e");
@@ -70,7 +70,7 @@ describe("UI end-to-end via transpileFile", () => {
       html: `<screen><text id="greeting">hello world</text></screen>`,
       css: `screen { background: #008000; padding: 8; } #greeting { color: #ff0000; font: 8x16; }`,
       ts: [
-        `import { ui } from "@typehal/ui";`,
+        `import { ui } from "@typecad/ui";`,
         `import { screen } from "./app.ui.html";`,
         `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
         ``,
@@ -91,7 +91,7 @@ describe("UI end-to-end via transpileFile", () => {
       html: `<screen><text id="greeting">hello world</text></screen>`,
       css: `screen { background: #008000; } #greeting { color: #ff0000; font: 8x16; }`,
       ts: [
-        `import { ui } from "@typehal/ui";`,
+        `import { ui } from "@typecad/ui";`,
         `import { screen } from "./app.ui.html";`,
         `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
         ``,
@@ -112,7 +112,7 @@ describe("UI end-to-end via transpileFile", () => {
       html: `<screen></screen>`,
       css: ``,
       ts: [
-        `import { ui } from "@typehal/ui";`,
+        `import { ui } from "@typecad/ui";`,
         `import { screen } from "./app.ui.html";`,
         `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
         `export function main(): void { while (true) {} }`,
@@ -131,7 +131,7 @@ describe("UI end-to-end via transpileFile", () => {
       html: `<screen></screen>`,
       css: ``,
       ts: [
-        `import { ui } from "@typehal/ui";`,
+        `import { ui } from "@typecad/ui";`,
         `import { screen } from "./app.ui.html";`,
         `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
         `export function main(): void { while (true) {} }`,
@@ -151,7 +151,7 @@ describe("UI end-to-end via transpileFile", () => {
       html: `<screen></screen>`,
       css: ``,
       ts: [
-        `import { ui } from "@typehal/ui";`,
+        `import { ui } from "@typecad/ui";`,
         `import { screen } from "./app.ui.html";`,
         ``,
         `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
@@ -175,7 +175,7 @@ describe("UI end-to-end via transpileFile", () => {
     fs.writeFileSync(
       path.join(dir, "main.ts"),
       [
-        `import { ui } from "@typehal/ui";`,
+        `import { ui } from "@typecad/ui";`,
         `import { screen } from "./app.ui.html";`,
         `ui.mount(screen, { display: "st7789", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
         `export function main(): void { while (true) {} }`,
@@ -201,7 +201,7 @@ describe("UI end-to-end via transpileFile", () => {
       html: `<screen><text id="greeting">hi</text></screen>`,
       css: `#greeting { color: #ff0000; font: 8x16; }`,
       ts: [
-        `import { ui } from "@typehal/ui";`,
+        `import { ui } from "@typecad/ui";`,
         `import { screen } from "./app.ui.html";`,
         ``,
         `const temp = ui.signal(0);`,

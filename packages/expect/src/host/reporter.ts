@@ -45,6 +45,7 @@ const GREEN_BG  = '\x1b[42m';
 
 const PASS_ICON = `${GREEN}✓${RESET}`;
 const FAIL_ICON = `${RED}✗${RESET}`;
+const SKIP_ICON = `${YELLOW}↓${RESET}`;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -85,6 +86,15 @@ export function reportSummary(
 // ---------------------------------------------------------------------------
 
 function reportFile(file: FileResult, verbose: boolean): void {
+  if (file.skipped) {
+    console.log(` ${SKIP_ICON} ${BOLD}${file.filePath}${RESET} ${YELLOW}(skipped)${RESET}`);
+    if (verbose && file.skipReason) {
+      console.log(`   ${DIM}${file.skipReason}${RESET}`);
+    }
+    console.log();
+    return;
+  }
+
   if (file.error) {
     console.log(` ${FAIL_ICON} ${BOLD}${file.filePath}${RESET} ${RED}(error)${RESET}`);
     console.log(`   ${DIM}${file.error}${RESET}`);
@@ -220,10 +230,19 @@ function reportSummarySection(
   const failedText = result.totalFailed > 0
     ? `${RED}${BOLD}${result.totalFailed} failed${RESET}`
     : '';
+  const skippedText = result.totalSkipped > 0
+    ? `${YELLOW}${BOLD}${result.totalSkipped} skipped${RESET}`
+    : '';
 
-  const parts = [passedText, failedText].filter(Boolean).join(`${DIM} | ${RESET}`);
-  const total = result.totalTests;
+  const parts = [passedText, failedText, skippedText].filter(Boolean).join(`${DIM} | ${RESET}`);
+  const total = result.totalTests + result.totalSkipped;
   console.log(` ${BOLD}Tests${RESET}   ${parts} ${DIM}(${total})${RESET}`);
+
+  if (result.totalSkipped > 0) {
+    const skippedFiles = result.files.filter(file => file.skipped).length;
+    const totalFiles = result.files.length;
+    console.log(` ${BOLD}Test Files${RESET}  ${YELLOW}${BOLD}${skippedFiles} skipped${RESET} ${DIM}(${totalFiles})${RESET}`);
+  }
 
   // Errors line (compile/upload failures)
   if (result.totalErrors > 0) {

@@ -12,6 +12,7 @@
 //   --baud <rate>       Serial baud rate (default: 115200)
 //   --timeout <ms>      Serial read timeout in ms (default: 30000)
 //   --include <glob>    Test file glob pattern (repeatable)
+//   --exclude <glob>    Test file glob pattern to skip (repeatable)
 //   --verbose           Show debug serial output and assertion details
 //   --help              Show this help
 //
@@ -35,6 +36,7 @@ interface CLIArgs {
   baudRate?: number;
   timeout?: number;
   include?: string[];
+  exclude?: string[];
   verbose?: boolean;
   help?: boolean;
 }
@@ -84,6 +86,11 @@ function parseArgs(argv: string[]): CLIArgs {
         if (!result.include) result.include = [];
         result.include.push(args[++i]);
         break;
+      case '--exclude':
+      case '-x':
+        if (!result.exclude) result.exclude = [];
+        result.exclude.push(args[++i]);
+        break;
       case '--verbose':
       case '-v':
         result.verbose = true;
@@ -122,6 +129,7 @@ const HELP = `
   --baud <rate>         Serial baud rate (default: 115200)
   --timeout, -t <ms>    Serial read timeout (default: 30000)
   --include, -i <glob>  Test file pattern (repeatable)
+  --exclude, -x <glob>  Test file pattern to skip (repeatable)
   --verbose, -v         Show debug serial output
   --help, -h            Show this help
 
@@ -167,6 +175,7 @@ async function main(): Promise<void> {
   if (args.baudRate) overrides.baudRate = args.baudRate;
   if (args.timeout) overrides.timeout = args.timeout;
   if (args.verbose) overrides.verbose = args.verbose;
+  if (args.exclude) overrides.exclude = args.exclude;
 
   // If files are specified directly, use them as include patterns
   if (args.files.length > 0) {

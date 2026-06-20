@@ -53,10 +53,12 @@ export function loadConfig(
   const testFromFile = raw.test ?? {};
   const test: TestConfig = {
     include: overrides.include ?? testFromFile.include ?? DEFAULT_TEST_CONFIG.include,
+    exclude: overrides.exclude ?? testFromFile.exclude,
     port: overrides.port ?? testFromFile.port ?? DEFAULT_TEST_CONFIG.port,
     baudRate: overrides.baudRate ?? testFromFile.baudRate ?? DEFAULT_TEST_CONFIG.baudRate,
     timeout: overrides.timeout ?? testFromFile.timeout ?? DEFAULT_TEST_CONFIG.timeout,
     serialOpenDelay: overrides.serialOpenDelay ?? testFromFile.serialOpenDelay ?? DEFAULT_TEST_CONFIG.serialOpenDelay,
+    resetAfterOpen: overrides.resetAfterOpen ?? testFromFile.resetAfterOpen ?? DEFAULT_TEST_CONFIG.resetAfterOpen,
     buildTarget: overrides.buildTarget ?? testFromFile.buildTarget,
     board: overrides.board ?? testFromFile.board,
     verbose: overrides.verbose ?? testFromFile.verbose,
@@ -195,8 +197,15 @@ function extractTestConfig(obj: ts.ObjectLiteralExpression): Partial<TestConfig>
       case 'timeout':
         if (ts.isNumericLiteral(prop.initializer)) result.timeout = parseInt(prop.initializer.text, 10);
         break;
+      case 'serialOpenDelay':
+        if (ts.isNumericLiteral(prop.initializer)) result.serialOpenDelay = parseInt(prop.initializer.text, 10);
+        break;
       case 'buildTarget':
         if (ts.isStringLiteral(prop.initializer)) result.buildTarget = prop.initializer.text;
+        break;
+      case 'resetAfterOpen':
+        if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) result.resetAfterOpen = true;
+        if (prop.initializer.kind === ts.SyntaxKind.FalseKeyword) result.resetAfterOpen = false;
         break;
       case 'board':
         if (ts.isStringLiteral(prop.initializer)) result.board = prop.initializer.text;
@@ -204,6 +213,13 @@ function extractTestConfig(obj: ts.ObjectLiteralExpression): Partial<TestConfig>
       case 'include':
         if (ts.isArrayLiteralExpression(prop.initializer)) {
           result.include = prop.initializer.elements
+            .filter(ts.isStringLiteral)
+            .map(el => el.text);
+        }
+        break;
+      case 'exclude':
+        if (ts.isArrayLiteralExpression(prop.initializer)) {
+          result.exclude = prop.initializer.elements
             .filter(ts.isStringLiteral)
             .map(el => el.text);
         }

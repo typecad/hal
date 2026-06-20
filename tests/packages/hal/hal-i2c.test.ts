@@ -348,7 +348,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
       expectCppNotContains(result, ['int data']);
     });
   
-    it('transpiles .length on number[] variable as .size() (std::vector)', () => {
+    it('transpiles .length on a top-level number[] literal as sizeof (raw C array on AVR)', () => {
       const result = transpileArduino(`
         import { I2C0 } from '@typecad/framework-arduino/arduino';
         I2C0.begin();
@@ -356,9 +356,14 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
         const len = values.length;
       `);
   
-      // number[] maps to std::vector<int>, so .length → .size() (cast to
-      // long long to avoid -Wsign-compare when used in loop conditions)
-      expect(result.cpp).toContain('static_cast<long long>(values.size())');
+      // A top-level non-mutated array literal on AVR (a literal-promoting
+      // target) lowers to a RAW C array `int values[] = {...}`, NOT a
+      // std::vector (AVR has no <vector>). `.length` on a raw C array must be
+      // `sizeof(values)/sizeof(values[0])` — `.size()` is not a member of an
+      // array type. Demo #33 Finding B. (A function-local mutated array, by
+      // contrast, promotes to __tc_StaticArray and uses .size() — covered by
+      // other tests.)
+      expect(result.cpp).toContain('(sizeof(values) / sizeof(values[0]))');
     });
   
     it('transpiles .length on Uint8Array variable as sizeof expression', () => {

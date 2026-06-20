@@ -1,18 +1,25 @@
-﻿import type { TypeCADConfig } from '@typecad/hal';
+﻿import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-const config: TypeCADConfig = {
+const config: CuttlefishConfig = {
   entry: './tests/01-basics.test.ts',
 
-  target: 'avr',
+  target: 'esp32',
 
-  // Board package — provides pin definitions and board constants
-  board: '@typecad/board-arduino-uno',
+  // MCU package — silicon-level pin/port definitions for the ESP32-WROOM-32.
+  mcu: '@typecad/mcu-esp32',
 
-  // Framework package — controls code generation strategy
+  // Board package — ESP32 DevKit pin definitions, aliases (D0/D13, A0–A5), and
+  // peripheral mappings (I2C/SPI/UART buses).
+  board: '@typecad/board-esp32-devkit',
+
+  // Framework package — controls code generation strategy (setup/loop, Serial,
+  // .ino output).
   framework: '@typecad/framework-arduino',
 
+  // Build target — FQBN passed straight through to `arduino-cli compile`.
+  // Matches the board package's `build.frameworks.arduino` value.
   frameworkData: {
-    buildTarget: 'arduino:avr:uno',
+    buildTarget: 'esp32:esp32:esp32',
   },
 
   output: {
@@ -23,9 +30,6 @@ const config: TypeCADConfig = {
 
   toolchain: {
     type: 'arduino-cli',
-    arduinoCli: {
-      verbose: true,
-    },
   },
 
   console: {
@@ -33,7 +37,7 @@ const config: TypeCADConfig = {
   },
 
   test: {
-    port: 'COM7',
+    port: 'COM3',
     baudRate: 115200,
     timeout: 30000,
     include: [

@@ -1,5 +1,7 @@
 ﻿import { describe, done } from '@typecad/expect';
 
+// @typecad-skip-target esp32: ESP32 EEPROMClass has no update() method.
+
 describe("EEPROM namespace")
   .it("EEPROM.length() is positive")
   .expect(

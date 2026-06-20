@@ -104,6 +104,10 @@ export interface FileResult {
   durationMs: number;
   /** Non-test serial output (lines without [TC: prefix). */
   debugOutput: string[];
+  /** True when the file was intentionally skipped before compile/upload. */
+  skipped?: boolean;
+  /** Human-readable skip reason. */
+  skipReason?: string;
   /** If the file didn't compile or upload. */
   error?: string;
 }
@@ -118,6 +122,8 @@ export interface RunResult {
   totalFailed: number;
   /** Pipeline errors (compile/upload failures) — tracked separately from test failures. */
   totalErrors: number;
+  /** Files intentionally skipped before compile/upload. */
+  totalSkipped: number;
   durationMs: number;
 }
 
@@ -131,6 +137,8 @@ export interface RunResult {
 export interface TestConfig {
   /** Glob patterns for test files. Default: `['tests/**\/*.test.ts']`. */
   include: string[];
+  /** Glob patterns for test files to skip after discovery. */
+  exclude?: string[];
   /** Serial port (e.g. `'COM3'`, `'/dev/ttyACM0'`). */
   port: string;
   /** Serial baud rate. Default: `115200`. */
@@ -139,6 +147,8 @@ export interface TestConfig {
   timeout: number;
   /** Delay in ms before opening serial port (after board reset). Default: `500`. */
   serialOpenDelay?: number;
+  /** Toggle ESP32-style DTR/RTS reset after opening the serial port. */
+  resetAfterOpen?: boolean;
   /** Framework-specific build target override. */
   buildTarget?: string;
   /** Board package override. */

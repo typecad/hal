@@ -149,12 +149,12 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
         continue;
       }
 
-      // Skip @typehal/ui (and the future @typecad/ui rename) — it provides
+      // Skip @typecad/ui (and the future @typecad/ui rename) — it provides
       // compile-time authoring stubs only. ui.mount/signal/bind calls are
       // intercepted by tryResolveUICall and lowered to IR; the package itself
       // must NOT be emitted as a C++ module (it would synthesize a bogus
       // _ui_t struct for the `ui` namespace value).
-      if (moduleSpecifier === "@typehal/ui" || moduleSpecifier === "@typecad/ui") {
+      if (moduleSpecifier === "@typecad/ui" || moduleSpecifier === "@typecad/ui") {
         continue;
       }
 

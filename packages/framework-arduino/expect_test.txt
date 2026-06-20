@@ -1,0 +1,763 @@
+Found 1 test file
+
+● tests\01-basics.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Basics (4 tests)
+   ✓ basic math  
+   ✓ Variable assignment  
+   ✓ Functions  
+   ✓ Arrays  
+
+
+ Tests   4 passed (4)
+ Board   @typecad/board-esp32-devkit @ COM3
+ Time    29.21s
+
+ PASS  All tests passed
+ *  Terminal will be reused by tasks, press any key to close it. 
+
+ *  Executing task: npm run test:hw 
+
+
+> @typecad/framework-arduino@0.1.0 test:hw
+> npm exec -- cuttlefish-test
+
+Found 38 test files
+
+● tests\01-basics.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Basics (4 tests)
+   ✓ basic math  
+   ✓ Variable assignment  
+   ✓ Functions  
+   ✓ Arrays  
+
+
+● tests\02-arithmetic.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Arithmetic operators (4 tests)
+   ✓ division and modulo  
+   ✓ unary negation  
+   ✓ order of operations  
+   ✓ parenthesized expressions  
+
+ ✓ Number literals (5 tests)
+   ✓ hex literal  
+   ✓ binary literal  
+   ✓ octal literal  
+   ✓ negative literal  
+   ✓ floating point literal  
+
+ ✓ Compound assignment (1 test)
+   ✓ +=, -=, *=, /=  
+
+
+● tests\03-comparison.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Comparison via ternary (3 tests)
+   ✓ equality and inequality  
+   ✓ less than / greater than  
+   ✓ less or equal / greater or equal  
+
+ ✓ Logical operators via numeric patterns (3 tests)
+   ✓ logical AND  
+   ✓ logical OR  
+   ✓ logical NOT  
+
+ ✓ Bitwise operators (2 tests)
+   ✓ AND, OR, XOR  
+   ✓ shifts and NOT  
+
+
+● tests\04-control-flow.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Ternary expressions (2 tests)
+   ✓ simple ternary  
+   ✓ nested ternary  
+
+ ✓ Arrow function (1 test)
+   ✓ arrow function call  
+
+ ✓ For-of loop (1 test)
+   ✓ for-of accumulation  
+
+
+● tests\05-scoping.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Variables and Scoping (5 tests)
+   ✓ const and let assignment  
+   ✓ block scoping (shadowing)  
+   ✓ object destructuring and aliasing  
+   ✓ nested object destructuring  
+   ✓ array destructuring with rest  
+
+
+● tests\06-loops.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ For loop (C-style) (3 tests)
+   ✓ basic for loop  
+   ✓ for loop with break  
+   ✓ for loop with continue  
+
+ ✓ While loop (2 tests)
+   ✓ basic while loop  
+   ✓ while with break  
+
+ ✓ Do-while loop (2 tests)
+   ✓ basic do-while  
+   ✓ do-while executes at least once  
+
+ ✓ Switch statement (4 tests)
+   ✓ basic switch cases  
+   ✓ switch default case  
+   ✓ switch with break between cases  
+   ✓ iterate object keys  
+
+
+● tests\07-classes.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Class basics (3 tests)
+   ✓ constructor and fields  
+   ✓ method invocation  
+   ✓ method returning value  
+
+ ✓ Class inheritance (1 test)
+   ✓ extends with super  
+
+ ✓ Static members (1 test)
+   ✓ static method  
+
+ ✓ This keyword (1 test)
+   ✓ this in method chain  
+
+
+● tests\08-enums.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Enum basics (4 tests)
+   ✓ enum member values  
+   ✓ enum with explicit values  
+   ✓ enum with mixed auto and explicit  
+   ✓ enum with negative values  
+
+ ✓ Const enum (1 test)
+   ✓ const enum values  
+
+ ✓ String enums (1 test)
+   ✓ string enum compared to a literal and concatenated  
+
+
+● tests\09-strings.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ String literals (2 tests)
+   ✓ string length  
+   ✓ string property access via length  
+
+ ✓ String concatenation (1 test)
+   ✓ concat with + operator  
+
+ ✓ Template literals (3 tests)
+   ✓ basic template literal  
+   ✓ template literal with expression  
+   ✓ template literal with number interpolation  
+
+
+● tests\10-expressions.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Increment and decrement (4 tests)
+   ✓ postfix increment  
+   ✓ prefix increment  
+   ✓ postfix decrement  
+   ✓ prefix decrement  
+
+ ✓ Boolean values (3 tests)
+   ✓ true coerced to number  
+   ✓ false coerced to number  
+   ✓ truthy and falsy via toBeTruthy/toBeFalsy  
+
+ ✓ Bitwise compound assignment (6 tests)
+   ✓ &= operator  
+   ✓ |= operator  
+   ✓ ^= operator  
+   ✓ <<= operator  
+   ✓ >>= operator  
+   ✓ %= operator  
+
+ ✓ Nullish coalescing (2 tests)
+   ✓ nullish fallback to value  
+   ✓ non-nullish passes through  
+
+ ✓ Logical NOT (1 test)
+   ✓ negation of comparison  
+
+ ✓ Type assertions (as) (1 test)
+   ✓ as number unwraps correctly  
+
+ ✓ Logical assignment operators (2 tests)
+   ✓ ||= operator  
+   ✓ &&= operator  
+
+
+● tests\11-arrays.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+ ✗ C:\typecad\typecode\packages\framework-arduino\tests\11-arrays.test.ts (error)
+   Compilation failed:
+Used platform Version Path
+esp32:esp32   3.0.7   C:\Users\justi\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.0.7
+
+C:\typecad\typecode\packages\framework-arduino\.build\expect\11_arrays\out\11_arrays\11_arrays.ino: In function 'double __tc_fn9()':
+C:\typecad\typecode\packages\framework-arduino\.build\expect\11_arrays\out\11_arrays\11_arrays.ino:236:23: error: '__tc_str_ptr' was not declared in this scope
+  236 |   return __tc_indexOf(__tc_str_ptr(arr), 20);
+      |                       ^~~~~~~~~~~~
+C:\typecad\typecode\packages\framework-arduino\.build\expect\11_arrays\out\11_arrays\11_arrays.ino: In function 'double __tc_fn10()':
+C:\typecad\typecode\packages\framework-arduino\.build\expect\11_arrays\out\11_arrays\11_arrays.ino:245:23: error: '__tc_str_ptr' was not declared in this scope
+  245 |   return __tc_indexOf(__tc_str_ptr(arr), 99);
+      |                       ^~~~~~~~~~~~
+Error during build: exit status 1
+
+
+● tests\12-modules-types.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Modules and imports (2 tests)
+   ✓ local module function import  
+   ✓ local module class import  
+
+ ✓ Imported types and function expressions (2 tests)
+   ✓ module type alias through function signature  
+   ✓ function expression  
+
+ ✓ Optional chaining (1 test)
+   ✓ property access with fallback  
+
+
+● tests\13-functions-collections.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Function completeness (3 tests)
+   ✓ default parameter value  
+   ✓ nested helper calls  
+   ✓ function expression assignment  
+
+ ✓ Collection lowering (2 tests)
+   ✓ typed array indexing  
+   ✓ readonly array iteration  
+
+ ✓ Destructuring defaults (1 test)
+   ✓ object default initializer  
+
+
+● tests\14-string-methods.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ String methods (11 tests)
+   ✓ toUpperCase  
+   ✓ toLowerCase  
+   ✓ includes substring  
+   ✓ startsWith  
+   ✓ endsWith  
+   ✓ trim  
+   ✓ substring  
+   ✓ slice  
+   ✓ indexOf  
+   ✓ replace  
+   ✓ charCodeAt  
+
+
+● tests\15-math-functions.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Math functions (6 tests)
+   ✓ Math.round  
+   ✓ Math.floor  
+   ✓ Math.ceil  
+   ✓ Math.abs  
+   ✓ Math.pow  
+   ✓ Math.sqrt  
+
+
+● tests\16-bit-operations.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Bit mask constants (8 tests)
+   ✓ named bit flags combined with OR  
+   ✓ compound OR assignment to set flag  
+   ✓ AND check for flag presence  
+   ✓ clear flag with AND NOT  
+   ✓ bit shift for position  
+   ✓ multi-byte register packing  
+   ✓ multi-byte register unpacking  
+   ✓ toggle bits with XOR  
+
+
+● tests\17-buffer-operations.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Buffer operations (6 tests)
+   ✓ sequential byte writing  
+   ✓ computed index access  
+   ✓ buffer read and sum  
+   ✓ multi-byte value packing into buffer  
+   ✓ buffer length in loop  
+   ✓ buffer element swap  
+
+
+● tests\18-volatile-variables.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Volatile variables (4 tests)
+   ✓ volatile integer for ISR-shared state  
+   ✓ volatile in loop condition  
+   ✓ volatile typed array  
+   ✓ volatile buffer write and read  
+
+
+● tests\19-type-aliases-structs.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Type alias structs (4 tests)
+   ✓ object type alias field access  
+   ✓ type alias struct modification  
+   ✓ multiple type alias structs  
+   ✓ type alias field arithmetic  
+
+
+● tests\20-abstract-classes.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Abstract classes (3 tests)
+   ✓ abstract class with concrete subclass  
+   ✓ abstract class with field and subclass  
+   ✓ abstract class with multiple concrete subclasses  
+
+
+● tests\21-interfaces.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Interfaces (4 tests)
+   ✓ class implementing interface  
+   ✓ class with configure method  
+   ✓ sensor reading via method  
+   ✓ named sensor with configure and read  
+
+
+● tests\22-namespaces.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Namespaced organization (4 tests)
+   ✓ namespace constant access  
+   ✓ namespace function call  
+   ✓ static class method as library  
+   ✓ class instantiation in IIFE  
+
+
+● tests\23-set-map.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Data lookup patterns (4 tests)
+   ✓ array-based uniqueness check  
+   ✓ parallel arrays for key-value lookup  
+   ✓ array overwrite value  
+   ✓ counting occurrences  
+
+
+● tests\24-error-handling.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Error handling patterns (5 tests)
+   ✓ error code return pattern  
+   ✓ error code check on negative result  
+   ✓ success/fail status pattern  
+   ✓ validation with default fallback  
+   ✓ status code chain  
+
+
+● tests\25-generics.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Generic-style patterns (4 tests)
+   ✓ container class with get  
+   ✓ container class with set and get  
+   ✓ generic identity function  
+   ✓ generic clamp function  
+
+
+● tests\26-instanceof.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Type checking patterns (3 tests)
+   ✓ enum-based type discrimination  
+   ✓ type field discrimination  
+   ✓ class hierarchy with type field  
+
+
+● tests\27-nested-functions.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Nested functions (3 tests)
+   ✓ nested function declaration and call  
+   ✓ nested helper with multiple calls  
+   ✓ multiple nested functions  
+
+
+● tests\28-callback-types.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Callback patterns (4 tests)
+   ✓ function passed to helper  
+   ✓ function returning function result  
+   ✓ callback via arrow in map  
+   ✓ chained function calls  
+
+
+● tests\29-accessors-foreach-typeof.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Getter accessors (2 tests)
+   ✓ getter returns field value  
+   ✓ getter computes derived value  
+
+ ✓ Setter accessors (2 tests)
+   ✓ setter updates field value  
+   ✓ setter clamps value  
+
+ ✓ Getter and setter pair (1 test)
+   ✓ read/write through accessors  
+
+ ✓ forEach expansion (3 tests)
+   ✓ forEach sums array elements  
+   ✓ forEach with block body counts elements  
+   ✓ forEach modifies external state  
+
+ ✓ typeof operator (3 tests)
+   ✓ typeof number literal equals number  
+   ✓ typeof string literal equals string  
+   ✓ typeof boolean literal equals boolean  
+
+ ✓ Nullable union types (2 tests)
+   ✓ number | CUTTLEFISH_UNDEFINED resolves to number  
+   ✓ string | CUTTLEFISH_UNDEFINED resolves to string  
+
+ ✓ Accessors with inheritance (1 test)
+   ✓ derived class getter uses base field  
+
+
+● tests\30-timing.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Timing namespace (5 tests)
+   ✓ Timing.millis() returns a non-negative value  
+   ✓ Timing.micros() returns a non-negative value  
+   ✓ Timing.millis() advances over time  
+   ✓ Timing.delay() is callable without crashing  
+   ✓ Timing.delayMicroseconds() is callable without crashing  
+
+
+● tests\31-eeprom.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+ ✗ C:\typecad\typecode\packages\framework-arduino\tests\31-eeprom.test.ts (error)
+   Compilation failed:
+Used library Version Path
+EEPROM       3.0.7   C:\Users\justi\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.0.7\libraries\EEPROM
+
+Used platform Version Path
+esp32:esp32   3.0.7   C:\Users\justi\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.0.7
+
+C:\typecad\typecode\packages\framework-arduino\.build\expect\31_eeprom\out\31_eeprom\31_eeprom.ino: In function 'double __tc_fn3()':
+C:\typecad\typecode\packages\framework-arduino\.build\expect\31_eeprom\out\31_eeprom\31_eeprom.ino:66:10: error: 'class EEPROMClass' has no member named 'update'
+   66 |   EEPROM.update(1, 42);
+      |          ^~~~~~
+C:\typecad\typecode\packages\framework-arduino\.build\expect\31_eeprom\out\31_eeprom\31_eeprom.ino: In function 'double __tc_fn4()':
+C:\typecad\typecode\packages\framework-arduino\.build\expect\31_eeprom\out\31_eeprom\31_eeprom.ino:73:10: error: 'class EEPROMClass' has no member named 'update'
+   73 |   EEPROM.update(2, 20);
+      |          ^~~~~~
+Error during build: exit status 1
+
+
+● tests\32-wdt.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+ ✗ C:\typecad\typecode\packages\framework-arduino\tests\32-wdt.test.ts (error)
+   Compilation failed:
+Used platform Version Path
+esp32:esp32   3.0.7   C:\Users\justi\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.0.7
+
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino: In function 'double __tc_fn1()':
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino:46:3: error: 'wdt_reset' was not declared in this scope; did you mean 'optreset'?
+   46 |   wdt_reset();
+      |   ^~~~~~~~~
+      |   optreset
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino: In function 'double __tc_fn2()':
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino:52:3: error: 'wdt_enable' was not declared in this scope
+   52 |   wdt_enable("250ms");
+      |   ^~~~~~~~~~
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino:53:3: error: 'wdt_disable' was not declared in this scope
+   53 |   wdt_disable();
+      |   ^~~~~~~~~~~
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino: In function 'double __tc_fn3()':
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino:59:3: error: 'wdt_enable' was not declared in this scope
+   59 |   wdt_enable("500ms");
+      |   ^~~~~~~~~~
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino:60:3: error: 'wdt_reset' was not declared in this scope; did you mean 'optreset'?
+   60 |   wdt_reset();
+      |   ^~~~~~~~~
+      |   optreset
+C:\typecad\typecode\packages\framework-arduino\.build\expect\32_wdt\out\32_wdt\32_wdt.ino:61:3: error: 'wdt_disable' was not declared in this scope
+   61 |   wdt_disable();
+      |   ^~~~~~~~~~~
+Error during build: exit status 1
+
+
+● tests\33-preferences.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Preferences namespace (6 tests)
+   ✓ Preferences.putInt then Preferences.getInt roundtrip  
+   ✓ Preferences.putBool then Preferences.getBool roundtrip  
+   ✓ Preferences.get returns default for missing key  
+   ✓ Preferences.putString then Preferences.getString roundtrip  
+   ✓ Preferences.clear removes stored values  
+   ✓ Preferences.remove deletes a single key  
+
+
+● tests\34-num-fluent.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Num fluent chain (6 tests)
+   ✓ Num._map().from().to() scales value  
+   ✓ Num._map().from().toPercent() maps to 0-100  
+   ✓ Num._map().from().toByte() maps to 0-255  
+   ✓ Num._constrain().between() clamps high  
+   ✓ Num._constrain().between() clamps low  
+   ✓ Num._constrain().between() passes through in range  
+
+
+● tests\35-string-buffer.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ String buffer non-aliasing (4 tests)
+   ✓ trim called twice in same concat does not alias  
+   ✓ toUpperCase and toLowerCase in same expression  
+   ✓ replace called twice in same concat  
+   ✓ charAt called twice in same expression  
+
+
+● tests\36-destructuring.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Object destructuring (3 tests)
+   ✓ flat object destructure  
+   ✓ nested object destructure  
+   ✓ object destructure with rename  
+
+ ✗ Array destructuring (1 of 3 failing)
+   ✓ flat array destructure  
+   ✗ array destructure with default  
+   ✓ swap via array destructuring  
+
+ ✓ Rest element from a literal (AVR-supported) (1 test)
+   ✓ rest element splits head and tail length  
+
+ ✓ Class-field destructuring (1 test)
+   ✓ destructure a class instance's fields  
+
+ ✓ for...of with a destructured loop variable (Finding A) (1 test)
+   ✓ sums destructured object fields across iterations  
+
+ ✓ Struct-element array literal (Finding D) (2 tests)
+   ✓ builds and indexes an array of structs  
+   ✓ iterates a struct-element array via for...of  
+
+ ✓ for...of + destructure over a struct-element array (A + D) (1 test)
+   ✓ sums fields across a struct array  
+
+ FAILURES
+
+   Array destructuring > array destructure with default
+
+     expect(actual).toBe(104)
+     Actual:   5.00
+     Expected: to be 104
+
+
+● tests\37-enum.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+  uploading to COM3...
+  reading serial output...
+ ✓ Numeric enum basics (2 tests)
+   ✓ enum member value  
+   ✓ enum with gaps  
+
+ ✓ Enum relational comparison (1 test)
+   ✓ greater-or-equal  
+
+ ✓ Enum as array index (1 test)
+   ✓ index into array  
+
+ ✓ Enum in switch (1 test)
+   ✓ switch on enum returns correct case  
+
+ ✓ String enum (1 test)
+   ✓ string enum comparison  
+
+ ✓ Enum↔int storage boundary (Finding C) (1 test)
+   ✓ int to enum via as cast and back  
+
+ ✓ Bitwise flags (1 test)
+   ✓ OR flags and check  
+
+ ✓ Top-level const enum (Finding B) (1 test)
+   ✓ top-level const accessible from function  
+
+
+● tests\99-board-dynamic.test.ts
+  preprocessing...
+  transpiling...
+  compiling...
+ ✗ C:\typecad\typecode\packages\framework-arduino\tests\99-board-dynamic.test.ts (error)
+   Compilation failed:
+Used platform Version Path
+esp32:esp32   3.0.7   C:\Users\justi\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.0.7
+
+C:\typecad\typecode\packages\framework-arduino\.build\expect\99_board_dynamic\out\99_board_dynamic\99_board_dynamic.ino:2:10: fatal error: Typecad.h: No such file or directory
+    2 | #include <Typecad.h>
+      |          ^~~~~~~~~~~
+compilation terminated.
+Error during build: exit status 1
+
+
+ Tests   218 passed | 1 failed (219)
+ Errors  4 files failed to build
+ Board   @typecad/board-esp32-devkit @ COM3
+ Time    1038.60s
+
+ FAIL  1 test failed, 4 build errors
+npm error Lifecycle script `test:hw` failed with error:
+npm error code 1
+npm error path C:\typecad\typecode\packages\framework-arduino
+npm error workspace @typecad/framework-arduino@0.1.0
+npm error location C:\typecad\typecode\packages\framework-arduino
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c npm exec -- cuttlefish-test
+
+ *  The terminal process "C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -Command npm run test:hw" terminated with exit code: 1. 
+ *  Terminal will be reused by tasks, press any key to close it. 

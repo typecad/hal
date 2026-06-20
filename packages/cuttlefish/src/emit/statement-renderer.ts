@@ -684,7 +684,7 @@ export class StatementRenderer {
           }
           const structName = `_${statement.name}_t`;
           // Compile-time-only namespace values (e.g. the `ui` authoring handle
-          // from @typehal/ui) are intercepted at IR-build time; their calls
+          // from @typecad/ui) are intercepted at IR-build time; their calls
           // lower to IR but the binding itself must emit nothing. Skip the
           // struct synthesis + initializer for these.
           if (activeNamespaceNames.has(statement.name)) {

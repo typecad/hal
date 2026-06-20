@@ -47,12 +47,6 @@ export async function run(config: ResolvedConfig): Promise<number> {
   console.log(`${DIM}Found ${testFiles.length} test file${testFiles.length !== 1 ? 's' : ''}${RESET}`);
   console.log();
 
-  // Validate port
-  if (!config.test.port) {
-    console.error('Error: No serial port specified. Use --port <port> or set test.port in cuttlefish.config.ts');
-    return 2;
-  }
-
   // 2. Process each file sequentially (one compile/upload cycle per file)
   const fileResults: FileResult[] = [];
 
@@ -85,8 +79,6 @@ async function processTestFile(
   const startTime = Date.now();
   const relativePath = path.relative(config.projectRoot, filePath);
 
-  console.log(`${CYAN}●${RESET} ${relativePath}`);
-
   // Read source
   let source: string;
   try {
@@ -94,6 +86,20 @@ async function processTestFile(
   } catch (e) {
     return errorResult(filePath, `Failed to read file: ${(e as Error).message}`, startTime);
   }
+
+  const skipReason = getSkipReason(source, relativePath, config);
+  if (skipReason) {
+    return skippedResult(relativePath, skipReason, startTime);
+  }
+
+  // Validate port only for files that will actually compile/upload. This lets
+  // target-incompatible files be skipped without requiring hardware to be
+  // connected.
+  if (!config.test.port) {
+    return errorResult(filePath, 'No serial port specified. Use --port <port> or set test.port in cuttlefish.config.ts', startTime);
+  }
+
+  console.log(`${CYAN}●${RESET} ${relativePath}`);
 
   // Step 1: Preprocess
   console.log(`  ${DIM}preprocessing...${RESET}`);
@@ -143,6 +149,7 @@ async function processTestFile(
     config.test.baudRate,
     config.test.timeout,
     config.test.serialOpenDelay,
+    { resetAfterOpen: config.test.resetAfterOpen ?? config.target === 'esp32' },
   );
 
   if (serialResult.error && !serialResult.completed) {
@@ -179,13 +186,30 @@ function errorResult(filePath: string, error: string, startTime: number): FileRe
   };
 }
 
+function skippedResult(filePath: string, reason: string, startTime: number): FileResult {
+  return {
+    filePath,
+    describes: [],
+    passed: true,
+    durationMs: Date.now() - startTime,
+    debugOutput: [],
+    skipped: true,
+    skipReason: reason,
+  };
+}
+
 function aggregateResults(files: FileResult[], durationMs: number): RunResult {
   let totalTests = 0;
   let totalPassed = 0;
   let totalFailed = 0;
   let totalErrors = 0;
+  let totalSkipped = 0;
 
   for (const file of files) {
+    if (file.skipped) {
+      totalSkipped++;
+      continue;
+    }
     for (const desc of file.describes) {
       for (const test of desc.tests) {
         totalTests++;
@@ -204,6 +228,86 @@ function aggregateResults(files: FileResult[], durationMs: number): RunResult {
     totalPassed,
     totalFailed,
     totalErrors,
+    totalSkipped,
     durationMs,
   };
+}
+
+function getSkipReason(source: string, relativePath: string, config: ResolvedConfig): string | undefined {
+  const excludedByConfig = config.test.exclude?.find(pattern => matchesTestPattern(relativePath, pattern));
+  if (excludedByConfig) {
+    return `matched test.exclude pattern '${excludedByConfig}'`;
+  }
+
+  const skipTarget = findTargetDirective(source, 'typecad-skip-target');
+  if (skipTarget && targetListMatches(skipTarget.targets, config)) {
+    return skipTarget.reason ?? `skipped for target '${targetLabel(config)}'`;
+  }
+
+  const onlyTarget = findTargetDirective(source, 'typecad-only-target');
+  if (onlyTarget && !targetListMatches(onlyTarget.targets, config)) {
+    return onlyTarget.reason ?? `requires target '${onlyTarget.targets.join(', ')}'`;
+  }
+
+  return undefined;
+}
+
+function findTargetDirective(
+  source: string,
+  directive: 'typecad-skip-target' | 'typecad-only-target',
+): { targets: string[]; reason?: string } | undefined {
+  const re = new RegExp(`@${directive}\\s+([^:\\r\\n]+)(?::\\s*(.*))?`, 'i');
+  const match = source.match(re);
+  if (!match) return undefined;
+
+  const targets = match[1]
+    .split(/[,\s]+/)
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (targets.length === 0) return undefined;
+  return { targets, reason: match[2]?.trim() || undefined };
+}
+
+function targetListMatches(targets: string[], config: ResolvedConfig): boolean {
+  const tokens = new Set<string>();
+  if (config.target) tokens.add(config.target.toLowerCase());
+  if (config.buildTarget) {
+    const buildTarget = config.buildTarget.toLowerCase();
+    tokens.add(buildTarget);
+    const parts = buildTarget.split(':');
+    if (parts[0]) tokens.add(parts[0]);
+    if (parts[1]) tokens.add(parts[1]);
+    if (parts[2]) tokens.add(parts[2]);
+  }
+  if (config.board) {
+    const board = config.board.toLowerCase();
+    tokens.add(board);
+    const lastSegment = board.split('/').pop();
+    if (lastSegment) tokens.add(lastSegment);
+  }
+
+  return targets.some(target => target === '*' || tokens.has(target.toLowerCase()));
+}
+
+function targetLabel(config: ResolvedConfig): string {
+  return config.buildTarget || config.target || config.board || 'unknown';
+}
+
+function matchesTestPattern(relativePath: string, pattern: string): boolean {
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+  const normalizedPattern = pattern.replace(/\\/g, '/');
+  if (!normalizedPattern.includes('*') && !normalizedPattern.includes('?')) {
+    return normalizedPath === normalizedPattern;
+  }
+  return globToRegex(normalizedPattern).test(normalizedPath);
+}
+
+function globToRegex(glob: string): RegExp {
+  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const pattern = escaped
+    .replace(/\?/g, '[^/]')
+    .replace(/\*\*\//g, '(.+/)?')
+    .replace(/\*/g, '[^/]*');
+  return new RegExp(`^${pattern}$`);
 }

@@ -1,9 +1,9 @@
-# @typehal/expect
+# @typecad/expect
 
-Hardware test runner for [TypeHAL](../../README.md). Write vitest-style assertions in TypeScript; the framework compiles them to firmware, uploads to your board, reads the results over serial, and reports pass/fail — all in one command.
+Hardware test runner for [TypeCAD](../../README.md). Write vitest-style assertions in TypeScript; the framework compiles them to firmware, uploads to your board, reads the results over serial, and reports pass/fail in one command.
 
 ```
- typehal-test v0.1.0
+ cuttlefish-test v0.1.0
 
  ✓ A0 analog read (2 tests)
    ✓ reads a value in valid ADC range
@@ -15,7 +15,7 @@ Hardware test runner for [TypeHAL](../../README.md). Write vitest-style assertio
 
 
  Tests   4 passed (4)
- Board   @typehal/board-arduino-uno @ COM4
+ Board   @typecad/board-arduino-uno @ COM4
  Time    18.97s
 
  PASS  All tests passed
@@ -35,7 +35,7 @@ Hardware test runner for [TypeHAL](../../README.md). Write vitest-style assertio
   - [String matchers](#string-matchers)
 - [Running tests](#running-tests)
   - [CLI flags](#cli-flags)
-  - [typehal.config.ts](#typehalconfigts)
+  - [cuttlefish.config.ts](#cuttlefishconfigts)
 - [Architecture](#architecture)
   - [Pipeline](#pipeline)
   - [Serial protocol](#serial-protocol)
@@ -47,7 +47,7 @@ Hardware test runner for [TypeHAL](../../README.md). Write vitest-style assertio
 ## How it works
 
 1. **Preprocess** — an AST transform rewrites the fluent test syntax into `Serial.print()` calls.
-2. **Transpile** — the typehal compiler converts the rewritten TypeScript to a C++ Arduino sketch.
+2. **Transpile** — Cuttlefish converts the rewritten TypeScript to a C++ Arduino sketch.
 3. **Compile** — `arduino-cli compile` builds the sketch for the target board.
 4. **Upload** — `arduino-cli upload` flashes the firmware over serial.
 5. **Capture** — the host reads structured protocol lines from the serial port.
@@ -58,7 +58,7 @@ Hardware test runner for [TypeHAL](../../README.md). Write vitest-style assertio
 
 ## Installation
 
-`@typehal/expect` is included in the TypeHAL monorepo. No separate install step is needed within the workspace.
+`@typecad/expect` is included in the TypeCAD monorepo. No separate install step is needed within the workspace.
 
 **Prerequisites:**
 
@@ -70,12 +70,12 @@ Hardware test runner for [TypeHAL](../../README.md). Write vitest-style assertio
 
 ## Writing tests
 
-Test files follow a fluent chaining style. Unlike vitest, there are no callback functions — the TypeHAL transpiler does not support inline arrow function arguments.
+Test files follow a fluent chaining style. Expectations can use direct values or zero-argument functions/IIFEs that return the value to assert.
 
 ```typescript
 // examples/my-sensor.test.ts
-import { describe, done } from '@typehal/expect';
-import { A0 } from '@typehal';
+import { describe, done } from '@typecad/expect';
+import { A0 } from '@TypeCAD';
 
 describe("A0 analog read")
   .it("reads a value in valid ADC range")
@@ -100,7 +100,7 @@ Opens a named test case within the current group. Returns the same `Suite` for f
 
 `suite.expect(value: number): Expectation`
 
-Captures a hardware value to be asserted. The argument must be a TypeHAL hardware expression (e.g. `A0.readAnalog()`, `pin.read()`). The preprocessor hoists it to a local variable so it is evaluated exactly once.
+Captures a hardware value to be asserted. The argument must be a TypeCAD hardware expression (e.g. `A0.readAnalog()`, `pin.read()`) or a zero-argument function returning one. The preprocessor hoists hardware expressions so they are evaluated exactly once.
 
 `suite.expectString(value: string): StringExpectation`
 
@@ -170,23 +170,29 @@ npm run test:hw -- --port COM4
 |---|---|---|---|
 | `--port <port>` | `-p` | from config | Serial port (e.g. `COM4`, `/dev/ttyACM0`) |
 | `--board <pkg>` | `-b` | from config | Board package name override |
-| `--fqbn <fqbn>` | | from config | Fully Qualified Board Name override |
+| `--build-target <fqbn>` | | from config | Framework-specific build target / FQBN override |
 | `--baud <rate>` | | `115200` | Serial baud rate |
 | `--timeout <ms>` | `-t` | `30000` | Serial read timeout in milliseconds |
 | `--include <glob>` | `-i` | from config | Test file glob pattern (repeatable) |
+| `--exclude <glob>` | `-x` | from config | Test file glob pattern to skip (repeatable) |
 | `--verbose` | `-v` | `false` | Show raw serial output and per-assertion detail |
 | `--help` | `-h` | | Print help and exit |
 
-### typehal.config.ts
+### cuttlefish.config.ts
 
-Add a `test` section to your project's `typehal.config.ts` to avoid passing flags every time:
+Add a `test` section to your project's `cuttlefish.config.ts` to avoid passing flags every time:
 
 ```typescript
-// typehal.config.ts
-import { defineConfig } from '@typehal/core';
+// cuttlefish.config.ts
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-export default defineConfig({
-  board: '@typehal/board-arduino-uno',
+const config: CuttlefishConfig = {
+  target: 'avr',
+  board: '@typecad/board-arduino-uno',
+  framework: '@typecad/framework-arduino',
+  frameworkData: {
+    buildTarget: 'arduino:avr:uno',
+  },
 
   test: {
     port: 'COM4',           // serial port of the connected board
@@ -196,11 +202,44 @@ export default defineConfig({
       'examples/**/*.test.ts',
       'tests/hardware/**/*.test.ts',
     ],
+    exclude: [               // optional glob patterns to skip after discovery
+      'tests/hardware/avr-only/**/*.test.ts',
+    ],
   },
-});
+};
+
+export default config;
 ```
 
 All `test` fields are optional and can be overridden by CLI flags.
+
+### Target-specific skips
+
+Use a file-level comment when a test is valid only for some MCUs or framework targets. The runner checks these comments before preprocessing, compiling, or uploading.
+
+```typescript
+// @typecad-skip-target esp32: ESP32 does not expose the AVR watchdog API.
+```
+
+The inverse form skips every target except the listed ones:
+
+```typescript
+// @typecad-only-target avr,megaavr: uses AVR watchdog registers.
+```
+
+Targets are matched against `target`, the FQBN parts from `frameworkData.buildTarget` such as `esp32` in `esp32:esp32:esp32`, the full FQBN, and the board package name.
+
+Skipped files are reported in the same style as Vitest:
+
+```text
+ ↓ tests/32-wdt.test.ts (skipped)
+
+ Tests       1 skipped (1)
+ Test Files  1 skipped (1)
+ PASS All tests passed
+```
+
+Run with `--verbose` to print the skip reason from the directive.
 
 ### Uno showcase validation example
 
@@ -235,7 +274,7 @@ This hybrid workflow is the recommended way to confirm that simple variables, ar
 ┌─────────────────┐
 │ rewritten .ts   │  (Serial.print calls, hoisted hardware vars)
 └────────┬────────┘
-         │  typehal transpiler
+         │  Cuttlefish transpiler
          ▼
 ┌─────────────────┐
 │  .ino sketch    │  (Arduino C++)
@@ -282,23 +321,23 @@ Assertion math (pass/fail, formatting) is computed entirely on the host, not in 
 
 ### AST preprocessor
 
-The TypeHAL transpiler cannot evaluate hardware calls (like `A0.readAnalog()`) when they are nested inside non-typehal function calls — they lose their structured IR and become plain text. The preprocessor solves this before transpilation:
+The Cuttlefish transpiler cannot evaluate hardware calls (like `A0.readAnalog()`) when they are nested inside non-TypeCAD function calls — they lose their structured IR and become plain text. The preprocessor solves this before transpilation:
 
-1. Removes the `import { describe, done } from '@typehal/expect'` statement.
-2. Emits a `Serial.initialize(...)` + `[TC:SUITE_START]` preamble once.
+1. Removes the `import { describe, done } from '@typecad/expect'` statement.
+2. Emits a `Serial.begin(...)` + `[TC:SUITE_START]` preamble once.
 3. Walks the fluent chain `describe(...).it(...).expect(expr).matcher(args)`.
 4. **Hoists** hardware expressions out of `.expect()` into a `const __tc_vN: number = expr;` declaration at the surrounding statement level.
 5. Replaces the `.expect(...).matcher(...)` chain with the appropriate `Serial.print("[TC:EXPECT:...]")` calls.
 6. Rewrites `done()` to `Serial.println("[TC:SUITE_END]") + while(true){delay(1000)}`.
 
-The result is valid TypeHAL TypeScript with no nested hardware calls, ready for the standard transpiler.
+The result is valid TypeCAD TypeScript with no nested hardware calls, ready for the standard transpiler.
 
 ---
 
 ## Limitations
 
-- **No arrow function callbacks** — the TypeHAL transpiler does not support inline arrow functions as arguments. Groups and cases are defined by fluent chaining, not by `describe("name", () => { ... })`.
+- **No vitest-style callback suites** — groups and cases are defined by fluent chaining, not by `describe("name", () => { ... })`.
 - **No async tests** — all timing is implicit (the board executes sequentially, the host waits on serial output).
 - **Sequential execution only** — all describes in a file run once, in order, inside `setup()`. There is no `beforeEach`/`afterEach`.
 - **One file per upload** — each test file produces one sketch and one upload cycle. Multiple test files run as separate upload+execute passes.
-- **Number types only for hardware values** — the TypeHAL type system maps all numeric hardware readings to `int`/`float`. String expectations are for software string variables, not raw hardware reads.
+- **Number types only for hardware values** — TypeCAD maps numeric hardware readings to `int`/`float`. String expectations are for software string variables, not raw hardware reads.

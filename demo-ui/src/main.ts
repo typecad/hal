@@ -6,7 +6,7 @@
 // toggles the signal every second to exercise the 80ms transition animation.
 // ---------------------------------------------------------------------------
 
-import { ui } from '@typehal/ui';
+import { ui } from '@typecad/ui';
 import { screen } from './hello.ui.html';
 import { Adafruit_ILI9341 } from '../lib/Adafruit_ILI9341/Adafruit_ILI9341';
 

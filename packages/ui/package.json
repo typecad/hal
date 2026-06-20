@@ -1,5 +1,5 @@
 {
-  "name": "@typehal/ui",
+  "name": "@typecad/ui",
   "version": "0.1.0",
   "description": "TypeHAL UI authoring library — HTML/CSS-driven graphics for microcontrollers",
   "type": "commonjs",

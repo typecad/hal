@@ -272,12 +272,12 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       if (stmt.importClause?.namedBindings && ts.isNamedImports(stmt.importClause.namedBindings)) {
         namedImports.push(...stmt.importClause.namedBindings.elements.map((e) => e.name.text));
       }
-      // The `ui` namespace from @typehal/ui is a compile-time construct: its
+      // The `ui` namespace from @typecad/ui is a compile-time construct: its
       // calls (ui.mount/signal/bind) are intercepted by tryResolveUICall and
       // lowered to IR, but `ui` itself must NOT be emitted as a C++ value
       // (it would synthesize a bogus _ui_t struct). Drop it from the imports
       // IR so the emit path never sees it as an imported value.
-      const isUiPackage = moduleSpecifier === '@typehal/ui' || moduleSpecifier === '@typecad/ui';
+      const isUiPackage = moduleSpecifier === '@typecad/ui' || moduleSpecifier === '@typecad/ui';
       const filteredImports = isUiPackage
         ? namedImports.filter((n) => n !== 'ui')
         : namedImports;
@@ -374,12 +374,12 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         || moduleSpecifier === '@typecad/framework-arduino/arduino'
         || moduleSpecifier === '@typecad';
 
-      // UI authoring namespace: `import { ui } from "@typehal/ui"`. The `ui`
+      // UI authoring namespace: `import { ui } from "@typecad/ui"`. The `ui`
       // value is a compile-time construct (its calls are intercepted by
       // tryResolveUICall); it must NOT be emitted as a C++ struct/value.
       // Treat it like the HAL namespace imports (Pulse/Shift/Random): register
       // as a namespace name and skip, so no struct is synthesized.
-      if (moduleSpecifier === '@typehal/ui' || moduleSpecifier === '@typecad/ui') {
+      if (moduleSpecifier === '@typecad/ui' || moduleSpecifier === '@typecad/ui') {
         for (const name of namedImports) {
           if (name === 'ui') {
             activeNamespaceNames.add(name);
