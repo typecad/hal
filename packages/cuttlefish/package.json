@@ -64,6 +64,10 @@
     "./ir/transformers/ui-mount": {
       "types": "./dist/ir/transformers/ui-mount.d.ts",
       "default": "./dist/ir/transformers/ui-mount.js"
+    },
+    "./ir/transformers/ui-reactive": {
+      "types": "./dist/ir/transformers/ui-reactive.d.ts",
+      "default": "./dist/ir/transformers/ui-reactive.js"
     }
   },
   "files": [
