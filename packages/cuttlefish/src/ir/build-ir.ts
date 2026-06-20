@@ -13,6 +13,7 @@ import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } f
 import { runProgramValidations } from "./validation-orchestrator";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir";
+import { registerUIModuleImport } from "./transformers/ui-call-resolver";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
 import { prescanUnsupportedFeatures } from "./feature-prescan";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
@@ -118,6 +119,18 @@ function resolveRelativeImportPath(fromFile: string, moduleSpecifier: string): s
   for (const c of candidates) {
     try { if (fs.statSync(c).isFile()) return c; } catch { /* skip */ }
   }
+  return undefined;
+}
+
+/** Resolve a relative `.ui.html` import to its absolute path (for UI registration). */
+function resolveUIImportPath(fromFile: string, moduleSpecifier: string): string | undefined {
+  if (!moduleSpecifier.startsWith(".") && !moduleSpecifier.startsWith("..")) return undefined;
+  const basePath = path.resolve(path.dirname(fromFile), moduleSpecifier);
+  try {
+    if (fs.statSync(basePath).isFile() && basePath.toLowerCase().endsWith(".ui.html")) {
+      return basePath;
+    }
+  } catch { /* skip */ }
   return undefined;
 }
 
@@ -270,6 +283,19 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         // Non-fatal
       }
       break;
+    }
+  }
+
+  // Phase 0c-bis: register UI module imports (name → .ui.html path) so
+  // ui.mount(screen, ...) can resolve `screen` back to its source tree.
+  // Only .ui.html specifiers are registered; their named imports are the UI
+  // tree handles (e.g. `screen`).
+  for (const imp of earlyImports) {
+    if (!imp.moduleSpecifier.endsWith(".ui.html")) continue;
+    const htmlPath = resolveUIImportPath(fileName, imp.moduleSpecifier);
+    if (!htmlPath) continue;
+    for (const name of imp.namedImports) {
+      registerUIModuleImport(name, htmlPath);
     }
   }
 

@@ -5,6 +5,7 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
 import { tryResolveHALMethod } from "./hal-call-resolver";
+import { tryResolveUICall } from "./ui-call-resolver";
 import { tryLowerArrayAndStringMethods } from "./array-methods";
 import { expressionToIR } from "../expression-to-ir";
 import { escapeCppKeyword } from "../../utils/strings";
@@ -69,6 +70,14 @@ export function callToStatement(
   // ---- HAL method resolver (highest priority) ---
   const halResolved = tryResolveHALMethod(call, fileName, sourceText, diagnostics, pointerVars);
   if (halResolved) return halResolved;
+
+  // ---- ui.mount / ui.signal / ui.bind — UI authoring calls ---
+  // Handles statement-position ui.* calls. const X = ui.signal(...) (a
+  // VariableDeclaration, not an ExpressionStatement) is handled in the
+  // variable-declaration path; here we see bare ui.signal(...) statements
+  // and synthesize a signal name.
+  const uiResolved = tryResolveUICall(call, fileName, sourceText, diagnostics);
+  if (uiResolved) return uiResolved;
 
   // Handle super() calls in constructors - transform to super_call IR for class emitter
   if (call.expression.kind === ts.SyntaxKind.SuperKeyword) {
