@@ -40,9 +40,9 @@ export function emitBindingEntry(spec: BindingSpec): string {
 
 /** Emit a full binding table from a list of specs. */
 export function emitBindingTable(specs: BindingSpec[]): string {
-  if (specs.length === 0) return `static const UIBinding __ui_bindings[] = {};`;
+  if (specs.length === 0) return `UIBinding __ui_bindings[] = {};`;
   return [
-    `static const UIBinding __ui_bindings[] = {`,
+    `UIBinding __ui_bindings[] = {`,
     ...specs.map(emitBindingEntry),
     `};`,
   ].join("\n");

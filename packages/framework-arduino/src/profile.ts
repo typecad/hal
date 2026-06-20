@@ -114,6 +114,21 @@ function walkStatements(statements: StatementIR[], onStatement: (statement: Stat
     onStatement(statement);
     if (statement.kind === "while") {
       walkStatements(statement.body, onStatement);
+    } else if (statement.kind === "do_while") {
+      walkStatements(statement.body, onStatement);
+    } else if (statement.kind === "if") {
+      walkStatements(statement.thenBranch, onStatement);
+      if (statement.elseBranch) walkStatements(statement.elseBranch, onStatement);
+    } else if (statement.kind === "for") {
+      if (statement.body) walkStatements(statement.body, onStatement);
+    } else if (statement.kind === "for_of" || statement.kind === "for_in") {
+      if (statement.body) walkStatements(statement.body, onStatement);
+    } else if (statement.kind === "try") {
+      walkStatements(statement.tryBlock, onStatement);
+      if (statement.catchBlock) walkStatements(statement.catchBlock, onStatement);
+      if (statement.finallyBlock) walkStatements(statement.finallyBlock, onStatement);
+    } else if (statement.kind === "block") {
+      walkStatements(statement.body ?? [], onStatement);
     }
   }
 }
@@ -178,6 +193,21 @@ function collectUsedIdentifiers(program: ProgramIR): Set<string> {
 
     if (statement.kind === "return") {
       collectExpression(statement.value);
+      return;
+    }
+
+    if (statement.kind === "hal-op") {
+      // HAL ops carry raw C++ code (e.g. the Preferences namespace lowers to
+      // `Preferences.begin(...)` inside a hal-op). Scan it for identifiers so
+      // namespace-detection shims (Preferences/EEPROM/etc.) fire. Without this,
+      // `used` never sees "Preferences" and the AVR Preferences shim is dropped
+      // (avr-g++: "'Preferences' was not declared in this scope"). Demo #33.
+      const op = statement.operation;
+      if (op && op.operation === "raw" && typeof op.code === "string") {
+        for (const token of op.code.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []) {
+          used.add(token);
+        }
+      }
       return;
     }
 
@@ -460,7 +490,7 @@ const AVR_PREFERENCES_SHIM: string[] = [
   '    EEPROM.update(addr + vLen, 0);',
   '    return (size_t)vLen;',
   '  }',
-  '  __tc_str_ptr getString(const char* key, const char* defaultValue) {',
+  '  const char* getString(const char* key, const char* defaultValue) {',
   '    if (!_started) return defaultValue;',
   '    int idx = _findSlot(key, _T_STR);',
   '    if (idx < 0) return defaultValue;',

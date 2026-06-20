@@ -27,6 +27,7 @@ function buildDestructureExtractions(
   pattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern,
   sourceName: string,
   sourceCppType: string,
+  sourceSpan: SourceSpan,
   _sourceText: string,
   _diagnostics: Diagnostic[],
   _functionReturnTypes: Map<string, CppTypeHint>,
@@ -52,6 +53,7 @@ function buildDestructureExtractions(
       };
       extractions.push({
         kind: "var_decl",
+        sourceSpan,
         name: bindingName,
         storage: "const",
         cppType: "auto" as CppType,
@@ -69,10 +71,11 @@ function buildDestructureExtractions(
       const init: ExpressionIR = {
         kind: "element-access",
         object: { kind: "identifier", value: sourceName },
-        index: { kind: "number", value: String(index) },
+        index: { kind: "number", value: index },
       };
       extractions.push({
         kind: "var_decl",
+        sourceSpan,
         name: bindingName,
         storage: "const",
         cppType: "auto" as CppType,
@@ -385,9 +388,10 @@ export function lowerControlFlowStatement(
           ? (parsedElementString(iterableType) as CppType)
           : ("auto" as CppType);
       const syntheticName = `__forof_${forOfDestructureCounter++}`;
+      const forOfSpan = makeSourceSpan(statement, fileName, sourceText);
       variable = {
         kind: "var_decl",
-        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        sourceSpan: forOfSpan,
         name: syntheticName,
         storage: "const",
         cppType: elementType,
@@ -399,6 +403,7 @@ export function lowerControlFlowStatement(
         bindingPattern,
         syntheticName,
         elementType,
+        forOfSpan,
         sourceText,
         diagnostics,
         functionReturnTypes,

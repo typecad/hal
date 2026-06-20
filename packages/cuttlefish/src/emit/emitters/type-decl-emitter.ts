@@ -134,7 +134,16 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
       appendLine(ctx, `struct ${iface.name} {`);
       for (const field of iface.fields) {
         const fieldType = normalizeCppTypeForTarget(field.cppType);
-        appendLine(ctx, `  ${fieldType} ${field.name};`);
+        // Escape the field name with the SAME function class-field declarations
+        // and field accesses use (escapeCppKeyword over reservedNames), so an
+        // interface/struct field named like an Arduino macro (`min`/`max`) is
+        // declared `min_`/`max_` to MATCH the renamed accesses (`s.min_`).
+        // Previously interface fields used the bare name while declarations
+        // (escapeCppKeyword → suffix `_`) and accesses (escapeFinalMemberName)
+        // disagreed, so `struct Stats { int32_t min; }` was accessed as
+        // `s.min_` → g++ "has no member named 'min_'". Demo #33 Finding D.
+        const safeFieldName = escapeCppKeyword(field.name, reservedNames);
+        appendLine(ctx, `  ${fieldType} ${safeFieldName};`);
       }
       if (iface.indexSignature) {
         const keyType = normalizeCppTypeForTarget(iface.indexSignature.keyType);

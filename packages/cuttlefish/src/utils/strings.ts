@@ -102,6 +102,28 @@ export function escapeCppKeyword(name: string, platformNames?: ReadonlySet<strin
   return name;
 }
 
+/**
+ * Escape the trailing member name of a (possibly compound) C++ lvalue/access
+ * string against the reserved-name sets. Handles both bare identifiers
+ * (`min` → `min_`) and member-access chains (`this->min`, `obj.min`,
+ * `ptr->field`) by renaming only the final segment, so a reserved member name
+ * is escaped consistently with how the field is DECLARED (renameStructField /
+ * escapeCppKeyword applied to the bare field name). Demo #33: applying plain
+ * escapeCppKeyword to the compound string `this.min` left `min` untouched,
+ * diverging from the access path and producing a declaration/access mismatch.
+ */
+export function escapeTrailingMember(text: string, platformNames?: ReadonlySet<string>): string {
+  // A member-access chain ends in `->name`, `.name`, or `::name`. Rename only
+  // the trailing identifier so the receiver chain is preserved verbatim.
+  const match = text.match(/^(.*?(?:->|\.|::))([A-Za-z_][A-Za-z0-9_]*)$/);
+  if (match) {
+    const [, prefix, member] = match;
+    return `${prefix}${escapeCppKeyword(member, platformNames)}`;
+  }
+  // No member-access separator — treat the whole text as a bare identifier.
+  return escapeCppKeyword(text, platformNames);
+}
+
 export function escapeCppStringLiteral(value: string): string {
   return value
     .replace(/\\/g, "\\\\")

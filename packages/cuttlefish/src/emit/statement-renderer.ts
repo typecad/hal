@@ -9,6 +9,7 @@ import type { PlatformStrategy } from "../api/shared";
 import type { BoardConstants } from "../ir/board-resolver";
 import type { KnownVariableInfo } from "../api/shared";
 import { routeHALOp } from "./route-hal-op";
+import { activeNamespaceNames } from "../ir/build-ir-state";
 import type { Diagnostic } from "../types";
 import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from "./expression-renderer";
 import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
@@ -682,6 +683,13 @@ export class StatementRenderer {
             return `${constPrefix2}${vecType} ${safeArrName2} = { ${elements} };`;
           }
           const structName = `_${statement.name}_t`;
+          // Compile-time-only namespace values (e.g. the `ui` authoring handle
+          // from @typehal/ui) are intercepted at IR-build time; their calls
+          // lower to IR but the binding itself must emit nothing. Skip the
+          // struct synthesis + initializer for these.
+          if (activeNamespaceNames.has(statement.name)) {
+            return "";
+          }
           const firstObj = statement.initializer.elements.find(e => e.kind === "object") as Extract<ExpressionIR, { kind: "object" }>;
 
           const nestedStructs = collectNestedStructDefs(

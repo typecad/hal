@@ -306,6 +306,11 @@ export function variableStatementToIR(
       const isArrayLiteral = arrExpr.kind === "array";
       const arrElements = isArrayLiteral ? (arrExpr as { kind: "array"; elementType: string; elements: ExpressionIR[] }).elements : null;
       const arrElementType = isArrayLiteral ? (arrExpr as { kind: "array"; elementType: string; elements: ExpressionIR[] }).elementType : "auto";
+      const knownSourceLength = isArrayLiteral
+        ? arrElements?.length
+        : ts.isIdentifier(declaration.initializer)
+          ? arrayLiteralSizes.get(declaration.initializer.text)
+          : undefined;
 
       for (let i = 0; i < declaration.name.elements.length; i++) {
         const element = declaration.name.elements[i];
@@ -392,16 +397,19 @@ export function variableStatementToIR(
         // For array literals, use elements directly; otherwise index into the expression
         let initializer: ExpressionIR;
         if (isArrayLiteral && arrElements) {
-          initializer = arrElements[i];
+          initializer = arrElements[i] ?? { kind: "raw", value: "CUTTLEFISH_UNDEFINED" };
         } else {
           initializer = { kind: "raw", value: `${arrText}[${i}]` };
         }
 
         if (element.initializer) {
-          initializer = {
-            kind: "raw" as const,
-            value: `cuttlefish_nullish(${renderExprAsText(initializer)}, ${renderExprAsText(expressionToIR(element.initializer, sourceText, diagnostics))})`,
-          };
+          const defaultValue = expressionToIR(element.initializer, sourceText, diagnostics);
+          initializer = knownSourceLength !== undefined && i >= knownSourceLength
+            ? defaultValue
+            : {
+                kind: "raw" as const,
+                value: `cuttlefish_nullish(${renderExprAsText(initializer)}, ${renderExprAsText(defaultValue)})`,
+              };
         }
 
         lowered.push({

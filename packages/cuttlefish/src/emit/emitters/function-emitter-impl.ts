@@ -5,6 +5,7 @@ import { escapeCppKeyword } from "../../utils/strings";
 import type { EmitterContext } from "./emitter-context";
 import { parsedIsPlainStructType } from "../../api/shared/cpp-type-ir";
 import { entryHasUI } from "../../ui/ui-registry";
+import { activeNamespaceNames } from "../../ir/build-ir-state";
 
 export function emitPostClassDeclarations(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, mappedFunctions, isEntryFile, topLevelScope } = ctx;
@@ -58,6 +59,10 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
       // local `_name_t` struct here — otherwise we'd emit a second, conflicting
       // struct definition and a duplicate extern/definition.
       const placeholderStructName = `_${statement.name}_t`;
+      // Compile-time-only namespace values (e.g. the `ui` handle) emit nothing.
+      if (activeNamespaceNames.has(statement.name)) {
+        return;
+      }
       const declaredCppType = statement.cppType;
       const hasExplicitNamedType =
         !!declaredCppType &&

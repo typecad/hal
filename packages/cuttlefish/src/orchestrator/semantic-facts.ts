@@ -329,6 +329,24 @@ export function canonicalize(
     return "unknown";
   }
 
+  // Intersection types (A & B) — common in generated d.ts files (e.g. mixin
+  // patterns like `{ kind: "button" } & PressBinding`). They lower to a single
+  // struct (the merged field set), so classify as struct. Check each
+  // constituent; if any is a container/callable we defer to that, but the
+  // overwhelmingly common case is all-object intersections → struct.
+  if (flags & ts.TypeFlags.Intersection) {
+    const parts = (type as ts.IntersectionType).types ?? [];
+    const partCats = parts.map((t) => canonicalize(checker, t));
+    // If every constituent is struct/primitive, the intersection is a struct.
+    if (partCats.every((c) => c === "struct" || c === "primitive")) {
+      return "struct";
+    }
+    // If all constituents agree on one non-struct category, inherit it.
+    const unique = new Set(partCats);
+    if (unique.size === 1) return partCats[0];
+    return "struct";
+  }
+
   // Primitives.
   if (
     flags &

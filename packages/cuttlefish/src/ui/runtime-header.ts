@@ -61,7 +61,8 @@ static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100) {
   return ((uint16_t)(r & 0x1f) << 11) | ((uint16_t)(g & 0x3f) << 5) | (uint16_t)(bl & 0x1f);
 }
 
-// Declared by the lowering output (the static tables):
+// Declared by the lowering output (the tables). Matches the mutable (non-const)
+// definitions: ui_tick updates node bg/dirty and transition elapsed/active.
 extern UINode __ui_nodes[];
 extern UITransition __ui_trans[];
 extern UIBinding __ui_bindings[];

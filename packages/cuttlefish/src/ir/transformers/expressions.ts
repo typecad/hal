@@ -431,7 +431,7 @@ export function expressionStatementToIR(
           sourceSpan: span,
           target: targets[i].text,
           operator: "=",
-          value: { kind: "element-access", object: { kind: "identifier", value: rhsText }, index: { kind: "number", value: String(i) } },
+          value: { kind: "element-access", object: { kind: "identifier", value: rhsText }, index: { kind: "number", value: i } },
         });
       }
     }

@@ -1,17 +1,22 @@
 // ---------------------------------------------------------------------------
-// ILI9341 — SPI color TFT driver resolver (240×320, RGB565)
+// ILI9341 — display driver resolver built on the Adafruit_ILI9341 library.
 //
-// Translates DisplayHALOp nodes into Arduino SPI C++ commands targeting the
-// ILI9341. Emits setAddrWindow + SPI.transfer16 for fills, and a per-glyph
-// blit for text (font table provided by the runtime header).
+// Maps each DisplayHALOp to a method call on a library-instantiated
+// Adafruit_ILI9341 object. The library owns SPI, command sequences, fonts,
+// and glyph rendering — we own the tree, layout, and reactive driver.
+//
+// The framework instantiates one library object per mount; ui.mount's
+// display.init emits the constructor + begin() + setRotation(), and
+// subsequent ops reference the same object by name (__tc_display).
 // ---------------------------------------------------------------------------
 
 import type { DisplayHALOp } from "@typecad/cuttlefish/api/shared";
 
-/** Render a color value as a C++ hex literal (e.g. 0x07e0) for readable RGB565 output. */
-function hexColor(c: number): string {
-  return `0x${c.toString(16)}`;
-}
+/** Display-side object variable name (instantiated by display.init). */
+export const DISPLAY_VAR = "__tc_display";
+
+/** The library's required headers — emitted as forced includes. */
+export const ILI9341_INCLUDES = ["<Adafruit_GFX.h>", "<Adafruit_ILI9341.h>"];
 
 export interface ILI9341Context {
   bus: string;
@@ -22,8 +27,13 @@ export interface ILI9341Context {
   height: number;
 }
 
+/** Render a color value as a C++ hex literal (e.g. 0x07e0) for readable RGB565. */
+function hexColor(c: number): string {
+  return `0x${c.toString(16)}`;
+}
+
 /**
- * Resolve a display HAL op to ILI9341 SPI C++.
+ * Resolve a display HAL op to a method call on the Adafruit_ILI9341 object.
  * Returns undefined for ops this driver does not handle.
  */
 export function resolveILI9341Op(
@@ -32,62 +42,39 @@ export function resolveILI9341Op(
 ): { code?: string; expression?: string } | undefined {
   switch (op.operation) {
     case "display.init":
+      // Hardware-SPI constructor: tft(CS, DC, RST). begin() initializes the
+      // panel; setRotation(1) is landscape (width 240 x height 320).
       return {
         code: [
-          `pinMode(${ctx.dc}, OUTPUT);`,
-          `pinMode(${ctx.cs}, OUTPUT);`,
-          `pinMode(${ctx.rst}, OUTPUT);`,
-          `digitalWrite(${ctx.rst}, HIGH); delay(5);`,
-          `digitalWrite(${ctx.rst}, LOW); delay(20);`,
-          `digitalWrite(${ctx.rst}, HIGH); delay(150);`,
-          `${ctx.bus}.begin();`,
-          `${ctx.bus}.setBitOrder(MSBFIRST);`,
-          `${ctx.bus}.setDataMode(SPI_MODE0);`,
-          `${ctx.bus}.setClockDivider(SPI_CLOCK_DIV2);`,
+          `Adafruit_ILI9341 ${DISPLAY_VAR} = Adafruit_ILI9341(${ctx.cs}, ${ctx.dc}, ${ctx.rst});`,
+          `${DISPLAY_VAR}.begin();`,
+          `${DISPLAY_VAR}.setRotation(1);`,
+          `${DISPLAY_VAR}.fillScreen(0x0000);`,
         ].join("\n"),
       };
     case "display.fill_rect":
+      // Adafruit_GFX fillRect(x, y, w, h, color) — color is uint16 RGB565.
+      return {
+        code: `${DISPLAY_VAR}.fillRect(${op.x}, ${op.y}, ${op.w}, ${op.h}, ${hexColor(op.color)});`,
+      };
+    case "display.draw_rect":
+      return {
+        code: `${DISPLAY_VAR}.drawRect(${op.x}, ${op.y}, ${op.w}, ${op.h}, ${hexColor(op.color)});`,
+      };
+    case "display.draw_text":
+      // Set cursor + color + size, then print. print() is the Print mixin
+      // (not in the auto-gen d.ts but present on the real C++ object).
       return {
         code: [
-          `digitalWrite(${ctx.cs}, LOW);`,
-          `digitalWrite(${ctx.dc}, LOW); ${ctx.bus}.transfer(0x2A);`,
-          `digitalWrite(${ctx.dc}, HIGH); ${ctx.bus}.transfer16(${op.x}); ${ctx.bus}.transfer16(${op.x + op.w - 1});`,
-          `digitalWrite(${ctx.dc}, LOW); ${ctx.bus}.transfer(0x2B);`,
-          `digitalWrite(${ctx.dc}, HIGH); ${ctx.bus}.transfer16(${op.y}); ${ctx.bus}.transfer16(${op.y + op.h - 1});`,
-          `digitalWrite(${ctx.dc}, LOW); ${ctx.bus}.transfer(0x2C);`,
-          `digitalWrite(${ctx.dc}, HIGH);`,
-          `for (uint32_t __i = 0; __i < (uint32_t)(${op.w}) * (${op.h}); __i++) ${ctx.bus}.transfer16(${hexColor(op.color)});`,
-          `digitalWrite(${ctx.cs}, HIGH);`,
+          `${DISPLAY_VAR}.setCursor(${op.x}, ${op.y});`,
+          `${DISPLAY_VAR}.setTextColor(${hexColor(op.color)});`,
+          `${DISPLAY_VAR}.setTextSize(2);`,
+          `${DISPLAY_VAR}.print(${JSON.stringify(op.text)});`,
         ].join("\n"),
       };
-    case "display.draw_rect": {
-      // Outline = 4 fill_rects (top, bottom, left, right).
-      const c = op.color;
-      const lines: string[] = [`digitalWrite(${ctx.cs}, LOW);`];
-      const rect = (x: number, y: number, w: number, h: number) => [
-        `digitalWrite(${ctx.dc}, LOW); ${ctx.bus}.transfer(0x2A);`,
-        `digitalWrite(${ctx.dc}, HIGH); ${ctx.bus}.transfer16(${x}); ${ctx.bus}.transfer16(${x + w - 1});`,
-        `digitalWrite(${ctx.dc}, LOW); ${ctx.bus}.transfer(0x2B);`,
-        `digitalWrite(${ctx.dc}, HIGH); ${ctx.bus}.transfer16(${y}); ${ctx.bus}.transfer16(${y + h - 1});`,
-        `digitalWrite(${ctx.dc}, LOW); ${ctx.bus}.transfer(0x2C);`,
-        `digitalWrite(${ctx.dc}, HIGH);`,
-        `for (uint32_t __i = 0; __i < (uint32_t)(${w}) * (${h}); __i++) ${ctx.bus}.transfer16(${c});`,
-      ].join("\n");
-      lines.push(rect(op.x, op.y, op.w, 1));                // top
-      lines.push(rect(op.x, op.y + op.h - 1, op.w, 1));     // bottom
-      lines.push(rect(op.x, op.y, 1, op.h));                // left
-      lines.push(rect(op.x + op.w - 1, op.y, 1, op.h));     // right
-      lines.push(`digitalWrite(${ctx.cs}, HIGH);`);
-      return { code: lines.join("\n") };
-    }
-    case "display.draw_text":
-      // Defer glyph blit to a runtime helper that takes the font id.
-      return {
-        code: `__tc_draw_text(${op.x}, ${op.y}, "${op.text}", "${op.fontId}", ${hexColor(op.color)}, &${ctx.bus}, ${ctx.cs}, ${ctx.dc});`,
-      };
     case "display.flush":
-      // ILI9341 has no separate flush — draws go straight to the panel.
-      return { code: `/* flush: ${op.rects.length} rect(s) — already drawn */` };
+      // ILI9341 is immediate — draws go straight to the panel. No flush.
+      return { code: `/* flush: ${op.rects.length} rect(s) — immediate draw */` };
     default:
       return undefined;
   }

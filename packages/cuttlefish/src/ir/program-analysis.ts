@@ -265,6 +265,31 @@ function analyzeStatement(
       if (statement.callee === "millis" || statement.callee === "delay") {
         result.usesMillis = true;
       }
+      // Namespace-qualified polyfill entry points used as bare call statements
+      // (e.g. `Timing.delay(5);`). The expression-level analyzer (case
+      // "method-call") already checks these prefixes, but a statement-form call
+      // never becomes a method-call expression — it stays a `call` statement —
+      // so without these mirrors `usesTiming`/`usesNum`/`usesWDT` stayed false
+      // and the defining shim was filtered out (avr-g++: "'Timing' was not
+      // declared in this scope"). Demo #30 Finding A.
+      if (statement.callee.startsWith("Timing.") || statement.callee === "Timing") {
+        result.usesTiming = true;
+      }
+      if (statement.callee.startsWith("Num.") || statement.callee === "Num") {
+        result.usesNum = true;
+      }
+      if (statement.callee.startsWith("WDT.") || statement.callee === "WDT") {
+        result.usesWDT = true;
+      }
+      // The HAL resolver lowers WDT.*/Timing.* namespace calls to bare AVR
+      // library functions (WDT.reset() → wdt_reset(), Timing.delay() → delay(),
+      // Timing.millis() → millis()). When that happens the `WDT.`/`Timing.`
+      // prefix is gone, so the namespace checks above miss it and the defining
+      // shim gets filtered out (avr-g++: "'wdt_reset' was not declared in this
+      // scope"). Detect the lowered names directly. Demo #32 Finding A.
+      if (statement.callee === "wdt_reset" || statement.callee === "wdt_enable" || statement.callee === "wdt_disable") {
+        result.usesWDT = true;
+      }
       for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
         const methodName = pattern.startsWith('.') ? pattern.slice(1, -1) : pattern.slice(0, -1);
         if (statement.callee === methodName || statement.callee.endsWith("." + methodName)) {
@@ -393,17 +418,30 @@ function analyzeStatement(
     case "hal-op":
       // Scan raw C++ code in HAL ops for polyfill helper usage
       if (statement.operation && statement.operation.operation === "raw" && typeof statement.operation.code === "string") {
+        const code = statement.operation.code;
         for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
-          if (statement.operation.code.includes(pattern)) {
+          if (code.includes(pattern)) {
             for (const name of helperNames) {
               result.usedPolyfillHelpers.add(name);
             }
           }
           for (const name of helperNames) {
-            if (statement.operation.code.includes(name)) {
+            if (code.includes(name)) {
               result.usedPolyfillHelpers.add(name);
             }
           }
+        }
+        // The HAL resolver lowers WDT.*/Timing.* namespace calls to bare AVR
+        // library functions inside hal-op raw code (WDT.reset() → wdt_reset(),
+        // Timing.delay() → delay()). The namespace prefix is gone, so detect
+        // the lowered names to keep the defining shim/include alive.
+        // Demo #32 Finding B.
+        if (/\bwdt_(reset|enable|disable)\b/.test(code)) {
+          result.usesWDT = true;
+        }
+        if (/\b(millis|micros|delay|delayMicroseconds)\s*\(/.test(code)) {
+          result.usesTiming = true;
+          result.usesMillis = true;
         }
       }
       break;
@@ -547,8 +585,31 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     if (strategy.needsStdVector() && typeName.includes("__tc_StaticArray<")) {
       result.usesVectorTypes = true;
     }
+    // Track __tc_StaticArray type usage on ALL targets so the defining
+    // polyfill is retained by filterPolyfillHelpers (the struct's constructor
+    // matches the helper-name regex but is never a user call site, so without
+    // this the struct would be filtered out and `__tc_StaticArray<int,N>`
+    // undeclared — avr-g++: "'__tc_StaticArray' was not declared"). Demo #23.
+    if (typeName.includes("__tc_StaticArray<")) {
+      result.usedPolyfillHelpers.add("__tc_StaticArray");
+    }
     if (typeName.includes("std::string")) {
       result.usesStdString = true;
+      // The Arduino/AVR strategy normalizes `std::string` → `__tc_str_ptr` at
+      // emit time (Strategy.normalizeCppType). The `usesStrPtr` flag gates
+      // emission of the `__tc_str_ptr` shim block, but the per-statement
+      // detector at the `var_decl` arm compares the PRE-normalization cppType
+      // (still `std::string`) against `parseCppType(...).kind === "strPtr"` —
+      // which never matches, so a string-typed LOCAL/field/return that emits
+      // as `__tc_str_ptr` silently drops its own shim and fails at g++ time
+      // ("'__tc_str_ptr' does not name a type"). Resolving the type through
+      // the strategy's normalizer here — the single broadest chokepoint over
+      // every declared type (locals, fields, params, returns, aliases) — makes
+      // the analysis agree with the emit path on every target. On native the
+      // normalizer leaves `std::string` alone, so this is a no-op there.
+      if (strategy.normalizeCppType("std::string") === "__tc_str_ptr") {
+        result.usesStrPtr = true;
+      }
     }
     if (typeName.includes("std::function<")) {
       result.usesStdFunction = true;

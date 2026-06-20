@@ -1,13 +1,14 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types";
 import { StatementIR, ExpressionIR } from "../../api";
-import { arrayLiteralSizes, mutableArrayVars, activeCArrayVars, getContext } from "../build-ir-state";
+import { arrayLiteralSizes, mutableArrayVars, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames } from "../build-ir-state";
 import { getCurrentIrTypeScope } from "../symbol-types";
 import { expressionToIR } from "../expression-to-ir";
 import { renderExprAsText } from "../render-expr";
 import { assignmentOperatorToString } from "./variables";
 import { STRING_METHODS, STRING_METHOD_NAMES, StringMethodSpec, StringMethodArgForm } from "../../api/shared/string-method-registry";
 import { parsedElementString } from "../../api/shared/cpp-type-ir";
+import { INTEGRAL_CPP_TYPE_RE } from "../../emit/utils/cpp-helpers";
 
 // Methods that require StaticArray promotion (not all are mutating — indexOf is read-only
 // but needs StaticArray since C arrays don't have an indexOf method).
@@ -245,7 +246,7 @@ export function tryLowerArrayAndStringMethods(
       }
       if (methodName === "indexOf") {
         const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-        return { kind: "raw", value: `${receiverName}.indexOf(${argsText})` };
+        return { kind: "raw", value: `(${receiverName}).indexOf(${argsText})` };
       }
       }
     }
@@ -282,8 +283,9 @@ export function tryLowerArrayAndStringMethods(
     // `push` lowers to native push_back (matches the old
     // `${RECV}\.push(([^)]+)\)` → `$1.push_back($2)` regex).
     if (methodName === "push") {
-      const receiverText = renderExprAsText(expressionToIR(expr.expression.expression, sourceText, diagnostics, pointerVars));
-      const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
+      const receiverNode = expr.expression.expression;
+      const receiverText = renderExprAsText(expressionToIR(receiverNode, sourceText, diagnostics, pointerVars));
+      const argsText = expr.arguments.map(arg => renderPushArgForElement(arg, receiverNode, sourceText, diagnostics, pointerVars)).join(", ");
       return { kind: "raw", value: `${receiverText}.push_back(${argsText})` };
     }
     // `sort()` with no arg and `reduce` with one arg have distinct helpers.
@@ -430,6 +432,65 @@ function resolveReceiverCppType(receiverNode: ts.Expression): string | undefined
       if (element) return element;
     }
     return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Render a `.push(arg)` argument, casting it across the enum↔integral storage
+ * boundary when the receiver is an integral-element vector and the argument is
+ * a numeric-enum value. The IR-build-time counterpart to the emit-layer
+ * `renderValueForTarget`: `.push` lowers to a raw `recv.push_back(ARG)` callee
+ * with the argument baked into the text, so the boundary must be handled HERE
+ * (the emit layer never sees the argument as a structured value).
+ *
+ * Detection (structural, not regex):
+ *   - Resolve the receiver's C++ type and derive its element type
+ *     (`std::vector<uint8_t>` → `uint8_t`).
+ *   - Detect a numeric-enum argument: a property access on a name in
+ *     `activeEnumNames` (`Cell.Dead`), or a bare identifier whose scope type is
+ *     an enum. String-enum members lower to `const char*` and are never cast.
+ *
+ * When the element type is integral and the arg is a numeric-enum value, wrap
+ * the rendered arg in `static_cast<int>(...)`. Demo #32 Finding A. Mirrors the
+ * SUPPORT_MATRIX §1.7 enum↔integral family fixed at the assign/var_decl sites
+ * in the emit layer.
+ */
+function renderPushArgForElement(
+  argNode: ts.Expression,
+  receiverNode: ts.Expression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: any,
+): string {
+  const rendered = renderExprAsText(expressionToIR(argNode, sourceText, diagnostics, pointerVars));
+  // Resolve the receiver element type.
+  const receiverType = resolveReceiverCppType(receiverNode);
+  const elementType = receiverType ? parsedElementString(receiverType) : undefined;
+  const targetIsIntegral = !!elementType && INTEGRAL_CPP_TYPE_RE.test(elementType);
+  if (!targetIsIntegral) return rendered;
+  // Detect a numeric-enum argument (excluding string enums).
+  const argEnumName = numericEnumNameOfArg(argNode);
+  if (!argEnumName) return rendered;
+  if (/^static_cast<[^>]+>\(/.test(rendered)) return rendered;
+  return `static_cast<int>(${rendered})`;
+}
+
+/**
+ * Returns the enum name when `node` is a numeric-enum value: either
+ * `EnumName.Member` (property access on a name in `activeEnumNames`, not a
+ * string enum) or a bare identifier whose IR-scope type is a numeric enum.
+ * Returns undefined for string enums and non-enum nodes. Demo #32 Finding A.
+ */
+function numericEnumNameOfArg(node: ts.Expression): string | undefined {
+  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+    const name = node.expression.text;
+    if (activeEnumNames.has(name) && !activeStringEnumNames.has(name)) return name;
+  }
+  if (ts.isIdentifier(node)) {
+    const scope = getCurrentIrTypeScope();
+    const t = scope?.locals.get(node.text) ?? scope?.globals.get(node.text);
+    if (t && activeEnumNames.has(t) && !activeStringEnumNames.has(t)) return t;
   }
   return undefined;
 }

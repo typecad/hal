@@ -166,7 +166,14 @@ export function resolveHALCallForVarInit(
   const instance = resolveHALReceiver(receiver);
   if (instance) {
     const result = processHALMethodBody(instance, method, argIRs);
-    if (result) return { emitLines: result.emitLines, halOps: result.halOps, returnValue: result.returnValue, returnClassName: result.returnClassName };
+    if (result) {
+      // Variable-initializer context is effectively expression context: the
+      // returnValue is substituted into `T name = <returnValue>;`. A leading
+      // `return ` (baked into HAL rawCpp for statement context) would leak as
+      // `T name = return Preferences.getString(...);`. Strip it. Demo #33.
+      const returnValue = result.returnValue ? result.returnValue.replace(/^\s*return\s+/, "") : result.returnValue;
+      return { emitLines: result.emitLines, halOps: result.halOps, returnValue, returnClassName: result.returnClassName };
+    }
   }
 
   // Try device accessor pattern
@@ -248,7 +255,15 @@ export function tryResolveHALExpression(
         };
       }
       if (result.returnValue) {
-        return { ir: { kind: "raw", value: result.returnValue }, sideEffects: result.emitLines };
+        // Expression context: a leading `return ` (baked into many HAL
+        // rawCpp definitions for statement context) is invalid inside an
+        // expression and would leak as e.g.
+        // `strcmp(return Preferences.getString(...), ...)` (avr-g++: "expected
+        // primary-expression before 'return'"). Strip it here so the value is
+        // usable as a sub-expression. Statement context keeps the `return`
+        // via tryResolveHALMethod. Demo #33 Finding B.
+        const exprValue = result.returnValue.replace(/^\s*return\s+/, "");
+        return { ir: { kind: "raw", value: exprValue }, sideEffects: result.emitLines };
       }
       if (result.emitLines.length > 0) {
         return { ir: { kind: "raw", value: "0" }, sideEffects: result.emitLines };

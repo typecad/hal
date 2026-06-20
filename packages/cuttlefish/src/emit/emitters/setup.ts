@@ -274,6 +274,28 @@ export function buildEmitterContext(
       if (defaultName) symbolMap[defaultName] = defaultName;
       continue;
     }
+    // .ui.html modules: their content is injected directly into the entry TU
+    // by emitUIRuntime (static tables + runtime header), so they need NO
+    // separate header include. Just register the imported symbols (e.g.
+    // `screen`) so cross-module references resolve.
+    if (imported.moduleSpecifier.endsWith(".ui.html")) {
+      for (const symbol of imported.namedImports) {
+        symbolMap[symbol] = symbol;
+      }
+      if (defaultName) symbolMap[defaultName] = defaultName;
+      continue;
+    }
+    // Compile-time-only packages (@typehal/ui, @typecad/ui): their calls are
+    // intercepted at IR-build time; the package emits NO C++ module/header.
+    // Register the imported symbols so references resolve, but skip the
+    // #include generation (there is no Ui.h to include).
+    if (imported.moduleSpecifier === "@typehal/ui" || imported.moduleSpecifier === "@typecad/ui") {
+      for (const symbol of imported.namedImports) {
+        symbolMap[symbol] = symbol;
+      }
+      if (defaultName) symbolMap[defaultName] = defaultName;
+      continue;
+    }
     const transpiledInclude = resolveTranspiledModuleInclude(
       imported.moduleSpecifier,
       options.npmPackages,

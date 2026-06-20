@@ -463,6 +463,29 @@ export function processHALMethodBody(
     }
   }
 
+  // Demo #33 Finding D — value-returning HAL methods encode their C++ return
+  // as a rawCpp emitLine/halOp of the form `return <expr>;` (e.g.
+  // Preferences.getInt → `return Preferences.getInt(k, d);`), while the TS
+  // method body's own `return 0;` / `return "";` is just a type-checking
+  // fallback. Without this, var-init context (`const v = Preferences.getInt(...)`)
+  // captured the TS fallback (0) instead of the real C++ value, so the
+  // roundtrip returned the default. When the trailing halOp is a `return X;`
+  // raw op, hoist X into returnValue so both statement and expression/var-init
+  // contexts use the real C++ expression.
+  if (halOps.length > 0) {
+    const lastOp = halOps[halOps.length - 1];
+    if (lastOp.operation === "raw" && typeof lastOp.code === "string") {
+      const m = lastOp.code.match(/^\s*return\s+([\s\S]+?);\s*$/);
+      if (m) {
+        returnValue = m[1].trim();
+        // Drop the now-redundant raw op so it isn't emitted as a stray
+        // statement alongside the value capture.
+        halOps.pop();
+        emitLines.length = 0;
+      }
+    }
+  }
+
   // Auto-passthrough for stub methods: if no emit() calls and the return is a literal
   // (e.g., return 0), construct the C++ expression as <objectName>.<method>(<args>).
   // Skip for Pin classes since Pin methods are typically lowered to standalone C calls (digitalRead/Write).

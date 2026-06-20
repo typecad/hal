@@ -403,12 +403,36 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     // gen-decls - generate .d.ts from C++ files
     if (command === "gen-decls") {
       const allFlag = argv.includes("--all");
-      const inputPath = argv[3];
-      
+
+      // The positional path may sit at argv[3] or argv[4] depending on whether
+      // --all precedes or follows it. Scan argv starting after the subcommand
+      // name (argv[2]) for the first token that is not a flag and not a known
+      // flag's value. This mirrors the default-pipeline approach of "first
+      // non-flag token wins".
+      const booleanFlags = new Set(["--all"]);
+      const valueFlags = new Set([
+        "--emit", "--target", "--outDir", "--out-dir", "--emit-maps", "--build-target",
+      ]);
+      let inputPath: string | undefined;
+      for (let i = 3; i < argv.length; i++) {
+        const tok = argv[i];
+        if (valueFlags.has(tok)) {
+          // Value-consuming flag: skip its value (if any) so it isn't mistaken
+          // for the positional path.
+          if (i + 1 < argv.length) { i++; }
+          continue;
+        }
+        if (tok.startsWith("-")) {
+          continue; // boolean flag (e.g. --all) or unknown flag — ignore
+        }
+        inputPath = tok;
+        break;
+      }
+
       if (!inputPath && !allFlag) {
         throw new Error("Missing input C++ file path. Use: gen-decls <file.cpp> or gen-decls --all <directory>");
       }
-      
+
       const scanDir = allFlag ? (inputPath || process.cwd()) : undefined;
       const inputFile = allFlag ? undefined : inputPath;
       

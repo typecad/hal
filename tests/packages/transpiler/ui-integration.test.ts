@@ -107,7 +107,7 @@ describe("UI end-to-end via transpileFile", () => {
     expect(cpp).toContain("0xf800");
   });
 
-  it("emits display.init through the ILI9341 SPI driver", async () => {
+  it("emits display.init through the ILI9341 library driver", async () => {
     const { cpp } = await transpileUIProgram({
       html: `<screen></screen>`,
       css: ``,
@@ -120,9 +120,10 @@ describe("UI end-to-end via transpileFile", () => {
       ].join("\n"),
     });
 
-    // The ILI9341 driver emits the reset sequence + SPI.begin() on display.init.
-    expect(cpp).toContain("SPI.begin()");
-    expect(cpp).toContain("SPI_CLOCK_DIV2");
+    // The ILI9341 driver instantiates Adafruit_ILI9341 + begin() on init.
+    expect(cpp).toContain("Adafruit_ILI9341");
+    expect(cpp).toContain(".begin()");
+    expect(cpp).toContain(".setRotation(1)");
   });
 
   it("emits ui_tick in the driver function body", async () => {

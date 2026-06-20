@@ -45,8 +45,9 @@ export function lowerUIToCpp(
   const flat: FlatNode[] = [];
   flatten(root, boxes, flat, { i: 0 });
 
-  const storageKw = storage === "progmem" ? "PROGMEM" : "";
-  const nodeTable = emitNodeTable(flat, colorFormat, storageKw);
+  // Tables are mutable RAM (ui_tick updates bg/dirty/elapsed/active each
+  // frame), so no PROGMEM/flash storage keyword — those imply read-only.
+  const nodeTable = emitNodeTable(flat, colorFormat);
   const transitionTable = emitTransitionTable(flat, colorFormat);
   const typeDecl = emitTypeDecl(root);
 
@@ -74,20 +75,25 @@ function flatten(
   for (const child of node.children) flatten(child, boxes, out, cursor);
 }
 
-function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat, storageKw: string): string {
+function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
   const lines = flat.map((n) => {
     const kind = n.tag === "screen" || n.tag === "view" ? "NODE_FILL" : "NODE_TEXT";
     const bg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
     const fg = n.style.color ? resolveColor(n.style.color, colorFormat) : 0xffff;
     const text = n.text ? `"${n.text}"` : "nullptr";
-    const font = n.style.font ? `&font_${n.style.font.replace("x", "_")}` : "nullptr";
+    // v1: font pointer is nullptr — glyph rendering is deferred. The font id
+    // is recorded in the style but no font table is emitted yet, so a
+    // &font_8_16 reference would fail to compile.
+    const font = "nullptr";
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
     const bgStr = `0x${bg.toString(16).padStart(4, "0")}`;
     const fgStr = `0x${fg.toString(16).padStart(4, "0")}`;
     return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .font=${font} },`;
   });
   return [
-    `static const UINode __ui_nodes[] ${storageKw} = {`,
+    // Mutable (not const) so ui_tick can update bg/dirty during transitions.
+    // AVR would want PROGMEM + a shadow copy; ESP32-class has RAM to spare.
+    `UINode __ui_nodes[] = {`,
     ...lines,
     `};`,
   ].join("\n");
@@ -101,10 +107,11 @@ function emitTransitionTable(flat: FlatNode[], _colorFormat: ColorFormat): strin
     entries.push(`  { .node=${n.index}, .prop=${prop}, .durationMs=${n.style.transition.durationMs} },`);
   }
   if (entries.length === 0) {
-    return `static const UITransition __ui_trans[] = {};`;
+    return `const UITransition __ui_trans[] = {};`;
   }
   return [
-    `static const UITransition __ui_trans[] = {`,
+    // Mutable: ui_tick updates elapsed/active each frame.
+    `UITransition __ui_trans[] = {`,
     ...entries,
     `};`,
   ].join("\n");

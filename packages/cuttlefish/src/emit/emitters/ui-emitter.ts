@@ -24,6 +24,12 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // Only the entry file carries the UI runtime + tables.
   if (!ctx.isEntryFile || !entryHasUI()) return;
 
+  // 0. The display driver (ILI9341 over SPI) needs the SPI library. Includes
+  // are gathered at preamble time; push this so it lands at file top.
+  if (!ctx.includes.includes("<SPI.h>")) {
+    ctx.includes.push("<SPI.h>");
+  }
+
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
   ctx.sourceLines.push(emitRuntimeHeader());
 
@@ -40,6 +46,17 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
   // 4. Binding table (accumulated from ui.bind calls).
   ctx.sourceLines.push(emitBindingTable(uiBindings()));
+
+  // 4b. Binding compute functions. Each ui.bind(node, prop, fn) records a
+  // BindingSpec whose fnName is referenced by the table. v1 emits a stub that
+  // returns the node's current property value — structurally valid so the
+  // table compiles. Full arrow-function → C++ lowering is a follow-up.
+  for (const spec of uiBindings()) {
+    const access = spec.property === "background" ? "bg" : spec.property === "color" ? "fg" : "0";
+    ctx.sourceLines.push(
+      `uint16_t ${spec.fnName}(void) { return __ui_nodes[${spec.nodeIndex}].${access}; }`,
+    );
+  }
 
   // 5. Node count externs the runtime header references.
   const totalNodes = allLoweredUIModules().reduce(

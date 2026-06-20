@@ -5,7 +5,7 @@ import { createChildEmissionScope } from "../snprintf-helpers";
 import { escapeCppKeyword } from "../../utils/strings";
 import { accessorGetterName, accessorSetterName } from "../utils/cpp-helpers";
 import type { EmitterContext } from "./emitter-context";
-import { parseCppType, parsedIsPointer, parsedIsVector, parsedIsStringLike } from "../../api/shared/cpp-type-ir";
+import { parseCppType, parsedIsPointer, parsedIsVector, parsedIsStringLike, isStaticArray } from "../../api/shared/cpp-type-ir";
 
 export function emitClasses(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer, isEntryFile } = ctx;
@@ -111,6 +111,19 @@ export function emitClasses(ctx: EmitterContext): void {
           }
         }
         if (stmt.initializer?.kind === "spread_array") {
+          addCArrayIfNotMutable(stmt.name, normalizedType, fnSet);
+        }
+        // Demo #17 Finding A — `new Uint8Array([...])` / `new Int8Array(N)`
+        // lowers to a raw C array var_decl whose cppType is a staticArray
+        // (e.g. `uint8_t[5]`) but whose initializer is NOT `kind: "array"`
+        // (it's a raw/text initializer). The `stmt.initializer?.kind === "array"`
+        // gate above therefore misses it, so `.length` on the buffer fell
+        // through to the invalid `buf.size()` (avr-g++: "request for member
+        // 'size' in 'buf', which is of non-class type 'uint8_t [5]'").
+        // Detect by cppType shape: a staticArray on a no-std::vector target is
+        // a raw C array → sizeof. (StaticArray<T,N> — the mutable promoted
+        // form — is excluded by addCArrayIfNotMutable and keeps its .size().)
+        if (!strategy.needsStdVector() && isStaticArray(parseCppType(normalizedType))) {
           addCArrayIfNotMutable(stmt.name, normalizedType, fnSet);
         }
       }
