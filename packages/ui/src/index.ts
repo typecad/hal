@@ -33,8 +33,13 @@ export interface MountOptions {
  * Mount a baked UI tree to a display. Validates the driver against the active
  * framework at transpile time (fail-fast). The tree is lowered to a static C++
  * node table; this call lowers to display.init + the first-frame draw.
+ *
+ * `tree` is typed loosely (a record of element handles) so the concrete
+ * ScreenTree interface generated per .ui.html file — which has concrete named
+ * fields rather than an index signature — is assignable. The transpiler
+ * intercepts the call structurally; the type only needs to permit it.
  */
-export declare function mount(tree: ScreenTree, opts: MountOptions): void;
+export declare function mount<T extends Record<string, unknown>>(tree: T, opts: MountOptions): void;
 
 /**
  * Declare a reactive signal. Lowers to a plain device variable + dirty flag.
