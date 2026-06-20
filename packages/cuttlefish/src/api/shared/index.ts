@@ -109,6 +109,17 @@ export type {
   HALOperationKind,
 } from './hal-op-ir';
 
+// Display HAL Operation IR types (graphics draw calls)
+export type {
+  DisplayInitOp,
+  DisplayFillRectOp,
+  DisplayDrawTextOp,
+  DisplayDrawRectOp,
+  DisplayFlushOp,
+  DisplayHALOp,
+} from './display-op-ir';
+export { DISPLAY_OPERATION_KINDS } from './display-op-ir';
+
 // Board resolver
 export type { BoardConstants } from './board-resolver';
 

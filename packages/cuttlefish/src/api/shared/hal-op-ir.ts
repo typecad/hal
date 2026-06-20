@@ -16,6 +16,8 @@
 // compatibility as a legacy framework pin number.
 // ---------------------------------------------------------------------------
 
+import type { DisplayHALOp } from "./display-op-ir";
+
 // ---------------------------------------------------------------------------
 // GPIO — digital pin control
 // ---------------------------------------------------------------------------
@@ -563,7 +565,9 @@ export type HALOpIR =
   // Snprintf
   | SnprintfEmitOp
   // Raw passthrough
-  | RawCppOp;
+  | RawCppOp
+  // Display / graphics
+  | DisplayHALOp;
 
 /**
  * Helper type: extracts the operation string from a HALOpIR variant.
