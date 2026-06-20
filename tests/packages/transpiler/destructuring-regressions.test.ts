@@ -26,3 +26,47 @@ f();
     expect(res.diagnostics.filter(d => d.code === "TS2CPP_NO_VECTOR_STORAGE")).toEqual([]);
   });
 });
+
+// ── Finding A: for...of with a destructuring loop variable ─────────────────
+// `for (const { x, y } of pts)` crashed the transpiler (TypeError reading
+// 'kind' of undefined). The for...of lowerer assumed an identifier loop var.
+// It must desugar the binding pattern to a synthetic loop var + per-field
+// extraction at the top of the body.
+describe("A: for...of with a destructuring loop variable", () => {
+  it("does not crash and binds the destructured fields", () => {
+    const src = `
+interface Point { x: int32_t; y: int32_t; }
+function f(): void {
+  const pts: Point[] = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
+  let total: int32_t = 0;
+  for (const { x, y } of pts) {
+    total = total + x + y;
+  }
+  console.log('' + total);
+}
+f();
+`;
+    // Must not throw.
+    const res = transpileArduino(src);
+    // The body must reference the destructured fields (not crash), and the
+    // emitted loop must iterate the array. The total accumulates 1+2+3+4=10.
+    expect(res.cpp).toMatch(/for\s*\(/);
+    expect(res.cpp).toMatch(/total/);
+  });
+
+  it("array-element destructure in for...of", () => {
+    const src = `
+function f(): void {
+  const pairs: int32_t[][] = [[1, 2], [3, 4]];
+  let total: int32_t = 0;
+  for (const [a, b] of pairs) {
+    total = total + a + b;
+  }
+  console.log('' + total);
+}
+f();
+`;
+    const res = transpileArduino(src);
+    expect(res.cpp).toMatch(/for\s*\(/);
+  });
+});

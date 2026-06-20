@@ -9,6 +9,79 @@ import { expressionToIR } from "../expression-to-ir";
 import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir";
 import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys } from "./variables";
 
+// Monotonic counter for synthetic for...of destructure loop variables.
+let forOfDestructureCounter = 0;
+
+/**
+ * Build per-binding extraction statements for a for...of destructure loop
+ * variable. For `for (const { x, y } of pts)` with synthetic loop var
+ * `__forof_N`, produces:
+ *   { kind: var_decl, name: "x", initializer: { property-access __forof_N.x } }
+ *   { kind: var_decl, name: "y", initializer: { property-access __forof_N.y } }
+ * and for array patterns `const [a, b]`, index-based extraction
+ * (`__forof_N[0]`, `__forof_N[1]`). Each binding is registered in
+ * localVariableTypes so the body sees it as a local. Used by the for...of
+ * lowerer to desugar a binding-pattern loop variable (Finding A).
+ */
+function buildDestructureExtractions(
+  pattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern,
+  sourceName: string,
+  sourceCppType: string,
+  _sourceText: string,
+  _diagnostics: Diagnostic[],
+  _functionReturnTypes: Map<string, CppTypeHint>,
+  localVariableTypes: Map<string, CppTypeHint>,
+): StatementIR[] {
+  const extractions: StatementIR[] = [];
+  if (ts.isObjectBindingPattern(pattern)) {
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (!ts.isIdentifier(element.name)) continue;
+      const bindingName = element.name.text;
+      const propertyName = element.propertyName && ts.isIdentifier(element.propertyName)
+        ? element.propertyName.text
+        : bindingName;
+      const init: ExpressionIR = {
+        kind: "property-access",
+        object: { kind: "identifier", value: sourceName },
+        property: propertyName,
+        isPointer: sourceCppType.endsWith("*") || sourceCppType.startsWith("std::vector") || /^[A-Z]/.test(sourceCppType),
+      };
+      extractions.push({
+        kind: "var_decl",
+        name: bindingName,
+        storage: "const",
+        cppType: "auto" as CppType,
+        initializer: init,
+      });
+      localVariableTypes.set(bindingName, "auto" as CppTypeHint);
+    }
+  } else {
+    // Array binding pattern: index-based extraction.
+    let index = 0;
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) { index++; continue; }
+      if (!ts.isIdentifier(element.name)) { index++; continue; }
+      const bindingName = element.name.text;
+      const init: ExpressionIR = {
+        kind: "element-access",
+        object: { kind: "identifier", value: sourceName },
+        index: { kind: "number", value: String(index) },
+      };
+      extractions.push({
+        kind: "var_decl",
+        name: bindingName,
+        storage: "const",
+        cppType: "auto" as CppType,
+        initializer: init,
+      });
+      localVariableTypes.set(bindingName, "auto" as CppTypeHint);
+      index++;
+    }
+  }
+  return extractions;
+}
+
 export function forInitializerToIR(
   declarationList: ts.VariableDeclarationList,
   fileName: string,
@@ -280,7 +353,55 @@ export function lowerControlFlowStatement(
     const comments = extractNodeComments(statement, sourceText);
 
     let variable: StatementIR | undefined;
+    // Detect a destructuring loop variable: `for (const { x, y } of pts)`.
+    // forInitializerToIR assumes an identifier name; a binding pattern has
+    // none, so it would crash. Desugar at the IR level: a synthetic loop var
+    // (`__forof_N`) carries the iterable element, and per-binding extraction
+    // statements are prepended to the body (destructure stress test Finding A).
+    let destructureExtractions: StatementIR[] = [];
+    let isDestructureLoopVar = false;
+    let bindingPattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern | undefined;
     if (ts.isVariableDeclarationList(statement.initializer)) {
+      const decl = statement.initializer.declarations[0];
+      if (decl && (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name))) {
+        isDestructureLoopVar = true;
+        bindingPattern = decl.name;
+      }
+    }
+
+    if (isDestructureLoopVar && bindingPattern) {
+      // Resolve the iterable's element type for the synthetic loop var.
+      const iterableType = inferExprCppType(
+        statement.expression,
+        functionReturnTypes,
+        localVariableTypes,
+        sourceText,
+      );
+      const elementType =
+        iterableType && parsedIsVector(iterableType)
+          ? (parsedElementString(iterableType) as CppType)
+          : ("auto" as CppType);
+      const syntheticName = `__forof_${forOfDestructureCounter++}`;
+      variable = {
+        kind: "var_decl",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        name: syntheticName,
+        storage: "const",
+        cppType: elementType,
+        initializer: undefined,
+      };
+      localVariableTypes.set(syntheticName, elementType as CppTypeHint);
+      // Build per-binding extraction statements.
+      destructureExtractions = buildDestructureExtractions(
+        bindingPattern,
+        syntheticName,
+        elementType,
+        sourceText,
+        diagnostics,
+        functionReturnTypes,
+        localVariableTypes,
+      );
+    } else if (ts.isVariableDeclarationList(statement.initializer)) {
       variable = forInitializerToIR(
         statement.initializer,
         fileName,
@@ -295,7 +416,7 @@ export function lowerControlFlowStatement(
     // type (e.g. `Product*`) instead of `auto`. This must happen before
     // lowerStatementList for the body, which binds localVariableTypes as the
     // IrTypeScope's locals so member access (item->name) renders with `->`.
-    if (variable && variable.kind === "var_decl") {
+    if (variable && variable.kind === "var_decl" && !isDestructureLoopVar) {
       const iterableType = inferExprCppType(
         statement.expression,
         functionReturnTypes,
@@ -330,7 +451,7 @@ export function lowerControlFlowStatement(
       trailingComments: comments.trailingComments,
       variable: variable!,
       iterable: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
-      body: bodyStatements,
+      body: [...destructureExtractions, ...bodyStatements],
     }];
   }
 
