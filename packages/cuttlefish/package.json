@@ -68,6 +68,10 @@
     "./ir/transformers/ui-reactive": {
       "types": "./dist/ir/transformers/ui-reactive.d.ts",
       "default": "./dist/ir/transformers/ui-reactive.js"
+    },
+    "./ui/runtime-header": {
+      "types": "./dist/ui/runtime-header.d.ts",
+      "default": "./dist/ui/runtime-header.js"
     }
   },
   "files": [
