@@ -461,7 +461,12 @@ export function generateDecl(filePath: string, outputPath?: string): string | nu
           existing.methods.push(m);
         }
       }
-    } else {
+    } else if (!headerPath) {
+      // No sibling header: keep .cpp-inferred classes (legacy flattened path).
+      // When a header IS present, drop .cpp-only classes — they belong to
+      // other headers and would otherwise create false "same-file" bases
+      // (e.g. Adafruit_SPITFT inferred from Adafruit_ILI9341.cpp's
+      // Adafruit_SPITFT::readcommand8 scope resolution).
       merged.push({ ...c, source: "cpp" });
     }
   }
@@ -620,7 +625,12 @@ function generateDeclWithResolver(
           existing.methods.push(m);
         }
       }
-    } else {
+    } else if (!headerPath) {
+      // No sibling header: keep .cpp-inferred classes (legacy flattened path).
+      // When a header IS present, drop .cpp-only classes — they belong to
+      // other headers and would otherwise create false "same-file" bases
+      // (e.g. Adafruit_SPITFT inferred from Adafruit_ILI9341.cpp's
+      // Adafruit_SPITFT::readcommand8 scope resolution).
       merged.push({ ...c, source: "cpp" });
     }
   }

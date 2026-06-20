@@ -25,34 +25,100 @@ export interface ParsedClass {
 }
 
 /**
- * Strips #if / #ifdef / #ifndef ... #endif blocks (including nested
- * conditionals) from C++ source. Conditionally-compiled methods are
- * intentionally lost — narrower emitted API is preferable to parse failure.
+ * Normalizes C++ preprocessor directives so the class parser can see the
+ * declarations. Semantics:
+ *
+ * - Include guards (`#ifndef X` immediately followed by `#define X`, and
+ *   `#pragma once`): directives dropped, all guarded content kept.
+ * - `#if` / `#ifdef` / `#ifndef` ... `#else` / `#elif` ... `#endif`: the
+ *   FIRST branch's content is kept; `#else` / `#elif` branch content is
+ *   dropped; all directives themselves are dropped. This preserves classes
+ *   that real-world headers gate behind target conditionals (e.g.
+ *   Adafruit_SPITFT wraps its whole class in `#if !defined(__AVR_ATtiny85__)`),
+ *   at the cost of possibly emitting declarations from a branch that isn't
+ *   active on the user's target. That's acceptable for .d.ts generation,
+ *   where a slightly wider API surface beats no API surface.
  */
 export function stripPreprocessorBlocks(content: string): string {
   const lines = content.split(/\r?\n/);
   const out: string[] = [];
-  let removing = 0;
 
-  for (const raw of lines) {
+  // Each entry tracks one open `#if/#ifdef/#ifndef`:
+  //   - `active`: is the CURRENT branch being kept?
+  //   - `satisfied`: has ANY branch at this level already been kept?
+  // A branch is active only if no prior branch was satisfied and all outer
+  // levels are active.
+  const branches: { active: boolean; satisfied: boolean }[] = [];
+  // Macro names for open include guards; their content is always kept.
+  const guardMacros: string[] = [];
+
+  const keeping = (): boolean => branches.every(b => b.active);
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const trimmed = raw.trim();
     const isDirective = trimmed.startsWith("#");
     const directiveBody = isDirective ? trimmed.slice(1).trim() : "";
 
-    if (removing > 0) {
-      if (/^(if|ifdef|ifndef)\b/.test(directiveBody)) {
-        removing++;
-      } else if (/^endif\b/.test(directiveBody)) {
-        removing--;
-      }
+    // Include-guard #endif: closes a guard (outermost open guard).
+    if (/^endif\b/.test(directiveBody) && guardMacros.length > 0 && branches.length === 0) {
+      guardMacros.pop();
       continue;
     }
 
-    if (isDirective && /^(if|ifdef|ifndef)\b/.test(directiveBody)) {
-      removing++;
+    // Conditional directives (only meaningful when not inside a guard-only context).
+    if (/^(if|ifdef|ifndef)\b/.test(directiveBody)) {
+      // Is this an include-guard open (#ifndef X followed by #define X)?
+      if (/^ifndef\s+(\w+)/.test(directiveBody) && guardMacros.length === branches.length) {
+        const macro = /^ifndef\s+(\w+)/.exec(directiveBody)![1];
+        let nextNonBlank: string | undefined;
+        for (let j = i + 1; j < lines.length; j++) {
+          const t = lines[j].trim();
+          if (t.length > 0) {
+            nextNonBlank = t.startsWith("#") ? t.slice(1).trim() : t;
+            break;
+          }
+        }
+        if (nextNonBlank && new RegExp(`^define\\s+${macro}(\\s|$)`).test(nextNonBlank)) {
+          guardMacros.push(macro);
+          continue; // drop the #ifndef
+        }
+      }
+      // Real conditional: first branch is active iff outer levels keep.
+      const active = keeping();
+      branches.push({ active, satisfied: active });
       continue;
     }
-    out.push(raw);
+
+    // #elif / #else: switch to a new branch. Active only if outer keeps AND
+    // no prior branch at this level was satisfied.
+    if (/^(elif|else)\b/.test(directiveBody)) {
+      if (branches.length === 0) continue;
+      const outerKeeping = branches.slice(0, -1).every(b => b.active);
+      const top = branches[branches.length - 1];
+      top.active = outerKeeping && !top.satisfied;
+      if (top.active) top.satisfied = true;
+      continue;
+    }
+
+    if (/^endif\b/.test(directiveBody)) {
+      if (branches.length > 0) branches.pop();
+      continue;
+    }
+
+    // Guard's own #define — drop it.
+    if (guardMacros.length > branches.length && /^define\s/.test(directiveBody)) {
+      continue;
+    }
+    // `#pragma once` — drop the directive.
+    if (/^pragma\s+once\b/.test(directiveBody)) {
+      continue;
+    }
+
+    // Non-conditional content: keep if every open branch is keeping.
+    if (keeping()) {
+      out.push(raw);
+    }
   }
   return out.join("\n");
 }

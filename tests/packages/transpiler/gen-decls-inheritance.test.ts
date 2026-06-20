@@ -26,23 +26,54 @@ function cleanDecls(root: string) {
 }
 
 describe("stripPreprocessorBlocks", () => {
-  it("removes a single #if ... #endif block", () => {
+  it("keeps the first branch of an #if/#endif block", () => {
     const input = [
       "void before();",
       "#if !defined(ESP8266)",
-      "void guarded();",
+      "void firstBranch();",
       "#endif",
       "void after();",
     ].join("\n");
     const out = stripPreprocessorBlocks(input);
     expect(out).toContain("void before();");
     expect(out).toContain("void after();");
-    expect(out).not.toContain("void guarded();");
+    expect(out).toContain("void firstBranch();");
     expect(out).not.toContain("#if");
     expect(out).not.toContain("#endif");
   });
 
-  it("removes nested #if blocks", () => {
+  it("keeps first branch, drops #else branch", () => {
+    const input = [
+      "#if defined(ESP8266)",
+      "void espBranch();",
+      "#else",
+      "void otherBranch();",
+      "#endif",
+      "void after();",
+    ].join("\n");
+    const out = stripPreprocessorBlocks(input);
+    expect(out).toContain("void espBranch();");
+    expect(out).not.toContain("void otherBranch();");
+    expect(out).toContain("void after();");
+  });
+
+  it("keeps first branch, drops #elif branches", () => {
+    const input = [
+      "#if defined(A)",
+      "void aBranch();",
+      "#elif defined(B)",
+      "void bBranch();",
+      "#elif defined(C)",
+      "void cBranch();",
+      "#endif",
+    ].join("\n");
+    const out = stripPreprocessorBlocks(input);
+    expect(out).toContain("void aBranch();");
+    expect(out).not.toContain("void bBranch();");
+    expect(out).not.toContain("void cBranch();");
+  });
+
+  it("keeps nested #if first branches", () => {
     const input = [
       "#if defined(A)",
       "void outer();",
@@ -55,13 +86,86 @@ describe("stripPreprocessorBlocks", () => {
     ].join("\n");
     const out = stripPreprocessorBlocks(input);
     expect(out).toContain("void after();");
-    expect(out).not.toContain("void outer();");
-    expect(out).not.toContain("void inner();");
+    expect(out).toContain("void outer();");
+    expect(out).toContain("void inner();");
+    expect(out).toContain("void outerTail();");
   });
 
   it("leaves content with no preprocessor blocks unchanged except whitespace", () => {
     const input = "void foo();\nvoid bar();";
     expect(stripPreprocessorBlocks(input).trim()).toBe(input.trim());
+  });
+
+  it("preserves content inside an include guard (#ifndef X / #define X / #endif)", () => {
+    // Real-world Adafruit headers wrap the ENTIRE file in an include guard.
+    // Stripping it as a conditional block would delete all content.
+    const input = [
+      "#ifndef _ADAFRUIT_ILI9341H_",
+      "#define _ADAFRUIT_ILI9341H_",
+      "class Adafruit_ILI9341 : public Adafruit_SPITFT {",
+      "public:",
+      "  void begin();",
+      "};",
+      "#endif",
+    ].join("\n");
+    const out = stripPreprocessorBlocks(input);
+    expect(out).toContain("class Adafruit_ILI9341");
+    expect(out).toContain("void begin()");
+    expect(out).not.toContain("#ifndef");
+    expect(out).not.toContain("#define");
+    expect(out).not.toContain("#endif");
+  });
+
+  it("preserves content with #pragma once", () => {
+    const input = [
+      "#pragma once",
+      "class Foo { public: void bar(); };",
+    ].join("\n");
+    const out = stripPreprocessorBlocks(input);
+    expect(out).toContain("class Foo");
+    expect(out).not.toContain("#pragma");
+  });
+
+  it("keeps first branch of a real #if nested inside an include guard", () => {
+    const input = [
+      "#ifndef GUARD_H",
+      "#define GUARD_H",
+      "void before();",
+      "#if !defined(ESP8266)",
+      "void firstBranch();",
+      "#else",
+      "void altBranch();",
+      "#endif",
+      "void after();",
+      "#endif",
+    ].join("\n");
+    const out = stripPreprocessorBlocks(input);
+    expect(out).toContain("void before()");
+    expect(out).toContain("void after()");
+    expect(out).toContain("void firstBranch()");
+    expect(out).not.toContain("void altBranch()");
+    expect(out).not.toContain("#if");
+    expect(out).not.toContain("#endif");
+  });
+
+  it("preserves a class gated behind a whole-file target #if (Adafruit_SPITFT pattern)", () => {
+    // Regression: Adafruit_SPITFT.h wraps its ENTIRE class in
+    // #if !defined(__AVR_ATtiny85__) ... #endif. The class must survive.
+    const input = [
+      "#ifndef _SPITFT_H_",
+      "#define _SPITFT_H_",
+      "#if !defined(__AVR_ATtiny85__)",
+      "#include <SPI.h>",
+      "class Adafruit_SPITFT : public Adafruit_GFX {",
+      "public:",
+      "  Adafruit_SPITFT();",
+      "};",
+      "#endif // end !ATTINY",
+      "#endif",
+    ].join("\n");
+    const out = stripPreprocessorBlocks(input);
+    expect(out).toContain("class Adafruit_SPITFT");
+    expect(out).toContain("Adafruit_SPITFT()");
   });
 });
 

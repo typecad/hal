@@ -59,8 +59,9 @@ Print                         (Arduino core — no header in lib/)
 - Resolving base classes outside the `--all` scan path. The resolver is scoped
   to the scanned directory only (no parent climbing) — predictable, no
   surprise file reads.
-- Preserving conditionally-compiled (`#if`-guarded) methods. `#if` blocks are
-  stripped wholesale in v1.
+- Selecting the correct `#if`/`#elif` branch for the user's target. v1 keeps
+  the first branch of each conditional; target-specific branch selection is
+  out of scope.
 
 ## Architecture
 
@@ -79,11 +80,16 @@ class\s+(\w+)\s*(?::\s*(?:public|protected|private)\s+(\w+))?\s*\{
   multiple inheritance (`, public B`) is ignored — documented limitation.
 
 **Preprocessor stripping (before parsing):**
-- Remove whole `#if`/`#ifdef`/`#ifndef` … `#endif` blocks. Naive
-  implementation: track nesting, strip from `#if*` to its matching `#endif`.
-  This loses conditionally-compiled methods (e.g. the `SPIClass*` constructor
-  guarded by `#if !defined(ESP8266)` in `Adafruit_ILI9341.h`). Documented
-  trade-off; narrower emitted API is preferable to parse failure.
+- Keep the **first branch** of each `#if`/`#ifdef`/`#ifndef` … `#endif`
+  block; drop `#else`/`#elif` branch content; drop all directives
+  themselves. This preserves classes that real-world headers gate behind
+  target conditionals (e.g. `Adafruit_SPITFT.h` wraps its entire class in
+  `#if !defined(__AVR_ATtiny85__)`), at the cost of possibly emitting
+  declarations from a branch that isn't active on the user's target. That
+  trade-off is acceptable for `.d.ts` generation, where a slightly wider API
+  surface beats no API surface.
+- Include guards (`#ifndef X` immediately followed by `#define X`, and
+  `#pragma once`): directives dropped, all guarded content kept.
 
 **Returns** the existing `CppClass` shape plus:
 ```typescript
@@ -216,7 +222,7 @@ declaration (with base class and full method signatures) than the old
 
 | Case | Behavior |
 |------|----------|
-| `#if`/`#ifdef`/`#ifndef` blocks | Stripped wholesale before parsing. Nested `#if` tracked. Conditionally-compiled methods are lost. |
+| `#if`/`#ifdef`/`#ifndef` blocks | First branch kept; `#else`/`#elif` branches dropped; directives removed. Include guards (`#ifndef X` + `#define X`) and `#pragma once` fully preserved. |
 | `#include`, `#define`, `#pragma` | Ignored (unchanged from today). |
 | `#define` color constants | Not parsed. Out of scope. |
 | Templates, nested classes | Regex won't match; silently skipped. No crash. |
@@ -261,7 +267,7 @@ not the real Adafruit sources, which are large and under their own license).
 
 ## Out of scope / future work
 
-- Conditionally-compiled (`#if`) method preservation.
+- Target-specific `#if` branch selection (v1 keeps the first branch).
 - `#define` constant emission.
 - Multiple inheritance beyond the first base.
 - Templates and nested classes.
