@@ -385,5 +385,66 @@ export function expressionStatementToIR(
     }
   }
 
+  // Destructuring assignment: `[a, b] = expr` (reassignment to existing
+  // variables, NOT a const/let declaration). Without this, `[a, b] = [b, a]`
+  // fell through to `return undefined` and was silently dropped. Lower to
+  // individual assignments, evaluating the RHS array elements to temporaries
+  // FIRST so a swap is correct (old values captured before any assignment).
+  if (ts.isBinaryExpression(expr)
+      && expr.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && ts.isArrayLiteralExpression(expr.left)) {
+    const targets = expr.left.elements.filter(ts.isIdentifier);
+    const rhs = expr.right;
+    const stmts: StatementIR[] = [];
+    const span = makeSourceSpan(statement, fileName, sourceText);
+    const comments = extractNodeComments(statement, sourceText);
+    if (ts.isArrayLiteralExpression(rhs)) {
+      // `[a, b] = [b, a]` → temp_0 = b; temp_1 = a; a = temp_0; b = temp_1;
+      const temps: string[] = [];
+      for (let i = 0; i < targets.length; i++) {
+        const tempName = `__swap_${i}`;
+        temps.push(tempName);
+        stmts.push({
+          kind: "var_decl",
+          sourceSpan: span,
+          name: tempName,
+          storage: "const",
+          cppType: "auto",
+          initializer: expressionToIR(rhs.elements[i], sourceText, diagnostics, pointerVars),
+        });
+      }
+      for (let i = 0; i < targets.length; i++) {
+        stmts.push({
+          kind: "assign",
+          sourceSpan: span,
+          target: targets[i].text,
+          operator: "=",
+          value: { kind: "identifier", value: temps[i] },
+        });
+      }
+    } else {
+      // `[a, b] = arr` → a = arr[0]; b = arr[1]; (index-based)
+      const rhsText = renderExprAsText(expressionToIR(rhs, sourceText, diagnostics, pointerVars));
+      for (let i = 0; i < targets.length; i++) {
+        stmts.push({
+          kind: "assign",
+          sourceSpan: span,
+          target: targets[i].text,
+          operator: "=",
+          value: { kind: "element-access", object: { kind: "identifier", value: rhsText }, index: { kind: "number", value: String(i) } },
+        });
+      }
+    }
+    if (stmts.length > 0) {
+      return {
+        kind: "block",
+        sourceSpan: span,
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        body: stmts,
+      };
+    }
+  }
+
   return undefined;
 }

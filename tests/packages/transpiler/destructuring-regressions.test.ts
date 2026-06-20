@@ -104,3 +104,26 @@ f();
     expect(diags).toEqual([]);
   });
 });
+
+// ── Bug: swap via destructuring assignment is silently dropped ──────────────
+// [a, b] = [b, a] produced NO output — the expression statement handler
+// (expressions.ts) had no case for an ArrayLiteralExpression LHS, so it
+// fell through to `return undefined`. The assignment was dropped entirely.
+describe("swap via destructuring assignment", () => {
+  it("swaps two variables", () => {
+    const src = `
+function f(): number {
+  let a: number = 1;
+  let b: number = 2;
+  [a, b] = [b, a];
+  return a * 10 + b;
+}
+`;
+    const res = transpile(src, { target: "native" });
+    // The swap MUST produce swap temporaries — not be silently dropped.
+    // Without the fix the emitted f() has only `a = 1; b = 2; return a*10+b;`
+    // (the assignment is gone). With the fix, temporaries capture old values.
+    expect(res.cpp).toMatch(/__swap_0/);
+    expect(res.cpp).toMatch(/__swap_1/);
+  });
+});
