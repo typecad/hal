@@ -12,6 +12,7 @@
     "packages/board-arduino-uno",
     "packages/board-esp32-devkit",
     "packages/expect",
+    "packages/ui",
     "packages/simulator",
     "demo",
     "native_demo"
