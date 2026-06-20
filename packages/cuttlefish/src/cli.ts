@@ -7,7 +7,7 @@ import type { CreateCommandOptions } from "./types";
 import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS } from "./create";
 import { runInitWizard } from "./create";
 import { generateLibraryDefinitions, transpileFile } from "./transpile";
-import { generateDeclFromCpp, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
+import { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain";
 import { resolveStrategy } from "./platform/registry";
@@ -170,6 +170,49 @@ async function main(): Promise<void> {
       (options as any).inputFile = entryFile;
     }
 
+    // gen-decls runs before the !options.inputFile guard below: in --all mode
+    // it intentionally has no inputFile (it scans scanDir instead), so the
+    // generic "Missing input file path" check would otherwise block it.
+    if (options.command === "gen-decls") {
+      // Check for --all flag (scan directory)
+      const scanDir = (options as any).scanDir as string | undefined;
+
+      if (scanDir) {
+        ui.printHeader();
+        ui.printStep(`Scanning ${scanDir} for C++ files...`);
+        const created = generateDeclsForDirectory(scanDir, true);
+
+        if (created.length === 0) {
+          ui.printInfo("No new declaration files created.");
+        } else {
+          ui.printSuccess("Created declaration files:");
+          for (const filePath of created) {
+            ui.printFileCreated(filePath);
+          }
+        }
+        return;
+      }
+
+      // Single file mode - C++ header or source expected
+      if (!options.inputFile) {
+        throw new Error("Missing input C++ file path. Use: gen-decls <file.h|file.cpp> or gen-decls --all <directory>");
+      }
+      const extension = path.extname(options.inputFile).toLowerCase();
+      if (extension !== ".cpp" && extension !== ".h") {
+        throw new Error(`gen-decls expects a .h or .cpp file, received '${extension || "<no extension>"}'.`);
+      }
+
+      ui.printHeader();
+      ui.printStep("Generating declarations...");
+      const created = generateDecl(options.inputFile);
+      if (created) {
+        ui.printSuccess(`Created: ${created}`);
+      } else {
+        ui.printInfo("No declaration file created (no classes or constants found).");
+      }
+      return;
+    }
+
     if (!options.inputFile) {
       if (options.expect) {
         const config = loadCuttlefishConfig(process.cwd());
@@ -183,43 +226,6 @@ async function main(): Promise<void> {
         return;
       }
       throw new Error("Missing input file path.");
-    }
-
-    if (options.command === "gen-decls") {
-      // Check for --all flag (scan directory)
-      const scanDir = (options as any).scanDir as string | undefined;
-      
-      if (scanDir) {
-        ui.printHeader();
-        ui.printStep(`Scanning ${scanDir} for C++ files...`);
-        const created = generateDeclsForDirectory(scanDir, true);
-        
-        if (created.length === 0) {
-          ui.printInfo("No new declaration files created.");
-        } else {
-          ui.printSuccess("Created declaration files:");
-          for (const filePath of created) {
-            ui.printFileCreated(filePath);
-          }
-        }
-        return;
-      }
-      
-      // Single file mode - C++ input expected
-      const extension = path.extname(options.inputFile).toLowerCase();
-      if (extension !== ".cpp") {
-        throw new Error(`gen-decls expects a .cpp file, received '${extension || "<no extension>"}'.`);
-      }
-      
-      ui.printHeader();
-      ui.printStep("Generating declarations...");
-      const created = generateDeclFromCpp(options.inputFile);
-      if (created) {
-        ui.printSuccess(`Created: ${created}`);
-      } else {
-        ui.printInfo("No declaration file created (no classes or constants found).");
-      }
-      return;
     }
 
     assertTypeScriptInput(options.inputFile);
