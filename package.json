@@ -15,6 +15,7 @@
     "packages/ui",
     "packages/simulator",
     "demo",
+    "demo-ui",
     "native_demo"
   ],
   "scripts": {
