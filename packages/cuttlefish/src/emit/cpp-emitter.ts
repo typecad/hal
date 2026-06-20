@@ -12,6 +12,7 @@ import { emitTypeDeclarations } from "./emitters/type-decl-emitter";
 import { emitNamespaces } from "./emitters/namespace-emitter";
 import { emitClasses } from "./emitters/class-emitter";
 import { emitPostClassDeclarations, emitCallbackFunctions, emitFunctions, emitFunctionForwardDeclarations } from "./emitters/function-emitter-impl";
+import { emitUIRuntime } from "./emitters/ui-emitter";
 import { finalizeOutput } from "./emitters/output-finalizer";
 
 const globalEnumNames = new Set<string>();
@@ -32,6 +33,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // 2. Emit preamble (includes, polyfills, async task classes, shims)
   emitPreamble(ctx);
+
+  // 2.5. Emit UI runtime (header structs + static tables) — entry file only,
+  //      when a UI is mounted. File-scope, must precede any function using it.
+  emitUIRuntime(ctx);
 
   // 3. Run top-level preprocessing (timing promotion, ISR extraction, pointer tracking)
   runTopLevelPreprocessing(ctx);
