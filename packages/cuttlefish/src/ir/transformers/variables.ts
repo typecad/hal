@@ -728,7 +728,7 @@ export function variableStatementToIR(
     if (ts.isIdentifier(declaration.name) && actualInitializer) {
       const varName = declaration.name.text;
 
-      if (mutableArrayVars.has(varName) && ts.isArrayLiteralExpression(actualInitializer)
+      if (ts.isArrayLiteralExpression(actualInitializer)
           && (getContext().activeStrategy?.promotesArrayLiteralsToStaticArray?.() ?? true)) {
         const elements = actualInitializer.elements;
         let elemType = "int";
@@ -741,32 +741,45 @@ export function variableStatementToIR(
           elemType = inferExprCppType(elements[0], functionReturnTypes, localVariableTypes, sourceText);
         }
 
-        const capacity = elements.length + 2;
-        const staticArrayIr: CppTypeIR = {
-          kind: "staticArray",
-          element: parseCppType(elemType),
-          size: capacity,
-        };
-        lowered.push({
-          kind: "var_decl",
-          sourceSpan: loweredDeclaration.sourceSpan,
-          leadingComments: loweredDeclaration.leadingComments,
-          trailingComments: [],
-          name: varName,
-          storage: "let",
-          cppType: renderCppType(staticArrayIr) as any,
-          initializer: undefined,
-        });
-        for (let ei = 0; ei < elements.length; ei++) {
+        // Promote to StaticArray when the array is mutated (the original
+        // condition) OR when the element type is a struct/non-primitive: a
+        // read-only primitive array already emits a C array correctly, but a
+        // read-only STRUCT-element array otherwise lowers to std::vector<T>
+        // and SILENTLY miscompiles on AVR (no <vector>, no diagnostic) —
+        // destructuring stress test Finding D. A named (capitalized) element
+        // type is the struct case; primitives (int32_t, bool, ...) take the
+        // existing C-array path.
+        const isStructElement = /^[A-Z]/.test(elemType) && elemType !== "Int";
+        const shouldPromote = mutableArrayVars.has(varName) || isStructElement;
+
+        if (shouldPromote) {
+          const capacity = elements.length + 2;
+          const staticArrayIr: CppTypeIR = {
+            kind: "staticArray",
+            element: parseCppType(elemType),
+            size: capacity,
+          };
           lowered.push({
-            kind: "call",
+            kind: "var_decl",
             sourceSpan: loweredDeclaration.sourceSpan,
-            callee: `${varName}.push`,
-            args: [expressionToIR(elements[ei], sourceText, diagnostics)],
+            leadingComments: loweredDeclaration.leadingComments,
+            trailingComments: [],
+            name: varName,
+            storage: "let",
+            cppType: renderCppType(staticArrayIr) as any,
+            initializer: undefined,
           });
+          for (let ei = 0; ei < elements.length; ei++) {
+            lowered.push({
+              kind: "call",
+              sourceSpan: loweredDeclaration.sourceSpan,
+              callee: `${varName}.push`,
+              args: [expressionToIR(elements[ei], sourceText, diagnostics)],
+            });
+          }
+          commentsAssigned = true;
+          continue;
         }
-        commentsAssigned = true;
-        continue;
       }
 
       // Native target lowers array literals to std::vector (not StaticArray), so
