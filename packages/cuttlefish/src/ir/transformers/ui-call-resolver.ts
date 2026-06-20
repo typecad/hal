@@ -31,6 +31,23 @@ const signals = new Map<string, { cppType: string; initialValue: number | string
 /** Recorded binding specs, accumulated for emit-time table generation. */
 const bindings: BindingSpec[] = [];
 
+/** Recorded press/release bindings: node index + pin + edge + handler name. */
+export interface PressBinding {
+  nodeIndex: number;
+  pin: string;
+  edge: "press" | "release";
+  handlerName: string;
+}
+const pressBindings: PressBinding[] = [];
+
+export function recordPressBinding(binding: PressBinding): void {
+  pressBindings.push(binding);
+}
+
+export function uiPressBindings(): PressBinding[] {
+  return pressBindings;
+}
+
 export function registerUIModuleImport(name: string, htmlPath: string): void {
   uiModuleImports.set(name, htmlPath);
 }
@@ -78,6 +95,7 @@ export function resetUICallState(): void {
   uiModuleImports.clear();
   signals.clear();
   bindings.length = 0;
+  pressBindings.length = 0;
 }
 
 // ── Signal name synthesis ───────────────────────────────────────────────────
@@ -299,7 +317,7 @@ function resolveBindCall(
 }
 
 /** Look up a node's index in its tree by element id (pre-order DFS order). */
-function resolveNodeIndex(htmlPath: string, id: string): number {
+export function resolveNodeIndex(htmlPath: string, id: string): number {
   // Node indices follow pre-order DFS of the styled tree. The lowered tables
   // share this order, so we walk the registry's styled tree to find the id.
   const mod = getUIModule(htmlPath);

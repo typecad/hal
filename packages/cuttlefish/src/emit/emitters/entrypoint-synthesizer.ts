@@ -1,5 +1,7 @@
 ﻿import type { StatementIR } from "../../api";
 import type { EmitterContext } from "./emitter-context";
+import { entryHasUI } from "../../ui/ui-registry";
+import { uiPressBindings } from "../../ir/transformers/ui-call-resolver";
 
 export function synthesizeEntrypoints(ctx: EmitterContext): void {
   const { program, strategy, isEntryFile, mappedFunctions } = ctx;
@@ -18,7 +20,22 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
       sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
     }));
 
-    const allSetupInitStmts = [...setupInitStmts];
+    // UI press/release interrupt wiring: pinMode(INPUT_PULLUP) + attachInterrupt
+    // for each onPress/onRelease binding. Only when a UI is mounted.
+    const uiInterruptStmts: StatementIR[] = [];
+    if (entryHasUI()) {
+      for (const pb of uiPressBindings()) {
+        const mode = pb.edge === "press" ? "FALLING" : "RISING";
+        uiInterruptStmts.push(
+          { kind: "call" as const, callee: `__RAW_STMT__pinMode(${pb.pin}, INPUT_PULLUP);`, args: [],
+            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+          { kind: "call" as const, callee: `__RAW_STMT__attachInterrupt(digitalPinToInterrupt(${pb.pin}), ${pb.handlerName}, ${mode});`, args: [],
+            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+        );
+      }
+    }
+
+    const allSetupInitStmts = [...setupInitStmts, ...uiInterruptStmts];
 
     if (existingEp) {
       existingEp.statements = [...allSetupInitStmts, ...ctx.filteredTopLevelExecutables, ...existingEp.statements];

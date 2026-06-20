@@ -5,7 +5,7 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
 import { tryResolveHALMethod } from "./hal-call-resolver";
-import { tryResolveUICall, isSignalName } from "./ui-call-resolver";
+import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex } from "./ui-call-resolver";
 import { tryLowerArrayAndStringMethods } from "./array-methods";
 import { expressionToIR } from "../expression-to-ir";
 import { lowerStatementList } from "../statement-to-ir";
@@ -98,6 +98,37 @@ export function callToStatement(
       target: call.expression.expression.text,
       operator: "=",
       value: valueIR,
+    };
+  }
+
+  // ── screen.btn.onPress(pin) / onRelease(pin) ───────────────────────────
+  // Lowers to a press-binding record: the emit layer emits a handler function
+  // (ui_on_press(nodeIndex)) and an attachInterrupt in setup(). The call shape
+  // is <tree>.<id>.onPress(<pin>) — a chained property access on an imported
+  // UI tree element.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    (call.expression.name.text === "onPress" || call.expression.name.text === "onRelease") &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const edge = call.expression.name.text === "onPress" ? "press" : "release";
+    const pinArg = call.arguments[0];
+    const pinText = pinArg ? (ts.isIdentifier(pinArg) ? pinArg.text : String(pinArg.getText())) : "0";
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    const handlerName = `__ui_${elemId}_${edge}_${uiPressBindings().length}`;
+    recordPressBinding({ nodeIndex, pin: pinText, edge, handlerName });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
     };
   }
 

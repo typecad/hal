@@ -17,7 +17,7 @@
 import type { EmitterContext } from "./emitter-context";
 import { emitRuntimeHeader } from "../../ui/runtime-header";
 import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry";
-import { uiSignalDecls, uiBindings } from "../../ir/transformers/ui-call-resolver";
+import { uiSignalDecls, uiBindings, uiPressBindings } from "../../ir/transformers/ui-call-resolver";
 import { emitBindingTable } from "../../ir/transformers/ui-reactive";
 
 export function emitUIRuntime(ctx: EmitterContext): void {
@@ -66,6 +66,15 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   ctx.sourceLines.push(`const uint8_t __ui_node_count = ${totalNodes};`);
   ctx.sourceLines.push(`const uint8_t __ui_trans_count = ${countTransitions()};`);
   ctx.sourceLines.push(`const uint8_t __ui_binding_count = ${uiBindings().length};`);
+
+  // 6. Press/release handler functions (from screen.btn.onPress/onRelease).
+  // Each calls ui_on_press/ui_on_release(nodeIndex), defined in the runtime
+  // header. The attachInterrupt calls that wire these to pins are injected
+  // into setup() by the entrypoint synthesizer.
+  for (const pb of uiPressBindings()) {
+    const fn = pb.edge === "press" ? "ui_on_press" : "ui_on_release";
+    ctx.sourceLines.push(`void ${pb.handlerName}() { ${fn}(${pb.nodeIndex}); }`);
+  }
 }
 
 /** Count NODE_FILL/NODE_TEXT entries in the emitted node table (one per node). */
