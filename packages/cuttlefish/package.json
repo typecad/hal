@@ -76,6 +76,10 @@
     "./ui/transpile-ui": {
       "types": "./dist/ui/transpile-ui.d.ts",
       "default": "./dist/ui/transpile-ui.js"
+    },
+    "./ui/ui-registry": {
+      "types": "./dist/ui/ui-registry.d.ts",
+      "default": "./dist/ui/ui-registry.js"
     }
   },
   "files": [
