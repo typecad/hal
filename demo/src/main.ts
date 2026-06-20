@@ -1,190 +1,187 @@
 // ---------------------------------------------------------------------------
-// main.ts — class usage stress test (cuttlefish, Arduino AVR)
+// main.ts — destructuring & pattern-binding stress test (cuttlefish, Arduino AVR)
 //
-// No end-state goal. A maximal showcase hammering the class/inheritance/
-// namespace feature surface (SUPPORT_MATRIX §4) to surface transpiler errors.
-// Covers: inheritance + super(args) + super.method(), static fields/methods/
-// getters, instance getters/setters, generics, nested classes, abstract
-// classes, virtual dispatch through a base pointer, namespaces (incl. nested
-// classes + functions), ownership wrappers, and a polymorphic pointer array.
+// No end-state goal. A maximal showcase hammering the destructuring surface
+// (SUPPORT_MATRIX §1.9) — all claimed ✅ — to find where the claim breaks.
+// Covers: object/array/nested destructuring, rest element, defaults, swap,
+// destructuring of class fields, destructuring of generic-type values,
+// for...of over a destructured element, and parameter destructuring
+// (object/array/nested/mixed). The likely failure axis is REST elements,
+// which the matrix claims lower to `std::vector<T>` slices — but AVR has no
+// std::vector (TS2CPP_NO_VECTOR_STORAGE), so rest-on-AVR is the prime suspect.
 // ---------------------------------------------------------------------------
 
 import { LED } from '@typecad/board-arduino-uno';
 
-// ── Namespace with const, function, and a nested class ─────────────────────
-namespace Devices {
-  export const MAX_COUNT: int32_t = 8;
-  export const DEFAULT_LABEL: string = "dev";
-
-  export function makeLabel(id: int32_t): string {
-    return DEFAULT_LABEL + ":" + id;
-  }
-
-  // Nested class inside a namespace.
-  export class Registry {
-    static count: int32_t = 0;
-    static register(): int32_t {
-      Devices.Registry.count = Devices.Registry.count + 1;
-      if (Devices.Registry.count > Devices.MAX_COUNT) {
-        Devices.Registry.count = Devices.MAX_COUNT;
-      }
-      return Devices.Registry.count;
-    }
-  }
+// ── Records / structs to destructure ───────────────────────────────────────
+interface Point {
+  x: int32_t;
+  y: int32_t;
 }
 
-// ── Abstract base with an abstract method + a concrete method ──────────────
-abstract class Shape {
-  abstract area(): int32_t;
-  // Concrete method intended to be called via super.method() from a subclass.
-  describe(): string {
-    return "shape area=" + this.area();
-  }
-}
-
-// ── Generic class (template) ───────────────────────────────────────────────
-class Box<T> {
-  contents: T;
-  constructor(initial: T) {
-    this.contents = initial;
-  }
-  get(): T {
-    return this.contents;
-  }
-  set(value: T): void {
-    this.contents = value;
-  }
-}
-
-// ── Concrete subclass of Shape: uses super.method() (the known-broken path) ─
-class Square extends Shape {
-  side: int32_t;
-  constructor(side: int32_t) {
-    super();
-    this.side = side;
-  }
-  override area(): int32_t {
-    return this.side * this.side;
-  }
-  // Override describe() and delegate the base describe() via super.describe().
-  // STRESS-NOTE: super.describe() emits TS2CPP_UNSUPPORTED_EXPR (demo #36
-  // Finding A). Commented out so the rest of the showcase can compile and
-  // surface OTHER errors; this is the one known-broken path.
-  override describe(): string {
-    return "square[area=" + this.area() + "]";
-  }
-}
-
-// ── A class with static members, getters, setters, and ownership wrappers ──
-class Counter {
-  static instances: int32_t = 0;
-  static readonly ORIGIN: int32_t = 0;
-
-  private _value: int32_t;
-  owned: Owned<int32_t>;
-
-  constructor(start: int32_t) {
-    this._value = start;
-    Counter.instances = Counter.instances + 1;
-    this.owned = start;
-  }
-
-  // Instance getter/setter pair.
-  get value(): int32_t {
-    return this._value;
-  }
-  set value(v: int32_t) {
-    this._value = v;
-  }
-
-  // Static getter.
-  static get hasInstances(): boolean {
-    return Counter.instances > 0;
-  }
-
-  bump(): int32_t {
-    this._value = this._value + 1;
-    return this._value;
-  }
-}
-
-// ── Polymorphism: a second Shape subtype for virtual dispatch ──────────────
-class Rect extends Shape {
+interface Rect2 {
+  origin: Point;
   w: int32_t;
   h: int32_t;
-  constructor(w: int32_t, h: int32_t) {
-    super();
-    this.w = w;
-    this.h = h;
-  }
-  override area(): int32_t {
-    return this.w * this.h;
+}
+
+// A class with fields, to destructure an instance.
+class Sample {
+  value: int32_t;
+  label: string;
+  constructor(value: int32_t, label: string) {
+    this.value = value;
+    this.label = label;
   }
 }
 
-// ── Nested class inside a class (hoisted to file scope) ────────────────────
-class Outer {
-  outerVal: int32_t;
-  constructor(v: int32_t) {
-    this.outerVal = v;
-  }
+// ── 1. Object destructuring (flat) ─────────────────────────────────────────
+function destructureObject(): void {
+  const p: Point = { x: 3, y: 4 };
+  const { x, y }: Point = p;
+  console.log('obj ' + x + ',' + y);
 }
 
-class Inner {
-  innerVal: int32_t;
-  constructor(v: int32_t) {
-    this.innerVal = v;
-  }
-  sum(o: Outer): int32_t {
-    return this.innerVal + o.outerVal;
-  }
+// ── 2. Nested object destructuring ─────────────────────────────────────────
+function destructureNestedObject(): void {
+  const r: Rect2 = { origin: { x: 1, y: 2 }, w: 10, h: 20 };
+  const { origin: { x, y }, w }: Rect2 = r;
+  console.log('nest ' + x + ',' + y + ',' + w);
 }
 
-// ── Driver: exercise every construct above ────────────────────────────────
+// ── 3. Array destructuring ─────────────────────────────────────────────────
+function destructureArray(): void {
+  const arr: int32_t[] = [10, 20, 30];
+  const [a, b, c]: int32_t[] = arr;
+  console.log('arr ' + a + ',' + b + ',' + c);
+}
+
+// ── 4. Array destructuring with default ────────────────────────────────────
+function destructureArrayDefault(): void {
+  const arr: int32_t[] = [5];
+  const [first, second = 99]: int32_t[] = arr;
+  console.log('arrdef ' + first + ',' + second);
+}
+
+// ── 5. Array destructuring with rest element ───────────────────────────────
+// STRESS-NOTE: `const [head, ...tail] = arr` lowers `tail` to std::vector and
+// fails on AVR ('vector' is not a member of 'std'). SUPPORT_MATRIX §1.9 marks
+// "Rest element" ✅ but says it lowers to "std::vector<T> slice" — which is
+// native-only; AVR has no std::vector. The head binds fine; only the rest
+// element needs a vector. Worked around to a fixed-index extraction; the gap
+// is notated.
+function destructureArrayRest(): void {
+  const arr: int32_t[] = [1, 2, 3, 4, 5];
+  const head: int32_t = arr[0];
+  console.log('rest ' + head);
+}
+
+// ── 6. Object destructuring with rename ────────────────────────────────────
+function destructureRename(): void {
+  const p: Point = { x: 7, y: 8 };
+  const { x: px, y: py }: Point = p;
+  console.log('rename ' + px + ',' + py);
+}
+
+// ── 7. Swap via array destructuring ────────────────────────────────────────
+function swap(): void {
+  let a: int32_t = 1;
+  let b: int32_t = 2;
+  [a, b] = [b, a];
+  console.log('swap ' + a + ',' + b);
+}
+
+// ── 8. Destructure a class instance (fields) ───────────────────────────────
+function destructureClass(): void {
+  const s: Sample = new Sample(42, 'hi');
+  const { value, label }: Sample = s;
+  console.log('cls ' + value + ' ' + label);
+}
+
+// ── 9. Parameter destructuring (object) ────────────────────────────────────
+function translate({ x, y }: Point): int32_t {
+  return x + y;
+}
+
+// ── 10. Parameter destructuring (nested object) ────────────────────────────
+function area({ origin: { x, y }, w, h }: Rect2): int32_t {
+  return x + y + w + h;
+}
+
+// ── 11. Parameter destructuring (array) ────────────────────────────────────
+// STRESS-NOTE: `function sumFirst([a, b]: int32_t[])` fails on AVR with
+// TS2CPP_NO_VECTOR_STORAGE — an array-typed PARAMETER lowers to
+// std::vector<int32_t> (no compile-time size recoverable from a param), and
+// AVR has no std::vector. SUPPORT_MATRIX §5.10 marks "Array destructure param"
+// ✅ but that's native-only; on AVR it's unsupported. Object/array-LITERAL
+// destructuring (§1.9) works because the literal has a recoverable size; a
+// bare array param does not. Worked around below; the gap is notated.
+function sumFirst(): int32_t {
+  const arr: int32_t[] = [10, 20];
+  const [a, b]: int32_t[] = arr;
+  return a + b;
+}
+
+// ── 12. Mixed destructure + regular params ─────────────────────────────────
+function mixed({ x }: Point, scale: int32_t): int32_t {
+  return x * scale;
+}
+
+// ── 13. Destructure a generic-typed value ──────────────────────────────────
+class Box<T> {
+  v: T;
+  constructor(v: T) { this.v = v; }
+}
+function destructureGeneric(): void {
+  const b: Box<int32_t> = new Box<int32_t>(77);
+  const { v }: Box<int32_t> = b;
+  console.log('gen ' + v);
+}
+
+// ── 14. for...of over a destructured element ───────────────────────────────
+// STRESS-NOTE (two bugs here):
+// (a) `for (const { x, y } of pts)` CRASHES the transpiler (TypeError: Cannot
+//     read properties of undefined (reading 'kind')). control-flow.ts:283-298
+//     calls forInitializerToIR, which reads declaration.name.text assuming an
+//     identifier — for a binding pattern the name is undefined, so the
+//     var_decl has name:undefined and the body's references to x/y are never
+//     bound. Not in SUPPORT_MATRIX §1.9.
+// (b) The `const pts: Point[] = [...]` itself is a separate bug (Finding D):
+//     a struct-element array literal lowers to std::vector<P> on AVR with NO
+//     diagnostic, producing non-compiling C++. (Primitive arrays lower to a
+//     C array correctly.)
+// Worked around with a fixed-size primitive array + manual indexing.
+function forOfDestructure(): void {
+  const xs: int32_t[] = [1, 3];
+  const ys: int32_t[] = [2, 4];
+  let total: int32_t = 0;
+  for (let i: int32_t = 0; i < 2; i = i + 1) {
+    total = total + xs[i] + ys[i];
+  }
+  console.log('forof ' + total);
+}
+
+// ── Driver ─────────────────────────────────────────────────────────────────
 const led = LED.asOutput();
 
 function main(): void {
-  console.log('--- class stress test ---');
+  console.log('--- destructuring stress test ---');
+  destructureObject();
+  destructureNestedObject();
+  destructureArray();
+  destructureArrayDefault();
+  destructureArrayRest();
+  destructureRename();
+  swap();
+  destructureClass();
+  destructureGeneric();
+  forOfDestructure();
 
-  // Namespace const + function + nested-class static.
-  console.log('label=' + Devices.makeLabel(3));
-  console.log('registered=' + Devices.Registry.register());
-  console.log('max=' + Devices.MAX_COUNT);
+  console.log('trans ' + translate({ x: 5, y: 6 }));
+  console.log('area ' + area({ origin: { x: 1, y: 2 }, w: 3, h: 4 }));
+  console.log('sum ' + sumFirst());
+  console.log('mixed ' + mixed({ x: 4, y: 0 }, 10));
 
-  // Generic class.
-  const intBox: Box<int32_t> = new Box<int32_t>(42);
-  intBox.set(intBox.get() + 8);
-  console.log('box=' + intBox.get());
-
-  // Abstract base + concrete subclass + super.method() (known-broken path).
-  const sq: Square = new Square(5);
-  console.log('sqArea=' + sq.area());
-  console.log(sq.describe());
-
-  // Polymorphism: a Shape pointer dispatching to two subtypes.
-  const shapes: Shape[] = [];
-  shapes.push(sq);
-  shapes.push(new Rect(3, 4));
-  // NOTE: Shape[] is a class-field/param/return collection — may trip
-  // TS2CPP_NO_VECTOR_STORAGE on AVR. This is an intentional stress.
-  let totalArea: int32_t = 0;
-  for (let i: int32_t = 0; i < 2; i = i + 1) {
-    totalArea = totalArea + shapes[i].area();
-  }
-  console.log('totalArea=' + totalArea);
-
-  // Statics + getter/setter + ownership wrapper.
-  const c: Counter = new Counter(Counter.ORIGIN);
-  c.value = 10;
-  console.log('counter=' + c.bump() + ' hasInstances=' + (Counter.hasInstances ? 'yes' : 'no'));
-  console.log('owned=' + c.owned);
-
-  // Nested class usage.
-  const o: Outer = new Outer(100);
-  const inner: Inner = new Inner(7);
-  console.log('nestedSum=' + inner.sum(o));
-
-  // Drive the LED so there's a visible artifact.
   led.high();
   console.log('done');
 }

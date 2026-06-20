@@ -1,185 +1,234 @@
-# Class usage stress test — findings (cuttlefish, Arduino AVR)
+# Destructuring stress test — findings (cuttlefish, Arduino AVR)
 
-A maximal class-feature showcase (no end-state goal) hammered the
-class/inheritance/namespace surface (SUPPORT_MATRIX §4) to surface transpiler
-errors. The source is `demo/src/main.ts`. It covers: inheritance + `super(args)`
-+ `super.method()`, static fields/methods/getters, instance getters/setters,
-generics, nested classes, abstract classes, virtual dispatch through a base
-pointer, namespaces (incl. nested classes + functions + exported `let`),
-ownership wrappers, and a polymorphic pointer array.
+A maximal destructuring showcase (no end-state goal) hammered the
+destructuring surface (SUPPORT_MATRIX §1.9, §5.8–5.10 — all claimed ✅) to find
+where the claims break on AVR. The source is `demo/src/main.ts`. It covers
+object/array/nested destructuring, rest element, defaults, rename, swap,
+class-field destructuring, destructuring a generic, for...of over a
+destructured element, and parameter destructuring (object/array/nested/mixed).
 
-After working around the findings below, the showcase **compiles clean**
-(Flash 17%) and the polymorphic `Shape[]` array dispatches virtual calls
-correctly through base pointers — so the broad class surface is solid. The
-errors cluster in **one family: namespace-scoped constructs**.
+After working around the findings below, the showcase compiles clean (Flash
+18%) and the 10 remaining destructuring forms lower correctly — so the broad
+destructuring surface is solid. The errors cluster in **two families**:
+for...of + destructure (a crash), and AVR's lack of std::vector (rest elements,
+array params, and struct-element array literals).
 
 ---
 
-## Finding 1 — `super.method()` emits `TS2CPP_UNSUPPORTED_EXPR` (known, §4.4 🟡)
+## Finding A — `for...of` with a destructuring loop variable CRASHES the transpiler
 
 ```
-src\main.ts(71,23) error [TS2CPP_UNSUPPORTED_EXPR]: super keyword outside of
-class method
-        sum = sum + super.reading();
+✗ Cannot read properties of undefined (reading 'kind')
 ```
-
-An override calling `super.reading()` aborts. `super(args)` (ctor) works (→
-`: Base(...)` initializer list); only `super.method()` is broken. Root cause:
-`expression-to-ir.ts:2164-2169` lowers `super` to the base name only when
-`getActiveExtendsClass()` is set, which is null at the override call site.
-Already documented 🟡 in SUPPORT_MATRIX §4.4 and as demo #36 Finding A.
-**Workaround:** call an inherited non-overridden base method via `this.x()`.
-
-## Finding 2 — a `static` field on a class NESTED IN A NAMESPACE loses its `static` qualifier
 
 ```ts
-namespace Devices {
-  export class Registry {
-    static count: int32_t = 0;          // static in source
-    static register(): int32_t { return Registry.count; }
-  }
-}
+for (const { x, y } of pts) { ... }
 ```
-emits
-```cpp
-namespace Devices {
-  class Registry {
-  public:
-    int32_t count = 0;                  // ← static DROPPED (instance field)
-    static int32_t register_() { return Registry::count; }   // ← static access on a non-static field
-  };
-}
+
+throws an uncaught `TypeError` and aborts transpilation — no diagnostic, no
+source location. A plain `for (const p of pts)` (non-destructured) works.
+
+**Root cause:** `ir/transformers/control-flow.ts:283-298` (the for...of
+lowerer) calls `forInitializerToIR` (`control-flow.ts:60-69`), which builds the
+loop variable as a `var_decl` reading `declaration.name.text`. That assumes the
+name is an identifier; for a binding pattern (`{ x, y }`), `declaration.name`
+is a `BindingPattern` and `.text` is `undefined`. The resulting `var_decl` has
+`name: undefined`, so the destructure bindings are never established as locals,
+and the body's references to `x`/`y` reach something that reads `.kind` off an
+undefined node → throw.
+
+This is **not in SUPPORT_MATRIX §1.9** at all — for...of is listed generally
+but the destructured-loop-variable case is unmentioned.
+
+**Demo fix (workaround):** use a plain loop variable + field access
+(`for (const p of pts) { ... p.x ... }`).
+
+**Large fix:** the for...of lowerer must detect a binding-pattern initializer
+and desugar it the same way a top-level `const { x, y } = item` is desugared —
+introduce a synthetic loop variable (e.g. `__forof_N`) bound to the iterable
+element, then emit the per-field extraction statements at the top of the loop
+body. This is the same "synthetic name + extraction" pattern parameter
+destructuring (§5.9) already uses (`__param_N`).
+
+---
+
+## Finding B — array rest-element destructuring lowers to `std::vector` (fails on AVR)
+
 ```
-→ avr-g++: `expected unqualified-id before '.' token` (and the `Registry::count`
-access from a static method on a non-static member is invalid).
-
-**Contrast that pinpoints the bug:** the SAME `static` field on a TOP-LEVEL
-class emits correctly — `Counter.instances`/`Counter.ORIGIN` (both
-`static instances/ORIGIN: int32_t = 0`) emit as `static inline int32_t`. So
-the bug is specific to **static fields on classes nested inside a namespace**:
-the `static` qualifier is dropped during emission.
-
-**Root cause (likely):** the namespace-nested-class emission path
-(`namespace-builder.ts` → `declaration-builders.ts`) doesn't carry the `static`
-flag through to the field renderer the way the top-level class path does.
-
-**Workaround:** move the shared mutable state to a namespace-level `export let`
-and reference it as `Devices.x` (which itself hits Finding 3).
-
-## Finding 3 — namespace member access is inconsistently `.` vs `::`
+src\main.ts(71,16) error [var_decl]: 'vector' is not a member of 'std'
+      const [head, ...tail]: int32_t[] = arr;
+```
 
 ```ts
-namespace Devices {
-  export let registryCount: int32_t = 0;
-  export class Registry {
-    static register(): int32_t {
-      Devices.registryCount = Devices.registryCount + 1;   // all `Devices.x`
-      ...
-    }
-  }
-}
-```
-emits
-```cpp
-Devices.registryCount = Devices::registryCount + 1;        // MIXED . and ::
-```
-→ avr-g++: `expected primary-expression before '.' token` at the `.` sites.
-A namespace member access must use `::` (scope resolution); `.` (member
-access) is invalid because `Devices` is a namespace, not an object.
-
-**Root cause:** the namespace-member-access lowering (`.` on a namespace
-identifier) is **inconsistent** — some use sites emit `Devices::x` (correct),
-others `Devices.x` (wrong). This is the same defect family as the earlier
-`makeLabel` cascade: a namespace-scope member rendered with `.` produces
-malformed C++ that avr-g++ reports as a parse error, which then cascades into
-misattributed errors on nearby lines.
-
-## Finding 3b (cascade symptom) — namespace-scope `const string` in a concat formats as `%d`
-
-```
-// namespace Devices { export const DEFAULT_LABEL: string = "dev";
-//   export function makeLabel(id) { return DEFAULT_LABEL + ":" + id; } }
-snprintf(..., "%d:%d", DEFAULT_LABEL, id);   // DEFAULT_LABEL is __tc_str_ptr, formatted %d
+const [head, ...tail] = arr;
 ```
 
-A namespace-scope `const string` used in a string concat is mis-classified as
-`%d` by the snprintf operand resolver (it isn't in the operand-type map, so it
-defaults to integer). This is a **symptom of Finding 3's family** — the
-namespace-scoped binding isn't fully visible to the type-resolution paths that
-the snprintf operand picker consults, so it falls through to the `%d` default.
-A local `let s: string` in the same function resolves correctly (`%s` +
-`.c_str()`).
+`tail` lowers to `std::vector<int32_t>` (a slice), which does not exist on AVR.
+
+**Root cause:** SUPPORT_MATRIX §1.9 line 198 explicitly documents this:
+*"Rest element `const [a, ...rest]` ✅ → `std::vector<T>` slice"*. That lowering
+is correct for **native** (which has `<vector>`) but is **incompatible with
+AVR**, which has no `<vector>` (§1.5 AVR note). The rest element genuinely
+needs a runtime-sized slice, which AVR's fixed-size `__tc_StaticArray` can't
+express without a recoverable size.
+
+This is a **matrix-accuracy gap**, not a transpiler bug per se: the ✅ in §1.9
+should be qualified "(native only; 🚫 on AVR)" — like §5.9 already does for
+rest params.
+
+**Demo fix (workaround):** fixed-index extraction (`const head = arr[0]`).
+
+**Large fix (debate):** rest-on-AVR is fundamentally at odds with AVR's
+no-dynamic-storage model. The honest fix is (1) qualify §1.9 row 198 as
+native-only, and (2) emit a clean `TS2CPP_NO_VECTOR_STORAGE` diagnostic for
+rest elements on AVR (like array params get — see Finding C) instead of letting
+it reach avr-g++ as a raw `'vector' is not a member of 'std'`. The current
+behavior lets it through transpilation and fails at the C++ compile with an
+unfriendly message.
 
 ---
 
-# Categorization — one family: namespace-scoped construct resolution
+## Finding C — array-typed PARAMETER destructuring fails on AVR (NO_VECTOR_STORAGE)
 
-Findings 2, 3, and 3b are **one family**: the transpiler's handling of
-constructs *nested inside a namespace* is incomplete relative to top-level
-constructs. Specifically:
+```
+ERROR: src\main.ts(108,1): [TS2CPP_NO_VECTOR_STORAGE] Parameter
+'sumFirst(__param_0)' of type 'std::vector<int32_t>' lowers to 'std::vector<...>',
+which is not available on this target ...
+```
 
-- **Finding 2** — a static field on a namespace-nested class loses `static`
-  (the namespace-class emission path drops a flag the top-level path keeps).
-- **Finding 3** — namespace member access emits `.` instead of `::`
-  inconsistently (the namespace-member-access lowering isn't uniform).
-- **Finding 3b** — a namespace-scope `const` isn't visible to the snprintf
-  operand-type resolver (the namespace binding isn't registered in the type
-  maps the resolver consults).
+```ts
+function sumFirst([a, b]: int32_t[]) { ... }
+```
 
-The common thread: **namespace-scoped declarations (classes, fields, consts,
-mutables) are not fully equivalent to their top-level counterparts across the
-emit and type-resolution passes.** A namespace is parsed and a C++
-`namespace X { ... }` is emitted, but the *downstream consumers* (the static-
-field flag, the member-access `.`/`::` decision, the snprintf type map) don't
-treat namespace members with the same fidelity as top-level members.
+An array-typed **parameter** lowers to `std::vector<int32_t>` (no compile-time
+size is recoverable from a parameter), tripping `TS2CPP_NO_VECTOR_STORAGE` on
+AVR. SUPPORT_MATRIX §5.10 marks "Array destructure param `f([a, b])` ✅" — but
+that's native-only; on AVR it's unsupported.
 
-**The single large fix:** audit the namespace-member path so that every
-downstream pass treats a namespace-scoped declaration identically to a
-top-level one:
-1. Carry the `static` flag through the namespace-nested-class field emitter
-   (Finding 2).
-2. Make namespace member access uniformly emit `::` (Finding 3) — the
-   decision already exists for some sites; route all namespace-identifier
-   member access through it.
-3. Register namespace-scope `const`/`let` bindings in the snprintf operand
-   type map (Finding 3b), the same way top-level consts are registered.
+**Root cause:** a bare array type as a function parameter (`int32_t[]`) has no
+recoverable literal size (unlike a function-local array initialized from a
+literal, which lowers to `__tc_StaticArray`). So the param form takes the
+vector path. The `TS2CPP_NO_VECTOR_STORAGE` gate correctly fires here (unlike
+Finding D, which is silent) — the issue is just that §5.10's ✅ doesn't capture
+the AVR caveat.
 
-Finding 1 (`super.method()`) is a **separate family** (the class-method
-context, unrelated to namespaces) already tracked in §4.4.
+**Demo fix (workaround):** destructure a function-local array literal instead
+of an array parameter.
+
+**Large fix:** qualify §5.10's array-destructure-param row as native-only
+(matching how rest params are already marked), so the matrix reflects reality.
 
 ---
 
-## What the stress test confirmed WORKS (notable successes)
+## Finding D — struct-element array literals silently lower to `std::vector` on AVR (no diagnostic)
 
-Once the four findings above are worked around, the rest of the class surface
-compiles and (per the emitted C++) is correct — including several constructs
-that were reasonable to worry about:
+```
+src\main.ts(151,9) error [var_decl]: 'vector' in namespace 'std' does not name
+a template type
+      const pts: Point[] = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
+```
 
-- **Virtual dispatch through a polymorphic pointer array:** `const shapes:
-  Shape[] = []; shapes.push(sq); shapes.push(new Rect(3,4)); shapes[i].area()`
-  lowers to `__tc_StaticArray<Shape*, 2>` with `push_back` and `->area()`
-  dispatching through the base pointer. Works on AVR (the function-local array
-  lowers to `StaticArray`, the AVR-supported path — `TS2CPP_NO_VECTOR_STORAGE`
-  does NOT trip).
-- **`super(args)` ctor call:** `super(pin)` → `: Sensor(pin)` initializer list.
-- **Generics:** `class Box<T>` → `template<typename T> class Box`; `new
-  Box<int32_t>(42)` instantiates correctly.
-- **Abstract class + pure virtual:** `abstract area()` → `virtual int32_t
-  area() = 0`; concrete subclasses override.
-- **Instance getters/setters + static getter:** `get value()`/`set value()`
-  → `getValue()`/`setValue()`; `static get hasInstances()` →
-  `static getHasInstances()`.
-- **Ownership wrappers:** `owned: Owned<int32_t>` erases to a plain `int32_t`
-  field.
-- **Top-level-class static fields:** `static instances`/`static readonly
-  ORIGIN` → `static inline int32_t` (correct — contrast with Finding 2).
-- **Nested class referencing another class:** `Inner.sum(o: Outer)` →
-  `Outer*` param, `o->outerVal` access.
-- **Heap instantiation of every class** (`new Box`, `new Square`, `new Rect`,
-  `new Counter`, `new Outer`, `new Inner`): each emits one
-  `heap-allocation-avr` **warning** (the downgraded gate) and compiles —
-  exactly the intended behavior.
+```ts
+const pts: Point[] = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
+```
 
-So the class/inheritance feature set is broadly sound; the gap is concentrated
-in namespace-scoped declarations (one fix family) plus the pre-known
-`super.method()` gap.
+lowers to `std::vector<P> pts = { ... }` on AVR — and the
+`TS2CPP_NO_VECTOR_STORAGE` diagnostic **does not fire** (verified: 0
+diagnostics). So this is a **silent miscompilation**: it produces C++ that
+cannot compile, with no transpiler-side warning. By contrast, a primitive
+array (`int32_t[]`) on the same target lowers correctly to a C array
+(`int32_t arr[] = { ... }`).
+
+**Root cause (confirmed by isolation):**
+- `int32_t[]` literal → `int32_t arr[] = { ... }` (C array — AVR-correct).
+- `P[]` literal (struct element) → `std::vector<P> pts = { ... }` (AVR-broken).
+
+The array-literal lowerer's StaticArray-vs-vector decision keys off the element
+type: primitive elements take the C-array path; struct/interface elements take
+the vector path. The AVR guard (`TS2CPP_NO_VECTOR_STORAGE`) only fires for
+*parameters and fields* with a vector type — it does not cover a *function-local
+array literal* lowered to vector, so the bad lowering slips through silently.
+
+This is the most severe of the four findings because it is **silent** (no
+diagnostic at all) and produces non-compiling C++. A struct-element array is a
+common, reasonable construct.
+
+**Demo fix (workaround):** parallel primitive arrays + manual indexing.
+
+**Large fix:** two parts —
+1. The array-literal lowerer should lower a struct-element array literal to
+   `__tc_StaticArray<P, N>` (which IS AVR-supported and was the whole point of
+   that type), not `std::vector<P>`. The size IS recoverable (the literal has N
+   elements), so the StaticArray path is available. The element-type-based fork
+   that sends structs to vector is the defect.
+2. Until/unless that lands, the `TS2CPP_NO_VECTOR_STORAGE` gate should also
+   fire for a function-local array literal that lowered to vector, so the
+   failure is at least surfaced as a diagnostic rather than a silent
+   miscompile.
+
+---
+
+# Categorization — two families
+
+## Family I — `for...of` does not support a destructuring loop variable (Finding A)
+
+A single isolated crash. The for...of lowerer assumes an identifier loop
+variable and throws on a binding pattern. Fix: desugar the binding pattern to a
+synthetic loop var + extraction statements (the same pattern parameter
+destructuring already uses). Self-contained; no interaction with the others.
+
+## Family II — AVR has no `std::vector`, and several array constructs lower to it (Findings B, C, D)
+
+Three distinct array constructs all reduce to `std::vector<T>` and fail on AVR:
+
+- **B:** rest-element destructuring (`...tail`) — documented in §1.9 but not
+  AVR-qualified; reaches avr-g++ as a raw error (no transpiler diagnostic).
+- **C:** array-typed parameter destructuring (`[a, b]: int32_t[]`) — correctly
+  gated by `TS2CPP_NO_VECTOR_STORAGE` (the gate fires), but §5.10's ✅ doesn't
+  note the AVR caveat.
+- **D:** struct-element array literals (`P[] = [...]`) — **silently** lower to
+  `std::vector` with NO diagnostic (the gate doesn't cover function-local
+  literals), producing non-compiling C++.
+
+The shared defect: AVR's no-`<vector>` constraint is enforced **inconsistently**.
+`TS2CPP_NO_VECTOR_STORAGE` catches parameters and fields that lower to vector,
+but misses rest elements (B) and function-local array literals (D). And the
+SUPPORT_MATRIX ✅s in §1.9/§5.10 are native-only truths presented as universal.
+
+**The large fixes:**
+1. **D (most important):** lower struct-element array literals to
+   `__tc_StaticArray<P, N>` (size is recoverable from the literal) instead of
+   `std::vector`. This makes a common, reasonable construct actually work on AVR.
+2. **Coverage:** extend `TS2CPP_NO_VECTOR_STORAGE` to fire for ANY construct
+   that lowers to `std::vector` on AVR — including rest elements (B) and
+   function-local literals (D) — so failures are always surfaced as a clean
+   diagnostic, never a silent miscompile or a raw avr-g++ error.
+3. **Matrix accuracy:** qualify §1.9 row 198 (rest element) and §5.10 (array
+   destructure param) as native-only / 🚫-on-AVR, matching the existing rest-
+   param qualification.
+
+Finding A (Family I) is independent of the vector family and can be fixed on
+its own.
+
+---
+
+## What the stress test confirmed WORKS
+
+Once the four findings are worked around, the remaining 10 destructuring forms
+compile and (per the emitted C++) lower correctly on AVR:
+
+- **Object destructure** (`const { x, y } = p`) → `auto x = p->x; auto y = p->y;`.
+- **Nested object destructure** (`const { origin: { x, y }, w } = r`).
+- **Array destructure** (`const [a, b, c] = arr`) → index extraction.
+- **Array destructure with default** (`const [first, second = 99] = arr`).
+- **Object destructure with rename** (`const { x: px } = p`).
+- **Swap** (`[a, b] = [b, a]`).
+- **Class-field destructure** (`const { value } = instance`).
+- **Generic destructure** (`const { v } = box<T>`).
+- **Object / nested-object parameter destructure** (`f({ x, y })`,
+  `f({ origin: { x } })`).
+- **Mixed destructure + regular params** (`f({ x }, scale)`).
+
+So the destructuring lowering is broadly sound; the gaps are for...of+destructure
+(one crash) and the AVR-no-vector family (rest elements, array params,
+struct-element literals).
