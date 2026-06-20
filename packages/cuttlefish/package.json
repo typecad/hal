@@ -48,6 +48,14 @@
     "./ui/style-resolver": {
       "types": "./dist/ui/style-resolver.d.ts",
       "default": "./dist/ui/style-resolver.js"
+    },
+    "./ui/layout-engine": {
+      "types": "./dist/ui/layout-engine.d.ts",
+      "default": "./dist/ui/layout-engine.js"
+    },
+    "./ui/block-layout": {
+      "types": "./dist/ui/block-layout.d.ts",
+      "default": "./dist/ui/block-layout.js"
     }
   },
   "files": [
