@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stripPreprocessorBlocks, parseHeader } from "@typecad/cuttlefish/testing";
+import { stripPreprocessorBlocks, parseHeader, BaseClassResolver } from "@typecad/cuttlefish/testing";
 
 describe("stripPreprocessorBlocks", () => {
   it("removes a single #if ... #endif block", () => {
@@ -94,5 +94,27 @@ describe("parseHeader", () => {
   it("ignores templated class declarations", () => {
     const h = "template <typename T>\nclass Templated { public: void x(); };";
     expect(parseHeader(h)).toHaveLength(0);
+  });
+});
+
+describe("BaseClassResolver", () => {
+  it("resolves a class indexed in a header", () => {
+    const index = new Map([["Adafruit_SPITFT", "/lib/Adafruit_GFX_Library/Adafruit_SPITFT.h"]]);
+    const resolver = new BaseClassResolver(index);
+    expect(resolver.resolve("Adafruit_SPITFT")).toEqual({
+      kind: "found",
+      headerPath: "/lib/Adafruit_GFX_Library/Adafruit_SPITFT.h",
+    });
+  });
+
+  it("returns external for an unknown class", () => {
+    const index = new Map([["Adafruit_SPITFT", "/x.h"]]);
+    const resolver = new BaseClassResolver(index);
+    expect(resolver.resolve("Print")).toEqual({ kind: "external" });
+  });
+
+  it("returns external when the index is empty", () => {
+    const resolver = new BaseClassResolver(new Map());
+    expect(resolver.resolve("Anything")).toEqual({ kind: "external" });
   });
 });
