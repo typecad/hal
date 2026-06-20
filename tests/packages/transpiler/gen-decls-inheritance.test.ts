@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stripPreprocessorBlocks } from "@typecad/cuttlefish/testing";
+import { stripPreprocessorBlocks, parseHeader } from "@typecad/cuttlefish/testing";
 
 describe("stripPreprocessorBlocks", () => {
   it("removes a single #if ... #endif block", () => {
@@ -38,5 +38,61 @@ describe("stripPreprocessorBlocks", () => {
   it("leaves content with no preprocessor blocks unchanged except whitespace", () => {
     const input = "void foo();\nvoid bar();";
     expect(stripPreprocessorBlocks(input).trim()).toBe(input.trim());
+  });
+});
+
+describe("parseHeader", () => {
+  it("parses a flat class with no base", () => {
+    const h = "class Foo {\npublic:\n  Foo();\n  void bar(int x);\n};";
+    const classes = parseHeader(h);
+    expect(classes).toHaveLength(1);
+    expect(classes[0].name).toBe("Foo");
+    expect(classes[0].baseClass).toBeUndefined();
+    expect(classes[0].source).toBe("header");
+    expect(classes[0].constructors).toHaveLength(1);
+    expect(classes[0].methods.map(m => m.name)).toEqual(["bar"]);
+  });
+
+  it("captures a single-inheritance base class", () => {
+    const h = "class Adafruit_ILI9341 : public Adafruit_SPITFT {\npublic:\n  void begin();\n};";
+    const classes = parseHeader(h);
+    expect(classes[0].name).toBe("Adafruit_ILI9341");
+    expect(classes[0].baseClass).toBe("Adafruit_SPITFT");
+  });
+
+  it("captures protected/private inheritance as base too", () => {
+    const h = "class Foo : protected Bar {\npublic:\n  void baz();\n};";
+    expect(parseHeader(h)[0].baseClass).toBe("Bar");
+  });
+
+  it("parses multiple classes in one header", () => {
+    const h = [
+      "class Adafruit_GFX : public Print {",
+      "public:",
+      "  void fillRect();",
+      "};",
+      "class GFXcanvas1 : public Adafruit_GFX {",
+      "public:",
+      "  GFXcanvas1();",
+      "};",
+    ].join("\n");
+    const classes = parseHeader(h);
+    expect(classes.map(c => c.name)).toEqual(["Adafruit_GFX", "GFXcanvas1"]);
+    expect(classes[1].baseClass).toBe("Adafruit_GFX");
+  });
+
+  it("ignores multiple inheritance beyond the first base", () => {
+    const h = "class Foo : public A, public B {\npublic:\n  void x();\n};";
+    expect(parseHeader(h)[0].baseClass).toBe("A");
+  });
+
+  it("ignores forward declarations (class with no body)", () => {
+    const h = "class ForwardDecl;\nclass Real { public: void x(); };";
+    expect(parseHeader(h).map(c => c.name)).toEqual(["Real"]);
+  });
+
+  it("ignores templated class declarations", () => {
+    const h = "template <typename T>\nclass Templated { public: void x(); };";
+    expect(parseHeader(h)).toHaveLength(0);
   });
 });

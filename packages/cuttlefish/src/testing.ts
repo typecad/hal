@@ -85,7 +85,7 @@ export type { VerifierOptions, VerifierResult, UnknownTypeSeverity } from "./orc
 // ── Watch & CLI utilities ───────────────────────────────────────────────────
 export { discoverWatchDirs, isRelevantChange } from "./watch";
 export { parseCommandLine } from "./utils/cli";
-export { stripPreprocessorBlocks } from "./libdef/header-parser";
+export { parseHeader, stripPreprocessorBlocks } from "./libdef/header-parser";
 
 // ── IR rendering internals (for fail-closed regression tests) ───────────────
 export { renderExprAsText } from "./ir/render-expr";
