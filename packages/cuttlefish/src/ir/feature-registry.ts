@@ -538,11 +538,18 @@ export function checkContextSensitive(node: ts.Node, sourceText: string): Diagno
         };
       }
       if (UNSUPPORTED_DYNAMIC_CALL_METHODS.has(methodName)) {
-        return {
-          message: `.${methodName}() rebinds call-time function context and has no deterministic C++ lowering.`,
-          hint: "Call the function or method directly, or pass the receiver as an explicit argument.",
-          code: "TS2CPP_NO_EQUIVALENT",
-        };
+        // ui.bind is a recognized UI authoring call (intercepted by
+        // ui-call-resolver), not Function.prototype.bind. The name collides;
+        // exempt the `ui` receiver so the call-lowering can run.
+        if (methodName === "bind" && receiverName === "ui") {
+          // fall through — not an unsupported pattern
+        } else {
+          return {
+            message: `.${methodName}() rebinds call-time function context and has no deterministic C++ lowering.`,
+            hint: "Call the function or method directly, or pass the receiver as an explicit argument.",
+            code: "TS2CPP_NO_EQUIVALENT",
+          };
+        }
       }
     }
   }

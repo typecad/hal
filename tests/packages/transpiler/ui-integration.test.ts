@@ -187,4 +187,26 @@ describe("UI end-to-end via transpileFile", () => {
       }),
     ).rejects.toThrow(/st7789|Unsupported/i);
   });
+
+  it("lowers ui.bind without tripping the Function.prototype.bind semantic gate", async () => {
+    const { cpp } = await transpileUIProgram({
+      html: `<screen><text id="greeting">hi</text></screen>`,
+      css: `#greeting { color: #ff0000; font: 8x16; }`,
+      ts: [
+        `import { ui } from "@typehal/ui";`,
+        `import { screen } from "./app.ui.html";`,
+        ``,
+        `const temp = ui.signal(0);`,
+        `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
+        `ui.bind(screen.greeting, "background", () => (temp() > 0 ? "#ff0000" : "#000000"));`,
+        `export function main(): void { while (true) {} }`,
+        ``,
+      ].join("\n"),
+    });
+
+    // ui.bind must pass the semantic gate (no TS2CPP_NO_EQUIVALENT abort) and
+    // produce a binding-table entry in the emitted C++.
+    expect(cpp).toContain("UIBinding");
+    expect(cpp).toContain("__ui_bindings");
+  });
 });
