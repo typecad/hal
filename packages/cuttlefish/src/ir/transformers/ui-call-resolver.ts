@@ -25,8 +25,8 @@ import { getContext } from "../build-ir-state";
 /** Maps an imported UI tree name (e.g. "screen") → its resolved .ui.html path. */
 const uiModuleImports = new Map<string, string>();
 
-/** Recorded signals: name → { cppType, initialValue, decl }. */
-const signals = new Map<string, { cppType: string; initialValue: number | string | boolean; decl: string }>();
+/** Recorded signals: name → { cppType, initialValue, decl, emitted }. */
+const signals = new Map<string, { cppType: string; initialValue: number | string | boolean; decl: string; emitted: boolean }>();
 
 /** Recorded binding specs, accumulated for emit-time table generation. */
 const bindings: BindingSpec[] = [];
@@ -41,7 +41,14 @@ export function resolveUIModuleImport(name: string): string | undefined {
 
 export function recordSignal(name: string, cppType: string, initialValue: number | string | boolean): void {
   const decl = emitSignalDecl(name, cppType, initialValue);
-  signals.set(name, { cppType, initialValue, decl });
+  signals.set(name, { cppType, initialValue, decl, emitted: false });
+}
+
+/** Mark a signal as already emitted via its own var_decl (const X = ui.signal).
+ *  Prevents uiSignalDecls() from double-declaring it at file scope. */
+export function markSignalEmitted(name: string): void {
+  const s = signals.get(name);
+  if (s) s.emitted = true;
 }
 
 export function uiSignalNames(): string[] {
@@ -54,7 +61,9 @@ export function isSignalName(name: string): boolean {
 }
 
 export function uiSignalDecls(): string[] {
-  return [...signals.values()].map((s) => s.decl);
+  // Skip signals already emitted via their own const X = ui.signal(...) var_decl
+  // — those are declared in the function body, not at file scope.
+  return [...signals.values()].filter((s) => !s.emitted).map((s) => s.decl);
 }
 
 export function recordBinding(spec: BindingSpec): void {

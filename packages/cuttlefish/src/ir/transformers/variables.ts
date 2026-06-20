@@ -40,7 +40,7 @@ import {
   isHALSingleton
 } from "../hal-resolver";
 import { resolveHALCallForVarInit } from "./hal-call-resolver";
-import { recordSignal } from "./ui-call-resolver";
+import { recordSignal, markSignalEmitted } from "./ui-call-resolver";
 
 export function assignmentOperatorToString(kind: ts.SyntaxKind): Extract<StatementIR, { kind: "assign" }>['operator'] | undefined {
   switch (kind) {
@@ -475,7 +475,9 @@ export function variableStatementToIR(
         lowered.push({
           kind: "var_decl",
           name: varName,
-          storage,
+          // Signals are mutable: .set() lowers to assignment, so the variable
+          // must not be const even if the author wrote `const pressed = ...`.
+          storage: "let",
           cppType: cppType as CppType,
           initializer: { kind: "raw", value: String(initialValue) },
           sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
@@ -483,6 +485,9 @@ export function variableStatementToIR(
         });
         commentsAssigned = true;
         localVariableTypes.set(varName, cppType as CppTypeHint);
+        // Mark this signal as emitted via its own var_decl so uiSignalDecls()
+        // doesn't double-declare it at file scope.
+        markSignalEmitted(varName);
         continue;
       }
 

@@ -5,7 +5,7 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
 import { tryResolveHALMethod } from "./hal-call-resolver";
-import { tryResolveUICall } from "./ui-call-resolver";
+import { tryResolveUICall, isSignalName } from "./ui-call-resolver";
 import { tryLowerArrayAndStringMethods } from "./array-methods";
 import { expressionToIR } from "../expression-to-ir";
 import { lowerStatementList } from "../statement-to-ir";
@@ -77,6 +77,28 @@ export function callToStatement(
   if (ts.isIdentifier(call.expression) && TIMER_CALLEES.has(call.expression.text)) {
     const hoisted = hoistTimerArrowArg(call, fileName, sourceText, diagnostics, pointerVars, comments);
     if (hoisted) return hoisted;
+  }
+
+  // ── signal.set(value) → assignment ─────────────────────────────────────
+  // A signal lowers to a plain device variable; its .set() method is just an
+  // assignment. Intercept before HAL so it doesn't try to resolve .set as a
+  // HAL method on the variable.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "set" &&
+    ts.isIdentifier(call.expression.expression) &&
+    isSignalName(call.expression.expression.text)
+  ) {
+    const valueIR = call.arguments[0] ? expressionToIR(call.arguments[0], sourceText, diagnostics, pointerVars) : { kind: "number" as const, value: 0 };
+    return {
+      kind: "assign",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      target: call.expression.expression.text,
+      operator: "=",
+      value: valueIR,
+    };
   }
 
   // ---- HAL method resolver (highest priority) ---
@@ -412,7 +434,12 @@ function hoistTimerArrowArg(
     statements: bodyStatements,
   });
 
-  const calleeText = ts.isIdentifier(call.expression) ? call.expression.text : calleeToText(call.expression);
+  // Apply the polyfill helper rename (setInterval → __tc_setInterval) so the
+  // emitted call matches the runtime helper the framework provides.
+  const rawCallee = ts.isIdentifier(call.expression) ? call.expression.text : calleeToText(call.expression);
+  const calleeText = rawCallee === "setInterval" ? "__tc_setInterval"
+    : rawCallee === "setTimeout" ? "__tc_setTimeout"
+    : rawCallee;
   const remainingArgs = call.arguments.slice(1).map((arg) => expressionToIR(arg, sourceText, diagnostics, pointerVars));
   return {
     kind: "call",

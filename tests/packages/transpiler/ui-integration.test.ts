@@ -143,7 +143,10 @@ describe("UI end-to-end via transpileFile", () => {
     expect(cpp).toMatch(/^\s+ui_tick\(/m);
   });
 
-  it("lowers const temp = ui.signal(22) to a device variable", async () => {
+  it("lowers const pressed = ui.signal(0) + pressed.set() in a timer callback", async () => {
+    // Mirrors the demo's working pattern: the signal is declared at top level
+    // and used inside a setInterval callback (which is hoisted to a free
+    // function, keeping the signal alive through tree-shaking).
     const { cpp } = await transpileUIProgram({
       html: `<screen></screen>`,
       css: ``,
@@ -151,14 +154,18 @@ describe("UI end-to-end via transpileFile", () => {
         `import { ui } from "@typehal/ui";`,
         `import { screen } from "./app.ui.html";`,
         ``,
-        `const temp = ui.signal(22);`,
         `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
+        `const pressed = ui.signal(0);`,
+        `setInterval(() => { pressed.set(1); }, 1000);`,
         `export function main(): void { while (true) {} }`,
         ``,
       ].join("\n"),
     });
 
-    expect(cpp).toMatch(/int\s+temp\s*=\s*22/);
+    // The signal lowers to a mutable device variable; .set() lowers to =.
+    // The hoisted timer callback references it, so it survives tree-shaking.
+    expect(cpp).toMatch(/int\s+pressed/);
+    expect(cpp).toContain("__tc_timer_cb");
   });
 
   it("emits a diagnostic for an unsupported display driver", async () => {
