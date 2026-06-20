@@ -1,6 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { stripPreprocessorBlocks, parseHeader, BaseClassResolver, buildClassIndex } from "@typecad/cuttlefish/testing";
+import { stripPreprocessorBlocks, parseHeader, BaseClassResolver, buildClassIndex, generateDecl } from "@typecad/cuttlefish/testing";
 import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
+
+function withTempDir<T>(fn: (dir: string) => T): T {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gen-decls-"));
+  try {
+    return fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe("stripPreprocessorBlocks", () => {
   it("removes a single #if ... #endif block", () => {
@@ -126,5 +137,61 @@ describe("buildClassIndex", () => {
     const index = buildClassIndex(root);
     expect(index.get("Base")).toBe(path.join(root, "libB", "Base.h"));
     expect(index.get("Dependent")).toBe(path.join(root, "libA", "Dependent.h"));
+  });
+});
+
+describe("generateDecl", () => {
+  it("emits a flat class for a header with no base", () => {
+    withTempDir((dir) => {
+      const h = path.join(dir, "Foo.h");
+      fs.writeFileSync(h, "class Foo {\npublic:\n  void bar();\n};\n", "utf8");
+      const out = generateDecl(h);
+      expect(out).toBe(path.join(dir, "Foo.d.ts"));
+      expect(fs.readFileSync(out!, "utf8")).toContain("export declare class Foo {");
+    });
+  });
+
+  it("emits extends for a same-file base", () => {
+    withTempDir((dir) => {
+      const h = path.join(dir, "GFX.h");
+      fs.writeFileSync(h, [
+        "class GFX { public: void fillRect(); };",
+        "class Canvas1 : public GFX { public: Canvas1(); };",
+      ].join("\n"));
+      const out = generateDecl(h);
+      const content = fs.readFileSync(out!, "utf8");
+      expect(content).toContain("export declare class Canvas1 extends GFX {");
+      expect(content).not.toContain("import type");
+    });
+  });
+
+  it("merges .cpp impl-only methods into the .h class", () => {
+    withTempDir((dir) => {
+      const h = path.join(dir, "Foo.h");
+      const cpp = path.join(dir, "Foo.cpp");
+      fs.writeFileSync(h, "class Foo {\npublic:\n  Foo();\n};\n", "utf8");
+      fs.writeFileSync(cpp, "void Foo::extraMethod(int x) { }\n", "utf8");
+      const out = generateDecl(h);
+      const content = fs.readFileSync(out!, "utf8");
+      expect(content).toContain("extraMethod(x: number): void;");
+    });
+  });
+
+  it("writes .d.ts next to the input with matching basename", () => {
+    withTempDir((dir) => {
+      const h = path.join(dir, "Foo.h");
+      fs.writeFileSync(h, "class Foo { public: void bar(); };", "utf8");
+      const out = generateDecl(h);
+      expect(path.basename(out!)).toBe("Foo.d.ts");
+      expect(path.dirname(out!)).toBe(dir);
+    });
+  });
+
+  it("returns null when the file has no classes or constants", () => {
+    withTempDir((dir) => {
+      const h = path.join(dir, "Empty.h");
+      fs.writeFileSync(h, "// just a comment\n", "utf8");
+      expect(generateDecl(h)).toBeNull();
+    });
   });
 });

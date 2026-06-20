@@ -88,6 +88,7 @@ export { parseCommandLine } from "./utils/cli";
 export { parseHeader, stripPreprocessorBlocks } from "./libdef/header-parser";
 export { BaseClassResolver, buildClassIndex } from "./libdef/base-class-resolver";
 export type { ResolveResult } from "./libdef/base-class-resolver";
+export { generateDecl } from "./libdef/cpp-to-decl";
 
 // ── IR rendering internals (for fail-closed regression tests) ───────────────
 export { renderExprAsText } from "./ir/render-expr";

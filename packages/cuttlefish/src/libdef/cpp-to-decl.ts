@@ -7,6 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { parseHeader, type ParsedClass } from "./header-parser";
 
 interface CppMethod {
   name: string;
@@ -19,6 +20,8 @@ interface CppClass {
   name: string;
   methods: CppMethod[];
   constructors: { parameters: { type: string; name: string }[] }[];
+  baseClass?: string;
+  source: "header" | "cpp";
 }
 
 interface CppParseResult {
@@ -152,6 +155,7 @@ function parseCppClass(content: string): CppParseResult {
         name: className,
         methods: [],
         constructors: [],
+        source: "cpp",
       });
     }
     
@@ -201,6 +205,7 @@ function parseCppClass(content: string): CppParseResult {
       name: className,
       methods: [],
       constructors: [],
+      source: "cpp",
     };
     
     // Track current access level
@@ -310,7 +315,8 @@ function generateDeclaration(parsed: CppParseResult, moduleDocstring?: string): 
   
   // Export classes
   for (const cppClass of parsed.classes) {
-    lines.push(`export declare class ${cppClass.name} {`);
+    const extendsClause = cppClass.baseClass ? ` extends ${cppClass.baseClass}` : "";
+    lines.push(`export declare class ${cppClass.name}${extendsClause} {`);
     
     // Add constructors
     for (const ctor of cppClass.constructors) {
@@ -338,31 +344,12 @@ function generateDeclaration(parsed: CppParseResult, moduleDocstring?: string): 
 }
 
 /**
- * Generates a .d.ts file from a C++ source file
+ * Backward-compat wrapper — delegates to generateDecl so legacy callers
+ * (e.g. cli.ts) keep resolving while the richer .h/.cpp merge lives in
+ * generateDecl.
  */
 export function generateDeclFromCpp(cppFilePath: string, outputPath?: string): string | null {
-  if (!fs.existsSync(cppFilePath)) {
-    return null;
-  }
-  
-  const content = fs.readFileSync(cppFilePath, "utf8");
-  const parsed = parseCppClass(content);
-  
-  if (parsed.classes.length === 0 && parsed.constants.length === 0) {
-    return null;
-  }
-  
-  const declaration = generateDeclaration(parsed);
-  
-  // Determine output path
-  const outPath = outputPath || cppFilePath.replace(/\.cpp$/i, ".d.ts");
-  
-  // Only write if file doesn't exist or content is different
-  if (!fs.existsSync(outPath) || fs.readFileSync(outPath, "utf8") !== declaration) {
-    fs.writeFileSync(outPath, declaration, "utf8");
-  }
-  
-  return outPath;
+  return generateDecl(cppFilePath, outputPath);
 }
 
 /**
@@ -395,4 +382,85 @@ export function generateDeclsForDirectory(dir: string, recursive: boolean = true
   }
   
   return created;
+}
+/**
+ * Generates a .d.ts from a .h OR .cpp file.
+ *
+ * - For .h: parses the header; if a sibling .cpp exists, merges its
+ *   impl-only methods (ClassName::method) into the header's classes.
+ * - For .cpp: if a sibling .h exists, parses the header and merges; else
+ *   behaves as the legacy flattened path.
+ *
+ * Does NOT resolve cross-file base classes — bases from other headers are
+ * left as bare `extends Foo` (no import). Cross-file resolution is added in
+ * a later step for the directory-scan path.
+ */
+export function generateDecl(filePath: string, outputPath?: string): string | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const ext = path.extname(filePath).toLowerCase();
+  const dir = path.dirname(filePath);
+  const baseNoExt = path.basename(filePath, ext);
+
+  let headerPath: string | undefined;
+  let cppPath: string | undefined;
+  if (ext === ".h") {
+    headerPath = filePath;
+    const siblingCpp = path.join(dir, baseNoExt + ".cpp");
+    cppPath = fs.existsSync(siblingCpp) ? siblingCpp : undefined;
+  } else if (ext === ".cpp") {
+    cppPath = filePath;
+    const siblingH = path.join(dir, baseNoExt + ".h");
+    headerPath = fs.existsSync(siblingH) ? siblingH : undefined;
+  } else {
+    return null;
+  }
+
+  let headerClasses: ParsedClass[] = [];
+  if (headerPath) {
+    headerClasses = parseHeader(fs.readFileSync(headerPath, "utf8"));
+  }
+  let cppResult: CppParseResult = { classes: [], constants: [] };
+  if (cppPath) {
+    cppResult = parseCppClass(fs.readFileSync(cppPath, "utf8"));
+  }
+
+  const merged: CppClass[] = [];
+  const byName = new Map<string, CppClass>();
+  for (const h of headerClasses) {
+    const cls: CppClass = {
+      name: h.name,
+      methods: [...h.methods],
+      constructors: [...h.constructors],
+      baseClass: h.baseClass,
+      source: "header",
+    };
+    byName.set(h.name, cls);
+    merged.push(cls);
+  }
+  for (const c of cppResult.classes) {
+    const existing = byName.get(c.name);
+    if (existing) {
+      for (const m of c.methods) {
+        if (!existing.methods.some(em => em.name === m.name)) {
+          existing.methods.push(m);
+        }
+      }
+    } else {
+      merged.push({ ...c, source: "cpp" });
+    }
+  }
+
+  if (merged.length === 0 && cppResult.constants.length === 0) {
+    return null;
+  }
+
+  const declaration = generateDeclaration({ classes: merged, constants: cppResult.constants });
+
+  const outPath = outputPath || path.join(dir, baseNoExt + ".d.ts");
+  if (!fs.existsSync(outPath) || fs.readFileSync(outPath, "utf8") !== declaration) {
+    fs.writeFileSync(outPath, declaration, "utf8");
+  }
+  return outPath;
 }
