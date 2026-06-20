@@ -42,6 +42,12 @@ export interface LintRule {
   // "context"  — a static selector that mirrors a checkContextSensitive branch
   //              (kept here so all editor selectors live in one place).
   source: "kind" | "context";
+  // Optional: a JS filter function (as a string for serialization) that
+  // returns false to suppress the diagnostic for a given AST node. Used when
+  // the selector alone can't express the exemption (e.g. ui.bind is exempt
+  // from the .bind/.call/.apply rule). Applied in hand-edited eslint configs;
+  // the generated no-restricted-syntax template drops this field.
+  filter?: string;
 }
 
 type FeatureRegistryKey = ts.SyntaxKind | ((node: ts.Node, sourceText: string) => DiagnosticMatch | null);
@@ -414,6 +420,9 @@ const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
     selector: "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]",
     message: "[transpiler] .bind/.call/.apply rebind `this` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly.",
     source: "context",
+    // ui.bind is a recognized UI authoring call (intercepted by the
+    // transpiler's call-lowering), not Function.prototype.bind.
+    filter: "(node) => { const o = node.callee.object; return !(o && o.type === 'Identifier' && o.name === 'ui'); }",
   },
   {
     selector: "NewExpression[callee.name='Function']",

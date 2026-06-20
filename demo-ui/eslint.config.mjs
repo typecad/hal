@@ -268,11 +268,18 @@ const transpilerRules = [
   },
   // .bind/.call/.apply — rebind `this` at call time. The transpiler models
   // `this` as a fixed C++ this-> pointer (§4.2); rebinding has no lowering.
+  // Exception: ui.bind is a recognized UI authoring call (intercepted by the
+  // transpiler's call-lowering), not Function.prototype.bind.
   {
     selector:
-      "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]",
+      "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$]",
     message:
       "[transpiler] .bind/.call/.apply rebind `this` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly.",
+    filter: (node) => {
+      // Exempt ui.bind — it's a UI authoring primitive, not Function.prototype.bind.
+      const obj = node.callee.object;
+      return !(obj && obj.type === 'Identifier' && obj.name === 'ui');
+    },
   },
   // new Function(...) — compiles a string into a function at runtime. Same
   // family as eval (§7 "needs a JS runtime").
