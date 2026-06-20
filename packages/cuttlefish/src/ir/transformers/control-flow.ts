@@ -45,7 +45,10 @@ function buildDestructureExtractions(
         kind: "property-access",
         object: { kind: "identifier", value: sourceName },
         property: propertyName,
-        isPointer: sourceCppType.endsWith("*") || sourceCppType.startsWith("std::vector") || /^[A-Z]/.test(sourceCppType),
+        // The for...of synthetic loop var is a range-for reference (`const T&`),
+        // so member access uses `.` (not `->`). isPointer must be false here
+        // regardless of whether T is a class type.
+        isPointer: false,
       };
       extractions.push({
         kind: "var_decl",

@@ -64,15 +64,11 @@ function destructureArrayDefault(): void {
 }
 
 // ── 5. Array destructuring with rest element ───────────────────────────────
-// STRESS-NOTE: `const [head, ...tail] = arr` lowers `tail` to std::vector and
-// fails on AVR ('vector' is not a member of 'std'). SUPPORT_MATRIX §1.9 marks
-// "Rest element" ✅ but says it lowers to "std::vector<T> slice" — which is
-// native-only; AVR has no std::vector. The head binds fine; only the rest
-// element needs a vector. Worked around to a fixed-index extraction; the gap
-// is notated.
+// A rest element from a LITERAL works on AVR (size recoverable → sub-literal).
+// (A rest from a variable now emits a clean TS2CPP_NO_VECTOR_STORAGE on AVR —
+// Finding B — since the runtime slice needs std::vector.)
 function destructureArrayRest(): void {
-  const arr: int32_t[] = [1, 2, 3, 4, 5];
-  const head: int32_t = arr[0];
+  const [head, ...tail]: int32_t[] = [1, 2, 3, 4, 5];
   console.log('rest ' + head);
 }
 
@@ -139,24 +135,14 @@ function destructureGeneric(): void {
 }
 
 // ── 14. for...of over a destructured element ───────────────────────────────
-// STRESS-NOTE (two bugs here):
-// (a) `for (const { x, y } of pts)` CRASHES the transpiler (TypeError: Cannot
-//     read properties of undefined (reading 'kind')). control-flow.ts:283-298
-//     calls forInitializerToIR, which reads declaration.name.text assuming an
-//     identifier — for a binding pattern the name is undefined, so the
-//     var_decl has name:undefined and the body's references to x/y are never
-//     bound. Not in SUPPORT_MATRIX §1.9.
-// (b) The `const pts: Point[] = [...]` itself is a separate bug (Finding D):
-//     a struct-element array literal lowers to std::vector<P> on AVR with NO
-//     diagnostic, producing non-compiling C++. (Primitive arrays lower to a
-//     C array correctly.)
-// Worked around with a fixed-size primitive array + manual indexing.
+// `for (const { x, y } of pts)` is now supported (Finding A fix: desugared to
+// a synthetic loop var + per-field extraction). The `const pts: Point[]` is a
+// struct-element array literal, now lowering to __tc_StaticArray (Finding D).
 function forOfDestructure(): void {
-  const xs: int32_t[] = [1, 3];
-  const ys: int32_t[] = [2, 4];
+  const pts: Point[] = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
   let total: int32_t = 0;
-  for (let i: int32_t = 0; i < 2; i = i + 1) {
-    total = total + xs[i] + ys[i];
+  for (const { x, y } of pts) {
+    total = total + x + y;
   }
   console.log('forof ' + total);
 }
