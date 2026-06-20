@@ -40,6 +40,10 @@
     "./ui/html-parser": {
       "types": "./dist/ui/html-parser.d.ts",
       "default": "./dist/ui/html-parser.js"
+    },
+    "./ui/css-parser": {
+      "types": "./dist/ui/css-parser.d.ts",
+      "default": "./dist/ui/css-parser.js"
     }
   },
   "files": [
