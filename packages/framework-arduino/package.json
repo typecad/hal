@@ -13,6 +13,10 @@
     "./arduino": {
       "types": "./dist/arduino/index.d.ts",
       "default": "./dist/arduino/index.js"
+    },
+    "./graphics/ili9341": {
+      "types": "./dist/graphics/ili9341.d.ts",
+      "default": "./dist/graphics/ili9341.js"
     }
   },
   "files": [

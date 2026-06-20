@@ -8,6 +8,7 @@ import type { BoardConstants } from "../api/shared";
 import type { Diagnostic, PlatformContext } from "../types";
 import { escapeCppStringLiteral } from "../utils/strings";
 import type { RuntimePolyfillIR, StdLibSupport } from "../api/shared";
+import type { PlatformGraphicsStrategy, GraphicsCapacity, DisplayHALOp } from "../api/shared";
 import { DEFAULT_STDLIB_SUPPORT } from "../api/shared";
 import { parsedIsPointer } from "../api/shared/cpp-type-ir";
 import { buildAsyncRuntimePolyfill } from "./async-runtime";
@@ -177,6 +178,7 @@ export class GenericStrategy implements PlatformStrategy {
   needsStdExcept(): boolean { return true; }
   needsStdFunction(): boolean { return true; }
   mathHeader(): string { return "<cmath>"; }
+  cstringHeader(): string { return "<cstring>"; }
   needsVectorOverload(): boolean { return true; }
 
   // ── Enum underlying type ────────────────────────────────────────────────
@@ -310,5 +312,31 @@ export class GenericStrategy implements PlatformStrategy {
     lines.push(`  std::cout << ${parts.join(' << ')} << std::endl;`);
     lines.push(`  // === END LOGPOINT ===`);
     return lines;
+  }
+
+  // ── Graphics (fallback) ────────────────────────────────────────────────
+
+  resolveDisplayOp(_op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    // Generic target has no display hardware. Returning undefined lets the
+    // emitter fall back; if a UI is mounted against the generic target the
+    // mount-time validation should have already errored.
+    return undefined;
+  }
+
+  supportedDisplayDrivers(): ReadonlySet<string> {
+    return new Set<string>();
+  }
+
+  colorFormat(): "rgb565" | "mono" {
+    return "rgb565";
+  }
+
+  graphicsCapacity(): GraphicsCapacity {
+    return {
+      maxNodes: 256,
+      maxBindings: 64,
+      maxActiveTransitions: 32,
+      nodeStorage: "flash",
+    };
   }
 }

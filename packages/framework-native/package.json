@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./graphics/terminal-preview": {
+      "types": "./dist/graphics/terminal-preview.d.ts",
+      "default": "./dist/graphics/terminal-preview.js"
     }
   },
   "files": [

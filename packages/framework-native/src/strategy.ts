@@ -15,8 +15,11 @@ import type {
   RuntimePolyfillIR,
   StdLibSupport,
   AsyncRuntimeConfig,
+  GraphicsCapacity,
+  DisplayHALOp,
 } from '@typecad/cuttlefish/api/shared';
 import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
+import { resolveTerminalPreviewOp } from './graphics/terminal-preview';
 
 export class NativeStrategy implements PlatformStrategy {
   readonly id = 'native';
@@ -315,6 +318,7 @@ export class NativeStrategy implements PlatformStrategy {
   needsStdExcept(): boolean { return true; }
   needsStdFunction(): boolean { return true; }
   mathHeader(): string { return '<cmath>'; }
+  cstringHeader(): string { return '<cstring>'; }
   needsVectorOverload(): boolean { return true; }
   needsLargeEnumUnderlying(): boolean { return false; }
 
@@ -476,7 +480,14 @@ export class NativeStrategy implements PlatformStrategy {
         kind: 'polyfill',
         id: 'array_methods',
         domain: 'standard' as const,
-        requiredIncludes: ['<algorithm>', '<map>'],
+        // `<sstream>` is required by `__tc_join` below (it builds the joined
+        // string through a `std::ostringstream`). A project that uses `.join`
+        // WITHOUT also pulling in `__tc_toFixed`/`__tc_random` (whose
+        // `math_methods` block is what previously transitively included
+        // `<sstream>`) emitted the `__tc_join` template with no `<sstream>`
+        // → g++ "std::ostringstream has incomplete type". Declaring the include
+        // on THIS block makes `.join` self-contained. Demo #32 Finding B.
+        requiredIncludes: ['<algorithm>', '<map>', '<sstream>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [
@@ -528,5 +539,27 @@ export class NativeStrategy implements PlatformStrategy {
         dependencies: [],
       },
     ];
+  }
+
+  // ── Graphics ───────────────────────────────────────────────────────────
+  resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    return resolveTerminalPreviewOp(op);
+  }
+
+  supportedDisplayDrivers(): ReadonlySet<string> {
+    return new Set(["native-preview"]);
+  }
+
+  colorFormat(): "rgb565" | "mono" {
+    return "rgb565";
+  }
+
+  graphicsCapacity(): GraphicsCapacity {
+    return {
+      maxNodes: Number.MAX_SAFE_INTEGER,
+      maxBindings: Number.MAX_SAFE_INTEGER,
+      maxActiveTransitions: Number.MAX_SAFE_INTEGER,
+      nodeStorage: "flash",
+    };
   }
 }

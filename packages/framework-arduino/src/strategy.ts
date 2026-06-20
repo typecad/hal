@@ -5,11 +5,12 @@
 // cpp-emitter.ts, TypeCAD-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig } from "@typecad/cuttlefish/api/shared";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp } from "@typecad/cuttlefish/api/shared";
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
 import { generatePromiseRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
 import { resolveArduinoProfile } from "./profile";
+import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341";
 
 /**
  * Arduino-specific platform context.
@@ -1273,6 +1274,44 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       default:
         return undefined;
     }
+  }
+
+  // ── Graphics ───────────────────────────────────────────────────────────
+  // Display context captured from display.init so later fill_rect/draw_text
+  // calls address the right bus/pins. ILI9341 is the v1 driver; SSD1306 and
+  // others are fast-follows (see DISPLAYS.md).
+  private _displayCtx: ILI9341Context | null = null;
+
+  resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    if (op.operation === "display.init") {
+      this._displayCtx = {
+        bus: op.bus, cs: op.cs, dc: op.dc, rst: op.rst,
+        width: op.width, height: op.height,
+      };
+    }
+    // Only resolve once a display is initialized (display.init sets the context).
+    if (!this._displayCtx) return undefined;
+    return resolveILI9341Op(op, this._displayCtx);
+  }
+
+  supportedDisplayDrivers(): ReadonlySet<string> {
+    return new Set(["ili9341"]);
+  }
+
+  colorFormat(): "rgb565" | "mono" {
+    return "rgb565";
+  }
+
+  graphicsCapacity(): GraphicsCapacity {
+    // AVR profile (specified for completeness; the PoC ILI9341 driver is
+    // ESP32-class/color, so AVR is not exercised by the PoC — but capacity
+    // is returned so mount-time maxNodes diagnostics work uniformly).
+    return {
+      maxNodes: 256,
+      maxBindings: 64,
+      maxActiveTransitions: 32,
+      nodeStorage: "progmem",
+    };
   }
 }
 

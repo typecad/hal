@@ -18,6 +18,7 @@ import type { Diagnostic, PlatformContext } from './types';
 import type { BoardConstants } from './board-resolver';
 import type { AsyncRuntimeConfig } from './async-types';
 import type { RuntimePolyfillIR, StdLibSupport } from './polyfill-types';
+import type { PlatformGraphicsStrategy } from './graphics-strategy';
 
 // ---------------------------------------------------------------------------
 // Sub-interface 1 — Profile, file shape & includes
@@ -80,6 +81,9 @@ export interface PlatformProfileStrategy {
 
   /** Math header name ("<cmath>" or "<math.h>"). */
   mathHeader(): string;
+
+  /** cstring header name ("<cstring>" on hosted, "<string.h>" on embedded/AVR). */
+  cstringHeader(): string;
 
   /** Whether the vector operator<< overload should be emitted. */
   needsVectorOverload(): boolean;
@@ -497,7 +501,8 @@ export interface PlatformStrategy
     PlatformBuildStrategy,
     PlatformDebugStrategy,
     PlatformAsyncStrategy,
-    PlatformHALStrategy {
+    PlatformHALStrategy,
+    PlatformGraphicsStrategy {
   /** Unique identifier for this strategy (e.g. "arduino", "generic"). */
   readonly id: string;
 }

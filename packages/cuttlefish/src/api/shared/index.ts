@@ -120,6 +120,9 @@ export type {
 } from './display-op-ir';
 export { DISPLAY_OPERATION_KINDS } from './display-op-ir';
 
+// Platform graphics strategy (display driver resolution + per-target capacity)
+export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-strategy';
+
 // Board resolver
 export type { BoardConstants } from './board-resolver';
 
