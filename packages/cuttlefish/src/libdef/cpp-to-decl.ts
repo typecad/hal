@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseHeader, type ParsedClass } from "./header-parser";
+import { buildClassIndex, BaseClassResolver } from "./base-class-resolver";
 
 interface CppMethod {
   name: string;
@@ -353,34 +354,47 @@ export function generateDeclFromCpp(cppFilePath: string, outputPath?: string): s
 }
 
 /**
- * Scans a directory for .cpp files and generates .d.ts files for each
+ * Scans a directory for .h and .cpp files and generates .d.ts files.
+ *
+ * Two passes:
+ *   1. Build a class-name → header-path index from all .h under dir.
+ *   2. For each .h (and .cpp with no sibling .h), parse + merge + emit with
+ *      cross-file base resolution.
  */
 export function generateDeclsForDirectory(dir: string, recursive: boolean = true): string[] {
   const created: string[] = [];
-  
   if (!fs.existsSync(dir)) {
     return created;
   }
-  
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    
-    if (entry.isDirectory() && recursive) {
-      created.push(...generateDeclsForDirectory(fullPath, recursive));
-    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".cpp")) {
-      // Check if .d.ts already exists
-      const declPath = fullPath.replace(/\.cpp$/i, ".d.ts");
-      if (!fs.existsSync(declPath)) {
-        const result = generateDeclFromCpp(fullPath);
-        if (result) {
-          created.push(result);
+
+  const index = buildClassIndex(dir);
+  const resolver = new BaseClassResolver(index);
+
+  const walk = (d: string) => {
+    const entries = fs.readdirSync(d, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(d, entry.name);
+      if (entry.isDirectory() && recursive) {
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const lower = entry.name.toLowerCase();
+      if (lower.endsWith(".h")) {
+        const r = generateDeclWithResolver(full, resolver);
+        if (r) created.push(r);
+      } else if (lower.endsWith(".cpp")) {
+        // Skip .cpp files that have a sibling .h — the .h drives emission.
+        const cppBase = path.basename(full, ".cpp");
+        const siblingH = path.join(path.dirname(full), cppBase + ".h");
+        if (!fs.existsSync(siblingH)) {
+          const r = generateDeclWithResolver(full, resolver);
+          if (r) created.push(r);
         }
       }
     }
-  }
-  
+  };
+  walk(dir);
   return created;
 }
 /**
@@ -456,9 +470,172 @@ export function generateDecl(filePath: string, outputPath?: string): string | nu
     return null;
   }
 
-  const declaration = generateDeclaration({ classes: merged, constants: cppResult.constants });
+  // Single-file mode: no resolver → all cross-file bases are "external" →
+  // emitted as empty stubs so the .d.ts still compiles standalone.
+  const declaration = generateDeclarationWithResolver(
+    { classes: merged, constants: cppResult.constants },
+    new BaseClassResolver(new Map()),
+    filePath,
+  );
 
   const outPath = outputPath || path.join(dir, baseNoExt + ".d.ts");
+  if (!fs.existsSync(outPath) || fs.readFileSync(outPath, "utf8") !== declaration) {
+    fs.writeFileSync(outPath, declaration, "utf8");
+  }
+  return outPath;
+}
+
+/**
+ * Like generateDeclaration, but resolves base classes against `resolver` and
+ * the emitting file path (for computing relative import paths).
+ *
+ * Emission order: imports → constants → stubs → classes.
+ */
+function generateDeclarationWithResolver(
+  parsed: CppParseResult,
+  resolver: BaseClassResolver,
+  emittingFilePath: string,
+): string {
+  const lines: string[] = [];
+  const importingFrom = new Map<string, string>(); // baseName → POSIX import path
+  const stubs = new Set<string>();                  // unresolved base names
+  const classNames = new Set(parsed.classes.map(c => c.name));
+
+  // Classify each base.
+  for (const cls of parsed.classes) {
+    if (!cls.baseClass) continue;
+    if (classNames.has(cls.baseClass)) continue; // same-file base
+    const r = resolver.resolve(cls.baseClass);
+    if (r.kind === "found") {
+      const targetDts = r.headerPath.replace(/\.h$/i, ".d.ts");
+      const rel = path.relative(path.dirname(emittingFilePath), path.dirname(targetDts));
+      const targetBase = path.basename(targetDts, ".d.ts");
+      const relPosix = (rel || ".").replace(/\\/g, "/");
+      const importPath = relPosix === "." ? `./${targetBase}` : `${relPosix}/${targetBase}`;
+      importingFrom.set(cls.baseClass, importPath);
+    } else {
+      stubs.add(cls.baseClass);
+    }
+  }
+
+  // Imports.
+  for (const [baseName, importPath] of importingFrom) {
+    lines.push(`import type { ${baseName} } from "${importPath}";`);
+  }
+  if (importingFrom.size > 0) lines.push("");
+
+  // Constants.
+  for (const constant of parsed.constants) {
+    lines.push(`export declare const ${constant.name}: ${constant.type};`);
+  }
+  if (parsed.constants.length > 0 && parsed.classes.length > 0) lines.push("");
+
+  // Stubs for unresolved bases.
+  for (const stub of stubs) {
+    lines.push(`declare class ${stub} {}`);
+  }
+  if (stubs.size > 0) lines.push("");
+
+  // Classes.
+  for (const cppClass of parsed.classes) {
+    const extendsClause = cppClass.baseClass ? ` extends ${cppClass.baseClass}` : "";
+    lines.push(`export declare class ${cppClass.name}${extendsClause} {`);
+    for (const ctor of cppClass.constructors) {
+      const params = ctor.parameters
+        .filter(p => p.name)
+        .map(p => `${p.name}: ${p.type}`)
+        .join(", ");
+      lines.push(`  constructor(${params});`);
+    }
+    const publicMethods = cppClass.methods.filter(m => m.isPublic);
+    for (const method of publicMethods) {
+      const params = method.parameters
+        .filter(p => p.name)
+        .map(p => `${p.name}: ${p.type}`)
+        .join(", ");
+      lines.push(`  ${method.name}(${params}): ${method.returnType};`);
+    }
+    lines.push("}");
+  }
+
+  return lines.join("\n") + "\n";
+}
+
+/**
+ * Like generateDecl, but resolves base classes against `resolver`: cross-file
+ * bases become `import type`; unresolved bases become empty stubs.
+ */
+function generateDeclWithResolver(
+  filePath: string,
+  resolver: BaseClassResolver,
+): string | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const ext = path.extname(filePath).toLowerCase();
+  const dir = path.dirname(filePath);
+  const baseNoExt = path.basename(filePath, ext);
+
+  let headerPath: string | undefined;
+  let cppPath: string | undefined;
+  if (ext === ".h") {
+    headerPath = filePath;
+    const siblingCpp = path.join(dir, baseNoExt + ".cpp");
+    cppPath = fs.existsSync(siblingCpp) ? siblingCpp : undefined;
+  } else if (ext === ".cpp") {
+    cppPath = filePath;
+    const siblingH = path.join(dir, baseNoExt + ".h");
+    headerPath = fs.existsSync(siblingH) ? siblingH : undefined;
+  } else {
+    return null;
+  }
+
+  let headerClasses: ParsedClass[] = [];
+  if (headerPath) {
+    headerClasses = parseHeader(fs.readFileSync(headerPath, "utf8"));
+  }
+  let cppResult: CppParseResult = { classes: [], constants: [] };
+  if (cppPath) {
+    cppResult = parseCppClass(fs.readFileSync(cppPath, "utf8"));
+  }
+
+  const merged: CppClass[] = [];
+  const byName = new Map<string, CppClass>();
+  for (const h of headerClasses) {
+    const cls: CppClass = {
+      name: h.name,
+      methods: [...h.methods],
+      constructors: [...h.constructors],
+      baseClass: h.baseClass,
+      source: "header",
+    };
+    byName.set(h.name, cls);
+    merged.push(cls);
+  }
+  for (const c of cppResult.classes) {
+    const existing = byName.get(c.name);
+    if (existing) {
+      for (const m of c.methods) {
+        if (!existing.methods.some(em => em.name === m.name)) {
+          existing.methods.push(m);
+        }
+      }
+    } else {
+      merged.push({ ...c, source: "cpp" });
+    }
+  }
+
+  if (merged.length === 0 && cppResult.constants.length === 0) {
+    return null;
+  }
+
+  const declaration = generateDeclarationWithResolver(
+    { classes: merged, constants: cppResult.constants },
+    resolver,
+    filePath,
+  );
+
+  const outPath = path.join(dir, baseNoExt + ".d.ts");
   if (!fs.existsSync(outPath) || fs.readFileSync(outPath, "utf8") !== declaration) {
     fs.writeFileSync(outPath, declaration, "utf8");
   }

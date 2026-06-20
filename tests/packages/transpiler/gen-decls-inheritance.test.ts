@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stripPreprocessorBlocks, parseHeader, BaseClassResolver, buildClassIndex, generateDecl } from "@typecad/cuttlefish/testing";
+import { stripPreprocessorBlocks, parseHeader, BaseClassResolver, buildClassIndex, generateDecl, generateDeclsForDirectory } from "@typecad/cuttlefish/testing";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -10,6 +10,18 @@ function withTempDir<T>(fn: (dir: string) => T): T {
     return fn(dir);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function cleanDecls(root: string) {
+  if (!fs.existsSync(root)) return;
+  for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+    const full = path.join(root, e.name);
+    if (e.isDirectory()) {
+      cleanDecls(full);
+    } else if (e.name.endsWith(".d.ts")) {
+      fs.rmSync(full);
+    }
   }
 }
 
@@ -192,6 +204,31 @@ describe("generateDecl", () => {
       const h = path.join(dir, "Empty.h");
       fs.writeFileSync(h, "// just a comment\n", "utf8");
       expect(generateDecl(h)).toBeNull();
+    });
+  });
+});
+
+describe("generateDeclsForDirectory — cross-lib inheritance", () => {
+  it("emits import type for a base in another scanned header", () => {
+    const root = path.resolve(__dirname, "../../../tests/fixtures/cpp-inheritance");
+    cleanDecls(root);
+    const created = generateDeclsForDirectory(root, true);
+    const dependentDts = path.join(root, "libA", "Dependent.d.ts");
+    expect(created).toContain(dependentDts);
+    const content = fs.readFileSync(dependentDts, "utf8");
+    expect(content).toContain('import type { Base } from "../libB/Base";');
+    expect(content).toContain("export declare class Dependent extends Base {");
+  });
+
+  it("emits an empty stub for an unresolved base", () => {
+    withTempDir((dir) => {
+      const h = path.join(dir, "Foo.h");
+      fs.writeFileSync(h, "class Foo : public Bar {\npublic:\n  void x();\n};\n", "utf8");
+      // Single-file mode has no resolver → Bar is unresolved → stub.
+      generateDecl(h);
+      const dts = fs.readFileSync(path.join(dir, "Foo.d.ts"), "utf8");
+      expect(dts).toContain("declare class Bar {}");
+      expect(dts).toContain("export declare class Foo extends Bar {");
     });
   });
 });
