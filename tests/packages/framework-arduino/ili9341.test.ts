@@ -5,14 +5,15 @@ import type { DisplayHALOp } from "@typecad/cuttlefish/api/shared";
 const ctx: ILI9341Context = { bus: "SPI", cs: 10, dc: 9, rst: 8, width: 240, height: 320 };
 
 describe("ILI9341 op resolver (Adafruit_ILI9341 library)", () => {
-  it("display.init constructs the library object + begin + rotation", () => {
+  it("display.init initializes the file-scope display object + backlight", () => {
     const op: DisplayHALOp = { operation: "display.init", ...ctx, driver: "ili9341" };
     const out = resolveILI9341Op(op, ctx)!.code!;
-    // Hardware-SPI constructor with the mount's cs/dc/rst pins.
-    expect(out).toContain(`Adafruit_ILI9341 ${DISPLAY_VAR} = Adafruit_ILI9341(10, 9, 8)`);
+    // The display object is declared at file scope by the UI emitter;
+    // display.init only calls begin/setRotation/backlight.
     expect(out).toContain(`${DISPLAY_VAR}.begin()`);
     expect(out).toContain(`${DISPLAY_VAR}.setRotation(1)`);
     expect(out).toContain(`${DISPLAY_VAR}.fillScreen(0x0000)`);
+    expect(out).toContain("pinMode(17, OUTPUT)");   // backlight LED
   });
 
   it("display.fill_rect calls Adafruit_GFX fillRect", () => {

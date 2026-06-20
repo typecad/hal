@@ -87,6 +87,14 @@ static inline void ui_arm_transitions(uint8_t nodeIdx, uint16_t target) {
   }
 }
 
+// Initial draw: mark all nodes dirty so the first ui_tick renders everything.
+// Called once in setup() before the loop begins.
+static inline void ui_init(void) {
+  for (uint8_t i = 0; i < __ui_node_count; i++) {
+    __ui_nodes[i].dirty = 1;
+  }
+}
+
 // Press / release entry points that node.onPress(pin) lowers to.
 // On press, :pressed style values become the transition target; on release,
 // the base values become the target (interrupt-and-re-lerp from current).
@@ -100,11 +108,8 @@ static inline void ui_on_release(uint8_t nodeIdx) {
 }
 
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
-// Phase 1: advance transitions. Phase 2: draw dirty nodes. Phase 3: flush.
-//
-// Note: the draw dispatch in phase 2 emits display.* HAL ops through the op
-// pipeline (routeHALOp → resolveDisplayOp). The exact op emission is wired by
-// the lowering integration; this header provides the traversal skeleton.
+// Phase 1: advance transitions. Phase 2: draw dirty nodes to __tc_display.
+// Phase 3: flush (no-op for ILI9341 — draws are immediate).
 static inline void ui_tick(uint16_t deltaMs) {
   // ① Advance transitions.
   for (uint8_t i = 0; i < __ui_trans_count; i++) {
@@ -116,21 +121,24 @@ static inline void ui_tick(uint16_t deltaMs) {
     ui_mark_dirty(__ui_trans[i].node);
     if (k >= 100) __ui_trans[i].active = 0;
   }
-  // ② Draw dirty nodes. Each kind maps to a display.* HAL op at the
-  //    integration layer; here we clear the dirty bit after dispatch.
+  // ② Draw dirty nodes directly to the display object.
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
-        /* → display.fill_rect(box, bg) via the op pipeline */
+        __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         break;
       case NODE_TEXT:
-        /* → display.draw_text(box, text, font, fg) via the op pipeline */
+        __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+        __tc_display.setCursor(__ui_nodes[i].box.x, __ui_nodes[i].box.y);
+        __tc_display.setTextColor(__ui_nodes[i].fg);
+        __tc_display.setTextSize(2);
+        __tc_display.print(__ui_nodes[i].text);
         break;
     }
     __ui_nodes[i].dirty = 0;
   }
-  // ③ Flush — emits display.flush with the accumulated dirty rects.
+  // ③ Flush — ILI9341 is immediate, no separate flush needed.
 }
 
 #endif

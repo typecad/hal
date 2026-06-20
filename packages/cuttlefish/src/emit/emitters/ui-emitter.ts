@@ -30,6 +30,12 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.includes.push("<SPI.h>");
   }
 
+  // 0.5. File-scope display object declaration. Must precede the runtime header
+  // so ui_tick (a static inline in the header) can reference __tc_display.
+  // The constructor pins match the ILI9341 breakout wiring; display.init
+  // (emitted into setup()) calls begin()/setRotation() on this object.
+  ctx.sourceLines.push("Adafruit_ILI9341 __tc_display = Adafruit_ILI9341(5, 21, 23, 18, 22, 19);");
+
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
   ctx.sourceLines.push(emitRuntimeHeader());
 

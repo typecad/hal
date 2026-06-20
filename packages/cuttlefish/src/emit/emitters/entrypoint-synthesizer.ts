@@ -24,6 +24,11 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
     // for each onPress/onRelease binding. Only when a UI is mounted.
     const uiInterruptStmts: StatementIR[] = [];
     if (entryHasUI()) {
+      // Initial draw: mark all UI nodes dirty so the first ui_tick renders.
+      uiInterruptStmts.push(
+        { kind: "call" as const, callee: `__RAW_STMT__ui_init();`, args: [],
+          sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+      );
       for (const pb of uiPressBindings()) {
         const mode = pb.edge === "press" ? "FALLING" : "RISING";
         uiInterruptStmts.push(

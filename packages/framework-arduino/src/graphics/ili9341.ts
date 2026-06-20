@@ -42,11 +42,12 @@ export function resolveILI9341Op(
 ): { code?: string; expression?: string } | undefined {
   switch (op.operation) {
     case "display.init":
-      // Hardware-SPI constructor: tft(CS, DC, RST). begin() initializes the
-      // panel; setRotation(1) is landscape (width 240 x height 320).
+      // __tc_display is declared at file scope by the UI emitter (so ui_tick,
+      // a file-scope static inline, can access it). Here we only initialize it.
+      // 6-arg bit-bang constructor: (CS, DC, MOSI, SCLK, RST, MISO).
       return {
         code: [
-          `Adafruit_ILI9341 ${DISPLAY_VAR} = Adafruit_ILI9341(${ctx.cs}, ${ctx.dc}, ${ctx.rst});`,
+          `pinMode(17, OUTPUT); digitalWrite(17, HIGH);`,  // backlight LED on
           `${DISPLAY_VAR}.begin();`,
           `${DISPLAY_VAR}.setRotation(1);`,
           `${DISPLAY_VAR}.fillScreen(0x0000);`,
