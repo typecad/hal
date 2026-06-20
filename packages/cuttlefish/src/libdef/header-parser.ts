@@ -162,9 +162,31 @@ function parseParameters(paramString: string): { type: string; name: string }[] 
     const withoutDefault = trimmed.split("=")[0].trim();
     const tokens = withoutDefault.split(/\s+/);
     if (tokens.length >= 2) {
+      // C++ lets pointer/reference markers attach to either the type
+      // (`char* label`) or the name (`char *label`), and arrays appear as a
+      // trailing `[]` on the name. Peel leading `*`/`&` and trailing `[]`
+      // off the name token back onto the type, so the emitted name is a
+      // valid TS identifier and the type still routes through
+      // mapCppTypeToTs (which maps pointers/refs appropriately).
+      let name = tokens[tokens.length - 1];
+      const typeParts = tokens.slice(0, -1);
+      const prefix: string[] = [];
+      while (/^[*&]/.test(name)) {
+        prefix.push(name[0]);
+        name = name.slice(1);
+      }
+      // Trailing array marker on the name → treat as pointer for typing.
+      let arrayMarker = "";
+      if (/\[\]$/.test(name)) {
+        arrayMarker = "*";
+        name = name.replace(/\[\]$/, "");
+      }
+      if (prefix.length > 0 || arrayMarker) {
+        typeParts.push((prefix.join("") + arrayMarker) || "");
+      }
       params.push({
-        name: tokens[tokens.length - 1],
-        type: mapCppTypeToTs(tokens.slice(0, -1).join(" ")),
+        name,
+        type: mapCppTypeToTs(typeParts.join(" ").trim()),
       });
     } else if (tokens.length === 1) {
       params.push({ type: mapCppTypeToTs(tokens[0]), name: "" });

@@ -223,6 +223,34 @@ describe("parseHeader", () => {
     const h = "template <typename T>\nclass Templated { public: void x(); };";
     expect(parseHeader(h)).toHaveLength(0);
   });
+
+  it("strips C++ pointer, reference, and array markers from parameter names", () => {
+    // Regression: parameter names were emitted with leading '*'/'&' and
+    // trailing '[]' attached (e.g. `*spiClass: any`, `&x0: number`,
+    // `bitmap[]: number`), producing invalid TypeScript. The markers belong
+    // to the type, not the name.
+    const h = [
+      "class Driver {",
+      "public:",
+      "  void init(SPIClass *spiClass, int16_t &x0, uint16_t bitmap[], const uint16_t *colors);",
+      "};",
+    ].join("\n");
+    const cls = parseHeader(h)[0];
+    const names = cls.methods[0].parameters.map(p => p.name);
+    expect(names).toEqual(["spiClass", "x0", "bitmap", "colors"]);
+    // Types should still map correctly through the existing pointer/ref logic:
+    // pointers map to `number`, references unwrap to the base type.
+    const types = cls.methods[0].parameters.map(p => p.type);
+    expect(types).toEqual(["number", "number", "number", "number"]);
+  });
+
+  it("handles pointer attached to the type (Type* name)", () => {
+    // C++ allows `Type* name` as well as `Type *name`. Both must yield a
+    // clean name.
+    const h = "class A { public: void m(char* label, uint8_t* data); };";
+    const cls = parseHeader(h)[0];
+    expect(cls.methods[0].parameters.map(p => p.name)).toEqual(["label", "data"]);
+  });
 });
 
 describe("BaseClassResolver", () => {
