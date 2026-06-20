@@ -69,9 +69,15 @@ describe("Array destructuring")
       return first + second;
     })
   ).toBe(104)
-  // NOTE: swap via destructuring assignment ([a, b] = [b, a]) is a separate
-  // pre-existing gap (the reassignment is silently dropped — no swap emitted)
-  // and is omitted here; it's tracked independently of Findings A/B/D.
+  .it("swap via array destructuring")
+  .expect(
+    (() => {
+      let a: number = 1;
+      let b: number = 2;
+      [a, b] = [b, a];
+      return a * 10 + b;
+    })
+  ).toBe(21)
 
 describe("Rest element from a literal (AVR-supported)")
   .it("rest element splits head and tail length")
