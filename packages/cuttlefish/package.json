@@ -72,6 +72,10 @@
     "./ui/runtime-header": {
       "types": "./dist/ui/runtime-header.d.ts",
       "default": "./dist/ui/runtime-header.js"
+    },
+    "./ui/transpile-ui": {
+      "types": "./dist/ui/transpile-ui.d.ts",
+      "default": "./dist/ui/transpile-ui.js"
     }
   },
   "files": [
