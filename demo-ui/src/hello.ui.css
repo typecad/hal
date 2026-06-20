@@ -1,0 +1,28 @@
+/* ---------------------------------------------------------------------------
+   hello.ui.css — styles for the canonical UI demo
+
+   Green screen background, red greeting text, gray button that animates its
+   background over 80ms when :pressed. The transition + :pressed pseudo-state
+   are the entire animation; no JS/TS animation code is needed.
+   ----------------------------------------------------------------------- */
+
+screen {
+  background: #008000;   /* green */
+  padding: 8;
+}
+
+#greeting {
+  color: #ff0000;        /* red */
+  font: 8x16;
+}
+
+#btn {
+  background: #404040;   /* dark gray (resting) */
+  color: #ffffff;
+  padding: 4;
+  transition: background 80ms;
+}
+
+#btn:pressed {
+  background: #808080;   /* light gray (pressed) */
+}

@@ -6,14 +6,15 @@
   "scripts": {
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload --port COM7 --monitor",
+    "upload": "cuttlefish build --compile --upload --port COM3 --monitor",
     "transpile": "cuttlefish build --no-transpile",
     "lint": "eslint src/"
   },
   "dependencies": {
     "@typecad/framework-arduino": "*",
     "@typecad/board-esp32-devkit": "*",
-    "@typecad/mcu-esp32": "*"
+    "@typecad/mcu-esp32": "*",
+    "@typehal/ui": "*"
   },
   "devDependencies": {
     "eslint": "^10.4.1",

@@ -22,7 +22,10 @@ export interface UIElementNode {
 const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view"]);
 
 export function parseHtml(src: string): UIElementNode {
-  const tokens = tokenize(src);
+  // Strip HTML comments before tokenizing. Comments may contain '>' which
+  // would break the tag regex, and they carry no layout meaning.
+  const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "");
+  const tokens = tokenize(withoutComments);
   const root = parseElement(tokens);
   if (!root || root.tag !== "screen") {
     throw new Error("UI HTML must have exactly one <screen> root element");

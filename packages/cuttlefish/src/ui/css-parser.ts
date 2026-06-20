@@ -43,11 +43,14 @@ const SUPPORTED_PROPS = new Set([
 ]);
 
 export function parseCss(src: string): CSSRule[] {
+  // Strip CSS comments before parsing. They may contain '{' or '}' which
+  // would break the block regex, and they carry no style meaning.
+  const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
   const rules: CSSRule[] = [];
   // Match selector { ... } blocks.
   const blockRe = /([^{}]+)\{([^{}]*)\}/g;
   let m: RegExpExecArray | null;
-  while ((m = blockRe.exec(src)) !== null) {
+  while ((m = blockRe.exec(withoutComments)) !== null) {
     const selectorStr = m[1].trim();
     const bodyStr = m[2].trim();
     const selector = parseSelector(selectorStr);
