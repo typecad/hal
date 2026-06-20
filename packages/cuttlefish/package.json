@@ -36,6 +36,10 @@
     "./ui/color": {
       "types": "./dist/ui/color.d.ts",
       "default": "./dist/ui/color.js"
+    },
+    "./ui/html-parser": {
+      "types": "./dist/ui/html-parser.d.ts",
+      "default": "./dist/ui/html-parser.js"
     }
   },
   "files": [
