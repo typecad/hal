@@ -56,6 +56,10 @@
     "./ui/block-layout": {
       "types": "./dist/ui/block-layout.d.ts",
       "default": "./dist/ui/block-layout.js"
+    },
+    "./ir/transformers/ui-lowering": {
+      "types": "./dist/ir/transformers/ui-lowering.d.ts",
+      "default": "./dist/ir/transformers/ui-lowering.js"
     }
   },
   "files": [
