@@ -751,8 +751,12 @@ export function variableStatementToIR(
           && (getContext().activeStrategy?.promotesArrayLiteralsToStaticArray?.() ?? true)) {
         const elements = actualInitializer.elements;
         let elemType = "int";
-        // Extract element type via structured elementOf rather than slice.
-        const resolvedIr = parseCppType(declarationType.resolvedType);
+        // Extract element type via structured elementOf. Prefer `varCppType`
+        // (the corrected declared type — for an anonymous-object array literal
+        // it carries the shadow struct `_<name>_t`, set above) over the raw
+        // resolver view (`declarationType.resolvedType`), which can mis-infer
+        // an anonymous object element as `double`.
+        const resolvedIr = parseCppType(varCppType && varCppType !== "auto" ? varCppType : declarationType.resolvedType);
         const elemIr = elementOf(resolvedIr);
         if (elemIr) {
           elemType = renderCppType(elemIr);
@@ -766,9 +770,18 @@ export function variableStatementToIR(
         // read-only STRUCT-element array otherwise lowers to std::vector<T>
         // and SILENTLY miscompiles on AVR (no <vector>, no diagnostic) —
         // destructuring stress test Finding D. A named (capitalized) element
-        // type is the struct case; primitives (int32_t, bool, ...) take the
-        // existing C-array path.
-        const isStructElement = /^[A-Z]/.test(elemType) && elemType !== "Int";
+        // type is the struct case, as is an anonymous-object shadow struct
+        // (`_<name>_t`, generated for inline `{ x, y }` element types);
+        // primitives (int32_t, bool, ...) take the existing C-array path.
+        const isStructElement = (/^[A-Z]/.test(elemType) && elemType !== "Int")
+          || /^_[A-Za-z0-9_]+_t$/.test(elemType)
+          // Anonymous-object array literal: the type resolver may mis-infer
+          // the element type (e.g. {x,y}[] → std::vector<double>), so also
+          // detect struct elements structurally — any element that is an
+          // object literal means a struct-element array (shadow struct).
+          || actualInitializer.elements.some(
+            (e): e is ts.Expression => !ts.isSpreadElement(e) && ts.isObjectLiteralExpression(e),
+          );
         const shouldPromote = mutableArrayVars.has(varName) || isStructElement;
 
         if (shouldPromote) {
