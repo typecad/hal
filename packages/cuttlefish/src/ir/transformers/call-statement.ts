@@ -1,13 +1,14 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types";
 import { StatementIR } from "../../api";
-import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames } from "../build-ir-state";
+import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames, hoistedNestedFunctions } from "../build-ir-state";
 import { getCurrentIrTypeScope } from "../symbol-types";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
 import { tryResolveHALMethod } from "./hal-call-resolver";
 import { tryResolveUICall } from "./ui-call-resolver";
 import { tryLowerArrayAndStringMethods } from "./array-methods";
 import { expressionToIR } from "../expression-to-ir";
+import { lowerStatementList } from "../statement-to-ir";
 import { escapeCppKeyword } from "../../utils/strings";
 import { renderExprAsText, calleeToText } from "../render-expr";
 import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir";
@@ -323,6 +324,16 @@ export function callToStatement(
     calleeText = calleeToText(call.expression);
   }
   
+  // ── Arrow-callback hoisting for timer calls (setInterval/setTimeout) ────
+  // At this point the call has fallen through to generic emission. If the
+  // callee is a timer helper and arg[0] is an inline arrow, hoist it to a
+  // named free function and pass the name — otherwise the arrow renders as a
+  // placeholder comment where the function pointer should be.
+  if (TIMER_CALLEES.has(calleeText)) {
+    const hoisted = hoistTimerArrowArg(call, fileName, sourceText, diagnostics, pointerVars, comments);
+    if (hoisted) return hoisted;
+  }
+
   return {
     kind: "call",
     sourceSpan: makeSourceSpan(call, fileName, sourceText),
@@ -330,5 +341,82 @@ export function callToStatement(
     trailingComments: comments.trailingComments,
     callee: calleeText,
     args: call.arguments.map((arg) => expressionToIR(arg, sourceText, diagnostics, pointerVars)),
+  };
+}
+
+// ── setInterval/setTimeout arrow-callback hoisting ──────────────────────────
+
+const TIMER_CALLEES = new Set(["setInterval", "setTimeout", "__tc_setInterval", "__tc_setTimeout"]);
+
+let timerCallbackCounter = 0;
+
+/**
+ * Hoist an inline arrow/function-expression callback argument of a
+ * setInterval/setTimeout call to a named free function, and return the
+ * rewritten call with the function name replacing the arrow.
+ *
+ * Returns null if arg[0] isn't an inline arrow/function (named-function
+ * callbacks pass through to the generic path unchanged).
+ *
+ * Called from the generic fallthrough at the end of callToStatement — NOT
+ * as an early return — because top-level timer calls reach the fallthrough
+ * path, not the early-interception points.
+ */
+function hoistTimerArrowArg(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+  comments: { leadingComments: string[]; trailingComments: string[] },
+): StatementIR | null {
+  const callbackArg = call.arguments[0];
+  if (!callbackArg || !(ts.isArrowFunction(callbackArg) || ts.isFunctionExpression(callbackArg))) {
+    return null;
+  }
+
+  const fnName = `__tc_timer_cb_${timerCallbackCounter++}`;
+  const bodyStatements = lowerStatementList(
+    ts.isBlock(callbackArg.body) ? callbackArg.body.statements : [],
+    fileName,
+    sourceText,
+    diagnostics,
+    new Map(),
+    new Map(),
+    fnName,
+    undefined,
+    new Map(),
+  );
+
+  if (!ts.isBlock(callbackArg.body)) {
+    const exprText = renderExprAsText(expressionToIR(callbackArg.body, sourceText, diagnostics));
+    bodyStatements.push({
+      kind: "call",
+      sourceSpan: makeSourceSpan(callbackArg.body, fileName, sourceText),
+      callee: "__EMIT__",
+      args: [{ kind: "string", value: exprText }],
+    });
+  }
+
+  hoistedNestedFunctions.push({
+    originalName: fnName,
+    isAsync: false,
+    returnType: "void",
+    sourceSpan: makeSourceSpan(callbackArg, fileName, sourceText),
+    leadingComments: [],
+    trailingComments: [],
+    parameters: [],
+    statements: bodyStatements,
+  });
+
+  const calleeText = ts.isIdentifier(call.expression) ? call.expression.text : calleeToText(call.expression);
+  const remainingArgs = call.arguments.slice(1).map((arg) => expressionToIR(arg, sourceText, diagnostics, pointerVars));
+  return {
+    kind: "call",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    leadingComments: comments.leadingComments,
+    trailingComments: comments.trailingComments,
+    callee: calleeText,
+    args: [{ kind: "identifier", value: fnName }, ...remainingArgs],
   };
 }
