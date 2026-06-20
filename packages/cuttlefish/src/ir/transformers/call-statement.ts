@@ -68,6 +68,17 @@ export function callToStatement(
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
 
+  // ── setInterval/setTimeout arrow-callback hoisting (BEFORE HAL) ────────
+  // The timer helpers are runtime utilities, never HAL methods, but the HAL
+  // resolver treats bare-identifier globals as pseudo-HAL calls and claims
+  // them — baking the arrow arg into a lambda placeholder before our hoist
+  // can run. Intercept timer calls with arrow callbacks FIRST, hoist the
+  // arrow to a named function, and short-circuit before HAL sees it.
+  if (ts.isIdentifier(call.expression) && TIMER_CALLEES.has(call.expression.text)) {
+    const hoisted = hoistTimerArrowArg(call, fileName, sourceText, diagnostics, pointerVars, comments);
+    if (hoisted) return hoisted;
+  }
+
   // ---- HAL method resolver (highest priority) ---
   const halResolved = tryResolveHALMethod(call, fileName, sourceText, diagnostics, pointerVars);
   if (halResolved) return halResolved;
@@ -323,17 +334,9 @@ export function callToStatement(
   } else {
     calleeText = calleeToText(call.expression);
   }
-  
-  // ── Arrow-callback hoisting for timer calls (setInterval/setTimeout) ────
-  // At this point the call has fallen through to generic emission. If the
-  // callee is a timer helper and arg[0] is an inline arrow, hoist it to a
-  // named free function and pass the name — otherwise the arrow renders as a
-  // placeholder comment where the function pointer should be.
-  if (TIMER_CALLEES.has(calleeText)) {
-    const hoisted = hoistTimerArrowArg(call, fileName, sourceText, diagnostics, pointerVars, comments);
-    if (hoisted) return hoisted;
-  }
 
+  // Timer calls with arrow callbacks are intercepted before HAL (above);
+  // named-function callbacks fall through here unchanged.
   return {
     kind: "call",
     sourceSpan: makeSourceSpan(call, fileName, sourceText),
