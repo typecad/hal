@@ -1,12 +1,23 @@
 // ---------------------------------------------------------------------------
-// BlockLayoutEngine — v1 layout. Stacks children vertically inside the
+// BlockLayoutEngine — v1 fallback layout. Stacks children vertically inside the
 // parent's content box (parent box minus padding). Each child's width fills
 // the content box; height comes from measure() for text/button leaves, or a
 // synthesized height for containers.
+//
+// This is the fallback when no `display: flex` is present. YogaLayoutEngine
+// handles flexbox layouts.
 // ---------------------------------------------------------------------------
 
-import { Box, IntrinsicSize, LayoutEngine } from "./layout-engine";
-import { StyledNode } from "./style-resolver";
+import { Box, IntrinsicSize, LayoutEngine } from "./layout-engine.js";
+import { StyledNode } from "./style-resolver.js";
+
+/** Parse a CSS value string ("8px", "8") to a number. */
+function cssNum(val: string | number | undefined): number {
+  if (val === undefined) return 0;
+  if (typeof val === "number") return val;
+  const m = val.match(/(\d+)/);
+  return m ? parseInt(m[1]) : 0;
+}
 
 export class BlockLayoutEngine implements LayoutEngine {
   readonly id = "block" as const;
@@ -26,7 +37,7 @@ export class BlockLayoutEngine implements LayoutEngine {
     out.push(box);
     if (node.children.length === 0) return;
 
-    const pad = node.style.padding ?? 0;
+    const pad = cssNum(node.style.padding);
     const content: Box = {
       x: box.x + pad,
       y: box.y + pad,
@@ -39,7 +50,7 @@ export class BlockLayoutEngine implements LayoutEngine {
       const intrinsic = measureFn(child);
       // Buttons size to their content (text + padding), not the full
       // container width. Other elements fill the content width (block flow).
-      const childPad = child.style.padding ?? 0;
+      const childPad = cssNum(child.style.padding);
       const isButton = child.tag === "button";
       const childW = isButton && intrinsic.w > 0
         ? intrinsic.w + childPad * 2

@@ -9,12 +9,12 @@
 // v1 always uses BlockLayoutEngine.
 // ---------------------------------------------------------------------------
 
-import { parseHtml } from "./html-parser";
-import { parseCss } from "./css-parser";
-import { resolveStyles } from "./style-resolver";
-import { BlockLayoutEngine } from "./block-layout";
-import { measure, Box } from "./layout-engine";
-import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering";
+import { parseHtml } from "./html-parser.js";
+import { parseCss } from "./css-parser.js";
+import { resolveStyles } from "./style-resolver.js";
+import { selectEngine } from "./select-engine.js";
+import { measure, Box } from "./layout-engine.js";
+import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
 
 export interface TranspileUIOptions {
   colorFormat: "rgb565" | "mono";
@@ -27,8 +27,8 @@ export function transpileUI(html: string, css: string, opts: TranspileUIOptions)
   const rules = parseCss(css);
   const styled = resolveStyles(tree, rules);
 
-  // v1: block layout always. v2 will select on display:flex.
-  const engine = new BlockLayoutEngine();
+  // Select layout engine: Yoga for flexbox, BlockLayout as fallback.
+  const engine = selectEngine(styled);
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
   const boxes = engine.arrange(styled, viewport, measure);
 

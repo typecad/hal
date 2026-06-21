@@ -7,8 +7,8 @@
 // `style.pressed` object so the runtime can lerp to it on press.
 // ---------------------------------------------------------------------------
 
-import { UIElementNode } from "./html-parser";
-import { CSSRule, CSSProperty, CSSSelector } from "./css-parser";
+import { UIElementNode } from "./html-parser.js";
+import { CSSRule, CSSProperty, CSSSelector } from "./css-parser.js";
 
 export interface StyledNode {
   tag: string;

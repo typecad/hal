@@ -17,12 +17,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseHtml } from "./html-parser";
-import { parseCss } from "./css-parser";
-import { resolveStyles, StyledNode } from "./style-resolver";
-import { BlockLayoutEngine } from "./block-layout";
-import { measure, Box } from "./layout-engine";
-import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering";
+import { parseHtml } from "./html-parser.js";
+import { parseCss } from "./css-parser.js";
+import { resolveStyles, StyledNode } from "./style-resolver.js";
+import { selectEngine } from "./select-engine.js";
+import { measure, Box } from "./layout-engine.js";
+import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
 
 export interface UIModule {
   /** Absolute path of the .ui.html source. */
@@ -84,7 +84,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const mod = modules.get(abs);
   if (!mod) throw new Error(`Cannot lower unregistered UI module: ${abs}`);
 
-  const engine = new BlockLayoutEngine();
+  const engine = selectEngine(mod.styled);
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
   const boxes = engine.arrange(mod.styled, viewport, measure);
   const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage);

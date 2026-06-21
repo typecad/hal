@@ -1,11 +1,15 @@
 // ---------------------------------------------------------------------------
-// CSS subset parser — a tiny, dependency-free parser for .ui.css files.
+// CSS parser — uses css-tree for robust, standards-compliant parsing.
 //
-// Supported subset:
-//   - Selectors: element, #id, .class, optionally with :pressed pseudo.
-//   - Properties: padding, margin, width, height, color, background, font,
-//     font-size, transition.
+// Parses .ui.css into CSSRule[] (the same shape the hand-rolled parser
+// produced), but now supports the full CSS property set that Yoga needs:
+// display, flex-direction, gap, align-self, border, border-radius, etc.
+//
+// Unknown properties are silently dropped (forward-compatible) rather than
+// throwing — the hand-rolled parser's throw-on-unknown blocked flexbox.
 // ---------------------------------------------------------------------------
+
+import { parse, walk, generate } from "css-tree";
 
 export type CSSSelectorKind = "element" | "id" | "class";
 
@@ -21,15 +25,34 @@ export interface TransitionDecl {
 }
 
 export interface CSSProperty {
-  padding?: number;
-  margin?: number;
-  width?: number;
-  height?: number;
+  // Box model
+  padding?: string;
+  margin?: string;
+  width?: string;
+  height?: string;
+  // Colors
   color?: string;
   background?: string;
+  // Text
   font?: string;        // e.g. "8x16"
-  fontSize?: number;
+  fontSize?: string;
+  // Animation
   transition?: TransitionDecl;
+  // Flexbox / layout (Yoga)
+  display?: string;
+  flexDirection?: string;
+  gap?: string;
+  flexGrow?: string;
+  flexShrink?: string;
+  flexBasis?: string;
+  alignSelf?: string;
+  alignItems?: string;
+  justifyContent?: string;
+  flexWrap?: string;
+  // Visual
+  border?: string;
+  borderRadius?: string;
+  opacity?: string;
 }
 
 export interface CSSRule {
@@ -37,87 +60,113 @@ export interface CSSRule {
   properties: CSSProperty;
 }
 
-const SUPPORTED_PROPS = new Set([
-  "padding", "margin", "width", "height", "color", "background",
-  "font", "font-size", "transition",
-]);
-
 export function parseCss(src: string): CSSRule[] {
-  // Strip CSS comments before parsing. They may contain '{' or '}' which
-  // would break the block regex, and they carry no style meaning.
+  // Strip CSS comments before parsing (they may contain { or }).
   const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
   const rules: CSSRule[] = [];
-  // Match selector { ... } blocks.
-  const blockRe = /([^{}]+)\{([^{}]*)\}/g;
-  let m: RegExpExecArray | null;
-  while ((m = blockRe.exec(withoutComments)) !== null) {
-    const selectorStr = m[1].trim();
-    const bodyStr = m[2].trim();
-    const selector = parseSelector(selectorStr);
-    const properties = parseBody(bodyStr);
-    rules.push({ selector, properties });
+
+  let ast;
+  try {
+    ast = parse(withoutComments, { parseCustomProperty: true });
+  } catch {
+    // css-tree may fail on edge-case CSS; fall back to empty rules.
+    return rules;
   }
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type !== "Rule") return;
+
+      // Extract selector text via generate (robust across css-tree versions).
+      const selectorText = generate(node.prelude).trim();
+      const selector = parseSelector(selectorText);
+      if (!selector) return;
+
+      // Extract declarations.
+      const props: CSSProperty = {};
+      node.block.children.forEach((child: any) => {
+        if (child.type !== "Declaration") return;
+        const prop = child.property;
+        const val = generate(child.value).trim();
+        assignProp(props, prop, val);
+      });
+
+      rules.push({ selector, properties: props });
+    },
+  });
+
   return rules;
 }
 
-function parseSelector(s: string): CSSSelector {
-  const pseudoM = /:pressed$/.exec(s);
+/** Parse a single selector string into a CSSSelector (element/#id/.class + :pressed). */
+function parseSelector(s: string): CSSSelector | null {
+  // Handle :pressed pseudo-state (may also appear as :active for browser compat).
+  const pseudoM = /:(pressed|active)$/.exec(s);
   const base = pseudoM ? s.slice(0, pseudoM.index) : s;
-  const trimmed = base.trim();
+  const trimmed = base.trim().replace(/^["']|["']$/g, "");
+
   let kind: CSSSelectorKind;
   let name: string;
   if (trimmed.startsWith("#")) { kind = "id"; name = trimmed.slice(1); }
   else if (trimmed.startsWith(".")) { kind = "class"; name = trimmed.slice(1); }
   else { kind = "element"; name = trimmed; }
+
+  if (!name) return null;
   return { kind, name, pseudo: pseudoM ? "pressed" : undefined };
 }
 
-function parseBody(body: string): CSSProperty {
-  const props: CSSProperty = {};
-  for (const decl of body.split(";").map(d => d.trim()).filter(Boolean)) {
-    const colonIdx = decl.indexOf(":");
-    if (colonIdx < 0) continue;
-    const prop = decl.slice(0, colonIdx).trim();
-    const val = decl.slice(colonIdx + 1).trim();
-    if (!SUPPORTED_PROPS.has(prop)) {
-      throw new Error(`Unsupported CSS property "${prop}" — supported: ${[...SUPPORTED_PROPS].join(", ")}`);
-    }
-    assignProp(props, prop, val);
-  }
-  return props;
-}
-
-function assignProp(props: CSSProperty, prop: string, val: string): void {
-  switch (prop) {
-    case "padding": props.padding = num(val); break;
-    case "margin": props.margin = num(val); break;
-    case "width": props.width = num(val); break;
-    case "height": props.height = num(val); break;
-    case "color": props.color = val; break;
-    case "background": props.background = val; break;
-    case "font": props.font = val; break;
-    case "font-size": props.fontSize = num(val); break;
-    case "transition": props.transition = parseTransition(val); break;
-  }
-}
-
+/** Parse a numeric value from a CSS string like "8px" or "8" → 8. */
 function num(val: string): number {
-  // Strip units we recognize (px, ms handled separately for transitions).
-  const digits = val.replace(/px$/, "").trim();
+  const digits = val.replace(/px$|rem$|em$|%$/g, "").trim();
   const n = Number(digits);
-  if (isNaN(n)) throw new Error(`Invalid numeric value "${val}"`);
-  return n;
+  return isNaN(n) ? 0 : n;
 }
 
+/** Parse a transition value: "background 80ms" → { property, durationMs }. */
 function parseTransition(val: string): TransitionDecl {
   const parts = val.split(/\s+/);
-  if (parts.length !== 2) throw new Error(`transition expects "<property> <duration>" — got "${val}"`);
+  if (parts.length < 2) return { property: "background", durationMs: 0 };
   const property = parts[0];
   if (property !== "background" && property !== "color") {
-    throw new Error(`transition supports only background/color — got "${property}"`);
+    return { property: "background", durationMs: 0 };
   }
-  const durStr = parts[1].replace(/ms$/, "").trim();
-  const durationMs = Number(durStr);
-  if (isNaN(durationMs)) throw new Error(`Invalid transition duration "${parts[1]}"`);
+  const durStr = parts[1].replace(/ms$|s$/g, "").trim();
+  let durationMs = Number(durStr);
+  if (parts[1].endsWith("s") && !parts[1].endsWith("ms")) durationMs *= 1000;
+  if (isNaN(durationMs)) durationMs = 0;
   return { property: property as "background" | "color", durationMs };
+}
+
+/** Assign a CSS property to the CSSProperty object. Unknown properties are silently dropped. */
+function assignProp(props: CSSProperty, prop: string, val: string): void {
+  switch (prop) {
+    case "padding": props.padding = val; break;
+    case "margin": props.margin = val; break;
+    case "width": props.width = val; break;
+    case "height": props.height = val; break;
+    case "color": props.color = val; break;
+    case "background":
+    case "background-color": props.background = val; break;
+    case "font": props.font = val; break;
+    case "font-size": props.fontSize = val; break;
+    case "transition": props.transition = parseTransition(val); break;
+    // Flexbox / layout
+    case "display": props.display = val; break;
+    case "flex-direction": props.flexDirection = val; break;
+    case "gap":
+    case "row-gap":
+    case "column-gap": props.gap = val; break;
+    case "flex-grow": props.flexGrow = val; break;
+    case "flex-shrink": props.flexShrink = val; break;
+    case "flex-basis": props.flexBasis = val; break;
+    case "align-self": props.alignSelf = val; break;
+    case "align-items": props.alignItems = val; break;
+    case "justify-content": props.justifyContent = val; break;
+    case "flex-wrap": props.flexWrap = val; break;
+    // Visual
+    case "border": props.border = val; break;
+    case "border-radius": props.borderRadius = val; break;
+    case "opacity": props.opacity = val; break;
+    // Unknown properties are silently dropped (forward-compatible).
+  }
 }

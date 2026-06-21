@@ -11,7 +11,7 @@
 // only needs it for text — flex reuses it for flex-basis:content.
 // ---------------------------------------------------------------------------
 
-import { StyledNode } from "./style-resolver";
+import { StyledNode } from "./style-resolver.js";
 
 export interface Box { x: number; y: number; w: number; h: number; }
 

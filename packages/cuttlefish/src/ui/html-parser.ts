@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------------------
-// HTML subset parser — a tiny, dependency-free parser for .ui.html files.
+// HTML parser — uses linkedom for robust DOM parsing, then adapts to the
+// UIElementNode shape that the rest of the pipeline expects.
 //
 // Supported subset:
 //   - One <screen> root (required, exactly one).
@@ -7,9 +8,11 @@
 //   - Attributes: id="...", class="a b".
 //   - Text content of leaf elements.
 //
-// No CDATA, no comments, no self-closing beyond explicit <x/>. This is the
-// full v1 surface — extend deliberately.
+// The public API (parseHtml: string → UIElementNode) is unchanged — callers
+// don't know whether linkedom or a regex parser is behind it.
 // ---------------------------------------------------------------------------
+
+import { parseHTML } from "linkedom";
 
 export interface UIElementNode {
   tag: string;
@@ -22,92 +25,67 @@ export interface UIElementNode {
 const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view"]);
 
 export function parseHtml(src: string): UIElementNode {
-  // Strip HTML comments before tokenizing. Comments may contain '>' which
-  // would break the tag regex, and they carry no layout meaning.
+  // Strip HTML comments before parsing.
   const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "");
-  const tokens = tokenize(withoutComments);
-  const root = parseElement(tokens);
-  if (!root || root.tag !== "screen") {
+
+  // linkedom follows the HTML spec which hoists unknown elements out of <body>.
+  // Wrap the custom-tag HTML inside a <div> so the parser keeps the tree intact.
+  const wrapped = `<div id="__root__">${withoutComments}</div>`;
+  const { document } = parseHTML(wrapped);
+  const root = document.getElementById("__root__");
+  if (!root) {
+    throw new Error("UI HTML: failed to parse document");
+  }
+
+  // Find the <screen> element among the root's children.
+  const screenEl = Array.from(root.children).find(
+    (c) => c.tagName.toLowerCase() === "screen",
+  );
+
+  if (!screenEl) {
     throw new Error("UI HTML must have exactly one <screen> root element");
   }
-  // Ensure no trailing top-level elements.
-  if (tokens.peek() !== null) {
+
+  // Check for multiple top-level <screen> elements.
+  const screens = Array.from(root.children).filter(
+    (c) => c.tagName.toLowerCase() === "screen",
+  );
+  if (screens.length > 1) {
     throw new Error("UI HTML must have exactly one top-level <screen> element");
   }
-  return root;
+
+  const tree = domToUIElementNode(screenEl);
+  return tree;
 }
 
-interface TokenStream {
-  pos: number;
-  tokens: string[];
-  peek(): string | null;
-  next(): string | null;
-}
+/** Adapt a DOM element to UIElementNode, recursively walking children. */
+function domToUIElementNode(el: Element): UIElementNode {
+  const tag = el.tagName.toLowerCase();
 
-function tokenize(src: string): TokenStream {
-  // Split into tag tokens and text tokens. Whitespace-only text between tags
-  // is ignored; meaningful text (inside leaf elements) is preserved.
-  const re = /(<[^>]*>)|([^<]+)/g;
-  const tokens: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(src)) !== null) {
-    if (m[1]) tokens.push(m[1]);
-    else if (m[2] && m[2].trim()) tokens.push(m[2].trim());
-  }
-  let pos = 0;
-  return {
-    tokens,
-    pos,
-    peek() { return pos < tokens.length ? tokens[pos] : null; },
-    next() { return pos < tokens.length ? tokens[pos++] : null; },
-  };
-}
-
-function parseElement(tokens: TokenStream): UIElementNode | null {
-  const open = tokens.next();
-  if (!open || !open.startsWith("<")) return null;
-  const { tag, id, classes, selfClosed } = parseOpenTag(open);
   if (!SUPPORTED_TAGS.has(tag)) {
     throw new Error(`Unsupported tag <${tag}> — supported: ${[...SUPPORTED_TAGS].join(", ")}`);
   }
-  const node: UIElementNode = { tag, id, classes, children: [] };
 
-  if (selfClosed) return node;
+  const id = el.getAttribute("id") || undefined;
+  const classAttr = el.getAttribute("class") || "";
+  const classes = classAttr.split(/\s+/).filter(Boolean);
 
-  // Read children and text until matching close tag.
-  while (true) {
-    const peek = tokens.peek();
-    if (peek === null) throw new Error(`Unclosed <${tag}>`);
-    if (peek.startsWith(`</${tag}>`)) {
-      tokens.next();
-      return node;
-    }
-    if (peek.startsWith("<")) {
-      const child = parseElement(tokens);
-      if (child) node.children.push(child);
-    } else {
-      // Text content.
-      node.text = peek;
-      tokens.next();
-    }
+  // Text content: only direct text, not children's text.
+  // For leaf elements (text/button), the textContent IS the text.
+  // For containers (screen/view), direct text is ignored.
+  let text: string | undefined;
+  const childElements = Array.from(el.children).filter((c) =>
+    SUPPORTED_TAGS.has(c.tagName.toLowerCase()),
+  );
+
+  if (childElements.length === 0) {
+    const tc = el.textContent?.trim();
+    if (tc) text = tc;
   }
-}
 
-function parseOpenTag(open: string): {
-  tag: string; id?: string; classes: string[]; selfClosed: boolean;
-} {
-  const inner = open.slice(1, open.endsWith("/>") ? -2 : -1).trim();
-  const selfClosed = open.endsWith("/>");
-  const parts = inner.split(/\s+/);
-  const tag = parts[0];
-  let id: string | undefined;
-  const classes: string[] = [];
-  for (let i = 1; i < parts.length; i++) {
-    const attr = parts[i];
-    const idM = /^id="([^"]*)"$/.exec(attr);
-    const classM = /^class="([^"]*)"$/.exec(attr);
-    if (idM) id = idM[1];
-    else if (classM) classes.push(...classM[1].split(/\s+/).filter(Boolean));
+  const node: UIElementNode = { tag, id, classes, text, children: [] };
+  for (const child of childElements) {
+    node.children.push(domToUIElementNode(child));
   }
-  return { tag, id, classes, selfClosed };
+  return node;
 }

@@ -10,7 +10,7 @@ function resolve(src: string, css: string) {
 describe("style resolver", () => {
   it("applies element selector to all matching tags", () => {
     const styled = resolve(`<screen><text id="t">hi</text></screen>`, `screen { padding: 8; }`);
-    expect(styled.style.padding).toBe(8);
+    expect(styled.style.padding).toBe("8");
   });
 
   it("applies id selector", () => {
@@ -20,7 +20,7 @@ describe("style resolver", () => {
 
   it("applies class selector", () => {
     const styled = resolve(`<screen><view class="card"></view></screen>`, `.card { padding: 4; }`);
-    expect(styled.children[0].style.padding).toBe(4);
+    expect(styled.children[0].style.padding).toBe("4");
   });
 
   it("later rules override earlier rules (cascade)", () => {

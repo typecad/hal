@@ -6,7 +6,7 @@ describe("CSS subset parser", () => {
     const rules = parseCss(`screen { background: #008000; padding: 8; }`);
     expect(rules).toHaveLength(1);
     expect(rules[0].selector).toEqual({ kind: "element", name: "screen", pseudo: undefined });
-    expect(rules[0].properties.padding).toBe(8);
+    expect(rules[0].properties.padding).toBe("8");
   });
 
   it("parses id selectors", () => {
