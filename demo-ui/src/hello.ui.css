@@ -1,6 +1,5 @@
 /* ---------------------------------------------------------------------------
-   hello.ui.css — a richer demo exercising flexbox, text-align, borders,
-   named colors, gap, align-items, and the transition engine.
+   hello.ui.css — flexbox layout showcase
    ----------------------------------------------------------------------- */
 
 screen {
@@ -11,7 +10,7 @@ screen {
   padding: 10px;
 }
 
-/* Header: a row with title + subtitle, bottom border */
+/* Header: row with title + subtitle, bottom border */
 #header {
   display: flex;
   flex-direction: row;
@@ -32,13 +31,14 @@ screen {
   font-size: 16px;
 }
 
-/* Status row: counter text + button side by side */
-#statusRow {
+/* Body: fills remaining vertical space, centers content */
+#body {
+  flex: 1;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
+  justify-content: center;
+  gap: 12px;
 }
 
 #counter {
@@ -51,16 +51,16 @@ screen {
   color: white;
   border: 2px solid limegreen;
   border-radius: 4px;
-  padding: 6px 16px;
+  padding: 8px 20px;
   text-align: center;
-  transition: background 200ms;
+  transition: background 300ms;
 }
 
 #btn:pressed {
   background: limegreen;
 }
 
-/* Footer: hint text */
+/* Footer: hint text at the bottom */
 #footer {
   padding: 4px 0;
 }
