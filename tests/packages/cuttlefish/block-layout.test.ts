@@ -39,14 +39,15 @@ describe("BlockLayoutEngine", () => {
     expect(boxes[2].y).toBeGreaterThan(0);  // second child below first
   });
 
-  it("measure returns text intrinsic size from font", () => {
+  it("measure returns text intrinsic size from GFX font metrics", () => {
     const styled = resolveStyles(
       parseHtml(`<screen><text id="t">hi</text></screen>`),
-      parseCss(`#t { font: 8x16; }`),
+      parseCss(`#t { font-size: 16px; }`),
     );
     const size = measure(styled.children[0]);
-    expect(size.w).toBe(16);   // 2 chars * 8px
-    expect(size.h).toBe(16);
+    // GFX default font at textSize 2: 5px base × 2 + 1px spacing = 11px per char
+    expect(size.w).toBe(22);   // 2 chars * 11px
+    expect(size.h).toBe(14);   // 7px base × 2 = 14px
   });
 });
 
