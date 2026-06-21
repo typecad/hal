@@ -86,14 +86,26 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
     const bg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
     const fg = n.style.color ? resolveColor(n.style.color, colorFormat) : 0xffff;
     const text = n.text ? `"${n.text}"` : "nullptr";
-    // v1: font pointer is nullptr — glyph rendering is deferred. The font id
-    // is recorded in the style but no font table is emitted yet, so a
-    // &font_8_16 reference would fail to compile.
     const font = "nullptr";
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
     const bgStr = `0x${bg.toString(16).padStart(4, "0")}`;
     const fgStr = `0x${fg.toString(16).padStart(4, "0")}`;
-    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .font=${font}, .hasBg=${n.hasBg ? 1 : 0} },`;
+    // text-align: 0=left, 1=center, 2=right
+    const textAlign = n.style.textAlign === "center" ? 1 : n.style.textAlign === "right" ? 2 : 0;
+    // border color: resolve if set
+    const borderColor = n.style.borderColor ? resolveColor(n.style.borderColor, colorFormat) : 0;
+    const borderColorStr = `0x${borderColor.toString(16).padStart(4, "0")}`;
+    // border style: 0=none, 1=solid, 2=dashed
+    const borderStyle = n.style.borderStyle === "solid" ? 1
+      : n.style.borderStyle === "dashed" ? 2
+      : n.style.borderStyle === "dotted" ? 2  // dotted approximated as dashed
+      : n.style.border || n.style.borderWidth ? 1  // default to solid if border is set
+      : 0;
+    // underline: 1 if text-decoration: underline
+    const underline = n.style.textDecoration === "underline" ? 1 : 0;
+    // visibility: 0=hidden, 1=visible (default)
+    const visible = n.style.visibility === "hidden" ? 0 : 1;
+    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.

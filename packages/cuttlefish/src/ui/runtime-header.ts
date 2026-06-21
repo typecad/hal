@@ -25,12 +25,17 @@ enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE };
 struct UIRect { int16_t x, y, w, h; };
 struct UINode {
   UIRect box;
-  uint16_t bg;       // resolved color (rgb565 or 0/1 mono)
+  uint16_t bg;
   uint16_t fg;
   UINodeKind kind;
   const char* text;
   const uint8_t* font;
-  uint8_t hasBg;     // 1 if the CSS set a background; 0 = transparent (skip fillRect)
+  uint8_t hasBg;
+  uint8_t textAlign;    // 0=left, 1=center, 2=right
+  uint16_t borderColor; // resolved color for the border (0 = use fg)
+  uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
+  uint8_t underline;    // 0=none, 1=underline
+  uint8_t visible;      // 0=hidden, 1=visible
   // runtime slot
   uint8_t dirty;
   uint8_t pressed;
@@ -158,6 +163,18 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ② Draw dirty nodes directly to the display object.
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
+    if (!__ui_nodes[i].visible) continue;  // visibility: hidden → skip entirely
+    // Compute text width helper (used by text-align and button centering).
+    uint16_t tw = 0;
+    if (__ui_nodes[i].text) {
+      for (const char* p = __ui_nodes[i].text; *p; p++) tw += 12;
+    }
+    // Compute x offset based on text-align (0=left, 1=center, 2=right).
+    int16_t textX = __ui_nodes[i].box.x;
+    if (__ui_nodes[i].textAlign == 1) textX = __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2;
+    else if (__ui_nodes[i].textAlign == 2) textX = __ui_nodes[i].box.x + __ui_nodes[i].box.w - tw;
+    // Border color: use borderColor if set, otherwise fg.
+    uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
         __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
@@ -165,26 +182,36 @@ static inline void ui_tick(uint16_t deltaMs) {
       case NODE_TEXT:
         if (__ui_nodes[i].hasBg)
           __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
-        __tc_display.setCursor(__ui_nodes[i].box.x, __ui_nodes[i].box.y);
+        __tc_display.setCursor(textX, __ui_nodes[i].box.y);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(__ui_nodes[i].text);
+        // Underline: drawFastHLine below the text baseline.
+        if (__ui_nodes[i].underline)
+          __tc_display.drawFastHLine(textX, __ui_nodes[i].box.y + 15, tw, __ui_nodes[i].fg);
         break;
       case NODE_BUTTON:
-        // Fill background (if set), draw a border, center the text.
+        // Fill background (if set)
         if (__ui_nodes[i].hasBg)
           __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
-        __tc_display.drawRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].fg);
-        // Center text: GFX advance width is 6px × textSize = 12px per char at size 2.
-        if (__ui_nodes[i].text) {
-          uint16_t tw = 0;
-          for (const char* p = __ui_nodes[i].text; *p; p++) tw += 12;
-          __tc_display.setCursor(
-            __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
-            __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 14) / 2);
-        } else {
-          __tc_display.setCursor(__ui_nodes[i].box.x, __ui_nodes[i].box.y);
+        // Border: respect borderStyle (0=none, 1=solid, 2=dashed)
+        if (__ui_nodes[i].borderStyle == 1) {
+          __tc_display.drawRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
+        } else if (__ui_nodes[i].borderStyle == 2) {
+          // Dashed: approximate with 4px segments on each edge
+          for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
+            __tc_display.drawFastHLine(__ui_nodes[i].box.x + dx, __ui_nodes[i].box.y, 4, bColor);
+          for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
+            __tc_display.drawFastHLine(__ui_nodes[i].box.x + dx, __ui_nodes[i].box.y + __ui_nodes[i].box.h - 1, 4, bColor);
+          for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
+            __tc_display.drawFastVLine(__ui_nodes[i].box.x, __ui_nodes[i].box.y + dy, 4, bColor);
+          for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
+            __tc_display.drawFastVLine(__ui_nodes[i].box.x + __ui_nodes[i].box.w - 1, __ui_nodes[i].box.y + dy, 4, bColor);
         }
+        // Center text (buttons always center regardless of textAlign)
+        __tc_display.setCursor(
+          __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
+          __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 16) / 2);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(__ui_nodes[i].text);
