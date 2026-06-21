@@ -100,6 +100,12 @@ export function isSignalName(name: string): boolean {
   return signals.has(name);
 }
 
+/** The recorded C++ type of a signal, or undefined if not a signal.
+ *  Used by the text-binding lowerer to pick %d vs %g (spec §5.3). */
+export function signalCppType(name: string): string | undefined {
+  return signals.get(name)?.cppType;
+}
+
 export function uiSignalDecls(): string[] {
   // Skip signals already emitted via their own const X = ui.signal(...) var_decl
   // — those are declared in the function body, not at file scope.
