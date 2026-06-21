@@ -29,10 +29,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (!ctx.includes.includes("<SPI.h>")) {
     ctx.includes.push("<SPI.h>");
   }
-  // 0b. snprintf (used by text-binding bodies) needs <stdio.h>.
-  if (!ctx.includes.includes("<stdio.h>")) {
-    ctx.includes.push("<stdio.h>");
-  }
+  // NOTE: <stdio.h> (needed by text-binding snprintf bodies) is pushed in
+  // buildEmitterContext (setup.ts), NOT here — emitPreamble runs before this
+  // function, so a push here would be too late to land in the output.
 
   // 0.5. File-scope display object declaration. Must precede the runtime header
   // so ui_tick (a static inline in the header) can reference __tc_display.

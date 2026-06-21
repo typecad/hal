@@ -10,6 +10,7 @@ import { emitPolyfillBoilerplate } from "../native-helpers-emitter.js";
 import { ResolvedNpmPackage } from "../../transpile/resolution.js";
 import { resolveStrategy } from "../../platform/registry.js";
 import { getLoadedFramework } from "../../framework-registry.js";
+import { entryHasUI } from "../../ui/ui-registry.js";
 import {
   createEmissionScopeState,
   statementNeedsSnprintf,
@@ -754,6 +755,13 @@ export function buildEmitterContext(
   }
   if (program.requiredIncludes) {
     includes.push(...program.requiredIncludes);
+  }
+  // UI text bindings lower to snprintf bodies that need <stdio.h>. Pushed here
+  // (in buildEmitterContext) rather than in emitUIRuntime because emitPreamble
+  // runs before emitUIRuntime — a push there would never reach the output.
+  // Gated on entryHasUI so non-UI files don't pull in stdio unnecessarily.
+  if (entryHasUI() && !includes.includes("<stdio.h>")) {
+    includes.push("<stdio.h>");
   }
   // std::variant (from discriminated-union type aliases) needs <variant>.
   // Scan type aliases AND function signatures (params/return types) — a union
