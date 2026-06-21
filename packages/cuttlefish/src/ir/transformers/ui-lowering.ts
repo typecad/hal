@@ -35,6 +35,7 @@ interface FlatNode {
   box: Box;
   hasPressed: boolean;
   hasBg: boolean;
+  clearColor: string | undefined;
 }
 
 export function lowerUIToCpp(
@@ -44,7 +45,7 @@ export function lowerUIToCpp(
   storage: Storage,
 ): LoweredUI {
   const flat: FlatNode[] = [];
-  flatten(root, boxes, flat, { i: 0 });
+  flatten(root, boxes, flat, { i: 0 }, undefined);
 
   // Tables are mutable RAM (ui_tick updates bg/dirty/elapsed/active each
   // frame), so no PROGMEM/flash storage keyword — those imply read-only.
@@ -60,11 +61,15 @@ function flatten(
   boxes: Box[],
   out: FlatNode[],
   cursor: { i: number },
+  parentBg: string | undefined,
 ): void {
   const index = cursor.i++;
   const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
   const hasPressed = !!(node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
   const hasBg = !!node.style.background;
+  // clearColor: the nearest ancestor's background (or own bg if set).
+  // Used to wipe transparent text nodes before redraw (prevents ghosting).
+  const clearColor = hasBg ? node.style.background! : parentBg;
   out.push({
     index,
     tag: node.tag,
@@ -74,8 +79,11 @@ function flatten(
     box,
     hasPressed,
     hasBg,
+    clearColor,
   });
-  for (const child of node.children) flatten(child, boxes, out, cursor);
+  // Children inherit this node's bg as their clearColor (if set).
+  const childParentBg = hasBg ? node.style.background! : parentBg;
+  for (const child of node.children) flatten(child, boxes, out, cursor, childParentBg);
 }
 
 function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
@@ -105,7 +113,10 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
     const underline = n.style.textDecoration === "underline" ? 1 : 0;
     // visibility: 0=hidden, 1=visible (default)
     const visible = n.style.visibility === "hidden" ? 0 : 1;
-    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible} },`;
+    // clearColor: resolve the ancestor's background (used to wipe transparent text)
+    const clearColorVal = n.clearColor ? resolveColor(n.clearColor, colorFormat) : 0;
+    const clearColorStr = `0x${clearColorVal.toString(16).padStart(4, "0")}`;
+    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible}, .clearColor=${clearColorStr} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.

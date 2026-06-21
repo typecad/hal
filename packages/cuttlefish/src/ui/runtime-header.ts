@@ -39,6 +39,7 @@ struct UINode {
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
   uint8_t underline;    // 0=none, 1=underline
   uint8_t visible;      // 0=hidden, 1=visible
+  uint16_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
   // runtime slot
   uint8_t dirty;
   uint8_t pressed;
@@ -238,8 +239,11 @@ static inline void ui_tick(uint16_t deltaMs) {
         __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         break;
       case NODE_TEXT:
-        if (__ui_nodes[i].hasBg)
-          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+        // Clear the text area before drawing to prevent ghosting.
+        // If the node has its own bg, use it; otherwise use the ancestor's
+        // clearColor (the parent's background) to wipe old pixels.
+        __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
+          __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
         __tc_display.setCursor(textX, __ui_nodes[i].box.y);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
