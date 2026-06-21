@@ -171,10 +171,7 @@ export function lowerStatement(
       const nodeIdx = resolveElementValue(treeName, elemId);
       if (nodeIdx !== undefined) {
         const valIR = expressionToIR(statement.expression.right, sourceText, diagnostics, pointerVars);
-        const valText = valIR.kind === "raw" ? (valIR as any).value
-          : valIR.kind === "number" ? String((valIR as any).value)
-          : valIR.kind === "identifier" ? (valIR as any).value
-          : "0";
+        const valText = renderExprAsText(valIR);
         return [{
           kind: "call" as const,
           sourceSpan: makeSourceSpan(statement, fileName, sourceText),

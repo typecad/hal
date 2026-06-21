@@ -202,6 +202,10 @@ static inline void ui_tick(uint16_t deltaMs) {
                     : &__ui_nodes[__ui_bindings[i].node].bg;
       if (newVal != *target) {
         *target = newVal;
+        // When a background binding writes a new color, ensure hasBg is set
+        // so the draw dispatch actually fills (the node may have started
+        // transparent but now has a runtime-assigned background).
+        if (__ui_bindings[i].prop == PROP_BG) __ui_nodes[__ui_bindings[i].node].hasBg = 1;
         ui_mark_dirty(__ui_bindings[i].node);
       }
     }
