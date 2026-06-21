@@ -29,6 +29,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (!ctx.includes.includes("<SPI.h>")) {
     ctx.includes.push("<SPI.h>");
   }
+  // 0b. snprintf (used by text-binding bodies) needs <stdio.h>.
+  if (!ctx.includes.includes("<stdio.h>")) {
+    ctx.includes.push("<stdio.h>");
+  }
 
   // 0.5. File-scope display object declaration. Must precede the runtime header
   // so ui_tick (a static inline in the header) can reference __tc_display.
@@ -65,10 +69,11 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     // otherwise fall back to returning the node's current value.
     const isTextBinding = spec.property === "text";
     if (isTextBinding) {
-      // Text bindings return const char* and are wired to textFn.
-      const textBody = spec.cppExpr || `"${""}"`;
+      // Text bindings are void fill-style: they write into (buf, size).
+      // cppBody is the imperative snprintf statement from lowerTextBindingBody.
+      const body = spec.cppBody ?? "buf[0] = 0;";
       ctx.sourceLines.push(
-        `const char* ${spec.fnName}(void) { return ${textBody}; }`,
+        `void ${spec.fnName}(char* buf, uint8_t size) { ${body} }`,
       );
     } else {
       const access = spec.property === "background" ? "bg" : spec.property === "color" ? "fg" : "bg";

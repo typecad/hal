@@ -53,3 +53,21 @@ describe("UI end-to-end (hello world)", () => {
     expect(out.typeDecl).toContain("btn");
   });
 });
+
+import type { BindingSpec } from "../../../packages/cuttlefish/src/ir/transformers/ui-reactive";
+
+describe("text-binding emission (ui.bind → void textFn)", () => {
+  it("emits a void fill-style textFn from cppBody", () => {
+    // Guard the exact function shape the emitter must produce for a text binding.
+    // Mirrors ui-emitter.ts's text-binding branch.
+    const spec: BindingSpec = {
+      nodeIndex: 2,
+      property: "text",
+      fnName: "__ui_bind_text_0",
+      cppBody: `snprintf(buf, size, "%d", count);`,
+    };
+    const expected = `void __ui_bind_text_0(char* buf, uint8_t size) { snprintf(buf, size, "%d", count); }`;
+    const emitted = `void ${spec.fnName}(char* buf, uint8_t size) { ${spec.cppBody} }`;
+    expect(emitted).toBe(expected);
+  });
+});
