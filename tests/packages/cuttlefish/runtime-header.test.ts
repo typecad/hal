@@ -65,4 +65,11 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/textFn\(\s*__ui_nodes\[.*?\]\.textBuffer,\s*UI_TEXT_BUF\s*\)/);
     expect(header).toMatch(/strcmp\(\s*oldBuf,\s*__ui_nodes\[.*?\]\.textBuffer\s*\)\s*!=\s*0/);
   });
+
+  it("draw dispatch selects displayText by hasTextBinding (textBuffer vs text)", () => {
+    // The dirty-node loop must declare a displayText local and read from it.
+    expect(header).toMatch(/const char\*\s+displayText\s*=\s*__ui_nodes\[i\]\.hasTextBinding\s*\?\s*__ui_nodes\[i\]\.textBuffer\s*:\s*__ui_nodes\[i\]\.text/);
+    // And the print() call site must use displayText, not __ui_nodes[i].text.
+    expect(header).toMatch(/__tc_display\.print\(\s*displayText\s*\)/);
+  });
 });

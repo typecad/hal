@@ -217,10 +217,15 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
     if (!__ui_nodes[i].visible) continue;  // visibility: hidden → skip entirely
+    // Source selection: text-bound nodes show their dynamic buffer; others show
+    // the immutable flash literal.
+    const char* displayText = __ui_nodes[i].hasTextBinding
+      ? __ui_nodes[i].textBuffer
+      : __ui_nodes[i].text;
     // Compute text width helper (used by text-align and button centering).
     uint16_t tw = 0;
-    if (__ui_nodes[i].text) {
-      for (const char* p = __ui_nodes[i].text; *p; p++) tw += 12;
+    if (displayText) {
+      for (const char* p = displayText; *p; p++) tw += 12;
     }
     // Compute x offset based on text-align (0=left, 1=center, 2=right).
     int16_t textX = __ui_nodes[i].box.x;
@@ -238,7 +243,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         __tc_display.setCursor(textX, __ui_nodes[i].box.y);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
-        __tc_display.print(__ui_nodes[i].text);
+        __tc_display.print(displayText);
         // Underline: drawFastHLine below the text baseline.
         if (__ui_nodes[i].underline)
           __tc_display.drawFastHLine(textX, __ui_nodes[i].box.y + 15, tw, __ui_nodes[i].fg);
@@ -267,7 +272,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 16) / 2);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
-        __tc_display.print(__ui_nodes[i].text);
+        __tc_display.print(displayText);
         break;
     }
     __ui_nodes[i].dirty = 0;
