@@ -19,7 +19,7 @@ export function emitRuntimeHeader(): string {
 #define __TC_UI_RUNTIME
 #include <stdint.h>
 
-enum UINodeKind { NODE_FILL, NODE_TEXT };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -131,6 +131,18 @@ static inline void ui_tick(uint16_t deltaMs) {
       case NODE_TEXT:
         __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         __tc_display.setCursor(__ui_nodes[i].box.x, __ui_nodes[i].box.y);
+        __tc_display.setTextColor(__ui_nodes[i].fg);
+        __tc_display.setTextSize(2);
+        __tc_display.print(__ui_nodes[i].text);
+        break;
+      case NODE_BUTTON:
+        // Fill background, draw a border, center the text.
+        __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+        __tc_display.drawRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].fg);
+        // Center text: approximate text width as strlen * 6px * textSize, height as 8px * textSize.
+        __tc_display.setCursor(
+          __ui_nodes[i].box.x + (__ui_nodes[i].box.w - 12) / 2,
+          __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 16) / 2);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(__ui_nodes[i].text);

@@ -37,11 +37,19 @@ export class BlockLayoutEngine implements LayoutEngine {
 
     for (const child of node.children) {
       const intrinsic = measureFn(child);
+      // Buttons size to their content (text + padding), not the full
+      // container width. Other elements fill the content width (block flow).
+      const childPad = child.style.padding ?? 0;
+      const isButton = child.tag === "button";
+      const childW = isButton && intrinsic.w > 0
+        ? intrinsic.w + childPad * 2
+        : content.w;
+      const childH = intrinsic.h > 0 ? intrinsic.h + (isButton ? childPad * 2 : 0) : 16;
       const childBox: Box = {
         x: content.x,
         y: cursorY,
-        w: content.w,
-        h: intrinsic.h > 0 ? intrinsic.h : 16,
+        w: childW,
+        h: childH,
       };
       this.layoutNode(child, childBox, out, measureFn);
       cursorY += childBox.h;

@@ -539,8 +539,8 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
       continue;
     }
 
-    // Skip internal transpiler functions
-    if (functionName === "__EMIT__" || functionName.startsWith("__RAW_STMT__")) {
+    // Skip internal transpiler functions and runtime helpers
+    if (functionName === "__EMIT__" || functionName.startsWith("__RAW_STMT__") || functionName.startsWith("__tc_")) {
       continue;
     }
 

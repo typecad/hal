@@ -77,7 +77,9 @@ function flatten(
 
 function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
   const lines = flat.map((n) => {
-    const kind = n.tag === "screen" || n.tag === "view" ? "NODE_FILL" : "NODE_TEXT";
+    const kind = n.tag === "screen" || n.tag === "view" ? "NODE_FILL"
+      : n.tag === "button" ? "NODE_BUTTON"
+      : "NODE_TEXT";
     const bg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
     const fg = n.style.color ? resolveColor(n.style.color, colorFormat) : 0xffff;
     const text = n.text ? `"${n.text}"` : "nullptr";

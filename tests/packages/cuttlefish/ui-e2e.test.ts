@@ -24,9 +24,10 @@ describe("UI end-to-end (hello world)", () => {
 
   it("emits a node table with 3 nodes", () => {
     expect(out.nodeTable).toMatch(/UINode\s+__ui_nodes/);
-    // screen + greeting + btn = 3 NODE_* lines
-    const kindLines = out.nodeTable.match(/NODE_(FILL|TEXT)/g) ?? [];
+    // screen (FILL) + greeting (TEXT) + btn (BUTTON) = 3 NODE_* lines
+    const kindLines = out.nodeTable.match(/NODE_(FILL|TEXT|BUTTON)/g) ?? [];
     expect(kindLines).toHaveLength(3);
+    expect(out.nodeTable).toContain("NODE_BUTTON");
   });
 
   it("emits green background (#008000 → 0x0400) on screen", () => {
