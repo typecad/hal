@@ -30,17 +30,19 @@ const pressed = ui.signal(0);
 
 ui.bind(screen.btn, 'background', () => (pressed() > 0 ? '#00ff37' : '#ff0000'));
 
-// Physical button: GPIO0 (ESP32 BOOT button) drives the button's :pressed
-// state. On falling edge (press), ui_on_press arms the 80ms background
+// Physical button: GPIO4 drives the button's :pressed state. GPIO4 is a
+// general-purpose input with interrupt support (unlike GPIO0 which is the
+// strapping/BOOT pin). A 10k pullup to 3V3 + button to GND is the standard
+// wiring. On falling edge (press), ui_on_press arms the background
 // transition; on rising edge (release), ui_on_release re-arms it back.
-screen.btn.onPress(0);
-screen.btn.onRelease(0);
+screen.btn.onPress(4);
+screen.btn.onRelease(4);
 
 // Toggle the signal every 1000ms. setInterval lowers to the embedded async
 // pump; each change re-triggers the transition.
 let state = 0;
-setInterval(() => {
-  state = state === 0 ? 1 : 0;
-  pressed.set(state);
-  console.log(`${state}`);
-}, 1000);
+// setInterval(() => {
+//   state = state === 0 ? 1 : 0;
+//   pressed.set(state);
+//   console.log(`${state}`);
+// }, 1000);

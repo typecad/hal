@@ -87,10 +87,19 @@ static inline void ui_init(void) {
   }
 }
 
+// Debounce: ignore press/release events within 50ms of the last edge.
+// Mechanical switches bounce (multiple edges in ~5-20ms); without this, the
+// transition gets armed/interrupted dozens of times per physical press.
+static volatile uint32_t __ui_last_edge_time = 0;
+#define UI_DEBOUNCE_MS 50
+
 // Press / release entry points that node.onPress(pin) lowers to.
 // On press, arm transitions toward the :pressed target color; on release,
 // arm them back toward the base color (interrupt-and-re-lerp from current).
 static inline void ui_on_press(uint8_t nodeIdx) {
+  uint32_t now = millis();
+  if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
+  __ui_last_edge_time = now;
   __ui_nodes[nodeIdx].pressed = 1;
   ui_mark_dirty(nodeIdx);
   for (uint8_t i = 0; i < __ui_trans_count; i++) {
@@ -103,6 +112,9 @@ static inline void ui_on_press(uint8_t nodeIdx) {
   }
 }
 static inline void ui_on_release(uint8_t nodeIdx) {
+  uint32_t now = millis();
+  if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
+  __ui_last_edge_time = now;
   __ui_nodes[nodeIdx].pressed = 0;
   ui_mark_dirty(nodeIdx);
   for (uint8_t i = 0; i < __ui_trans_count; i++) {
