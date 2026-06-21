@@ -1,28 +1,34 @@
 /* ---------------------------------------------------------------------------
    hello.ui.css — styles for the canonical UI demo
 
-   Green screen background, red greeting text, gray button that animates its
-   background over 80ms when :pressed. The transition + :pressed pseudo-state
-   are the entire animation; no JS/TS animation code is needed.
+   Red screen background, white greeting text, green button that animates its
+   background over 1500ms when :pressed. Uses display:flex + flex-direction:
+   column to activate the Yoga layout engine.
    ----------------------------------------------------------------------- */
 
 screen {
-  background: #008000;   /* green */
-  padding: 8;
+  background: #e73b3b;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 #greeting {
-  color: #ff0000;        /* red */
-  font: 8x16;
+  color: #ffffff;
+  font-size: 16px;
 }
 
 #btn {
-  background: #404040;   /* dark gray (resting) */
+  background: #00ff6a;
   color: #ffffff;
-  padding: 4;
-  transition: background 80ms;
+  padding: 8px 16px;
+  border: 2px solid #808080;
+  border-radius: 6px;
+  align-self: flex-start;
+  transition: background 1500ms;
 }
 
 #btn:pressed {
-  background: #808080;   /* light gray (pressed) */
+  background: #d9ff00;
 }
