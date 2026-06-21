@@ -50,4 +50,11 @@ describe("C++ reactive runtime header", () => {
   it("UIBinding textFn signature is void fill-style (char*, uint8_t)", () => {
     expect(header).toMatch(/void\s+\(\*textFn\)\(char\*\s*buf,\s*uint8_t\s*size\)/);
   });
+
+  it("ui_init seeds textBuffer from the flash literal for PROP_TEXT bindings", () => {
+    // ui_init must: set hasTextBinding=1, strncpy text→textBuffer, NUL-terminate.
+    expect(header).toMatch(/ui_init[\s\S]*hasTextBinding\s*=\s*1/);
+    expect(header).toMatch(/ui_init[\s\S]*strncpy\(\s*__ui_nodes\[n\]\.textBuffer,\s*__ui_nodes\[n\]\.text,\s*UI_TEXT_BUF\s*-\s*1\s*\)/);
+    expect(header).toMatch(/ui_init[\s\S]*textBuffer\[UI_TEXT_BUF\s*-\s*1\]\s*=\s*'\\0'/);
+  });
 });

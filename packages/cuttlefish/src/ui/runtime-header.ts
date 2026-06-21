@@ -91,9 +91,19 @@ static inline void ui_mark_dirty(uint8_t nodeIdx) {
 
 // Initial draw: mark all nodes dirty so the first ui_tick renders everything.
 // Called once in setup() before the loop begins.
+// Also seed each text-bound node's buffer from its flash literal so the first
+// strcmp in ui_tick has a valid baseline (no spurious redraw on frame 1).
 static inline void ui_init(void) {
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
+  }
+  for (uint8_t i = 0; i < __ui_binding_count; i++) {
+    if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
+      uint8_t n = __ui_bindings[i].node;
+      __ui_nodes[n].hasTextBinding = 1;
+      strncpy(__ui_nodes[n].textBuffer, __ui_nodes[n].text, UI_TEXT_BUF - 1);
+      __ui_nodes[n].textBuffer[UI_TEXT_BUF - 1] = '\\0';
+    }
   }
 }
 
