@@ -51,6 +51,26 @@ export function uiPressBindings(): PressBinding[] {
   return pressBindings;
 }
 
+// ── Pin-watching specs (async event-loop input model) ───────────────────────
+
+export interface WatchPinSpec {
+  pin: string;
+  /** Function name of the generated async watcher task. */
+  fnName: string;
+  /** C++ body of the callback (what happens on falling edge). */
+  callbackBody: string;
+}
+
+const _watchPinSpecs: WatchPinSpec[] = [];
+
+export function recordWatchPin(spec: WatchPinSpec): void {
+  _watchPinSpecs.push(spec);
+}
+
+export function watchPinSpecs(): WatchPinSpec[] {
+  return _watchPinSpecs;
+}
+
 export function registerUIModuleImport(name: string, htmlPath: string): void {
   uiModuleImports.set(name, htmlPath);
 }
@@ -99,6 +119,7 @@ export function resetUICallState(): void {
   signals.clear();
   bindings.length = 0;
   pressBindings.length = 0;
+  _watchPinSpecs.length = 0;
 }
 
 // ── Signal name synthesis ───────────────────────────────────────────────────
@@ -178,8 +199,10 @@ export function tryResolveUICall(
   if (method === "bind") {
     return resolveBindCall(call, fileName, sourceText, diagnostics);
   }
-  // Unknown ui.* method — let it fall through (will likely emit a diagnostic
-  // downstream, but we don't claim it).
+  if (method === "watchPin") {
+    return resolveWatchPinCall(call, fileName, sourceText, diagnostics);
+  }
+  // Unknown ui.* method — let it fall through
   return null;
 }
 
@@ -333,6 +356,71 @@ function resolveBindCall(
     }
   }
   recordBinding({ nodeIndex, property, fnName, cppExpr });
+
+  return {
+    kind: "block",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    body: [],
+  };
+}
+
+/** Resolve ui.watchPin(pin, callback) — records a pin-watching spec.
+ * The callback body is lowered to C++ for the generated async watcher. */
+function resolveWatchPinCall(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): StatementIR | null {
+  const pinArg = call.arguments[0];
+  const cbArg = call.arguments[1];
+  if (!pinArg) return null;
+
+  const pin = ts.isIdentifier(pinArg) ? pinArg.text
+    : ts.isNumericLiteral(pinArg) ? pinArg.text
+    : pinArg.getText();
+
+  // Lower the callback body to C++. Handles signal.set(v) → v = expr,
+  // and signal() reads → signal variable references.
+  let callbackBody = "";
+  if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+    const body = cbArg.body;
+    const lowerExpr = (expr: ts.Expression): string => {
+      // signal.set(value) → signal = value
+      if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression) &&
+          expr.expression.name.text === "set" && ts.isIdentifier(expr.expression.expression) &&
+          isSignalName(expr.expression.expression.text)) {
+        const sigName = expr.expression.expression.text;
+        const argText = expr.arguments[0] ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics)) : "0";
+        return `${sigName} = ${argText}`;
+      }
+      // signal() → signal (read)
+      if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
+          expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
+        return expr.expression.text;
+      }
+      let raw = renderExprAsText(expressionToIR(expr, sourceText, diagnostics));
+      raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
+        try { return `0x${resolveColor(color, "rgb565").toString(16)}`; } catch { return match; }
+      });
+      return raw;
+    };
+
+    if (ts.isExpression(body)) {
+      callbackBody = lowerExpr(body) + ";";
+    } else if (ts.isBlock(body)) {
+      const parts: string[] = [];
+      for (const stmt of body.statements) {
+        if (ts.isExpressionStatement(stmt) && stmt.expression) {
+          parts.push(lowerExpr(stmt.expression) + ";");
+        }
+      }
+      callbackBody = parts.join(" ");
+    }
+  }
+
+  const fnName = `__ui_watchpin_${_watchPinSpecs.length}`;
+  recordWatchPin({ pin: String(pin), fnName, callbackBody });
 
   return {
     kind: "block",

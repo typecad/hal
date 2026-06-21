@@ -57,5 +57,14 @@ export declare function bind<K extends string>(
   compute: () => unknown,
 ): void;
 
-export const ui = { mount, signal, bind };
+/**
+ * Watch a GPIO pin for falling edges (button press). The callback runs as an
+ * async task in the existing microtask pump — no ISRs, natural debounce from
+ * the ~20ms poll interval. Safe to write to signals inside the callback.
+ *
+ *   ui.watchPin(4, () => { count.set(count() + 1); });
+ */
+export declare function watchPin(pin: number, onFalling: () => void): void;
+
+export const ui = { mount, signal, bind, watchPin };
 export default ui;

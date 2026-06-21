@@ -32,9 +32,8 @@ ui.bind(screen.btn, 'background', () => (pressed() > 0 ? 'limegreen' : 'darkgree
 // Counter color: limegreen when even, orange when odd
 ui.bind(screen.counter, 'color', () => (count() % 2 === 0 ? 'limegreen' : 'orange'));
 
-// Press wiring: GPIO4
-screen.btn.onPress(4);
-screen.btn.onRelease(4);
+// Input: GPIO4 press via pin-watcher (runs in ui_tick's poll loop, no ISR)
+ui.watchPin(4, () => { count.set(count() + 1); });
 
 // Auto-increment the counter every 2 seconds so the color visibly changes
 setInterval(() => {

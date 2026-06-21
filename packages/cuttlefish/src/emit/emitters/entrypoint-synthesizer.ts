@@ -1,7 +1,7 @@
 ﻿import type { StatementIR } from "../../api/index.js";
 import type { EmitterContext } from "./emitter-context.js";
 import { entryHasUI } from "../../ui/ui-registry.js";
-import { uiPressBindings } from "../../ir/transformers/ui-call-resolver.js";
+import { uiPressBindings, watchPinSpecs } from "../../ir/transformers/ui-call-resolver.js";
 
 export function synthesizeEntrypoints(ctx: EmitterContext): void {
   const { program, strategy, isEntryFile, mappedFunctions } = ctx;
@@ -29,12 +29,20 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
         { kind: "call" as const, callee: `__RAW_STMT__ui_init();`, args: [],
           sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
       );
+      // ISR-based press/release wiring (legacy)
       for (const pb of uiPressBindings()) {
         const mode = pb.edge === "press" ? "FALLING" : "RISING";
         uiInterruptStmts.push(
           { kind: "call" as const, callee: `__RAW_STMT__pinMode(${pb.pin}, INPUT_PULLUP);`, args: [],
             sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
           { kind: "call" as const, callee: `__RAW_STMT__attachInterrupt(digitalPinToInterrupt(${pb.pin}), ${pb.handlerName}, ${mode});`, args: [],
+            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+        );
+      }
+      // Pin-watchers (from ui.watchPin): set pin mode so ui_poll_inputs can read it
+      for (const wp of watchPinSpecs()) {
+        uiInterruptStmts.push(
+          { kind: "call" as const, callee: `__RAW_STMT__pinMode(${wp.pin}, INPUT_PULLUP);`, args: [],
             sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
         );
       }

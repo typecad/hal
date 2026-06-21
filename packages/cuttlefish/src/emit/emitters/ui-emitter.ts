@@ -17,7 +17,7 @@
 import type { EmitterContext } from "./emitter-context.js";
 import { emitRuntimeHeader } from "../../ui/runtime-header.js";
 import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
-import { uiSignalDecls, uiBindings, uiPressBindings } from "../../ir/transformers/ui-call-resolver.js";
+import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs } from "../../ir/transformers/ui-call-resolver.js";
 import { emitBindingTable } from "../../ir/transformers/ui-reactive.js";
 
 export function emitUIRuntime(ctx: EmitterContext): void {
@@ -95,6 +95,24 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   for (const pb of uiPressBindings()) {
     const fn = pb.edge === "press" ? "ui_on_press" : "ui_on_release";
     ctx.sourceLines.push(`void ${pb.handlerName}() { ${fn}(${pb.nodeIndex}); }`);
+  }
+
+  // 7. Pin-watcher callbacks + table (from ui.watchPin(pin, callback)).
+  // Each callback is a plain function; the runtime's ui_poll_inputs() calls it
+  // on falling edge. No async runtime needed — runs in the main loop frame.
+  for (const wp of watchPinSpecs()) {
+    ctx.sourceLines.push(`void ${wp.fnName}() { ${wp.callbackBody || ""} }`);
+  }
+  if (watchPinSpecs().length > 0) {
+    ctx.sourceLines.push(`UIPinWatch __ui_pin_watches[] = {`);
+    for (const wp of watchPinSpecs()) {
+      ctx.sourceLines.push(`  { .pin=${wp.pin}, .lastState=1, .cb=${wp.fnName} },`);
+    }
+    ctx.sourceLines.push(`};`);
+    ctx.sourceLines.push(`const uint8_t __ui_pin_watch_count = ${watchPinSpecs().length};`);
+  } else {
+    ctx.sourceLines.push(`UIPinWatch __ui_pin_watches[] = {};`);
+    ctx.sourceLines.push(`const uint8_t __ui_pin_watch_count = 0;`);
   }
 }
 

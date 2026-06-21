@@ -134,11 +134,38 @@ static inline void ui_on_release(uint8_t nodeIdx) {
   }
 }
 
+// Pin-watch callback type: void fn(void)
+typedef void (*PinWatchCallback)(void);
+
+struct UIPinWatch {
+  uint8_t pin;
+  uint8_t lastState;   // for edge detection
+  PinWatchCallback cb; // fires on falling edge
+};
+
+// Populated by the emit layer from ui.watchPin() calls.
+extern UIPinWatch __ui_pin_watches[];
+extern const uint8_t __ui_pin_watch_count;
+
+// Poll all configured pin-watchers. Called at the start of ui_tick each frame.
+// Detects falling edges with natural debounce from the ~16ms frame rate.
+static inline void ui_poll_inputs() {
+  for (uint8_t i = 0; i < __ui_pin_watch_count; i++) {
+    uint8_t val = digitalRead(__ui_pin_watches[i].pin);
+    if (val == LOW && __ui_pin_watches[i].lastState == HIGH) {
+      if (__ui_pin_watches[i].cb) __ui_pin_watches[i].cb();
+    }
+    __ui_pin_watches[i].lastState = val;
+  }
+}
+
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
+// Phase -1: poll input pins (edge detection + callbacks).
 // Phase 0: evaluate bindings (mark nodes dirty when values change).
 // Phase 1: advance transitions. Phase 2: draw dirty nodes to __tc_display.
-// Phase 3: flush (no-op for ILI9341 — draws are immediate).
 static inline void ui_tick(uint16_t deltaMs) {
+  // ⓪' Poll inputs first
+  ui_poll_inputs();
   // ⓪ Evaluate bindings: call each binding's fn, compare to the node's
   // current property value, mark dirty if changed.
   for (uint8_t i = 0; i < __ui_binding_count; i++) {
