@@ -1,4 +1,3 @@
-<link rel="stylesheet" href="hello.ui.css">
 <screen>
   <view id="header">
     <text id="title">typeCAD UI</text>
@@ -7,7 +6,10 @@
   <view id="body">
     <text id="counter">0</text>
     <button id="btn">Press</button>
-    <check id="led">Enable LED</check>
+    <view id="ledRow">
+      <view id="ledBox"></view>
+      <text id="ledLabel">Enable LED</text>
+    </view>
   </view>
   <view id="footer">
     <text id="hint">GPIO4: count  GPIO5: toggle</text>

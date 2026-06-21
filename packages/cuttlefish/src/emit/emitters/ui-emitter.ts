@@ -63,7 +63,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // returns the node's current property value — structurally valid so the
   // table compiles. Full arrow-function → C++ lowering is a follow-up.
   for (const spec of uiBindings()) {
-    const access = spec.property === "background" ? "bg" : spec.property === "color" ? "fg" : "0";
+    const access = spec.property === "background" ? "bg"
+      : spec.property === "color" ? "fg"
+      : spec.property === "borderColor" ? "borderColor"
+      : "0";
     // If the binding has a lowered C++ expression (from the arrow body), use it;
     // otherwise fall back to returning the node's current value.
     const isTextBinding = spec.property === "text";

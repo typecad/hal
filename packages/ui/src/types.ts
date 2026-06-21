@@ -23,7 +23,7 @@ export interface PressBinding {
 
 export type TextElement = UIElement & PressBinding & { readonly __kind: "text" };
 export type ButtonElement = UIElement & PressBinding & { readonly __kind: "button" };
-export type ViewElement = { readonly __kind: "view" };
+export type ViewElement = UIElement & { readonly __kind: "view"; onToggle(pin: number, onChange?: () => void): void; };
 
 /** A checkbox element. .value is 0 (unchecked) or 1 (checked). */
 export interface CheckElement extends UIElement {

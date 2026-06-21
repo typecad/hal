@@ -37,6 +37,7 @@ function propEnum(property: string): string {
     case "color": return "PROP_FG";
     case "text": return "PROP_TEXT";
     case "visible": return "PROP_VISIBLE";
+    case "borderColor": return "PROP_BORDER_COLOR";
     default: return `PROP_${property.toUpperCase()}`;
   }
 }

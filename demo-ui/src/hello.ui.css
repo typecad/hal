@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------------
-   hello.ui.css — flexbox layout showcase
+   hello.ui.css — flexbox layout + composed checkbox demo
    ----------------------------------------------------------------------- */
 
 screen {
@@ -10,7 +10,6 @@ screen {
   padding: 10px;
 }
 
-/* Header: row with title + subtitle, bottom border */
 #header {
   display: flex;
   flex-direction: row;
@@ -23,7 +22,6 @@ screen {
 #title {
   color: dodgerblue;
   font-size: 16px;
-  font-weight: bold;
 }
 
 #subtitle {
@@ -31,7 +29,6 @@ screen {
   font-size: 16px;
 }
 
-/* Body: fills remaining vertical space, centers content */
 #body {
   flex: 1;
   display: flex;
@@ -60,11 +57,25 @@ screen {
   background: limegreen;
 }
 
-#led {
-  color: lightskyblue;
+/* Composed checkbox: a small box + label, side by side */
+#ledRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
 
-/* Footer: hint text at the bottom */
+#ledBox {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #808080;
+}
+
+#ledLabel {
+  color: lightskyblue;
+  font-size: 16px;
+}
+
 #footer {
   padding: 4px 0;
 }

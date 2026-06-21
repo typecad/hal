@@ -1,8 +1,9 @@
 // ---------------------------------------------------------------------------
-// main.ts — TypeHAL UI demo (flexbox + bidirectional .value)
+// main.ts — TypeHAL UI demo (flexbox + composed checkbox)
 //
-// Exercises flexbox layout, .value reads/writes, reactive bindings, pin input,
-// and the transition engine.
+// The checkbox is built from primitives: <view id="ledBox"> (the square) +
+// <text id="ledLabel"> (the label). The ledBox's .value tracks checked state.
+// Bindings drive the visual appearance from .value — no special <check> element.
 //
 // GPIO4: increments counter   GPIO5: toggles checkbox
 // ---------------------------------------------------------------------------
@@ -19,25 +20,27 @@ ui.mount(screen, {
   rst: 22,
 });
 
-// Counter: .value is the source of truth. Bindings compute display from it.
+// Counter state + display bindings
 screen.counter.value = 0;
-
-// Counter color: limegreen when even, orange when odd
 ui.bind(screen.counter, 'color', () => (screen.counter.value % 2 === 0 ? 'limegreen' : 'orange'));
-
-// Counter text: reflect the value as a string
 ui.bind(screen.counter, 'text', () => String(screen.counter.value));
 
-// Button: .value drives the pressed color transition
+// Button background driven by its pressed .value
 ui.bind(screen.btn, 'background', () => (screen.btn.value > 0 ? 'limegreen' : 'darkgreen'));
 
-// GPIO4: increment the counter
+// ── Composed checkbox ──────────────────────────────────────────────────────
+// ledBox is the visual square. Its .value (0/1) is the checked state.
+// Bindings drive background, border color, and the label text.
+ui.bind(screen.ledBox, 'background', () => (screen.ledBox.value ? 'limegreen' : 'transparent'));
+ui.bind(screen.ledBox, 'borderColor', () => (screen.ledBox.value ? 'limegreen' : '#808080'));
+ui.bind(screen.ledLabel, 'color', () => (screen.ledBox.value ? 'limegreen' : 'lightskyblue'));
+
+// GPIO5 toggles ledBox.value (auto-flips 0↔1)
+screen.ledBox.onToggle(5);
+
+// ── Inputs ─────────────────────────────────────────────────────────────────
 ui.watchPin(4, () => { screen.counter.value = screen.counter.value + 1; });
 
-// GPIO5: toggle the checkbox (auto-flips .value, no callback needed)
-screen.led.onToggle(5);
-
-// Auto-increment every 2 seconds so the counter visibly changes
 setInterval(() => {
   screen.counter.value = screen.counter.value + 1;
 }, 2000);

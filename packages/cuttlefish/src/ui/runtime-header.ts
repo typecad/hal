@@ -21,7 +21,7 @@ export function emitRuntimeHeader(): string {
 #define UI_TEXT_BUF 16   // single source of truth: UINode field + textFn size arg + snprintf bound
 
 enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK };
-enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE };
+enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
 
 struct UIRect { int16_t x, y, w, h; };
 struct UINode {
@@ -198,6 +198,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       uint16_t newVal = __ui_bindings[i].fn();
       uint16_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
                     : (__ui_bindings[i].prop == PROP_FG) ? &__ui_nodes[__ui_bindings[i].node].fg
+                    : (__ui_bindings[i].prop == PROP_BORDER_COLOR) ? &__ui_nodes[__ui_bindings[i].node].borderColor
                     : &__ui_nodes[__ui_bindings[i].node].bg;
       if (newVal != *target) {
         *target = newVal;
