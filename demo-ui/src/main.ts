@@ -28,7 +28,7 @@ ui.mount(screen, {
 // physical button press (onPress) will drive once that wiring lands.
 const pressed = ui.signal(0);
 
-ui.bind(screen.btn, 'background', () => (pressed() > 0 ? '#00ff37' : '#ff0000'));
+ui.bind(screen.btn, 'background', () => (pressed() > 0 ? '#d9ff00' : '#00ff6a'));
 
 // Physical button: GPIO4 drives the button's :pressed state. GPIO4 is a
 // general-purpose input with interrupt support (unlike GPIO0 which is the
