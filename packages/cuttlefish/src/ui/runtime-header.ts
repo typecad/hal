@@ -237,7 +237,10 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
-        __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+        // Only fill if the node has a background set; otherwise it's a
+        // transparent container (let the parent's background show through).
+        if (__ui_nodes[i].hasBg)
+          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         break;
       case NODE_TEXT:
         // Clear the text area before drawing to prevent ghosting.
