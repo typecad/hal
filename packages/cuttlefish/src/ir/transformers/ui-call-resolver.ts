@@ -22,6 +22,7 @@ import { renderExprAsText } from "../render-expr.js";
 import { resolveColor } from "../../ui/color.js";
 import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
+import { escapeCppStringLiteral } from "../../utils/strings.js";
 
 // ── Pure-helper state ───────────────────────────────────────────────────────
 
@@ -312,6 +313,97 @@ function resolveSignalCall(
     sourceSpan: makeSourceSpan(call, fileName, sourceText),
     body: [],
   };
+}
+
+// ── Text-binding lowering (spec §5) ──────────────────────────────────────────
+
+/** Result of lowering a text-binding arrow body. */
+export interface LoweredTextBody {
+  /** Imperative C++ statement(s) writing into `buf` (the textFn param). */
+  cppBody: string;
+}
+
+/** Format specifier for a single numeric interpolation per spec §5.3.
+ *  - bare int/uint/bool signal read  → "%d"
+ *  - bare float/double signal read   → "%g"
+ *  - anything else (arithmetic, non-signal, literal) → "%d" (default; v1) */
+function numericFormat(expr: ts.Expression): string {
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
+      expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
+    const t = signalCppType(expr.expression.text);
+    if (t === "float" || t === "double") return "%g";
+  }
+  return "%d";
+}
+
+/** Lower a single expression as a snprintf argument.
+ *  - signal read `name()` → "name"
+ *  - numeric literal / other → rendered via the shared expression renderer */
+function lowerInterpolationArg(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[]): string {
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
+      expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
+    return expr.expression.text;
+  }
+  return renderExprAsText(expressionToIR(expr, sourceText, diagnostics));
+}
+
+/**
+ * Lower a text-binding arrow body to an imperative C++ statement that writes
+ * into `buf` (the textFn's first parameter, size `size`). Recognizes three
+ * shapes (spec §5.2): String(<numeric>), a bare string literal, and a template
+ * literal with numeric interpolations. Anything else produces a safe no-op
+ * (`buf[0] = 0;`) plus a `ui-bind-text-unlowered` warning so the author sees it.
+ *
+ * Pure function of the AST + the recorded signal table; no side effects beyond
+ * pushing diagnostics.
+ */
+export function lowerTextBindingBody(
+  body: ts.Expression,
+  _fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): LoweredTextBody {
+  const warn = (): LoweredTextBody => {
+    diagnostics.push({
+      severity: "warning",
+      code: "ui-bind-text-unlowered",
+      message: `ui.bind text: this arrow-body shape is not supported in v1. Supported: String(<signal>), a string literal, or a template literal with numeric interpolations. The node will display an empty string.`,
+    } as Diagnostic);
+    return { cppBody: "buf[0] = 0;" };
+  };
+
+  // Shape 1: String(<numeric expr>)
+  if (ts.isCallExpression(body) && ts.isIdentifier(body.expression) &&
+      body.expression.text === "String" && body.arguments.length === 1) {
+    const arg = body.arguments[0];
+    const fmt = numericFormat(arg);
+    const argText = lowerInterpolationArg(arg, sourceText, diagnostics);
+    return { cppBody: `snprintf(buf, size, "${fmt}", ${argText});` };
+  }
+
+  // Shape 2: bare string literal
+  if (ts.isStringLiteral(body)) {
+    const escaped = escapeCppStringLiteral(body.text);
+    return { cppBody: `snprintf(buf, size, "%s", "${escaped}");` };
+  }
+
+  // Shape 3: template literal with numeric interpolations.
+  // Build the format string by alternating literal fragments and %specifiers,
+  // and collect the matching argument expressions in order.
+  if (ts.isTemplateExpression(body)) {
+    const fmtBuf: string[] = [escapeCppStringLiteral(body.head.text)];
+    const args: string[] = [];
+    for (const span of body.templateSpans) {
+      fmtBuf.push(numericFormat(span.expression));
+      args.push(lowerInterpolationArg(span.expression, sourceText, diagnostics));
+      fmtBuf.push(escapeCppStringLiteral(span.literal.text));
+    }
+    const fmt = fmtBuf.join("");
+    const argList = args.length ? ", " + args.join(", ") : "";
+    return { cppBody: `snprintf(buf, size, "${fmt}"${argList});` };
+  }
+
+  return warn();
 }
 
 function resolveBindCall(
