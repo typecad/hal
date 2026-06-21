@@ -174,6 +174,45 @@ export function callToStatement(
     };
   }
 
+  // ── screen.modeSelect.onChange(pin, optionCount, callback?) ───────────
+  // Cycles .value through 0..optionCount-1 on each falling edge.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "onChange" &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const pinArg = call.arguments[0];
+    const countArg = call.arguments[1];
+    const cbArg = call.arguments[2];
+    const pin = pinArg ? (ts.isNumericLiteral(pinArg) ? pinArg.text : pinArg.getText()) : "0";
+    const optionCount = countArg ? (ts.isNumericLiteral(countArg) ? countArg.text : "2") : "2";
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    // Lower optional callback
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    // Cycle: value = (value + 1) % optionCount, mark dirty, optional callback
+    const fnName = `__ui_${elemId}_change_${watchPinSpecs().length}`;
+    const fullBody = `__ui_nodes[${nodeIndex}].value = (__ui_nodes[${nodeIndex}].value + 1) % ${optionCount}; ui_mark_dirty(${nodeIndex}); ${cbBody}`;
+    recordWatchPin({ pin: String(pin), fnName, callbackBody: fullBody });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
   // ---- HAL method resolver (highest priority) ---
   const halResolved = tryResolveHALMethod(call, fileName, sourceText, diagnostics, pointerVars);
   if (halResolved) return halResolved;

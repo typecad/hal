@@ -21,9 +21,16 @@ export interface PressBinding {
   onRelease(pin: number | string): void;
 }
 
-export type TextElement = UIElement & PressBinding & { readonly __kind: "text" };
+export type TextElement = UIElement & PressBinding & {
+  readonly __kind: "text";
+  onChange(pin: number, optionCount: number, onChange?: () => void): void;
+};
 export type ButtonElement = UIElement & PressBinding & { readonly __kind: "button" };
-export type ViewElement = UIElement & { readonly __kind: "view"; onToggle(pin: number, onChange?: () => void): void; };
+export type ViewElement = UIElement & {
+  readonly __kind: "view";
+  onToggle(pin: number, onChange?: () => void): void;
+  onChange(pin: number, optionCount: number, onChange?: () => void): void;
+};
 
 /** A checkbox element. .value is 0 (unchecked) or 1 (checked). */
 export interface CheckElement extends UIElement {

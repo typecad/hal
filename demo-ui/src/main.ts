@@ -1,11 +1,7 @@
 // ---------------------------------------------------------------------------
-// main.ts — TypeHAL UI demo (flexbox + composed checkbox)
+// main.ts — TypeHAL UI demo (flexbox + composed checkbox + select)
 //
-// The checkbox is built from primitives: <view id="ledBox"> (the square) +
-// <text id="ledLabel"> (the label). The ledBox's .value tracks checked state.
-// Bindings drive the visual appearance from .value — no special <check> element.
-//
-// GPIO4: increments counter   GPIO5: toggles checkbox
+// GPIO4: increments counter   GPIO5: toggles checkbox   GPIO15: cycles mode
 // ---------------------------------------------------------------------------
 
 import { ui } from '@typecad/ui';
@@ -29,16 +25,18 @@ ui.bind(screen.counter, 'text', () => String(screen.counter.value));
 ui.bind(screen.btn, 'background', () => (screen.btn.value > 0 ? 'limegreen' : 'darkgreen'));
 
 // ── Composed checkbox ──────────────────────────────────────────────────────
-// ledBox is the visual square. Its .value (0/1) is the checked state.
-// Bindings drive background, border color, and the label text.
 ui.bind(screen.ledBox, 'background', () => (screen.ledBox.value ? 'limegreen' : 'transparent'));
 ui.bind(screen.ledBox, 'borderColor', () => (screen.ledBox.value ? 'limegreen' : '#808080'));
+screen.ledBox.onToggle(5);
 
-// GPIO5 toggles ledBox.value (auto-flips 0↔1)
-screen.ledBox.onToggle(4);
+// ── Mode selector (composed <select>) ─────────────────────────────────────
+// modeValue cycles through Auto/Manual/Off on GPIO15.
+ui.bind(screen.modeValue, 'text', () => (['Auto', 'Manual', 'Off'][screen.modeValue.value] || 'Auto'));
+ui.bind(screen.modeValue, 'color', () => (screen.modeValue.value === 0 ? 'limegreen' : 'khaki'));
+screen.modeValue.onChange(15, 3);
 
 // ── Inputs ─────────────────────────────────────────────────────────────────
-// ui.watchPin(4, () => { screen.counter.value = screen.counter.value + 1; });
+ui.watchPin(4, () => { screen.counter.value = screen.counter.value + 1; });
 
 setInterval(() => {
   screen.counter.value = screen.counter.value + 1;
