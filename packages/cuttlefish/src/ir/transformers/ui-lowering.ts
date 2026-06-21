@@ -101,12 +101,22 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
   ].join("\n");
 }
 
-function emitTransitionTable(flat: FlatNode[], _colorFormat: ColorFormat): string {
+function emitTransitionTable(flat: FlatNode[], colorFormat: ColorFormat): string {
   const entries: string[] = [];
   for (const n of flat) {
     if (!n.style.transition) continue;
     const prop = n.style.transition.property === "background" ? "PROP_BG" : "PROP_FG";
-    entries.push(`  { .node=${n.index}, .prop=${prop}, .durationMs=${n.style.transition.durationMs} },`);
+    // The :pressed state's target color for this property. On press,
+    // ui_on_press arms the transition toward this value; on release,
+    // ui_on_release arms it back toward the base value.
+    const pressedStyle = (n.style as CSSProperty & { pressed?: CSSProperty }).pressed;
+    const pressedBg = pressedStyle?.background
+      ? resolveColor(pressedStyle.background, colorFormat)
+      : n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
+    const baseBg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
+    const pressedHex = `0x${pressedBg.toString(16).padStart(4, "0")}`;
+    const baseHex = `0x${baseBg.toString(16).padStart(4, "0")}`;
+    entries.push(`  { .node=${n.index}, .prop=${prop}, .durationMs=${n.style.transition.durationMs}, .pressedTarget=${pressedHex}, .baseTarget=${baseHex} },`);
   }
   if (entries.length === 0) {
     return `const UITransition __ui_trans[] = {};`;

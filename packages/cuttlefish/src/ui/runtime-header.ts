@@ -38,6 +38,10 @@ struct UITransition {
   uint8_t node;
   UIProperty prop;
   uint16_t durationMs;
+  // The :pressed and base-state target colors. ui_on_press arms toward
+  // pressedTarget; ui_on_release arms toward baseTarget.
+  uint16_t pressedTarget;
+  uint16_t baseTarget;
   // runtime
   uint16_t elapsed;
   uint16_t prevValue;
@@ -75,18 +79,6 @@ static inline void ui_mark_dirty(uint8_t nodeIdx) {
   __ui_nodes[nodeIdx].dirty = 1;
 }
 
-// Arm transitions on a node toward the given target. Used by press/release.
-static inline void ui_arm_transitions(uint8_t nodeIdx, uint16_t target) {
-  for (uint8_t i = 0; i < __ui_trans_count; i++) {
-    if (__ui_trans[i].node == nodeIdx) {
-      __ui_trans[i].prevValue = __ui_nodes[nodeIdx].bg;
-      __ui_trans[i].targetValue = target;
-      __ui_trans[i].elapsed = 0;
-      __ui_trans[i].active = 1;
-    }
-  }
-}
-
 // Initial draw: mark all nodes dirty so the first ui_tick renders everything.
 // Called once in setup() before the loop begins.
 static inline void ui_init(void) {
@@ -96,15 +88,31 @@ static inline void ui_init(void) {
 }
 
 // Press / release entry points that node.onPress(pin) lowers to.
-// On press, :pressed style values become the transition target; on release,
-// the base values become the target (interrupt-and-re-lerp from current).
+// On press, arm transitions toward the :pressed target color; on release,
+// arm them back toward the base color (interrupt-and-re-lerp from current).
 static inline void ui_on_press(uint8_t nodeIdx) {
   __ui_nodes[nodeIdx].pressed = 1;
   ui_mark_dirty(nodeIdx);
+  for (uint8_t i = 0; i < __ui_trans_count; i++) {
+    if (__ui_trans[i].node == nodeIdx) {
+      __ui_trans[i].prevValue = __ui_nodes[nodeIdx].bg;
+      __ui_trans[i].targetValue = __ui_trans[i].pressedTarget;
+      __ui_trans[i].elapsed = 0;
+      __ui_trans[i].active = 1;
+    }
+  }
 }
 static inline void ui_on_release(uint8_t nodeIdx) {
   __ui_nodes[nodeIdx].pressed = 0;
   ui_mark_dirty(nodeIdx);
+  for (uint8_t i = 0; i < __ui_trans_count; i++) {
+    if (__ui_trans[i].node == nodeIdx) {
+      __ui_trans[i].prevValue = __ui_nodes[nodeIdx].bg;
+      __ui_trans[i].targetValue = __ui_trans[i].baseTarget;
+      __ui_trans[i].elapsed = 0;
+      __ui_trans[i].active = 1;
+    }
+  }
 }
 
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
