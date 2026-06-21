@@ -18,6 +18,7 @@ export function emitRuntimeHeader(): string {
 #ifndef __TC_UI_RUNTIME
 #define __TC_UI_RUNTIME
 #include <stdint.h>
+#define UI_TEXT_BUF 16   // single source of truth: UINode field + textFn size arg + snprintf bound
 
 enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE };
@@ -29,6 +30,8 @@ struct UINode {
   uint16_t fg;
   UINodeKind kind;
   const char* text;
+  char textBuffer[UI_TEXT_BUF]; // dynamic text — read only when hasTextBinding == 1
+  uint8_t hasTextBinding;       // set by ui_init when a PROP_TEXT binding targets this node
   const uint8_t* font;
   uint8_t hasBg;
   uint8_t textAlign;    // 0=left, 1=center, 2=right
@@ -58,7 +61,7 @@ struct UIBinding {
   uint8_t node;
   UIProperty prop;
   uint16_t (*fn)(void);       // for color/numeric bindings
-  const char* (*textFn)(void); // for text bindings (PROP_TEXT)
+  void (*textFn)(char* buf, uint8_t size); // for text bindings (PROP_TEXT): fills buf
 };
 
 // Color lerp for transitions (rgb565). For mono, this collapses to a snap.

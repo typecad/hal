@@ -37,4 +37,17 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/#define\s+__TC_UI_RUNTIME/);
     expect(header).toContain("#endif");
   });
+
+  it("defines UI_TEXT_BUF as 16", () => {
+    expect(header).toMatch(/#define\s+UI_TEXT_BUF\s+16/);
+  });
+
+  it("UINode has a mutable textBuffer and hasTextBinding field", () => {
+    expect(header).toMatch(/char\s+textBuffer\[UI_TEXT_BUF\]/);
+    expect(header).toMatch(/uint8_t\s+hasTextBinding/);
+  });
+
+  it("UIBinding textFn signature is void fill-style (char*, uint8_t)", () => {
+    expect(header).toMatch(/void\s+\(\*textFn\)\(char\*\s*buf,\s*uint8_t\s*size\)/);
+  });
 });
