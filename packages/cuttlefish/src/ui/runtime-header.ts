@@ -30,6 +30,7 @@ struct UINode {
   UINodeKind kind;
   const char* text;
   const uint8_t* font;
+  uint8_t hasBg;     // 1 if the CSS set a background; 0 = transparent (skip fillRect)
   // runtime slot
   uint8_t dirty;
   uint8_t pressed;
@@ -162,21 +163,22 @@ static inline void ui_tick(uint16_t deltaMs) {
         __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         break;
       case NODE_TEXT:
-        __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+        if (__ui_nodes[i].hasBg)
+          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         __tc_display.setCursor(__ui_nodes[i].box.x, __ui_nodes[i].box.y);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(__ui_nodes[i].text);
         break;
       case NODE_BUTTON:
-        // Fill background, draw a border, center the text.
-        __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+        // Fill background (if set), draw a border, center the text.
+        if (__ui_nodes[i].hasBg)
+          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         __tc_display.drawRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].fg);
-        // Center text: compute text pixel width from strlen × per-char width at textSize 2.
-        // GFX default font: 5px base × size 2 + 1px spacing = 11px per char.
+        // Center text: GFX advance width is 6px × textSize = 12px per char at size 2.
         if (__ui_nodes[i].text) {
           uint16_t tw = 0;
-          for (const char* p = __ui_nodes[i].text; *p; p++) tw += 11;
+          for (const char* p = __ui_nodes[i].text; *p; p++) tw += 12;
           __tc_display.setCursor(
             __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
             __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 14) / 2);

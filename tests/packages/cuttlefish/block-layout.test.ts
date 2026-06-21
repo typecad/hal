@@ -45,9 +45,9 @@ describe("BlockLayoutEngine", () => {
       parseCss(`#t { font-size: 16px; }`),
     );
     const size = measure(styled.children[0]);
-    // GFX default font at textSize 2: 5px base × 2 + 1px spacing = 11px per char
-    expect(size.w).toBe(22);   // 2 chars * 11px
-    expect(size.h).toBe(14);   // 7px base × 2 = 14px
+    // GFX default font at textSize 2: 6px advance × 2 = 12px per char, 8px × 2 = 16px height
+    expect(size.w).toBe(24);   // 2 chars * 12px
+    expect(size.h).toBe(16);   // 8px base × 2 = 16px
   });
 });
 

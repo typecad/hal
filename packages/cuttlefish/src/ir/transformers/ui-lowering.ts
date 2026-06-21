@@ -12,10 +12,10 @@
 //   - typeDecl:        TypeScript declarations so .ui.html imports are typed.
 // ---------------------------------------------------------------------------
 
-import { StyledNode } from "../../ui/style-resolver";
-import { Box } from "../../ui/layout-engine";
-import { resolveColor } from "../../ui/color";
-import { CSSProperty } from "../../ui/css-parser";
+import { StyledNode } from "../../ui/style-resolver.js";
+import { Box } from "../../ui/layout-engine.js";
+import { resolveColor } from "../../ui/color.js";
+import { CSSProperty } from "../../ui/css-parser.js";
 
 export interface LoweredUI {
   nodeTable: string;
@@ -34,6 +34,7 @@ interface FlatNode {
   style: CSSProperty;
   box: Box;
   hasPressed: boolean;
+  hasBg: boolean;
 }
 
 export function lowerUIToCpp(
@@ -63,6 +64,7 @@ function flatten(
   const index = cursor.i++;
   const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
   const hasPressed = !!(node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
+  const hasBg = !!node.style.background;
   out.push({
     index,
     tag: node.tag,
@@ -71,6 +73,7 @@ function flatten(
     style: node.style,
     box,
     hasPressed,
+    hasBg,
   });
   for (const child of node.children) flatten(child, boxes, out, cursor);
 }
@@ -90,7 +93,7 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
     const bgStr = `0x${bg.toString(16).padStart(4, "0")}`;
     const fgStr = `0x${fg.toString(16).padStart(4, "0")}`;
-    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .font=${font} },`;
+    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .font=${font}, .hasBg=${n.hasBg ? 1 : 0} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.
