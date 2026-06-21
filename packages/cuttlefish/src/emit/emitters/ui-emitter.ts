@@ -85,7 +85,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
 /** Count NODE_FILL/NODE_TEXT entries in the emitted node table (one per node). */
 function countNodes(nodeTable: string): number {
-  const matches = nodeTable.match(/NODE_(FILL|TEXT)/g);
+  const matches = nodeTable.match(/NODE_(FILL|TEXT|BUTTON)/g);
   return matches ? matches.length : 0;
 }
 
