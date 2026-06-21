@@ -322,9 +322,13 @@ function resolveBindCall(
     const body = fnArg.body;
     if (ts.isExpression(body)) {
       let raw = renderExprAsText(expressionToIR(body, sourceText, diagnostics));
-      // Resolve hex color string literals ("#rrggbb") to RGB565 hex values,
-      // since the binding function returns uint16_t.
-      raw = raw.replace(/"(#[0-9a-fA-F]{6})"/g, (_, hex) => `0x${resolveColor(hex, "rgb565").toString(16)}`);
+      // Resolve color string literals to RGB565 hex values. Handles hex,
+      // named colors, and rgb()/rgba().
+      raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
+        try {
+          return `0x${resolveColor(color, "rgb565").toString(16)}`;
+        } catch { return match; }
+      });
       cppExpr = raw;
     }
   }

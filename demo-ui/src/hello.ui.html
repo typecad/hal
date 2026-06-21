@@ -1,14 +1,13 @@
-<!-- ---------------------------------------------------------------------------
-     hello.ui.html — the canonical TypeHAL UI demo
-
-     A green screen with red "hello world" text and a gray button whose
-     background transitions over 80ms when pressed. This is the spec §4 trace
-     made into a runnable program.
-
-     Pairs with hello.ui.css and the ui.mount() call in main.ts.
-     ----------------------------------------------------------------------- -->
-<link rel="stylesheet" href="hello.ui.css">
 <screen>
-  <text id="greeting">hello cuttlefish</text>
-  <button id="btn">typeCAD</button>
+  <view id="header">
+    <text id="title">typeCAD UI</text>
+    <text id="subtitle">flexbox demo</text>
+  </view>
+  <view id="statusRow">
+    <text id="counter">0</text>
+    <button id="btn">Press</button>
+  </view>
+  <view id="footer">
+    <text id="hint">GPIO4 to interact</text>
+  </view>
 </screen>

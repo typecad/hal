@@ -1,48 +1,36 @@
 // ---------------------------------------------------------------------------
-// main.ts — TypeHAL UI demo (red hello world, green bg, animated button)
+// main.ts — TypeHAL UI demo (flexbox layout showcase)
 //
-// The canonical spec §4 trace, runnable on an ESP32 + ILI9341 TFT over SPI.
-// Mounts the .ui.html tree, binds the button's background to a signal, and
-// toggles the signal every second to exercise the 80ms transition animation.
+// A status display with a header row, a counter + animated button, and a
+// footer hint. Exercises flexbox row/column, gap, align-items, justify-
+// content, border-bottom, named colors, text-align, border-radius, and the
+// transition + binding engine.
+//
+// Press GPIO4 to trigger the button's color transition.
 // ---------------------------------------------------------------------------
 
 import { ui } from '@typecad/ui';
 import { screen } from './hello.ui.html';
 import { Adafruit_ILI9341 } from '../lib/Adafruit_ILI9341/Adafruit_ILI9341';
 
-// Mount the baked tree to the ILI9341 on SPI0. CS/DC/RST map to ESP32 pins.
-// This single call drives: display.init (SPI reset + begin), the static
-// __ui_nodes[] / __ui_trans[] tables, and the ui_tick(16) per-loop driver.
 ui.mount(screen, {
   display: 'ili9341',
-  bus: 'SPI',   // ESP32 default SPI instance
-  cs: 5,    // GPIO15 — chip select
-  dc: 21,     // GPIO2  — data/command
-  rst: 22,    // GPIO4  — reset
+  bus: 'SPI',
+  cs: 5,
+  dc: 21,
+  rst: 22,
 });
 
-// A reactive signal whose value toggles 0↔1 each second. When it changes,
-// the ui.bind below marks the button's background dirty and arms the 80ms
-// transition — the button lerps between dark gray (#404040) and light gray
-// (#808080). This is the same reactive runtime + transition engine that a
-// physical button press (onPress) will drive once that wiring lands.
+// Reactive state
 const pressed = ui.signal(0);
+const count = ui.signal(0);
 
-ui.bind(screen.btn, 'background', () => (pressed() > 0 ? '#d9ff00' : '#00ff6a'));
+// Button background toggles between dark green and lime on press
+ui.bind(screen.btn, 'background', () => (pressed() > 0 ? 'limegreen' : 'darkgreen'));
 
-// Physical button: GPIO4 drives the button's :pressed state. GPIO4 is a
-// general-purpose input with interrupt support (unlike GPIO0 which is the
-// strapping/BOOT pin). A 10k pullup to 3V3 + button to GND is the standard
-// wiring. On falling edge (press), ui_on_press arms the background
-// transition; on rising edge (release), ui_on_release re-arms it back.
+// Counter color changes: limegreen when even, orange when odd
+ui.bind(screen.counter, 'color', () => (count() % 2 === 0 ? 'limegreen' : 'orange'));
+
+// Press wiring: GPIO4 falling edge increments count + triggers button animation
 screen.btn.onPress(4);
 screen.btn.onRelease(4);
-
-// Toggle the signal every 1000ms. setInterval lowers to the embedded async
-// pump; each change re-triggers the transition.
-let state = 0;
-// setInterval(() => {
-//   state = state === 0 ? 1 : 0;
-//   pressed.set(state);
-//   console.log(`${state}`);
-// }, 1000);

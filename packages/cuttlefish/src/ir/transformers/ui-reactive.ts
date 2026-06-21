@@ -39,7 +39,11 @@ function propEnum(property: string): string {
 
 /** Emit a single binding-table entry line. */
 export function emitBindingEntry(spec: BindingSpec): string {
-  return `  { .node=${spec.nodeIndex}, .prop=${propEnum(spec.property)}, .fn=${spec.fnName} },`;
+  // Text bindings wire to textFn; color bindings wire to fn.
+  if (spec.property === "text") {
+    return `  { .node=${spec.nodeIndex}, .prop=${propEnum(spec.property)}, .fn=nullptr, .textFn=${spec.fnName} },`;
+  }
+  return `  { .node=${spec.nodeIndex}, .prop=${propEnum(spec.property)}, .fn=${spec.fnName}, .textFn=nullptr },`;
 }
 
 /** Emit a full binding table from a list of specs. */

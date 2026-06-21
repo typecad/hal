@@ -63,12 +63,20 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     const access = spec.property === "background" ? "bg" : spec.property === "color" ? "fg" : "0";
     // If the binding has a lowered C++ expression (from the arrow body), use it;
     // otherwise fall back to returning the node's current value.
-    const body = spec.cppExpr
-      ? spec.cppExpr
-      : `__ui_nodes[${spec.nodeIndex}].${access}`;
-    ctx.sourceLines.push(
-      `uint16_t ${spec.fnName}(void) { return ${body}; }`,
-    );
+    const isTextBinding = spec.property === "text";
+    if (isTextBinding) {
+      // Text bindings return const char* and are wired to textFn.
+      const textBody = spec.cppExpr || `"${""}"`;
+      ctx.sourceLines.push(
+        `const char* ${spec.fnName}(void) { return ${textBody}; }`,
+      );
+    } else {
+      const access = spec.property === "background" ? "bg" : spec.property === "color" ? "fg" : "bg";
+      const body = spec.cppExpr || `__ui_nodes[${spec.nodeIndex}].${access}`;
+      ctx.sourceLines.push(
+        `uint16_t ${spec.fnName}(void) { return ${body}; }`,
+      );
+    }
   }
 
   // 5. Node count externs the runtime header references.

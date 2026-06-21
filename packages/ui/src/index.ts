@@ -39,7 +39,7 @@ export interface MountOptions {
  * fields rather than an index signature — is assignable. The transpiler
  * intercepts the call structurally; the type only needs to permit it.
  */
-export declare function mount<T extends Record<string, unknown>>(tree: T, opts: MountOptions): void;
+export declare function mount(tree: unknown, opts: MountOptions): void;
 
 /**
  * Declare a reactive signal. Lowers to a plain device variable + dirty flag.

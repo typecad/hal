@@ -57,7 +57,8 @@ struct UITransition {
 struct UIBinding {
   uint8_t node;
   UIProperty prop;
-  uint16_t (*fn)(void);
+  uint16_t (*fn)(void);       // for color/numeric bindings
+  const char* (*textFn)(void); // for text bindings (PROP_TEXT)
 };
 
 // Color lerp for transitions (rgb565). For mono, this collapses to a snap.
@@ -141,13 +142,23 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ⓪ Evaluate bindings: call each binding's fn, compare to the node's
   // current property value, mark dirty if changed.
   for (uint8_t i = 0; i < __ui_binding_count; i++) {
-    uint16_t newVal = __ui_bindings[i].fn();
-    uint16_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
-                  : (__ui_bindings[i].prop == PROP_FG) ? &__ui_nodes[__ui_bindings[i].node].fg
-                  : &__ui_nodes[__ui_bindings[i].node].bg;
-    if (newVal != *target) {
-      *target = newVal;
-      ui_mark_dirty(__ui_bindings[i].node);
+    if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
+      // Text binding: compare string pointers (re-render if changed)
+      const char* newText = __ui_bindings[i].textFn();
+      if (newText != __ui_nodes[__ui_bindings[i].node].text) {
+        __ui_nodes[__ui_bindings[i].node].text = newText;
+        ui_mark_dirty(__ui_bindings[i].node);
+      }
+    } else if (__ui_bindings[i].fn) {
+      // Color/numeric binding
+      uint16_t newVal = __ui_bindings[i].fn();
+      uint16_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
+                    : (__ui_bindings[i].prop == PROP_FG) ? &__ui_nodes[__ui_bindings[i].node].fg
+                    : &__ui_nodes[__ui_bindings[i].node].bg;
+      if (newVal != *target) {
+        *target = newVal;
+        ui_mark_dirty(__ui_bindings[i].node);
+      }
     }
   }
   // ① Advance transitions.

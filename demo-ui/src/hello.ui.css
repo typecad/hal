@@ -1,34 +1,72 @@
 /* ---------------------------------------------------------------------------
-   hello.ui.css — styles for the canonical UI demo
-
-   Red screen background, white greeting text, green button that animates its
-   background over 1500ms when :pressed. Uses display:flex + flex-direction:
-   column to activate the Yoga layout engine.
+   hello.ui.css — a richer demo exercising flexbox, text-align, borders,
+   named colors, gap, align-items, and the transition engine.
    ----------------------------------------------------------------------- */
 
 screen {
-  background: #e73b3b;
-  padding: 8px;
+  background: #1a1a2e;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  padding: 10px;
 }
 
-#greeting {
-  color: #ffffff;
+/* Header: a row with title + subtitle, bottom border */
+#header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 2px solid dodgerblue;
+  padding-bottom: 6px;
+}
+
+#title {
+  color: dodgerblue;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+#subtitle {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+/* Status row: counter text + button side by side */
+#statusRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+#counter {
+  color: limegreen;
   font-size: 16px;
 }
 
 #btn {
-  background: #00ff6a;
-  color: #ffffff;
-  padding: 8px 16px;
-  border: 2px solid #808080;
-  border-radius: 6px;
-  align-self: flex-start;
-  transition: background 1500ms;
+  background: darkgreen;
+  color: white;
+  border: 2px solid limegreen;
+  border-radius: 4px;
+  padding: 6px 16px;
+  text-align: center;
+  transition: background 200ms;
 }
 
 #btn:pressed {
-  background: #d9ff00;
+  background: limegreen;
+}
+
+/* Footer: hint text */
+#footer {
+  padding: 4px 0;
+}
+
+#hint {
+  color: dimgray;
+  font-size: 16px;
+  text-decoration: underline;
 }
