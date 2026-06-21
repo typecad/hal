@@ -433,27 +433,30 @@ function resolveBindCall(
 
   const fnName = `__ui_bind_${property}_${bindings.length}`;
 
-  // Try to extract the C++ expression from the arrow body for the binding fn.
-  // For v1 this handles the common pattern: () => (signal() > N ? '#hex' : '#hex')
-  // by lowering it to the equivalent C++ ternary with pre-resolved colors.
+  // Text bindings lower through a dedicated path (spec §5) that emits an
+  // imperative snprintf statement into the node's buffer. Color/numeric
+  // bindings keep the generic expression path with color-literal resolution.
   let cppExpr = "";
+  let cppBody: string | undefined;
   if (fnArg && (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg))) {
-    // For arrow functions with expression bodies (not block bodies), lower the
-    // expression to C++. Block bodies would need statement lowering (future).
     const body = fnArg.body;
     if (ts.isExpression(body)) {
-      let raw = renderExprAsText(expressionToIR(body, sourceText, diagnostics));
-      // Resolve color string literals to RGB565 hex values. Handles hex,
-      // named colors, and rgb()/rgba().
-      raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
-        try {
-          return `0x${resolveColor(color, "rgb565").toString(16)}`;
-        } catch { return match; }
-      });
-      cppExpr = raw;
+      if (property === "text") {
+        cppBody = lowerTextBindingBody(body, fileName, sourceText, diagnostics).cppBody;
+      } else {
+        let raw = renderExprAsText(expressionToIR(body, sourceText, diagnostics));
+        // Resolve color string literals to RGB565 hex values. Handles hex,
+        // named colors, and rgb()/rgba().
+        raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
+          try {
+            return `0x${resolveColor(color, "rgb565").toString(16)}`;
+          } catch { return match; }
+        });
+        cppExpr = raw;
+      }
     }
   }
-  recordBinding({ nodeIndex, property, fnName, cppExpr });
+  recordBinding({ nodeIndex, property, fnName, cppExpr, cppBody });
 
   return {
     kind: "block",
