@@ -57,4 +57,12 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_init[\s\S]*strncpy\(\s*__ui_nodes\[n\]\.textBuffer,\s*__ui_nodes\[n\]\.text,\s*UI_TEXT_BUF\s*-\s*1\s*\)/);
     expect(header).toMatch(/ui_init[\s\S]*textBuffer\[UI_TEXT_BUF\s*-\s*1\]\s*=\s*'\\0'/);
   });
+
+  it("ui_tick text-binding dispatch compares by content (strcmp), not pointer", () => {
+    // Must: save oldBuf, call textFn(buf,size), strcmp to decide dirty.
+    expect(header).toMatch(/char\s+oldBuf\[UI_TEXT_BUF\]/);
+    expect(header).toMatch(/strcpy\(\s*oldBuf,\s*__ui_nodes\[.*?\]\.textBuffer\s*\)/);
+    expect(header).toMatch(/textFn\(\s*__ui_nodes\[.*?\]\.textBuffer,\s*UI_TEXT_BUF\s*\)/);
+    expect(header).toMatch(/strcmp\(\s*oldBuf,\s*__ui_nodes\[.*?\]\.textBuffer\s*\)\s*!=\s*0/);
+  });
 });

@@ -183,11 +183,13 @@ static inline void ui_tick(uint16_t deltaMs) {
   // current property value, mark dirty if changed.
   for (uint8_t i = 0; i < __ui_binding_count; i++) {
     if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
-      // Text binding: compare string pointers (re-render if changed)
-      const char* newText = __ui_bindings[i].textFn();
-      if (newText != __ui_nodes[__ui_bindings[i].node].text) {
-        __ui_nodes[__ui_bindings[i].node].text = newText;
-        ui_mark_dirty(__ui_bindings[i].node);
+      // Text binding: fill the node's buffer, compare content, mark dirty if changed.
+      uint8_t n = __ui_bindings[i].node;
+      char oldBuf[UI_TEXT_BUF];
+      strcpy(oldBuf, __ui_nodes[n].textBuffer);
+      __ui_bindings[i].textFn(__ui_nodes[n].textBuffer, UI_TEXT_BUF);
+      if (strcmp(oldBuf, __ui_nodes[n].textBuffer) != 0) {
+        ui_mark_dirty(n);
       }
     } else if (__ui_bindings[i].fn) {
       // Color/numeric binding
