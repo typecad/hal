@@ -298,29 +298,29 @@ static inline void ui_tick(uint16_t deltaMs) {
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
-        // Draw the checkbox square (20×20 at the left edge of the box).
-        // Larger than the text height for better visibility; border is 2px thick.
+        // Draw the checkbox square (16×16 at the left edge of the box).
         {
           int16_t cbX = __ui_nodes[i].box.x;
           int16_t cbY = __ui_nodes[i].box.y;
-          int16_t cbS = 20; // square size
           if (__ui_nodes[i].checked) {
-            // Checked: filled square + white checkmark
-            __tc_display.fillRect(cbX, cbY, cbS, cbS, __ui_nodes[i].fg);
-            // Checkmark: two thick lines forming a V (inverted color)
+            // Checked: filled square + checkmark (3px thick for visibility)
+            __tc_display.fillRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
             uint16_t inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-            __tc_display.drawLine(cbX + 4, cbY + 10, cbX + 8, cbY + 15, inv);
-            __tc_display.drawLine(cbX + 5, cbY + 10, cbX + 9, cbY + 15, inv);
-            __tc_display.drawLine(cbX + 8, cbY + 15, cbX + 16, cbY + 5, inv);
-            __tc_display.drawLine(cbX + 8, cbY + 14, cbX + 16, cbY + 4, inv);
+            // Left stroke of the V: 3 parallel lines
+            __tc_display.drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
+            __tc_display.drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
+            __tc_display.drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
+            // Right stroke of the V: 3 parallel lines
+            __tc_display.drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
+            __tc_display.drawLine(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
+            __tc_display.drawLine(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
           } else {
-            // Unchecked: 2px-thick outline square
-            __tc_display.drawRect(cbX, cbY, cbS, cbS, __ui_nodes[i].fg);
-            __tc_display.drawRect(cbX + 1, cbY + 1, cbS - 2, cbS - 2, __ui_nodes[i].fg);
+            // Unchecked: outline square
+            __tc_display.drawRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
           }
         }
         // Label text to the right of the checkbox.
-        __tc_display.setCursor(__ui_nodes[i].box.x + 26, __ui_nodes[i].box.y);
+        __tc_display.setCursor(__ui_nodes[i].box.x + 22, __ui_nodes[i].box.y);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(displayText);
