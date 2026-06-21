@@ -16,7 +16,7 @@
 // compatibility as a legacy framework pin number.
 // ---------------------------------------------------------------------------
 
-import type { DisplayHALOp } from "./display-op-ir";
+import type { DisplayHALOp } from "./display-op-ir.js";
 
 // ---------------------------------------------------------------------------
 // GPIO — digital pin control

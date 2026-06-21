@@ -12,13 +12,13 @@
 // since they already implement the full PlatformStrategy.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR, ProgramIR } from './ir';
-import type { HALOpIR } from './hal-op-ir';
-import type { Diagnostic, PlatformContext } from './types';
-import type { BoardConstants } from './board-resolver';
-import type { AsyncRuntimeConfig } from './async-types';
-import type { RuntimePolyfillIR, StdLibSupport } from './polyfill-types';
-import type { PlatformGraphicsStrategy } from './graphics-strategy';
+import type { ExpressionIR, ProgramIR } from './ir.js';
+import type { HALOpIR } from './hal-op-ir.js';
+import type { Diagnostic, PlatformContext } from './types.js';
+import type { BoardConstants } from './board-resolver.js';
+import type { AsyncRuntimeConfig } from './async-types.js';
+import type { RuntimePolyfillIR, StdLibSupport } from './polyfill-types.js';
+import type { PlatformGraphicsStrategy } from './graphics-strategy.js';
 
 // ---------------------------------------------------------------------------
 // Sub-interface 1 — Profile, file shape & includes

@@ -5,12 +5,12 @@
 // on the same pin.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR } from '../api';
-import type { PeripheralUsage } from './peripheral-usage';
-import type { Diagnostic } from '../types';
-import { walkNestedStatements, walkProgramIR, walkExpressionsInExpression } from './utils/walk-ir';
+import type { ProgramIR, StatementIR, ExpressionIR } from '../api/index.js';
+import type { PeripheralUsage } from './peripheral-usage.js';
+import type { Diagnostic } from '../types.js';
+import { walkNestedStatements, walkProgramIR, walkExpressionsInExpression } from './utils/walk-ir.js';
 
-export { walkNestedStatements as scanNestedStatements } from './utils/walk-ir';
+export { walkNestedStatements as scanNestedStatements } from './utils/walk-ir.js';
 
 /** ISR-unsafe operation entry. */
 export interface IsrUnsafeOp { reason: string; severity: 'warning' | 'info'; }

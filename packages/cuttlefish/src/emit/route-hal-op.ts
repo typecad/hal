@@ -6,7 +6,7 @@
 // sites (expression-renderer, statement-renderer, render-expr) DRY.
 // ---------------------------------------------------------------------------
 
-import type { HALOpIR, PlatformStrategy } from "../api/shared";
+import type { HALOpIR, PlatformStrategy } from "../api/shared/index.js";
 
 export function routeHALOp(
   op: HALOpIR,

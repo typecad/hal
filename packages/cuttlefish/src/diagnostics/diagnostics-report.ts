@@ -11,12 +11,12 @@
 
 import * as path from "path";
 import * as fs from "fs";
-import type { CallGraph } from "../ir/call-graph";
-import type { ProgramIR } from "../api";
-import type { Diagnostic } from "../types";
-import { analyzeHeapUsage } from "../ir/heap-analysis";
-import { buildCallGraph } from "../ir/call-graph";
-import { generateMarkdownReport } from "./md-writer";
+import type { CallGraph } from "../ir/call-graph.js";
+import type { ProgramIR } from "../api/index.js";
+import type { Diagnostic } from "../types.js";
+import { analyzeHeapUsage } from "../ir/heap-analysis.js";
+import { buildCallGraph } from "../ir/call-graph.js";
+import { generateMarkdownReport } from "./md-writer.js";
 import type {
   DiagnosticsReport,
   ExecutionFlow,
@@ -27,8 +27,8 @@ import type {
   ModuleGraph,
   TreeShakingReport,
   BuildTiming,
-} from "./json-schema";
-import { inferGpioMode } from "./json-schema";
+} from "./json-schema.js";
+import { inferGpioMode } from "./json-schema.js";
 
 // ── Report Input (what the transpile pipeline provides) ────────────────────
 

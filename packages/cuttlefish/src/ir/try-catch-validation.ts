@@ -6,10 +6,10 @@
 // architectures have exceptions disabled (e.g. AVR-GCC with -fno-exceptions).
 // ---------------------------------------------------------------------------
 
-import type { Diagnostic } from '../types';
-import type { BoardConstants } from './board-resolver';
-import type { StatementIR } from '../api';
-import type { PlatformStrategy } from '../api/shared';
+import type { Diagnostic } from '../types.js';
+import type { BoardConstants } from './board-resolver.js';
+import type { StatementIR } from '../api/index.js';
+import type { PlatformStrategy } from '../api/shared/index.js';
 
 /**
  * Validate that try/catch and throw statements are not used on

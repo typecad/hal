@@ -19,7 +19,7 @@
 // C++ is byte-identical. See the approved plan's Phase 2 risk note.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR } from "../api";
+import type { ProgramIR } from "../api/index.js";
 
 /**
  * Per-class accessor map: member name → whether it is a getter, setter, or

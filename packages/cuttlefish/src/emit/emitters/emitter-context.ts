@@ -1,13 +1,13 @@
-﻿import type { ProgramIR, ExpressionIR, StatementIR, ParameterIR } from "../../api";
-import type { PlatformStrategy, RuntimePolyfillIR } from "../../api/shared";
-import type { ProgramAnalysisResult } from "../../ir/program-analysis";
-import type { EmissionScopeState } from "../snprintf-helpers";
-import type { ExpressionRenderer } from "../expression-renderer";
-import type { StatementRenderer } from "../statement-renderer";
-import type { Diagnostic, EmitMode, SourceMapEntry, SourceSpan } from "../../types";
-import type { ResolvedNpmPackage } from "../../transpile/resolution";
-import type { BoardConstants } from "../../ir/board-resolver";
-import type { LibraryDefinition } from "../../types";
+﻿import type { ProgramIR, ExpressionIR, StatementIR, ParameterIR } from "../../api/index.js";
+import type { PlatformStrategy, RuntimePolyfillIR } from "../../api/shared/index.js";
+import type { ProgramAnalysisResult } from "../../ir/program-analysis.js";
+import type { EmissionScopeState } from "../snprintf-helpers.js";
+import type { ExpressionRenderer } from "../expression-renderer.js";
+import type { StatementRenderer } from "../statement-renderer.js";
+import type { Diagnostic, EmitMode, SourceMapEntry, SourceSpan } from "../../types.js";
+import type { ResolvedNpmPackage } from "../../transpile/resolution.js";
+import type { BoardConstants } from "../../ir/board-resolver.js";
+import type { LibraryDefinition } from "../../types.js";
 
 /** Options controlling C++ emission. */
 export interface EmitterOptions {

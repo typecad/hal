@@ -1,9 +1,9 @@
 ﻿
-import { ProgramIR, PlatformStrategy, Diagnostic } from "../api";
-import { BoardConstants } from "./board-resolver";
-import { PeripheralUsage } from "./peripheral-usage";
-import { findBoardPinByName, formatPinReference, getBoardPins } from './board-pin-utils';
-import type { PeripheralFunction } from '../api/schema';
+import { ProgramIR, PlatformStrategy, Diagnostic } from "../api/index.js";
+import { BoardConstants } from "./board-resolver.js";
+import { PeripheralUsage } from "./peripheral-usage.js";
+import { findBoardPinByName, formatPinReference, getBoardPins } from './board-pin-utils.js';
+import type { PeripheralFunction } from '../api/schema/index.js';
 
 export interface ResourceUsage {
   pins: Map<string, { source: string; peripheral?: string }>;

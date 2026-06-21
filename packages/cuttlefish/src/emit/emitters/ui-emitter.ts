@@ -14,11 +14,11 @@
 //   - emitBindingTable(uiBindings()) → __ui_bindings[]
 // ---------------------------------------------------------------------------
 
-import type { EmitterContext } from "./emitter-context";
-import { emitRuntimeHeader } from "../../ui/runtime-header";
-import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry";
-import { uiSignalDecls, uiBindings, uiPressBindings } from "../../ir/transformers/ui-call-resolver";
-import { emitBindingTable } from "../../ir/transformers/ui-reactive";
+import type { EmitterContext } from "./emitter-context.js";
+import { emitRuntimeHeader } from "../../ui/runtime-header.js";
+import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
+import { uiSignalDecls, uiBindings, uiPressBindings } from "../../ir/transformers/ui-call-resolver.js";
+import { emitBindingTable } from "../../ir/transformers/ui-reactive.js";
 
 export function emitUIRuntime(ctx: EmitterContext): void {
   // Only the entry file carries the UI runtime + tables.

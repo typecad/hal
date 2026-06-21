@@ -1,6 +1,6 @@
 import ts from "typescript";
-import { Diagnostic, SourceSpan } from "../types";
-import { withLineColumn } from "../utils/strings";
+import { Diagnostic, SourceSpan } from "../types.js";
+import { withLineColumn } from "../utils/strings.js";
 
 export function makeDiagnostic(
   sourceText: string,

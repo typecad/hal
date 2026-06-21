@@ -1,8 +1,8 @@
-﻿import { ProgramIR, FunctionIR, ClassIR, EnumIR, TypeAliasIR } from "../api";
-import { CallGraph, getReachableSymbols } from "./call-graph";
-import { detectEntryPoints, EntryPointConfig } from "./entry-points";
-import { TargetProfile, Diagnostic } from "../types";
-import { resolveStrategy } from "../platform/registry";
+﻿import { ProgramIR, FunctionIR, ClassIR, EnumIR, TypeAliasIR } from "../api/index.js";
+import { CallGraph, getReachableSymbols } from "./call-graph.js";
+import { detectEntryPoints, EntryPointConfig } from "./entry-points.js";
+import { TargetProfile, Diagnostic } from "../types.js";
+import { resolveStrategy } from "../platform/registry.js";
 
 /**
  * Result of reachability analysis

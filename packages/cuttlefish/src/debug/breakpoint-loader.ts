@@ -7,7 +7,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { BreakpointMap, RichBreakpoint, LegacyBreakpointMap } from './types';
+import type { BreakpointMap, RichBreakpoint, LegacyBreakpointMap } from './types.js';
 
 /**
  * Default directory for TypeCAD debug files.

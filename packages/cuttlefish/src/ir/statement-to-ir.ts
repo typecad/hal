@@ -1,38 +1,38 @@
 ﻿import ts from "typescript";
-import { Diagnostic, SourceSpan } from "../types";
-import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, HALOpIR, ParameterIR, StatementIR } from "../api";
-import { isStringEnum } from "../api/shared";
-import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only";
-import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution";
-import { escapeCppKeyword } from "../utils/strings";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state";
-import { getCurrentIrTypeScope, bindIrTypeScopeLocals } from "./symbol-types";
-import { calleeToText, renderExprAsText } from "./render-expr";
-import { expressionToIR } from "./expression-to-ir";
-import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
-import { forInitializerToIR, incrementorToIR, lowerControlFlowStatement } from "./transformers/control-flow";
+import { Diagnostic, SourceSpan } from "../types.js";
+import { ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, CppType, ExpressionIR, HALOpIR, ParameterIR, StatementIR } from "../api/index.js";
+import { isStringEnum } from "../api/shared/index.js";
+import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
+import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only.js";
+import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution.js";
+import { escapeCppKeyword } from "../utils/strings.js";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state.js";
+import { getCurrentIrTypeScope, bindIrTypeScopeLocals } from "./symbol-types.js";
+import { calleeToText, renderExprAsText } from "./render-expr.js";
+import { expressionToIR } from "./expression-to-ir.js";
+import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
+import { forInitializerToIR, incrementorToIR, lowerControlFlowStatement } from "./transformers/control-flow.js";
 export { forInitializerToIR, incrementorToIR, lowerControlFlowStatement };
-import { tryLowerRegisterWrite } from "./transformers/register-assignment";
-import { expressionStatementToIR as delegateExpressionStatementToIR } from "./transformers/expressions";
+import { tryLowerRegisterWrite } from "./transformers/register-assignment.js";
+import { expressionStatementToIR as delegateExpressionStatementToIR } from "./transformers/expressions.js";
 
-import { resolveHALReceiver, processHALMethodBody, halInstances, getCtorIncludes, isKnownHALClass, registerFloatVariable, HALInstance, isHALSingleton } from "./hal-resolver";
-import { collectChainedHALEmits, emitLinesToIR, halOpsToIR } from "./transformers/hal-emit-helpers";
+import { resolveHALReceiver, processHALMethodBody, halInstances, getCtorIncludes, isKnownHALClass, registerFloatVariable, HALInstance, isHALSingleton } from "./hal-resolver.js";
+import { collectChainedHALEmits, emitLinesToIR, halOpsToIR } from "./transformers/hal-emit-helpers.js";
 
-import { NamespaceMethodResult, resolveNamespaceMethodCall } from "./transformers/namespace-methods";
+import { NamespaceMethodResult, resolveNamespaceMethodCall } from "./transformers/namespace-methods.js";
 
-import { tryResolveHALMethod, resolveHALCallForVarInit, tryResolveHALExpression } from "./transformers/hal-call-resolver";
+import { tryResolveHALMethod, resolveHALCallForVarInit, tryResolveHALExpression } from "./transformers/hal-call-resolver.js";
 export { tryResolveHALMethod, resolveHALCallForVarInit, tryResolveHALExpression };
-import { hoistNestedFunction, hoistNestedClass } from "./function-builder";
-import { prescanArrayUsage, buildInlineForLoop } from "./transformers/array-methods";
+import { hoistNestedFunction, hoistNestedClass } from "./function-builder.js";
+import { prescanArrayUsage, buildInlineForLoop } from "./transformers/array-methods.js";
 export { prescanArrayUsage, buildInlineForLoop };
 
 
 
-import { callToStatement } from "./transformers/call-statement";
+import { callToStatement } from "./transformers/call-statement.js";
 export { callToStatement };
 
-import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys, variableStatementToIR, collectPointerVars } from "./transformers/variables";
+import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys, variableStatementToIR, collectPointerVars } from "./transformers/variables.js";
 export { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys, variableStatementToIR, collectPointerVars };
 
 

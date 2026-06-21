@@ -1,4 +1,4 @@
-import type { BoardConstants } from './board-resolver';
+import type { BoardConstants } from './board-resolver.js';
 
 interface BoardPinInfo {
   number?: number;

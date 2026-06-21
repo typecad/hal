@@ -1,10 +1,10 @@
 ﻿import fs from "node:fs";
 import path from "node:path";
-import { LibraryDefinition, LibraryDefinitionCondition, PlatformContext, TargetProfile } from "../types";
-import { listFiles, readText } from "../utils/fs";
-import { toModuleKey, toPascalCase } from "../utils/strings";
-import type { ImportIR } from "../api";
-import { getLoadedFramework, hasLoadedFramework } from "../framework-registry";
+import { LibraryDefinition, LibraryDefinitionCondition, PlatformContext, TargetProfile } from "../types.js";
+import { listFiles, readText } from "../utils/fs.js";
+import { toModuleKey, toPascalCase } from "../utils/strings.js";
+import type { ImportIR } from "../api/index.js";
+import { getLoadedFramework, hasLoadedFramework } from "../framework-registry.js";
 
 function toArchitectureFromFqbn(fqbn?: string): string | undefined {
   if (!fqbn) return undefined;

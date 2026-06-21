@@ -11,7 +11,7 @@
 // framework-specific logic; it only inspects the IR shape.
 // ---------------------------------------------------------------------------
 
-import type { ExpressionIR } from "../api";
+import type { ExpressionIR } from "../api/index.js";
 
 /**
  * Walk a nested `property-access` ExpressionIR and return the flat chain of

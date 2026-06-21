@@ -1,10 +1,10 @@
-import type { ExpressionIR, ParameterIR } from "../../api";
-import { emitCommentLines } from "../utils";
-import { appendSourceLine, appendRenderedStatement } from "./line-appender";
-import { createChildEmissionScope } from "../snprintf-helpers";
-import { escapeCppKeyword } from "../../utils/strings";
-import { isStringEnum } from "../../api/shared";
-import type { EmitterContext } from "./emitter-context";
+import type { ExpressionIR, ParameterIR } from "../../api/index.js";
+import { emitCommentLines } from "../utils/index.js";
+import { appendSourceLine, appendRenderedStatement } from "./line-appender.js";
+import { createChildEmissionScope } from "../snprintf-helpers.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
+import { isStringEnum } from "../../api/shared/index.js";
+import type { EmitterContext } from "./emitter-context.js";
 
 export function emitNamespaces(ctx: EmitterContext): void {
   const { program, strategy, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer } = ctx;
@@ -259,7 +259,7 @@ export function emitNamespaces(ctx: EmitterContext): void {
   }
 }
 
-function emitNestedNamespaces(ctx: EmitterContext, namespaces: import("../../api").NamespaceIR[], indent: string): void {
+function emitNestedNamespaces(ctx: EmitterContext, namespaces: import("../../api/index.js").NamespaceIR[], indent: string): void {
   const { strategy, reservedNames, topLevelScope, exprRenderer, statementRenderer } = ctx;
   const normalizeCppTypeForTarget = (cppType: string) => strategy.normalizeCppType(cppType);
   const renderExpression = (expr: ExpressionIR, calleeTransformer?: (callee: string) => string) =>

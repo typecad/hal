@@ -1,11 +1,11 @@
-﻿import { emitCommentLines, isRuntimeExpression, collectNestedStructDefs, inferObjectFieldType } from "../utils";
-import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender";
-import { createChildEmissionScope } from "../snprintf-helpers";
-import { escapeCppKeyword } from "../../utils/strings";
-import type { EmitterContext } from "./emitter-context";
-import { parsedIsPlainStructType } from "../../api/shared/cpp-type-ir";
-import { entryHasUI } from "../../ui/ui-registry";
-import { activeNamespaceNames } from "../../ir/build-ir-state";
+﻿import { emitCommentLines, isRuntimeExpression, collectNestedStructDefs, inferObjectFieldType } from "../utils/index.js";
+import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender.js";
+import { createChildEmissionScope } from "../snprintf-helpers.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
+import type { EmitterContext } from "./emitter-context.js";
+import { parsedIsPlainStructType } from "../../api/shared/cpp-type-ir.js";
+import { entryHasUI } from "../../ui/ui-registry.js";
+import { activeNamespaceNames } from "../../ir/build-ir-state.js";
 
 export function emitPostClassDeclarations(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, mappedFunctions, isEntryFile, topLevelScope } = ctx;

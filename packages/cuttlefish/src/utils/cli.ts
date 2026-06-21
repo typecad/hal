@@ -1,5 +1,5 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types";
+import { CommandLineOptions, CreateCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 

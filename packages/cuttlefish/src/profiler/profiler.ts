@@ -18,7 +18,7 @@ import {
   PhaseStatistics,
   ProfilerReport,
   DEFAULT_PROFILER_OPTIONS,
-} from "./types";
+} from "./types.js";
 
 export class Profiler {
   private enabled: boolean;

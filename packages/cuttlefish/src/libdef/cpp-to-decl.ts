@@ -7,8 +7,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseHeader, type ParsedClass } from "./header-parser";
-import { buildClassIndex, BaseClassResolver } from "./base-class-resolver";
+import { parseHeader, type ParsedClass } from "./header-parser.js";
+import { buildClassIndex, BaseClassResolver } from "./base-class-resolver.js";
 
 interface CppMethod {
   name: string;

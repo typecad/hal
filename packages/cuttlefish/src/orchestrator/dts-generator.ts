@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
-import { generateDeclFromCpp } from "../libdef/cpp-to-decl";
-import { getLoadedFramework, hasLoadedFramework } from "../framework-registry";
+import { generateDeclFromCpp } from "../libdef/cpp-to-decl.js";
+import { getLoadedFramework, hasLoadedFramework } from "../framework-registry.js";
 
 export function tryGenerateLibDecl(modulePath: string, file: string): string | undefined {
   try {

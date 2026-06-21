@@ -5,7 +5,7 @@
 // the transpiler which board, architecture, and build options to use.
 // ---------------------------------------------------------------------------
 
-import type { ArchitectureIdentifier } from './board-types';
+import type { ArchitectureIdentifier } from './board-types.js';
 
 // ---------------------------------------------------------------------------
 // Output section

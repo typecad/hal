@@ -1,13 +1,13 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../../types";
-import { PointerTracker } from "../build-ir-state";
-import { StatementIR, ExpressionIR, HALOpIR } from "../../api";
-import { resolveHALReceiver, processHALMethodBody, isHALSingleton, HALInstance } from "../hal-resolver";
-import { expressionToIR } from "../expression-to-ir";
-import { renderExprAsText } from "../render-expr";
-import { collectChainedHALEmits, emitLinesToIR, halOpsToIR } from "./hal-emit-helpers";
-import { resolveNamespaceMethodCall } from "./namespace-methods";
-import { makeSourceSpan } from "../ast-node-utils";
+import { Diagnostic } from "../../types.js";
+import { PointerTracker } from "../build-ir-state.js";
+import { StatementIR, ExpressionIR, HALOpIR } from "../../api/index.js";
+import { resolveHALReceiver, processHALMethodBody, isHALSingleton, HALInstance } from "../hal-resolver.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { renderExprAsText } from "../render-expr.js";
+import { collectChainedHALEmits, emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
+import { resolveNamespaceMethodCall } from "./namespace-methods.js";
+import { makeSourceSpan } from "../ast-node-utils.js";
 
 /**
  * Resolve a HAL method call using the HAL resolver.

@@ -1,5 +1,5 @@
-export { scaffoldProject, normalizeProjectName, KNOWN_TARGETS, KNOWN_BOARDS, registerKnownTarget, printInitNextSteps } from './init-scaffold';
-export type { KnownTarget, KnownBoard, ScaffoldProjectResult } from './init-scaffold';
+export { scaffoldProject, normalizeProjectName, KNOWN_TARGETS, KNOWN_BOARDS, registerKnownTarget, printInitNextSteps } from './init-scaffold.js';
+export type { KnownTarget, KnownBoard, ScaffoldProjectResult } from './init-scaffold.js';
 export {
   generateProjectPackageJson,
   generateProjectTsconfig,
@@ -8,6 +8,6 @@ export {
   generateStarterSketch,
   generateGitignore,
   generateEslintConfig,
-} from './init-templates';
-export type { InitProjectOptions } from './init-templates';
-export { runInitWizard } from './init-wizard';
+} from './init-templates.js';
+export type { InitProjectOptions } from './init-templates.js';
+export { runInitWizard } from './init-wizard.js';

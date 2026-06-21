@@ -1,6 +1,6 @@
-﻿import { ProgramIR, StatementIR } from "../api";
-import { collectExpressionIdentifiers, collectStatementIdentifiers } from "./identifier-collector";
-import { parsedCollectNamedTypes } from "../api/shared/cpp-type-ir";
+﻿import { ProgramIR, StatementIR } from "../api/index.js";
+import { collectExpressionIdentifiers, collectStatementIdentifiers } from "./identifier-collector.js";
+import { parsedCollectNamedTypes } from "../api/shared/cpp-type-ir.js";
 
 /**
  * Represents a node in the call graph

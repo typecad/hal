@@ -6,7 +6,7 @@
 // which polyfill helpers are actually needed by a program.
 // ---------------------------------------------------------------------------
 
-import type { RuntimePolyfillIR } from './polyfill-types';
+import type { RuntimePolyfillIR } from './polyfill-types.js';
 
 /**
  * Maps a JS method call pattern (substring) to the __tc_* C++ helper

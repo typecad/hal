@@ -5,10 +5,10 @@
 // to whatever toolchain the active framework provides.
 // ---------------------------------------------------------------------------
 
-import { getLoadedFramework, hasLoadedFramework } from "../framework-registry";
-import { loadFrameworkPackage } from "../framework-package";
-import type { FrameworkToolchain } from "../framework-registry";
-import type { ToolchainOptions, CompileResult, UploadResult } from "../api/shared";
+import { getLoadedFramework, hasLoadedFramework } from "../framework-registry.js";
+import { loadFrameworkPackage } from "../framework-package.js";
+import type { FrameworkToolchain } from "../framework-registry.js";
+import type { ToolchainOptions, CompileResult, UploadResult } from "../api/shared/index.js";
 
 function getToolchain(fromDir: string, frameworkPackage?: string): FrameworkToolchain {
   if (hasLoadedFramework()) {

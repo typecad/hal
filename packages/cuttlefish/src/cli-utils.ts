@@ -1,6 +1,8 @@
 ﻿import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import {
   buildSourceMapIndex,
@@ -9,8 +11,11 @@ import {
   readSourceMap,
   resolveSourceMapForSketch,
   type SourceMapIndex,
-} from "./mapping/source-map";
-import type { CompileResult, Diagnostic } from "./api/shared";
+} from "./mapping/source-map.js";
+import type { CompileResult, Diagnostic } from "./api/shared/index.js";
+
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function resolveExpectCliPath(): string {
   try {

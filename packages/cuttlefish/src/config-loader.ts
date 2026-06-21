@@ -10,7 +10,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
-import { safeValidateConfig } from "./config-schema";
+import { safeValidateConfig } from "./config-schema.js";
 
 /** The filename we search for when walking up directories. */
 const CONFIG_FILENAME = "cuttlefish.config.ts";
@@ -440,7 +440,7 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
   let boardExport = "";
   if (config.contract) {
     // Contract-based: export from generated board
-    boardExport = "export * from './.cuttlefish/board';";
+    boardExport = "export * from './.cuttlefish/board.js';";
   } else if (config.board) {
     // Explicit board package (legacy)
     boardExport = `export * from '${config.board}';`;

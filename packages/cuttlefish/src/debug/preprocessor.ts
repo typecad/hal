@@ -8,9 +8,10 @@
 
 import ts from 'typescript';
 import path from 'node:path';
-import type { BreakpointMap, CapturedVariable, RichBreakpoint } from './types';
-import { getBreakpointsForFile } from './breakpoint-loader';
-import { getLoadedFramework, hasLoadedFramework } from '../framework-registry';
+import type { BreakpointMap, CapturedVariable, RichBreakpoint } from './types.js';
+import { getBreakpointsForFile } from './breakpoint-loader.js';
+import { getLoadedFramework, hasLoadedFramework } from '../framework-registry.js';
+import { GenericStrategy } from '../platform/generic-strategy.js';
 
 type LogMessagePart = { type: 'text' | 'variable'; value: string };
 
@@ -20,7 +21,6 @@ function getDebugStrategy() {
     if (strategy.generateDebugInitCode) return strategy;
   }
   // Fall back to the generic strategy's std::cout-based debug output
-  const { GenericStrategy } = require('../platform/generic-strategy');
   return new GenericStrategy();
 }
 

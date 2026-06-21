@@ -1,8 +1,8 @@
 ﻿import ts from "typescript";
-import { ExpressionIR } from "../api";
-import { nestedFunctionAliases, getContext } from "./build-ir-state";
-import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings";
-import { routeHALOp } from "../emit/route-hal-op";
+import { ExpressionIR } from "../api/index.js";
+import { nestedFunctionAliases, getContext } from "./build-ir-state.js";
+import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings.js";
+import { routeHALOp } from "../emit/route-hal-op.js";
 
 export function calleeToText(expr: ts.LeftHandSideExpression): string {
   if (ts.isIdentifier(expr)) {

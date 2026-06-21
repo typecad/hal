@@ -5,9 +5,9 @@
 // on the target board. Generates compile-time errors for invalid usage.
 // ---------------------------------------------------------------------------
 
-import { PeripheralUsage } from './peripheral-usage';
-import { BoardConstants } from './board-resolver';
-import { Diagnostic } from '../types';
+import { PeripheralUsage } from './peripheral-usage.js';
+import { BoardConstants } from './board-resolver.js';
+import { Diagnostic } from '../types.js';
 
 /**
  * Peripheral capacity info (internal).

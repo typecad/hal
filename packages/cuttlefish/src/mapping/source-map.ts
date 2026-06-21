@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
-import { GeneratedSourceMap, MappedDiagnostic, SourceMapEntry } from "../types";
-import { readText, writeText } from "../utils/fs";
+import { GeneratedSourceMap, MappedDiagnostic, SourceMapEntry } from "../types.js";
+import { readText, writeText } from "../utils/fs.js";
 
 function toSourceMapPath(generatedFilePath: string): string {
   return `${generatedFilePath}.thcppmap.json`;

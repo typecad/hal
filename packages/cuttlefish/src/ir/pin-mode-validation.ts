@@ -5,9 +5,9 @@
 // configuration. Generates warnings for reads and info for writes.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR } from '../api';
-import type { Diagnostic } from '../types';
-import { scanNestedStatements } from './interrupt-analysis';
+import type { ProgramIR, StatementIR, ExpressionIR } from '../api/index.js';
+import type { Diagnostic } from '../types.js';
+import { scanNestedStatements } from './interrupt-analysis.js';
 
 /** Methods that configure pin mode. */
 const MODE_SET_METHODS = new Set([

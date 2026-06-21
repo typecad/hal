@@ -1,11 +1,11 @@
 ﻿import ts from "typescript";
-import { ExpressionIR, HALOpIR } from "../../api";
-import { requiredIncludes, registeredCallbacks, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants } from "../build-ir-state";
-import { getCurrentIrTypeScope } from "../symbol-types";
-import { renderExprAsText } from "../render-expr";
-import { escapeCppKeyword } from "../../utils/strings";
-import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser";
-import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn } from "./hal-plugins";
+import { ExpressionIR, HALOpIR } from "../../api/index.js";
+import { requiredIncludes, registeredCallbacks, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants } from "../build-ir-state.js";
+import { getCurrentIrTypeScope } from "../symbol-types.js";
+import { renderExprAsText } from "../render-expr.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
+import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
+import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn } from "./hal-plugins.js";
 
 /** Escape C++ keywords in resolved text, but only when the text looks like a
  *  variable reference (not a literal like "false", "true", "42", or a string). */
@@ -587,11 +587,11 @@ export function resetHALResolver(): void {
 }
 
 /** Resolve a hal-expr IR node to its C++ text using the active strategy. */
-export function setActiveStrategy(strategy: import("../../api/shared").PlatformStrategy | null): void {
+export function setActiveStrategy(strategy: import("../../api/shared/index.js").PlatformStrategy | null): void {
   getContext().activeStrategy = strategy;
 }
 
-export function resolveHALExprToText(expr: Extract<import("../../api/shared").ExpressionIR, { kind: "hal-expr" }>): string | null {
+export function resolveHALExprToText(expr: Extract<import("../../api/shared/index.js").ExpressionIR, { kind: "hal-expr" }>): string | null {
   const strategy = getContext().activeStrategy;
   if (!strategy?.resolveHALOperation) return null;
   const resolved = strategy.resolveHALOperation(expr.operation);

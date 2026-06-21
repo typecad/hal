@@ -3,8 +3,8 @@
  * Pure functions with no side effects - extracted from cpp-emitter.ts
  */
 
-import type { ExpressionIR, StatementIR, PlatformStrategy } from "../../api";
-import { parsedIsPointer } from "../../api/shared/cpp-type-ir";
+import type { ExpressionIR, StatementIR, PlatformStrategy } from "../../api/index.js";
+import { parsedIsPointer } from "../../api/shared/cpp-type-ir.js";
 
 /**
  * Infers the C++ type for an object field based on its initializer value.

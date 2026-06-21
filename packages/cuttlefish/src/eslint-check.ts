@@ -4,6 +4,8 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import chalk from "chalk";
 
+const selfRequire = createRequire(import.meta.url);
+
 export interface ESLintError {
   filePath: string;
   line: number;
@@ -29,7 +31,6 @@ export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]
       const projectRequire = createRequire(path.join(projectRoot, "package.json"));
       eslintPath = projectRequire.resolve("eslint");
     } catch {
-      const selfRequire = createRequire(__filename);
       eslintPath = selfRequire.resolve("eslint");
     }
     const eslintModule = await import(pathToFileURL(eslintPath!).href);

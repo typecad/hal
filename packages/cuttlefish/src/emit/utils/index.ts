@@ -17,14 +17,14 @@ export {
   statementRequiresRuntime,
   collectPointerVarTypes,
   collectExpressionIdentifiers,
-} from "./type-inference";
+} from "./type-inference.js";
 
 // Async state machine utilities
 export {
   toPascalCaseLocal,
   generateAsyncTaskClass,
   type AsyncTaskClassResult,
-} from "./async-state-machine";
+} from "./async-state-machine.js";
 
 // Include resolution utilities
 export {
@@ -33,10 +33,10 @@ export {
   dedupe,
   resolveTranspiledModuleInclude,
   applySymbolMap,
-} from "./include-resolver";
+} from "./include-resolver.js";
 
 // Comment handling utilities
 export {
   normalizeComment,
   emitCommentLines,
-} from "./comment-helpers";
+} from "./comment-helpers.js";

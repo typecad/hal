@@ -12,9 +12,9 @@
 // in the program, no diagnostics are generated.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR, VariableDeclarationIR } from '../api';
-import type { Diagnostic, SourceSpan } from '../types';
-import { parseCppType, parsedIsPointer } from '../api/shared/cpp-type-ir';
+import type { ProgramIR, StatementIR, ExpressionIR, VariableDeclarationIR } from '../api/index.js';
+import type { Diagnostic, SourceSpan } from '../types.js';
+import { parseCppType, parsedIsPointer } from '../api/shared/cpp-type-ir.js';
 
 /** True for any `std::`-prefixed type (vector/map/set/tuple/variant/function/string).
  *  Replaces the historical `cppType.startsWith('std::')` check. */

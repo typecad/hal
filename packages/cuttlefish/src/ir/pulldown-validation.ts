@@ -5,9 +5,9 @@
 // hardware pulldown on the target board. Emits a compile-time error if not.
 // ---------------------------------------------------------------------------
 
-import type { Diagnostic } from '../types';
-import type { PeripheralUsage } from './peripheral-usage';
-import type { BoardConstants } from './board-resolver';
+import type { Diagnostic } from '../types.js';
+import type { PeripheralUsage } from './peripheral-usage.js';
+import type { BoardConstants } from './board-resolver.js';
 
 /**
  * Validate that pins used with inputPullDown() support pulldown on this board.

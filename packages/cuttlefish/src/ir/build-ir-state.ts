@@ -1,8 +1,8 @@
-﻿import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "../api";
-import type { PlatformStrategy } from "../api/shared";
-import type { Diagnostic } from "../types";
+﻿import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "../api/index.js";
+import type { PlatformStrategy } from "../api/shared/index.js";
+import type { Diagnostic } from "../types.js";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { BoardConstants, getDefaultBoardConstants } from "./board-resolver";
+import { BoardConstants, getDefaultBoardConstants } from "./board-resolver.js";
 // IrTypeScope replaces the three proxied globals (activeLocalTypes,
 // activeGlobalTypes, activeClassFieldTypes) that previously lived on this
 // module as createMapProxy exports. The scope lifecycle is managed here via
@@ -14,8 +14,8 @@ import {
   setCurrentIrTypeScope,
   getCurrentIrTypeScope,
   resetIrTypeScopeFunctionState,
-} from "./symbol-types";
-export type { IrTypeScope } from "./symbol-types";
+} from "./symbol-types.js";
+export type { IrTypeScope } from "./symbol-types.js";
 
 export interface HALInstance {
   className: string;

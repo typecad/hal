@@ -15,7 +15,7 @@ export interface KnownVariableInfo {
    * `const name = loot.name` to `std::string` even though the decl emits as
    * `auto`). Undefined for explicitly-typed decls and parameters.
    */
-  initializer?: import('./ir-core').ExpressionIR;
+  initializer?: import('./ir-core.js').ExpressionIR;
 }
 
 export interface SnprintfArgRenderResult {
@@ -38,4 +38,4 @@ export interface EmissionScopeState {
   nextSnprintfTempId: number;
 }
 
-export type SnprintfExpressionRenderer = (expr: import('./ir-core').ExpressionIR) => string;
+export type SnprintfExpressionRenderer = (expr: import('./ir-core.js').ExpressionIR) => string;

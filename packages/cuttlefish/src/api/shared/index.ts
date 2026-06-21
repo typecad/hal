@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 
 // Base types
-export type { Diagnostic, PlatformContext, SourceSpan, TargetProfile } from './types';
+export type { Diagnostic, PlatformContext, SourceSpan, TargetProfile } from './types.js';
 
 // C++ type IR (structured replacement for stringly-typed CppType)
 export type {
@@ -13,7 +13,7 @@ export type {
   CppTypeKind,
   CppPrimitiveName,
   CppFormatKind,
-} from './cpp-type-ir';
+} from './cpp-type-ir.js';
 export {
   parseCppType,
   renderCppType,
@@ -54,7 +54,7 @@ export {
   parsedCollectNamedTypes,
   needsCStrForStringLike,
   parsedIsPlainStructType,
-} from './cpp-type-ir';
+} from './cpp-type-ir.js';
 
 // IR types
 export type {
@@ -101,13 +101,13 @@ export type {
   RegisterClassIR,
   ParameterIR,
   CppType,
-} from './ir';
+} from './ir.js';
 
 // HAL Operation IR types
 export type {
   HALOpIR,
   HALOperationKind,
-} from './hal-op-ir';
+} from './hal-op-ir.js';
 
 // Display HAL Operation IR types (graphics draw calls)
 export type {
@@ -117,21 +117,21 @@ export type {
   DisplayDrawRectOp,
   DisplayFlushOp,
   DisplayHALOp,
-} from './display-op-ir';
-export { DISPLAY_OPERATION_KINDS } from './display-op-ir';
+} from './display-op-ir.js';
+export { DISPLAY_OPERATION_KINDS } from './display-op-ir.js';
 
 // Platform graphics strategy (display driver resolution + per-target capacity)
-export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-strategy';
+export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-strategy.js';
 
 // Board resolver
-export type { BoardConstants } from './board-resolver';
+export type { BoardConstants } from './board-resolver.js';
 
 // Polyfill types
 export type {
   RuntimePolyfillIR,
   StdLibSupport,
-} from './polyfill-types';
-export { getStdLibSupport, DEFAULT_STDLIB_SUPPORT } from './polyfill-types';
+} from './polyfill-types.js';
+export { getStdLibSupport, DEFAULT_STDLIB_SUPPORT } from './polyfill-types.js';
 
 // Platform strategy
 export type {
@@ -146,11 +146,11 @@ export type {
   PlatformDebugStrategy,
   PlatformAsyncStrategy,
   PlatformHALStrategy,
-} from './platform-strategy';
+} from './platform-strategy.js';
 
 // Toolchain types
-export type { CompileError, CompileResult, UploadResult, ToolchainOptions } from './toolchain-types';
-export { parseCompileErrors, collectCppFiles } from './toolchain-types';
+export type { CompileError, CompileResult, UploadResult, ToolchainOptions } from './toolchain-types.js';
+export { parseCompileErrors, collectCppFiles } from './toolchain-types.js';
 
 // Snprintf types
 export type {
@@ -159,20 +159,20 @@ export type {
   SnprintfRenderResult,
   EmissionScopeState,
   SnprintfExpressionRenderer,
-} from './snprintf-types';
+} from './snprintf-types.js';
 
 // Polyfill helper registry
-export { POLYFILL_HELPER_MAP, filterPolyfillHelpers } from './polyfill-helper-registry';
+export { POLYFILL_HELPER_MAP, filterPolyfillHelpers } from './polyfill-helper-registry.js';
 
 // Shared string-method lowering (used by all platform strategies)
-export { STRING_METHODS, STRING_METHOD_NAMES, applyStringMethodRewrites } from './string-method-registry';
-export type { StringMethodSpec, StringMethodArgForm } from './string-method-registry';
+export { STRING_METHODS, STRING_METHOD_NAMES, applyStringMethodRewrites } from './string-method-registry.js';
+export type { StringMethodSpec, StringMethodArgForm } from './string-method-registry.js';
 
 // Runtime helpers
-export { isStringEnum } from './ir-declarations';
+export { isStringEnum } from './ir-declarations.js';
 
 // Async types
-export type { AsyncRuntimeConfig } from './async-types';
+export type { AsyncRuntimeConfig } from './async-types.js';
 
 // Promise runtime generator
-export { generatePromiseRuntime } from './promise-runtime';
+export { generatePromiseRuntime } from './promise-runtime.js';

@@ -1,8 +1,8 @@
-import { emitCommentLines, isRuntimeExpression } from "../utils";
-import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender";
-import type { EmitterContext } from "./emitter-context";
-import { escapeCppKeyword } from "../../utils/strings";
-import { isStringEnum } from "../../api/shared";
+import { emitCommentLines, isRuntimeExpression } from "../utils/index.js";
+import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender.js";
+import type { EmitterContext } from "./emitter-context.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
+import { isStringEnum } from "../../api/shared/index.js";
 
 export function emitTypeDeclarations(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, emittedTopLevelStatements, topLevelScope } = ctx;

@@ -12,8 +12,8 @@ export type {
   FeatureFlags,
   MemorySpec,
   BuildConfig,
-} from './types';
+} from './types.js';
 
 export {
   pinNumber,
-} from './builder';
+} from './builder.js';

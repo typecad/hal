@@ -1,8 +1,8 @@
 import ts from "typescript";
-import type { Diagnostic } from "../types";
-import { canonicalize, cppTypeFromCanonicalType, TYPED_ARRAY_NAMES } from "./semantic-facts";
-import type { FactStore } from "./semantic-facts";
-import { makeDiagnostic } from "../ir/ast-node-utils";
+import type { Diagnostic } from "../types.js";
+import { canonicalize, cppTypeFromCanonicalType, TYPED_ARRAY_NAMES } from "./semantic-facts.js";
+import type { FactStore } from "./semantic-facts.js";
+import { makeDiagnostic } from "../ir/ast-node-utils.js";
 
 // ---------------------------------------------------------------------------
 // SemanticFacts completeness verifier (Phase 3).

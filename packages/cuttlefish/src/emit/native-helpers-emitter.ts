@@ -1,5 +1,5 @@
-﻿import type { RuntimePolyfillIR } from "../api/shared";
-import { normalizeInclude } from "./utils/include-resolver";
+﻿import type { RuntimePolyfillIR } from "../api/shared/index.js";
+import { normalizeInclude } from "./utils/include-resolver.js";
 
 interface EmittedPolyfillCode {
   includes: string[];

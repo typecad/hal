@@ -12,7 +12,7 @@ const SPI_INSTANCE_PATTERN = /^SPI(\d+)$/;
 const UART_INSTANCE_PATTERN = /^UART(\d+)$/;
 const SERIAL_INSTANCE_PATTERN = /^Serial(\d*)$/;
 
-import { getCurrentBoardConstants } from "./build-ir-state";
+import { getCurrentBoardConstants } from "./build-ir-state.js";
 
 export function inferPeripheralKindByName(name: string): PeripheralReceiverKind | undefined {
   const resolved = resolveCanonicalPeripheral(name);

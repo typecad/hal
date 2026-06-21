@@ -1,7 +1,7 @@
 import ts from "typescript";
 import path from "path";
 import fs from "fs";
-import { clearAllProfileCaches } from "./platform/registry";
+import { clearAllProfileCaches } from "./platform/registry.js";
 
 export class TranspileCache {
   private readonly npmPackageCache = new Map<string, string | undefined>();

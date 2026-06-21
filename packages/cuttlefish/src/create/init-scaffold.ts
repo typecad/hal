@@ -1,8 +1,8 @@
 import path from "node:path";
 import fs from "node:fs";
 import chalk from "chalk";
-import type { ArchitectureIdentifier } from "../api";
-import type { InitProjectOptions } from "./init-templates";
+import type { ArchitectureIdentifier } from "../api/index.js";
+import type { InitProjectOptions } from "./init-templates.js";
 import {
   generateProjectPackageJson,
   generateProjectTsconfig,
@@ -12,8 +12,8 @@ import {
   generateGitignore,
   generateBoardForwardingFile,
   generateEslintConfig,
-} from "./init-templates";
-import { generateEslintRules } from "./eslint-rules-template";
+} from "./init-templates.js";
+import { generateEslintRules } from "./eslint-rules-template.js";
 
 export interface KnownTarget {
   id: string;

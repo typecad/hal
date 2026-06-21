@@ -4,7 +4,7 @@
 // Types for runtime polyfill generation via platform strategies.
 // ---------------------------------------------------------------------------
 
-import type { SourceSpan } from './types';
+import type { SourceSpan } from './types.js';
 
 export interface RuntimePolyfillIR {
   kind: "polyfill";

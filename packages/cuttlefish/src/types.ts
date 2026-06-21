@@ -3,7 +3,7 @@
   PlatformContext as CorePlatformContext,
   SourceSpan as CoreSourceSpan,
   Diagnostic as CoreDiagnostic,
-} from "./api/shared";
+} from "./api/shared/index.js";
 
 export type EmitMode = "cpp" | "split";
 

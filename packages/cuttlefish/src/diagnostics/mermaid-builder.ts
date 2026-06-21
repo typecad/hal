@@ -5,8 +5,8 @@
 // Used by the Markdown report writer to embed visualizations.
 // ---------------------------------------------------------------------------
 
-import type { CallGraph } from "../ir/call-graph";
-import type { PeripheralUsage } from "../ir/peripheral-usage";
+import type { CallGraph } from "../ir/call-graph.js";
+import type { PeripheralUsage } from "../ir/peripheral-usage.js";
 import type {
   GpioPinEntry,
   PeripheralAllocation,
@@ -17,7 +17,7 @@ import type {
   ModuleGraph,
   TreeShakingReport,
   BuildTiming,
-} from "./json-schema";
+} from "./json-schema.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

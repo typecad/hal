@@ -6,7 +6,7 @@
  * to provide their target-specific naming conventions.
  */
 
-import type { PlatformStrategy } from "../api/shared";
+import type { PlatformStrategy } from "../api/shared/index.js";
 
 // ---------------------------------------------------------------------------
 // Peripheral name mapping

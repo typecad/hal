@@ -12,8 +12,8 @@
 // The registry is populated once per transpilation and cleared between runs.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy } from "./api/shared";
-import type { CompileResult, UploadResult, ToolchainOptions } from "./api/shared";
+import type { PlatformStrategy } from "./api/shared/index.js";
+import type { CompileResult, UploadResult, ToolchainOptions } from "./api/shared/index.js";
 
 /**
  * Components loaded from a framework package.

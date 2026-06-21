@@ -1,8 +1,8 @@
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import chalk from "chalk";
-import type { InitProjectOptions } from "./init-templates";
-import { KNOWN_TARGETS, type KnownTarget } from "./init-scaffold";
+import type { InitProjectOptions } from "./init-templates.js";
+import { KNOWN_TARGETS, type KnownTarget } from "./init-scaffold.js";
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 

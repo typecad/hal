@@ -1,10 +1,10 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../../types";
-import { StatementIR, ExpressionIR } from "../../api";
-import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
-import { registerFieldMap } from "../build-ir-state";
-import { expressionToIR } from "../expression-to-ir";
-import { renderExprAsText } from "../render-expr";
+import { Diagnostic } from "../../types.js";
+import { StatementIR, ExpressionIR } from "../../api/index.js";
+import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
+import { registerFieldMap } from "../build-ir-state.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { renderExprAsText } from "../render-expr.js";
 
 export function tryLowerRegisterWrite(
   statement: ts.ExpressionStatement,

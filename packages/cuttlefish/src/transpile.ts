@@ -2,16 +2,17 @@
 
 import path from "node:path";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import ts from "typescript";
-import { buildProgramIR } from "./ir/build-ir";
-import { classDeclarationToIR } from "./ir/declaration-builders";
-import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter";
-import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types";
-import { readText } from "./utils/fs";
-import { debug as logDebug, info } from "./utils/logger";
-import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry";
-import type { ClassIR, ProgramIR } from "./api";
-import { buildCallGraph } from "./ir/call-graph";
+import { buildProgramIR } from "./ir/build-ir.js";
+import { classDeclarationToIR } from "./ir/declaration-builders.js";
+import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
+import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
+import { readText } from "./utils/fs.js";
+import { debug as logDebug, info } from "./utils/logger.js";
+import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry.js";
+import type { ClassIR, ProgramIR } from "./api/index.js";
+import { buildCallGraph } from "./ir/call-graph.js";
 import {
   clearCaches,
   getCachedNpmPackage,
@@ -22,21 +23,21 @@ import {
   cachedFileExists,
   cachedIsFile,
   getOrReadFile,
-} from "./cache";
-import { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points";
-import { analyzeReachability } from "./ir/reachability";
-import { filterProgramIR } from "./ir/filter";
-import { setActiveStrategy } from "./ir/hal-resolver";
-import { CompilationContext, contextStorage } from "./ir/build-ir-state";
-import { buildSymbolTable, mergeSymbolTable, resolveInheritance, createSymbolTable } from "./ir/symbol-table";
-import { loadBreakpoints, preprocess as debugPreprocess } from "./debug";
-import { collectTranspileGraph } from "./orchestrator/graph-builder";
-import { typeCheckFiles } from "./orchestrator/type-checker";
-import { runSemanticGates } from "./orchestrator/type-checker";
-import { autoGenerateMissingDecls } from "./orchestrator/dts-generator";
-import { runEslintCheck, printEslintErrors } from "./eslint-check";
-import { initProfiler, getProfiler } from "./profiler";
-import { buildDiagnosticsReport, writeDiagnosticsReport } from "./diagnostics/diagnostics-report";
+} from "./cache.js";
+import { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points.js";
+import { analyzeReachability } from "./ir/reachability.js";
+import { filterProgramIR } from "./ir/filter.js";
+import { setActiveStrategy } from "./ir/hal-resolver.js";
+import { CompilationContext, contextStorage } from "./ir/build-ir-state.js";
+import { buildSymbolTable, mergeSymbolTable, resolveInheritance, createSymbolTable } from "./ir/symbol-table.js";
+import { loadBreakpoints, preprocess as debugPreprocess } from "./debug/index.js";
+import { collectTranspileGraph } from "./orchestrator/graph-builder.js";
+import { typeCheckFiles } from "./orchestrator/type-checker.js";
+import { runSemanticGates } from "./orchestrator/type-checker.js";
+import { autoGenerateMissingDecls } from "./orchestrator/dts-generator.js";
+import { runEslintCheck, printEslintErrors } from "./eslint-check.js";
+import { initProfiler, getProfiler } from "./profiler/index.js";
+import { buildDiagnosticsReport, writeDiagnosticsReport } from "./diagnostics/diagnostics-report.js";
 import {
   ResolvedNpmPackage,
   NativeCppModule,
@@ -46,8 +47,9 @@ import {
   isInNodeModules,
   resolveImport,
   isCuttlefishSDKPath,
-} from "./transpile/resolution";
+} from "./transpile/resolution.js";
 type ExpectPreprocessor = (source: string, fileName?: string) => string;
+const require = createRequire(import.meta.url);
 let expectPreprocess: ExpectPreprocessor | undefined;
 
 function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
@@ -153,11 +155,11 @@ function applyTreeShaking(
   return { programIR: result, removedSymbols };
 }
 
-import type { PlatformStrategy } from "./api/shared";
-import { isStringEnum } from "./api/shared";
-import { resolveStrategy } from "./platform/registry";
-import { loadFrameworkPackage } from "./framework-package";
-import { getLoadedFramework, hasLoadedFramework } from "./framework-registry";
+import type { PlatformStrategy } from "./api/shared/index.js";
+import { isStringEnum } from "./api/shared/index.js";
+import { resolveStrategy } from "./platform/registry.js";
+import { loadFrameworkPackage } from "./framework-package.js";
+import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
 
 type LocatedDiagnostic = {
   filePath?: string;
@@ -531,7 +533,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         }
         crossModuleImports.get(targetFile)!.add(symbol);
       }
-      // Handle default imports: import X from "./module"
+      // Handle default imports: import X from "./module.js"
       if (imp.defaultImportName) {
         // Find the target module's default export name
         const targetIR = rawIRArray.find(r => r.filePath === targetFile);

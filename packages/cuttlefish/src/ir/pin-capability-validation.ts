@@ -6,8 +6,8 @@
 // Produces diagnostics with actionable hints listing the correct pins.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, ExpressionIR, StatementIR } from '../api';
-import type { Diagnostic } from '../types';
+import type { ProgramIR, ExpressionIR, StatementIR } from '../api/index.js';
+import type { Diagnostic } from '../types.js';
 
 /** Compile-time exhaustiveness check for switch statements on IR kinds. */
 function assertNever(x: never): never {

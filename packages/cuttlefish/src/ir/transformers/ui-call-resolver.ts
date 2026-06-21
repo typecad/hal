@@ -10,18 +10,18 @@
 // ---------------------------------------------------------------------------
 
 import ts from "typescript";
-import { Diagnostic } from "../../types";
-import { StatementIR, HALOpIR } from "../../api";
-import { makeSourceSpan } from "../ast-node-utils";
-import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers";
-import { resolveMount, MountRequest } from "./ui-mount";
-import { emitSignalDecl, BindingSpec } from "./ui-reactive";
-import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry";
-import { expressionToIR } from "../expression-to-ir";
-import { renderExprAsText } from "../render-expr";
-import { resolveColor } from "../../ui/color";
-import type { StyledNode } from "../../ui/style-resolver";
-import { getContext } from "../build-ir-state";
+import { Diagnostic } from "../../types.js";
+import { StatementIR, HALOpIR } from "../../api/index.js";
+import { makeSourceSpan } from "../ast-node-utils.js";
+import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
+import { resolveMount, MountRequest } from "./ui-mount.js";
+import { emitSignalDecl, BindingSpec } from "./ui-reactive.js";
+import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { renderExprAsText } from "../render-expr.js";
+import { resolveColor } from "../../ui/color.js";
+import type { StyledNode } from "../../ui/style-resolver.js";
+import { getContext } from "../build-ir-state.js";
 
 // ── Pure-helper state ───────────────────────────────────────────────────────
 

@@ -6,9 +6,9 @@
 // optimizations and runtime behavior.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StructDefIR, ClassIR, FunctionIR, StatementIR, ExpressionIR, VariableDeclarationIR } from "../api";
-import type { HeapEstimate } from "../diagnostics/json-schema";
-import { parseCppType, renderCppType, bareType } from "../api/shared/cpp-type-ir";
+import type { ProgramIR, StructDefIR, ClassIR, FunctionIR, StatementIR, ExpressionIR, VariableDeclarationIR } from "../api/index.js";
+import type { HeapEstimate } from "../diagnostics/json-schema.js";
+import { parseCppType, renderCppType, bareType } from "../api/shared/cpp-type-ir.js";
 
 /** Type sizes for common C++ types on AVR (8-bit) and ESP32 (32-bit) */
 const AVR_TYPE_SIZES: Record<string, number> = {

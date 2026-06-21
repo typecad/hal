@@ -9,7 +9,7 @@
 // Mirrors the existing resolveHALOperation() seam.
 // ---------------------------------------------------------------------------
 
-import type { DisplayHALOp } from "./display-op-ir";
+import type { DisplayHALOp } from "./display-op-ir.js";
 
 export interface GraphicsCapacity {
   /** Max nodes the retained tree may hold on this target. */

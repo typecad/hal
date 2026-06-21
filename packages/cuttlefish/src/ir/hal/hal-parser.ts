@@ -1,10 +1,15 @@
 ﻿import fs from "fs";
 import path from "path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { parseSource } from "../../ast/parse";
-import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances, topLevelAliasReceivers } from "../build-ir-state";
-import { mapPeripheralName } from "../../mapping/peripheral-names";
-import { escapeCppStringLiteral } from "../../utils/strings";
+import { parseSource } from "../../ast/parse.js";
+import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances, topLevelAliasReceivers } from "../build-ir-state.js";
+import { mapPeripheralName } from "../../mapping/peripheral-names.js";
+import { escapeCppStringLiteral } from "../../utils/strings.js";
+
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface HALInstance {
   className: string;

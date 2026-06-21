@@ -1,8 +1,8 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../../types";
-import { StatementIR, ExpressionIR, ParameterIR, CppType } from "../../api";
-import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "../ast-node-utils";
-import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "../type-resolution";
+import { Diagnostic } from "../../types.js";
+import { StatementIR, ExpressionIR, ParameterIR, CppType } from "../../api/index.js";
+import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "../ast-node-utils.js";
+import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "../type-resolution.js";
 import {
   type CppTypeIR,
   parseCppType,
@@ -12,7 +12,7 @@ import {
   isPointer,
   isVector,
   isStringLike,
-} from "../../api/shared/cpp-type-ir";
+} from "../../api/shared/cpp-type-ir.js";
 import {
   PointerTracker,
   TYPED_ARRAY_ELEMENT_MAP,
@@ -27,20 +27,21 @@ import {
   registerFieldMap,
   getContext,
   activeStringEnumNames,
-} from "../build-ir-state";
-import { getCurrentIrTypeScope, setScopeLocalType } from "../symbol-types";
-import { renderExprAsText } from "../render-expr";
-import { expressionToIR } from "../expression-to-ir";
-import { buildInlineForLoop } from "./array-methods";
+  requiredIncludes,
+} from "../build-ir-state.js";
+import { getCurrentIrTypeScope, setScopeLocalType } from "../symbol-types.js";
+import { renderExprAsText } from "../render-expr.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { buildInlineForLoop } from "./array-methods.js";
 import {
   isKnownHALClass,
   getCtorIncludes,
   registerFloatVariable,
   resolveHALReceiver,
   isHALSingleton
-} from "../hal-resolver";
-import { resolveHALCallForVarInit } from "./hal-call-resolver";
-import { recordSignal } from "./ui-call-resolver";
+} from "../hal-resolver.js";
+import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
+import { recordSignal } from "./ui-call-resolver.js";
 
 export function assignmentOperatorToString(kind: ts.SyntaxKind): Extract<StatementIR, { kind: "assign" }>['operator'] | undefined {
   switch (kind) {
@@ -487,9 +488,7 @@ export function variableStatementToIR(
           const fieldValues = new Map<string, string>();
           const ctorIncludes = getCtorIncludes(className);
           for (const inc of ctorIncludes) {
-            // Under structure, requiredIncludes is tracked in build-ir-state
-            const { requiredIncludes: ri } = require("../build-ir-state");
-            ri.add(inc);
+            requiredIncludes.add(inc);
           }
 
           if (ctorArgs) {

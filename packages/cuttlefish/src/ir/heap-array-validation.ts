@@ -19,10 +19,10 @@
 // stays valid; the real work happens at emit time.
 // ---------------------------------------------------------------------------
 
-import type { Diagnostic } from '../types';
-import type { BoardConstants } from './board-resolver';
-import type { StatementIR } from '../api';
-import type { PlatformStrategy } from '../api/shared';
+import type { Diagnostic } from '../types.js';
+import type { BoardConstants } from './board-resolver.js';
+import type { StatementIR } from '../api/index.js';
+import type { PlatformStrategy } from '../api/shared/index.js';
 
 /**
  * @deprecated Heap allocation is now validated at emit time by the platform

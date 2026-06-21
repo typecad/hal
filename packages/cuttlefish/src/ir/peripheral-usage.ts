@@ -5,7 +5,7 @@
 // This enables compile-time initialization optimization.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR, HALOpIR } from '../api';
+import type { ProgramIR, StatementIR, ExpressionIR, HALOpIR } from '../api/index.js';
 
 /**
  * Tracks which hardware peripherals are used in the program.

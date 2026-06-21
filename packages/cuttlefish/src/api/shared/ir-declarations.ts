@@ -7,8 +7,8 @@
 // but do not create circular references.
 // ---------------------------------------------------------------------------
 
-import type { SourceSpan } from './types';
-import type { CppType, ExpressionIR, ParameterIR, StatementIR } from './ir-core';
+import type { SourceSpan } from './types.js';
+import type { CppType, ExpressionIR, ParameterIR, StatementIR } from './ir-core.js';
 
 // ---------------------------------------------------------------------------
 // Functions

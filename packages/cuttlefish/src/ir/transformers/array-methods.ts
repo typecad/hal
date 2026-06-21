@@ -1,14 +1,14 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../../types";
-import { StatementIR, ExpressionIR } from "../../api";
-import { arrayLiteralSizes, mutableArrayVars, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames } from "../build-ir-state";
-import { getCurrentIrTypeScope } from "../symbol-types";
-import { expressionToIR } from "../expression-to-ir";
-import { renderExprAsText } from "../render-expr";
-import { assignmentOperatorToString } from "./variables";
-import { STRING_METHODS, STRING_METHOD_NAMES, StringMethodSpec, StringMethodArgForm } from "../../api/shared/string-method-registry";
-import { parsedElementString } from "../../api/shared/cpp-type-ir";
-import { INTEGRAL_CPP_TYPE_RE } from "../../emit/utils/cpp-helpers";
+import { Diagnostic } from "../../types.js";
+import { StatementIR, ExpressionIR } from "../../api/index.js";
+import { arrayLiteralSizes, mutableArrayVars, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames } from "../build-ir-state.js";
+import { getCurrentIrTypeScope } from "../symbol-types.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { renderExprAsText } from "../render-expr.js";
+import { assignmentOperatorToString } from "./variables.js";
+import { STRING_METHODS, STRING_METHOD_NAMES, StringMethodSpec, StringMethodArgForm } from "../../api/shared/string-method-registry.js";
+import { parsedElementString } from "../../api/shared/cpp-type-ir.js";
+import { INTEGRAL_CPP_TYPE_RE } from "../../emit/utils/cpp-helpers.js";
 
 // Methods that require StaticArray promotion (not all are mutating — indexOf is read-only
 // but needs StaticArray since C arrays don't have an indexOf method).

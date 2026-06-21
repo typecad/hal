@@ -1,11 +1,11 @@
 ﻿import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
-import { Diagnostic } from "../types";
-import { makeDiagnostic } from "../ir/ast-node-utils";
-import { canonicalize, buildSemanticFacts } from "./semantic-facts";
-import type { BindingResolver } from "./semantic-facts";
-import { verifyFacts } from "./semantic-facts-verifier";
+import { Diagnostic } from "../types.js";
+import { makeDiagnostic } from "../ir/ast-node-utils.js";
+import { canonicalize, buildSemanticFacts } from "./semantic-facts.js";
+import type { BindingResolver } from "./semantic-facts.js";
+import { verifyFacts } from "./semantic-facts-verifier.js";
 
 /**
  * Result of type-checking files

@@ -4,18 +4,18 @@
  * Extracted from cpp-emitter.ts
  */
 
-import type { ExpressionIR } from "../api";
-import type { PlatformStrategy } from "../api/shared";
-import type { BoardConstants } from "../ir/board-resolver";
-import type { KnownVariableInfo } from "../api/shared";
-import { routeHALOp } from "./route-hal-op";
-import type { Diagnostic } from "../types";
-import { extractPropertyChain } from "../ir/extract-property-chain";
-import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings";
-import { accessorGetterName } from "./utils/cpp-helpers";
-import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers";
-import { renderPeripheralProperty } from "../mapping/peripheral-names";
-import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike } from "../api/shared/cpp-type-ir";
+import type { ExpressionIR } from "../api/index.js";
+import type { PlatformStrategy } from "../api/shared/index.js";
+import type { BoardConstants } from "../ir/board-resolver.js";
+import type { KnownVariableInfo } from "../api/shared/index.js";
+import { routeHALOp } from "./route-hal-op.js";
+import type { Diagnostic } from "../types.js";
+import { extractPropertyChain } from "../ir/extract-property-chain.js";
+import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings.js";
+import { accessorGetterName } from "./utils/cpp-helpers.js";
+import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers.js";
+import { renderPeripheralProperty } from "../mapping/peripheral-names.js";
+import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike } from "../api/shared/cpp-type-ir.js";
 
 /**
  * Context needed for expression rendering.

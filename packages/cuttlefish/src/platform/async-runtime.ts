@@ -1,7 +1,7 @@
-﻿import type { ProgramIR } from "../api";
-import type { PlatformContext } from "./../types";
-import type { RuntimePolyfillIR } from "../api/shared";
-import { getStdLibSupport, generatePromiseRuntime } from "../api/shared";
+﻿import type { ProgramIR } from "../api/index.js";
+import type { PlatformContext } from "./../types.js";
+import type { RuntimePolyfillIR } from "../api/shared/index.js";
+import { getStdLibSupport, generatePromiseRuntime } from "../api/shared/index.js";
 
 /**
  * Build a RuntimePolyfillIR for the async Promise runtime, if the program

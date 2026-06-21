@@ -6,10 +6,10 @@
  * this module performs all checks in a single traversal.
  */
 
-import { ProgramIR, StatementIR, ExpressionIR, PlatformStrategy, Diagnostic } from "../api";
-import { POLYFILL_HELPER_MAP } from "../api/shared";
-import { parseCppType } from "../api/shared/cpp-type-ir";
-import { analyzeResources } from "./resource-analysis";
+import { ProgramIR, StatementIR, ExpressionIR, PlatformStrategy, Diagnostic } from "../api/index.js";
+import { POLYFILL_HELPER_MAP } from "../api/shared/index.js";
+import { parseCppType } from "../api/shared/cpp-type-ir.js";
+import { analyzeResources } from "./resource-analysis.js";
 
 export interface ProgramAnalysisResult {
   hasConsoleCalls: boolean;

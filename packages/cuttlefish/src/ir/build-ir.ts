@@ -1,24 +1,24 @@
 ﻿import ts from "typescript";
 import fs from "node:fs";
 import path from "node:path";
-import { parseSource } from "../ast/parse";
-import { Diagnostic } from "../types";
-import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api";
-import { isStringEnum } from "../api/shared";
-import type { ParameterIR } from "../api/shared/ir-core";
-import { makeDiagnostic } from "./ast-node-utils";
-import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution";
-import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver";
-import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage";
-import { runProgramValidations } from "./validation-orchestrator";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state";
-import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir";
-import { registerUIModuleImport } from "./transformers/ui-call-resolver";
-import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver";
-import { prescanUnsupportedFeatures } from "./feature-prescan";
-import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
-import { namespaceToIR } from "./namespace-builder";
-import { functionDeclarationToIR, variableAsFunctionToIR } from "./function-builder";
+import { parseSource } from "../ast/parse.js";
+import { Diagnostic } from "../types.js";
+import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api/index.js";
+import { isStringEnum } from "../api/shared/index.js";
+import type { ParameterIR } from "../api/shared/ir-core.js";
+import { makeDiagnostic } from "./ast-node-utils.js";
+import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution.js";
+import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver.js";
+import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
+import { runProgramValidations } from "./validation-orchestrator.js";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
+import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
+import { registerUIModuleImport } from "./transformers/ui-call-resolver.js";
+import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver.js";
+import { prescanUnsupportedFeatures } from "./feature-prescan.js";
+import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
+import { namespaceToIR } from "./namespace-builder.js";
+import { functionDeclarationToIR, variableAsFunctionToIR } from "./function-builder.js";
 
 function normalizeEntrypointSyntax(sourceText: string): string {
   return sourceText.replace(/\bfunction\s+void\s*\(/g, "function __cuttlefish_entrypoint__(");
@@ -341,12 +341,12 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       const namedImports: string[] = [];
       let defaultImportName: string | undefined;
 
-      // Handle default import: import X from "./module"
+      // Handle default import: import X from "./module.js"
       if (node.importClause?.name && ts.isIdentifier(node.importClause.name)) {
         defaultImportName = node.importClause.name.text;
       }
 
-      // Handle named imports: import { a, b } from "./module"
+      // Handle named imports: import { a, b } from "./module.js"
       if (node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
         namedImports.push(...node.importClause.namedBindings.elements.map((e) => e.name.text));
       }
@@ -470,7 +470,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       return;
     }
 
-    // Handle re-exports: export * from "./module" or export { a, b } from "./module"
+    // Handle re-exports: export * from "./module.js" or export { a, b } from "./module.js"
     if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
       const moduleSpecifier = node.moduleSpecifier.text;
       const exportAll = !node.exportClause || !ts.isNamedExports(node.exportClause);

@@ -6,8 +6,8 @@
 // statements embed expressions) so they must live in the same file.
 // ---------------------------------------------------------------------------
 
-import type { HALOpIR } from './hal-op-ir';
-import type { SourceSpan } from './types';
+import type { HALOpIR } from './hal-op-ir.js';
+import type { SourceSpan } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Shared primitive types

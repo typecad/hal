@@ -11,9 +11,9 @@
 // sub-modules for more precise dependencies.
 // ---------------------------------------------------------------------------
 
-import type { BoardConstants } from './board-resolver';
-import type { Diagnostic } from './types';
-import type { RegisteredCallback } from '../../ir/build-ir-state';
+import type { BoardConstants } from './board-resolver.js';
+import type { Diagnostic } from './types.js';
+import type { RegisteredCallback } from '../../ir/build-ir-state.js';
 
 // Re-export everything from sub-modules so existing imports keep working.
 export type {
@@ -42,7 +42,7 @@ export type {
   BlockIR,
   HALOpStatementIR,
   StatementIR,
-} from './ir-core';
+} from './ir-core.js';
 
 export type {
   HALOpIR,
@@ -110,7 +110,7 @@ export type {
   BoardResolveOp,
   SnprintfEmitOp,
   RawCppOp,
-} from './hal-op-ir';
+} from './hal-op-ir.js';
 
 export type {
   FunctionIR,
@@ -127,7 +127,7 @@ export type {
   NamespaceIR,
   RegisterBitFieldIR,
   RegisterClassIR,
-} from './ir-declarations';
+} from './ir-declarations.js';
 
 // ---------------------------------------------------------------------------
 // Imports and Exports
@@ -136,7 +136,7 @@ export type {
 export interface ImportIR {
   moduleSpecifier: string;
   namedImports: string[];
-  /** For default imports: import X from "./module" */
+  /** For default imports: import X from "./module.js" */
   defaultImportName?: string;
 }
 
@@ -201,9 +201,9 @@ import type {
   TypeAliasIR,
   RegisterClassIR,
   FunctionIR,
-} from './ir-declarations';
+} from './ir-declarations.js';
 
-import type { StatementIR } from './ir-core';
+import type { StatementIR } from './ir-core.js';
 
 export interface ProgramIR {
   fileName: string;

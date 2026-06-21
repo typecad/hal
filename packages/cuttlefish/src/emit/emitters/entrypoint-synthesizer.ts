@@ -1,7 +1,7 @@
-﻿import type { StatementIR } from "../../api";
-import type { EmitterContext } from "./emitter-context";
-import { entryHasUI } from "../../ui/ui-registry";
-import { uiPressBindings } from "../../ir/transformers/ui-call-resolver";
+﻿import type { StatementIR } from "../../api/index.js";
+import type { EmitterContext } from "./emitter-context.js";
+import { entryHasUI } from "../../ui/ui-registry.js";
+import { uiPressBindings } from "../../ir/transformers/ui-call-resolver.js";
 
 export function synthesizeEntrypoints(ctx: EmitterContext): void {
   const { program, strategy, isEntryFile, mappedFunctions } = ctx;

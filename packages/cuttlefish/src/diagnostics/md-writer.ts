@@ -8,7 +8,7 @@
 // Markdown report (they appear only in JSON).
 // ---------------------------------------------------------------------------
 
-import type { CallGraph } from "../ir/call-graph";
+import type { CallGraph } from "../ir/call-graph.js";
 import type {
   DiagnosticsReport,
   ExecutionFlow,
@@ -20,7 +20,7 @@ import type {
   ModuleGraph,
   TreeShakingReport,
   BuildTiming,
-} from "./json-schema";
+} from "./json-schema.js";
 import {
   buildExecutionFlowDiagram,
   buildPinUsagePie,
@@ -36,7 +36,7 @@ import {
   buildModuleGraphDiagram,
   buildTreeShakingTable,
   buildTimingTable,
-} from "./mermaid-builder";
+} from "./mermaid-builder.js";
 
 // ── Section Builders ────────────────────────────────────────────────────────
 

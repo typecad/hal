@@ -1,22 +1,22 @@
 ﻿#!/usr/bin/env node
 import path from "node:path";
 import fs from "node:fs";
-import { parseCommandLine, printHelp } from "./utils/cli";
-import type { GeneratedOutputs } from "./types";
-import type { CreateCommandOptions } from "./types";
-import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS } from "./create";
-import { runInitWizard } from "./create";
-import { generateLibraryDefinitions, transpileFile } from "./transpile";
-import { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
-import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map";
-import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain";
-import { resolveStrategy } from "./platform/registry";
-import { loadFrameworkPackage } from "./framework-package";
-import { getLoadedFramework, hasLoadedFramework } from "./framework-registry";
-import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader";
-import { runWatch, discoverWatchDirs } from "./watch";
-import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils";
-import * as ui from "./utils/ui";
+import { parseCommandLine, printHelp } from "./utils/cli.js";
+import type { GeneratedOutputs } from "./types.js";
+import type { CreateCommandOptions } from "./types.js";
+import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS } from "./create/index.js";
+import { runInitWizard } from "./create/index.js";
+import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
+import { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl.js";
+import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map.js";
+import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain.js";
+import { resolveStrategy } from "./platform/registry.js";
+import { loadFrameworkPackage } from "./framework-package.js";
+import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
+import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader.js";
+import { runWatch, discoverWatchDirs } from "./watch.js";
+import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
+import * as ui from "./utils/ui.js";
 import chalk from "chalk";
 
 function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
@@ -552,7 +552,7 @@ async function main(): Promise<void> {
     };
 
     ui.printCompiling(buildTarget ?? "native");
-    let compileResult: import("./api/shared").CompileResult;
+    let compileResult: import("./api/shared/index.js").CompileResult;
     try {
       compileResult = compileSource(toolchainOpts);
     } catch (compileError: any) {

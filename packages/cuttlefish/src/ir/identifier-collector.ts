@@ -1,4 +1,4 @@
-﻿import { ExpressionIR, HALOpIR, StatementIR } from "../api";
+﻿import { ExpressionIR, HALOpIR, StatementIR } from "../api/index.js";
 
 /**
  * Shared utility for collecting identifiers from IR nodes.

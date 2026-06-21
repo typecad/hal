@@ -1,11 +1,11 @@
 ﻿import path from "node:path";
-import type { ProgramIR } from "../../api";
-import type { GeneratedOutputs, SourceMapEntry } from "../../types";
-import { writeText } from "../../utils/fs";
-import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map";
-import { dedupe, hasConsoleCalls, resolveTranspiledModuleInclude } from "../utils";
-import { appendHeaderLine } from "./line-appender";
-import type { EmitterContext } from "./emitter-context";
+import type { ProgramIR } from "../../api/index.js";
+import type { GeneratedOutputs, SourceMapEntry } from "../../types.js";
+import { writeText } from "../../utils/fs.js";
+import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map.js";
+import { dedupe, hasConsoleCalls, resolveTranspiledModuleInclude } from "../utils/index.js";
+import { appendHeaderLine } from "./line-appender.js";
+import type { EmitterContext } from "./emitter-context.js";
 
 /** Derives a unique C preprocessor guard name from a source file path. */
 function sanitizeGuardName(filePath: string): string {

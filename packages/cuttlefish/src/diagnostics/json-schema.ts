@@ -2,9 +2,9 @@
 // Diagnostics Report — JSON Schema Types
 // ---------------------------------------------------------------------------
 
-import type { PeripheralUsageIR } from "../api";
-import type { CallGraph } from "../ir/call-graph";
-import type { Diagnostic, SourceSpan } from "../types";
+import type { PeripheralUsageIR } from "../api/index.js";
+import type { CallGraph } from "../ir/call-graph.js";
+import type { Diagnostic, SourceSpan } from "../types.js";
 
 // ── Pin Usage ──────────────────────────────────────────────────────────────
 

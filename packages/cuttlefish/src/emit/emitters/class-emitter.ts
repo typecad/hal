@@ -1,11 +1,11 @@
-import type { ExpressionIR, ParameterIR } from "../../api";
-import { emitCommentLines, isRuntimeExpression, collectNestedStructDefs, inferObjectFieldType } from "../utils";
-import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender";
-import { createChildEmissionScope } from "../snprintf-helpers";
-import { escapeCppKeyword } from "../../utils/strings";
-import { accessorGetterName, accessorSetterName } from "../utils/cpp-helpers";
-import type { EmitterContext } from "./emitter-context";
-import { parseCppType, parsedIsPointer, parsedIsVector, parsedIsStringLike, isStaticArray } from "../../api/shared/cpp-type-ir";
+import type { ExpressionIR, ParameterIR } from "../../api/index.js";
+import { emitCommentLines, isRuntimeExpression, collectNestedStructDefs, inferObjectFieldType } from "../utils/index.js";
+import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender.js";
+import { createChildEmissionScope } from "../snprintf-helpers.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
+import { accessorGetterName, accessorSetterName } from "../utils/cpp-helpers.js";
+import type { EmitterContext } from "./emitter-context.js";
+import { parseCppType, parsedIsPointer, parsedIsVector, parsedIsStringLike, isStaticArray } from "../../api/shared/cpp-type-ir.js";
 
 export function emitClasses(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer, isEntryFile } = ctx;

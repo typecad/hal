@@ -6,8 +6,8 @@
 // strategies at import time.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy } from "../api/shared";
-import { GenericStrategy } from "./generic-strategy";
+import type { PlatformStrategy } from "../api/shared/index.js";
+import { GenericStrategy } from "./generic-strategy.js";
 
 const _genericStrategy = new GenericStrategy();
 

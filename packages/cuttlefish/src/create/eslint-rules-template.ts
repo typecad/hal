@@ -1,4 +1,4 @@
-import type { InitProjectOptions } from "./init-templates";
+import type { InitProjectOptions } from "./init-templates.js";
 
 export function generateEslintRules(_options: InitProjectOptions): string {
   return `// ---------------------------------------------------------------------------

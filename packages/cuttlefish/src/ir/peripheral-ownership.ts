@@ -10,9 +10,9 @@
 // If take() is never used, no diagnostics are generated (opt-in).
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, StatementIR, ExpressionIR, SourceSpan } from '../api';
-import type { Diagnostic } from '../types';
-import { scanNestedStatements } from './interrupt-analysis';
+import type { ProgramIR, StatementIR, ExpressionIR, SourceSpan } from '../api/index.js';
+import type { Diagnostic } from '../types.js';
+import { scanNestedStatements } from './interrupt-analysis.js';
 
 export function validatePeripheralOwnership(program: ProgramIR): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];

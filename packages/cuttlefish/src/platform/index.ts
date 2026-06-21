@@ -6,7 +6,7 @@
 // respective framework packages, which register via registerPlatformStrategy().
 // ---------------------------------------------------------------------------
 
-export type { PlatformStrategy } from '../api/shared';
-export { GenericStrategy } from './generic-strategy';
-export { resolveStrategy, registerPlatformStrategy } from './registry';
-export type { RuntimePolyfillIR } from '../api/shared';
+export type { PlatformStrategy } from '../api/shared/index.js';
+export { GenericStrategy } from './generic-strategy.js';
+export { resolveStrategy, registerPlatformStrategy } from './registry.js';
+export type { RuntimePolyfillIR } from '../api/shared/index.js';

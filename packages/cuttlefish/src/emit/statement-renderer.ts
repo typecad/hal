@@ -4,18 +4,18 @@
  * Extracted from cpp-emitter.ts
  */
 
-import type { StatementIR, ExpressionIR } from "../api";
-import type { PlatformStrategy } from "../api/shared";
-import type { BoardConstants } from "../ir/board-resolver";
-import type { KnownVariableInfo } from "../api/shared";
-import { routeHALOp } from "./route-hal-op";
-import { activeNamespaceNames } from "../ir/build-ir-state";
-import type { Diagnostic } from "../types";
-import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from "./expression-renderer";
-import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils";
-import { escapeCppKeyword, escapeTrailingMember } from "../utils/strings";
-import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers";
-import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsVector, parsedElementString, parsedIsPlainStructType } from "../api/shared/cpp-type-ir";
+import type { StatementIR, ExpressionIR } from "../api/index.js";
+import type { PlatformStrategy } from "../api/shared/index.js";
+import type { BoardConstants } from "../ir/board-resolver.js";
+import type { KnownVariableInfo } from "../api/shared/index.js";
+import { routeHALOp } from "./route-hal-op.js";
+import { activeNamespaceNames } from "../ir/build-ir-state.js";
+import type { Diagnostic } from "../types.js";
+import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from "./expression-renderer.js";
+import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils/index.js";
+import { escapeCppKeyword, escapeTrailingMember } from "../utils/strings.js";
+import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers.js";
+import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsVector, parsedElementString, parsedIsPlainStructType } from "../api/shared/cpp-type-ir.js";
 
 /**
  * Context needed for statement rendering.

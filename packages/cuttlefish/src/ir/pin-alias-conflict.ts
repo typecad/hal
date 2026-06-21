@@ -1,7 +1,7 @@
-import type { Diagnostic } from '../types';
-import type { BoardConstants } from './board-resolver';
-import type { PeripheralUsage } from './peripheral-usage';
-import { findBoardPinByName } from './board-pin-utils';
+import type { Diagnostic } from '../types.js';
+import type { BoardConstants } from './board-resolver.js';
+import type { PeripheralUsage } from './peripheral-usage.js';
+import { findBoardPinByName } from './board-pin-utils.js';
 
 export function validatePinAliasConflicts(
   usage: PeripheralUsage,

@@ -1,4 +1,4 @@
-import type { StatementIR, ExpressionIR, ProgramIR } from "../../api";
+import type { StatementIR, ExpressionIR, ProgramIR } from "../../api/index.js";
 
 export function walkNestedStatements(stmt: StatementIR, visitor: (s: StatementIR) => void): void {
   if (!stmt || typeof stmt !== "object") return;
@@ -120,7 +120,7 @@ export function walkProgramIR(program: ProgramIR, visitor: (stmt: StatementIR) =
   }
 }
 
-function walkNamespaceStatements(ns: import("../../api").NamespaceIR, visitor: (stmt: StatementIR) => void): void {
+function walkNamespaceStatements(ns: import("../../api/index.js").NamespaceIR, visitor: (stmt: StatementIR) => void): void {
   for (const fn of ns.functions) walkStatements(fn.statements, visitor);
   for (const cls of ns.classes) {
     if (cls.constructor) walkStatements(cls.constructor.statements, visitor);

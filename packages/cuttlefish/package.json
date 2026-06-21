@@ -2,7 +2,7 @@
   "name": "@typecad/cuttlefish",
   "version": "0.1.0",
   "description": "TypeScript to C++ transpiler — native, Arduino, and bare-metal targets",
-  "type": "commonjs",
+  "type": "module",
   "main": "./dist/transpile.js",
   "types": "./dist/transpile.d.ts",
   "bin": {

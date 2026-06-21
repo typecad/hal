@@ -1,5 +1,5 @@
 import ts from "typescript";
-import type { Diagnostic } from "../types";
+import type { Diagnostic } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // SemanticFacts — a node-keyed fact map consumed by semantic gates.

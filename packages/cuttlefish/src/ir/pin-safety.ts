@@ -5,10 +5,10 @@
 // Generates diagnostics when pins marked as unsafe are used in the program.
 // ---------------------------------------------------------------------------
 
-import type { PeripheralUsage } from './peripheral-usage';
-import type { BoardConstants } from './board-resolver';
-import type { Diagnostic } from '../types';
-import { findBoardPinByName, formatPinReference } from './board-pin-utils';
+import type { PeripheralUsage } from './peripheral-usage.js';
+import type { BoardConstants } from './board-resolver.js';
+import type { Diagnostic } from '../types.js';
+import { findBoardPinByName, formatPinReference } from './board-pin-utils.js';
 
 function buildUnsafePinMessage(
   pinName: string,

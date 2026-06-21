@@ -1,5 +1,5 @@
-import type { ArchitectureIdentifier } from '../api';
-import { LINT_RULES } from '../ir/feature-registry';
+import type { ArchitectureIdentifier } from '../api/index.js';
+import { LINT_RULES } from '../ir/feature-registry.js';
 
 export interface InitProjectOptions {
   projectName: string;
@@ -276,7 +276,7 @@ declare global {
 }
 
 declare module '@typecad' {
-  export * from './.cuttlefish/board';
+  export * from './.cuttlefish/board.js';
 }
 
 export {};
@@ -349,7 +349,7 @@ export function generateEslintConfig(_options: InitProjectOptions): string {
 
   return `import tsparser from "@typescript-eslint/parser";
 import tseslint from "@typescript-eslint/eslint-plugin";
-import transpilerPlugin from "./eslint-transpiler-rules.mjs";
+import transpilerPlugin from "./eslint-transpiler-rules.mjs.js";
 
 // Auto-generated from feature-registry.ts LINT_RULES — do not edit by hand.
 const transpilerRules = ${transpilerRulesJson};

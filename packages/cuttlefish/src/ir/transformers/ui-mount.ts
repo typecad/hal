@@ -6,7 +6,7 @@
 // Mirrors the pin-conflict check philosophy.
 // ---------------------------------------------------------------------------
 
-import type { PlatformGraphicsStrategy, DisplayInitOp } from "../../api/shared";
+import type { PlatformGraphicsStrategy, DisplayInitOp } from "../../api/shared/index.js";
 
 export interface MountRequest {
   display: string;

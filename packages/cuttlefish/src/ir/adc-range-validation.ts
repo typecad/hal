@@ -5,9 +5,9 @@
 // ADC resolution (e.g., comparing to > 1023 on a 10-bit Arduino Uno).
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, ExpressionIR, StatementIR } from '../api';
-import type { BoardConstants } from '../api/shared';
-import type { Diagnostic } from '../types';
+import type { ProgramIR, ExpressionIR, StatementIR } from '../api/index.js';
+import type { BoardConstants } from '../api/shared/index.js';
+import type { Diagnostic } from '../types.js';
 
 /**
  * Board-specific ADC configurations.

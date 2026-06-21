@@ -1,7 +1,10 @@
 ﻿import path from "node:path";
-import { setLoadedFramework } from "./framework-registry";
-import type { LoadedFramework, FrameworkToolchain } from "./framework-registry";
-import { registerPlatformStrategy } from "./platform/registry";
+import { createRequire } from "node:module";
+import { setLoadedFramework } from "./framework-registry.js";
+import type { LoadedFramework, FrameworkToolchain } from "./framework-registry.js";
+import { registerPlatformStrategy } from "./platform/registry.js";
+
+const require = createRequire(import.meta.url);
 
 function resolveFrameworkPackage(
   packageName: string,
@@ -46,7 +49,6 @@ export function loadFrameworkPackage(
       `Install it or pass a different framework package name in your TypeCAD config.`,
     );
   }
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const mod = require(packagePath);
 
   // Populate the registry with the loaded framework components

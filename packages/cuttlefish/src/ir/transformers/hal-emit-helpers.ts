@@ -1,10 +1,10 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../../types";
-import { HALOpIR, StatementIR, ExpressionIR } from "../../api";
-import { makeSourceSpan } from "../ast-node-utils";
-import { expressionToIR } from "../expression-to-ir";
-import { resolveHALReceiver, processHALMethodBody } from "../hal-resolver";
-import { PointerTracker } from "../build-ir-state";
+import { Diagnostic } from "../../types.js";
+import { HALOpIR, StatementIR, ExpressionIR } from "../../api/index.js";
+import { makeSourceSpan } from "../ast-node-utils.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { resolveHALReceiver, processHALMethodBody } from "../hal-resolver.js";
+import { PointerTracker } from "../build-ir-state.js";
 
 /**
  * Recursively collect emit lines from chained HAL method calls.

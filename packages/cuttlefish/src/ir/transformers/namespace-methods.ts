@@ -1,6 +1,6 @@
-﻿import { ExpressionIR, HALOpIR } from "../../api";
-import { renderExprAsText } from "../render-expr";
-import { halInstances } from "../hal-resolver";
+﻿import { ExpressionIR, HALOpIR } from "../../api/index.js";
+import { renderExprAsText } from "../render-expr.js";
+import { halInstances } from "../hal-resolver.js";
 
 export type NamespaceMethodResult = {
   emitLines: string[];

@@ -1,4 +1,4 @@
-import { halInstances } from "./build-ir-state";
+import { halInstances } from "./build-ir-state.js";
 export { halInstances };
 
 export {
@@ -22,7 +22,7 @@ export {
   resolveCtorFieldValues,
   isKnownHALClass,
   getHALCtorFieldMap,
-} from "./hal/hal-parser";
+} from "./hal/hal-parser.js";
 
 export {
   resolveSemanticArg,
@@ -31,7 +31,7 @@ export {
   tryResolveBoardResolveArg,
   tryResolveCompoundSemanticReturn,
   tryResolveSemanticCall,
-} from "./hal/hal-plugins";
+} from "./hal/hal-plugins.js";
 
 export {
   maybeEscapeResolvedText,
@@ -46,4 +46,4 @@ export {
   resolveHALExprToText,
   registerFloatVariable,
   buildSnprintfFromConcat,
-} from "./hal/hal-emitter";
+} from "./hal/hal-emitter.js";

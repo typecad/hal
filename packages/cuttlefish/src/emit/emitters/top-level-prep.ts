@@ -1,14 +1,14 @@
-﻿import type { ExpressionIR, StatementIR, VariableDeclarationIR, AssignmentIR } from "../../api";
+﻿import type { ExpressionIR, StatementIR, VariableDeclarationIR, AssignmentIR } from "../../api/index.js";
 import {
   applySymbolMap,
   statementRequiresRuntime,
   collectPointerVarTypes,
   collectExpressionIdentifiers,
   isRuntimeExpression,
-} from "../utils";
-import { appendSourceLine } from "./line-appender";
-import type { EmitterContext } from "./emitter-context";
-import { topLevelClasses } from "../../ir/build-ir-state";
+} from "../utils/index.js";
+import { appendSourceLine } from "./line-appender.js";
+import type { EmitterContext } from "./emitter-context.js";
+import { topLevelClasses } from "../../ir/build-ir-state.js";
 
 function exprContainsTimingCall(expr: ExpressionIR, timingVarNames: Set<string>): boolean {
   if (!expr || typeof expr !== 'object' || !expr.kind) return false;

@@ -1,21 +1,21 @@
 ﻿import path from "node:path";
-import type { ProgramIR, StatementIR } from "../../api";
-import { filterPolyfillHelpers, isStringEnum } from "../../api/shared";
-import { analyzeProgram } from "../../ir/program-analysis";
-import { collectStatementIdentifiers } from "../../ir/identifier-collector";
-import { Diagnostic, EmitMode, SourceMapEntry } from "../../types";
-import { ensureDir } from "../../utils/fs";
-import { resolveImport } from "../../libdef/registry";
-import { emitPolyfillBoilerplate } from "../native-helpers-emitter";
-import { ResolvedNpmPackage } from "../../transpile/resolution";
-import { resolveStrategy } from "../../platform/registry";
-import { getLoadedFramework } from "../../framework-registry";
+import type { ProgramIR, StatementIR } from "../../api/index.js";
+import { filterPolyfillHelpers, isStringEnum } from "../../api/shared/index.js";
+import { analyzeProgram } from "../../ir/program-analysis.js";
+import { collectStatementIdentifiers } from "../../ir/identifier-collector.js";
+import { Diagnostic, EmitMode, SourceMapEntry } from "../../types.js";
+import { ensureDir } from "../../utils/fs.js";
+import { resolveImport } from "../../libdef/registry.js";
+import { emitPolyfillBoilerplate } from "../native-helpers-emitter.js";
+import { ResolvedNpmPackage } from "../../transpile/resolution.js";
+import { resolveStrategy } from "../../platform/registry.js";
+import { getLoadedFramework } from "../../framework-registry.js";
 import {
   createEmissionScopeState,
   statementNeedsSnprintf,
-} from "../snprintf-helpers";
-import { ExpressionRenderer } from "../expression-renderer";
-import { StatementRenderer } from "../statement-renderer";
+} from "../snprintf-helpers.js";
+import { ExpressionRenderer } from "../expression-renderer.js";
+import { StatementRenderer } from "../statement-renderer.js";
 import {
   isCuttlefishSDKImport,
   emitCommentLines,
@@ -25,13 +25,13 @@ import {
   generateAsyncTaskClass,
   hasConsoleCalls,
   resolveTranspiledModuleInclude,
-} from "../utils";
+} from "../utils/index.js";
 import type {
   EmitterContext,
   EmitterOptions,
   MappedFunction,
   AsyncTaskClass,
-} from "./emitter-context";
+} from "./emitter-context.js";
 
 function resolveTemplateReturnType(
   returnType: string,
@@ -256,7 +256,7 @@ export function buildEmitterContext(
   }
 
   for (const imported of program.imports) {
-    // Resolve the default import name (import X from "./mod") the same way as
+    // Resolve the default import name (import X from "./mod.js") the same way as
     // named imports — add it to the symbolMap so cross-module references
     // resolve. Demo #12 Finding C — was skipped, so `encode` wasn't declared.
     const defaultName = (imported as any).defaultImportName as string | undefined;

@@ -1,6 +1,6 @@
 ﻿import path from "node:path";
 import ts from "typescript";
-import { readText } from "../utils/fs";
+import { readText } from "../utils/fs.js";
 import {
   ResolvedNpmPackage,
   NativeCppModule,
@@ -10,8 +10,8 @@ import {
   isInNodeModules,
   resolveImport,
   isCuttlefishSDKPath,
-} from "../transpile/resolution";
-import { loadUIModule } from "../ui/ui-registry";
+} from "../transpile/resolution.js";
+import { loadUIModule } from "../ui/ui-registry.js";
 
 /**
  * Sort files in dependency order using Kahn's algorithm.

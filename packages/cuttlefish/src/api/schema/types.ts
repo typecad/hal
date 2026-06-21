@@ -2,8 +2,8 @@
 // @typecad/cuttlefish/api/schema — Board definition manifest types
 // ---------------------------------------------------------------------------
 
-import type { PinCapabilityFlags } from '../capabilities';
-import type { ArchitectureIdentifier } from '../board-types';
+import type { PinCapabilityFlags } from '../capabilities.js';
+import type { ArchitectureIdentifier } from '../board-types.js';
 
 // ---------------------------------------------------------------------------
 // Memory spec

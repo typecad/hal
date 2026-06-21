@@ -1,7 +1,7 @@
 import ts from "typescript";
-import { Diagnostic } from "../types";
-import { makeDiagnostic } from "./ast-node-utils";
-import { getKindEntry, checkContextSensitive } from "./feature-registry";
+import { Diagnostic } from "../types.js";
+import { makeDiagnostic } from "./ast-node-utils.js";
+import { getKindEntry, checkContextSensitive } from "./feature-registry.js";
 
 function extractSourceLine(sourceText: string, line1Indexed: number): string {
   const lines = sourceText.split("\n");

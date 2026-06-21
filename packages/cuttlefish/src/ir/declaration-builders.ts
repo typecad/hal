@@ -1,13 +1,13 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../types";
-import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, EnumIR, ExpressionIR, InterfaceIR, ParameterIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api";
-import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
-import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution";
-import { getBitsRange, getRegisterAddress } from "./register-decorators";
-import { registerFieldMap, PointerTracker, setActiveExtendsClass, discriminatedUnionVariantNames, requiredIncludes } from "./build-ir-state";
-import { getCurrentIrTypeScope } from "./symbol-types";
-import { expressionToIR } from "./expression-to-ir";
-import { lowerStatementList } from "./statement-to-ir";
+import { Diagnostic } from "../types.js";
+import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, EnumIR, ExpressionIR, InterfaceIR, ParameterIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api/index.js";
+import { extractNodeComments, makeSourceSpan } from "./ast-node-utils.js";
+import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution.js";
+import { getBitsRange, getRegisterAddress } from "./register-decorators.js";
+import { registerFieldMap, PointerTracker, setActiveExtendsClass, discriminatedUnionVariantNames, requiredIncludes } from "./build-ir-state.js";
+import { getCurrentIrTypeScope } from "./symbol-types.js";
+import { expressionToIR } from "./expression-to-ir.js";
+import { lowerStatementList } from "./statement-to-ir.js";
 
 /**
  * Format an `ExpressionWithTypeArguments` (a heritage-clause type) as a C++

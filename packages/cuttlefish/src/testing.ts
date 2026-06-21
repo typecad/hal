@@ -6,13 +6,13 @@
  * (`@typecad/cuttlefish`).  Import via `@typecad/cuttlefish/testing`.
  */
 
-export { buildProgramIR } from "./ir/build-ir";
-export { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter";
-export { analyzePeripheralUsage, createEmptyPeripheralUsage } from "./ir/peripheral-usage";
-export { inferSnprintfArg, createEmissionScopeState, escapeCppStringLiteral } from "./emit/snprintf-helpers";
-export { setLoadedFramework } from "./framework-registry";
-export { registerPlatformStrategy, resolveStrategy, clearAllProfileCaches } from "./platform/registry";
-export type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "./types";
+export { buildProgramIR } from "./ir/build-ir.js";
+export { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
+export { analyzePeripheralUsage, createEmptyPeripheralUsage } from "./ir/peripheral-usage.js";
+export { inferSnprintfArg, createEmissionScopeState, escapeCppStringLiteral } from "./emit/snprintf-helpers.js";
+export { setLoadedFramework } from "./framework-registry.js";
+export { registerPlatformStrategy, resolveStrategy, clearAllProfileCaches } from "./platform/registry.js";
+export type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "./types.js";
 
 // ── Config loader ───────────────────────────────────────────────────────────
 export {
@@ -20,10 +20,10 @@ export {
   parseConfigFile,
   loadCuttlefishConfig,
   generateVirtualTypeDeclaration,
-} from "./config-loader";
+} from "./config-loader.js";
 
 // ── Transpiler internal API ─────────────────────────────────────────────────
-export { transpileFile } from "./transpile";
+export { transpileFile } from "./transpile.js";
 
 // ── Project scaffolding ──────────────────────────────────────────────────────
 export {
@@ -38,36 +38,36 @@ export {
   generateGitignore,
   generateEslintConfig,
   runInitWizard,
-} from "./create";
-export type { InitProjectOptions } from "./create";
+} from "./create/index.js";
+export type { InitProjectOptions } from "./create/index.js";
 
 // ── Tree-shaking & reachability ──────────────────────────────────────────────
-export { buildCallGraph, getReachableSymbols } from "./ir/call-graph";
-export { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points";
-export { analyzeReachability, getReachabilityStats } from "./ir/reachability";
-export { filterProgramIR } from "./ir/filter";
+export { buildCallGraph, getReachableSymbols } from "./ir/call-graph.js";
+export { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points.js";
+export { analyzeReachability, getReachabilityStats } from "./ir/reachability.js";
+export { filterProgramIR } from "./ir/filter.js";
 
 // ── Validation ──────────────────────────────────────────────────────────────
-export { validateTryCatch } from "./ir/try-catch-validation";
-export { prescanUnsupportedFeatures } from "./ir/feature-prescan";
+export { validateTryCatch } from "./ir/try-catch-validation.js";
+export { prescanUnsupportedFeatures } from "./ir/feature-prescan.js";
 // Feature registry + ESLint selector source-of-truth (parity-tested).
 export {
   LINT_RULES,
   ESLINT_OPT_OUT_KINDS,
   kindRegistryEntries,
-} from "./ir/feature-registry";
-export type { LintRule, FeatureEntry, FeatureStatus, DiagnosticMatch } from "./ir/feature-registry";
+} from "./ir/feature-registry.js";
+export type { LintRule, FeatureEntry, FeatureStatus, DiagnosticMatch } from "./ir/feature-registry.js";
 
 // ── ESLint gate ──────────────────────────────────────────────────────────────
-export { runEslintCheck } from "./eslint-check";
-export type { ESLintError } from "./eslint-check";
+export { runEslintCheck } from "./eslint-check.js";
+export type { ESLintError } from "./eslint-check.js";
 
 // ── Semantic gates (TypeChecker-based) ──────────────────────────────────────
-export { runSemanticGates } from "./orchestrator/type-checker";
+export { runSemanticGates } from "./orchestrator/type-checker.js";
 export {
   canonicalize,
   buildSemanticFacts,
-} from "./orchestrator/semantic-facts";
+} from "./orchestrator/semantic-facts.js";
 export type {
   CanonicalType,
   SemanticFacts,
@@ -78,19 +78,19 @@ export type {
   SemanticOrigin,
   AnalysisResult,
   BindingResolver,
-} from "./orchestrator/semantic-facts";
-export { verifyFacts } from "./orchestrator/semantic-facts-verifier";
-export type { VerifierOptions, VerifierResult, UnknownTypeSeverity } from "./orchestrator/semantic-facts-verifier";
+} from "./orchestrator/semantic-facts.js";
+export { verifyFacts } from "./orchestrator/semantic-facts-verifier.js";
+export type { VerifierOptions, VerifierResult, UnknownTypeSeverity } from "./orchestrator/semantic-facts-verifier.js";
 
 // ── Watch & CLI utilities ───────────────────────────────────────────────────
-export { discoverWatchDirs, isRelevantChange } from "./watch";
-export { parseCommandLine } from "./utils/cli";
-export { parseHeader, stripPreprocessorBlocks } from "./libdef/header-parser";
-export { BaseClassResolver, buildClassIndex } from "./libdef/base-class-resolver";
-export type { ResolveResult } from "./libdef/base-class-resolver";
-export { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl";
+export { discoverWatchDirs, isRelevantChange } from "./watch.js";
+export { parseCommandLine } from "./utils/cli.js";
+export { parseHeader, stripPreprocessorBlocks } from "./libdef/header-parser.js";
+export { BaseClassResolver, buildClassIndex } from "./libdef/base-class-resolver.js";
+export type { ResolveResult } from "./libdef/base-class-resolver.js";
+export { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl.js";
 
 // ── IR rendering internals (for fail-closed regression tests) ───────────────
-export { renderExprAsText } from "./ir/render-expr";
-export { contextStorage, CompilationContext } from "./ir/build-ir-state";
-export type { ExpressionIR } from "./api";
+export { renderExprAsText } from "./ir/render-expr.js";
+export { contextStorage, CompilationContext } from "./ir/build-ir-state.js";
+export type { ExpressionIR } from "./api/index.js";

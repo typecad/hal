@@ -8,11 +8,11 @@
 // Types are imported from @typecad/cuttlefish/api/shared.
 // ---------------------------------------------------------------------------
 
-import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } from "../api/shared";
-import type { PlatformStrategy } from "../api/shared";
-import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "../api/shared";
-import { escapeCppStringLiteral } from "../utils/strings";
-import { formatKindOf, parseCppType, parsedElementString, parsedIsStringLike } from "../api/shared/cpp-type-ir";
+import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } from "../api/shared/index.js";
+import type { PlatformStrategy } from "../api/shared/index.js";
+import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "../api/shared/index.js";
+import { escapeCppStringLiteral } from "../utils/strings.js";
+import { formatKindOf, parseCppType, parsedElementString, parsedIsStringLike } from "../api/shared/cpp-type-ir.js";
 
 export type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer };
 

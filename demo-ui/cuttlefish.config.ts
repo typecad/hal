@@ -50,7 +50,7 @@ const config: CuttlefishConfig = {
   // Console polyfill configuration — `Serial.begin(115200)` is injected at the
   // top of `setup()` so `console.log` reaches the serial monitor.
   console: {
-    baudRate: 115200,
+    baudRate: 9600,
   },
 };
 

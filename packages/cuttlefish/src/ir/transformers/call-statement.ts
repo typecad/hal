@@ -1,17 +1,17 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../../types";
-import { StatementIR } from "../../api";
-import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames, hoistedNestedFunctions } from "../build-ir-state";
-import { getCurrentIrTypeScope } from "../symbol-types";
-import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
-import { tryResolveHALMethod } from "./hal-call-resolver";
-import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex } from "./ui-call-resolver";
-import { tryLowerArrayAndStringMethods } from "./array-methods";
-import { expressionToIR } from "../expression-to-ir";
-import { lowerStatementList } from "../statement-to-ir";
-import { escapeCppKeyword } from "../../utils/strings";
-import { renderExprAsText, calleeToText } from "../render-expr";
-import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir";
+import { Diagnostic } from "../../types.js";
+import { StatementIR } from "../../api/index.js";
+import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames, hoistedNestedFunctions } from "../build-ir-state.js";
+import { getCurrentIrTypeScope } from "../symbol-types.js";
+import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
+import { tryResolveHALMethod } from "./hal-call-resolver.js";
+import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex } from "./ui-call-resolver.js";
+import { tryLowerArrayAndStringMethods } from "./array-methods.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { lowerStatementList } from "../statement-to-ir.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
+import { renderExprAsText, calleeToText } from "../render-expr.js";
+import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
 
 /**
  * When a Map/Set key is an enum-typed expression and the container's key type

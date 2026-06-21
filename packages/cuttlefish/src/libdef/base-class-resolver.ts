@@ -8,7 +8,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseHeader } from "./header-parser";
+import { parseHeader } from "./header-parser.js";
 
 export type ResolveResult =
   | { kind: "found"; headerPath: string }

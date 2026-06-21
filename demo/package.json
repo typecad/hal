@@ -1,16 +1,19 @@
 {
   "name": "demo-console-app",
   "version": "1.0.0",
-  "description": "Simple console application using TypeCAD transpiler",
+  "description": "Arduino Uno (AVR) demo using the TypeCAD transpiler",
   "type": "module",
   "scripts": {
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
+    "upload": "cuttlefish build --compile --upload --port COM7 --monitor",
     "transpile": "cuttlefish build --no-transpile",
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@typecad/framework-native": "*"
+    "@typecad/framework-arduino": "*",
+    "@typecad/board-arduino-uno": "*",
+    "@typecad/mcu-atmega328p": "*"
   },
   "devDependencies": {
     "eslint": "^10.4.1",

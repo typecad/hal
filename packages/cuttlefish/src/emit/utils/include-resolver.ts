@@ -6,7 +6,7 @@
 
 import path from "node:path";
 import fs from "node:fs";
-import type { ResolvedNpmPackage } from "../../transpile/resolution";
+import type { ResolvedNpmPackage } from "../../transpile/resolution.js";
 
 /**
  * Checks if a module specifier resolves to a typehal SDK path.

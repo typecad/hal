@@ -1,8 +1,8 @@
 ﻿import ts from "typescript";
-import { HALOpIR } from "../../api";
-import { HALInstance } from "./hal-parser";
-import { getCurrentBoardConstants, halInstances } from "../build-ir-state";
-import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitter";
+import { HALOpIR } from "../../api/index.js";
+import { HALInstance } from "./hal-parser.js";
+import { getCurrentBoardConstants, halInstances } from "../build-ir-state.js";
+import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitter.js";
 
 /** Resolve a single argument from a semantic call's AST node list. */
 export function resolveSemanticArg(

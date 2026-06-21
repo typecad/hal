@@ -1,19 +1,19 @@
-﻿import type { ProgramIR } from "../api";
-import type { GeneratedOutputs } from "../types";
+﻿import type { ProgramIR } from "../api/index.js";
+import type { GeneratedOutputs } from "../types.js";
 
-import { buildEmitterContext } from "./emitters/setup";
-import type { EmitterOptions } from "./emitters/emitter-context";
-export { type EmitterOptions } from "./emitters/emitter-context";
+import { buildEmitterContext } from "./emitters/setup.js";
+import type { EmitterOptions } from "./emitters/emitter-context.js";
+export { type EmitterOptions } from "./emitters/emitter-context.js";
 
-import { emitPreamble } from "./emitters/output-finalizer";
-import { runTopLevelPreprocessing } from "./emitters/top-level-prep";
-import { synthesizeEntrypoints } from "./emitters/entrypoint-synthesizer";
-import { emitTypeDeclarations } from "./emitters/type-decl-emitter";
-import { emitNamespaces } from "./emitters/namespace-emitter";
-import { emitClasses } from "./emitters/class-emitter";
-import { emitPostClassDeclarations, emitCallbackFunctions, emitFunctions, emitFunctionForwardDeclarations } from "./emitters/function-emitter-impl";
-import { emitUIRuntime } from "./emitters/ui-emitter";
-import { finalizeOutput } from "./emitters/output-finalizer";
+import { emitPreamble } from "./emitters/output-finalizer.js";
+import { runTopLevelPreprocessing } from "./emitters/top-level-prep.js";
+import { synthesizeEntrypoints } from "./emitters/entrypoint-synthesizer.js";
+import { emitTypeDeclarations } from "./emitters/type-decl-emitter.js";
+import { emitNamespaces } from "./emitters/namespace-emitter.js";
+import { emitClasses } from "./emitters/class-emitter.js";
+import { emitPostClassDeclarations, emitCallbackFunctions, emitFunctions, emitFunctionForwardDeclarations } from "./emitters/function-emitter-impl.js";
+import { emitUIRuntime } from "./emitters/ui-emitter.js";
+import { finalizeOutput } from "./emitters/output-finalizer.js";
 
 const globalEnumNames = new Set<string>();
 const globalLargeEnumNames = new Set<string>();

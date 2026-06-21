@@ -14,7 +14,7 @@ import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
 
-import type { BoardConstants } from "../api/shared";
+import type { BoardConstants } from "../api/shared/index.js";
 
 export type { BoardConstants };
 

@@ -1,19 +1,19 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../../types";
-import { StatementIR, ExpressionIR, CppType } from "../../api";
-import { makeSourceSpan, extractNodeComments, makeDiagnostic } from "../ast-node-utils";
-import { PointerTracker, arrayLiteralSizes } from "../build-ir-state";
-import { expressionToIR } from "../expression-to-ir";
-import { renderExprAsText } from "../render-expr";
-import { CppTypeHint, inferExprCppType } from "../type-resolution";
-import { tryLowerRegisterWrite } from "./register-assignment";
+import { Diagnostic } from "../../types.js";
+import { StatementIR, ExpressionIR, CppType } from "../../api/index.js";
+import { makeSourceSpan, extractNodeComments, makeDiagnostic } from "../ast-node-utils.js";
+import { PointerTracker, arrayLiteralSizes } from "../build-ir-state.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { renderExprAsText } from "../render-expr.js";
+import { CppTypeHint, inferExprCppType } from "../type-resolution.js";
+import { tryLowerRegisterWrite } from "./register-assignment.js";
 import { 
   assignmentOperatorToString, 
   updateLocalTypeFromAssignment, 
   callToStatement 
-} from "../statement-to-ir";
+} from "../statement-to-ir.js";
 
-export { expressionToIR } from "../expression-to-ir";
+export { expressionToIR } from "../expression-to-ir.js";
 
 export function expressionStatementToIR(
   statement: ts.ExpressionStatement,

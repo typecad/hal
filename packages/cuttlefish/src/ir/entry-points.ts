@@ -1,4 +1,4 @@
-﻿import { ProgramIR, StatementIR, ExpressionIR } from "../api";
+﻿import { ProgramIR, StatementIR, ExpressionIR } from "../api/index.js";
 
 /**
  * Configuration for entry point detection

@@ -1,10 +1,10 @@
-﻿import type { StatementIR } from "../../api";
-import type { SourceSpan } from "../../types";
-import { cloneEmissionScopeState, recordVariableType } from "../snprintf-helpers";
-import type { EmissionScopeState } from "../snprintf-helpers";
-import { emitCommentLines } from "../utils";
-import { escapeCppKeyword } from "../../utils/strings";
-import type { EmitterContext } from "./emitter-context";
+﻿import type { StatementIR } from "../../api/index.js";
+import type { SourceSpan } from "../../types.js";
+import { cloneEmissionScopeState, recordVariableType } from "../snprintf-helpers.js";
+import type { EmissionScopeState } from "../snprintf-helpers.js";
+import { emitCommentLines } from "../utils/index.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
+import type { EmitterContext } from "./emitter-context.js";
 
 export function appendSourceLine(
   ctx: EmitterContext,

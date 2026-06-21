@@ -1,18 +1,18 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../types";
-import { ExpressionIR, StatementIR } from "../api";
-import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext } from "./build-ir-state";
-import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types";
-import { renderExprAsText } from "./render-expr";
-import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir";
-import { isSignalName } from "./transformers/ui-call-resolver";
-import { halInstances } from "./hal-resolver";
-import { escapeCppKeyword } from "../utils/strings";
-import { tryLowerRegisterRead } from "./transformers/register-assignment";
-import { tryLowerArrayAndStringMethods } from "./transformers/array-methods";
-import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution";
-import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir";
+import { Diagnostic } from "../types.js";
+import { ExpressionIR, StatementIR } from "../api/index.js";
+import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext } from "./build-ir-state.js";
+import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
+import { renderExprAsText } from "./render-expr.js";
+import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
+import { isSignalName } from "./transformers/ui-call-resolver.js";
+import { halInstances } from "./hal-resolver.js";
+import { escapeCppKeyword } from "../utils/strings.js";
+import { tryLowerRegisterRead } from "./transformers/register-assignment.js";
+import { tryLowerArrayAndStringMethods } from "./transformers/array-methods.js";
+import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution.js";
+import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir.js";
 
 function resolveExprCppType(expr: ts.Expression): string | undefined {
   if (ts.isNonNullExpression(expr) || ts.isParenthesizedExpression(expr)) {

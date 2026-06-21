@@ -10,8 +10,8 @@
 // - Bare numbers in .config builders are validated here for common mistakes
 // ---------------------------------------------------------------------------
 
-import { ProgramIR, StatementIR, ExpressionIR } from '../api';
-import { Diagnostic } from '../types';
+import { ProgramIR, StatementIR, ExpressionIR } from '../api/index.js';
+import { Diagnostic } from '../types.js';
 
 // Standard baud rates for UART
 const KNOWN_BAUD_RATES = new Set([

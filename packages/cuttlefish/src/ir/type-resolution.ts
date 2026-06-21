@@ -1,7 +1,7 @@
 ﻿import ts from "typescript";
-import { CppType } from "../api";
-import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeEnumNames } from "./build-ir-state";
-import { getCurrentIrTypeScope } from "./symbol-types";
+import { CppType } from "../api/index.js";
+import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeEnumNames } from "./build-ir-state.js";
+import { getCurrentIrTypeScope } from "./symbol-types.js";
 import {
   type CppTypeIR,
   parseCppType,
@@ -10,7 +10,7 @@ import {
   bareType,
   elementOf,
   isPointer,
-} from "../api/shared/cpp-type-ir";
+} from "../api/shared/cpp-type-ir.js";
 
 export type CppTypeHint =
   | "int"

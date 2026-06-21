@@ -4,9 +4,9 @@
  * Extracted from cpp-emitter.ts
  */
 
-import type { StatementIR, ExpressionIR } from "../../api";
-import type { PlatformStrategy } from "../../api/shared";
-import { escapeCppStringLiteral } from "../../utils/strings";
+import type { StatementIR, ExpressionIR } from "../../api/index.js";
+import type { PlatformStrategy } from "../../api/shared/index.js";
+import { escapeCppStringLiteral } from "../../utils/strings.js";
 
 /**
  * Converts a string to PascalCase.

@@ -1,6 +1,6 @@
-﻿import { ProgramIR } from "../api";
-import { Diagnostic, TreeShakingOptions } from "../types";
-import { ReachabilityResult } from "./reachability";
+﻿import { ProgramIR } from "../api/index.js";
+import { Diagnostic, TreeShakingOptions } from "../types.js";
+import { ReachabilityResult } from "./reachability.js";
 
 const DEFAULT_TREE_SHAKING: TreeShakingOptions = {
   enabled: true,

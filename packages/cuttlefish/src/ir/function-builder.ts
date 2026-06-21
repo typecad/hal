@@ -1,5 +1,5 @@
 ﻿import ts from "typescript";
-import { Diagnostic, SourceSpan } from "../types";
+import { Diagnostic, SourceSpan } from "../types.js";
 import {
   FunctionIR,
   ParameterIR,
@@ -10,8 +10,8 @@ import {
   ClassSetterIR,
   CppType,
   ExpressionIR,
-} from "../api";
-import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils";
+} from "../api/index.js";
+import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
 import {
   collectReturns,
   CppTypeHint,
@@ -21,9 +21,9 @@ import {
   resolveFunctionReturnType,
   resolveFunctionTypeSignature,
   resolveAliasedTypeNode,
-} from "./type-resolution";
-import { parsedIsPointer } from "../api/shared/cpp-type-ir";
-import { expressionToIR } from "./expression-to-ir";
+} from "./type-resolution.js";
+import { parsedIsPointer } from "../api/shared/cpp-type-ir.js";
+import { expressionToIR } from "./expression-to-ir.js";
 import {
   PointerTracker,
   hoistedNestedFunctions,
@@ -31,9 +31,9 @@ import {
   nestedClassAliases,
   nestedFunctionAliases,
   restParamFunctions,
-} from "./build-ir-state";
-import { getCurrentIrTypeScope } from "./symbol-types";
-import { renderExprAsText } from "./render-expr";
+} from "./build-ir-state.js";
+import { getCurrentIrTypeScope } from "./symbol-types.js";
+import { renderExprAsText } from "./render-expr.js";
 
 type DestructuredParamResult = {
   syntheticParam: ParameterIR;

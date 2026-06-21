@@ -1,13 +1,13 @@
 ﻿import ts from "typescript";
-import { Diagnostic, SourceSpan } from "../../types";
-import { StatementIR, ExpressionIR, CppType } from "../../api";
-import { extractNodeComments, makeSourceSpan } from "../ast-node-utils";
-import { CppTypeHint, resolveDeclarationType, inferExprCppType } from "../type-resolution";
-import { PointerTracker, nestedClassAliases } from "../build-ir-state";
-import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedElementString } from "../../api/shared/cpp-type-ir";
-import { expressionToIR } from "../expression-to-ir";
-import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir";
-import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys } from "./variables";
+import { Diagnostic, SourceSpan } from "../../types.js";
+import { StatementIR, ExpressionIR, CppType } from "../../api/index.js";
+import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
+import { CppTypeHint, resolveDeclarationType, inferExprCppType } from "../type-resolution.js";
+import { PointerTracker, nestedClassAliases } from "../build-ir-state.js";
+import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedElementString } from "../../api/shared/cpp-type-ir.js";
+import { expressionToIR } from "../expression-to-ir.js";
+import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir.js";
+import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys } from "./variables.js";
 
 // Monotonic counter for synthetic for...of destructure loop variables.
 let forOfDestructureCounter = 0;

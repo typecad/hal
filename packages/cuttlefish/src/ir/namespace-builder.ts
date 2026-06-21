@@ -1,13 +1,13 @@
 ﻿import ts from "typescript";
-import { Diagnostic } from "../types";
-import { CppType, ExpressionIR, FunctionIR, NamespaceIR, ParameterIR } from "../api";
-import { extractNodeComments, makeSourceSpan } from "./ast-node-utils";
-import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveFunctionReturnType } from "./type-resolution";
-import { expressionToIR } from "./expression-to-ir";
-import { lowerStatementList } from "./statement-to-ir";
-import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders";
-import { RegisterClassIR } from "../api";
-import { PointerTracker } from "./build-ir-state";
+import { Diagnostic } from "../types.js";
+import { CppType, ExpressionIR, FunctionIR, NamespaceIR, ParameterIR } from "../api/index.js";
+import { extractNodeComments, makeSourceSpan } from "./ast-node-utils.js";
+import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveFunctionReturnType } from "./type-resolution.js";
+import { expressionToIR } from "./expression-to-ir.js";
+import { lowerStatementList } from "./statement-to-ir.js";
+import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
+import { RegisterClassIR } from "../api/index.js";
+import { PointerTracker } from "./build-ir-state.js";
 
 export function namespaceToIR(
   node: ts.ModuleDeclaration,

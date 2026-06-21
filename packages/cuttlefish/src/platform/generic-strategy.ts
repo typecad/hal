@@ -2,16 +2,16 @@
 // GenericStrategy — standard C++ target (std::cout, main(), <cmath> …)
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, AsyncRuntimeConfig } from "../api/shared";
-import type { ExpressionIR, ProgramIR } from "../api";
-import type { BoardConstants } from "../api/shared";
-import type { Diagnostic, PlatformContext } from "../types";
-import { escapeCppStringLiteral } from "../utils/strings";
-import type { RuntimePolyfillIR, StdLibSupport } from "../api/shared";
-import type { PlatformGraphicsStrategy, GraphicsCapacity, DisplayHALOp } from "../api/shared";
-import { DEFAULT_STDLIB_SUPPORT } from "../api/shared";
-import { parsedIsPointer } from "../api/shared/cpp-type-ir";
-import { buildAsyncRuntimePolyfill } from "./async-runtime";
+import type { PlatformStrategy, AsyncRuntimeConfig } from "../api/shared/index.js";
+import type { ExpressionIR, ProgramIR } from "../api/index.js";
+import type { BoardConstants } from "../api/shared/index.js";
+import type { Diagnostic, PlatformContext } from "../types.js";
+import { escapeCppStringLiteral } from "../utils/strings.js";
+import type { RuntimePolyfillIR, StdLibSupport } from "../api/shared/index.js";
+import type { PlatformGraphicsStrategy, GraphicsCapacity, DisplayHALOp } from "../api/shared/index.js";
+import { DEFAULT_STDLIB_SUPPORT } from "../api/shared/index.js";
+import { parsedIsPointer } from "../api/shared/cpp-type-ir.js";
+import { buildAsyncRuntimePolyfill } from "./async-runtime.js";
 
 export class GenericStrategy implements PlatformStrategy {
   readonly id = "generic";

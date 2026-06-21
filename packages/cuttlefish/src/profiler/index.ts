@@ -3,7 +3,7 @@
  *
  * @example
  * ```typescript
- * import { initProfiler, formatConsoleReport } from './profiler';
+ * import { initProfiler, formatConsoleReport } from './profiler.js';
  *
  * const profiler = initProfiler({ enabled: true });
  * profiler.startSession();
@@ -25,7 +25,7 @@
  * ```
  */
 
-export { Profiler, getProfiler, initProfiler } from "./profiler";
+export { Profiler, getProfiler, initProfiler } from "./profiler.js";
 export {
   TimingEntry,
   MemorySnapshot,
@@ -34,4 +34,4 @@ export {
   ProfilerOptions,
   ProfilerReport,
   DEFAULT_PROFILER_OPTIONS,
-} from "./types";
+} from "./types.js";
