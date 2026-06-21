@@ -134,6 +134,58 @@ export class YogaLayoutEngine implements LayoutEngine {
     if (s.alignSelf === "flex-start") yn.setAlignSelf(Yoga.ALIGN_FLEX_START);
     else if (s.alignSelf === "center") yn.setAlignSelf(Yoga.ALIGN_CENTER);
     else if (s.alignSelf === "stretch") yn.setAlignSelf(Yoga.ALIGN_STRETCH);
+    else if (s.alignSelf === "flex-end") yn.setAlignSelf(Yoga.ALIGN_FLEX_END);
+    else if (s.alignSelf === "baseline") yn.setAlignSelf(Yoga.ALIGN_BASELINE);
+
+    // Align-items / justify-content (container properties)
+    if (s.alignItems) {
+      if (s.alignItems === "flex-start") yn.setAlignItems(Yoga.ALIGN_FLEX_START);
+      else if (s.alignItems === "center") yn.setAlignItems(Yoga.ALIGN_CENTER);
+      else if (s.alignItems === "stretch") yn.setAlignItems(Yoga.ALIGN_STRETCH);
+      else if (s.alignItems === "flex-end") yn.setAlignItems(Yoga.ALIGN_FLEX_END);
+    }
+    if (s.justifyContent) {
+      if (s.justifyContent === "flex-start") yn.setJustifyContent(Yoga.JUSTIFY_FLEX_START);
+      else if (s.justifyContent === "center") yn.setJustifyContent(Yoga.JUSTIFY_CENTER);
+      else if (s.justifyContent === "flex-end") yn.setJustifyContent(Yoga.JUSTIFY_FLEX_END);
+      else if (s.justifyContent === "space-between") yn.setJustifyContent(Yoga.JUSTIFY_SPACE_BETWEEN);
+      else if (s.justifyContent === "space-around") yn.setJustifyContent(Yoga.JUSTIFY_SPACE_AROUND);
+      else if (s.justifyContent === "space-evenly") yn.setJustifyContent(Yoga.JUSTIFY_SPACE_EVENLY);
+    }
+
+    // Flex wrap
+    if (s.flexWrap === "wrap") yn.setFlexWrap(Yoga.WRAP_WRAP);
+    else if (s.flexWrap === "wrap-reverse") yn.setFlexWrap(Yoga.WRAP_WRAP_REVERSE);
+    else if (s.flexWrap === "nowrap") yn.setFlexWrap(Yoga.WRAP_NO_WRAP);
+
+    // Flex grow/shrink/basis
+    if (s.flexGrow) yn.setFlexGrow(cssNum(s.flexGrow));
+    if (s.flexShrink) yn.setFlexShrink(cssNum(s.flexShrink));
+
+    // Order (Yoga may not expose setOrder in its types, but the runtime has it)
+    if (s.order) (yn as any).setOrder?.(cssNum(s.order));
+
+    // Min/max dimensions
+    if (s.minWidth) yn.setMinWidth(cssNum(s.minWidth));
+    if (s.maxWidth) yn.setMaxWidth(cssNum(s.maxWidth));
+    if (s.minHeight) yn.setMinHeight(cssNum(s.minHeight));
+    if (s.maxHeight) yn.setMaxHeight(cssNum(s.maxHeight));
+
+    // Box sizing
+    if (s.boxSizing === "border-box") yn.setBoxSizing?.(Yoga.BOX_SIZING_BORDER_BOX);
+
+    // Overflow
+    if (s.overflow === "hidden") yn.setOverflow?.(Yoga.OVERFLOW_HIDDEN);
+    else if (s.overflow === "scroll") yn.setOverflow?.(Yoga.OVERFLOW_SCROLL);
+
+    // Position
+    if (s.position === "relative") yn.setPositionType(Yoga.POSITION_TYPE_RELATIVE);
+    else if (s.position === "absolute") yn.setPositionType(Yoga.POSITION_TYPE_ABSOLUTE);
+    else yn.setPositionType(Yoga.POSITION_TYPE_STATIC);
+    if (s.top) yn.setPosition(Yoga.EDGE_TOP, cssNum(s.top));
+    if (s.right) yn.setPosition(Yoga.EDGE_RIGHT, cssNum(s.right));
+    if (s.bottom) yn.setPosition(Yoga.EDGE_BOTTOM, cssNum(s.bottom));
+    if (s.left) yn.setPosition(Yoga.EDGE_LEFT, cssNum(s.left));
 
     // Width/height (explicit)
     if (s.width) yn.setWidth(cssNum(s.width));
