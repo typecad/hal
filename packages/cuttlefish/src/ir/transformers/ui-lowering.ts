@@ -116,7 +116,7 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
     // clearColor: resolve the ancestor's background (used to wipe transparent text)
     const clearColorVal = n.clearColor ? resolveColor(n.clearColor, colorFormat) : 0;
     const clearColorStr = `0x${clearColorVal.toString(16).padStart(4, "0")}`;
-    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible}, .clearColor=${clearColorStr} },`;
+    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible}, .clearColor=${clearColorStr}, .lastTextWidth=0 },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.
