@@ -60,6 +60,10 @@ screen {
   background: limegreen;
 }
 
+#led {
+  color: lightskyblue;
+}
+
 /* Footer: hint text at the bottom */
 #footer {
   padding: 4px 0;

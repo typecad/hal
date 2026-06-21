@@ -35,8 +35,12 @@ ui.bind(screen.counter, 'color', () => (count() % 2 === 0 ? 'limegreen' : 'orang
 // Counter text: reflect the count value as a string
 ui.bind(screen.counter, 'text', () => String(count()));
 
-// Input: GPIO4 press via pin-watcher (runs in ui_tick's poll loop, no ISR)
+// Input: GPIO4 press increments the counter
 ui.watchPin(4, () => { count.set(count() + 1); });
+
+// Input: GPIO5 toggles the checkbox (flips checked state + signal)
+const ledEnabled = ui.signal(0);
+screen.led.onToggle(5, () => { ledEnabled.set(ledEnabled() > 0 ? 0 : 1); });
 
 // Auto-increment the counter every 2 seconds so the color visibly changes
 setInterval(() => {

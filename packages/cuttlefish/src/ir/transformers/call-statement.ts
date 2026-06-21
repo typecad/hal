@@ -5,12 +5,13 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
-import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex } from "./ui-call-resolver.js";
+import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, watchPinSpecs, recordWatchPin } from "./ui-call-resolver.js";
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { lowerStatementList } from "../statement-to-ir.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { renderExprAsText, calleeToText } from "../render-expr.js";
+import { resolveColor } from "../../ui/color.js";
 import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
 
 /**
@@ -122,6 +123,55 @@ export function callToStatement(
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
     const handlerName = `__ui_${elemId}_${edge}_${uiPressBindings().length}`;
     recordPressBinding({ nodeIndex, pin: pinText, edge, handlerName });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
+  // ── screen.led.onToggle(pin, callback) — checkbox toggle ──────────────
+  // Flips the node's checked state on falling edge and optionally calls
+  // the user's callback (for signal writes). Uses the pin-watching system.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "onToggle" &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const pinArg = call.arguments[0];
+    const cbArg = call.arguments[1];
+    const pin = pinArg ? (ts.isNumericLiteral(pinArg) ? pinArg.text : pinArg.getText()) : "0";
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    // Lower the user's callback body to C++ (same approach as watchPin)
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      const body = cbArg.body;
+      if (ts.isExpression(body)) {
+        cbBody = lowerCallbackExpr(body, sourceText, diagnostics) + ";";
+      } else if (ts.isBlock(body)) {
+        const parts: string[] = [];
+        for (const stmt of body.statements) {
+          if (ts.isExpressionStatement(stmt) && stmt.expression) {
+            parts.push(lowerCallbackExpr(stmt.expression, sourceText, diagnostics) + ";");
+          }
+        }
+        cbBody = parts.join(" ");
+      }
+    }
+
+    // The toggle callback: flip checked, mark dirty, then run user callback
+    const fnName = `__ui_${elemId}_toggle_${watchPinSpecs().length}`;
+    const fullBody = `__ui_nodes[${nodeIndex}].checked = !__ui_nodes[${nodeIndex}].checked; ui_mark_dirty(${nodeIndex}); ${cbBody}`;
+    recordWatchPin({ pin: String(pin), fnName, callbackBody: fullBody });
 
     return {
       kind: "block",
@@ -480,4 +530,46 @@ function hoistTimerArrowArg(
     callee: calleeText,
     args: [{ kind: "identifier", value: fnName }, ...remainingArgs],
   };
+}
+
+// ── Helper: lower a callback expression to C++ text ─────────────────────────
+// Handles signal.set(v) → sigName = v, signal() → sigName, and color resolution.
+function lowerCallbackExpr(
+  expr: ts.Expression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): string {
+  // signal.set(value) → signal = value
+  if (
+    ts.isCallExpression(expr) &&
+    ts.isPropertyAccessExpression(expr.expression) &&
+    expr.expression.name.text === "set" &&
+    ts.isIdentifier(expr.expression.expression) &&
+    isSignalName(expr.expression.expression.text)
+  ) {
+    const sigName = expr.expression.expression.text;
+    const argText = expr.arguments[0]
+      ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics))
+      : "0";
+    return `${sigName} = ${argText}`;
+  }
+  // signal() → signal (read)
+  if (
+    ts.isCallExpression(expr) &&
+    ts.isIdentifier(expr.expression) &&
+    expr.arguments.length === 0 &&
+    isSignalName(expr.expression.text)
+  ) {
+    return expr.expression.text;
+  }
+  // Generic expression: lower via expressionToIR
+  let raw = renderExprAsText(expressionToIR(expr, sourceText, diagnostics));
+  // Resolve color names
+  raw = raw.replace(
+    /"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g,
+    (match: string, color: string) => {
+      try { return `0x${resolveColor(color, "rgb565").toString(16)}`; } catch { return match; }
+    },
+  );
+  return raw;
 }

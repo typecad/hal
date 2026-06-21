@@ -90,6 +90,7 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
   const lines = flat.map((n) => {
     const kind = n.tag === "screen" || n.tag === "view" ? "NODE_FILL"
       : n.tag === "button" ? "NODE_BUTTON"
+      : n.tag === "check" ? "NODE_CHECK"
       : "NODE_TEXT";
     const bg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
     const fg = n.style.color ? resolveColor(n.style.color, colorFormat) : 0xffff;
@@ -116,7 +117,7 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
     // clearColor: resolve the ancestor's background (used to wipe transparent text)
     const clearColorVal = n.clearColor ? resolveColor(n.clearColor, colorFormat) : 0;
     const clearColorStr = `0x${clearColorVal.toString(16).padStart(4, "0")}`;
-    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible}, .clearColor=${clearColorStr}, .lastTextWidth=0 },`;
+    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible}, .clearColor=${clearColorStr}, .lastTextWidth=0, .checked=0 },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.

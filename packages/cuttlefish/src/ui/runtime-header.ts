@@ -20,7 +20,7 @@ export function emitRuntimeHeader(): string {
 #include <stdint.h>
 #define UI_TEXT_BUF 16   // single source of truth: UINode field + textFn size arg + snprintf bound
 
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -44,6 +44,7 @@ struct UINode {
   // runtime slot
   uint8_t dirty;
   uint8_t pressed;
+  uint8_t checked;  // for NODE_CHECK: 0=unchecked, 1=checked
 };
 struct UITransition {
   uint8_t node;
@@ -283,6 +284,37 @@ static inline void ui_tick(uint16_t deltaMs) {
         __tc_display.setCursor(
           __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
           __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 16) / 2);
+        __tc_display.setTextColor(__ui_nodes[i].fg);
+        __tc_display.setTextSize(2);
+        __tc_display.print(displayText);
+        break;
+      case NODE_CHECK:
+        // Checkbox: a 16×16 square + label text to the right.
+        // Clear the area first (prevents ghosting).
+        {
+          uint16_t clearW = __ui_nodes[i].box.w;
+          if (__ui_nodes[i].lastTextWidth > clearW) clearW = __ui_nodes[i].lastTextWidth;
+          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, clearW, __ui_nodes[i].box.h,
+            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+          __ui_nodes[i].lastTextWidth = tw;
+        }
+        // Draw the checkbox square (16×16 at the left edge of the box).
+        {
+          int16_t cbX = __ui_nodes[i].box.x;
+          int16_t cbY = __ui_nodes[i].box.y;
+          if (__ui_nodes[i].checked) {
+            // Checked: filled square + inner X mark
+            __tc_display.fillRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
+            // Draw a simple checkmark (two lines forming a V)
+            __tc_display.drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            __tc_display.drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+          } else {
+            // Unchecked: outline square
+            __tc_display.drawRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
+          }
+        }
+        // Label text to the right of the checkbox.
+        __tc_display.setCursor(__ui_nodes[i].box.x + 22, __ui_nodes[i].box.y);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(displayText);

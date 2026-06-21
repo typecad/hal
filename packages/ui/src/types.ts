@@ -23,6 +23,18 @@ export type TextElement = { readonly __kind: "text" } & PressBinding;
 export type ButtonElement = { readonly __kind: "button" } & PressBinding;
 export type ViewElement = { readonly __kind: "view" } & PressBinding;
 
+/** A checkbox element. Toggling writes 1/0 to a signal via a ui.bind callback. */
+export interface CheckElement {
+  readonly __kind: "check";
+  /**
+   * Watch a GPIO pin for falling edges. On each press, flips the checkbox's
+   * checked state and calls the onChange callback (for signal writes).
+   *
+   *   screen.led.onToggle(4, () => { ledEnabled.set(ledChecked() ? 1 : 0); });
+   */
+  onToggle(pin: number, onChange?: () => void): void;
+}
+
 export interface ScreenTree {
-  [id: string]: TextElement | ButtonElement | ViewElement;
+  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement;
 }

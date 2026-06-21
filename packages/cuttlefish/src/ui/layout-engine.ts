@@ -45,6 +45,11 @@ export function measure(node: StyledNode): IntrinsicSize {
     const text = node.text ?? "";
     return { w: text.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
   }
+  if (node.tag === "check") {
+    // Checkbox: 16px square + 6px gap + label text
+    const text = node.text ?? "";
+    return { w: 16 + 6 + text.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
+  }
   // Containers have no intrinsic size in block layout — they fill available.
   return { w: 0, h: 0 };
 }
