@@ -223,8 +223,9 @@ function resolveMountCall(
     return null;
   }
 
-  // ILI9341 default viewport; opts may carry width/height overrides (future).
-  const viewport = { width: 240, height: 320 };
+  // ILI9341 viewport in landscape (setRotation(1) swaps 240×320 → 320×240).
+  // The driver hardcodes setRotation(1), so layout must use the landscape dims.
+  const viewport = { width: 320, height: 240 };
 
   // Final layout + lower using the mount's viewport.
   const lowered = lowerOnMount(htmlPath, {
