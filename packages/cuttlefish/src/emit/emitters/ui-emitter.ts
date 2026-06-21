@@ -61,8 +61,13 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // table compiles. Full arrow-function → C++ lowering is a follow-up.
   for (const spec of uiBindings()) {
     const access = spec.property === "background" ? "bg" : spec.property === "color" ? "fg" : "0";
+    // If the binding has a lowered C++ expression (from the arrow body), use it;
+    // otherwise fall back to returning the node's current value.
+    const body = spec.cppExpr
+      ? spec.cppExpr
+      : `__ui_nodes[${spec.nodeIndex}].${access}`;
     ctx.sourceLines.push(
-      `uint16_t ${spec.fnName}(void) { return __ui_nodes[${spec.nodeIndex}].${access}; }`,
+      `uint16_t ${spec.fnName}(void) { return ${body}; }`,
     );
   }
 

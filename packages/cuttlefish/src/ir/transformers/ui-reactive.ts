@@ -14,6 +14,10 @@ export interface BindingSpec {
   nodeIndex: number;
   property: string;
   fnName: string;
+  /** The C++ expression for the binding's compute function body (v1: may be
+   *  empty if the arrow body couldn't be lowered; the emitter falls back to
+   *  returning the node's current value). */
+  cppExpr?: string;
 }
 
 /** Emit a signal as a device variable declaration. */

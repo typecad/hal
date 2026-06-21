@@ -108,9 +108,22 @@ static inline void ui_on_release(uint8_t nodeIdx) {
 }
 
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
+// Phase 0: evaluate bindings (mark nodes dirty when values change).
 // Phase 1: advance transitions. Phase 2: draw dirty nodes to __tc_display.
 // Phase 3: flush (no-op for ILI9341 — draws are immediate).
 static inline void ui_tick(uint16_t deltaMs) {
+  // ⓪ Evaluate bindings: call each binding's fn, compare to the node's
+  // current property value, mark dirty if changed.
+  for (uint8_t i = 0; i < __ui_binding_count; i++) {
+    uint16_t newVal = __ui_bindings[i].fn();
+    uint16_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
+                  : (__ui_bindings[i].prop == PROP_FG) ? &__ui_nodes[__ui_bindings[i].node].fg
+                  : &__ui_nodes[__ui_bindings[i].node].bg;
+    if (newVal != *target) {
+      *target = newVal;
+      ui_mark_dirty(__ui_bindings[i].node);
+    }
+  }
   // ① Advance transitions.
   for (uint8_t i = 0; i < __ui_trans_count; i++) {
     if (!__ui_trans[i].active) continue;

@@ -17,6 +17,9 @@ import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers";
 import { resolveMount, MountRequest } from "./ui-mount";
 import { emitSignalDecl, BindingSpec } from "./ui-reactive";
 import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry";
+import { expressionToIR } from "../expression-to-ir";
+import { renderExprAsText } from "../render-expr";
+import { resolveColor } from "../../ui/color";
 import type { StyledNode } from "../../ui/style-resolver";
 import { getContext } from "../build-ir-state";
 
@@ -307,7 +310,24 @@ function resolveBindCall(
   if (ts.isStringLiteral(propArg)) property = propArg.text;
 
   const fnName = `__ui_bind_${property}_${bindings.length}`;
-  recordBinding({ nodeIndex, property, fnName });
+
+  // Try to extract the C++ expression from the arrow body for the binding fn.
+  // For v1 this handles the common pattern: () => (signal() > N ? '#hex' : '#hex')
+  // by lowering it to the equivalent C++ ternary with pre-resolved colors.
+  let cppExpr = "";
+  if (fnArg && (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg))) {
+    // For arrow functions with expression bodies (not block bodies), lower the
+    // expression to C++. Block bodies would need statement lowering (future).
+    const body = fnArg.body;
+    if (ts.isExpression(body)) {
+      let raw = renderExprAsText(expressionToIR(body, sourceText, diagnostics));
+      // Resolve hex color string literals ("#rrggbb") to RGB565 hex values,
+      // since the binding function returns uint16_t.
+      raw = raw.replace(/"(#[0-9a-fA-F]{6})"/g, (_, hex) => `0x${resolveColor(hex, "rgb565").toString(16)}`);
+      cppExpr = raw;
+    }
+  }
+  recordBinding({ nodeIndex, property, fnName, cppExpr });
 
   return {
     kind: "block",
