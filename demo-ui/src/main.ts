@@ -33,13 +33,12 @@ ui.bind(screen.btn, 'background', () => (screen.btn.value > 0 ? 'limegreen' : 'd
 // Bindings drive background, border color, and the label text.
 ui.bind(screen.ledBox, 'background', () => (screen.ledBox.value ? 'limegreen' : 'transparent'));
 ui.bind(screen.ledBox, 'borderColor', () => (screen.ledBox.value ? 'limegreen' : '#808080'));
-ui.bind(screen.ledLabel, 'color', () => (screen.ledBox.value ? 'limegreen' : 'lightskyblue'));
 
 // GPIO5 toggles ledBox.value (auto-flips 0↔1)
-screen.ledBox.onToggle(5);
+screen.ledBox.onToggle(4);
 
 // ── Inputs ─────────────────────────────────────────────────────────────────
-ui.watchPin(4, () => { screen.counter.value = screen.counter.value + 1; });
+// ui.watchPin(4, () => { screen.counter.value = screen.counter.value + 1; });
 
 setInterval(() => {
   screen.counter.value = screen.counter.value + 1;
