@@ -54,4 +54,10 @@ describe("ui lowering", () => {
     expect(out.nodeTable).toContain("NODE_TEXT");
     expect(out.nodeTable).toContain("hello world");
   });
+
+  it("zero-initializes textBuffer and hasTextBinding in each node row", () => {
+    const out = lower(`<screen><text id="greeting">hi</text></screen>`, ``);
+    expect(out.nodeTable).toMatch(/\.textBuffer=\{0\}/);
+    expect(out.nodeTable).toMatch(/\.hasTextBinding=0/);
+  });
 });

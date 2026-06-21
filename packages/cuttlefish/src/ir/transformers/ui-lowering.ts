@@ -105,7 +105,7 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
     const underline = n.style.textDecoration === "underline" ? 1 : 0;
     // visibility: 0=hidden, 1=visible (default)
     const visible = n.style.visibility === "hidden" ? 0 : 1;
-    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible} },`;
+    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.
