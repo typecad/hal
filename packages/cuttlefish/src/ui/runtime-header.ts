@@ -238,10 +238,14 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
-        // Only fill if the node has a background set; otherwise it's a
-        // transparent container (let the parent's background show through).
+        // Fill background if set; transparent containers let the parent show through.
         if (__ui_nodes[i].hasBg)
           __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+        // Draw border if set (views can have borders without backgrounds).
+        if (__ui_nodes[i].borderStyle == 1) {
+          uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
+          __tc_display.drawRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
+        }
         break;
       case NODE_TEXT:
         // Clear the text area before drawing to prevent ghosting.
