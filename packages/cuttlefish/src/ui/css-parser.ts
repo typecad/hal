@@ -30,12 +30,25 @@ export interface CSSProperty {
   margin?: string;
   width?: string;
   height?: string;
+  minWidth?: string;
+  maxWidth?: string;
+  minHeight?: string;
+  maxHeight?: string;
+  boxSizing?: string;
+  overflow?: string;
   // Colors
   color?: string;
   background?: string;
   // Text
-  font?: string;        // e.g. "8x16"
+  font?: string;
   fontSize?: string;
+  textAlign?: string;       // left | center | right
+  textDecoration?: string;  // underline | none
+  fontWeight?: string;      // normal | bold
+  lineHeight?: string;
+  letterSpacing?: string;
+  whiteSpace?: string;      // nowrap | normal
+  textTransform?: string;   // uppercase | lowercase | capitalize | none
   // Animation
   transition?: TransitionDecl;
   // Flexbox / layout (Yoga)
@@ -49,10 +62,22 @@ export interface CSSProperty {
   alignItems?: string;
   justifyContent?: string;
   flexWrap?: string;
+  order?: string;
+  position?: string;        // relative | absolute | static
+  top?: string;
+  right?: string;
+  bottom?: string;
+  left?: string;
   // Visual
   border?: string;
   borderRadius?: string;
+  borderWidth?: string;
+  borderColor?: string;
+  borderStyle?: string;     // solid | dashed | dotted | none
   opacity?: string;
+  visibility?: string;      // visible | hidden
+  outline?: string;
+  boxShadow?: string;
 }
 
 export interface CSSRule {
@@ -140,15 +165,32 @@ function parseTransition(val: string): TransitionDecl {
 /** Assign a CSS property to the CSSProperty object. Unknown properties are silently dropped. */
 function assignProp(props: CSSProperty, prop: string, val: string): void {
   switch (prop) {
+    // Box model
     case "padding": props.padding = val; break;
     case "margin": props.margin = val; break;
     case "width": props.width = val; break;
     case "height": props.height = val; break;
+    case "min-width": props.minWidth = val; break;
+    case "max-width": props.maxWidth = val; break;
+    case "min-height": props.minHeight = val; break;
+    case "max-height": props.maxHeight = val; break;
+    case "box-sizing": props.boxSizing = val; break;
+    case "overflow": props.overflow = val; break;
+    // Colors
     case "color": props.color = val; break;
     case "background":
     case "background-color": props.background = val; break;
+    // Text
     case "font": props.font = val; break;
     case "font-size": props.fontSize = val; break;
+    case "text-align": props.textAlign = val; break;
+    case "text-decoration": props.textDecoration = val; break;
+    case "font-weight": props.fontWeight = val; break;
+    case "line-height": props.lineHeight = val; break;
+    case "letter-spacing": props.letterSpacing = val; break;
+    case "white-space": props.whiteSpace = val; break;
+    case "text-transform": props.textTransform = val; break;
+    // Animation
     case "transition": props.transition = parseTransition(val); break;
     // Flexbox / layout
     case "display": props.display = val; break;
@@ -156,6 +198,7 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "gap":
     case "row-gap":
     case "column-gap": props.gap = val; break;
+    case "flex": parseFlexShorthand(props, val); break;
     case "flex-grow": props.flexGrow = val; break;
     case "flex-shrink": props.flexShrink = val; break;
     case "flex-basis": props.flexBasis = val; break;
@@ -163,10 +206,52 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "align-items": props.alignItems = val; break;
     case "justify-content": props.justifyContent = val; break;
     case "flex-wrap": props.flexWrap = val; break;
+    case "order": props.order = val; break;
+    case "position": props.position = val; break;
+    case "top": props.top = val; break;
+    case "right": props.right = val; break;
+    case "bottom": props.bottom = val; break;
+    case "left": props.left = val; break;
     // Visual
-    case "border": props.border = val; break;
+    case "border": props.border = val; parseBorderShorthand(props, val); break;
     case "border-radius": props.borderRadius = val; break;
+    case "border-width": props.borderWidth = val; break;
+    case "border-color": props.borderColor = val; break;
+    case "border-style": props.borderStyle = val; break;
     case "opacity": props.opacity = val; break;
+    case "visibility": props.visibility = val; break;
+    case "outline": props.outline = val; break;
+    case "box-shadow": props.boxShadow = val; break;
     // Unknown properties are silently dropped (forward-compatible).
+  }
+}
+
+/** Parse the `flex` shorthand: "1" → grow=1,shrink=1,basis=0%.
+ *  "1 0 auto" → grow=1, shrink=0, basis=auto. */
+function parseFlexShorthand(props: CSSProperty, val: string): void {
+  const parts = val.trim().split(/\s+/);
+  if (parts.length === 1) {
+    // Single value: either a number (grow) or a dimension (basis) or "none"
+    if (parts[0] === "none") {
+      props.flexGrow = "0"; props.flexShrink = "0"; props.flexBasis = "auto";
+    } else if (/^\d+(\.\d+)?$/.test(parts[0])) {
+      props.flexGrow = parts[0]; props.flexShrink = "1"; props.flexBasis = "0%";
+    } else {
+      props.flexBasis = parts[0];
+    }
+  } else if (parts.length >= 2) {
+    props.flexGrow = parts[0];
+    props.flexShrink = parts[1];
+    if (parts[2]) props.flexBasis = parts[2];
+  }
+}
+
+/** Parse the `border` shorthand: "2px solid #808080" → width, style, color. */
+function parseBorderShorthand(props: CSSProperty, val: string): void {
+  const parts = val.trim().split(/\s+/);
+  for (const p of parts) {
+    if (/^\d+px$/.test(p)) props.borderWidth = p;
+    else if (["solid", "dashed", "dotted", "double", "none"].includes(p)) props.borderStyle = p;
+    else if (p.startsWith("#") || p.startsWith("rgb") || /^[a-z]+$/i.test(p)) props.borderColor = p;
   }
 }
