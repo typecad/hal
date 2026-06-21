@@ -32,9 +32,11 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
   // 0.5. File-scope display object declaration. Must precede the runtime header
   // so ui_tick (a static inline in the header) can reference __tc_display.
-  // The constructor pins match the ILI9341 breakout wiring; display.init
-  // (emitted into setup()) calls begin()/setRotation() on this object.
-  ctx.sourceLines.push("Adafruit_ILI9341 __tc_display = Adafruit_ILI9341(5, 21, 23, 18, 22, 19);");
+  // Uses the 3-arg HARDWARE SPI constructor (CS, DC, RST) — the ESP32's VSPI
+  // bus (MOSI=23, SCK=18, MISO=19) matches the breakout wiring and runs at
+  // 40MHz via the hardware peripheral. The 6-arg constructor bit-bangs GPIO
+  // (software SPI) which is ~1000x slower and unusable for per-frame redraws.
+  ctx.sourceLines.push("Adafruit_ILI9341 __tc_display = Adafruit_ILI9341(5, 21, 22);");
 
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
   ctx.sourceLines.push(emitRuntimeHeader());
