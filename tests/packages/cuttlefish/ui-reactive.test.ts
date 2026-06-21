@@ -39,4 +39,16 @@ describe("reactive lowering", () => {
     const table = emitBindingTable([]);
     expect(table).toMatch(/UIBinding\s+__ui_bindings\[\]\s*=/);
   });
+
+  it("a text BindingSpec with cppBody still wires .textFn in the table entry", () => {
+    const spec: BindingSpec = {
+      nodeIndex: 1,
+      property: "text",
+      fnName: "__ui_bind_text_0",
+      cppBody: `snprintf(buf, size, "%d", count);`,
+    };
+    const entry = emitBindingEntry(spec);
+    expect(entry).toContain(".textFn=__ui_bind_text_0");
+    expect(entry).toContain("PROP_TEXT");
+  });
 });

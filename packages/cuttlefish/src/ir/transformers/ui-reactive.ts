@@ -14,10 +14,14 @@ export interface BindingSpec {
   nodeIndex: number;
   property: string;
   fnName: string;
-  /** The C++ expression for the binding's compute function body (v1: may be
+  /** The C++ expression for the color-binding compute function (v1: may be
    *  empty if the arrow body couldn't be lowered; the emitter falls back to
    *  returning the node's current value). */
   cppExpr?: string;
+  /** The imperative C++ statement body for a text binding (e.g.
+   *  `snprintf(buf, size, "%d", count);`). Mutually exclusive with cppExpr:
+   *  text bindings use cppBody, color bindings use cppExpr. */
+  cppBody?: string;
 }
 
 /** Emit a signal as a device variable declaration. */
@@ -39,7 +43,7 @@ function propEnum(property: string): string {
 
 /** Emit a single binding-table entry line. */
 export function emitBindingEntry(spec: BindingSpec): string {
-  // Text bindings wire to textFn; color bindings wire to fn.
+  // Text bindings wire to textFn (void fill-style); color bindings wire to fn.
   if (spec.property === "text") {
     return `  { .node=${spec.nodeIndex}, .prop=${propEnum(spec.property)}, .fn=nullptr, .textFn=${spec.fnName} },`;
   }
