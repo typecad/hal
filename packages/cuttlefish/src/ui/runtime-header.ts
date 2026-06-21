@@ -172,10 +172,17 @@ static inline void ui_tick(uint16_t deltaMs) {
         // Fill background, draw a border, center the text.
         __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         __tc_display.drawRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].fg);
-        // Center text: approximate text width as strlen * 6px * textSize, height as 8px * textSize.
-        __tc_display.setCursor(
-          __ui_nodes[i].box.x + (__ui_nodes[i].box.w - 12) / 2,
-          __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 16) / 2);
+        // Center text: compute text pixel width from strlen × per-char width at textSize 2.
+        // GFX default font: 5px base × size 2 + 1px spacing = 11px per char.
+        if (__ui_nodes[i].text) {
+          uint16_t tw = 0;
+          for (const char* p = __ui_nodes[i].text; *p; p++) tw += 11;
+          __tc_display.setCursor(
+            __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
+            __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 14) / 2);
+        } else {
+          __tc_display.setCursor(__ui_nodes[i].box.x, __ui_nodes[i].box.y);
+        }
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(__ui_nodes[i].text);

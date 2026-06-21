@@ -31,20 +31,22 @@ export interface LayoutEngine {
   ): Box[];
 }
 
-const FONT_REGISTRY: Record<string, { w: number; h: number }> = {
-  "8x16": { w: 8, h: 16 },
-  "6x8": { w: 6, h: 8 },
-};
+// The Adafruit GFX default font is 5×7 pixels per glyph. At setTextSize(N),
+// each glyph is N× the base size, plus 1px spacing per glyph. So at size 2:
+// width = (5*2 + 1) = 11px per char, height = 7*2 = 14px.
+// The draw dispatch in the runtime header uses setTextSize(2).
+const GFX_TEXT_SIZE = 2;
+const GFX_BASE_GLYPH_W = 5;
+const GFX_BASE_GLYPH_H = 7;
 
-const DEFAULT_FONT = "8x16";
-
-/** Measure a node's intrinsic size. Currently: text length × font cell. */
+/** Measure a node's intrinsic size. Accounts for the Adafruit GFX font metrics
+ *  and the text size the draw dispatch will use. */
 export function measure(node: StyledNode): IntrinsicSize {
   if (node.tag === "text" || node.tag === "button") {
-    const fontId = node.style.font ?? DEFAULT_FONT;
-    const font = FONT_REGISTRY[fontId] ?? FONT_REGISTRY[DEFAULT_FONT];
     const text = node.text ?? "";
-    return { w: text.length * font.w, h: font.h };
+    const charW = GFX_BASE_GLYPH_W * GFX_TEXT_SIZE + 1;  // +1px per-char spacing
+    const charH = GFX_BASE_GLYPH_H * GFX_TEXT_SIZE;
+    return { w: text.length * charW, h: charH };
   }
   // Containers have no intrinsic size in block layout — they fill available.
   return { w: 0, h: 0 };
