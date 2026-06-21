@@ -40,11 +40,10 @@ struct UINode {
   uint8_t underline;    // 0=none, 1=underline
   uint8_t visible;      // 0=hidden, 1=visible
   uint16_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
-  uint16_t lastTextWidth; // width of the last rendered text (to clear fully on change)
+  uint16_t lastTextWidth;
   // runtime slot
   uint8_t dirty;
-  uint8_t pressed;
-  uint8_t checked;  // for NODE_CHECK: 0=unchecked, 1=checked
+  int16_t value;  // unified element state: check=0/1, button=0/1, select=0..N, text=number
 };
 struct UITransition {
   uint8_t node;
@@ -123,7 +122,7 @@ static inline void ui_on_press(uint8_t nodeIdx) {
   uint32_t now = millis();
   if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
   __ui_last_edge_time = now;
-  __ui_nodes[nodeIdx].pressed = 1;
+  __ui_nodes[nodeIdx].value = 1;
   ui_mark_dirty(nodeIdx);
   for (uint8_t i = 0; i < __ui_trans_count; i++) {
     if (__ui_trans[i].node == nodeIdx) {
@@ -138,7 +137,7 @@ static inline void ui_on_release(uint8_t nodeIdx) {
   uint32_t now = millis();
   if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
   __ui_last_edge_time = now;
-  __ui_nodes[nodeIdx].pressed = 0;
+  __ui_nodes[nodeIdx].value = 0;
   ui_mark_dirty(nodeIdx);
   for (uint8_t i = 0; i < __ui_trans_count; i++) {
     if (__ui_trans[i].node == nodeIdx) {
@@ -302,7 +301,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         {
           int16_t cbX = __ui_nodes[i].box.x;
           int16_t cbY = __ui_nodes[i].box.y;
-          if (__ui_nodes[i].checked) {
+          if (__ui_nodes[i].value) {
             // Checked: filled square + checkmark (3px thick for visibility)
             __tc_display.fillRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
             uint16_t inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;

@@ -13,7 +13,8 @@ import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } f
 import { runProgramValidations } from "./validation-orchestrator.js";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
-import { registerUIModuleImport } from "./transformers/ui-call-resolver.js";
+import { registerUIModuleImport, registerElementValue } from "./transformers/ui-call-resolver.js";
+import { getUIModule } from "../ui/ui-registry.js";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver.js";
 import { prescanUnsupportedFeatures } from "./feature-prescan.js";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
@@ -306,6 +307,15 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     if (!htmlPath) continue;
     for (const name of imp.namedImports) {
       registerUIModuleImport(name, htmlPath);
+      // Register each element in the tree for .value access
+      const mod = getUIModule(htmlPath);
+      if (mod) {
+        const collectIds = (node: any) => {
+          if (node.id) registerElementValue(name, node.id, htmlPath);
+          node.children?.forEach(collectIds);
+        };
+        collectIds(mod.styled);
+      }
     }
   }
 

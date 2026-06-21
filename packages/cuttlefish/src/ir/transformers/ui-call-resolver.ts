@@ -20,6 +20,7 @@ import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { resolveColor } from "../../ui/color.js";
+import { lowerCallbackBody, resetCallbackLoweringState } from "./ui-callback-lowering.js";
 import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
 import { escapeCppStringLiteral } from "../../utils/strings.js";
@@ -28,6 +29,21 @@ import { escapeCppStringLiteral } from "../../utils/strings.js";
 
 /** Maps an imported UI tree name (e.g. "screen") → its resolved .ui.html path. */
 const uiModuleImports = new Map<string, string>();
+
+/** Maps "treeName.elemId" (e.g. "screen.led") → node index in the UI tree. */
+const elementValueMap = new Map<string, number>();
+
+/** Register an element's node index for .value access. Called during
+ *  build-ir.ts's import processing (alongside registerUIModuleImport). */
+export function registerElementValue(treeName: string, elemId: string, htmlPath: string): void {
+  const nodeIndex = resolveNodeIndex(htmlPath, elemId);
+  elementValueMap.set(`${treeName}.${elemId}`, nodeIndex);
+}
+
+/** Resolve "screen.led" → node index, or undefined if not registered. */
+export function resolveElementValue(treeName: string, elemId: string): number | undefined {
+  return elementValueMap.get(`${treeName}.${elemId}`);
+}
 
 /** Recorded signals: name → { cppType, initialValue, decl, emitted }. */
 const signals = new Map<string, { cppType: string; initialValue: number | string | boolean; decl: string; emitted: boolean }>();
@@ -123,10 +139,12 @@ export function uiBindings(): BindingSpec[] {
 
 export function resetUICallState(): void {
   uiModuleImports.clear();
+  elementValueMap.clear();
   signals.clear();
   bindings.length = 0;
   pressBindings.length = 0;
   _watchPinSpecs.length = 0;
+  resetCallbackLoweringState();
 }
 
 // ── Signal name synthesis ───────────────────────────────────────────────────
@@ -481,43 +499,12 @@ function resolveWatchPinCall(
     : ts.isNumericLiteral(pinArg) ? pinArg.text
     : pinArg.getText();
 
-  // Lower the callback body to C++. Handles signal.set(v) → v = expr,
-  // and signal() reads → signal variable references.
+  // Lower the callback body to C++ via the shared helper (same path as
+  // onToggle). Handles console.* → platform transform, signal .set()/()
+  // reads, and color-name resolution.
   let callbackBody = "";
   if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
-    const body = cbArg.body;
-    const lowerExpr = (expr: ts.Expression): string => {
-      // signal.set(value) → signal = value
-      if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression) &&
-          expr.expression.name.text === "set" && ts.isIdentifier(expr.expression.expression) &&
-          isSignalName(expr.expression.expression.text)) {
-        const sigName = expr.expression.expression.text;
-        const argText = expr.arguments[0] ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics)) : "0";
-        return `${sigName} = ${argText}`;
-      }
-      // signal() → signal (read)
-      if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
-          expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
-        return expr.expression.text;
-      }
-      let raw = renderExprAsText(expressionToIR(expr, sourceText, diagnostics));
-      raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
-        try { return `0x${resolveColor(color, "rgb565").toString(16)}`; } catch { return match; }
-      });
-      return raw;
-    };
-
-    if (ts.isExpression(body)) {
-      callbackBody = lowerExpr(body) + ";";
-    } else if (ts.isBlock(body)) {
-      const parts: string[] = [];
-      for (const stmt of body.statements) {
-        if (ts.isExpressionStatement(stmt) && stmt.expression) {
-          parts.push(lowerExpr(stmt.expression) + ";");
-        }
-      }
-      callbackBody = parts.join(" ");
-    }
+    callbackBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
   }
 
   const fnName = `__ui_watchpin_${_watchPinSpecs.length}`;

@@ -1,37 +1,35 @@
 // ---------------------------------------------------------------------------
 // Element types — the shape of typed `.ui.html` imports.
 //
-// When an author writes `import { screen } from './app.ui.html'`, the lowering
-// transformer emits a .ui.html.d.ts declaring `screen` as a ScreenTree whose
-// fields are these element types. Each carries the hardware-binding methods
-// (onPress/onRelease) that lower to GPIO edge handlers.
+// Every interactive element has a `.value` property that is both readable
+// and writable. Writing updates the display; reading returns the current
+// state. Pin input (onToggle/onPress/onChange) auto-updates `.value`.
 //
-// The press/release methods are defined once on a shared base and applied via
-// intersection rather than `extends`, so element variants don't fight over a
-// shared __kind discriminator literal.
+// The press/release methods are for the :pressed transition state.
 // ---------------------------------------------------------------------------
 
-/** Methods every interactive element gets: GPIO edge handlers for :pressed. */
+/** Base interface: all elements have a readable/writable .value. */
+export interface UIElement {
+  /** The element's state. check: 0/1, button: 0/1, select: 0..N, text: number.
+   *  Reading returns the current state; writing updates the display. */
+  value: number;
+}
+
+/** GPIO edge handlers for :pressed transitions. */
 export interface PressBinding {
-  /** Attach a GPIO falling-edge handler that flips this node's :pressed state. */
   onPress(pin: number | string): void;
-  /** Attach a GPIO rising-edge handler that clears :pressed. */
   onRelease(pin: number | string): void;
 }
 
-export type TextElement = { readonly __kind: "text" } & PressBinding;
-export type ButtonElement = { readonly __kind: "button" } & PressBinding;
-export type ViewElement = { readonly __kind: "view" } & PressBinding;
+export type TextElement = UIElement & PressBinding & { readonly __kind: "text" };
+export type ButtonElement = UIElement & PressBinding & { readonly __kind: "button" };
+export type ViewElement = { readonly __kind: "view" };
 
-/** A checkbox element. Toggling writes 1/0 to a signal via a ui.bind callback. */
-export interface CheckElement {
+/** A checkbox element. .value is 0 (unchecked) or 1 (checked). */
+export interface CheckElement extends UIElement {
   readonly __kind: "check";
-  /**
-   * Watch a GPIO pin for falling edges. On each press, flips the checkbox's
-   * checked state and calls the onChange callback (for signal writes).
-   *
-   *   screen.led.onToggle(4, () => { ledEnabled.set(ledChecked() ? 1 : 0); });
-   */
+  /** Watch a GPIO pin for falling edges. Flips .value automatically.
+   *  Optional callback runs after the flip. */
   onToggle(pin: number, onChange?: () => void): void;
 }
 

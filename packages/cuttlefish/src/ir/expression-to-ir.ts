@@ -6,7 +6,7 @@ import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_A
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
-import { isSignalName } from "./transformers/ui-call-resolver.js";
+import { isSignalName, resolveElementValue } from "./transformers/ui-call-resolver.js";
 import { halInstances } from "./hal-resolver.js";
 import { escapeCppKeyword } from "../utils/strings.js";
 import { tryLowerRegisterRead } from "./transformers/register-assignment.js";
@@ -941,6 +941,21 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return { kind: "identifier", value: expr.expression.text };
     }
 
+    // ---- UI element .value read: screen.led.value → __ui_nodes[N].value ----
+    if (
+      ts.isPropertyAccessExpression(expr.expression) &&
+      expr.expression.name.text === "value" &&
+      ts.isPropertyAccessExpression(expr.expression.expression) &&
+      ts.isIdentifier(expr.expression.expression.expression)
+    ) {
+      const treeName = expr.expression.expression.expression.text;
+      const elemId = expr.expression.expression.name.text;
+      const nodeIdx = resolveElementValue(treeName, elemId);
+      if (nodeIdx !== undefined) {
+        return { kind: "raw", value: `__ui_nodes[${nodeIdx}].value` };
+      }
+    }
+
     // Warn about optional chaining on call expressions â€” we preserve a null guard,
     // but the runtime semantics are still only approximate compared to TypeScript.
     if (isOptionalChainNode(expr)) {
@@ -1640,6 +1655,17 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   // Handle property access expressions like obj.property or this.field
   if (ts.isPropertyAccessExpression(expr)) {
+    // ── UI element .value read: screen.led.value → __ui_nodes[N].value ──
+    if (expr.name.text === "value" &&
+        ts.isPropertyAccessExpression(expr.expression) &&
+        ts.isIdentifier(expr.expression.expression)) {
+      const treeName = expr.expression.expression.text;
+      const elemId = expr.expression.name.text;
+      const nodeIdx = resolveElementValue(treeName, elemId);
+      if (nodeIdx !== undefined) {
+        return { kind: "raw", value: `__ui_nodes[${nodeIdx}].value` };
+      }
+    }
     const propName = expr.name.kind === ts.SyntaxKind.PrivateIdentifier
       ? `__priv_${expr.name.text.substring(1)}`
       : expr.name.text;

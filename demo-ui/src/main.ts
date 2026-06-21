@@ -1,13 +1,10 @@
 // ---------------------------------------------------------------------------
-// main.ts — TypeHAL UI demo (flexbox layout showcase)
+// main.ts — TypeHAL UI demo (flexbox + bidirectional .value)
 //
-// A status display with a header row, a centered counter + animated button,
-// and a footer hint. Exercises flexbox, flex-grow, gap, align-items,
-// justify-content, border-bottom, named colors, text-align, border-radius,
-// and the transition + binding engine.
+// Exercises flexbox layout, .value reads/writes, reactive bindings, pin input,
+// and the transition engine.
 //
-// Press GPIO4 to trigger the button's color transition.
-// The counter increments every 2 seconds, changing color on even/odd.
+// GPIO4: increments counter   GPIO5: toggles checkbox
 // ---------------------------------------------------------------------------
 
 import { ui } from '@typecad/ui';
@@ -22,27 +19,25 @@ ui.mount(screen, {
   rst: 22,
 });
 
-// Reactive state
-const pressed = ui.signal(0);
-const count = ui.signal(0);
-
-// Button background transitions between dark green and lime on press
-ui.bind(screen.btn, 'background', () => (pressed() > 0 ? 'limegreen' : 'darkgreen'));
+// Counter: .value is the source of truth. Bindings compute display from it.
+screen.counter.value = 0;
 
 // Counter color: limegreen when even, orange when odd
-ui.bind(screen.counter, 'color', () => (count() % 2 === 0 ? 'limegreen' : 'orange'));
+ui.bind(screen.counter, 'color', () => (screen.counter.value % 2 === 0 ? 'limegreen' : 'orange'));
 
-// Counter text: reflect the count value as a string
-ui.bind(screen.counter, 'text', () => String(count()));
+// Counter text: reflect the value as a string
+ui.bind(screen.counter, 'text', () => String(screen.counter.value));
 
-// Input: GPIO4 press increments the counter
-ui.watchPin(4, () => { count.set(count() + 1); });
+// Button: .value drives the pressed color transition
+ui.bind(screen.btn, 'background', () => (screen.btn.value > 0 ? 'limegreen' : 'darkgreen'));
 
-// Input: GPIO5 toggles the checkbox (flips checked state + signal)
-const ledEnabled = ui.signal(0);
-screen.led.onToggle(5, () => { ledEnabled.set(ledEnabled() > 0 ? 0 : 1); });
+// GPIO4: increment the counter
+ui.watchPin(4, () => { screen.counter.value = screen.counter.value + 1; });
 
-// Auto-increment the counter every 2 seconds so the color visibly changes
+// GPIO5: toggle the checkbox (auto-flips .value, no callback needed)
+screen.led.onToggle(5);
+
+// Auto-increment every 2 seconds so the counter visibly changes
 setInterval(() => {
-  count.set(count() + 1);
+  screen.counter.value = screen.counter.value + 1;
 }, 2000);
