@@ -31,7 +31,9 @@ screen.ledBox.onToggle(5);
 
 // ── Mode selector (composed <select>) ─────────────────────────────────────
 // modeValue cycles through Auto/Manual/Off on GPIO15.
-ui.bind(screen.modeValue, 'text', () => (['Auto', 'Manual', 'Off'][screen.modeValue.value] || 'Auto'));
+ui.bind(screen.modeValue, 'text', () => (
+  screen.modeValue.value === 0 ? 'Auto' : screen.modeValue.value === 1 ? 'Manual' : 'Off'
+));
 ui.bind(screen.modeValue, 'color', () => (screen.modeValue.value === 0 ? 'limegreen' : 'khaki'));
 screen.modeValue.onChange(15, 3);
 

@@ -421,7 +421,50 @@ export function lowerTextBindingBody(
     return { cppBody: `snprintf(buf, size, "${fmt}"${argList});` };
   }
 
+  // Shape 4: ternary with string literals (e.g. val === 0 ? 'Auto' : val === 1 ? 'Manual' : 'Off')
+  // Lowers to a chain of if/else with snprintf.
+  // Unwrap parentheses first: () => (cond ? 'a' : 'b')
+  const unwrapped = ts.isParenthesizedExpression(body) ? body.expression : body;
+  if (ts.isConditionalExpression(unwrapped)) {
+    return lowerTernaryTextChain(unwrapped, sourceText, diagnostics) ?? warn();
+  }
+
   return warn();
+}
+
+/** Lower a chain of ternary expressions with string branches to C++ if/else. */
+function lowerTernaryTextChain(
+  expr: ts.ConditionalExpression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): LoweredTextBody | null {
+  const cases: { cond: string | null; value: string }[] = [];
+  let current: ts.Expression = expr;
+
+  while (ts.isConditionalExpression(current)) {
+    const condText = renderExprAsText(expressionToIR(current.condition, sourceText, diagnostics));
+    if (!ts.isStringLiteral(current.whenTrue)) return null;
+    cases.push({ cond: condText, value: escapeCppStringLiteral(current.whenTrue.text) });
+    current = current.whenFalse;
+  }
+
+  // The final else value
+  if (ts.isStringLiteral(current)) {
+    cases.push({ cond: null, value: escapeCppStringLiteral(current.text) });
+  } else {
+    return null;
+  }
+
+  const lines = cases.map((c, i) => {
+    if (c.cond !== null) {
+      const prefix = i === 0 ? "if" : "else if";
+      return `${prefix} (${c.cond}) { snprintf(buf, size, "%s", "${c.value}"); }`;
+    } else {
+      return `else { snprintf(buf, size, "%s", "${c.value}"); }`;
+    }
+  });
+
+  return { cppBody: lines.join(" ") };
 }
 
 function resolveBindCall(
