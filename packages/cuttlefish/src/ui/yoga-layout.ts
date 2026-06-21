@@ -214,24 +214,26 @@ export class YogaLayoutEngine implements LayoutEngine {
     return yn;
   }
 
-  /** Walk the Yoga tree in pre-order DFS, extracting {x,y,w,h} per node.
-   * Must match the StyledNode tree's traversal order exactly. */
+  /** Walk the Yoga tree in pre-order DFS, extracting absolute {x,y,w,h} per node.
+   * Yoga returns positions relative to the parent — we accumulate parentX/Y
+   * to produce absolute coordinates. Must match the StyledNode tree's DFS. */
   private extractBoxes(
     node: any,
     out: Box[],
     nextMeta: () => NodeMeta | undefined,
+    parentX: number = 0,
+    parentY: number = 0,
   ): void {
-    const x = Math.round(node.getComputedLeft());
-    const y = Math.round(node.getComputedTop());
+    const x = parentX + Math.round(node.getComputedLeft());
+    const y = parentY + Math.round(node.getComputedTop());
     const w = Math.round(node.getComputedWidth());
     const h = Math.round(node.getComputedHeight());
     out.push({ x, y, w, h });
 
-    // Advance the metadata cursor (stays in sync with the styled tree's DFS).
     nextMeta();
 
     for (let i = 0; i < node.getChildCount(); i++) {
-      this.extractBoxes(node.getChild(i), out, nextMeta);
+      this.extractBoxes(node.getChild(i), out, nextMeta, x, y);
     }
   }
 }
