@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
-// main.ts — TypeHAL UI demo (flexbox + touch input)
+// main.ts — TypeHAL UI demo (built-in elements)
 //
-// Touch: tap button to increment, tap checkbox to toggle, tap mode to cycle.
+// <check> and <select> are self-contained: onClick auto-toggles/cycles .value
+// and the visual updates automatically. The author only reads .value.
 // ---------------------------------------------------------------------------
 
 import { ui } from '@typecad/ui';
@@ -21,29 +22,16 @@ screen.counter.value = 0;
 ui.bind(screen.counter, 'color', () => (screen.counter.value % 2 === 0 ? 'limegreen' : 'orange'));
 ui.bind(screen.counter, 'text', () => String(screen.counter.value));
 
-// Button: momentary press (value=1 on touch, 0 on release)
+// Button: momentary press visual + tap increments counter
 ui.bind(screen.btn, 'background', () => (screen.btn.value > 0 ? 'limegreen' : 'darkgreen'));
 screen.btn.onClick(() => {
   screen.counter.value = screen.counter.value + 1;
 });
 
-// Checkbox: toggle (tap to check/uncheck, value persists)
-screen.ledBox.value = 0;
-screen.ledBox.onClick(() => {
-  screen.ledBox.value = screen.ledBox.value > 0 ? 0 : 1;
-});
-ui.bind(screen.ledBox, 'background', () => (screen.ledBox.value > 0 ? 'limegreen' : 'transparent'));
-ui.bind(screen.ledBox, 'borderColor', () => (screen.ledBox.value > 0 ? 'limegreen' : '#808080'));
-
-// Mode selector: cycle through options on tap
-screen.modeValue.value = 0;
-screen.modeValue.onClick(() => {
-  screen.modeValue.value = (screen.modeValue.value + 1) % 3;
-});
-ui.bind(screen.modeValue, 'text', () => (
-  screen.modeValue.value === 0 ? 'Auto' : screen.modeValue.value === 1 ? 'Manual' : 'Off'
-));
-ui.bind(screen.modeValue, 'color', () => (screen.modeValue.value === 0 ? 'limegreen' : 'khaki'));
+// <check> and <select> are auto-wired — no onClick/bindings needed.
+// The author can read .value:
+//   const isOn = screen.led.value;     // 0 or 1
+//   const mode = screen.mode.value;    // 0, 1, or 2
 
 // Auto-increment every 3 seconds
 setInterval(() => {

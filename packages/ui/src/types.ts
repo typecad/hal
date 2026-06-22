@@ -46,6 +46,11 @@ export interface CheckElement extends UIElement {
   onToggle(pin: number, onChange?: () => void): void;
 }
 
+/** A selector element. .value cycles 0..N-1 on tap. Text auto-shows the option. */
+export interface SelectElement extends UIElement {
+  readonly __kind: "select";
+}
+
 export interface ScreenTree {
-  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement;
+  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement;
 }

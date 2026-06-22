@@ -13,8 +13,9 @@ import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } f
 import { runProgramValidations } from "./validation-orchestrator.js";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
-import { registerUIModuleImport, registerElementValue } from "./transformers/ui-call-resolver.js";
+import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 import { getUIModule } from "../ui/ui-registry.js";
+import { autoWireElements } from "./ui-element-auto-wire.js";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver.js";
 import { prescanUnsupportedFeatures } from "./feature-prescan.js";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
@@ -315,6 +316,8 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           node.children?.forEach(collectIds);
         };
         collectIds(mod.styled);
+        // Auto-wire built-in elements (<check>, <select>)
+        autoWireElements(name, mod.styled as any);
       }
     }
   }

@@ -91,6 +91,7 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
     const kind = n.tag === "screen" || n.tag === "view" ? "NODE_FILL"
       : n.tag === "button" ? "NODE_BUTTON"
       : n.tag === "check" ? "NODE_CHECK"
+      : n.tag === "select" ? "NODE_TEXT"
       : "NODE_TEXT";
     const bg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
     const fg = n.style.color ? resolveColor(n.style.color, colorFormat) : 0xffff;

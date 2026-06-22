@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------------
-   hello.ui.css — flexbox layout + composed checkbox demo
+   hello.ui.css — built-in elements demo
    ----------------------------------------------------------------------- */
 
 screen {
@@ -57,38 +57,12 @@ screen {
   background: limegreen;
 }
 
-/* Composed checkbox: a small box + label, side by side */
-#ledRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-#ledBox {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #808080;
-}
-
-#ledLabel {
+#led {
   color: lightskyblue;
   font-size: 16px;
 }
 
-#modeRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-#modeLabel {
-  color: lightslategray;
-  font-size: 16px;
-}
-
-#modeValue {
+#mode {
   color: khaki;
   font-size: 16px;
   text-decoration: underline;

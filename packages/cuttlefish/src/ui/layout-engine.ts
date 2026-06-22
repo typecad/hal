@@ -41,7 +41,7 @@ const GFX_CHAR_HEIGHT = 8 * GFX_TEXT_SIZE;       // 16px at size 2
 /** Measure a node's intrinsic size. Accounts for the Adafruit GFX font metrics
  *  and the text size the draw dispatch will use. */
 export function measure(node: StyledNode): IntrinsicSize {
-  if (node.tag === "text" || node.tag === "button") {
+  if (node.tag === "text" || node.tag === "button" || node.tag === "select") {
     const text = node.text ?? "";
     return { w: text.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
   }

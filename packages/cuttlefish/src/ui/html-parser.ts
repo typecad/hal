@@ -22,7 +22,7 @@ export interface UIElementNode {
   children: UIElementNode[];
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select"]);
 
 export function parseHtml(src: string): UIElementNode {
   // Strip HTML comments before parsing.
