@@ -5,7 +5,7 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
-import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, watchPinSpecs, recordWatchPin } from "./ui-call-resolver.js";
+import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers } from "./ui-call-resolver.js";
 import { lowerCallbackBody } from "./ui-callback-lowering.js";
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
 import { expressionToIR } from "../expression-to-ir.js";
@@ -203,6 +203,40 @@ export function callToStatement(
     const fnName = `__ui_${elemId}_change_${watchPinSpecs().length}`;
     const fullBody = `__ui_nodes[${nodeIndex}].value = (__ui_nodes[${nodeIndex}].value + 1) % ${optionCount}; ui_mark_dirty(${nodeIndex}); ${cbBody}`;
     recordWatchPin({ pin: String(pin), fnName, callbackBody: fullBody });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
+  // ── screen.element.onClick(callback?) — touch click handler ──────────
+  // Records a click handler for touch hit-testing. No pin needed — the
+  // touch poll loop calls ui_handle_touch which hit-tests and dispatches.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "onClick" &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const cbArg = call.arguments[0];
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    // Lower callback body (reuse the shared callback lowering)
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    const fnName = `__ui_${elemId}_click_${clickHandlers().length}`;
+    recordClickHandler({ nodeIndex, fnName, callbackBody: cbBody });
 
     return {
       kind: "block",

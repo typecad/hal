@@ -69,6 +69,31 @@ export function uiPressBindings(): PressBinding[] {
   return pressBindings;
 }
 
+// ── Click handler specs (touch input) ───────────────────────────────────────
+
+export interface ClickHandlerSpec {
+  nodeIndex: number;
+  /** Function name of the generated click handler. */
+  fnName: string;
+  /** C++ body of the callback. */
+  callbackBody: string;
+}
+
+const _clickHandlers: ClickHandlerSpec[] = [];
+
+export function recordClickHandler(spec: ClickHandlerSpec): void {
+  _clickHandlers.push(spec);
+}
+
+export function clickHandlers(): ClickHandlerSpec[] {
+  return _clickHandlers;
+}
+
+/** Max node index that has a click handler (for sizing the handler array). */
+export function maxClickNodeIndex(): number {
+  return _clickHandlers.reduce((max, h) => Math.max(max, h.nodeIndex), -1);
+}
+
 // ── Pin-watching specs (async event-loop input model) ───────────────────────
 
 export interface WatchPinSpec {
@@ -145,6 +170,7 @@ export function resetUICallState(): void {
   bindings.length = 0;
   pressBindings.length = 0;
   _watchPinSpecs.length = 0;
+  _clickHandlers.length = 0;
   resetCallbackLoweringState();
 }
 

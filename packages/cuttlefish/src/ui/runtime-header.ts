@@ -174,12 +174,37 @@ static inline void ui_poll_inputs() {
   }
 }
 
+// ── Touch hit-testing + click dispatch ─────────────────────────────────────
+// Forward-declare the click handler type + table (defined by the emit layer).
+typedef void (*ClickHandler)();
+extern const ClickHandler __ui_click_handlers[];
+extern const uint8_t __ui_click_handler_count;
+
+// Hit-test a touch point against all visible nodes (topmost first) and
+// dispatch the first hit's click handler. Sets .value=1 for visual feedback.
+static inline void ui_handle_touch(int16_t tx, int16_t ty) {
+  for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
+    if (!__ui_nodes[i].visible) continue;
+    if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
+        ty >= __ui_nodes[i].box.y && ty < __ui_nodes[i].box.y + __ui_nodes[i].box.h) {
+      // Dispatch click handler if one is registered for this node
+      if ((uint8_t)i < __ui_click_handler_count && __ui_click_handlers[i]) {
+        __ui_click_handlers[i]();
+      }
+      __ui_nodes[i].value = 1;  // visual pressed feedback
+      ui_mark_dirty(i);
+      return;  // only topmost hit
+    }
+  }
+}
+
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
-// Phase -1: poll input pins (edge detection + callbacks).
-// Phase 0: evaluate bindings (mark nodes dirty when values change).
-// Phase 1: advance transitions. Phase 2: draw dirty nodes to __tc_display.
+// Phase -2: poll touch (if configured). Phase -1: poll input pins.
+// Phase 0: evaluate bindings. Phase 1: transitions. Phase 2: draw.
 static inline void ui_tick(uint16_t deltaMs) {
-  // ⓪' Poll inputs first
+  // Touch poll — injected here by the emit layer
+  /*__TC_TOUCH_PLACEHOLDER__*/
+  // ⓪' Poll GPIO inputs
   ui_poll_inputs();
   // ⓪ Evaluate bindings: call each binding's fn, compare to the node's
   // current property value, mark dirty if changed.

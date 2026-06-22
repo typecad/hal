@@ -8,14 +8,26 @@
 // Adding a new display = adding a profile. No framework code changes.
 // ---------------------------------------------------------------------------
 
+export type TouchLibrary = "XPT2046_Touchscreen" | "Adafruit_TouchScreen" | "Adafruit_STMPE610";
+export type TouchInterface = "spi-hw" | "spi-sw" | "i2c" | "analog";
+
 export interface TouchProfile {
-  type: "resistive" | "capacitive";
-  /** Library to include for touch input (e.g. "Adafruit_TouchScreen"). */
-  library: string;
-  /** Touch controller pins (resistive: xp/yp/xm/ym; capacitive: via I2C). */
-  pins?: Record<string, string | number>;
-  /** Raw ADC calibration range for resistive touch. */
-  calibration?: { xMin: number; xMax: number; yMin: number; yMax: number };
+  /** Library to use — determines the C++ include + constructor + poll code. */
+  library: TouchLibrary;
+  /** Interface type: hardware SPI (shares display bus), software SPI, I2C, or analog. */
+  interface: TouchInterface;
+  /** CS pin (SPI controllers) or I2C address. Separate from display CS. */
+  cs?: number;
+  /** IRQ pin (optional — interrupt-driven touch detection). */
+  irq?: number;
+  /** Resistive 4-wire analog pins (Adafruit_TouchScreen only). */
+  analogPins?: { xp: number; yp: number; xm: number; ym: number; rx: number };
+  /** Software SPI pins (if interface = "spi-sw"). */
+  swSpiPins?: { mosi: number; miso: number; sck: number };
+  /** Raw ADC calibration — maps touch controller raw values to display pixels. */
+  calibration: { xMin: number; xMax: number; yMin: number; yMax: number };
+  /** Minimum pressure/z to register a touch (default 10). */
+  minPressure?: number;
 }
 
 export interface DisplayProfile {

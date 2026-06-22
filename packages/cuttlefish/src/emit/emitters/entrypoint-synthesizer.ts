@@ -2,6 +2,7 @@
 import type { EmitterContext } from "./emitter-context.js";
 import { entryHasUI } from "../../ui/ui-registry.js";
 import { uiPressBindings, watchPinSpecs } from "../../ir/transformers/ui-call-resolver.js";
+import { getDisplayProfile } from "../../ui/display-profile-store.js";
 
 export function synthesizeEntrypoints(ctx: EmitterContext): void {
   const { program, strategy, isEntryFile, mappedFunctions } = ctx;
@@ -43,6 +44,14 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
       for (const wp of watchPinSpecs()) {
         uiInterruptStmts.push(
           { kind: "call" as const, callee: `__RAW_STMT__pinMode(${wp.pin}, INPUT_PULLUP);`, args: [],
+            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+        );
+      }
+      // Touch controller begin (if touch is configured)
+      const tProfile = getDisplayProfile();
+      if (tProfile.touch) {
+        uiInterruptStmts.push(
+          { kind: "call" as const, callee: `__RAW_STMT____tc_touch.begin();`, args: [],
             sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
         );
       }

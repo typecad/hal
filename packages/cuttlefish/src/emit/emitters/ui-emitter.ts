@@ -17,7 +17,7 @@
 import type { EmitterContext } from "./emitter-context.js";
 import { emitRuntimeHeader } from "../../ui/runtime-header.js";
 import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
-import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs } from "../../ir/transformers/ui-call-resolver.js";
+import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandlers } from "../../ir/transformers/ui-call-resolver.js";
 import { emitBindingTable } from "../../ir/transformers/ui-reactive.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 
@@ -40,8 +40,49 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   const profile = getDisplayProfile();
   ctx.sourceLines.push(`Adafruit_ILI9341 __tc_display = Adafruit_ILI9341(${profile._mountCs}, ${profile._mountDc}, ${profile._mountRst});`);
 
+  // 0.6. Touch controller declaration (if touch is configured in the profile).
+  if (profile.touch) {
+    const t = profile.touch;
+    // Add the library include
+    if (t.library === "XPT2046_Touchscreen") {
+      ctx.includes.push("<XPT2046_Touchscreen.h>");
+      ctx.sourceLines.push(`XPT2046_Touchscreen __tc_touch(${t.cs ?? 3});`);
+    } else if (t.library === "Adafruit_TouchScreen" && t.analogPins) {
+      ctx.includes.push("<TouchScreen.h>");
+      const a = t.analogPins;
+      ctx.sourceLines.push(`TouchScreen __tc_touch = TouchScreen(${a.xp}, ${a.yp}, ${a.xm}, ${a.ym}, ${a.rx});`);
+    } else if (t.library === "Adafruit_STMPE610") {
+      ctx.includes.push("<Adafruit_STMPE610.h>");
+      if (t.interface === "i2c") {
+        ctx.sourceLines.push(`Adafruit_STMPE610 __tc_touch(${t.cs ?? 0x41});`);
+      } else {
+        ctx.sourceLines.push(`Adafruit_STMPE610 __tc_touch(${t.cs ?? 3});`);
+      }
+    }
+  }
+
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
-  ctx.sourceLines.push(emitRuntimeHeader());
+  // Inject library-specific touch poll code into the header before emitting.
+  let touchPollCode = "";
+  if (profile.touch) {
+    const t = profile.touch;
+    const minPress = t.minPressure ?? 10;
+    const { xMin, xMax, yMin, yMax } = t.calibration;
+    touchPollCode = [
+      `{`,
+      `  if (__tc_touch.touched()) {`,
+      `    TS_Point __tp = __tc_touch.getPoint();`,
+      `    int16_t __tx = map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.width});`,
+      `    int16_t __ty = map(__tp.y, ${yMin}, ${yMax}, 0, ${profile.height});`,
+      `    if (__tp.z >= ${minPress}) { ui_handle_touch(__tx, __ty); }`,
+      `  }`,
+      `}`,
+    ].join("\n  ");
+  } else {
+    touchPollCode = "/* no touch configured */";
+  }
+  const headerWithTouch = emitRuntimeHeader().replace("/*__TC_TOUCH_PLACEHOLDER__*/", touchPollCode);
+  ctx.sourceLines.push(headerWithTouch);
 
   // 2. Static node + transition tables for every mounted UI tree.
   for (const { lowered } of allLoweredUIModules()) {
@@ -119,6 +160,27 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   } else {
     ctx.sourceLines.push(`UIPinWatch __ui_pin_watches[] = {};`);
     ctx.sourceLines.push(`const uint8_t __ui_pin_watch_count = 0;`);
+  }
+
+  // 8. Touch: click handler functions + table (from screen.element.onClick).
+  if (profile.touch && clickHandlers().length > 0) {
+    // Click handler functions
+    for (const ch of clickHandlers()) {
+      ctx.sourceLines.push(`void ${ch.fnName}() { ${ch.callbackBody || ""} }`);
+    }
+    // Click handler lookup table: array of function pointers, indexed by node index.
+    // null for nodes without click handlers.
+    const maxIdx = clickHandlers().reduce((max, h) => Math.max(max, h.nodeIndex), -1);
+    const entries: string[] = [];
+    for (let i = 0; i <= maxIdx; i++) {
+      const handler = clickHandlers().find(h => h.nodeIndex === i);
+      entries.push(handler ? handler.fnName : "nullptr");
+    }
+    ctx.sourceLines.push(`const ClickHandler __ui_click_handlers[] = { ${entries.join(", ")} };`);
+    ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = ${maxIdx + 1};`);
+  } else {
+    ctx.sourceLines.push(`const ClickHandler __ui_click_handlers[] = {};`);
+    ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = 0;`);
   }
 }
 

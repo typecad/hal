@@ -124,7 +124,7 @@ export { DISPLAY_OPERATION_KINDS } from './display-op-ir.js';
 export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-strategy.js';
 
 // Display profiles (declarative hardware description)
-export type { DisplayProfile, DisplayConfig, TouchProfile } from './display-profile.js';
+export type { DisplayProfile, DisplayConfig, TouchProfile, TouchLibrary, TouchInterface } from './display-profile.js';
 export { resolveDisplayProfile } from './display-profile.js';
 
 // Board resolver
