@@ -345,9 +345,219 @@ setInterval(() => {
 
 The runtime is a retained-mode tree: the HTML/CSS is fully resolved at transpile time. The device only sees static tables + a tiny draw loop. No DOM, no CSS engine, no HTML parser on the MCU.
 
-## Display drivers
+## Display profiles
 
-Currently supported:
-- **ILI9341** (SPI, RGB565) — via the Adafruit_ILI9341 library
+The display hardware is described in `cuttlefish.config.ts` under the `display` field. This drives all transpile-time decisions: dimensions, color format, rotation, SPI pins, backlight, and touch.
 
-See `packages/framework-arduino/DISPLAYS.md` for how to add new drivers.
+### Config reference
+
+```typescript
+// cuttlefish.config.ts
+display: {
+  // Either reference a built-in profile by name:
+  profile: 'ili9341-spi',
+
+  // Or inline everything:
+  // driver: 'ili9341',
+  // width: 320, height: 240,
+  // colorFormat: 'rgb565',
+  // rotation: 1,
+
+  // Wiring (always project-specific)
+  cs: 5,
+  dc: 21,
+  rst: 22,
+  backlight: 17,       // optional — pin number for backlight
+
+  // Touch (optional)
+  touch: {
+    library: 'XPT2046_Touchscreen',
+    cs: 14,             // touch controller CS pin
+    irq: 2,             // optional — interrupt pin
+    calibration: { xMin: 375, xMax: 3950, yMin: 200, yMax: 3750 },
+    minPressure: 10,
+  },
+}
+```
+
+### Profile fields
+
+| Field | Type | Description |
+|---|---|---|
+| `profile` | string | Built-in profile name (e.g. `"ili9341-spi"`) |
+| `driver` | string | Display driver id (e.g. `"ili9341"`) |
+| `width` | number | Display width in pixels (after rotation) |
+| `height` | number | Display height in pixels (after rotation) |
+| `colorFormat` | `"rgb565"` \| `"mono"` | Color depth |
+| `rotation` | number | 0=portrait, 1=landscape, 2-3=inverted |
+| `backlight` | number | Backlight pin (optional) |
+| `cs` / `dc` / `rst` | number | Display wiring pins |
+
+### Built-in profiles
+
+| Name | Display | Dimensions | Color | Touch |
+|---|---|---|---|---|
+| `ili9341-spi` | ILI9341 (SPI) | 320×240 | RGB565 | Add via `touch` config |
+
+### Adding a new display
+
+Create a profile file in your project or framework:
+
+```typescript
+// displays/my-display.ts
+import type { DisplayProfile } from '@typecad/cuttlefish/api/shared';
+
+export const MY_DISPLAY: DisplayProfile = {
+  driver: 'ssd1306',
+  width: 128,
+  height: 64,
+  colorFormat: 'mono',
+  rotation: 0,
+  // No SPI pins for I2C displays
+  // No backlight
+};
+```
+
+Reference it in config:
+
+```typescript
+display: {
+  driver: 'ssd1306',
+  width: 128, height: 64,
+  colorFormat: 'mono',
+  rotation: 0,
+  cs: 0, dc: 0, rst: -1,  // I2C — these are ignored for I2C displays
+}
+```
+
+## Touch input
+
+Touch is configured via the `touch` field in the display profile. The system uses an adapter pattern: built-in libraries generate C++ automatically; custom libraries use a TypeScript adapter file.
+
+### Built-in touch libraries
+
+| Library | Controllers | Interface | Config |
+|---|---|---|---|
+| `XPT2046_Touchscreen` | XPT2046 (common ILI9341 shields) | SPI (shared with display) | `{ library, cs, irq? }` |
+| `Adafruit_TouchScreen` | Resistive 4-wire | Analog (no SPI) | `{ library, analogPins: { xp, yp, xm, ym, rx } }` |
+| `Adafruit_STMPE610` | STMPE610 (capacitive) | SPI or I2C | `{ library, cs }` |
+
+### Config examples
+
+**XPT2046 (most common with ILI9341 TFT shields):**
+
+```typescript
+display: {
+  profile: 'ili9341-spi',
+  cs: 5, dc: 21, rst: 22,
+  touch: {
+    library: 'XPT2046_Touchscreen',
+    cs: 14,           // touch CS pin (separate from display CS)
+    irq: 2,           // optional
+    calibration: { xMin: 375, xMax: 3950, yMin: 200, yMax: 3750 },
+    minPressure: 10,
+  },
+}
+```
+
+**Adafruit resistive 4-wire:**
+
+```typescript
+touch: {
+  library: 'Adafruit_TouchScreen',
+  analogPins: { xp: 'A3', yp: 'A2', xm: 8, ym: 9, rx: 300 },
+  calibration: { xMin: 100, xMax: 900, yMin: 100, yMax: 900 },
+  minPressure: 10,
+}
+```
+
+### Calibration
+
+Calibration maps the touch controller's raw ADC values to display pixel coordinates. To calibrate your panel:
+
+1. Add `Serial.printf("raw=(%d,%d,%d)\n", p.x, p.y, p.z)` to the touch poll
+2. Touch the four corners of the screen and note the raw values
+3. Set `xMin`/`xMax` from the left/right edges, `yMin`/`yMax` from the top/bottom
+
+The transpiler handles rotation (axis swap + inversion) automatically based on the `rotation` field in the display profile.
+
+### Touch events (onClick, onHold, onRelease)
+
+```typescript
+// Short tap (finger down + up within 600ms)
+screen.btn.onClick(() => {
+  console.log("tapped");
+  screen.counter.value = screen.counter.value + 1;
+});
+
+// Long press (finger held ≥600ms)
+screen.btn.onHold(() => {
+  console.log("held");
+});
+
+// Finger lift (always fires after click or hold)
+screen.btn.onRelease(() => {
+  console.log("released");
+});
+```
+
+The touch system implements a state machine:
+- **50ms debounce** — prevents rapid re-triggering
+- **Click** — touch down + up within 600ms
+- **Hold** — touch held ≥600ms (fires once)
+- **Release** — finger lifts (clears `.value` to 0)
+- **Visual feedback** — `.value` set to 1 on touch down, 0 on release
+
+Hit-testing walks nodes topmost-first and skips containers without click handlers.
+
+### Custom touch adapters
+
+For libraries not in the built-in list, write a TypeScript adapter:
+
+```typescript
+// my-touch-adapter.ts
+import { SomeTouchLib } from '../lib/SomeTouchLib/SomeTouchLib';
+
+const ts = new SomeTouchLib(14, 2);
+ts.begin();
+
+export const touch = {
+  isTouched: () => ts.touched(),
+  read: () => {
+    const p = ts.getPoint();
+    return { x: p.x, y: p.y, z: p.z };
+  },
+};
+```
+
+Reference it in config:
+
+```typescript
+touch: {
+  adapter: './my-touch-adapter',
+  calibration: { xMin: 100, xMax: 4000, yMin: 100, yMax: 4000 },
+  minPressure: 10,
+}
+```
+
+The adapter only provides raw `{x, y, z}` — the transpiler handles calibration, rotation, and coordinate mapping.
+
+## GPIO input (buttons without touch)
+
+For physical buttons on GPIO pins (no touchscreen required):
+
+```typescript
+// Watch a pin for falling edges — runs in the frame loop
+ui.watchPin(4, () => {
+  screen.counter.value = screen.counter.value + 1;
+});
+
+// Toggle an element's .value on pin press
+screen.ledBox.onToggle(5);
+
+// Cycle through options
+screen.modeValue.onChange(15, 3);  // 3 options: 0→1→2→0
+```
+
+Natural debounce from the ~16ms frame rate — no ISR, no `volatile`.
+
