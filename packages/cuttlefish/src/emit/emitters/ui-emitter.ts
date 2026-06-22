@@ -78,10 +78,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     // XPT2046 raw coordinates are in portrait orientation; the display
     // is rotated to landscape, so raw Y → screen X, raw X → screen Y.
     const isLandscape = profile.rotation === 1 || profile.rotation === 3;
-    // Per TouchEvent library logic: landscape = raw X→screen X, raw Y→screen Y
-    // (no swap). Portrait = raw Y→screen X (inverted), raw X→screen Y (swap).
-    // Rotations 2/3 invert axes.
-    const invertX = profile.rotation === 2 || profile.rotation === 3;
+    // Rotation 1 (landscape): display (0,0) is at top-right corner, so X is inverted.
+    // Rotation 3 (landscape): display (0,0) is at bottom-left, so Y is inverted.
+    // Rotations 0/2 (portrait): TouchEvent-style swap.
+    const invertX = profile.rotation === 1 || profile.rotation === 2;
     const invertY = profile.rotation === 2 || profile.rotation === 3;
     let mapX, mapY;
     if (isLandscape) {
