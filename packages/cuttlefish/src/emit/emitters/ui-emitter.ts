@@ -82,7 +82,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     // Rotation 3 (landscape): display (0,0) is at bottom-left, so Y is inverted.
     // Rotations 0/2 (portrait): TouchEvent-style swap.
     const invertX = profile.rotation === 1 || profile.rotation === 2;
-    const invertY = profile.rotation === 2 || profile.rotation === 3;
+    const invertY = profile.rotation === 1 || profile.rotation === 2;
     let mapX, mapY;
     if (isLandscape) {
       // Landscape: raw X → screen X, raw Y → screen Y (no swap, per TouchEvent)
@@ -101,9 +101,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       `void ui_poll_touch() {`,
       `  if (__tc_touch.touched()) {`,
       `    TS_Point __tp = __tc_touch.getPoint();`,
-      `    int16_t __tx = ${mapX};`,
-      `    int16_t __ty = ${mapY};`,
       `    if (__tp.z >= ${minPress}) {`,
+      `      int16_t __tx = ${mapX};`,
+      `      int16_t __ty = ${mapY};`,
+      `      Serial.printf("TOUCH raw=(%d,%d,%d) screen=(%d,%d)\\n", __tp.x, __tp.y, __tp.z, __tx, __ty);`,
       `      ui_handle_touch(__tx, __ty);`,
       `    } else {`,
       `      ui_handle_no_touch();`,
