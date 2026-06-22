@@ -62,7 +62,6 @@ const config: CuttlefishConfig = {
     // backlight: 15,
     touch: {
       library: 'XPT2046_Touchscreen',
-      interface: 'spi-hw',
       cs: 15,
       irq: 17,
       calibration: { xMin: 375, xMax: 3950, yMin: 200, yMax: 3750 },
