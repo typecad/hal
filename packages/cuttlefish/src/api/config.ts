@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ArchitectureIdentifier } from './board-types.js';
+import type { DisplayConfig } from './shared/display-profile.js';
 
 // ---------------------------------------------------------------------------
 // Output section
@@ -98,6 +99,14 @@ export interface CuttlefishConfig {
    * Framework-specific configuration.
    */
   native?: Record<string, unknown>;
+
+  /**
+   * Display configuration — references a built-in profile by name and/or
+   * specifies display wiring (cs, dc, rst) and overrides.
+   *
+   * display: { profile: 'ili9341-spi', cs: 5, dc: 21, rst: 22 }
+   */
+  display?: DisplayConfig;
 }
 
 /**
