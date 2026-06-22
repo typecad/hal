@@ -190,13 +190,18 @@ static uint32_t __ui_last_touch_time = 0;  // for debounce
 #define UI_TOUCH_HOLD_MS 600        // hold threshold
 
 // Hit-test a touch point against all visible nodes (topmost first).
-// Returns the node index or -1.
+// Returns the node index of the topmost node that BOTH contains the point
+// AND has a click handler registered. Returns -1 if none.
 static int8_t ui_hit_test(int16_t tx, int16_t ty) {
   for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
     if (!__ui_nodes[i].visible) continue;
     if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
         ty >= __ui_nodes[i].box.y && ty < __ui_nodes[i].box.y + __ui_nodes[i].box.h) {
-      return i;
+      // Skip nodes without any click handler — they're containers, not targets
+      if ((uint8_t)i < __ui_click_handler_count &&
+          (__ui_click_handlers[i] || __ui_hold_handlers[i] || __ui_release_handlers[i])) {
+        return i;
+      }
     }
   }
   return -1;
