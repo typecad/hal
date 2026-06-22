@@ -222,7 +222,12 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   __ui_touch_state = 1;
   __ui_touch_down_time = millis();
   if (node >= 0) {
-    __ui_nodes[node].value = 1;  // visual pressed feedback
+    // Only buttons get momentary pressed visual feedback (value=1 on touch).
+    // Checkboxes/selectors keep their current value — the onClick callback
+    // will toggle/cycle it on release.
+    if (__ui_nodes[node].kind == NODE_BUTTON) {
+      __ui_nodes[node].value = 1;
+    }
     ui_mark_dirty(node);
   }
 }
