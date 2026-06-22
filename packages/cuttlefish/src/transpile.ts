@@ -285,6 +285,40 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // consistent strategy drives both the output directory and emission.
   const strategy = boardStrategy ?? resolveStrategy(options.target);
   setActiveStrategy(strategy);
+
+  // Load display profile from config (if present) into the profile store.
+  const { setDisplayProfile, resetDisplayProfile } = await import("./ui/display-profile-store.js");
+  resetDisplayProfile();
+  const configDisplay = (options as any).display;
+  if (configDisplay) {
+    const { resolveDisplayProfile } = await import("./api/shared/display-profile.js");
+    try {
+      // Try to load built-in profiles from the framework package
+      const frameworkMod = options.frameworkPackage
+        ? await import(options.frameworkPackage + "/src/displays/ili9341-spi.js").catch(() => null)
+        : null;
+      const registry = new Map();
+      if (frameworkMod?.BUILT_IN_PROFILES) {
+        for (const [k, v] of Object.entries(frameworkMod.BUILT_IN_PROFILES)) {
+          registry.set(k, v);
+        }
+      }
+      // Also try the dist path
+      if (registry.size === 0 && options.frameworkPackage) {
+        const distMod = await import(options.frameworkPackage + "/displays/ili9341-spi.js").catch(() => null);
+        if (distMod?.BUILT_IN_PROFILES) {
+          for (const [k, v] of Object.entries(distMod.BUILT_IN_PROFILES)) {
+            registry.set(k, v);
+          }
+        }
+      }
+      const resolved = resolveDisplayProfile(configDisplay, registry);
+      setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus });
+    } catch (e) {
+      // Fall back to default profile — not fatal
+    }
+  }
+
   const outDir = path.join(outBaseDir, strategy.outputSubdirectory(sketchBaseName));
 
   // Start fresh: clean the output directory. (Incremental builds are disabled —

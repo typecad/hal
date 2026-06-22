@@ -20,6 +20,7 @@ import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { resolveColor } from "../../ui/color.js";
+import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { lowerCallbackBody, resetCallbackLoweringState } from "./ui-callback-lowering.js";
 import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
@@ -271,9 +272,9 @@ function resolveMountCall(
     return null;
   }
 
-  // ILI9341 viewport in landscape (setRotation(1) swaps 240×320 → 320×240).
-  // The driver hardcodes setRotation(1), so layout must use the landscape dims.
-  const viewport = { width: 320, height: 240 };
+  // Viewport from the display profile (data-driven, not hardcoded).
+  const profile = getDisplayProfile();
+  const viewport = { width: profile.width, height: profile.height };
 
   // Final layout + lower using the mount's viewport.
   const lowered = lowerOnMount(htmlPath, {
@@ -288,6 +289,8 @@ function resolveMountCall(
     cs: Number(opts.cs),
     dc: Number(opts.dc),
     rst: Number(opts.rst),
+    rotation: profile.rotation,
+    backlight: profile.backlight,
   };
   const displayInitOp = resolveMount(req, strategy, viewport);
 

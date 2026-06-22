@@ -19,6 +19,7 @@ import { emitRuntimeHeader } from "../../ui/runtime-header.js";
 import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
 import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs } from "../../ir/transformers/ui-call-resolver.js";
 import { emitBindingTable } from "../../ir/transformers/ui-reactive.js";
+import { getDisplayProfile } from "../../ui/display-profile-store.js";
 
 export function emitUIRuntime(ctx: EmitterContext): void {
   // Only the entry file carries the UI runtime + tables.
@@ -35,11 +36,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
   // 0.5. File-scope display object declaration. Must precede the runtime header
   // so ui_tick (a static inline in the header) can reference __tc_display.
-  // Uses the 3-arg HARDWARE SPI constructor (CS, DC, RST) — the ESP32's VSPI
-  // bus (MOSI=23, SCK=18, MISO=19) matches the breakout wiring and runs at
-  // 40MHz via the hardware peripheral. The 6-arg constructor bit-bangs GPIO
-  // (software SPI) which is ~1000x slower and unusable for per-frame redraws.
-  ctx.sourceLines.push("Adafruit_ILI9341 __tc_display = Adafruit_ILI9341(5, 21, 22);");
+  // Uses the 3-arg HARDWARE SPI constructor (CS, DC, RST) with VSPI defaults.
+  const profile = getDisplayProfile();
+  ctx.sourceLines.push(`Adafruit_ILI9341 __tc_display = Adafruit_ILI9341(${profile._mountCs}, ${profile._mountDc}, ${profile._mountRst});`);
 
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
   ctx.sourceLines.push(emitRuntimeHeader());

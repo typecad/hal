@@ -14,6 +14,8 @@ export interface MountRequest {
   cs: number;
   dc: number;
   rst: number;
+  rotation?: number;
+  backlight?: number;
 }
 
 export class MountValidationError extends Error {
@@ -44,5 +46,7 @@ export function resolveMount(
     width: viewport.width,
     height: viewport.height,
     driver: req.display,
-  };
+    rotation: req.rotation,
+    backlight: req.backlight,
+  } as any;
 }

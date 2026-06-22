@@ -10,6 +10,7 @@ import { ProgramIR, StatementIR, ExpressionIR, PlatformStrategy, Diagnostic } fr
 import { POLYFILL_HELPER_MAP } from "../api/shared/index.js";
 import { parseCppType } from "../api/shared/cpp-type-ir.js";
 import { analyzeResources } from "./resource-analysis.js";
+import { loweredConsoleInCallback } from "./transformers/ui-callback-lowering.js";
 
 export interface ProgramAnalysisResult {
   hasConsoleCalls: boolean;
@@ -617,6 +618,16 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     if (typeName.includes("std::map<")) {
       result.usesStdMap = true;
     }
+  }
+
+  // Console calls lowered inside UI callbacks (onToggle/watchPin) are baked
+  // into callbackBody strings, not IR nodes, so the statement walk above can't
+  // see them. Consult the flag recorded during lowering so hasConsoleCalls
+  // reflects them — this is what gates auto-injected Serial.begin(baud) and
+  // <iostream>. Without it, a callback's Serial.println reaches an
+  // uninitialized UART and produces no output.
+  if (loweredConsoleInCallback()) {
+    result.hasConsoleCalls = true;
   }
 
   return result;

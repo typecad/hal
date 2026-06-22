@@ -52,6 +52,14 @@ const config: CuttlefishConfig = {
   console: {
     baudRate: 9600,
   },
+
+  // Display profile — describes the ILI9341's capabilities and wiring.
+  display: {
+    profile: 'ili9341-spi',
+    cs: 5,
+    dc: 21,
+    rst: 22,
+  },
 };
 
 export default config;

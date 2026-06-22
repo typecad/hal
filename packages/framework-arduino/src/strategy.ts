@@ -1284,9 +1284,12 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
     if (op.operation === "display.init") {
+      const dop = op as any;
       this._displayCtx = {
         bus: op.bus, cs: op.cs, dc: op.dc, rst: op.rst,
         width: op.width, height: op.height,
+        rotation: dop.rotation ?? 1,
+        backlight: dop.backlight ?? 17,
       };
     }
     // Only resolve once a display is initialized (display.init sets the context).
