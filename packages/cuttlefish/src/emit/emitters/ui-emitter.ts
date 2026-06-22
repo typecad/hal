@@ -79,10 +79,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     // is rotated to landscape, so raw Y → screen X, raw X → screen Y.
     const isLandscape = profile.rotation === 1 || profile.rotation === 3;
     const invertX = profile.rotation === 3;
-    const invertY = profile.rotation === 1;
+    const invertY = profile.rotation === 3;
     let mapX, mapY;
     if (isLandscape) {
-      // Raw Y → screen X, Raw X → screen Y
+      // Raw Y → screen X, Raw X → screen Y (XPT2046 is portrait-native)
       mapX = invertX
         ? `map(__tp.y, ${yMin}, ${yMax}, ${profile.width}, 0)`
         : `map(__tp.y, ${yMin}, ${yMax}, 0, ${profile.width})`;
