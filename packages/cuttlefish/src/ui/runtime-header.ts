@@ -185,7 +185,8 @@ extern const uint8_t __ui_click_handler_count;
 static uint8_t __ui_touch_state = 0;  // 0=idle, 1=down, 2=holding
 static int8_t __ui_touch_node = -1;   // which node is being touched (-1=none)
 static uint32_t __ui_touch_down_time = 0;  // millis() when touch started
-static uint32_t __ui_last_touch_time = 0;  // for debounce
+static uint32_t __ui_last_touch_time = 0;  // for debounce (updated on touch down only)
+static uint32_t __ui_last_release_time = 0;  // for release debounce
 #define UI_TOUCH_DEBOUNCE_MS 50     // ignore touches within this window
 #define UI_TOUCH_HOLD_MS 600        // hold threshold
 
@@ -268,10 +269,11 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
 // Called each frame when no touch is detected.
 static inline void ui_handle_no_touch() {
   if (__ui_touch_state != 0) {
-    // Require a minimum gap since last touch activity before registering release.
-    // Prevents crash from rapid touch/no-touch flicker on resistive screens.
-    if (millis() - __ui_last_touch_time < UI_TOUCH_DEBOUNCE_MS) return;
+    // Debounce: require a gap since the last release before processing another.
+    // This prevents crash from rapid touch/no-touch flicker on resistive screens.
+    if (millis() - __ui_last_release_time < UI_TOUCH_DEBOUNCE_MS) return;
     ui_touch_up();
+    __ui_last_release_time = millis();
   }
 }
 
