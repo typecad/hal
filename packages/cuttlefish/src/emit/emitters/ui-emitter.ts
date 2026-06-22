@@ -78,7 +78,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     // XPT2046 raw coordinates are in portrait orientation; the display
     // is rotated to landscape, so raw Y → screen X, raw X → screen Y.
     const isLandscape = profile.rotation === 1 || profile.rotation === 3;
-    const invertX = profile.rotation === 3;
+    // Rotation 1: X inverted, Y non-inverted
+    // Rotation 3: X non-inverted, Y inverted
+    const invertX = profile.rotation === 1;
     const invertY = profile.rotation === 3;
     let mapX, mapY;
     if (isLandscape) {
