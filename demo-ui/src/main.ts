@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
-// main.ts — TypeHAL UI demo (flexbox + composed checkbox + select)
+// main.ts — TypeHAL UI demo (flexbox + touch input)
 //
-// GPIO4: increments counter   GPIO5: toggles checkbox   GPIO15: cycles mode
+// Touch: tap the button to increment the counter.
+// Auto-increments every 3 seconds via timer.
 // ---------------------------------------------------------------------------
 
 import { ui } from '@typecad/ui';
@@ -24,22 +25,14 @@ ui.bind(screen.counter, 'text', () => String(screen.counter.value));
 // Button background driven by its pressed .value
 ui.bind(screen.btn, 'background', () => (screen.btn.value > 0 ? 'limegreen' : 'darkgreen'));
 
-// ── Composed checkbox ──────────────────────────────────────────────────────
-ui.bind(screen.ledBox, 'background', () => (screen.ledBox.value ? 'limegreen' : 'transparent'));
-ui.bind(screen.ledBox, 'borderColor', () => (screen.ledBox.value ? 'limegreen' : '#808080'));
-screen.ledBox.onToggle(5);
+// Touch: button responds to tap
+screen.btn.onClick(() => {
+  console.log("button tapped");
+  screen.counter.value = screen.counter.value + 1;
+});
 
-// ── Mode selector (composed <select>) ─────────────────────────────────────
-// modeValue cycles through Auto/Manual/Off on GPIO15.
-ui.bind(screen.modeValue, 'text', () => (
-  screen.modeValue.value === 0 ? 'Auto' : screen.modeValue.value === 1 ? 'Manual' : 'Off'
-));
-ui.bind(screen.modeValue, 'color', () => (screen.modeValue.value === 0 ? 'limegreen' : 'khaki'));
-screen.modeValue.onChange(15, 3);
-
-// ── Inputs ─────────────────────────────────────────────────────────────────
-ui.watchPin(4, () => { screen.counter.value = screen.counter.value + 1; });
-
+// Auto-increment every 3 seconds
 setInterval(() => {
   screen.counter.value = screen.counter.value + 1;
-}, 2000);
+}, 3000);
+
