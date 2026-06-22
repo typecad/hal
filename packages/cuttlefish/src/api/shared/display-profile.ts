@@ -6,24 +6,36 @@
 // display hardware: dimensions, color depth, rotation, pins, touch.
 //
 // Adding a new display = adding a profile. No framework code changes.
+//
+// Touch uses an adapter pattern: either a built-in library name or a custom
+// TypeScript file. The adapter provides isTouched() + read() → {x,y,z}.
+// The transpiler handles calibration (raw ADC → screen pixels) and rotation.
 // ---------------------------------------------------------------------------
 
 export type TouchLibrary = "XPT2046_Touchscreen" | "Adafruit_TouchScreen" | "Adafruit_STMPE610";
-export type TouchInterface = "spi-hw" | "spi-sw" | "i2c" | "analog";
 
 export interface TouchProfile {
-  /** Library to use — determines the C++ include + constructor + poll code. */
-  library: TouchLibrary;
-  /** Interface type: hardware SPI (shares display bus), software SPI, I2C, or analog. */
-  interface: TouchInterface;
-  /** CS pin (SPI controllers) or I2C address. Separate from display CS. */
+  /**
+   * Either a built-in library name OR a path to a custom TypeScript adapter
+   * file (relative to the project root). The adapter must export:
+   *   - isTouched(): boolean
+   *   - read(): { x: number, y: number, z: number }
+   *
+   * Built-in: { library: 'XPT2046_Touchscreen', cs: 14, irq: 2 }
+   * Custom:   { adapter: './my-touch-adapter' }
+   */
+  library?: TouchLibrary;
+  adapter?: string;
+
+  /** CS pin for SPI touch controllers (separate from display CS). */
   cs?: number;
-  /** IRQ pin (optional — interrupt-driven touch detection). */
+  /** IRQ pin (optional). */
   irq?: number;
   /** Resistive 4-wire analog pins (Adafruit_TouchScreen only). */
   analogPins?: { xp: number; yp: number; xm: number; ym: number; rx: number };
-  /** Software SPI pins (if interface = "spi-sw"). */
+  /** Software SPI pins (optional). */
   swSpiPins?: { mosi: number; miso: number; sck: number };
+
   /** Raw ADC calibration — maps touch controller raw values to display pixels. */
   calibration: { xMin: number; xMax: number; yMin: number; yMax: number };
   /** Minimum pressure/z to register a touch (default 10). */
@@ -31,40 +43,18 @@ export interface TouchProfile {
 }
 
 export interface DisplayProfile {
-  /** Driver id (must match a framework's supportedDisplayDrivers). */
   driver: string;
-
-  /** Display width in pixels (after rotation). */
   width: number;
-
-  /** Display height in pixels (after rotation). */
   height: number;
-
-  /** Color format — drives transpile-time color resolution. */
   colorFormat: "rgb565" | "mono";
-
-  /** Rotation 0-3 (0=portrait, 1=landscape). */
   rotation: number;
-
-  /** Backlight pin (0 or undefined = no backlight control). */
   backlight?: number;
-
-  /** Hardware SPI pin defaults (overridable by mount options). */
   spiPins?: { mosi: number; sck: number; miso: number };
-
-  /** Touch input configuration (omit if no touch). */
   touch?: TouchProfile;
 }
 
-/**
- * Project-side display config from cuttlefish.config.ts.
- * Either references a built-in profile by name, or inlines all fields.
- */
 export interface DisplayConfig {
-  /** Reference a built-in profile (e.g. "ili9341-spi"). */
   profile?: string;
-
-  // Inline overrides (used when no profile, or to override profile defaults)
   driver?: string;
   width?: number;
   height?: number;
@@ -73,19 +63,12 @@ export interface DisplayConfig {
   backlight?: number;
   spiPins?: { mosi: number; sck: number; miso: number };
   touch?: TouchProfile | false;
-
-  // Wiring (always project-specific)
   cs?: number;
   dc?: number;
   rst?: number;
   bus?: string;
 }
 
-/**
- * Resolve a DisplayConfig into a full DisplayProfile.
- * If `profile` is set, look it up in the registry and merge overrides.
- * If not set, use the inline fields directly.
- */
 export function resolveDisplayProfile(
   config: DisplayConfig,
   registry: Map<string, DisplayProfile>,
@@ -113,7 +96,6 @@ export function resolveDisplayProfile(
     };
   }
 
-  // Apply overrides
   if (config.width !== undefined) base.width = config.width;
   if (config.height !== undefined) base.height = config.height;
   if (config.colorFormat !== undefined) base.colorFormat = config.colorFormat;
@@ -130,4 +112,75 @@ export function resolveDisplayProfile(
     rst: config.rst ?? 22,
     bus: config.bus ?? "SPI",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Touch adapter codegen — generates C++ for built-in libraries.
+// Custom adapters provide their own C++ via the TypeScript lowering.
+// ---------------------------------------------------------------------------
+
+export interface TouchAdapterCodegen {
+  /** C++ #include lines for the touch library. */
+  includes: string[];
+  /** C++ declaration(s) for the touch object (file scope). */
+  declaration: string;
+  /** C++ init call(s) for setup(). */
+  init: string;
+  /** C++ expression: true if currently touched. */
+  isTouchedExpr: string;
+  /** C++ expression: access raw X. */
+  readXExpr: string;
+  /** C++ expression: access raw Y. */
+  readYExpr: string;
+  /** C++ expression: access raw Z (pressure). */
+  readZExpr: string;
+}
+
+/** Generate C++ code for a built-in touch library adapter. */
+export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
+  const cs = touch.cs ?? 0;
+  const irq = touch.irq;
+
+  if (touch.library === "XPT2046_Touchscreen") {
+    return {
+      includes: ["#include <XPT2046_Touchscreen.h>"],
+      declaration: `XPT2046_Touchscreen __tc_touch(${cs}${irq ? `, ${irq}` : ""});`,
+      init: `__tc_touch.begin();`,
+      isTouchedExpr: `__tc_touch.touched()`,
+      readXExpr: `__tc_touch.getPoint().x`,
+      readYExpr: `__tc_touch.getPoint().y`,
+      readZExpr: `__tc_touch.getPoint().z`,
+    };
+  }
+
+  if (touch.library === "Adafruit_TouchScreen" && touch.analogPins) {
+    const a = touch.analogPins;
+    return {
+      includes: ["#include <TouchScreen.h>"],
+      declaration: `TouchScreen __tc_touch = TouchScreen(${a.xp}, ${a.yp}, ${a.xm}, ${a.ym}, ${a.rx});`,
+      init: `// Adafruit_TouchScreen needs no begin()`,
+      isTouchedExpr: `__tc_touch.isTouching()`,
+      readXExpr: `__tc_touch.getPoint().x`,
+      readYExpr: `__tc_touch.getPoint().y`,
+      readZExpr: `__tc_touch.getPoint().z`,
+    };
+  }
+
+  if (touch.library === "Adafruit_STMPE610") {
+    return {
+      includes: ["#include <Adafruit_STMPE610.h>"],
+      declaration: `Adafruit_STMPE610 __tc_touch(${cs});`,
+      init: `__tc_touch.begin(STMPE610_CS); // or __tc_touch.readID()`,
+      isTouchedExpr: `__tc_touch.touched() && !__tc_touch.bufferEmpty()`,
+      readXExpr: `__tc_touch.getPoint().x`,
+      readYExpr: `__tc_touch.getPoint().y`,
+      readZExpr: `__tc_touch.getPoint().z`,
+    };
+  }
+
+  throw new Error(
+    `Unknown touch library "${touch.library}". ` +
+    `Use { adapter: './path' } for custom touch adapters, or one of: ` +
+    `XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610.`,
+  );
 }

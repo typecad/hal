@@ -20,6 +20,7 @@ import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
 import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandlers } from "../../ir/transformers/ui-call-resolver.js";
 import { emitBindingTable } from "../../ir/transformers/ui-reactive.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { generateTouchAdapter, TouchAdapterCodegen } from "../../api/shared/display-profile.js";
 
 export function emitUIRuntime(ctx: EmitterContext): void {
   // Only the entry file carries the UI runtime + tables.
@@ -41,24 +42,20 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   ctx.sourceLines.push(`Adafruit_ILI9341 __tc_display = Adafruit_ILI9341(${profile._mountCs}, ${profile._mountDc}, ${profile._mountRst});`);
 
   // 0.6. Touch controller declaration (if touch is configured in the profile).
+  let touchAdapter: TouchAdapterCodegen | null = null;
   if (profile.touch) {
     const t = profile.touch;
-    // Emit include as a raw line (ctx.includes is processed at preamble time — too late)
-    if (t.library === "XPT2046_Touchscreen") {
-      ctx.sourceLines.push(`#include <XPT2046_Touchscreen.h>`);
-      ctx.sourceLines.push(`XPT2046_Touchscreen __tc_touch(${t.cs ?? 3});`);
-    } else if (t.library === "Adafruit_TouchScreen" && t.analogPins) {
-      ctx.includes.push("<TouchScreen.h>");
-      const a = t.analogPins;
-      ctx.sourceLines.push(`TouchScreen __tc_touch = TouchScreen(${a.xp}, ${a.yp}, ${a.xm}, ${a.ym}, ${a.rx});`);
-    } else if (t.library === "Adafruit_STMPE610") {
-      ctx.includes.push("<Adafruit_STMPE610.h>");
-      if (t.interface === "i2c") {
-        ctx.sourceLines.push(`Adafruit_STMPE610 __tc_touch(${t.cs ?? 0x41});`);
-      } else {
-        ctx.sourceLines.push(`Adafruit_STMPE610 __tc_touch(${t.cs ?? 3});`);
+    if (t.library) {
+      // Built-in adapter: generate C++ from the library name
+      touchAdapter = generateTouchAdapter(t);
+      for (const inc of touchAdapter.includes) {
+        ctx.sourceLines.push(inc);
       }
+      ctx.sourceLines.push(touchAdapter.declaration);
     }
+    // Custom adapter (t.adapter) is handled by the normal TS import lowering —
+    // the user's file exports touch.isTouched() and touch.read() which become
+    // C++ functions. The transpiler treats them as existing extern symbols.
   }
 
   // Forward declaration for touch poll (used inside the runtime header's ui_tick)
@@ -69,39 +66,33 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
   ctx.sourceLines.push(emitRuntimeHeader());
 
-  // 1.5. Touch poll function (library-specific, emitted at file scope).
-  if (profile.touch) {
+  // 1.5. Touch poll function (uses the adapter pattern).
+  if (profile.touch && touchAdapter) {
     const t = profile.touch;
     const minPress = t.minPressure ?? 10;
     const { xMin, xMax, yMin, yMax } = t.calibration;
-    // For landscape (rotation 1 or 3), swap X/Y and invert as needed.
-    // XPT2046 raw coordinates are in portrait orientation; the display
-    // is rotated to landscape, so raw Y → screen X, raw X → screen Y.
     const isLandscape = profile.rotation === 1 || profile.rotation === 3;
-    // Rotation 1 (landscape): display (0,0) is at top-right corner, so X is inverted.
-    // Rotation 3 (landscape): display (0,0) is at bottom-left, so Y is inverted.
-    // Rotations 0/2 (portrait): TouchEvent-style swap.
     const invertX = profile.rotation === 1 || profile.rotation === 2;
     const invertY = profile.rotation === 1 || profile.rotation === 2;
     let mapX, mapY;
     if (isLandscape) {
-      // Landscape: raw X → screen X, raw Y → screen Y (no swap, per TouchEvent)
       mapX = invertX
-        ? `map(__tp.x, ${xMin}, ${xMax}, ${profile.width}, 0)`
-        : `map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.width})`;
+        ? `map(__rx, ${xMin}, ${xMax}, ${profile.width}, 0)`
+        : `map(__rx, ${xMin}, ${xMax}, 0, ${profile.width})`;
       mapY = invertY
-        ? `map(__tp.y, ${yMin}, ${yMax}, ${profile.height}, 0)`
-        : `map(__tp.y, ${yMin}, ${yMax}, 0, ${profile.height})`;
+        ? `map(__ry, ${yMin}, ${yMax}, ${profile.height}, 0)`
+        : `map(__ry, ${yMin}, ${yMax}, 0, ${profile.height})`;
     } else {
-      // Portrait: raw Y → screen X (inverted), raw X → screen Y (per TouchEvent)
-      mapX = `map(__tp.y, ${yMin}, ${yMax}, ${profile.width}, 0)`;
-      mapY = `map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.height})`;
+      mapX = `map(__ry, ${yMin}, ${yMax}, ${profile.width}, 0)`;
+      mapY = `map(__rx, ${xMin}, ${xMax}, 0, ${profile.height})`;
     }
     const pollLines = [
       `void ui_poll_touch() {`,
-      `  if (__tc_touch.touched()) {`,
-      `    TS_Point __tp = __tc_touch.getPoint();`,
-      `    if (__tp.z >= ${minPress}) {`,
+      `  if (${touchAdapter.isTouchedExpr}) {`,
+      `    int16_t __rx = ${touchAdapter.readXExpr};`,
+      `    int16_t __ry = ${touchAdapter.readYExpr};`,
+      `    int16_t __rz = ${touchAdapter.readZExpr};`,
+      `    if (__rz >= ${minPress}) {`,
       `      int16_t __tx = ${mapX};`,
       `      int16_t __ty = ${mapY};`,
       `      ui_handle_touch(__tx, __ty);`,
