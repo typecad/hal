@@ -43,9 +43,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // 0.6. Touch controller declaration (if touch is configured in the profile).
   if (profile.touch) {
     const t = profile.touch;
-    // Add the library include
+    // Emit include as a raw line (ctx.includes is processed at preamble time — too late)
     if (t.library === "XPT2046_Touchscreen") {
-      ctx.includes.push("<XPT2046_Touchscreen.h>");
+      ctx.sourceLines.push(`#include <XPT2046_Touchscreen.h>`);
       ctx.sourceLines.push(`XPT2046_Touchscreen __tc_touch(${t.cs ?? 3});`);
     } else if (t.library === "Adafruit_TouchScreen" && t.analogPins) {
       ctx.includes.push("<TouchScreen.h>");
@@ -61,15 +61,21 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     }
   }
 
+  // Forward declaration for touch poll (used inside the runtime header's ui_tick)
+  if (profile.touch) {
+    ctx.sourceLines.push("void ui_poll_touch();");
+  }
+
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
-  // Inject library-specific touch poll code into the header before emitting.
-  let touchPollCode = "";
+  ctx.sourceLines.push(emitRuntimeHeader());
+
+  // 1.5. Touch poll function (library-specific, emitted at file scope).
   if (profile.touch) {
     const t = profile.touch;
     const minPress = t.minPressure ?? 10;
     const { xMin, xMax, yMin, yMax } = t.calibration;
-    touchPollCode = [
-      `{`,
+    const pollLines = [
+      `void ui_poll_touch() {`,
       `  if (__tc_touch.touched()) {`,
       `    TS_Point __tp = __tc_touch.getPoint();`,
       `    int16_t __tx = map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.width});`,
@@ -77,12 +83,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       `    if (__tp.z >= ${minPress}) { ui_handle_touch(__tx, __ty); }`,
       `  }`,
       `}`,
-    ].join("\n  ");
-  } else {
-    touchPollCode = "/* no touch configured */";
+    ];
+    ctx.sourceLines.push(pollLines.join("\n"));
   }
-  const headerWithTouch = emitRuntimeHeader().replace("/*__TC_TOUCH_PLACEHOLDER__*/", touchPollCode);
-  ctx.sourceLines.push(headerWithTouch);
 
   // 2. Static node + transition tables for every mounted UI tree.
   for (const { lowered } of allLoweredUIModules()) {

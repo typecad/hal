@@ -168,6 +168,10 @@ async function main(): Promise<void> {
 
       assertTypeScriptInput(entryFile);
       (options as any).inputFile = entryFile;
+      // Pass display config from cuttlefish.config.ts through to transpileFile
+      if (buildConfig.display) {
+        (options as any).display = buildConfig.display;
+      }
     }
 
     // gen-decls runs before the !options.inputFile guard below: in --all mode
@@ -341,6 +345,7 @@ async function main(): Promise<void> {
           force: options.force,
           skipTypeCheck: options.skipTypeCheck,
           diagnostics: options.diagnostics,
+          display: config?.display,
         });
 
         printDiagnostics(result.diagnostics);
@@ -511,6 +516,7 @@ async function main(): Promise<void> {
         force: options.force,
         skipTypeCheck: options.skipTypeCheck,
         diagnostics: options.diagnostics,
+        display: config?.display ?? (options as any).display,
       });
 
       printDiagnostics(result.diagnostics);

@@ -55,6 +55,8 @@ export interface ResolvedCuttlefishConfig {
   outputDefines?: Record<string, string>;
   /** Framework-specific config (e.g. `native` section). */
   frameworkConfig?: Record<string, unknown>;
+  /** Display profile config. */
+  display?: import("./api/shared/display-profile.js").DisplayConfig;
 }
 
 /**
@@ -384,6 +386,10 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
 
   const nativeSection = extractFrameworkSection(configObject, "native");
   if (nativeSection) resolved.frameworkConfig = nativeSection;
+
+  // Parse display profile config (nested object with profile name, wiring, touch)
+  const displaySection = extractFrameworkSection(configObject, "display");
+  if (displaySection) (resolved as any).display = displaySection;
 
   // Validate the parsed config against the Zod schema.
   // Reconstruct a structured object from the flat-map extraction for validation.

@@ -57,8 +57,17 @@ const config: CuttlefishConfig = {
   display: {
     profile: 'ili9341-spi',
     cs: 5,
-    dc: 21,
+    dc: 4,
     rst: 22,
+    backlight: 15,
+    touch: {
+      library: 'XPT2046_Touchscreen',
+      interface: 'spi-hw',
+      cs: 14,
+      irq: 2,
+      calibration: { xMin: 230, xMax: 3700, yMin: 350, yMax: 3900 },
+      minPressure: 10,
+    },
   },
 };
 

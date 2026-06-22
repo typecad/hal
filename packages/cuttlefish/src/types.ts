@@ -98,6 +98,8 @@ export interface TranspileOptions {
   force?: boolean;
   /** Generate diagnostics.md and diagnostics.json reports (default: false) */
   diagnostics?: boolean;
+  /** Display profile config from cuttlefish.config.ts */
+  display?: import("./api/shared/display-profile.js").DisplayConfig;
 }
 
 export interface LibraryDefinitionCondition {

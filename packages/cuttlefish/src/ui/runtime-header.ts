@@ -202,8 +202,8 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
 // Phase -2: poll touch (if configured). Phase -1: poll input pins.
 // Phase 0: evaluate bindings. Phase 1: transitions. Phase 2: draw.
 static inline void ui_tick(uint16_t deltaMs) {
-  // Touch poll — injected here by the emit layer
-  /*__TC_TOUCH_PLACEHOLDER__*/
+  // Touch poll — runs if touch is configured (defined by the emit layer)
+  ui_poll_touch();
   // ⓪' Poll GPIO inputs
   ui_poll_inputs();
   // ⓪ Evaluate bindings: call each binding's fn, compare to the node's

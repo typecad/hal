@@ -293,28 +293,19 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   if (configDisplay) {
     const { resolveDisplayProfile } = await import("./api/shared/display-profile.js");
     try {
-      // Try to load built-in profiles from the framework package
-      const frameworkMod = options.frameworkPackage
-        ? await import(options.frameworkPackage + "/src/displays/ili9341-spi.js").catch(() => null)
-        : null;
+      // Load built-in profiles from the framework package via its exported path
       const registry = new Map();
-      if (frameworkMod?.BUILT_IN_PROFILES) {
-        for (const [k, v] of Object.entries(frameworkMod.BUILT_IN_PROFILES)) {
-          registry.set(k, v);
-        }
-      }
-      // Also try the dist path
-      if (registry.size === 0 && options.frameworkPackage) {
-        const distMod = await import(options.frameworkPackage + "/displays/ili9341-spi.js").catch(() => null);
-        if (distMod?.BUILT_IN_PROFILES) {
-          for (const [k, v] of Object.entries(distMod.BUILT_IN_PROFILES)) {
-            registry.set(k, v);
+      if (options.frameworkPackage) {
+        const profileMod = await import(options.frameworkPackage + "/displays/ili9341-spi").catch(() => null);
+        if (profileMod?.BUILT_IN_PROFILES) {
+          for (const [k, v] of Object.entries(profileMod.BUILT_IN_PROFILES)) {
+            registry.set(k, v as any);
           }
         }
       }
       const resolved = resolveDisplayProfile(configDisplay, registry);
       setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus });
-    } catch (e) {
+    } catch {
       // Fall back to default profile — not fatal
     }
   }

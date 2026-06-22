@@ -17,6 +17,10 @@
     "./graphics/ili9341": {
       "types": "./dist/graphics/ili9341.d.ts",
       "default": "./dist/graphics/ili9341.js"
+    },
+    "./displays/ili9341-spi": {
+      "types": "./dist/displays/ili9341-spi.d.ts",
+      "default": "./dist/displays/ili9341-spi.js"
     }
   },
   "files": [
