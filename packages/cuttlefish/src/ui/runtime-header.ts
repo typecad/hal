@@ -268,6 +268,9 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
 // Called each frame when no touch is detected.
 static inline void ui_handle_no_touch() {
   if (__ui_touch_state != 0) {
+    // Require a minimum gap since last touch activity before registering release.
+    // Prevents crash from rapid touch/no-touch flicker on resistive screens.
+    if (millis() - __ui_last_touch_time < UI_TOUCH_DEBOUNCE_MS) return;
     ui_touch_up();
   }
 }
