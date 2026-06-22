@@ -59,7 +59,7 @@ const config: CuttlefishConfig = {
     cs: 5,
     dc: 21,
     rst: 22,
-    // backlight: 15,
+    backlight: 33,
     touch: {
       library: 'XPT2046_Touchscreen',
       cs: 15,
