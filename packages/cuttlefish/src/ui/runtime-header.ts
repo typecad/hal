@@ -175,26 +175,95 @@ static inline void ui_poll_inputs() {
 }
 
 // ── Touch hit-testing + click dispatch ─────────────────────────────────────
-// Forward-declare the click handler type + table (defined by the emit layer).
-typedef void (*ClickHandler)();
-extern const ClickHandler __ui_click_handlers[];
+// ClickHandler typedef + extern tables (defined by the emit layer at file scope)
+extern void (*__ui_click_handlers[])();
+extern void (*__ui_hold_handlers[])();
+extern void (*__ui_release_handlers[])();
 extern const uint8_t __ui_click_handler_count;
 
-// Hit-test a touch point against all visible nodes (topmost first) and
-// dispatch the first hit's click handler. Sets .value=1 for visual feedback.
-static inline void ui_handle_touch(int16_t tx, int16_t ty) {
+// Touch state machine: tracks down → hold → up → click lifecycle
+static uint8_t __ui_touch_state = 0;  // 0=idle, 1=down, 2=holding
+static int8_t __ui_touch_node = -1;   // which node is being touched (-1=none)
+static uint32_t __ui_touch_down_time = 0;  // millis() when touch started
+static uint32_t __ui_last_touch_time = 0;  // for debounce
+#define UI_TOUCH_DEBOUNCE_MS 50     // ignore touches within this window
+#define UI_TOUCH_HOLD_MS 600        // hold threshold
+
+// Hit-test a touch point against all visible nodes (topmost first).
+// Returns the node index or -1.
+static int8_t ui_hit_test(int16_t tx, int16_t ty) {
   for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
     if (!__ui_nodes[i].visible) continue;
     if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
         ty >= __ui_nodes[i].box.y && ty < __ui_nodes[i].box.y + __ui_nodes[i].box.h) {
-      // Dispatch click handler if one is registered for this node
-      if ((uint8_t)i < __ui_click_handler_count && __ui_click_handlers[i]) {
-        __ui_click_handlers[i]();
-      }
-      __ui_nodes[i].value = 1;  // visual pressed feedback
-      ui_mark_dirty(i);
-      return;  // only topmost hit
+      return i;
     }
+  }
+  return -1;
+}
+
+// Dispatch a handler from the given table if registered for the node.
+static void ui_dispatch(void (**table)(), uint8_t count, int8_t node) {
+  if (node >= 0 && (uint8_t)node < count && table[node]) {
+    table[node]();
+  }
+}
+
+// Touch down: called when screen is first touched.
+static void ui_touch_down(int16_t tx, int16_t ty) {
+  int8_t node = ui_hit_test(tx, ty);
+  __ui_touch_node = node;
+  __ui_touch_state = 1;
+  __ui_touch_down_time = millis();
+  if (node >= 0) {
+    __ui_nodes[node].value = 1;  // visual pressed feedback
+    ui_mark_dirty(node);
+  }
+}
+
+// Touch up: called when touch is released. Determines click vs hold.
+static void ui_touch_up() {
+  uint32_t elapsed = millis() - __ui_touch_down_time;
+  if (__ui_touch_node >= 0) {
+    // Release: clear pressed state
+    __ui_nodes[__ui_touch_node].value = 0;
+    ui_mark_dirty(__ui_touch_node);
+    // Click (short tap) or hold (long press)
+    if (elapsed < UI_TOUCH_HOLD_MS) {
+      ui_dispatch(__ui_click_handlers, __ui_click_handler_count, __ui_touch_node);
+    }
+    ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
+  }
+  __ui_touch_state = 0;
+  __ui_touch_node = -1;
+}
+
+// Called each frame from ui_poll_touch when touch is detected.
+// Implements debounce + the down/hold/up/click state machine.
+static inline void ui_handle_touch(int16_t tx, int16_t ty) {
+  uint32_t now = millis();
+
+  if (__ui_touch_state == 0) {
+    // Idle: check debounce, then start touch
+    if (now - __ui_last_touch_time < UI_TOUCH_DEBOUNCE_MS) return;
+    ui_touch_down(tx, ty);
+  } else {
+    // Already touching: check for hold transition
+    if (__ui_touch_state == 1 && __ui_touch_node >= 0) {
+      if (now - __ui_touch_down_time >= UI_TOUCH_HOLD_MS) {
+        __ui_touch_state = 2;  // holding
+        ui_dispatch(__ui_hold_handlers, __ui_click_handler_count, __ui_touch_node);
+      }
+    }
+    // Update touch position (for drag support in the future)
+  }
+  __ui_last_touch_time = now;
+}
+
+// Called each frame when no touch is detected.
+static inline void ui_handle_no_touch() {
+  if (__ui_touch_state != 0) {
+    ui_touch_up();
   }
 }
 

@@ -74,13 +74,39 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     const t = profile.touch;
     const minPress = t.minPressure ?? 10;
     const { xMin, xMax, yMin, yMax } = t.calibration;
+    // For landscape (rotation 1 or 3), swap X/Y and invert as needed.
+    // XPT2046 raw coordinates are in portrait orientation; the display
+    // is rotated to landscape, so raw Y → screen X, raw X → screen Y.
+    const isLandscape = profile.rotation === 1 || profile.rotation === 3;
+    const invertX = profile.rotation === 3;
+    const invertY = profile.rotation === 1;
+    let mapX, mapY;
+    if (isLandscape) {
+      // Raw Y → screen X, Raw X → screen Y
+      mapX = invertX
+        ? `map(__tp.y, ${yMin}, ${yMax}, ${profile.width}, 0)`
+        : `map(__tp.y, ${yMin}, ${yMax}, 0, ${profile.width})`;
+      mapY = invertY
+        ? `map(__tp.x, ${xMin}, ${xMax}, ${profile.height}, 0)`
+        : `map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.height})`;
+    } else {
+      // Portrait: raw X → screen X, raw Y → screen Y
+      mapX = `map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.width})`;
+      mapY = `map(__tp.y, ${yMin}, ${yMax}, 0, ${profile.height})`;
+    }
     const pollLines = [
       `void ui_poll_touch() {`,
       `  if (__tc_touch.touched()) {`,
       `    TS_Point __tp = __tc_touch.getPoint();`,
-      `    int16_t __tx = map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.width});`,
-      `    int16_t __ty = map(__tp.y, ${yMin}, ${yMax}, 0, ${profile.height});`,
-      `    if (__tp.z >= ${minPress}) { ui_handle_touch(__tx, __ty); }`,
+      `    int16_t __tx = ${mapX};`,
+      `    int16_t __ty = ${mapY};`,
+      `    if (__tp.z >= ${minPress}) {`,
+      `      ui_handle_touch(__tx, __ty);`,
+      `    } else {`,
+      `      ui_handle_no_touch();`,
+      `    }`,
+      `  } else {`,
+      `    ui_handle_no_touch();`,
       `  }`,
       `}`,
     ];
@@ -165,24 +191,34 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(`const uint8_t __ui_pin_watch_count = 0;`);
   }
 
-  // 8. Touch: click handler functions + table (from screen.element.onClick).
-  if (profile.touch && clickHandlers().length > 0) {
-    // Click handler functions
-    for (const ch of clickHandlers()) {
-      ctx.sourceLines.push(`void ${ch.fnName}() { ${ch.callbackBody || ""} }`);
-    }
-    // Click handler lookup table: array of function pointers, indexed by node index.
-    // null for nodes without click handlers.
-    const maxIdx = clickHandlers().reduce((max, h) => Math.max(max, h.nodeIndex), -1);
+  // 8. Touch: handler functions + tables (click, hold, release).
+  const maxIdx = clickHandlers().reduce((max, h) => Math.max(max, h.nodeIndex), -1);
+  const tableSize = Math.max(maxIdx + 1, 1);
+
+  // Handler functions
+  for (const ch of clickHandlers()) {
+    ctx.sourceLines.push(`void ${ch.fnName}() { ${ch.callbackBody || ""} }`);
+  }
+
+  // Build lookup tables (null for nodes without handlers)
+  const buildTable = (kind: "click" | "hold" | "release"): string => {
     const entries: string[] = [];
-    for (let i = 0; i <= maxIdx; i++) {
-      const handler = clickHandlers().find(h => h.nodeIndex === i);
+    for (let i = 0; i < tableSize; i++) {
+      const handler = clickHandlers().find(h => h.nodeIndex === i && h.kind === kind);
       entries.push(handler ? handler.fnName : "nullptr");
     }
-    ctx.sourceLines.push(`const ClickHandler __ui_click_handlers[] = { ${entries.join(", ")} };`);
-    ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = ${maxIdx + 1};`);
+    return entries.join(", ");
+  };
+
+  if (profile.touch) {
+    ctx.sourceLines.push(`void (*__ui_click_handlers[])() = { ${buildTable("click")} };`);
+    ctx.sourceLines.push(`void (*__ui_hold_handlers[])() = { ${buildTable("hold")} };`);
+    ctx.sourceLines.push(`void (*__ui_release_handlers[])() = { ${buildTable("release")} };`);
+    ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = ${tableSize};`);
   } else {
-    ctx.sourceLines.push(`const ClickHandler __ui_click_handlers[] = {};`);
+    ctx.sourceLines.push(`void (*__ui_click_handlers[])() = {};`);
+    ctx.sourceLines.push(`void (*__ui_hold_handlers[])() = {};`);
+    ctx.sourceLines.push(`void (*__ui_release_handlers[])() = {};`);
     ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = 0;`);
   }
 }

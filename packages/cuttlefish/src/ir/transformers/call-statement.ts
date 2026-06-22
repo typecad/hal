@@ -236,7 +236,39 @@ export function callToStatement(
     }
 
     const fnName = `__ui_${elemId}_click_${clickHandlers().length}`;
-    recordClickHandler({ nodeIndex, fnName, callbackBody: cbBody });
+    recordClickHandler({ nodeIndex, kind: "click", fnName, callbackBody: cbBody });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
+  // ── screen.element.onHold/onRelease — touch long-press + release handlers ─
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    (call.expression.name.text === "onHold" || call.expression.name.text === "onRelease") &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const kind = call.expression.name.text === "onHold" ? "hold" : "release";
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const cbArg = call.arguments[0];
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    const fnName = `__ui_${elemId}_${kind}_${clickHandlers().length}`;
+    recordClickHandler({ nodeIndex, kind, fnName, callbackBody: cbBody });
 
     return {
       kind: "block",

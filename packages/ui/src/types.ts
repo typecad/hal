@@ -13,9 +13,12 @@ export interface UIElement {
   /** The element's state. check: 0/1, button: 0/1, select: 0..N, text: number.
    *  Reading returns the current state; writing updates the display. */
   value: number;
-  /** Register a click handler for touch input. Only works when touch is
-   *  configured in the display profile. Fires on tap within the element's box. */
+  /** Fires on short tap (touch down + up within 600ms). */
   onClick(callback?: () => void): void;
+  /** Fires on long press (touch held ≥600ms). */
+  onHold(callback?: () => void): void;
+  /** Fires when finger lifts off the element. */
+  onRelease(callback?: () => void): void;
 }
 
 /** GPIO edge handlers for :pressed transitions. */
