@@ -123,6 +123,10 @@ export { DISPLAY_OPERATION_KINDS } from './display-op-ir.js';
 // Platform graphics strategy (display driver resolution + per-target capacity)
 export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-strategy.js';
 
+// Display profiles (declarative hardware description)
+export type { DisplayProfile, DisplayConfig, TouchProfile } from './display-profile.js';
+export { resolveDisplayProfile } from './display-profile.js';
+
 // Board resolver
 export type { BoardConstants } from './board-resolver.js';
 

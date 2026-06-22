@@ -7,27 +7,27 @@
 //   - lib-declaration.ts  — generating .d.ts declarations + docs
 // ---------------------------------------------------------------------------
 
-export type { ArduinoLibrary } from './lib-discovery';
+export type { ArduinoLibrary } from './lib-discovery.js';
 export {
   getInstalledLibraries,
   findArduinoLibrary,
   findLibraryHeader,
   isArduinoLibraryImport,
   clearLibraryCache,
-} from './lib-discovery';
+} from './lib-discovery.js';
 
-export type { CppParseResult } from './cpp-parser';
+export type { CppParseResult } from './cpp-parser.js';
 export {
   mapCppTypeToTs,
   parseParameters,
   parseCppClass,
-} from './cpp-parser';
+} from './cpp-parser.js';
 
-export type { GeneratedArduinoLib } from './lib-declaration';
+export type { GeneratedArduinoLib } from './lib-declaration.js';
 export {
   tryGenerateArduinoLibDecl,
   getArduinoLibraryHeaderName,
   getArduinoLibraryClassNames,
   generateUsageDocumentation,
-} from './lib-declaration';
+} from './lib-declaration.js';
 

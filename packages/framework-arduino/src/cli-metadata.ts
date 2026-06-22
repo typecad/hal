@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
-import type { ArduinoPlatformContext } from "./strategy";
+import type { ArduinoPlatformContext } from "./strategy.js";
 
 // ---------------------------------------------------------------------------
 // Disk cache for arduino-cli metadata

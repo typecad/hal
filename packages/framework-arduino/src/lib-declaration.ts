@@ -7,8 +7,8 @@
 
 import path from "node:path";
 import fs from "node:fs";
-import { type ArduinoLibrary, isArduinoLibraryImport, findArduinoLibrary, findLibraryHeader } from "./lib-discovery";
-import { type CppParseResult, parseCppClass } from "./cpp-parser";
+import { type ArduinoLibrary, isArduinoLibraryImport, findArduinoLibrary, findLibraryHeader } from "./lib-discovery.js";
+import { type CppParseResult, parseCppClass } from "./cpp-parser.js";
 
 // ---------------------------------------------------------------------------
 // Public types

@@ -8,9 +8,9 @@
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp } from "@typecad/cuttlefish/api/shared";
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
 import { generatePromiseRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
-import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
-import { resolveArduinoProfile } from "./profile";
-import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341";
+import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
+import { resolveArduinoProfile } from "./profile.js";
+import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
 
 /**
  * Arduino-specific platform context.
