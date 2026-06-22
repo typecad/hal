@@ -231,16 +231,21 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
 static void ui_touch_up() {
   uint32_t elapsed = millis() - __ui_touch_down_time;
   if (__ui_touch_node >= 0) {
-    // Click handler runs BEFORE clearing the pressed value, so the callback
-    // can read .value (which is 1 from touch_down) and decide whether to
-    // toggle, increment, etc. The callback owns the final value.
+    // Save the node index before the callback runs (callback may change value).
+    int8_t clickedNode = __ui_touch_node;
+    // Click handler runs while value=1 (pressed) so the callback can read it.
     if (elapsed < UI_TOUCH_HOLD_MS) {
       ui_dispatch(__ui_click_handlers, __ui_click_handler_count, __ui_touch_node);
     }
     // Release handler
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
-    // Clear pressed visual state (unless the click handler changed value)
-    ui_mark_dirty(__ui_touch_node);
+    // For NODE_BUTTON: clear pressed state on release (value back to 0).
+    // For other nodes (check, select, text): the callback owns the value —
+    // don't override what onClick set.
+    if (__ui_nodes[clickedNode].kind == NODE_BUTTON) {
+      __ui_nodes[clickedNode].value = 0;
+    }
+    ui_mark_dirty(clickedNode);
   }
   __ui_touch_state = 0;
   __ui_touch_node = -1;
