@@ -126,14 +126,11 @@ export interface TouchAdapterCodegen {
   declaration: string;
   /** C++ init call(s) for setup(). */
   init: string;
+  /** C++ statement(s) to read a point into __tp (a TS_Point/local var).
+   *  Must assign __tp.x, __tp.y, __tp.z. Called once per poll — NOT three times. */
+  readPointStmt: string;
   /** C++ expression: true if currently touched. */
   isTouchedExpr: string;
-  /** C++ expression: access raw X. */
-  readXExpr: string;
-  /** C++ expression: access raw Y. */
-  readYExpr: string;
-  /** C++ expression: access raw Z (pressure). */
-  readZExpr: string;
 }
 
 /** Generate C++ code for a built-in touch library adapter. */
@@ -147,9 +144,7 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
       declaration: `XPT2046_Touchscreen __tc_touch(${cs}${irq ? `, ${irq}` : ""});`,
       init: `__tc_touch.begin();`,
       isTouchedExpr: `__tc_touch.touched()`,
-      readXExpr: `__tc_touch.getPoint().x`,
-      readYExpr: `__tc_touch.getPoint().y`,
-      readZExpr: `__tc_touch.getPoint().z`,
+      readPointStmt: `TS_Point __tp = __tc_touch.getPoint();`,
     };
   }
 
@@ -160,9 +155,7 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
       declaration: `TouchScreen __tc_touch = TouchScreen(${a.xp}, ${a.yp}, ${a.xm}, ${a.ym}, ${a.rx});`,
       init: `// Adafruit_TouchScreen needs no begin()`,
       isTouchedExpr: `__tc_touch.isTouching()`,
-      readXExpr: `__tc_touch.getPoint().x`,
-      readYExpr: `__tc_touch.getPoint().y`,
-      readZExpr: `__tc_touch.getPoint().z`,
+      readPointStmt: `TS_Point __tp = __tc_touch.getPoint();`,
     };
   }
 
@@ -170,11 +163,9 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
     return {
       includes: ["#include <Adafruit_STMPE610.h>"],
       declaration: `Adafruit_STMPE610 __tc_touch(${cs});`,
-      init: `__tc_touch.begin(STMPE610_CS); // or __tc_touch.readID()`,
+      init: `__tc_touch.begin();`,
       isTouchedExpr: `__tc_touch.touched() && !__tc_touch.bufferEmpty()`,
-      readXExpr: `__tc_touch.getPoint().x`,
-      readYExpr: `__tc_touch.getPoint().y`,
-      readZExpr: `__tc_touch.getPoint().z`,
+      readPointStmt: `TS_Point __tp = __tc_touch.getPoint();`,
     };
   }
 

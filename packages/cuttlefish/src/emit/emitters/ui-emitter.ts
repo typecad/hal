@@ -77,22 +77,20 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     let mapX, mapY;
     if (isLandscape) {
       mapX = invertX
-        ? `map(__rx, ${xMin}, ${xMax}, ${profile.width}, 0)`
-        : `map(__rx, ${xMin}, ${xMax}, 0, ${profile.width})`;
+        ? `map(__tp.x, ${xMin}, ${xMax}, ${profile.width}, 0)`
+        : `map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.width})`;
       mapY = invertY
-        ? `map(__ry, ${yMin}, ${yMax}, ${profile.height}, 0)`
-        : `map(__ry, ${yMin}, ${yMax}, 0, ${profile.height})`;
+        ? `map(__tp.y, ${yMin}, ${yMax}, ${profile.height}, 0)`
+        : `map(__tp.y, ${yMin}, ${yMax}, 0, ${profile.height})`;
     } else {
-      mapX = `map(__ry, ${yMin}, ${yMax}, ${profile.width}, 0)`;
-      mapY = `map(__rx, ${xMin}, ${xMax}, 0, ${profile.height})`;
+      mapX = `map(__tp.y, ${yMin}, ${yMax}, ${profile.width}, 0)`;
+      mapY = `map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.height})`;
     }
     const pollLines = [
       `void ui_poll_touch() {`,
       `  if (${touchAdapter.isTouchedExpr}) {`,
-      `    int16_t __rx = ${touchAdapter.readXExpr};`,
-      `    int16_t __ry = ${touchAdapter.readYExpr};`,
-      `    int16_t __rz = ${touchAdapter.readZExpr};`,
-      `    if (__rz >= ${minPress}) {`,
+      `    ${touchAdapter.readPointStmt}`,
+      `    if (__tp.z >= ${minPress}) {`,
       `      int16_t __tx = ${mapX};`,
       `      int16_t __ty = ${mapY};`,
       `      ui_handle_touch(__tx, __ty);`,
