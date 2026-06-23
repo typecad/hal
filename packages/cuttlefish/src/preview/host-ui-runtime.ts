@@ -57,7 +57,7 @@ function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: 
       dirty: false,
       textBuffer: "",
       hasTextBinding: false,
-      lastTextWidth: 0,
+      lastTextWidth: node.kind === "range" ? -1 : 0,
       value: node.value,
     })),
     transitions: program.transitions.map((transition) => ({ ...transition, active: false, elapsed: 0 })),
@@ -83,9 +83,11 @@ export class PreviewUIRuntime {
   private lastTouchTime = -UI_TOUCH_DEBOUNCE_MS;
   private lastReleaseTime = -UI_TOUCH_DEBOUNCE_MS;
   private lastTickTime = Date.now();
+  private dragStartX = 0;
   private dragStartY = 0;
   private isDragging = false;
   private scrollNode = -1;
+  private rangeNode = -1;
 
   constructor(private readonly snapshot: PreviewSnapshot, options: RuntimeOptions = {}) {
     const { nodes, transitions } = cloneProgram(snapshot.program);
@@ -128,8 +130,9 @@ export class PreviewUIRuntime {
     this.lastTickTime = now;
     this.evaluateBindings();
     this.advanceTransitions(delta);
-    this.drawDirty();
-    this.onFrame?.(this.gfx.toRgbaBytes());
+    if (this.drawDirty()) {
+      this.onFrame?.(this.gfx.toRgbaBytes());
+    }
   }
 
   pointerDown(x: number, y: number): void {
@@ -301,17 +304,25 @@ export class PreviewUIRuntime {
     return false;
   }
 
-  private clearDirtyScrollViewports(): void {
+  private clearDirtyScrollViewports(): boolean {
+    let changed = false;
     for (const node of this.nodes) {
       if (!node.scrollable || !node.visible || node.contentHeight <= node.box.h) continue;
       if (node.dirty) {
         this.markScrollDescendantsDirty(node.index);
+        for (let i = node.index; i < node.subtreeEnd; i++) {
+          if (this.nodes[i]?.kind === "progress") this.nodes[i].lastTextWidth = 0;
+          else if (this.nodes[i]?.kind === "range") this.nodes[i].lastTextWidth = -1;
+        }
         this.gfx.fillRect(node.box.x, node.box.y, node.box.w, node.box.h, node.hasBg ? node.bg : node.clearColor);
+        changed = true;
       }
     }
+    return changed;
   }
 
-  private drawScrollbars(scrollbarDirty: Set<number>): void {
+  private drawScrollbars(scrollbarDirty: Set<number>): boolean {
+    let changed = false;
     for (const node of this.nodes) {
       if (!node.scrollable || node.contentHeight <= node.box.h) continue;
       if (!scrollbarDirty.has(node.index)) continue;
@@ -324,7 +335,9 @@ export class PreviewUIRuntime {
       const thumbH = Math.max(8, Math.trunc((th * th) / node.contentHeight));
       const thumbY = ty + Math.trunc(((node.box.h - thumbH) * node.scrollY) / Math.max(1, node.contentHeight - th));
       this.gfx.fillRect(tx, thumbY, 3, thumbH, node.fg);
+      changed = true;
     }
+    return changed;
   }
 
   private markScrollDescendantsDirty(nodeIndex: number): void {
@@ -335,8 +348,8 @@ export class PreviewUIRuntime {
     this.markDirty(nodeIndex);
   }
 
-  private drawDirty(): void {
-    this.clearDirtyScrollViewports();
+  private drawDirty(): boolean {
+    let changed = this.clearDirtyScrollViewports();
     const scrollbarDirty = new Set<number>();
     for (const node of this.nodes) {
       if (node.scrollable && node.dirty) scrollbarDirty.add(node.index);
@@ -374,10 +387,17 @@ export class PreviewUIRuntime {
         case "radio":
           this.drawRadioNode(node, displayText, tw, drawY);
           break;
+        case "progress":
+          this.drawProgressNode(node, drawY);
+          break;
+        case "range":
+          this.drawRangeNode(node, drawY);
+          break;
       }
+      changed = true;
       node.dirty = false;
     }
-    this.drawScrollbars(scrollbarDirty);
+    return this.drawScrollbars(scrollbarDirty) || changed;
   }
 
   private drawTextNode(node: MutableNode, displayText: string | undefined, tw: number, textX: number, drawY: number): void {
@@ -451,6 +471,73 @@ export class PreviewUIRuntime {
     this.gfx.print(displayText ?? "");
   }
 
+  private drawProgressNode(node: MutableNode, drawY: number): void {
+    const bx = node.box.x;
+    const by = drawY;
+    const bw = node.box.w;
+    const bh = node.box.h;
+    const bgCol = node.hasBg ? node.bg : node.clearColor;
+    const fgCol = node.fg;
+    const pct = Math.max(0, Math.min(100, node.value));
+    const fillW = Math.trunc(((bw - 2) * pct) / 100);
+    const prevW = node.lastTextWidth;
+
+    if (prevW === 0) {
+      this.gfx.drawRect(bx, by, bw, bh, fgCol);
+      this.gfx.fillRect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
+      if (fillW > 0) this.gfx.fillRect(bx + 1, by + 1, fillW, bh - 2, fgCol);
+    } else if (fillW > prevW) {
+      this.gfx.fillRect(bx + 1 + prevW, by + 1, fillW - prevW, bh - 2, fgCol);
+    } else if (fillW < prevW) {
+      this.gfx.fillRect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
+    }
+
+    node.lastTextWidth = fillW;
+  }
+
+  private drawRangeNode(node: MutableNode, drawY: number): void {
+    const bx = node.box.x;
+    const by = drawY;
+    const bw = node.box.w;
+    const bh = node.box.h;
+    const fgCol = node.fg;
+    const bgCol = node.hasBg ? node.bg : node.clearColor;
+    const dimFg = (fgCol >> 1) & 0x7bef;
+    const trackY = by + Math.trunc(bh / 2);
+    const rangeMin = node.rangeMin;
+    const rangeMax = node.rangeMax;
+    const range = rangeMax > rangeMin ? rangeMax - rangeMin : 100;
+    const value = Math.max(rangeMin, Math.min(rangeMax, node.value)) - rangeMin;
+    const fillW = Math.trunc(((bw - 8) * value) / range);
+    const prevFillW = node.lastTextWidth;
+    let newThumbX = bx + 4 + fillW - 3;
+
+    if (prevFillW < 0) {
+      this.gfx.drawFastHLine(bx, trackY, bw, dimFg);
+      this.gfx.drawFastHLine(bx + 4, trackY, fillW, fgCol);
+    } else {
+      const prevThumbX = bx + 4 + prevFillW - 3;
+      let left = Math.min(prevThumbX, newThumbX);
+      let right = Math.max(prevThumbX + 6, newThumbX + 6);
+      left = Math.max(left, bx);
+      right = Math.min(right, bx + bw);
+      this.gfx.fillRect(left, trackY - 5, right - left, 10, bgCol);
+      const fillEnd = bx + 4 + fillW;
+      if (right <= fillEnd) {
+        this.gfx.drawFastHLine(left, trackY, right - left, fgCol);
+      } else if (left >= fillEnd) {
+        this.gfx.drawFastHLine(left, trackY, right - left, dimFg);
+      } else {
+        this.gfx.drawFastHLine(left, trackY, fillEnd - left, fgCol);
+        this.gfx.drawFastHLine(fillEnd, trackY, right - fillEnd, dimFg);
+      }
+    }
+
+    newThumbX = Math.max(bx + 1, Math.min(bx + bw - 7, newThumbX));
+    this.gfx.fillRect(newThumbX, trackY - 5, 6, 10, fgCol);
+    node.lastTextWidth = fillW;
+  }
+
   private hitTest(tx: number, ty: number): number {
     for (let i = this.nodes.length - 1; i >= 0; i--) {
       const node = this.nodes[i];
@@ -478,8 +565,23 @@ export class PreviewUIRuntime {
 
   private hasAnyHandler(nodeIndex: number): boolean {
     const node = this.nodes[nodeIndex];
+    if (node.kind === "range") return true;
     if (node.tag === "check" || node.tag === "select" || node.tag === "radio") return true;
     return this.callbacks.some((callback) => callback.nodeIndex === nodeIndex);
+  }
+
+  private updateRangeValue(nodeIndex: number, tx: number): void {
+    const node = this.nodes[nodeIndex];
+    const rangeMin = node.rangeMin;
+    const rangeMax = node.rangeMax;
+    const range = rangeMax > rangeMin ? rangeMax - rangeMin : 100;
+    const usable = Math.max(1, node.box.w - 8);
+    const relX = tx - node.box.x - 4;
+    const next = Math.max(rangeMin, Math.min(rangeMax, rangeMin + Math.trunc((relX * range) / usable)));
+    if (next !== node.value) {
+      node.value = next;
+      this.markDirty(nodeIndex);
+    }
   }
 
   private handleTouch(tx: number, ty: number): void {
@@ -490,11 +592,14 @@ export class PreviewUIRuntime {
       this.touchNode = node;
       this.touchState = 1;
       this.touchDownTime = now;
+      this.dragStartX = tx;
       this.dragStartY = ty;
       this.isDragging = false;
       this.scrollNode = this.findScrollNode(tx, ty);
+      this.rangeNode = node >= 0 && this.nodes[node].kind === "range" ? node : -1;
       if (node >= 0) {
         if (this.nodes[node].kind === "button") this.nodes[node].value = 1;
+        if (this.nodes[node].kind === "range") this.updateRangeValue(node, tx);
         this.markDirty(node);
       }
     } else {
@@ -503,6 +608,7 @@ export class PreviewUIRuntime {
       }
       if (this.isDragging && this.scrollNode >= 0) {
         const dy = ty - this.dragStartY;
+        this.dragStartX = tx;
         this.dragStartY = ty;
         const node = this.nodes[this.scrollNode];
         const maxScroll = Math.max(0, node.contentHeight - node.box.h);
@@ -511,6 +617,8 @@ export class PreviewUIRuntime {
           node.scrollY = nextScrollY;
           this.markScrollDescendantsDirty(this.scrollNode);
         }
+      } else if (this.rangeNode >= 0 && Math.abs(tx - this.dragStartX) >= UI_DRAG_THRESHOLD) {
+        this.updateRangeValue(this.rangeNode, tx);
       } else if (this.touchState === 1 && this.touchNode >= 0 && now - this.touchDownTime >= UI_TOUCH_HOLD_MS) {
         this.touchState = 2;
         this.dispatch("hold", this.touchNode);
@@ -538,6 +646,7 @@ export class PreviewUIRuntime {
     this.touchNode = -1;
     this.isDragging = false;
     this.scrollNode = -1;
+    this.rangeNode = -1;
     this.lastReleaseTime = now;
   }
 

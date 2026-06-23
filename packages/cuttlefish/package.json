@@ -77,9 +77,21 @@
       "types": "./dist/ui/transpile-ui.d.ts",
       "default": "./dist/ui/transpile-ui.js"
     },
+    "./ui/model": {
+      "types": "./dist/ui/model.d.ts",
+      "default": "./dist/ui/model.js"
+    },
     "./ui/ui-registry": {
       "types": "./dist/ui/ui-registry.d.ts",
       "default": "./dist/ui/ui-registry.js"
+    },
+    "./preview/host-gfx": {
+      "types": "./dist/preview/host-gfx.d.ts",
+      "default": "./dist/preview/host-gfx.js"
+    },
+    "./preview/host-ui-runtime": {
+      "types": "./dist/preview/host-ui-runtime.d.ts",
+      "default": "./dist/preview/host-ui-runtime.js"
     }
   },
   "files": [

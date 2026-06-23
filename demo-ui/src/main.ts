@@ -38,3 +38,9 @@ screen.progress.value = 0;
 setInterval(() => {
   screen.progress.value = (screen.progress.value + 5) % 105;
 }, 500);
+
+// <range> is drag-driven: dragging the thumb (or writing .value) updates it.
+// Read .value to get the current slider position (between min and max).
+screen.points.onClick(() => {
+  console.log('points:', screen.points.value);
+});

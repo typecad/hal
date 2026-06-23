@@ -3,6 +3,8 @@ import type { PreviewPinControlSpec, PreviewSnapshot } from "./types.js";
 
 let runtime: PreviewUIRuntime | undefined;
 let imageData: ImageData | undefined;
+let pendingPointerMove: { x: number; y: number } | undefined;
+let pendingPointerFrame = 0;
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -50,6 +52,14 @@ function renderPinControls(controls: PreviewPinControlSpec[]): void {
   }
 }
 
+function flushPointerMove(): void {
+  pendingPointerFrame = 0;
+  if (!runtime || !pendingPointerMove) return;
+  const point = pendingPointerMove;
+  pendingPointerMove = undefined;
+  runtime.pointerMove(point.x, point.y);
+}
+
 async function loadSnapshot(): Promise<PreviewSnapshot> {
   const res = await fetch("/snapshot.json", { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
@@ -93,11 +103,18 @@ async function start(): Promise<void> {
   };
   canvas.onpointermove = (event) => {
     if (!runtime) return;
-    const p = canvasPoint(canvas, event, snapshot.program.width, snapshot.program.height);
-    runtime.pointerMove(p.x, p.y);
+    pendingPointerMove = canvasPoint(canvas, event, snapshot.program.width, snapshot.program.height);
+    if (!pendingPointerFrame) pendingPointerFrame = requestAnimationFrame(flushPointerMove);
   };
-  canvas.onpointerup = () => runtime?.pointerUp();
-  canvas.onpointercancel = () => runtime?.pointerUp();
+  const pointerUp = () => {
+    if (pendingPointerFrame) {
+      cancelAnimationFrame(pendingPointerFrame);
+      flushPointerMove();
+    }
+    runtime?.pointerUp();
+  };
+  canvas.onpointerup = pointerUp;
+  canvas.onpointercancel = pointerUp;
 
   renderPinControls(snapshot.pinControls);
   renderDiagnostics(snapshot);
@@ -114,4 +131,3 @@ events.addEventListener("reload", () => {
     byId<HTMLDivElement>("diagnostics").textContent = error instanceof Error ? error.message : String(error);
   });
 });
-

@@ -787,20 +787,43 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     // Wrap bare string literals with F() to store them in program memory
     const isBareLiteral = /^"[^"]*"$/.test(renderedArgs);
     const safeArgs = isBareLiteral ? `F(${renderedArgs})` : renderedArgs;
+
+    // Multi-arg console.log joins args with `<<`, but Serial.println takes a
+    // single value (no operator<< on HardwareSerial). Split the chain into a
+    // sequence of Serial.print(...) calls ending with Serial.println() so
+    // mixed-type args ("label", number) compile and print on one line.
+    const isChain = !isBareLiteral && renderedArgs.includes("<<");
+    let prefix = "";
     switch (method) {
       case "log":
-        return `Serial.println(${safeArgs})${semi}`;
+        break;
       case "error":
-        return `Serial.print(F("[ERROR] ")); Serial.println(${safeArgs})${semi}`;
+        prefix = `Serial.print(F("[ERROR] "))${semi} `;
+        break;
       case "warn":
-        return `Serial.print(F("[WARN] ")); Serial.println(${safeArgs})${semi}`;
+        prefix = `Serial.print(F("[WARN] "))${semi} `;
+        break;
       case "info":
-        return `Serial.print(F("[INFO] ")); Serial.println(${safeArgs})${semi}`;
+        prefix = `Serial.print(F("[INFO] "))${semi} `;
+        break;
       case "debug":
-        return `Serial.print(F("[DEBUG] ")); Serial.println(${safeArgs})${semi}`;
+        prefix = `Serial.print(F("[DEBUG] "))${semi} `;
+        break;
       default:
-        return `Serial.println(${safeArgs})${semi}`;
+        break;
     }
+    if (isChain) {
+      // Split "a" << b << c into ["a", "b", "c"] (respecting string literals).
+      const parts = splitStreamChain(renderedArgs);
+      const prints = parts.map((p, i) => {
+        const last = i === parts.length - 1;
+        return last
+          ? `Serial.println(${wrapArg(p)})${semi}`
+          : `Serial.print(${wrapArg(p)})${semi}`;
+      });
+      return prefix + prints.join(" ");
+    }
+    return `${prefix}Serial.println(${safeArgs})${semi}`;
   }
 
   transformConsoleExpression(_method: string, _renderedArgs: string): string | undefined {
@@ -1564,4 +1587,46 @@ function detectPinGroupUsage(program: ProgramIR): boolean {
     if (cls.constructor) { for (const s of cls.constructor.statements) { if (checkStmt(s)) return true; } }
   }
   return false;
+}
+/**
+ * Split a stream-chain expression ("a" << b << "c << d") into its parts,
+ * without breaking on `<<` that appears inside a string literal. Each part is
+ * returned trimmed. Used by transformConsoleCall to emit one Serial.print per
+ * argument (HardwareSerial has no operator<<).
+ */
+function splitStreamChain(renderedArgs: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;          // paren/bracket nesting
+  let inString = false;   // inside a "..." literal
+  let escape = false;     // previous char was backslash
+  let start = 0;
+  for (let i = 0; i < renderedArgs.length; i++) {
+    const c = renderedArgs[i];
+    if (inString) {
+      if (escape) { escape = false; continue; }
+      if (c === "\\") { escape = true; continue; }
+      if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (c === "<" && depth === 0 && renderedArgs[i + 1] === "<") {
+      parts.push(renderedArgs.slice(start, i).trim());
+      i++; // skip second '<'
+      start = i + 1;
+    }
+  }
+  parts.push(renderedArgs.slice(start).trim());
+  return parts.filter((p) => p.length > 0);
+}
+
+/**
+ * Wrap a bare C-string literal in F() so it lands in program memory (Flash)
+ * instead of RAM — matches the single-arg console.log path. Non-literal parts
+ * (numbers, identifiers, expressions) pass through unchanged.
+ */
+function wrapArg(part: string): string {
+  if (/^"[^"]*"$/.test(part)) return `F(${part})`;
+  return part;
 }

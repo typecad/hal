@@ -70,6 +70,59 @@ describe("C++ reactive runtime header", () => {
     // The dirty-node loop must declare a displayText local and read from it.
     expect(header).toMatch(/const char\*\s+displayText\s*=\s*__ui_nodes\[i\]\.hasTextBinding\s*\?\s*__ui_nodes\[i\]\.textBuffer\s*:\s*__ui_nodes\[i\]\.text/);
     // And the print() call site must use displayText, not __ui_nodes[i].text.
-    expect(header).toMatch(/__tc_display\.print\(\s*displayText\s*\)/);
+    expect(header).toMatch(/__ui_gfx->print\(\s*displayText\s*\)/);
+  });
+
+  it("uses tree metadata for scroll ownership", () => {
+    expect(header).toMatch(/uint8_t\s+parent/);
+    expect(header).toMatch(/uint8_t\s+subtreeEnd/);
+    expect(header).toContain("ui_draw_y_for_node");
+    expect(header).toMatch(/c\s*=\s*scrollNode\s*\+\s*1;\s*c\s*<\s*__ui_nodes\[scrollNode\]\.subtreeEnd/);
+    expect(header).toMatch(/ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollNode\)/);
+  });
+
+  it("only clears a scroll viewport when the scroll container itself is dirty", () => {
+    expect(header).not.toContain("hasDirtyChild");
+    expect(header).toMatch(/if\s*\(__ui_nodes\[s\]\.dirty\)\s*\{\s*for\s*\(uint8_t\s+c\s*=\s*s;\s*c\s*<\s*__ui_nodes\[s\]\.subtreeEnd;\s*c\+\+\)\s*\{\s*ui_mark_dirty\(c\);/);
+  });
+
+  it("draws scrollbars only when their container was dirty", () => {
+    expect(header).toMatch(/uint8_t\s+scrollbarDirty\[256\]\s*=\s*\{0\}/);
+    expect(header).toMatch(/if\s*\(!scrollbarDirty\[i\]\)\s*continue/);
+  });
+
+  it("does not dirty a scroll subtree when drag motion does not change scrollY", () => {
+    expect(header).toContain("ui_apply_scroll_delta");
+    expect(header).toMatch(/if\s*\(nextScrollY\s*==\s*prevScrollY\)\s*return\s+0/);
+  });
+
+  it("buffers scroll viewport redraws before pushing them to hardware", () => {
+    expect(header).toContain("GFXcanvas16* __ui_scroll_canvas");
+    expect(header).toContain("ui_get_scroll_canvas");
+    expect(header).toContain("ui_push_canvas_rect");
+    expect(header).toMatch(/bufferedScrollCanvas->fillRect/);
+    expect(header).toMatch(/__ui_gfx\s*=\s*bufferedScrollCanvas/);
+    expect(header).toMatch(/ui_push_canvas_rect\(bufferedScrollCanvas,[\s\S]*__ui_nodes\[bufferedScrollNode\]\.box\.x/);
+    expect(header).toMatch(/uint8_t\s+scrollbarBuffered/);
+    expect(header).toMatch(/scrollbarBuffered\s*\|\|\s*__ui_scrollbar_prevY\[i\]\s*==\s*0/);
+  });
+
+  it("coalesces scroll drag redraws to reduce SPI viewport pushes", () => {
+    expect(header).toMatch(/#define\s+UI_SCROLL_FRAME_MS\s+33/);
+    expect(header).toMatch(/#define\s+UI_SCROLL_STEP_PX\s+2/);
+    expect(header).toContain("__ui_scroll_pending_dy");
+    expect(header).toMatch(/abs\(__ui_scroll_pending_dy\)\s*>=\s*UI_SCROLL_STEP_PX/);
+    expect(header).toMatch(/now\s*-\s*__ui_last_scroll_draw_time\s*>=\s*UI_SCROLL_FRAME_MS/);
+    expect(header).toMatch(/ui_apply_scroll_delta\(__ui_scroll_node,\s*__ui_scroll_pending_dy\)/);
+  });
+
+  it("flushes the last pending scroll delta when touch ends", () => {
+    expect(header).toMatch(/ui_touch_up\(\)[\s\S]*__ui_scroll_pending_dy\s*!=\s*0/);
+    expect(header).toMatch(/ui_touch_up\(\)[\s\S]*ui_apply_scroll_delta\(__ui_scroll_node,\s*__ui_scroll_pending_dy\)/);
+  });
+
+  it("clips partially visible scroll children instead of drawing into siblings", () => {
+    expect(header).toMatch(/drawY\s*<\s*__ui_nodes\[p\]\.box\.y/);
+    expect(header).toMatch(/drawY\s*\+\s*__ui_nodes\[nodeIdx\]\.box\.h\s*>\s*__ui_nodes\[p\]\.box\.y\s*\+\s*__ui_nodes\[p\]\.box\.h/);
   });
 });

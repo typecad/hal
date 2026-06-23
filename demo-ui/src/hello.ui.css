@@ -99,6 +99,23 @@ screen {
   color: limegreen;
 }
 
+#rangeRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#rangeRow label {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+#points {
+  color: lightskyblue;
+}
+
 #listContainer {
   background: #16213e;
   padding: 4px;

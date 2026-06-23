@@ -62,6 +62,12 @@ export interface ProgressElement extends UIElement {
   readonly __kind: "progress";
 }
 
+/** A slider/range. .value is between min and max (default 0-100).
+ *  Drag the thumb or write .value to change it. */
+export interface RangeElement extends UIElement {
+  readonly __kind: "range";
+}
+
 export interface ScreenTree {
-  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement | ProgressElement;
+  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement | ProgressElement | RangeElement;
 }

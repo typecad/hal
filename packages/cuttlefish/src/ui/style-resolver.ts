@@ -24,6 +24,10 @@ export interface StyledNode {
   name?: string;
   /** For <radio>: initially selected. */
   checked?: boolean;
+  /** For <range>: minimum value. */
+  min?: string;
+  /** For <range>: maximum value. */
+  max?: string;
 }
 
 function matches(node: UIElementNode, sel: CSSSelector): boolean {
@@ -68,5 +72,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[]): StyledNode {
     options: node.options,
     name: node.name,
     checked: node.checked,
+    min: node.min,
+    max: node.max,
   };
 }

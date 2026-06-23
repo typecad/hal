@@ -20,7 +20,7 @@ export function emitRuntimeHeader(): string {
 #include <stdint.h>
 #define UI_TEXT_BUF 16   // single source of truth: UINode field + textFn size arg + snprintf bound
 
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -40,13 +40,15 @@ struct UINode {
   uint8_t underline;    // 0=none, 1=underline
   uint8_t visible;      // 0=hidden, 1=visible
   uint16_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
-  uint16_t lastTextWidth;
+  int16_t lastTextWidth;
   // scroll
   uint8_t scrollable;   // 1 = children are offset by scrollY and clipped to this box
   int16_t scrollY;      // current scroll offset (children Y -= scrollY)
   int16_t contentHeight; // total height of children (for scrollbar ratio)
   uint8_t parent;       // 255 = root/no parent
   uint8_t subtreeEnd;   // exclusive pre-order end index
+  int16_t rangeMin;     // for <range>: minimum value
+  int16_t rangeMax;     // for <range>: maximum value
   // runtime slot
   uint8_t dirty;
   int16_t value;  // unified element state
@@ -94,9 +96,54 @@ extern const uint8_t __ui_binding_count;
 
 #define UI_NO_PARENT 255
 
+static Adafruit_GFX* __ui_gfx = &__tc_display;
+static GFXcanvas16* __ui_scroll_canvas = nullptr;
+
+static inline GFXcanvas16* ui_get_scroll_canvas() {
+  int16_t w = __tc_display.width();
+  int16_t h = __tc_display.height();
+  if (w <= 0 || h <= 0) return nullptr;
+  if (!__ui_scroll_canvas || __ui_scroll_canvas->width() != w || __ui_scroll_canvas->height() != h) {
+    delete __ui_scroll_canvas;
+    __ui_scroll_canvas = new GFXcanvas16(w, h);
+  }
+  if (!__ui_scroll_canvas || !__ui_scroll_canvas->getBuffer()) return nullptr;
+  return __ui_scroll_canvas;
+}
+
+static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
+  if (!canvas || !canvas->getBuffer()) return;
+  uint16_t* pixels = canvas->getBuffer();
+  int16_t stride = canvas->width();
+  __tc_display.startWrite();
+  __tc_display.setAddrWindow(x, y, w, h);
+  for (int16_t row = 0; row < h; row++) {
+    __tc_display.writePixels(pixels + (int32_t)(y + row) * stride + x, w);
+  }
+  __tc_display.endWrite();
+}
+
 // Per-node dirty marker (called by press handlers and binding evaluation).
 static inline void ui_mark_dirty(uint8_t nodeIdx) {
   __ui_nodes[nodeIdx].dirty = 1;
+}
+
+static inline void ui_mark_scroll_subtree_dirty(uint8_t scrollNode) {
+  for (uint8_t c = scrollNode + 1; c < __ui_nodes[scrollNode].subtreeEnd; c++) {
+    ui_mark_dirty(c);
+  }
+  ui_mark_dirty(scrollNode);
+}
+
+static inline uint8_t ui_apply_scroll_delta(int8_t scrollNode, int16_t dy) {
+  if (scrollNode < 0) return 0;
+  int16_t maxScroll = __ui_nodes[scrollNode].contentHeight - __ui_nodes[scrollNode].box.h;
+  int16_t prevScrollY = __ui_nodes[scrollNode].scrollY;
+  int16_t nextScrollY = constrain(prevScrollY - dy, 0, maxScroll);
+  if (nextScrollY == prevScrollY) return 0;
+  __ui_nodes[scrollNode].scrollY = nextScrollY;
+  ui_mark_scroll_subtree_dirty((uint8_t)scrollNode);
+  return 1;
 }
 
 static inline int16_t ui_draw_y_for_node(uint8_t nodeIdx) {
@@ -132,6 +179,9 @@ static inline uint8_t ui_is_clipped_by_scroll(uint8_t nodeIdx, int16_t drawY) {
 static inline void ui_init(void) {
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
+    if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) {
+      __ui_nodes[i].lastTextWidth = -1;
+    }
   }
   for (uint8_t i = 0; i < __ui_binding_count; i++) {
     if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
@@ -233,9 +283,14 @@ static int16_t __ui_drag_start_x = 0;
 static int16_t __ui_drag_start_y = 0;
 static uint8_t __ui_is_dragging = 0;     // 1 once movement exceeds threshold
 static int8_t __ui_scroll_node = -1;     // scrollable container being dragged
+static int8_t __ui_range_node = -1;      // range slider being dragged
+static int16_t __ui_scroll_pending_dy = 0;
+static uint32_t __ui_last_scroll_draw_time = 0;
 #define UI_TOUCH_DEBOUNCE_MS 50
 #define UI_TOUCH_HOLD_MS 600
 #define UI_DRAG_THRESHOLD 10
+#define UI_SCROLL_FRAME_MS 33
+#define UI_SCROLL_STEP_PX 2
 
 // Hit-test a touch point against all visible nodes (topmost first).
 // Returns the node index of the topmost node that BOTH contains the point
@@ -247,7 +302,11 @@ static int8_t ui_hit_test(int16_t tx, int16_t ty) {
     if (ui_is_clipped_by_scroll((uint8_t)i, drawY)) continue;
     if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      // Skip nodes without any click handler — they're containers, not targets
+      // Skip nodes without any click handler — they're containers, not targets.
+      // Exception: NODE_RANGE nodes are always interactive (horizontal drag).
+      if (__ui_nodes[i].kind == NODE_RANGE) {
+        return i;
+      }
       if ((uint8_t)i < __ui_click_handler_count &&
           (__ui_click_handlers[i] || __ui_hold_handlers[i] || __ui_release_handlers[i])) {
         return i;
@@ -274,6 +333,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   __ui_drag_start_y = ty;
   __ui_is_dragging = 0;
   __ui_scroll_node = -1;
+  __ui_scroll_pending_dy = 0;
   // Check if the touch is inside a scrollable container
   for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
     if (!__ui_nodes[i].scrollable || !__ui_nodes[i].visible) continue;
@@ -289,6 +349,21 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
     if (__ui_nodes[node].kind == NODE_BUTTON) {
       __ui_nodes[node].value = 1;
     }
+    // Track range nodes for horizontal drag
+    if (__ui_nodes[node].kind == NODE_RANGE) {
+      __ui_range_node = node;
+      // Immediately set value from touch position
+      int16_t rMin = __ui_nodes[node].rangeMin;
+      int16_t rMax = __ui_nodes[node].rangeMax;
+      int16_t range = rMax - rMin;
+      if (range <= 0) range = 100;
+      int16_t relX = tx - __ui_nodes[node].box.x - 4;
+      int16_t usable = __ui_nodes[node].box.w - 8;
+      if (usable <= 0) usable = 1;
+      __ui_nodes[node].value = rMin + ((int32_t)relX * range) / usable;
+      __ui_nodes[node].value = constrain(__ui_nodes[node].value, rMin, rMax);
+      ui_mark_dirty(node);
+    }
     ui_mark_dirty(node);
   }
 }
@@ -296,6 +371,12 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
 // Touch up: called when touch is released. Determines click vs hold.
 static void ui_touch_up() {
   uint32_t elapsed = millis() - __ui_touch_down_time;
+  if (__ui_scroll_node >= 0 && __ui_scroll_pending_dy != 0) {
+    if (ui_apply_scroll_delta(__ui_scroll_node, __ui_scroll_pending_dy)) {
+      __ui_last_scroll_draw_time = millis();
+    }
+    __ui_scroll_pending_dy = 0;
+  }
   if (__ui_touch_node >= 0 && !__ui_is_dragging) {
     int8_t clickedNode = __ui_touch_node;
     if (elapsed < UI_TOUCH_HOLD_MS) {
@@ -311,6 +392,8 @@ static void ui_touch_up() {
   __ui_touch_node = -1;
   __ui_is_dragging = 0;
   __ui_scroll_node = -1;
+  __ui_range_node = -1;
+  __ui_scroll_pending_dy = 0;
 }
 
 // Called each frame from ui_poll_touch when touch is detected.
@@ -331,20 +414,34 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
         __ui_is_dragging = 1;
       }
     }
+    // Range slider: update value from horizontal touch position
+    if (__ui_range_node >= 0) {
+      int16_t rMin = __ui_nodes[__ui_range_node].rangeMin;
+      int16_t rMax = __ui_nodes[__ui_range_node].rangeMax;
+      int16_t range = rMax - rMin;
+      if (range <= 0) range = 100;
+      int16_t relX = tx - __ui_nodes[__ui_range_node].box.x - 4;
+      int16_t usable = __ui_nodes[__ui_range_node].box.w - 8;
+      if (usable <= 0) usable = 1;
+      int16_t newVal = rMin + ((int32_t)relX * range) / usable;
+      newVal = constrain(newVal, rMin, rMax);
+      if (newVal != __ui_nodes[__ui_range_node].value) {
+        __ui_nodes[__ui_range_node].value = newVal;
+        ui_mark_dirty(__ui_range_node);
+      }
+    }
     if (__ui_is_dragging && __ui_scroll_node >= 0) {
-      // Scroll: move content by the delta from last frame
+      // Scroll: accumulate small touch deltas and redraw at a bounded cadence.
+      // A full scroll viewport transfer is comparatively expensive on SPI TFTs;
+      // coalescing jittery samples avoids visible flash from over-updating.
       int16_t dy = ty - __ui_drag_start_y;
       __ui_drag_start_y = ty;
-      int16_t maxScroll = __ui_nodes[__ui_scroll_node].contentHeight - __ui_nodes[__ui_scroll_node].box.h;
-      int16_t prevScrollY = __ui_nodes[__ui_scroll_node].scrollY;
-      int16_t nextScrollY = constrain(prevScrollY - dy, 0, maxScroll);
-      if (nextScrollY != prevScrollY) {
-        __ui_nodes[__ui_scroll_node].scrollY = nextScrollY;
-        // Mark only descendants dirty; overlapping siblings are not scroll content.
-        for (uint8_t c = (uint8_t)__ui_scroll_node + 1; c < __ui_nodes[__ui_scroll_node].subtreeEnd; c++) {
-          ui_mark_dirty(c);
-        }
-        ui_mark_dirty(__ui_scroll_node);
+      __ui_scroll_pending_dy += dy;
+      if (abs(__ui_scroll_pending_dy) >= UI_SCROLL_STEP_PX &&
+          now - __ui_last_scroll_draw_time >= UI_SCROLL_FRAME_MS) {
+        ui_apply_scroll_delta(__ui_scroll_node, __ui_scroll_pending_dy);
+        __ui_scroll_pending_dy = 0;
+        __ui_last_scroll_draw_time = now;
       }
     }
     if (__ui_touch_state == 1 && __ui_touch_node >= 0 && !__ui_is_dragging) {
@@ -418,6 +515,8 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ② Draw dirty nodes directly to the display object.
   // First: if any scrollable container has dirty children, clear its viewport
   // with the background to prevent tearing (old content remains without this).
+  int8_t bufferedScrollNode = -1;
+  GFXcanvas16* bufferedScrollCanvas = nullptr;
   for (uint8_t s = 0; s < __ui_node_count; s++) {
     if (!__ui_nodes[s].scrollable || !__ui_nodes[s].visible) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
@@ -426,12 +525,25 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (__ui_nodes[s].dirty) {
       for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
         ui_mark_dirty(c);
-        // Reset incremental redraw state for progress bars so they fully redraw
-        // after the viewport is cleared (otherwise only the delta draws).
-        if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = 0;
+        // Reset incremental redraw state for progress bars and range sliders so
+        // they fully redraw after the viewport is cleared (otherwise only the
+        // delta draws, leaving ghost artifacts). Progress/range use -1 as a
+        // "never drawn" sentinel because fillW=0 is a valid value.
+        if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
+        else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
+      }
+      if (bufferedScrollNode < 0) {
+        bufferedScrollCanvas = ui_get_scroll_canvas();
+        if (bufferedScrollCanvas) {
+          bufferedScrollNode = (int8_t)s;
+          bufferedScrollCanvas->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
+            __ui_nodes[s].box.w, __ui_nodes[s].box.h,
+            __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
+          continue;
+        }
       }
       // Clear the viewport with the container's background (or parent's clear color)
-      __tc_display.fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y, __ui_nodes[s].box.w, __ui_nodes[s].box.h,
+      __ui_gfx->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y, __ui_nodes[s].box.w, __ui_nodes[s].box.h,
         __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
     }
   }
@@ -442,6 +554,11 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
     if (!__ui_nodes[i].visible) continue;
+    if (bufferedScrollNode >= 0 && i >= (uint8_t)bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd) {
+      __ui_gfx = bufferedScrollCanvas;
+    } else {
+      __ui_gfx = &__tc_display;
+    }
     int16_t drawY = ui_draw_y_for_node(i);
     if (ui_is_clipped_by_scroll(i, drawY)) { __ui_nodes[i].dirty = 0; continue; }
 
@@ -464,54 +581,58 @@ static inline void ui_tick(uint16_t deltaMs) {
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
         if (__ui_nodes[i].hasBg)
-          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         if (__ui_nodes[i].borderStyle == 1) {
           uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
-          __tc_display.drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
+          __ui_gfx->drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
         }
         break;
       case NODE_TEXT:
         {
           uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > clearW) clearW = __ui_nodes[i].lastTextWidth;
-          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
+          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
+            clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
+          }
+          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
-        __tc_display.setCursor(textX, drawY);
-        __tc_display.setTextColor(__ui_nodes[i].fg);
-        __tc_display.setTextSize(2);
-        __tc_display.print(displayText);
+        __ui_gfx->setCursor(textX, drawY);
+        __ui_gfx->setTextColor(__ui_nodes[i].fg);
+        __ui_gfx->setTextSize(2);
+        __ui_gfx->print(displayText);
         if (__ui_nodes[i].underline)
-          __tc_display.drawFastHLine(textX, drawY + 15, tw, __ui_nodes[i].fg);
+          __ui_gfx->drawFastHLine(textX, drawY + 15, tw, __ui_nodes[i].fg);
         break;
       case NODE_BUTTON:
         if (__ui_nodes[i].hasBg)
-          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         if (__ui_nodes[i].borderStyle == 1) {
-          __tc_display.drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
+          __ui_gfx->drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
         } else if (__ui_nodes[i].borderStyle == 2) {
           for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
-            __tc_display.drawFastHLine(__ui_nodes[i].box.x + dx, drawY, 4, bColor);
+            __ui_gfx->drawFastHLine(__ui_nodes[i].box.x + dx, drawY, 4, bColor);
           for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
-            __tc_display.drawFastHLine(__ui_nodes[i].box.x + dx, drawY + __ui_nodes[i].box.h - 1, 4, bColor);
+            __ui_gfx->drawFastHLine(__ui_nodes[i].box.x + dx, drawY + __ui_nodes[i].box.h - 1, 4, bColor);
           for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
-            __tc_display.drawFastVLine(__ui_nodes[i].box.x, drawY + dy, 4, bColor);
+            __ui_gfx->drawFastVLine(__ui_nodes[i].box.x, drawY + dy, 4, bColor);
           for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
-            __tc_display.drawFastVLine(__ui_nodes[i].box.x + __ui_nodes[i].box.w - 1, drawY + dy, 4, bColor);
+            __ui_gfx->drawFastVLine(__ui_nodes[i].box.x + __ui_nodes[i].box.w - 1, drawY + dy, 4, bColor);
         }
-        __tc_display.setCursor(
+        __ui_gfx->setCursor(
           __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
           drawY + (__ui_nodes[i].box.h - 16) / 2);
-        __tc_display.setTextColor(__ui_nodes[i].fg);
-        __tc_display.setTextSize(2);
-        __tc_display.print(displayText);
+        __ui_gfx->setTextColor(__ui_nodes[i].fg);
+        __ui_gfx->setTextSize(2);
+        __ui_gfx->print(displayText);
         break;
       case NODE_CHECK:
         {
           uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > clearW) clearW = __ui_nodes[i].lastTextWidth;
-          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
+          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
+            clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
+          }
+          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
@@ -519,43 +640,45 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t cbX = __ui_nodes[i].box.x;
           int16_t cbY = drawY;
           if (__ui_nodes[i].value) {
-            __tc_display.fillRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
+            __ui_gfx->fillRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
             uint16_t inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-            __tc_display.drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
-            __tc_display.drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
-            __tc_display.drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
-            __tc_display.drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
-            __tc_display.drawLine(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
-            __tc_display.drawLine(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
+            __ui_gfx->drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
+            __ui_gfx->drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
+            __ui_gfx->drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
+            __ui_gfx->drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
+            __ui_gfx->drawLine(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
+            __ui_gfx->drawLine(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
           } else {
-            __tc_display.drawRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
+            __ui_gfx->drawRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
           }
         }
-        __tc_display.setCursor(__ui_nodes[i].box.x + 22, drawY);
-        __tc_display.setTextColor(__ui_nodes[i].fg);
-        __tc_display.setTextSize(2);
-        __tc_display.print(displayText);
+        __ui_gfx->setCursor(__ui_nodes[i].box.x + 22, drawY);
+        __ui_gfx->setTextColor(__ui_nodes[i].fg);
+        __ui_gfx->setTextSize(2);
+        __ui_gfx->print(displayText);
         break;
       case NODE_RADIO:
         {
           uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > clearW) clearW = __ui_nodes[i].lastTextWidth;
-          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
+          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
+            clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
+          }
+          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
           int16_t cbX = __ui_nodes[i].box.x;
           int16_t cbY = drawY;
           if (__ui_nodes[i].value) {
-            __tc_display.fillCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
-            __tc_display.fillCircle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            __ui_gfx->fillCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            __ui_gfx->fillCircle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           } else {
-            __tc_display.drawCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            __ui_gfx->drawCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
           }
         }
-        __tc_display.setCursor(__ui_nodes[i].box.x + 22, drawY);
-        __tc_display.setTextColor(__ui_nodes[i].fg);
-        __tc_display.setTextSize(2);
-        __tc_display.print(displayText);
+        __ui_gfx->setCursor(__ui_nodes[i].box.x + 22, drawY);
+        __ui_gfx->setTextColor(__ui_nodes[i].fg);
+        __ui_gfx->setTextSize(2);
+        __ui_gfx->print(displayText);
         break;
       case NODE_PROGRESS:
         // Progress bar: outline track + filled portion based on .value (0-100).
@@ -568,27 +691,92 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           uint16_t fgCol = __ui_nodes[i].fg;
 
-          // On first draw (lastTextWidth==0 and dirty from init), draw everything.
+          // On first draw (lastTextWidth < 0), draw everything.
           // Otherwise incremental: only update the changed portion.
           uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
           int16_t fillW = ((int32_t)(bw - 2) * pct) / 100;
           int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
 
-          if (prevW == 0) {
+          if (prevW < 0) {
             // Full redraw: outline + background + fill
-            __tc_display.drawRect(bx, by, bw, bh, fgCol);
-            __tc_display.fillRect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
+            __ui_gfx->drawRect(bx, by, bw, bh, fgCol);
+            __ui_gfx->fillRect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
             if (fillW > 0) {
-              __tc_display.fillRect(bx + 1, by + 1, fillW, bh - 2, fgCol);
+              __ui_gfx->fillRect(bx + 1, by + 1, fillW, bh - 2, fgCol);
             }
           } else if (fillW > prevW) {
             // Value increased: draw new fill segment on top (no clear needed)
-            __tc_display.fillRect(bx + 1 + prevW, by + 1, fillW - prevW, bh - 2, fgCol);
+            __ui_gfx->fillRect(bx + 1 + prevW, by + 1, fillW - prevW, bh - 2, fgCol);
           } else if (fillW < prevW) {
             // Value decreased: clear the removed portion
-            __tc_display.fillRect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
+            __ui_gfx->fillRect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
           }
           // Remember current fill width for next incremental update
+          __ui_nodes[i].lastTextWidth = fillW;
+        }
+        break;
+      case NODE_RANGE:
+        // Range slider: horizontal track + draggable thumb.
+        // Incremental redraw (like NODE_PROGRESS): lastTextWidth holds the
+        // previous fill width. We erase the delta region between old and new
+        // thumb positions with the background, then redraw the track portion
+        // and the new thumb — so dragging backward doesn't leave ghost thumbs.
+        {
+          int16_t bx = __ui_nodes[i].box.x;
+          int16_t by = drawY;
+          int16_t bw = __ui_nodes[i].box.w;
+          int16_t bh = __ui_nodes[i].box.h;
+          uint16_t fgCol = __ui_nodes[i].fg;
+          uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          uint16_t dimFg = ((fgCol >> 1) & 0x7BEF);
+
+          int16_t trackY = by + bh / 2;
+          int16_t rMin = __ui_nodes[i].rangeMin;
+          int16_t rMax = __ui_nodes[i].rangeMax;
+          int16_t range = rMax - rMin;
+          if (range <= 0) range = 100;
+          int16_t pct = constrain(__ui_nodes[i].value, rMin, rMax) - rMin;
+          int16_t fillW = ((int32_t)(bw - 8) * pct) / range;
+          // lastTextWidth carries the previous fill width, or -1 if this node
+          // has never been drawn (fillW=0 at value=min is a valid thumb pos).
+          int16_t prevFillW = __ui_nodes[i].lastTextWidth;
+          int16_t newThumbX = bx + 4 + fillW - 3;
+
+          if (prevFillW < 0) {
+            // First draw: redraw the whole track + fill from scratch.
+            __ui_gfx->drawFastHLine(bx, trackY, bw, dimFg);
+            __ui_gfx->drawFastHLine(bx + 4, trackY, fillW, fgCol);
+          } else {
+            // Incremental: wipe the strip between the old and new thumb
+            // positions (whichever extends further on each side), then restore
+            // the track line. This is symmetric — old thumbs disappear whether
+            // the drag moves forward or backward.
+            int16_t prevThumbX = bx + 4 + prevFillW - 3;
+            int16_t left = prevThumbX < newThumbX ? prevThumbX : newThumbX;
+            int16_t right = prevThumbX + 6 > newThumbX + 6 ? prevThumbX + 6 : newThumbX + 6;
+            if (left < bx) left = bx;
+            if (right > bx + bw) right = bx + bw;
+            // Erase the thumb band (10px tall) to background.
+            __ui_gfx->fillRect(left, trackY - 5, right - left, 10, bgCol);
+            // Restore the track line over the wiped strip: bright up to the
+            // current fill end, dim beyond it.
+            int16_t fillEnd = bx + 4 + fillW;
+            if (right <= fillEnd) {
+              __ui_gfx->drawFastHLine(left, trackY, right - left, fgCol);
+            } else if (left >= fillEnd) {
+              __ui_gfx->drawFastHLine(left, trackY, right - left, dimFg);
+            } else {
+              __ui_gfx->drawFastHLine(left, trackY, fillEnd - left, fgCol);
+              __ui_gfx->drawFastHLine(fillEnd, trackY, right - fillEnd, dimFg);
+            }
+          }
+
+          // Thumb: small filled rectangle at the current position.
+          if (newThumbX < bx + 1) newThumbX = bx + 1;
+          if (newThumbX > bx + bw - 7) newThumbX = bx + bw - 7;
+          __ui_gfx->fillRect(newThumbX, trackY - 5, 6, 10, fgCol);
+
+          // Remember current fill width for the next incremental update.
           __ui_nodes[i].lastTextWidth = fillW;
         }
         break;
@@ -603,6 +791,12 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (!__ui_nodes[i].scrollable) continue;
     if (!scrollbarDirty[i]) continue;
     if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
+    uint8_t scrollbarBuffered = bufferedScrollNode >= 0 && bufferedScrollCanvas && i == (uint8_t)bufferedScrollNode;
+    if (scrollbarBuffered) {
+      __ui_gfx = bufferedScrollCanvas;
+    } else {
+      __ui_gfx = &__tc_display;
+    }
     int16_t tx = __ui_nodes[i].box.x + __ui_nodes[i].box.w - 4;
     int16_t ty = __ui_nodes[i].box.y;
     int16_t th = __ui_nodes[i].box.h;
@@ -613,17 +807,25 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint16_t thumbY = ty + (uint32_t)(th - thumbH) * __ui_nodes[i].scrollY / (maxScroll > 0 ? maxScroll : 1);
     uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
 
-    if (__ui_scrollbar_prevY[i] == 0) {
-      __tc_display.fillRect(tx, ty, 3, th, dimFg);
-      __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
+    if (scrollbarBuffered || __ui_scrollbar_prevY[i] == 0) {
+      __ui_gfx->fillRect(tx, ty, 3, th, dimFg);
+      __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
     } else {
       int16_t prevThumbY = __ui_scrollbar_prevY[i];
       if (thumbY != prevThumbY) {
-        __tc_display.fillRect(tx, prevThumbY, 3, thumbH, dimFg);
-        __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
+        __ui_gfx->fillRect(tx, prevThumbY, 3, thumbH, dimFg);
+        __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
       }
     }
     __ui_scrollbar_prevY[i] = thumbY;
+  }
+  __ui_gfx = &__tc_display;
+  if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
+    ui_push_canvas_rect(bufferedScrollCanvas,
+      __ui_nodes[bufferedScrollNode].box.x,
+      __ui_nodes[bufferedScrollNode].box.y,
+      __ui_nodes[bufferedScrollNode].box.w,
+      __ui_nodes[bufferedScrollNode].box.h);
   }
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
 }

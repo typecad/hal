@@ -62,6 +62,10 @@ export function measure(node: StyledNode): IntrinsicSize {
     // Progress bar: default 200px wide, 12px tall
     return { w: 200, h: 12 };
   }
+  if (node.tag === "range") {
+    // Slider: default 200px wide, 20px tall (roomy track for touch)
+    return { w: 200, h: 20 };
+  }
   // Containers have no intrinsic size in block layout — they fill available.
   return { w: 0, h: 0 };
 }
