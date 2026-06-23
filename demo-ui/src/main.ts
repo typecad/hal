@@ -44,3 +44,12 @@ setInterval(() => {
 screen.points.onClick(() => {
   console.log('points:', screen.points.value);
 });
+
+// <input>: tap to open the on-screen keyboard. Read .text for the value.
+// onChange fires after the keyboard commits (OK key).
+screen.ssid.onChange(() => {
+  console.log('ssid:', screen.ssid.text);
+});
+screen.port.onChange(() => {
+  console.log('port:', screen.port.text);
+});
