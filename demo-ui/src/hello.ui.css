@@ -21,7 +21,8 @@ screen {
 
 #title {
   color: dodgerblue;
-  font-size: 16px;
+  font-size: 24px;
+  font-weight: bold;
 }
 
 #subtitle {
@@ -50,6 +51,7 @@ screen {
   border: 2px solid limegreen;
   border-radius: 4px;
   padding: 8px 20px;
+  width: 160px;
   text-align: center;
   transition: background 300ms;
 }
@@ -71,7 +73,7 @@ screen {
   gap: 8px;
 }
 
-#modeLabel {
+#modeRow label {
   color: lightslategray;
   font-size: 16px;
 }
@@ -97,6 +99,7 @@ screen {
 
 #progress {
   color: limegreen;
+  min-height: 16px;
 }
 
 #rangeRow {
@@ -114,6 +117,7 @@ screen {
 
 #points {
   color: lightskyblue;
+  width: 220px;
 }
 
 #inputRow, #portRow {
@@ -133,16 +137,7 @@ screen {
   color: lightskyblue;
   border: 1px solid lightslategray;
   padding: 4px 8px;
-}
-
-#listContainer {
-  background: #16213e;
-  padding: 4px;
-  gap: 2px;
-}
-
-#listContainer text {
-  color: lightsteelblue;
+  width: 200px;
 }
 
 #footer {
@@ -150,7 +145,7 @@ screen {
 }
 
 #hint {
-  color: dimgray;
+  color: slategray;
   font-size: 16px;
   text-decoration: underline;
 }
