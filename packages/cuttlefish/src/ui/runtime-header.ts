@@ -831,6 +831,133 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
 }
 
+// ── On-screen keyboard subsystem ───────────────────────────────────────────
+#define UI_KB_MAX 40
+#define UI_KB_HOLD_MS 600
+#define UI_KB_REPEAT_MS 100
+
+struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=ok,4=page
+
+// Populated by the per-keyboard loader function (emitted by the lowering).
+static UIRect  __ui_kb_box;
+static UIKey   __ui_kb_keys[UI_KB_MAX];
+static uint8_t __ui_kb_keyCount;
+static uint8_t __ui_kb_rows;
+static uint8_t __ui_kb_cols;
+static char    __ui_kb_buffer[UI_TEXT_BUF + 1];
+static uint8_t __ui_kb_len;
+static uint8_t __ui_kb_maxlen;
+static uint8_t __ui_kb_shift;
+static uint8_t __ui_kb_visible;
+static int8_t  __ui_kb_target;       // node index of input being edited (-1 = none)
+static uint8_t __ui_kb_bs_held;      // backspace key currently held
+static uint32_t __ui_kb_bs_repeat;   // last auto-repeat deletion time
+static int16_t __ui_last_touch_x;    // last touch coords (for tap-up routing)
+static int16_t __ui_last_touch_y;
+static void    (*__ui_kb_onchange)();
+// Dispatch table: one loader per input node. Indexed by input position.
+extern void (*__ui_kb_loaders[])();
+extern const uint8_t __ui_kb_loader_count;
+
+// Insert a character into the buffer (if space permits).
+static inline void ui_kb_insert(char c) {
+  if (__ui_kb_maxlen > 0 && __ui_kb_len >= __ui_kb_maxlen) return;
+  if (__ui_kb_len >= UI_TEXT_BUF) return;
+  __ui_kb_buffer[__ui_kb_len++] = c;
+  __ui_kb_buffer[__ui_kb_len] = 0;
+}
+
+// Delete one character from the buffer.
+static inline void ui_kb_delete() {
+  if (__ui_kb_len == 0) return;
+  __ui_kb_buffer[--__ui_kb_len] = 0;
+}
+
+// Compute the keyboard box on open from display dimensions + grid shape.
+// Alpha (wide grid) docks to the bottom 75%; number (narrow grid) centers at 60%.
+#ifndef __ui_display_w
+#define __ui_display_w 320
+#endif
+#ifndef __ui_display_h
+#define __ui_display_h 240
+#endif
+static inline void ui_kb_compute_box() {
+  uint8_t isNumber = (__ui_kb_cols <= 4);
+  uint16_t h = isNumber ? (__ui_display_h * 60 / 100) : (__ui_display_h * 75 / 100);
+  __ui_kb_box.w = isNumber ? (__ui_display_w * 50 / 100) : __ui_display_w;
+  __ui_kb_box.h = h;
+  __ui_kb_box.x = isNumber ? (__ui_display_w - __ui_kb_box.w) / 2 : 0;
+  __ui_kb_box.y = __ui_display_h - h;
+}
+
+// Open the keyboard for an input node.
+static inline void ui_kb_open(uint8_t nodeIdx, uint8_t inputPosition) {
+  __ui_kb_target = (int8_t)nodeIdx;
+  strncpy(__ui_kb_buffer, __ui_nodes[nodeIdx].textBuffer, UI_TEXT_BUF);
+  __ui_kb_buffer[UI_TEXT_BUF] = 0;
+  __ui_kb_len = strlen(__ui_kb_buffer);
+  uint16_t ml = __ui_nodes[nodeIdx].maxlen;
+  __ui_kb_maxlen = (ml > 0 && ml <= UI_TEXT_BUF) ? (uint8_t)ml : UI_TEXT_BUF;
+  __ui_kb_shift = 0;
+  __ui_kb_bs_held = 0;
+  // Load the key set via the dispatch table.
+  if (inputPosition < __ui_kb_loader_count) __ui_kb_loaders[inputPosition]();
+  ui_kb_compute_box();
+  __ui_kb_visible = 1;
+  // Mark the whole tree dirty so the overlay draws cleanly over it.
+  for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1;
+}
+
+// Close the keyboard: commit buffer back to the input node.
+static inline void ui_kb_close() {
+  if (__ui_kb_target >= 0) {
+    strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
+    __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
+    ui_mark_dirty((uint8_t)__ui_kb_target);
+    if (__ui_kb_onchange) __ui_kb_onchange();
+  }
+  __ui_kb_visible = 0;
+  __ui_kb_target = -1;
+  __ui_kb_bs_held = 0;
+}
+
+// Compute a key's rect from its index, given the grid + box.
+static inline void ui_kb_key_rect(uint8_t idx, UIRect* out) {
+  uint8_t col = idx % __ui_kb_cols;
+  uint8_t row = idx / __ui_kb_cols;
+  out->x = __ui_kb_box.x + (int16_t)col * __ui_kb_box.w / __ui_kb_cols;
+  out->y = __ui_kb_box.y + (int16_t)row * __ui_kb_box.h / __ui_kb_rows;
+  out->w = __ui_kb_box.w / __ui_kb_cols;
+  out->h = __ui_kb_box.h / __ui_kb_rows;
+}
+
+// Handle a touch-down inside the keyboard box. tx,ty are display coords.
+static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
+  for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+    UIRect r;
+    ui_kb_key_rect(i, &r);
+    if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
+      UIKey k = __ui_kb_keys[i];
+      if (k.special == 2) {
+        // backspace: delete now + arm auto-repeat while held
+        __ui_kb_bs_held = 1;
+        __ui_kb_bs_repeat = millis();
+        ui_kb_delete();
+      }
+      return;  // only one key per touch
+    }
+  }
+}
+
+// Called each frame while the keyboard is visible: handles ⌫ auto-repeat.
+static inline void ui_kb_tick(uint32_t now) {
+  if (!__ui_kb_bs_held) return;
+  if (now - __ui_kb_bs_repeat >= UI_KB_REPEAT_MS) {
+    ui_kb_delete();
+    __ui_kb_bs_repeat = now;
+  }
+}
+
 #endif
 `;
 }

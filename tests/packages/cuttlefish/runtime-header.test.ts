@@ -133,4 +133,19 @@ describe("C++ reactive runtime header", () => {
   it("UINode has a maxlen field", () => {
     expect(header).toMatch(/int16_t\s+maxlen/);
   });
+
+  it("declares the keyboard subsystem structs and globals", () => {
+    expect(header).toMatch(/struct\s+UIKey\s*\{\s*char\s+ch;\s*uint8_t\s+special;\s*\}/);
+    expect(header).toMatch(/#define\s+UI_KB_MAX\s+40/);
+    expect(header).toContain("__ui_kb_keys");
+    expect(header).toContain("__ui_kb_buffer");
+    expect(header).toContain("__ui_kb_visible");
+    expect(header).toContain("__ui_kb_target");
+  });
+
+  it("declares ui_kb_open, ui_kb_close, ui_kb_handle_touch", () => {
+    expect(header).toContain("ui_kb_open");
+    expect(header).toContain("ui_kb_close");
+    expect(header).toContain("ui_kb_handle_touch");
+  });
 });
