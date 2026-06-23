@@ -956,6 +956,21 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
     }
 
+    // ---- UI element .text read: screen.ssid.text → __ui_nodes[N].textBuffer ----
+    if (
+      ts.isPropertyAccessExpression(expr.expression) &&
+      expr.expression.name.text === "text" &&
+      ts.isPropertyAccessExpression(expr.expression.expression) &&
+      ts.isIdentifier(expr.expression.expression.expression)
+    ) {
+      const treeName = expr.expression.expression.expression.text;
+      const elemId = expr.expression.expression.name.text;
+      const nodeIdx = resolveElementValue(treeName, elemId);
+      if (nodeIdx !== undefined) {
+        return { kind: "raw", value: `__ui_nodes[${nodeIdx}].textBuffer` };
+      }
+    }
+
     // Warn about optional chaining on call expressions â€” we preserve a null guard,
     // but the runtime semantics are still only approximate compared to TypeScript.
     if (isOptionalChainNode(expr)) {
@@ -1664,6 +1679,17 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const nodeIdx = resolveElementValue(treeName, elemId);
       if (nodeIdx !== undefined) {
         return { kind: "raw", value: `__ui_nodes[${nodeIdx}].value` };
+      }
+    }
+    // ── UI element .text read: screen.ssid.text → __ui_nodes[N].textBuffer ──
+    if (expr.name.text === "text" &&
+        ts.isPropertyAccessExpression(expr.expression) &&
+        ts.isIdentifier(expr.expression.expression)) {
+      const treeName = expr.expression.expression.text;
+      const elemId = expr.expression.name.text;
+      const nodeIdx = resolveElementValue(treeName, elemId);
+      if (nodeIdx !== undefined) {
+        return { kind: "raw", value: `__ui_nodes[${nodeIdx}].textBuffer` };
       }
     }
     const propName = expr.name.kind === ts.SyntaxKind.PrivateIdentifier

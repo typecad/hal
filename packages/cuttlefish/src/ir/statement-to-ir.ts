@@ -181,6 +181,32 @@ export function lowerStatement(
       }
     }
 
+    // ── UI element .text write: screen.ssid.text = "x" ──────────────────
+    // Lowers to strncpy(__ui_nodes[N].textBuffer, "x", UI_TEXT_BUF-1);
+    //         __ui_nodes[N].textBuffer[UI_TEXT_BUF-1] = 0; ui_mark_dirty(N);
+    if (
+      ts.isBinaryExpression(statement.expression) &&
+      statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(statement.expression.left) &&
+      statement.expression.left.name.text === "text" &&
+      ts.isPropertyAccessExpression(statement.expression.left.expression) &&
+      ts.isIdentifier(statement.expression.left.expression.expression)
+    ) {
+      const treeName = statement.expression.left.expression.expression.text;
+      const elemId = statement.expression.left.expression.name.text;
+      const nodeIdx = resolveElementValue(treeName, elemId);
+      if (nodeIdx !== undefined) {
+        const valIR = expressionToIR(statement.expression.right, sourceText, diagnostics, pointerVars);
+        const valText = renderExprAsText(valIR);
+        return [{
+          kind: "call" as const,
+          sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+          callee: `__RAW_STMT__strncpy(__ui_nodes[${nodeIdx}].textBuffer, ${valText}, UI_TEXT_BUF - 1); __ui_nodes[${nodeIdx}].textBuffer[UI_TEXT_BUF - 1] = 0; ui_mark_dirty(${nodeIdx});`,
+          args: [],
+        }];
+      }
+    }
+
     const loweredExpression = expressionStatementToIR(
       statement,
       fileName,
