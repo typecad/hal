@@ -1159,8 +1159,9 @@ static inline void ui_kb_draw_key(uint8_t i) {
   uint16_t bg = ks.bg;
   uint16_t fg = ks.fg;
   uint16_t border = ks.borderColor;
-  // Shift-active highlight: brighten the shift key's background.
-  if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }
+  // Shift-active highlight: brighten the shift key's background — but only
+  // when not pressed, so the press inversion stays high-contrast.
+  if (k.special == 1 && __ui_kb_shift && (int8_t)i != __ui_kb_pressed_key) { bg = 0xBDF7; }
   // Pressed key: invert colors for clear tap feedback.
   if ((int8_t)i == __ui_kb_pressed_key) { uint16_t t = bg; bg = fg; fg = t; }
   __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
@@ -1171,7 +1172,7 @@ static inline void ui_kb_draw_key(uint8_t i) {
   const char* labelStr;
   char single[2];
   switch (k.special) {
-    case 1:  labelStr = __ui_kb_shift ? "^" : "v"; break;  // shift: up=active, down=inactive
+    case 1:  labelStr = __ui_kb_shift ? "SH*" : "SH"; break;
     case 2:  labelStr = "DEL"; break;
     case 3:  labelStr = "OK"; break;
     case 4:  labelStr = __ui_kb_cols <= 4 ? "ABC" : "123"; break;
