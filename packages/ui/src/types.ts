@@ -57,6 +57,11 @@ export interface RadioElement extends UIElement {
   readonly __kind: "radio";
 }
 
+/** A progress bar. .value is 0-100 (percentage filled). Read-only display. */
+export interface ProgressElement extends UIElement {
+  readonly __kind: "progress";
+}
+
 export interface ScreenTree {
-  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement;
+  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement | ProgressElement;
 }

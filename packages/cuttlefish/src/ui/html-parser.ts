@@ -30,7 +30,7 @@ export interface UIElementNode {
   options?: Array<{ value: string; text: string }>;
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress"]);
 
 export function parseHtml(src: string): UIElementNode {
   // Strip HTML comments before parsing.

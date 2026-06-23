@@ -20,7 +20,7 @@ export function emitRuntimeHeader(): string {
 #include <stdint.h>
 #define UI_TEXT_BUF 16   // single source of truth: UINode field + textFn size arg + snprintf bound
 
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -45,6 +45,8 @@ struct UINode {
   uint8_t scrollable;   // 1 = children are offset by scrollY and clipped to this box
   int16_t scrollY;      // current scroll offset (children Y -= scrollY)
   int16_t contentHeight; // total height of children (for scrollbar ratio)
+  uint8_t parent;       // 255 = root/no parent
+  uint8_t subtreeEnd;   // exclusive pre-order end index
   // runtime slot
   uint8_t dirty;
   int16_t value;  // unified element state
@@ -90,9 +92,37 @@ extern const uint8_t __ui_node_count;
 extern const uint8_t __ui_trans_count;
 extern const uint8_t __ui_binding_count;
 
+#define UI_NO_PARENT 255
+
 // Per-node dirty marker (called by press handlers and binding evaluation).
 static inline void ui_mark_dirty(uint8_t nodeIdx) {
   __ui_nodes[nodeIdx].dirty = 1;
+}
+
+static inline int16_t ui_draw_y_for_node(uint8_t nodeIdx) {
+  int16_t y = __ui_nodes[nodeIdx].box.y;
+  uint8_t p = __ui_nodes[nodeIdx].parent;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (__ui_nodes[p].scrollable) y -= __ui_nodes[p].scrollY;
+    p = __ui_nodes[p].parent;
+  }
+  return y;
+}
+
+static inline uint8_t ui_is_clipped_by_scroll(uint8_t nodeIdx, int16_t drawY) {
+  uint8_t p = __ui_nodes[nodeIdx].parent;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (__ui_nodes[p].scrollable) {
+      if (__ui_nodes[nodeIdx].box.x < __ui_nodes[p].box.x ||
+          __ui_nodes[nodeIdx].box.x + __ui_nodes[nodeIdx].box.w > __ui_nodes[p].box.x + __ui_nodes[p].box.w ||
+          drawY < __ui_nodes[p].box.y ||
+          drawY + __ui_nodes[nodeIdx].box.h > __ui_nodes[p].box.y + __ui_nodes[p].box.h) {
+        return 1;
+      }
+    }
+    p = __ui_nodes[p].parent;
+  }
+  return 0;
 }
 
 // Initial draw: mark all nodes dirty so the first ui_tick renders everything.
@@ -213,8 +243,10 @@ static int8_t __ui_scroll_node = -1;     // scrollable container being dragged
 static int8_t ui_hit_test(int16_t tx, int16_t ty) {
   for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
     if (!__ui_nodes[i].visible) continue;
+    int16_t drawY = ui_draw_y_for_node((uint8_t)i);
+    if (ui_is_clipped_by_scroll((uint8_t)i, drawY)) continue;
     if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
-        ty >= __ui_nodes[i].box.y && ty < __ui_nodes[i].box.y + __ui_nodes[i].box.h) {
+        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       // Skip nodes without any click handler — they're containers, not targets
       if ((uint8_t)i < __ui_click_handler_count &&
           (__ui_click_handlers[i] || __ui_hold_handlers[i] || __ui_release_handlers[i])) {
@@ -304,18 +336,16 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
       int16_t dy = ty - __ui_drag_start_y;
       __ui_drag_start_y = ty;
       int16_t maxScroll = __ui_nodes[__ui_scroll_node].contentHeight - __ui_nodes[__ui_scroll_node].box.h;
-      __ui_nodes[__ui_scroll_node].scrollY = constrain(__ui_nodes[__ui_scroll_node].scrollY - dy, 0, maxScroll);
-      // Mark children dirty — only those inside the scrollable container.
-      // This prevents flashing: non-scroll nodes don't redraw.
-      for (uint8_t c = 0; c < __ui_node_count; c++) {
-        if (c == (uint8_t)__ui_scroll_node) continue;
-        // Only mark nodes whose X is within the container's horizontal extent
-        if (__ui_nodes[c].box.x >= __ui_nodes[__ui_scroll_node].box.x &&
-            __ui_nodes[c].box.x < __ui_nodes[__ui_scroll_node].box.x + __ui_nodes[__ui_scroll_node].box.w) {
+      int16_t prevScrollY = __ui_nodes[__ui_scroll_node].scrollY;
+      int16_t nextScrollY = constrain(prevScrollY - dy, 0, maxScroll);
+      if (nextScrollY != prevScrollY) {
+        __ui_nodes[__ui_scroll_node].scrollY = nextScrollY;
+        // Mark only descendants dirty; overlapping siblings are not scroll content.
+        for (uint8_t c = (uint8_t)__ui_scroll_node + 1; c < __ui_nodes[__ui_scroll_node].subtreeEnd; c++) {
           ui_mark_dirty(c);
         }
+        ui_mark_dirty(__ui_scroll_node);
       }
-      ui_mark_dirty(__ui_scroll_node);
     }
     if (__ui_touch_state == 1 && __ui_touch_node >= 0 && !__ui_is_dragging) {
       if (now - __ui_touch_down_time >= UI_TOUCH_HOLD_MS) {
@@ -391,45 +421,26 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint8_t s = 0; s < __ui_node_count; s++) {
     if (!__ui_nodes[s].scrollable || !__ui_nodes[s].visible) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
-    // Check if any child is dirty (cheap: if scrollY changed, we set them all dirty)
-    uint8_t hasDirtyChild = __ui_nodes[s].dirty;
-    if (!hasDirtyChild) {
-      for (uint8_t c = 0; c < __ui_node_count; c++) {
-        if (c == s || !__ui_nodes[c].dirty) continue;
-        if (__ui_nodes[c].box.x >= __ui_nodes[s].box.x &&
-            __ui_nodes[c].box.x < __ui_nodes[s].box.x + __ui_nodes[s].box.w) {
-          hasDirtyChild = 1; break;
-        }
+    // The scroll container is marked dirty only when the scroll offset changes
+    // or during first draw. Ordinary dirty descendants can repaint in place.
+    if (__ui_nodes[s].dirty) {
+      for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
+        ui_mark_dirty(c);
       }
-    }
-    if (hasDirtyChild) {
       // Clear the viewport with the container's background (or parent's clear color)
       __tc_display.fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y, __ui_nodes[s].box.w, __ui_nodes[s].box.h,
         __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
     }
   }
+  uint8_t scrollbarDirty[256] = {0};
+  for (uint8_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].scrollable && __ui_nodes[i].dirty) scrollbarDirty[i] = 1;
+  }
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
     if (!__ui_nodes[i].visible) continue;
-    // Scroll: skip nodes that are outside a scrollable parent's viewport,
-    // and offset their draw position by scrollY.
-    uint8_t skipDraw = 0;
-    int16_t drawY = __ui_nodes[i].box.y;  // default: no offset
-    for (uint8_t p = 0; p < __ui_node_count; p++) {
-      if (__ui_nodes[p].scrollable && i != p) {
-        if (__ui_nodes[i].box.x >= __ui_nodes[p].box.x &&
-            __ui_nodes[i].box.x < __ui_nodes[p].box.x + __ui_nodes[p].box.w) {
-          // Apply scroll offset
-          drawY = __ui_nodes[i].box.y - __ui_nodes[p].scrollY;
-          // Skip if outside viewport (after offset)
-          if (drawY + __ui_nodes[i].box.h <= __ui_nodes[p].box.y ||
-              drawY >= __ui_nodes[p].box.y + __ui_nodes[p].box.h) {
-            skipDraw = 1; break;
-          }
-        }
-      }
-    }
-    if (skipDraw) { __ui_nodes[i].dirty = 0; continue; }
+    int16_t drawY = ui_draw_y_for_node(i);
+    if (ui_is_clipped_by_scroll(i, drawY)) { __ui_nodes[i].dirty = 0; continue; }
 
     // Source selection: text-bound nodes show their dynamic buffer; others show
     // the immutable flash literal.
@@ -543,12 +554,33 @@ static inline void ui_tick(uint16_t deltaMs) {
         __tc_display.setTextSize(2);
         __tc_display.print(displayText);
         break;
+      case NODE_PROGRESS:
+        // Progress bar: outline track + filled portion based on .value (0-100).
+        {
+          int16_t bx = __ui_nodes[i].box.x;
+          int16_t by = drawY;
+          int16_t bw = __ui_nodes[i].box.w;
+          int16_t bh = __ui_nodes[i].box.h;
+          // Clear background
+          __tc_display.fillRect(bx, by, bw, bh,
+            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+          // Draw track outline
+          __tc_display.drawRect(bx, by, bw, bh, __ui_nodes[i].fg);
+          // Draw filled portion: value is 0-100, fill = value/100 * (bw-2)
+          uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
+          int16_t fillW = ((int32_t)(bw - 2) * pct) / 100;
+          if (fillW > 0) {
+            __tc_display.fillRect(bx + 1, by + 1, fillW, bh - 2, __ui_nodes[i].fg);
+          }
+        }
+        break;
     }
     __ui_nodes[i].dirty = 0;
   }
   // ②b Draw scrollbars for scrollable containers that are dirty.
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].scrollable) continue;
+    if (!scrollbarDirty[i]) continue;
     if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;  // nothing to scroll
     // Track: thin rectangle on the right edge.
     int16_t tx = __ui_nodes[i].box.x + __ui_nodes[i].box.w - 4;

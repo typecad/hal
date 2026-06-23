@@ -33,7 +33,8 @@ screen.btn.onClick(() => {
 //   const isOn = screen.led.value;     // 0 or 1
 //   const mode = screen.mode.value;    // 0, 1, or 2
 
-// Auto-increment every 3 seconds
+// Progress bar: animate 0-100 in a loop
+screen.progress.value = 0;
 setInterval(() => {
-  screen.counter.value = screen.counter.value + 1;
-}, 3000);
+  screen.progress.value = (screen.progress.value + 5) % 105;
+}, 500);

@@ -13,6 +13,7 @@ import type {
 const UI_TEXT_BUF = 16;
 const UI_TOUCH_DEBOUNCE_MS = 50;
 const UI_TOUCH_HOLD_MS = 600;
+const UI_DRAG_THRESHOLD = 10;
 
 type MutableNode = UINodeModel;
 type ScreenProxy = Record<string, { value: number; onClick(): void; onHold(): void; onRelease(): void }>;
@@ -82,6 +83,9 @@ export class PreviewUIRuntime {
   private lastTouchTime = -UI_TOUCH_DEBOUNCE_MS;
   private lastReleaseTime = -UI_TOUCH_DEBOUNCE_MS;
   private lastTickTime = Date.now();
+  private dragStartY = 0;
+  private isDragging = false;
+  private scrollNode = -1;
 
   constructor(private readonly snapshot: PreviewSnapshot, options: RuntimeOptions = {}) {
     const { nodes, transitions } = cloneProgram(snapshot.program);
@@ -268,10 +272,83 @@ export class PreviewUIRuntime {
     }
   }
 
+  private drawYForNode(nodeIndex: number): number {
+    let y = this.nodes[nodeIndex].box.y;
+    let parent = this.nodes[nodeIndex].parentIndex;
+    while (parent >= 0 && this.nodes[parent]) {
+      if (this.nodes[parent].scrollable) y -= this.nodes[parent].scrollY;
+      parent = this.nodes[parent].parentIndex;
+    }
+    return y;
+  }
+
+  private isClippedByScroll(nodeIndex: number, drawY: number): boolean {
+    const node = this.nodes[nodeIndex];
+    let parent = node.parentIndex;
+    while (parent >= 0 && this.nodes[parent]) {
+      const scrollParent = this.nodes[parent];
+      if (
+        scrollParent.scrollable &&
+        (node.box.x < scrollParent.box.x ||
+          node.box.x + node.box.w > scrollParent.box.x + scrollParent.box.w ||
+          drawY < scrollParent.box.y ||
+          drawY + node.box.h > scrollParent.box.y + scrollParent.box.h)
+      ) {
+        return true;
+      }
+      parent = scrollParent.parentIndex;
+    }
+    return false;
+  }
+
+  private clearDirtyScrollViewports(): void {
+    for (const node of this.nodes) {
+      if (!node.scrollable || !node.visible || node.contentHeight <= node.box.h) continue;
+      if (node.dirty) {
+        this.markScrollDescendantsDirty(node.index);
+        this.gfx.fillRect(node.box.x, node.box.y, node.box.w, node.box.h, node.hasBg ? node.bg : node.clearColor);
+      }
+    }
+  }
+
+  private drawScrollbars(scrollbarDirty: Set<number>): void {
+    for (const node of this.nodes) {
+      if (!node.scrollable || node.contentHeight <= node.box.h) continue;
+      if (!scrollbarDirty.has(node.index)) continue;
+      const tx = node.box.x + node.box.w - 4;
+      const ty = node.box.y;
+      const th = node.box.h;
+      node.scrollY = Math.max(0, Math.min(node.scrollY, node.contentHeight - th));
+      const trackColor = (node.fg >> 1) & 0x7bef;
+      this.gfx.fillRect(tx, ty, 3, th, trackColor);
+      const thumbH = Math.max(8, Math.trunc((th * th) / node.contentHeight));
+      const thumbY = ty + Math.trunc(((node.box.h - thumbH) * node.scrollY) / Math.max(1, node.contentHeight - th));
+      this.gfx.fillRect(tx, thumbY, 3, thumbH, node.fg);
+    }
+  }
+
+  private markScrollDescendantsDirty(nodeIndex: number): void {
+    const node = this.nodes[nodeIndex];
+    for (let i = nodeIndex + 1; i < node.subtreeEnd; i++) {
+      if (this.nodes[i]) this.markDirty(i);
+    }
+    this.markDirty(nodeIndex);
+  }
+
   private drawDirty(): void {
+    this.clearDirtyScrollViewports();
+    const scrollbarDirty = new Set<number>();
+    for (const node of this.nodes) {
+      if (node.scrollable && node.dirty) scrollbarDirty.add(node.index);
+    }
     for (const node of this.nodes) {
       if (!node.dirty) continue;
       if (!node.visible) continue;
+      const drawY = this.drawYForNode(node.index);
+      if (this.isClippedByScroll(node.index, drawY)) {
+        node.dirty = false;
+        continue;
+      }
 
       const displayText = node.hasTextBinding ? node.textBuffer : node.text;
       const tw = displayText ? displayText.length * 12 : 0;
@@ -282,60 +359,61 @@ export class PreviewUIRuntime {
 
       switch (node.kind) {
         case "fill":
-          if (node.hasBg) this.gfx.fillRect(node.box.x, node.box.y, node.box.w, node.box.h, node.bg);
-          if (node.borderStyle === 1) this.gfx.drawRect(node.box.x, node.box.y, node.box.w, node.box.h, bColor);
+          if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
+          if (node.borderStyle === 1) this.gfx.drawRect(node.box.x, drawY, node.box.w, node.box.h, bColor);
           break;
         case "text":
-          this.drawTextNode(node, displayText, tw, textX);
+          this.drawTextNode(node, displayText, tw, textX, drawY);
           break;
         case "button":
-          this.drawButtonNode(node, displayText, tw, bColor);
+          this.drawButtonNode(node, displayText, tw, bColor, drawY);
           break;
         case "check":
-          this.drawCheckNode(node, displayText, tw);
+          this.drawCheckNode(node, displayText, tw, drawY);
           break;
         case "radio":
-          this.drawRadioNode(node, displayText, tw);
+          this.drawRadioNode(node, displayText, tw, drawY);
           break;
       }
       node.dirty = false;
     }
+    this.drawScrollbars(scrollbarDirty);
   }
 
-  private drawTextNode(node: MutableNode, displayText: string | undefined, tw: number, textX: number): void {
+  private drawTextNode(node: MutableNode, displayText: string | undefined, tw: number, textX: number, drawY: number): void {
     const clearW = Math.max(node.box.w, node.lastTextWidth);
-    this.gfx.fillRect(node.box.x, node.box.y, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
+    this.gfx.fillRect(node.box.x, drawY, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
     node.lastTextWidth = tw;
-    this.gfx.setCursor(textX, node.box.y);
+    this.gfx.setCursor(textX, drawY);
     this.gfx.setTextColor(node.fg);
     this.gfx.setTextSize(2);
     this.gfx.print(displayText ?? "");
-    if (node.underline) this.gfx.drawFastHLine(textX, node.box.y + 15, tw, node.fg);
+    if (node.underline) this.gfx.drawFastHLine(textX, drawY + 15, tw, node.fg);
   }
 
-  private drawButtonNode(node: MutableNode, displayText: string | undefined, tw: number, bColor: number): void {
-    if (node.hasBg) this.gfx.fillRect(node.box.x, node.box.y, node.box.w, node.box.h, node.bg);
+  private drawButtonNode(node: MutableNode, displayText: string | undefined, tw: number, bColor: number, drawY: number): void {
+    if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
     if (node.borderStyle === 1) {
-      this.gfx.drawRect(node.box.x, node.box.y, node.box.w, node.box.h, bColor);
+      this.gfx.drawRect(node.box.x, drawY, node.box.w, node.box.h, bColor);
     } else if (node.borderStyle === 2) {
-      for (let dx = 0; dx < node.box.w; dx += 8) this.gfx.drawFastHLine(node.box.x + dx, node.box.y, 4, bColor);
-      for (let dx = 0; dx < node.box.w; dx += 8) this.gfx.drawFastHLine(node.box.x + dx, node.box.y + node.box.h - 1, 4, bColor);
-      for (let dy = 0; dy < node.box.h; dy += 8) this.gfx.drawFastVLine(node.box.x, node.box.y + dy, 4, bColor);
-      for (let dy = 0; dy < node.box.h; dy += 8) this.gfx.drawFastVLine(node.box.x + node.box.w - 1, node.box.y + dy, 4, bColor);
+      for (let dx = 0; dx < node.box.w; dx += 8) this.gfx.drawFastHLine(node.box.x + dx, drawY, 4, bColor);
+      for (let dx = 0; dx < node.box.w; dx += 8) this.gfx.drawFastHLine(node.box.x + dx, drawY + node.box.h - 1, 4, bColor);
+      for (let dy = 0; dy < node.box.h; dy += 8) this.gfx.drawFastVLine(node.box.x, drawY + dy, 4, bColor);
+      for (let dy = 0; dy < node.box.h; dy += 8) this.gfx.drawFastVLine(node.box.x + node.box.w - 1, drawY + dy, 4, bColor);
     }
-    this.gfx.setCursor(node.box.x + Math.trunc((node.box.w - tw) / 2), node.box.y + Math.trunc((node.box.h - 16) / 2));
+    this.gfx.setCursor(node.box.x + Math.trunc((node.box.w - tw) / 2), drawY + Math.trunc((node.box.h - 16) / 2));
     this.gfx.setTextColor(node.fg);
     this.gfx.setTextSize(2);
     this.gfx.print(displayText ?? "");
   }
 
-  private drawCheckNode(node: MutableNode, displayText: string | undefined, tw: number): void {
+  private drawCheckNode(node: MutableNode, displayText: string | undefined, tw: number, drawY: number): void {
     const clearW = Math.max(node.box.w, node.lastTextWidth);
-    this.gfx.fillRect(node.box.x, node.box.y, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
+    this.gfx.fillRect(node.box.x, drawY, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
     node.lastTextWidth = tw;
 
     const cbX = node.box.x;
-    const cbY = node.box.y;
+    const cbY = drawY;
     if (node.value) {
       this.gfx.fillRect(cbX, cbY, 16, 16, node.fg);
       const inv = node.hasBg ? node.bg : node.clearColor;
@@ -348,26 +426,26 @@ export class PreviewUIRuntime {
     } else {
       this.gfx.drawRect(cbX, cbY, 16, 16, node.fg);
     }
-    this.gfx.setCursor(node.box.x + 22, node.box.y);
+    this.gfx.setCursor(node.box.x + 22, drawY);
     this.gfx.setTextColor(node.fg);
     this.gfx.setTextSize(2);
     this.gfx.print(displayText ?? "");
   }
 
-  private drawRadioNode(node: MutableNode, displayText: string | undefined, tw: number): void {
+  private drawRadioNode(node: MutableNode, displayText: string | undefined, tw: number, drawY: number): void {
     const clearW = Math.max(node.box.w, node.lastTextWidth);
-    this.gfx.fillRect(node.box.x, node.box.y, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
+    this.gfx.fillRect(node.box.x, drawY, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
     node.lastTextWidth = tw;
 
     const cbX = node.box.x;
-    const cbY = node.box.y;
+    const cbY = drawY;
     if (node.value) {
       this.gfx.fillCircle(cbX + 8, cbY + 8, 7, node.fg);
       this.gfx.fillCircle(cbX + 8, cbY + 8, 3, node.hasBg ? node.bg : node.clearColor);
     } else {
       this.gfx.drawCircle(cbX + 8, cbY + 8, 7, node.fg);
     }
-    this.gfx.setCursor(node.box.x + 22, node.box.y);
+    this.gfx.setCursor(node.box.x + 22, drawY);
     this.gfx.setTextColor(node.fg);
     this.gfx.setTextSize(2);
     this.gfx.print(displayText ?? "");
@@ -377,8 +455,22 @@ export class PreviewUIRuntime {
     for (let i = this.nodes.length - 1; i >= 0; i--) {
       const node = this.nodes[i];
       if (!node.visible) continue;
-      if (tx >= node.box.x && tx < node.box.x + node.box.w && ty >= node.box.y && ty < node.box.y + node.box.h) {
+      const drawY = this.drawYForNode(i);
+      if (this.isClippedByScroll(i, drawY)) continue;
+      if (tx >= node.box.x && tx < node.box.x + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
         if (this.hasAnyHandler(i)) return i;
+      }
+    }
+    return -1;
+  }
+
+  private findScrollNode(tx: number, ty: number): number {
+    for (let i = this.nodes.length - 1; i >= 0; i--) {
+      const node = this.nodes[i];
+      if (!node.scrollable || !node.visible || node.contentHeight <= node.box.h) continue;
+      const drawY = this.drawYForNode(i);
+      if (tx >= node.box.x && tx < node.box.x + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
+        return i;
       }
     }
     return -1;
@@ -398,13 +490,31 @@ export class PreviewUIRuntime {
       this.touchNode = node;
       this.touchState = 1;
       this.touchDownTime = now;
+      this.dragStartY = ty;
+      this.isDragging = false;
+      this.scrollNode = this.findScrollNode(tx, ty);
       if (node >= 0) {
         if (this.nodes[node].kind === "button") this.nodes[node].value = 1;
         this.markDirty(node);
       }
-    } else if (this.touchState === 1 && this.touchNode >= 0 && now - this.touchDownTime >= UI_TOUCH_HOLD_MS) {
-      this.touchState = 2;
-      this.dispatch("hold", this.touchNode);
+    } else {
+      if (!this.isDragging && this.scrollNode >= 0 && Math.abs(ty - this.dragStartY) >= UI_DRAG_THRESHOLD) {
+        this.isDragging = true;
+      }
+      if (this.isDragging && this.scrollNode >= 0) {
+        const dy = ty - this.dragStartY;
+        this.dragStartY = ty;
+        const node = this.nodes[this.scrollNode];
+        const maxScroll = Math.max(0, node.contentHeight - node.box.h);
+        const nextScrollY = Math.max(0, Math.min(maxScroll, node.scrollY - dy));
+        if (nextScrollY !== node.scrollY) {
+          node.scrollY = nextScrollY;
+          this.markScrollDescendantsDirty(this.scrollNode);
+        }
+      } else if (this.touchState === 1 && this.touchNode >= 0 && now - this.touchDownTime >= UI_TOUCH_HOLD_MS) {
+        this.touchState = 2;
+        this.dispatch("hold", this.touchNode);
+      }
     }
     this.lastTouchTime = now;
   }
@@ -415,7 +525,7 @@ export class PreviewUIRuntime {
     if (now - this.lastReleaseTime < UI_TOUCH_DEBOUNCE_MS) return;
     const elapsed = now - this.touchDownTime;
     const node = this.touchNode;
-    if (node >= 0) {
+    if (node >= 0 && !this.isDragging) {
       if (elapsed < UI_TOUCH_HOLD_MS) {
         this.dispatchBuiltInClick(node);
         this.dispatch("click", node);
@@ -426,6 +536,8 @@ export class PreviewUIRuntime {
     }
     this.touchState = 0;
     this.touchNode = -1;
+    this.isDragging = false;
+    this.scrollNode = -1;
     this.lastReleaseTime = now;
   }
 

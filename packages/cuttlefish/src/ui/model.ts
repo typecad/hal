@@ -4,7 +4,7 @@ import type { CSSProperty } from "./css-parser.js";
 import type { Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
 
-export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio";
+export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress";
 export type UIPropertyModel = "background" | "color" | "text" | "visible" | "borderColor";
 
 export interface UINodeModel {
@@ -34,7 +34,10 @@ export interface UINodeModel {
   value: number;
   options?: Array<{ value: string; text: string }>;
   scrollable: boolean;
+  scrollY: number;
   contentHeight: number;
+  parentIndex: number;
+  subtreeEnd: number;
 }
 
 export interface UITransitionModel {
@@ -66,6 +69,8 @@ interface FlatModelSource {
   box: Box;
   hasBg: boolean;
   clearColor?: string;
+  parentIndex: number;
+  subtreeEnd: number;
 }
 
 function nodeKind(tag: string): UINodeKindModel {
@@ -73,6 +78,7 @@ function nodeKind(tag: string): UINodeKindModel {
   if (tag === "button") return "button";
   if (tag === "check") return "check";
   if (tag === "radio") return "radio";
+  if (tag === "progress") return "progress";
   return "text";
 }
 
@@ -96,17 +102,19 @@ function flatten(
   out: FlatModelSource[],
   cursor: { i: number },
   parentBg: string | undefined,
+  parentIndex: number = -1,
 ): void {
   const index = cursor.i++;
   const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
   const hasBg = !!node.style.background;
   const clearColor = hasBg ? node.style.background : parentBg;
-  out.push({ index, node, box, hasBg, clearColor });
+  out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1 });
 
   const childParentBg = hasBg ? node.style.background : parentBg;
   for (const child of node.children) {
-    flatten(child, boxes, out, cursor, childParentBg);
+    flatten(child, boxes, out, cursor, childParentBg, index);
   }
+  out[index].subtreeEnd = cursor.i;
 }
 
 export function lowerUIToModel(
@@ -118,7 +126,7 @@ export function lowerUIToModel(
   const flat: FlatModelSource[] = [];
   flatten(root, boxes, flat, { i: 0 }, undefined);
 
-  const nodes = flat.map(({ index, node, box, hasBg, clearColor }): UINodeModel => {
+  const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd }): UINodeModel => {
     const bg = node.style.background ? resolveColor(node.style.background, colorFormat) : 0;
     const fg = node.style.color ? resolveColor(node.style.color, colorFormat) : 0xffff;
     const bColor = node.style.borderColor ? resolveColor(node.style.borderColor, colorFormat) : 0;
@@ -151,27 +159,23 @@ export function lowerUIToModel(
       value: node.tag === "radio" && node.checked ? 1 : 0,
       options: node.options,
       scrollable: node.style.overflow === "scroll" || node.style.overflow === "hidden",
+      scrollY: 0,
       contentHeight: 0, // computed after layout
+      parentIndex,
+      subtreeEnd,
     };
   });
 
-  // Compute contentHeight for scrollable nodes: total height of direct children
+  // Compute contentHeight for scrollable nodes from actual tree descendants.
   for (let i = 0; i < flat.length; i++) {
     if (!nodes[i].scrollable) continue;
     const parentBox = nodes[i].box;
-    let maxBottom = parentBox.y + parentBox.h;
-    // Walk all nodes that are children (pre-order DFS, deeper = children)
-    for (let j = i + 1; j < flat.length; j++) {
-      // A child is any node whose box is within the parent's horizontal extent
-      // and started after the parent in pre-order.
-      // Check if we've exited this parent's subtree (next sibling or parent's parent).
-      if (nodes[j].box.x < parentBox.x || nodes[j].box.x >= parentBox.x + parentBox.w) {
-        // Could be a sibling subtree — keep scanning, it might wrap back
-      }
+    let maxBottom = parentBox.y;
+    for (let j = i + 1; j < nodes[i].subtreeEnd; j++) {
       const bottom = nodes[j].box.y + nodes[j].box.h;
       if (bottom > maxBottom) maxBottom = bottom;
     }
-    nodes[i].contentHeight = maxBottom - parentBox.y;
+    nodes[i].contentHeight = Math.max(parentBox.h, maxBottom - parentBox.y);
   }
 
   const transitions: UITransitionModel[] = [];

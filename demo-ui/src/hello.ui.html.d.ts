@@ -13,7 +13,7 @@ export interface ScreenTree {
   speedRow: ViewElement;
   speedSlow: RadioElement;
   speedFast: RadioElement;
-  listContainer: ViewElement;
+  progress: ProgressElement;
   item1: TextElement;
   item2: TextElement;
   item3: TextElement;
