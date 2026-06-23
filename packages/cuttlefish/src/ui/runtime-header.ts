@@ -289,7 +289,7 @@ static int16_t __ui_scroll_pending_dy = 0;
 static uint32_t __ui_last_scroll_draw_time = 0;
 // Keyboard overlay state (defined in full in the keyboard subsystem block below;
 // forward-declared here because ui_touch_up/ui_handle_touch reference them).
-#define UI_KB_MAX 40
+#define UI_KB_MAX 48   // max key cells (4 rows × 11 padded cols + margin)
 #define UI_KB_HOLD_MS 600
 #define UI_KB_REPEAT_MS 100
 struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=ok,4=page

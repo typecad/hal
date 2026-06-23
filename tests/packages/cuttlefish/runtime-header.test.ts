@@ -136,7 +136,7 @@ describe("C++ reactive runtime header", () => {
 
   it("declares the keyboard subsystem structs and globals", () => {
     expect(header).toMatch(/struct\s+UIKey\s*\{\s*char\s+ch;\s*uint8_t\s+special;\s*\}/);
-    expect(header).toMatch(/#define\s+UI_KB_MAX\s+40/);
+    expect(header).toMatch(/#define\s+UI_KB_MAX\s+48/);
     expect(header).toContain("__ui_kb_keys");
     expect(header).toContain("__ui_kb_buffer");
     expect(header).toContain("__ui_kb_visible");
