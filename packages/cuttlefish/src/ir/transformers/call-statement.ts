@@ -174,6 +174,40 @@ export function callToStatement(
     };
   }
 
+  // ── screen.input.onChange(callback) — input text committed via keyboard ─
+  // Distinct from the GPIO onChange below: this variant takes a single callback
+  // arg (no pin/count) and fires after ui_kb_close commits the typed text.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "onChange" &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression) &&
+    call.arguments.length === 1
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const cbArg = call.arguments[0];
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    const fnName = `__ui_${elemId}_change_${clickHandlers().length}`;
+    recordClickHandler({ nodeIndex, kind: "change", fnName, callbackBody: cbBody });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
   // ── screen.modeSelect.onChange(pin, optionCount, callback?) ───────────
   // Cycles .value through 0..optionCount-1 on each falling edge.
   if (

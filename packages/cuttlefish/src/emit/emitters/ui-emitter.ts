@@ -221,6 +221,22 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = 0;`);
   }
 
+  // 8b. Input onChange dispatch — assigns __ui_kb_onchange based on __ui_kb_target.
+  const inputChangeHandlers = clickHandlers().filter(h => h.kind === "change");
+  if (inputChangeHandlers.length > 0) {
+    for (const h of inputChangeHandlers) {
+      ctx.sourceLines.push(`void ${h.fnName}() { ${h.callbackBody || ""} }`);
+    }
+    ctx.sourceLines.push(`void __ui_kb_set_onchange() {`);
+    ctx.sourceLines.push(`  __ui_kb_onchange = nullptr;`);
+    for (const h of inputChangeHandlers) {
+      ctx.sourceLines.push(`  if (__ui_kb_target == ${h.nodeIndex}) __ui_kb_onchange = ${h.fnName};`);
+    }
+    ctx.sourceLines.push(`}`);
+  } else {
+    ctx.sourceLines.push(`void __ui_kb_set_onchange() { __ui_kb_onchange = nullptr; }`);
+  }
+
   // 9. Radio group table (from auto-wire).
   // 9. Radio group table (from auto-wire).
   const radioGroups = getRadioGroups();

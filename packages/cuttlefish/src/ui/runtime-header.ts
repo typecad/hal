@@ -807,6 +807,27 @@ static inline void ui_tick(uint16_t deltaMs) {
           __ui_nodes[i].lastTextWidth = fillW;
         }
         break;
+      case NODE_INPUT:
+        // Input field: bordered rect + current text (or placeholder).
+        {
+          int16_t bx = __ui_nodes[i].box.x;
+          int16_t by = drawY;
+          int16_t bw = __ui_nodes[i].box.w;
+          int16_t bh = __ui_nodes[i].box.h;
+          uint16_t fgCol = __ui_nodes[i].fg;
+          uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          __tc_display.fillRect(bx, by, bw, bh, bgCol);
+          __tc_display.drawRect(bx, by, bw, bh, fgCol);
+          // Show textBuffer content (or the static text/placeholder).
+          const char* disp = (__ui_nodes[i].textBuffer[0] != 0)
+            ? __ui_nodes[i].textBuffer
+            : (__ui_nodes[i].text ? __ui_nodes[i].text : "");
+          __tc_display.setCursor(bx + 4, by + (bh - 16) / 2);
+          __tc_display.setTextColor(fgCol, bgCol);
+          __tc_display.setTextSize(2);
+          __tc_display.print(disp);
+        }
+        break;
     }
     __ui_nodes[i].dirty = 0;
   }
@@ -889,6 +910,8 @@ static void    (*__ui_kb_onchange)();
 // Dispatch table: one loader per input node. Indexed by input position.
 extern void (*__ui_kb_loaders[])();
 extern const uint8_t __ui_kb_loader_count;
+// Dispatch: picks the onChange callback for the input being edited.
+extern void __ui_kb_set_onchange();
 
 // Insert a character into the buffer (if space permits).
 static inline void ui_kb_insert(char c) {
@@ -933,6 +956,7 @@ static inline void ui_kb_open(uint8_t nodeIdx, uint8_t inputPosition) {
   __ui_kb_bs_held = 0;
   // Load the key set via the dispatch table.
   if (inputPosition < __ui_kb_loader_count) __ui_kb_loaders[inputPosition]();
+  __ui_kb_set_onchange();
   ui_kb_compute_box();
   __ui_kb_visible = 1;
   // Mark the whole tree dirty so the overlay draws cleanly over it.

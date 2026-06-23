@@ -161,4 +161,9 @@ describe("C++ reactive runtime header", () => {
   it("opens the keyboard when a NODE_INPUT is tapped", () => {
     expect(header).toMatch(/kind\s*==\s*NODE_INPUT[\s\S]*ui_kb_open/);
   });
+
+  it("draws NODE_INPUT as a bordered field showing textBuffer", () => {
+    expect(header).toMatch(/case\s+NODE_INPUT:/);
+    expect(header).toMatch(/NODE_INPUT[\s\S]*drawRect/);
+  });
 });

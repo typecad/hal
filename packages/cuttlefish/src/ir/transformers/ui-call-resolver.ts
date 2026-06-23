@@ -73,8 +73,9 @@ export function uiPressBindings(): PressBinding[] {
 
 export interface ClickHandlerSpec {
   nodeIndex: number;
-  /** Handler kind: click (short tap), hold (long press ≥600ms), release (finger up). */
-  kind: "click" | "hold" | "release";
+  /** Handler kind: click (short tap), hold (long press ≥600ms), release (finger up),
+   *  change (input text committed via keyboard). */
+  kind: "click" | "hold" | "release" | "change";
   /** Function name of the generated handler. */
   fnName: string;
   /** C++ body of the callback. */
