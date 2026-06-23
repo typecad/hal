@@ -305,9 +305,15 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
       __ui_drag_start_y = ty;
       int16_t maxScroll = __ui_nodes[__ui_scroll_node].contentHeight - __ui_nodes[__ui_scroll_node].box.h;
       __ui_nodes[__ui_scroll_node].scrollY = constrain(__ui_nodes[__ui_scroll_node].scrollY - dy, 0, maxScroll);
-      // Mark all children dirty
+      // Mark children dirty — only those inside the scrollable container.
+      // This prevents flashing: non-scroll nodes don't redraw.
       for (uint8_t c = 0; c < __ui_node_count; c++) {
-        if (c != (uint8_t)__ui_scroll_node) ui_mark_dirty(c);
+        if (c == (uint8_t)__ui_scroll_node) continue;
+        // Only mark nodes whose X is within the container's horizontal extent
+        if (__ui_nodes[c].box.x >= __ui_nodes[__ui_scroll_node].box.x &&
+            __ui_nodes[c].box.x < __ui_nodes[__ui_scroll_node].box.x + __ui_nodes[__ui_scroll_node].box.w) {
+          ui_mark_dirty(c);
+        }
       }
       ui_mark_dirty(__ui_scroll_node);
     }
