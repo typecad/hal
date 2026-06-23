@@ -17,6 +17,9 @@ export interface UINodeModel {
   fg: number;
   kind: UINodeKindModel;
   text?: string;
+  valueAttr?: string;
+  name?: string;
+  checked?: boolean;
   textBuffer: string;
   hasTextBinding: boolean;
   hasBg: boolean;
@@ -30,6 +33,7 @@ export interface UINodeModel {
   dirty: boolean;
   value: number;
   options?: Array<{ value: string; text: string }>;
+  checked?: boolean;
 }
 
 export interface UITransitionModel {
@@ -129,6 +133,9 @@ export function lowerUIToModel(
       fg,
       kind: nodeKind(node.tag),
       text: node.text,
+      valueAttr: node.value,
+      name: node.name,
+      checked: node.checked,
       textBuffer: "",
       hasTextBinding: false,
       hasBg,
@@ -140,7 +147,7 @@ export function lowerUIToModel(
       clearColor: clear,
       lastTextWidth: 0,
       dirty: false,
-      value: 0,
+      value: node.tag === "radio" && node.checked ? 1 : 0,
       options: node.options,
     };
   });
@@ -176,4 +183,3 @@ export function lowerUIToModel(
     transitions,
   };
 }
-
