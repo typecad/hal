@@ -596,24 +596,37 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_nodes[i].dirty = 0;
   }
   // ②b Draw scrollbars for scrollable containers that are dirty.
+  // Incremental: only clear the old thumb position and draw the new one.
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].scrollable) continue;
     if (!scrollbarDirty[i]) continue;
-    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;  // nothing to scroll
-    // Track: thin rectangle on the right edge.
+    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
     int16_t tx = __ui_nodes[i].box.x + __ui_nodes[i].box.w - 4;
     int16_t ty = __ui_nodes[i].box.y;
     int16_t th = __ui_nodes[i].box.h;
     __ui_nodes[i].scrollY = constrain(__ui_nodes[i].scrollY, 0, __ui_nodes[i].contentHeight - th);
-    uint16_t trackColor = __ui_nodes[i].fg;
-    // dim track color by halving each channel
-    trackColor = ((trackColor >> 1) & 0x7BEF);
-    __tc_display.fillRect(tx, ty, 3, th, trackColor);
-    // Thumb: position reflects scrollY ratio, size reflects viewport/content ratio.
     uint16_t thumbH = (uint32_t)th * th / __ui_nodes[i].contentHeight;
     if (thumbH < 8) thumbH = 8;
-    uint16_t thumbY = ty + (uint32_t)(__ui_nodes[i].box.h - thumbH) * __ui_nodes[i].scrollY / max(1, (__ui_nodes[i].contentHeight - th));
-    __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
+    int16_t maxScroll = __ui_nodes[i].contentHeight - th;
+    uint16_t thumbY = ty + (uint32_t)(th - thumbH) * __ui_nodes[i].scrollY / (maxScroll > 0 ? maxScroll : 1);
+    uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);  // dimmed track color
+
+    // Use value field to track previous thumb Y for incremental redraw.
+    // On first draw (value==0 means no previous thumb), draw the full track.
+    if (__ui_nodes[i].value == 0) {
+      __tc_display.fillRect(tx, ty, 3, th, dimFg);  // full track
+      __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);  // thumb
+      __ui_nodes[i].value = thumbY + 1;  // +1 so 0 means "not drawn yet"
+    } else {
+      uint16_t prevThumbY = __ui_nodes[i].value - 1;
+      if (thumbY != prevThumbY) {
+        // Clear old thumb position (restore dim track color)
+        __tc_display.fillRect(tx, prevThumbY, 3, thumbH, dimFg);
+        // Draw new thumb
+        __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
+        __ui_nodes[i].value = thumbY + 1;
+      }
+    }
   }
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
 }
