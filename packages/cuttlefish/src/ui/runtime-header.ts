@@ -389,23 +389,20 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
     if (!__ui_nodes[i].visible) continue;
-    // Scroll: skip nodes that are outside a scrollable parent's viewport.
-    // The parent's scrollY offset has already been applied to box.y during
-    // layout. Here we just check if the node falls within any scrollable
-    // ancestor's box; if not, skip drawing.
+    // Scroll: skip nodes that are outside a scrollable parent's viewport,
+    // and offset their draw position by scrollY.
     uint8_t skipDraw = 0;
+    int16_t drawY = __ui_nodes[i].box.y;  // default: no offset
     for (uint8_t p = 0; p < __ui_node_count; p++) {
-      if (__ui_nodes[p].scrollable) {
-        // Is node i a descendant of scrollable node p?
-        // Simple check: node i's box is within p's box horizontally,
-        // and we check vertical bounds after scroll offset.
+      if (__ui_nodes[p].scrollable && i != p) {
         if (__ui_nodes[i].box.x >= __ui_nodes[p].box.x &&
             __ui_nodes[i].box.x < __ui_nodes[p].box.x + __ui_nodes[p].box.w) {
-          // Check if node i is vertically outside the scrollable viewport
-          if (__ui_nodes[i].box.y + __ui_nodes[i].box.h <= __ui_nodes[p].box.y ||
-              __ui_nodes[i].box.y >= __ui_nodes[p].box.y + __ui_nodes[p].box.h) {
-            // Node might be the scrollable container itself — don't skip it
-            if (i != p) { skipDraw = 1; break; }
+          // Apply scroll offset
+          drawY = __ui_nodes[i].box.y - __ui_nodes[p].scrollY;
+          // Skip if outside viewport (after offset)
+          if (drawY + __ui_nodes[i].box.h <= __ui_nodes[p].box.y ||
+              drawY >= __ui_nodes[p].box.y + __ui_nodes[p].box.h) {
+            skipDraw = 1; break;
           }
         }
       }
@@ -430,117 +427,96 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
-        // Fill background if set; transparent containers let the parent show through.
         if (__ui_nodes[i].hasBg)
-          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
-        // Draw border if set (views can have borders without backgrounds).
+          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         if (__ui_nodes[i].borderStyle == 1) {
           uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
-          __tc_display.drawRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
+          __tc_display.drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
         }
         break;
       case NODE_TEXT:
-        // Clear the text area before drawing to prevent ghosting.
-        // Wipe max(box.w, lastTextWidth) to cover the previous render even
-        // if the new text is shorter (e.g. "10" → "9").
         {
           uint16_t clearW = __ui_nodes[i].box.w;
           if (__ui_nodes[i].lastTextWidth > clearW) clearW = __ui_nodes[i].lastTextWidth;
-          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, clearW, __ui_nodes[i].box.h,
+          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
-        __tc_display.setCursor(textX, __ui_nodes[i].box.y);
+        __tc_display.setCursor(textX, drawY);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(displayText);
-        // Underline: drawFastHLine below the text baseline.
         if (__ui_nodes[i].underline)
-          __tc_display.drawFastHLine(textX, __ui_nodes[i].box.y + 15, tw, __ui_nodes[i].fg);
+          __tc_display.drawFastHLine(textX, drawY + 15, tw, __ui_nodes[i].fg);
         break;
       case NODE_BUTTON:
-        // Fill background (if set)
         if (__ui_nodes[i].hasBg)
-          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
-        // Border: respect borderStyle (0=none, 1=solid, 2=dashed)
+          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         if (__ui_nodes[i].borderStyle == 1) {
-          __tc_display.drawRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
+          __tc_display.drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
         } else if (__ui_nodes[i].borderStyle == 2) {
-          // Dashed: approximate with 4px segments on each edge
           for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
-            __tc_display.drawFastHLine(__ui_nodes[i].box.x + dx, __ui_nodes[i].box.y, 4, bColor);
+            __tc_display.drawFastHLine(__ui_nodes[i].box.x + dx, drawY, 4, bColor);
           for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
-            __tc_display.drawFastHLine(__ui_nodes[i].box.x + dx, __ui_nodes[i].box.y + __ui_nodes[i].box.h - 1, 4, bColor);
+            __tc_display.drawFastHLine(__ui_nodes[i].box.x + dx, drawY + __ui_nodes[i].box.h - 1, 4, bColor);
           for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
-            __tc_display.drawFastVLine(__ui_nodes[i].box.x, __ui_nodes[i].box.y + dy, 4, bColor);
+            __tc_display.drawFastVLine(__ui_nodes[i].box.x, drawY + dy, 4, bColor);
           for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
-            __tc_display.drawFastVLine(__ui_nodes[i].box.x + __ui_nodes[i].box.w - 1, __ui_nodes[i].box.y + dy, 4, bColor);
+            __tc_display.drawFastVLine(__ui_nodes[i].box.x + __ui_nodes[i].box.w - 1, drawY + dy, 4, bColor);
         }
-        // Center text (buttons always center regardless of textAlign)
         __tc_display.setCursor(
           __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
-          __ui_nodes[i].box.y + (__ui_nodes[i].box.h - 16) / 2);
+          drawY + (__ui_nodes[i].box.h - 16) / 2);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(displayText);
         break;
       case NODE_CHECK:
-        // Checkbox: a 16×16 square + label text to the right.
-        // Clear the area first (prevents ghosting).
         {
           uint16_t clearW = __ui_nodes[i].box.w;
           if (__ui_nodes[i].lastTextWidth > clearW) clearW = __ui_nodes[i].lastTextWidth;
-          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, clearW, __ui_nodes[i].box.h,
+          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
-        // Draw the checkbox square (16×16 at the left edge of the box).
         {
           int16_t cbX = __ui_nodes[i].box.x;
-          int16_t cbY = __ui_nodes[i].box.y;
+          int16_t cbY = drawY;
           if (__ui_nodes[i].value) {
-            // Checked: filled square + checkmark (3px thick for visibility)
             __tc_display.fillRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
             uint16_t inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-            // Left stroke of the V: 3 parallel lines
             __tc_display.drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
             __tc_display.drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
             __tc_display.drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
-            // Right stroke of the V: 3 parallel lines
             __tc_display.drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
             __tc_display.drawLine(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
             __tc_display.drawLine(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
           } else {
-            // Unchecked: outline square
             __tc_display.drawRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
           }
         }
-        // Label text to the right of the checkbox.
-        __tc_display.setCursor(__ui_nodes[i].box.x + 22, __ui_nodes[i].box.y);
+        __tc_display.setCursor(__ui_nodes[i].box.x + 22, drawY);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(displayText);
         break;
       case NODE_RADIO:
-        // Radio: filled/outline circle + label text.
         {
           uint16_t clearW = __ui_nodes[i].box.w;
           if (__ui_nodes[i].lastTextWidth > clearW) clearW = __ui_nodes[i].lastTextWidth;
-          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, clearW, __ui_nodes[i].box.h,
+          __tc_display.fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
           int16_t cbX = __ui_nodes[i].box.x;
-          int16_t cbY = __ui_nodes[i].box.y;
+          int16_t cbY = drawY;
           if (__ui_nodes[i].value) {
-            // Selected: filled outer circle + inner dot
             __tc_display.fillCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
             __tc_display.fillCircle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           } else {
-            // Unselected: outline circle
             __tc_display.drawCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
           }
         }
-        __tc_display.setCursor(__ui_nodes[i].box.x + 22, __ui_nodes[i].box.y);
+        __tc_display.setCursor(__ui_nodes[i].box.x + 22, drawY);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);
         __tc_display.print(displayText);
