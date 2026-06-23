@@ -297,6 +297,7 @@ static UIRect  __ui_kb_box;
 static uint8_t __ui_kb_visible = 0;
 static uint8_t __ui_kb_bs_held = 0;
 static uint8_t __ui_kb_dirty = 0;     // 1 = keyboard needs redraw this frame
+static int8_t __ui_kb_pressed_key = -1; // key index under the current touch (-1=none)
 static int16_t __ui_last_touch_x = 0;
 static int16_t __ui_last_touch_y = 0;
 // Keyboard function forward declarations (defined in the subsystem block below;
@@ -1041,21 +1042,25 @@ static inline void ui_kb_key_rect(uint8_t idx, UIRect* out) {
 // Handle a touch-down inside the keyboard box. tx,ty are display coords.
 // Handle a touch-down inside the keyboard box. Only fires on the initial
 // down edge (tracked by __ui_touch_state in the modal path), NOT every poll.
+// Records WHICH key is under the finger — the same key is activated on release
+// (ui_kb_handle_tap), avoiding mis-targeting from coordinate drift on release.
 static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
+  __ui_kb_pressed_key = -1;
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
     UIKey k = __ui_kb_keys[i];
     if (k.special == 255) continue;  // padding cell, skip
     UIRect r;
     ui_kb_key_rect(i, &r);
     if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
+      __ui_kb_pressed_key = (int8_t)i;  // remember for release
+      // Backspace starts deleting immediately + arms auto-repeat.
       if (k.special == 2) {
-        // backspace: delete once now, arm auto-repeat via ui_kb_tick.
         __ui_kb_bs_held = 1;
         __ui_kb_bs_repeat = millis();
         ui_kb_delete();
         __ui_kb_dirty = 1;
       }
-      return;  // only one key per touch
+      return;
     }
   }
 }
@@ -1071,45 +1076,40 @@ static inline void ui_kb_tick(uint32_t now) {
   }
 }
 
-// Handle a tap (touch-up) on a keyboard key. tx,ty are display coords.
-// Fires the per-key action: char insert, shift toggle, page-swap, or OK close.
-// (Backspace deletion happens on touch-down + auto-repeat; nothing here for it.)
+// Handle a tap release. Activates the key that was under the finger on
+// touch-down (__ui_kb_pressed_key) — NOT a fresh hit-test, which would
+// mis-target due to coordinate drift on a resistive panel at release.
 static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
-  for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
-    UIKey k = __ui_kb_keys[i];
-    if (k.special == 255) continue;  // padding cell, skip
-    UIRect r;
-    ui_kb_key_rect(i, &r);
-    if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
-      switch (k.special) {
-        case 0: {  // char
-          char c = k.ch;
-          if (__ui_kb_shift && c >= 'a' && c <= 'z') c -= 32;
-          ui_kb_insert(c);
-          __ui_kb_shift = 0;  // shift resets after one char
-          __ui_kb_dirty = 1;
-          break;
-        }
-        case 1:  // shift toggle
-          __ui_kb_shift = !__ui_kb_shift;
-          __ui_kb_dirty = 1;
-          break;
-        case 2:  // backspace: handled on down + repeat; nothing on tap-up
-          break;
-        case 3:  // OK
-          ui_kb_close();
-          break;
-        case 4: {  // page-swap (123 → numeric, ABC → alpha)
-          extern void __ui_kb_load_default_alpha();
-          extern void __ui_kb_load_default_number();
-          if (__ui_kb_cols <= 4) __ui_kb_load_default_alpha();
-          else __ui_kb_load_default_number();
-          ui_kb_compute_box();
-          __ui_kb_dirty = 1;
-          break;
-        }
-      }
-      return;  // only one key per tap
+  (void)tx; (void)ty;  // key was recorded on touch-down; no re-hit-test
+  if (__ui_kb_pressed_key < 0) return;
+  UIKey k = __ui_kb_keys[__ui_kb_pressed_key];
+  __ui_kb_pressed_key = -1;
+  switch (k.special) {
+    case 0: {  // char
+      char c = k.ch;
+      if (__ui_kb_shift && c >= 'a' && c <= 'z') c -= 32;
+      ui_kb_insert(c);
+      __ui_kb_shift = 0;  // shift resets after one char
+      __ui_kb_dirty = 1;
+      break;
+    }
+    case 1:  // shift toggle
+      __ui_kb_shift = !__ui_kb_shift;
+      __ui_kb_dirty = 1;
+      break;
+    case 2:  // backspace: handled on down + repeat; nothing on tap-up
+      break;
+    case 3:  // OK
+      ui_kb_close();
+      break;
+    case 4: {  // page-swap (123 → numeric, ABC → alpha)
+      extern void __ui_kb_load_default_alpha();
+      extern void __ui_kb_load_default_number();
+      if (__ui_kb_cols <= 4) __ui_kb_load_default_alpha();
+      else __ui_kb_load_default_number();
+      ui_kb_compute_box();
+      __ui_kb_dirty = 1;
+      break;
     }
   }
 }
