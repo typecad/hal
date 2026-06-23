@@ -41,7 +41,27 @@ export interface UIElementNode {
   options?: Array<{ value: string; text: string }>;
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input"]);
+/** A single key in a keyboard template. */
+export interface UIKeyTemplate {
+  /** Character to insert, or label for special keys. */
+  ch: string;
+  /** 0=char, 1=shift, 2=backspace, 3=ok, 4=page-swap. */
+  special: 0 | 1 | 2 | 3 | 4;
+}
+
+/** A keyboard template parsed from <keyboard>. */
+export interface KeyboardTemplate {
+  id: string;
+  variant: "alpha" | "number";
+  rows: UIKeyTemplate[][];
+}
+
+export interface ParsedHtml {
+  tree: UIElementNode;
+  keyboards: KeyboardTemplate[];
+}
+
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key"]);
 
 export function parseHtml(src: string): UIElementNode {
   // Strip HTML comments before parsing.
@@ -75,6 +95,63 @@ export function parseHtml(src: string): UIElementNode {
 
   const tree = domToUIElementNode(screenEl);
   return tree;
+}
+
+/** Parse HTML, returning both the <screen> tree and any <keyboard> templates. */
+export function parseHtmlWithKeyboards(src: string): ParsedHtml {
+  const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "");
+  const wrapped = `<div id="__root__">${withoutComments}</div>`;
+  const { document } = parseHTML(wrapped);
+  const root = document.getElementById("__root__");
+  if (!root) {
+    throw new Error("UI HTML: failed to parse document");
+  }
+
+  // Parse keyboards first (they are siblings of <screen>, not children).
+  const keyboards: KeyboardTemplate[] = [];
+  for (const child of Array.from(root.children)) {
+    if (child.tagName.toLowerCase() !== "keyboard") continue;
+    keyboards.push(parseKeyboardElement(child));
+  }
+
+  // Reuse parseHtml for the screen tree.
+  const tree = parseHtml(src);
+  return { tree, keyboards };
+}
+
+/** Parse a <keyboard> element into a KeyboardTemplate. */
+function parseKeyboardElement(el: Element): KeyboardTemplate {
+  const id = el.getAttribute("id") || "";
+  const variantAttr = el.getAttribute("variant");
+  const variant: "alpha" | "number" = variantAttr === "number" ? "number" : "alpha";
+  const rows: UIKeyTemplate[][] = [];
+  for (const rowEl of Array.from(el.children)) {
+    if (rowEl.tagName.toLowerCase() !== "row") continue;
+    const row: UIKeyTemplate[] = [];
+    for (const keyEl of Array.from(rowEl.children)) {
+      if (keyEl.tagName.toLowerCase() !== "key") continue;
+      row.push(parseKeyElement(keyEl));
+    }
+    if (row.length > 0) rows.push(row);
+  }
+  return { id, variant, rows };
+}
+
+/** Parse a <key> element. Special keys are identified by label or special attr. */
+function parseKeyElement(el: Element): UIKeyTemplate {
+  const label = el.textContent?.trim() || "";
+  const specialAttr = el.getAttribute("special");
+  if (specialAttr !== null) {
+    const s = parseInt(specialAttr, 10);
+    if (s >= 1 && s <= 4) return { ch: label, special: s as 1 | 2 | 3 | 4 };
+  }
+  // Recognize special keys by conventional labels.
+  if (label === "⇧" || label.toUpperCase() === "SHIFT") return { ch: label, special: 1 };
+  if (label === "⌫" || label.toUpperCase() === "BACKSPACE") return { ch: label, special: 2 };
+  if (label.toUpperCase() === "OK") return { ch: label, special: 3 };
+  // 123 / ABC are page-swap keys (their ch carries the label to draw).
+  if (label === "123" || label.toUpperCase() === "ABC") return { ch: label, special: 4 };
+  return { ch: label, special: 0 };
 }
 
 /** Adapt a DOM element to UIElementNode, recursively walking children. */

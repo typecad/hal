@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
+import { parseHtml, parseHtmlWithKeyboards } from "@typecad/cuttlefish/ui/html-parser";
 
 describe("HTML subset parser", () => {
   it("parses a screen root with children", () => {
@@ -62,5 +62,40 @@ describe("HTML subset parser", () => {
     const tree = parseHtml(`<screen><input id="port" type="number" maxlength="5"></input></screen>`);
     expect(tree.children[0].type).toBe("number");
     expect(tree.children[0].maxlength).toBe(5);
+  });
+
+  it("parses a <keyboard> template alongside <screen>", () => {
+    const result = parseHtmlWithKeyboards(`<screen><input id="ssid"></input></screen>
+<keyboard id="myKb" variant="alpha">
+  <row><key>1</key><key>2</key></row>
+  <row><key>q</key><key>w</key></row>
+</keyboard>`);
+    expect(result.tree.tag).toBe("screen");
+    expect(result.keyboards).toHaveLength(1);
+    expect(result.keyboards[0].id).toBe("myKb");
+    expect(result.keyboards[0].variant).toBe("alpha");
+    expect(result.keyboards[0].rows).toHaveLength(2);
+    expect(result.keyboards[0].rows[0]).toEqual([
+      { ch: "1", special: 0 },
+      { ch: "2", special: 0 },
+    ]);
+  });
+
+  it("returns empty keyboards array when no <keyboard> present", () => {
+    const result = parseHtmlWithKeyboards(`<screen><text id="t">hi</text></screen>`);
+    expect(result.keyboards).toEqual([]);
+  });
+
+  it("recognizes special keys by label in <keyboard>", () => {
+    const result = parseHtmlWithKeyboards(`<screen></screen>
+<keyboard id="kb" variant="alpha">
+  <row><key>⇧</key><key>⌫</key><key>OK</key><key>123</key><key>a</key></row>
+</keyboard>`);
+    const row = result.keyboards[0].rows[0];
+    expect(row[0].special).toBe(1);  // shift
+    expect(row[1].special).toBe(2);  // backspace
+    expect(row[2].special).toBe(3);  // ok
+    expect(row[3].special).toBe(4);  // page-swap
+    expect(row[4].special).toBe(0);  // char
   });
 });
