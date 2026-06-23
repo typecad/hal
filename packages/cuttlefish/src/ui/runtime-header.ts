@@ -878,7 +878,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         break;
       case NODE_INPUT:
-        // Input field: bordered rect + current text (or placeholder).
+        // Input field: bordered rect + current text (or placeholder), clipped to box width.
         {
           int16_t bx = __ui_nodes[i].box.x;
           int16_t by = drawY;
@@ -895,7 +895,17 @@ static inline void ui_tick(uint16_t deltaMs) {
           __tc_display.setCursor(bx + 4, by + (bh - 16) / 2);
           __tc_display.setTextColor(fgCol, bgCol);
           __tc_display.setTextSize(2);
-          __tc_display.print(disp);
+          // Clip: at textSize(2), each char is 12px advance. Only print chars
+          // that fit within the box (bw - 8px margin), so text never overflows
+          // the border or wraps to the next line.
+          int16_t maxChars = (bw - 8) / 12;
+          if (maxChars < 0) maxChars = 0;
+          int16_t len = (int16_t)strlen(disp);
+          if (len > maxChars) len = maxChars;
+          for (int16_t c = 0; c < len; c++) {
+            char ch[2] = { disp[c], 0 };
+            __tc_display.print(ch);
+          }
         }
         break;
     }
