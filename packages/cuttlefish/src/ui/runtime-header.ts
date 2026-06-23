@@ -1125,7 +1125,8 @@ static inline void ui_kb_draw() {
   __tc_display.print(__ui_kb_buffer);
   __tc_display.print("_");  // cursor
 
-  // Keys: one rect per key, label centered-ish.
+  // Keys: one rect per key, label centered.
+  // GFX font at textSize(1): 6px advance per char, 8px tall.
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
     UIKey k = __ui_kb_keys[i];
     if (k.special == 255) continue;  // padding cell, skip
@@ -1137,23 +1138,31 @@ static inline void ui_kb_draw() {
     if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }          // shift active — highlight
     __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
     __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, fg);
-    // Derive the label: special keys get fixed multi-char strings; char keys
-    // use k.ch (capitalized if shift active).
-    __tc_display.setCursor(r.x + 4, r.y + r.h / 2 - 4);
     __tc_display.setTextColor(fg, bg);
     __tc_display.setTextSize(1);
+    // Derive the label string + its length for centering.
+    const char* labelStr;
+    char single[2];
     switch (k.special) {
-      case 1:  __tc_display.print(__ui_kb_shift ? "SHIFT*" : "shift"); break;
-      case 2:  __tc_display.print("DEL"); break;
-      case 3:  __tc_display.print("OK"); break;
-      case 4:  __tc_display.print(__ui_kb_cols <= 4 ? "ABC" : "123"); break;
-      default: {
-        char label[2] = { k.ch, 0 };
-        if (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') label[0] = k.ch - 32;
-        __tc_display.print(label);
+      case 1:  labelStr = __ui_kb_shift ? "SHIFT*" : "shift"; break;
+      case 2:  labelStr = "DEL"; break;
+      case 3:  labelStr = "OK"; break;
+      case 4:  labelStr = __ui_kb_cols <= 4 ? "ABC" : "123"; break;
+      default:
+        single[0] = (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') ? (char)(k.ch - 32) : k.ch;
+        single[1] = 0;
+        labelStr = single;
         break;
-      }
     }
+    // Center: textW = len * 6px, textH = 8px. Position inside the key rect.
+    uint8_t len = strlen(labelStr);
+    int16_t textW = (int16_t)len * 6;
+    int16_t textH = 8;
+    int16_t cx = r.x + (r.w - textW) / 2;
+    int16_t cy = r.y + (r.h - textH) / 2;
+    if (cx < r.x + 1) cx = r.x + 1;  // clamp if label wider than key
+    __tc_display.setCursor(cx, cy);
+    __tc_display.print(labelStr);
   }
 }
 
