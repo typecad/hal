@@ -33,7 +33,6 @@ export interface UINodeModel {
   dirty: boolean;
   value: number;
   options?: Array<{ value: string; text: string }>;
-  checked?: boolean;
 }
 
 export interface UITransitionModel {
