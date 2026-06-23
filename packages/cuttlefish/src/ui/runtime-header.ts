@@ -426,6 +426,9 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (__ui_nodes[s].dirty) {
       for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
         ui_mark_dirty(c);
+        // Reset incremental redraw state for progress bars so they fully redraw
+        // after the viewport is cleared (otherwise only the delta draws).
+        if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = 0;
       }
       // Clear the viewport with the container's background (or parent's clear color)
       __tc_display.fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y, __ui_nodes[s].box.w, __ui_nodes[s].box.h,
