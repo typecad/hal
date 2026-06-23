@@ -12,7 +12,7 @@ const k = (ch: string): UIKeyTemplate => ({ ch, special: 0 });
 // Alpha: 10×4 grid (bottom dock). Row 2 has shift + backspace; row 3 has
 // 123 (page-swap to symbols), space (_), and OK.
 export const DEFAULT_ALPHA_KEYBOARD: KeyboardTemplate = {
-  id: "__default_alpha",
+  id: "default_alpha",
   variant: "alpha",
   rows: [
     [k("1"), k("2"), k("3"), k("4"), k("5"), k("6"), k("7"), k("8"), k("9"), k("0")],
@@ -36,7 +36,7 @@ export const DEFAULT_ALPHA_KEYBOARD: KeyboardTemplate = {
 // backspace, and OK. The last cell duplicates OK — both commit; the grid stays
 // rectangular which keeps ui_kb_key_rect() arithmetic uniform.
 export const DEFAULT_NUMBER_KEYBOARD: KeyboardTemplate = {
-  id: "__default_number",
+  id: "default_number",
   variant: "number",
   rows: [
     [k("1"), k("2"), k("3"), { ch: "⌫", special: 2 }],

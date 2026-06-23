@@ -17,7 +17,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseHtml } from "./html-parser.js";
+import { parseHtml, parseHtmlWithKeyboards } from "./html-parser.js";
+import type { KeyboardTemplate } from "./html-parser.js";
 import { parseCss } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
 import { selectEngine } from "./select-engine.js";
@@ -29,6 +30,8 @@ export interface UIModule {
   htmlPath: string;
   /** Resolved-style tree (HTML + CSS merged). Layout deferred to mount. */
   styled: StyledNode;
+  /** <keyboard> templates parsed from the same .ui.html (sibling declarations). */
+  keyboards: KeyboardTemplate[];
 }
 
 export interface LowerOptions {
@@ -61,11 +64,13 @@ export function loadUIModule(htmlPath: string): UIModule {
   const cssPath = abs.replace(/\.ui\.html$/, ".ui.css");
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
 
-  const tree = parseHtml(htmlText);
+  const parsed = parseHtmlWithKeyboards(htmlText);
+  const tree = parsed.tree;
+  const keyboards = parsed.keyboards;
   const rules = parseCss(cssText);
   const styled = resolveStyles(tree, rules);
 
-  const mod: UIModule = { htmlPath: abs, styled };
+  const mod: UIModule = { htmlPath: abs, styled, keyboards };
   modules.set(abs, mod);
 
   // Write a sibling .ui.html.d.ts so editors and the type-checker see the
@@ -87,7 +92,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const engine = selectEngine(mod.styled);
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
   const boxes = engine.arrange(mod.styled, viewport, measure);
-  const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage);
+  const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage, mod.keyboards);
   lowered.set(abs, result);
   return result;
 }

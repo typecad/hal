@@ -69,4 +69,25 @@ describe("ui lowering", () => {
     expect(out.nodeTable).toContain("NODE_INPUT");
     expect(out.nodeTable).toContain(".maxlen=32");
   });
+
+  it("emits a keyboard loader function and dispatch table for an input", () => {
+    const out = lower(
+      `<screen><input id="ssid" type="text" placeholder="SSID" maxlength="32"></input></screen>`,
+      `#ssid { color: lightskyblue; }`,
+    );
+    // A loader function named after the default alpha keyboard.
+    expect(out.keyboardLoaders).toContain("__ui_kb_load_default_alpha");
+    // The dispatch table references it.
+    expect(out.keyboardDispatch).toContain("__ui_kb_load_default_alpha");
+    expect(out.keyboardDispatch).toContain("__ui_kb_loaders");
+  });
+
+  it("selects the numeric default loader for type=number inputs", () => {
+    const out = lower(
+      `<screen><input id="port" type="number" maxlength="5"></input></screen>`,
+      ``,
+    );
+    expect(out.keyboardLoaders).toContain("__ui_kb_load_default_number");
+    expect(out.keyboardDispatch).toContain("__ui_kb_load_default_number");
+  });
 });

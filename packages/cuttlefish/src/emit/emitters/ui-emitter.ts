@@ -112,6 +112,12 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(lowered.transitionTable);
   }
 
+  // 2b. Keyboard loader functions + dispatch table (for <input> support).
+  for (const { lowered } of allLoweredUIModules()) {
+    if (lowered.keyboardLoaders) ctx.sourceLines.push(lowered.keyboardLoaders);
+    if (lowered.keyboardDispatch) ctx.sourceLines.push(lowered.keyboardDispatch);
+  }
+
   // 3. Signal variables (one per ui.signal / const X = ui.signal).
   for (const decl of uiSignalDecls()) {
     ctx.sourceLines.push(decl);

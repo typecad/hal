@@ -15,11 +15,17 @@
 import { StyledNode } from "../../ui/style-resolver.js";
 import { Box } from "../../ui/layout-engine.js";
 import { lowerUIToModel, UIProgram, UINodeModel } from "../../ui/model.js";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../ui/default-keyboards.js";
+import type { KeyboardTemplate } from "../../ui/html-parser.js";
 
 export interface LoweredUI {
   nodeTable: string;
   transitionTable: string;
   typeDecl: string;
+  /** C++ keyboard loader function bodies (one per keyboard in use). */
+  keyboardLoaders: string;
+  /** C++ dispatch table mapping input node index → loader function. */
+  keyboardDispatch: string;
 }
 
 type ColorFormat = "rgb565" | "mono";
@@ -30,6 +36,7 @@ export function lowerUIToCpp(
   boxes: Box[],
   colorFormat: ColorFormat,
   storage: Storage,
+  keyboards: KeyboardTemplate[] = [],
 ): LoweredUI {
   void storage;
   const model = lowerUIToModel(root, boxes, colorFormat);
@@ -40,7 +47,72 @@ export function lowerUIToCpp(
   const transitionTable = emitTransitionTable(model);
   const typeDecl = emitTypeDecl(root);
 
-  return { nodeTable, transitionTable, typeDecl };
+  // Keyboard loaders + dispatch: collect input nodes in tree order, resolve
+  // each to its loader (default by type, or a referenced <keyboard>).
+  const inputSpecs: Array<{ type?: string; keyboard?: string }> = [];
+  const collectInputs = (n: StyledNode) => {
+    if (n.tag === "input") inputSpecs.push({ type: n.type, keyboard: n.keyboard });
+    n.children.forEach(collectInputs);
+  };
+  collectInputs(root);
+
+  const neededKeyboards: KeyboardTemplate[] = [];
+  const addIfNeeded = (kb: KeyboardTemplate) => {
+    if (!neededKeyboards.some(k => k.id === kb.id)) neededKeyboards.push(kb);
+  };
+  for (const spec of inputSpecs) {
+    if (spec.keyboard) {
+      const match = keyboards.find(k => k.id === spec.keyboard);
+      if (match) addIfNeeded(match);
+    } else {
+      addIfNeeded(spec.type === "number" ? DEFAULT_NUMBER_KEYBOARD : DEFAULT_ALPHA_KEYBOARD);
+    }
+  }
+
+  const keyboardLoaders = neededKeyboards
+    .map(kb => emitKeyboardLoader(loaderNameForId(kb.id), kb))
+    .join("\n\n");
+
+  const dispatchEntries = inputSpecs.map(spec => loaderNameForInput(spec, keyboards));
+  const keyboardDispatch = dispatchEntries.length > 0
+    ? `void (*__ui_kb_loaders[])() = { ${dispatchEntries.join(", ")} };\nconst uint8_t __ui_kb_loader_count = ${dispatchEntries.length};`
+    : `void (*__ui_kb_loaders[])() = {};\nconst uint8_t __ui_kb_loader_count = 0;`;
+
+  return { nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch };
+}
+
+function sanitizedId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_]/g, "_");
+}
+
+function loaderNameForId(id: string): string {
+  return `__ui_kb_load_${sanitizedId(id)}`;
+}
+
+function loaderNameForInput(input: { type?: string; keyboard?: string }, keyboards: KeyboardTemplate[]): string {
+  if (input.keyboard) {
+    const match = keyboards.find(k => k.id === input.keyboard);
+    if (match) return loaderNameForId(match.id);
+  }
+  return input.type === "number" ? "__ui_kb_load_default_number" : "__ui_kb_load_default_alpha";
+}
+
+function emitKeyboardLoader(name: string, kb: KeyboardTemplate): string {
+  const rows = kb.rows;
+  const cols = rows.length > 0 ? Math.max(...rows.map(r => r.length)) : 0;
+  const lines: string[] = [];
+  lines.push(`void ${name}() {`);
+  lines.push(`  __ui_kb_rows = ${rows.length};`);
+  lines.push(`  __ui_kb_cols = ${cols};`);
+  lines.push(`  __ui_kb_keyCount = 0;`);
+  for (const row of rows) {
+    for (const key of row) {
+      const chEsc = key.ch === "\\" ? "\\\\" : key.ch === "'" ? "\\'" : key.ch;
+      lines.push(`  __ui_kb_keys[__ui_kb_keyCount++] = { '${chEsc}', ${key.special} };`);
+    }
+  }
+  lines.push(`}`);
+  return lines.join("\n");
 }
 
 function cppKind(kind: UINodeModel["kind"]): string {

@@ -3,7 +3,7 @@ import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "@typecad/cuttle
 
 describe("Default keyboard templates", () => {
   it("alpha keyboard has 4 rows", () => {
-    expect(DEFAULT_ALPHA_KEYBOARD.id).toBe("__default_alpha");
+    expect(DEFAULT_ALPHA_KEYBOARD.id).toBe("default_alpha");
     expect(DEFAULT_ALPHA_KEYBOARD.variant).toBe("alpha");
     expect(DEFAULT_ALPHA_KEYBOARD.rows).toHaveLength(4);
   });
@@ -29,7 +29,7 @@ describe("Default keyboard templates", () => {
   });
 
   it("number keyboard has 4 rows", () => {
-    expect(DEFAULT_NUMBER_KEYBOARD.id).toBe("__default_number");
+    expect(DEFAULT_NUMBER_KEYBOARD.id).toBe("default_number");
     expect(DEFAULT_NUMBER_KEYBOARD.variant).toBe("number");
     expect(DEFAULT_NUMBER_KEYBOARD.rows).toHaveLength(4);
   });
