@@ -14,8 +14,7 @@
 
 import { StyledNode } from "../../ui/style-resolver.js";
 import { Box } from "../../ui/layout-engine.js";
-import { resolveColor } from "../../ui/color.js";
-import { CSSProperty } from "../../ui/css-parser.js";
+import { lowerUIToModel, UIProgram, UINodeModel } from "../../ui/model.js";
 
 export interface LoweredUI {
   nodeTable: string;
@@ -26,99 +25,44 @@ export interface LoweredUI {
 type ColorFormat = "rgb565" | "mono";
 type Storage = "progmem" | "flash";
 
-interface FlatNode {
-  index: number;
-  tag: string;
-  id?: string;
-  text?: string;
-  style: CSSProperty;
-  box: Box;
-  hasPressed: boolean;
-  hasBg: boolean;
-  clearColor: string | undefined;
-}
-
 export function lowerUIToCpp(
   root: StyledNode,
   boxes: Box[],
   colorFormat: ColorFormat,
   storage: Storage,
 ): LoweredUI {
-  const flat: FlatNode[] = [];
-  flatten(root, boxes, flat, { i: 0 }, undefined);
+  void storage;
+  const model = lowerUIToModel(root, boxes, colorFormat);
 
   // Tables are mutable RAM (ui_tick updates bg/dirty/elapsed/active each
   // frame), so no PROGMEM/flash storage keyword — those imply read-only.
-  const nodeTable = emitNodeTable(flat, colorFormat);
-  const transitionTable = emitTransitionTable(flat, colorFormat);
+  const nodeTable = emitNodeTable(model);
+  const transitionTable = emitTransitionTable(model);
   const typeDecl = emitTypeDecl(root);
 
   return { nodeTable, transitionTable, typeDecl };
 }
 
-function flatten(
-  node: StyledNode,
-  boxes: Box[],
-  out: FlatNode[],
-  cursor: { i: number },
-  parentBg: string | undefined,
-): void {
-  const index = cursor.i++;
-  const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
-  const hasPressed = !!(node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
-  const hasBg = !!node.style.background;
-  // clearColor: the nearest ancestor's background (or own bg if set).
-  // Used to wipe transparent text nodes before redraw (prevents ghosting).
-  const clearColor = hasBg ? node.style.background! : parentBg;
-  out.push({
-    index,
-    tag: node.tag,
-    id: node.id,
-    text: node.text,
-    style: node.style,
-    box,
-    hasPressed,
-    hasBg,
-    clearColor,
-  });
-  // Children inherit this node's bg as their clearColor (if set).
-  const childParentBg = hasBg ? node.style.background! : parentBg;
-  for (const child of node.children) flatten(child, boxes, out, cursor, childParentBg);
+function cppKind(kind: UINodeModel["kind"]): string {
+  switch (kind) {
+    case "fill": return "NODE_FILL";
+    case "button": return "NODE_BUTTON";
+    case "check": return "NODE_CHECK";
+    case "radio": return "NODE_RADIO";
+    case "text": return "NODE_TEXT";
+  }
 }
 
-function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
-  const lines = flat.map((n) => {
-    const kind = n.tag === "screen" || n.tag === "view" ? "NODE_FILL"
-      : n.tag === "button" ? "NODE_BUTTON"
-      : n.tag === "check" ? "NODE_CHECK"
-      : n.tag === "select" ? "NODE_TEXT"
-      : "NODE_TEXT";
-    const bg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
-    const fg = n.style.color ? resolveColor(n.style.color, colorFormat) : 0xffff;
+function hex(c: number): string {
+  return `0x${c.toString(16).padStart(4, "0")}`;
+}
+
+function emitNodeTable(model: UIProgram): string {
+  const lines = model.nodes.map((n) => {
     const text = n.text ? `"${n.text}"` : "nullptr";
     const font = "nullptr";
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
-    const bgStr = `0x${bg.toString(16).padStart(4, "0")}`;
-    const fgStr = `0x${fg.toString(16).padStart(4, "0")}`;
-    // text-align: 0=left, 1=center, 2=right
-    const textAlign = n.style.textAlign === "center" ? 1 : n.style.textAlign === "right" ? 2 : 0;
-    // border color: resolve if set
-    const borderColor = n.style.borderColor ? resolveColor(n.style.borderColor, colorFormat) : 0;
-    const borderColorStr = `0x${borderColor.toString(16).padStart(4, "0")}`;
-    // border style: 0=none, 1=solid, 2=dashed
-    const borderStyle = n.style.borderStyle === "solid" ? 1
-      : n.style.borderStyle === "dashed" ? 2
-      : n.style.borderStyle === "dotted" ? 2  // dotted approximated as dashed
-      : n.style.border || n.style.borderWidth ? 1  // default to solid if border is set
-      : 0;
-    // underline: 1 if text-decoration: underline
-    const underline = n.style.textDecoration === "underline" ? 1 : 0;
-    // visibility: 0=hidden, 1=visible (default)
-    const visible = n.style.visibility === "hidden" ? 0 : 1;
-    // clearColor: resolve the ancestor's background (used to wipe transparent text)
-    const clearColorVal = n.clearColor ? resolveColor(n.clearColor, colorFormat) : 0;
-    const clearColorStr = `0x${clearColorVal.toString(16).padStart(4, "0")}`;
-    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible}, .clearColor=${clearColorStr}, .lastTextWidth=0, .dirty=0, .value=0 },`;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .underline=${n.underline ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=0, .dirty=0, .value=0 },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.
@@ -129,23 +73,11 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
   ].join("\n");
 }
 
-function emitTransitionTable(flat: FlatNode[], colorFormat: ColorFormat): string {
-  const entries: string[] = [];
-  for (const n of flat) {
-    if (!n.style.transition) continue;
-    const prop = n.style.transition.property === "background" ? "PROP_BG" : "PROP_FG";
-    // The :pressed state's target color for this property. On press,
-    // ui_on_press arms the transition toward this value; on release,
-    // ui_on_release arms it back toward the base value.
-    const pressedStyle = (n.style as CSSProperty & { pressed?: CSSProperty }).pressed;
-    const pressedBg = pressedStyle?.background
-      ? resolveColor(pressedStyle.background, colorFormat)
-      : n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
-    const baseBg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
-    const pressedHex = `0x${pressedBg.toString(16).padStart(4, "0")}`;
-    const baseHex = `0x${baseBg.toString(16).padStart(4, "0")}`;
-    entries.push(`  { .node=${n.index}, .prop=${prop}, .durationMs=${n.style.transition.durationMs}, .pressedTarget=${pressedHex}, .baseTarget=${baseHex} },`);
-  }
+function emitTransitionTable(model: UIProgram): string {
+  const entries = model.transitions.map((t) => {
+    const prop = t.prop === "background" ? "PROP_BG" : "PROP_FG";
+    return `  { .node=${t.node}, .prop=${prop}, .durationMs=${t.durationMs}, .pressedTarget=${hex(t.pressedTarget)}, .baseTarget=${hex(t.baseTarget)} },`;
+  });
   if (entries.length === 0) {
     return `const UITransition __ui_trans[] = {};`;
   }

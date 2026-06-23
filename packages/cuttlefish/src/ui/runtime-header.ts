@@ -20,7 +20,7 @@ export function emitRuntimeHeader(): string {
 #include <stdint.h>
 #define UI_TEXT_BUF 16   // single source of truth: UINode field + textFn size arg + snprintf bound
 
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -175,7 +175,15 @@ static inline void ui_poll_inputs() {
 }
 
 // ── Touch hit-testing + click dispatch ─────────────────────────────────────
-// ClickHandler typedef + extern tables (defined by the emit layer at file scope)
+// Radio groups for mutual exclusion
+struct UIRadioGroup {
+  uint8_t nodeIndices[8];
+  uint8_t count;
+};
+extern UIRadioGroup __ui_radio_groups[];
+extern const uint8_t __ui_radio_group_count;
+
+// Forward-declare the click handler type + tables (defined by the emit layer).
 extern void (*__ui_click_handlers[])();
 extern void (*__ui_hold_handlers[])();
 extern void (*__ui_release_handlers[])();
@@ -444,6 +452,30 @@ static inline void ui_tick(uint16_t deltaMs) {
           }
         }
         // Label text to the right of the checkbox.
+        __tc_display.setCursor(__ui_nodes[i].box.x + 22, __ui_nodes[i].box.y);
+        __tc_display.setTextColor(__ui_nodes[i].fg);
+        __tc_display.setTextSize(2);
+        __tc_display.print(displayText);
+        break;
+      case NODE_RADIO:
+        // Radio: filled/outline circle + label text.
+        {
+          uint16_t clearW = __ui_nodes[i].box.w;
+          if (__ui_nodes[i].lastTextWidth > clearW) clearW = __ui_nodes[i].lastTextWidth;
+          __tc_display.fillRect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, clearW, __ui_nodes[i].box.h,
+            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+          __ui_nodes[i].lastTextWidth = tw;
+          int16_t cbX = __ui_nodes[i].box.x;
+          int16_t cbY = __ui_nodes[i].box.y;
+          if (__ui_nodes[i].value) {
+            // Selected: filled outer circle + inner dot
+            __tc_display.fillCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            __tc_display.fillCircle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+          } else {
+            // Unselected: outline circle
+            __tc_display.drawCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+          }
+        }
         __tc_display.setCursor(__ui_nodes[i].box.x + 22, __ui_nodes[i].box.y);
         __tc_display.setTextColor(__ui_nodes[i].fg);
         __tc_display.setTextSize(2);

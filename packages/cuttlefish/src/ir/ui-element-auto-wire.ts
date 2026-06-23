@@ -15,12 +15,20 @@ interface AutoWireNode {
   text?: string;
   children?: AutoWireNode[];
   options?: Array<{ value: string; text: string }>;
+  name?: string;
+  checked?: boolean;
 }
+
+// Track radio groups for mutual exclusion
+const radioGroups = new Map<string, Array<{ id: string; nodeIndex: number }>>();
+
+export function getRadioGroups() { return radioGroups; }
 
 /**
  * Walk the styled tree and auto-wire built-in element behaviors.
  */
 export function autoWireElements(treeName: string, root: AutoWireNode): void {
+  radioGroups.clear();
   const walk = (node: AutoWireNode) => {
     if (node.id) {
       autoWireNode(treeName, node);
@@ -72,5 +80,23 @@ function autoWireNode(treeName: string, node: AutoWireNode): void {
       fnName: `__ui_${node.id}_autotext`,
       cppBody: branches + " " + elseBranch,
     } as any);
+  }
+
+  if (node.tag === "radio" && node.name) {
+    // Register this radio in its group
+    const groupName = node.name;
+    if (!radioGroups.has(groupName)) radioGroups.set(groupName, []);
+    const group = radioGroups.get(groupName)!;
+    group.push({ id: node.id!, nodeIndex });
+
+    // Auto-wire: onClick clears all radios in the group, then selects this one.
+    // The generated C++ references the radio group table by index.
+    const groupIdx = Array.from(radioGroups.keys()).indexOf(groupName);
+    recordClickHandler({
+      nodeIndex,
+      kind: "click",
+      fnName: `__ui_${node.id}_autoclick`,
+      callbackBody: `for (uint8_t __r = 0; __r < __ui_radio_groups[${groupIdx}].count; __r++) { __ui_nodes[__ui_radio_groups[${groupIdx}].nodeIndices[__r]].value = 0; } __ui_nodes[${nodeIndex}].value = 1;`,
+    });
   }
 }

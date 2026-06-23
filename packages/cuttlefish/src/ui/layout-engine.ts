@@ -44,15 +44,17 @@ export function measure(node: StyledNode): IntrinsicSize {
   if (node.tag === "text" || node.tag === "button" || node.tag === "select") {
     if (node.tag === "select") {
       // Size to the longest option, not the full comma-separated text
-      const options = (node.text ?? "").split(",").map(s => s.trim()).filter(Boolean);
+      const options = node.options && node.options.length > 0
+        ? node.options.map((option) => option.text)
+        : (node.text ?? "").split(",").map(s => s.trim()).filter(Boolean);
       const longest = options.length > 0 ? options.reduce((a, b) => a.length >= b.length ? a : b) : "";
       return { w: longest.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
     }
     const text = node.text ?? "";
     return { w: text.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
   }
-  if (node.tag === "check") {
-    // Checkbox: 16px square + 6px gap + label text
+  if (node.tag === "check" || node.tag === "radio") {
+    // Checkbox/radio: 16px indicator + 6px gap + label text
     const text = node.text ?? "";
     return { w: 16 + 6 + text.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
   }

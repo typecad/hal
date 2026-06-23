@@ -19,6 +19,10 @@ export interface StyledNode {
   children: StyledNode[];
   /** For <select>: parsed option list. */
   options?: Array<{ value: string; text: string }>;
+  /** For <radio>: group name. */
+  name?: string;
+  /** For <radio>: initially selected. */
+  checked?: boolean;
 }
 
 function matches(node: UIElementNode, sel: CSSSelector): boolean {
@@ -60,5 +64,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[]): StyledNode {
     style,
     children: node.children.map(c => resolveNode(c, rules)),
     options: node.options,
+    name: node.name,
+    checked: node.checked,
   };
 }

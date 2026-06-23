@@ -123,7 +123,7 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error";
+  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "preview";
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;
@@ -173,6 +173,8 @@ export interface CommandLineOptions {
   expectFile?: string;
   /** Generate diagnostics.md and diagnostics.json reports */
   diagnostics?: boolean;
+  /** Config file for preview command */
+  configPath?: string;
 }
 
 export interface GenerateLibdefOptions {

@@ -16,6 +16,7 @@ import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js"
 import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
+import { runPreviewServer } from "./preview/server.js";
 import * as ui from "./utils/ui.js";
 import chalk from "chalk";
 
@@ -106,6 +107,14 @@ async function main(): Promise<void> {
 
     if (options.command === "create") {
       await handleCreate(options);
+      return;
+    }
+
+    if (options.command === "preview") {
+      await runPreviewServer({
+        configPath: options.configPath,
+        port: options.port ? Number(options.port) : undefined,
+      });
       return;
     }
 

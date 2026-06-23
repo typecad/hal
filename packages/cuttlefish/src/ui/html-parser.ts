@@ -19,14 +19,18 @@ export interface UIElementNode {
   id?: string;
   classes: string[];
   text?: string;
-  /** Value attribute (for <option value="dog">Dog</option>). */
+  /** Value attribute (for <option>, <radio>). */
   value?: string;
+  /** Name attribute (for <radio>: groups radios together). */
+  name?: string;
+  /** Checked attribute (for <radio>: initially selected). */
+  checked?: boolean;
   children: UIElementNode[];
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio"]);
 
 export function parseHtml(src: string): UIElementNode {
   // Strip HTML comments before parsing.
@@ -77,6 +81,8 @@ function domToUIElementNode(el: Element): UIElementNode {
   const classAttr = el.getAttribute("class") || "";
   const classes = classAttr.split(/\s+/).filter(Boolean);
   const valueAttr = el.getAttribute("value") || undefined;
+  const nameAttr = el.getAttribute("name") || undefined;
+  const checkedAttr = el.hasAttribute("checked");
 
   // For <select>, parse <option> children into an options list
   if (tag === "select") {
@@ -118,7 +124,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child));
   }

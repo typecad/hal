@@ -21,6 +21,7 @@ import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandler
 import { emitBindingTable } from "../../ir/transformers/ui-reactive.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { generateTouchAdapter, TouchAdapterCodegen } from "../../api/shared/display-profile.js";
+import { getRadioGroups } from "../../ir/ui-element-auto-wire.js";
 
 export function emitUIRuntime(ctx: EmitterContext): void {
   // Only the entry file carries the UI runtime + tables.
@@ -213,11 +214,28 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(`void (*__ui_release_handlers[])() = {};`);
     ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = 0;`);
   }
+
+  // 9. Radio group table (from auto-wire).
+  // 9. Radio group table (from auto-wire).
+  const radioGroups = getRadioGroups();
+  if (radioGroups.size > 0) {
+    const groupEntries = Array.from(radioGroups.entries()) as Array<[string, Array<{ id: string; nodeIndex: number }>]>;
+    ctx.sourceLines.push(`UIRadioGroup __ui_radio_groups[] = {`);
+    for (const [, members] of groupEntries) {
+      const indices = members.map((m: { nodeIndex: number }) => m.nodeIndex).join(", ");
+      ctx.sourceLines.push(`  { .nodeIndices={${indices}}, .count=${members.length} },`);
+    }
+    ctx.sourceLines.push(`};`);
+    ctx.sourceLines.push(`const uint8_t __ui_radio_group_count = ${groupEntries.length};`);
+  } else {
+    ctx.sourceLines.push(`UIRadioGroup __ui_radio_groups[] = {};`);
+    ctx.sourceLines.push(`const uint8_t __ui_radio_group_count = 0;`);
+  }
 }
 
 /** Count NODE_FILL/NODE_TEXT entries in the emitted node table (one per node). */
 function countNodes(nodeTable: string): number {
-  const matches = nodeTable.match(/NODE_(FILL|TEXT|BUTTON|CHECK)/g);
+  const matches = nodeTable.match(/NODE_(FILL|TEXT|BUTTON|CHECK|RADIO)/g);
   return matches ? matches.length : 0;
 }
 

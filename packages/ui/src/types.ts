@@ -51,6 +51,12 @@ export interface SelectElement extends UIElement {
   readonly __kind: "select";
 }
 
+/** A radio element. .value is 0 (unselected) or 1 (selected).
+ *  Radios with the same name attribute are mutually exclusive. */
+export interface RadioElement extends UIElement {
+  readonly __kind: "radio";
+}
+
 export interface ScreenTree {
-  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement;
+  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement;
 }
