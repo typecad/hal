@@ -294,10 +294,12 @@ static uint32_t __ui_last_scroll_draw_time = 0;
 #define UI_KB_REPEAT_MS 100
 struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=ok,4=page
 static UIRect  __ui_kb_box;
+static UIKey   __ui_kb_keys[UI_KB_MAX];
 static uint8_t __ui_kb_visible = 0;
 static uint8_t __ui_kb_bs_held = 0;
-static uint8_t __ui_kb_dirty = 0;     // 1 = keyboard needs redraw this frame
+static uint8_t __ui_kb_dirty = 0;     // 0=clean, 1=full redraw, 2=text row + single key
 static int8_t __ui_kb_pressed_key = -1; // key index under the current touch (-1=none)
+static int8_t __ui_kb_repaint_key = -1; // key to repaint on a targeted (mode 2) redraw
 static int16_t __ui_last_touch_x = 0;
 static int16_t __ui_last_touch_y = 0;
 // Keyboard function forward declarations (defined in the subsystem block below;
@@ -312,6 +314,8 @@ static inline void ui_kb_handle_touch(int16_t tx, int16_t ty);
 static inline void ui_kb_handle_tap(int16_t tx, int16_t ty);
 static inline void ui_kb_key_rect(uint8_t idx, UIRect* out);
 static inline void ui_kb_draw();
+static inline void ui_kb_draw_key(uint8_t i);
+static inline void ui_kb_draw_text_row();
 static inline void ui_kb_compute_box();
 #define UI_TOUCH_DEBOUNCE_MS 50
 #define UI_TOUCH_HOLD_MS 600
@@ -590,12 +594,19 @@ static inline void ui_tick(uint16_t deltaMs) {
   // (ui_kb_close marks the edited input dirty; ui_kb_open had marked all dirty
   // on open so they're stale-but-covered while the keyboard is up).
   if (__ui_kb_visible) {
-    // Still evaluate bindings + transitions above, but only redraw the keyboard
-    // when something changed (open, key press, delete repeat, shift, page swap).
-    if (__ui_kb_dirty) {
+    // Redraw only what changed:
+    //   1 = full redraw (open, shift toggle, page swap)
+    //   2 = text row + single key (char insert, delete, highlight change)
+    if (__ui_kb_dirty == 1) {
       ui_kb_draw();
-      __ui_kb_dirty = 0;
+    } else if (__ui_kb_dirty == 2) {
+      ui_kb_draw_text_row();
+      if (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) {
+        ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+      }
     }
+    __ui_kb_dirty = 0;
+    __ui_kb_repaint_key = -1;
     return;
   }
   // First: if any scrollable container has dirty children, clear its viewport
@@ -944,7 +955,7 @@ static inline void ui_tick(uint16_t deltaMs) {
 //  the touch functions can reference them.)
 
 // Populated by the per-keyboard loader function (emitted by the lowering).
-static UIKey   __ui_kb_keys[UI_KB_MAX];
+// (__ui_kb_keys is forward-declared earlier near the touch state machine.)
 static uint8_t __ui_kb_keyCount;
 static uint8_t __ui_kb_rows;
 static uint8_t __ui_kb_cols;
@@ -1053,7 +1064,8 @@ static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
     ui_kb_key_rect(i, &r);
     if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
       __ui_kb_pressed_key = (int8_t)i;  // remember for release
-      __ui_kb_dirty = 1;  // redraw to show pressed highlight
+      __ui_kb_repaint_key = (int8_t)i;
+      __ui_kb_dirty = 2;  // targeted: redraw just this key's highlight
       // Backspace starts deleting immediately + arms auto-repeat.
       if (k.special == 2) {
         __ui_kb_bs_held = 1;
@@ -1072,7 +1084,8 @@ static inline void ui_kb_tick(uint32_t now) {
   if (now - __ui_kb_bs_repeat >= UI_KB_REPEAT_MS) {
     ui_kb_delete();
     __ui_kb_bs_repeat = now;
-    __ui_kb_dirty = 1;
+    __ui_kb_repaint_key = __ui_kb_pressed_key;  // ⌫ key stays highlighted
+    __ui_kb_dirty = 2;  // targeted: text row + ⌫ key
   }
 }
 
@@ -1083,27 +1096,32 @@ static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
   (void)tx; (void)ty;  // key was recorded on touch-down; no re-hit-test
   if (__ui_kb_pressed_key < 0) return;
   UIKey k = __ui_kb_keys[__ui_kb_pressed_key];
+  int8_t releasedKey = __ui_kb_pressed_key;
   __ui_kb_pressed_key = -1;  // clear pressed state → highlight reverts
-  __ui_kb_dirty = 1;          // redraw to remove pressed highlight
   switch (k.special) {
     case 0: {  // char
       char c = k.ch;
-      if (__ui_kb_shift && c >= 'a' && c <= 'z') c -= 32;
+      uint8_t wasShift = __ui_kb_shift;
+      if (wasShift && c >= 'a' && c <= 'z') c -= 32;
       ui_kb_insert(c);
       __ui_kb_shift = 0;  // shift resets after one char
-      __ui_kb_dirty = 1;
+      // Text row changes; if shift was active, repaint shift key too.
+      __ui_kb_repaint_key = wasShift ? -1 : releasedKey;
+      __ui_kb_dirty = 2;
       break;
     }
-    case 1:  // shift toggle
+    case 1:  // shift toggle — all letter keys change case, full redraw
       __ui_kb_shift = !__ui_kb_shift;
       __ui_kb_dirty = 1;
       break;
     case 2:  // backspace: handled on down + repeat; nothing on tap-up
+      __ui_kb_repaint_key = releasedKey;  // revert highlight
+      __ui_kb_dirty = 2;
       break;
     case 3:  // OK
       ui_kb_close();
       break;
-    case 4: {  // page-swap (123 → numeric, ABC → alpha)
+    case 4: {  // page-swap — new key layout, full redraw
       extern void __ui_kb_load_default_alpha();
       extern void __ui_kb_load_default_number();
       if (__ui_kb_cols <= 4) __ui_kb_load_default_alpha();
@@ -1115,57 +1133,67 @@ static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
   }
 }
 
-// Draw the keyboard overlay. Called from ui_tick after the normal node pass.
-static inline void ui_kb_draw() {
-  // Opaque background over the keyboard box.
-  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, 0x0000);
-  // Text display row (top of box): show buffer + cursor.
+// Draw a single key by index. Shared by the full draw + targeted redraw.
+static inline void ui_kb_draw_key(uint8_t i) {
+  UIKey k = __ui_kb_keys[i];
+  UIRect r;
+  ui_kb_key_rect(i, &r);
+  uint16_t bg = 0x4208;   // dark gray
+  uint16_t fg = 0xFFFF;   // white
+  if (k.special == 3) { bg = 0x2641; fg = 0xFFFF; }              // OK — blue accent
+  if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }          // shift active — highlight
+  // Pressed key: invert colors for clear tap feedback.
+  if ((int8_t)i == __ui_kb_pressed_key) { uint16_t t = bg; bg = fg; fg = t; }
+  __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
+  __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, fg);
+  __tc_display.setTextColor(fg, bg);
+  __tc_display.setTextSize(1);
+  // Derive the label string + its length for centering.
+  const char* labelStr;
+  char single[2];
+  switch (k.special) {
+    case 1:  labelStr = __ui_kb_shift ? "SHIFT*" : "shift"; break;
+    case 2:  labelStr = "DEL"; break;
+    case 3:  labelStr = "OK"; break;
+    case 4:  labelStr = __ui_kb_cols <= 4 ? "ABC" : "123"; break;
+    default:
+      single[0] = (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') ? (char)(k.ch - 32) : k.ch;
+      single[1] = 0;
+      labelStr = single;
+      break;
+  }
+  // Center: textW = len * 6px, textH = 8px. Position inside the key rect.
+  uint8_t len = strlen(labelStr);
+  int16_t textW = (int16_t)len * 6;
+  int16_t textH = 8;
+  int16_t cx = r.x + (r.w - textW) / 2;
+  int16_t cy = r.y + (r.h - textH) / 2;
+  if (cx < r.x + 1) cx = r.x + 1;  // clamp if label wider than key
+  __tc_display.setCursor(cx, cy);
+  __tc_display.print(labelStr);
+}
+
+// Redraw only the text display row (top of keyboard box). Used when a char is
+// inserted/deleted without changing key highlights.
+static inline void ui_kb_draw_text_row() {
+  // Clear the text row area (top ~20px of the keyboard box).
+  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, 20, 0x0000);
   __tc_display.setCursor(__ui_kb_box.x + 4, __ui_kb_box.y + 2);
   __tc_display.setTextColor(0xFFFF, 0x0000);
   __tc_display.setTextSize(2);
   __tc_display.print(__ui_kb_buffer);
   __tc_display.print("_");  // cursor
+}
 
+// Draw the full keyboard overlay (background + text row + all keys).
+static inline void ui_kb_draw() {
+  // Opaque background over the keyboard box.
+  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, 0x0000);
+  ui_kb_draw_text_row();
   // Keys: one rect per key, label centered.
-  // GFX font at textSize(1): 6px advance per char, 8px tall.
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
-    UIKey k = __ui_kb_keys[i];
-    if (k.special == 255) continue;  // padding cell, skip
-    UIRect r;
-    ui_kb_key_rect(i, &r);
-    uint16_t bg = 0x4208;   // dark gray
-    uint16_t fg = 0xFFFF;   // white
-    if (k.special == 3) { bg = 0x2641; fg = 0xFFFF; }              // OK — blue accent
-    if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }          // shift active — highlight
-    // Pressed key: invert colors for clear tap feedback.
-    if ((int8_t)i == __ui_kb_pressed_key) { uint16_t t = bg; bg = fg; fg = t; }
-    __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
-    __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, fg);
-    __tc_display.setTextColor(fg, bg);
-    __tc_display.setTextSize(1);
-    // Derive the label string + its length for centering.
-    const char* labelStr;
-    char single[2];
-    switch (k.special) {
-      case 1:  labelStr = __ui_kb_shift ? "SHIFT*" : "shift"; break;
-      case 2:  labelStr = "DEL"; break;
-      case 3:  labelStr = "OK"; break;
-      case 4:  labelStr = __ui_kb_cols <= 4 ? "ABC" : "123"; break;
-      default:
-        single[0] = (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') ? (char)(k.ch - 32) : k.ch;
-        single[1] = 0;
-        labelStr = single;
-        break;
-    }
-    // Center: textW = len * 6px, textH = 8px. Position inside the key rect.
-    uint8_t len = strlen(labelStr);
-    int16_t textW = (int16_t)len * 6;
-    int16_t textH = 8;
-    int16_t cx = r.x + (r.w - textW) / 2;
-    int16_t cy = r.y + (r.h - textH) / 2;
-    if (cx < r.x + 1) cx = r.x + 1;  // clamp if label wider than key
-    __tc_display.setCursor(cx, cy);
-    __tc_display.print(labelStr);
+    if (__ui_kb_keys[i].special == 255) continue;  // padding cell, skip
+    ui_kb_draw_key(i);
   }
 }
 
