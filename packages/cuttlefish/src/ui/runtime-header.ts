@@ -1172,7 +1172,7 @@ static inline void ui_kb_draw_key(uint8_t i) {
   const char* labelStr;
   char single[2];
   switch (k.special) {
-    case 1:  labelStr = __ui_kb_shift ? "SH*" : "SH"; break;
+    case 1:  labelStr = "Aa"; break;
     case 2:  labelStr = "DEL"; break;
     case 3:  labelStr = "OK"; break;
     case 4:  labelStr = __ui_kb_cols <= 4 ? "ABC" : "123"; break;
