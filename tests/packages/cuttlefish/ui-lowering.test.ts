@@ -60,4 +60,13 @@ describe("ui lowering", () => {
     expect(out.nodeTable).toMatch(/\.textBuffer=\{0\}/);
     expect(out.nodeTable).toMatch(/\.hasTextBinding=0/);
   });
+
+  it("lowers an <input> node to NODE_INPUT with maxlen", () => {
+    const out = lower(
+      `<screen><input id="ssid" type="text" placeholder="SSID" maxlength="32"></input></screen>`,
+      `#ssid { color: lightskyblue; }`,
+    );
+    expect(out.nodeTable).toContain("NODE_INPUT");
+    expect(out.nodeTable).toContain(".maxlen=32");
+  });
 });

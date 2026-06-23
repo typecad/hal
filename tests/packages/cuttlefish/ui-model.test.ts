@@ -4,6 +4,8 @@ import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
 import { measure } from "@typecad/cuttlefish/ui/layout-engine";
 import { lowerUIToModel } from "@typecad/cuttlefish/ui/model";
 import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
+import type { StyledNode } from "@typecad/cuttlefish/ui/style-resolver";
+import type { Box } from "@typecad/cuttlefish/ui/layout-engine";
 import { lowerUIToCpp } from "@typecad/cuttlefish/ir/transformers/ui-lowering";
 import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
 
@@ -57,5 +59,23 @@ describe("UI structured model", () => {
     expect(body.subtreeEnd).toBe(footer.index);
     expect(footer.parentIndex).toBe(0);
     expect(body.contentHeight).toBe(36);
+  });
+
+  it("lowers an <input> node to kind 'input' with maxlen and placeholder", () => {
+    const styled: StyledNode = {
+      tag: "input",
+      id: "ssid",
+      classes: [],
+      style: {},
+      children: [],
+      type: "text",
+      placeholder: "SSID",
+      maxlen: 32,
+    };
+    const boxes: Box[] = [{ x: 0, y: 0, w: 100, h: 20 }];
+    const prog = lowerUIToModel(styled, boxes, "rgb565");
+    expect(prog.nodes[0].kind).toBe("input");
+    expect(prog.nodes[0].maxlen).toBe(32);
+    expect(prog.nodes[0].textBuffer).toBe("SSID");
   });
 });

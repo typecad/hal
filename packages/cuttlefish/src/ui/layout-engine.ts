@@ -66,6 +66,12 @@ export function measure(node: StyledNode): IntrinsicSize {
     // Slider: default 200px wide, 20px tall (roomy track for touch)
     return { w: 200, h: 20 };
   }
+  if (node.tag === "input") {
+    // Input field: sized to the placeholder or a default width, 20px tall.
+    const text = node.placeholder ?? "";
+    const textW = text.length > 0 ? text.length * GFX_ADVANCE_PER_CHAR : 120;
+    return { w: Math.max(textW + 16, 120), h: 20 };
+  }
   // Containers have no intrinsic size in block layout — they fill available.
   return { w: 0, h: 0 };
 }

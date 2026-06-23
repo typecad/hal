@@ -28,6 +28,14 @@ export interface StyledNode {
   min?: string;
   /** For <range>: maximum value. */
   max?: string;
+  /** For <input>: text or number keyboard. */
+  type?: "text" | "number";
+  /** For <input>: placeholder text. */
+  placeholder?: string;
+  /** For <input>: max character length. */
+  maxlen?: number;
+  /** For <input>: keyboard template id ref. */
+  keyboard?: string;
 }
 
 function matches(node: UIElementNode, sel: CSSSelector): boolean {
@@ -74,5 +82,9 @@ function resolveNode(node: UIElementNode, rules: CSSRule[]): StyledNode {
     checked: node.checked,
     min: node.min,
     max: node.max,
+    type: node.type,
+    placeholder: node.placeholder,
+    maxlen: node.maxlength,
+    keyboard: node.keyboard,
   };
 }

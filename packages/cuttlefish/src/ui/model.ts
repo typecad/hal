@@ -4,7 +4,7 @@ import type { CSSProperty } from "./css-parser.js";
 import type { Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
 
-export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range";
+export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range" | "input";
 export type UIPropertyModel = "background" | "color" | "text" | "visible" | "borderColor";
 
 export interface UINodeModel {
@@ -38,6 +38,8 @@ export interface UINodeModel {
   contentHeight: number;
   rangeMin: number;
   rangeMax: number;
+  /** For <input>: max character length (0 = use UI_TEXT_BUF). */
+  maxlen: number;
   parentIndex: number;
   subtreeEnd: number;
 }
@@ -82,6 +84,7 @@ function nodeKind(tag: string): UINodeKindModel {
   if (tag === "radio") return "radio";
   if (tag === "progress") return "progress";
   if (tag === "range") return "range";
+  if (tag === "input") return "input";
   return "text";
 }
 
@@ -148,7 +151,7 @@ export function lowerUIToModel(
       valueAttr: node.value,
       name: node.name,
       checked: node.checked,
-      textBuffer: "",
+      textBuffer: node.placeholder ?? "",
       hasTextBinding: false,
       hasBg,
       textAlign: textAlign(node.style),
@@ -166,6 +169,7 @@ export function lowerUIToModel(
       contentHeight: 0, // computed after layout
       rangeMin: node.min ? (parseInt(node.min, 10) || 0) : 0,
       rangeMax: node.max ? (parseInt(node.max, 10) || 100) : 100,
+      maxlen: node.maxlen ?? 0,
       parentIndex,
       subtreeEnd,
     };
