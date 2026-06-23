@@ -38,8 +38,8 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("#endif");
   });
 
-  it("defines UI_TEXT_BUF as 16", () => {
-    expect(header).toMatch(/#define\s+UI_TEXT_BUF\s+16/);
+  it("defines UI_TEXT_BUF as 32", () => {
+    expect(header).toMatch(/#define\s+UI_TEXT_BUF\s+32/);
   });
 
   it("UINode has a mutable textBuffer and hasTextBinding field", () => {
@@ -124,5 +124,13 @@ describe("C++ reactive runtime header", () => {
   it("clips partially visible scroll children instead of drawing into siblings", () => {
     expect(header).toMatch(/drawY\s*<\s*__ui_nodes\[p\]\.box\.y/);
     expect(header).toMatch(/drawY\s*\+\s*__ui_nodes\[nodeIdx\]\.box\.h\s*>\s*__ui_nodes\[p\]\.box\.y\s*\+\s*__ui_nodes\[p\]\.box\.h/);
+  });
+
+  it("declares NODE_INPUT in the UINodeKind enum", () => {
+    expect(header).toMatch(/NODE_RANGE,\s*NODE_INPUT/);
+  });
+
+  it("UINode has a maxlen field", () => {
+    expect(header).toMatch(/int16_t\s+maxlen/);
   });
 });

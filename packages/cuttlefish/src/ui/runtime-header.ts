@@ -18,9 +18,9 @@ export function emitRuntimeHeader(): string {
 #ifndef __TC_UI_RUNTIME
 #define __TC_UI_RUNTIME
 #include <stdint.h>
-#define UI_TEXT_BUF 16   // single source of truth: UINode field + textFn size arg + snprintf bound
+#define UI_TEXT_BUF 32   // single source of truth: UINode field + textFn size arg + snprintf bound
 
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -49,6 +49,7 @@ struct UINode {
   uint8_t subtreeEnd;   // exclusive pre-order end index
   int16_t rangeMin;     // for <range>: minimum value
   int16_t rangeMax;     // for <range>: maximum value
+  int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
   // runtime slot
   uint8_t dirty;
   int16_t value;  // unified element state
