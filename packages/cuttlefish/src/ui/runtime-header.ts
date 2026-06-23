@@ -328,8 +328,9 @@ static int8_t ui_hit_test(int16_t tx, int16_t ty) {
     if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       // Skip nodes without any click handler — they're containers, not targets.
-      // Exception: NODE_RANGE nodes are always interactive (horizontal drag).
-      if (__ui_nodes[i].kind == NODE_RANGE) {
+      // Exceptions: NODE_RANGE (horizontal drag) and NODE_INPUT (opens keyboard)
+      // are always interactive.
+      if (__ui_nodes[i].kind == NODE_RANGE || __ui_nodes[i].kind == NODE_INPUT) {
         return i;
       }
       if ((uint8_t)i < __ui_click_handler_count &&
