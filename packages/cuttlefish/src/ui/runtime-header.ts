@@ -556,22 +556,37 @@ static inline void ui_tick(uint16_t deltaMs) {
         break;
       case NODE_PROGRESS:
         // Progress bar: outline track + filled portion based on .value (0-100).
+        // Incremental redraw — only draws/clears the delta to avoid flashing.
         {
           int16_t bx = __ui_nodes[i].box.x;
           int16_t by = drawY;
           int16_t bw = __ui_nodes[i].box.w;
           int16_t bh = __ui_nodes[i].box.h;
-          // Clear background
-          __tc_display.fillRect(bx, by, bw, bh,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
-          // Draw track outline
-          __tc_display.drawRect(bx, by, bw, bh, __ui_nodes[i].fg);
-          // Draw filled portion: value is 0-100, fill = value/100 * (bw-2)
+          uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          uint16_t fgCol = __ui_nodes[i].fg;
+
+          // On first draw (lastTextWidth==0 and dirty from init), draw everything.
+          // Otherwise incremental: only update the changed portion.
           uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
           int16_t fillW = ((int32_t)(bw - 2) * pct) / 100;
-          if (fillW > 0) {
-            __tc_display.fillRect(bx + 1, by + 1, fillW, bh - 2, __ui_nodes[i].fg);
+          int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
+
+          if (prevW == 0) {
+            // Full redraw: outline + background + fill
+            __tc_display.drawRect(bx, by, bw, bh, fgCol);
+            __tc_display.fillRect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
+            if (fillW > 0) {
+              __tc_display.fillRect(bx + 1, by + 1, fillW, bh - 2, fgCol);
+            }
+          } else if (fillW > prevW) {
+            // Value increased: draw new fill segment on top (no clear needed)
+            __tc_display.fillRect(bx + 1 + prevW, by + 1, fillW - prevW, bh - 2, fgCol);
+          } else if (fillW < prevW) {
+            // Value decreased: clear the removed portion
+            __tc_display.fillRect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
           }
+          // Remember current fill width for next incremental update
+          __ui_nodes[i].lastTextWidth = fillW;
         }
         break;
     }
