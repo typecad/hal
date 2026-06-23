@@ -191,11 +191,13 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   }
 
   // 8. Touch: handler functions + tables (click, hold, release).
-  const maxIdx = clickHandlers().reduce((max, h) => Math.max(max, h.nodeIndex), -1);
+  // "change" handlers are emitted separately in 8b (input onChange dispatch).
+  const touchHandlers = clickHandlers().filter(h => h.kind !== "change");
+  const maxIdx = touchHandlers.reduce((max, h) => Math.max(max, h.nodeIndex), -1);
   const tableSize = Math.max(maxIdx + 1, 1);
 
   // Handler functions
-  for (const ch of clickHandlers()) {
+  for (const ch of touchHandlers) {
     ctx.sourceLines.push(`void ${ch.fnName}() { ${ch.callbackBody || ""} }`);
   }
 

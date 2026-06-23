@@ -287,6 +287,30 @@ static int8_t __ui_scroll_node = -1;     // scrollable container being dragged
 static int8_t __ui_range_node = -1;      // range slider being dragged
 static int16_t __ui_scroll_pending_dy = 0;
 static uint32_t __ui_last_scroll_draw_time = 0;
+// Keyboard overlay state (defined in full in the keyboard subsystem block below;
+// forward-declared here because ui_touch_up/ui_handle_touch reference them).
+#define UI_KB_MAX 40
+#define UI_KB_HOLD_MS 600
+#define UI_KB_REPEAT_MS 100
+struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=ok,4=page
+static UIRect  __ui_kb_box;
+static uint8_t __ui_kb_visible = 0;
+static uint8_t __ui_kb_bs_held = 0;
+static int16_t __ui_last_touch_x = 0;
+static int16_t __ui_last_touch_y = 0;
+// Keyboard function forward declarations (defined in the subsystem block below;
+// needed because ui_touch_down/up/handle_touch reference them, AND to suppress
+// Arduino's auto-prototyper which would inject prototypes before UIRect is defined).
+static inline void ui_kb_insert(char c);
+static inline void ui_kb_delete();
+static inline void ui_kb_open(uint8_t nodeIdx, uint8_t inputPosition);
+static inline void ui_kb_close();
+static inline void ui_kb_tick(uint32_t now);
+static inline void ui_kb_handle_touch(int16_t tx, int16_t ty);
+static inline void ui_kb_handle_tap(int16_t tx, int16_t ty);
+static inline void ui_kb_key_rect(uint8_t idx, UIRect* out);
+static inline void ui_kb_draw();
+static inline void ui_kb_compute_box();
 #define UI_TOUCH_DEBOUNCE_MS 50
 #define UI_TOUCH_HOLD_MS 600
 #define UI_DRAG_THRESHOLD 10
@@ -502,8 +526,8 @@ static inline void ui_handle_no_touch() {
 // Phase -2: poll touch (if configured). Phase -1: poll input pins.
 // Phase 0: evaluate bindings. Phase 1: transitions. Phase 2: draw.
 // Forward decl: the keyboard overlay is defined below but drawn at the end.
-static inline void ui_kb_draw();
-static inline void ui_kb_handle_tap(int16_t tx, int16_t ty);
+// (ui_kb_draw and ui_kb_handle_tap forward declarations are near the touch
+// state machine, above.)
 static inline void ui_tick(uint16_t deltaMs) {
   // Touch poll — runs if touch is configured (defined by the emit layer)
   ui_poll_touch();
@@ -893,14 +917,11 @@ static inline void ui_tick(uint16_t deltaMs) {
 }
 
 // ── On-screen keyboard subsystem ───────────────────────────────────────────
-#define UI_KB_MAX 40
-#define UI_KB_HOLD_MS 600
-#define UI_KB_REPEAT_MS 100
-
-struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=ok,4=page
+// (UIKey struct, UI_KB_* defines, __ui_kb_box, __ui_kb_visible, __ui_kb_bs_held,
+//  __ui_last_touch_x/y are declared earlier near the touch state machine so
+//  the touch functions can reference them.)
 
 // Populated by the per-keyboard loader function (emitted by the lowering).
-static UIRect  __ui_kb_box;
 static UIKey   __ui_kb_keys[UI_KB_MAX];
 static uint8_t __ui_kb_keyCount;
 static uint8_t __ui_kb_rows;
@@ -909,18 +930,14 @@ static char    __ui_kb_buffer[UI_TEXT_BUF + 1];
 static uint8_t __ui_kb_len;
 static uint8_t __ui_kb_maxlen;
 static uint8_t __ui_kb_shift;
-static uint8_t __ui_kb_visible;
+// __ui_kb_visible, __ui_kb_bs_held, __ui_last_touch_x/y are forward-declared
+// earlier (near the touch state machine) because ui_touch_up references them.
 static int8_t  __ui_kb_target;       // node index of input being edited (-1 = none)
-static uint8_t __ui_kb_bs_held;      // backspace key currently held
 static uint32_t __ui_kb_bs_repeat;   // last auto-repeat deletion time
-static int16_t __ui_last_touch_x;    // last touch coords (for tap-up routing)
-static int16_t __ui_last_touch_y;
 static void    (*__ui_kb_onchange)();
 // Dispatch table: one loader per input node. Indexed by input position.
 extern void (*__ui_kb_loaders[])();
 extern const uint8_t __ui_kb_loader_count;
-// Dispatch: picks the onChange callback for the input being edited.
-extern void __ui_kb_set_onchange();
 
 // Insert a character into the buffer (if space permits).
 static inline void ui_kb_insert(char c) {
@@ -938,6 +955,7 @@ static inline void ui_kb_delete() {
 
 // Compute the keyboard box on open from display dimensions + grid shape.
 // Alpha (wide grid) docks to the bottom 75%; number (narrow grid) centers at 60%.
+// Uses the display profile dimensions if available, else 320×240.
 #ifndef __ui_display_w
 #define __ui_display_w 320
 #endif
