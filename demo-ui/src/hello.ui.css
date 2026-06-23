@@ -154,3 +154,29 @@ screen {
   font-size: 16px;
   text-decoration: underline;
 }
+
+/* Keyboard styling: digit/letter keys get a distinct color from special keys */
+.ui-key {
+  background: #1a3a5c;
+  color: lightskyblue;
+  border-color: #2a5a8c;
+}
+
+.ui-key-ok {
+  background: #1a6b3c;
+  color: white;
+}
+
+.ui-key-del {
+  background: #5c1a1a;
+  color: lightcoral;
+}
+
+.ui-key-page {
+  background: #3a3a5c;
+  color: thistle;
+}
+
+.ui-keyboard {
+  background: #0a0a1a;
+}
