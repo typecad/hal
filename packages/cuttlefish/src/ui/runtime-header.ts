@@ -386,6 +386,28 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (k >= 100) __ui_trans[i].active = 0;
   }
   // ② Draw dirty nodes directly to the display object.
+  // First: if any scrollable container has dirty children, clear its viewport
+  // with the background to prevent tearing (old content remains without this).
+  for (uint8_t s = 0; s < __ui_node_count; s++) {
+    if (!__ui_nodes[s].scrollable || !__ui_nodes[s].visible) continue;
+    if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
+    // Check if any child is dirty (cheap: if scrollY changed, we set them all dirty)
+    uint8_t hasDirtyChild = __ui_nodes[s].dirty;
+    if (!hasDirtyChild) {
+      for (uint8_t c = 0; c < __ui_node_count; c++) {
+        if (c == s || !__ui_nodes[c].dirty) continue;
+        if (__ui_nodes[c].box.x >= __ui_nodes[s].box.x &&
+            __ui_nodes[c].box.x < __ui_nodes[s].box.x + __ui_nodes[s].box.w) {
+          hasDirtyChild = 1; break;
+        }
+      }
+    }
+    if (hasDirtyChild) {
+      // Clear the viewport with the container's background (or parent's clear color)
+      __tc_display.fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y, __ui_nodes[s].box.w, __ui_nodes[s].box.h,
+        __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
+    }
+  }
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
     if (!__ui_nodes[i].visible) continue;
