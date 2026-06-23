@@ -62,7 +62,7 @@ function emitNodeTable(model: UIProgram): string {
     const text = n.text ? `"${n.text}"` : "nullptr";
     const font = "nullptr";
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .underline=${n.underline ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=0, .dirty=0, .value=${n.checked ? 1 : 0} },`;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${text}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .underline=${n.underline ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=0, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.

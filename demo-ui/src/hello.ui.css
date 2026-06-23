@@ -94,6 +94,17 @@ screen {
   font-size: 16px;
 }
 
+#listContainer {
+  overflow: scroll;
+  background: #16213e;
+  padding: 4px;
+  gap: 2px;
+}
+
+#listContainer text {
+  color: lightsteelblue;
+}
+
 #footer {
   padding: 4px 0;
 }

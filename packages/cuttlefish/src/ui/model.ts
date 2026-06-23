@@ -33,6 +33,8 @@ export interface UINodeModel {
   dirty: boolean;
   value: number;
   options?: Array<{ value: string; text: string }>;
+  scrollable: boolean;
+  contentHeight: number;
 }
 
 export interface UITransitionModel {
@@ -148,8 +150,29 @@ export function lowerUIToModel(
       dirty: false,
       value: node.tag === "radio" && node.checked ? 1 : 0,
       options: node.options,
+      scrollable: node.style.overflow === "scroll" || node.style.overflow === "hidden",
+      contentHeight: 0, // computed after layout
     };
   });
+
+  // Compute contentHeight for scrollable nodes: total height of direct children
+  for (let i = 0; i < flat.length; i++) {
+    if (!nodes[i].scrollable) continue;
+    const parentBox = nodes[i].box;
+    let maxBottom = parentBox.y + parentBox.h;
+    // Walk all nodes that are children (pre-order DFS, deeper = children)
+    for (let j = i + 1; j < flat.length; j++) {
+      // A child is any node whose box is within the parent's horizontal extent
+      // and started after the parent in pre-order.
+      // Check if we've exited this parent's subtree (next sibling or parent's parent).
+      if (nodes[j].box.x < parentBox.x || nodes[j].box.x >= parentBox.x + parentBox.w) {
+        // Could be a sibling subtree — keep scanning, it might wrap back
+      }
+      const bottom = nodes[j].box.y + nodes[j].box.h;
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+    nodes[i].contentHeight = maxBottom - parentBox.y;
+  }
 
   const transitions: UITransitionModel[] = [];
   for (const { index, node } of flat) {

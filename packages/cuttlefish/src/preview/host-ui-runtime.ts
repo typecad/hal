@@ -57,7 +57,7 @@ function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: 
       textBuffer: "",
       hasTextBinding: false,
       lastTextWidth: 0,
-      value: 0,
+      value: node.value,
     })),
     transitions: program.transitions.map((transition) => ({ ...transition, active: false, elapsed: 0 })),
   };
@@ -294,6 +294,9 @@ export class PreviewUIRuntime {
         case "check":
           this.drawCheckNode(node, displayText, tw);
           break;
+        case "radio":
+          this.drawRadioNode(node, displayText, tw);
+          break;
       }
       node.dirty = false;
     }
@@ -351,6 +354,25 @@ export class PreviewUIRuntime {
     this.gfx.print(displayText ?? "");
   }
 
+  private drawRadioNode(node: MutableNode, displayText: string | undefined, tw: number): void {
+    const clearW = Math.max(node.box.w, node.lastTextWidth);
+    this.gfx.fillRect(node.box.x, node.box.y, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
+    node.lastTextWidth = tw;
+
+    const cbX = node.box.x;
+    const cbY = node.box.y;
+    if (node.value) {
+      this.gfx.fillCircle(cbX + 8, cbY + 8, 7, node.fg);
+      this.gfx.fillCircle(cbX + 8, cbY + 8, 3, node.hasBg ? node.bg : node.clearColor);
+    } else {
+      this.gfx.drawCircle(cbX + 8, cbY + 8, 7, node.fg);
+    }
+    this.gfx.setCursor(node.box.x + 22, node.box.y);
+    this.gfx.setTextColor(node.fg);
+    this.gfx.setTextSize(2);
+    this.gfx.print(displayText ?? "");
+  }
+
   private hitTest(tx: number, ty: number): number {
     for (let i = this.nodes.length - 1; i >= 0; i--) {
       const node = this.nodes[i];
@@ -364,7 +386,7 @@ export class PreviewUIRuntime {
 
   private hasAnyHandler(nodeIndex: number): boolean {
     const node = this.nodes[nodeIndex];
-    if (node.tag === "check" || node.tag === "select") return true;
+    if (node.tag === "check" || node.tag === "select" || node.tag === "radio") return true;
     return this.callbacks.some((callback) => callback.nodeIndex === nodeIndex);
   }
 
@@ -415,6 +437,15 @@ export class PreviewUIRuntime {
     } else if (node.tag === "select") {
       const count = Math.max(node.options?.length ?? 0, 2);
       node.value = (node.value + 1) % count;
+      this.markDirty(nodeIndex);
+    } else if (node.tag === "radio") {
+      for (const candidate of this.nodes) {
+        if (candidate.tag === "radio" && candidate.name && candidate.name === node.name) {
+          candidate.value = 0;
+          this.markDirty(candidate.index);
+        }
+      }
+      node.value = 1;
       this.markDirty(nodeIndex);
     }
   }
@@ -487,4 +518,3 @@ export class PreviewUIRuntime {
     };
   }
 }
-

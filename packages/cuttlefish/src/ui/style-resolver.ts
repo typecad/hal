@@ -15,6 +15,7 @@ export interface StyledNode {
   id?: string;
   classes: string[];
   text?: string;
+  value?: string;
   style: CSSProperty;
   children: StyledNode[];
   /** For <select>: parsed option list. */
@@ -61,6 +62,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[]): StyledNode {
     id: node.id,
     classes: node.classes,
     text: node.text,
+    value: node.value,
     style,
     children: node.children.map(c => resolveNode(c, rules)),
     options: node.options,

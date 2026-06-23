@@ -109,6 +109,82 @@ export class HostAdafruitGFX {
     this.drawFastVLine(x + w - 1, y, h, color);
   }
 
+  drawCircle(x0: number, y0: number, r: number, color: number): void {
+    x0 = Math.trunc(x0);
+    y0 = Math.trunc(y0);
+    r = Math.trunc(r);
+    let f = 1 - r;
+    let ddFx = 1;
+    let ddFy = -2 * r;
+    let x = 0;
+    let y = r;
+
+    this.drawPixel(x0, y0 + r, color);
+    this.drawPixel(x0, y0 - r, color);
+    this.drawPixel(x0 + r, y0, color);
+    this.drawPixel(x0 - r, y0, color);
+
+    while (x < y) {
+      if (f >= 0) {
+        y--;
+        ddFy += 2;
+        f += ddFy;
+      }
+      x++;
+      ddFx += 2;
+      f += ddFx;
+
+      this.drawPixel(x0 + x, y0 + y, color);
+      this.drawPixel(x0 - x, y0 + y, color);
+      this.drawPixel(x0 + x, y0 - y, color);
+      this.drawPixel(x0 - x, y0 - y, color);
+      this.drawPixel(x0 + y, y0 + x, color);
+      this.drawPixel(x0 - y, y0 + x, color);
+      this.drawPixel(x0 + y, y0 - x, color);
+      this.drawPixel(x0 - y, y0 - x, color);
+    }
+  }
+
+  fillCircle(x0: number, y0: number, r: number, color: number): void {
+    x0 = Math.trunc(x0);
+    y0 = Math.trunc(y0);
+    r = Math.trunc(r);
+    this.drawFastVLine(x0, y0 - r, 2 * r + 1, color);
+    this.fillCircleHelper(x0, y0, r, 3, 0, color);
+  }
+
+  private fillCircleHelper(x0: number, y0: number, r: number, corners: number, delta: number, color: number): void {
+    let f = 1 - r;
+    let ddFx = 1;
+    let ddFy = -2 * r;
+    let x = 0;
+    let y = r;
+    let px = x;
+    let py = y;
+
+    delta++;
+    while (x < y) {
+      if (f >= 0) {
+        y--;
+        ddFy += 2;
+        f += ddFy;
+      }
+      x++;
+      ddFx += 2;
+      f += ddFx;
+      if (x < y + 1) {
+        if (corners & 1) this.drawFastVLine(x0 + x, y0 - y, 2 * y + delta, color);
+        if (corners & 2) this.drawFastVLine(x0 - x, y0 - y, 2 * y + delta, color);
+      }
+      if (y !== py) {
+        if (corners & 1) this.drawFastVLine(x0 + py, y0 - px, 2 * px + delta, color);
+        if (corners & 2) this.drawFastVLine(x0 - py, y0 - px, 2 * px + delta, color);
+        py = y;
+      }
+      px = x;
+    }
+  }
+
   drawLine(x0: number, y0: number, x1: number, y1: number, color: number): void {
     x0 = Math.trunc(x0);
     y0 = Math.trunc(y0);
@@ -225,4 +301,3 @@ export class HostAdafruitGFX {
     return out;
   }
 }
-

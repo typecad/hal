@@ -41,9 +41,13 @@ struct UINode {
   uint8_t visible;      // 0=hidden, 1=visible
   uint16_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
   uint16_t lastTextWidth;
+  // scroll
+  uint8_t scrollable;   // 1 = children are offset by scrollY and clipped to this box
+  int16_t scrollY;      // current scroll offset (children Y -= scrollY)
+  int16_t contentHeight; // total height of children (for scrollbar ratio)
   // runtime slot
   uint8_t dirty;
-  int16_t value;  // unified element state: check=0/1, button=0/1, select=0..N, text=number
+  int16_t value;  // unified element state
 };
 struct UITransition {
   uint8_t node;
@@ -195,8 +199,13 @@ static int8_t __ui_touch_node = -1;   // which node is being touched (-1=none)
 static uint32_t __ui_touch_down_time = 0;  // millis() when touch started
 static uint32_t __ui_last_touch_time = 0;  // for debounce (updated on touch down only)
 static uint32_t __ui_last_release_time = 0;  // for release debounce
-#define UI_TOUCH_DEBOUNCE_MS 50     // ignore touches within this window
-#define UI_TOUCH_HOLD_MS 600        // hold threshold
+static int16_t __ui_drag_start_x = 0;
+static int16_t __ui_drag_start_y = 0;
+static uint8_t __ui_is_dragging = 0;     // 1 once movement exceeds threshold
+static int8_t __ui_scroll_node = -1;     // scrollable container being dragged
+#define UI_TOUCH_DEBOUNCE_MS 50
+#define UI_TOUCH_HOLD_MS 600
+#define UI_DRAG_THRESHOLD 10
 
 // Hit-test a touch point against all visible nodes (topmost first).
 // Returns the node index of the topmost node that BOTH contains the point
@@ -229,10 +238,22 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   __ui_touch_node = node;
   __ui_touch_state = 1;
   __ui_touch_down_time = millis();
+  __ui_drag_start_x = tx;
+  __ui_drag_start_y = ty;
+  __ui_is_dragging = 0;
+  __ui_scroll_node = -1;
+  // Check if the touch is inside a scrollable container
+  for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
+    if (!__ui_nodes[i].scrollable || !__ui_nodes[i].visible) continue;
+    if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
+        ty >= __ui_nodes[i].box.y && ty < __ui_nodes[i].box.y + __ui_nodes[i].box.h) {
+      if (__ui_nodes[i].contentHeight > __ui_nodes[i].box.h) {
+        __ui_scroll_node = i;
+        break;
+      }
+    }
+  }
   if (node >= 0) {
-    // Only buttons get momentary pressed visual feedback (value=1 on touch).
-    // Checkboxes/selectors keep their current value — the onClick callback
-    // will toggle/cycle it on release.
     if (__ui_nodes[node].kind == NODE_BUTTON) {
       __ui_nodes[node].value = 1;
     }
@@ -243,18 +264,12 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
 // Touch up: called when touch is released. Determines click vs hold.
 static void ui_touch_up() {
   uint32_t elapsed = millis() - __ui_touch_down_time;
-  if (__ui_touch_node >= 0) {
-    // Save the node index before the callback runs (callback may change value).
+  if (__ui_touch_node >= 0 && !__ui_is_dragging) {
     int8_t clickedNode = __ui_touch_node;
-    // Click handler runs while value=1 (pressed) so the callback can read it.
     if (elapsed < UI_TOUCH_HOLD_MS) {
       ui_dispatch(__ui_click_handlers, __ui_click_handler_count, __ui_touch_node);
     }
-    // Release handler
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
-    // For NODE_BUTTON: clear pressed state on release (value back to 0).
-    // For other nodes (check, select, text): the callback owns the value —
-    // don't override what onClick set.
     if (__ui_nodes[clickedNode].kind == NODE_BUTTON) {
       __ui_nodes[clickedNode].value = 0;
     }
@@ -262,6 +277,8 @@ static void ui_touch_up() {
   }
   __ui_touch_state = 0;
   __ui_touch_node = -1;
+  __ui_is_dragging = 0;
+  __ui_scroll_node = -1;
 }
 
 // Called each frame from ui_poll_touch when touch is detected.
@@ -274,14 +291,32 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     if (now - __ui_last_touch_time < UI_TOUCH_DEBOUNCE_MS) return;
     ui_touch_down(tx, ty);
   } else {
-    // Already touching: check for hold transition
-    if (__ui_touch_state == 1 && __ui_touch_node >= 0) {
+    // Already touching: check for drag or hold
+    if (!__ui_is_dragging && __ui_scroll_node >= 0) {
+      // Check if movement exceeds drag threshold
+      int16_t dy = ty - __ui_drag_start_y;
+      if (abs(dy) >= UI_DRAG_THRESHOLD) {
+        __ui_is_dragging = 1;
+      }
+    }
+    if (__ui_is_dragging && __ui_scroll_node >= 0) {
+      // Scroll: move content by the delta from last frame
+      int16_t dy = ty - __ui_drag_start_y;
+      __ui_drag_start_y = ty;
+      int16_t maxScroll = __ui_nodes[__ui_scroll_node].contentHeight - __ui_nodes[__ui_scroll_node].box.h;
+      __ui_nodes[__ui_scroll_node].scrollY = constrain(__ui_nodes[__ui_scroll_node].scrollY - dy, 0, maxScroll);
+      // Mark all children dirty
+      for (uint8_t c = 0; c < __ui_node_count; c++) {
+        if (c != (uint8_t)__ui_scroll_node) ui_mark_dirty(c);
+      }
+      ui_mark_dirty(__ui_scroll_node);
+    }
+    if (__ui_touch_state == 1 && __ui_touch_node >= 0 && !__ui_is_dragging) {
       if (now - __ui_touch_down_time >= UI_TOUCH_HOLD_MS) {
-        __ui_touch_state = 2;  // holding
+        __ui_touch_state = 2;
         ui_dispatch(__ui_hold_handlers, __ui_click_handler_count, __ui_touch_node);
       }
     }
-    // Update touch position (for drag support in the future)
   }
   __ui_last_touch_time = now;
 }
@@ -347,7 +382,30 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ② Draw dirty nodes directly to the display object.
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
-    if (!__ui_nodes[i].visible) continue;  // visibility: hidden → skip entirely
+    if (!__ui_nodes[i].visible) continue;
+    // Scroll: skip nodes that are outside a scrollable parent's viewport.
+    // The parent's scrollY offset has already been applied to box.y during
+    // layout. Here we just check if the node falls within any scrollable
+    // ancestor's box; if not, skip drawing.
+    uint8_t skipDraw = 0;
+    for (uint8_t p = 0; p < __ui_node_count; p++) {
+      if (__ui_nodes[p].scrollable) {
+        // Is node i a descendant of scrollable node p?
+        // Simple check: node i's box is within p's box horizontally,
+        // and we check vertical bounds after scroll offset.
+        if (__ui_nodes[i].box.x >= __ui_nodes[p].box.x &&
+            __ui_nodes[i].box.x < __ui_nodes[p].box.x + __ui_nodes[p].box.w) {
+          // Check if node i is vertically outside the scrollable viewport
+          if (__ui_nodes[i].box.y + __ui_nodes[i].box.h <= __ui_nodes[p].box.y ||
+              __ui_nodes[i].box.y >= __ui_nodes[p].box.y + __ui_nodes[p].box.h) {
+            // Node might be the scrollable container itself — don't skip it
+            if (i != p) { skipDraw = 1; break; }
+          }
+        }
+      }
+    }
+    if (skipDraw) { __ui_nodes[i].dirty = 0; continue; }
+
     // Source selection: text-bound nodes show their dynamic buffer; others show
     // the immutable flash literal.
     const char* displayText = __ui_nodes[i].hasTextBinding
@@ -483,6 +541,25 @@ static inline void ui_tick(uint16_t deltaMs) {
         break;
     }
     __ui_nodes[i].dirty = 0;
+  }
+  // ②b Draw scrollbars for scrollable containers that are dirty.
+  for (uint8_t i = 0; i < __ui_node_count; i++) {
+    if (!__ui_nodes[i].scrollable) continue;
+    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;  // nothing to scroll
+    // Track: thin rectangle on the right edge.
+    int16_t tx = __ui_nodes[i].box.x + __ui_nodes[i].box.w - 4;
+    int16_t ty = __ui_nodes[i].box.y;
+    int16_t th = __ui_nodes[i].box.h;
+    __ui_nodes[i].scrollY = constrain(__ui_nodes[i].scrollY, 0, __ui_nodes[i].contentHeight - th);
+    uint16_t trackColor = __ui_nodes[i].fg;
+    // dim track color by halving each channel
+    trackColor = ((trackColor >> 1) & 0x7BEF);
+    __tc_display.fillRect(tx, ty, 3, th, trackColor);
+    // Thumb: position reflects scrollY ratio, size reflects viewport/content ratio.
+    uint16_t thumbH = (uint32_t)th * th / __ui_nodes[i].contentHeight;
+    if (thumbH < 8) thumbH = 8;
+    uint16_t thumbY = ty + (uint32_t)(__ui_nodes[i].box.h - thumbH) * __ui_nodes[i].scrollY / max(1, (__ui_nodes[i].contentHeight - th));
+    __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
   }
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
 }
