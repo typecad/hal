@@ -381,6 +381,14 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
 
 // Touch up: called when touch is released. Determines click vs hold.
 static void ui_touch_up() {
+  // Modal keyboard: route tap-up to the keyboard; swallow normal click logic.
+  if (__ui_kb_visible) {
+    ui_kb_handle_tap(__ui_last_touch_x, __ui_last_touch_y);
+    __ui_kb_bs_held = 0;
+    __ui_touch_state = 0;
+    __ui_last_touch_time = millis();
+    return;
+  }
   uint32_t elapsed = millis() - __ui_touch_down_time;
   if (__ui_scroll_node >= 0 && __ui_scroll_pending_dy != 0) {
     if (ui_apply_scroll_delta(__ui_scroll_node, __ui_scroll_pending_dy)) {
@@ -495,6 +503,7 @@ static inline void ui_handle_no_touch() {
 // Phase 0: evaluate bindings. Phase 1: transitions. Phase 2: draw.
 // Forward decl: the keyboard overlay is defined below but drawn at the end.
 static inline void ui_kb_draw();
+static inline void ui_kb_handle_tap(int16_t tx, int16_t ty);
 static inline void ui_tick(uint16_t deltaMs) {
   // Touch poll — runs if touch is configured (defined by the emit layer)
   ui_poll_touch();
@@ -1010,6 +1019,45 @@ static inline void ui_kb_tick(uint32_t now) {
   if (now - __ui_kb_bs_repeat >= UI_KB_REPEAT_MS) {
     ui_kb_delete();
     __ui_kb_bs_repeat = now;
+  }
+}
+
+// Handle a tap (touch-up) on a keyboard key. tx,ty are display coords.
+// Fires the per-key action: char insert, shift toggle, page-swap, or OK close.
+// (Backspace deletion happens on touch-down + auto-repeat; nothing here for it.)
+static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
+  for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+    UIRect r;
+    ui_kb_key_rect(i, &r);
+    if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
+      UIKey k = __ui_kb_keys[i];
+      switch (k.special) {
+        case 0: {  // char
+          char c = k.ch;
+          if (__ui_kb_shift && c >= 'a' && c <= 'z') c -= 32;
+          ui_kb_insert(c);
+          __ui_kb_shift = 0;  // shift resets after one char
+          break;
+        }
+        case 1:  // shift toggle
+          __ui_kb_shift = !__ui_kb_shift;
+          break;
+        case 2:  // backspace: handled on down + repeat; nothing on tap-up
+          break;
+        case 3:  // OK
+          ui_kb_close();
+          break;
+        case 4: {  // page-swap (123 → numeric, ABC → alpha)
+          extern void __ui_kb_load_default_alpha();
+          extern void __ui_kb_load_default_number();
+          if (__ui_kb_cols <= 4) __ui_kb_load_default_alpha();
+          else __ui_kb_load_default_number();
+          ui_kb_compute_box();
+          break;
+        }
+      }
+      return;  // only one key per tap
+    }
   }
 }
 

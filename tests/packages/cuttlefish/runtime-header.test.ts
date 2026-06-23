@@ -166,4 +166,12 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/case\s+NODE_INPUT:/);
     expect(header).toMatch(/NODE_INPUT[\s\S]*drawRect/);
   });
+
+  it("keyboard key actions: insert, shift toggle, page-swap, ok close", () => {
+    expect(header).toContain("ui_kb_insert");
+    expect(header).toContain("ui_kb_handle_tap");
+    expect(header).toMatch(/case\s+1:[\s\S]*__ui_kb_shift/);
+    expect(header).toMatch(/case\s+3:[\s\S]*ui_kb_close/);
+    expect(header).toMatch(/case\s+4:[\s\S]*load_default/);
+  });
 });
