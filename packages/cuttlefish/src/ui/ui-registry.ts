@@ -20,6 +20,7 @@ import path from "node:path";
 import { parseHtml, parseHtmlWithKeyboards } from "./html-parser.js";
 import type { KeyboardTemplate } from "./html-parser.js";
 import { parseCss } from "./css-parser.js";
+import type { CSSRule } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, Box } from "./layout-engine.js";
@@ -32,6 +33,8 @@ export interface UIModule {
   styled: StyledNode;
   /** <keyboard> templates parsed from the same .ui.html (sibling declarations). */
   keyboards: KeyboardTemplate[];
+  /** CSS rules from the sibling .ui.css (used for keyboard key styling). */
+  rules: CSSRule[];
 }
 
 export interface LowerOptions {
@@ -70,7 +73,7 @@ export function loadUIModule(htmlPath: string): UIModule {
   const rules = parseCss(cssText);
   const styled = resolveStyles(tree, rules);
 
-  const mod: UIModule = { htmlPath: abs, styled, keyboards };
+  const mod: UIModule = { htmlPath: abs, styled, keyboards, rules };
   modules.set(abs, mod);
 
   // Write a sibling .ui.html.d.ts so editors and the type-checker see the
@@ -92,7 +95,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const engine = selectEngine(mod.styled);
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
   const boxes = engine.arrange(mod.styled, viewport, measure);
-  const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage, mod.keyboards);
+  const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules);
   lowered.set(abs, result);
   return result;
 }

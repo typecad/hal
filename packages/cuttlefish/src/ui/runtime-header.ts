@@ -294,8 +294,11 @@ static uint32_t __ui_last_scroll_draw_time = 0;
 #define UI_KB_REPEAT_MS 100
 #define UI_KB_TEXT_H 24  // height reserved for the preview text row at the top
 struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=ok,4=page
+struct UIKeyStyle { uint16_t bg, fg, borderColor; };
 static UIRect  __ui_kb_box;
 static UIKey   __ui_kb_keys[UI_KB_MAX];
+static UIKeyStyle __ui_kb_styles[UI_KB_MAX];
+static uint16_t __ui_kb_bg = 0x0000;  // keyboard background (resolved from CSS)
 static uint8_t __ui_kb_visible = 0;
 static uint8_t __ui_kb_bs_held = 0;
 static uint8_t __ui_kb_dirty = 0;     // 0=clean, 1=full redraw, 2=text row + single key
@@ -1150,16 +1153,18 @@ static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
 // Draw a single key by index. Shared by the full draw + targeted redraw.
 static inline void ui_kb_draw_key(uint8_t i) {
   UIKey k = __ui_kb_keys[i];
+  UIKeyStyle ks = __ui_kb_styles[i];
   UIRect r;
   ui_kb_key_rect(i, &r);
-  uint16_t bg = 0x4208;   // dark gray
-  uint16_t fg = 0xFFFF;   // white
-  if (k.special == 3) { bg = 0x2641; fg = 0xFFFF; }              // OK — blue accent
-  if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }          // shift active — highlight
+  uint16_t bg = ks.bg;
+  uint16_t fg = ks.fg;
+  uint16_t border = ks.borderColor;
+  // Shift-active highlight: brighten the shift key's background.
+  if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }
   // Pressed key: invert colors for clear tap feedback.
   if ((int8_t)i == __ui_kb_pressed_key) { uint16_t t = bg; bg = fg; fg = t; }
   __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
-  __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, fg);
+  __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
   __tc_display.setTextColor(fg, bg);
   __tc_display.setTextSize(1);
   // Derive the label string + its length for centering.
@@ -1191,7 +1196,7 @@ static inline void ui_kb_draw_key(uint8_t i) {
 // inserted/deleted without changing key highlights.
 static inline void ui_kb_draw_text_row() {
   // Clear the text row area (top UI_KB_TEXT_H px of the keyboard box).
-  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, 0x0000);
+  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, __ui_kb_bg);
   __tc_display.setCursor(__ui_kb_box.x + 4, __ui_kb_box.y + 4);
   __tc_display.setTextColor(0xFFFF, 0x0000);
   __tc_display.setTextSize(2);
@@ -1202,7 +1207,7 @@ static inline void ui_kb_draw_text_row() {
 // Draw the full keyboard overlay (background + text row + all keys).
 static inline void ui_kb_draw() {
   // Opaque background over the keyboard box.
-  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, 0x0000);
+  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, __ui_kb_bg);
   ui_kb_draw_text_row();
   // Keys: one rect per key, label centered.
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {

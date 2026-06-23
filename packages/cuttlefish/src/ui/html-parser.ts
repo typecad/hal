@@ -47,6 +47,8 @@ export interface UIKeyTemplate {
   ch: string;
   /** 0=char, 1=shift, 2=backspace, 3=ok, 4=page-swap. */
   special: 0 | 1 | 2 | 3 | 4;
+  /** CSS classes from <key class="..."> for styling. */
+  classes?: string[];
 }
 
 /** A keyboard template parsed from <keyboard>. */
@@ -54,6 +56,8 @@ export interface KeyboardTemplate {
   id: string;
   variant: "alpha" | "number";
   rows: UIKeyTemplate[][];
+  /** CSS classes from <keyboard class="..."> for styling the keyboard background. */
+  classes?: string[];
 }
 
 export interface ParsedHtml {
@@ -124,6 +128,8 @@ function parseKeyboardElement(el: Element): KeyboardTemplate {
   const id = el.getAttribute("id") || "";
   const variantAttr = el.getAttribute("variant");
   const variant: "alpha" | "number" = variantAttr === "number" ? "number" : "alpha";
+  const classAttr = el.getAttribute("class") || "";
+  const classes = classAttr.split(/\s+/).filter(Boolean);
   const rows: UIKeyTemplate[][] = [];
   for (const rowEl of Array.from(el.children)) {
     if (rowEl.tagName.toLowerCase() !== "row") continue;
@@ -134,24 +140,27 @@ function parseKeyboardElement(el: Element): KeyboardTemplate {
     }
     if (row.length > 0) rows.push(row);
   }
-  return { id, variant, rows };
+  return { id, variant, rows, classes: classes.length > 0 ? classes : undefined };
 }
 
 /** Parse a <key> element. Special keys are identified by label or special attr. */
 function parseKeyElement(el: Element): UIKeyTemplate {
   const label = el.textContent?.trim() || "";
+  const classAttr = el.getAttribute("class") || "";
+  const classes = classAttr.split(/\s+/).filter(Boolean);
   const specialAttr = el.getAttribute("special");
+  let special: 0 | 1 | 2 | 3 | 4 = 0;
   if (specialAttr !== null) {
     const s = parseInt(specialAttr, 10);
-    if (s >= 1 && s <= 4) return { ch: label, special: s as 1 | 2 | 3 | 4 };
+    if (s >= 1 && s <= 4) special = s as 1 | 2 | 3 | 4;
+  } else {
+    // Recognize special keys by conventional labels.
+    if (label === "⇧" || label.toUpperCase() === "SHIFT") special = 1;
+    else if (label === "⌫" || label.toUpperCase() === "BACKSPACE") special = 2;
+    else if (label.toUpperCase() === "OK") special = 3;
+    else if (label === "123" || label.toUpperCase() === "ABC") special = 4;
   }
-  // Recognize special keys by conventional labels.
-  if (label === "⇧" || label.toUpperCase() === "SHIFT") return { ch: label, special: 1 };
-  if (label === "⌫" || label.toUpperCase() === "BACKSPACE") return { ch: label, special: 2 };
-  if (label.toUpperCase() === "OK") return { ch: label, special: 3 };
-  // 123 / ABC are page-swap keys (their ch carries the label to draw).
-  if (label === "123" || label.toUpperCase() === "ABC") return { ch: label, special: 4 };
-  return { ch: label, special: 0 };
+  return { ch: label, special, classes: classes.length > 0 ? classes : undefined };
 }
 
 /** Adapt a DOM element to UIElementNode, recursively walking children. */

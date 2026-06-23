@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { lowerUIToCpp } from "@typecad/cuttlefish/ir/transformers/ui-lowering";
 import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
 import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
+import type { KeyboardTemplate } from "@typecad/cuttlefish/ui/html-parser";
 import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
 import { BlockLayoutEngine } from "@typecad/cuttlefish/ui/block-layout";
 import { measure } from "@typecad/cuttlefish/ui/layout-engine";
@@ -89,5 +90,29 @@ describe("ui lowering", () => {
     );
     expect(out.keyboardLoaders).toContain("__ui_kb_load_default_number");
     expect(out.keyboardDispatch).toContain("__ui_kb_load_default_number");
+  });
+
+  it("emits a UIKeyStyle array alongside the key loader", () => {
+    const out = lower(
+      `<screen><input id="ssid" type="text"></input></screen>`,
+      ``,
+    );
+    expect(out.keyboardLoaders).toContain("__ui_kb_styles");
+    expect(out.keyboardLoaders).toContain("__ui_kb_bg");
+  });
+
+  it("resolves per-key CSS class rules into key styles", () => {
+    const styled = resolveStyles(parseHtml(`<screen><input id="x" keyboard="myKb"></input></screen>`), parseCss(``));
+    const boxes = [{ x: 0, y: 0, w: 100, h: 100 }, { x: 0, y: 0, w: 100, h: 20 }];
+    const rules = parseCss(`.accent { background: red; color: white; }`);
+    const kb: KeyboardTemplate = {
+      id: "myKb",
+      variant: "alpha",
+      classes: ["ui-keyboard"],
+      rows: [[{ ch: "a", special: 0, classes: ["accent"] }]],
+    };
+    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", [kb], rules);
+    // red = #ff0000 → RGB565 0xF800
+    expect(out.keyboardLoaders).toContain("0xf800");
   });
 });

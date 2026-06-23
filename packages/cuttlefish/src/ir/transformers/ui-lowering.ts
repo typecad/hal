@@ -15,8 +15,10 @@
 import { StyledNode } from "../../ui/style-resolver.js";
 import { Box } from "../../ui/layout-engine.js";
 import { lowerUIToModel, UIProgram, UINodeModel } from "../../ui/model.js";
+import { resolveColor } from "../../ui/color.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../ui/default-keyboards.js";
-import type { KeyboardTemplate } from "../../ui/html-parser.js";
+import type { KeyboardTemplate, UIKeyTemplate } from "../../ui/html-parser.js";
+import type { CSSRule, CSSProperty } from "../../ui/css-parser.js";
 
 export interface LoweredUI {
   nodeTable: string;
@@ -37,6 +39,7 @@ export function lowerUIToCpp(
   colorFormat: ColorFormat,
   storage: Storage,
   keyboards: KeyboardTemplate[] = [],
+  rules: CSSRule[] = [],
 ): LoweredUI {
   void storage;
   const model = lowerUIToModel(root, boxes, colorFormat);
@@ -70,7 +73,7 @@ export function lowerUIToCpp(
   }
 
   const keyboardLoaders = neededKeyboards
-    .map(kb => emitKeyboardLoader(loaderNameForId(kb.id), kb))
+    .map(kb => emitKeyboardLoader(loaderNameForId(kb.id), kb, rules, colorFormat))
     .join("\n\n");
 
   const dispatchEntries = inputSpecs.map(spec => loaderNameForInput(spec, keyboards));
@@ -97,27 +100,73 @@ function loaderNameForInput(input: { type?: string; keyboard?: string }, keyboar
   return input.type === "number" ? "__ui_kb_load_default_number" : "__ui_kb_load_default_alpha";
 }
 
-function emitKeyboardLoader(name: string, kb: KeyboardTemplate): string {
+// Default key colors (fallback when no CSS matches). Used for all keys.
+const DEFAULT_KEY_BG = 0x4208;    // dark gray
+const DEFAULT_KEY_FG = 0xFFFF;    // white
+const DEFAULT_KEY_BORDER = 0xFFFF; // white
+const DEFAULT_KB_BG = 0x0000;     // black
+
+/** Resolve a key's CSS classes into a merged CSSProperty (cascade: last wins). */
+function resolveKeyStyle(keyClasses: string[] | undefined, kbClasses: string[] | undefined, rules: CSSRule[]): CSSProperty {
+  const merged: CSSProperty = {};
+  const allClasses = [...(kbClasses ?? []), ...(keyClasses ?? [])];
+  for (const rule of rules) {
+    if (rule.selector.kind === "class" && allClasses.includes(rule.selector.name)) {
+      Object.assign(merged, rule.properties);
+    }
+  }
+  return merged;
+}
+
+/** Resolve the keyboard-level background from CSS (keyboard classes). */
+function resolveKbBg(kbClasses: string[] | undefined, rules: CSSRule[], colorFormat: ColorFormat): number {
+  const merged: CSSProperty = {};
+  for (const rule of rules) {
+    if (rule.selector.kind === "class" && (kbClasses ?? []).includes(rule.selector.name)) {
+      Object.assign(merged, rule.properties);
+    }
+  }
+  return merged.background ? resolveColor(merged.background, colorFormat) : DEFAULT_KB_BG;
+}
+
+function emitKeyboardLoader(name: string, kb: KeyboardTemplate, rules: CSSRule[], colorFormat: ColorFormat): string {
   const rows = kb.rows;
   const cols = rows.length > 0 ? Math.max(...rows.map(r => r.length)) : 0;
+  const kbBg = resolveKbBg(kb.classes, rules, colorFormat);
   const lines: string[] = [];
   lines.push(`void ${name}() {`);
   lines.push(`  __ui_kb_rows = ${rows.length};`);
   lines.push(`  __ui_kb_cols = ${cols};`);
   lines.push(`  __ui_kb_keyCount = 0;`);
+  lines.push(`  __ui_kb_bg = ${hex(kbBg)};`);
   for (const row of rows) {
     for (const key of row) {
-      const chEsc = key.ch === "\\" ? "\\\\" : key.ch === "'" ? "\\'" : key.ch;
-      lines.push(`  __ui_kb_keys[__ui_kb_keyCount++] = { '${chEsc}', ${key.special} };`);
+      lines.push(`  ${emitKeyLine(key, kb.classes, rules, colorFormat)}`);
     }
     // Pad short rows so ui_kb_key_rect's idx/cols math stays aligned. Padded
     // cells use special=255 (skipped in draw + hit-test) with a space char.
     for (let p = row.length; p < cols; p++) {
-      lines.push(`  __ui_kb_keys[__ui_kb_keyCount++] = { ' ', 255 };`);
+      lines.push(`  __ui_kb_keys[__ui_kb_keyCount] = { ' ', 255 };`);
+      lines.push(`  __ui_kb_styles[__ui_kb_keyCount] = { ${hex(DEFAULT_KEY_BG)}, ${hex(DEFAULT_KEY_FG)}, ${hex(DEFAULT_KEY_BORDER)} };`);
+      lines.push(`  __ui_kb_keyCount++;`);
     }
   }
   lines.push(`}`);
   return lines.join("\n");
+}
+
+/** Emit one key's keys[] + styles[] lines, resolving CSS classes to colors. */
+function emitKeyLine(key: UIKeyTemplate, kbClasses: string[] | undefined, rules: CSSRule[], colorFormat: ColorFormat): string {
+  const chEsc = key.ch === "\\" ? "\\\\" : key.ch === "'" ? "\\'" : key.ch;
+  const style = resolveKeyStyle(key.classes, kbClasses, rules);
+  const bg = style.background ? resolveColor(style.background, colorFormat) : DEFAULT_KEY_BG;
+  const fg = style.color ? resolveColor(style.color, colorFormat) : DEFAULT_KEY_FG;
+  const border = style.borderColor ? resolveColor(style.borderColor, colorFormat) : DEFAULT_KEY_BORDER;
+  return [
+    `__ui_kb_keys[__ui_kb_keyCount] = { '${chEsc}', ${key.special} };`,
+    `  __ui_kb_styles[__ui_kb_keyCount] = { ${hex(bg)}, ${hex(fg)}, ${hex(border)} };`,
+    `  __ui_kb_keyCount++;`,
+  ].join(" ");
 }
 
 function cppKind(kind: UINodeModel["kind"]): string {
