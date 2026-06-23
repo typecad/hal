@@ -292,6 +292,7 @@ static uint32_t __ui_last_scroll_draw_time = 0;
 #define UI_KB_MAX 48   // max key cells (4 rows × 11 padded cols + margin)
 #define UI_KB_HOLD_MS 600
 #define UI_KB_REPEAT_MS 100
+#define UI_KB_TEXT_H 24  // height reserved for the preview text row at the top
 struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=ok,4=page
 static UIRect  __ui_kb_box;
 static UIKey   __ui_kb_keys[UI_KB_MAX];
@@ -1041,13 +1042,16 @@ static inline void ui_kb_close() {
 }
 
 // Compute a key's rect from its index, given the grid + box.
+// The top UI_KB_TEXT_H pixels of the box are reserved for the preview text row;
+// keys fill the area below it.
 static inline void ui_kb_key_rect(uint8_t idx, UIRect* out) {
   uint8_t col = idx % __ui_kb_cols;
   uint8_t row = idx / __ui_kb_cols;
+  int16_t keysH = __ui_kb_box.h - UI_KB_TEXT_H;  // key area height (below text row)
   out->x = __ui_kb_box.x + (int16_t)col * __ui_kb_box.w / __ui_kb_cols;
-  out->y = __ui_kb_box.y + (int16_t)row * __ui_kb_box.h / __ui_kb_rows;
+  out->y = __ui_kb_box.y + UI_KB_TEXT_H + (int16_t)row * keysH / __ui_kb_rows;
   out->w = __ui_kb_box.w / __ui_kb_cols;
-  out->h = __ui_kb_box.h / __ui_kb_rows;
+  out->h = keysH / __ui_kb_rows;
 }
 
 // Handle a touch-down inside the keyboard box. tx,ty are display coords.
@@ -1176,9 +1180,9 @@ static inline void ui_kb_draw_key(uint8_t i) {
 // Redraw only the text display row (top of keyboard box). Used when a char is
 // inserted/deleted without changing key highlights.
 static inline void ui_kb_draw_text_row() {
-  // Clear the text row area (top ~20px of the keyboard box).
-  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, 20, 0x0000);
-  __tc_display.setCursor(__ui_kb_box.x + 4, __ui_kb_box.y + 2);
+  // Clear the text row area (top UI_KB_TEXT_H px of the keyboard box).
+  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, 0x0000);
+  __tc_display.setCursor(__ui_kb_box.x + 4, __ui_kb_box.y + 4);
   __tc_display.setTextColor(0xFFFF, 0x0000);
   __tc_display.setTextSize(2);
   __tc_display.print(__ui_kb_buffer);
