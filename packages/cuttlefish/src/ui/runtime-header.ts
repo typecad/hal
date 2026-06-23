@@ -1053,12 +1053,12 @@ static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
     ui_kb_key_rect(i, &r);
     if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
       __ui_kb_pressed_key = (int8_t)i;  // remember for release
+      __ui_kb_dirty = 1;  // redraw to show pressed highlight
       // Backspace starts deleting immediately + arms auto-repeat.
       if (k.special == 2) {
         __ui_kb_bs_held = 1;
         __ui_kb_bs_repeat = millis();
         ui_kb_delete();
-        __ui_kb_dirty = 1;
       }
       return;
     }
@@ -1083,7 +1083,8 @@ static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
   (void)tx; (void)ty;  // key was recorded on touch-down; no re-hit-test
   if (__ui_kb_pressed_key < 0) return;
   UIKey k = __ui_kb_keys[__ui_kb_pressed_key];
-  __ui_kb_pressed_key = -1;
+  __ui_kb_pressed_key = -1;  // clear pressed state → highlight reverts
+  __ui_kb_dirty = 1;          // redraw to remove pressed highlight
   switch (k.special) {
     case 0: {  // char
       char c = k.ch;
@@ -1136,6 +1137,8 @@ static inline void ui_kb_draw() {
     uint16_t fg = 0xFFFF;   // white
     if (k.special == 3) { bg = 0x2641; fg = 0xFFFF; }              // OK — blue accent
     if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }          // shift active — highlight
+    // Pressed key: invert colors for clear tap feedback.
+    if ((int8_t)i == __ui_kb_pressed_key) { uint16_t t = bg; bg = fg; fg = t; }
     __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
     __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, fg);
     __tc_display.setTextColor(fg, bg);
