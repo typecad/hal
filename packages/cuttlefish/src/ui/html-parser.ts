@@ -28,12 +28,20 @@ export interface UIElementNode {
   /** Min/max attributes (for <range>). */
   min?: string;
   max?: string;
+  /** Input type (for <input>: "text" | "number"). */
+  type?: "text" | "number";
+  /** Placeholder (for <input>). */
+  placeholder?: string;
+  /** Max length (for <input>). */
+  maxlength?: number;
+  /** Keyboard ref id (for <input>). */
+  keyboard?: string;
   children: UIElementNode[];
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input"]);
 
 export function parseHtml(src: string): UIElementNode {
   // Strip HTML comments before parsing.
@@ -88,6 +96,16 @@ function domToUIElementNode(el: Element): UIElementNode {
   const checkedAttr = el.hasAttribute("checked");
   const minAttr = el.getAttribute("min") || undefined;
   const maxAttr = el.getAttribute("max") || undefined;
+  const typeAttr = tag === "input"
+    ? (el.getAttribute("type") === "number" ? "number" : "text")
+    : undefined;
+  const placeholderAttr = el.getAttribute("placeholder") || undefined;
+  const maxlengthAttr = el.getAttribute("maxlength");
+  // <input> defaults maxlength to 16 when absent or unparseable.
+  const maxlengthNum = tag === "input"
+    ? (maxlengthAttr ? (parseInt(maxlengthAttr, 10) || 16) : 16)
+    : undefined;
+  const keyboardAttr = el.getAttribute("keyboard") || undefined;
 
   // For <select>, parse <option> children into an options list
   if (tag === "select") {
@@ -129,7 +147,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child));
   }
