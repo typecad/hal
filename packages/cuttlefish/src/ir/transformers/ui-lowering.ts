@@ -190,17 +190,16 @@ function emitNodeTable(model: UIProgram): string {
   const lines = model.nodes.map((n) => {
     const text = n.text ? `"${n.text}"` : "nullptr";
     const font = "nullptr";
-    // Input nodes seed textBuffer with the placeholder so it shows before editing.
-    // (A string literal initializes the char array + null-terminates automatically.)
-    const textBufInit = n.kind === "input" && n.textBuffer
-      ? `"${n.textBuffer}"`
-      : "{0}";
+    // Input nodes store the placeholder in .text (static literal) so the draw
+    // can show it grayed when textBuffer is empty. textBuffer stays {0} so
+    // ui_kb_open starts with a clean edit buffer (no placeholder to delete).
+    const inputText = n.kind === "input" && n.textBuffer ? `"${n.textBuffer}"` : text;
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
     const parent = n.parentIndex >= 0 ? n.parentIndex : 255;
     // Progress/range use lastTextWidth as a "previous fill width" for
     // incremental redraw. -1 = never drawn, because fill width 0 is valid.
     const lastTextWidth = n.kind === "progress" || n.kind === "range" ? -1 : 0;
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${text}, .textBuffer=${textBufInit}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .underline=${n.underline ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .underline=${n.underline ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.

@@ -891,12 +891,15 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           __tc_display.fillRect(bx, by, bw, bh, bgCol);
           __tc_display.drawRect(bx, by, bw, bh, fgCol);
-          // Show textBuffer content (or the static text/placeholder).
+          // Show typed text (textBuffer) in fg color, or placeholder (.text)
+          // dimmed gray when the buffer is empty.
+          uint16_t textCol = fgCol;
           const char* disp = (__ui_nodes[i].textBuffer[0] != 0)
             ? __ui_nodes[i].textBuffer
             : (__ui_nodes[i].text ? __ui_nodes[i].text : "");
+          if (__ui_nodes[i].textBuffer[0] == 0) textCol = 0x8410;  // dim gray for placeholder
           __tc_display.setCursor(bx + 4, by + (bh - 16) / 2);
-          __tc_display.setTextColor(fgCol, bgCol);
+          __tc_display.setTextColor(textCol, bgCol);
           __tc_display.setTextSize(2);
           // Clip: at textSize(2), each char is 12px advance. Only print chars
           // that fit within the box (bw - 8px margin), so text never overflows
