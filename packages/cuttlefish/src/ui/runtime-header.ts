@@ -141,6 +141,10 @@ static inline uint8_t ui_apply_scroll_delta(int8_t scrollNode, int16_t dy) {
   int16_t maxScroll = __ui_nodes[scrollNode].contentHeight - __ui_nodes[scrollNode].box.h;
   int16_t prevScrollY = __ui_nodes[scrollNode].scrollY;
   int16_t nextScrollY = constrain(prevScrollY - dy, 0, maxScroll);
+  // Snap to boundaries: if within a few pixels of 0 or maxScroll, clamp exactly.
+  // This prevents the "jump" where a residual offset hides the first/last row.
+  if (nextScrollY > 0 && nextScrollY < 6) nextScrollY = 0;
+  if (nextScrollY > maxScroll - 6 && nextScrollY < maxScroll) nextScrollY = maxScroll;
   if (nextScrollY == prevScrollY) return 0;
   __ui_nodes[scrollNode].scrollY = nextScrollY;
   ui_mark_scroll_subtree_dirty((uint8_t)scrollNode);
