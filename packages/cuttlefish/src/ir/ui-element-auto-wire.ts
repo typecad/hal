@@ -14,6 +14,7 @@ interface AutoWireNode {
   id?: string;
   text?: string;
   children?: AutoWireNode[];
+  options?: Array<{ value: string; text: string }>;
 }
 
 /**
@@ -44,8 +45,10 @@ function autoWireNode(treeName: string, node: AutoWireNode): void {
   }
 
   if (node.tag === "select") {
-    // Parse options from text content (comma-separated)
-    const options = (node.text || "").split(",").map(s => s.trim()).filter(Boolean);
+    // Use parsed options (from <option> children) or fallback to comma text
+    const options = node.options && node.options.length > 0
+      ? node.options.map(o => o.text)
+      : (node.text || "").split(",").map(s => s.trim()).filter(Boolean);
     const count = Math.max(options.length, 2);
 
     // Auto-wire: onClick cycles value 0..count-1
@@ -57,12 +60,11 @@ function autoWireNode(treeName: string, node: AutoWireNode): void {
     });
 
     // Auto-bind text to show the current option via snprintf if/else chain
-    // The text binding emitter generates the function body from cppExpr
     const branches = options.map((opt, i) => {
       if (i === 0) return `if (__ui_nodes[${nodeIndex}].value == 0) { snprintf(buf, size, "%s", "${opt}"); }`;
       return `else if (__ui_nodes[${nodeIndex}].value == ${i}) { snprintf(buf, size, "%s", "${opt}"); }`;
     }).join(" ");
-    const elseBranch = `else { snprintf(buf, size, "%s", "${options[0]}"); }`;
+    const elseBranch = `else { snprintf(buf, size, "%s", "${options[0] || ""}"); }`;
 
     recordBinding({
       nodeIndex,

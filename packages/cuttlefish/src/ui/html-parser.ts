@@ -19,10 +19,14 @@ export interface UIElementNode {
   id?: string;
   classes: string[];
   text?: string;
+  /** Value attribute (for <option value="dog">Dog</option>). */
+  value?: string;
   children: UIElementNode[];
+  /** For <select>: parsed option list from <option> children. */
+  options?: Array<{ value: string; text: string }>;
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label"]);
 
 export function parseHtml(src: string): UIElementNode {
   // Strip HTML comments before parsing.
@@ -62,6 +66,9 @@ export function parseHtml(src: string): UIElementNode {
 function domToUIElementNode(el: Element): UIElementNode {
   const tag = el.tagName.toLowerCase();
 
+  // <label> is treated as <text> internally
+  const effectiveTag = tag === "label" ? "text" : tag;
+
   if (!SUPPORTED_TAGS.has(tag)) {
     throw new Error(`Unsupported tag <${tag}> — supported: ${[...SUPPORTED_TAGS].join(", ")}`);
   }
@@ -69,21 +76,49 @@ function domToUIElementNode(el: Element): UIElementNode {
   const id = el.getAttribute("id") || undefined;
   const classAttr = el.getAttribute("class") || "";
   const classes = classAttr.split(/\s+/).filter(Boolean);
+  const valueAttr = el.getAttribute("value") || undefined;
+
+  // For <select>, parse <option> children into an options list
+  if (tag === "select") {
+    const optionEls = Array.from(el.children).filter(c => c.tagName.toLowerCase() === "option");
+    if (optionEls.length > 0) {
+      const options = optionEls.map(opt => ({
+        value: opt.getAttribute("value") || opt.textContent?.trim() || "",
+        text: opt.textContent?.trim() || "",
+      }));
+      // Use the first option's text as the initial display text
+      const firstText = options[0]?.text ?? "";
+      return {
+        tag: "select",
+        id, classes, text: firstText, value: valueAttr,
+        children: [],
+        options,
+      };
+    }
+    // Fallback: comma-separated text (legacy shorthand)
+    const text = el.textContent?.trim() || "";
+    const optNames = text.split(",").map(s => s.trim()).filter(Boolean);
+    return {
+      tag: "select",
+      id, classes, text: optNames[0] || "",
+      children: [],
+      options: optNames.map(t => ({ value: t.toLowerCase(), text: t })),
+    };
+  }
 
   // Text content: only direct text, not children's text.
-  // For leaf elements (text/button), the textContent IS the text.
-  // For containers (screen/view), direct text is ignored.
   let text: string | undefined;
-  const childElements = Array.from(el.children).filter((c) =>
-    SUPPORTED_TAGS.has(c.tagName.toLowerCase()),
-  );
+  const childElements = Array.from(el.children).filter((c) => {
+    const ct = c.tagName.toLowerCase();
+    return SUPPORTED_TAGS.has(ct) && ct !== "option";
+  });
 
   if (childElements.length === 0) {
     const tc = el.textContent?.trim();
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag, id, classes, text, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child));
   }

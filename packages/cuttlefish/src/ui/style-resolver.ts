@@ -17,6 +17,8 @@ export interface StyledNode {
   text?: string;
   style: CSSProperty;
   children: StyledNode[];
+  /** For <select>: parsed option list. */
+  options?: Array<{ value: string; text: string }>;
 }
 
 function matches(node: UIElementNode, sel: CSSSelector): boolean {
@@ -57,5 +59,6 @@ function resolveNode(node: UIElementNode, rules: CSSRule[]): StyledNode {
     text: node.text,
     style,
     children: node.children.map(c => resolveNode(c, rules)),
+    options: node.options,
   };
 }
