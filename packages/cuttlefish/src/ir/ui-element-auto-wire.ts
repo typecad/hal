@@ -96,7 +96,7 @@ function autoWireNode(treeName: string, node: AutoWireNode): void {
       nodeIndex,
       kind: "click",
       fnName: `__ui_${node.id}_autoclick`,
-      callbackBody: `for (uint8_t __r = 0; __r < __ui_radio_groups[${groupIdx}].count; __r++) { __ui_nodes[__ui_radio_groups[${groupIdx}].nodeIndices[__r]].value = 0; } __ui_nodes[${nodeIndex}].value = 1;`,
+      callbackBody: `for (uint8_t __r = 0; __r < __ui_radio_groups[${groupIdx}].count; __r++) { uint8_t __rn = __ui_radio_groups[${groupIdx}].nodeIndices[__r]; __ui_nodes[__rn].value = 0; ui_mark_dirty(__rn); } __ui_nodes[${nodeIndex}].value = 1; ui_mark_dirty(${nodeIndex});`,
     });
   }
 }
