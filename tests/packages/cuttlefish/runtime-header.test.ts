@@ -148,4 +148,13 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_kb_close");
     expect(header).toContain("ui_kb_handle_touch");
   });
+
+  it("draws the keyboard overlay when visible", () => {
+    expect(header).toContain("ui_kb_draw");
+    expect(header).toMatch(/if\s*\(__ui_kb_visible\)[\s\S]*ui_kb_draw/);
+  });
+
+  it("routes touch to the keyboard when visible and inside the box", () => {
+    expect(header).toMatch(/__ui_kb_visible[\s\S]*ui_kb_handle_touch/);
+  });
 });

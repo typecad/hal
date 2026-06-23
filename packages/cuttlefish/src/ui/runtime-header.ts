@@ -401,6 +401,20 @@ static void ui_touch_up() {
 // Implements debounce + the down/hold/up/click state machine.
 static inline void ui_handle_touch(int16_t tx, int16_t ty) {
   uint32_t now = millis();
+  // Track last touch coords for tap-up routing.
+  __ui_last_touch_x = tx;
+  __ui_last_touch_y = ty;
+
+  // Modal keyboard: if visible, route touch to the keyboard only.
+  if (__ui_kb_visible) {
+    ui_kb_tick(now);
+    if (tx >= __ui_kb_box.x && tx < __ui_kb_box.x + __ui_kb_box.w &&
+        ty >= __ui_kb_box.y && ty < __ui_kb_box.y + __ui_kb_box.h) {
+      ui_kb_handle_touch(tx, ty);
+    }
+    __ui_last_touch_time = now;
+    return;  // swallow all other touches while modal
+  }
 
   if (__ui_touch_state == 0) {
     // Idle: check debounce, then start touch
@@ -469,6 +483,8 @@ static inline void ui_handle_no_touch() {
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
 // Phase -2: poll touch (if configured). Phase -1: poll input pins.
 // Phase 0: evaluate bindings. Phase 1: transitions. Phase 2: draw.
+// Forward decl: the keyboard overlay is defined below but drawn at the end.
+static inline void ui_kb_draw();
 static inline void ui_tick(uint16_t deltaMs) {
   // Touch poll — runs if touch is configured (defined by the emit layer)
   ui_poll_touch();
@@ -829,6 +845,11 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_nodes[bufferedScrollNode].box.h);
   }
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
+
+  // ── Keyboard overlay: drawn last so it sits above all nodes. ──
+  if (__ui_kb_visible) {
+    ui_kb_draw();
+  }
 }
 
 // ── On-screen keyboard subsystem ───────────────────────────────────────────
@@ -955,6 +976,38 @@ static inline void ui_kb_tick(uint32_t now) {
   if (now - __ui_kb_bs_repeat >= UI_KB_REPEAT_MS) {
     ui_kb_delete();
     __ui_kb_bs_repeat = now;
+  }
+}
+
+// Draw the keyboard overlay. Called from ui_tick after the normal node pass.
+static inline void ui_kb_draw() {
+  // Opaque background over the keyboard box.
+  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, 0x0000);
+  // Text display row (top of box): show buffer + cursor.
+  __tc_display.setCursor(__ui_kb_box.x + 4, __ui_kb_box.y + 2);
+  __tc_display.setTextColor(0xFFFF, 0x0000);
+  __tc_display.setTextSize(2);
+  __tc_display.print(__ui_kb_buffer);
+  __tc_display.print("_");  // cursor
+
+  // Keys: one rect per key, label centered-ish.
+  for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+    UIRect r;
+    ui_kb_key_rect(i, &r);
+    UIKey k = __ui_kb_keys[i];
+    uint16_t bg = 0x4208;   // dark gray
+    uint16_t fg = 0xFFFF;   // white
+    if (k.special == 3) { bg = 0x2641; fg = 0xFFFF; }              // OK — blue accent
+    if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }          // shift active — highlight
+    __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
+    __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, fg);
+    __tc_display.setCursor(r.x + 4, r.y + r.h / 2 - 4);
+    __tc_display.setTextColor(fg, bg);
+    __tc_display.setTextSize(1);
+    // For char keys with shift active, capitalize.
+    char label[2] = { k.ch, 0 };
+    if (k.special == 0 && __ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') label[0] = k.ch - 32;
+    __tc_display.print(label);
   }
 }
 
