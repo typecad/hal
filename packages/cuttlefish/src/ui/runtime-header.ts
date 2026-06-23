@@ -365,6 +365,16 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       __ui_nodes[node].value = constrain(__ui_nodes[node].value, rMin, rMax);
       ui_mark_dirty(node);
     }
+    // Open the on-screen keyboard when an input is tapped (and not already open).
+    if (__ui_nodes[node].kind == NODE_INPUT && !__ui_kb_visible) {
+      // Resolve the input's position in the loader dispatch table by scanning
+      // for the Nth NODE_INPUT. (The loader table is indexed by input order.)
+      uint8_t inputPos = 0;
+      for (int16_t j = 0; j < node; j++) {
+        if (__ui_nodes[j].kind == NODE_INPUT) inputPos++;
+      }
+      ui_kb_open((uint8_t)node, inputPos);
+    }
     ui_mark_dirty(node);
   }
 }

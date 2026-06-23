@@ -157,4 +157,8 @@ describe("C++ reactive runtime header", () => {
   it("routes touch to the keyboard when visible and inside the box", () => {
     expect(header).toMatch(/__ui_kb_visible[\s\S]*ui_kb_handle_touch/);
   });
+
+  it("opens the keyboard when a NODE_INPUT is tapped", () => {
+    expect(header).toMatch(/kind\s*==\s*NODE_INPUT[\s\S]*ui_kb_open/);
+  });
 });
