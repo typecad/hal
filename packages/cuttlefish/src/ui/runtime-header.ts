@@ -597,7 +597,9 @@ static inline void ui_tick(uint16_t deltaMs) {
   }
   // ②b Draw scrollbars for scrollable containers that are dirty.
   // Incremental: only clear the old thumb position and draw the new one.
-  for (uint8_t i = 0; i < __ui_node_count; i++) {
+  // Uses a static array (not .value) to track previous thumb Y per node.
+  static int16_t __ui_scrollbar_prevY[16] = {0};
+  for (uint8_t i = 0; i < __ui_node_count && i < 16; i++) {
     if (!__ui_nodes[i].scrollable) continue;
     if (!scrollbarDirty[i]) continue;
     if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
@@ -609,24 +611,19 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (thumbH < 8) thumbH = 8;
     int16_t maxScroll = __ui_nodes[i].contentHeight - th;
     uint16_t thumbY = ty + (uint32_t)(th - thumbH) * __ui_nodes[i].scrollY / (maxScroll > 0 ? maxScroll : 1);
-    uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);  // dimmed track color
+    uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
 
-    // Use value field to track previous thumb Y for incremental redraw.
-    // On first draw (value==0 means no previous thumb), draw the full track.
-    if (__ui_nodes[i].value == 0) {
-      __tc_display.fillRect(tx, ty, 3, th, dimFg);  // full track
-      __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);  // thumb
-      __ui_nodes[i].value = thumbY + 1;  // +1 so 0 means "not drawn yet"
+    if (__ui_scrollbar_prevY[i] == 0) {
+      __tc_display.fillRect(tx, ty, 3, th, dimFg);
+      __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
     } else {
-      uint16_t prevThumbY = __ui_nodes[i].value - 1;
+      int16_t prevThumbY = __ui_scrollbar_prevY[i];
       if (thumbY != prevThumbY) {
-        // Clear old thumb position (restore dim track color)
         __tc_display.fillRect(tx, prevThumbY, 3, thumbH, dimFg);
-        // Draw new thumb
         __tc_display.fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
-        __ui_nodes[i].value = thumbY + 1;
       }
     }
+    __ui_scrollbar_prevY[i] = thumbY;
   }
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
 }
