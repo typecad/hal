@@ -68,6 +68,15 @@ export interface RangeElement extends UIElement {
   readonly __kind: "range";
 }
 
+/** A text input. .text is the string value; tap opens the on-screen keyboard. */
+export interface InputElement extends UIElement {
+  readonly __kind: "input";
+  /** The current text value. Reading returns the string; writing updates the display. */
+  text: string;
+  /** Fires when the text changes (after the keyboard commits). */
+  onChange(callback?: () => void): void;
+}
+
 export interface ScreenTree {
-  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement | ProgressElement | RangeElement;
+  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement | ProgressElement | RangeElement | InputElement;
 }
