@@ -42,6 +42,6 @@ export const DEFAULT_NUMBER_KEYBOARD: KeyboardTemplate = {
     [k("1"), k("2"), k("3"), { ch: "⌫", special: 2 }],
     [k("4"), k("5"), k("6"), k(".")],
     [k("7"), k("8"), k("9"), k("-")],
-    [{ ch: "ABC", special: 4 }, k("0"), { ch: "OK", special: 3 }, { ch: "OK", special: 3 }],
+    [{ ch: "ABC", special: 4 }, k("0"), { ch: "OK", special: 3 }],
   ],
 };
