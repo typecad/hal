@@ -451,6 +451,12 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
   // Modal keyboard: if visible, route touch to the keyboard only.
   if (__ui_kb_visible) {
     ui_kb_tick(now);
+    // Track touch state so ui_handle_no_touch → ui_touch_up fires on release
+    // (ui_touch_up has its own modal guard that routes to ui_kb_handle_tap).
+    if (__ui_touch_state == 0) {
+      __ui_touch_state = 1;
+      __ui_touch_down_time = now;
+    }
     if (tx >= __ui_kb_box.x && tx < __ui_kb_box.x + __ui_kb_box.w &&
         ty >= __ui_kb_box.y && ty < __ui_kb_box.y + __ui_kb_box.h) {
       ui_kb_handle_touch(tx, ty);
@@ -574,6 +580,16 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (k >= 100) __ui_trans[i].active = 0;
   }
   // ② Draw dirty nodes directly to the display object.
+  // Skip the node draw pass while the keyboard overlay is visible — its opaque
+  // background covers everything underneath, so redrawing app nodes wastes SPI
+  // bandwidth and causes flashing. Nodes redraw once when the keyboard closes
+  // (ui_kb_close marks the edited input dirty; ui_kb_open had marked all dirty
+  // on open so they're stale-but-covered while the keyboard is up).
+  if (__ui_kb_visible) {
+    // Still evaluate bindings + transitions above, but jump to the keyboard draw.
+    ui_kb_draw();
+    return;
+  }
   // First: if any scrollable container has dirty children, clear its viewport
   // with the background to prevent tearing (old content remains without this).
   int8_t bufferedScrollNode = -1;
@@ -910,11 +926,8 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_nodes[bufferedScrollNode].box.h);
   }
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
-
-  // ── Keyboard overlay: drawn last so it sits above all nodes. ──
-  if (__ui_kb_visible) {
-    ui_kb_draw();
-  }
+  // (Keyboard overlay is drawn earlier via the early-return in ui_tick when
+  // __ui_kb_visible — the node draw pass is skipped entirely while modal.)
 }
 
 // ── On-screen keyboard subsystem ───────────────────────────────────────────
@@ -996,12 +1009,14 @@ static inline void ui_kb_close() {
   if (__ui_kb_target >= 0) {
     strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
     __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
-    ui_mark_dirty((uint8_t)__ui_kb_target);
     if (__ui_kb_onchange) __ui_kb_onchange();
   }
   __ui_kb_visible = 0;
   __ui_kb_target = -1;
   __ui_kb_bs_held = 0;
+  // Mark the whole tree dirty so the app fully redraws after the keyboard
+  // overlay is removed (the draw pass was skipped while the keyboard was up).
+  for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1;
 }
 
 // Compute a key's rect from its index, given the grid + box.
