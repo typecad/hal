@@ -110,6 +110,11 @@ function emitKeyboardLoader(name: string, kb: KeyboardTemplate): string {
       const chEsc = key.ch === "\\" ? "\\\\" : key.ch === "'" ? "\\'" : key.ch;
       lines.push(`  __ui_kb_keys[__ui_kb_keyCount++] = { '${chEsc}', ${key.special} };`);
     }
+    // Pad short rows so ui_kb_key_rect's idx/cols math stays aligned. Padded
+    // cells use special=255 (skipped in draw + hit-test) with a space char.
+    for (let p = row.length; p < cols; p++) {
+      lines.push(`  __ui_kb_keys[__ui_kb_keyCount++] = { ' ', 255 };`);
+    }
   }
   lines.push(`}`);
   return lines.join("\n");

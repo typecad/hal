@@ -296,6 +296,7 @@ struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=o
 static UIRect  __ui_kb_box;
 static uint8_t __ui_kb_visible = 0;
 static uint8_t __ui_kb_bs_held = 0;
+static uint8_t __ui_kb_dirty = 0;     // 1 = keyboard needs redraw this frame
 static int16_t __ui_last_touch_x = 0;
 static int16_t __ui_last_touch_y = 0;
 // Keyboard function forward declarations (defined in the subsystem block below;
@@ -450,16 +451,18 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
 
   // Modal keyboard: if visible, route touch to the keyboard only.
   if (__ui_kb_visible) {
-    ui_kb_tick(now);
-    // Track touch state so ui_handle_no_touch → ui_touch_up fires on release
-    // (ui_touch_up has its own modal guard that routes to ui_kb_handle_tap).
+    // Only process the down-edge for key actions (insert/delete-on-down).
+    // Repeat is handled by ui_kb_tick; release by ui_touch_up → ui_kb_handle_tap.
     if (__ui_touch_state == 0) {
       __ui_touch_state = 1;
       __ui_touch_down_time = now;
-    }
-    if (tx >= __ui_kb_box.x && tx < __ui_kb_box.x + __ui_kb_box.w &&
-        ty >= __ui_kb_box.y && ty < __ui_kb_box.y + __ui_kb_box.h) {
-      ui_kb_handle_touch(tx, ty);
+      if (tx >= __ui_kb_box.x && tx < __ui_kb_box.x + __ui_kb_box.w &&
+          ty >= __ui_kb_box.y && ty < __ui_kb_box.y + __ui_kb_box.h) {
+        ui_kb_handle_touch(tx, ty);
+      }
+    } else {
+      // Held: run auto-repeat (backspace).
+      ui_kb_tick(now);
     }
     __ui_last_touch_time = now;
     return;  // swallow all other touches while modal
@@ -586,8 +589,12 @@ static inline void ui_tick(uint16_t deltaMs) {
   // (ui_kb_close marks the edited input dirty; ui_kb_open had marked all dirty
   // on open so they're stale-but-covered while the keyboard is up).
   if (__ui_kb_visible) {
-    // Still evaluate bindings + transitions above, but jump to the keyboard draw.
-    ui_kb_draw();
+    // Still evaluate bindings + transitions above, but only redraw the keyboard
+    // when something changed (open, key press, delete repeat, shift, page swap).
+    if (__ui_kb_dirty) {
+      ui_kb_draw();
+      __ui_kb_dirty = 0;
+    }
     return;
   }
   // First: if any scrollable container has dirty children, clear its viewport
@@ -948,6 +955,7 @@ static uint8_t __ui_kb_shift;
 // earlier (near the touch state machine) because ui_touch_up references them.
 static int8_t  __ui_kb_target;       // node index of input being edited (-1 = none)
 static uint32_t __ui_kb_bs_repeat;   // last auto-repeat deletion time
+// __ui_kb_dirty is forward-declared earlier (near the touch state machine).
 static void    (*__ui_kb_onchange)();
 // Dispatch table: one loader per input node. Indexed by input position.
 extern void (*__ui_kb_loaders[])();
@@ -1000,7 +1008,8 @@ static inline void ui_kb_open(uint8_t nodeIdx, uint8_t inputPosition) {
   __ui_kb_set_onchange();
   ui_kb_compute_box();
   __ui_kb_visible = 1;
-  // Mark the whole tree dirty so the overlay draws cleanly over it.
+  __ui_kb_dirty = 1;  // redraw on the first visible frame
+  // Mark the whole tree dirty so the app fully redraws when the keyboard closes.
   for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1;
 }
 
@@ -1030,29 +1039,35 @@ static inline void ui_kb_key_rect(uint8_t idx, UIRect* out) {
 }
 
 // Handle a touch-down inside the keyboard box. tx,ty are display coords.
+// Handle a touch-down inside the keyboard box. Only fires on the initial
+// down edge (tracked by __ui_touch_state in the modal path), NOT every poll.
 static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+    UIKey k = __ui_kb_keys[i];
+    if (k.special == 255) continue;  // padding cell, skip
     UIRect r;
     ui_kb_key_rect(i, &r);
     if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
-      UIKey k = __ui_kb_keys[i];
       if (k.special == 2) {
-        // backspace: delete now + arm auto-repeat while held
+        // backspace: delete once now, arm auto-repeat via ui_kb_tick.
         __ui_kb_bs_held = 1;
         __ui_kb_bs_repeat = millis();
         ui_kb_delete();
+        __ui_kb_dirty = 1;
       }
       return;  // only one key per touch
     }
   }
 }
 
-// Called each frame while the keyboard is visible: handles ⌫ auto-repeat.
+// Called each frame while the keyboard is visible + a touch is held.
+// Handles ⌫ auto-repeat.
 static inline void ui_kb_tick(uint32_t now) {
   if (!__ui_kb_bs_held) return;
   if (now - __ui_kb_bs_repeat >= UI_KB_REPEAT_MS) {
     ui_kb_delete();
     __ui_kb_bs_repeat = now;
+    __ui_kb_dirty = 1;
   }
 }
 
@@ -1061,20 +1076,23 @@ static inline void ui_kb_tick(uint32_t now) {
 // (Backspace deletion happens on touch-down + auto-repeat; nothing here for it.)
 static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+    UIKey k = __ui_kb_keys[i];
+    if (k.special == 255) continue;  // padding cell, skip
     UIRect r;
     ui_kb_key_rect(i, &r);
     if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
-      UIKey k = __ui_kb_keys[i];
       switch (k.special) {
         case 0: {  // char
           char c = k.ch;
           if (__ui_kb_shift && c >= 'a' && c <= 'z') c -= 32;
           ui_kb_insert(c);
           __ui_kb_shift = 0;  // shift resets after one char
+          __ui_kb_dirty = 1;
           break;
         }
         case 1:  // shift toggle
           __ui_kb_shift = !__ui_kb_shift;
+          __ui_kb_dirty = 1;
           break;
         case 2:  // backspace: handled on down + repeat; nothing on tap-up
           break;
@@ -1087,6 +1105,7 @@ static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
           if (__ui_kb_cols <= 4) __ui_kb_load_default_alpha();
           else __ui_kb_load_default_number();
           ui_kb_compute_box();
+          __ui_kb_dirty = 1;
           break;
         }
       }
@@ -1108,22 +1127,33 @@ static inline void ui_kb_draw() {
 
   // Keys: one rect per key, label centered-ish.
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+    UIKey k = __ui_kb_keys[i];
+    if (k.special == 255) continue;  // padding cell, skip
     UIRect r;
     ui_kb_key_rect(i, &r);
-    UIKey k = __ui_kb_keys[i];
     uint16_t bg = 0x4208;   // dark gray
     uint16_t fg = 0xFFFF;   // white
     if (k.special == 3) { bg = 0x2641; fg = 0xFFFF; }              // OK — blue accent
     if (k.special == 1 && __ui_kb_shift) { bg = 0xBDF7; }          // shift active — highlight
     __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
     __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, fg);
+    // Derive the label: special keys get fixed multi-char strings; char keys
+    // use k.ch (capitalized if shift active).
     __tc_display.setCursor(r.x + 4, r.y + r.h / 2 - 4);
     __tc_display.setTextColor(fg, bg);
     __tc_display.setTextSize(1);
-    // For char keys with shift active, capitalize.
-    char label[2] = { k.ch, 0 };
-    if (k.special == 0 && __ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') label[0] = k.ch - 32;
-    __tc_display.print(label);
+    switch (k.special) {
+      case 1:  __tc_display.print(__ui_kb_shift ? "SHIFT*" : "shift"); break;
+      case 2:  __tc_display.print("DEL"); break;
+      case 3:  __tc_display.print("OK"); break;
+      case 4:  __tc_display.print(__ui_kb_cols <= 4 ? "ABC" : "123"); break;
+      default: {
+        char label[2] = { k.ch, 0 };
+        if (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') label[0] = k.ch - 32;
+        __tc_display.print(label);
+        break;
+      }
+    }
   }
 }
 
