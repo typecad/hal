@@ -35,6 +35,7 @@ struct UINode {
   const uint8_t* font;
   uint8_t hasBg;
   uint8_t textAlign;    // 0=left, 1=center, 2=right
+  uint8_t textSize;     // GFX text size: 1-4
   uint16_t borderColor; // resolved color for the border (0 = use fg)
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
   uint8_t underline;    // 0=none, 1=underline
@@ -672,9 +673,11 @@ static inline void ui_tick(uint16_t deltaMs) {
       ? __ui_nodes[i].textBuffer
       : __ui_nodes[i].text;
     // Compute text width helper (used by text-align and button centering).
+    // At textSize N, each char is N*6px advance (GFX font geometry).
+    uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
     uint16_t tw = 0;
     if (displayText) {
-      for (const char* p = displayText; *p; p++) tw += 12;
+      for (const char* p = displayText; *p; p++) tw += ts * 6;
     }
     // Compute x offset based on text-align (0=left, 1=center, 2=right).
     int16_t textX = __ui_nodes[i].box.x;
@@ -703,10 +706,10 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         __ui_gfx->setCursor(textX, drawY);
         __ui_gfx->setTextColor(__ui_nodes[i].fg);
-        __ui_gfx->setTextSize(2);
+        __ui_gfx->setTextSize(ts);
         __ui_gfx->print(displayText);
         if (__ui_nodes[i].underline)
-          __ui_gfx->drawFastHLine(textX, drawY + 15, tw, __ui_nodes[i].fg);
+          __ui_gfx->drawFastHLine(textX, drawY + ts * 8 - 1, tw, __ui_nodes[i].fg);
         break;
       case NODE_BUTTON:
         if (__ui_nodes[i].hasBg)
@@ -725,9 +728,9 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         __ui_gfx->setCursor(
           __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
-          drawY + (__ui_nodes[i].box.h - 16) / 2);
+          drawY + (__ui_nodes[i].box.h - ts * 8) / 2);
         __ui_gfx->setTextColor(__ui_nodes[i].fg);
-        __ui_gfx->setTextSize(2);
+        __ui_gfx->setTextSize(ts);
         __ui_gfx->print(displayText);
         break;
       case NODE_CHECK:
@@ -758,7 +761,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         __ui_gfx->setCursor(__ui_nodes[i].box.x + 22, drawY);
         __ui_gfx->setTextColor(__ui_nodes[i].fg);
-        __ui_gfx->setTextSize(2);
+        __ui_gfx->setTextSize(ts);
         __ui_gfx->print(displayText);
         break;
       case NODE_RADIO:
@@ -781,7 +784,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         __ui_gfx->setCursor(__ui_nodes[i].box.x + 22, drawY);
         __ui_gfx->setTextColor(__ui_nodes[i].fg);
-        __ui_gfx->setTextSize(2);
+        __ui_gfx->setTextSize(ts);
         __ui_gfx->print(displayText);
         break;
       case NODE_PROGRESS:
@@ -902,13 +905,13 @@ static inline void ui_tick(uint16_t deltaMs) {
             ? __ui_nodes[i].textBuffer
             : (__ui_nodes[i].text ? __ui_nodes[i].text : "");
           if (__ui_nodes[i].textBuffer[0] == 0) textCol = 0x8410;  // dim gray for placeholder
-          __tc_display.setCursor(bx + 4, by + (bh - 16) / 2);
+          __tc_display.setCursor(bx + 4, by + (bh - ts * 8) / 2);
           __tc_display.setTextColor(textCol, bgCol);
-          __tc_display.setTextSize(2);
-          // Clip: at textSize(2), each char is 12px advance. Only print chars
+          __tc_display.setTextSize(ts);
+          // Clip: at textSize ts, each char is ts*6px advance. Only print chars
           // that fit within the box (bw - 8px margin), so text never overflows
           // the border or wraps to the next line.
-          int16_t maxChars = (bw - 8) / 12;
+          int16_t maxChars = (bw - 8) / (ts * 6);
           if (maxChars < 0) maxChars = 0;
           int16_t len = (int16_t)strlen(disp);
           if (len > maxChars) len = maxChars;

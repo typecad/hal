@@ -17,6 +17,7 @@ export interface UINodeModel {
   fg: number;
   kind: UINodeKindModel;
   text?: string;
+  placeholder?: string;
   valueAttr?: string;
   name?: string;
   checked?: boolean;
@@ -24,6 +25,7 @@ export interface UINodeModel {
   hasTextBinding: boolean;
   hasBg: boolean;
   textAlign: 0 | 1 | 2;
+  textSize: number;       // GFX text size: 1-4 (from font-size + font-weight)
   borderColor: number;
   borderStyle: 0 | 1 | 2;
   underline: boolean;
@@ -40,6 +42,10 @@ export interface UINodeModel {
   rangeMax: number;
   /** For <input>: max character length (0 = use UI_TEXT_BUF). */
   maxlen: number;
+  /** For <input>: text or number keyboard. */
+  inputType?: "text" | "number";
+  /** For <input>: custom keyboard template id. */
+  keyboard?: string;
   parentIndex: number;
   subtreeEnd: number;
 }
@@ -102,6 +108,35 @@ function borderStyle(style: CSSProperty): 0 | 1 | 2 {
   return 0;
 }
 
+/** Map font-size (px) + font-weight to a GFX text size (1-4).
+ *  ≤12px→1, 13-20px→2, 21-28px→3, 29+→4. Bold adds 1 (clamped to 4). */
+function textSizeOf(style: CSSProperty): number {
+  let size = 2;  // default
+  if (style.fontSize) {
+    const px = parseInt(style.fontSize, 10);
+    if (!isNaN(px)) {
+      if (px <= 12) size = 1;
+      else if (px <= 20) size = 2;
+      else if (px <= 28) size = 3;
+      else size = 4;
+    }
+  }
+  if (style.fontWeight === "bold" && size < 4) size++;
+  return size;
+}
+
+/** Apply text-transform (uppercase/lowercase/capitalize) to a static string. */
+function applyTextTransform(text: string | undefined, style: CSSProperty): string | undefined {
+  if (!text) return text;
+  switch (style.textTransform) {
+    case "uppercase": return text.toUpperCase();
+    case "lowercase": return text.toLowerCase();
+    case "capitalize":
+      return text.replace(/\b\w/g, (c) => c.toUpperCase());
+    default: return text;
+  }
+}
+
 function flatten(
   node: StyledNode,
   boxes: Box[],
@@ -147,14 +182,16 @@ export function lowerUIToModel(
       bg,
       fg,
       kind: nodeKind(node.tag),
-      text: node.text,
+      text: applyTextTransform(node.text, node.style),
+      placeholder: applyTextTransform(node.placeholder, node.style),
       valueAttr: node.value,
       name: node.name,
       checked: node.checked,
-      textBuffer: node.placeholder ?? "",
+      textBuffer: applyTextTransform(node.placeholder, node.style) ?? "",
       hasTextBinding: false,
       hasBg,
       textAlign: textAlign(node.style),
+      textSize: textSizeOf(node.style),
       borderColor: bColor,
       borderStyle: borderStyle(node.style),
       underline: node.style.textDecoration === "underline",
@@ -170,6 +207,8 @@ export function lowerUIToModel(
       rangeMin: node.min ? (parseInt(node.min, 10) || 0) : 0,
       rangeMax: node.max ? (parseInt(node.max, 10) || 100) : 100,
       maxlen: node.maxlen ?? 0,
+      inputType: node.type,
+      keyboard: node.keyboard,
       parentIndex,
       subtreeEnd,
     };
