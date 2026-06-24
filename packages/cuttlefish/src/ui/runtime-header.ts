@@ -133,21 +133,23 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
 static Adafruit_GFX* __ui_gfx = &__tc_display;
 static GFXcanvas16* __ui_scroll_canvas = nullptr;
 
-// Get (or re-allocate) a canvas. Uses full display size for coordinate
-// simplicity — scroll children draw at display coords, only the viewport
-// rect is pushed. Viewport-sized optimization requires coord translation.
+// Get (or re-allocate) a canvas sized to the viewport (w×h), not the full
+// display. Much smaller allocation → allocates reliably on ESP32 without PSRAM.
 static inline GFXcanvas16* ui_get_scroll_canvas(int16_t w, int16_t h) {
-  (void)w; (void)h;
-  int16_t dw = __tc_display.width();
-  int16_t dh = __tc_display.height();
-  if (dw <= 0 || dh <= 0) return nullptr;
-  if (!__ui_scroll_canvas || __ui_scroll_canvas->width() != dw || __ui_scroll_canvas->height() != dh) {
+  if (w <= 0 || h <= 0) return nullptr;
+  if (!__ui_scroll_canvas || __ui_scroll_canvas->width() != w || __ui_scroll_canvas->height() != h) {
     delete __ui_scroll_canvas;
-    __ui_scroll_canvas = new GFXcanvas16(dw, dh);
+    __ui_scroll_canvas = new GFXcanvas16(w, h);
   }
   if (!__ui_scroll_canvas || !__ui_scroll_canvas->getBuffer()) return nullptr;
   return __ui_scroll_canvas;
 }
+
+// Draw offset: when non-zero, all __ui_gfx draw calls subtract this from
+// display coords to produce canvas-local coords. Set when redirecting to a
+// viewport-sized canvas; reset to 0 for direct-display draws.
+static int16_t __ui_draw_off_x = 0;
+static int16_t __ui_draw_off_y = 0;
 
 static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
   if (!canvas || !canvas->getBuffer()) return;
@@ -947,13 +949,13 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t vh = __ui_nodes[s].box.h;
     int16_t vox = __ui_nodes[s].box.x;
     int16_t voy = __ui_nodes[s].box.y;
-    (void)vox; (void)voy;  // viewport origin unused (canvas is full-screen)
     bufferedScrollCanvas = ui_get_scroll_canvas(vw, vh);
     if (bufferedScrollCanvas) {
       bufferedScrollNode = (int8_t)s;
-      // Clear canvas viewport rect (not full-screen fillScreen).
-      bufferedScrollCanvas->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
-        __ui_nodes[s].box.w, __ui_nodes[s].box.h,
+      bufferedScrollVX = vox;
+      bufferedScrollVY = voy;
+      // Clear canvas (it's viewport-sized, so fillScreen is efficient).
+      bufferedScrollCanvas->fillScreen(
         __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
     } else {
       // Fallback: clear display viewport directly.
@@ -974,13 +976,27 @@ static inline void ui_tick(uint16_t deltaMs) {
 
     // Redirect to the scroll canvas if this node is inside the buffered container.
     uint8_t drawingBufferedScroll = bufferedScrollNode >= 0 && i > (uint8_t)bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd;
+    int16_t origBoxX = __ui_nodes[i].box.x;
+    int16_t origBoxY = __ui_nodes[i].box.y;
     if (drawingBufferedScroll) {
       __ui_gfx = bufferedScrollCanvas;
+      // Translate display coords → canvas-local coords (subtract viewport origin).
+      __ui_nodes[i].box.x = origBoxX - bufferedScrollVX;
+      __ui_nodes[i].box.y = origBoxY - bufferedScrollVY;
     } else {
       __ui_gfx = &__tc_display;
     }
     int16_t drawY = ui_draw_y_for_node(i);
-    if (ui_is_clipped_by_scroll(i, drawY)) {
+    if (drawingBufferedScroll) {
+      // Canvas-local clip: skip nodes fully outside the viewport (0..vw, 0..vh).
+      if (drawY + __ui_nodes[i].box.h <= 0 || drawY >= bufferedScrollCanvas->height() ||
+          __ui_nodes[i].box.x + __ui_nodes[i].box.w <= 0 || __ui_nodes[i].box.x >= bufferedScrollCanvas->width()) {
+        __ui_nodes[i].box.x = origBoxX;
+        __ui_nodes[i].box.y = origBoxY;
+        __ui_nodes[i].dirty = 0;
+        continue;
+      }
+    } else if (ui_is_clipped_by_scroll(i, drawY)) {
       __ui_nodes[i].dirty = 0;
       continue;
     }
@@ -1290,28 +1306,31 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         break;
     }
+    // Restore original box coords (translated for canvas-local drawing above).
+    __ui_nodes[i].box.x = origBoxX;
+    __ui_nodes[i].box.y = origBoxY;
     __ui_nodes[i].dirty = 0;
   }
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
   if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
-    // Draw scrollbar into the canvas (display coords — canvas is full-screen).
+    // Draw scrollbar into the canvas (canvas-local coords: 0,0 = viewport top-left).
     __ui_gfx = bufferedScrollCanvas;
     uint8_t si = (uint8_t)bufferedScrollNode;
-    int16_t tx = __ui_nodes[si].box.x + __ui_nodes[si].box.w - 4;
-    int16_t ty = __ui_nodes[si].box.y;
-    int16_t th = __ui_nodes[si].box.h;
-    uint16_t thumbH = (uint32_t)th * th / __ui_nodes[si].contentHeight;
+    int16_t vw = __ui_nodes[si].box.w;
+    int16_t vh = __ui_nodes[si].box.h;
+    int16_t tx = vw - 4;
+    uint16_t thumbH = (uint32_t)vh * vh / __ui_nodes[si].contentHeight;
     if (thumbH < 8) thumbH = 8;
-    int16_t maxScroll = __ui_nodes[si].contentHeight - th;
-    uint16_t thumbY = ty + (uint32_t)(th - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
+    int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
+    uint16_t thumbY = (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
     uint16_t dimFg = ((__ui_nodes[si].fg >> 1) & 0x7BEF);
-    __ui_gfx->fillRect(tx, ty, 3, th, dimFg);
+    __ui_gfx->fillRect(tx, 0, 3, vh, dimFg);
     __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
-    // Push the canvas viewport rect to the display.
+    // Push the canvas to the display at the viewport position.
     __ui_gfx = &__tc_display;
     ui_push_canvas_rect(bufferedScrollCanvas,
-      __ui_nodes[si].box.x, __ui_nodes[si].box.y,
-      __ui_nodes[si].box.w, __ui_nodes[si].box.h);
+      bufferedScrollVX, bufferedScrollVY,
+      vw, vh);
   }
   __ui_gfx = &__tc_display;
   // ③ Flush — ILI9341 is immediate, no separate flush needed.

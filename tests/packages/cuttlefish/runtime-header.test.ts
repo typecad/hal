@@ -94,7 +94,7 @@ describe("C++ reactive runtime header", () => {
 
   it("draws scrollbars into the buffered canvas (not the display)", () => {
     // Scrollbar draws to the canvas before push — no direct-display flash.
-    expect(header).toMatch(/__ui_gfx\s*=\s*bufferedScrollCanvas[\s\S]*fillRect\(tx,\s*ty/);
+    expect(header).toMatch(/__ui_gfx\s*=\s*bufferedScrollCanvas[\s\S]*fillRect\(tx,\s*(?:ty|0)/);
     expect(header).not.toContain("scrollbarDirty");
   });
 
@@ -107,7 +107,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("GFXcanvas16* __ui_scroll_canvas");
     expect(header).toContain("ui_get_scroll_canvas");
     expect(header).toContain("ui_push_canvas_rect");
-    expect(header).toMatch(/bufferedScrollCanvas->fillRect\(/);
+    expect(header).toMatch(/bufferedScrollCanvas->fillScreen/);
     expect(header).toMatch(/__ui_gfx\s*=\s*bufferedScrollCanvas/);
     expect(header).toMatch(/ui_push_canvas_rect\(bufferedScrollCanvas/);
   });
