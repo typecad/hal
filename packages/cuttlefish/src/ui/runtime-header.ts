@@ -155,15 +155,18 @@ static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y
   if (!canvas || !canvas->getBuffer()) return;
   uint16_t* pixels = canvas->getBuffer();
   int16_t stride = canvas->width();
+  // The canvas is viewport-sized: buffer row 0 = the first row of the viewport.
+  // The display destination is (x, y) but the source buffer starts at (0, 0).
   __tc_display.startWrite();
   __tc_display.setAddrWindow(x, y, w, h);
-  if (x == 0 && w == stride) {
-    __tc_display.writePixels(pixels + (int32_t)y * stride, (uint32_t)w * h);
+  if (w == stride) {
+    // Full-width: contiguous in buffer, single write.
+    __tc_display.writePixels(pixels, (uint32_t)w * h);
     __tc_display.endWrite();
     return;
   }
   for (int16_t row = 0; row < h; row++) {
-    __tc_display.writePixels(pixels + (int32_t)(y + row) * stride + x, w);
+    __tc_display.writePixels(pixels + (int32_t)row * stride, w);
   }
   __tc_display.endWrite();
 }
