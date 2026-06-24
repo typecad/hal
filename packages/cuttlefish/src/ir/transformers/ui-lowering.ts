@@ -281,7 +281,7 @@ function emitTransitionTable(model: UIProgram): string {
     return `  { .node=${t.node}, .prop=${prop}, .durationMs=${t.durationMs}, .pressedTarget=${hex(t.pressedTarget)}, .baseTarget=${hex(t.baseTarget)} },`;
   });
   if (entries.length === 0) {
-    return `const UITransition __ui_trans[] = {};`;
+    return `UITransition __ui_trans[] = {};`;
   }
   return [
     // Mutable: ui_tick updates elapsed/active each frame.
