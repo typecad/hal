@@ -20,12 +20,20 @@ describe("preview snapshot builder", () => {
     expect(snapshot.program.colorFormat).toBe("rgb565");
     expect(snapshot.program.display?.rotation).toBe(1);
     expect(snapshot.program.nodes.some((node) => node.id === "btn" && node.kind === "button")).toBe(true);
+    expect(snapshot.program.nodes.find((node) => node.id === "ssid")).toMatchObject({
+      kind: "input",
+      inputType: "text",
+      placeholder: "Network",
+      maxlen: 32,
+    });
     const speedSlow = snapshot.program.nodes.find((node) => node.id === "speedSlow");
     const speedFast = snapshot.program.nodes.find((node) => node.id === "speedFast");
     expect(speedSlow).toMatchObject({ kind: "radio", name: "speed", valueAttr: "slow", value: 0 });
     expect(speedFast).toMatchObject({ kind: "radio", name: "speed", valueAttr: "fast", checked: true, value: 1 });
     expect(snapshot.bindings.some((binding) => binding.nodeId === "counter" && binding.property === "text")).toBe(true);
     expect(snapshot.callbacks.some((callback) => callback.nodeId === "btn" && callback.kind === "click")).toBe(true);
+    expect(snapshot.callbacks.some((callback) => callback.nodeId === "ssid" && callback.kind === "change")).toBe(true);
+    expect(snapshot.cssRules.some((rule) => rule.selector.compounds.length === 1 && rule.selector.compounds[0].some(s => s.kind === "class" && s.name === "ui-key"))).toBe(true);
     expect(snapshot.intervals).toHaveLength(1);
     expect(snapshot.font).toHaveLength(1280);
   });

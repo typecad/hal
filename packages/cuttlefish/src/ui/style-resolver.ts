@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { UIElementNode } from "./html-parser.js";
-import { CSSRule, CSSProperty, CSSSelector } from "./css-parser.js";
+import { CSSRule, CSSProperty, CSSSelector, SimpleSelector } from "./css-parser.js";
 
 export interface StyledNode {
   tag: string;
@@ -38,24 +38,52 @@ export interface StyledNode {
   keyboard?: string;
 }
 
-function matches(node: UIElementNode, sel: CSSSelector): boolean {
-  switch (sel.kind) {
-    case "element": return node.tag === sel.name;
-    case "id": return node.id === sel.name;
-    case "class": return node.classes.includes(sel.name);
+/** Does a single element match a compound selector (all simples must match)? */
+function matchesCompound(node: UIElementNode, compound: SimpleSelector[]): boolean {
+  for (const s of compound) {
+    switch (s.kind) {
+      case "element": if (node.tag !== s.name) return false; break;
+      case "id": if (node.id !== s.name) return false; break;
+      case "class": if (!node.classes.includes(s.name)) return false; break;
+    }
   }
+  return true;
+}
+
+/** Does an element match a full selector (compound + descendant)?
+ *  The last compound must match the node; preceding compounds must match
+ *  some ancestor in the chain (passed as `ancestors`). */
+function matches(node: UIElementNode, sel: CSSSelector, ancestors: UIElementNode[]): boolean {
+  const compounds = sel.compounds;
+  // Target compound (last) must match the node.
+  if (!matchesCompound(node, compounds[compounds.length - 1])) return false;
+  // Ancestor compounds must match in order, walking up the chain.
+  let ancIdx = ancestors.length - 1;
+  for (let c = compounds.length - 2; c >= 0; c--) {
+    let found = false;
+    while (ancIdx >= 0) {
+      if (matchesCompound(ancestors[ancIdx], compounds[c])) {
+        found = true;
+        ancIdx--;
+        break;
+      }
+      ancIdx--;
+    }
+    if (!found) return false;
+  }
+  return true;
 }
 
 export function resolveStyles(root: UIElementNode, rules: CSSRule[]): StyledNode {
-  return resolveNode(root, rules);
+  return resolveNode(root, rules, []);
 }
 
-function resolveNode(node: UIElementNode, rules: CSSRule[]): StyledNode {
+function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElementNode[]): StyledNode {
   const base: CSSProperty = {};
   const pressed: CSSProperty = {};
 
   for (const rule of rules) {
-    if (!matches(node, rule.selector)) continue;
+    if (!matches(node, rule.selector, ancestors)) continue;
     if (rule.selector.pseudo === "pressed") {
       Object.assign(pressed, rule.properties);
     } else {
@@ -69,6 +97,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[]): StyledNode {
     (style as CSSProperty & { pressed?: CSSProperty }).pressed = pressed;
   }
 
+  const childAncestors = [...ancestors, node];
   return {
     tag: node.tag,
     id: node.id,
@@ -76,7 +105,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[]): StyledNode {
     text: node.text,
     value: node.value,
     style,
-    children: node.children.map(c => resolveNode(c, rules)),
+    children: node.children.map(c => resolveNode(c, rules, childAncestors)),
     options: node.options,
     name: node.name,
     checked: node.checked,

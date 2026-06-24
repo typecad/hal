@@ -13,9 +13,19 @@ import { parse, walk, generate } from "css-tree";
 
 export type CSSSelectorKind = "element" | "id" | "class";
 
-export interface CSSSelector {
+/** A single simple selector: tag name, #id, or .class. */
+export interface SimpleSelector {
   kind: CSSSelectorKind;
   name: string;
+}
+
+/** A full CSS selector, supporting compound (`.foo.bar`, `tag.class`) and
+ *  descendant (`parent child`) combinators.
+ *  - `compounds[last]` is the target compound (the element the rule applies to).
+ *  - Each compound is an array of simples that must ALL match (AND).
+ *  - Preceding compounds are ancestor constraints (descendant combinator). */
+export interface CSSSelector {
+  compounds: SimpleSelector[][];
   pseudo?: "pressed";
 }
 
@@ -123,21 +133,37 @@ export function parseCss(src: string): CSSRule[] {
   return rules;
 }
 
-/** Parse a single selector string into a CSSSelector (element/#id/.class + :pressed). */
+/** Parse a selector string into compounds + simples.
+ *  Supports: `.foo`, `#bar`, `tag`, `.foo.bar` (compound), `tag.cls` is not valid
+ *  CSS (no dot in tag names), `parent child` (descendant), and `:pressed`.
+ *  Returns null for empty/invalid selectors. */
 function parseSelector(s: string): CSSSelector | null {
-  // Handle :pressed pseudo-state (may also appear as :active for browser compat).
+  // Strip :pressed / :active pseudo (may appear after the last compound).
   const pseudoM = /:(pressed|active)$/.exec(s);
   const base = pseudoM ? s.slice(0, pseudoM.index) : s;
   const trimmed = base.trim().replace(/^["']|["']$/g, "");
+  if (!trimmed) return null;
 
-  let kind: CSSSelectorKind;
-  let name: string;
-  if (trimmed.startsWith("#")) { kind = "id"; name = trimmed.slice(1); }
-  else if (trimmed.startsWith(".")) { kind = "class"; name = trimmed.slice(1); }
-  else { kind = "element"; name = trimmed; }
-
-  if (!name) return null;
-  return { kind, name, pseudo: pseudoM ? "pressed" : undefined };
+  // Split on whitespace into compound groups (descendant combinator).
+  const groups = trimmed.split(/\s+/).filter(Boolean);
+  const compounds: SimpleSelector[][] = [];
+  for (const group of groups) {
+    // Split a compound into simples: .class, #id, or bare tag.
+    // Use a regex that captures leading . or # prefixed tokens.
+    const simples: SimpleSelector[] = [];
+    const tokenRe = /([.#]?)([a-zA-Z_][\w-]*)/g;
+    let m: RegExpExecArray | null;
+    while ((m = tokenRe.exec(group)) !== null) {
+      const prefix = m[1];
+      const name = m[2];
+      if (prefix === "#") simples.push({ kind: "id", name });
+      else if (prefix === ".") simples.push({ kind: "class", name });
+      else simples.push({ kind: "element", name });
+    }
+    if (simples.length > 0) compounds.push(simples);
+  }
+  if (compounds.length === 0) return null;
+  return { compounds, pseudo: pseudoM ? "pressed" : undefined };
 }
 
 /** Parse a numeric value from a CSS string like "8px" or "8" → 8. */

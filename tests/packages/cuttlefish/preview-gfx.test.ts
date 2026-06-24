@@ -77,10 +77,17 @@ describe("PreviewUIRuntime", () => {
       scrollable: false,
       scrollY: 0,
       contentHeight: 0,
+      rangeMin: 0,
+      rangeMax: 100,
+      maxlen: 0,
       parentIndex: -1,
       subtreeEnd: 1,
       ...overrides,
     };
+  }
+
+  function wait(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   it("renders progress nodes and updates their fill incrementally", () => {
@@ -134,6 +141,72 @@ describe("PreviewUIRuntime", () => {
       runtime.tick(16);
       expect(px(4, 3)).toBe(0x07e0);
       expect(px(5, 3)).toBe(0x0000);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders input fields and commits text through the preview keyboard", async () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 100,
+        height: 80,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 100, h: 80 } }),
+          makeNode({
+            index: 1,
+            id: "ssid",
+            tag: "input",
+            kind: "input",
+            box: { x: 5, y: 5, w: 52, h: 20 },
+            fg: 0x07e0,
+            borderColor: 0x07e0,
+            parentIndex: 0,
+            placeholder: "SSID",
+            maxlen: 4,
+            inputType: "text",
+          }),
+        ],
+        transitions: [],
+      },
+      keyboardTemplates: [],
+      cssRules: [
+        { selector: { compounds: [[{ kind: "class", name: "ui-keyboard" }]] }, properties: { background: "black" } },
+        { selector: { compounds: [[{ kind: "class", name: "ui-key" }]] }, properties: { background: "red", color: "white", borderColor: "red" } },
+      ],
+      font: [],
+      bindings: [],
+      callbacks: [
+        { nodeId: "ssid", nodeIndex: 1, kind: "change", body: "screen.ssid.value = screen.ssid.text.length;" },
+      ],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 100 + x];
+    runtime.start();
+    try {
+      expect(px(5, 5)).toBe(0x07e0);
+
+      runtime.pointerDown(8, 8);
+      runtime.pointerUp();
+      await wait(60);
+      expect(px(2, 46)).toBe(0xf800);
+
+      runtime.pointerDown(3, 47);
+      runtime.pointerUp();
+      await wait(60);
+      runtime.pointerDown(84, 74);
+      runtime.pointerUp();
+
+      expect(runtime.screen.ssid.text).toBe("1");
+      expect(runtime.screen.ssid.value).toBe(1);
     } finally {
       runtime.stop();
     }

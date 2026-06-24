@@ -107,11 +107,24 @@ const DEFAULT_KEY_BORDER = 0xFFFF; // white
 const DEFAULT_KB_BG = 0x0000;     // black
 
 /** Resolve a key's CSS classes into a merged CSSProperty (cascade: last wins). */
+/** Check if a CSS rule's selector matches any of the given class names.
+ *  Only matches single-compound class selectors (no descendant for keys). */
+function ruleMatchesClass(rule: CSSRule, classes: string[]): boolean {
+  // Must be a single compound (no descendant combinator).
+  if (rule.selector.compounds.length !== 1) return false;
+  const compound = rule.selector.compounds[0];
+  // Every simple in the compound must be a class that's in the list.
+  for (const s of compound) {
+    if (s.kind !== "class" || !classes.includes(s.name)) return false;
+  }
+  return true;
+}
+
 function resolveKeyStyle(keyClasses: string[] | undefined, kbClasses: string[] | undefined, rules: CSSRule[]): CSSProperty {
   const merged: CSSProperty = {};
   const allClasses = [...(kbClasses ?? []), ...(keyClasses ?? [])];
   for (const rule of rules) {
-    if (rule.selector.kind === "class" && allClasses.includes(rule.selector.name)) {
+    if (ruleMatchesClass(rule, allClasses)) {
       Object.assign(merged, rule.properties);
     }
   }
@@ -121,8 +134,9 @@ function resolveKeyStyle(keyClasses: string[] | undefined, kbClasses: string[] |
 /** Resolve the keyboard-level background from CSS (keyboard classes). */
 function resolveKbBg(kbClasses: string[] | undefined, rules: CSSRule[], colorFormat: ColorFormat): number {
   const merged: CSSProperty = {};
+  const classes = kbClasses ?? [];
   for (const rule of rules) {
-    if (rule.selector.kind === "class" && (kbClasses ?? []).includes(rule.selector.name)) {
+    if (ruleMatchesClass(rule, classes)) {
       Object.assign(merged, rule.properties);
     }
   }

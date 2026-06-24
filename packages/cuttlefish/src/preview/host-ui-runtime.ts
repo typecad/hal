@@ -1,4 +1,7 @@
 import { resolveColor } from "../ui/color.js";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui/default-keyboards.js";
+import type { CSSProperty, CSSRule } from "../ui/css-parser.js";
+import type { KeyboardTemplate, UIKeyTemplate } from "../ui/html-parser.js";
 import type { UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
 import { HostAdafruitGFX } from "./host-gfx.js";
 import type {
@@ -14,9 +17,35 @@ const UI_TEXT_BUF = 16;
 const UI_TOUCH_DEBOUNCE_MS = 50;
 const UI_TOUCH_HOLD_MS = 600;
 const UI_DRAG_THRESHOLD = 10;
+const UI_KB_REPEAT_MS = 100;
+const UI_KB_TEXT_H = 24;
+
+const DEFAULT_KEY_BG = 0x4208;
+const DEFAULT_KEY_FG = 0xffff;
+const DEFAULT_KEY_BORDER = 0xffff;
+const DEFAULT_KB_BG = 0x0000;
 
 type MutableNode = UINodeModel;
-type ScreenProxy = Record<string, { value: number; onClick(): void; onHold(): void; onRelease(): void }>;
+type ScreenElementProxy = {
+  value: number;
+  text?: string;
+  onClick(): void;
+  onHold(): void;
+  onRelease(): void;
+};
+type ScreenProxy = Record<string, ScreenElementProxy>;
+
+interface PreviewKeyStyle {
+  bg: number;
+  fg: number;
+  borderColor: number;
+}
+
+interface PreviewKey {
+  ch: string;
+  special: UIKeyTemplate["special"] | 255;
+  style: PreviewKeyStyle;
+}
 
 interface RuntimeOptions {
   onFrame?: (rgba: Uint8ClampedArray) => void;
@@ -47,6 +76,36 @@ function resolveRuntimeColor(value: unknown): number {
   return 0;
 }
 
+function mergeClassRules(classes: string[] | undefined, rules: CSSRule[]): CSSProperty {
+  const merged: CSSProperty = {};
+  const classSet = new Set(classes ?? []);
+  for (const rule of rules) {
+    // Only match single-compound selectors where all simples are classes in the set.
+    if (rule.selector.compounds.length !== 1) continue;
+    const compound = rule.selector.compounds[0];
+    let ok = true;
+    for (const s of compound) {
+      if (s.kind !== "class" || !classSet.has(s.name)) { ok = false; break; }
+    }
+    if (ok) Object.assign(merged, rule.properties);
+  }
+  return merged;
+}
+
+function resolveKeyboardBackground(template: KeyboardTemplate, rules: CSSRule[]): number {
+  const style = mergeClassRules(template.classes, rules);
+  return style.background ? resolveRuntimeColor(style.background) : DEFAULT_KB_BG;
+}
+
+function resolveKeyStyle(key: UIKeyTemplate, template: KeyboardTemplate, rules: CSSRule[]): PreviewKeyStyle {
+  const style = mergeClassRules([...(template.classes ?? []), ...(key.classes ?? [])], rules);
+  return {
+    bg: style.background ? resolveRuntimeColor(style.background) : DEFAULT_KEY_BG,
+    fg: style.color ? resolveRuntimeColor(style.color) : DEFAULT_KEY_FG,
+    borderColor: style.borderColor ? resolveRuntimeColor(style.borderColor) : DEFAULT_KEY_BORDER,
+  };
+}
+
 function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: UITransitionModel[] } {
   return {
     nodes: program.nodes.map((node) => ({
@@ -57,7 +116,7 @@ function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: 
       dirty: false,
       textBuffer: "",
       hasTextBinding: false,
-      lastTextWidth: node.kind === "range" ? -1 : 0,
+      lastTextWidth: node.kind === "progress" || node.kind === "range" ? -1 : 0,
       value: node.value,
     })),
     transitions: program.transitions.map((transition) => ({ ...transition, active: false, elapsed: 0 })),
@@ -88,6 +147,21 @@ export class PreviewUIRuntime {
   private isDragging = false;
   private scrollNode = -1;
   private rangeNode = -1;
+  private keyboardVisible = false;
+  private keyboardDirty: 0 | 1 | 2 = 0;
+  private keyboardTarget = -1;
+  private keyboardKeys: PreviewKey[] = [];
+  private keyboardRows = 0;
+  private keyboardCols = 0;
+  private keyboardBg = DEFAULT_KB_BG;
+  private keyboardBox = { x: 0, y: 0, w: 0, h: 0 };
+  private keyboardBuffer = "";
+  private keyboardMaxLen = UI_TEXT_BUF;
+  private keyboardShift = false;
+  private keyboardBackspaceHeld = false;
+  private keyboardBackspaceRepeat = 0;
+  private keyboardPressedKey = -1;
+  private keyboardRepaintKey = -1;
 
   constructor(private readonly snapshot: PreviewSnapshot, options: RuntimeOptions = {}) {
     const { nodes, transitions } = cloneProgram(snapshot.program);
@@ -177,20 +251,33 @@ export class PreviewUIRuntime {
   private createScreenProxy(): void {
     for (const node of this.nodes) {
       if (!node.id) continue;
-      Object.defineProperty(this.screen, node.id, {
-        enumerable: true,
-        value: {
-          get value() {
-            return node.value;
+      const proxy: ScreenElementProxy = {
+        get value() {
+          return node.value;
+        },
+        set value(v: number) {
+          node.value = Number(v) || 0;
+          node.dirty = true;
+        },
+        onClick: () => undefined,
+        onHold: () => undefined,
+        onRelease: () => undefined,
+      };
+      if (node.kind === "input") {
+        Object.defineProperty(proxy, "text", {
+          enumerable: true,
+          get() {
+            return node.textBuffer;
           },
-          set value(v: number) {
-            node.value = Number(v) || 0;
+          set(v: string) {
+            node.textBuffer = clampText(v);
             node.dirty = true;
           },
-          onClick: () => undefined,
-          onHold: () => undefined,
-          onRelease: () => undefined,
-        },
+        });
+      }
+      Object.defineProperty(this.screen, node.id, {
+        enumerable: true,
+        value: proxy,
       });
     }
   }
@@ -311,7 +398,7 @@ export class PreviewUIRuntime {
       if (node.dirty) {
         this.markScrollDescendantsDirty(node.index);
         for (let i = node.index; i < node.subtreeEnd; i++) {
-          if (this.nodes[i]?.kind === "progress") this.nodes[i].lastTextWidth = 0;
+          if (this.nodes[i]?.kind === "progress") this.nodes[i].lastTextWidth = -1;
           else if (this.nodes[i]?.kind === "range") this.nodes[i].lastTextWidth = -1;
         }
         this.gfx.fillRect(node.box.x, node.box.y, node.box.w, node.box.h, node.hasBg ? node.bg : node.clearColor);
@@ -349,6 +436,20 @@ export class PreviewUIRuntime {
   }
 
   private drawDirty(): boolean {
+    if (this.keyboardVisible) {
+      this.keyboardTick(Date.now());
+      if (this.keyboardDirty === 0) return false;
+      if (this.keyboardDirty === 1) {
+        this.drawKeyboard();
+      } else {
+        this.drawKeyboardTextRow();
+        if (this.keyboardRepaintKey >= 0) this.drawKeyboardKey(this.keyboardRepaintKey);
+      }
+      this.keyboardDirty = 0;
+      this.keyboardRepaintKey = -1;
+      return true;
+    }
+
     let changed = this.clearDirtyScrollViewports();
     const scrollbarDirty = new Set<number>();
     for (const node of this.nodes) {
@@ -392,6 +493,9 @@ export class PreviewUIRuntime {
           break;
         case "range":
           this.drawRangeNode(node, drawY);
+          break;
+        case "input":
+          this.drawInputNode(node, drawY);
           break;
       }
       changed = true;
@@ -482,7 +586,7 @@ export class PreviewUIRuntime {
     const fillW = Math.trunc(((bw - 2) * pct) / 100);
     const prevW = node.lastTextWidth;
 
-    if (prevW === 0) {
+    if (prevW < 0) {
       this.gfx.drawRect(bx, by, bw, bh, fgCol);
       this.gfx.fillRect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
       if (fillW > 0) this.gfx.fillRect(bx + 1, by + 1, fillW, bh - 2, fgCol);
@@ -538,6 +642,25 @@ export class PreviewUIRuntime {
     node.lastTextWidth = fillW;
   }
 
+  private drawInputNode(node: MutableNode, drawY: number): void {
+    const bx = node.box.x;
+    const by = drawY;
+    const bw = node.box.w;
+    const bh = node.box.h;
+    const bgCol = node.hasBg ? node.bg : node.clearColor;
+    const fgCol = node.fg;
+    const border = node.borderColor || fgCol;
+    const displayText = node.textBuffer || node.placeholder || node.text || "";
+    const textColor = node.textBuffer ? fgCol : ((fgCol >> 1) & 0x7bef);
+
+    this.gfx.fillRect(bx, by, bw, bh, bgCol);
+    this.gfx.drawRect(bx, by, bw, bh, border);
+    this.gfx.setCursor(bx + 4, by + Math.trunc((bh - 16) / 2));
+    this.gfx.setTextColor(textColor, bgCol);
+    this.gfx.setTextSize(2);
+    this.gfx.print(displayText);
+  }
+
   private hitTest(tx: number, ty: number): number {
     for (let i = this.nodes.length - 1; i >= 0; i--) {
       const node = this.nodes[i];
@@ -566,6 +689,7 @@ export class PreviewUIRuntime {
   private hasAnyHandler(nodeIndex: number): boolean {
     const node = this.nodes[nodeIndex];
     if (node.kind === "range") return true;
+    if (node.kind === "input") return true;
     if (node.tag === "check" || node.tag === "select" || node.tag === "radio") return true;
     return this.callbacks.some((callback) => callback.nodeIndex === nodeIndex);
   }
@@ -586,6 +710,17 @@ export class PreviewUIRuntime {
 
   private handleTouch(tx: number, ty: number): void {
     const now = Date.now();
+    if (this.keyboardVisible) {
+      if (this.touchState === 0) {
+        if (now - this.lastTouchTime < UI_TOUCH_DEBOUNCE_MS) return;
+        this.touchState = 1;
+        this.touchDownTime = now;
+        this.keyboardHandleTouch(tx, ty);
+      }
+      this.lastTouchTime = now;
+      return;
+    }
+
     if (this.touchState === 0) {
       if (now - this.lastTouchTime < UI_TOUCH_DEBOUNCE_MS) return;
       const node = this.hitTest(tx, ty);
@@ -631,6 +766,17 @@ export class PreviewUIRuntime {
     if (this.touchState === 0) return;
     const now = Date.now();
     if (now - this.lastReleaseTime < UI_TOUCH_DEBOUNCE_MS) return;
+    if (this.keyboardVisible) {
+      this.keyboardHandleTap();
+      this.touchState = 0;
+      this.touchNode = -1;
+      this.isDragging = false;
+      this.scrollNode = -1;
+      this.rangeNode = -1;
+      this.lastReleaseTime = now;
+      return;
+    }
+
     const elapsed = now - this.touchDownTime;
     const node = this.touchNode;
     if (node >= 0 && !this.isDragging) {
@@ -668,10 +814,251 @@ export class PreviewUIRuntime {
       }
       node.value = 1;
       this.markDirty(nodeIndex);
+    } else if (node.kind === "input") {
+      this.keyboardOpen(nodeIndex);
     }
   }
 
-  private dispatch(kind: "click" | "hold" | "release", nodeIndex: number): void {
+  private keyboardTemplateForNode(node: MutableNode): KeyboardTemplate {
+    if (node.keyboard) {
+      const custom = this.snapshot.keyboardTemplates?.find((template) => template.id === node.keyboard);
+      if (custom) return custom;
+    }
+    return node.inputType === "number" ? DEFAULT_NUMBER_KEYBOARD : DEFAULT_ALPHA_KEYBOARD;
+  }
+
+  private keyboardOpen(nodeIndex: number): void {
+    const node = this.nodes[nodeIndex];
+    const template = this.keyboardTemplateForNode(node);
+    const cols = template.rows.length > 0 ? Math.max(...template.rows.map((row) => row.length)) : 0;
+    this.keyboardTarget = nodeIndex;
+    this.keyboardBuffer = clampText(node.textBuffer);
+    this.keyboardMaxLen = Math.max(1, Math.min(node.maxlen || UI_TEXT_BUF, UI_TEXT_BUF));
+    this.keyboardShift = false;
+    this.keyboardBackspaceHeld = false;
+    this.keyboardPressedKey = -1;
+    this.keyboardRepaintKey = -1;
+    this.keyboardRows = template.rows.length;
+    this.keyboardCols = Math.max(1, cols);
+    this.keyboardBg = resolveKeyboardBackground(template, this.snapshot.cssRules ?? []);
+    this.keyboardKeys = [];
+
+    for (const row of template.rows) {
+      for (const key of row) {
+        this.keyboardKeys.push({
+          ch: key.ch,
+          special: key.special,
+          style: resolveKeyStyle(key, template, this.snapshot.cssRules ?? []),
+        });
+      }
+      for (let p = row.length; p < this.keyboardCols; p++) {
+        this.keyboardKeys.push({
+          ch: " ",
+          special: 255,
+          style: { bg: DEFAULT_KEY_BG, fg: DEFAULT_KEY_FG, borderColor: DEFAULT_KEY_BORDER },
+        });
+      }
+    }
+
+    this.keyboardComputeBox();
+    this.keyboardVisible = true;
+    this.keyboardDirty = 1;
+  }
+
+  private keyboardClose(): void {
+    if (this.keyboardTarget >= 0) {
+      const node = this.nodes[this.keyboardTarget];
+      node.textBuffer = clampText(this.keyboardBuffer).slice(0, this.keyboardMaxLen);
+      this.markDirty(this.keyboardTarget);
+      this.dispatch("change", this.keyboardTarget);
+    }
+    this.keyboardVisible = false;
+    this.keyboardDirty = 0;
+    this.keyboardTarget = -1;
+    this.keyboardPressedKey = -1;
+    this.keyboardBackspaceHeld = false;
+    for (const node of this.nodes) node.dirty = true;
+  }
+
+  private keyboardComputeBox(): void {
+    const isNumber = this.keyboardCols <= 4;
+    const h = Math.trunc(this.snapshot.program.height * (isNumber ? 60 : 75) / 100);
+    const w = isNumber ? Math.trunc(this.snapshot.program.width * 50 / 100) : this.snapshot.program.width;
+    this.keyboardBox = {
+      x: isNumber ? Math.trunc((this.snapshot.program.width - w) / 2) : 0,
+      y: this.snapshot.program.height - h,
+      w,
+      h,
+    };
+  }
+
+  private keyboardKeyRect(index: number): { x: number; y: number; w: number; h: number } {
+    const col = index % this.keyboardCols;
+    const row = Math.trunc(index / this.keyboardCols);
+    const keysH = Math.max(1, this.keyboardBox.h - UI_KB_TEXT_H);
+    return {
+      x: this.keyboardBox.x + Math.trunc((col * this.keyboardBox.w) / this.keyboardCols),
+      y: this.keyboardBox.y + UI_KB_TEXT_H + Math.trunc((row * keysH) / Math.max(1, this.keyboardRows)),
+      w: Math.trunc(this.keyboardBox.w / this.keyboardCols),
+      h: Math.trunc(keysH / Math.max(1, this.keyboardRows)),
+    };
+  }
+
+  private keyboardHandleTouch(tx: number, ty: number): void {
+    this.keyboardPressedKey = -1;
+    for (let i = 0; i < this.keyboardKeys.length; i++) {
+      const key = this.keyboardKeys[i];
+      if (key.special === 255) continue;
+      const rect = this.keyboardKeyRect(i);
+      if (tx < rect.x || tx >= rect.x + rect.w || ty < rect.y || ty >= rect.y + rect.h) continue;
+      this.keyboardPressedKey = i;
+      this.keyboardRepaintKey = i;
+      this.keyboardDirty = 2;
+      if (key.special === 2) {
+        this.keyboardBackspaceHeld = true;
+        this.keyboardBackspaceRepeat = Date.now();
+        this.keyboardDelete();
+      }
+      return;
+    }
+  }
+
+  private keyboardHandleTap(): void {
+    const keyIndex = this.keyboardPressedKey;
+    this.keyboardBackspaceHeld = false;
+    if (keyIndex < 0) return;
+    const key = this.keyboardKeys[keyIndex];
+    this.keyboardPressedKey = -1;
+
+    switch (key.special) {
+      case 0: {
+        const wasShift = this.keyboardShift;
+        let ch = key.ch.slice(0, 1);
+        if (this.keyboardShift && ch >= "a" && ch <= "z") ch = ch.toUpperCase();
+        this.keyboardInsert(ch);
+        this.keyboardShift = false;
+        this.keyboardRepaintKey = wasShift ? -1 : keyIndex;
+        this.keyboardDirty = wasShift ? 1 : 2;
+        break;
+      }
+      case 1:
+        this.keyboardShift = !this.keyboardShift;
+        this.keyboardDirty = 1;
+        break;
+      case 2:
+        this.keyboardRepaintKey = keyIndex;
+        this.keyboardDirty = 2;
+        break;
+      case 3:
+        this.keyboardClose();
+        break;
+      case 4:
+        this.keyboardSwapPage();
+        break;
+    }
+  }
+
+  private keyboardInsert(ch: string): void {
+    if (!ch || this.keyboardBuffer.length >= this.keyboardMaxLen) return;
+    this.keyboardBuffer = clampText(this.keyboardBuffer + ch).slice(0, this.keyboardMaxLen);
+  }
+
+  private keyboardDelete(): void {
+    if (this.keyboardBuffer.length === 0) return;
+    this.keyboardBuffer = this.keyboardBuffer.slice(0, -1);
+  }
+
+  private keyboardTick(now: number): void {
+    if (!this.keyboardBackspaceHeld) return;
+    if (now - this.keyboardBackspaceRepeat < UI_KB_REPEAT_MS) return;
+    this.keyboardDelete();
+    this.keyboardBackspaceRepeat = now;
+    this.keyboardRepaintKey = this.keyboardPressedKey;
+    this.keyboardDirty = 2;
+  }
+
+  private keyboardSwapPage(): void {
+    const previousTarget = this.keyboardTarget;
+    const template = this.keyboardCols <= 4 ? DEFAULT_ALPHA_KEYBOARD : DEFAULT_NUMBER_KEYBOARD;
+    const cols = Math.max(...template.rows.map((row) => row.length));
+    this.keyboardRows = template.rows.length;
+    this.keyboardCols = Math.max(1, cols);
+    this.keyboardBg = resolveKeyboardBackground(template, this.snapshot.cssRules ?? []);
+    this.keyboardKeys = [];
+    for (const row of template.rows) {
+      for (const key of row) {
+        this.keyboardKeys.push({
+          ch: key.ch,
+          special: key.special,
+          style: resolveKeyStyle(key, template, this.snapshot.cssRules ?? []),
+        });
+      }
+      for (let p = row.length; p < this.keyboardCols; p++) {
+        this.keyboardKeys.push({
+          ch: " ",
+          special: 255,
+          style: { bg: DEFAULT_KEY_BG, fg: DEFAULT_KEY_FG, borderColor: DEFAULT_KEY_BORDER },
+        });
+      }
+    }
+    this.keyboardTarget = previousTarget;
+    this.keyboardComputeBox();
+    this.keyboardDirty = 1;
+  }
+
+  private keyboardLabel(key: PreviewKey): string {
+    switch (key.special) {
+      case 1: return "SHIFT";
+      case 2: return "DEL";
+      case 3: return "OK";
+      case 4: return this.keyboardCols <= 4 ? "ABC" : "123";
+      default: {
+        const ch = key.ch.slice(0, 1);
+        return this.keyboardShift && ch >= "a" && ch <= "z" ? ch.toUpperCase() : ch;
+      }
+    }
+  }
+
+  private drawKeyboardTextRow(): void {
+    this.gfx.fillRect(this.keyboardBox.x, this.keyboardBox.y, this.keyboardBox.w, UI_KB_TEXT_H, this.keyboardBg);
+    this.gfx.setCursor(this.keyboardBox.x + 4, this.keyboardBox.y + 4);
+    this.gfx.setTextColor(0xffff, this.keyboardBg);
+    this.gfx.setTextSize(2);
+    this.gfx.print(this.keyboardBuffer);
+    this.gfx.print("_");
+  }
+
+  private drawKeyboardKey(index: number): void {
+    const key = this.keyboardKeys[index];
+    if (!key || key.special === 255) return;
+    const rect = this.keyboardKeyRect(index);
+    let bg = key.style.bg;
+    let fg = key.style.fg;
+    if (key.special === 1 && this.keyboardShift && index !== this.keyboardPressedKey) bg = 0xbdf7;
+    if (index === this.keyboardPressedKey) {
+      const previousBg = bg;
+      bg = fg;
+      fg = previousBg;
+    }
+
+    this.gfx.fillRect(rect.x + 1, rect.y + 1, Math.max(0, rect.w - 2), Math.max(0, rect.h - 2), bg);
+    this.gfx.drawRect(rect.x + 1, rect.y + 1, Math.max(0, rect.w - 2), Math.max(0, rect.h - 2), key.style.borderColor);
+    const label = this.keyboardLabel(key);
+    this.gfx.setCursor(rect.x + Math.max(2, Math.trunc((rect.w - label.length * 6) / 2)), rect.y + Math.trunc(rect.h / 2) - 4);
+    this.gfx.setTextColor(fg, bg);
+    this.gfx.setTextSize(1);
+    this.gfx.print(label);
+  }
+
+  private drawKeyboard(): void {
+    this.gfx.fillRect(this.keyboardBox.x, this.keyboardBox.y, this.keyboardBox.w, this.keyboardBox.h, this.keyboardBg);
+    this.drawKeyboardTextRow();
+    for (let i = 0; i < this.keyboardKeys.length; i++) {
+      this.drawKeyboardKey(i);
+    }
+  }
+
+  private dispatch(kind: "click" | "hold" | "release" | "change", nodeIndex: number): void {
     for (const callback of this.callbacks) {
       if (callback.nodeIndex === nodeIndex && callback.kind === kind) {
         this.runBody(callback.body);
