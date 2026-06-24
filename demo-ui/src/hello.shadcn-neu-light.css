@@ -1,0 +1,285 @@
+/* ---------------------------------------------------------------------------
+   hello.shadcn-neu-light.css — shadcn neutral light theme
+   Based on the shadcn neutral palette with the .dark overrides applied
+   (since embedded displays look best with dark backgrounds).
+   Uses only supported CSS features; approximates where needed.
+   ----------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRI.TTF");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRIB.TTF");
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* shadcn neutral dark theme variables */
+:root {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --card: #171717;
+  --card-foreground: #fafafa;
+  --primary: #e5e5e5;
+  --primary-foreground: #171717;
+  --secondary: #262626;
+  --secondary-foreground: #fafafa;
+  --muted: #262626;
+  --muted-foreground: #a1a1a1;
+  --accent: #404040;
+  --accent-foreground: #fafafa;
+  --destructive: #ff6467;
+  --destructive-foreground: #fafafa;
+  --border: #282828;
+  --input: #343434;
+  --ring: #737373;
+  --chart-1: #91c5ff;
+  --chart-2: #3a81f6;
+  --chart-3: #2563ef;
+  --radius: 10px;
+  /* Approximated shadow: 0 1px 3px rgba(0,0,0,0.25) on dark bg → subtle dark glow */
+  --shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+screen {
+  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+#header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  background: var(--card);
+}
+
+#title {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: antialiased;
+}
+
+#subtitle {
+  color: var(--muted-foreground);
+  font-family: "ColibriDemo";
+  font-size: 16px;
+  font-smoothing: antialiased;
+}
+
+#body {
+  overflow: scroll;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+#counter {
+  color: var(--chart-1);
+  font-size: 16px;
+}
+
+/* shadcn button: subtle primary (light gray on dark), soft shadow, rounded */
+#btn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: "ColibriDemo";
+  font-weight: bold;
+  font-size: 20px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 34px;
+  margin: 4px 3px 8px;
+  text-align: center;
+  transition: background 80ms;
+}
+
+#btn:pressed {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+#led {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+#modeRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#modeRow label {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+#mode {
+  color: var(--foreground);
+  font-size: 16px;
+  text-decoration: underline;
+}
+
+#speedRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 16px;
+}
+
+#speedSlow, #speedFast {
+  color: var(--foreground);
+  font-size: 16px;
+}
+
+/* Progress bar uses chart-2 (blue accent) */
+#progress {
+  color: var(--chart-2);
+  min-height: 16px;
+}
+
+#aaLabel {
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: bold;
+  align-self: center;
+}
+
+#aaRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 20px;
+}
+
+#aaRow radio {
+  font-size: 16px;
+}
+
+#aaRow check {
+  font-size: 16px;
+}
+
+#aaOff1, #aaCheck2 {
+  font-smoothing: none;
+}
+
+#aaFontRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 16px;
+}
+
+#aaFontSmooth {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: antialiased;
+}
+
+#aaFontBitmap {
+  color: var(--foreground);
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: none;
+}
+
+#rangeRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#rangeRow label {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+#points {
+  color: var(--chart-1);
+  width: 220px;
+}
+
+#inputRow, #portRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#inputRow label, #portRow label {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+/* shadcn input: secondary bg, border, rounded */
+#ssid, #port {
+  color: var(--foreground);
+  background: var(--secondary);
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  width: 200px;
+}
+
+#footer {
+  padding: 4px 0;
+}
+
+#hint {
+  color: var(--muted-foreground);
+  font-size: 16px;
+  text-decoration: underline;
+}
+
+/* Keyboard: shadcn-styled keys */
+.ui-key {
+  background: var(--secondary);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.ui-key-ok {
+  background: var(--chart-3);
+  color: var(--foreground);
+}
+
+.ui-key-del {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+.ui-key-page {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.ui-keyboard {
+  background: var(--card);
+}
