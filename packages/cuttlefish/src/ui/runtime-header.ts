@@ -1361,10 +1361,12 @@ static inline GFXcanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg) {
 // Push the canvas rect to the display at (dx, dy).
 static inline void ui_aa_push(GFXcanvas16* c, int16_t dx, int16_t dy) {
   int16_t w = c->width(), h = c->height();
-  __tc_display.startWrite();
-  __tc_display.setAddrWindow(dx, dy, w, h);
-  __tc_display.writePixels(c->getBuffer(), (uint32_t)w * h);
-  __tc_display.endWrite();
+  // Push via __ui_gfx so the AA output goes to the scroll canvas when active,
+  // or the display directly when not. Row-by-row drawRGBBitmap (no transparent
+  // alpha — the AA canvas already has the blended pixels).
+  for (int16_t row = 0; row < h; row++) {
+    __ui_gfx->drawRGBBitmap(dx, dy + row, c->getBuffer() + (int32_t)row * w, w, 1);
+  }
 }
 
 // Blend a pixel at integer coords with a coverage fraction (0-255).
