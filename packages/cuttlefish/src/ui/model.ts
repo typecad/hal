@@ -28,8 +28,10 @@ export interface UINodeModel {
   textSize: number;       // GFX text size: 1-4 (from font-size + font-weight)
   borderColor: number;
   borderStyle: 0 | 1 | 2;
+  borderRadius: number;  // px, 0=square
   underline: boolean;
   visible: boolean;
+  opacity: number;       // 0-100
   clearColor: number;
   lastTextWidth: number;
   dirty: boolean;
@@ -106,6 +108,21 @@ function borderStyle(style: CSSProperty): 0 | 1 | 2 {
   if (style.borderStyle === "none") return 0;
   if (style.border || style.borderWidth) return 1;
   return 0;
+}
+
+/** Parse border-radius px value (0 if absent). */
+function borderRadiusOf(style: CSSProperty): number {
+  if (!style.borderRadius) return 0;
+  const px = parseInt(style.borderRadius, 10);
+  return isNaN(px) ? 0 : px;
+}
+
+/** Parse opacity (0-100, default 100). */
+function opacityOf(style: CSSProperty): number {
+  if (!style.opacity) return 100;
+  const n = parseInt(style.opacity, 10);
+  if (isNaN(n)) return 100;
+  return Math.max(0, Math.min(100, n));
 }
 
 /** Map font-size (px) + font-weight to a GFX text size (1-4).
@@ -194,8 +211,10 @@ export function lowerUIToModel(
       textSize: textSizeOf(node.style),
       borderColor: bColor,
       borderStyle: borderStyle(node.style),
+      borderRadius: borderRadiusOf(node.style),
       underline: node.style.textDecoration === "underline",
       visible: node.style.visibility !== "hidden",
+      opacity: opacityOf(node.style),
       clearColor: clear,
       lastTextWidth: 0,
       dirty: false,

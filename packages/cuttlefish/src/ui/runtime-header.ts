@@ -38,8 +38,10 @@ struct UINode {
   uint8_t textSize;     // GFX text size: 1-4
   uint16_t borderColor; // resolved color for the border (0 = use fg)
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
+  uint8_t borderRadius; // px, 0=square
   uint8_t underline;    // 0=none, 1=underline
   uint8_t visible;      // 0=hidden, 1=visible
+  uint8_t opacity;      // 0-100
   uint16_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
   int16_t lastTextWidth;
   // scroll
@@ -685,6 +687,11 @@ static inline void ui_tick(uint16_t deltaMs) {
     else if (__ui_nodes[i].textAlign == 2) textX = __ui_nodes[i].box.x + __ui_nodes[i].box.w - tw;
     // Border color: use borderColor if set, otherwise fg.
     uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
+    // Apply opacity: blend fg/bg/border toward clearColor when < 100%.
+    if (__ui_nodes[i].opacity < 100) {
+      uint16_t clear = __ui_nodes[i].clearColor;
+      bColor = ui_blend565(bColor, clear, __ui_nodes[i].opacity);
+    }
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
         if (__ui_nodes[i].hasBg)
@@ -712,10 +719,15 @@ static inline void ui_tick(uint16_t deltaMs) {
           __ui_gfx->drawFastHLine(textX, drawY + ts * 8 - 1, tw, __ui_nodes[i].fg);
         break;
       case NODE_BUTTON:
-        if (__ui_nodes[i].hasBg)
+        if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
+          __ui_gfx->fillRoundRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+        else if (__ui_nodes[i].hasBg)
           __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         if (__ui_nodes[i].borderStyle == 1) {
-          __ui_gfx->drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
+          if (__ui_nodes[i].borderRadius > 0)
+            __ui_gfx->drawRoundRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, bColor);
+          else
+            __ui_gfx->drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
         } else if (__ui_nodes[i].borderStyle == 2) {
           for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
             __ui_gfx->drawFastHLine(__ui_nodes[i].box.x + dx, drawY, 4, bColor);
@@ -896,8 +908,13 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t bh = __ui_nodes[i].box.h;
           uint16_t fgCol = __ui_nodes[i].fg;
           uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          __tc_display.fillRect(bx, by, bw, bh, bgCol);
-          __tc_display.drawRect(bx, by, bw, bh, fgCol);
+          if (__ui_nodes[i].borderRadius > 0) {
+            __tc_display.fillRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
+            __tc_display.drawRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, fgCol);
+          } else {
+            __tc_display.fillRect(bx, by, bw, bh, bgCol);
+            __tc_display.drawRect(bx, by, bw, bh, fgCol);
+          }
           // Show typed text (textBuffer) in fg color, or placeholder (.text)
           // dimmed gray when the buffer is empty.
           uint16_t textCol = fgCol;
@@ -971,6 +988,19 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
   // (Keyboard overlay is drawn earlier via the early-return in ui_tick when
   // __ui_kb_visible — the node draw pass is skipped entirely while modal.)
+}
+
+// Blend two RGB565 colors by opacity (0-100). Returns fg faded toward bg.
+static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
+  if (opacity >= 100) return fg;
+  if (opacity == 0) return bg;
+  // Extract channels.
+  uint8_t fr = (fg >> 11) & 0x1F, fg5 = (fg >> 5) & 0x3F, fb = fg & 0x1F;
+  uint8_t br = (bg >> 11) & 0x1F, bg5 = (bg >> 5) & 0x3F, bb = bg & 0x1F;
+  uint8_t r = (fr * opacity + br * (100 - opacity)) / 100;
+  uint8_t g = (fg5 * opacity + bg5 * (100 - opacity)) / 100;
+  uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
+  return (r << 11) | (g << 5) | b;
 }
 
 // ── On-screen keyboard subsystem ───────────────────────────────────────────
