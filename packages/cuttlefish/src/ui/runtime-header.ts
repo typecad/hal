@@ -711,12 +711,29 @@ static inline void ui_tick(uint16_t deltaMs) {
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
+#ifdef UI_AA
+        // AA text: render to canvas, blend glyph edges toward bg, push.
+        if (tw > 0 && ts > 0) {
+          uint16_t textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          int16_t th = ts * 8;
+          GFXcanvas16* c = ui_aa_begin(tw, th, textBg);
+          c->setCursor(0, 0);
+          c->setTextColor(__ui_nodes[i].fg, textBg);
+          c->setTextSize(ts);
+          c->print(displayText);
+          ui_aa_blend_text_edges(c, __ui_nodes[i].fg, textBg);
+          ui_aa_push(c, textX, drawY);
+          if (__ui_nodes[i].underline)
+            __ui_gfx->drawFastHLine(textX, drawY + ts * 8 - 1, tw, __ui_nodes[i].fg);
+        }
+#else
         __ui_gfx->setCursor(textX, drawY);
         __ui_gfx->setTextColor(__ui_nodes[i].fg);
         __ui_gfx->setTextSize(ts);
         __ui_gfx->print(displayText);
         if (__ui_nodes[i].underline)
           __ui_gfx->drawFastHLine(textX, drawY + ts * 8 - 1, tw, __ui_nodes[i].fg);
+#endif
         break;
       case NODE_BUTTON:
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
@@ -1151,6 +1168,36 @@ static inline void ui_aa_fill_circle(GFXcanvas16* c, int16_t cx, int16_t cy, flo
     // Solid interior.
     for (int16_t x = lx + 1; x < rx; x++) {
       if (x >= 0 && x < c->width() && y >= 0 && y < c->height()) c->drawPixel(x, y, color);
+    }
+  }
+}
+
+// After text is drawn to a canvas, blend edge foreground pixels toward the
+// background based on 3×3 neighbor density. Interior pixels (all 8 neighbors
+// are foreground) stay solid; edge pixels get blended for a smoothing effect.
+static inline void ui_aa_blend_text_edges(GFXcanvas16* c, uint16_t fgColor, uint16_t bgColor) {
+  int16_t w = c->width(), h = c->height();
+  uint16_t* buf = c->getBuffer();
+  // Process in reverse order (bottom-to-top, right-to-left) to minimize
+  // in-place feedback artifacts on already-blended pixels.
+  for (int16_t y = h - 1; y >= 0; y--) {
+    for (int16_t x = w - 1; x >= 0; x--) {
+      uint16_t px = buf[x + y * w];
+      if (px != fgColor) continue;  // only process foreground pixels
+      // Count foreground neighbors in 3×3 window.
+      uint8_t count = 0;
+      for (int8_t dy = -1; dy <= 1; dy++) {
+        for (int8_t dx = -1; dx <= 1; dx++) {
+          if (dx == 0 && dy == 0) continue;
+          int16_t nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) { count++; continue; }
+          if (buf[nx + ny * w] == fgColor) count++;
+        }
+      }
+      if (count >= 8) continue;  // interior pixel, keep solid
+      // Edge: blend toward bg based on neighbor density.
+      uint8_t opacity = (uint8_t)((uint16_t)(count + 1) * 100 / 9);
+      buf[x + y * w] = ui_blend565(fgColor, bgColor, opacity);
     }
   }
 }
