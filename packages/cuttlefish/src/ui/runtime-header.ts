@@ -1000,7 +1000,10 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t
   if (fontFace && ui_draw_asset_text(text, x, y, fg, bg, antialias, fontFace)) {
     return;
   }
-  if (antialias) {
+  // Only use AA when fg != bg (opaque background). When fg == bg (transparent
+  // mode), the AA source canvas fills entirely with fg — no edges to detect,
+  // producing a solid rectangle instead of text.
+  if (antialias && fg != bg) {
     ui_draw_aa_text(text, x, y, fg, bg, ts);
     return;
   }
