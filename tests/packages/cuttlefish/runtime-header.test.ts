@@ -73,6 +73,12 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_draw_text\(\s*displayText/);
   });
 
+  it("decodes UTF-8 before generated font glyph lookup", () => {
+    expect(header).toContain("ui_next_utf8_codepoint");
+    expect(header).toMatch(/ui_asset_text_width[\s\S]*ui_next_utf8_codepoint\(&p\)[\s\S]*ui_font_glyph\(face,\s*codepoint\)/);
+    expect(header).toMatch(/ui_draw_asset_text[\s\S]*ui_next_utf8_codepoint\(&p\)[\s\S]*ui_font_glyph\(face,\s*codepoint\)/);
+  });
+
   it("uses tree metadata for scroll ownership", () => {
     expect(header).toMatch(/uint8_t\s+parent/);
     expect(header).toMatch(/uint8_t\s+subtreeEnd/);
@@ -101,7 +107,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("GFXcanvas16* __ui_scroll_canvas");
     expect(header).toContain("ui_get_scroll_canvas");
     expect(header).toContain("ui_push_canvas_rect");
-    expect(header).toMatch(/bufferedScrollCanvas->fillScreen/);
+    expect(header).toMatch(/bufferedScrollCanvas->fillRect\(/);
     expect(header).toMatch(/__ui_gfx\s*=\s*bufferedScrollCanvas/);
     expect(header).toMatch(/ui_push_canvas_rect\(bufferedScrollCanvas/);
   });
