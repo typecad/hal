@@ -918,7 +918,8 @@ static inline void ui_tick(uint16_t deltaMs) {
     bufferedScrollCanvas = ui_get_scroll_canvas(vw, vh);
     if (bufferedScrollCanvas) {
       bufferedScrollNode = (int8_t)s;
-      bufferedScrollCanvas->fillScreen(
+      bufferedScrollCanvas->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
+        __ui_nodes[s].box.w, __ui_nodes[s].box.h,
         __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
     } else {
       // Fallback: clear display viewport directly.
