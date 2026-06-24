@@ -761,12 +761,26 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (__ui_nodes[i].value) {
             __ui_gfx->fillRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
             uint16_t inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+#ifdef UI_AA
+            {
+              // Draw the checkmark to a 16×16 AA canvas for smooth diagonals.
+              GFXcanvas16* c = ui_aa_begin(16, 16, __ui_nodes[i].fg);
+              // First stroke: down-left (3,8 → 7,12)
+              ui_aa_line(c, 4.0f, 8.0f, 7.0f, 12.0f, inv);
+              ui_aa_line(c, 5.0f, 8.0f, 8.0f, 12.0f, inv);
+              // Second stroke: up-right (7,11 → 13,4)
+              ui_aa_line(c, 7.0f, 11.0f, 13.0f, 4.0f, inv);
+              ui_aa_line(c, 8.0f, 11.0f, 14.0f, 4.0f, inv);
+              ui_aa_push(c, cbX, cbY);
+            }
+#else
             __ui_gfx->drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
             __ui_gfx->drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
             __ui_gfx->drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
             __ui_gfx->drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
             __ui_gfx->drawLine(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
             __ui_gfx->drawLine(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
+#endif
           } else {
             __ui_gfx->drawRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
           }
@@ -787,12 +801,27 @@ static inline void ui_tick(uint16_t deltaMs) {
           __ui_nodes[i].lastTextWidth = tw;
           int16_t cbX = __ui_nodes[i].box.x;
           int16_t cbY = drawY;
+#ifdef UI_AA
+          {
+            // Render the radio circle to a 16×16 AA canvas, then push.
+            uint16_t radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            GFXcanvas16* c = ui_aa_begin(16, 16, radioBg);
+            if (__ui_nodes[i].value) {
+              ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+              ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
+            } else {
+              ui_aa_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+            }
+            ui_aa_push(c, cbX, cbY);
+          }
+#else
           if (__ui_nodes[i].value) {
             __ui_gfx->fillCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
             __ui_gfx->fillCircle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           } else {
             __ui_gfx->drawCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
           }
+#endif
         }
         __ui_gfx->setCursor(__ui_nodes[i].box.x + 22, drawY);
         __ui_gfx->setTextColor(__ui_nodes[i].fg);
@@ -1002,6 +1031,131 @@ static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
   uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
   return (r << 11) | (g << 5) | b;
 }
+
+// ── Antialiasing subsystem (offscreen canvas + coverage blending) ──────────
+// Enabled via #define UI_AA 1 (from display profile antialias:true).
+// Shapes are rendered to a GFXcanvas16, edges blended via getPixel read-back,
+// then pushed to the display. The ILI9341 has no efficient SPI read-back, so
+// all blending happens in RAM.
+#ifdef UI_AA
+
+static GFXcanvas16* __ui_aa_canvas = nullptr;
+
+// Get (or allocate) a canvas sized to the element being drawn.
+static inline GFXcanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg) {
+  if (!__ui_aa_canvas || __ui_aa_canvas->width() < w || __ui_aa_canvas->height() < h) {
+    delete __ui_aa_canvas;
+    __ui_aa_canvas = new GFXcanvas16(w > 0 ? w : 1, h > 0 ? h : 1);
+  }
+  __ui_aa_canvas->fillScreen(bg);
+  return __ui_aa_canvas;
+}
+
+// Push the canvas rect to the display at (dx, dy).
+static inline void ui_aa_push(GFXcanvas16* c, int16_t dx, int16_t dy) {
+  int16_t w = c->width(), h = c->height();
+  __tc_display.startWrite();
+  __tc_display.setAddrWindow(dx, dy, w, h);
+  __tc_display.writePixels(c->getBuffer(), (uint32_t)w * h);
+  __tc_display.endWrite();
+}
+
+// Blend a pixel at integer coords with a coverage fraction (0-255).
+static inline void ui_aa_pixel(GFXcanvas16* c, int16_t x, int16_t y, uint16_t color, uint8_t cov) {
+  if (cov == 0) return;
+  if (x < 0 || y < 0 || x >= c->width() || y >= c->height()) return;
+  if (cov >= 255) { c->drawPixel(x, y, color); return; }
+  uint16_t bg = c->getPixel(x, y);
+  uint8_t op = (uint8_t)((uint16_t)cov * 100 / 255);
+  c->drawPixel(x, y, ui_blend565(color, bg, op));
+}
+
+// Xiaolin Wu antialiased line. Coordinates are in canvas-local space.
+static inline void ui_aa_line(GFXcanvas16* c, float x0, float y0, float x1, float y1, uint16_t color) {
+  auto ipart = [](float f) { return (int16_t)f; };
+  auto round_f = [](float f) { return (int16_t)(f + 0.5f); };
+  auto fpart = [](float f) { return f - (float)(int16_t)f; };
+  auto rfpart = [&](float f) { return 1.0f - fpart(f); };
+
+  bool steep = fabs(y1 - y0) > fabs(x1 - x0);
+  if (steep) { float t = x0; x0 = y0; y0 = t; t = x1; x1 = y1; y1 = t; }
+  if (x0 > x1) { float t = x0; x0 = x1; x1 = t; t = y0; y0 = y1; y1 = t; }
+
+  float dx = x1 - x0, dy = y1 - y0;
+  float gradient = (dx == 0) ? 1.0f : dy / dx;
+
+  int16_t xpx1 = round_f(x0);
+  float xend = x0 + 0.5f * (xpx1 - x0) * (xpx1 - x0 < 0 ? -1 : 0); // simplified
+  float intery = y0 + gradient * (xpx1 - x0);
+
+  for (int16_t x = xpx1; x <= ipart(x1); x++) {
+    if (steep) {
+      ui_aa_pixel(c, ipart(intery), x, color, (uint8_t)(rfpart(intery) * 255));
+      ui_aa_pixel(c, ipart(intery) + 1, x, color, (uint8_t)(fpart(intery) * 255));
+    } else {
+      ui_aa_pixel(c, x, ipart(intery), color, (uint8_t)(rfpart(intery) * 255));
+      ui_aa_pixel(c, x, ipart(intery) + 1, color, (uint8_t)(fpart(intery) * 255));
+    }
+    intery += gradient;
+  }
+}
+
+// Antialiased circle outline. cx,cy,r are in canvas-local space.
+static inline void ui_aa_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
+  if (r <= 0) return;
+  // Walk each scanline from top to bottom of the bounding box.
+  int16_t y0 = (int16_t)floor(cy - r);
+  int16_t y1 = (int16_t)ceil(cy + r);
+  for (int16_t y = y0; y <= y1; y++) {
+    float dy = (float)y - cy;
+    float dx = r * r - dy * dy;
+    if (dx < 0) continue;
+    float halfW = sqrtf(dx);
+    float leftX = (float)cx - halfW;
+    float rightX = (float)cx + halfW;
+    // Left edge: blend two pixels at the coverage split.
+    int16_t lx = (int16_t)floor(leftX);
+    float lfrac = leftX - lx;
+    ui_aa_pixel(c, lx, y, color, (uint8_t)((1.0f - lfrac) * 255));
+    ui_aa_pixel(c, lx + 1, y, color, 0);  // interior starts here (drawn solid below)
+    // Right edge.
+    int16_t rx = (int16_t)floor(rightX);
+    float rfrac = rightX - rx;
+    ui_aa_pixel(c, rx, y, color, (uint8_t)(rfrac * 255));
+    ui_aa_pixel(c, rx + 1, y, color, 0);
+    // Solid fill between edges (skip the edge pixels already blended).
+    for (int16_t x = lx + 1; x < rx; x++) {
+      if (x >= 0 && x < c->width()) c->drawPixel(x, y, color);
+    }
+  }
+}
+
+// Antialiased filled circle.
+static inline void ui_aa_fill_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
+  if (r <= 0) return;
+  int16_t y0 = (int16_t)floor(cy - r);
+  int16_t y1 = (int16_t)ceil(cy + r);
+  for (int16_t y = y0; y <= y1; y++) {
+    float dy = (float)y - cy;
+    float dx = r * r - dy * dy;
+    if (dx < 0) continue;
+    float halfW = sqrtf(dx);
+    float leftX = (float)cx - halfW;
+    float rightX = (float)cx + halfW;
+    int16_t lx = (int16_t)floor(leftX);
+    int16_t rx = (int16_t)ceil(rightX);
+    // Blend left edge.
+    ui_aa_pixel(c, lx, y, color, (uint8_t)((1.0f - (leftX - lx)) * 255));
+    // Blend right edge.
+    ui_aa_pixel(c, rx, y, color, (uint8_t)((rightX - (rx - 1)) * 255));
+    // Solid interior.
+    for (int16_t x = lx + 1; x < rx; x++) {
+      if (x >= 0 && x < c->width() && y >= 0 && y < c->height()) c->drawPixel(x, y, color);
+    }
+  }
+}
+
+#endif // UI_AA
 
 // ── On-screen keyboard subsystem ───────────────────────────────────────────
 // (UIKey struct, UI_KB_* defines, __ui_kb_box, __ui_kb_visible, __ui_kb_bs_held,

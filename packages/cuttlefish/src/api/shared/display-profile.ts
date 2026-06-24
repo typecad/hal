@@ -51,6 +51,9 @@ export interface DisplayProfile {
   backlight?: number;
   spiPins?: { mosi: number; sck: number; miso: number };
   touch?: TouchProfile;
+  /** Enable antialiased rendering for circles, lines, and rounded corners.
+   *  Renders shapes to an offscreen GFXcanvas16, blends edges, then pushes. */
+  antialias?: boolean;
 }
 
 export interface DisplayConfig {
@@ -67,6 +70,7 @@ export interface DisplayConfig {
   dc?: number;
   rst?: number;
   bus?: string;
+  antialias?: boolean;
 }
 
 export function resolveDisplayProfile(
@@ -104,6 +108,7 @@ export function resolveDisplayProfile(
   if (config.spiPins !== undefined) base.spiPins = config.spiPins;
   if (config.touch === false) base.touch = undefined;
   else if (config.touch !== undefined) base.touch = config.touch;
+  if (config.antialias !== undefined) base.antialias = config.antialias;
 
   return {
     profile: base,

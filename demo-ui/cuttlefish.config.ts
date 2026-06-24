@@ -60,6 +60,7 @@ const config: CuttlefishConfig = {
     dc: 21,
     rst: 22,
     backlight: 33,
+    antialias: true,
     touch: {
       library: 'XPT2046_Touchscreen',
       cs: 15,

@@ -65,6 +65,11 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   }
 
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
+  //    Emit the antialiasing compile-time flag before the header so the AA
+  //    code paths are compiled in.
+  if (profile.antialias) {
+    ctx.sourceLines.push("#define UI_AA 1");
+  }
   ctx.sourceLines.push(emitRuntimeHeader());
 
   // 1.5. Touch poll function (uses the adapter pattern).
