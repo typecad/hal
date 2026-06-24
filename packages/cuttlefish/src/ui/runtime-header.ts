@@ -24,6 +24,23 @@ enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NOD
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
 
 struct UIRect { int16_t x, y, w, h; };
+struct UIFontGlyph {
+  uint16_t codepoint;
+  int8_t xOffset;
+  int8_t yOffset;
+  uint8_t width;
+  uint8_t height;
+  uint8_t advance;
+  uint16_t dataOffset; // 4-bit alpha pixel offset
+};
+struct UIFontFace {
+  uint8_t id;
+  uint8_t glyphCount;
+  uint8_t lineHeight;
+  uint8_t baseline;
+  const UIFontGlyph* glyphs;
+  const uint8_t* alpha;
+};
 struct UINode {
   UIRect box;
   uint16_t bg;
@@ -36,6 +53,8 @@ struct UINode {
   uint8_t hasBg;
   uint8_t textAlign;    // 0=left, 1=center, 2=right
   uint8_t textSize;     // GFX text size: 1-4
+  uint8_t fontAntialias; // 1 = smooth text edges when UI_AA is available
+  uint8_t fontFace;     // 0 = classic GFX bitmap font; otherwise UIFontFace id
   uint16_t borderColor; // resolved color for the border (0 = use fg)
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
   uint8_t borderRadius; // px, 0=square
@@ -94,11 +113,22 @@ static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100) {
 extern UINode __ui_nodes[];
 extern UITransition __ui_trans[];
 extern UIBinding __ui_bindings[];
+extern const UIFontFace __ui_font_faces[];
 extern const uint8_t __ui_node_count;
 extern const uint8_t __ui_trans_count;
 extern const uint8_t __ui_binding_count;
+extern const uint8_t __ui_font_face_count;
 
 #define UI_NO_PARENT 255
+
+// Forward declarations suppress Arduino's auto-prototyper, which would insert
+// prototypes before UIFontFace/UIFontGlyph are declared.
+static inline const UIFontFace* ui_font_face(uint8_t id);
+static inline const UIFontGlyph* ui_font_glyph(const UIFontFace* face, uint16_t codepoint);
+static inline uint8_t ui_font_alpha_at(const UIFontFace* face, const UIFontGlyph* glyph, uint16_t pixelIndex);
+static inline uint16_t ui_asset_text_width(const char* text, const UIFontFace* face);
+static inline uint8_t ui_asset_text_height(const UIFontFace* face);
+static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t antialias, uint8_t fontFace);
 
 static Adafruit_GFX* __ui_gfx = &__tc_display;
 static GFXcanvas16* __ui_scroll_canvas = nullptr;
@@ -548,6 +578,229 @@ static inline void ui_handle_no_touch() {
   }
 }
 
+// Blend two RGB565 colors by opacity (0-100). Returns fg faded toward bg.
+static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
+  if (opacity >= 100) return fg;
+  if (opacity == 0) return bg;
+  uint8_t fr = (fg >> 11) & 0x1F, fg5 = (fg >> 5) & 0x3F, fb = fg & 0x1F;
+  uint8_t br = (bg >> 11) & 0x1F, bg5 = (bg >> 5) & 0x3F, bb = bg & 0x1F;
+  uint8_t r = (fr * opacity + br * (100 - opacity)) / 100;
+  uint8_t g = (fg5 * opacity + bg5 * (100 - opacity)) / 100;
+  uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
+  return (r << 11) | (g << 5) | b;
+}
+
+static inline const UIFontFace* ui_font_face(uint8_t id) {
+  if (id == 0) return nullptr;
+  for (uint8_t i = 0; i < __ui_font_face_count; i++) {
+    if (__ui_font_faces[i].id == id) return &__ui_font_faces[i];
+  }
+  return nullptr;
+}
+
+static inline const UIFontGlyph* ui_font_glyph(const UIFontFace* face, uint16_t codepoint) {
+  if (!face) return nullptr;
+  for (uint8_t i = 0; i < face->glyphCount; i++) {
+    if (face->glyphs[i].codepoint == codepoint) return &face->glyphs[i];
+  }
+  return nullptr;
+}
+
+static inline uint8_t ui_font_alpha_at(const UIFontFace* face, const UIFontGlyph* glyph, uint16_t pixelIndex) {
+  if (!face || !glyph || !face->alpha) return 0;
+  uint16_t nibble = glyph->dataOffset + pixelIndex;
+  uint8_t byte = face->alpha[nibble >> 1];
+  return (nibble & 1) ? (byte & 0x0F) : (byte >> 4);
+}
+
+static inline uint16_t ui_asset_text_width(const char* text, const UIFontFace* face) {
+  if (!text || !face) return 0;
+  uint16_t w = 0;
+  for (const unsigned char* p = (const unsigned char*)text; *p; p++) {
+    const UIFontGlyph* glyph = ui_font_glyph(face, *p);
+    w += glyph ? glyph->advance : (face->lineHeight / 2);
+  }
+  return w;
+}
+
+static inline uint8_t ui_asset_text_height(const UIFontFace* face) {
+  return face ? face->lineHeight : 0;
+}
+
+static inline uint16_t ui_text_width(const char* text, uint8_t ts, uint8_t fontFace) {
+  const UIFontFace* face = ui_font_face(fontFace);
+  if (face) return ui_asset_text_width(text, face);
+  if (!text) return 0;
+  if (ts == 0) ts = 2;
+  uint16_t w = 0;
+  for (const char* p = text; *p; p++) w += ts * 6;
+  return w;
+}
+
+static inline uint8_t ui_text_height(uint8_t ts, uint8_t fontFace) {
+  const UIFontFace* face = ui_font_face(fontFace);
+  if (face) return ui_asset_text_height(face);
+  return (ts ? ts : 2) * 8;
+}
+
+static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t antialias, uint8_t fontFace) {
+  const UIFontFace* face = ui_font_face(fontFace);
+  if (!text || !face) return 0;
+  int16_t cursor = x;
+  int16_t baseline = y + face->baseline;
+  for (const unsigned char* p = (const unsigned char*)text; *p; p++) {
+    const UIFontGlyph* glyph = ui_font_glyph(face, *p);
+    if (!glyph) {
+      cursor += face->lineHeight / 2;
+      continue;
+    }
+    for (uint8_t gy = 0; gy < glyph->height; gy++) {
+      for (uint8_t gx = 0; gx < glyph->width; gx++) {
+        uint16_t pixelIndex = (uint16_t)gy * glyph->width + gx;
+        uint8_t alpha = ui_font_alpha_at(face, glyph, pixelIndex);
+        if (alpha == 0) continue;
+        int16_t dx = cursor + glyph->xOffset + gx;
+        int16_t dy = baseline + glyph->yOffset + gy;
+        if (antialias) {
+          __ui_gfx->drawPixel(dx, dy, alpha >= 15 ? fg : ui_blend565(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
+        } else if (alpha >= 8) {
+          __ui_gfx->drawPixel(dx, dy, fg);
+        }
+      }
+    }
+    cursor += glyph->advance;
+  }
+  return 1;
+}
+
+static inline void ui_draw_bitmap_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts) {
+  if (!text) text = "";
+  if (ts == 0) ts = 2;
+  __ui_gfx->setCursor(x, y);
+  __ui_gfx->setTextColor(fg, bg);
+  __ui_gfx->setTextSize(ts);
+  __ui_gfx->setTextWrap(false);
+  __ui_gfx->print(text);
+}
+
+#ifdef UI_AA
+static inline GFXcanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg);
+static inline void ui_aa_push(GFXcanvas16* c, int16_t dx, int16_t dy);
+static inline void ui_aa_line(GFXcanvas16* c, float x0, float y0, float x1, float y1, uint16_t color);
+static inline void ui_aa_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color);
+static inline void ui_aa_fill_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color);
+
+static GFXcanvas16* __ui_text_src_canvas = nullptr;
+static GFXcanvas16* __ui_text_dst_canvas = nullptr;
+
+static inline GFXcanvas16* ui_text_canvas(GFXcanvas16** slot, int16_t w, int16_t h) {
+  if (w <= 0) w = 1;
+  if (h <= 0) h = 1;
+  if (!*slot || (*slot)->width() < w || (*slot)->height() < h) {
+    delete *slot;
+    *slot = new GFXcanvas16(w, h);
+  }
+  return *slot;
+}
+
+static inline uint8_t ui_text_fg_neighbors(GFXcanvas16* src, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t fg, uint8_t radius = 1) {
+  uint8_t count = 0;
+  for (int8_t dy = -(int8_t)radius; dy <= (int8_t)radius; dy++) {
+    int16_t yy = y + dy;
+    if (yy < 0 || yy >= h) continue;
+    for (int8_t dx = -(int8_t)radius; dx <= (int8_t)radius; dx++) {
+      int16_t xx = x + dx;
+      if (xx < 0 || xx >= w) continue;
+      if (src->getPixel(xx, yy) == fg) count++;
+    }
+  }
+  return count;
+}
+
+static inline uint8_t ui_text_aa_coverage(uint8_t neighbors, uint8_t outerNeighbors, uint8_t isFg, uint8_t ts) {
+  if (isFg) {
+    if (ts <= 1) return neighbors >= 4 ? 100 : 96;
+    if (ts == 2) return neighbors >= 8 ? 100 : neighbors >= 5 ? 96 : 92;
+    return neighbors >= 8 ? 100 : neighbors >= 6 ? 96 : neighbors >= 4 ? 90 : 84;
+  }
+  if (neighbors == 0) {
+    if (ts >= 3 && outerNeighbors > 0) {
+      uint8_t outer = outerNeighbors * 2;
+      return outer > 14 ? 14 : outer;
+    }
+    return 0;
+  }
+  uint8_t step = ts <= 1 ? 4 : ts == 2 ? 6 : 8;
+  uint8_t cap = ts <= 1 ? 18 : ts == 2 ? 28 : 38;
+  uint8_t coverage = neighbors * step;
+  return coverage > cap ? cap : coverage;
+}
+
+static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts) {
+  if (!text || !*text) return;
+  if (ts == 0) ts = 2;
+  uint16_t w = ui_text_width(text, ts, 0);
+  uint8_t h = ui_text_height(ts, 0);
+  if (w == 0 || h == 0 || fg == bg) {
+    ui_draw_bitmap_text(text, x, y, fg, bg, ts);
+    return;
+  }
+
+  GFXcanvas16* src = ui_text_canvas(&__ui_text_src_canvas, (int16_t)w, (int16_t)h);
+  GFXcanvas16* dst = ui_text_canvas(&__ui_text_dst_canvas, (int16_t)w, (int16_t)h);
+  if (!src || !dst || !src->getBuffer() || !dst->getBuffer()) {
+    ui_draw_bitmap_text(text, x, y, fg, bg, ts);
+    return;
+  }
+
+  src->fillRect(0, 0, w, h, bg);
+  dst->fillRect(0, 0, w, h, bg);
+  src->setCursor(0, 0);
+  src->setTextColor(fg, bg);
+  src->setTextSize(ts);
+  src->setTextWrap(false);
+  src->print(text);
+
+  for (int16_t yy = 0; yy < h; yy++) {
+    for (int16_t xx = 0; xx < (int16_t)w; xx++) {
+      uint16_t px = src->getPixel(xx, yy);
+      uint8_t neighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg);
+      uint8_t outerNeighbors = 0;
+      if (ts >= 3 && px != fg && neighbors == 0) {
+        outerNeighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg, 2);
+      }
+      uint8_t coverage = ui_text_aa_coverage(neighbors, outerNeighbors, px == fg ? 1 : 0, ts);
+      dst->drawPixel(xx, yy, coverage == 0 ? bg : ui_blend565(fg, bg, coverage));
+    }
+  }
+
+  int16_t stride = dst->width();
+  uint16_t* pixels = dst->getBuffer();
+  for (int16_t row = 0; row < h; row++) {
+    __ui_gfx->drawRGBBitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+  }
+}
+
+static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts, uint8_t antialias, uint8_t fontFace) {
+  if (fontFace && ui_draw_asset_text(text, x, y, fg, bg, antialias, fontFace)) {
+    return;
+  }
+  if (antialias) {
+    ui_draw_aa_text(text, x, y, fg, bg, ts);
+    return;
+  }
+  ui_draw_bitmap_text(text, x, y, fg, bg, ts);
+}
+#else
+static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts, uint8_t antialias, uint8_t fontFace) {
+  (void)antialias;
+  if (fontFace && ui_draw_asset_text(text, x, y, fg, bg, antialias, fontFace)) {
+    return;
+  }
+  ui_draw_bitmap_text(text, x, y, fg, bg, ts);
+}
+#endif
+
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
 // Phase -2: poll touch (if configured). Phase -1: poll input pins.
 // Phase 0: evaluate bindings. Phase 1: transitions. Phase 2: draw.
@@ -674,13 +927,8 @@ static inline void ui_tick(uint16_t deltaMs) {
     const char* displayText = __ui_nodes[i].hasTextBinding
       ? __ui_nodes[i].textBuffer
       : __ui_nodes[i].text;
-    // Compute text width helper (used by text-align and button centering).
-    // At textSize N, each char is N*6px advance (GFX font geometry).
     uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
-    uint16_t tw = 0;
-    if (displayText) {
-      for (const char* p = displayText; *p; p++) tw += ts * 6;
-    }
+    uint16_t tw = ui_text_width(displayText, ts, __ui_nodes[i].fontFace);
     // Compute x offset based on text-align (0=left, 1=center, 2=right).
     int16_t textX = __ui_nodes[i].box.x;
     if (__ui_nodes[i].textAlign == 1) textX = __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2;
@@ -707,16 +955,21 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
             clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
           }
-          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, __ui_nodes[i].box.h,
+          // Clear height: the glyph may be taller than the box (e.g. bold text
+          // bumps textSize, making ts*8 > box.h). Without clearing the full
+          // glyph height, the bottom portion leaves ghost pixels on scroll.
+          uint16_t clearH = __ui_nodes[i].box.h;
+          uint16_t glyphH = ts * 8;
+          if (glyphH > clearH) clearH = glyphH;
+          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, clearH,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
-        __ui_gfx->setCursor(textX, drawY);
-        __ui_gfx->setTextColor(__ui_nodes[i].fg);
-        __ui_gfx->setTextSize(ts);
-        __ui_gfx->print(displayText);
+        ui_draw_text(displayText, textX, drawY, __ui_nodes[i].fg,
+          __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace);
         if (__ui_nodes[i].underline)
-          __ui_gfx->drawFastHLine(textX, drawY + ts * 8 - 1, tw, __ui_nodes[i].fg);
+          __ui_gfx->drawFastHLine(textX, drawY + ui_text_height(ts, __ui_nodes[i].fontFace) - 1, tw, __ui_nodes[i].fg);
         break;
       case NODE_BUTTON:
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
@@ -738,12 +991,12 @@ static inline void ui_tick(uint16_t deltaMs) {
           for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
             __ui_gfx->drawFastVLine(__ui_nodes[i].box.x + __ui_nodes[i].box.w - 1, drawY + dy, 4, bColor);
         }
-        __ui_gfx->setCursor(
+        ui_draw_text(displayText,
           __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
-          drawY + (__ui_nodes[i].box.h - ts * 8) / 2);
-        __ui_gfx->setTextColor(__ui_nodes[i].fg);
-        __ui_gfx->setTextSize(ts);
-        __ui_gfx->print(displayText);
+          drawY + (__ui_nodes[i].box.h - ui_text_height(ts, __ui_nodes[i].fontFace)) / 2,
+          __ui_nodes[i].fg,
+          __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace);
         break;
       case NODE_CHECK:
         {
@@ -785,10 +1038,9 @@ static inline void ui_tick(uint16_t deltaMs) {
             __ui_gfx->drawRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
           }
         }
-        __ui_gfx->setCursor(__ui_nodes[i].box.x + 22, drawY);
-        __ui_gfx->setTextColor(__ui_nodes[i].fg);
-        __ui_gfx->setTextSize(ts);
-        __ui_gfx->print(displayText);
+        ui_draw_text(displayText, __ui_nodes[i].box.x + 22, drawY, __ui_nodes[i].fg,
+          __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace);
         break;
       case NODE_RADIO:
         {
@@ -823,10 +1075,9 @@ static inline void ui_tick(uint16_t deltaMs) {
           }
 #endif
         }
-        __ui_gfx->setCursor(__ui_nodes[i].box.x + 22, drawY);
-        __ui_gfx->setTextColor(__ui_nodes[i].fg);
-        __ui_gfx->setTextSize(ts);
-        __ui_gfx->print(displayText);
+        ui_draw_text(displayText, __ui_nodes[i].box.x + 22, drawY, __ui_nodes[i].fg,
+          __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace);
         break;
       case NODE_PROGRESS:
         // Progress bar: outline track + filled portion based on .value (0-100).
@@ -938,11 +1189,11 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint16_t fgCol = __ui_nodes[i].fg;
           uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           if (__ui_nodes[i].borderRadius > 0) {
-            __tc_display.fillRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
-            __tc_display.drawRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, fgCol);
+            __ui_gfx->fillRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
+            __ui_gfx->drawRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, fgCol);
           } else {
-            __tc_display.fillRect(bx, by, bw, bh, bgCol);
-            __tc_display.drawRect(bx, by, bw, bh, fgCol);
+            __ui_gfx->fillRect(bx, by, bw, bh, bgCol);
+            __ui_gfx->drawRect(bx, by, bw, bh, fgCol);
           }
           // Show typed text (textBuffer) in fg color, or placeholder (.text)
           // dimmed gray when the buffer is empty.
@@ -961,10 +1212,14 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (maxChars < 0) maxChars = 0;
           int16_t len = (int16_t)strlen(disp);
           if (len > maxChars) len = maxChars;
+          if (len >= UI_TEXT_BUF) len = UI_TEXT_BUF - 1;
+          char clipped[UI_TEXT_BUF];
           for (int16_t c = 0; c < len; c++) {
-            char ch[2] = { disp[c], 0 };
-            __tc_display.print(ch);
+            clipped[c] = disp[c];
           }
+          clipped[len] = 0;
+          ui_draw_text(clipped, bx + 4, by + (bh - ui_text_height(ts, __ui_nodes[i].fontFace)) / 2,
+            textCol, bgCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace);
         }
         break;
     }
@@ -1017,19 +1272,6 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
   // (Keyboard overlay is drawn earlier via the early-return in ui_tick when
   // __ui_kb_visible — the node draw pass is skipped entirely while modal.)
-}
-
-// Blend two RGB565 colors by opacity (0-100). Returns fg faded toward bg.
-static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
-  if (opacity >= 100) return fg;
-  if (opacity == 0) return bg;
-  // Extract channels.
-  uint8_t fr = (fg >> 11) & 0x1F, fg5 = (fg >> 5) & 0x3F, fb = fg & 0x1F;
-  uint8_t br = (bg >> 11) & 0x1F, bg5 = (bg >> 5) & 0x3F, bb = bg & 0x1F;
-  uint8_t r = (fr * opacity + br * (100 - opacity)) / 100;
-  uint8_t g = (fg5 * opacity + bg5 * (100 - opacity)) / 100;
-  uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
-  return (r << 11) | (g << 5) | b;
 }
 
 // ── Antialiasing subsystem (offscreen canvas + coverage blending) ──────────
