@@ -152,32 +152,33 @@ function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSp
   for (const part of parts) {
     if (specs.length >= MAX_SHADOWS) break;
     const inset = /\binset\b/i.test(part);
-    // Extract px values.
-    const pxTokens: number[] = [];
-    const pxRe = /(-?\d+)px/gi;
+    // Split into a numbers zone (offset/blur) and a color zone. The color
+    // zone starts at the first # hex, rgb(, rgba(, or color name. css-tree
+    // may strip spaces between values, so we can't rely on whitespace split.
+    const colorStart = part.search(/#|rgba?\(|\b(?:black|white|red|green|blue|gray|grey|yellow|orange|purple|pink|cyan|magenta|silver|gold|brown|tan|navy|teal|maroon|lime|olive|aqua|fuchsia|transparent)\b/i);
+    const numZone = colorStart >= 0 ? part.slice(0, colorStart) : part;
+    const colorZone = colorStart >= 0 ? part.slice(colorStart) : "";
+
+    // Extract numbers from the numeric zone only (safe — no hex digits here).
+    const numTokens: number[] = [];
+    const numRe = /(-?\d+)/g;
     let m: RegExpExecArray | null;
-    while ((m = pxRe.exec(part)) !== null) pxTokens.push(parseInt(m[1], 10));
-    if (pxTokens.length < 2) continue;  // need at least offsetX offsetY
-    const x = pxTokens[0];
-    const y = pxTokens[1];
-    const blur = pxTokens.length >= 3 ? Math.max(0, Math.min(pxTokens[2], 8)) : 0;
-    // Extract color: remove all px-numbers and "inset" keyword, leaving the color.
-    // The px-number regex won't touch rgba() internal numbers because those have
-    // commas, not "px" suffixes.
-    const cleaned = part.replace(/\binset\b/gi, "").replace(/-?\d+\s*px/gi, "").replace(/-?\d+\s+/g, "").trim();
+    while ((m = numRe.exec(numZone)) !== null) numTokens.push(parseInt(m[1], 10));
+    if (numTokens.length < 2) continue;
+    const x = numTokens[0];
+    const y = numTokens[1];
+    const blur = numTokens.length >= 3 ? Math.max(0, Math.min(numTokens[2], 8)) : 0;
+
+    // Resolve color from the color zone.
     let color = 0x0000;
     let alpha = 100;
-    if (cleaned) {
-      const alphaM = /rgba?\([^,]*,[^,]*,[^,]*,\s*([\d.]+)\s*\)/.exec(cleaned);
+    if (colorZone) {
+      const alphaM = /rgba?\([^,]*,[^,]*,[^,]*,\s*([\d.]+)\s*\)/.exec(colorZone);
       if (alphaM) {
         alpha = Math.round(parseFloat(alphaM[1]) * 100);
         alpha = Math.max(0, Math.min(100, alpha));
       }
-      // Only resolve as color if it looks like one (#hex, rgb/rgba, or alpha-only).
-      // Bare words like "px" are noise.
-      if (/^(#|rgba?\(|[a-zA-Z]+$)/.test(cleaned) && cleaned !== "px") {
-        color = resolveColor(cleaned, format);
-      }
+      try { color = resolveColor(colorZone, format); } catch { color = 0x0000; }
     }
     specs.push({ x, y, blur, color, alpha, inset });
   }

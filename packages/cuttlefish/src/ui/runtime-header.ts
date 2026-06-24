@@ -878,7 +878,7 @@ static inline void ui_draw_shadow(uint8_t i, int16_t drawY) {
   uint8_t radius = __ui_nodes[i].borderRadius;
 
   for (uint8_t s = 0; s < __ui_nodes[i].shadowCount && s < 4; s++) {
-    if (__ui_nodes[i].shadowColor[s] == 0) continue;
+    if (s >= __ui_nodes[i].shadowCount) continue;  // use count, not color check (0 is valid black)
     uint16_t shadowCol = __ui_nodes[i].shadowColor[s];
     int8_t ox = __ui_nodes[i].shadowOffsetX[s];
     int8_t oy = __ui_nodes[i].shadowOffsetY[s];
