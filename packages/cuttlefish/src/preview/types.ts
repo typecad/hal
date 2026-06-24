@@ -1,4 +1,6 @@
 import type { UIProgram } from "../ui/model.js";
+import type { CSSRule } from "../ui/css-parser.js";
+import type { KeyboardTemplate } from "../ui/html-parser.js";
 
 export interface PreviewBindingSpec {
   nodeId: string;
@@ -10,7 +12,7 @@ export interface PreviewBindingSpec {
 export interface PreviewCallbackSpec {
   nodeId: string;
   nodeIndex: number;
-  kind: "click" | "hold" | "release";
+  kind: "click" | "hold" | "release" | "change";
   body: string;
 }
 
@@ -46,6 +48,8 @@ export interface PreviewSnapshot {
   htmlFile: string;
   profileName?: string;
   program: UIProgram;
+  keyboardTemplates: KeyboardTemplate[];
+  cssRules: CSSRule[];
   font: number[];
   bindings: PreviewBindingSpec[];
   callbacks: PreviewCallbackSpec[];
@@ -54,4 +58,3 @@ export interface PreviewSnapshot {
   pinControls: PreviewPinControlSpec[];
   diagnostics: PreviewDiagnostic[];
 }
-

@@ -5,7 +5,7 @@ import type { DisplayProfile } from "../api/shared/display-profile.js";
 import { resolveDisplayProfile } from "../api/shared/display-profile.js";
 import { ResolvedCuttlefishConfig } from "../config-loader.js";
 import { parseCss } from "../ui/css-parser.js";
-import { parseHtml } from "../ui/html-parser.js";
+import { parseHtmlWithKeyboards } from "../ui/html-parser.js";
 import { measure, type Box } from "../ui/layout-engine.js";
 import { lowerUIToModel } from "../ui/model.js";
 import { selectEngine } from "../ui/select-engine.js";
@@ -138,7 +138,7 @@ function findUIModuleImports(
 function extractAuthorSpecs(
   source: ts.SourceFile,
   uiImports: UIModuleImport[],
-  programNodes: Array<{ id?: string; options?: Array<{ text: string; value: string }> }>,
+  programNodes: Array<{ id?: string; tag?: string; kind?: string; options?: Array<{ text: string; value: string }> }>,
 ): {
   bindings: PreviewBindingSpec[];
   callbacks: PreviewCallbackSpec[];
@@ -250,6 +250,16 @@ function extractAuthorSpecs(
         body: callbackBodyText(call.arguments[1], source),
       });
     } else if (elementMethod.method === "onChange") {
+      const nodeInfo = programNodes[nodeIndex];
+      if (nodeInfo?.tag === "input" || nodeInfo?.kind === "input") {
+        callbacks.push({
+          nodeId: elementMethod.elemId,
+          nodeIndex,
+          kind: "change",
+          body: callbackBodyText(call.arguments[0], source),
+        });
+        continue;
+      }
       const pin = numericArgText(call.arguments[0], source, "0");
       const count = call.arguments[1] && ts.isNumericLiteral(call.arguments[1])
         ? Number(call.arguments[1].text)
@@ -308,7 +318,9 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const htmlText = fs.readFileSync(firstImport.htmlPath, "utf-8");
   const cssPath = firstImport.htmlPath.replace(/\.ui\.html$/, ".ui.css");
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
-  const styled = resolveStyles(parseHtml(htmlText), parseCss(cssText));
+  const cssRules = parseCss(cssText);
+  const parsedHtml = parseHtmlWithKeyboards(htmlText);
+  const styled = resolveStyles(parsedHtml.tree, cssRules);
   const engine = selectEngine(styled);
   const viewport: Box = { x: 0, y: 0, w: profile.width, h: profile.height };
   const boxes = engine.arrange(styled, viewport, measure);
@@ -321,6 +333,8 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     htmlFile: firstImport.htmlPath,
     profileName: typeof config.display?.profile === "string" ? config.display.profile : undefined,
     program,
+    keyboardTemplates: parsedHtml.keyboards,
+    cssRules,
     font: loadFont(projectRoot, diagnostics),
     bindings: specs.bindings,
     callbacks: specs.callbacks,
@@ -330,4 +344,3 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     diagnostics: [...diagnostics, ...specs.diagnostics],
   };
 }
-
