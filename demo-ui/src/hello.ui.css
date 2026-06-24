@@ -68,6 +68,7 @@ screen {
   color: white;
   border: 2px solid limegreen;
   border-radius: 4px;
+  box-shadow: 2px 3px 4px rgba(0,0,0,0.5);
   padding: 8px 20px;
   width: 160px;
   text-align: center;

@@ -33,6 +33,10 @@ export interface UINodeModel {
   borderColor: number;
   borderStyle: 0 | 1 | 2;
   borderRadius: number;  // px, 0=square
+  shadowOffsetX: number; // px
+  shadowOffsetY: number; // px
+  shadowBlur: number;    // px (number of concentric passes)
+  shadowColor: number;   // resolved RGB565 (0 = no shadow)
   underline: boolean;
   visible: boolean;
   opacity: number;       // 0-100
@@ -120,6 +124,32 @@ function borderRadiusOf(style: CSSProperty): number {
   if (!style.borderRadius) return 0;
   const px = parseInt(style.borderRadius, 10);
   return isNaN(px) ? 0 : px;
+}
+
+/** Parse box-shadow: "2px 2px 4px rgba(0,0,0,0.5)" → { x, y, blur, color }.
+ *  Format: [inset] offsetX offsetY [blur] [spread] color.
+ *  We extract offset (x,y), blur radius (number of expansion passes), and
+ *  resolve the color. Inset + spread are ignored (not meaningful on MCU). */
+interface ShadowSpec { x: number; y: number; blur: number; color: number; }
+function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSpec | null {
+  const raw = style.boxShadow;
+  if (!raw || raw === "none") return null;
+  // Tokenize: numbers (with px) and a trailing color expression.
+  const pxTokens: number[] = [];
+  const pxRe = /(-?\d+)px/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pxRe.exec(raw)) !== null) {
+    pxTokens.push(parseInt(m[1], 10));
+  }
+  if (pxTokens.length < 2) return null;  // need at least offsetX offsetY
+  const x = pxTokens[0];
+  const y = pxTokens[1];
+  const blur = pxTokens.length >= 3 ? Math.max(0, Math.min(pxTokens[2], 8)) : 0;
+  // Extract color: look for a color-like token (hex, rgb, rgba, named).
+  // Strip px numbers and "inset" keyword, then parse the remainder.
+  const stripped = raw.replace(/inset/gi, "").replace(/-?\d+px/gi, "").trim();
+  const color = stripped ? resolveColor(stripped, format) : 0x0000;
+  return { x, y, blur, color };
 }
 
 /** Parse opacity (0-100, default 100). */
@@ -239,6 +269,12 @@ export function lowerUIToModel(
       borderColor: bColor,
       borderStyle: borderStyle(node.style),
       borderRadius: borderRadiusOf(node.style),
+      ...(() => {
+        const sh = parseBoxShadow(node.style, colorFormat);
+        return sh
+          ? { shadowOffsetX: sh.x, shadowOffsetY: sh.y, shadowBlur: sh.blur, shadowColor: sh.color }
+          : { shadowOffsetX: 0, shadowOffsetY: 0, shadowBlur: 0, shadowColor: 0 };
+      })(),
       underline: node.style.textDecoration === "underline",
       visible: node.style.visibility !== "hidden",
       opacity: opacityOf(node.style),

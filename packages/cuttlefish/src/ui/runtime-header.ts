@@ -58,6 +58,10 @@ struct UINode {
   uint16_t borderColor; // resolved color for the border (0 = use fg)
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
   uint8_t borderRadius; // px, 0=square
+  int8_t shadowOffsetX; // px
+  int8_t shadowOffsetY; // px
+  uint8_t shadowBlur;   // number of concentric expansion passes
+  uint16_t shadowColor; // resolved RGB565 (0 = no shadow)
   uint8_t underline;    // 0=none, 1=underline
   uint8_t visible;      // 0=hidden, 1=visible
   uint8_t opacity;      // 0-100
@@ -858,6 +862,32 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t
 }
 #endif
 
+// Draw a soft shadow for an element. Multi-pass: draw shadowBlur concentric
+// rects, each expanding by 1px and blended toward the clear color at decreasing
+// opacity. Called BEFORE the element's own fill/border so the element draws on top.
+static inline void ui_draw_shadow(uint8_t i, int16_t drawY) {
+  if (__ui_nodes[i].shadowColor == 0 || __ui_nodes[i].shadowBlur == 0) return;
+  int16_t bx = __ui_nodes[i].box.x;
+  int16_t by = drawY;
+  int16_t bw = __ui_nodes[i].box.w;
+  int16_t bh = __ui_nodes[i].box.h;
+  int8_t ox = __ui_nodes[i].shadowOffsetX;
+  int8_t oy = __ui_nodes[i].shadowOffsetY;
+  uint8_t blur = __ui_nodes[i].shadowBlur;
+  uint16_t shadowCol = __ui_nodes[i].shadowColor;
+  uint16_t clearCol = __ui_nodes[i].clearColor;
+  // Draw from outermost (largest, most transparent) to innermost.
+  for (int8_t pass = blur; pass >= 1; pass--) {
+    uint8_t opacity = (uint8_t)(100 / (pass + 1));  // outer passes more transparent
+    uint16_t col = ui_blend565(shadowCol, clearCol, opacity);
+    int16_t sx = bx + ox - pass;
+    int16_t sy = by + oy - pass;
+    int16_t sw = bw + 2 * pass;
+    int16_t sh = bh + 2 * pass;
+    __ui_gfx->fillRect(sx, sy, sw, sh, col);
+  }
+}
+
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
 // Phase -2: poll touch (if configured). Phase -1: poll input pins.
 // Phase 0: evaluate bindings. Phase 1: transitions. Phase 2: draw.
@@ -1022,6 +1052,8 @@ static inline void ui_tick(uint16_t deltaMs) {
       uint16_t clear = __ui_nodes[i].clearColor;
       bColor = ui_blend565(bColor, clear, __ui_nodes[i].opacity);
     }
+    // Draw shadow first (before the element's own fill/border).
+    ui_draw_shadow(i, drawY);
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
         if (__ui_nodes[i].hasBg)
