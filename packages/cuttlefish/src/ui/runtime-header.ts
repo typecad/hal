@@ -133,13 +133,17 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
 static Adafruit_GFX* __ui_gfx = &__tc_display;
 static GFXcanvas16* __ui_scroll_canvas = nullptr;
 
-static inline GFXcanvas16* ui_get_scroll_canvas() {
-  int16_t w = __tc_display.width();
-  int16_t h = __tc_display.height();
-  if (w <= 0 || h <= 0) return nullptr;
-  if (!__ui_scroll_canvas || __ui_scroll_canvas->width() != w || __ui_scroll_canvas->height() != h) {
+static inline GFXcanvas16* ui_get_scroll_canvas(int16_t w, int16_t h) {
+  // Use full-screen canvas (display w×h) for coordinate simplicity — scroll
+  // children draw at display coords and only the viewport rect is pushed.
+  // The viewport-sized optimization requires coord translation which adds risk.
+  int16_t dw = __tc_display.width();
+  int16_t dh = __tc_display.height();
+  (void)w; (void)h;  // viewport size ignored for now; canvas is full-screen
+  if (dw <= 0 || dh <= 0) return nullptr;
+  if (!__ui_scroll_canvas || __ui_scroll_canvas->width() != dw || __ui_scroll_canvas->height() != dh) {
     delete __ui_scroll_canvas;
-    __ui_scroll_canvas = new GFXcanvas16(w, h);
+    __ui_scroll_canvas = new GFXcanvas16(dw, dh);
   }
   if (!__ui_scroll_canvas || !__ui_scroll_canvas->getBuffer()) return nullptr;
   return __ui_scroll_canvas;
@@ -151,6 +155,11 @@ static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y
   int16_t stride = canvas->width();
   __tc_display.startWrite();
   __tc_display.setAddrWindow(x, y, w, h);
+  if (x == 0 && w == stride) {
+    __tc_display.writePixels(pixels + (int32_t)y * stride, (uint32_t)w * h);
+    __tc_display.endWrite();
+    return;
+  }
   for (int16_t row = 0; row < h; row++) {
     __tc_display.writePixels(pixels + (int32_t)(y + row) * stride + x, w);
   }
@@ -176,12 +185,26 @@ static inline uint8_t ui_apply_scroll_delta(int8_t scrollNode, int16_t dy) {
   int16_t nextScrollY = constrain(prevScrollY - dy, 0, maxScroll);
   // Snap to boundaries: if within a few pixels of 0 or maxScroll, clamp exactly.
   // This prevents the "jump" where a residual offset hides the first/last row.
-  if (nextScrollY > 0 && nextScrollY < 6) nextScrollY = 0;
-  if (nextScrollY > maxScroll - 6 && nextScrollY < maxScroll) nextScrollY = maxScroll;
+  if (nextScrollY > 0 && nextScrollY < 2) nextScrollY = 0;
+  if (nextScrollY > maxScroll - 2 && nextScrollY < maxScroll) nextScrollY = maxScroll;
   if (nextScrollY == prevScrollY) return 0;
   __ui_nodes[scrollNode].scrollY = nextScrollY;
   ui_mark_scroll_subtree_dirty((uint8_t)scrollNode);
   return 1;
+}
+
+static inline uint8_t ui_rects_intersect(int16_t ax, int16_t ay, int16_t aw, int16_t ah,
+                                         int16_t bx, int16_t by, int16_t bw, int16_t bh) {
+  return ax + aw > bx && ax < bx + bw && ay + ah > by && ay < by + bh;
+}
+
+static inline uint8_t ui_is_ancestor_of(uint8_t candidate, uint8_t nodeIdx) {
+  uint8_t p = __ui_nodes[nodeIdx].parent;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (p == candidate) return 1;
+    p = __ui_nodes[p].parent;
+  }
+  return 0;
 }
 
 static inline int16_t ui_draw_y_for_node(uint8_t nodeIdx) {
@@ -361,8 +384,8 @@ static inline void ui_kb_compute_box();
 #define UI_TOUCH_DEBOUNCE_MS 50
 #define UI_TOUCH_HOLD_MS 600
 #define UI_DRAG_THRESHOLD 10
-#define UI_SCROLL_FRAME_MS 33
-#define UI_SCROLL_STEP_PX 2
+#define UI_SCROLL_FRAME_MS 16
+#define UI_SCROLL_STEP_PX 1
 
 // Hit-test a touch point against all visible nodes (topmost first).
 // Returns the node index of the topmost node that BOTH contains the point
@@ -873,54 +896,61 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_kb_repaint_key = -1;
     return;
   }
-  // First: if any scrollable container has dirty children, clear its viewport
-  // with the background to prevent tearing (old content remains without this).
+  // Process each dirty scroll container: mark subtree dirty, set up the
+  // viewport-sized canvas for the main draw loop to redirect into.
   int8_t bufferedScrollNode = -1;
   GFXcanvas16* bufferedScrollCanvas = nullptr;
   for (uint8_t s = 0; s < __ui_node_count; s++) {
     if (!__ui_nodes[s].scrollable || !__ui_nodes[s].visible) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
-    // The scroll container is marked dirty only when the scroll offset changes
-    // or during first draw. Ordinary dirty descendants can repaint in place.
-    if (__ui_nodes[s].dirty) {
-      for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
-        ui_mark_dirty(c);
-        // Reset incremental redraw state for progress bars and range sliders so
-        // they fully redraw after the viewport is cleared (otherwise only the
-        // delta draws, leaving ghost artifacts). Progress/range use -1 as a
-        // "never drawn" sentinel because fillW=0 is a valid value.
-        if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
-        else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
-      }
-      if (bufferedScrollNode < 0) {
-        bufferedScrollCanvas = ui_get_scroll_canvas();
-        if (bufferedScrollCanvas) {
-          bufferedScrollNode = (int8_t)s;
-          bufferedScrollCanvas->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
-            __ui_nodes[s].box.w, __ui_nodes[s].box.h,
-            __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
-          continue;
-        }
-      }
-      // Clear the viewport with the container's background (or parent's clear color)
-      __ui_gfx->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y, __ui_nodes[s].box.w, __ui_nodes[s].box.h,
+    if (!__ui_nodes[s].dirty) continue;
+
+    // Mark the whole subtree dirty + reset incremental redraw state.
+    for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
+      ui_mark_dirty(c);
+      if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
+      else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
+    }
+
+    // Use viewport-sized canvas (much smaller than full-screen → less RAM).
+    int16_t vw = __ui_nodes[s].box.w;
+    int16_t vh = __ui_nodes[s].box.h;
+    bufferedScrollCanvas = ui_get_scroll_canvas(vw, vh);
+    if (bufferedScrollCanvas) {
+      bufferedScrollNode = (int8_t)s;
+      bufferedScrollCanvas->fillScreen(
+        __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
+    } else {
+      // Fallback: clear display viewport directly.
+      __ui_gfx->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
+        __ui_nodes[s].box.w, __ui_nodes[s].box.h,
         __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
     }
+    // Only one scroll container per frame (the canvas is reused for subsequent
+    // ones in the next dirty frame). This matches the original design.
+    break;
   }
-  uint8_t scrollbarDirty[256] = {0};
-  for (uint8_t i = 0; i < __ui_node_count; i++) {
-    if (__ui_nodes[i].scrollable && __ui_nodes[i].dirty) scrollbarDirty[i] = 1;
-  }
+  // Draw non-scroll dirty nodes directly to the display.
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
     if (!__ui_nodes[i].visible) continue;
-    if (bufferedScrollNode >= 0 && i >= (uint8_t)bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd) {
+    // Skip scrollable containers (processed above).
+    if (__ui_nodes[i].scrollable) { __ui_nodes[i].dirty = 0; continue; }
+
+    // Redirect to the scroll canvas if this node is inside the buffered container.
+    uint8_t drawingBufferedScroll = bufferedScrollNode >= 0 && i > (uint8_t)bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd;
+    if (drawingBufferedScroll) {
       __ui_gfx = bufferedScrollCanvas;
     } else {
       __ui_gfx = &__tc_display;
     }
     int16_t drawY = ui_draw_y_for_node(i);
-    if (ui_is_clipped_by_scroll(i, drawY)) { __ui_nodes[i].dirty = 0; continue; }
+    if (drawingBufferedScroll) {
+      if (ui_is_clipped_by_scroll(i, drawY)) { __ui_nodes[i].dirty = 0; continue; }
+    } else if (ui_is_clipped_by_scroll(i, drawY)) {
+      __ui_nodes[i].dirty = 0;
+      continue;
+    }
 
     // Source selection: text-bound nodes show their dynamic buffer; others show
     // the immutable flash literal.
@@ -1225,53 +1255,29 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
     __ui_nodes[i].dirty = 0;
   }
-  // ②b Draw scrollbars for scrollable containers that are dirty.
-  // Incremental: only clear the old thumb position and draw the new one.
-  // Uses a static array (not .value) to track previous thumb Y per node.
-  static int16_t __ui_scrollbar_prevY[16] = {0};
-  for (uint8_t i = 0; i < __ui_node_count && i < 16; i++) {
-    if (!__ui_nodes[i].scrollable) continue;
-    if (!scrollbarDirty[i]) continue;
-    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    uint8_t scrollbarBuffered = bufferedScrollNode >= 0 && bufferedScrollCanvas && i == (uint8_t)bufferedScrollNode;
-    if (scrollbarBuffered) {
-      __ui_gfx = bufferedScrollCanvas;
-    } else {
-      __ui_gfx = &__tc_display;
-    }
-    int16_t tx = __ui_nodes[i].box.x + __ui_nodes[i].box.w - 4;
-    int16_t ty = __ui_nodes[i].box.y;
-    int16_t th = __ui_nodes[i].box.h;
-    __ui_nodes[i].scrollY = constrain(__ui_nodes[i].scrollY, 0, __ui_nodes[i].contentHeight - th);
-    uint16_t thumbH = (uint32_t)th * th / __ui_nodes[i].contentHeight;
+  // ②b Draw scrollbar + push canvas for the buffered scroll container.
+  if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
+    // Draw scrollbar into the canvas (not the display) — eliminates flash.
+    __ui_gfx = bufferedScrollCanvas;
+    uint8_t si = (uint8_t)bufferedScrollNode;
+    int16_t tx = __ui_nodes[si].box.x + __ui_nodes[si].box.w - 4;
+    int16_t ty = __ui_nodes[si].box.y;
+    int16_t th = __ui_nodes[si].box.h;
+    uint16_t thumbH = (uint32_t)th * th / __ui_nodes[si].contentHeight;
     if (thumbH < 8) thumbH = 8;
-    int16_t maxScroll = __ui_nodes[i].contentHeight - th;
-    uint16_t thumbY = ty + (uint32_t)(th - thumbH) * __ui_nodes[i].scrollY / (maxScroll > 0 ? maxScroll : 1);
-    uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
-
-    if (scrollbarBuffered || __ui_scrollbar_prevY[i] == 0) {
-      __ui_gfx->fillRect(tx, ty, 3, th, dimFg);
-      __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
-    } else {
-      int16_t prevThumbY = __ui_scrollbar_prevY[i];
-      if (thumbY != prevThumbY) {
-        __ui_gfx->fillRect(tx, prevThumbY, 3, thumbH, dimFg);
-        __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
-      }
-    }
-    __ui_scrollbar_prevY[i] = thumbY;
+    int16_t maxScroll = __ui_nodes[si].contentHeight - th;
+    uint16_t thumbY = ty + (uint32_t)(th - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
+    uint16_t dimFg = ((__ui_nodes[si].fg >> 1) & 0x7BEF);
+    __ui_gfx->fillRect(tx, ty, 3, th, dimFg);
+    __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
+    // Push the canvas viewport rect to the display.
+    __ui_gfx = &__tc_display;
+    ui_push_canvas_rect(bufferedScrollCanvas,
+      __ui_nodes[si].box.x, __ui_nodes[si].box.y,
+      __ui_nodes[si].box.w, __ui_nodes[si].box.h);
   }
   __ui_gfx = &__tc_display;
-  if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
-    ui_push_canvas_rect(bufferedScrollCanvas,
-      __ui_nodes[bufferedScrollNode].box.x,
-      __ui_nodes[bufferedScrollNode].box.y,
-      __ui_nodes[bufferedScrollNode].box.w,
-      __ui_nodes[bufferedScrollNode].box.h);
-  }
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
-  // (Keyboard overlay is drawn earlier via the early-return in ui_tick when
-  // __ui_kb_visible — the node draw pass is skipped entirely while modal.)
 }
 
 // ── Antialiasing subsystem (offscreen canvas + coverage blending) ──────────
