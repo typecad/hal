@@ -74,6 +74,9 @@ export interface DisplayConfig {
   rst?: number;
   bus?: string;
   antialias?: boolean;
+  /** Override the CSS theme file. Relative paths resolve from the .ui.html
+   *  directory; absolute paths are used as-is. Default: sibling .ui.css. */
+  themeCss?: string;
 }
 
 export function resolveDisplayProfile(

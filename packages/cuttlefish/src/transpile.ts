@@ -288,7 +288,9 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   // Load display profile from config (if present) into the profile store.
   const { setDisplayProfile, resetDisplayProfile } = await import("./ui/display-profile-store.js");
+  const { setThemeCss, resetThemeCss } = await import("./ui/theme-store.js");
   resetDisplayProfile();
+  resetThemeCss();
   const configDisplay = (options as any).display;
   if (configDisplay) {
     const { resolveDisplayProfile } = await import("./api/shared/display-profile.js");
@@ -307,6 +309,10 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus });
     } catch {
       // Fall back to default profile — not fatal
+    }
+    // Apply theme CSS override if specified.
+    if (configDisplay.themeCss) {
+      setThemeCss(configDisplay.themeCss);
     }
   }
 

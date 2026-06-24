@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "./html-parser.js";
 import type { KeyboardTemplate } from "./html-parser.js";
+import { getThemeCss } from "./theme-store.js";
 import { parseCss, parseFontFaces } from "./css-parser.js";
 import type { CSSFontFace, CSSRule } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
@@ -70,7 +71,11 @@ export function loadUIModule(htmlPath: string): UIModule {
     throw new Error(`UI module not found: ${abs}`);
   }
   const htmlText = fs.readFileSync(abs, "utf-8");
-  const cssPath = abs.replace(/\.ui\.html$/, ".ui.css");
+  // CSS path: use theme override if set, else the default sibling .ui.css.
+  const themeOverride = getThemeCss();
+  const cssPath = themeOverride
+    ? (path.isAbsolute(themeOverride) ? themeOverride : path.resolve(path.dirname(abs), themeOverride))
+    : abs.replace(/\.ui\.html$/, ".ui.css");
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
 
   const parsed = parseHtmlWithKeyboards(htmlText);
