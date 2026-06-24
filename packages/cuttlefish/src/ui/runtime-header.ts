@@ -1175,15 +1175,21 @@ static inline void ui_aa_fill_circle(GFXcanvas16* c, int16_t cx, int16_t cy, flo
 // After text is drawn to a canvas, blend edge foreground pixels toward the
 // background based on 3×3 neighbor density. Interior pixels (all 8 neighbors
 // are foreground) stay solid; edge pixels get blended for a smoothing effect.
+// Two-pass: first scan the original buffer to compute coverage, then apply —
+// avoids in-place feedback where a blended pixel corrupts the neighbor count
+// of the next pixel.
 static inline void ui_aa_blend_text_edges(GFXcanvas16* c, uint16_t fgColor, uint16_t bgColor) {
   int16_t w = c->width(), h = c->height();
-  uint16_t* buf = c->getBuffer();
-  // Process in reverse order (bottom-to-top, right-to-left) to minimize
-  // in-place feedback artifacts on already-blended pixels.
-  for (int16_t y = h - 1; y >= 0; y--) {
-    for (int16_t x = w - 1; x >= 0; x--) {
-      uint16_t px = buf[x + y * w];
-      if (px != fgColor) continue;  // only process foreground pixels
+  uint32_t total = (uint32_t)w * h;
+  if (total == 0) return;
+  // Pass 1: compute coverage per pixel (255 = interior, 0 = no fg, 1-254 = edge).
+  uint8_t* coverage = (uint8_t*)malloc(total);
+  if (!coverage) return;  // out of RAM — skip AA, draw aliased
+  const uint16_t* buf = c->getBuffer();
+  for (int16_t y = 0; y < h; y++) {
+    for (int16_t x = 0; x < w; x++) {
+      uint32_t idx = (uint32_t)x + (uint32_t)y * w;
+      if (buf[idx] != fgColor) { coverage[idx] = 0; continue; }
       // Count foreground neighbors in 3×3 window.
       uint8_t count = 0;
       for (int8_t dy = -1; dy <= 1; dy++) {
@@ -1191,15 +1197,24 @@ static inline void ui_aa_blend_text_edges(GFXcanvas16* c, uint16_t fgColor, uint
           if (dx == 0 && dy == 0) continue;
           int16_t nx = x + dx, ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) { count++; continue; }
-          if (buf[nx + ny * w] == fgColor) count++;
+          if (buf[(uint32_t)nx + (uint32_t)ny * w] == fgColor) count++;
         }
       }
-      if (count >= 8) continue;  // interior pixel, keep solid
-      // Edge: blend toward bg based on neighbor density.
-      uint8_t opacity = (uint8_t)((uint16_t)(count + 1) * 100 / 9);
-      buf[x + y * w] = ui_blend565(fgColor, bgColor, opacity);
+      coverage[idx] = (count >= 8) ? 255 : count;  // 255 = interior marker
     }
   }
+  // Pass 2: apply blends. Interior (255) and non-fg (0) stay unchanged.
+  uint16_t* dst = c->getBuffer();
+  for (int16_t y = 0; y < h; y++) {
+    for (int16_t x = 0; x < w; x++) {
+      uint32_t idx = (uint32_t)x + (uint32_t)y * w;
+      uint8_t cov = coverage[idx];
+      if (cov == 0 || cov == 255) continue;  // skip non-fg and interior
+      uint8_t opacity = (uint8_t)((uint16_t)(cov + 1) * 100 / 9);
+      dst[idx] = ui_blend565(fgColor, bgColor, opacity);
+    }
+  }
+  free(coverage);
 }
 
 #endif // UI_AA
