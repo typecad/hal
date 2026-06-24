@@ -133,17 +133,15 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
 static Adafruit_GFX* __ui_gfx = &__tc_display;
 static GFXcanvas16* __ui_scroll_canvas = nullptr;
 
+// Get (or re-allocate) a canvas sized to the viewport (w×h), not the full
+// display. Much smaller allocation than full-screen → far less likely to
+// fail on ESP32 (e.g. 300×150 = 90KB vs 320×240 = 153KB).
+// The caller must offset child draw coordinates by the viewport origin.
 static inline GFXcanvas16* ui_get_scroll_canvas(int16_t w, int16_t h) {
-  // Use full-screen canvas (display w×h) for coordinate simplicity — scroll
-  // children draw at display coords and only the viewport rect is pushed.
-  // The viewport-sized optimization requires coord translation which adds risk.
-  int16_t dw = __tc_display.width();
-  int16_t dh = __tc_display.height();
-  (void)w; (void)h;  // viewport size ignored for now; canvas is full-screen
-  if (dw <= 0 || dh <= 0) return nullptr;
-  if (!__ui_scroll_canvas || __ui_scroll_canvas->width() != dw || __ui_scroll_canvas->height() != dh) {
+  if (w <= 0 || h <= 0) return nullptr;
+  if (!__ui_scroll_canvas || __ui_scroll_canvas->width() != w || __ui_scroll_canvas->height() != h) {
     delete __ui_scroll_canvas;
-    __ui_scroll_canvas = new GFXcanvas16(dw, dh);
+    __ui_scroll_canvas = new GFXcanvas16(w, h);
   }
   if (!__ui_scroll_canvas || !__ui_scroll_canvas->getBuffer()) return nullptr;
   return __ui_scroll_canvas;
@@ -899,6 +897,8 @@ static inline void ui_tick(uint16_t deltaMs) {
   // Process each dirty scroll container: mark subtree dirty, set up the
   // viewport-sized canvas for the main draw loop to redirect into.
   int8_t bufferedScrollNode = -1;
+  int16_t bufferedScrollVX = 0;  // viewport origin X for coord translation
+  int16_t bufferedScrollVY = 0;  // viewport origin Y
   GFXcanvas16* bufferedScrollCanvas = nullptr;
   for (uint8_t s = 0; s < __ui_node_count; s++) {
     if (!__ui_nodes[s].scrollable || !__ui_nodes[s].visible) continue;
@@ -915,11 +915,15 @@ static inline void ui_tick(uint16_t deltaMs) {
     // Use viewport-sized canvas (much smaller than full-screen → less RAM).
     int16_t vw = __ui_nodes[s].box.w;
     int16_t vh = __ui_nodes[s].box.h;
+    int16_t vox = __ui_nodes[s].box.x;  // viewport origin X
+    int16_t voy = __ui_nodes[s].box.y;  // viewport origin Y
     bufferedScrollCanvas = ui_get_scroll_canvas(vw, vh);
     if (bufferedScrollCanvas) {
       bufferedScrollNode = (int8_t)s;
-      bufferedScrollCanvas->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
-        __ui_nodes[s].box.w, __ui_nodes[s].box.h,
+      bufferedScrollVX = vox;
+      bufferedScrollVY = voy;
+      // Clear canvas (local coords: 0,0 = viewport top-left).
+      bufferedScrollCanvas->fillScreen(
         __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
     } else {
       // Fallback: clear display viewport directly.
@@ -940,14 +944,28 @@ static inline void ui_tick(uint16_t deltaMs) {
 
     // Redirect to the scroll canvas if this node is inside the buffered container.
     uint8_t drawingBufferedScroll = bufferedScrollNode >= 0 && i > (uint8_t)bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd;
+    int16_t origBoxX = __ui_nodes[i].box.x;
+    int16_t origBoxY = __ui_nodes[i].box.y;
     if (drawingBufferedScroll) {
       __ui_gfx = bufferedScrollCanvas;
+      // Translate display coords → canvas-local coords (subtract viewport origin).
+      __ui_nodes[i].box.x = origBoxX - bufferedScrollVX;
+      __ui_nodes[i].box.y = origBoxY - bufferedScrollVY;
     } else {
       __ui_gfx = &__tc_display;
     }
     int16_t drawY = ui_draw_y_for_node(i);
     if (drawingBufferedScroll) {
-      if (ui_is_clipped_by_scroll(i, drawY)) { __ui_nodes[i].dirty = 0; continue; }
+      // Clip against the viewport in canvas-local space (0,0 to vw,vh).
+      // The clip check uses the container's box (which is now offset too), so
+      // temporarily check against canvas bounds 0..vw, 0..vh.
+      if (drawY + __ui_nodes[i].box.h <= 0 || drawY >= bufferedScrollCanvas->height() ||
+          __ui_nodes[i].box.x + __ui_nodes[i].box.w <= 0 || __ui_nodes[i].box.x >= bufferedScrollCanvas->width()) {
+        __ui_nodes[i].box.x = origBoxX;
+        __ui_nodes[i].box.y = origBoxY;
+        __ui_nodes[i].dirty = 0;
+        continue;
+      }
     } else if (ui_is_clipped_by_scroll(i, drawY)) {
       __ui_nodes[i].dirty = 0;
       continue;
@@ -1254,28 +1272,32 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         break;
     }
+    // Restore original box coords (translated for canvas-local drawing above).
+    __ui_nodes[i].box.x = origBoxX;
+    __ui_nodes[i].box.y = origBoxY;
     __ui_nodes[i].dirty = 0;
   }
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
   if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
-    // Draw scrollbar into the canvas (not the display) — eliminates flash.
+    // Draw scrollbar into the canvas (canvas-local coords: 0,0 = viewport top-left).
     __ui_gfx = bufferedScrollCanvas;
     uint8_t si = (uint8_t)bufferedScrollNode;
-    int16_t tx = __ui_nodes[si].box.x + __ui_nodes[si].box.w - 4;
-    int16_t ty = __ui_nodes[si].box.y;
-    int16_t th = __ui_nodes[si].box.h;
-    uint16_t thumbH = (uint32_t)th * th / __ui_nodes[si].contentHeight;
+    int16_t vw = __ui_nodes[si].box.w;
+    int16_t vh = __ui_nodes[si].box.h;
+    int16_t tx = vw - 4;  // right edge of viewport
+    int16_t ty = 0;
+    uint16_t thumbH = (uint32_t)vh * vh / __ui_nodes[si].contentHeight;
     if (thumbH < 8) thumbH = 8;
-    int16_t maxScroll = __ui_nodes[si].contentHeight - th;
-    uint16_t thumbY = ty + (uint32_t)(th - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
+    int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
+    uint16_t thumbY = ty + (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
     uint16_t dimFg = ((__ui_nodes[si].fg >> 1) & 0x7BEF);
-    __ui_gfx->fillRect(tx, ty, 3, th, dimFg);
+    __ui_gfx->fillRect(tx, ty, 3, vh, dimFg);
     __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
-    // Push the canvas viewport rect to the display.
+    // Push the canvas to the display at the viewport position.
     __ui_gfx = &__tc_display;
     ui_push_canvas_rect(bufferedScrollCanvas,
-      __ui_nodes[si].box.x, __ui_nodes[si].box.y,
-      __ui_nodes[si].box.w, __ui_nodes[si].box.h);
+      bufferedScrollVX, bufferedScrollVY,
+      vw, vh);
   }
   __ui_gfx = &__tc_display;
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
