@@ -865,7 +865,14 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
         int16_t dx = cursor + glyph->xOffset + gx;
         int16_t dy = baseline + glyph->yOffset + gy;
         if (antialias) {
-          __ui_gfx->drawPixel(dx, dy, alpha >= 15 ? fg : ui_blend565(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
+          if (fg == bg) {
+            // Transparent mode: can't blend (fg==bg → all alphas become fg).
+            // Use a threshold so only high-coverage pixels draw, avoiding
+            // the bumpy look from flattening sub-pixel coverage to solid.
+            if (alpha >= 8) __ui_gfx->drawPixel(dx, dy, fg);
+          } else {
+            __ui_gfx->drawPixel(dx, dy, alpha >= 15 ? fg : ui_blend565(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
+          }
         } else if (alpha >= 8) {
           __ui_gfx->drawPixel(dx, dy, fg);
         }
