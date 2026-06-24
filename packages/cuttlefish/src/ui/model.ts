@@ -37,6 +37,7 @@ export interface UINodeModel {
   shadowOffsetY: number; // px
   shadowBlur: number;    // px (number of concentric passes)
   shadowColor: number;   // resolved RGB565 (0 = no shadow)
+  shadowAlpha: number;   // 0-100 (from rgba alpha)
   underline: boolean;
   visible: boolean;
   opacity: number;       // 0-100
@@ -130,7 +131,7 @@ function borderRadiusOf(style: CSSProperty): number {
  *  Format: [inset] offsetX offsetY [blur] [spread] color.
  *  We extract offset (x,y), blur radius (number of expansion passes), and
  *  resolve the color. Inset + spread are ignored (not meaningful on MCU). */
-interface ShadowSpec { x: number; y: number; blur: number; color: number; }
+interface ShadowSpec { x: number; y: number; blur: number; color: number; alpha: number; }
 function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSpec | null {
   const raw = style.boxShadow;
   if (!raw || raw === "none") return null;
@@ -145,11 +146,20 @@ function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSp
   const x = pxTokens[0];
   const y = pxTokens[1];
   const blur = pxTokens.length >= 3 ? Math.max(0, Math.min(pxTokens[2], 8)) : 0;
-  // Extract color: look for a color-like token (hex, rgb, rgba, named).
-  // Strip px numbers and "inset" keyword, then parse the remainder.
+  // Extract color + alpha: strip px numbers and "inset", parse the remainder.
   const stripped = raw.replace(/inset/gi, "").replace(/-?\d+px/gi, "").trim();
-  const color = stripped ? resolveColor(stripped, format) : 0x0000;
-  return { x, y, blur, color };
+  let color = 0x0000;
+  let alpha = 100;
+  if (stripped) {
+    // Extract alpha from rgba(r,g,b,a).
+    const alphaM = /rgba?\([^,]*,[^,]*,[^,]*,\s*([\d.]+)\s*\)/.exec(stripped);
+    if (alphaM) {
+      alpha = Math.round(parseFloat(alphaM[1]) * 100);
+      alpha = Math.max(0, Math.min(100, alpha));
+    }
+    color = resolveColor(stripped, format);
+  }
+  return { x, y, blur, color, alpha };
 }
 
 /** Parse opacity (0-100, default 100). */
@@ -272,8 +282,8 @@ export function lowerUIToModel(
       ...(() => {
         const sh = parseBoxShadow(node.style, colorFormat);
         return sh
-          ? { shadowOffsetX: sh.x, shadowOffsetY: sh.y, shadowBlur: sh.blur, shadowColor: sh.color }
-          : { shadowOffsetX: 0, shadowOffsetY: 0, shadowBlur: 0, shadowColor: 0 };
+          ? { shadowOffsetX: sh.x, shadowOffsetY: sh.y, shadowBlur: sh.blur, shadowColor: sh.color, shadowAlpha: sh.alpha }
+          : { shadowOffsetX: 0, shadowOffsetY: 0, shadowBlur: 0, shadowColor: 0, shadowAlpha: 0 };
       })(),
       underline: node.style.textDecoration === "underline",
       visible: node.style.visibility !== "hidden",

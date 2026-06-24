@@ -62,6 +62,7 @@ struct UINode {
   int8_t shadowOffsetY; // px
   uint8_t shadowBlur;   // number of concentric expansion passes
   uint16_t shadowColor; // resolved RGB565 (0 = no shadow)
+  uint8_t shadowAlpha;  // 0-100 (base opacity from rgba alpha)
   uint8_t underline;    // 0=none, 1=underline
   uint8_t visible;      // 0=hidden, 1=visible
   uint8_t opacity;      // 0-100
@@ -864,7 +865,8 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t
 
 // Draw a soft shadow for an element. Multi-pass: draw shadowBlur concentric
 // rects, each expanding by 1px and blended toward the clear color at decreasing
-// opacity. Called BEFORE the element's own fill/border so the element draws on top.
+// opacity (scaled by shadowAlpha). Uses fillRoundRect if the element has a
+// border-radius. Called BEFORE the element's own fill/border.
 static inline void ui_draw_shadow(uint8_t i, int16_t drawY) {
   if (__ui_nodes[i].shadowColor == 0 || __ui_nodes[i].shadowBlur == 0) return;
   int16_t bx = __ui_nodes[i].box.x;
@@ -876,15 +878,27 @@ static inline void ui_draw_shadow(uint8_t i, int16_t drawY) {
   uint8_t blur = __ui_nodes[i].shadowBlur;
   uint16_t shadowCol = __ui_nodes[i].shadowColor;
   uint16_t clearCol = __ui_nodes[i].clearColor;
+  uint8_t baseAlpha = __ui_nodes[i].shadowAlpha;
+  uint8_t radius = __ui_nodes[i].borderRadius;
   // Draw from outermost (largest, most transparent) to innermost.
   for (int8_t pass = blur; pass >= 1; pass--) {
-    uint8_t opacity = (uint8_t)(100 / (pass + 1));  // outer passes more transparent
+    // Opacity decreases for outer passes: innermost gets full baseAlpha,
+    // outermost gets baseAlpha / (blur + 1).
+    uint8_t opacity = (uint8_t)((uint16_t)baseAlpha / (pass + 1));
     uint16_t col = ui_blend565(shadowCol, clearCol, opacity);
     int16_t sx = bx + ox - pass;
     int16_t sy = by + oy - pass;
     int16_t sw = bw + 2 * pass;
     int16_t sh = bh + 2 * pass;
-    __ui_gfx->fillRect(sx, sy, sw, sh, col);
+    if (radius > 0) {
+      // Expand the radius slightly for outer passes to smooth the corners.
+      uint8_t r = radius + (uint8_t)pass;
+      if (r > sw / 2) r = sw / 2;
+      if (r > sh / 2) r = sh / 2;
+      __ui_gfx->fillRoundRect(sx, sy, sw, sh, r, col);
+    } else {
+      __ui_gfx->fillRect(sx, sy, sw, sh, col);
+    }
   }
 }
 
