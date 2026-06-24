@@ -356,31 +356,87 @@ fonts outside shared source control if your license requires it.
 | `border-width` | `2px` | |
 | `border-color` | any color | |
 | `border-style` | `solid`, `dashed`, `none` | Dashed approximated with segments |
-| `border-radius` | `4px` | Parsed (visual rendering limited) |
+| `border-radius` | `4px` | Rounded fill/border on hardware; preview approximates |
+| `outline` | `1px solid #fff`, `2px dashed red` | Drawn outside the element box |
 | `visibility` | `visible`, `hidden` | Hidden elements are not drawn |
+| `box-shadow` | `inset 0 1px 0 #fff`, `0 10px 0 #333` | Up to 4 rect shadows; approximated for TFT drawing |
+| `transform` | `translateY(10px)`, `translate(0, 10px)` | Draw-time translate offset; no flex relayout |
 | `opacity` | parsed | (Blending not supported — no framebuffer) |
 
 #### Transitions
 | Property | Values | Notes |
 |---|---|---|
-| `transition` | `background 300ms` | Lerps the property over the duration |
+| `transition` | `background 300ms`, `color 120ms` | Lerps the property over the duration |
 | `:pressed` | pseudo-class | Applied when `.value` is 1 (button press) |
+
+Pressed rules may also include `top` / `left` / `right` / `bottom` or
+`transform: translate(...)`. These are applied as draw-time offsets so the
+element face/content can move visually without recomputing the flex layout;
+outset shadows stay anchored, which is useful for raised button effects.
+
+Small dirty paint regions for text, backgrounds, borders, outlines, shadows,
+and draw-time translate offsets are composed in an offscreen RGB565 canvas and
+pushed as one rectangle when memory allows. Larger regions fall back to direct
+drawing.
 
 ### Selectors
 - Element: `screen { ... }`
 - ID: `#title { ... }`
 - Class: `.card { ... }`
+- Compound: `.card.active { ... }`, `button.primary { ... }`
+- Descendant: `view text { ... }`
 - Pseudo-state: `#btn:pressed { ... }`
+- Inline style: `<text style="color: red">hi</text>`
+- `<style>` blocks embedded in the `.ui.html`
+
+### CSS variables
+
+Define variables in `:root` and reference them with `var()`:
+
+```css
+:root {
+  --bg: #0a0a0a;
+  --fg: #fafafa;
+  --primary: #7c3aed;
+}
+screen { background: var(--bg); }
+#title { color: var(--fg); }
+```
+
+Variables resolve at transpile time — no runtime cost.
+
+### Theming
+
+Themes are **compile-time** — different CSS files selected via `cuttlefish.config.ts`:
+
+```typescript
+// cuttlefish.config.ts
+display: {
+  themeCss: './src/hello.dark.css',  // relative to .ui.html dir
+  // or: themeCss: '/absolute/path/to/theme.css',
+}
+```
+
+When `themeCss` is set, that file replaces the default sibling `.ui.css`. Use CSS variables to define a palette once, then swap the variable file for different themes:
+
+```
+src/
+  hello.ui.html       ← layout (shared)
+  hello.ui.css         ← default theme (no themeCss set)
+  hello.dark.css       ← dark theme
+  hello.shadcn.css     ← shadcn palette
+```
+
+The `.ui.html` file defines the structure (elements, IDs, layout); the CSS file defines the appearance (colors, fonts, borders, shadows). Swap the CSS file in config without touching the HTML.
 
 ### Unsupported (and why)
-- `box-shadow` — too expensive per-frame (no alpha blending)
-- `linear-gradient` — banded approximation possible but deferred
 - `@keyframes` — transition engine exists; keyframes are separate
 - `display: grid` — needs a GridLayoutEngine
 - Text wrapping / multi-line — no text layout engine
 - `background-image` / sprites — needs asset pipeline
-- `position: fixed` — no scrolling context
-- CSS variables (`--custom`) — could be build-time resolved
+- `position: fixed` / `top` / `bottom` / `left` — no CSS positioning (layout is flexbox-only)
+- `:after` / `:before` pseudo-elements — no generated content
+- `text-shadow` on built-in font — needs sub-pixel font data (works with custom fonts)
 
 ## State and interaction
 
