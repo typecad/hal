@@ -19,8 +19,11 @@ import { resolveColor } from "../../ui/color.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../ui/default-keyboards.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../../ui/html-parser.js";
 import type { CSSRule, CSSProperty } from "../../ui/css-parser.js";
+import type { DisplayProfile } from "../../api/shared/display-profile.js";
+import type { UIFontAssetModel } from "../../ui/font-assets.js";
 
 export interface LoweredUI {
+  fontTables: string;
   nodeTable: string;
   transitionTable: string;
   typeDecl: string;
@@ -40,12 +43,15 @@ export function lowerUIToCpp(
   storage: Storage,
   keyboards: KeyboardTemplate[] = [],
   rules: CSSRule[] = [],
+  display?: DisplayProfile,
+  fontAssets: UIFontAssetModel[] = [],
 ): LoweredUI {
   void storage;
-  const model = lowerUIToModel(root, boxes, colorFormat);
+  const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets);
 
   // Tables are mutable RAM (ui_tick updates bg/dirty/elapsed/active each
   // frame), so no PROGMEM/flash storage keyword — those imply read-only.
+  const fontTables = emitFontTables(model);
   const nodeTable = emitNodeTable(model);
   const transitionTable = emitTransitionTable(model);
   const typeDecl = emitTypeDecl(root);
@@ -81,7 +87,7 @@ export function lowerUIToCpp(
     ? `void (*__ui_kb_loaders[])() = { ${dispatchEntries.join(", ")} };\nconst uint8_t __ui_kb_loader_count = ${dispatchEntries.length};`
     : `void (*__ui_kb_loaders[])() = {};\nconst uint8_t __ui_kb_loader_count = 0;`;
 
-  return { nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch };
+  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch };
 }
 
 function sanitizedId(id: string): string {
@@ -200,6 +206,50 @@ function hex(c: number): string {
   return `0x${c.toString(16).padStart(4, "0")}`;
 }
 
+function byteArray(values: number[]): string {
+  if (values.length === 0) return "";
+  const chunks: string[] = [];
+  for (let i = 0; i < values.length; i += 16) {
+    chunks.push("  " + values.slice(i, i + 16).map((v) => `0x${(v & 0xff).toString(16).padStart(2, "0")}`).join(", "));
+  }
+  return chunks.join(",\n");
+}
+
+function emitFontTables(model: UIProgram): string {
+  const assets = model.fontAssets ?? [];
+  if (assets.length === 0) {
+    return [
+      `const UIFontFace __ui_font_faces[] = {};`,
+      `const uint8_t __ui_font_face_count = 0;`,
+    ].join("\n");
+  }
+
+  const lines: string[] = [];
+  for (const asset of assets) {
+    lines.push(`// Font ${asset.id}: ${asset.family} ${asset.px}px`);
+    lines.push(`static const uint8_t __ui_font_${asset.id}_alpha[] = {`);
+    lines.push(byteArray(asset.alpha));
+    lines.push(`};`);
+    lines.push(`static const UIFontGlyph __ui_font_${asset.id}_glyphs[] = {`);
+    for (const glyph of asset.glyphs) {
+      lines.push(
+        `  { ${glyph.codepoint}, ${glyph.xOffset}, ${glyph.yOffset}, ${glyph.width}, ${glyph.height}, ${glyph.advance}, ${glyph.dataOffset} },`,
+      );
+    }
+    lines.push(`};`);
+  }
+
+  lines.push(`const UIFontFace __ui_font_faces[] = {`);
+  for (const asset of assets) {
+    lines.push(
+      `  { ${asset.id}, ${asset.glyphs.length}, ${asset.lineHeight}, ${asset.baseline}, __ui_font_${asset.id}_glyphs, __ui_font_${asset.id}_alpha },`,
+    );
+  }
+  lines.push(`};`);
+  lines.push(`const uint8_t __ui_font_face_count = ${assets.length};`);
+  return lines.join("\n");
+}
+
 function emitNodeTable(model: UIProgram): string {
   const lines = model.nodes.map((n) => {
     const text = n.text ? `"${n.text}"` : "nullptr";
@@ -213,7 +263,7 @@ function emitNodeTable(model: UIProgram): string {
     // Progress/range use lastTextWidth as a "previous fill width" for
     // incremental redraw. -1 = never drawn, because fill width 0 is valid.
     const lastTextWidth = n.kind === "progress" || n.kind === "range" ? -1 : 0;
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderRadius=${n.borderRadius}, .underline=${n.underline ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderRadius=${n.borderRadius}, .underline=${n.underline ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.

@@ -2,6 +2,11 @@
    hello.ui.css — built-in elements demo
    ----------------------------------------------------------------------- */
 
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRI.TTF");
+}
+
 screen {
   background: #1a1a2e;
   display: flex;
@@ -21,13 +26,17 @@ screen {
 
 #title {
   color: dodgerblue;
+  font-family: "ColibriDemo";
   font-size: 24px;
-  font-weight: bold;
+  font-smoothing: antialiased;
+  /* font-weight: bold; */
 }
 
 #subtitle {
   color: lightslategray;
+  font-family: "ColibriDemo";
   font-size: 16px;
+  font-smoothing: antialiased;
 }
 
 #body {
@@ -123,6 +132,33 @@ screen {
 
 #aaRow check {
   font-size: 16px;
+}
+
+#aaOff1, #aaCheck2 {
+  font-smoothing: none;
+}
+
+#aaFontRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 16px;
+}
+
+#aaFontSmooth {
+  color: white;
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: antialiased;
+}
+
+#aaFontBitmap {
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: none;
 }
 
 #rangeRow {

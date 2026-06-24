@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseCss, parseInlineStyle } from "@typecad/cuttlefish/ui/css-parser";
+import { parseCss, parseFontFaces, parseInlineStyle } from "@typecad/cuttlefish/ui/css-parser";
 
 describe("CSS subset parser", () => {
   it("parses element selectors", () => {
@@ -57,6 +57,26 @@ describe("CSS subset parser", () => {
     expect(props.color).toBe("red");
     expect(props.fontSize).toBe("16px");
     expect(props.background).toBe("#000");
+  });
+
+  it("parses font family and smoothing declarations", () => {
+    const rules = parseCss(`#title { font-family: "FreeSans"; font-smoothing: antialiased; }`);
+    expect(rules[0].properties.fontFamily).toBe('"FreeSans"');
+    expect(rules[0].properties.fontSmoothing).toBe("antialiased");
+  });
+
+  it("parses @font-face declarations", () => {
+    const faces = parseFontFaces(`
+      @font-face {
+        font-family: "DeviceSans";
+        src: url("./DeviceSans.ttf") format("truetype");
+        font-weight: 400;
+      }
+      #title { font-family: "DeviceSans"; }
+    `);
+    expect(faces).toEqual([
+      { fontFamily: "DeviceSans", src: "./DeviceSans.ttf", fontWeight: "400", fontStyle: undefined },
+    ]);
   });
 
   it("parses transition property", () => {

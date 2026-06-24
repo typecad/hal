@@ -51,10 +51,12 @@ export interface CSSProperty {
   background?: string;
   // Text
   font?: string;
+  fontFamily?: string;
   fontSize?: string;
   textAlign?: string;       // left | center | right
   textDecoration?: string;  // underline | none
   fontWeight?: string;      // normal | bold
+  fontSmoothing?: string;   // antialiased | none
   lineHeight?: string;
   letterSpacing?: string;
   whiteSpace?: string;      // nowrap | normal
@@ -93,6 +95,13 @@ export interface CSSProperty {
 export interface CSSRule {
   selector: CSSSelector;
   properties: CSSProperty;
+}
+
+export interface CSSFontFace {
+  fontFamily: string;
+  src: string;
+  fontWeight?: string;
+  fontStyle?: string;
 }
 
 export function parseCss(src: string): CSSRule[] {
@@ -153,6 +162,40 @@ export function parseCss(src: string): CSSRule[] {
   return rules;
 }
 
+export function parseFontFaces(src: string): CSSFontFace[] {
+  const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const faces: CSSFontFace[] = [];
+
+  let ast;
+  try {
+    ast = parse(withoutComments, { parseCustomProperty: true });
+  } catch {
+    return faces;
+  }
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type !== "Atrule" || node.name !== "font-face" || !node.block) return;
+      const decls: Record<string, string> = {};
+      node.block.children.forEach((child: any) => {
+        if (child.type !== "Declaration") return;
+        decls[child.property] = generate(child.value).trim();
+      });
+      const fontFamily = decls["font-family"] ? unquoteCss(decls["font-family"]) : "";
+      const src = extractFontSrc(decls.src ?? "");
+      if (!fontFamily || !src) return;
+      faces.push({
+        fontFamily,
+        src,
+        fontWeight: decls["font-weight"],
+        fontStyle: decls["font-style"],
+      });
+    },
+  });
+
+  return faces;
+}
+
 /** Replace var(--name) in all string-valued CSS properties. */
 function substituteVars(props: CSSProperty, variables: Record<string, string>): void {
   for (const key of Object.keys(props) as (keyof CSSProperty)[]) {
@@ -163,6 +206,20 @@ function substituteVars(props: CSSProperty, variables: Record<string, string>): 
       // TransitionDecl — no var() in its fields, skip
     }
   }
+}
+
+function unquoteCss(value: string): string {
+  const trimmed = value.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function extractFontSrc(value: string): string {
+  const url = /url\(\s*(['"]?)(.*?)\1\s*\)/.exec(value);
+  if (url?.[2]) return url[2].trim();
+  return unquoteCss(value.split(",")[0] ?? "");
 }
 
 /** Parse an inline style string ("color: red; font-size: 16px") into CSSProperty.
@@ -254,10 +311,14 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "background-color": props.background = val; break;
     // Text
     case "font": props.font = val; break;
+    case "font-family": props.fontFamily = val; break;
     case "font-size": props.fontSize = val; break;
     case "text-align": props.textAlign = val; break;
     case "text-decoration": props.textDecoration = val; break;
     case "font-weight": props.fontWeight = val; break;
+    case "font-smoothing":
+    case "font-smooth":
+    case "-webkit-font-smoothing": props.fontSmoothing = val; break;
     case "line-height": props.lineHeight = val; break;
     case "letter-spacing": props.letterSpacing = val; break;
     case "white-space": props.whiteSpace = val; break;

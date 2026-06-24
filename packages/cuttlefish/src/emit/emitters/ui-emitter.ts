@@ -67,7 +67,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
   //    Emit the antialiasing compile-time flag before the header so the AA
   //    code paths are compiled in.
-  if (profile.antialias) {
+  const loweredModules = allLoweredUIModules();
+  const needsAntialias = profile.antialias || loweredModules.some(({ lowered }) => lowered.nodeTable.includes(".fontAntialias=1"));
+  if (needsAntialias) {
     ctx.sourceLines.push("#define UI_AA 1");
   }
   ctx.sourceLines.push(emitRuntimeHeader());
@@ -113,6 +115,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
   // 2. Static node + transition tables for every mounted UI tree.
   for (const { lowered } of allLoweredUIModules()) {
+    ctx.sourceLines.push(lowered.fontTables);
     ctx.sourceLines.push(lowered.nodeTable);
     ctx.sourceLines.push(lowered.transitionTable);
   }

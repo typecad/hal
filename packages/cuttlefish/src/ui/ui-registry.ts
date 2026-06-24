@@ -19,12 +19,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "./html-parser.js";
 import type { KeyboardTemplate } from "./html-parser.js";
-import { parseCss } from "./css-parser.js";
-import type { CSSRule } from "./css-parser.js";
+import { parseCss, parseFontFaces } from "./css-parser.js";
+import type { CSSFontFace, CSSRule } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
+import { getDisplayProfile } from "./display-profile-store.js";
+import { buildUIFontAssets } from "./font-assets.js";
+import type { UIFontAssetModel } from "./font-assets.js";
 
 export interface UIModule {
   /** Absolute path of the .ui.html source. */
@@ -35,6 +38,9 @@ export interface UIModule {
   keyboards: KeyboardTemplate[];
   /** CSS rules from the sibling .ui.css (used for keyboard key styling). */
   rules: CSSRule[];
+  /** @font-face rules from CSS, resolved into build-time font assets. */
+  fontFaces: CSSFontFace[];
+  fontAssets: UIFontAssetModel[];
 }
 
 export interface LowerOptions {
@@ -72,10 +78,13 @@ export function loadUIModule(htmlPath: string): UIModule {
   const keyboards = parsed.keyboards;
   // Merge <style> blocks from the HTML with the external .ui.css.
   const styleBlocks = extractStyleBlocks(htmlText);
-  const rules = parseCss(cssText + "\n" + styleBlocks);
+  const fullCss = cssText + "\n" + styleBlocks;
+  const rules = parseCss(fullCss);
+  const fontFaces = parseFontFaces(fullCss);
   const styled = resolveStyles(tree, rules);
+  const fontAssets = buildUIFontAssets(styled, fontFaces, path.dirname(cssPath));
 
-  const mod: UIModule = { htmlPath: abs, styled, keyboards, rules };
+  const mod: UIModule = { htmlPath: abs, styled, keyboards, rules, fontFaces, fontAssets };
   modules.set(abs, mod);
 
   // Write a sibling .ui.html.d.ts so editors and the type-checker see the
@@ -97,7 +106,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const engine = selectEngine(mod.styled);
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
   const boxes = engine.arrange(mod.styled, viewport, measure);
-  const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules);
+  const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets);
   lowered.set(abs, result);
   return result;
 }

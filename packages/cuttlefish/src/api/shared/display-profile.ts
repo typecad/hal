@@ -51,8 +51,9 @@ export interface DisplayProfile {
   backlight?: number;
   spiPins?: { mosi: number; sck: number; miso: number };
   touch?: TouchProfile;
-  /** Enable antialiased rendering for circles, lines, and rounded corners.
-   *  Renders shapes to an offscreen GFXcanvas16, blends edges, then pushes. */
+  /** Enable antialiased rendering for circles, lines, rounded corners, and text
+   *  unless a node opts out with font-smoothing:none.
+   *  Renders AA work to offscreen GFXcanvas16 buffers, blends edges, then draws. */
   antialias?: boolean;
 }
 

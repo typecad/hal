@@ -35,6 +35,14 @@ describe("HostAdafruitGFX", () => {
     expect(gfx.buffer[0]).toBe(0x0000);
   });
 
+  it("keeps the small-font antialiasing halo restrained", () => {
+    const gfx = new HostAdafruitGFX(12, 10, loadFont());
+    gfx.drawAntialiasedText("A", 0, 0, 0xffff, 0x0000, 1);
+
+    expect(gfx.buffer[0]).toBe(0x0841);
+    expect(gfx.buffer[2]).toBe(0xef9d);
+  });
+
   it("expands RGB565 to canvas RGBA channel values", () => {
     expect(rgb565ToRgb888(0xf800)).toEqual({ r: 255, g: 0, b: 0 });
     expect(rgb565ToRgb888(0x07e0)).toEqual({ r: 0, g: 255, b: 0 });
@@ -66,6 +74,9 @@ describe("PreviewUIRuntime", () => {
       hasTextBinding: false,
       hasBg: false,
       textAlign: 0,
+      textSize: 2,
+      fontAntialias: false,
+      fontFace: 0,
       borderColor: 0,
       borderStyle: 0,
       underline: false,
@@ -141,6 +152,103 @@ describe("PreviewUIRuntime", () => {
       runtime.tick(16);
       expect(px(4, 3)).toBe(0x07e0);
       expect(px(5, 3)).toBe(0x0000);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders antialiased text with blended edge pixels", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 24,
+        height: 12,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 24, h: 12 } }),
+          makeNode({
+            index: 1,
+            tag: "text",
+            kind: "text",
+            text: "A",
+            box: { x: 0, y: 0, w: 12, h: 8 },
+            fg: 0xffff,
+            clearColor: 0x0000,
+            parentIndex: 0,
+            textSize: 1,
+            fontAntialias: true,
+          }),
+        ],
+        transitions: [],
+      },
+      font: Array.from(loadFont()),
+      bindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      expect(Array.from(runtime.gfx.buffer).some((px) => px !== 0x0000 && px !== 0xffff)).toBe(true);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders generated alpha font assets", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 8,
+        height: 4,
+        colorFormat: "rgb565",
+        fontAssets: [{
+          id: 1,
+          family: "Tiny",
+          sourcePath: "tiny.ttf",
+          px: 16,
+          lineHeight: 2,
+          baseline: 1,
+          glyphs: [{ codepoint: 65, xOffset: 0, yOffset: -1, width: 1, height: 1, advance: 2, dataOffset: 0 }],
+          alpha: [0x80],
+        }],
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 8, h: 4 } }),
+          makeNode({
+            index: 1,
+            tag: "text",
+            kind: "text",
+            text: "A",
+            box: { x: 0, y: 0, w: 8, h: 2 },
+            fg: 0xffff,
+            clearColor: 0x0000,
+            parentIndex: 0,
+            fontAntialias: true,
+            fontFace: 1,
+          }),
+        ],
+        transitions: [],
+      },
+      font: [],
+      bindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      expect(runtime.gfx.buffer[0]).not.toBe(0x0000);
+      expect(runtime.gfx.buffer[0]).not.toBe(0xffff);
     } finally {
       runtime.stop();
     }

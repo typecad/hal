@@ -144,10 +144,27 @@ All standard CSS color formats are supported:
 | Property | Values | Notes |
 |---|---|---|
 | `color` | any color | Text foreground color |
+| `font-family` | `"MyFont"` | Uses a generated font when matched by `@font-face`; otherwise the built-in bitmap font |
 | `font-size` | `16px` | Maps to GFX textSize 2 |
 | `text-align` | `left`, `center`, `right` | Horizontal alignment within the box |
 | `text-decoration` | `underline`, `none` | Underline drawn below text |
 | `font-weight` | `bold`, `normal` | Parsed (visual effect limited) |
+| `font-smoothing` | `antialiased`, `none` | Overrides display-level text antialiasing |
+
+Local TTF/OTF fonts can be referenced with `@font-face`. The transpiler subsets the characters used by the UI into compact 4-bit alpha glyph tables.
+
+```css
+@font-face {
+  font-family: "DeviceSans";
+  src: url("fonts/DeviceSans.ttf");
+}
+
+#title {
+  font-family: "DeviceSans";
+  font-size: 24px;
+  font-smoothing: antialiased;
+}
+```
 
 #### Visual
 | Property | Values | Notes |
@@ -369,6 +386,9 @@ display: {
   rst: 22,
   backlight: 17,       // optional — pin number for backlight
 
+  // Antialiasing (optional)
+  antialias: true,       // smooths shapes and text; text can opt out with font-smoothing:none
+
   // Touch (optional)
   touch: {
     library: 'XPT2046_Touchscreen',
@@ -560,4 +580,3 @@ screen.modeValue.onChange(15, 3);  // 3 options: 0→1→2→0
 ```
 
 Natural debounce from the ~16ms frame rate — no ISR, no `volatile`.
-

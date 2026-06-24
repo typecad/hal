@@ -1,9 +1,10 @@
 import { resolveColor } from "../ui/color.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui/default-keyboards.js";
 import type { CSSProperty, CSSRule } from "../ui/css-parser.js";
+import type { UIFontAssetModel, UIFontGlyphModel } from "../ui/font-assets.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../ui/html-parser.js";
 import type { UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
-import { HostAdafruitGFX } from "./host-gfx.js";
+import { blendRgb565, HostAdafruitGFX } from "./host-gfx.js";
 import type {
   PreviewBindingSpec,
   PreviewCallbackSpec,
@@ -128,6 +129,7 @@ export class PreviewUIRuntime {
   readonly screen: ScreenProxy = {};
   private readonly nodes: MutableNode[];
   private readonly transitions: UITransitionModel[];
+  private readonly fontAssets: UIFontAssetModel[];
   private readonly bindings: PreviewBindingSpec[];
   private readonly callbacks: PreviewCallbackSpec[];
   private readonly pinControls: PreviewPinControlSpec[];
@@ -167,6 +169,7 @@ export class PreviewUIRuntime {
     const { nodes, transitions } = cloneProgram(snapshot.program);
     this.nodes = nodes;
     this.transitions = transitions;
+    this.fontAssets = snapshot.program.fontAssets ?? [];
     this.bindings = snapshot.bindings;
     this.callbacks = snapshot.callbacks;
     this.pinControls = snapshot.pinControls;
@@ -427,6 +430,96 @@ export class PreviewUIRuntime {
     return changed;
   }
 
+  private nodeTextSize(node: MutableNode): number {
+    return Math.max(1, Math.trunc(node.textSize || 2));
+  }
+
+  private fontAsset(fontFace: number | undefined): UIFontAssetModel | undefined {
+    if (!fontFace) return undefined;
+    return this.fontAssets.find((asset) => asset.id === fontFace);
+  }
+
+  private fontGlyph(asset: UIFontAssetModel, codepoint: number): UIFontGlyphModel | undefined {
+    return asset.glyphs.find((glyph) => glyph.codepoint === codepoint);
+  }
+
+  private fontAlpha(asset: UIFontAssetModel, glyph: UIFontGlyphModel, pixelIndex: number): number {
+    const nibble = glyph.dataOffset + pixelIndex;
+    const byte = asset.alpha[nibble >> 1] ?? 0;
+    return (nibble & 1) ? byte & 0x0f : byte >> 4;
+  }
+
+  private textWidth(text: string | undefined, size: number, fontFace = 0): number {
+    const displayText = text ?? "";
+    const asset = this.fontAsset(fontFace);
+    if (!asset) return displayText ? this.gfx.textWidth(displayText, size) : 0;
+    let width = 0;
+    for (const ch of displayText) {
+      const glyph = this.fontGlyph(asset, ch.codePointAt(0) ?? 0);
+      width += glyph ? glyph.advance : Math.trunc(asset.lineHeight / 2);
+    }
+    return width;
+  }
+
+  private textHeight(size: number, fontFace = 0): number {
+    return this.fontAsset(fontFace)?.lineHeight ?? this.gfx.textHeight(size);
+  }
+
+  private clipTextToWidth(text: string, maxWidth: number, size: number, fontFace = 0): string {
+    let out = "";
+    let width = 0;
+    for (const ch of text) {
+      const next = this.textWidth(ch, size, fontFace);
+      if (width + next > maxWidth) break;
+      out += ch;
+      width += next;
+    }
+    return out;
+  }
+
+  private drawAssetText(text: string, x: number, y: number, fg: number, bg: number, antialias: boolean | undefined, fontFace = 0): boolean {
+    const asset = this.fontAsset(fontFace);
+    if (!asset) return false;
+    let cursor = x;
+    const baseline = y + asset.baseline;
+    for (const ch of text) {
+      const glyph = this.fontGlyph(asset, ch.codePointAt(0) ?? 0);
+      if (!glyph) {
+        cursor += Math.trunc(asset.lineHeight / 2);
+        continue;
+      }
+      for (let gy = 0; gy < glyph.height; gy++) {
+        for (let gx = 0; gx < glyph.width; gx++) {
+          const alpha = this.fontAlpha(asset, glyph, gy * glyph.width + gx);
+          if (alpha === 0) continue;
+          const dx = cursor + glyph.xOffset + gx;
+          const dy = baseline + glyph.yOffset + gy;
+          if (antialias) {
+            this.gfx.drawPixel(dx, dy, alpha >= 15 ? fg : blendRgb565(fg, bg, Math.trunc((alpha * 100) / 15)));
+          } else if (alpha >= 8) {
+            this.gfx.drawPixel(dx, dy, fg);
+          }
+        }
+      }
+      cursor += glyph.advance;
+    }
+    return true;
+  }
+
+  private drawText(text: string | undefined, x: number, y: number, fg: number, bg: number, size: number, antialias: boolean | undefined, fontFace = 0): void {
+    const displayText = text ?? "";
+    if (this.drawAssetText(displayText, x, y, fg, bg, antialias, fontFace)) return;
+    if (antialias && this.snapshot.program.colorFormat !== "mono") {
+      this.gfx.drawAntialiasedText(displayText, x, y, fg, bg, size);
+      return;
+    }
+    this.gfx.setCursor(x, y);
+    this.gfx.setTextColor(fg, bg);
+    this.gfx.setTextSize(size);
+    this.gfx.setTextWrap(false);
+    this.gfx.print(displayText);
+  }
+
   private markScrollDescendantsDirty(nodeIndex: number): void {
     const node = this.nodes[nodeIndex];
     for (let i = nodeIndex + 1; i < node.subtreeEnd; i++) {
@@ -465,7 +558,8 @@ export class PreviewUIRuntime {
       }
 
       const displayText = node.hasTextBinding ? node.textBuffer : node.text;
-      const tw = displayText ? displayText.length * 12 : 0;
+      const ts = this.nodeTextSize(node);
+      const tw = this.textWidth(displayText, ts, node.fontFace);
       let textX = node.box.x;
       if (node.textAlign === 1) textX = node.box.x + Math.trunc((node.box.w - tw) / 2);
       else if (node.textAlign === 2) textX = node.box.x + node.box.w - tw;
@@ -477,16 +571,16 @@ export class PreviewUIRuntime {
           if (node.borderStyle === 1) this.gfx.drawRect(node.box.x, drawY, node.box.w, node.box.h, bColor);
           break;
         case "text":
-          this.drawTextNode(node, displayText, tw, textX, drawY);
+          this.drawTextNode(node, displayText, tw, textX, drawY, ts);
           break;
         case "button":
-          this.drawButtonNode(node, displayText, tw, bColor, drawY);
+          this.drawButtonNode(node, displayText, tw, bColor, drawY, ts);
           break;
         case "check":
-          this.drawCheckNode(node, displayText, tw, drawY);
+          this.drawCheckNode(node, displayText, tw, drawY, ts);
           break;
         case "radio":
-          this.drawRadioNode(node, displayText, tw, drawY);
+          this.drawRadioNode(node, displayText, tw, drawY, ts);
           break;
         case "progress":
           this.drawProgressNode(node, drawY);
@@ -504,18 +598,15 @@ export class PreviewUIRuntime {
     return this.drawScrollbars(scrollbarDirty) || changed;
   }
 
-  private drawTextNode(node: MutableNode, displayText: string | undefined, tw: number, textX: number, drawY: number): void {
+  private drawTextNode(node: MutableNode, displayText: string | undefined, tw: number, textX: number, drawY: number, ts: number): void {
     const clearW = Math.max(node.box.w, node.lastTextWidth);
     this.gfx.fillRect(node.box.x, drawY, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
     node.lastTextWidth = tw;
-    this.gfx.setCursor(textX, drawY);
-    this.gfx.setTextColor(node.fg);
-    this.gfx.setTextSize(2);
-    this.gfx.print(displayText ?? "");
-    if (node.underline) this.gfx.drawFastHLine(textX, drawY + 15, tw, node.fg);
+    this.drawText(displayText, textX, drawY, node.fg, node.hasBg ? node.bg : node.clearColor, ts, node.fontAntialias, node.fontFace);
+    if (node.underline) this.gfx.drawFastHLine(textX, drawY + this.textHeight(ts, node.fontFace) - 1, tw, node.fg);
   }
 
-  private drawButtonNode(node: MutableNode, displayText: string | undefined, tw: number, bColor: number, drawY: number): void {
+  private drawButtonNode(node: MutableNode, displayText: string | undefined, tw: number, bColor: number, drawY: number, ts: number): void {
     if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
     if (node.borderStyle === 1) {
       this.gfx.drawRect(node.box.x, drawY, node.box.w, node.box.h, bColor);
@@ -525,13 +616,19 @@ export class PreviewUIRuntime {
       for (let dy = 0; dy < node.box.h; dy += 8) this.gfx.drawFastVLine(node.box.x, drawY + dy, 4, bColor);
       for (let dy = 0; dy < node.box.h; dy += 8) this.gfx.drawFastVLine(node.box.x + node.box.w - 1, drawY + dy, 4, bColor);
     }
-    this.gfx.setCursor(node.box.x + Math.trunc((node.box.w - tw) / 2), drawY + Math.trunc((node.box.h - 16) / 2));
-    this.gfx.setTextColor(node.fg);
-    this.gfx.setTextSize(2);
-    this.gfx.print(displayText ?? "");
+    this.drawText(
+      displayText,
+      node.box.x + Math.trunc((node.box.w - tw) / 2),
+      drawY + Math.trunc((node.box.h - this.textHeight(ts, node.fontFace)) / 2),
+      node.fg,
+      node.hasBg ? node.bg : node.clearColor,
+      ts,
+      node.fontAntialias,
+      node.fontFace,
+    );
   }
 
-  private drawCheckNode(node: MutableNode, displayText: string | undefined, tw: number, drawY: number): void {
+  private drawCheckNode(node: MutableNode, displayText: string | undefined, tw: number, drawY: number, ts: number): void {
     const clearW = Math.max(node.box.w, node.lastTextWidth);
     this.gfx.fillRect(node.box.x, drawY, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
     node.lastTextWidth = tw;
@@ -550,13 +647,10 @@ export class PreviewUIRuntime {
     } else {
       this.gfx.drawRect(cbX, cbY, 16, 16, node.fg);
     }
-    this.gfx.setCursor(node.box.x + 22, drawY);
-    this.gfx.setTextColor(node.fg);
-    this.gfx.setTextSize(2);
-    this.gfx.print(displayText ?? "");
+    this.drawText(displayText, node.box.x + 22, drawY, node.fg, node.hasBg ? node.bg : node.clearColor, ts, node.fontAntialias, node.fontFace);
   }
 
-  private drawRadioNode(node: MutableNode, displayText: string | undefined, tw: number, drawY: number): void {
+  private drawRadioNode(node: MutableNode, displayText: string | undefined, tw: number, drawY: number, ts: number): void {
     const clearW = Math.max(node.box.w, node.lastTextWidth);
     this.gfx.fillRect(node.box.x, drawY, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
     node.lastTextWidth = tw;
@@ -569,10 +663,7 @@ export class PreviewUIRuntime {
     } else {
       this.gfx.drawCircle(cbX + 8, cbY + 8, 7, node.fg);
     }
-    this.gfx.setCursor(node.box.x + 22, drawY);
-    this.gfx.setTextColor(node.fg);
-    this.gfx.setTextSize(2);
-    this.gfx.print(displayText ?? "");
+    this.drawText(displayText, node.box.x + 22, drawY, node.fg, node.hasBg ? node.bg : node.clearColor, ts, node.fontAntialias, node.fontFace);
   }
 
   private drawProgressNode(node: MutableNode, drawY: number): void {
@@ -652,13 +743,12 @@ export class PreviewUIRuntime {
     const border = node.borderColor || fgCol;
     const displayText = node.textBuffer || node.placeholder || node.text || "";
     const textColor = node.textBuffer ? fgCol : ((fgCol >> 1) & 0x7bef);
+    const ts = this.nodeTextSize(node);
+    const clippedText = this.clipTextToWidth(displayText, Math.max(0, bw - 8), ts, node.fontFace);
 
     this.gfx.fillRect(bx, by, bw, bh, bgCol);
     this.gfx.drawRect(bx, by, bw, bh, border);
-    this.gfx.setCursor(bx + 4, by + Math.trunc((bh - 16) / 2));
-    this.gfx.setTextColor(textColor, bgCol);
-    this.gfx.setTextSize(2);
-    this.gfx.print(displayText);
+    this.drawText(clippedText, bx + 4, by + Math.trunc((bh - this.textHeight(ts, node.fontFace)) / 2), textColor, bgCol, ts, node.fontAntialias, node.fontFace);
   }
 
   private hitTest(tx: number, ty: number): number {

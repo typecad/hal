@@ -4,8 +4,9 @@ import ts from "typescript";
 import type { DisplayProfile } from "../api/shared/display-profile.js";
 import { resolveDisplayProfile } from "../api/shared/display-profile.js";
 import { ResolvedCuttlefishConfig } from "../config-loader.js";
-import { parseCss } from "../ui/css-parser.js";
-import { parseHtmlWithKeyboards } from "../ui/html-parser.js";
+import { parseCss, parseFontFaces } from "../ui/css-parser.js";
+import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui/html-parser.js";
+import { buildUIFontAssets } from "../ui/font-assets.js";
 import { measure, type Box } from "../ui/layout-engine.js";
 import { lowerUIToModel } from "../ui/model.js";
 import { selectEngine } from "../ui/select-engine.js";
@@ -318,13 +319,16 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const htmlText = fs.readFileSync(firstImport.htmlPath, "utf-8");
   const cssPath = firstImport.htmlPath.replace(/\.ui\.html$/, ".ui.css");
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
-  const cssRules = parseCss(cssText);
   const parsedHtml = parseHtmlWithKeyboards(htmlText);
+  const fullCss = cssText + "\n" + extractStyleBlocks(htmlText);
+  const cssRules = parseCss(fullCss);
+  const fontFaces = parseFontFaces(fullCss);
   const styled = resolveStyles(parsedHtml.tree, cssRules);
+  const fontAssets = buildUIFontAssets(styled, fontFaces, path.dirname(cssPath));
   const engine = selectEngine(styled);
   const viewport: Box = { x: 0, y: 0, w: profile.width, h: profile.height };
   const boxes = engine.arrange(styled, viewport, measure);
-  const program = lowerUIToModel(styled, boxes, profile.colorFormat, profile);
+  const program = lowerUIToModel(styled, boxes, profile.colorFormat, profile, fontAssets);
   const specs = extractAuthorSpecs(sourceFile, uiImports, program.nodes);
 
   return {

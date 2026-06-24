@@ -21,6 +21,9 @@ export interface ScreenTree {
   aaOff1: RadioElement;
   aaCheck1: CheckElement;
   aaCheck2: CheckElement;
+  aaFontRow: ViewElement;
+  aaFontSmooth: TextElement;
+  aaFontBitmap: TextElement;
   rangeRow: ViewElement;
   points: RangeElement;
   inputRow: ViewElement;

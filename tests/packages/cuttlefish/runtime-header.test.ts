@@ -69,8 +69,8 @@ describe("C++ reactive runtime header", () => {
   it("draw dispatch selects displayText by hasTextBinding (textBuffer vs text)", () => {
     // The dirty-node loop must declare a displayText local and read from it.
     expect(header).toMatch(/const char\*\s+displayText\s*=\s*__ui_nodes\[i\]\.hasTextBinding\s*\?\s*__ui_nodes\[i\]\.textBuffer\s*:\s*__ui_nodes\[i\]\.text/);
-    // And the print() call site must use displayText, not __ui_nodes[i].text.
-    expect(header).toMatch(/__ui_gfx->print\(\s*displayText\s*\)/);
+    // And the text draw must use displayText, not __ui_nodes[i].text.
+    expect(header).toMatch(/ui_draw_text\(\s*displayText/);
   });
 
   it("uses tree metadata for scroll ownership", () => {

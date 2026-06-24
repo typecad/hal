@@ -62,6 +62,37 @@ describe("ui lowering", () => {
     expect(out.nodeTable).toMatch(/\.hasTextBinding=0/);
   });
 
+  it("emits per-node font antialias flags", () => {
+    const out = lower(
+      `<screen><text id="smooth">AA</text><text id="bitmap">off</text></screen>`,
+      `#smooth { font-smoothing: antialiased; } #bitmap { font-smoothing: none; }`,
+    );
+    expect(out.nodeTable).toContain(".fontAntialias=1");
+    expect(out.nodeTable).toContain(".fontAntialias=0");
+  });
+
+  it("emits generated font tables and assigns a font face id", () => {
+    const styled = resolveStyles(
+      parseHtml(`<screen><text id="title">A</text></screen>`),
+      parseCss(`#title { font-family: "DeviceSans"; font-size: 16px; }`),
+    );
+    const boxes = new BlockLayoutEngine().arrange(styled, { x: 0, y: 0, w: 80, h: 40 }, measure);
+    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", [], [], undefined, [{
+      id: 1,
+      family: "DeviceSans",
+      sourcePath: "DeviceSans.ttf",
+      px: 16,
+      lineHeight: 18,
+      baseline: 14,
+      glyphs: [{ codepoint: 65, xOffset: 0, yOffset: -10, width: 2, height: 2, advance: 8, dataOffset: 0 }],
+      alpha: [0xff, 0xff],
+    } as any]);
+
+    expect(out.nodeTable).toContain(".fontFace=1");
+    expect(out.fontTables).toContain("UIFontGlyph");
+    expect(out.fontTables).toContain("UIFontFace");
+  });
+
   it("lowers an <input> node to NODE_INPUT with maxlen", () => {
     const out = lower(
       `<screen><input id="ssid" type="text" placeholder="SSID" maxlength="32"></input></screen>`,

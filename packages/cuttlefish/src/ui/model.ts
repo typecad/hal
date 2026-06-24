@@ -1,6 +1,8 @@
 import type { DisplayProfile } from "../api/shared/display-profile.js";
 import { resolveColor } from "./color.js";
 import type { CSSProperty } from "./css-parser.js";
+import type { UIFontAssetModel } from "./font-assets.js";
+import { fontPxOf, normalizeFontFamily } from "./font-assets.js";
 import type { Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
 
@@ -26,6 +28,8 @@ export interface UINodeModel {
   hasBg: boolean;
   textAlign: 0 | 1 | 2;
   textSize: number;       // GFX text size: 1-4 (from font-size + font-weight)
+  fontAntialias: boolean; // true = smooth text edges when UI_AA is compiled
+  fontFace: number;       // 0 = classic GFX bitmap font; otherwise UIFontAsset id
   borderColor: number;
   borderStyle: 0 | 1 | 2;
   borderRadius: number;  // px, 0=square
@@ -69,6 +73,7 @@ export interface UIProgram {
   height: number;
   colorFormat: "rgb565" | "mono";
   display?: DisplayProfile;
+  fontAssets: UIFontAssetModel[];
   nodes: UINodeModel[];
   transitions: UITransitionModel[];
 }
@@ -142,6 +147,29 @@ function textSizeOf(style: CSSProperty): number {
   return size;
 }
 
+function fontAntialiasOf(style: CSSProperty, display?: DisplayProfile): boolean {
+  if (display?.colorFormat === "mono") return false;
+  const smoothing = style.fontSmoothing?.toLowerCase();
+  if (smoothing) {
+    if (smoothing.includes("antialiased") || smoothing.includes("smooth") || smoothing.includes("grayscale")) {
+      return true;
+    }
+    if (smoothing.includes("none") || smoothing.includes("aliased") || smoothing.includes("pixel")) {
+      return false;
+    }
+  }
+  return display?.antialias === true;
+}
+
+function fontFaceOf(style: CSSProperty, fontAssets: UIFontAssetModel[]): number {
+  const family = normalizeFontFamily(style.fontFamily);
+  if (!family) return 0;
+  const px = fontPxOf(style);
+  const match = fontAssets.find((asset) =>
+    asset.family.toLowerCase() === family.toLowerCase() && asset.px === px);
+  return match?.id ?? 0;
+}
+
 /** Apply text-transform (uppercase/lowercase/capitalize) to a static string. */
 function applyTextTransform(text: string | undefined, style: CSSProperty): string | undefined {
   if (!text) return text;
@@ -180,6 +208,7 @@ export function lowerUIToModel(
   boxes: Box[],
   colorFormat: ColorFormat,
   display?: DisplayProfile,
+  fontAssets: UIFontAssetModel[] = [],
 ): UIProgram {
   const flat: FlatModelSource[] = [];
   flatten(root, boxes, flat, { i: 0 }, undefined);
@@ -209,6 +238,8 @@ export function lowerUIToModel(
       hasBg,
       textAlign: textAlign(node.style),
       textSize: textSizeOf(node.style),
+      fontAntialias: fontAntialiasOf(node.style, display),
+      fontFace: fontFaceOf(node.style, fontAssets),
       borderColor: bColor,
       borderStyle: borderStyle(node.style),
       borderRadius: borderRadiusOf(node.style),
@@ -272,6 +303,7 @@ export function lowerUIToModel(
     height: display?.height ?? 0,
     colorFormat,
     display,
+    fontAssets,
     nodes,
     transitions,
   };

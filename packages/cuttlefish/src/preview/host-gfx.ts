@@ -17,6 +17,21 @@ export function rgb565ToRgb888(color: number): { r: number; g: number; b: number
   };
 }
 
+export function blendRgb565(fg: number, bg: number, opacity: number): number {
+  if (opacity >= 100) return fg & 0xffff;
+  if (opacity <= 0) return bg & 0xffff;
+  const fr = (fg >> 11) & 0x1f;
+  const fg6 = (fg >> 5) & 0x3f;
+  const fb = fg & 0x1f;
+  const br = (bg >> 11) & 0x1f;
+  const bg6 = (bg >> 5) & 0x3f;
+  const bb = bg & 0x1f;
+  const r = Math.trunc((fr * opacity + br * (100 - opacity)) / 100);
+  const g = Math.trunc((fg6 * opacity + bg6 * (100 - opacity)) / 100);
+  const b = Math.trunc((fb * opacity + bb * (100 - opacity)) / 100);
+  return ((r & 0x1f) << 11) | ((g & 0x3f) << 5) | (b & 0x1f);
+}
+
 export class HostAdafruitGFX {
   readonly buffer: Uint16Array;
   private cursorX = 0;
@@ -240,6 +255,85 @@ export class HostAdafruitGFX {
     const text = String(value ?? "");
     for (let i = 0; i < text.length; i++) {
       this.write(text.charCodeAt(i) & 0xff);
+    }
+  }
+
+  textWidth(value: unknown, size = this.textSizeX): number {
+    return String(value ?? "").length * Math.max(1, Math.trunc(size)) * 6;
+  }
+
+  textHeight(size = this.textSizeY): number {
+    return Math.max(1, Math.trunc(size)) * 8;
+  }
+
+  drawAntialiasedText(value: unknown, x: number, y: number, color: number, bg: number, size: number): void {
+    const text = String(value ?? "");
+    if (!text) return;
+    size = Math.max(1, Math.trunc(size));
+    const w = this.textWidth(text, size);
+    const h = this.textHeight(size);
+    if (w <= 0 || h <= 0 || (color & 0xffff) === (bg & 0xffff)) {
+      this.setCursor(x, y);
+      this.setTextColor(color, bg);
+      this.setTextSize(size);
+      this.setTextWrap(false);
+      this.print(text);
+      return;
+    }
+
+    const src = new HostAdafruitGFX(w, h, this.font);
+    src.fillScreen(bg);
+    src.setCursor(0, 0);
+    src.setTextColor(color, bg);
+    src.setTextSize(size);
+    src.setTextWrap(false);
+    src.print(text);
+
+    const fg = color & 0xffff;
+    const background = bg & 0xffff;
+    const out = new Uint16Array(w * h);
+    out.fill(background);
+    const foregroundNeighbors = (px: number, py: number, radius = 1): number => {
+      let count = 0;
+      for (let dy = -radius; dy <= radius; dy++) {
+        const yy = py + dy;
+        if (yy < 0 || yy >= h) continue;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const xx = px + dx;
+          if (xx < 0 || xx >= w) continue;
+          if (src.buffer[yy * w + xx] === fg) count++;
+        }
+      }
+      return count;
+    };
+    const coverageFor = (neighbors: number, outerNeighbors: number, isFg: boolean): number => {
+      if (isFg) {
+        if (size <= 1) return neighbors >= 4 ? 100 : 96;
+        if (size === 2) return neighbors >= 8 ? 100 : neighbors >= 5 ? 96 : 92;
+        return neighbors >= 8 ? 100 : neighbors >= 6 ? 96 : neighbors >= 4 ? 90 : 84;
+      }
+      if (neighbors === 0) {
+        return size >= 3 && outerNeighbors > 0 ? Math.min(14, outerNeighbors * 2) : 0;
+      }
+      const step = size <= 1 ? 4 : size === 2 ? 6 : 8;
+      const cap = size <= 1 ? 18 : size === 2 ? 28 : 38;
+      return Math.min(cap, neighbors * step);
+    };
+
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = 0; xx < w; xx++) {
+        const px = src.buffer[yy * w + xx];
+        const neighbors = foregroundNeighbors(xx, yy);
+        const outerNeighbors = size >= 3 && px !== fg && neighbors === 0 ? foregroundNeighbors(xx, yy, 2) : 0;
+        const coverage = coverageFor(neighbors, outerNeighbors, px === fg);
+        out[yy * w + xx] = coverage === 0 ? background : blendRgb565(fg, background, coverage);
+      }
+    }
+
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = 0; xx < w; xx++) {
+        this.drawPixel(x + xx, y + yy, out[yy * w + xx]);
+      }
     }
   }
 
