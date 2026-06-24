@@ -36,6 +36,8 @@ export interface UIElementNode {
   maxlength?: number;
   /** Keyboard ref id (for <input>). */
   keyboard?: string;
+  /** Inline style attribute: style="color: red; font-size: 16px" */
+  inlineStyle?: string;
   children: UIElementNode[];
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
@@ -65,11 +67,18 @@ export interface ParsedHtml {
   keyboards: KeyboardTemplate[];
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style"]);
+
+/** Extract <style>...</style> block contents from HTML source.
+ *  Returns the concatenated CSS text (empty if no style blocks). */
+export function extractStyleBlocks(src: string): string {
+  const matches = src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+  return Array.from(matches).map(m => m[1]).join("\n");
+}
 
 export function parseHtml(src: string): UIElementNode {
-  // Strip HTML comments before parsing.
-  const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "");
+  // Strip HTML comments + <style> blocks before parsing (style is extracted separately).
+  const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
 
   // linkedom follows the HTML spec which hoists unknown elements out of <body>.
   // Wrap the custom-tag HTML inside a <div> so the parser keeps the tree intact.
@@ -103,7 +112,7 @@ export function parseHtml(src: string): UIElementNode {
 
 /** Parse HTML, returning both the <screen> tree and any <keyboard> templates. */
 export function parseHtmlWithKeyboards(src: string): ParsedHtml {
-  const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "");
+  const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
   const wrapped = `<div id="__root__">${withoutComments}</div>`;
   const { document } = parseHTML(wrapped);
   const root = document.getElementById("__root__");
@@ -192,6 +201,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     ? (maxlengthAttr ? (parseInt(maxlengthAttr, 10) || 16) : 16)
     : undefined;
   const keyboardAttr = el.getAttribute("keyboard") || undefined;
+  const inlineStyleAttr = el.getAttribute("style") || undefined;
 
   // For <select>, parse <option> children into an options list
   if (tag === "select") {
@@ -233,7 +243,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, inlineStyle: inlineStyleAttr, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child));
   }

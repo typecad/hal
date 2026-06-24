@@ -99,6 +99,8 @@ export function parseCss(src: string): CSSRule[] {
   // Strip CSS comments before parsing (they may contain { or }).
   const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
   const rules: CSSRule[] = [];
+  // CSS custom properties (--name: value), extracted from :root-like rules.
+  const variables: Record<string, string> = {};
 
   let ast;
   try {
@@ -114,6 +116,17 @@ export function parseCss(src: string): CSSRule[] {
 
       // Extract selector text via generate (robust across css-tree versions).
       const selectorText = generate(node.prelude).trim();
+
+      // Capture CSS custom properties from :root declarations.
+      if (selectorText === ":root") {
+        node.block.children.forEach((child: any) => {
+          if (child.type === "Declaration" && child.property.startsWith("--")) {
+            variables[child.property] = generate(child.value).trim();
+          }
+        });
+        return; // :root is not a styling rule
+      }
+
       const selector = parseSelector(selectorText);
       if (!selector) return;
 
@@ -130,7 +143,40 @@ export function parseCss(src: string): CSSRule[] {
     },
   });
 
+  // Substitute var(--name) references in all property values.
+  if (Object.keys(variables).length > 0) {
+    for (const rule of rules) {
+      substituteVars(rule.properties, variables);
+    }
+  }
+
   return rules;
+}
+
+/** Replace var(--name) in all string-valued CSS properties. */
+function substituteVars(props: CSSProperty, variables: Record<string, string>): void {
+  for (const key of Object.keys(props) as (keyof CSSProperty)[]) {
+    const val = props[key];
+    if (typeof val === "string" && val.includes("var(")) {
+      (props[key] as string) = val.replace(/var\(\s*(--[\w-]+)\s*\)/g, (_, name) => variables[name] ?? "");
+    } else if (val && typeof val === "object" && "property" in val) {
+      // TransitionDecl — no var() in its fields, skip
+    }
+  }
+}
+
+/** Parse an inline style string ("color: red; font-size: 16px") into CSSProperty.
+ *  Uses the same assignProp pipeline as rule parsing. */
+export function parseInlineStyle(src: string): CSSProperty {
+  const props: CSSProperty = {};
+  for (const decl of src.split(";")) {
+    const colonIdx = decl.indexOf(":");
+    if (colonIdx < 0) continue;
+    const prop = decl.slice(0, colonIdx).trim();
+    const val = decl.slice(colonIdx + 1).trim();
+    if (prop && val) assignProp(props, prop, val);
+  }
+  return props;
 }
 
 /** Parse a selector string into compounds + simples.

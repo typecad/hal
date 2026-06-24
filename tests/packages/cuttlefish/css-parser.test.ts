@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
+import { parseCss, parseInlineStyle } from "@typecad/cuttlefish/ui/css-parser";
 
 describe("CSS subset parser", () => {
   it("parses element selectors", () => {
@@ -44,6 +44,19 @@ describe("CSS subset parser", () => {
       [{ kind: "element", name: "view" }],
       [{ kind: "element", name: "text" }],
     ]);
+  });
+
+  it("parses CSS variables from :root and substitutes var() refs", () => {
+    const rules = parseCss(`:root { --accent: #ff0000; } .btn { background: var(--accent); }`);
+    expect(rules).toHaveLength(1);
+    expect(rules[0].properties.background).toBe("#ff0000");
+  });
+
+  it("parses inline style strings", () => {
+    const props = parseInlineStyle("color: red; font-size: 16px; background: #000");
+    expect(props.color).toBe("red");
+    expect(props.fontSize).toBe("16px");
+    expect(props.background).toBe("#000");
   });
 
   it("parses transition property", () => {

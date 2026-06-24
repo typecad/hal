@@ -17,7 +17,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseHtml, parseHtmlWithKeyboards } from "./html-parser.js";
+import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "./html-parser.js";
 import type { KeyboardTemplate } from "./html-parser.js";
 import { parseCss } from "./css-parser.js";
 import type { CSSRule } from "./css-parser.js";
@@ -70,7 +70,9 @@ export function loadUIModule(htmlPath: string): UIModule {
   const parsed = parseHtmlWithKeyboards(htmlText);
   const tree = parsed.tree;
   const keyboards = parsed.keyboards;
-  const rules = parseCss(cssText);
+  // Merge <style> blocks from the HTML with the external .ui.css.
+  const styleBlocks = extractStyleBlocks(htmlText);
+  const rules = parseCss(cssText + "\n" + styleBlocks);
   const styled = resolveStyles(tree, rules);
 
   const mod: UIModule = { htmlPath: abs, styled, keyboards, rules };

@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { UIElementNode } from "./html-parser.js";
-import { CSSRule, CSSProperty, CSSSelector, SimpleSelector } from "./css-parser.js";
+import { CSSRule, CSSProperty, CSSSelector, SimpleSelector, parseInlineStyle } from "./css-parser.js";
 
 export interface StyledNode {
   tag: string;
@@ -92,6 +92,10 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
   }
 
   const style: CSSProperty = base;
+  // Inline style attribute has the highest priority — merge last.
+  if (node.inlineStyle) {
+    Object.assign(style, parseInlineStyle(node.inlineStyle));
+  }
   if (Object.keys(pressed).length > 0) {
     // Attach pressed overrides; the transition driver reads these on press.
     (style as CSSProperty & { pressed?: CSSProperty }).pressed = pressed;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHtml, parseHtmlWithKeyboards } from "@typecad/cuttlefish/ui/html-parser";
+import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "@typecad/cuttlefish/ui/html-parser";
 
 describe("HTML subset parser", () => {
   it("parses a screen root with children", () => {
@@ -62,6 +62,16 @@ describe("HTML subset parser", () => {
     const tree = parseHtml(`<screen><input id="port" type="number" maxlength="5"></input></screen>`);
     expect(tree.children[0].type).toBe("number");
     expect(tree.children[0].maxlength).toBe(5);
+  });
+
+  it("extracts <style> block contents", () => {
+    const css = extractStyleBlocks(`<screen></screen><style>screen { bg: red; }</style>`);
+    expect(css).toContain("screen { bg: red; }");
+  });
+
+  it("parses inline style attribute", () => {
+    const tree = parseHtml(`<screen><text id="t" style="color: red; font-size: 24px">hi</text></screen>`);
+    expect(tree.children[0].inlineStyle).toBe("color: red; font-size: 24px");
   });
 
   it("parses a <keyboard> template alongside <screen>", () => {
