@@ -58,11 +58,13 @@ struct UINode {
   uint16_t borderColor; // resolved color for the border (0 = use fg)
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
   uint8_t borderRadius; // px, 0=square
-  int8_t shadowOffsetX; // px
-  int8_t shadowOffsetY; // px
-  uint8_t shadowBlur;   // number of concentric expansion passes
-  uint16_t shadowColor; // resolved RGB565 (0 = no shadow)
-  uint8_t shadowAlpha;  // 0-100 (base opacity from rgba alpha)
+  uint8_t shadowCount;  // 0-4 active shadows
+  int8_t shadowOffsetX[4];
+  int8_t shadowOffsetY[4];
+  uint8_t shadowBlur[4];
+  uint16_t shadowColor[4];
+  uint8_t shadowAlpha[4];
+  uint8_t shadowInset[4]; // 0=outset, 1=inset
   uint8_t underline;    // 0=none, 1=underline
   uint8_t visible;      // 0=hidden, 1=visible
   uint8_t opacity;      // 0-100
@@ -863,41 +865,62 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t
 }
 #endif
 
-// Draw a soft shadow for an element. Multi-pass: draw shadowBlur concentric
-// rects, each expanding by 1px and blended toward the clear color at decreasing
-// opacity (scaled by shadowAlpha). Uses fillRoundRect if the element has a
-// border-radius. Called BEFORE the element's own fill/border.
+// Draw shadows for an element. Loops over up to 4 shadow specs. Each outset
+// shadow draws concentric expanding rects; each inset shadow draws concentric
+// shrinking rects inside the element bounds. Called BEFORE the element's fill.
 static inline void ui_draw_shadow(uint8_t i, int16_t drawY) {
-  if (__ui_nodes[i].shadowColor == 0 || __ui_nodes[i].shadowBlur == 0) return;
+  if (__ui_nodes[i].shadowCount == 0) return;
   int16_t bx = __ui_nodes[i].box.x;
   int16_t by = drawY;
   int16_t bw = __ui_nodes[i].box.w;
   int16_t bh = __ui_nodes[i].box.h;
-  int8_t ox = __ui_nodes[i].shadowOffsetX;
-  int8_t oy = __ui_nodes[i].shadowOffsetY;
-  uint8_t blur = __ui_nodes[i].shadowBlur;
-  uint16_t shadowCol = __ui_nodes[i].shadowColor;
   uint16_t clearCol = __ui_nodes[i].clearColor;
-  uint8_t baseAlpha = __ui_nodes[i].shadowAlpha;
   uint8_t radius = __ui_nodes[i].borderRadius;
-  // Draw from outermost (largest, most transparent) to innermost.
-  for (int8_t pass = blur; pass >= 1; pass--) {
-    // Opacity decreases for outer passes: innermost gets full baseAlpha,
-    // outermost gets baseAlpha / (blur + 1).
-    uint8_t opacity = (uint8_t)((uint16_t)baseAlpha / (pass + 1));
-    uint16_t col = ui_blend565(shadowCol, clearCol, opacity);
-    int16_t sx = bx + ox - pass;
-    int16_t sy = by + oy - pass;
-    int16_t sw = bw + 2 * pass;
-    int16_t sh = bh + 2 * pass;
-    if (radius > 0) {
-      // Expand the radius slightly for outer passes to smooth the corners.
-      uint8_t r = radius + (uint8_t)pass;
-      if (r > sw / 2) r = sw / 2;
-      if (r > sh / 2) r = sh / 2;
-      __ui_gfx->fillRoundRect(sx, sy, sw, sh, r, col);
-    } else {
-      __ui_gfx->fillRect(sx, sy, sw, sh, col);
+
+  for (uint8_t s = 0; s < __ui_nodes[i].shadowCount && s < 4; s++) {
+    if (__ui_nodes[i].shadowColor[s] == 0) continue;
+    uint16_t shadowCol = __ui_nodes[i].shadowColor[s];
+    int8_t ox = __ui_nodes[i].shadowOffsetX[s];
+    int8_t oy = __ui_nodes[i].shadowOffsetY[s];
+    uint8_t blur = __ui_nodes[i].shadowBlur[s];
+    if (blur == 0) blur = 1;  // at least 1 pass for a hard shadow
+    uint8_t baseAlpha = __ui_nodes[i].shadowAlpha[s];
+    uint8_t inset = __ui_nodes[i].shadowInset[s];
+
+    for (int8_t pass = blur; pass >= 1; pass--) {
+      uint8_t opacity = (uint8_t)((uint16_t)baseAlpha / (pass + 1));
+      uint16_t col = ui_blend565(shadowCol, clearCol, opacity);
+      if (inset) {
+        // Inset: draw inside the element, shrinking inward by pass.
+        int16_t ix = bx + pass;
+        int16_t iy = by + pass;
+        int16_t iw = bw - 2 * pass;
+        int16_t ih = bh - 2 * pass;
+        if (iw <= 0 || ih <= 0) continue;
+        // Offset the inset by the shadow's x/y (e.g. top highlight).
+        iy += oy;
+        ix += ox;
+        // Draw only the edge ring (4 thin rects), not a full fill — the
+        // element's own background will cover the center anyway.
+        __ui_gfx->fillRect(ix, iy, iw, 1, col);         // top edge
+        __ui_gfx->fillRect(ix, iy + ih - 1, iw, 1, col); // bottom edge
+        __ui_gfx->fillRect(ix, iy, 1, ih, col);          // left edge
+        __ui_gfx->fillRect(ix + iw - 1, iy, 1, ih, col); // right edge
+      } else {
+        // Outset: expand outward from box + offset.
+        int16_t sx = bx + ox - pass;
+        int16_t sy = by + oy - pass;
+        int16_t sw = bw + 2 * pass;
+        int16_t sh_ = bh + 2 * pass;
+        if (radius > 0) {
+          uint8_t r = radius + (uint8_t)pass;
+          if (r > sw / 2) r = sw / 2;
+          if (r > sh_ / 2) r = sh_ / 2;
+          __ui_gfx->fillRoundRect(sx, sy, sw, sh_, r, col);
+        } else {
+          __ui_gfx->fillRect(sx, sy, sw, sh_, col);
+        }
+      }
     }
   }
 }

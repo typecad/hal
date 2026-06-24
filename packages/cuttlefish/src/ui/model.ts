@@ -33,11 +33,13 @@ export interface UINodeModel {
   borderColor: number;
   borderStyle: 0 | 1 | 2;
   borderRadius: number;  // px, 0=square
-  shadowOffsetX: number; // px
-  shadowOffsetY: number; // px
-  shadowBlur: number;    // px (number of concentric passes)
-  shadowColor: number;   // resolved RGB565 (0 = no shadow)
-  shadowAlpha: number;   // 0-100 (from rgba alpha)
+  shadowCount: number;                    // 0-4 active shadows
+  shadowOffsetX: number[];                // [4]
+  shadowOffsetY: number[];
+  shadowBlur: number[];
+  shadowColor: number[];
+  shadowAlpha: number[];
+  shadowInset: boolean[];
   underline: boolean;
   visible: boolean;
   opacity: number;       // 0-100
@@ -127,39 +129,59 @@ function borderRadiusOf(style: CSSProperty): number {
   return isNaN(px) ? 0 : px;
 }
 
-/** Parse box-shadow: "2px 2px 4px rgba(0,0,0,0.5)" → { x, y, blur, color }.
- *  Format: [inset] offsetX offsetY [blur] [spread] color.
- *  We extract offset (x,y), blur radius (number of expansion passes), and
- *  resolve the color. Inset + spread are ignored (not meaningful on MCU). */
-interface ShadowSpec { x: number; y: number; blur: number; color: number; alpha: number; }
-function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSpec | null {
+/** Parse box-shadow into up to 4 shadow specs. Handles multi-shadow
+ *  (comma-separated) and the `inset` keyword.
+ *  Format per shadow: [inset] offsetX offsetY [blur] [spread] color. */
+const MAX_SHADOWS = 4;
+interface ShadowSpec { x: number; y: number; blur: number; color: number; alpha: number; inset: boolean; }
+function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSpec[] {
   const raw = style.boxShadow;
-  if (!raw || raw === "none") return null;
-  // Tokenize: numbers (with px) and a trailing color expression.
-  const pxTokens: number[] = [];
-  const pxRe = /(-?\d+)px/gi;
-  let m: RegExpExecArray | null;
-  while ((m = pxRe.exec(raw)) !== null) {
-    pxTokens.push(parseInt(m[1], 10));
+  if (!raw || raw === "none") return [];
+  // Split on commas that are NOT inside parentheses (so rgba(0,0,0,0.5) isn't split).
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "(") depth++;
+    else if (raw[i] === ")") depth--;
+    else if (raw[i] === "," && depth === 0) { parts.push(raw.slice(start, i).trim()); start = i + 1; }
   }
-  if (pxTokens.length < 2) return null;  // need at least offsetX offsetY
-  const x = pxTokens[0];
-  const y = pxTokens[1];
-  const blur = pxTokens.length >= 3 ? Math.max(0, Math.min(pxTokens[2], 8)) : 0;
-  // Extract color + alpha: strip px numbers and "inset", parse the remainder.
-  const stripped = raw.replace(/inset/gi, "").replace(/-?\d+px/gi, "").trim();
-  let color = 0x0000;
-  let alpha = 100;
-  if (stripped) {
-    // Extract alpha from rgba(r,g,b,a).
-    const alphaM = /rgba?\([^,]*,[^,]*,[^,]*,\s*([\d.]+)\s*\)/.exec(stripped);
-    if (alphaM) {
-      alpha = Math.round(parseFloat(alphaM[1]) * 100);
-      alpha = Math.max(0, Math.min(100, alpha));
+  parts.push(raw.slice(start).trim());
+
+  const specs: ShadowSpec[] = [];
+  for (const part of parts) {
+    if (specs.length >= MAX_SHADOWS) break;
+    const inset = /\binset\b/i.test(part);
+    // Extract px values.
+    const pxTokens: number[] = [];
+    const pxRe = /(-?\d+)px/gi;
+    let m: RegExpExecArray | null;
+    while ((m = pxRe.exec(part)) !== null) pxTokens.push(parseInt(m[1], 10));
+    if (pxTokens.length < 2) continue;  // need at least offsetX offsetY
+    const x = pxTokens[0];
+    const y = pxTokens[1];
+    const blur = pxTokens.length >= 3 ? Math.max(0, Math.min(pxTokens[2], 8)) : 0;
+    // Extract color: remove all px-numbers and "inset" keyword, leaving the color.
+    // The px-number regex won't touch rgba() internal numbers because those have
+    // commas, not "px" suffixes.
+    const cleaned = part.replace(/\binset\b/gi, "").replace(/-?\d+\s*px/gi, "").replace(/-?\d+\s+/g, "").trim();
+    let color = 0x0000;
+    let alpha = 100;
+    if (cleaned) {
+      const alphaM = /rgba?\([^,]*,[^,]*,[^,]*,\s*([\d.]+)\s*\)/.exec(cleaned);
+      if (alphaM) {
+        alpha = Math.round(parseFloat(alphaM[1]) * 100);
+        alpha = Math.max(0, Math.min(100, alpha));
+      }
+      // Only resolve as color if it looks like one (#hex, rgb/rgba, or alpha-only).
+      // Bare words like "px" are noise.
+      if (/^(#|rgba?\(|[a-zA-Z]+$)/.test(cleaned) && cleaned !== "px") {
+        color = resolveColor(cleaned, format);
+      }
     }
-    color = resolveColor(stripped, format);
+    specs.push({ x, y, blur, color, alpha, inset });
   }
-  return { x, y, blur, color, alpha };
+  return specs;
 }
 
 /** Parse opacity (0-100, default 100). */
@@ -280,10 +302,21 @@ export function lowerUIToModel(
       borderStyle: borderStyle(node.style),
       borderRadius: borderRadiusOf(node.style),
       ...(() => {
-        const sh = parseBoxShadow(node.style, colorFormat);
-        return sh
-          ? { shadowOffsetX: sh.x, shadowOffsetY: sh.y, shadowBlur: sh.blur, shadowColor: sh.color, shadowAlpha: sh.alpha }
-          : { shadowOffsetX: 0, shadowOffsetY: 0, shadowBlur: 0, shadowColor: 0, shadowAlpha: 0 };
+        const shadows = parseBoxShadow(node.style, colorFormat);
+        const pad = <T>(arr: T[], val: T, n: number): T[] => {
+          const out = [...arr];
+          while (out.length < n) out.push(val);
+          return out.slice(0, n);
+        };
+        return {
+          shadowCount: shadows.length,
+          shadowOffsetX: pad(shadows.map(s => s.x), 0, MAX_SHADOWS),
+          shadowOffsetY: pad(shadows.map(s => s.y), 0, MAX_SHADOWS),
+          shadowBlur: pad(shadows.map(s => s.blur), 0, MAX_SHADOWS),
+          shadowColor: pad(shadows.map(s => s.color), 0, MAX_SHADOWS),
+          shadowAlpha: pad(shadows.map(s => s.alpha), 0, MAX_SHADOWS),
+          shadowInset: pad(shadows.map(s => s.inset), false, MAX_SHADOWS),
+        };
       })(),
       underline: node.style.textDecoration === "underline",
       visible: node.style.visibility !== "hidden",

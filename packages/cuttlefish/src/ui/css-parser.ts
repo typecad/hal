@@ -145,7 +145,9 @@ export function parseCss(src: string): CSSRule[] {
       const props: CSSProperty = {};
       node.block.children.forEach((child: any) => {
         if (child.type !== "Declaration") return;
-        const prop = child.property;
+        // Strip vendor prefixes (-webkit-, -moz-, -ms-, -o-) so authors can
+        // paste cross-browser CSS without manual cleanup.
+        const prop = child.property.replace(/^-(?:webkit|moz|ms|o)-/, "");
         const val = generate(child.value).trim();
         assignProp(props, prop, val);
       });
