@@ -28,6 +28,7 @@ export interface UINodeModel {
   hasBg: boolean;
   textAlign: 0 | 1 | 2;
   textSize: number;       // GFX text size: 1-4 (from font-size + font-weight)
+  letterSpacing: number;  // px between chars (0 = default)
   fontAntialias: boolean; // true = smooth text edges when UI_AA is compiled
   fontFace: number;       // 0 = classic GFX bitmap font; otherwise UIFontAsset id
   borderColor: number;
@@ -59,6 +60,7 @@ export interface UINodeModel {
   textShadowColor: number;        // resolved RGB565
   textShadowAlpha: number;
   underline: boolean;
+  nowrap: boolean;       // white-space: nowrap (true = no wrapping, the default)
   visible: boolean;
   opacity: number;       // 0-100
   clearColor: number;
@@ -150,6 +152,13 @@ function borderWidthOf(style: CSSProperty): number {
 function borderRadiusOf(style: CSSProperty): number {
   if (!style.borderRadius) return 0;
   const px = parseInt(style.borderRadius, 10);
+  return isNaN(px) ? 0 : px;
+}
+
+/** Parse letter-spacing px value (0 if absent). */
+function letterSpacingOf(style: CSSProperty): number {
+  if (!style.letterSpacing) return 0;
+  const px = parseInt(style.letterSpacing, 10);
   return isNaN(px) ? 0 : px;
 }
 
@@ -466,6 +475,7 @@ export function lowerUIToModel(
       hasBg,
       textAlign: textAlign(node.style),
       textSize: textSizeOf(node.style),
+      letterSpacing: letterSpacingOf(node.style),
       fontAntialias: fontAntialiasOf(node.style, display),
       fontFace: fontFaceOf(node.style, fontAssets),
       borderColor: bColor,
@@ -512,6 +522,7 @@ export function lowerUIToModel(
           : { textShadowCount: 0, textShadowOffsetX: 0, textShadowOffsetY: 0, textShadowBlur: 0, textShadowColor: 0, textShadowAlpha: 0 };
       })(),
       underline: node.style.textDecoration === "underline",
+      nowrap: node.style.whiteSpace === "nowrap" || node.style.whiteSpace === "pre",
       visible: node.style.visibility !== "hidden",
       opacity: opacityOf(node.style),
       clearColor: clear,
