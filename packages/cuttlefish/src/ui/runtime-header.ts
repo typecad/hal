@@ -1401,24 +1401,31 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint16_t clearH = __ui_nodes[i].box.h;
           uint16_t glyphH = ts * 8;
           if (glyphH > clearH) clearH = glyphH;
-          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+          // Only draw an opaque clear rect when the node has its own background.
+          // For transparent text (hasBg=0), skip the clear — the parent's
+          // background (solid or gradient) should show through. The parent
+          // redraws its background when dirty, covering any old text.
+          if (__ui_nodes[i].hasBg) {
+            __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, clearH, __ui_nodes[i].bg);
+          }
           __ui_nodes[i].lastTextWidth = tw;
         }
-        // Text shadow: draw the text in the shadow color at the offset first.
-        // Use transparent background (pass tsCol as bg so GFX skips unset pixels
-        // instead of drawing a solid bg rectangle behind each glyph).
-        if (__ui_nodes[i].textShadowCount > 0) {
+        {
+          // Text shadow: draw the text in the shadow color at the offset first.
           uint16_t tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          uint16_t tsCol = ui_blend565(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
-          ui_draw_text(displayText,
-            textX + __ui_nodes[i].textShadowOffsetX,
-            drawY + __ui_nodes[i].textShadowOffsetY,
-            tsCol, tsCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+          if (__ui_nodes[i].textShadowCount > 0) {
+            uint16_t tsCol = ui_blend565(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
+            ui_draw_text(displayText,
+              textX + __ui_nodes[i].textShadowOffsetX,
+              drawY + __ui_nodes[i].textShadowOffsetY,
+              tsCol, tsCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+          }
+          // Use transparent bg (fg as bg) when no own background, so the parent's
+          // gradient/background shows through instead of an opaque clear rect.
+          uint16_t textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].fg;
+          ui_draw_text(displayText, textX, drawY, __ui_nodes[i].fg,
+            textBg, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
         }
-        ui_draw_text(displayText, textX, drawY, __ui_nodes[i].fg,
-          __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
-          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
         if (__ui_nodes[i].underline)
           __ui_gfx->drawFastHLine(textX, drawY + ui_text_height(ts, __ui_nodes[i].fontFace) - 1, tw, __ui_nodes[i].fg);
         break;
