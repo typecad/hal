@@ -1406,13 +1406,15 @@ static inline void ui_tick(uint16_t deltaMs) {
           __ui_nodes[i].lastTextWidth = tw;
         }
         // Text shadow: draw the text in the shadow color at the offset first.
+        // Use transparent background (pass tsCol as bg so GFX skips unset pixels
+        // instead of drawing a solid bg rectangle behind each glyph).
         if (__ui_nodes[i].textShadowCount > 0) {
           uint16_t tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           uint16_t tsCol = ui_blend565(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
           ui_draw_text(displayText,
             textX + __ui_nodes[i].textShadowOffsetX,
             drawY + __ui_nodes[i].textShadowOffsetY,
-            tsCol, tsClear, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+            tsCol, tsCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
         }
         ui_draw_text(displayText, textX, drawY, __ui_nodes[i].fg,
           __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,

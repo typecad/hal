@@ -38,9 +38,30 @@ const GFX_TEXT_SIZE = 2;
 const GFX_ADVANCE_PER_CHAR = 6 * GFX_TEXT_SIZE;  // 12px at size 2
 const GFX_CHAR_HEIGHT = 8 * GFX_TEXT_SIZE;       // 16px at size 2
 
+/** Compute the GFX text size from a node's CSS font-size + font-weight.
+ *  Mirrors the logic in model.ts textSizeOf(). */
+function gfxTextSizeOf(node: StyledNode): number {
+  let size = GFX_TEXT_SIZE;
+  if (node.style.fontSize) {
+    const px = parseInt(node.style.fontSize, 10);
+    if (!isNaN(px)) {
+      if (px <= 12) size = 1;
+      else if (px <= 20) size = 2;
+      else if (px <= 28) size = 3;
+      else size = 4;
+    }
+  }
+  if (node.style.fontWeight === "bold" && size < 4) size++;
+  return size;
+}
+
 /** Measure a node's intrinsic size. Accounts for the Adafruit GFX font metrics
  *  and the text size the draw dispatch will use. */
 export function measure(node: StyledNode): IntrinsicSize {
+  // Per-node text size (from font-size + font-weight CSS).
+  const ts = gfxTextSizeOf(node);
+  const advance = 6 * ts;
+  const charH = 8 * ts;
   if (node.tag === "text" || node.tag === "button" || node.tag === "select") {
     if (node.tag === "select") {
       // Size to the longest option, not the full comma-separated text
@@ -48,15 +69,15 @@ export function measure(node: StyledNode): IntrinsicSize {
         ? node.options.map((option) => option.text)
         : (node.text ?? "").split(",").map(s => s.trim()).filter(Boolean);
       const longest = options.length > 0 ? options.reduce((a, b) => a.length >= b.length ? a : b) : "";
-      return { w: longest.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
+      return { w: longest.length * advance, h: charH };
     }
     const text = node.text ?? "";
-    return { w: text.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
+    return { w: text.length * advance, h: charH };
   }
   if (node.tag === "check" || node.tag === "radio") {
     // Checkbox/radio: 16px indicator + 6px gap + label text
     const text = node.text ?? "";
-    return { w: 16 + 6 + text.length * GFX_ADVANCE_PER_CHAR, h: GFX_CHAR_HEIGHT };
+    return { w: 16 + 6 + text.length * advance, h: Math.max(charH, 16) };
   }
   if (node.tag === "progress") {
     // Progress bar: default 200px wide, 12px tall
