@@ -15,15 +15,40 @@ export interface UIFontGlyphModel {
   dataOffset: number;
 }
 
+export type UIFontSubsetMode = "exact" | "fallback";
+
 export interface UIFontAssetModel {
   id: number;
   family: string;
   sourcePath: string;
   px: number;
+  fontWeight: string;
+  fontStyle: string;
+  subset: UIFontSubsetMode;
   lineHeight: number;
   baseline: number;
   glyphs: UIFontGlyphModel[];
   alpha: number[];
+}
+
+interface FontAssetRequest {
+  family: string;
+  sourcePath: string;
+  px: number;
+  fontWeight: string;
+  fontStyle: string;
+  subset: UIFontSubsetMode;
+  chars: Set<string>;
+}
+
+export interface UIFontAssetPlan {
+  family: string;
+  sourcePath: string;
+  px: number;
+  fontWeight: string;
+  fontStyle: string;
+  subset: UIFontSubsetMode;
+  chars: string[];
 }
 
 interface OpenTypePathCommand {
@@ -60,63 +85,143 @@ export function fontPxOf(style: CSSProperty): number {
   return Number.isFinite(px) && px > 0 ? px : 16;
 }
 
+export function normalizeFontWeight(value: string | undefined): string {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "normal") return "400";
+  if (normalized === "bold" || normalized === "bolder") return "700";
+  if (normalized === "lighter") return "300";
+  const numeric = /^(\d{1,4})/.exec(normalized);
+  if (!numeric) return "400";
+  const n = Math.max(1, Math.min(1000, Number(numeric[1])));
+  return Number.isFinite(n) ? String(n) : "400";
+}
+
+export function normalizeFontStyle(value: string | undefined): string {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "normal") return "normal";
+  if (normalized.includes("italic")) return "italic";
+  if (normalized.includes("oblique")) return "oblique";
+  return "normal";
+}
+
+export function fontSubsetOf(style: CSSProperty): UIFontSubsetMode {
+  const subset = style.fontSubset?.trim().toLowerCase();
+  if (!subset || subset === "exact" || subset === "used") return "exact";
+  if (subset === "fallback" || subset === "auto" || subset === "ascii" || subset === "common") {
+    return "fallback";
+  }
+  return "exact";
+}
+
+export function selectFontFaceForStyle(fontFaces: CSSFontFace[], style: CSSProperty): CSSFontFace | undefined {
+  const family = normalizeFontFamily(style.fontFamily);
+  if (!family) return undefined;
+  const candidates = fontFaces.filter((face) => face.fontFamily.toLowerCase() === family.toLowerCase());
+  if (candidates.length === 0) return undefined;
+  const desiredWeight = Number(normalizeFontWeight(style.fontWeight));
+  const desiredStyle = normalizeFontStyle(style.fontStyle);
+  return [...candidates].sort((a, b) =>
+    fontFaceScore(a, desiredWeight, desiredStyle) - fontFaceScore(b, desiredWeight, desiredStyle)
+  )[0];
+}
+
+export function selectFontAssetForStyle(fontAssets: UIFontAssetModel[], style: CSSProperty): UIFontAssetModel | undefined {
+  const family = normalizeFontFamily(style.fontFamily);
+  if (!family) return undefined;
+  const px = fontPxOf(style);
+  const candidates = fontAssets.filter((asset) => asset.family.toLowerCase() === family.toLowerCase() && asset.px === px);
+  if (candidates.length === 0) return undefined;
+  const desiredWeight = Number(normalizeFontWeight(style.fontWeight));
+  const desiredStyle = normalizeFontStyle(style.fontStyle);
+  return [...candidates].sort((a, b) =>
+    fontAssetScore(a, desiredWeight, desiredStyle) - fontAssetScore(b, desiredWeight, desiredStyle)
+  )[0];
+}
+
 export function buildUIFontAssets(
   root: StyledNode,
   fontFaces: CSSFontFace[],
   baseDir: string,
 ): UIFontAssetModel[] {
-  if (fontFaces.length === 0) return [];
-
-  const faces = new Map<string, CSSFontFace>();
-  for (const face of fontFaces) {
-    faces.set(face.fontFamily.toLowerCase(), face);
-  }
-
-  const charsByKey = new Map<string, Set<string>>();
-  const collect = (node: StyledNode) => {
-    const family = normalizeFontFamily(node.style.fontFamily);
-    if (family && faces.has(family.toLowerCase())) {
-      const px = fontPxOf(node.style);
-      const key = `${family.toLowerCase()}:${px}`;
-      let chars = charsByKey.get(key);
-      if (!chars) {
-        chars = new Set(FALLBACK_CHARS);
-        charsByKey.set(key, chars);
-      }
-      addText(chars, node.text);
-      addText(chars, node.placeholder);
-      for (const option of node.options ?? []) addText(chars, option.text);
-    }
-    for (const child of node.children) collect(child);
-  };
-  collect(root);
+  const plans = planUIFontAssets(root, fontFaces, baseDir);
 
   const parsedFonts = new Map<string, any>();
   const assets: UIFontAssetModel[] = [];
   let id = 1;
-  for (const [key, chars] of charsByKey) {
-    const [familyLower, pxText] = key.split(":");
-    const face = faces.get(familyLower);
-    if (!face) continue;
-    const sourcePath = resolveFontPath(face.src, baseDir);
-    let font = parsedFonts.get(sourcePath);
+  for (const plan of plans) {
+    let font = parsedFonts.get(plan.sourcePath);
     if (!font) {
-      const bytes = fs.readFileSync(sourcePath);
+      const bytes = fs.readFileSync(plan.sourcePath);
       const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       font = opentype.parse(arrayBuffer);
-      parsedFonts.set(sourcePath, font);
+      parsedFonts.set(plan.sourcePath, font);
     }
     assets.push(rasterizeFontAsset({
       id: id++,
-      family: face.fontFamily,
-      sourcePath,
-      px: Number(pxText) || 16,
-      chars: [...chars].sort((a, b) => a.codePointAt(0)! - b.codePointAt(0)!),
+      family: plan.family,
+      sourcePath: plan.sourcePath,
+      px: plan.px,
+      fontWeight: plan.fontWeight,
+      fontStyle: plan.fontStyle,
+      subset: plan.subset,
+      chars: plan.chars,
       font,
     }));
   }
 
   return assets;
+}
+
+export function planUIFontAssets(
+  root: StyledNode,
+  fontFaces: CSSFontFace[],
+  baseDir: string,
+): UIFontAssetPlan[] {
+  if (fontFaces.length === 0) return [];
+
+  const requests = new Map<string, FontAssetRequest>();
+  const collect = (node: StyledNode) => {
+    const face = selectFontFaceForStyle(fontFaces, node.style);
+    if (face) {
+      const px = fontPxOf(node.style);
+      const sourcePath = resolveFontPath(face.src, baseDir);
+      const fontWeight = normalizeFontWeight(face.fontWeight ?? node.style.fontWeight);
+      const fontStyle = normalizeFontStyle(face.fontStyle ?? node.style.fontStyle);
+      const key = `${sourcePath}:${px}:${fontWeight}:${fontStyle}`;
+      let request = requests.get(key);
+      if (!request) {
+        request = {
+          family: face.fontFamily,
+          sourcePath,
+          px,
+          fontWeight,
+          fontStyle,
+          subset: "exact",
+          chars: new Set<string>(),
+        };
+        requests.set(key, request);
+      }
+      if (fontSubsetOf(node.style) === "fallback" && request.subset !== "fallback") {
+        request.subset = "fallback";
+        addText(request.chars, FALLBACK_CHARS);
+      }
+      addNodeText(request.chars, node);
+    }
+    for (const child of node.children) collect(child);
+  };
+  collect(root);
+
+  return [...requests.values()]
+    .filter((request) => request.chars.size > 0)
+    .map((request) => ({
+      family: request.family,
+      sourcePath: request.sourcePath,
+      px: request.px,
+      fontWeight: request.fontWeight,
+      fontStyle: request.fontStyle,
+      subset: request.subset,
+      chars: [...request.chars].sort((a, b) => a.codePointAt(0)! - b.codePointAt(0)!),
+    }));
 }
 
 function resolveFontPath(src: string, baseDir: string): string {
@@ -133,11 +238,47 @@ function resolveFontPath(src: string, baseDir: string): string {
   return resolved;
 }
 
+function fontFaceScore(face: CSSFontFace, desiredWeight: number, desiredStyle: string): number {
+  const style = normalizeFontStyle(face.fontStyle);
+  const weight = Number(normalizeFontWeight(face.fontWeight));
+  return styleScore(style, desiredStyle) * 10000 + Math.abs(weight - desiredWeight);
+}
+
+function fontAssetScore(asset: UIFontAssetModel, desiredWeight: number, desiredStyle: string): number {
+  const weight = Number(normalizeFontWeight(asset.fontWeight));
+  return styleScore(asset.fontStyle, desiredStyle) * 10000 + Math.abs(weight - desiredWeight);
+}
+
+function styleScore(actual: string, desired: string): number {
+  if (actual === desired) return 0;
+  if (actual === "normal") return 1;
+  return 2;
+}
+
+function addNodeText(chars: Set<string>, node: StyledNode): void {
+  addText(chars, applyTextTransform(node.text, node.style));
+  addText(chars, applyTextTransform(node.placeholder, node.style));
+  for (const option of node.options ?? []) {
+    addText(chars, applyTextTransform(option.text, node.style));
+  }
+}
+
+function applyTextTransform(text: string | undefined, style: CSSProperty): string | undefined {
+  if (!text) return text;
+  switch (style.textTransform) {
+    case "uppercase": return text.toUpperCase();
+    case "lowercase": return text.toLowerCase();
+    case "capitalize":
+      return text.replace(/\b\w/g, (c) => c.toUpperCase());
+    default: return text;
+  }
+}
+
 function addText(chars: Set<string>, text: string | undefined): void {
   if (!text) return;
   for (const ch of text) {
     const cp = ch.codePointAt(0);
-    if (cp !== undefined && cp >= 32 && cp <= 255) chars.add(ch);
+    if (cp !== undefined && cp >= 32 && cp <= 0xffff) chars.add(ch);
   }
 }
 
@@ -146,6 +287,9 @@ function rasterizeFontAsset(options: {
   family: string;
   sourcePath: string;
   px: number;
+  fontWeight: string;
+  fontStyle: string;
+  subset: UIFontSubsetMode;
   chars: string[];
   font: any;
 }): UIFontAssetModel {
@@ -200,6 +344,9 @@ function rasterizeFontAsset(options: {
     family: options.family,
     sourcePath: options.sourcePath,
     px: options.px,
+    fontWeight: options.fontWeight,
+    fontStyle: options.fontStyle,
+    subset: options.subset,
     lineHeight,
     baseline,
     glyphs,

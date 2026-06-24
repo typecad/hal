@@ -320,6 +320,7 @@ function resolveMountCall(
     rst: Number(opts.rst),
     rotation: profile.rotation,
     backlight: profile.backlight,
+    spiFrequency: profile.spiFrequency,
   };
   const displayInitOp = resolveMount(req, strategy, viewport);
 

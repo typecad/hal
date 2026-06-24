@@ -16,6 +16,7 @@ export interface MountRequest {
   rst: number;
   rotation?: number;
   backlight?: number;
+  spiFrequency?: number;
 }
 
 export class MountValidationError extends Error {
@@ -48,5 +49,6 @@ export function resolveMount(
     driver: req.display,
     rotation: req.rotation,
     backlight: req.backlight,
+    spiFrequency: req.spiFrequency,
   } as any;
 }

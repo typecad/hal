@@ -56,7 +56,9 @@ export interface CSSProperty {
   textAlign?: string;       // left | center | right
   textDecoration?: string;  // underline | none
   fontWeight?: string;      // normal | bold
+  fontStyle?: string;       // normal | italic | oblique
   fontSmoothing?: string;   // antialiased | none
+  fontSubset?: string;      // exact | fallback/auto
   lineHeight?: string;
   letterSpacing?: string;
   whiteSpace?: string;      // nowrap | normal
@@ -291,6 +293,24 @@ function parseTransition(val: string): TransitionDecl {
   return { property: property as "background" | "color", durationMs };
 }
 
+/** Parse the font shorthand enough for embedded font selection:
+ *  style/weight/size/family. Leaves unsupported fields untouched. */
+function parseFontShorthand(props: CSSProperty, val: string): void {
+  const parts = val.trim().split(/\s+/);
+  const sizeIndex = parts.findIndex((part) => /^\d+(?:\.\d+)?(?:px|pt|em|rem)?(?:\/.+)?$/.test(part));
+  if (sizeIndex < 0) return;
+  const beforeSize = parts.slice(0, sizeIndex);
+  const size = parts[sizeIndex].split("/")[0];
+  const family = parts.slice(sizeIndex + 1).join(" ").trim();
+  if (size) props.fontSize = size;
+  if (family) props.fontFamily = family;
+  for (const part of beforeSize) {
+    const lower = part.toLowerCase();
+    if (lower === "italic" || lower === "oblique" || lower === "normal") props.fontStyle = lower;
+    else if (lower === "bold" || lower === "bolder" || lower === "lighter" || /^\d{3}$/.test(lower)) props.fontWeight = lower;
+  }
+}
+
 /** Assign a CSS property to the CSSProperty object. Unknown properties are silently dropped. */
 function assignProp(props: CSSProperty, prop: string, val: string): void {
   switch (prop) {
@@ -310,15 +330,17 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "background":
     case "background-color": props.background = val; break;
     // Text
-    case "font": props.font = val; break;
+    case "font": props.font = val; parseFontShorthand(props, val); break;
     case "font-family": props.fontFamily = val; break;
     case "font-size": props.fontSize = val; break;
     case "text-align": props.textAlign = val; break;
     case "text-decoration": props.textDecoration = val; break;
     case "font-weight": props.fontWeight = val; break;
+    case "font-style": props.fontStyle = val; break;
     case "font-smoothing":
     case "font-smooth":
     case "-webkit-font-smoothing": props.fontSmoothing = val; break;
+    case "font-subset": props.fontSubset = val; break;
     case "line-height": props.lineHeight = val; break;
     case "letter-spacing": props.letterSpacing = val; break;
     case "white-space": props.whiteSpace = val; break;

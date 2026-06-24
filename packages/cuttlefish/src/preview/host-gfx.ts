@@ -41,6 +41,7 @@ export class HostAdafruitGFX {
   private textSizeX = 1;
   private textSizeY = 1;
   private wrap = true;
+  private clipRect: { x: number; y: number; w: number; h: number } | undefined;
 
   constructor(
     readonly width: number,
@@ -58,10 +59,35 @@ export class HostAdafruitGFX {
     // The preview framebuffer is already in display-profile coordinates.
   }
 
+  setClipRect(rect: { x: number; y: number; w: number; h: number } | undefined): void {
+    this.clipRect = rect ? {
+      x: Math.trunc(rect.x),
+      y: Math.trunc(rect.y),
+      w: Math.max(0, Math.trunc(rect.w)),
+      h: Math.max(0, Math.trunc(rect.h)),
+    } : undefined;
+  }
+
+  withClipRect<T>(rect: { x: number; y: number; w: number; h: number } | undefined, fn: () => T): T {
+    const previous = this.clipRect;
+    this.setClipRect(rect);
+    try {
+      return fn();
+    } finally {
+      this.clipRect = previous;
+    }
+  }
+
+  private insideClip(x: number, y: number): boolean {
+    const clip = this.clipRect;
+    return !clip || (x >= clip.x && y >= clip.y && x < clip.x + clip.w && y < clip.y + clip.h);
+  }
+
   drawPixel(x: number, y: number, color: number): void {
     x = Math.trunc(x);
     y = Math.trunc(y);
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return;
+    if (!this.insideClip(x, y)) return;
     this.buffer[y * this.width + x] = color & 0xffff;
   }
 
@@ -88,6 +114,12 @@ export class HostAdafruitGFX {
     if (y0 < 0) y0 = 0;
     if (x1 > this.width) x1 = this.width;
     if (y1 > this.height) y1 = this.height;
+    if (this.clipRect) {
+      x0 = Math.max(x0, this.clipRect.x);
+      y0 = Math.max(y0, this.clipRect.y);
+      x1 = Math.min(x1, this.clipRect.x + this.clipRect.w);
+      y1 = Math.min(y1, this.clipRect.y + this.clipRect.h);
+    }
     if (x0 >= x1 || y0 >= y1) return;
 
     const c = color & 0xffff;

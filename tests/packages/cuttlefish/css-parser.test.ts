@@ -60,9 +60,19 @@ describe("CSS subset parser", () => {
   });
 
   it("parses font family and smoothing declarations", () => {
-    const rules = parseCss(`#title { font-family: "FreeSans"; font-smoothing: antialiased; }`);
+    const rules = parseCss(`#title { font-family: "FreeSans"; font-style: italic; font-smoothing: antialiased; font-subset: fallback; }`);
     expect(rules[0].properties.fontFamily).toBe('"FreeSans"');
+    expect(rules[0].properties.fontStyle).toBe("italic");
     expect(rules[0].properties.fontSmoothing).toBe("antialiased");
+    expect(rules[0].properties.fontSubset).toBe("fallback");
+  });
+
+  it("parses font shorthand into variant, size, and family fields", () => {
+    const rules = parseCss(`#title { font: italic bold 18px FreeSans; }`);
+    expect(rules[0].properties.fontStyle).toBe("italic");
+    expect(rules[0].properties.fontWeight).toBe("bold");
+    expect(rules[0].properties.fontSize).toBe("18px");
+    expect(rules[0].properties.fontFamily).toBe("FreeSans");
   });
 
   it("parses @font-face declarations", () => {

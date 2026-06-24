@@ -226,7 +226,7 @@ function emitFontTables(model: UIProgram): string {
 
   const lines: string[] = [];
   for (const asset of assets) {
-    lines.push(`// Font ${asset.id}: ${asset.family} ${asset.px}px`);
+    lines.push(`// Font ${asset.id}: ${asset.family} ${asset.px}px ${asset.fontWeight} ${asset.fontStyle} ${asset.subset}`);
     lines.push(`static const uint8_t __ui_font_${asset.id}_alpha[] = {`);
     lines.push(byteArray(asset.alpha));
     lines.push(`};`);

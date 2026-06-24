@@ -24,6 +24,8 @@ export interface DisplayInitOp {
   height: number;
   /** Driver id, e.g. "ili9341" — must be in supportedDisplayDrivers() */
   driver: string;
+  /** Optional SPI clock frequency in Hz for SPI-backed displays. */
+  spiFrequency?: number;
 }
 
 export interface DisplayFillRectOp {

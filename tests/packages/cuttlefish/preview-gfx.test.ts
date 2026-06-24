@@ -254,6 +254,62 @@ describe("PreviewUIRuntime", () => {
     }
   });
 
+  it("clips partially visible scroll children instead of skipping them", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 10,
+        height: 8,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, box: { x: 0, y: 0, w: 10, h: 8 }, subtreeEnd: 3 }),
+          makeNode({
+            index: 1,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 10, h: 6 },
+            hasBg: true,
+            bg: 0x0000,
+            parentIndex: 0,
+            scrollable: true,
+            scrollY: 5,
+            contentHeight: 12,
+            subtreeEnd: 3,
+          }),
+          makeNode({
+            index: 2,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 2, w: 10, h: 8 },
+            hasBg: true,
+            bg: 0x07e0,
+            parentIndex: 1,
+            subtreeEnd: 3,
+          }),
+        ],
+        transitions: [],
+      },
+      font: [],
+      bindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      expect(runtime.gfx.buffer[0 * 10 + 1]).toBe(0x07e0);
+      expect(runtime.gfx.buffer[4 * 10 + 1]).toBe(0x07e0);
+      expect(runtime.gfx.buffer[6 * 10 + 1]).toBe(0x0000);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   it("renders input fields and commits text through the preview keyboard", async () => {
     const runtime = new PreviewUIRuntime({
       projectRoot: "",

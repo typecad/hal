@@ -394,6 +394,35 @@ export class PreviewUIRuntime {
     return false;
   }
 
+  private scrollClipForNode(nodeIndex: number): { x: number; y: number; w: number; h: number } | undefined {
+    let parent = this.nodes[nodeIndex].parentIndex;
+    let clip: { x: number; y: number; w: number; h: number } | undefined;
+    while (parent >= 0 && this.nodes[parent]) {
+      const scrollParent = this.nodes[parent];
+      if (scrollParent.scrollable) {
+        const next = { x: scrollParent.box.x, y: scrollParent.box.y, w: scrollParent.box.w, h: scrollParent.box.h };
+        if (!clip) {
+          clip = next;
+        } else {
+          const x0 = Math.max(clip.x, next.x);
+          const y0 = Math.max(clip.y, next.y);
+          const x1 = Math.min(clip.x + clip.w, next.x + next.w);
+          const y1 = Math.min(clip.y + clip.h, next.y + next.h);
+          clip = { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+        }
+      }
+      parent = scrollParent.parentIndex;
+    }
+    return clip;
+  }
+
+  private rectIntersectsClip(node: MutableNode, drawY: number, clip: { x: number; y: number; w: number; h: number }): boolean {
+    return node.box.x + node.box.w > clip.x &&
+      node.box.x < clip.x + clip.w &&
+      drawY + node.box.h > clip.y &&
+      drawY < clip.y + clip.h;
+  }
+
   private clearDirtyScrollViewports(): boolean {
     let changed = false;
     for (const node of this.nodes) {
@@ -552,7 +581,8 @@ export class PreviewUIRuntime {
       if (!node.dirty) continue;
       if (!node.visible) continue;
       const drawY = this.drawYForNode(node.index);
-      if (this.isClippedByScroll(node.index, drawY)) {
+      const scrollClip = this.scrollClipForNode(node.index);
+      if (scrollClip && !this.rectIntersectsClip(node, drawY, scrollClip)) {
         node.dirty = false;
         continue;
       }
@@ -565,33 +595,35 @@ export class PreviewUIRuntime {
       else if (node.textAlign === 2) textX = node.box.x + node.box.w - tw;
       const bColor = node.borderColor || node.fg;
 
-      switch (node.kind) {
-        case "fill":
-          if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
-          if (node.borderStyle === 1) this.gfx.drawRect(node.box.x, drawY, node.box.w, node.box.h, bColor);
-          break;
-        case "text":
-          this.drawTextNode(node, displayText, tw, textX, drawY, ts);
-          break;
-        case "button":
-          this.drawButtonNode(node, displayText, tw, bColor, drawY, ts);
-          break;
-        case "check":
-          this.drawCheckNode(node, displayText, tw, drawY, ts);
-          break;
-        case "radio":
-          this.drawRadioNode(node, displayText, tw, drawY, ts);
-          break;
-        case "progress":
-          this.drawProgressNode(node, drawY);
-          break;
-        case "range":
-          this.drawRangeNode(node, drawY);
-          break;
-        case "input":
-          this.drawInputNode(node, drawY);
-          break;
-      }
+      this.gfx.withClipRect(scrollClip, () => {
+        switch (node.kind) {
+          case "fill":
+            if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
+            if (node.borderStyle === 1) this.gfx.drawRect(node.box.x, drawY, node.box.w, node.box.h, bColor);
+            break;
+          case "text":
+            this.drawTextNode(node, displayText, tw, textX, drawY, ts);
+            break;
+          case "button":
+            this.drawButtonNode(node, displayText, tw, bColor, drawY, ts);
+            break;
+          case "check":
+            this.drawCheckNode(node, displayText, tw, drawY, ts);
+            break;
+          case "radio":
+            this.drawRadioNode(node, displayText, tw, drawY, ts);
+            break;
+          case "progress":
+            this.drawProgressNode(node, drawY);
+            break;
+          case "range":
+            this.drawRangeNode(node, drawY);
+            break;
+          case "input":
+            this.drawInputNode(node, drawY);
+            break;
+        }
+      });
       changed = true;
       node.dirty = false;
     }

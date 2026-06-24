@@ -27,6 +27,7 @@ export interface ILI9341Context {
   height: number;
   rotation?: number;
   backlight?: number;
+  spiFrequency?: number;
 }
 
 /** Render a color value as a C++ hex literal (e.g. 0x07e0) for readable RGB565. */
@@ -47,7 +48,7 @@ export function resolveILI9341Op(
       return {
         code: [
           ctx.backlight ? `pinMode(${ctx.backlight}, OUTPUT); digitalWrite(${ctx.backlight}, HIGH);` : ``,
-          `${DISPLAY_VAR}.begin();`,
+          ctx.spiFrequency ? `${DISPLAY_VAR}.begin(${ctx.spiFrequency});` : `${DISPLAY_VAR}.begin();`,
           `${DISPLAY_VAR}.setRotation(${ctx.rotation ?? 1});`,
           `${DISPLAY_VAR}.fillScreen(0x0000);`,
         ].filter(Boolean).join("\n"),

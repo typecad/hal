@@ -5,6 +5,15 @@
 @font-face {
   font-family: "ColibriDemo";
   src: url("CALIBRI.TTF");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRIB.TTF");
+  font-weight: 700;
+  font-style: normal;
 }
 
 screen {

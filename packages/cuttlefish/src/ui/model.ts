@@ -2,7 +2,7 @@ import type { DisplayProfile } from "../api/shared/display-profile.js";
 import { resolveColor } from "./color.js";
 import type { CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";
-import { fontPxOf, normalizeFontFamily } from "./font-assets.js";
+import { selectFontAssetForStyle } from "./font-assets.js";
 import type { Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
 
@@ -162,11 +162,7 @@ function fontAntialiasOf(style: CSSProperty, display?: DisplayProfile): boolean 
 }
 
 function fontFaceOf(style: CSSProperty, fontAssets: UIFontAssetModel[]): number {
-  const family = normalizeFontFamily(style.fontFamily);
-  if (!family) return 0;
-  const px = fontPxOf(style);
-  const match = fontAssets.find((asset) =>
-    asset.family.toLowerCase() === family.toLowerCase() && asset.px === px);
+  const match = selectFontAssetForStyle(fontAssets, style);
   return match?.id ?? 0;
 }
 

@@ -49,6 +49,7 @@ export interface DisplayProfile {
   colorFormat: "rgb565" | "mono";
   rotation: number;
   backlight?: number;
+  spiFrequency?: number;
   spiPins?: { mosi: number; sck: number; miso: number };
   touch?: TouchProfile;
   /** Enable antialiased rendering for circles, lines, rounded corners, and text
@@ -65,6 +66,7 @@ export interface DisplayConfig {
   colorFormat?: "rgb565" | "mono";
   rotation?: number;
   backlight?: number;
+  spiFrequency?: number;
   spiPins?: { mosi: number; sck: number; miso: number };
   touch?: TouchProfile | false;
   cs?: number;
@@ -96,6 +98,7 @@ export function resolveDisplayProfile(
       colorFormat: config.colorFormat ?? "rgb565",
       rotation: config.rotation ?? 1,
       backlight: config.backlight,
+      spiFrequency: config.spiFrequency,
       spiPins: config.spiPins,
       touch: config.touch === false ? undefined : config.touch,
     };
@@ -106,6 +109,7 @@ export function resolveDisplayProfile(
   if (config.colorFormat !== undefined) base.colorFormat = config.colorFormat;
   if (config.rotation !== undefined) base.rotation = config.rotation;
   if (config.backlight !== undefined) base.backlight = config.backlight;
+  if (config.spiFrequency !== undefined) base.spiFrequency = config.spiFrequency;
   if (config.spiPins !== undefined) base.spiPins = config.spiPins;
   if (config.touch === false) base.touch = undefined;
   else if (config.touch !== undefined) base.touch = config.touch;

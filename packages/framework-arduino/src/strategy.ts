@@ -1313,6 +1313,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         width: op.width, height: op.height,
         rotation: dop.rotation ?? 1,
         backlight: dop.backlight ?? 17,
+        spiFrequency: dop.spiFrequency,
       };
     }
     // Only resolve once a display is initialized (display.init sets the context).

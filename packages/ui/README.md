@@ -145,13 +145,39 @@ All standard CSS color formats are supported:
 |---|---|---|
 | `color` | any color | Text foreground color |
 | `font-family` | `"MyFont"` | Uses a generated font when matched by `@font-face`; otherwise the built-in bitmap font |
-| `font-size` | `16px` | Maps to GFX textSize 2 |
+| `font-size` | `16px` | Generated fonts are rasterized at this pixel size; bitmap text maps to GFX text size |
+| `font` | `italic bold 18px DeviceSans` | Shorthand support for style, weight, size, and family |
 | `text-align` | `left`, `center`, `right` | Horizontal alignment within the box |
 | `text-decoration` | `underline`, `none` | Underline drawn below text |
-| `font-weight` | `bold`, `normal` | Parsed (visual effect limited) |
+| `font-weight` | `normal`, `bold`, `400`, `700` | Selects the matching `@font-face` variant when available |
+| `font-style` | `normal`, `italic`, `oblique` | Selects the matching `@font-face` variant when available |
 | `font-smoothing` | `antialiased`, `none` | Overrides display-level text antialiasing |
+| `font-subset` | `exact`, `fallback` | Controls generated-font glyph selection |
 
-Local TTF/OTF fonts can be referenced with `@font-face`. The transpiler subsets the characters used by the UI into compact 4-bit alpha glyph tables.
+### Fonts
+
+Local TTF/OTF fonts can be referenced with `@font-face`. The transpiler does
+not copy the whole font to the board. It reads the font at build time, rasterizes
+only the glyphs needed by the UI, packs them as 4-bit alpha bitmap data, and
+emits those tables into the firmware. On ESP32-class targets those generated
+tables are `static const` data in flash/rodata; the original TTF/OTF file is not
+held in RAM on the hardware.
+
+#### Install a font in a project
+
+Put font files somewhere inside the project, usually next to the `.ui.css` file
+or under a local `fonts/` folder:
+
+```text
+src/
+  app.ui.html
+  app.ui.css
+  fonts/
+    DeviceSans-Regular.ttf
+    DeviceSans-Bold.ttf
+```
+
+Reference them from CSS with paths relative to the `.ui.css` file:
 
 ```css
 @font-face {
@@ -165,6 +191,162 @@ Local TTF/OTF fonts can be referenced with `@font-face`. The transpiler subsets 
   font-smoothing: antialiased;
 }
 ```
+
+Remote font URLs are not supported for embedded builds. Use local files so the
+build is reproducible and does not depend on network access.
+
+#### Declare variants
+
+Declare each weight/style variant as its own `@font-face`. The UI compiler
+chooses the closest matching variant for each node based on `font-family`,
+`font-weight`, `font-style`, and `font-size`.
+
+```css
+@font-face {
+  font-family: "DeviceSans";
+  src: url("fonts/DeviceSans-Regular.ttf");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "DeviceSans";
+  src: url("fonts/DeviceSans-Bold.ttf");
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "DeviceSans";
+  src: url("fonts/DeviceSans-Italic.ttf");
+  font-weight: 400;
+  font-style: italic;
+}
+
+#title {
+  font-family: "DeviceSans";
+  font-size: 24px;
+  font-weight: bold;
+}
+```
+
+Every distinct `font-family` + resolved font file + `font-size` + variant becomes
+one generated font asset. Reusing the same face and size across many nodes
+shares one asset. Using the same face at `16px` and `24px` creates two assets
+because each size is rasterized separately.
+
+#### Exact subsetting and icon fonts
+
+By default, generated fonts use `font-subset: exact`. Only the literal
+characters found in static UI text, placeholders, and option labels are encoded.
+This is useful for icon fonts and symbol fonts:
+
+```html
+<text id="wifiIcon">✓</text>
+```
+
+```css
+@font-face {
+  font-family: "DeviceIcons";
+  src: url("fonts/device-icons.ttf");
+}
+
+#wifiIcon {
+  font-family: "DeviceIcons";
+  font-size: 20px;
+  font-subset: exact;
+}
+```
+
+In this case, only the checkmark glyph is emitted for that font/size, not the
+whole icon font and not the common ASCII set.
+
+Generated font glyph lookup supports UTF-8 text for codepoints in the Basic
+Multilingual Plane (`U+0000` to `U+FFFF`). Many icon fonts use Private Use Area
+codepoints such as `U+E000`; those are supported. Emoji and other characters
+above `U+FFFF` are not currently supported by the generated-font runtime.
+
+Wingdings-style fonts can work, but be careful: some older symbol fonts use
+legacy character mappings rather than standard Unicode symbols. Copy the exact
+character/codepoint that the font maps to the glyph you want, or prefer a
+Unicode icon font when possible.
+
+#### Dynamic text and fallback glyphs
+
+Exact subsetting can only see text known at build time. If a generated font is
+used on a node whose text changes at runtime, include a fallback character set:
+
+```css
+#counter {
+  font-family: "DeviceSans";
+  font-size: 18px;
+  font-subset: fallback;
+}
+```
+
+`font-subset: fallback` includes the static text plus a small common ASCII set
+containing digits, letters, spaces, and punctuation. Use it for counters,
+formatted numeric values, input fields, or any generated-font text binding that
+can produce characters not present in the initial HTML.
+
+If the node uses the built-in bitmap font, `font-subset` has no effect.
+
+#### Smoothing
+
+Generated TTF/OTF glyphs are rasterized as alpha masks. Use
+`font-smoothing: antialiased` to blend edge pixels for smoother text on RGB
+displays. Use `font-smoothing: none` to threshold the same glyph masks for a
+sharper, more pixel-like look. On monochrome displays smoothing is disabled.
+
+```css
+.smooth {
+  font-family: "DeviceSans";
+  font-size: 18px;
+  font-smoothing: antialiased;
+}
+
+.sharp {
+  font-family: "DeviceSans";
+  font-size: 18px;
+  font-smoothing: none;
+}
+```
+
+#### Converting fonts
+
+Use TTF or OTF files when possible. WOFF/WOFF2 web fonts should be converted to
+TTF/OTF before use.
+
+Common conversion options:
+
+- FontForge GUI: open the source font, then use `File -> Generate Fonts...` and
+  choose TrueType (`.ttf`) or OpenType (`.otf`).
+- FontForge CLI:
+
+```bash
+fontforge -lang=ff -c 'Open($1); Generate($2)' input.otf output.ttf
+```
+
+- WOFF2 tools: use `woff2_decompress input.woff2` to produce a TTF-flavored
+  font when the source is a WOFF2 web font.
+- fonttools can inspect and subset fonts:
+
+```bash
+python -m pip install fonttools brotli
+pyftsubset DeviceSans.ttf --text="ABC123" --unicodes=U+2713 --output-file=DeviceSans-subset.ttf
+```
+
+Manual external subsetting is optional. TypeCAD already subsets the emitted
+hardware glyphs. External subsetting is mainly useful when you need to distribute
+a smaller source font file, remove unused font tables for licensing reasons, or
+speed up build-time parsing of a very large font.
+
+#### Licensing
+
+Do not assume system fonts are redistributable. Fonts such as commercial OS
+fonts may be licensed for local use but not for checking into a repository or
+shipping in a firmware project. Prefer open-licensed fonts, or keep proprietary
+fonts outside shared source control if your license requires it.
 
 #### Visual
 | Property | Values | Notes |
