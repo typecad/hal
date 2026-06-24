@@ -711,29 +711,12 @@ static inline void ui_tick(uint16_t deltaMs) {
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
-#ifdef UI_AA
-        // AA text: render to canvas, blend glyph edges toward bg, push.
-        if (tw > 0 && ts > 0) {
-          uint16_t textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          int16_t th = ts * 8;
-          GFXcanvas16* c = ui_aa_begin(tw, th, textBg);
-          c->setCursor(0, 0);
-          c->setTextColor(__ui_nodes[i].fg, textBg);
-          c->setTextSize(ts);
-          c->print(displayText);
-          ui_aa_blend_text_edges(c, __ui_nodes[i].fg, textBg);
-          ui_aa_push(c, textX, drawY);
-          if (__ui_nodes[i].underline)
-            __ui_gfx->drawFastHLine(textX, drawY + ts * 8 - 1, tw, __ui_nodes[i].fg);
-        }
-#else
         __ui_gfx->setCursor(textX, drawY);
         __ui_gfx->setTextColor(__ui_nodes[i].fg);
         __ui_gfx->setTextSize(ts);
         __ui_gfx->print(displayText);
         if (__ui_nodes[i].underline)
           __ui_gfx->drawFastHLine(textX, drawY + ts * 8 - 1, tw, __ui_nodes[i].fg);
-#endif
         break;
       case NODE_BUTTON:
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
@@ -1170,51 +1153,6 @@ static inline void ui_aa_fill_circle(GFXcanvas16* c, int16_t cx, int16_t cy, flo
       if (x >= 0 && x < c->width() && y >= 0 && y < c->height()) c->drawPixel(x, y, color);
     }
   }
-}
-
-// After text is drawn to a canvas, blend edge foreground pixels toward the
-// background based on 3×3 neighbor density. Interior pixels (all 8 neighbors
-// are foreground) stay solid; edge pixels get blended for a smoothing effect.
-// Two-pass: first scan the original buffer to compute coverage, then apply —
-// avoids in-place feedback where a blended pixel corrupts the neighbor count
-// of the next pixel.
-static inline void ui_aa_blend_text_edges(GFXcanvas16* c, uint16_t fgColor, uint16_t bgColor) {
-  int16_t w = c->width(), h = c->height();
-  uint32_t total = (uint32_t)w * h;
-  if (total == 0) return;
-  // Pass 1: compute coverage per pixel (255 = interior, 0 = no fg, 1-254 = edge).
-  uint8_t* coverage = (uint8_t*)malloc(total);
-  if (!coverage) return;  // out of RAM — skip AA, draw aliased
-  const uint16_t* buf = c->getBuffer();
-  for (int16_t y = 0; y < h; y++) {
-    for (int16_t x = 0; x < w; x++) {
-      uint32_t idx = (uint32_t)x + (uint32_t)y * w;
-      if (buf[idx] != fgColor) { coverage[idx] = 0; continue; }
-      // Count foreground neighbors in 3×3 window.
-      uint8_t count = 0;
-      for (int8_t dy = -1; dy <= 1; dy++) {
-        for (int8_t dx = -1; dx <= 1; dx++) {
-          if (dx == 0 && dy == 0) continue;
-          int16_t nx = x + dx, ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) { count++; continue; }
-          if (buf[(uint32_t)nx + (uint32_t)ny * w] == fgColor) count++;
-        }
-      }
-      coverage[idx] = (count >= 8) ? 255 : count;  // 255 = interior marker
-    }
-  }
-  // Pass 2: apply blends. Interior (255) and non-fg (0) stay unchanged.
-  uint16_t* dst = c->getBuffer();
-  for (int16_t y = 0; y < h; y++) {
-    for (int16_t x = 0; x < w; x++) {
-      uint32_t idx = (uint32_t)x + (uint32_t)y * w;
-      uint8_t cov = coverage[idx];
-      if (cov == 0 || cov == 255) continue;  // skip non-fg and interior
-      uint8_t opacity = (uint8_t)((uint16_t)(cov + 1) * 100 / 9);
-      dst[idx] = ui_blend565(fgColor, bgColor, opacity);
-    }
-  }
-  free(coverage);
 }
 
 #endif // UI_AA

@@ -14,6 +14,13 @@ export interface ScreenTree {
   speedSlow: RadioElement;
   speedFast: RadioElement;
   progress: ProgressElement;
+  aaLabel: TextElement;
+  aaRow: ViewElement;
+  aaOn1: RadioElement;
+  aaOn2: RadioElement;
+  aaOff1: RadioElement;
+  aaCheck1: CheckElement;
+  aaCheck2: CheckElement;
   rangeRow: ViewElement;
   points: RangeElement;
   inputRow: ViewElement;
