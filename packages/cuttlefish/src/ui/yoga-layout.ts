@@ -161,6 +161,11 @@ export class YogaLayoutEngine implements LayoutEngine {
     // Flex grow/shrink/basis
     if (s.flexGrow) yn.setFlexGrow(cssNum(s.flexGrow));
     if (s.flexShrink) yn.setFlexShrink(cssNum(s.flexShrink));
+    if (s.flexBasis) {
+      const basis = cssNum(s.flexBasis);
+      if (s.flexBasis === "auto") yn.setFlexBasisAuto();
+      else yn.setFlexBasis(basis);
+    }
 
     // Order (Yoga may not expose setOrder in its types, but the runtime has it)
     if (s.order) (yn as any).setOrder?.(cssNum(s.order));

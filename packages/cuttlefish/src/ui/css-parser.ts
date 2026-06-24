@@ -92,6 +92,8 @@ export interface CSSProperty {
   visibility?: string;      // visible | hidden
   outline?: string;
   boxShadow?: string;
+  textShadow?: string;
+  transform?: string;
 }
 
 export interface CSSRule {
@@ -379,6 +381,8 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "visibility": props.visibility = val; break;
     case "outline": props.outline = val; break;
     case "box-shadow": props.boxShadow = val; break;
+    case "text-shadow": props.textShadow = val; break;
+    case "transform": props.transform = val; break;
     // Unknown properties are silently dropped (forward-compatible).
   }
 }

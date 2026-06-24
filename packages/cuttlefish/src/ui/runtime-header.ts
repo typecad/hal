@@ -19,6 +19,9 @@ export function emitRuntimeHeader(): string {
 #define __TC_UI_RUNTIME
 #include <stdint.h>
 #define UI_TEXT_BUF 32   // single source of truth: UINode field + textFn size arg + snprintf bound
+#ifndef UI_MAX_BUFFERED_PAINT_PIXELS
+#define UI_MAX_BUFFERED_PAINT_PIXELS 20000
+#endif
 
 enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
@@ -57,7 +60,18 @@ struct UINode {
   uint8_t fontFace;     // 0 = classic GFX bitmap font; otherwise UIFontFace id
   uint16_t borderColor; // resolved color for the border (0 = use fg)
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
+  uint8_t borderWidth;  // px, 0=none
   uint8_t borderRadius; // px, 0=square
+  uint8_t gradientEnabled; // 0=none, 1=vertical, 2=horizontal
+  uint16_t gradientColor1;
+  uint16_t gradientColor2;
+  uint16_t outlineColor;
+  uint8_t outlineStyle; // 0=none, 1=solid, 2=dashed
+  uint8_t outlineWidth;
+  int8_t transformOffsetX; // draw-only transform: translate(...)
+  int8_t transformOffsetY;
+  int8_t pressedOffsetX; // draw-only :pressed offset, no Yoga relayout
+  int8_t pressedOffsetY;
   uint8_t shadowCount;  // 0-4 active shadows
   int8_t shadowOffsetX[4];
   int8_t shadowOffsetY[4];
@@ -65,6 +79,12 @@ struct UINode {
   uint16_t shadowColor[4];
   uint8_t shadowAlpha[4];
   uint8_t shadowInset[4]; // 0=outset, 1=inset
+  uint8_t textShadowCount;
+  int8_t textShadowOffsetX;
+  int8_t textShadowOffsetY;
+  uint8_t textShadowBlur;
+  uint16_t textShadowColor;
+  uint8_t textShadowAlpha;
   uint8_t underline;    // 0=none, 1=underline
   uint8_t visible;      // 0=hidden, 1=visible
   uint8_t opacity;      // 0-100
@@ -136,6 +156,7 @@ static inline uint8_t ui_font_alpha_at(const UIFontFace* face, const UIFontGlyph
 static inline uint16_t ui_asset_text_width(const char* text, const UIFontFace* face);
 static inline uint8_t ui_asset_text_height(const UIFontFace* face);
 static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t antialias, uint8_t fontFace);
+static inline void ui_node_paint_rect(uint8_t nodeIdx, int16_t baseX, int16_t baseY, int16_t drawX, int16_t drawY, uint16_t textW, uint8_t textSize, UIRect* out);
 
 static Adafruit_GFX* __ui_gfx = &__tc_display;
 static GFXcanvas16* __ui_scroll_canvas = nullptr;
@@ -219,8 +240,24 @@ static inline uint8_t ui_is_ancestor_of(uint8_t candidate, uint8_t nodeIdx) {
   return 0;
 }
 
-static inline int16_t ui_draw_y_for_node(uint8_t nodeIdx) {
-  int16_t y = __ui_nodes[nodeIdx].box.y;
+static inline int16_t ui_pressed_offset_x_for_node(uint8_t nodeIdx) {
+  return __ui_nodes[nodeIdx].value > 0 ? __ui_nodes[nodeIdx].pressedOffsetX : 0;
+}
+
+static inline int16_t ui_pressed_offset_y_for_node(uint8_t nodeIdx) {
+  return __ui_nodes[nodeIdx].value > 0 ? __ui_nodes[nodeIdx].pressedOffsetY : 0;
+}
+
+static inline int16_t ui_base_draw_x_for_node(uint8_t nodeIdx) {
+  return __ui_nodes[nodeIdx].box.x + __ui_nodes[nodeIdx].transformOffsetX;
+}
+
+static inline int16_t ui_draw_x_for_node(uint8_t nodeIdx) {
+  return ui_base_draw_x_for_node(nodeIdx) + ui_pressed_offset_x_for_node(nodeIdx);
+}
+
+static inline int16_t ui_base_draw_y_for_node(uint8_t nodeIdx) {
+  int16_t y = __ui_nodes[nodeIdx].box.y + __ui_nodes[nodeIdx].transformOffsetY;
   uint8_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
     if (__ui_nodes[p].scrollable) y -= __ui_nodes[p].scrollY;
@@ -229,20 +266,122 @@ static inline int16_t ui_draw_y_for_node(uint8_t nodeIdx) {
   return y;
 }
 
-static inline uint8_t ui_is_clipped_by_scroll(uint8_t nodeIdx, int16_t drawY) {
+static inline int16_t ui_draw_y_for_node(uint8_t nodeIdx) {
+  return ui_base_draw_y_for_node(nodeIdx) + ui_pressed_offset_y_for_node(nodeIdx);
+}
+
+static inline uint16_t ui_parent_clear_color(uint8_t nodeIdx) {
+  uint8_t p = __ui_nodes[nodeIdx].parent;
+  if (p != UI_NO_PARENT && p < __ui_node_count) {
+    return __ui_nodes[p].hasBg ? __ui_nodes[p].bg : __ui_nodes[p].clearColor;
+  }
+  return __ui_nodes[nodeIdx].clearColor;
+}
+
+static inline void ui_shadow_extents(uint8_t nodeIdx, int16_t* left, int16_t* top, int16_t* right, int16_t* bottom) {
+  *left = 0; *top = 0; *right = 0; *bottom = 0;
+  for (uint8_t s = 0; s < __ui_nodes[nodeIdx].shadowCount && s < 4; s++) {
+    if (__ui_nodes[nodeIdx].shadowInset[s]) continue;
+    int16_t blur = __ui_nodes[nodeIdx].shadowBlur[s];
+    if (blur == 0) blur = 1;
+    int16_t ox = __ui_nodes[nodeIdx].shadowOffsetX[s];
+    int16_t oy = __ui_nodes[nodeIdx].shadowOffsetY[s];
+    int16_t l = blur - ox;
+    int16_t t = blur - oy;
+    int16_t r = blur + ox;
+    int16_t b = blur + oy;
+    if (l > *left) *left = l;
+    if (t > *top) *top = t;
+    if (r > *right) *right = r;
+    if (b > *bottom) *bottom = b;
+  }
+}
+
+static inline void ui_expand_rect(int16_t* x0, int16_t* y0, int16_t* x1, int16_t* y1,
+                                  int16_t rx0, int16_t ry0, int16_t rx1, int16_t ry1) {
+  if (rx0 < *x0) *x0 = rx0;
+  if (ry0 < *y0) *y0 = ry0;
+  if (rx1 > *x1) *x1 = rx1;
+  if (ry1 > *y1) *y1 = ry1;
+}
+
+static inline void ui_node_paint_rect(uint8_t nodeIdx, int16_t baseX, int16_t baseY, int16_t drawX, int16_t drawY, uint16_t textW, uint8_t textSize, UIRect* out) {
+  int16_t shadowL, shadowT, shadowR, shadowB;
+  ui_shadow_extents(nodeIdx, &shadowL, &shadowT, &shadowR, &shadowB);
+
+  int16_t faceW = __ui_nodes[nodeIdx].box.w;
+  int16_t faceH = __ui_nodes[nodeIdx].box.h;
+  if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
+    if (__ui_nodes[nodeIdx].lastTextWidth > faceW) faceW = __ui_nodes[nodeIdx].lastTextWidth;
+    if ((int16_t)textW > faceW) faceW = (int16_t)textW;
+  }
+  if (__ui_nodes[nodeIdx].kind == NODE_TEXT) {
+    int16_t glyphH = textSize * 8;
+    if (glyphH > faceH) faceH = glyphH;
+  }
+
+  int16_t shadowX0 = baseX - shadowL;
+  int16_t shadowY0 = baseY - shadowT;
+  int16_t shadowX1 = baseX + __ui_nodes[nodeIdx].box.w + shadowR;
+  int16_t shadowY1 = baseY + __ui_nodes[nodeIdx].box.h + shadowB;
+  int16_t faceX0 = drawX;
+  int16_t faceY0 = drawY;
+  int16_t faceX1 = drawX + faceW;
+  int16_t faceY1 = drawY + faceH;
+  int16_t x0 = shadowX0 < faceX0 ? shadowX0 : faceX0;
+  int16_t y0 = shadowY0 < faceY0 ? shadowY0 : faceY0;
+  int16_t x1 = shadowX1 > faceX1 ? shadowX1 : faceX1;
+  int16_t y1 = shadowY1 > faceY1 ? shadowY1 : faceY1;
+  if (__ui_nodes[nodeIdx].outlineStyle != 0 && __ui_nodes[nodeIdx].outlineWidth > 0) {
+    int16_t o = __ui_nodes[nodeIdx].outlineWidth;
+    ui_expand_rect(&x0, &y0, &x1, &y1, drawX - o, drawY - o, drawX + __ui_nodes[nodeIdx].box.w + o, drawY + __ui_nodes[nodeIdx].box.h + o);
+  }
+  out->x = x0;
+  out->y = y0;
+  out->w = x1 - x0;
+  out->h = y1 - y0;
+}
+
+static inline void ui_clear_press_offset_area(uint8_t nodeIdx, int16_t baseX, int16_t baseY, int16_t drawX, int16_t drawY, uint16_t textW, uint8_t textSize) {
+  if (__ui_nodes[nodeIdx].pressedOffsetX == 0 && __ui_nodes[nodeIdx].pressedOffsetY == 0) return;
+  UIRect r;
+  ui_node_paint_rect(nodeIdx, baseX, baseY, drawX, drawY, textW, textSize, &r);
+  int16_t x0 = r.x;
+  int16_t y0 = r.y;
+  int16_t x1 = r.x + r.w;
+  int16_t y1 = r.y + r.h;
+  __ui_gfx->fillRect(x0, y0, x1 - x0, y1 - y0, ui_parent_clear_color(nodeIdx));
+}
+
+static inline uint8_t ui_should_buffer_paint(uint8_t nodeIdx, int16_t w, int16_t h) {
+  if (w <= 0 || h <= 0) return 0;
+  if (__ui_nodes[nodeIdx].kind == NODE_PROGRESS || __ui_nodes[nodeIdx].kind == NODE_RANGE) return 0;
+  if (__ui_nodes[nodeIdx].kind == NODE_FILL &&
+      !__ui_nodes[nodeIdx].hasBg &&
+      __ui_nodes[nodeIdx].borderStyle == 0 &&
+      __ui_nodes[nodeIdx].outlineStyle == 0 &&
+      __ui_nodes[nodeIdx].shadowCount == 0) return 0;
+  return (uint32_t)w * (uint32_t)h <= UI_MAX_BUFFERED_PAINT_PIXELS;
+}
+
+static inline uint8_t ui_is_rect_clipped_by_scroll(uint8_t nodeIdx, int16_t drawX, int16_t drawY, int16_t drawW, int16_t drawH) {
   uint8_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
     if (__ui_nodes[p].scrollable) {
-      if (__ui_nodes[nodeIdx].box.x < __ui_nodes[p].box.x ||
-          __ui_nodes[nodeIdx].box.x + __ui_nodes[nodeIdx].box.w > __ui_nodes[p].box.x + __ui_nodes[p].box.w ||
+      if (drawX < __ui_nodes[p].box.x ||
+          drawX + drawW > __ui_nodes[p].box.x + __ui_nodes[p].box.w ||
           drawY < __ui_nodes[p].box.y ||
-          drawY + __ui_nodes[nodeIdx].box.h > __ui_nodes[p].box.y + __ui_nodes[p].box.h) {
+          drawY + drawH > __ui_nodes[p].box.y + __ui_nodes[p].box.h) {
         return 1;
       }
     }
     p = __ui_nodes[p].parent;
   }
   return 0;
+}
+
+static inline uint8_t ui_is_clipped_by_scroll(uint8_t nodeIdx, int16_t drawX, int16_t drawY) {
+  return ui_is_rect_clipped_by_scroll(nodeIdx, drawX, drawY, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
 }
 
 // Initial draw: mark all nodes dirty so the first ui_tick renders everything.
@@ -272,6 +411,19 @@ static inline void ui_init(void) {
 static volatile uint32_t __ui_last_edge_time = 0;
 #define UI_DEBOUNCE_MS 50
 
+static inline void ui_set_pressed(uint8_t nodeIdx, uint8_t pressed) {
+  __ui_nodes[nodeIdx].value = pressed ? 1 : 0;
+  ui_mark_dirty(nodeIdx);
+  for (uint8_t i = 0; i < __ui_trans_count; i++) {
+    if (__ui_trans[i].node == nodeIdx) {
+      __ui_trans[i].prevValue = __ui_trans[i].prop == PROP_FG ? __ui_nodes[nodeIdx].fg : __ui_nodes[nodeIdx].bg;
+      __ui_trans[i].targetValue = pressed ? __ui_trans[i].pressedTarget : __ui_trans[i].baseTarget;
+      __ui_trans[i].elapsed = 0;
+      __ui_trans[i].active = 1;
+    }
+  }
+}
+
 // Press / release entry points that node.onPress(pin) lowers to.
 // On press, arm transitions toward the :pressed target color; on release,
 // arm them back toward the base color (interrupt-and-re-lerp from current).
@@ -279,31 +431,13 @@ static inline void ui_on_press(uint8_t nodeIdx) {
   uint32_t now = millis();
   if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
   __ui_last_edge_time = now;
-  __ui_nodes[nodeIdx].value = 1;
-  ui_mark_dirty(nodeIdx);
-  for (uint8_t i = 0; i < __ui_trans_count; i++) {
-    if (__ui_trans[i].node == nodeIdx) {
-      __ui_trans[i].prevValue = __ui_nodes[nodeIdx].bg;
-      __ui_trans[i].targetValue = __ui_trans[i].pressedTarget;
-      __ui_trans[i].elapsed = 0;
-      __ui_trans[i].active = 1;
-    }
-  }
+  ui_set_pressed(nodeIdx, 1);
 }
 static inline void ui_on_release(uint8_t nodeIdx) {
   uint32_t now = millis();
   if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
   __ui_last_edge_time = now;
-  __ui_nodes[nodeIdx].value = 0;
-  ui_mark_dirty(nodeIdx);
-  for (uint8_t i = 0; i < __ui_trans_count; i++) {
-    if (__ui_trans[i].node == nodeIdx) {
-      __ui_trans[i].prevValue = __ui_nodes[nodeIdx].bg;
-      __ui_trans[i].targetValue = __ui_trans[i].baseTarget;
-      __ui_trans[i].elapsed = 0;
-      __ui_trans[i].active = 1;
-    }
-  }
+  ui_set_pressed(nodeIdx, 0);
 }
 
 // Pin-watch callback type: void fn(void)
@@ -405,9 +539,10 @@ static inline void ui_kb_compute_box();
 static int8_t ui_hit_test(int16_t tx, int16_t ty) {
   for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
     if (!__ui_nodes[i].visible) continue;
+    int16_t drawX = ui_draw_x_for_node((uint8_t)i);
     int16_t drawY = ui_draw_y_for_node((uint8_t)i);
-    if (ui_is_clipped_by_scroll((uint8_t)i, drawY)) continue;
-    if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
+    if (ui_is_clipped_by_scroll((uint8_t)i, drawX, drawY)) continue;
+    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       // Skip nodes without any click handler — they're containers, not targets.
       // Exceptions: NODE_RANGE (horizontal drag) and NODE_INPUT (opens keyboard)
@@ -445,8 +580,10 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   // Check if the touch is inside a scrollable container
   for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
     if (!__ui_nodes[i].scrollable || !__ui_nodes[i].visible) continue;
-    if (tx >= __ui_nodes[i].box.x && tx < __ui_nodes[i].box.x + __ui_nodes[i].box.w &&
-        ty >= __ui_nodes[i].box.y && ty < __ui_nodes[i].box.y + __ui_nodes[i].box.h) {
+    int16_t drawX = ui_draw_x_for_node((uint8_t)i);
+    int16_t drawY = ui_draw_y_for_node((uint8_t)i);
+    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
+        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       if (__ui_nodes[i].contentHeight > __ui_nodes[i].box.h) {
         __ui_scroll_node = i;
         break;
@@ -455,7 +592,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   }
   if (node >= 0) {
     if (__ui_nodes[node].kind == NODE_BUTTON) {
-      __ui_nodes[node].value = 1;
+      ui_set_pressed((uint8_t)node, 1);
     }
     // Track range nodes for horizontal drag
     if (__ui_nodes[node].kind == NODE_RANGE) {
@@ -465,7 +602,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       int16_t rMax = __ui_nodes[node].rangeMax;
       int16_t range = rMax - rMin;
       if (range <= 0) range = 100;
-      int16_t relX = tx - __ui_nodes[node].box.x - 4;
+      int16_t relX = tx - ui_draw_x_for_node((uint8_t)node) - 4;
       int16_t usable = __ui_nodes[node].box.w - 8;
       if (usable <= 0) usable = 1;
       __ui_nodes[node].value = rMin + ((int32_t)relX * range) / usable;
@@ -510,7 +647,7 @@ static void ui_touch_up() {
     }
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
     if (__ui_nodes[clickedNode].kind == NODE_BUTTON) {
-      __ui_nodes[clickedNode].value = 0;
+      ui_set_pressed((uint8_t)clickedNode, 0);
     }
     ui_mark_dirty(clickedNode);
   }
@@ -568,7 +705,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
       int16_t rMax = __ui_nodes[__ui_range_node].rangeMax;
       int16_t range = rMax - rMin;
       if (range <= 0) range = 100;
-      int16_t relX = tx - __ui_nodes[__ui_range_node].box.x - 4;
+      int16_t relX = tx - ui_draw_x_for_node((uint8_t)__ui_range_node) - 4;
       int16_t usable = __ui_nodes[__ui_range_node].box.w - 8;
       if (usable <= 0) usable = 1;
       int16_t newVal = rMin + ((int32_t)relX * range) / usable;
@@ -865,10 +1002,35 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t
 }
 #endif
 
-// Draw shadows for an element. Loops over up to 4 shadow specs. Each outset
-// shadow draws concentric expanding rects; each inset shadow draws concentric
-// shrinking rects inside the element bounds. Called BEFORE the element's fill.
-static inline void ui_draw_shadow(uint8_t i, int16_t drawY) {
+// Draw shadows for an element. Loops over up to 4 shadow specs. Outset shadows
+// are drawn behind the element; inset shadows are drawn over the element fill.
+// Draw a gradient fill for an element. Replaces solid fillRect/fillRoundRect.
+static inline void ui_draw_gradient_fill(uint8_t i, int16_t drawY) {
+  int16_t bx = __ui_nodes[i].box.x;
+  int16_t by = drawY;
+  int16_t bw = __ui_nodes[i].box.w;
+  int16_t bh = __ui_nodes[i].box.h;
+  uint16_t c1 = __ui_nodes[i].gradientColor1;
+  uint16_t c2 = __ui_nodes[i].gradientColor2;
+  uint8_t dir = __ui_nodes[i].gradientEnabled;  // 1=vertical, 2=horizontal
+  if (dir == 1) {
+    // Vertical: top=c1, bottom=c2. Draw row by row.
+    for (int16_t y = 0; y < bh; y++) {
+      uint8_t op = (uint8_t)((uint16_t)y * 100 / (bh > 1 ? bh - 1 : 1));
+      uint16_t col = ui_blend565(c1, c2, op);
+      __ui_gfx->drawFastHLine(bx, by + y, bw, col);
+    }
+  } else {
+    // Horizontal: left=c1, right=c2. Draw column by column.
+    for (int16_t x = 0; x < bw; x++) {
+      uint8_t op = (uint8_t)((uint16_t)x * 100 / (bw > 1 ? bw - 1 : 1));
+      uint16_t col = ui_blend565(c1, c2, op);
+      __ui_gfx->drawFastVLine(bx + x, by, bh, col);
+    }
+  }
+}
+
+static inline void ui_draw_shadow(uint8_t i, int16_t drawY, uint8_t insetOnly) {
   if (__ui_nodes[i].shadowCount == 0) return;
   int16_t bx = __ui_nodes[i].box.x;
   int16_t by = drawY;
@@ -882,14 +1044,36 @@ static inline void ui_draw_shadow(uint8_t i, int16_t drawY) {
     uint16_t shadowCol = __ui_nodes[i].shadowColor[s];
     int8_t ox = __ui_nodes[i].shadowOffsetX[s];
     int8_t oy = __ui_nodes[i].shadowOffsetY[s];
-    uint8_t blur = __ui_nodes[i].shadowBlur[s];
+    uint8_t rawBlur = __ui_nodes[i].shadowBlur[s];
+    uint8_t blur = rawBlur;
     if (blur == 0) blur = 1;  // at least 1 pass for a hard shadow
     uint8_t baseAlpha = __ui_nodes[i].shadowAlpha[s];
     uint8_t inset = __ui_nodes[i].shadowInset[s];
+    if (insetOnly && !inset) continue;
+    if (!insetOnly && inset) continue;
+
+    if (inset && rawBlur == 0) {
+      uint16_t insetBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+      uint16_t col = ui_blend565(shadowCol, insetBg, baseAlpha);
+      if (oy > 0) {
+        __ui_gfx->fillRect(bx, by, bw, oy, col);
+      } else if (oy < 0) {
+        __ui_gfx->fillRect(bx, by + bh + oy, bw, -oy, col);
+      }
+      if (ox > 0) {
+        __ui_gfx->fillRect(bx, by, ox, bh, col);
+      } else if (ox < 0) {
+        __ui_gfx->fillRect(bx + bw + ox, by, -ox, bh, col);
+      }
+      if (ox == 0 && oy == 0) {
+        __ui_gfx->drawRect(bx, by, bw, bh, col);
+      }
+      continue;
+    }
 
     for (int8_t pass = blur; pass >= 1; pass--) {
       uint8_t opacity = (uint8_t)((uint16_t)baseAlpha / (pass + 1));
-      uint16_t col = ui_blend565(shadowCol, clearCol, opacity);
+      uint16_t col = ui_blend565(shadowCol, inset ? (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : clearCol) : clearCol, opacity);
       if (inset) {
         // Inset: draw inside the element, shrinking inward by pass.
         int16_t ix = bx + pass;
@@ -923,6 +1107,50 @@ static inline void ui_draw_shadow(uint8_t i, int16_t drawY) {
       }
     }
   }
+}
+
+static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t radius, uint8_t style, uint8_t width, uint16_t color) {
+  if (style == 0 || width == 0 || w <= 0 || h <= 0) return;
+  for (uint8_t b = 0; b < width; b++) {
+    int16_t rx = x + b;
+    int16_t ry = y + b;
+    int16_t rw = w - 2 * b;
+    int16_t rh = h - 2 * b;
+    if (rw <= 0 || rh <= 0) return;
+    uint8_t r = radius > b ? radius - b : 0;
+    if (style == 1) {
+      if (r > 0) __ui_gfx->drawRoundRect(rx, ry, rw, rh, r, color);
+      else __ui_gfx->drawRect(rx, ry, rw, rh, color);
+    } else {
+      for (int16_t dx = 0; dx < rw; dx += 8) {
+        int16_t seg = (dx + 4 <= rw) ? 4 : (rw - dx);
+        if (seg > 0) {
+          __ui_gfx->drawFastHLine(rx + dx, ry, seg, color);
+          __ui_gfx->drawFastHLine(rx + dx, ry + rh - 1, seg, color);
+        }
+      }
+      for (int16_t dy = 0; dy < rh; dy += 8) {
+        int16_t seg = (dy + 4 <= rh) ? 4 : (rh - dy);
+        if (seg > 0) {
+          __ui_gfx->drawFastVLine(rx, ry + dy, seg, color);
+          __ui_gfx->drawFastVLine(rx + rw - 1, ry + dy, seg, color);
+        }
+      }
+    }
+  }
+}
+
+static inline void ui_draw_node_border(uint8_t i, int16_t drawY, uint16_t color) {
+  ui_draw_rect_outline(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
+    __ui_nodes[i].borderRadius, __ui_nodes[i].borderStyle, __ui_nodes[i].borderWidth, color);
+}
+
+static inline void ui_draw_node_outline(uint8_t i, int16_t drawY) {
+  if (__ui_nodes[i].outlineStyle == 0 || __ui_nodes[i].outlineWidth == 0) return;
+  uint8_t w = __ui_nodes[i].outlineWidth;
+  ui_draw_rect_outline(__ui_nodes[i].box.x - w, drawY - w,
+    __ui_nodes[i].box.w + 2 * w, __ui_nodes[i].box.h + 2 * w,
+    __ui_nodes[i].borderRadius + w, __ui_nodes[i].outlineStyle, w, __ui_nodes[i].outlineColor);
 }
 
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
@@ -969,9 +1197,15 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint8_t i = 0; i < __ui_trans_count; i++) {
     if (!__ui_trans[i].active) continue;
     __ui_trans[i].elapsed += deltaMs;
-    uint16_t k = (uint16_t)((uint32_t)__ui_trans[i].elapsed * 100 / __ui_trans[i].durationMs);
+    uint16_t k = __ui_trans[i].durationMs == 0
+      ? 100
+      : (uint16_t)((uint32_t)__ui_trans[i].elapsed * 100 / __ui_trans[i].durationMs);
     uint16_t v = lerp_color(__ui_trans[i].prevValue, __ui_trans[i].targetValue, (uint8_t)k);
-    __ui_nodes[__ui_trans[i].node].bg = v;
+    if (__ui_trans[i].prop == PROP_FG) {
+      __ui_nodes[__ui_trans[i].node].fg = v;
+    } else {
+      __ui_nodes[__ui_trans[i].node].bg = v;
+    }
     ui_mark_dirty(__ui_trans[i].node);
     if (k >= 100) __ui_trans[i].active = 0;
   }
@@ -1056,21 +1290,10 @@ static inline void ui_tick(uint16_t deltaMs) {
     } else {
       __ui_gfx = &__tc_display;
     }
+    int16_t baseDrawX = ui_base_draw_x_for_node(i);
+    int16_t baseDrawY = ui_base_draw_y_for_node(i);
+    int16_t drawX = ui_draw_x_for_node(i);
     int16_t drawY = ui_draw_y_for_node(i);
-    if (drawingBufferedScroll) {
-      // Canvas-local clip: skip nodes fully outside the viewport (0..vw, 0..vh).
-      if (drawY + __ui_nodes[i].box.h <= 0 || drawY >= bufferedScrollCanvas->height() ||
-          __ui_nodes[i].box.x + __ui_nodes[i].box.w <= 0 || __ui_nodes[i].box.x >= bufferedScrollCanvas->width()) {
-        __ui_nodes[i].box.x = origBoxX;
-        __ui_nodes[i].box.y = origBoxY;
-        __ui_nodes[i].dirty = 0;
-        continue;
-      }
-    } else if (ui_is_clipped_by_scroll(i, drawY)) {
-      __ui_nodes[i].dirty = 0;
-      continue;
-    }
-
     // Source selection: text-bound nodes show their dynamic buffer; others show
     // the immutable flash literal.
     const char* displayText = __ui_nodes[i].hasTextBinding
@@ -1078,6 +1301,54 @@ static inline void ui_tick(uint16_t deltaMs) {
       : __ui_nodes[i].text;
     uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
     uint16_t tw = ui_text_width(displayText, ts, __ui_nodes[i].fontFace);
+
+    UIRect paintRect;
+    ui_node_paint_rect(i, baseDrawX, baseDrawY, drawX, drawY, tw, ts, &paintRect);
+    int16_t cullX = paintRect.x;
+    int16_t cullY = paintRect.y;
+    int16_t cullW = paintRect.w;
+    int16_t cullH = paintRect.h;
+    if (drawingBufferedScroll) {
+      // Canvas-local clip: skip nodes fully outside the viewport (0..vw, 0..vh).
+      if (cullY + cullH <= 0 || cullY >= bufferedScrollCanvas->height() ||
+          cullX + cullW <= 0 || cullX >= bufferedScrollCanvas->width()) {
+        __ui_nodes[i].box.x = origBoxX;
+        __ui_nodes[i].box.y = origBoxY;
+        __ui_nodes[i].dirty = 0;
+        continue;
+      }
+    } else if (ui_is_rect_clipped_by_scroll(i, cullX, cullY, cullW, cullH)) {
+      __ui_nodes[i].box.x = origBoxX;
+      __ui_nodes[i].box.y = origBoxY;
+      __ui_nodes[i].dirty = 0;
+      continue;
+    }
+
+    uint8_t drawingPaintCanvas = 0;
+    GFXcanvas16* paintCanvas = nullptr;
+    int16_t paintCanvasX = paintRect.x;
+    int16_t paintCanvasY = paintRect.y;
+    int16_t paintCanvasW = paintRect.w;
+    int16_t paintCanvasH = paintRect.h;
+    if (!drawingBufferedScroll && bufferedScrollNode < 0 && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH)) {
+      paintCanvas = ui_get_scroll_canvas(paintCanvasW, paintCanvasH);
+      if (paintCanvas) {
+        drawingPaintCanvas = 1;
+        __ui_gfx = paintCanvas;
+        paintCanvas->fillScreen(ui_parent_clear_color(i));
+        baseDrawX -= paintCanvasX;
+        baseDrawY -= paintCanvasY;
+        drawX -= paintCanvasX;
+        drawY -= paintCanvasY;
+      }
+    }
+    if (!drawingPaintCanvas) {
+      ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, tw, ts);
+    }
+    __ui_nodes[i].box.x = baseDrawX;
+    ui_draw_shadow(i, baseDrawY, 0);
+    __ui_nodes[i].box.x = drawX;
+
     // Compute x offset based on text-align (0=left, 1=center, 2=right).
     int16_t textX = __ui_nodes[i].box.x;
     if (__ui_nodes[i].textAlign == 1) textX = __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2;
@@ -1089,15 +1360,19 @@ static inline void ui_tick(uint16_t deltaMs) {
       uint16_t clear = __ui_nodes[i].clearColor;
       bColor = ui_blend565(bColor, clear, __ui_nodes[i].opacity);
     }
-    // Draw shadow first (before the element's own fill/border).
-    ui_draw_shadow(i, drawY);
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
-        if (__ui_nodes[i].hasBg)
+        if (__ui_nodes[i].gradientEnabled > 0) {
+          ui_draw_gradient_fill(i, drawY);
+        } else if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
+          __ui_gfx->fillRoundRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+        } else if (__ui_nodes[i].hasBg) {
           __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
-        if (__ui_nodes[i].borderStyle == 1) {
+        }
+        ui_draw_shadow(i, drawY, 1);
+        if (__ui_nodes[i].borderStyle != 0) {
           uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
-          __ui_gfx->drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
+          ui_draw_node_border(i, drawY, bColor);
         }
         break;
       case NODE_TEXT:
@@ -1116,6 +1391,15 @@ static inline void ui_tick(uint16_t deltaMs) {
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = tw;
         }
+        // Text shadow: draw the text in the shadow color at the offset first.
+        if (__ui_nodes[i].textShadowCount > 0) {
+          uint16_t tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          uint16_t tsCol = ui_blend565(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
+          ui_draw_text(displayText,
+            textX + __ui_nodes[i].textShadowOffsetX,
+            drawY + __ui_nodes[i].textShadowOffsetY,
+            tsCol, tsClear, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace);
+        }
         ui_draw_text(displayText, textX, drawY, __ui_nodes[i].fg,
           __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
           ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace);
@@ -1127,20 +1411,9 @@ static inline void ui_tick(uint16_t deltaMs) {
           __ui_gfx->fillRoundRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
         else if (__ui_nodes[i].hasBg)
           __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
-        if (__ui_nodes[i].borderStyle == 1) {
-          if (__ui_nodes[i].borderRadius > 0)
-            __ui_gfx->drawRoundRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, bColor);
-          else
-            __ui_gfx->drawRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, bColor);
-        } else if (__ui_nodes[i].borderStyle == 2) {
-          for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
-            __ui_gfx->drawFastHLine(__ui_nodes[i].box.x + dx, drawY, 4, bColor);
-          for (int16_t dx = 0; dx < __ui_nodes[i].box.w; dx += 8)
-            __ui_gfx->drawFastHLine(__ui_nodes[i].box.x + dx, drawY + __ui_nodes[i].box.h - 1, 4, bColor);
-          for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
-            __ui_gfx->drawFastVLine(__ui_nodes[i].box.x, drawY + dy, 4, bColor);
-          for (int16_t dy = 0; dy < __ui_nodes[i].box.h; dy += 8)
-            __ui_gfx->drawFastVLine(__ui_nodes[i].box.x + __ui_nodes[i].box.w - 1, drawY + dy, 4, bColor);
+        ui_draw_shadow(i, drawY, 1);
+        if (__ui_nodes[i].borderStyle != 0) {
+          ui_draw_node_border(i, drawY, bColor);
         }
         ui_draw_text(displayText,
           __ui_nodes[i].box.x + (__ui_nodes[i].box.w - tw) / 2,
@@ -1341,11 +1614,13 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           if (__ui_nodes[i].borderRadius > 0) {
             __ui_gfx->fillRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
-            __ui_gfx->drawRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, fgCol);
           } else {
             __ui_gfx->fillRect(bx, by, bw, bh, bgCol);
-            __ui_gfx->drawRect(bx, by, bw, bh, fgCol);
           }
+          uint16_t inputBorder = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : fgCol;
+          uint8_t inputBorderStyle = __ui_nodes[i].borderStyle ? __ui_nodes[i].borderStyle : 1;
+          uint8_t inputBorderWidth = __ui_nodes[i].borderWidth ? __ui_nodes[i].borderWidth : 1;
+          ui_draw_rect_outline(bx, by, bw, bh, __ui_nodes[i].borderRadius, inputBorderStyle, inputBorderWidth, inputBorder);
           // Show typed text (textBuffer) in fg color, or placeholder (.text)
           // dimmed gray when the buffer is empty.
           uint16_t textCol = fgCol;
@@ -1377,6 +1652,11 @@ static inline void ui_tick(uint16_t deltaMs) {
             textCol, bgCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace);
         }
         break;
+    }
+    ui_draw_node_outline(i, drawY);
+    if (drawingPaintCanvas) {
+      __ui_gfx = &__tc_display;
+      ui_push_canvas_rect(paintCanvas, paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH);
     }
     // Restore original box coords (translated for canvas-local drawing above).
     __ui_nodes[i].box.x = origBoxX;
