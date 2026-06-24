@@ -17,12 +17,28 @@ interface AutoWireNode {
   options?: Array<{ value: string; text: string }>;
   name?: string;
   checked?: boolean;
+  href?: string;
 }
 
 // Track radio groups for mutual exclusion
 const radioGroups = new Map<string, Array<{ id: string; nodeIndex: number }>>();
 
+// Track screen IDs → screen indices for link navigation.
+const screenIdMap = new Map<string, number>();
+
 export function getRadioGroups() { return radioGroups; }
+
+/** Register a screen ID → index mapping (called during multi-screen setup). */
+export function registerScreenId(id: string, index: number): void {
+  screenIdMap.set(id, index);
+}
+
+/** Resolve a href="#screenId" to a screen index, or undefined if unknown. */
+export function resolveScreenHref(href: string | undefined): number | undefined {
+  if (!href) return undefined;
+  const target = href.startsWith("#") ? href.slice(1) : href;
+  return screenIdMap.get(target);
+}
 
 /**
  * Walk the styled tree and auto-wire built-in element behaviors.
@@ -98,5 +114,18 @@ function autoWireNode(treeName: string, node: AutoWireNode): void {
       fnName: `__ui_${node.id}_autoclick`,
       callbackBody: `for (uint8_t __r = 0; __r < __ui_radio_groups[${groupIdx}].count; __r++) { uint8_t __rn = __ui_radio_groups[${groupIdx}].nodeIndices[__r]; __ui_nodes[__rn].value = 0; ui_mark_dirty(__rn); } __ui_nodes[${nodeIndex}].value = 1; ui_mark_dirty(${nodeIndex});`,
     });
+  }
+
+  // Auto-wire <a href="#screenId"> links: onClick navigates to the target screen.
+  if (node.href) {
+    const targetScreen = resolveScreenHref(node.href);
+    if (targetScreen !== undefined) {
+      recordClickHandler({
+        nodeIndex,
+        kind: "click",
+        fnName: `__ui_${node.id}_nav`,
+        callbackBody: `ui_navigate(${targetScreen});`,
+      });
+    }
   }
 }

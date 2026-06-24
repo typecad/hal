@@ -36,6 +36,8 @@ export interface StyledNode {
   maxlen?: number;
   /** For <input>: keyboard template id ref. */
   keyboard?: string;
+  /** Navigation target for <a href="#screenId"> links. */
+  href?: string;
 }
 
 /** Does a single element match a compound selector (all simples must match)? */
@@ -119,5 +121,6 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     placeholder: node.placeholder,
     maxlen: node.maxlength,
     keyboard: node.keyboard,
+    href: node.href,
   };
 }

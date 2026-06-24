@@ -35,6 +35,8 @@ export interface UIModule {
   htmlPath: string;
   /** Resolved-style tree (HTML + CSS merged). Layout deferred to mount. */
   styled: StyledNode;
+  /** All resolved <screen> trees (for multi-screen navigation). */
+  allStyledScreens: StyledNode[];
   /** <keyboard> templates parsed from the same .ui.html (sibling declarations). */
   keyboards: KeyboardTemplate[];
   /** CSS rules from the sibling .ui.css (used for keyboard key styling). */
@@ -80,6 +82,7 @@ export function loadUIModule(htmlPath: string): UIModule {
 
   const parsed = parseHtmlWithKeyboards(htmlText);
   const tree = parsed.tree;
+  const allScreens = parsed.screens;
   const keyboards = parsed.keyboards;
   // Merge <style> blocks from the HTML with the external .ui.css.
   const styleBlocks = extractStyleBlocks(htmlText);
@@ -87,9 +90,10 @@ export function loadUIModule(htmlPath: string): UIModule {
   const rules = parseCss(fullCss);
   const fontFaces = parseFontFaces(fullCss);
   const styled = resolveStyles(tree, rules);
+  const allStyledScreens = allScreens.map(s => resolveStyles(s, rules));
   const fontAssets = buildUIFontAssets(styled, fontFaces, path.dirname(cssPath));
 
-  const mod: UIModule = { htmlPath: abs, styled, keyboards, rules, fontFaces, fontAssets };
+  const mod: UIModule = { htmlPath: abs, styled, allStyledScreens, keyboards, rules, fontFaces, fontAssets };
   modules.set(abs, mod);
 
   // Write a sibling .ui.html.d.ts so editors and the type-checker see the
@@ -108,10 +112,19 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const mod = modules.get(abs);
   if (!mod) throw new Error(`Cannot lower unregistered UI module: ${abs}`);
 
-  const engine = selectEngine(mod.styled);
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
-  const boxes = engine.arrange(mod.styled, viewport, measure);
-  const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets);
+
+  // Layout all screens (each gets its own Yoga layout pass; boxes concatenated).
+  let allBoxes: Box[] = [];
+  let allStyled: StyledNode[] = [];
+  for (const screen of mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled]) {
+    const engine = selectEngine(screen);
+    const screenBoxes = engine.arrange(screen, viewport, measure);
+    allBoxes = allBoxes.concat(screenBoxes);
+    allStyled.push(screen);
+  }
+
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled);
   lowered.set(abs, result);
   return result;
 }

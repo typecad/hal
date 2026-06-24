@@ -15,7 +15,7 @@ import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoisted
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 import { getUIModule } from "../ui/ui-registry.js";
-import { autoWireElements } from "./ui-element-auto-wire.js";
+import { autoWireElements, registerScreenId } from "./ui-element-auto-wire.js";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver.js";
 import { prescanUnsupportedFeatures } from "./feature-prescan.js";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
@@ -311,13 +311,25 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       // Register each element in the tree for .value access
       const mod = getUIModule(htmlPath);
       if (mod) {
+        // Register screen IDs → indices for <a href="#screenId"> navigation.
+        for (let si = 0; si < mod.allStyledScreens.length; si++) {
+          const screenNode = mod.allStyledScreens[si] as any;
+          if (screenNode.id) registerScreenId(screenNode.id, si);
+        }
+        // Register each element in ALL screens for .value access + auto-wire.
         const collectIds = (node: any) => {
           if (node.id) registerElementValue(name, node.id, htmlPath);
           node.children?.forEach(collectIds);
         };
-        collectIds(mod.styled);
-        // Auto-wire built-in elements (<check>, <select>)
-        autoWireElements(name, mod.styled as any);
+        if (mod.allStyledScreens.length > 0) {
+          for (const screen of mod.allStyledScreens) {
+            collectIds(screen);
+            autoWireElements(name, screen as any);
+          }
+        } else {
+          collectIds(mod.styled);
+          autoWireElements(name, mod.styled as any);
+        }
       }
     }
   }

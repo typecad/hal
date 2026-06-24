@@ -38,6 +38,8 @@ export interface UIElementNode {
   keyboard?: string;
   /** Inline style attribute: style="color: red; font-size: 16px" */
   inlineStyle?: string;
+  /** Navigation target for <a href="#screenId"> links. */
+  href?: string;
   children: UIElementNode[];
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
@@ -63,11 +65,14 @@ export interface KeyboardTemplate {
 }
 
 export interface ParsedHtml {
+  /** The first <screen> tree (backward compat). */
   tree: UIElementNode;
+  /** All <screen> roots (for multi-screen navigation). */
+  screens: UIElementNode[];
   keyboards: KeyboardTemplate[];
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a"]);
 
 /** Extract <style>...</style> block contents from HTML source.
  *  Returns the concatenated CSS text (empty if no style blocks). */
@@ -77,11 +82,14 @@ export function extractStyleBlocks(src: string): string {
 }
 
 export function parseHtml(src: string): UIElementNode {
-  // Strip HTML comments + <style> blocks before parsing (style is extracted separately).
+  return parseAllScreens(src)[0];
+}
+
+/** Parse all <screen> roots from HTML. Returns one tree per screen.
+ *  Used for multi-screen navigation (<a href="#screenId">). */
+export function parseAllScreens(src: string): UIElementNode[] {
   const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
 
-  // linkedom follows the HTML spec which hoists unknown elements out of <body>.
-  // Wrap the custom-tag HTML inside a <div> so the parser keeps the tree intact.
   const wrapped = `<div id="__root__">${withoutComments}</div>`;
   const { document } = parseHTML(wrapped);
   const root = document.getElementById("__root__");
@@ -89,25 +97,15 @@ export function parseHtml(src: string): UIElementNode {
     throw new Error("UI HTML: failed to parse document");
   }
 
-  // Find the <screen> element among the root's children.
-  const screenEl = Array.from(root.children).find(
+  const screenEls = Array.from(root.children).filter(
     (c) => c.tagName.toLowerCase() === "screen",
   );
 
-  if (!screenEl) {
-    throw new Error("UI HTML must have exactly one <screen> root element");
+  if (screenEls.length === 0) {
+    throw new Error("UI HTML must have at least one <screen> root element");
   }
 
-  // Check for multiple top-level <screen> elements.
-  const screens = Array.from(root.children).filter(
-    (c) => c.tagName.toLowerCase() === "screen",
-  );
-  if (screens.length > 1) {
-    throw new Error("UI HTML must have exactly one top-level <screen> element");
-  }
-
-  const tree = domToUIElementNode(screenEl);
-  return tree;
+  return screenEls.map(el => domToUIElementNode(el));
 }
 
 /** Parse HTML, returning both the <screen> tree and any <keyboard> templates. */
@@ -127,9 +125,10 @@ export function parseHtmlWithKeyboards(src: string): ParsedHtml {
     keyboards.push(parseKeyboardElement(child));
   }
 
-  // Reuse parseHtml for the screen tree.
-  const tree = parseHtml(src);
-  return { tree, keyboards };
+  // Parse all screens (for multi-screen navigation) + keyboards.
+  const screens = parseAllScreens(src);
+  const tree = screens[0];
+  return { tree, screens, keyboards };
 }
 
 /** Parse a <keyboard> element into a KeyboardTemplate. */
@@ -176,8 +175,8 @@ function parseKeyElement(el: Element): UIKeyTemplate {
 function domToUIElementNode(el: Element): UIElementNode {
   const tag = el.tagName.toLowerCase();
 
-  // <label> is treated as <text> internally
-  const effectiveTag = tag === "label" ? "text" : tag;
+  // <label> and <a> are treated as <text> internally
+  const effectiveTag = (tag === "label" || tag === "a") ? "text" : tag;
 
   if (!SUPPORTED_TAGS.has(tag)) {
     throw new Error(`Unsupported tag <${tag}> — supported: ${[...SUPPORTED_TAGS].join(", ")}`);
@@ -202,6 +201,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     : undefined;
   const keyboardAttr = el.getAttribute("keyboard") || undefined;
   const inlineStyleAttr = el.getAttribute("style") || undefined;
+  const hrefAttr = tag === "a" ? (el.getAttribute("href") || undefined) : undefined;
 
   // For <select>, parse <option> children into an options list
   if (tag === "select") {
@@ -243,7 +243,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, inlineStyle: inlineStyleAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child));
   }

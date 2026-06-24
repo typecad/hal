@@ -98,6 +98,7 @@ struct UINode {
   int16_t contentHeight; // total height of children (for scrollbar ratio)
   uint8_t parent;       // 255 = root/no parent
   uint8_t subtreeEnd;   // exclusive pre-order end index
+  uint8_t screenId;     // which <screen> this node belongs to (for navigation)
   int16_t rangeMin;     // for <range>: minimum value
   int16_t rangeMax;     // for <range>: maximum value
   int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
@@ -146,6 +147,23 @@ extern const UIFontFace __ui_font_faces[];
 extern const uint8_t __ui_node_count;
 extern const uint8_t __ui_trans_count;
 extern const uint8_t __ui_binding_count;
+
+// ── Multi-screen navigation ─────────────────────────────────────────────────
+static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
+static uint8_t __ui_screen_count = 1;    // total number of screens
+static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 100=full)
+static uint16_t __ui_fade_elapsed = 0;
+static uint16_t __ui_fade_duration = 200; // ms
+
+// Navigate to a screen by index. Marks the new screen's nodes dirty + starts fade.
+static inline void ui_navigate(uint8_t screenIdx) {
+  if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
+  __ui_active_screen = screenIdx;
+  __ui_fade_opacity = 0;
+  __ui_fade_elapsed = 0;
+  // Mark all nodes dirty so the new screen fully redraws.
+  for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1;
+}
 extern const uint8_t __ui_font_face_count;
 
 #define UI_NO_PARENT 255
@@ -541,6 +559,7 @@ static inline void ui_kb_compute_box();
 static int8_t ui_hit_test(int16_t tx, int16_t ty) {
   for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
     if (!__ui_nodes[i].visible) continue;
+    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
     int16_t drawX = ui_draw_x_for_node((uint8_t)i);
     int16_t drawY = ui_draw_y_for_node((uint8_t)i);
     if (ui_is_clipped_by_scroll((uint8_t)i, drawX, drawY)) continue;
@@ -1233,6 +1252,18 @@ static inline void ui_tick(uint16_t deltaMs) {
     ui_mark_dirty(__ui_trans[i].node);
     if (k >= 100) __ui_trans[i].active = 0;
   }
+  // ①b Advance screen fade-in animation.
+  if (__ui_fade_opacity < 100) {
+    __ui_fade_elapsed += deltaMs;
+    __ui_fade_opacity = (__ui_fade_elapsed >= __ui_fade_duration)
+      ? 100
+      : (uint8_t)((uint32_t)__ui_fade_elapsed * 100 / __ui_fade_duration);
+    // Mark active screen dirty during fade so it redraws each frame.
+    for (uint8_t i = 0; i < __ui_node_count; i++) {
+      if (__ui_nodes[i].screenId == __ui_active_screen) __ui_nodes[i].dirty = 1;
+    }
+  }
+
   // ② Draw dirty nodes directly to the display object.
   // Skip the node draw pass while the keyboard overlay is visible — its opaque
   // background covers everything underneath, so redrawing app nodes wastes SPI
@@ -1299,8 +1330,8 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].dirty) continue;
     if (!__ui_nodes[i].visible) continue;
-    // Skip scrollable containers (processed above).
-    if (__ui_nodes[i].scrollable) { __ui_nodes[i].dirty = 0; continue; }
+    // Only draw nodes belonging to the active screen.
+    if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
 
     // Redirect to the scroll canvas if this node is inside the buffered container.
     uint8_t drawingBufferedScroll = bufferedScrollNode >= 0 && i > (uint8_t)bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd;

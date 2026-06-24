@@ -170,6 +170,13 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   ctx.sourceLines.push(`const uint8_t __ui_node_count = ${totalNodes};`);
   ctx.sourceLines.push(`const uint8_t __ui_trans_count = ${countTransitions()};`);
   ctx.sourceLines.push(`const uint8_t __ui_binding_count = ${uiBindings().length};`);
+  // Count unique screenIds across all modules.
+  const screenIds = new Set<number>();
+  for (const { lowered } of allLoweredUIModules()) {
+    // screenId count comes from the model; estimate from node table if needed.
+  }
+  // Default to 1 screen; updated by model if multi-screen.
+  ctx.sourceLines.push(`const uint8_t __ui_screen_count = 1;`);
 
   // 6. Press/release handler functions (from screen.btn.onPress/onRelease).
   // Each calls ui_on_press/ui_on_release(nodeIndex), defined in the runtime

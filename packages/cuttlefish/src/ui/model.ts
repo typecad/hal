@@ -81,6 +81,7 @@ export interface UINodeModel {
   keyboard?: string;
   parentIndex: number;
   subtreeEnd: number;
+  screenId: number;
 }
 
 export interface UITransitionModel {
@@ -115,6 +116,7 @@ interface FlatModelSource {
   clearColor?: string;
   parentIndex: number;
   subtreeEnd: number;
+  screenId: number;
 }
 
 function nodeKind(tag: string): UINodeKindModel {
@@ -412,6 +414,7 @@ function flatten(
   cursor: { i: number },
   parentBg: string | undefined,
   parentIndex: number = -1,
+  screenId: number = 0,
 ): void {
   const index = cursor.i++;
   const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -422,11 +425,11 @@ function flatten(
   const bgIsGradient = bgStr && bgStr.includes("linear-gradient");
   const bgBaseColor = bgIsGradient ? extractFirstGradientColor(bgStr!) : bgStr;
   const clearColor = hasBg ? bgBaseColor : parentBg;
-  out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1 });
+  out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1, screenId });
 
   const childParentBg = hasBg ? bgBaseColor : parentBg;
   for (const child of node.children) {
-    flatten(child, boxes, out, cursor, childParentBg, index);
+    flatten(child, boxes, out, cursor, childParentBg, index, screenId);
   }
   out[index].subtreeEnd = cursor.i;
 }
@@ -437,11 +440,19 @@ export function lowerUIToModel(
   colorFormat: ColorFormat,
   display?: DisplayProfile,
   fontAssets: UIFontAssetModel[] = [],
+  allScreens: StyledNode[] = [],
 ): UIProgram {
   const flat: FlatModelSource[] = [];
-  flatten(root, boxes, flat, { i: 0 }, undefined);
+  const cursor = { i: 0 };
+  if (allScreens.length > 0) {
+    for (let s = 0; s < allScreens.length; s++) {
+      flatten(allScreens[s], boxes, flat, cursor, undefined, -1, s);
+    }
+  } else {
+    flatten(root, boxes, flat, cursor, undefined);
+  }
 
-  const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd }): UINodeModel => {
+  const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd, screenId }): UINodeModel => {
     // If background is a gradient, use the first stop as the base bg color
     // (the runtime draws the actual gradient per-row on top of this).
     const grad = parseGradient(node.style.background, colorFormat);
@@ -540,6 +551,7 @@ export function lowerUIToModel(
       keyboard: node.keyboard,
       parentIndex,
       subtreeEnd,
+      screenId,
     };
   });
 
