@@ -50,9 +50,10 @@ export function lowerUIToCpp(
   display?: DisplayProfile,
   fontAssets: UIFontAssetModel[] = [],
   allScreens: StyledNode[] = [],
+  imageAssetIds: Map<string, number> = new Map(),
 ): LoweredUI {
   void storage;
-  const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets, allScreens);
+  const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets, allScreens, imageAssetIds);
 
   // Tables are mutable RAM (ui_tick updates bg/dirty/elapsed/active each
   // frame), so no PROGMEM/flash storage keyword — those imply read-only.

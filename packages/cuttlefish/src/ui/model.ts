@@ -443,6 +443,7 @@ export function lowerUIToModel(
   display?: DisplayProfile,
   fontAssets: UIFontAssetModel[] = [],
   allScreens: StyledNode[] = [],
+  imageAssetIds: Map<string, number> = new Map(),  // node id → image index
 ): UIProgram {
   const flat: FlatModelSource[] = [];
   const cursor = { i: 0 };
@@ -554,7 +555,7 @@ export function lowerUIToModel(
       parentIndex,
       subtreeEnd,
       screenId,
-      imgDataId: 255,  // populated by image-assets pass
+      imgDataId: node.id && imageAssetIds.has(node.id) ? imageAssetIds.get(node.id)! : 255,
     };
   });
 

@@ -126,9 +126,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
     allStyled.push(screen);
   }
 
-  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled);
-
-  // Load image assets from all screens.
+  // Load image assets from all screens (before lowering so imgDataId can be set).
   const htmlDir = path.dirname(abs);
   const imageAssets: UIImageAsset[] = [];
   for (const screen of allStyled.length > 0 ? allStyled : [mod.styled]) {
@@ -137,6 +135,12 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
       if (!imageAssets.some(a => a.id === img.id)) imageAssets.push(img);
     }
   }
+  // Build a map: node id → image index, for the model to assign imgDataId.
+  const imageAssetIds = new Map<string, number>();
+  imageAssets.forEach((a, i) => imageAssetIds.set(a.id, i));
+
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssetIds);
+
   // Emit image tables.
   result.imageTables = emitImageTables(imageAssets);
   lowered.set(abs, result);
