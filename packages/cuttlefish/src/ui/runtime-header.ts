@@ -23,7 +23,7 @@ export function emitRuntimeHeader(): string {
 #define UI_MAX_BUFFERED_PAINT_PIXELS 20000
 #endif
 
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -99,6 +99,7 @@ struct UINode {
   uint8_t parent;       // 255 = root/no parent
   uint8_t subtreeEnd;   // exclusive pre-order end index
   uint8_t screenId;     // which <screen> this node belongs to (for navigation)
+  uint8_t imgDataId;    // index into __ui_images[] (255 = no image)
   int16_t rangeMin;     // for <range>: minimum value
   int16_t rangeMax;     // for <range>: maximum value
   int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
@@ -158,6 +159,11 @@ static uint8_t __ui_kb_visible = 0;
 
 static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
 extern const uint8_t __ui_screen_count;  // total number of screens (emitted by lowering)
+
+// ── Image assets ────────────────────────────────────────────────────────────
+struct UIImage { uint16_t w; uint16_t h; const uint16_t* data; };
+extern const UIImage __ui_images[];
+extern const uint8_t __ui_image_count;
 static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 100=full)
 static uint16_t __ui_fade_elapsed = 0;
 static uint16_t __ui_fade_duration = 200; // ms
@@ -1712,6 +1718,13 @@ static inline void ui_tick(uint16_t deltaMs) {
           clipped[len] = 0;
           ui_draw_text(clipped, bx + 4, by + (bh - ui_text_height(ts, __ui_nodes[i].fontFace)) / 2,
             textCol, bgCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+        }
+        break;
+      case NODE_IMG:
+        if (__ui_nodes[i].imgDataId < __ui_image_count) {
+          const UIImage* img = &__ui_images[__ui_nodes[i].imgDataId];
+          __ui_gfx->drawRGBBitmap(__ui_nodes[i].box.x, drawY,
+                                   img->data, img->w, img->h);
         }
         break;
     }

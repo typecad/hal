@@ -116,6 +116,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // 2. Static node + transition tables for every mounted UI tree.
   for (const { lowered } of allLoweredUIModules()) {
     ctx.sourceLines.push(lowered.fontTables);
+    if (lowered.imageTables) ctx.sourceLines.push(lowered.imageTables);
     ctx.sourceLines.push(lowered.nodeTable);
     ctx.sourceLines.push(lowered.transitionTable);
   }
@@ -273,7 +274,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
 /** Count NODE_FILL/NODE_TEXT entries in the emitted node table (one per node). */
 function countNodes(nodeTable: string): number {
-  const matches = nodeTable.match(/NODE_(FILL|TEXT|BUTTON|CHECK|RADIO|PROGRESS|RANGE|INPUT)/g);
+  const matches = nodeTable.match(/NODE_(FILL|TEXT|BUTTON|CHECK|RADIO|PROGRESS|RANGE|INPUT|IMG)/g);
   return matches ? matches.length : 0;
 }
 

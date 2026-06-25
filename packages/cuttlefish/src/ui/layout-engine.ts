@@ -93,6 +93,9 @@ export function measure(node: StyledNode): IntrinsicSize {
     const textW = text.length > 0 ? text.length * GFX_ADVANCE_PER_CHAR : 120;
     return { w: Math.max(textW + 16, 120), h: 20 };
   }
+  if (node.tag === "img") {
+    return { w: (node as any).imgWidth ?? 32, h: (node as any).imgHeight ?? 32 };
+  }
   // Containers have no intrinsic size in block layout — they fill available.
   return { w: 0, h: 0 };
 }

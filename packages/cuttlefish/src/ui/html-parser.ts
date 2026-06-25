@@ -40,6 +40,12 @@ export interface UIElementNode {
   inlineStyle?: string;
   /** Navigation target for <a href="#screenId"> links. */
   href?: string;
+  /** Image source path for <img src="...">. */
+  src?: string;
+  /** Image width in pixels (for <img>). */
+  imgWidth?: number;
+  /** Image height in pixels (for <img>). */
+  imgHeight?: number;
   children: UIElementNode[];
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
@@ -72,7 +78,7 @@ export interface ParsedHtml {
   keyboards: KeyboardTemplate[];
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img"]);
 
 /** Extract <style>...</style> block contents from HTML source.
  *  Returns the concatenated CSS text (empty if no style blocks). */
@@ -202,6 +208,9 @@ function domToUIElementNode(el: Element): UIElementNode {
   const keyboardAttr = el.getAttribute("keyboard") || undefined;
   const inlineStyleAttr = el.getAttribute("style") || undefined;
   const hrefAttr = (tag === "a" || tag === "button") ? (el.getAttribute("href") || undefined) : undefined;
+  const srcAttr = tag === "img" ? (el.getAttribute("src") || undefined) : undefined;
+  const imgWidthAttr = tag === "img" ? parseInt(el.getAttribute("width") || "0", 10) : undefined;
+  const imgHeightAttr = tag === "img" ? parseInt(el.getAttribute("height") || "0", 10) : undefined;
 
   // For <select>, parse <option> children into an options list
   if (tag === "select") {
@@ -243,7 +252,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child));
   }

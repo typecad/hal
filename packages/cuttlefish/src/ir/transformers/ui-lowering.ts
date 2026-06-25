@@ -33,6 +33,8 @@ export interface LoweredUI {
   keyboardDispatch: string;
   /** Number of distinct screens (for multi-screen navigation). */
   screenCount: number;
+  /** C++ image data arrays + index table (for <img> support). */
+  imageTables: string;
 }
 
 type ColorFormat = "rgb565" | "mono";
@@ -91,7 +93,8 @@ export function lowerUIToCpp(
     : `void (*__ui_kb_loaders[])() = {};\nconst uint8_t __ui_kb_loader_count = 0;`;
 
   const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
-  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount };
+  const imageTables = "const UIImage __ui_images[] = {};\nconst uint8_t __ui_image_count = 0;";
+  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables };
 }
 
 function sanitizedId(id: string): string {
@@ -202,6 +205,7 @@ function cppKind(kind: UINodeModel["kind"]): string {
     case "progress": return "NODE_PROGRESS";
     case "range": return "NODE_RANGE";
     case "input": return "NODE_INPUT";
+    case "img": return "NODE_IMG";
     case "text": return "NODE_TEXT";
   }
 }
@@ -268,7 +272,7 @@ function emitNodeTable(model: UIProgram): string {
     // incremental redraw. -1 = never drawn, because fill width 0 is valid.
     const lastTextWidth = n.kind === "progress" || n.kind === "range" ? -1 : 0;
     const shArr = (vals: number[], n = 4) => `{${[...vals.slice(0, n), ...Array(n - Math.min(vals.length, n)).fill(0)].join(",")}}`;
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.

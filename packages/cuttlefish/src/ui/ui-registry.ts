@@ -20,6 +20,7 @@ import path from "node:path";
 import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "./html-parser.js";
 import type { KeyboardTemplate } from "./html-parser.js";
 import { getThemeCss } from "./theme-store.js";
+import { loadImageAssets, UIImageAsset } from "./image-assets.js";
 import { parseCss, parseFontFaces } from "./css-parser.js";
 import type { CSSFontFace, CSSRule } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
@@ -126,8 +127,46 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   }
 
   const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled);
+
+  // Load image assets from all screens.
+  const htmlDir = path.dirname(abs);
+  const imageAssets: UIImageAsset[] = [];
+  for (const screen of allStyled.length > 0 ? allStyled : [mod.styled]) {
+    const screenImages = loadImageAssets(screen, htmlDir);
+    for (const img of screenImages) {
+      if (!imageAssets.some(a => a.id === img.id)) imageAssets.push(img);
+    }
+  }
+  // Emit image tables.
+  result.imageTables = emitImageTables(imageAssets);
   lowered.set(abs, result);
   return result;
+}
+
+/** Emit C++ image data arrays + index table from image assets. */
+function emitImageTables(assets: UIImageAsset[]): string {
+  if (assets.length === 0) {
+    return "const UIImage __ui_images[] = {};\nconst uint8_t __ui_image_count = 0;";
+  }
+  const lines: string[] = [];
+  // Emit one data array per image.
+  for (const asset of assets) {
+    lines.push(`static const uint16_t __ui_img_${asset.id}_data[] = {`);
+    // Emit in rows of 16 values.
+    for (let i = 0; i < asset.data.length; i += 16) {
+      const chunk = asset.data.slice(i, i + 16).map(v => "0x" + (v & 0xFFFF).toString(16).padStart(4, "0"));
+      lines.push("  " + chunk.join(", ") + ",");
+    }
+    lines.push(`};`);
+  }
+  // Emit the index table.
+  lines.push(`const UIImage __ui_images[] = {`);
+  for (const asset of assets) {
+    lines.push(`  { ${asset.width}, ${asset.height}, __ui_img_${asset.id}_data },`);
+  }
+  lines.push(`};`);
+  lines.push(`const uint8_t __ui_image_count = ${assets.length};`);
+  return lines.join("\n");
 }
 
 export function getUIModule(htmlPath: string): UIModule | undefined {

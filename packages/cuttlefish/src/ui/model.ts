@@ -6,7 +6,7 @@ import { selectFontAssetForStyle } from "./font-assets.js";
 import type { Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
 
-export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range" | "input";
+export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range" | "input" | "img";
 export type UIPropertyModel = "background" | "color" | "text" | "visible" | "borderColor";
 
 export interface UINodeModel {
@@ -82,6 +82,7 @@ export interface UINodeModel {
   parentIndex: number;
   subtreeEnd: number;
   screenId: number;
+  imgDataId: number;  // index into image table (255 = no image)
 }
 
 export interface UITransitionModel {
@@ -127,6 +128,7 @@ function nodeKind(tag: string): UINodeKindModel {
   if (tag === "progress") return "progress";
   if (tag === "range") return "range";
   if (tag === "input") return "input";
+  if (tag === "img") return "img";
   return "text";
 }
 
@@ -552,6 +554,7 @@ export function lowerUIToModel(
       parentIndex,
       subtreeEnd,
       screenId,
+      imgDataId: 255,  // populated by image-assets pass
     };
   });
 

@@ -38,6 +38,12 @@ export interface StyledNode {
   keyboard?: string;
   /** Navigation target for <a href="#screenId"> links. */
   href?: string;
+  /** Image source path for <img src="...">. */
+  src?: string;
+  /** Image width in pixels (for <img>). */
+  imgWidth?: number;
+  /** Image height in pixels (for <img>). */
+  imgHeight?: number;
 }
 
 /** Does a single element match a compound selector (all simples must match)? */
@@ -122,5 +128,8 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     maxlen: node.maxlength,
     keyboard: node.keyboard,
     href: node.href,
+    src: node.src,
+    imgWidth: node.imgWidth,
+    imgHeight: node.imgHeight,
   };
 }
