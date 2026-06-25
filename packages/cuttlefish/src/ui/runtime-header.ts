@@ -166,8 +166,6 @@ static uint16_t __ui_fade_duration = 200; // ms
 static inline void ui_navigate(uint8_t screenIdx) {
   if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
   __ui_active_screen = screenIdx;
-  __ui_fade_opacity = 0;
-  __ui_fade_elapsed = 0;
   // Reset scroll/touch state so the old screen's scroll container doesn't
   // interfere with the new screen.
   __ui_scroll_node = -1;
@@ -175,8 +173,7 @@ static inline void ui_navigate(uint8_t screenIdx) {
   __ui_touch_node = -1;
   __ui_touch_state = 0;
   __ui_kb_visible = 0;
-  // Clear the entire display to the background color so old screen content
-  // doesn't bleed through during the fade.
+  // Clear the entire display so old screen content doesn't show.
   __tc_display.fillScreen(0x0000);
   // Mark all nodes dirty so the new screen fully redraws.
   for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1;
@@ -1265,17 +1262,6 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
     ui_mark_dirty(__ui_trans[i].node);
     if (k >= 100) __ui_trans[i].active = 0;
-  }
-  // ①b Advance screen fade-in animation.
-  if (__ui_fade_opacity < 100) {
-    __ui_fade_elapsed += deltaMs;
-    __ui_fade_opacity = (__ui_fade_elapsed >= __ui_fade_duration)
-      ? 100
-      : (uint8_t)((uint32_t)__ui_fade_elapsed * 100 / __ui_fade_duration);
-    // Mark active screen dirty during fade so it redraws each frame.
-    for (uint8_t i = 0; i < __ui_node_count; i++) {
-      if (__ui_nodes[i].screenId == __ui_active_screen) __ui_nodes[i].dirty = 1;
-    }
   }
 
   // ② Draw dirty nodes directly to the display object.
