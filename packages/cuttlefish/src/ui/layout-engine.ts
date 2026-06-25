@@ -97,7 +97,7 @@ export function measure(node: StyledNode): IntrinsicSize {
     return { w: (node as any).imgWidth ?? 32, h: (node as any).imgHeight ?? 32 };
   }
   if (node.tag === "list") {
-    return { w: 0, h: 0 };  // lists fill their container (flex)
+    return { w: 0, h: 100 };  // lists default to 100px tall, expand via flex
   }
   // Containers have no intrinsic size in block layout — they fill available.
   return { w: 0, h: 0 };
