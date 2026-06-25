@@ -18,12 +18,12 @@ export function emitRuntimeHeader(): string {
 #ifndef __TC_UI_RUNTIME
 #define __TC_UI_RUNTIME
 #include <stdint.h>
-#define UI_TEXT_BUF 32   // single source of truth: UINode field + textFn size arg + snprintf bound
+#define UI_TEXT_BUF 32   // max stored UI text chars, excluding the trailing NUL
 #ifndef UI_MAX_BUFFERED_PAINT_PIXELS
 #define UI_MAX_BUFFERED_PAINT_PIXELS 20000
 #endif
 
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG, NODE_LIST };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -50,7 +50,7 @@ struct UINode {
   uint16_t fg;
   UINodeKind kind;
   const char* text;
-  char textBuffer[UI_TEXT_BUF]; // dynamic text — read only when hasTextBinding == 1
+  char textBuffer[UI_TEXT_BUF + 1]; // dynamic text — read only when hasTextBinding == 1
   uint8_t hasTextBinding;       // set by ui_init when a PROP_TEXT binding targets this node
   const uint8_t* font;
   uint8_t hasBg;
@@ -100,6 +100,7 @@ struct UINode {
   uint8_t subtreeEnd;   // exclusive pre-order end index
   uint8_t screenId;     // which <screen> this node belongs to (for navigation)
   uint8_t imgDataId;    // index into __ui_images[] (255 = no image)
+  uint16_t listItemHeight; // px per item for <list> (0 = not a list)
   int16_t rangeMin;     // for <range>: minimum value
   int16_t rangeMax;     // for <range>: maximum value
   int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
@@ -164,6 +165,28 @@ extern const uint8_t __ui_screen_count;  // total number of screens (emitted by 
 struct UIImage { uint16_t w; uint16_t h; const uint16_t* data; };
 extern const UIImage __ui_images[];
 extern const uint8_t __ui_image_count;
+
+// ── List bindings ───────────────────────────────────────────────────────────
+struct UIListBinding {
+  uint8_t node;
+  uint16_t (*countFn)(void);
+  void (*itemFn)(uint16_t idx, char* buf, uint8_t size);
+};
+extern UIListBinding __ui_list_bindings[];
+extern const uint8_t __ui_list_binding_count;
+
+struct UIListState {
+  uint8_t nodeIndex;
+  uint16_t scrollY;
+  uint16_t itemHeight;
+  uint16_t contentHeight;
+  uint16_t itemCount;
+  uint16_t (*countFn)(void);
+  void (*itemFn)(uint16_t idx, char* buf, uint8_t size);
+};
+static UIListState __ui_lists[4];
+static uint8_t __ui_list_count = 0;
+static int8_t __ui_list_drag = -1;  // index into __ui_lists[] being scrolled (-1=none)
 static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 100=full)
 static uint16_t __ui_fade_elapsed = 0;
 static uint16_t __ui_fade_duration = 200; // ms
@@ -439,9 +462,23 @@ static inline void ui_init(void) {
     if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
       uint8_t n = __ui_bindings[i].node;
       __ui_nodes[n].hasTextBinding = 1;
-      strncpy(__ui_nodes[n].textBuffer, __ui_nodes[n].text, UI_TEXT_BUF - 1);
-      __ui_nodes[n].textBuffer[UI_TEXT_BUF - 1] = '\\0';
+      strncpy(__ui_nodes[n].textBuffer, __ui_nodes[n].text ? __ui_nodes[n].text : "", UI_TEXT_BUF);
+      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
     }
+  }
+  // Initialize list state from bindings.
+  for (uint8_t i = 0; i < __ui_list_binding_count && __ui_list_count < 4; i++) {
+    uint8_t n = __ui_list_bindings[i].node;
+    if (n >= __ui_node_count) continue;
+    UIListState* ls = &__ui_lists[__ui_list_count];
+    ls->nodeIndex = n;
+    ls->itemHeight = __ui_nodes[n].listItemHeight > 0 ? __ui_nodes[n].listItemHeight : 24;
+    ls->scrollY = 0;
+    ls->countFn = __ui_list_bindings[i].countFn;
+    ls->itemFn = __ui_list_bindings[i].itemFn;
+    ls->itemCount = ls->countFn ? ls->countFn() : 0;
+    ls->contentHeight = ls->itemCount * ls->itemHeight;
+    __ui_list_count++;
   }
 }
 
@@ -584,7 +621,7 @@ static int8_t ui_hit_test(int16_t tx, int16_t ty) {
       // Skip nodes without any click handler — they're containers, not targets.
       // Exceptions: NODE_RANGE (horizontal drag) and NODE_INPUT (opens keyboard)
       // are always interactive.
-      if (__ui_nodes[i].kind == NODE_RANGE || __ui_nodes[i].kind == NODE_INPUT) {
+      if (__ui_nodes[i].kind == NODE_RANGE || __ui_nodes[i].kind == NODE_INPUT || __ui_nodes[i].kind == NODE_LIST) {
         return i;
       }
       if ((uint8_t)i < __ui_click_handler_count &&
@@ -626,6 +663,21 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
         __ui_scroll_node = i;
         break;
       }
+    }
+  }
+  // Check if the touch is inside a list node (for list scrolling).
+  __ui_list_drag = -1;
+  for (uint8_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].kind != NODE_LIST || !__ui_nodes[i].visible) continue;
+    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+    int16_t drawX = ui_draw_x_for_node(i);
+    int16_t drawY = ui_draw_y_for_node(i);
+    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
+        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
+      for (uint8_t l = 0; l < __ui_list_count; l++) {
+        if (__ui_lists[l].nodeIndex == i) { __ui_list_drag = l; break; }
+      }
+      break;
     }
   }
   if (node >= 0) {
@@ -755,8 +807,6 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     }
     if (__ui_is_dragging && __ui_scroll_node >= 0) {
       // Scroll: accumulate small touch deltas and redraw at a bounded cadence.
-      // A full scroll viewport transfer is comparatively expensive on SPI TFTs;
-      // coalescing jittery samples avoids visible flash from over-updating.
       int16_t dy = ty - __ui_drag_start_y;
       __ui_drag_start_y = ty;
       __ui_scroll_pending_dy += dy;
@@ -765,6 +815,18 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
         ui_apply_scroll_delta(__ui_scroll_node, __ui_scroll_pending_dy);
         __ui_scroll_pending_dy = 0;
         __ui_last_scroll_draw_time = now;
+      }
+    }
+    // List scroll: apply drag delta to the active list's scrollY.
+    if (__ui_is_dragging && __ui_list_drag >= 0) {
+      int16_t dy = ty - __ui_drag_start_y;
+      __ui_drag_start_y = ty;
+      UIListState* ls = &__ui_lists[__ui_list_drag];
+      int16_t maxScroll = ls->contentHeight - __ui_nodes[ls->nodeIndex].box.h;
+      int16_t nextY = constrain((int16_t)ls->scrollY - dy, 0, maxScroll);
+      if (nextY != (int16_t)ls->scrollY) {
+        ls->scrollY = nextY;
+        ui_mark_dirty(ls->nodeIndex);
       }
     }
     if (__ui_touch_state == 1 && __ui_touch_node >= 0 && !__ui_is_dragging) {
@@ -1230,9 +1292,11 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
       // Text binding: fill the node's buffer, compare content, mark dirty if changed.
       uint8_t n = __ui_bindings[i].node;
-      char oldBuf[UI_TEXT_BUF];
-      strcpy(oldBuf, __ui_nodes[n].textBuffer);
-      __ui_bindings[i].textFn(__ui_nodes[n].textBuffer, UI_TEXT_BUF);
+      char oldBuf[UI_TEXT_BUF + 1];
+      strncpy(oldBuf, __ui_nodes[n].textBuffer, UI_TEXT_BUF);
+      oldBuf[UI_TEXT_BUF] = '\\0';
+      __ui_bindings[i].textFn(__ui_nodes[n].textBuffer, UI_TEXT_BUF + 1);
+      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
       if (strcmp(oldBuf, __ui_nodes[n].textBuffer) != 0) {
         ui_mark_dirty(n);
       }
@@ -1251,6 +1315,16 @@ static inline void ui_tick(uint16_t deltaMs) {
         if (__ui_bindings[i].prop == PROP_BG) __ui_nodes[__ui_bindings[i].node].hasBg = 1;
         ui_mark_dirty(__ui_bindings[i].node);
       }
+    }
+  }
+  // ⓪b Evaluate list bindings: refresh item count, recompute content height.
+  for (uint8_t l = 0; l < __ui_list_count; l++) {
+    if (!__ui_lists[l].countFn) continue;
+    uint16_t newCount = __ui_lists[l].countFn();
+    if (newCount != __ui_lists[l].itemCount) {
+      __ui_lists[l].itemCount = newCount;
+      __ui_lists[l].contentHeight = newCount * __ui_lists[l].itemHeight;
+      ui_mark_dirty(__ui_lists[l].nodeIndex);
     }
   }
   // ① Advance transitions.
@@ -1710,8 +1784,8 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (maxChars < 0) maxChars = 0;
           int16_t len = (int16_t)strlen(disp);
           if (len > maxChars) len = maxChars;
-          if (len >= UI_TEXT_BUF) len = UI_TEXT_BUF - 1;
-          char clipped[UI_TEXT_BUF];
+          if (len > UI_TEXT_BUF) len = UI_TEXT_BUF;
+          char clipped[UI_TEXT_BUF + 1];
           for (int16_t c = 0; c < len; c++) {
             clipped[c] = disp[c];
           }
@@ -1727,6 +1801,48 @@ static inline void ui_tick(uint16_t deltaMs) {
                                    img->data, img->w, img->h);
         }
         break;
+      case NODE_LIST: {
+        // Find this list's state.
+        UIListState* ls = nullptr;
+        for (uint8_t l = 0; l < __ui_list_count; l++) {
+          if (__ui_lists[l].nodeIndex == i) { ls = &__ui_lists[l]; break; }
+        }
+        if (!ls || !ls->itemFn) break;
+        int16_t bx = __ui_nodes[i].box.x;
+        int16_t by = drawY;
+        int16_t bw = __ui_nodes[i].box.w;
+        int16_t bh = __ui_nodes[i].box.h;
+        uint16_t ih = ls->itemHeight;
+        // Clear viewport.
+        __ui_gfx->fillRect(bx, by, bw, bh, __ui_nodes[i].clearColor);
+        // Compute visible range.
+        uint16_t first = ls->scrollY / ih;
+        uint16_t last = (ls->scrollY + bh) / ih;
+        if (ls->itemCount > 0 && last >= ls->itemCount) last = ls->itemCount - 1;
+        // Draw each visible item.
+        char listBuf[UI_TEXT_BUF + 1];
+        for (uint16_t idx = first; idx <= last; idx++) {
+          int16_t itemY = by + (int16_t)(idx * ih) - ls->scrollY;
+          if (itemY + ih < by || itemY >= by + bh) continue;
+          ls->itemFn(idx, listBuf, UI_TEXT_BUF + 1);
+          listBuf[UI_TEXT_BUF] = 0;
+          __ui_gfx->setCursor(bx + 4, itemY + (ih - 16) / 2);
+          __ui_gfx->setTextColor(__ui_nodes[i].fg);
+          __ui_gfx->setTextSize(2);
+          __ui_gfx->print(listBuf);
+        }
+        // Scrollbar.
+        if (ls->contentHeight > (uint16_t)bh) {
+          int16_t tx = bx + bw - 4;
+          uint16_t thumbH = (uint32_t)bh * bh / ls->contentHeight;
+          if (thumbH < 8) thumbH = 8;
+          uint16_t thumbY = by + (uint32_t)(bh - thumbH) * ls->scrollY / (ls->contentHeight - bh);
+          uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
+          __ui_gfx->fillRect(tx, by, 3, bh, dimFg);
+          __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
+        }
+        break;
+      }
     }
     ui_draw_node_outline(i, drawY);
     if (drawingPaintCanvas) {
@@ -1778,12 +1894,14 @@ static inline GFXcanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg) {
     delete __ui_aa_canvas;
     __ui_aa_canvas = new GFXcanvas16(w > 0 ? w : 1, h > 0 ? h : 1);
   }
+  if (!__ui_aa_canvas || !__ui_aa_canvas->getBuffer()) return nullptr;
   __ui_aa_canvas->fillScreen(bg);
   return __ui_aa_canvas;
 }
 
 // Push the canvas rect to the display at (dx, dy).
 static inline void ui_aa_push(GFXcanvas16* c, int16_t dx, int16_t dy) {
+  if (!c || !c->getBuffer()) return;
   int16_t w = c->width(), h = c->height();
   // Push via __ui_gfx so the AA output goes to the scroll canvas when active,
   // or the display directly when not. Row-by-row drawRGBBitmap (no transparent
@@ -1795,6 +1913,7 @@ static inline void ui_aa_push(GFXcanvas16* c, int16_t dx, int16_t dy) {
 
 // Blend a pixel at integer coords with a coverage fraction (0-255).
 static inline void ui_aa_pixel(GFXcanvas16* c, int16_t x, int16_t y, uint16_t color, uint8_t cov) {
+  if (!c || !c->getBuffer()) return;
   if (cov == 0) return;
   if (x < 0 || y < 0 || x >= c->width() || y >= c->height()) return;
   if (cov >= 255) { c->drawPixel(x, y, color); return; }
@@ -1805,6 +1924,7 @@ static inline void ui_aa_pixel(GFXcanvas16* c, int16_t x, int16_t y, uint16_t co
 
 // Xiaolin Wu antialiased line. Coordinates are in canvas-local space.
 static inline void ui_aa_line(GFXcanvas16* c, float x0, float y0, float x1, float y1, uint16_t color) {
+  if (!c || !c->getBuffer()) return;
   auto ipart = [](float f) { return (int16_t)f; };
   auto round_f = [](float f) { return (int16_t)(f + 0.5f); };
   auto fpart = [](float f) { return f - (float)(int16_t)f; };
@@ -1835,6 +1955,7 @@ static inline void ui_aa_line(GFXcanvas16* c, float x0, float y0, float x1, floa
 
 // Antialiased circle outline. cx,cy,r are in canvas-local space.
 static inline void ui_aa_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
+  if (!c || !c->getBuffer()) return;
   if (r <= 0) return;
   // Walk each scanline from top to bottom of the bounding box.
   int16_t y0 = (int16_t)floor(cy - r);
@@ -1865,6 +1986,7 @@ static inline void ui_aa_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r,
 
 // Antialiased filled circle.
 static inline void ui_aa_fill_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
+  if (!c || !c->getBuffer()) return;
   if (r <= 0) return;
   int16_t y0 = (int16_t)floor(cy - r);
   int16_t y1 = (int16_t)ceil(cy + r);
@@ -1913,6 +2035,13 @@ static void    (*__ui_kb_onchange)();
 // Dispatch table: one loader per input node. Indexed by input position.
 extern void (*__ui_kb_loaders[])();
 extern const uint8_t __ui_kb_loader_count;
+
+static inline void ui_kb_add_key(char ch, uint8_t special, uint16_t bg, uint16_t fg, uint16_t borderColor) {
+  if (__ui_kb_keyCount >= UI_KB_MAX) return;
+  __ui_kb_keys[__ui_kb_keyCount] = { ch, special };
+  __ui_kb_styles[__ui_kb_keyCount] = { bg, fg, borderColor };
+  __ui_kb_keyCount++;
+}
 
 // Insert a character into the buffer (if space permits).
 static inline void ui_kb_insert(char c) {

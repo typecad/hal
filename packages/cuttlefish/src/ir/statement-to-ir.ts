@@ -182,8 +182,8 @@ export function lowerStatement(
     }
 
     // ── UI element .text write: screen.ssid.text = "x" ──────────────────
-    // Lowers to strncpy(__ui_nodes[N].textBuffer, "x", UI_TEXT_BUF-1);
-    //         __ui_nodes[N].textBuffer[UI_TEXT_BUF-1] = 0; ui_mark_dirty(N);
+    // Lowers to strncpy(__ui_nodes[N].textBuffer, "x", UI_TEXT_BUF);
+    //         __ui_nodes[N].textBuffer[UI_TEXT_BUF] = 0; ui_mark_dirty(N);
     if (
       ts.isBinaryExpression(statement.expression) &&
       statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
@@ -201,7 +201,7 @@ export function lowerStatement(
         return [{
           kind: "call" as const,
           sourceSpan: makeSourceSpan(statement, fileName, sourceText),
-          callee: `__RAW_STMT__strncpy(__ui_nodes[${nodeIdx}].textBuffer, ${valText}, UI_TEXT_BUF - 1); __ui_nodes[${nodeIdx}].textBuffer[UI_TEXT_BUF - 1] = 0; ui_mark_dirty(${nodeIdx});`,
+          callee: `__RAW_STMT__strncpy(__ui_nodes[${nodeIdx}].textBuffer, ${valText}, UI_TEXT_BUF); __ui_nodes[${nodeIdx}].textBuffer[UI_TEXT_BUF] = 0; ui_mark_dirty(${nodeIdx});`,
           args: [],
         }];
       }

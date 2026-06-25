@@ -174,9 +174,7 @@ function emitKeyboardLoader(name: string, kb: KeyboardTemplate, rules: CSSRule[]
     // Pad short rows so ui_kb_key_rect's idx/cols math stays aligned. Padded
     // cells use special=255 (skipped in draw + hit-test) with a space char.
     for (let p = row.length; p < cols; p++) {
-      lines.push(`  __ui_kb_keys[__ui_kb_keyCount] = { ' ', 255 };`);
-      lines.push(`  __ui_kb_styles[__ui_kb_keyCount] = { ${hex(DEFAULT_KEY_BG)}, ${hex(DEFAULT_KEY_FG)}, ${hex(DEFAULT_KEY_BORDER)} };`);
-      lines.push(`  __ui_kb_keyCount++;`);
+      lines.push(`  ui_kb_add_key(' ', 255, ${hex(DEFAULT_KEY_BG)}, ${hex(DEFAULT_KEY_FG)}, ${hex(DEFAULT_KEY_BORDER)});`);
     }
   }
   lines.push(`}`);
@@ -190,11 +188,7 @@ function emitKeyLine(key: UIKeyTemplate, kbClasses: string[] | undefined, rules:
   const bg = style.background ? resolveColor(style.background, colorFormat) : DEFAULT_KEY_BG;
   const fg = style.color ? resolveColor(style.color, colorFormat) : DEFAULT_KEY_FG;
   const border = style.borderColor ? resolveColor(style.borderColor, colorFormat) : DEFAULT_KEY_BORDER;
-  return [
-    `__ui_kb_keys[__ui_kb_keyCount] = { '${chEsc}', ${key.special} };`,
-    `  __ui_kb_styles[__ui_kb_keyCount] = { ${hex(bg)}, ${hex(fg)}, ${hex(border)} };`,
-    `  __ui_kb_keyCount++;`,
-  ].join(" ");
+  return `ui_kb_add_key('${chEsc}', ${key.special}, ${hex(bg)}, ${hex(fg)}, ${hex(border)});`;
 }
 
 function cppKind(kind: UINodeModel["kind"]): string {
@@ -207,6 +201,7 @@ function cppKind(kind: UINodeModel["kind"]): string {
     case "range": return "NODE_RANGE";
     case "input": return "NODE_INPUT";
     case "img": return "NODE_IMG";
+    case "list": return "NODE_LIST";
     case "text": return "NODE_TEXT";
   }
 }
@@ -273,7 +268,7 @@ function emitNodeTable(model: UIProgram): string {
     // incremental redraw. -1 = never drawn, because fill width 0 is valid.
     const lastTextWidth = n.kind === "progress" || n.kind === "range" ? -1 : 0;
     const shArr = (vals: number[], n = 4) => `{${[...vals.slice(0, n), ...Array(n - Math.min(vals.length, n)).fill(0)].join(",")}}`;
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.

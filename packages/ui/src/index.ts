@@ -66,5 +66,23 @@ export declare function bind<K extends string>(
  */
 export declare function watchPin(pin: number, onFalling: () => void): void;
 
-export const ui = { mount, signal, bind, watchPin };
+/**
+ * Bind a `<list>` element to dynamic data via two callbacks.
+ *
+ *   ui.bindList(screen.myList,
+ *     () => itemCount,          // total number of items
+ *     (i) => `Item ${i}`        // text for item at index i
+ *   );
+ *
+ * The list virtualizes: only visible items are rendered. Scroll by dragging.
+ * The count function is called each frame; if the count changes, the list
+ * refreshes automatically.
+ */
+export declare function bindList(
+  node: unknown,
+  countFn: () => number,
+  itemFn: (index: number) => string,
+): void;
+
+export const ui = { mount, signal, bind, watchPin, bindList };
 export default ui;

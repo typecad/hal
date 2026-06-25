@@ -7,7 +7,7 @@
 // For custom elements, use <view> + <text> + manual bindings.
 // ---------------------------------------------------------------------------
 
-import { recordClickHandler, recordBinding, resolveElementValue } from "./transformers/ui-call-resolver.js";
+import { recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 
 interface AutoWireNode {
   tag: string;
@@ -43,21 +43,21 @@ export function resolveScreenHref(href: string | undefined): number | undefined 
 /**
  * Walk the styled tree and auto-wire built-in element behaviors.
  */
-export function autoWireElements(treeName: string, root: AutoWireNode): void {
-  radioGroups.clear();
+export function autoWireElements(treeName: string, root: AutoWireNode, startIndex = 0): number {
+  if (startIndex === 0) radioGroups.clear();
+  let nodeIndex = startIndex;
   const walk = (node: AutoWireNode) => {
+    const currentIndex = nodeIndex++;
     if (node.id) {
-      autoWireNode(treeName, node);
+      autoWireNode(treeName, node, currentIndex);
     }
     node.children?.forEach(walk);
   };
   walk(root);
+  return nodeIndex;
 }
 
-function autoWireNode(treeName: string, node: AutoWireNode): void {
-  const nodeIndex = resolveElementValue(treeName, node.id!);
-  if (nodeIndex === undefined) return;
-
+function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): void {
   if (node.tag === "check") {
     // Auto-wire: onClick toggles value 0↔1
     recordClickHandler({

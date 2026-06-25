@@ -60,3 +60,47 @@ export function emitBindingTable(specs: BindingSpec[]): string {
     `};`,
   ].join("\n");
 }
+
+// ── List bindings ────────────────────────────────────────────────────────────
+export interface ListBindingSpec {
+  nodeIndex: number;
+  countFnName: string;   // C++ function: uint16_t fn(void)
+  itemFnName: string;    // C++ function: void fn(uint16_t idx, char* buf, uint8_t size)
+  countFnBody: string;   // lowered C++ body for the count function
+  itemFnBody: string;    // lowered C++ body for the item function
+}
+
+const listBindings: ListBindingSpec[] = [];
+export function recordListBinding(spec: ListBindingSpec): void {
+  listBindings.push(spec);
+}
+export function getListBindings(): ListBindingSpec[] {
+  return listBindings;
+}
+export function getListBindingsCount(): number {
+  return listBindings.length;
+}
+export function resetListBindings(): void {
+  listBindings.length = 0;
+}
+
+/** Emit the list binding table + functions. */
+export function emitListBindings(specs: ListBindingSpec[]): string {
+  if (specs.length === 0) {
+    return `UIListBinding __ui_list_bindings[] = {};\nconst uint8_t __ui_list_binding_count = 0;`;
+  }
+  const lines: string[] = [];
+  // Emit count + item functions.
+  for (const spec of specs) {
+    lines.push(`uint16_t ${spec.countFnName}() { ${spec.countFnBody} }`);
+    lines.push(`void ${spec.itemFnName}(uint16_t idx, char* buf, uint8_t size) { ${spec.itemFnBody} }`);
+  }
+  // Emit the binding table.
+  lines.push(`UIListBinding __ui_list_bindings[] = {`);
+  for (const spec of specs) {
+    lines.push(`  { .node=${spec.nodeIndex}, .countFn=${spec.countFnName}, .itemFn=${spec.itemFnName} },`);
+  }
+  lines.push(`};`);
+  lines.push(`const uint8_t __ui_list_binding_count = ${specs.length};`);
+  return lines.join("\n");
+}

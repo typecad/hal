@@ -131,7 +131,8 @@ describe("ui lowering", () => {
       `<screen><input id="ssid" type="text"></input></screen>`,
       ``,
     );
-    expect(out.keyboardLoaders).toContain("__ui_kb_styles");
+    expect(out.keyboardLoaders).toContain("ui_kb_add_key");
+    expect(out.keyboardLoaders).not.toContain("__ui_kb_keys[__ui_kb_keyCount]");
     expect(out.keyboardLoaders).toContain("__ui_kb_bg");
   });
 

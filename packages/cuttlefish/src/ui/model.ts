@@ -6,7 +6,7 @@ import { selectFontAssetForStyle } from "./font-assets.js";
 import type { Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
 
-export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range" | "input" | "img";
+export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range" | "input" | "img" | "list";
 export type UIPropertyModel = "background" | "color" | "text" | "visible" | "borderColor";
 
 export interface UINodeModel {
@@ -83,6 +83,7 @@ export interface UINodeModel {
   subtreeEnd: number;
   screenId: number;
   imgDataId: number;  // index into image table (255 = no image)
+  listItemHeight: number;  // px per item (for <list>, 0 = not a list)
 }
 
 export interface UITransitionModel {
@@ -129,6 +130,7 @@ function nodeKind(tag: string): UINodeKindModel {
   if (tag === "range") return "range";
   if (tag === "input") return "input";
   if (tag === "img") return "img";
+  if (tag === "list") return "list";
   return "text";
 }
 
@@ -556,6 +558,7 @@ export function lowerUIToModel(
       subtreeEnd,
       screenId,
       imgDataId: node.id && imageAssetIds.has(node.id) ? imageAssetIds.get(node.id)! : 255,
+      listItemHeight: (node as any).itemHeight ?? 0,
     };
   });
 

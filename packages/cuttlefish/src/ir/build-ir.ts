@@ -322,13 +322,14 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           node.children?.forEach(collectIds);
         };
         if (mod.allStyledScreens.length > 0) {
+          let nextUiNodeIndex = 0;
           for (const screen of mod.allStyledScreens) {
             collectIds(screen);
-            autoWireElements(name, screen as any);
+            nextUiNodeIndex = autoWireElements(name, screen as any, nextUiNodeIndex);
           }
         } else {
           collectIds(mod.styled);
-          autoWireElements(name, mod.styled as any);
+          autoWireElements(name, mod.styled as any, 0);
         }
       }
     }

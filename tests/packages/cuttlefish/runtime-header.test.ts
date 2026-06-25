@@ -43,7 +43,7 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("UINode has a mutable textBuffer and hasTextBinding field", () => {
-    expect(header).toMatch(/char\s+textBuffer\[UI_TEXT_BUF\]/);
+    expect(header).toMatch(/char\s+textBuffer\[UI_TEXT_BUF\s*\+\s*1\]/);
     expect(header).toMatch(/uint8_t\s+hasTextBinding/);
   });
 
@@ -54,15 +54,15 @@ describe("C++ reactive runtime header", () => {
   it("ui_init seeds textBuffer from the flash literal for PROP_TEXT bindings", () => {
     // ui_init must: set hasTextBinding=1, strncpy text→textBuffer, NUL-terminate.
     expect(header).toMatch(/ui_init[\s\S]*hasTextBinding\s*=\s*1/);
-    expect(header).toMatch(/ui_init[\s\S]*strncpy\(\s*__ui_nodes\[n\]\.textBuffer,\s*__ui_nodes\[n\]\.text,\s*UI_TEXT_BUF\s*-\s*1\s*\)/);
-    expect(header).toMatch(/ui_init[\s\S]*textBuffer\[UI_TEXT_BUF\s*-\s*1\]\s*=\s*'\\0'/);
+    expect(header).toMatch(/ui_init[\s\S]*strncpy\(\s*__ui_nodes\[n\]\.textBuffer,\s*__ui_nodes\[n\]\.text\s*\?\s*__ui_nodes\[n\]\.text\s*:\s*"",\s*UI_TEXT_BUF\s*\)/);
+    expect(header).toMatch(/ui_init[\s\S]*textBuffer\[UI_TEXT_BUF\]\s*=\s*'\\0'/);
   });
 
   it("ui_tick text-binding dispatch compares by content (strcmp), not pointer", () => {
     // Must: save oldBuf, call textFn(buf,size), strcmp to decide dirty.
-    expect(header).toMatch(/char\s+oldBuf\[UI_TEXT_BUF\]/);
-    expect(header).toMatch(/strcpy\(\s*oldBuf,\s*__ui_nodes\[.*?\]\.textBuffer\s*\)/);
-    expect(header).toMatch(/textFn\(\s*__ui_nodes\[.*?\]\.textBuffer,\s*UI_TEXT_BUF\s*\)/);
+    expect(header).toMatch(/char\s+oldBuf\[UI_TEXT_BUF\s*\+\s*1\]/);
+    expect(header).toMatch(/strncpy\(\s*oldBuf,\s*__ui_nodes\[.*?\]\.textBuffer,\s*UI_TEXT_BUF\s*\)/);
+    expect(header).toMatch(/textFn\(\s*__ui_nodes\[.*?\]\.textBuffer,\s*UI_TEXT_BUF\s*\+\s*1\s*\)/);
     expect(header).toMatch(/strcmp\(\s*oldBuf,\s*__ui_nodes\[.*?\]\.textBuffer\s*\)\s*!=\s*0/);
   });
 
@@ -131,6 +131,16 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("__ui_kb_buffer");
     expect(header).toContain("__ui_kb_visible");
     expect(header).toContain("__ui_kb_target");
+  });
+
+  it("guards keyboard key insertion against fixed array overflow", () => {
+    expect(header).toContain("ui_kb_add_key");
+    expect(header).toMatch(/if\s*\(__ui_kb_keyCount\s*>=\s*UI_KB_MAX\)\s*return/);
+  });
+
+  it("checks AA canvas allocation before use", () => {
+    expect(header).toMatch(/if\s*\(!__ui_aa_canvas\s*\|\|\s*!__ui_aa_canvas->getBuffer\(\)\)\s*return\s+nullptr/);
+    expect(header).toMatch(/static inline void ui_aa_push[\s\S]*if\s*\(!c\s*\|\|\s*!c->getBuffer\(\)\)\s*return/);
   });
 
   it("declares ui_kb_open, ui_kb_close, ui_kb_handle_touch", () => {

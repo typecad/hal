@@ -96,6 +96,9 @@ export function measure(node: StyledNode): IntrinsicSize {
   if (node.tag === "img") {
     return { w: (node as any).imgWidth ?? 32, h: (node as any).imgHeight ?? 32 };
   }
+  if (node.tag === "list") {
+    return { w: 0, h: 0 };  // lists fill their container (flex)
+  }
   // Containers have no intrinsic size in block layout — they fill available.
   return { w: 0, h: 0 };
 }

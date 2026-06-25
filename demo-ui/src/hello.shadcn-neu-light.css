@@ -70,7 +70,7 @@ screen {
   font-size: 24px;
   font-weight: bold;
   font-smoothing: antialiased;
-  align-self: stretch;
+  width: 300;
   text-align: center;
 }
 
@@ -79,7 +79,7 @@ screen {
   font-family: "ColibriDemo";
   font-size: 16px;
   font-smoothing: antialiased;
-  align-self: stretch;
+  width: 300;
   text-align: center;
 }
 
@@ -325,6 +325,16 @@ a {
 #settingsLabel {
   color: var(--muted-foreground);
   font-size: 16px;
+}
+
+#deviceList {
+  color: var(--foreground);
+  flex: 1;
+  width: 280;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 8px 0;
 }
 
 #aboutVersion {

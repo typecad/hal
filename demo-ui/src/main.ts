@@ -52,3 +52,9 @@ screen.ssid.onChange(() => {
 screen.port.onChange(() => {
   console.log('port:', screen.port.text);
 });
+
+// <list>: virtualized scrollable list bound to callbacks.
+ui.bindList(screen.deviceList,
+  () => 50,                    // 50 items
+  (i: number) => `Device ${i + 1}`  // item text
+);

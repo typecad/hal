@@ -14,7 +14,7 @@ import type {
   PreviewSnapshot,
 } from "./types.js";
 
-const UI_TEXT_BUF = 16;
+const UI_TEXT_BUF = 32;
 const UI_TOUCH_DEBOUNCE_MS = 50;
 const UI_TOUCH_HOLD_MS = 600;
 const UI_DRAG_THRESHOLD = 10;
@@ -54,7 +54,7 @@ interface RuntimeOptions {
 }
 
 function clampText(text: unknown): string {
-  return String(text ?? "").slice(0, UI_TEXT_BUF - 1);
+  return String(text ?? "").slice(0, UI_TEXT_BUF);
 }
 
 function lerpColor(a: number, b: number, k100: number): number {
@@ -114,6 +114,7 @@ function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: 
       box: { ...node.box },
       classes: [...node.classes],
       options: node.options?.map((option) => ({ ...option })),
+      screenId: node.screenId ?? 0,
       dirty: false,
       textBuffer: "",
       hasTextBinding: false,
@@ -177,7 +178,7 @@ export class PreviewUIRuntime {
     this.pinControls = snapshot.pinControls;
     this.intervals = snapshot.intervals;
     this.initialAssignments = snapshot.initialAssignments;
-    this.screenCount = Math.max(1, ...this.nodes.map((node) => node.screenId + 1));
+    this.screenCount = Math.max(1, ...this.nodes.map((node) => (node.screenId ?? 0) + 1));
     this.onFrame = options.onFrame;
     this.onDiagnostics = options.onDiagnostics;
     this.gfx = new HostAdafruitGFX(snapshot.program.width, snapshot.program.height, new Uint8Array(snapshot.font));
@@ -313,7 +314,7 @@ export class PreviewUIRuntime {
   }
 
   private isActiveNode(node: MutableNode): boolean {
-    return node.screenId === this.activeScreen;
+    return (node.screenId ?? 0) === this.activeScreen;
   }
 
   private navigate(screenIdx: number): void {
@@ -398,11 +399,11 @@ export class PreviewUIRuntime {
 
   private baseDrawXForNode(nodeIndex: number): number {
     const node = this.nodes[nodeIndex];
-    return node.box.x + node.transformOffsetX;
+    return node.box.x + (node.transformOffsetX ?? 0);
   }
 
   private baseDrawYForNode(nodeIndex: number): number {
-    let y = this.nodes[nodeIndex].box.y + this.nodes[nodeIndex].transformOffsetY;
+    let y = this.nodes[nodeIndex].box.y + (this.nodes[nodeIndex].transformOffsetY ?? 0);
     let parent = this.nodes[nodeIndex].parentIndex;
     while (parent >= 0 && this.nodes[parent]) {
       if (this.nodes[parent].scrollable) y -= this.nodes[parent].scrollY;
@@ -413,12 +414,12 @@ export class PreviewUIRuntime {
 
   private pressedOffsetXForNode(nodeIndex: number): number {
     const node = this.nodes[nodeIndex];
-    return node.value > 0 ? node.pressedOffsetX : 0;
+    return node.value > 0 ? (node.pressedOffsetX ?? 0) : 0;
   }
 
   private pressedOffsetYForNode(nodeIndex: number): number {
     const node = this.nodes[nodeIndex];
-    return node.value > 0 ? node.pressedOffsetY : 0;
+    return node.value > 0 ? (node.pressedOffsetY ?? 0) : 0;
   }
 
   private drawXForNode(nodeIndex: number): number {
@@ -432,8 +433,8 @@ export class PreviewUIRuntime {
   }
 
   private clearPressOffsetArea(node: MutableNode, baseX: number, baseY: number): void {
-    const ox = node.pressedOffsetX;
-    const oy = node.pressedOffsetY;
+    const ox = node.pressedOffsetX ?? 0;
+    const oy = node.pressedOffsetY ?? 0;
     if (ox === 0 && oy === 0) return;
 
     const x0 = Math.min(baseX, baseX + ox);
@@ -854,7 +855,7 @@ export class PreviewUIRuntime {
   private drawTextNode(node: MutableNode, displayText: string | undefined, tw: number, textX: number, drawY: number, ts: number): void {
     const clearW = Math.max(node.box.w, node.lastTextWidth);
     const clearH = Math.max(node.box.h, this.textHeight(ts, node.fontFace));
-    if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, clearW, clearH, node.bg);
+    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, node.hasBg ? node.bg : node.clearColor);
     node.lastTextWidth = tw;
     const textClear = node.hasBg ? node.bg : node.clearColor;
     if (node.textShadowCount > 0) {
@@ -871,7 +872,7 @@ export class PreviewUIRuntime {
         node.letterSpacing,
       );
     }
-    this.drawText(displayText, textX, drawY, node.fg, node.hasBg ? node.bg : node.fg, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
+    this.drawText(displayText, textX, drawY, node.fg, textClear, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
     if (node.underline) this.gfx.drawFastHLine(textX, drawY + this.textHeight(ts, node.fontFace) - 1, tw, node.fg);
   }
 

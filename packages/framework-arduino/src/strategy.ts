@@ -456,15 +456,13 @@ struct __tc_StaticArray {
       dependencies: [],
     }];
 
-    // Add timer methods if used
-    const hasHwTimer = program.boardConstants?.has("peripherals.timers.0.instance");
-    const isEsp32 = ctx?.architecture === "esp32";
-    
+    // Add cooperative timer methods if used. Callbacks run from loop(), so
+    // generated UI/state mutations stay on the main Arduino execution path.
     helpers.push({
       kind: "polyfill",
       id: "timer_methods",
       domain: "arduino",
-      requiredIncludes: isEsp32 ? ["esp_timer.h"] : [],
+      requiredIncludes: [],
       forwardDeclarations: [],
       helperStructs: [`
 struct __tc_TimerTask {
@@ -513,25 +511,7 @@ public:
     }
 } __tc_timer_runtime;
 `],
-      helperFunctions: [
-        isEsp32 ? `
-int __tc_setInterval(void (*cb)(), long ms) {
-    const esp_timer_create_args_t periodic_timer_args = { .callback = (esp_timer_cb_t)cb, .arg = NULL, .name = "periodic" };
-    esp_timer_handle_t timer;
-    esp_timer_create(&periodic_timer_args, &timer);
-    esp_timer_start_periodic(timer, ms * 1000);
-    return (int)timer;
-}
-int __tc_setTimeout(void (*cb)(), long ms) {
-    const esp_timer_create_args_t once_timer_args = { .callback = (esp_timer_cb_t)cb, .arg = NULL, .name = "one-shot" };
-    esp_timer_handle_t timer;
-    esp_timer_create(&once_timer_args, &timer);
-    esp_timer_start_once(timer, ms * 1000);
-    return (int)timer;
-}
-void __tc_clearInterval(int id) { esp_timer_stop((esp_timer_handle_t)id); esp_timer_delete((esp_timer_handle_t)id); }
-void __tc_clearTimeout(int id) { esp_timer_stop((esp_timer_handle_t)id); esp_timer_delete((esp_timer_handle_t)id); }
-` : `
+      helperFunctions: [`
 int __tc_setInterval(void (*cb)(), long ms) { return __tc_timer_runtime.add(cb, ms, true); }
 int __tc_setTimeout(void (*cb)(), long ms) { return __tc_timer_runtime.add(cb, ms, false); }
 void __tc_clearInterval(int id) { __tc_timer_runtime.clear(id); }

@@ -15,7 +15,7 @@ import { StatementIR, HALOpIR } from "../../api/index.js";
 import { makeSourceSpan } from "../ast-node-utils.js";
 import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
 import { resolveMount, MountRequest } from "./ui-mount.js";
-import { emitSignalDecl, BindingSpec } from "./ui-reactive.js";
+import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getListBindingsCount } from "./ui-reactive.js";
 import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
@@ -253,6 +253,9 @@ export function tryResolveUICall(
   }
   if (method === "bind") {
     return resolveBindCall(call, fileName, sourceText, diagnostics);
+  }
+  if (method === "bindList") {
+    return resolveBindListCall(call, fileName, sourceText, diagnostics);
   }
   if (method === "watchPin") {
     return resolveWatchPinCall(call, fileName, sourceText, diagnostics);
@@ -559,6 +562,76 @@ function resolveBindCall(
   };
 }
 
+/** Resolve ui.bindList(node, countFn, itemFn) — records a list binding spec.
+ *  countFn: () => number (total item count)
+ *  itemFn: (index) => string (text for item at index)
+ *  Both arrows are lowered to C++ functions. */
+function resolveBindListCall(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  _diagnostics: Diagnostic[],
+): StatementIR | null {
+  if (call.arguments.length < 3) return null;
+  const nodeArg = call.arguments[0];
+  const countArg = call.arguments[1];
+  const itemArg = call.arguments[2];
+
+  // Resolve the <list> node index.
+  let nodeIndex = 0;
+  if (ts.isPropertyAccessExpression(nodeArg) && ts.isIdentifier(nodeArg.expression)) {
+    const htmlPath = resolveUIModuleImport(nodeArg.expression.text);
+    if (htmlPath) nodeIndex = resolveNodeIndex(htmlPath, nodeArg.name.text);
+  }
+
+  // Lower the count function: () => N → "return N;"
+  let countBody = "return 0;";
+  if (countArg && (ts.isArrowFunction(countArg) || ts.isFunctionExpression(countArg))) {
+    const body = countArg.body;
+    if (body && ts.isExpression(body)) {
+      // Handle bare numeric/identifier directly (lowerTextBindingBody doesn't cover these).
+      const exprText = (body as ts.Expression).getText();
+      if (exprText && (/^\d+$/.test(exprText) || /^\w+$/.test(exprText))) {
+        countBody = `return ${exprText};`;
+      } else {
+        // Try lowerTextBindingBody for more complex expressions.
+        const { cppBody } = lowerTextBindingBody(body, fileName, sourceText, []);
+        if (cppBody) {
+          const m = /snprintf\([^,]+,\s*[^,]+,\s*"[^"]*"(?:,\s*(.+))?\)/.exec(cppBody);
+          countBody = m?.[1] ? `return ${m[1].replace(/[;]\s*$/, "")};` : "return 0;";
+        }
+      }
+    }
+  }
+
+  // Lower the item function: (i) => `text ${i}` → "snprintf(buf, size, ...);"
+  let itemBody = "buf[0] = 0;";
+  if (itemArg && (ts.isArrowFunction(itemArg) || ts.isFunctionExpression(itemArg))) {
+    const body = itemArg.body;
+    if (body && ts.isExpression(body)) {
+      const { cppBody } = lowerTextBindingBody(body, fileName, sourceText, []);
+      itemBody = cppBody || "buf[0] = 0;";
+      // Replace the arrow's first parameter name with 'idx' (the C++ arg name).
+      if (ts.isArrowFunction(itemArg) && itemArg.parameters.length > 0) {
+        const paramName = itemArg.parameters[0].name.getText();
+        if (paramName && paramName !== "idx") {
+          itemBody = itemBody.replace(new RegExp(`\\b${paramName}\\b`, "g"), "idx");
+        }
+      }
+    }
+  }
+
+  const countFnName = `__ui_list_count_${getListBindingsCount()}`;
+  const itemFnName = `__ui_list_item_${getListBindingsCount()}`;
+  recordListBinding({ nodeIndex, countFnName, itemFnName, countFnBody: countBody, itemFnBody: itemBody });
+
+  return {
+    kind: "block",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    body: [],
+  };
+}
+
 /** Resolve ui.watchPin(pin, callback) — records a pin-watching spec.
  * The callback body is lowered to C++ for the generated async watcher. */
 function resolveWatchPinCall(
@@ -600,13 +673,16 @@ export function resolveNodeIndex(htmlPath: string, id: string): number {
   const mod = getUIModule(htmlPath);
   if (!mod) return 0;
   let idx = 0;
-  let found = 0;
+  let found = -1;
   const walk = (n: StyledNode): boolean => {
     if (n.id === id) { found = idx; return true; }
     idx++;
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
   };
-  walk(mod.styled);
-  return found;
+  const roots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  for (const root of roots) {
+    if (walk(root)) break;
+  }
+  return found >= 0 ? found : 0;
 }

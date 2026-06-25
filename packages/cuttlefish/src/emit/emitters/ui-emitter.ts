@@ -18,7 +18,7 @@ import type { EmitterContext } from "./emitter-context.js";
 import { emitRuntimeHeader } from "../../ui/runtime-header.js";
 import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
 import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandlers } from "../../ir/transformers/ui-call-resolver.js";
-import { emitBindingTable } from "../../ir/transformers/ui-reactive.js";
+import { emitBindingTable, emitListBindings, getListBindings } from "../../ir/transformers/ui-reactive.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { generateTouchAdapter, TouchAdapterCodegen } from "../../api/shared/display-profile.js";
 import { getRadioGroups } from "../../ir/ui-element-auto-wire.js";
@@ -134,6 +134,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
   // 4. Binding table (accumulated from ui.bind calls).
   ctx.sourceLines.push(emitBindingTable(uiBindings()));
+
+  // 4a. List binding table + functions (from ui.bindList calls).
+  ctx.sourceLines.push(emitListBindings(getListBindings()));
 
   // 4b. Binding compute functions. Each ui.bind(node, prop, fn) records a
   // BindingSpec whose fnName is referenced by the table. v1 emits a stub that
@@ -274,7 +277,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
 /** Count NODE_FILL/NODE_TEXT entries in the emitted node table (one per node). */
 function countNodes(nodeTable: string): number {
-  const matches = nodeTable.match(/NODE_(FILL|TEXT|BUTTON|CHECK|RADIO|PROGRESS|RANGE|INPUT|IMG)/g);
+  const matches = nodeTable.match(/NODE_(FILL|TEXT|BUTTON|CHECK|RADIO|PROGRESS|RANGE|INPUT|IMG|LIST)/g);
   return matches ? matches.length : 0;
 }
 
