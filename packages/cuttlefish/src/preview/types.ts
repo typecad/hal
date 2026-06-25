@@ -50,6 +50,7 @@ export interface PreviewSnapshot {
   program: UIProgram;
   keyboardTemplates: KeyboardTemplate[];
   cssRules: CSSRule[];
+  uiTreeNames: string[];
   font: number[];
   bindings: PreviewBindingSpec[];
   callbacks: PreviewCallbackSpec[];

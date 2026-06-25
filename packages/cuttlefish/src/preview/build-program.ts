@@ -10,7 +10,7 @@ import { buildUIFontAssets } from "../ui/font-assets.js";
 import { measure, type Box } from "../ui/layout-engine.js";
 import { lowerUIToModel } from "../ui/model.js";
 import { selectEngine } from "../ui/select-engine.js";
-import { resolveStyles } from "../ui/style-resolver.js";
+import { resolveStyles, type StyledNode } from "../ui/style-resolver.js";
 import type {
   PreviewBindingSpec,
   PreviewCallbackSpec,
@@ -117,6 +117,12 @@ function findUIModuleImports(
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const specifier = statement.moduleSpecifier.text;
     if (specifier.endsWith(".ui.html")) {
+      if (statement.importClause?.name) {
+        imports.push({
+          treeName: statement.importClause.name.text,
+          htmlPath: path.resolve(entryDir, specifier),
+        });
+      }
       const named = statement.importClause?.namedBindings;
       if (named && ts.isNamedImports(named)) {
         for (const element of named.elements) {
@@ -134,6 +140,45 @@ function findUIModuleImports(
     }
   }
   return imports;
+}
+
+function themeCssPath(displayThemeCss: string | undefined, htmlPath: string): string {
+  if (!displayThemeCss) return htmlPath.replace(/\.ui\.html$/, ".ui.css");
+  return path.isAbsolute(displayThemeCss)
+    ? displayThemeCss
+    : path.resolve(path.dirname(htmlPath), displayThemeCss);
+}
+
+function collectHrefCallbacks(
+  screens: StyledNode[],
+  programNodes: Array<{ id?: string }>,
+): PreviewCallbackSpec[] {
+  const screenIds = new Map<string, number>();
+  screens.forEach((screen, index) => {
+    if (screen.id) screenIds.set(screen.id, index);
+  });
+
+  const callbacks: PreviewCallbackSpec[] = [];
+
+  const visit = (node: StyledNode) => {
+    if (node.id && node.href) {
+      const target = node.href.startsWith("#") ? node.href.slice(1) : node.href;
+      const targetScreen = screenIds.get(target);
+      const nodeIndex = nodeIndexById(programNodes, node.id);
+      if (targetScreen !== undefined && nodeIndex !== undefined) {
+        callbacks.push({
+          nodeId: node.id,
+          nodeIndex,
+          kind: "click",
+          body: `ui.navigate(${targetScreen});`,
+        });
+      }
+    }
+    for (const child of node.children) visit(child);
+  };
+
+  for (const screen of screens) visit(screen);
+  return callbacks;
 }
 
 function extractAuthorSpecs(
@@ -317,19 +362,24 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const resolved = resolveDisplayProfile(config.display ?? { profile: "ili9341-spi" }, registry);
   const profile = resolved.profile;
   const htmlText = fs.readFileSync(firstImport.htmlPath, "utf-8");
-  const cssPath = firstImport.htmlPath.replace(/\.ui\.html$/, ".ui.css");
+  const cssPath = themeCssPath(config.display?.themeCss, firstImport.htmlPath);
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
   const parsedHtml = parseHtmlWithKeyboards(htmlText);
   const fullCss = cssText + "\n" + extractStyleBlocks(htmlText);
   const cssRules = parseCss(fullCss);
   const fontFaces = parseFontFaces(fullCss);
   const styled = resolveStyles(parsedHtml.tree, cssRules);
-  const fontAssets = buildUIFontAssets(styled, fontFaces, path.dirname(cssPath));
-  const engine = selectEngine(styled);
+  const allStyledScreens = parsedHtml.screens.map((screen) => resolveStyles(screen, cssRules));
+  const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
+  const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(cssPath));
   const viewport: Box = { x: 0, y: 0, w: profile.width, h: profile.height };
-  const boxes = engine.arrange(styled, viewport, measure);
-  const program = lowerUIToModel(styled, boxes, profile.colorFormat, profile, fontAssets);
+  const boxes = allStyledScreens.flatMap((screen) => {
+    const engine = selectEngine(screen);
+    return engine.arrange(screen, viewport, measure);
+  });
+  const program = lowerUIToModel(styled, boxes, profile.colorFormat, profile, fontAssets, allStyledScreens);
   const specs = extractAuthorSpecs(sourceFile, uiImports, program.nodes);
+  const hrefCallbacks = collectHrefCallbacks(allStyledScreens, program.nodes);
 
   return {
     projectRoot,
@@ -339,9 +389,10 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     program,
     keyboardTemplates: parsedHtml.keyboards,
     cssRules,
+    uiTreeNames: [...new Set(uiImports.map((imp) => imp.treeName))],
     font: loadFont(projectRoot, diagnostics),
     bindings: specs.bindings,
-    callbacks: specs.callbacks,
+    callbacks: [...hrefCallbacks, ...specs.callbacks],
     initialAssignments: specs.initialAssignments,
     intervals: specs.intervals,
     pinControls: specs.pinControls,

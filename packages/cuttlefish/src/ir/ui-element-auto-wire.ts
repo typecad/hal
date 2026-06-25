@@ -126,6 +126,8 @@ function autoWireNode(treeName: string, node: AutoWireNode): void {
         fnName: `__ui_${node.id}_nav`,
         callbackBody: `ui_navigate(${targetScreen});`,
       });
+    } else {
+      console.error(`[auto-wire] WARNING: <a href="${node.href}"> (id=${node.id}) target screen not found. Known screens: ${[...screenIdMap.keys()].join(", ")}`);
     }
   }
 }

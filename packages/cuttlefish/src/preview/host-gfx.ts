@@ -156,6 +156,46 @@ export class HostAdafruitGFX {
     this.drawFastVLine(x + w - 1, y, h, color);
   }
 
+  drawRoundRect(x: number, y: number, w: number, h: number, r: number, color: number): void {
+    x = Math.trunc(x);
+    y = Math.trunc(y);
+    w = Math.trunc(w);
+    h = Math.trunc(h);
+    r = Math.max(0, Math.trunc(r));
+    if (w <= 0 || h <= 0) return;
+    if (r <= 0) {
+      this.drawRect(x, y, w, h, color);
+      return;
+    }
+    r = Math.min(r, Math.trunc(Math.min(w, h) / 2));
+    this.drawFastHLine(x + r, y, w - 2 * r, color);
+    this.drawFastHLine(x + r, y + h - 1, w - 2 * r, color);
+    this.drawFastVLine(x, y + r, h - 2 * r, color);
+    this.drawFastVLine(x + w - 1, y + r, h - 2 * r, color);
+    this.drawCircleHelper(x + r, y + r, r, 1, color);
+    this.drawCircleHelper(x + w - r - 1, y + r, r, 2, color);
+    this.drawCircleHelper(x + w - r - 1, y + h - r - 1, r, 4, color);
+    this.drawCircleHelper(x + r, y + h - r - 1, r, 8, color);
+  }
+
+  fillRoundRect(x: number, y: number, w: number, h: number, r: number, color: number): void {
+    x = Math.trunc(x);
+    y = Math.trunc(y);
+    w = Math.trunc(w);
+    h = Math.trunc(h);
+    r = Math.max(0, Math.trunc(r));
+    if (w <= 0 || h <= 0) return;
+    if (r <= 0) {
+      this.fillRect(x, y, w, h, color);
+      return;
+    }
+    r = Math.min(r, Math.trunc(Math.min(w, h) / 2));
+    this.fillRect(x + r, y, w - 2 * r, h, color);
+    const delta = Math.max(0, h - 2 * r - 1);
+    this.fillCircleHelper(x + w - r - 1, y + r, r, 1, delta, color);
+    this.fillCircleHelper(x + r, y + r, r, 2, delta, color);
+  }
+
   drawCircle(x0: number, y0: number, r: number, color: number): void {
     x0 = Math.trunc(x0);
     y0 = Math.trunc(y0);
@@ -189,6 +229,45 @@ export class HostAdafruitGFX {
       this.drawPixel(x0 - y, y0 + x, color);
       this.drawPixel(x0 + y, y0 - x, color);
       this.drawPixel(x0 - y, y0 - x, color);
+    }
+  }
+
+  private drawCircleHelper(x0: number, y0: number, r: number, cornername: number, color: number): void {
+    x0 = Math.trunc(x0);
+    y0 = Math.trunc(y0);
+    r = Math.trunc(r);
+    let f = 1 - r;
+    let ddFx = 1;
+    let ddFy = -2 * r;
+    let x = 0;
+    let y = r;
+
+    while (x < y) {
+      if (f >= 0) {
+        y--;
+        ddFy += 2;
+        f += ddFy;
+      }
+      x++;
+      ddFx += 2;
+      f += ddFx;
+
+      if (cornername & 0x4) {
+        this.drawPixel(x0 + x, y0 + y, color);
+        this.drawPixel(x0 + y, y0 + x, color);
+      }
+      if (cornername & 0x2) {
+        this.drawPixel(x0 + x, y0 - y, color);
+        this.drawPixel(x0 + y, y0 - x, color);
+      }
+      if (cornername & 0x8) {
+        this.drawPixel(x0 - y, y0 + x, color);
+        this.drawPixel(x0 - x, y0 + y, color);
+      }
+      if (cornername & 0x1) {
+        this.drawPixel(x0 - y, y0 - x, color);
+        this.drawPixel(x0 - x, y0 - y, color);
+      }
     }
   }
 

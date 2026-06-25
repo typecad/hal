@@ -150,7 +150,7 @@ extern const uint8_t __ui_binding_count;
 
 // ── Multi-screen navigation ─────────────────────────────────────────────────
 static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
-static uint8_t __ui_screen_count = 1;    // total number of screens
+extern const uint8_t __ui_screen_count;  // total number of screens (emitted by lowering)
 static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 100=full)
 static uint16_t __ui_fade_elapsed = 0;
 static uint16_t __ui_fade_duration = 200; // ms
@@ -1029,7 +1029,7 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t
   // Only use AA when fg != bg (opaque background). When fg == bg (transparent
   // mode), the AA source canvas fills entirely with fg — no edges to detect,
   // producing a solid rectangle instead of text.
-  if (antialias && fg != bg) {
+  if (antialias && fg != bg && letterSpacing == 0) {
     ui_draw_aa_text(text, x, y, fg, bg, ts);
     return;
   }

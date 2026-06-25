@@ -31,6 +31,8 @@ export interface LoweredUI {
   keyboardLoaders: string;
   /** C++ dispatch table mapping input node index → loader function. */
   keyboardDispatch: string;
+  /** Number of distinct screens (for multi-screen navigation). */
+  screenCount: number;
 }
 
 type ColorFormat = "rgb565" | "mono";
@@ -88,7 +90,8 @@ export function lowerUIToCpp(
     ? `void (*__ui_kb_loaders[])() = { ${dispatchEntries.join(", ")} };\nconst uint8_t __ui_kb_loader_count = ${dispatchEntries.length};`
     : `void (*__ui_kb_loaders[])() = {};\nconst uint8_t __ui_kb_loader_count = 0;`;
 
-  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch };
+  const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
+  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount };
 }
 
 function sanitizedId(id: string): string {

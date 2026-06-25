@@ -31,7 +31,7 @@ screen {
   gap: 8px;
   border-bottom: 2px solid dodgerblue;
   padding-bottom: 6px;
-  background: linear-gradient(to bottom, #1e2a4e, #1a1a2e);
+  background: linear-gradient(to bottom, #1e2a4e, #364b8d);
 }
 
 #title {

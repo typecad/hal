@@ -22,8 +22,7 @@ screen.counter.value = 0;
 ui.bind(screen.counter, 'color', () => (screen.counter.value % 2 === 0 ? 'limegreen' : 'orange'));
 ui.bind(screen.counter, 'text', () => String(screen.counter.value));
 
-// Button: momentary press visual + tap increments counter
-ui.bind(screen.btn, 'background', () => (screen.btn.value > 0 ? 'limegreen' : 'darkgreen'));
+// Button: :pressed CSS handles the momentary visual; tap increments counter.
 screen.btn.onClick(() => {
   screen.counter.value = screen.counter.value + 1;
 });
