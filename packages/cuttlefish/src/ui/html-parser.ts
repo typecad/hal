@@ -201,7 +201,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     : undefined;
   const keyboardAttr = el.getAttribute("keyboard") || undefined;
   const inlineStyleAttr = el.getAttribute("style") || undefined;
-  const hrefAttr = tag === "a" ? (el.getAttribute("href") || undefined) : undefined;
+  const hrefAttr = (tag === "a" || tag === "button") ? (el.getAttribute("href") || undefined) : undefined;
 
   // For <select>, parse <option> children into an options list
   if (tag === "select") {
