@@ -64,7 +64,6 @@
   background: #1a6b3c;
   width: 20;
   height: 20;
-  border-radius: 10;
   animation: pulse 2s infinite;
   flex-shrink: 0;
 }
