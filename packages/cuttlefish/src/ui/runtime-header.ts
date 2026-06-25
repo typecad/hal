@@ -185,6 +185,7 @@ struct UIAnimation {
   int16_t iterations;
   uint16_t elapsed;
   uint8_t active;
+  uint16_t lastUpdateMs;  // throttle: only redraw every ~100ms to avoid tearing
 };
 extern const UIKeyframeSet __ui_keyframe_sets[];
 extern const uint8_t __ui_keyframe_set_count;
@@ -1425,19 +1426,28 @@ static inline void ui_tick(uint16_t deltaMs) {
     // Lerp factor between lo and hi.
     uint8_t range = sHi->percent - sLo->percent;
     uint8_t lerpK = range > 0 ? (uint8_t)((uint16_t)(pct - sLo->percent) * 100 / range) : 0;
-    // Apply to node.
+    // Apply to node — only mark dirty if a value actually changed.
     uint8_t n = __ui_anims[i].node;
+    uint8_t changed = 0;
     if (sHi->bg != sLo->bg) {
-      __ui_nodes[n].bg = lerp_color(sLo->bg, sHi->bg, lerpK);
-      __ui_nodes[n].hasBg = 1;
+      uint16_t newBg = lerp_color(sLo->bg, sHi->bg, lerpK);
+      if (newBg != __ui_nodes[n].bg) { __ui_nodes[n].bg = newBg; __ui_nodes[n].hasBg = 1; changed = 1; }
     }
     if (sHi->fg != sLo->fg) {
-      __ui_nodes[n].fg = lerp_color(sLo->fg, sHi->fg, lerpK);
+      uint16_t newFg = lerp_color(sLo->fg, sHi->fg, lerpK);
+      if (newFg != __ui_nodes[n].fg) { __ui_nodes[n].fg = newFg; changed = 1; }
     }
     if (sHi->opacity != sLo->opacity) {
-      __ui_nodes[n].opacity = sLo->opacity + (uint8_t)((int16_t)(sHi->opacity - sLo->opacity) * lerpK / 100);
+      uint8_t newOp = sLo->opacity + (uint8_t)((int16_t)(sHi->opacity - sLo->opacity) * lerpK / 100);
+      if (newOp != __ui_nodes[n].opacity) { __ui_nodes[n].opacity = newOp; changed = 1; }
     }
-    ui_mark_dirty(n);
+    if (changed) {
+      // Throttle redraws to ~10fps to avoid ILI9341 tearing from rapid SPI writes.
+      if (__ui_anims[i].elapsed - __ui_anims[i].lastUpdateMs >= 100) {
+        ui_mark_dirty(n);
+        __ui_anims[i].lastUpdateMs = __ui_anims[i].elapsed;
+      }
+    }
   }
 
   // ② Draw dirty nodes directly to the display object.
