@@ -1814,33 +1814,39 @@ static inline void ui_tick(uint16_t deltaMs) {
         int16_t bh = __ui_nodes[i].box.h;
         uint16_t ih = ls->itemHeight;
         uint16_t clearCol = __ui_nodes[i].clearColor;
-        // Clear viewport + one item height above and below (for edge glyph overflow).
-        __ui_gfx->fillRect(bx, by - ih, bw, bh + 2 * ih, clearCol);
-        // Compute visible range (include partially visible edge items).
-        uint16_t first = ls->scrollY / ih;
-        uint16_t last = (ls->scrollY + bh - 1) / ih + 1;
-        if (ls->itemCount > 0 && last >= ls->itemCount) last = ls->itemCount - 1;
-        // Draw each visible item.
-        char listBuf[UI_TEXT_BUF + 1];
-        __ui_gfx->setTextWrap(false);
-        for (uint16_t idx = first; idx <= last; idx++) {
-          int16_t itemY = by + (int16_t)(idx * ih) - ls->scrollY;
-          ls->itemFn(idx, listBuf, UI_TEXT_BUF + 1);
-          listBuf[UI_TEXT_BUF] = 0;
-          __ui_gfx->setCursor(bx + 4, itemY + (ih - 16) / 2);
-          __ui_gfx->setTextColor(__ui_nodes[i].fg);
-          __ui_gfx->setTextSize(2);
-          __ui_gfx->print(listBuf);
-        }
-        // Scrollbar.
-        if (ls->contentHeight > (uint16_t)bh) {
-          int16_t tx = bx + bw - 4;
-          uint16_t thumbH = (uint32_t)bh * bh / ls->contentHeight;
-          if (thumbH < 8) thumbH = 8;
-          uint16_t thumbY = by + (uint32_t)(bh - thumbH) * ls->scrollY / (ls->contentHeight - bh);
-          uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
-          __ui_gfx->fillRect(tx, by, 3, bh, dimFg);
-          __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
+        // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
+        GFXcanvas16* lc = ui_get_scroll_canvas(bw, bh);
+        if (lc) {
+          lc->fillScreen(clearCol);
+          // Compute visible range.
+          uint16_t first = ls->scrollY / ih;
+          uint16_t last = (ls->scrollY + bh - 1) / ih + 1;
+          if (ls->itemCount > 0 && last >= ls->itemCount) last = ls->itemCount - 1;
+          // Draw each visible item (canvas-local coords: 0,0 = viewport top).
+          char listBuf[UI_TEXT_BUF + 1];
+          lc->setTextWrap(false);
+          for (uint16_t idx = first; idx <= last; idx++) {
+            int16_t itemY = (int16_t)(idx * ih) - ls->scrollY;
+            ls->itemFn(idx, listBuf, UI_TEXT_BUF + 1);
+            listBuf[UI_TEXT_BUF] = 0;
+            lc->setCursor(4, itemY + (ih - 16) / 2);
+            lc->setTextColor(__ui_nodes[i].fg);
+            lc->setTextSize(2);
+            lc->print(listBuf);
+          }
+          // Scrollbar (canvas-local coords).
+          if (ls->contentHeight > (uint16_t)bh) {
+            int16_t tx = bw - 4;
+            uint16_t thumbH = (uint32_t)bh * bh / ls->contentHeight;
+            if (thumbH < 8) thumbH = 8;
+            uint16_t thumbY = (uint32_t)(bh - thumbH) * ls->scrollY / (ls->contentHeight - bh);
+            uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
+            lc->fillRect(tx, 0, 3, bh, dimFg);
+            lc->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
+          }
+          // Push canvas to display at viewport position.
+          __ui_gfx = &__tc_display;
+          ui_push_canvas_rect(lc, bx, by, bw, bh);
         }
         break;
       }
