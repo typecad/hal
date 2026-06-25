@@ -70,6 +70,8 @@ screen {
   font-size: 24px;
   font-weight: bold;
   font-smoothing: antialiased;
+  align-self: stretch;
+  text-align: center;
 }
 
 #subtitle {
@@ -77,6 +79,8 @@ screen {
   font-family: "ColibriDemo";
   font-size: 16px;
   font-smoothing: antialiased;
+  align-self: stretch;
+  text-align: center;
 }
 
 #body {
