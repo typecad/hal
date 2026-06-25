@@ -149,6 +149,13 @@ extern const uint8_t __ui_trans_count;
 extern const uint8_t __ui_binding_count;
 
 // ── Multi-screen navigation ─────────────────────────────────────────────────
+// Touch/scroll/keyboard state reset by navigation.
+static uint8_t __ui_touch_state = 0;
+static int8_t __ui_touch_node = -1;
+static int8_t __ui_scroll_node = -1;
+static int16_t __ui_scroll_pending_dy = 0;
+static uint8_t __ui_kb_visible = 0;
+
 static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
 extern const uint8_t __ui_screen_count;  // total number of screens (emitted by lowering)
 static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 100=full)
@@ -161,6 +168,16 @@ static inline void ui_navigate(uint8_t screenIdx) {
   __ui_active_screen = screenIdx;
   __ui_fade_opacity = 0;
   __ui_fade_elapsed = 0;
+  // Reset scroll/touch state so the old screen's scroll container doesn't
+  // interfere with the new screen.
+  __ui_scroll_node = -1;
+  __ui_scroll_pending_dy = 0;
+  __ui_touch_node = -1;
+  __ui_touch_state = 0;
+  __ui_kb_visible = 0;
+  // Clear the entire display to the background color so old screen content
+  // doesn't bleed through during the fade.
+  __tc_display.fillScreen(0x0000);
   // Mark all nodes dirty so the new screen fully redraws.
   for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1;
 }
@@ -501,20 +518,17 @@ extern void (*__ui_release_handlers[])();
 extern const uint8_t __ui_click_handler_count;
 
 // Touch state machine: tracks down → hold → up → click lifecycle
-static uint8_t __ui_touch_state = 0;  // 0=idle, 1=down, 2=holding
-static int8_t __ui_touch_node = -1;   // which node is being touched (-1=none)
+// Touch node/scroll node state is defined near navigation because ui_navigate resets it.
 static uint32_t __ui_touch_down_time = 0;  // millis() when touch started
 static uint32_t __ui_last_touch_time = 0;  // for debounce (updated on touch down only)
 static uint32_t __ui_last_release_time = 0;  // for release debounce
 static int16_t __ui_drag_start_x = 0;
 static int16_t __ui_drag_start_y = 0;
 static uint8_t __ui_is_dragging = 0;     // 1 once movement exceeds threshold
-static int8_t __ui_scroll_node = -1;     // scrollable container being dragged
 static int8_t __ui_range_node = -1;      // range slider being dragged
-static int16_t __ui_scroll_pending_dy = 0;
+// Scroll delta state is defined near navigation because ui_navigate resets it.
 static uint32_t __ui_last_scroll_draw_time = 0;
-// Keyboard overlay state (defined in full in the keyboard subsystem block below;
-// forward-declared here because ui_touch_up/ui_handle_touch reference them).
+// Keyboard overlay state.
 #define UI_KB_MAX 48   // max key cells (4 rows × 11 padded cols + margin)
 #define UI_KB_HOLD_MS 600
 #define UI_KB_REPEAT_MS 100
@@ -525,7 +539,6 @@ static UIRect  __ui_kb_box;
 static UIKey   __ui_kb_keys[UI_KB_MAX];
 static UIKeyStyle __ui_kb_styles[UI_KB_MAX];
 static uint16_t __ui_kb_bg = 0x0000;  // keyboard background (resolved from CSS)
-static uint8_t __ui_kb_visible = 0;
 static uint8_t __ui_kb_bs_held = 0;
 static uint8_t __ui_kb_dirty = 0;     // 0=clean, 1=full redraw, 2=text row + single key
 static int8_t __ui_kb_pressed_key = -1; // key index under the current touch (-1=none)
@@ -601,6 +614,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   // Check if the touch is inside a scrollable container
   for (int8_t i = __ui_node_count - 1; i >= 0; i--) {
     if (!__ui_nodes[i].scrollable || !__ui_nodes[i].visible) continue;
+    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
     int16_t drawX = ui_draw_x_for_node((uint8_t)i);
     int16_t drawY = ui_draw_y_for_node((uint8_t)i);
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
@@ -1294,6 +1308,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   GFXcanvas16* bufferedScrollCanvas = nullptr;
   for (uint8_t s = 0; s < __ui_node_count; s++) {
     if (!__ui_nodes[s].scrollable || !__ui_nodes[s].visible) continue;
+    if (__ui_nodes[s].screenId != __ui_active_screen) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
     if (!__ui_nodes[s].dirty) continue;
 
@@ -1442,13 +1457,10 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint16_t clearH = __ui_nodes[i].box.h;
           uint16_t glyphH = ts * 8;
           if (glyphH > clearH) clearH = glyphH;
-          // Only draw an opaque clear rect when the node has its own background.
-          // For transparent text (hasBg=0), skip the clear — the parent's
-          // background (solid or gradient) should show through. The parent
-          // redraws its background when dirty, covering any old text.
-          if (__ui_nodes[i].hasBg) {
-            __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, clearH, __ui_nodes[i].bg);
-          }
+          // Dynamic transparent text still needs a clear, otherwise old glyph
+          // pixels accumulate when only this text node is dirty.
+          uint16_t clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
           __ui_nodes[i].lastTextWidth = tw;
         }
         {
