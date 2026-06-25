@@ -154,7 +154,13 @@ export function parseCss(src: string): CSSRule[] {
         assignProp(props, prop, val);
       });
 
-      rules.push({ selector, properties: props });
+      // css-tree emits comma-separated selectors as one string ("a, b").
+      // Split on commas to produce one CSSRule per selector.
+      const selectorParts = selectorText.split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of selectorParts) {
+        const sel = parseSelector(part);
+        if (sel) rules.push({ selector: sel, properties: props });
+      }
     },
   });
 

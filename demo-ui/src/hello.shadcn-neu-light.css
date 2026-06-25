@@ -315,11 +315,10 @@ a {
 #settingsBody, #aboutBody {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 8px;
   align-items: center;
-  justify-content: center;
-  flex: 1;
-  padding: 20px;
+  height: 200;
+  padding: 10px;
 }
 
 #settingsLabel {
@@ -329,7 +328,8 @@ a {
 
 #deviceList {
   color: var(--foreground);
-  flex: 1;
+  flex-grow: 1;
+  flex-basis: 0;
   width: 280;
   background: var(--secondary);
   border: 1px solid var(--border);
