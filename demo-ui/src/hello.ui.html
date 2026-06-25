@@ -1,6 +1,6 @@
 <link rel="stylesheet" href="hello.ui.css">
 
-<screen>
+<screen id="home">
   <view id="header">
     <text id="title">typeCAD UI</text>
     <text id="subtitle">elements demo</text>
@@ -46,9 +46,34 @@
     <text id="item6">Item 6</text>
     <text id="item7">Item 7</text>
     <text id="item8">Item 8</text>
+
+    <a id="goSettings" href="#settings">Settings ></a>
+    <a id="goAbout" href="#about">About ></a>
   </view>
-    
+
   <view id="footer">
     <text id="hint">Tap / drag to scroll</text>
+  </view>
+</screen>
+
+<screen id="settings">
+  <view id="settingsHeader">
+    <text id="settingsTitle">Settings</text>
+  </view>
+  <view id="settingsBody">
+    <text id="settingsLabel">Device Configuration</text>
+    <a id="backFromSettings" href="#home">< Back</a>
+    <a id="settingsToAbout" href="#about">About ></a>
+  </view>
+</screen>
+
+<screen id="about">
+  <view id="aboutHeader">
+    <text id="aboutTitle">About</text>
+  </view>
+  <view id="aboutBody">
+    <text id="aboutVersion">TypeHAL UI v1.0</text>
+    <text id="aboutDesc">ESP32 + ILI9341 Display Library</text>
+    <a id="backFromAbout" href="#home">< Back</a>
   </view>
 </screen>

@@ -283,3 +283,53 @@ screen {
 .ui-keyboard {
   background: var(--card);
 }
+
+/* Navigation links */
+a {
+  color: var(--chart-2);
+  font-size: 20px;
+  text-decoration: underline;
+  align-self: center;
+}
+
+/* Settings screen */
+#settingsHeader, #aboutHeader {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 10px;
+}
+
+#settingsTitle, #aboutTitle {
+  color: var(--foreground);
+  font-size: 24px;
+  font-weight: bold;
+  font-family: "ColibriDemo";
+}
+
+#settingsBody, #aboutBody {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 20px;
+}
+
+#settingsLabel {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+#aboutVersion {
+  color: var(--foreground);
+  font-size: 20px;
+  font-weight: bold;
+}
+
+#aboutDesc {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
