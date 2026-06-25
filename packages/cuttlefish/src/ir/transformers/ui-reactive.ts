@@ -66,8 +66,10 @@ export interface ListBindingSpec {
   nodeIndex: number;
   countFnName: string;   // C++ function: uint16_t fn(void)
   itemFnName: string;    // C++ function: void fn(uint16_t idx, char* buf, uint8_t size)
+  tapFnName: string | null;   // C++ function: void fn(uint16_t idx) — null if no tap callback
   countFnBody: string;   // lowered C++ body for the count function
   itemFnBody: string;    // lowered C++ body for the item function
+  tapFnBody: string | null;   // lowered C++ body for tap, or null
 }
 
 const listBindings: ListBindingSpec[] = [];
@@ -90,15 +92,19 @@ export function emitListBindings(specs: ListBindingSpec[]): string {
     return `UIListBinding __ui_list_bindings[] = {};\nconst uint8_t __ui_list_binding_count = 0;`;
   }
   const lines: string[] = [];
-  // Emit count + item functions.
+  // Emit count + item + tap functions.
   for (const spec of specs) {
     lines.push(`uint16_t ${spec.countFnName}() { ${spec.countFnBody} }`);
     lines.push(`void ${spec.itemFnName}(uint16_t idx, char* buf, uint8_t size) { ${spec.itemFnBody} }`);
+    if (spec.tapFnName && spec.tapFnBody) {
+      lines.push(`void ${spec.tapFnName}(uint16_t idx) { ${spec.tapFnBody} }`);
+    }
   }
   // Emit the binding table.
   lines.push(`UIListBinding __ui_list_bindings[] = {`);
   for (const spec of specs) {
-    lines.push(`  { .node=${spec.nodeIndex}, .countFn=${spec.countFnName}, .itemFn=${spec.itemFnName} },`);
+    const tap = spec.tapFnName && spec.tapFnBody ? spec.tapFnName : "nullptr";
+    lines.push(`  { .node=${spec.nodeIndex}, .countFn=${spec.countFnName}, .itemFn=${spec.itemFnName}, .tapFn=${tap} },`);
   }
   lines.push(`};`);
   lines.push(`const uint8_t __ui_list_binding_count = ${specs.length};`);

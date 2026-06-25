@@ -82,6 +82,7 @@ export declare function bindList(
   node: unknown,
   countFn: () => number,
   itemFn: (index: number) => string,
+  onTap?: (index: number) => void,
 ): void;
 
 export const ui = { mount, signal, bind, watchPin, bindList };

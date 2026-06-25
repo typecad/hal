@@ -623,7 +623,27 @@ function resolveBindListCall(
 
   const countFnName = `__ui_list_count_${getListBindingsCount()}`;
   const itemFnName = `__ui_list_item_${getListBindingsCount()}`;
-  recordListBinding({ nodeIndex, countFnName, itemFnName, countFnBody: countBody, itemFnBody: itemBody });
+  const tapFnName = `__ui_list_tap_${getListBindingsCount()}`;
+
+  // Optional 4th arg: onTap callback (index) => { ... }
+  let tapFnBody: string | null = null;
+  if (call.arguments.length >= 4) {
+    const tapArg = call.arguments[3];
+    if (tapArg && (ts.isArrowFunction(tapArg) || ts.isFunctionExpression(tapArg))) {
+      const cbBody = lowerCallbackBody(tapArg, sourceText, _diagnostics);
+      // Replace the arrow's parameter name with 'idx' (the C++ arg name).
+      let body = cbBody || "";
+      if (ts.isArrowFunction(tapArg) && tapArg.parameters.length > 0) {
+        const paramName = tapArg.parameters[0].name.getText();
+        if (paramName && paramName !== "idx") {
+          body = body.replace(new RegExp(`\\b${paramName}\\b`, "g"), "idx");
+        }
+      }
+      tapFnBody = body || null;
+    }
+  }
+
+  recordListBinding({ nodeIndex, countFnName, itemFnName, tapFnName: tapFnBody ? tapFnName : null, countFnBody: countBody, itemFnBody: itemBody, tapFnBody });
 
   return {
     kind: "block",

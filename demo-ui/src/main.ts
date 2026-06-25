@@ -56,5 +56,6 @@ screen.port.onChange(() => {
 // <list>: virtualized scrollable list bound to callbacks.
 ui.bindList(screen.deviceList,
   () => 50,                    // 50 items
-  (i: number) => `Device ${i + 1}`  // item text
+  (i: number) => `Device ${i + 1}`,  // item text
+  (i: number) => { console.log('tapped:', i); }  // tap callback
 );

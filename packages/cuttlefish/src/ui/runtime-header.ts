@@ -171,6 +171,7 @@ struct UIListBinding {
   uint8_t node;
   uint16_t (*countFn)(void);
   void (*itemFn)(uint16_t idx, char* buf, uint8_t size);
+  void (*tapFn)(uint16_t idx);  // optional: called when an item is tapped
 };
 extern UIListBinding __ui_list_bindings[];
 extern const uint8_t __ui_list_binding_count;
@@ -183,6 +184,7 @@ struct UIListState {
   uint16_t itemCount;
   uint16_t (*countFn)(void);
   void (*itemFn)(uint16_t idx, char* buf, uint8_t size);
+  void (*tapFn)(uint16_t idx);  // optional: called when an item is tapped
 };
 static UIListState __ui_lists[4];
 static uint8_t __ui_list_count = 0;
@@ -476,6 +478,7 @@ static inline void ui_init(void) {
     ls->scrollY = 0;
     ls->countFn = __ui_list_bindings[i].countFn;
     ls->itemFn = __ui_list_bindings[i].itemFn;
+    ls->tapFn = __ui_list_bindings[i].tapFn;
     ls->itemCount = ls->countFn ? ls->countFn() : 0;
     ls->contentHeight = ls->itemCount * ls->itemHeight;
     __ui_list_count++;
@@ -741,10 +744,26 @@ static void ui_touch_up() {
     }
     ui_mark_dirty(clickedNode);
   }
+  // List item tap: if the touch was inside a list (not a drag), compute item index.
+  if (!__ui_is_dragging && __ui_list_drag >= 0) {
+    UIListState* ls = &__ui_lists[__ui_list_drag];
+    if (ls->tapFn) {
+      uint8_t n = ls->nodeIndex;
+      int16_t drawY = ui_draw_y_for_node(n);
+      int16_t relY = __ui_last_touch_y - drawY;
+      if (relY >= 0 && relY < __ui_nodes[n].box.h) {
+        uint16_t itemIdx = (uint16_t)((relY + ls->scrollY) / ls->itemHeight);
+        if (itemIdx < ls->itemCount) {
+          ls->tapFn(itemIdx);
+        }
+      }
+    }
+  }
   __ui_touch_state = 0;
   __ui_touch_node = -1;
   __ui_is_dragging = 0;
   __ui_scroll_node = -1;
+  __ui_list_drag = -1;
   __ui_range_node = -1;
   __ui_scroll_pending_dy = 0;
 }
