@@ -1813,23 +1813,35 @@ static inline void ui_tick(uint16_t deltaMs) {
         int16_t bw = __ui_nodes[i].box.w;
         int16_t bh = __ui_nodes[i].box.h;
         uint16_t ih = ls->itemHeight;
+        uint16_t clearCol = __ui_nodes[i].clearColor;
         // Clear viewport.
-        __ui_gfx->fillRect(bx, by, bw, bh, __ui_nodes[i].clearColor);
-        // Compute visible range.
+        __ui_gfx->fillRect(bx, by, bw, bh, clearCol);
+        // Compute visible range (include partially visible edge items).
         uint16_t first = ls->scrollY / ih;
-        uint16_t last = (ls->scrollY + bh) / ih;
+        uint16_t last = (ls->scrollY + bh - 1) / ih + 1;
         if (ls->itemCount > 0 && last >= ls->itemCount) last = ls->itemCount - 1;
         // Draw each visible item.
         char listBuf[UI_TEXT_BUF + 1];
+        __ui_gfx->setTextWrap(false);
         for (uint16_t idx = first; idx <= last; idx++) {
           int16_t itemY = by + (int16_t)(idx * ih) - ls->scrollY;
-          if (itemY + ih < by || itemY >= by + bh) continue;
           ls->itemFn(idx, listBuf, UI_TEXT_BUF + 1);
           listBuf[UI_TEXT_BUF] = 0;
           __ui_gfx->setCursor(bx + 4, itemY + (ih - 16) / 2);
           __ui_gfx->setTextColor(__ui_nodes[i].fg);
           __ui_gfx->setTextSize(2);
           __ui_gfx->print(listBuf);
+        }
+        // Mask top/bottom edges to clip partially-visible items.
+        // Redraw a 2px strip above and below the viewport with clear color.
+        // This covers glyph pixels that extend past the viewport bounds.
+        int16_t topClip = ls->scrollY % ih;
+        int16_t botClip = (ls->scrollY + bh) % ih;
+        if (topClip > 0) {
+          __ui_gfx->fillRect(bx, by, bw, topClip, clearCol);
+        }
+        if (botClip > 0 && botClip < ih) {
+          __ui_gfx->fillRect(bx, by + bh - (ih - botClip), bw, ih - botClip, clearCol);
         }
         // Scrollbar.
         if (ls->contentHeight > (uint16_t)bh) {
