@@ -563,6 +563,7 @@ extern const uint8_t __ui_click_handler_count;
 // Touch state machine: tracks down → hold → up → click lifecycle
 // Touch node/scroll node state is defined near navigation because ui_navigate resets it.
 static uint32_t __ui_touch_down_time = 0;  // millis() when touch started
+static int16_t __ui_touch_down_y_pos = 0; // Y position when touch started (for tap vs drag detection)
 static uint32_t __ui_last_touch_time = 0;  // for debounce (updated on touch down only)
 static uint32_t __ui_last_release_time = 0;  // for release debounce
 static int16_t __ui_drag_start_x = 0;
@@ -649,6 +650,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   __ui_touch_node = node;
   __ui_touch_state = 1;
   __ui_touch_down_time = millis();
+  __ui_touch_down_y_pos = ty;
   __ui_drag_start_x = tx;
   __ui_drag_start_y = ty;
   __ui_is_dragging = 0;
@@ -744,14 +746,18 @@ static void ui_touch_up() {
     }
     ui_mark_dirty(clickedNode);
   }
-  // List item tap: if the touch was inside a list (not a drag), compute item index.
-  if (!__ui_is_dragging && __ui_list_drag >= 0) {
+  // List item tap: if the touch was inside a list, compute item index.
+  // Use total movement (not drag flag) to distinguish tap from scroll:
+  // a tap moves < itemHeight/2 total; a scroll moves more.
+  if (__ui_list_drag >= 0) {
     UIListState* ls = &__ui_lists[__ui_list_drag];
     if (ls->tapFn) {
       uint8_t n = ls->nodeIndex;
       int16_t drawY = ui_draw_y_for_node(n);
       int16_t relY = __ui_last_touch_y - drawY;
-      if (relY >= 0 && relY < __ui_nodes[n].box.h) {
+      int16_t totalMove = abs(__ui_last_touch_y - __ui_touch_down_y_pos);
+      if (totalMove < (int16_t)(ls->itemHeight / 2) &&
+          relY >= 0 && relY < __ui_nodes[n].box.h) {
         uint16_t itemIdx = (uint16_t)((relY + ls->scrollY) / ls->itemHeight);
         if (itemIdx < ls->itemCount) {
           ls->tapFn(itemIdx);
