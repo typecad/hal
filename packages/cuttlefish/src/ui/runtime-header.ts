@@ -782,7 +782,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     ui_touch_down(tx, ty);
   } else {
     // Already touching: check for drag or hold
-    if (!__ui_is_dragging && __ui_scroll_node >= 0) {
+    if (!__ui_is_dragging && (__ui_scroll_node >= 0 || __ui_list_drag >= 0)) {
       // Check if movement exceeds drag threshold
       int16_t dy = ty - __ui_drag_start_y;
       if (abs(dy) >= UI_DRAG_THRESHOLD) {
