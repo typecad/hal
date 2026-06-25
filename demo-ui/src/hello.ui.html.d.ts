@@ -6,6 +6,8 @@ export interface ScreenTree {
   title: TextElement;
   subtitle: TextElement;
   body: ViewElement;
+  indicatorRow: ViewElement;
+  pulseIndicator: ViewElement;
   counter: TextElement;
   btn: ButtonElement;
   led: CheckElement;

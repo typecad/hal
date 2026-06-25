@@ -46,6 +46,29 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
+@keyframes pulse {
+  0%   { background: #1a6b3c; }
+  50%  { background: #4ade80; }
+  100% { background: #1a6b3c; }
+}
+
+#indicatorRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  align-self: center;
+}
+
+#pulseIndicator {
+  background: #1a6b3c;
+  width: 20;
+  height: 20;
+  border-radius: 10;
+  animation: pulse 2s infinite;
+  flex-shrink: 0;
+}
+
 screen {
   background: var(--background);
   display: flex;

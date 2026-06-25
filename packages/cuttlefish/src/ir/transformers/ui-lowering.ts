@@ -14,7 +14,7 @@
 
 import { StyledNode } from "../../ui/style-resolver.js";
 import { Box } from "../../ui/layout-engine.js";
-import { lowerUIToModel, UIProgram, UINodeModel } from "../../ui/model.js";
+import { lowerUIToModel, UIProgram, UINodeModel, KeyframeSetModel } from "../../ui/model.js";
 import { resolveColor } from "../../ui/color.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../ui/default-keyboards.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../../ui/html-parser.js";
@@ -35,6 +35,8 @@ export interface LoweredUI {
   screenCount: number;
   /** C++ image data arrays + index table (for <img> support). */
   imageTables: string;
+  /** C++ keyframe data arrays + animation table. */
+  keyframeTables: string;
 }
 
 type ColorFormat = "rgb565" | "mono";
@@ -51,9 +53,10 @@ export function lowerUIToCpp(
   fontAssets: UIFontAssetModel[] = [],
   allScreens: StyledNode[] = [],
   imageAssetIds: Map<string, number> = new Map(),
+  keyframeSets: KeyframeSetModel[] = [],
 ): LoweredUI {
   void storage;
-  const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets, allScreens, imageAssetIds);
+  const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets, allScreens, imageAssetIds, keyframeSets);
 
   // Tables are mutable RAM (ui_tick updates bg/dirty/elapsed/active each
   // frame), so no PROGMEM/flash storage keyword — those imply read-only.
@@ -95,7 +98,8 @@ export function lowerUIToCpp(
 
   const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
   const imageTables = "const UIImage __ui_images[] = {};\nconst uint8_t __ui_image_count = 0;";
-  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables };
+  const keyframeTables = emitKeyframeTables(model);
+  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables };
 }
 
 function sanitizedId(id: string): string {
@@ -288,11 +292,48 @@ function emitTransitionTable(model: UIProgram): string {
     return `UITransition __ui_trans[] = {};`;
   }
   return [
-    // Mutable: ui_tick updates elapsed/active each frame.
     `UITransition __ui_trans[] = {`,
     ...entries,
     `};`,
   ].join("\n");
+}
+
+/** Emit keyframe stop arrays + keyframe set index + animation table. */
+function emitKeyframeTables(model: UIProgram): string {
+  if (model.keyframeSets.length === 0 && model.animations.length === 0) {
+    return [
+      `const UIKeyframeSet __ui_keyframe_sets[] = {};`,
+      `const uint8_t __ui_keyframe_set_count = 0;`,
+      `UIAnimation __ui_anims[] = {};`,
+      `const uint8_t __ui_anim_count = 0;`,
+    ].join("\n");
+  }
+  const lines: string[] = [];
+  // Emit one stop array per keyframe set.
+  for (const ks of model.keyframeSets) {
+    const safeName = ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
+    lines.push(`static const UIKeyframeStop __ui_kf_${safeName}_stops[] = {`);
+    for (const s of ks.stops) {
+      lines.push(`  { .percent=${s.percent}, .bg=${hex(s.bg)}, .fg=${hex(s.fg)}, .opacity=${s.opacity} },`);
+    }
+    lines.push(`};`);
+  }
+  // Emit keyframe set index table.
+  lines.push(`const UIKeyframeSet __ui_keyframe_sets[] = {`);
+  model.keyframeSets.forEach((ks) => {
+    const safeName = ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
+    lines.push(`  { .stopCount=${ks.stops.length}, .stops=__ui_kf_${safeName}_stops },`);
+  });
+  lines.push(`};`);
+  lines.push(`const uint8_t __ui_keyframe_set_count = ${model.keyframeSets.length};`);
+  // Emit animation table (mutable — runtime advances elapsed/active).
+  lines.push(`UIAnimation __ui_anims[] = {`);
+  for (const a of model.animations) {
+    lines.push(`  { .node=${a.node}, .keyframeSet=${a.keyframeSet}, .durationMs=${a.durationMs}, .delayMs=${a.delayMs}, .iterations=${a.iterations}, .elapsed=0, .active=1 },`);
+  }
+  lines.push(`};`);
+  lines.push(`const uint8_t __ui_anim_count = ${model.animations.length};`);
+  return lines.join("\n");
 }
 
 function emitTypeDecl(root: StyledNode): string {

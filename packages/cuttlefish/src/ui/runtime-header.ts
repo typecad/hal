@@ -166,6 +166,31 @@ struct UIImage { uint16_t w; uint16_t h; const uint16_t* data; };
 extern const UIImage __ui_images[];
 extern const uint8_t __ui_image_count;
 
+// ── @keyframes animations ───────────────────────────────────────────────────
+struct UIKeyframeStop {
+  uint8_t percent;
+  uint16_t bg;
+  uint16_t fg;
+  uint8_t opacity;
+};
+struct UIKeyframeSet {
+  uint8_t stopCount;
+  const UIKeyframeStop* stops;
+};
+struct UIAnimation {
+  uint8_t node;
+  uint8_t keyframeSet;
+  uint16_t durationMs;
+  uint16_t delayMs;
+  int16_t iterations;
+  uint16_t elapsed;
+  uint8_t active;
+};
+extern const UIKeyframeSet __ui_keyframe_sets[];
+extern const uint8_t __ui_keyframe_set_count;
+extern UIAnimation __ui_anims[];
+extern const uint8_t __ui_anim_count;
+
 // ── List bindings ───────────────────────────────────────────────────────────
 struct UIListBinding {
   uint8_t node;
@@ -1367,6 +1392,52 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
     ui_mark_dirty(__ui_trans[i].node);
     if (k >= 100) __ui_trans[i].active = 0;
+  }
+
+  // ①b Advance @keyframes animations.
+  for (uint8_t i = 0; i < __ui_anim_count; i++) {
+    if (!__ui_anims[i].active) continue;
+    __ui_anims[i].elapsed += deltaMs;
+    uint16_t elapsedNoDelay = __ui_anims[i].elapsed;
+    if (elapsedNoDelay < __ui_anims[i].delayMs) continue;
+    elapsedNoDelay -= __ui_anims[i].delayMs;
+    // Check iteration limit (finite).
+    if (__ui_anims[i].iterations > 0 &&
+        elapsedNoDelay >= (uint16_t)(__ui_anims[i].iterations * __ui_anims[i].durationMs)) {
+      __ui_anims[i].active = 0;
+      continue;
+    }
+    // Compute cycle position: 0.0 - 1.0 within one loop.
+    uint16_t cycleMs = __ui_anims[i].durationMs > 0
+      ? elapsedNoDelay % __ui_anims[i].durationMs : 0;
+    uint8_t pct = (uint8_t)((uint32_t)cycleMs * 100 / (__ui_anims[i].durationMs > 0 ? __ui_anims[i].durationMs : 1));
+    // Find surrounding keyframe stops.
+    const UIKeyframeSet* ks = &__ui_keyframe_sets[__ui_anims[i].keyframeSet];
+    if (ks->stopCount == 0) continue;
+    // Find the two stops that bracket pct.
+    uint8_t lo = 0, hi = ks->stopCount - 1;
+    for (uint8_t s = 0; s < ks->stopCount; s++) {
+      if (ks->stops[s].percent <= pct) lo = s;
+      if (ks->stops[s].percent >= pct) { hi = s; break; }
+    }
+    const UIKeyframeStop* sLo = &ks->stops[lo];
+    const UIKeyframeStop* sHi = &ks->stops[hi];
+    // Lerp factor between lo and hi.
+    uint8_t range = sHi->percent - sLo->percent;
+    uint8_t lerpK = range > 0 ? (uint8_t)((uint16_t)(pct - sLo->percent) * 100 / range) : 0;
+    // Apply to node.
+    uint8_t n = __ui_anims[i].node;
+    if (sHi->bg != sLo->bg) {
+      __ui_nodes[n].bg = lerp_color(sLo->bg, sHi->bg, lerpK);
+      __ui_nodes[n].hasBg = 1;
+    }
+    if (sHi->fg != sLo->fg) {
+      __ui_nodes[n].fg = lerp_color(sLo->fg, sHi->fg, lerpK);
+    }
+    if (sHi->opacity != sLo->opacity) {
+      __ui_nodes[n].opacity = sLo->opacity + (uint8_t)((int16_t)(sHi->opacity - sLo->opacity) * lerpK / 100);
+    }
+    ui_mark_dirty(n);
   }
 
   // ② Draw dirty nodes directly to the display object.

@@ -117,6 +117,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   for (const { lowered } of allLoweredUIModules()) {
     ctx.sourceLines.push(lowered.fontTables);
     if (lowered.imageTables) ctx.sourceLines.push(lowered.imageTables);
+    if (lowered.keyframeTables) ctx.sourceLines.push(lowered.keyframeTables);
     ctx.sourceLines.push(lowered.nodeTable);
     ctx.sourceLines.push(lowered.transitionTable);
   }

@@ -6,8 +6,15 @@ function px(buffer: Uint16Array, width: number, x: number, y: number): number {
   return buffer[y * width + x];
 }
 
+// These tests prove supported selector forms travel through parser -> resolver ->
+// layout -> model/render paths without being dropped or corrupting layout. They
+// intentionally characterize current behavior; they are not visual approval for
+// every selector/property combination.
 describe("UI layout harness", () => {
   describe("supported selector matrix", () => {
+    const green = resolveColor("#00ff00", "rgb565");
+    const white = resolveColor("#ffffff", "rgb565");
+
     it("applies element selectors to every matching element", () => {
       const ui = buildUiFixture({
         html: `
@@ -98,6 +105,119 @@ describe("UI layout harness", () => {
       expect(ui.node("idClassTarget").fg).toBe(resolveColor("#ff0000", "rgb565"));
     });
 
+    it("matches tag-id-class compounds with hyphenated and underscored names", () => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root">
+            <button id="save-now" class="primary_2 compact">Save</button>
+            <button id="delete-now" class="danger-button compact">Delete</button>
+            <text id="status_text" class="primary_2">Status</text>
+            <text id="plain_text" class="compact">Plain</text>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; }
+          button, text { color: #ffffff; }
+          button#save-now.primary_2 { color: #00ff00; }
+          #delete-now.danger-button { color: #ff0000; }
+          .primary_2#status_text { color: #0000ff; }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+      expect(ui.node("save-now").fg).toBe(resolveColor("#00ff00", "rgb565"));
+      expect(ui.node("delete-now").fg).toBe(resolveColor("#ff0000", "rgb565"));
+      expect(ui.node("status_text").fg).toBe(resolveColor("#0000ff", "rgb565"));
+      expect(ui.node("plain_text").fg).toBe(resolveColor("#ffffff", "rgb565"));
+    });
+
+    it.each([
+      { selector: "#target", peerMatches: false },
+      { selector: ".alpha", peerMatches: false },
+      { selector: ".beta", peerMatches: false },
+      { selector: ".name-with-dash", peerMatches: false },
+      { selector: ".name_with_underscore", peerMatches: false },
+      { selector: "button.alpha", peerMatches: false },
+      { selector: "button#target", peerMatches: false },
+      { selector: "#target.alpha", peerMatches: false },
+      { selector: ".alpha#target", peerMatches: false },
+      { selector: ".alpha.beta", peerMatches: false },
+      { selector: ".beta.alpha", peerMatches: false },
+      { selector: "button.alpha.beta", peerMatches: false },
+      { selector: "button#target.alpha.beta", peerMatches: false },
+      { selector: "button.beta#target.alpha", peerMatches: false },
+      { selector: "button", peerMatches: true },
+    ])("matches compound selector '$selector'", ({ selector, peerMatches }) => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root">
+            <button id="target" class="alpha beta name-with-dash name_with_underscore">Target</button>
+            <button id="peer" class="plain">Peer</button>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; }
+          button { color: #ffffff; }
+          ${selector} { color: #00ff00; }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+      expect(ui.node("target").fg).toBe(green);
+      expect(ui.node("peer").fg).toBe(peerMatches ? green : white);
+    });
+
+    it("applies element selectors for every lowered UI node tag", () => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root">
+            <view id="view"></view>
+            <text id="text">Text</text>
+            <button id="button">Button</button>
+            <check id="check">Check</check>
+            <select id="select"><option value="a">Alpha</option><option value="b">Beta</option></select>
+            <radio id="radio" name="group" value="a">Radio</radio>
+            <progress id="progress"></progress>
+            <range id="range" min="0" max="10"></range>
+            <input id="input" type="text" placeholder="Input"></input>
+            <img id="img" src="missing.bmp" width="12" height="12"></img>
+            <list id="list" item-height="16"></list>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; color: #101010; }
+          view { color: #111111; width: 12px; height: 12px; }
+          text { color: #222222; }
+          button { color: #333333; }
+          check { color: #444444; }
+          select { color: #555555; }
+          radio { color: #666666; }
+          progress { color: #777777; }
+          range { color: #888888; }
+          input { color: #999999; }
+          img { color: #aaaaaa; }
+          list { color: #bbbbbb; width: 12px; height: 16px; }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+      for (const [id, color] of [
+        ["view", "#111111"],
+        ["text", "#222222"],
+        ["button", "#333333"],
+        ["check", "#444444"],
+        ["select", "#555555"],
+        ["radio", "#666666"],
+        ["progress", "#777777"],
+        ["range", "#888888"],
+        ["input", "#999999"],
+        ["img", "#aaaaaa"],
+        ["list", "#bbbbbb"],
+      ] as const) {
+        expect(ui.node(id).fg).toBe(resolveColor(color, "rgb565"));
+      }
+    });
+
     it("matches descendant selectors through ancestor chains", () => {
       const ui = buildUiFixture({
         html: `
@@ -122,6 +242,68 @@ describe("UI layout harness", () => {
       expect(ui.node("outside").fg).toBe(resolveColor("#ffffff", "rgb565"));
     });
 
+    it("keeps descendant selector ancestry ordered", () => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root">
+            <view id="outer" class="outer">
+              <view id="middle" class="middle">
+                <text id="ordered" class="target">Ordered</text>
+              </view>
+            </view>
+            <view id="wrongOrderMiddle" class="middle">
+              <view id="wrongOrderOuter" class="outer">
+                <text id="wrongOrder" class="target">Wrong</text>
+              </view>
+            </view>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; }
+          .target { color: #ffffff; }
+          .outer .middle .target { color: #00ff00; }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+      expect(ui.node("ordered").fg).toBe(resolveColor("#00ff00", "rgb565"));
+      expect(ui.node("wrongOrder").fg).toBe(resolveColor("#ffffff", "rgb565"));
+    });
+
+    it.each([
+      "screen button",
+      "#root #target",
+      ".shell .target",
+      "screen.shell button.target",
+      "screen#root.shell view#panel.card button#target.target.primary",
+      ".shell .card .primary.target",
+      "#root view.card .target",
+    ])("matches descendant selector chain '%s'", (selector) => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root" class="shell">
+            <view id="panel" class="card">
+              <button id="target" class="target primary">Target</button>
+            </view>
+            <button id="outside" class="target primary">Outside</button>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; }
+          button { color: #ffffff; }
+          ${selector} { color: #00ff00; }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+      expect(ui.node("target").fg).toBe(green);
+      expect(ui.node("outside").fg).toBe(
+        selector === "screen button" || selector === ".shell .target" || selector === "screen.shell button.target"
+          ? green
+          : white,
+      );
+    });
+
     it("expands comma-separated selector lists", () => {
       const ui = buildUiFixture({
         html: `
@@ -142,6 +324,59 @@ describe("UI layout harness", () => {
       expect(ui.node("alpha").fg).toBe(resolveColor("#123456", "rgb565"));
       expect(ui.node("beta").fg).toBe(resolveColor("#123456", "rgb565"));
       expect(ui.node("gamma").fg).toBe(resolveColor("#ffffff", "rgb565"));
+    });
+
+    it("expands comma lists that mix elements, ids, classes, and compounds", () => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root">
+            <text id="headline" class="copy">Headline</text>
+            <button id="submit" class="primary action">Submit</button>
+            <button id="skip" class="secondary">Skip</button>
+            <text id="note" class="note">Note</text>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; }
+          text, button { color: #ffffff; }
+          #headline, button.primary.action, .note { color: #00ff00; }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+      expect(ui.node("headline").fg).toBe(resolveColor("#00ff00", "rgb565"));
+      expect(ui.node("submit").fg).toBe(resolveColor("#00ff00", "rgb565"));
+      expect(ui.node("note").fg).toBe(resolveColor("#00ff00", "rgb565"));
+      expect(ui.node("skip").fg).toBe(resolveColor("#ffffff", "rgb565"));
+    });
+
+    it("expands comma lists with whitespace and pseudo selectors", () => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root">
+            <button id="alpha" class="choice primary">Alpha</button>
+            <button id="beta" class="choice secondary">Beta</button>
+            <button id="gamma" class="choice">Gamma</button>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; }
+          .choice { color: #ffffff; background: #202020; transition: color 40ms; }
+          #alpha:pressed,
+          button.secondary:active { color: #00ff00; }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+      expect(ui.program.transitions.find((transition) => transition.node === ui.node("alpha").index)).toMatchObject({
+        pressedTarget: green,
+      });
+      expect(ui.program.transitions.find((transition) => transition.node === ui.node("beta").index)).toMatchObject({
+        pressedTarget: green,
+      });
+      expect(ui.program.transitions.find((transition) => transition.node === ui.node("gamma").index)).toMatchObject({
+        pressedTarget: white,
+      });
     });
 
     it("keeps :pressed and :active styles separate from base styles", () => {
@@ -176,6 +411,81 @@ describe("UI layout harness", () => {
       expect(active.program.transitions[0]).toMatchObject({
         pressedTarget: resolveColor("#0000ff", "rgb565"),
       });
+    });
+
+    it("supports state selectors on class and compound targets", () => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root">
+            <button id="pill" class="toggle selected">Toggle</button>
+            <button id="plain" class="toggle">Plain</button>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; }
+          .toggle { color: #ffffff; background: #202020; transition: color 75ms; }
+          .toggle.selected:pressed { color: #00ff00; transform: translate(2px, 1px); }
+          button.toggle:active { background: #0000ff; }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+
+      const pill = ui.node("pill");
+      const plain = ui.node("plain");
+      expect(pill.fg).toBe(resolveColor("#ffffff", "rgb565"));
+      expect(pill.bg).toBe(resolveColor("#202020", "rgb565"));
+      expect(pill.pressedOffsetX).toBe(2);
+      expect(pill.pressedOffsetY).toBe(1);
+      expect(plain.pressedOffsetX).toBe(0);
+      expect(plain.pressedOffsetY).toBe(0);
+
+      expect(ui.program.transitions.find((transition) => transition.node === pill.index)).toMatchObject({
+        prop: "color",
+        pressedTarget: resolveColor("#00ff00", "rgb565"),
+      });
+      expect(ui.program.transitions.find((transition) => transition.node === plain.index)).toMatchObject({
+        prop: "color",
+        pressedTarget: resolveColor("#ffffff", "rgb565"),
+      });
+    });
+
+    it.each([
+      "#target:pressed",
+      ".target:pressed",
+      "button:pressed",
+      "button.target:pressed",
+      "#target.target:pressed",
+      ".target.primary:pressed",
+      "#target:active",
+      ".target:active",
+      "button.target:active",
+    ])("applies pseudo selector '%s'", (selector) => {
+      const ui = buildUiFixture({
+        html: `
+          <screen id="root">
+            <button id="target" class="target primary">Target</button>
+            <button id="peer" class="peer">Peer</button>
+          </screen>
+        `,
+        css: `
+          screen { display: flex; flex-direction: column; }
+          button { color: #ffffff; background: #202020; transition: color 25ms; }
+          ${selector} { color: #00ff00; transform: translateX(3px); }
+        `,
+      });
+
+      expect(collectLayoutProblems(ui)).toEqual([]);
+      expect(ui.program.transitions.find((transition) => transition.node === ui.node("target").index)).toMatchObject({
+        pressedTarget: green,
+      });
+      expect(ui.node("target").pressedOffsetX).toBe(3);
+
+      const peerTransition = ui.program.transitions.find((transition) => transition.node === ui.node("peer").index);
+      expect(peerTransition).toMatchObject({
+        pressedTarget: selector === "button:pressed" ? green : white,
+      });
+      expect(ui.node("peer").pressedOffsetX).toBe(selector === "button:pressed" ? 3 : 0);
     });
   });
 

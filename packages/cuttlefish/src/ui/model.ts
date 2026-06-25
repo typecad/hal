@@ -98,6 +98,26 @@ export interface UITransitionModel {
   active: boolean;
 }
 
+export interface KeyframeStopModel {
+  percent: number;
+  bg: number;      // resolved RGB565 (0 = use node's current bg)
+  fg: number;      // resolved RGB565
+  opacity: number; // 0-100
+}
+
+export interface KeyframeSetModel {
+  name: string;
+  stops: KeyframeStopModel[];
+}
+
+export interface AnimationModel {
+  node: number;
+  keyframeSet: number;   // index into keyframeSets
+  durationMs: number;
+  delayMs: number;
+  iterations: number;    // -1 = infinite
+}
+
 export interface UIProgram {
   width: number;
   height: number;
@@ -106,6 +126,8 @@ export interface UIProgram {
   fontAssets: UIFontAssetModel[];
   nodes: UINodeModel[];
   transitions: UITransitionModel[];
+  keyframeSets: KeyframeSetModel[];
+  animations: AnimationModel[];
 }
 
 type ColorFormat = "rgb565" | "mono";
@@ -445,7 +467,8 @@ export function lowerUIToModel(
   display?: DisplayProfile,
   fontAssets: UIFontAssetModel[] = [],
   allScreens: StyledNode[] = [],
-  imageAssetIds: Map<string, number> = new Map(),  // node id → image index
+  imageAssetIds: Map<string, number> = new Map(),
+  keyframeSets: KeyframeSetModel[] = [],
 ): UIProgram {
   const flat: FlatModelSource[] = [];
   const cursor = { i: 0 };
@@ -602,6 +625,29 @@ export function lowerUIToModel(
     });
   }
 
+  // Build animations from nodes that have an 'animation' CSS property.
+  const animations: AnimationModel[] = [];
+  for (const fn of flat) {
+    const animStr = (fn.node.style as any).animation as string | undefined;
+    if (!animStr) continue;
+    // Parse the animation shorthand.
+    const parts = animStr.trim().split(/\s+/);
+    if (parts.length === 0) continue;
+    const name = parts.find(p => !/^\d/.test(p) && p !== "infinite") ?? "";
+    if (!name) continue;
+    const setIdx = keyframeSets.findIndex(k => k.name === name);
+    if (setIdx < 0) continue;
+    let durationMs = 1000, delayMs = 0, iterations = 1;
+    let foundDuration = false;
+    for (const p of parts) {
+      if (p === name || p === "infinite") { if (p === "infinite") iterations = -1; continue; }
+      if (/^\d+(?:\.\d+)?ms$/.test(p)) { const ms = parseInt(p); if (!foundDuration) { durationMs = ms; foundDuration = true; } else delayMs = ms; }
+      else if (/^\d+(?:\.\d+)?s$/.test(p)) { const sec = parseFloat(p); if (!foundDuration) { durationMs = Math.round(sec*1000); foundDuration = true; } else delayMs = Math.round(sec*1000); }
+      else if (/^\d+$/.test(p)) { iterations = parseInt(p); }
+    }
+    animations.push({ node: fn.index, keyframeSet: setIdx, durationMs, delayMs, iterations });
+  }
+
   return {
     width: display?.width ?? 0,
     height: display?.height ?? 0,
@@ -610,5 +656,7 @@ export function lowerUIToModel(
     fontAssets,
     nodes,
     transitions,
+    keyframeSets,
+    animations,
   };
 }

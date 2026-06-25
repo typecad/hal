@@ -21,9 +21,11 @@ import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "./html-pa
 import type { KeyboardTemplate } from "./html-parser.js";
 import { getThemeCss } from "./theme-store.js";
 import { loadImageAssets, UIImageAsset } from "./image-assets.js";
-import { parseCss, parseFontFaces } from "./css-parser.js";
-import type { CSSFontFace, CSSRule } from "./css-parser.js";
+import { parseCss, parseFontFaces, parseKeyframes } from "./css-parser.js";
+import type { CSSFontFace, CSSRule, KeyframeSet } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
+import { resolveColor } from "./color.js";
+import type { KeyframeSetModel } from "./model.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
@@ -45,6 +47,8 @@ export interface UIModule {
   /** @font-face rules from CSS, resolved into build-time font assets. */
   fontFaces: CSSFontFace[];
   fontAssets: UIFontAssetModel[];
+  /** Raw @keyframes blocks parsed from CSS. */
+  rawKeyframes: KeyframeSet[];
 }
 
 export interface LowerOptions {
@@ -95,7 +99,8 @@ export function loadUIModule(htmlPath: string): UIModule {
   const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
   const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(cssPath));
 
-  const mod: UIModule = { htmlPath: abs, styled, allStyledScreens, keyboards, rules, fontFaces, fontAssets };
+  const rawKeyframes = parseKeyframes(fullCss);
+  const mod: UIModule = { htmlPath: abs, styled, allStyledScreens, keyboards, rules, fontFaces, fontAssets, rawKeyframes };
   modules.set(abs, mod);
 
   // Write a sibling .ui.html.d.ts so editors and the type-checker see the
@@ -139,7 +144,18 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const imageAssetIds = new Map<string, number>();
   imageAssets.forEach((a, i) => imageAssetIds.set(a.id, i));
 
-  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssetIds);
+  // Resolve @keyframes from the module's parsed keyframe sets.
+  const keyframeSets: KeyframeSetModel[] = (mod.rawKeyframes || []).map(ks => ({
+    name: ks.name,
+    stops: ks.stops.map(s => ({
+      percent: s.percent,
+      bg: s.background ? resolveColor(s.background, opts.colorFormat) : 0,
+      fg: s.color ? resolveColor(s.color, opts.colorFormat) : 0,
+      opacity: s.opacity ? Math.max(0, Math.min(100, parseInt(s.opacity, 10) || 100)) : 100,
+    })),
+  }));
+
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssetIds, keyframeSets);
 
   // Emit image tables.
   result.imageTables = emitImageTables(imageAssets);

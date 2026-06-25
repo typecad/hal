@@ -34,6 +34,25 @@ export interface TransitionDecl {
   durationMs: number;
 }
 
+export interface KeyframeStop {
+  percent: number;   // 0-100
+  background?: string;
+  color?: string;
+  opacity?: string;
+}
+
+export interface KeyframeSet {
+  name: string;
+  stops: KeyframeStop[];
+}
+
+export interface AnimationDecl {
+  name: string;
+  durationMs: number;
+  iterations: number;  // -1 = infinite
+  delayMs: number;
+}
+
 export interface CSSProperty {
   // Box model
   padding?: string;
@@ -65,6 +84,7 @@ export interface CSSProperty {
   textTransform?: string;   // uppercase | lowercase | capitalize | none
   // Animation
   transition?: TransitionDecl;
+  animation?: string;  // shorthand: "pulse 2s infinite"
   // Flexbox / layout (Yoga)
   display?: string;
   flexDirection?: string;
@@ -303,8 +323,80 @@ function parseTransition(val: string): TransitionDecl {
   return { property: property as "background" | "color", durationMs };
 }
 
-/** Parse the font shorthand enough for embedded font selection:
- *  style/weight/size/family. Leaves unsupported fields untouched. */
+/** Parse the animation shorthand: "pulse 2s infinite 500ms".
+ *  Fields: name (identifier), duration (Nms/Ns), iterations (number|infinite), delay (Nms/Ns). */
+function parseAnimation(val: string): AnimationDecl | null {
+  const parts = val.trim().split(/\s+/);
+  if (parts.length === 0) return null;
+  const decl: AnimationDecl = { name: "", durationMs: 1000, iterations: 1, delayMs: 0 };
+  for (const part of parts) {
+    if (part === "infinite") {
+      decl.iterations = -1;
+    } else if (/^\d+(?:\.\d+)?ms$/.test(part)) {
+      const ms = parseInt(part);
+      if (decl.durationMs === 1000 && parts.indexOf(part) > 0) decl.durationMs = ms;
+      else decl.delayMs = ms;
+    } else if (/^\d+(?:\.\d+)?s$/.test(part)) {
+      const sec = parseFloat(part);
+      if (decl.durationMs === 1000 && parts.indexOf(part) > 0) decl.durationMs = Math.round(sec * 1000);
+      else decl.delayMs = Math.round(sec * 1000);
+    } else if (/^\d+$/.test(part)) {
+      decl.iterations = parseInt(part);
+    } else {
+      // Identifier — the animation name.
+      decl.name = part;
+    }
+  }
+  if (!decl.name) return null;
+  return decl;
+}
+
+/** Parse @keyframes blocks from CSS source.
+ *  Returns KeyframeSet[] — one per @keyframes name. */
+export function parseKeyframes(src: string): KeyframeSet[] {
+  const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const sets: KeyframeSet[] = [];
+  // Match @keyframes name { ... } (non-greedy, handles nested braces minimally).
+  const re = /@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\}\s*(?=@|\}|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(withoutComments)) !== null) {
+    const name = m[1];
+    const body = m[2];
+    const stops: KeyframeStop[] = [];
+    // Parse each stop: "0% { ... }" or "50% { ... }" or "from { ... }" / "to { ... }"
+    const stopRe = /(\d+)%|from|to/gi;
+    // Split into stop blocks.
+    const parts = body.split(/\}/);
+    for (const part of parts) {
+      const colonIdx = part.indexOf("{");
+      if (colonIdx < 0) continue;
+      const selector = part.slice(0, colonIdx).trim();
+      const decls = part.slice(colonIdx + 1).trim();
+      // Parse the percentage.
+      let pct: number;
+      if (/from/i.test(selector)) pct = 0;
+      else if (/to/i.test(selector)) pct = 100;
+      else { const pm = /(\d+)/.exec(selector); pct = pm ? parseInt(pm[1]) : -1; }
+      if (pct < 0 || pct > 100) continue;
+      // Parse properties.
+      const stop: KeyframeStop = { percent: pct };
+      for (const decl of decls.split(";")) {
+        const dColon = decl.indexOf(":");
+        if (dColon < 0) continue;
+        const prop = decl.slice(0, dColon).trim();
+        const val = decl.slice(dColon + 1).trim();
+        if (prop === "background" || prop === "background-color") stop.background = val;
+        else if (prop === "color") stop.color = val;
+        else if (prop === "opacity") stop.opacity = val;
+      }
+      stops.push(stop);
+    }
+    // Sort stops by percent.
+    stops.sort((a, b) => a.percent - b.percent);
+    if (stops.length > 0) sets.push({ name, stops });
+  }
+  return sets;
+}
 function parseFontShorthand(props: CSSProperty, val: string): void {
   const parts = val.trim().split(/\s+/);
   const sizeIndex = parts.findIndex((part) => /^\d+(?:\.\d+)?(?:px|pt|em|rem)?(?:\/.+)?$/.test(part));
@@ -357,6 +449,7 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "text-transform": props.textTransform = val; break;
     // Animation
     case "transition": props.transition = parseTransition(val); break;
+    case "animation": props.animation = val; break;
     // Flexbox / layout
     case "display": props.display = val; break;
     case "flex-direction": props.flexDirection = val; break;
