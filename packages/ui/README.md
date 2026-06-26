@@ -682,24 +682,71 @@ display: {
 
 ### Adding a new display
 
-Create a profile file in your project or framework:
+Adding a new display driver requires two parts: a **display profile** (the hardware config) and a **display adapter** (the generated C++ code that drives it).
+
+#### 1. Register a display adapter
+
+A display adapter is a TypeScript function that generates C++ code for a specific driver. Register it in a module that runs before the build:
+
+```typescript
+// my-project/display-adapters.ts
+import { registerDisplayAdapter } from '@typecad/cuttlefish/api/shared/display-adapter';
+
+registerDisplayAdapter('ssd1306', (display) => {
+  return {
+    includes: `#include <Adafruit_GFX.h>\n#include <Adafruit_SSD1306.h>`,
+    declaration: `Adafruit_SSD1306 __tc_display(128, 64, &Wire, -1);`,
+    functions: [
+      'static inline void display_init() {',
+      '  __tc_display.begin(SSD1306_SWITCHCAPVCC);',
+      '  __tc_display.clearDisplay();',
+      '}',
+      'static inline void display_fillScreen(uint16_t color) {',
+      '  __tc_display.fillScreen(color ? 1 : 0);',
+      '}',
+      'static inline void display_startWrite() { }',
+      'static inline void display_endWrite() { __tc_display.display(); }',
+      'static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_t h) { }',
+      'static inline void display_writePixels(uint16_t* pixels, uint32_t count) {',
+      '  // Convert RGB565 to monochrome and write',
+      '  for (uint32_t i = 0; i < count; i++) {',
+      '    __tc_display.drawPixel(i % 128, i / 128, pixels[i] ? 1 : 0);',
+      '  }',
+      '}',
+    ].join('\\n'),
+  };
+});
+```
+
+The adapter must provide these 6 functions:
+
+| Function | Purpose |
+|----------|---------|
+| `display_init()` | Initialize the display (begin, rotation, clear) |
+| `display_fillScreen(color)` | Fill the entire screen with a color |
+| `display_startWrite()` | Begin an SPI transaction (no-op for I2C) |
+| `display_endWrite()` | End an SPI transaction / trigger refresh |
+| `display_setAddrWindow(x, y, w, h)` | Set the active write region |
+| `display_writePixels(pixels, count)` | Write a row of RGB565 pixels |
+
+For monochrome displays, the adapter wraps each color argument with a conversion function. For e-ink, `display_endWrite()` triggers the refresh cycle.
+
+#### 2. Create a display profile
 
 ```typescript
 // displays/my-display.ts
 import type { DisplayProfile } from '@typecad/cuttlefish/api/shared';
 
 export const MY_DISPLAY: DisplayProfile = {
-  driver: 'ssd1306',
+  driver: 'ssd1306',      // must match the adapter name
   width: 128,
   height: 64,
-  colorFormat: 'mono',
+  colorFormat: 'mono',    // 'rgb565' or 'mono'
   rotation: 0,
-  // No SPI pins for I2C displays
-  // No backlight
 };
 ```
 
-Reference it in config:
+#### 3. Reference it in config
 
 ```typescript
 display: {
@@ -707,9 +754,25 @@ display: {
   width: 128, height: 64,
   colorFormat: 'mono',
   rotation: 0,
-  cs: 0, dc: 0, rst: -1,  // I2C — these are ignored for I2C displays
 }
 ```
+
+#### 4. Import the adapter module before building
+
+Make sure your adapter module is imported (side-effect import) so the registration runs:
+
+```typescript
+// cuttlefish.config.ts or main.ts
+import './display-adapters';  // registers the 'ssd1306' adapter
+```
+
+#### Built-in adapters
+
+| Driver | Display | Color | Notes |
+|--------|---------|-------|-------|
+| `ili9341` | ILI9341 (320×240) | RGB565 | Default, hardware SPI |
+
+To add more built-in adapters, contribute a file to `packages/framework-arduino/src/graphics/` and register it.
 
 ## Touch input
 
