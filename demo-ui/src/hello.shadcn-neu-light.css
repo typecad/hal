@@ -390,13 +390,14 @@ screen {
 #layerFront {
   position: absolute;
   left: 44px;
-  top: 22px;
+  top: 18px;
   width: 56px;
-  height: 30px;
+  height: 36px;
   background: var(--chart-2);
   border-color: var(--foreground);
   border-radius: 4px;
   z-index: 2;
+  justify-content: center;
 }
 
 #layerFrontText {
