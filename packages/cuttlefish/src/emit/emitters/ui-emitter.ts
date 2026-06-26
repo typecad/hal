@@ -52,21 +52,20 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(adapter.functions);
   }
 
-  // 0.6. Touch controller declaration (if touch is configured in the profile).
+  // 0.6. Touch adapter: includes + declaration (zero-cost, transpile-time).
+  // Same pattern as the display adapter — generated inline C++ per library type.
   let touchAdapter: TouchAdapterCodegen | null = null;
   if (profile.touch) {
     const t = profile.touch;
     if (t.library) {
-      // Built-in adapter: generate C++ from the library name
       touchAdapter = generateTouchAdapter(t);
-      for (const inc of touchAdapter.includes) {
-        ctx.sourceLines.push(inc);
+      // Prepend includes to the front (Arduino auto-prototyper safety).
+      ctx.sourceLines.unshift(touchAdapter.includes[0]);
+      for (let i = 1; i < touchAdapter.includes.length; i++) {
+        ctx.sourceLines.push(touchAdapter.includes[i]);
       }
       ctx.sourceLines.push(touchAdapter.declaration);
     }
-    // Custom adapter (t.adapter) is handled by the normal TS import lowering —
-    // the user's file exports touch.isTouched() and touch.read() which become
-    // C++ functions. The transpiler treats them as existing extern symbols.
   }
 
   // Forward declaration for touch poll (used inside the runtime header's ui_tick)
