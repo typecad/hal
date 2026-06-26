@@ -1,8 +1,8 @@
 /* ---------------------------------------------------------------------------
-   hello.shadcn-neu-light.css — shadcn neutral light theme
-   Based on the shadcn neutral palette with the .dark overrides applied
-   (since embedded displays look best with dark backgrounds).
-   Uses only supported CSS features; approximates where needed.
+   hello.shadcn-neu-light.css — shadcn neutral dark theme
+   Uses CSS variables + the UA default stylesheet for element defaults.
+   display:flex, flex-direction:column, overflow:scroll on lists, etc.
+   are now provided by the UA layer — not repeated here.
    ----------------------------------------------------------------------- */
 
 @font-face {
@@ -19,17 +19,13 @@
   font-style: normal;
 }
 
-/* shadcn neutral dark theme variables */
 :root {
   --background: #0a0a0a;
   --foreground: #fafafa;
   --card: #171717;
-  --card-foreground: #fafafa;
   --primary: #e5e5e5;
   --primary-foreground: #171717;
   --secondary: #262626;
-  --secondary-foreground: #fafafa;
-  --muted: #262626;
   --muted-foreground: #a1a1a1;
   --accent: #404040;
   --accent-foreground: #fafafa;
@@ -37,15 +33,14 @@
   --destructive-foreground: #fafafa;
   --border: #282828;
   --input: #343434;
-  --ring: #737373;
   --chart-1: #91c5ff;
   --chart-2: #3a81f6;
   --chart-3: #2563ef;
   --radius: 10px;
-  /* Approximated shadow: 0 1px 3px rgba(0,0,0,0.25) on dark bg → subtle dark glow */
   --shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
+/* ── Animations ── */
 @keyframes pulse {
   0%   { background: #1a6b3c; }
   50%  { background: #4ade80; }
@@ -79,8 +74,50 @@
   75%, 100% { transform: translate(30px, 3px) rotate(270deg); background: #e5e5e5; }
 }
 
+/* ── Screen (UA provides display:flex, flex-direction:column) ── */
+screen {
+  background: var(--background);
+  gap: 8px;
+  padding: 10px;
+}
+
+/* ── Home screen ── */
+#header {
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  background: var(--card);
+}
+
+#title {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: antialiased;
+  width: 300;
+  text-align: center;
+}
+
+#subtitle {
+  color: var(--muted-foreground);
+  font-family: "ColibriDemo";
+  font-size: 16px;
+  font-smoothing: antialiased;
+  width: 300;
+  text-align: center;
+}
+
+#body {
+  overflow: scroll;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+}
+
 #indicatorRow {
-  display: flex;
   flex-direction: row;
   align-items: center;
   gap: 10px;
@@ -95,14 +132,167 @@
   flex-shrink: 0;
 }
 
+#counter {
+  color: var(--chart-1);
+  font-size: 16px;
+  width: 72px;
+  white-space: nowrap;
+}
+
+#btn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: "ColibriDemo";
+  font-weight: bold;
+  font-size: 20px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 34px;
+  margin: 4px 3px 8px;
+  transition: background 80ms;
+}
+
+#btn:pressed {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+#led {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+#modeRow {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#modeRow label {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+#mode {
+  color: var(--foreground);
+  font-size: 16px;
+}
+
+#speedRow {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 16px;
+}
+
+#speedSlow, #speedFast {
+  color: var(--foreground);
+  font-size: 16px;
+}
+
+#progress {
+  color: var(--chart-2);
+}
+
+#aaLabel {
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: bold;
+  align-self: center;
+}
+
+#aaRow {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 20px;
+}
+
+#aaRow radio, #aaRow check {
+  font-size: 16px;
+}
+
+#aaOff1, #aaCheck2 {
+  font-smoothing: none;
+}
+
+#aaFontRow {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 16px;
+}
+
+#aaFontSmooth {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: antialiased;
+}
+
+#aaFontBitmap {
+  color: var(--foreground);
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: none;
+}
+
+#rangeRow {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#rangeRow label {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+#points {
+  color: var(--chart-1);
+  width: 220px;
+}
+
+#inputRow, #portRow {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#inputRow label, #portRow label {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+/* UA provides border:1px solid + padding:4px 8px for input */
+#ssid, #port {
+  color: var(--foreground);
+  background: var(--secondary);
+  border-color: var(--input);
+  border-radius: var(--radius);
+  width: 200px;
+}
+
+#footer {
+  padding: 4px 0;
+}
+
+#hint {
+  color: var(--muted-foreground);
+  font-size: 16px;
+}
+
+/* ── Transform demos ── */
 #transformDemo {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 3px;
 }
 
-#transformDemoLabel {
+#transformDemoLabel, #textLayoutLabel, #layerDemoLabel, #conditionalDemoLabel {
   color: var(--muted-foreground);
   font-size: 16px;
 }
@@ -116,7 +306,7 @@
   width: 88px;
   height: 28px;
   background: var(--secondary);
-  border: 1px solid var(--border);
+  border-color: var(--border);
   border-radius: 6px;
 }
 
@@ -142,11 +332,11 @@
   height: 8px;
   background: var(--chart-1);
   border-radius: 2px;
-  animation: originScale 1600ms infinite;
 }
 
 #originLeft {
   transform-origin: left top;
+  animation: originScale 1600ms infinite;
 }
 
 #originCenter {
@@ -164,45 +354,28 @@
 }
 
 #textLayoutDemo {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 4px;
   padding: 6px;
   background: var(--card);
-  border: 1px solid var(--border);
+  border-color: var(--border);
   border-radius: 6px;
 }
 
-#textLayoutLabel {
-  color: var(--muted-foreground);
-  font-size: 16px;
-}
-
 #layerDemo {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 4px;
 }
 
-#layerDemoLabel {
-  color: var(--muted-foreground);
-  font-size: 16px;
-}
-
 #layerStage {
-  display: flex;
-  position: relative;
   width: 120px;
   height: 64px;
   background: var(--card);
-  border: 1px solid var(--border);
+  border-color: var(--border);
   border-radius: 6px;
 }
 
 #layerBack {
-  position: absolute;
   left: 14px;
   top: 10px;
   width: 72px;
@@ -212,13 +385,12 @@
 }
 
 #layerFront {
-  position: absolute;
   left: 44px;
   top: 22px;
   width: 56px;
   height: 30px;
   background: var(--chart-2);
-  border: 1px solid var(--foreground);
+  border-color: var(--foreground);
   border-radius: 4px;
   z-index: 5;
 }
@@ -231,28 +403,19 @@
 }
 
 #conditionalDemo {
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 4px;
 }
 
-#conditionalDemoLabel {
-  color: var(--muted-foreground);
-  font-size: 16px;
-}
-
 #conditionalStage {
-  position: relative;
   width: 150px;
   height: 44px;
   background: var(--card);
-  border: 1px solid var(--border);
+  border-color: var(--border);
   border-radius: 6px;
 }
 
 #evenBranch, #oddBranch {
-  position: absolute;
   left: 8px;
   top: 8px;
   width: 134px;
@@ -297,226 +460,173 @@
   transform-origin: center;
 }
 
-screen {
-  background: var(--background);
-  display: flex;
-  flex-direction: column;
+#fitDemo {
+  align-items: center;
+  gap: 4px;
+}
+
+#fitDemoLabel, #displayNoneDemoLabel, #aspectDemoLabel {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+#fitContainRow, #fitCoverRow, #fitFillRow {
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
   gap: 8px;
+  width: 152px;
+  height: 42px;
+}
+
+#fitContainLabel, #fitCoverLabel, #fitFillLabel {
+  width: 84px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+#fitImgContain, #fitImgCover, #fitImgFill {
+  background: #0f172a;
+  border-color: var(--border);
+}
+
+#displayNoneDemo {
+  align-items: center;
+  gap: 4px;
+}
+
+#displayNoneStack {
+  gap: 0;
+  width: 180px;
+  background: var(--border);
+  padding: 1px;
+}
+
+#displayBeforeRow, #displayAfterRow, #hiddenAttrRow, #displayNoneRow {
+  width: 180px;
+  height: 24px;
+}
+
+#displayBeforeRow {
+  background: var(--secondary);
+  border-radius: 4px 4px 0 0;
+}
+
+#displayAfterRow {
+  background: #1a6b3c;
+  border-radius: 0 0 4px 4px;
+}
+
+#hiddenAttrRow, #displayNoneRow {
+  background: var(--destructive);
+}
+
+#displayNoneRow {
+  display: none;
+}
+
+#displayBeforeText, #displayAfterText, #hiddenAttrText, #displayNoneText {
+  width: 180px;
+  color: var(--foreground);
+  font-size: 14px;
+  text-align: center;
+}
+
+#aspectDemo {
+  align-items: center;
+  gap: 4px;
+}
+
+#aspectWide {
+  align-items: center;
+  justify-content: center;
+  width: 144px;
+  aspect-ratio: 16 / 9;
+  background: var(--secondary);
+  border-color: var(--border);
+  border-radius: 4px;
+}
+
+#aspectSquare {
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  aspect-ratio: 1 / 1;
+  background: #1a6b3c;
+  border-color: var(--border);
+  border-radius: 4px;
+}
+
+#aspectWideText, #aspectSquareText {
+  width: 144px;
+  color: var(--foreground);
+  font-size: 14px;
+  text-align: center;
+}
+
+#aspectSquareText {
+  width: 56px;
+}
+
+/* ── Navigation (UA provides text-decoration: underline for <a>) ── */
+a {
+  color: var(--chart-2);
+  font-size: 20px;
+  align-self: center;
+}
+
+/* ── Settings screen ── */
+#settingsHeader, #aboutHeader {
+  flex-direction: row;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
   padding: 10px;
 }
 
-#header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
-  background: var(--card);
-}
-
-#title {
+#settingsTitle, #aboutTitle {
   color: var(--foreground);
-  font-family: "ColibriDemo";
   font-size: 24px;
   font-weight: bold;
-  font-smoothing: antialiased;
-  width: 300;
-  text-align: center;
-}
-
-#subtitle {
-  color: var(--muted-foreground);
   font-family: "ColibriDemo";
-  font-size: 16px;
-  font-smoothing: antialiased;
-  width: 300;
-  text-align: center;
 }
 
-#body {
-  overflow: scroll;
+#settingsBody, #aboutBody {
+  gap: 8px;
+  align-items: center;
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
+  padding: 10px;
 }
 
-#counter {
-  color: var(--chart-1);
-  font-size: 16px;
-  width: 72px;
-  white-space: nowrap;
-  text-align: left;
-}
-
-/* shadcn button: subtle primary (light gray on dark), soft shadow, rounded */
-#btn {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-family: "ColibriDemo";
-  font-weight: bold;
-  font-size: 20px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 12px 34px;
-  margin: 4px 3px 8px;
-  text-align: center;
-  transition: background 80ms;
-}
-
-#btn:pressed {
-  background: var(--accent);
-  color: var(--accent-foreground);
-}
-
-#led {
+#settingsLabel {
   color: var(--muted-foreground);
   font-size: 16px;
 }
 
-#modeRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  align-self: center;
-  gap: 8px;
-}
-
-#modeRow label {
-  color: var(--muted-foreground);
-  font-size: 16px;
-}
-
-#mode {
+/* UA provides overflow:scroll + flex-grow:1 for list */
+#deviceList {
   color: var(--foreground);
-  font-size: 16px;
-  text-decoration: underline;
-}
-
-#speedRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  align-self: center;
-  gap: 16px;
-}
-
-#speedSlow, #speedFast {
-  color: var(--foreground);
-  font-size: 16px;
-}
-
-/* Progress bar uses chart-2 (blue accent) */
-#progress {
-  color: var(--chart-2);
-  min-height: 16px;
-}
-
-#aaLabel {
-  color: var(--foreground);
-  font-size: 16px;
-  font-weight: bold;
-  align-self: center;
-}
-
-#aaRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  align-self: center;
-  gap: 20px;
-}
-
-#aaRow radio {
-  font-size: 16px;
-}
-
-#aaRow check {
-  font-size: 16px;
-}
-
-#aaOff1, #aaCheck2 {
-  font-smoothing: none;
-}
-
-#aaFontRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  align-self: center;
-  gap: 16px;
-}
-
-#aaFontSmooth {
-  color: var(--foreground);
-  font-family: "ColibriDemo";
-  font-size: 24px;
-  font-weight: bold;
-  font-smoothing: antialiased;
-}
-
-#aaFontBitmap {
-  color: var(--foreground);
-  font-size: 24px;
-  font-weight: bold;
-  font-smoothing: none;
-}
-
-#rangeRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  align-self: center;
-  gap: 8px;
-}
-
-#rangeRow label {
-  color: var(--muted-foreground);
-  font-size: 16px;
-}
-
-#points {
-  color: var(--chart-1);
-  width: 220px;
-}
-
-#inputRow, #portRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  align-self: center;
-  gap: 8px;
-}
-
-#inputRow label, #portRow label {
-  color: var(--muted-foreground);
-  font-size: 16px;
-}
-
-/* shadcn input: secondary bg, border, rounded */
-#ssid, #port {
-  color: var(--foreground);
+  flex-basis: 0;
+  width: 280;
   background: var(--secondary);
-  border: 1px solid var(--input);
+  border-color: var(--border);
   border-radius: var(--radius);
-  padding: 4px 8px;
-  width: 200px;
+  margin: 8px 0;
 }
 
-#footer {
-  padding: 4px 0;
+#aboutVersion {
+  color: var(--foreground);
+  font-size: 20px;
+  font-weight: bold;
 }
 
-#hint {
+#aboutDesc {
   color: var(--muted-foreground);
   font-size: 16px;
-  text-decoration: underline;
 }
 
-/* Keyboard: shadcn-styled keys */
+/* ── Keyboard ── */
 .ui-key {
   background: var(--secondary);
   color: var(--foreground);
@@ -540,109 +650,4 @@ screen {
 
 .ui-keyboard {
   background: var(--card);
-}
-
-/* Navigation links */
-a {
-  color: var(--chart-2);
-  font-size: 20px;
-  text-decoration: underline;
-  align-self: center;
-}
-
-/* Settings screen */
-#settingsHeader, #aboutHeader {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  padding: 10px;
-}
-
-#settingsTitle, #aboutTitle {
-  color: var(--foreground);
-  font-size: 24px;
-  font-weight: bold;
-  font-family: "ColibriDemo";
-}
-
-#settingsBody, #aboutBody {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
-  flex: 1;
-  padding: 10px;
-}
-
-#aboutBody {
-  overflow: scroll;
-}
-
-#settingsLabel {
-  color: var(--muted-foreground);
-  font-size: 16px;
-}
-
-#deviceList {
-  color: var(--foreground);
-  flex-grow: 1;
-  flex-basis: 0;
-  width: 280;
-  background: var(--secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin: 8px 0;
-}
-
-#aboutVersion {
-  color: var(--foreground);
-  font-size: 20px;
-  font-weight: bold;
-}
-
-#aboutDesc {
-  color: var(--muted-foreground);
-  font-size: 16px;
-}
-
-#fitDemo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-#fitDemoLabel {
-  color: var(--muted-foreground);
-  font-size: 14px;
-}
-
-#fitContainRow,
-#fitCoverRow,
-#fitFillRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  align-self: center;
-  gap: 8px;
-  width: 152px;
-  height: 42px;
-}
-
-#fitContainLabel,
-#fitCoverLabel,
-#fitFillLabel {
-  width: 84px;
-  color: var(--muted-foreground);
-  font-size: 14px;
-  text-align: right;
-  white-space: nowrap;
-}
-
-#fitImgContain,
-#fitImgCover,
-#fitImgFill {
-  background: #0f172a;
-  border: 1px solid var(--border);
 }
