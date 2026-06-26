@@ -368,6 +368,9 @@ screen {
 }
 
 #layerStage {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   width: 120px;
   height: 64px;
   background: var(--card);
@@ -376,23 +379,21 @@ screen {
 }
 
 #layerBack {
-  left: 14px;
-  top: 10px;
   width: 72px;
   height: 36px;
   background: var(--secondary);
   border-radius: 4px;
+  margin-right: -28px;
+  z-index: 1;
 }
 
 #layerFront {
-  left: 44px;
-  top: 22px;
   width: 56px;
   height: 30px;
   background: var(--chart-2);
   border-color: var(--foreground);
   border-radius: 4px;
-  z-index: 5;
+  z-index: 2;
 }
 
 #layerFrontText {
@@ -408,6 +409,9 @@ screen {
 }
 
 #conditionalStage {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   width: 150px;
   height: 44px;
   background: var(--card);
@@ -416,11 +420,10 @@ screen {
 }
 
 #evenBranch, #oddBranch {
-  left: 8px;
-  top: 8px;
-  width: 134px;
+  width: 100px;
   height: 28px;
   border-radius: 4px;
+  justify-content: center;
 }
 
 #evenBranch {
