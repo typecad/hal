@@ -9,6 +9,7 @@
 
 import { UIElementNode } from "./html-parser.js";
 import { CSSRule, CSSProperty, CSSSelector, SimpleSelector, parseInlineStyle } from "./css-parser.js";
+import { getUARules } from "./ua-stylesheet.js";
 
 export interface StyledNode {
   tag: string;
@@ -87,7 +88,8 @@ function matches(node: UIElementNode, sel: CSSSelector, ancestors: UIElementNode
 }
 
 export function resolveStyles(root: UIElementNode, rules: CSSRule[]): StyledNode {
-  return resolveNode(root, rules, []);
+  const allRules = [...getUARules(), ...rules];
+  return resolveNode(root, allRules, []);
 }
 
 function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElementNode[]): StyledNode {
