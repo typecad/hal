@@ -11,7 +11,7 @@
 // boxes[] in lockstep with the styled nodes.
 // ---------------------------------------------------------------------------
 
-import { Box, IntrinsicSize, isDisplayNone, LayoutEngine } from "./layout-engine.js";
+import { Box, IntrinsicSize, isDisplayNone, LayoutEngine, parseAspectRatio } from "./layout-engine.js";
 import { StyledNode } from "./style-resolver.js";
 import { CSSProperty } from "./css-parser.js";
 import Yoga from "yoga-layout";
@@ -198,6 +198,8 @@ export class YogaLayoutEngine implements LayoutEngine {
     // Width/height (explicit)
     if (s.width) yn.setWidth(cssNum(s.width));
     if (s.height) yn.setHeight(cssNum(s.height));
+    const aspectRatio = parseAspectRatio(s.aspectRatio);
+    if (aspectRatio !== undefined) yn.setAspectRatio(aspectRatio);
 
     // Children
     for (const child of node.children) {

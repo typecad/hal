@@ -69,6 +69,7 @@ export interface CSSProperty {
   maxWidth?: string;
   minHeight?: string;
   maxHeight?: string;
+  aspectRatio?: string;
   boxSizing?: string;
   overflow?: string;
   // Colors
@@ -541,6 +542,7 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "max-width": props.maxWidth = val; break;
     case "min-height": props.minHeight = val; break;
     case "max-height": props.maxHeight = val; break;
+    case "aspect-ratio": props.aspectRatio = val; break;
     case "box-sizing": props.boxSizing = val; break;
     case "overflow": props.overflow = val; break;
     // Colors
@@ -597,6 +599,11 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "border-width": props.borderWidth = val; break;
     case "border-color": props.borderColor = val; break;
     case "border-style": props.borderStyle = val; break;
+    case "border-left": case "border-top": case "border-right": case "border-bottom":
+      // Per-side border shorthand — expand into the global fields.
+      // For v1, side-specific borders apply to all sides (the runtime draws
+      // a uniform border). A future improvement could draw per-side borders.
+      props.border = val; parseBorderShorthand(props, val); break;
     case "opacity": props.opacity = val; break;
     case "visibility": props.visibility = val; break;
     case "outline": props.outline = val; break;

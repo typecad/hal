@@ -46,6 +46,13 @@ a {
 label {
   text-align: left;
 }
+h1 { font-size: 24px; font-weight: bold; }
+h2 { font-size: 20px; font-weight: bold; }
+h3 { font-size: 18px; font-weight: bold; }
+h4 { font-size: 16px; font-weight: bold; }
+h5 { font-size: 14px; }
+h6 { font-size: 12px; }
+p { font-size: 16px; }
 `;
 
 let UA_RULES: CSSRule[] | null = null;
