@@ -719,23 +719,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.startTimer("post:native-modules");
   const nativeModuleOutputs: string[] = [];
   for (const [moduleSpecifier, nativeModule] of graphResult.nativeModules) {
-    // Read the C++ source
-    const cppContent = readText(nativeModule.cppPath);
-
-    // Write to output directory
-    const outputCppPath = path.join(outDir, `${nativeModule.moduleKey}.cpp`);
-    fs.writeFileSync(outputCppPath, cppContent, "utf8");
-    nativeModuleOutputs.push(outputCppPath);
-
-    // Also copy the header file if it exists
-    if (nativeModule.headerPath) {
-      const headerContent = readText(nativeModule.headerPath);
-      const outputHeaderPath = path.join(outDir, `${nativeModule.moduleKey}.h`);
-      fs.writeFileSync(outputHeaderPath, headerContent, "utf8");
-      nativeModuleOutputs.push(outputHeaderPath);
-    }
-
-    info(`Copied native module: ${outputCppPath}`);
+    // Skip copying — Arduino's library system provides both .h and .cpp.
+    // Copying either causes conflicts: the .cpp merges into the .ino (duplicate
+    // definitions), and the .h shadows the library's own header (link failures).
+    // The gen-decls .d.ts files are sufficient for TypeScript type-checking.
+    info(`Native module (library-managed): ${moduleSpecifier}`);
   }
   profiler.endTimer("post:native-modules");
 

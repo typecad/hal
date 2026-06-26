@@ -44,7 +44,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   const profile = getDisplayProfile();
   if (profile) {
     const adapter = generateDisplayAdapter(profile);
-    ctx.sourceLines.push(adapter.includes);
+    // Prepend includes to the very front — Arduino's auto-prototyper scans
+    // the whole .ino and generates prototypes that reference GFXcanvas16
+    // etc. before any #include, so the GFX header must come first.
+    ctx.sourceLines.unshift(adapter.includes);
     ctx.sourceLines.push(adapter.declaration);
     ctx.sourceLines.push(adapter.functions);
   }
