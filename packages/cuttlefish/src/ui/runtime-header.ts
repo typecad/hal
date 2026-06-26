@@ -110,8 +110,9 @@ struct UINode {
   uint8_t parent;       // 255 = root/no parent
   uint8_t subtreeEnd;   // exclusive pre-order end index
   uint8_t screenId;     // which <screen> this node belongs to (for navigation)
-  uint8_t imgDataId;    // index into __ui_images[] (255 = no image)
-  uint16_t listItemHeight; // px per item for <list> (0 = not a list)
+uint8_t imgDataId;    // index into __ui_images[] (255 = no image)
+   uint8_t objectFit;    // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
+   uint16_t listItemHeight; // px per item for <list> (0 = not a list)
   int16_t rangeMin;     // for <range>: minimum value
   int16_t rangeMax;     // for <range>: maximum value
   int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
@@ -308,7 +309,11 @@ static inline void ui_draw_node_outline(uint8_t i, int16_t drawY);
 static inline uint8_t ui_rotation_quadrant(int16_t deg);
 static inline int16_t ui_rotated_face_w(uint8_t nodeIdx, int16_t w, int16_t h);
 static inline int16_t ui_rotated_face_h(uint8_t nodeIdx, int16_t w, int16_t h);
-static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg);
+ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg);
+ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
+                                           uint8_t fitMode, int16_t targetW, int16_t targetH);
+ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
+                                        int16_t drawW, int16_t drawH);
 
 static Adafruit_GFX* __ui_gfx = &__tc_display;
 static GFXcanvas16* __ui_scroll_canvas = nullptr;
@@ -348,31 +353,112 @@ static inline int16_t ui_rotated_face_h(uint8_t nodeIdx, int16_t w, int16_t h) {
   return (q == 1 || q == 3) ? w : h;
 }
 
-static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg) {
+// Draw image with object-fit: fitMode 1=fill (stretch), 2=contain, 3=cover, 4=scale-down
+// Uses nearest-neighbor scaling for embedded performance.
+static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
+                                          uint8_t fitMode, int16_t targetW, int16_t targetH) {
+  int16_t srcW = img->w, srcH = img->h;
+  int16_t drawW = srcW, drawH = srcH;
+  int16_t offX = 0, offY = 0;
+
+  // Apply object-fit scaling
+  if (fitMode == 2 || fitMode == 3 || fitMode == 4) {
+    // Compute scale factors using integer math (avoid float)
+    int32_t scaleX = ((int32_t)targetW * 1000) / srcW;
+    int32_t scaleY = ((int32_t)targetH * 1000) / srcH;
+    int32_t scale = scaleX;
+    if (fitMode == 2) {
+      // Contain: fit inside, maintain aspect ratio
+      if (scaleY < scaleX) scale = scaleY;
+    } else if (fitMode == 3) {
+      // Cover: cover area, maintain aspect ratio
+      if (scaleY > scaleX) scale = scaleY;
+    } else {
+      // Scale-down: smaller of contain or 100%
+      if (scaleY < scaleX) scale = scaleY;
+      if (scale > 1000) scale = 1000;
+    }
+    drawW = (int16_t)((int32_t)srcW * scale / 1000);
+    drawH = (int16_t)((int32_t)srcH * scale / 1000);
+    offX = (targetW - drawW) / 2;
+    offY = (targetH - drawH) / 2;
+  } else if (fitMode == 1) {
+    // Fill: stretch to fit
+    drawW = targetW;
+    drawH = targetH;
+  }
+  // fitMode == 0 (none): use natural size, no scaling
+
+  ui_draw_scaled_image(img, x + offX, y + offY, rotateDeg, drawW, drawH);
+}
+
+static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
+                                        int16_t drawW, int16_t drawH) {
   uint8_t q = ui_rotation_quadrant(rotateDeg);
   if (q == 0) {
-    __ui_gfx->drawRGBBitmap(x, y, img->data, img->w, img->h);
+    // Simple case: no rotation, draw with scaling
+    if (drawW == img->w && drawH == img->h) {
+      __ui_gfx->drawRGBBitmap(x, y, img->data, img->w, img->h);
+    } else {
+      // Scale using nearest-neighbor
+      for (int16_t dy = 0; dy < drawH; dy++) {
+        int16_t srcY = ((int32_t)dy * img->h) / drawH;
+        for (int16_t dx = 0; dx < drawW; dx++) {
+          int16_t srcX = ((int32_t)dx * img->w) / drawW;
+          uint16_t color = img->data[(int32_t)srcY * img->w + srcX];
+          __ui_gfx->drawPixel(x + dx, y + dy, color);
+        }
+      }
+    }
     return;
   }
-  for (uint16_t sy = 0; sy < img->h; sy++) {
-    for (uint16_t sx = 0; sx < img->w; sx++) {
-      uint16_t color = img->data[(uint32_t)sy * img->w + sx];
-      int16_t dx = 0;
-      int16_t dy = 0;
+  // Rotated + scaled: more complex
+  for (int16_t dy = 0; dy < drawH; dy++) {
+    int16_t srcY = ((int32_t)dy * img->h) / drawH;
+    for (int16_t dx = 0; dx < drawW; dx++) {
+      int16_t srcX = ((int32_t)dx * img->w) / drawW;
+      uint16_t color = img->data[(int32_t)srcY * img->w + srcX];
+      int16_t rdx = 0, rdy = 0;
       if (q == 1) {
-        dx = (int16_t)(img->h - 1 - sy);
-        dy = (int16_t)sx;
+        rdx = img->h - 1 - srcY;
+        rdy = srcX;
       } else if (q == 2) {
-        dx = (int16_t)(img->w - 1 - sx);
-        dy = (int16_t)(img->h - 1 - sy);
+        rdx = img->w - 1 - srcX;
+        rdy = img->h - 1 - srcY;
       } else {
-        dx = (int16_t)sy;
-        dy = (int16_t)(img->w - 1 - sx);
+        rdx = srcY;
+        rdy = img->w - 1 - srcX;
       }
       __ui_gfx->drawPixel(x + dx, y + dy, color);
     }
   }
 }
+
+static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg) {
+   uint8_t q = ui_rotation_quadrant(rotateDeg);
+   if (q == 0) {
+     __ui_gfx->drawRGBBitmap(x, y, img->data, img->w, img->h);
+     return;
+   }
+   for (uint16_t sy = 0; sy < img->h; sy++) {
+     for (uint16_t sx = 0; sx < img->w; sx++) {
+       uint16_t color = img->data[(uint32_t)sy * img->w + sx];
+       int16_t dx = 0;
+       int16_t dy = 0;
+       if (q == 1) {
+         dx = (int16_t)(img->h - 1 - sy);
+         dy = (int16_t)sx;
+       } else if (q == 2) {
+         dx = (int16_t)(img->w - 1 - sx);
+         dy = (int16_t)(img->h - 1 - sy);
+       } else {
+         dx = (int16_t)sy;
+         dy = (int16_t)(img->w - 1 - sx);
+       }
+       __ui_gfx->drawPixel(x + dx, y + dy, color);
+     }
+   }
+ }
 
 // Draw offset: when non-zero, all __ui_gfx draw calls subtract this from
 // display coords to produce canvas-local coords. Set when redirecting to a
@@ -2689,12 +2775,14 @@ static inline void ui_tick(uint16_t deltaMs) {
             textCol, bgCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
         }
         break;
-      case NODE_IMG:
-        if (__ui_nodes[i].imgDataId < __ui_image_count) {
-          const UIImage* img = &__ui_images[__ui_nodes[i].imgDataId];
-          ui_draw_image_rotated(img, __ui_nodes[i].box.x, drawY, __ui_nodes[i].rotateDeg);
-        }
-        break;
+case NODE_IMG:
+         if (__ui_nodes[i].imgDataId < __ui_image_count) {
+           const UIImage* img = &__ui_images[__ui_nodes[i].imgDataId];
+           int16_t targetW = __ui_nodes[i].box.w;
+           int16_t targetH = __ui_nodes[i].box.h;
+           ui_draw_image_with_fit(img, __ui_nodes[i].box.x, drawY, __ui_nodes[i].rotateDeg, __ui_nodes[i].objectFit, targetW, targetH);
+         }
+         break;
       case NODE_LIST: {
         // Find this list's state.
         UIListState* ls = nullptr;

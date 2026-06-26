@@ -1,10 +1,11 @@
 import type { DisplayProfile } from "../api/shared/display-profile.js";
 import { resolveColor } from "./color.js";
-import type { CSSProperty } from "./css-parser.js";
+import { parseAnimation, type CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 import { selectFontAssetForStyle } from "./font-assets.js";
 import type { Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
+import { whiteSpaceMode } from "./text-layout.js";
 
 export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range" | "input" | "img" | "list";
 export type UIPropertyModel = "background" | "color" | "text" | "visible" | "borderColor";
@@ -28,6 +29,7 @@ export interface UINodeModel {
   hasBg: boolean;
   textAlign: 0 | 1 | 2;
   textSize: number;       // GFX text size: 1-4 (from font-size + font-weight)
+  lineHeight: number;     // px between text baselines/lines (0 = default)
   letterSpacing: number;  // px between chars (0 = default)
   fontAntialias: boolean; // true = smooth text edges when UI_AA is compiled
   fontFace: number;       // 0 = classic GFX bitmap font; otherwise UIFontAsset id
@@ -41,8 +43,10 @@ export interface UINodeModel {
   outlineColor: number;
   outlineStyle: 0 | 1 | 2;
   outlineWidth: number;
+  zIndex: number;       // effective draw layer; higher draws later
   transformOffsetX: number;
   transformOffsetY: number;
+  rotateDeg: number;
   pressedOffsetX: number;
   pressedOffsetY: number;
   shadowCount: number;                    // 0-4 active shadows
@@ -61,10 +65,12 @@ export interface UINodeModel {
   textShadowAlpha: number;
   underline: boolean;
   nowrap: boolean;       // white-space: nowrap (true = no wrapping, the default)
+  whiteSpaceMode: 0 | 1 | 2 | 3; // 0=normal, 1=nowrap, 2=pre, 3=pre-line
   visible: boolean;
   opacity: number;       // 0-100
   clearColor: number;
   lastTextWidth: number;
+  lastTextHeight: number;
   dirty: boolean;
   value: number;
   options?: Array<{ value: string; text: string }>;
@@ -82,8 +88,9 @@ export interface UINodeModel {
   parentIndex: number;
   subtreeEnd: number;
   screenId: number;
-  imgDataId: number;  // index into image table (255 = no image)
-  listItemHeight: number;  // px per item (for <list>, 0 = not a list)
+imgDataId: number;  // index into image table (255 = no image)
+   objectFit: 0 | 1 | 2 | 3 | 4;  // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
+   listItemHeight: number;  // px per item (for <list>, 0 = not a list)
 }
 
 export interface UITransitionModel {
@@ -100,10 +107,26 @@ export interface UITransitionModel {
 
 export interface KeyframeStopModel {
   percent: number;
+  props: number;    // bitmask: 1=background, 2=color, 4=opacity, 8=transform, 16=size
   bg: number;      // resolved RGB565 (0 = use node's current bg)
   fg: number;      // resolved RGB565
   opacity: number; // 0-100
+  transformOffsetX: number;
+  transformOffsetY: number;
+  translatePctX: number; // percent of the animated node's base width
+  translatePctY: number; // percent of the animated node's base height
+  scaleX: number;        // percent, 100 = identity
+  scaleY: number;        // percent, 100 = identity
+  rotateDeg: number;
+  width: number;
+  height: number;
 }
+
+export const KEYFRAME_PROP_BG = 1;
+export const KEYFRAME_PROP_FG = 2;
+export const KEYFRAME_PROP_OPACITY = 4;
+export const KEYFRAME_PROP_TRANSFORM = 8;
+export const KEYFRAME_PROP_SIZE = 16;
 
 export interface KeyframeSetModel {
   name: string;
@@ -116,6 +139,10 @@ export interface AnimationModel {
   durationMs: number;
   delayMs: number;
   iterations: number;    // -1 = infinite
+  baseWidth: number;
+  baseHeight: number;
+  originX: number;       // percent, 0=left, 50=center, 100=right
+  originY: number;       // percent, 0=top, 50=center, 100=bottom
 }
 
 export interface UIProgram {
@@ -141,6 +168,7 @@ interface FlatModelSource {
   parentIndex: number;
   subtreeEnd: number;
   screenId: number;
+  zIndex: number;
 }
 
 function nodeKind(tag: string): UINodeKindModel {
@@ -190,6 +218,49 @@ function letterSpacingOf(style: CSSProperty): number {
   return isNaN(px) ? 0 : px;
 }
 
+function lineHeightOf(style: CSSProperty, textSize: number): number {
+  const base = Math.max(1, textSize || 2) * 8;
+  const raw = style.lineHeight?.trim();
+  if (!raw || raw === "normal") return base;
+  if (raw.endsWith("%")) {
+    const pct = parseFloat(raw);
+    return Number.isFinite(pct) ? Math.max(1, Math.min(255, Math.round(base * pct / 100))) : base;
+  }
+  if (/^-?\d*\.?\d+$/.test(raw)) {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? Math.max(1, Math.min(255, Math.round(base * n))) : base;
+  }
+const px = parseInt(raw, 10);
+  return Number.isFinite(px) && px > 0 ? Math.max(1, Math.min(255, px)) : base;
+}
+
+/** Parse object-fit value: none | fill | contain | cover | scale-down. */
+function objectFitOf(value: string): 0 | 1 | 2 | 3 | 4 {
+  const v = value.toLowerCase();
+  if (v === "none") return 0;
+  if (v === "fill") return 1;
+  if (v === "contain") return 2;
+  if (v === "cover") return 3;
+  if (v === "scale-down") return 4;
+  return 1; // default: fill
+}
+
+function whiteSpaceModeOf(style: CSSProperty): 0 | 1 | 2 | 3 {
+  switch (whiteSpaceMode(style.whiteSpace)) {
+    case "nowrap": return 1;
+    case "pre": return 2;
+    case "pre-line": return 3;
+    default: return 0;
+  }
+}
+
+function zIndexOf(style: CSSProperty): number {
+  const raw = style.zIndex?.trim();
+  if (!raw || raw === "auto") return 0;
+  const z = parseInt(raw, 10);
+  return Number.isFinite(z) ? Math.max(-32768, Math.min(32767, z)) : 0;
+}
+
 interface OutlineSpec { width: number; style: 0 | 1 | 2; color?: string; }
 function outlineOf(style: CSSProperty): OutlineSpec {
   const raw = style.outline?.trim();
@@ -217,15 +288,20 @@ function outlineOf(style: CSSProperty): OutlineSpec {
   return { width, style: outlineStyle, color };
 }
 
-function cssPx(value: string | undefined): number {
+export function cssPx(value: string | undefined): number {
   if (!value) return 0;
   const m = /(-?\d+(?:\.\d+)?)/.exec(value);
   return m ? Math.round(Number(m[1])) : 0;
 }
 
-function clampInt8(n: number): number {
+export function clampInt8(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(-128, Math.min(127, Math.round(n)));
+}
+
+export function clampInt16(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(-32768, Math.min(32767, Math.round(n)));
 }
 
 function splitTransformArgs(args: string): string[] {
@@ -235,24 +311,152 @@ function splitTransformArgs(args: string): string[] {
     .filter(Boolean);
 }
 
-function transformOffset(transform: string | undefined): { x: number; y: number } {
-  if (!transform) return { x: 0, y: 0 };
+export interface ParsedTransform {
+  x: number;
+  y: number;
+  pctX: number;
+  pctY: number;
+  scaleX: number;
+  scaleY: number;
+  rotateDeg: number;
+}
 
-  let x = 0;
-  let y = 0;
-  const translateX = /translateX\(\s*([^)]+?)\s*\)/i.exec(transform);
-  const translateY = /translateY\(\s*([^)]+?)\s*\)/i.exec(transform);
-  if (translateX) x += cssPx(translateX[1]);
-  if (translateY) y += cssPx(translateY[1]);
+function parseLengthOrPercent(value: string | undefined): { px: number; pct: number } {
+  if (!value) return { px: 0, pct: 0 };
+  const trimmed = value.trim();
+  const m = /^(-?\d+(?:\.\d+)?)(%)?$/.exec(trimmed);
+  if (m?.[2]) return { px: 0, pct: Math.round(Number(m[1])) };
+  return { px: cssPx(trimmed), pct: 0 };
+}
 
-  const translate = /translate(?:3d)?\(\s*([^)]+?)\s*\)/i.exec(transform);
-  if (translate) {
-    const args = splitTransformArgs(translate[1]);
-    if (args[0]) x += cssPx(args[0]);
-    if (args[1]) y += cssPx(args[1]);
+function parseScale(value: string | undefined): number {
+  if (!value) return 100;
+  const trimmed = value.trim();
+  const n = Number.parseFloat(trimmed);
+  if (!Number.isFinite(n)) return 100;
+  const pct = trimmed.endsWith("%") ? n : n * 100;
+  return Math.max(0, Math.min(400, Math.round(pct)));
+}
+
+function parseAngleDeg(value: string | undefined): number {
+  if (!value) return 0;
+  const trimmed = value.trim().toLowerCase();
+  const n = Number.parseFloat(trimmed);
+  if (!Number.isFinite(n)) return 0;
+  if (trimmed.endsWith("turn")) return Math.round(n * 360);
+  if (trimmed.endsWith("rad")) return Math.round(n * 180 / Math.PI);
+  return Math.round(n);
+}
+
+export function parseTransform(transform: string | undefined): ParsedTransform {
+  const parsed: ParsedTransform = { x: 0, y: 0, pctX: 0, pctY: 0, scaleX: 100, scaleY: 100, rotateDeg: 0 };
+  if (!transform) return parsed;
+
+  const fnRe = /([a-zA-Z][\w-]*)\(\s*([^)]*)\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = fnRe.exec(transform)) !== null) {
+    const fn = m[1].toLowerCase();
+    const args = splitTransformArgs(m[2]);
+    if (fn === "translate" || fn === "translate3d") {
+      const x = parseLengthOrPercent(args[0]);
+      const y = parseLengthOrPercent(args[1]);
+      parsed.x += x.px;
+      parsed.pctX += x.pct;
+      parsed.y += y.px;
+      parsed.pctY += y.pct;
+    } else if (fn === "translatex") {
+      const x = parseLengthOrPercent(args[0]);
+      parsed.x += x.px;
+      parsed.pctX += x.pct;
+    } else if (fn === "translatey") {
+      const y = parseLengthOrPercent(args[0]);
+      parsed.y += y.px;
+      parsed.pctY += y.pct;
+    } else if (fn === "scale" || fn === "scale3d") {
+      const sx = parseScale(args[0]);
+      const sy = args[1] ? parseScale(args[1]) : sx;
+      parsed.scaleX = Math.round(parsed.scaleX * sx / 100);
+      parsed.scaleY = Math.round(parsed.scaleY * sy / 100);
+    } else if (fn === "scalex") {
+      parsed.scaleX = Math.round(parsed.scaleX * parseScale(args[0]) / 100);
+    } else if (fn === "scaley") {
+      parsed.scaleY = Math.round(parsed.scaleY * parseScale(args[0]) / 100);
+    } else if (fn === "rotate" || fn === "rotatez") {
+      parsed.rotateDeg += parseAngleDeg(args[0]);
+    }
   }
 
-  return { x, y };
+  parsed.scaleX = Math.max(0, Math.min(400, parsed.scaleX));
+  parsed.scaleY = Math.max(0, Math.min(400, parsed.scaleY));
+  parsed.rotateDeg = clampInt16(parsed.rotateDeg);
+  return parsed;
+}
+
+export function transformOffset(transform: string | undefined): { x: number; y: number } {
+  const parsed = parseTransform(transform);
+  return { x: parsed.x, y: parsed.y };
+}
+
+function originTokenPercent(token: string | undefined, axis: "x" | "y"): number | undefined {
+  if (!token) return undefined;
+  const lower = token.trim().toLowerCase();
+  if (lower === "center") return 50;
+  if (axis === "x") {
+    if (lower === "left") return 0;
+    if (lower === "right") return 100;
+  } else {
+    if (lower === "top") return 0;
+    if (lower === "bottom") return 100;
+  }
+  const m = /^(-?\d+(?:\.\d+)?)%$/.exec(lower);
+  if (!m) return undefined;
+  return Math.max(0, Math.min(100, Math.round(Number(m[1]))));
+}
+
+function isVerticalOriginToken(token: string | undefined): boolean {
+  const lower = token?.trim().toLowerCase();
+  return lower === "top" || lower === "bottom";
+}
+
+function isHorizontalOriginToken(token: string | undefined): boolean {
+  const lower = token?.trim().toLowerCase();
+  return lower === "left" || lower === "right";
+}
+
+export function transformOriginPercent(value: string | undefined): { x: number; y: number } {
+  if (!value) return { x: 50, y: 50 };
+  const tokens = splitTransformArgs(value.replace(/\//g, " ")).slice(0, 2);
+  if (tokens.length === 0) return { x: 50, y: 50 };
+  if (tokens.length === 1) {
+    if (isVerticalOriginToken(tokens[0])) return { x: 50, y: originTokenPercent(tokens[0], "y") ?? 50 };
+    return { x: originTokenPercent(tokens[0], "x") ?? 50, y: 50 };
+  }
+  if (isVerticalOriginToken(tokens[0]) || isHorizontalOriginToken(tokens[1])) {
+    return {
+      x: originTokenPercent(tokens[1], "x") ?? 50,
+      y: originTokenPercent(tokens[0], "y") ?? 50,
+    };
+  }
+  return {
+    x: originTokenPercent(tokens[0], "x") ?? 50,
+    y: originTokenPercent(tokens[1], "y") ?? 50,
+  };
+}
+
+function transformedBox(base: Box, transform: ParsedTransform, origin: { x: number; y: number }): { box: Box; x: number; y: number } {
+  const scaledW = Math.max(0, Math.min(32767, Math.round(base.w * transform.scaleX / 100)));
+  const scaledH = Math.max(0, Math.min(32767, Math.round(base.h * transform.scaleY / 100)));
+  const originPxX = Math.round(base.w * origin.x / 100);
+  const originPxY = Math.round(base.h * origin.y / 100);
+  const scaleOffsetX = originPxX - Math.round(originPxX * transform.scaleX / 100);
+  const scaleOffsetY = originPxY - Math.round(originPxY * transform.scaleY / 100);
+  const pctOffsetX = Math.round(base.w * transform.pctX / 100);
+  const pctOffsetY = Math.round(base.h * transform.pctY / 100);
+  return {
+    box: { ...base, w: scaledW, h: scaledH },
+    x: transform.x + pctOffsetX + scaleOffsetX,
+    y: transform.y + pctOffsetY + scaleOffsetY,
+  };
 }
 
 function pressedOffsetOf(style: CSSProperty): { x: number; y: number } {
@@ -267,8 +471,8 @@ function pressedOffsetOf(style: CSSProperty): { x: number; y: number } {
   else if (pressed.bottom) y -= cssPx(pressed.bottom) - cssPx(style.bottom);
 
   if (pressed.transform) {
-    const baseTransform = transformOffset(style.transform);
-    const pressedTransform = transformOffset(pressed.transform);
+    const baseTransform = parseTransform(style.transform);
+    const pressedTransform = parseTransform(pressed.transform);
     x += pressedTransform.x - baseTransform.x;
     y += pressedTransform.y - baseTransform.y;
   }
@@ -338,9 +542,15 @@ function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSp
 /** Parse opacity (0-100, default 100). */
 function opacityOf(style: CSSProperty): number {
   if (!style.opacity) return 100;
-  const n = parseInt(style.opacity, 10);
-  if (isNaN(n)) return 100;
-  return Math.max(0, Math.min(100, n));
+  return cssOpacityToPercent(style.opacity);
+}
+
+export function cssOpacityToPercent(value: string | undefined): number {
+  if (!value) return 100;
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n)) return 100;
+  const pct = n <= 1 ? Math.round(n * 100) : Math.round(n);
+  return Math.max(0, Math.min(100, pct));
 }
 
 /** Parse a linear-gradient background into 2 color stops + direction.
@@ -433,6 +643,23 @@ function applyTextTransform(text: string | undefined, style: CSSProperty): strin
   }
 }
 
+function firstListValue(value: string | undefined): string | undefined {
+  return value?.split(",")[0]?.trim();
+}
+
+function animationDeclOf(style: CSSProperty) {
+  const shorthand = firstListValue(style.animation);
+  if (shorthand) return parseAnimation(shorthand);
+  const name = firstListValue(style.animationName);
+  if (!name || name === "none") return null;
+  return parseAnimation([
+    name,
+    firstListValue(style.animationDuration),
+    firstListValue(style.animationIterationCount),
+    firstListValue(style.animationDelay),
+  ].filter(Boolean).join(" "));
+}
+
 function flatten(
   node: StyledNode,
   boxes: Box[],
@@ -441,6 +668,7 @@ function flatten(
   parentBg: string | undefined,
   parentIndex: number = -1,
   screenId: number = 0,
+  parentZIndex: number = 0,
 ): void {
   const index = cursor.i++;
   const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -451,11 +679,12 @@ function flatten(
   const bgIsGradient = bgStr && bgStr.includes("linear-gradient");
   const bgBaseColor = bgIsGradient ? extractFirstGradientColor(bgStr!) : bgStr;
   const clearColor = hasBg ? bgBaseColor : parentBg;
-  out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1, screenId });
+  const zIndex = Math.max(-32768, Math.min(32767, parentZIndex + zIndexOf(node.style)));
+  out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1, screenId, zIndex });
 
   const childParentBg = hasBg ? bgBaseColor : parentBg;
   for (const child of node.children) {
-    flatten(child, boxes, out, cursor, childParentBg, index, screenId);
+    flatten(child, boxes, out, cursor, childParentBg, index, screenId, zIndex);
   }
   out[index].subtreeEnd = cursor.i;
 }
@@ -480,7 +709,7 @@ export function lowerUIToModel(
     flatten(root, boxes, flat, cursor, undefined);
   }
 
-  const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd, screenId }): UINodeModel => {
+  const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd, screenId, zIndex }): UINodeModel => {
     // If background is a gradient, use the first stop as the base bg color
     // (the runtime draws the actual gradient per-row on top of this).
     const grad = parseGradient(node.style.background, colorFormat);
@@ -492,15 +721,19 @@ export function lowerUIToModel(
     const clear = clearColor ? resolveColor(clearColor, colorFormat) : 0;
     const outline = outlineOf(node.style);
     const outlineColor = outline.color ? resolveColor(outline.color, colorFormat) : fg;
-    const baseTransformOffset = transformOffset(node.style.transform);
+    const baseTransform = parseTransform(node.style.transform);
+    const transformOrigin = transformOriginPercent(node.style.transformOrigin);
+    const baseTransformOffset = transformedBox(box, baseTransform, transformOrigin);
     const pressedOffset = pressedOffsetOf(node.style);
+    const textSize = textSizeOf(node.style);
+    const wsMode = whiteSpaceModeOf(node.style);
 
     return {
       index,
       tag: node.tag,
       id: node.id,
       classes: node.classes,
-      box,
+      box: baseTransformOffset.box,
       bg,
       fg,
       kind: nodeKind(node.tag),
@@ -513,7 +746,8 @@ export function lowerUIToModel(
       hasTextBinding: false,
       hasBg,
       textAlign: textAlign(node.style),
-      textSize: textSizeOf(node.style),
+      textSize,
+      lineHeight: lineHeightOf(node.style, textSize),
       letterSpacing: letterSpacingOf(node.style),
       fontAntialias: fontAntialiasOf(node.style, display),
       fontFace: fontFaceOf(node.style, fontAssets),
@@ -524,8 +758,10 @@ export function lowerUIToModel(
       outlineColor,
       outlineStyle: outline.style,
       outlineWidth: outline.width,
-      transformOffsetX: clampInt8(baseTransformOffset.x),
-      transformOffsetY: clampInt8(baseTransformOffset.y),
+      zIndex,
+      transformOffsetX: clampInt16(baseTransformOffset.x),
+      transformOffsetY: clampInt16(baseTransformOffset.y),
+      rotateDeg: clampInt16(baseTransform.rotateDeg),
       pressedOffsetX: pressedOffset.x,
       pressedOffsetY: pressedOffset.y,
       // Background gradient (if background is a linear-gradient).
@@ -561,11 +797,13 @@ export function lowerUIToModel(
           : { textShadowCount: 0, textShadowOffsetX: 0, textShadowOffsetY: 0, textShadowBlur: 0, textShadowColor: 0, textShadowAlpha: 0 };
       })(),
       underline: node.style.textDecoration === "underline",
-      nowrap: node.style.whiteSpace === "nowrap" || node.style.whiteSpace === "pre",
+      nowrap: wsMode === 1 || wsMode === 2,
+      whiteSpaceMode: wsMode,
       visible: node.style.visibility !== "hidden",
       opacity: opacityOf(node.style),
       clearColor: clear,
       lastTextWidth: 0,
+      lastTextHeight: 0,
       dirty: false,
       value: node.tag === "radio" && node.checked ? 1 : 0,
       options: node.options,
@@ -577,11 +815,13 @@ export function lowerUIToModel(
       maxlen: node.maxlen ?? 0,
       inputType: node.type,
       keyboard: node.keyboard,
-      parentIndex,
-      subtreeEnd,
-      screenId,
-      imgDataId: node.id && imageAssetIds.has(node.id) ? imageAssetIds.get(node.id)! : 255,
-      listItemHeight: (node as any).itemHeight ?? 0,
+parentIndex,
+       subtreeEnd,
+       screenId,
+       imgDataId: node.id && imageAssetIds.has(node.id) ? imageAssetIds.get(node.id)! : 255,
+       // Image scaling mode: 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
+       objectFit: node.style.objectFit ? objectFitOf(node.style.objectFit) : 1,
+       listItemHeight: (node as any).itemHeight ?? 0,
     };
   });
 
@@ -628,24 +868,21 @@ export function lowerUIToModel(
   // Build animations from nodes that have an 'animation' CSS property.
   const animations: AnimationModel[] = [];
   for (const fn of flat) {
-    const animStr = (fn.node.style as any).animation as string | undefined;
-    if (!animStr) continue;
-    // Parse the animation shorthand.
-    const parts = animStr.trim().split(/\s+/);
-    if (parts.length === 0) continue;
-    const name = parts.find(p => !/^\d/.test(p) && p !== "infinite") ?? "";
-    if (!name) continue;
-    const setIdx = keyframeSets.findIndex(k => k.name === name);
+    const animation = animationDeclOf(fn.node.style);
+    if (!animation) continue;
+    const setIdx = keyframeSets.findIndex(k => k.name === animation.name);
     if (setIdx < 0) continue;
-    let durationMs = 1000, delayMs = 0, iterations = 1;
-    let foundDuration = false;
-    for (const p of parts) {
-      if (p === name || p === "infinite") { if (p === "infinite") iterations = -1; continue; }
-      if (/^\d+(?:\.\d+)?ms$/.test(p)) { const ms = parseInt(p); if (!foundDuration) { durationMs = ms; foundDuration = true; } else delayMs = ms; }
-      else if (/^\d+(?:\.\d+)?s$/.test(p)) { const sec = parseFloat(p); if (!foundDuration) { durationMs = Math.round(sec*1000); foundDuration = true; } else delayMs = Math.round(sec*1000); }
-      else if (/^\d+$/.test(p)) { iterations = parseInt(p); }
-    }
-    animations.push({ node: fn.index, keyframeSet: setIdx, durationMs, delayMs, iterations });
+    animations.push({
+      node: fn.index,
+      keyframeSet: setIdx,
+      durationMs: Math.max(0, Math.min(65535, animation.durationMs)),
+      delayMs: Math.max(0, Math.min(65535, animation.delayMs)),
+      iterations: Math.max(-1, Math.min(32767, animation.iterations)),
+      baseWidth: Math.max(0, Math.min(32767, fn.box.w)),
+      baseHeight: Math.max(0, Math.min(32767, fn.box.h)),
+      originX: transformOriginPercent(fn.node.style.transformOrigin).x,
+      originY: transformOriginPercent(fn.node.style.transformOrigin).y,
+    });
   }
 
   return {

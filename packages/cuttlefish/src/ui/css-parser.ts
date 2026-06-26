@@ -39,6 +39,12 @@ export interface KeyframeStop {
   background?: string;
   color?: string;
   opacity?: string;
+  transform?: string;
+  transformOrigin?: string;
+  left?: string;
+  top?: string;
+  width?: string;
+  height?: string;
 }
 
 export interface KeyframeSet {
@@ -85,6 +91,10 @@ export interface CSSProperty {
   // Animation
   transition?: TransitionDecl;
   animation?: string;  // shorthand: "pulse 2s infinite"
+  animationName?: string;
+  animationDuration?: string;
+  animationIterationCount?: string;
+  animationDelay?: string;
   // Flexbox / layout (Yoga)
   display?: string;
   flexDirection?: string;
@@ -98,6 +108,7 @@ export interface CSSProperty {
   flexWrap?: string;
   order?: string;
   position?: string;        // relative | absolute | static
+  zIndex?: string;
   top?: string;
   right?: string;
   bottom?: string;
@@ -114,6 +125,8 @@ export interface CSSProperty {
   boxShadow?: string;
   textShadow?: string;
   transform?: string;
+transformOrigin?: string;
+   objectFit?: string;  // fill | contain | cover | scale-down | none
 }
 
 export interface CSSRule {
@@ -130,7 +143,7 @@ export interface CSSFontFace {
 
 export function parseCss(src: string): CSSRule[] {
   // Strip CSS comments before parsing (they may contain { or }).
-  const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const withoutComments = stripKeyframes(src.replace(/\/\*[\s\S]*?\*\//g, ""));
   const rules: CSSRule[] = [];
   // CSS custom properties (--name: value), extracted from :root-like rules.
   const variables: Record<string, string> = {};
@@ -325,25 +338,47 @@ function parseTransition(val: string): TransitionDecl {
 
 /** Parse the animation shorthand: "pulse 2s infinite 500ms".
  *  Fields: name (identifier), duration (Nms/Ns), iterations (number|infinite), delay (Nms/Ns). */
-function parseAnimation(val: string): AnimationDecl | null {
-  const parts = val.trim().split(/\s+/);
+export function parseAnimation(val: string): AnimationDecl | null {
+  const first = val.split(",")[0]?.trim() ?? "";
+  const parts = first.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return null;
   const decl: AnimationDecl = { name: "", durationMs: 1000, iterations: 1, delayMs: 0 };
+  let foundDuration = false;
   for (const part of parts) {
-    if (part === "infinite") {
+    const lower = part.toLowerCase();
+    if (lower === "none") {
+      return null;
+    } else if (lower === "infinite") {
       decl.iterations = -1;
-    } else if (/^\d+(?:\.\d+)?ms$/.test(part)) {
-      const ms = parseInt(part);
-      if (decl.durationMs === 1000 && parts.indexOf(part) > 0) decl.durationMs = ms;
+    } else if (/^\d+(?:\.\d+)?ms$/.test(lower)) {
+      const ms = Math.round(parseFloat(lower));
+      if (!foundDuration) { decl.durationMs = ms; foundDuration = true; }
       else decl.delayMs = ms;
-    } else if (/^\d+(?:\.\d+)?s$/.test(part)) {
-      const sec = parseFloat(part);
-      if (decl.durationMs === 1000 && parts.indexOf(part) > 0) decl.durationMs = Math.round(sec * 1000);
-      else decl.delayMs = Math.round(sec * 1000);
-    } else if (/^\d+$/.test(part)) {
-      decl.iterations = parseInt(part);
+    } else if (/^\d+(?:\.\d+)?s$/.test(lower)) {
+      const ms = Math.round(parseFloat(lower) * 1000);
+      if (!foundDuration) { decl.durationMs = ms; foundDuration = true; }
+      else decl.delayMs = ms;
+    } else if (/^\d+$/.test(lower)) {
+      decl.iterations = parseInt(lower, 10);
+    } else if (
+      lower === "linear" ||
+      lower === "ease" ||
+      lower === "ease-in" ||
+      lower === "ease-out" ||
+      lower === "ease-in-out" ||
+      lower === "normal" ||
+      lower === "reverse" ||
+      lower === "alternate" ||
+      lower === "alternate-reverse" ||
+      lower === "forwards" ||
+      lower === "backwards" ||
+      lower === "both" ||
+      lower === "running" ||
+      lower === "paused"
+    ) {
+      continue;
     } else {
-      // Identifier — the animation name.
+      // Identifier: the first non-keyword token is the animation name.
       decl.name = part;
     }
   }
@@ -356,46 +391,127 @@ function parseAnimation(val: string): AnimationDecl | null {
 export function parseKeyframes(src: string): KeyframeSet[] {
   const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
   const sets: KeyframeSet[] = [];
-  // Match @keyframes name { ... } (non-greedy, handles nested braces minimally).
-  const re = /@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\}\s*(?=@|\}|$)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(withoutComments)) !== null) {
-    const name = m[1];
-    const body = m[2];
-    const stops: KeyframeStop[] = [];
-    // Parse each stop: "0% { ... }" or "50% { ... }" or "from { ... }" / "to { ... }"
-    const stopRe = /(\d+)%|from|to/gi;
-    // Split into stop blocks.
-    const parts = body.split(/\}/);
-    for (const part of parts) {
-      const colonIdx = part.indexOf("{");
-      if (colonIdx < 0) continue;
-      const selector = part.slice(0, colonIdx).trim();
-      const decls = part.slice(colonIdx + 1).trim();
-      // Parse the percentage.
-      let pct: number;
-      if (/from/i.test(selector)) pct = 0;
-      else if (/to/i.test(selector)) pct = 100;
-      else { const pm = /(\d+)/.exec(selector); pct = pm ? parseInt(pm[1]) : -1; }
-      if (pct < 0 || pct > 100) continue;
-      // Parse properties.
-      const stop: KeyframeStop = { percent: pct };
-      for (const decl of decls.split(";")) {
-        const dColon = decl.indexOf(":");
-        if (dColon < 0) continue;
-        const prop = decl.slice(0, dColon).trim();
-        const val = decl.slice(dColon + 1).trim();
-        if (prop === "background" || prop === "background-color") stop.background = val;
-        else if (prop === "color") stop.color = val;
-        else if (prop === "opacity") stop.opacity = val;
-      }
-      stops.push(stop);
-    }
-    // Sort stops by percent.
-    stops.sort((a, b) => a.percent - b.percent);
-    if (stops.length > 0) sets.push({ name, stops });
+
+  let ast;
+  try {
+    ast = parse(withoutComments, { parseCustomProperty: true });
+  } catch {
+    return sets;
   }
+
+  const variables = extractVariables(withoutComments);
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type !== "Atrule" || node.name !== "keyframes" || !node.block) return;
+      const name = node.prelude ? generate(node.prelude).trim() : "";
+      if (!name) return;
+
+      const merged = new Map<number, KeyframeStop>();
+      node.block.children.forEach((rule: any) => {
+        if (rule.type !== "Rule" || !rule.block) return;
+        const percents = keyframePercents(rule.prelude ? generate(rule.prelude) : "");
+        if (percents.length === 0) return;
+
+        const props: Omit<KeyframeStop, "percent"> = {};
+        rule.block.children.forEach((decl: any) => {
+          if (decl.type !== "Declaration") return;
+          const prop = decl.property.replace(/^-(?:webkit|moz|ms|o)-/, "");
+          const val = substituteVarsInValue(generate(decl.value).trim(), variables);
+          if (prop === "background" || prop === "background-color") props.background = val;
+          else if (prop === "color") props.color = val;
+          else if (prop === "opacity") props.opacity = val;
+          else if (prop === "transform") props.transform = val;
+          else if (prop === "transform-origin") props.transformOrigin = val;
+          else if (prop === "left") props.left = val;
+          else if (prop === "top") props.top = val;
+          else if (prop === "width") props.width = val;
+          else if (prop === "height") props.height = val;
+        });
+
+        for (const percent of percents) {
+          const existing = merged.get(percent) ?? { percent };
+          merged.set(percent, { ...existing, ...props, percent });
+        }
+      });
+
+      const stops = [...merged.values()].sort((a, b) => a.percent - b.percent);
+      if (stops.length > 0) sets.push({ name, stops });
+    },
+  });
+
   return sets;
+}
+
+function keyframePercents(selectorText: string): number[] {
+  return selectorText
+    .split(",")
+    .map((part) => {
+      const trimmed = part.trim().toLowerCase();
+      if (trimmed === "from") return 0;
+      if (trimmed === "to") return 100;
+      const match = /^(\d+(?:\.\d+)?)%$/.exec(trimmed);
+      if (!match) return undefined;
+      const value = Math.round(Number(match[1]));
+      return value >= 0 && value <= 100 ? value : undefined;
+    })
+    .filter((value): value is number => value !== undefined);
+}
+
+function extractVariables(src: string): Record<string, string> {
+  const variables: Record<string, string> = {};
+  let ast;
+  try {
+    ast = parse(src, { parseCustomProperty: true });
+  } catch {
+    return variables;
+  }
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type !== "Rule") return;
+      const selectorText = generate(node.prelude).trim();
+      if (selectorText !== ":root") return;
+      node.block.children.forEach((child: any) => {
+        if (child.type === "Declaration" && child.property.startsWith("--")) {
+          variables[child.property] = generate(child.value).trim();
+        }
+      });
+    },
+  });
+
+  return variables;
+}
+
+function substituteVarsInValue(value: string, variables: Record<string, string>): string {
+  return value.includes("var(")
+    ? value.replace(/var\(\s*(--[\w-]+)\s*\)/g, (_, name) => variables[name] ?? "")
+    : value;
+}
+
+function stripKeyframes(src: string): string {
+  let out = "";
+  let i = 0;
+  while (i < src.length) {
+    const match = /@keyframes\s+[\w-]+\s*\{/iy;
+    match.lastIndex = i;
+    const found = match.exec(src);
+    if (!found) {
+      out += src[i++];
+      continue;
+    }
+
+    out += src.slice(i, found.index);
+    let depth = 1;
+    let j = match.lastIndex;
+    while (j < src.length && depth > 0) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}") depth--;
+      j++;
+    }
+    i = j;
+  }
+  return out;
 }
 function parseFontShorthand(props: CSSProperty, val: string): void {
   const parts = val.trim().split(/\s+/);
@@ -450,6 +566,10 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     // Animation
     case "transition": props.transition = parseTransition(val); break;
     case "animation": props.animation = val; break;
+    case "animation-name": props.animationName = val; break;
+    case "animation-duration": props.animationDuration = val; break;
+    case "animation-iteration-count": props.animationIterationCount = val; break;
+    case "animation-delay": props.animationDelay = val; break;
     // Flexbox / layout
     case "display": props.display = val; break;
     case "flex-direction": props.flexDirection = val; break;
@@ -466,6 +586,7 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "flex-wrap": props.flexWrap = val; break;
     case "order": props.order = val; break;
     case "position": props.position = val; break;
+    case "z-index": props.zIndex = val; break;
     case "top": props.top = val; break;
     case "right": props.right = val; break;
     case "bottom": props.bottom = val; break;
@@ -482,6 +603,8 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "box-shadow": props.boxShadow = val; break;
     case "text-shadow": props.textShadow = val; break;
     case "transform": props.transform = val; break;
+case "transform-origin": props.transformOrigin = val; break;
+    case "object-fit": props.objectFit = val; break;
     // Unknown properties are silently dropped (forward-compatible).
   }
 }
