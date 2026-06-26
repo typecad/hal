@@ -599,6 +599,10 @@ a {
   padding: 10px;
 }
 
+#aboutBody {
+  overflow: scroll;
+}
+
 #settingsLabel {
   color: var(--muted-foreground);
   font-size: 16px;
