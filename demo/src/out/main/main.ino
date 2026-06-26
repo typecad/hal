@@ -168,7 +168,7 @@ static int32_t defaultCode()
   return static_cast<int>(Code::Ok);
 }
 
-static void cuttlefish_main()
+void cuttlefish_main()
 {
   Serial.println(F("--- enum stress test ---"));
   char __cuttlefish_str_2[18];
@@ -207,6 +207,6 @@ static void cuttlefish_main()
   Serial.println(F("done"));
 }
 
-static void loop()
+void loop()
 {
 }

@@ -36,6 +36,8 @@ export interface StyledNode {
   maxlen?: number;
   /** For <input>: keyboard template id ref. */
   keyboard?: string;
+  /** HTML hidden attribute: removes the element subtree from layout/rendering. */
+  hidden?: boolean;
   /** Navigation target for <a href="#screenId"> links. */
   href?: string;
   /** Image source path for <img src="...">. */
@@ -106,6 +108,9 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
   if (node.inlineStyle) {
     Object.assign(style, parseInlineStyle(node.inlineStyle));
   }
+  if (node.hidden) {
+    style.display = "none";
+  }
   if (Object.keys(pressed).length > 0) {
     // Attach pressed overrides; the transition driver reads these on press.
     (style as CSSProperty & { pressed?: CSSProperty }).pressed = pressed;
@@ -129,6 +134,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     placeholder: node.placeholder,
     maxlen: node.maxlength,
     keyboard: node.keyboard,
+    hidden: node.hidden,
     href: node.href,
     src: node.src,
     imgWidth: node.imgWidth,

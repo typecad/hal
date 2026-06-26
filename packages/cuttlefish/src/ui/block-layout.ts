@@ -8,7 +8,7 @@
 // handles flexbox layouts.
 // ---------------------------------------------------------------------------
 
-import { Box, IntrinsicSize, LayoutEngine } from "./layout-engine.js";
+import { Box, IntrinsicSize, isDisplayNone, LayoutEngine } from "./layout-engine.js";
 import { StyledNode } from "./style-resolver.js";
 
 /** Parse a CSS value string ("8px", "8") to a number. */
@@ -22,7 +22,7 @@ function cssNum(val: string | number | undefined): number {
 export class BlockLayoutEngine implements LayoutEngine {
   readonly id = "block" as const;
 
-  arrange(root: StyledNode, viewport: Box, measureFn: (n: StyledNode) => IntrinsicSize): Box[] {
+  arrange(root: StyledNode, viewport: Box, measureFn: (n: StyledNode, availableWidth?: number) => IntrinsicSize): Box[] {
     const boxes: Box[] = [];
     this.layoutNode(root, viewport, boxes, measureFn);
     return boxes;
@@ -32,8 +32,13 @@ export class BlockLayoutEngine implements LayoutEngine {
     node: StyledNode,
     box: Box,
     out: Box[],
-    measureFn: (n: StyledNode) => IntrinsicSize,
+    measureFn: (n: StyledNode, availableWidth?: number) => IntrinsicSize,
   ): void {
+    if (isDisplayNone(node)) {
+      this.layoutHiddenSubtree(node, out);
+      return;
+    }
+
     out.push(box);
     if (node.children.length === 0) return;
 
@@ -47,11 +52,17 @@ export class BlockLayoutEngine implements LayoutEngine {
     let cursorY = content.y;
 
     for (const child of node.children) {
-      const intrinsic = measureFn(child);
+      if (isDisplayNone(child)) {
+        this.layoutHiddenSubtree(child, out);
+        continue;
+      }
+
       // Buttons size to their content (text + padding), not the full
       // container width. Other elements fill the content width (block flow).
       const childPad = cssNum(child.style.padding);
       const isButton = child.tag === "button";
+      const measureWidth = isButton ? undefined : Math.max(0, content.w - childPad * 2);
+      const intrinsic = measureFn(child, measureWidth);
       const childW = isButton && intrinsic.w > 0
         ? intrinsic.w + childPad * 2
         : content.w;
@@ -65,5 +76,10 @@ export class BlockLayoutEngine implements LayoutEngine {
       this.layoutNode(child, childBox, out, measureFn);
       cursorY += childBox.h;
     }
+  }
+
+  private layoutHiddenSubtree(node: StyledNode, out: Box[]): void {
+    out.push({ x: 0, y: 0, w: 0, h: 0 });
+    for (const child of node.children) this.layoutHiddenSubtree(child, out);
   }
 }

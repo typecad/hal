@@ -2,8 +2,10 @@ import { resolveColor } from "../ui/color.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui/default-keyboards.js";
 import type { CSSProperty, CSSRule } from "../ui/css-parser.js";
 import type { UIFontAssetModel, UIFontGlyphModel } from "../ui/font-assets.js";
+import type { UIImageAsset } from "../ui/image-assets.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../ui/html-parser.js";
-import type { UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
+import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
+import { layoutText } from "../ui/text-layout.js";
 import { blendRgb565, HostAdafruitGFX } from "./host-gfx.js";
 import type {
   PreviewBindingSpec,
@@ -18,6 +20,7 @@ const UI_TEXT_BUF = 32;
 const UI_TOUCH_DEBOUNCE_MS = 50;
 const UI_TOUCH_HOLD_MS = 600;
 const UI_DRAG_THRESHOLD = 10;
+const UI_SCROLL_EDGE_SNAP_PX = 12;
 const UI_KB_REPEAT_MS = 100;
 const UI_KB_TEXT_H = 24;
 
@@ -27,6 +30,11 @@ const DEFAULT_KEY_BORDER = 0xffff;
 const DEFAULT_KB_BG = 0x0000;
 
 type MutableNode = UINodeModel;
+type MutableAnimation = AnimationModel & {
+  elapsed: number;
+  active: boolean;
+  lastUpdateMs: number;
+};
 type ScreenElementProxy = {
   value: number;
   text?: string;
@@ -107,7 +115,13 @@ function resolveKeyStyle(key: UIKeyTemplate, template: KeyboardTemplate, rules: 
   };
 }
 
-function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: UITransitionModel[] } {
+const KF_BG = 1;
+const KF_FG = 2;
+const KF_OPACITY = 4;
+const KF_TRANSFORM = 8;
+const KF_SIZE = 16;
+
+function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: UITransitionModel[]; animations: MutableAnimation[] } {
   return {
     nodes: program.nodes.map((node) => ({
       ...node,
@@ -119,9 +133,19 @@ function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: 
       textBuffer: "",
       hasTextBinding: false,
       lastTextWidth: node.kind === "progress" || node.kind === "range" ? -1 : 0,
+      lastTextHeight: 0,
+      lineHeight: node.lineHeight || 0,
+      whiteSpaceMode: node.whiteSpaceMode ?? (node.nowrap ? 1 : 0),
+      zIndex: node.zIndex ?? 0,
       value: node.value,
     })),
-    transitions: program.transitions.map((transition) => ({ ...transition, active: false, elapsed: 0 })),
+    transitions: (program.transitions ?? []).map((transition) => ({ ...transition, active: false, elapsed: 0 })),
+    animations: (program.animations ?? []).map((animation) => ({
+      ...animation,
+      elapsed: 0,
+      active: true,
+      lastUpdateMs: 0,
+    })),
   };
 }
 
@@ -130,7 +154,10 @@ export class PreviewUIRuntime {
   readonly screen: ScreenProxy = {};
   private readonly nodes: MutableNode[];
   private readonly transitions: UITransitionModel[];
+  private readonly keyframeSets: KeyframeSetModel[];
+  private readonly animations: MutableAnimation[];
   private readonly fontAssets: UIFontAssetModel[];
+  private readonly imageAssets: UIImageAsset[];
   private readonly bindings: PreviewBindingSpec[];
   private readonly callbacks: PreviewCallbackSpec[];
   private readonly pinControls: PreviewPinControlSpec[];
@@ -151,6 +178,8 @@ export class PreviewUIRuntime {
   private dragStartY = 0;
   private isDragging = false;
   private scrollNode = -1;
+  private scrollSnapTop = false;
+  private scrollStartY = 0;
   private rangeNode = -1;
   private keyboardVisible = false;
   private keyboardDirty: 0 | 1 | 2 = 0;
@@ -169,10 +198,13 @@ export class PreviewUIRuntime {
   private keyboardRepaintKey = -1;
 
   constructor(private readonly snapshot: PreviewSnapshot, options: RuntimeOptions = {}) {
-    const { nodes, transitions } = cloneProgram(snapshot.program);
+    const { nodes, transitions, animations } = cloneProgram(snapshot.program);
     this.nodes = nodes;
     this.transitions = transitions;
+    this.keyframeSets = snapshot.program.keyframeSets ?? [];
+    this.animations = animations;
     this.fontAssets = snapshot.program.fontAssets ?? [];
+    this.imageAssets = snapshot.program.imageAssets ?? [];
     this.bindings = snapshot.bindings;
     this.callbacks = snapshot.callbacks;
     this.pinControls = snapshot.pinControls;
@@ -211,6 +243,7 @@ export class PreviewUIRuntime {
     this.lastTickTime = now;
     this.evaluateBindings();
     this.advanceTransitions(delta);
+    this.advanceAnimations(delta);
     if (this.drawDirty()) {
       this.onFrame?.(this.gfx.toRgbaBytes());
     }
@@ -317,6 +350,30 @@ export class PreviewUIRuntime {
     return (node.screenId ?? 0) === this.activeScreen;
   }
 
+  private isEffectivelyVisible(node: MutableNode): boolean {
+    if (!node.visible) return false;
+    let parent = node.parentIndex;
+    while (parent >= 0 && this.nodes[parent]) {
+      if (!this.nodes[parent].visible) return false;
+      parent = this.nodes[parent].parentIndex;
+    }
+    return true;
+  }
+
+  private drawsBefore(a: MutableNode, b: MutableNode): boolean {
+    const az = Math.trunc(a.zIndex ?? 0);
+    const bz = Math.trunc(b.zIndex ?? 0);
+    if (az !== bz) return az < bz;
+    return a.index < b.index;
+  }
+
+  private compareDrawOrder(a: MutableNode, b: MutableNode): number {
+    const az = Math.trunc(a.zIndex ?? 0);
+    const bz = Math.trunc(b.zIndex ?? 0);
+    if (az !== bz) return az - bz;
+    return a.index - b.index;
+  }
+
   private navigate(screenIdx: number): void {
     const next = Math.trunc(Number(screenIdx));
     if (!Number.isFinite(next) || next < 0 || next >= this.screenCount || next === this.activeScreen) return;
@@ -333,6 +390,7 @@ export class PreviewUIRuntime {
       node.dirty = true;
       if (node.kind === "progress" || node.kind === "range") node.lastTextWidth = -1;
       else node.lastTextWidth = 0;
+      node.lastTextHeight = 0;
     }
   }
 
@@ -365,6 +423,11 @@ export class PreviewUIRuntime {
           node.borderColor = next;
           this.markDirty(binding.nodeIndex);
         }
+      } else if (binding.property === "visible") {
+        const next = Boolean(value);
+        if (next !== node.visible) {
+          this.setVisible(binding.nodeIndex, next);
+        }
       }
     }
 
@@ -390,6 +453,134 @@ export class PreviewUIRuntime {
       else this.nodes[transition.node].bg = value;
       this.markDirty(transition.node);
       if (k >= 100) transition.active = false;
+    }
+  }
+
+  private advanceAnimations(deltaMs: number): void {
+    for (const animation of this.animations) {
+      if (!animation.active) continue;
+      animation.elapsed += deltaMs;
+      let elapsedNoDelay = animation.elapsed;
+      if (elapsedNoDelay < animation.delayMs) continue;
+      elapsedNoDelay -= animation.delayMs;
+
+      let completing = false;
+      if (animation.iterations > 0 && elapsedNoDelay >= animation.iterations * animation.durationMs) {
+        elapsedNoDelay = animation.iterations * animation.durationMs;
+        completing = true;
+      }
+
+      let pct = 100;
+      if (!completing && animation.durationMs > 0) {
+        pct = Math.trunc(((elapsedNoDelay % animation.durationMs) * 100) / animation.durationMs);
+      }
+
+      const set = this.keyframeSets[animation.keyframeSet];
+      const node = this.nodes[animation.node];
+      if (!set || !node || set.stops.length === 0) continue;
+
+      let lo = 0;
+      let hi = set.stops.length - 1;
+      for (let i = 0; i < set.stops.length; i++) {
+        if (set.stops[i].percent <= pct) lo = i;
+        if (set.stops[i].percent >= pct) {
+          hi = i;
+          break;
+        }
+      }
+
+      const from = set.stops[lo];
+      const to = set.stops[hi];
+      const range = to.percent - from.percent;
+      const k = range > 0 ? Math.trunc(((pct - from.percent) * 100) / range) : 0;
+      let changed = false;
+
+      if ((from.props & KF_BG) && (to.props & KF_BG)) {
+        const next = range > 0 ? lerpColor(from.bg, to.bg, k) : from.bg;
+        if (next !== node.bg) {
+          node.bg = next;
+          node.hasBg = true;
+          changed = true;
+        }
+      }
+      if ((from.props & KF_FG) && (to.props & KF_FG)) {
+        const next = range > 0 ? lerpColor(from.fg, to.fg, k) : from.fg;
+        if (next !== node.fg) {
+          node.fg = next;
+          changed = true;
+        }
+      }
+      if ((from.props & KF_OPACITY) && (to.props & KF_OPACITY)) {
+        const next = range > 0 ? Math.trunc(from.opacity + ((to.opacity - from.opacity) * k) / 100) : from.opacity;
+        if (next !== node.opacity) {
+          node.opacity = next;
+          changed = true;
+        }
+      }
+      let nextTransformX = node.transformOffsetX ?? 0;
+      let nextTransformY = node.transformOffsetY ?? 0;
+      let nextRotateDeg = node.rotateDeg ?? 0;
+      let nextWidth = node.box.w;
+      let nextHeight = node.box.h;
+      let geometryChanged = false;
+      const hasSizeFrame = (from.props & KF_SIZE) && (to.props & KF_SIZE);
+      if (hasSizeFrame) {
+        nextWidth = range > 0 ? Math.trunc(from.width + ((to.width - from.width) * k) / 100) : from.width;
+        nextHeight = range > 0 ? Math.trunc(from.height + ((to.height - from.height) * k) / 100) : from.height;
+        nextWidth = Math.max(0, nextWidth);
+        nextHeight = Math.max(0, nextHeight);
+        if (nextWidth !== node.box.w || nextHeight !== node.box.h) {
+          changed = true;
+          geometryChanged = true;
+        }
+      }
+      if ((from.props & KF_TRANSFORM) && (to.props & KF_TRANSFORM)) {
+        const pxX = range > 0 ? Math.trunc(from.transformOffsetX + ((to.transformOffsetX - from.transformOffsetX) * k) / 100) : from.transformOffsetX;
+        const pxY = range > 0 ? Math.trunc(from.transformOffsetY + ((to.transformOffsetY - from.transformOffsetY) * k) / 100) : from.transformOffsetY;
+        const pctX = range > 0 ? Math.trunc(from.translatePctX + ((to.translatePctX - from.translatePctX) * k) / 100) : from.translatePctX;
+        const pctY = range > 0 ? Math.trunc(from.translatePctY + ((to.translatePctY - from.translatePctY) * k) / 100) : from.translatePctY;
+        const scaleX = Math.max(0, range > 0 ? Math.trunc(from.scaleX + ((to.scaleX - from.scaleX) * k) / 100) : from.scaleX);
+        const scaleY = Math.max(0, range > 0 ? Math.trunc(from.scaleY + ((to.scaleY - from.scaleY) * k) / 100) : from.scaleY);
+        nextRotateDeg = range > 0 ? Math.trunc(from.rotateDeg + ((to.rotateDeg - from.rotateDeg) * k) / 100) : from.rotateDeg;
+        let refW = hasSizeFrame ? nextWidth : animation.baseWidth;
+        let refH = hasSizeFrame ? nextHeight : animation.baseHeight;
+        if (refW <= 0) refW = node.box.w;
+        if (refH <= 0) refH = node.box.h;
+        const originPxX = Math.trunc((refW * animation.originX) / 100);
+        const originPxY = Math.trunc((refH * animation.originY) / 100);
+        const scaledW = Math.trunc((refW * scaleX) / 100);
+        const scaledH = Math.trunc((refH * scaleY) / 100);
+        const scaleOffsetX = originPxX - Math.trunc((originPxX * scaleX) / 100);
+        const scaleOffsetY = originPxY - Math.trunc((originPxY * scaleY) / 100);
+        nextTransformX = pxX + Math.trunc((refW * pctX) / 100) + scaleOffsetX;
+        nextTransformY = pxY + Math.trunc((refH * pctY) / 100) + scaleOffsetY;
+        nextWidth = Math.max(0, scaledW);
+        nextHeight = Math.max(0, scaledH);
+        if (
+          nextTransformX !== (node.transformOffsetX ?? 0) ||
+          nextTransformY !== (node.transformOffsetY ?? 0) ||
+          nextRotateDeg !== (node.rotateDeg ?? 0) ||
+          nextWidth !== node.box.w ||
+          nextHeight !== node.box.h
+        ) {
+          changed = true;
+          geometryChanged = true;
+        }
+      }
+
+      if (changed && (completing || animation.elapsed - animation.lastUpdateMs >= 100)) {
+        if (geometryChanged) {
+          this.clearCurrentNodePaint(node);
+          node.transformOffsetX = nextTransformX;
+          node.transformOffsetY = nextTransformY;
+          node.rotateDeg = nextRotateDeg;
+          node.box.w = nextWidth;
+          node.box.h = nextHeight;
+        }
+        this.markDirty(animation.node);
+        animation.lastUpdateMs = animation.elapsed;
+      }
+      if (completing) animation.active = false;
     }
   }
 
@@ -444,6 +635,248 @@ export class PreviewUIRuntime {
     this.gfx.fillRect(x0, y0, x1 - x0, y1 - y0, this.parentClearColor(node));
   }
 
+  private shadowExtents(node: MutableNode): { left: number; top: number; right: number; bottom: number } {
+    let left = 0;
+    let top = 0;
+    let right = 0;
+    let bottom = 0;
+    const count = Math.min(node.shadowCount ?? 0, 4);
+    for (let i = 0; i < count; i++) {
+      if (node.shadowInset?.[i]) continue;
+      const blur = node.shadowBlur?.[i] || 1;
+      const ox = node.shadowOffsetX?.[i] ?? 0;
+      const oy = node.shadowOffsetY?.[i] ?? 0;
+      left = Math.max(left, blur - ox);
+      top = Math.max(top, blur - oy);
+      right = Math.max(right, blur + ox);
+      bottom = Math.max(bottom, blur + oy);
+    }
+    return { left, top, right, bottom };
+  }
+
+  private rotationQuadrant(deg: number | undefined): 0 | 1 | 2 | 3 {
+    let normalized = Math.trunc(deg ?? 0) % 360;
+    if (normalized < 0) normalized += 360;
+    if (normalized === 90) return 1;
+    if (normalized === 180) return 2;
+    if (normalized === 270) return 3;
+    return 0;
+  }
+
+  private canUseQuarterTurnBounds(node: MutableNode): boolean {
+    return node.kind === "img" || (node.kind === "fill" && node.gradientEnabled === 0);
+  }
+
+  private rotatedFaceSize(node: MutableNode, w: number, h: number): { w: number; h: number } {
+    if (!this.canUseQuarterTurnBounds(node)) return { w, h };
+    const q = this.rotationQuadrant(node.rotateDeg);
+    return q === 1 || q === 3 ? { w: h, h: w } : { w, h };
+  }
+
+  private drawImageWithFit(asset: UIImageAsset, x: number, y: number, rotateDeg: number | undefined, fitMode: number | undefined, targetW: number, targetH: number): void {
+    const srcW = Math.trunc(asset.width);
+    const srcH = Math.trunc(asset.height);
+    targetW = Math.trunc(targetW);
+    targetH = Math.trunc(targetH);
+    if (srcW <= 0 || srcH <= 0 || targetW <= 0 || targetH <= 0) return;
+
+    let drawW = srcW;
+    let drawH = srcH;
+    let offX = Math.trunc((targetW - drawW) / 2);
+    let offY = Math.trunc((targetH - drawH) / 2);
+    const mode = fitMode ?? 1;
+
+    if (mode === 1) {
+      drawW = targetW;
+      drawH = targetH;
+      offX = 0;
+      offY = 0;
+    } else if (mode === 2 || mode === 3 || mode === 4) {
+      const scaleX = Math.max(1, Math.trunc((targetW * 1000) / srcW));
+      const scaleY = Math.max(1, Math.trunc((targetH * 1000) / srcH));
+      let scale = scaleX;
+      if (mode === 2) {
+        if (scaleY < scaleX) scale = scaleY;
+      } else if (mode === 3) {
+        if (scaleY > scaleX) scale = scaleY;
+      } else {
+        if (scaleY < scaleX) scale = scaleY;
+        if (scale > 1000) scale = 1000;
+      }
+      drawW = Math.max(1, Math.trunc((srcW * scale) / 1000));
+      drawH = Math.max(1, Math.trunc((srcH * scale) / 1000));
+      if (mode === 3) {
+        if (drawW < targetW) drawW = targetW;
+        if (drawH < targetH) drawH = targetH;
+      }
+      offX = Math.trunc((targetW - drawW) / 2);
+      offY = Math.trunc((targetH - drawH) / 2);
+    }
+
+    const q = this.rotationQuadrant(rotateDeg);
+    for (let ty = 0; ty < targetH; ty++) {
+      const localY = ty - offY;
+      if (localY < 0 || localY >= drawH) continue;
+      const srcY = Math.max(0, Math.min(srcH - 1, Math.trunc((localY * srcH) / drawH)));
+      for (let tx = 0; tx < targetW; tx++) {
+        const localX = tx - offX;
+        if (localX < 0 || localX >= drawW) continue;
+        const srcX = Math.max(0, Math.min(srcW - 1, Math.trunc((localX * srcW) / drawW)));
+        const color = asset.data[srcY * srcW + srcX] ?? 0;
+        let dx = tx;
+        let dy = ty;
+        if (q === 1) {
+          dx = targetH - 1 - ty;
+          dy = tx;
+        } else if (q === 2) {
+          dx = targetW - 1 - tx;
+          dy = targetH - 1 - ty;
+        } else if (q === 3) {
+          dx = ty;
+          dy = targetW - 1 - tx;
+        }
+        this.gfx.drawPixel(x + dx, y + dy, color);
+      }
+    }
+  }
+
+  private drawImageNode(node: MutableNode, drawY: number): void {
+    const faceSize = this.rotatedFaceSize(node, node.box.w, node.box.h);
+    if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, faceSize.w, faceSize.h, node.bg);
+    const assetId = node.imgDataId ?? 255;
+    if (assetId >= this.imageAssets.length) return;
+    this.drawImageWithFit(
+      this.imageAssets[assetId],
+      node.box.x,
+      drawY,
+      node.rotateDeg,
+      node.objectFit,
+      node.box.w,
+      node.box.h,
+    );
+  }
+
+  private nodePaintRect(node: MutableNode, baseX: number, baseY: number, drawX: number, drawY: number, textW: number, textH: number): { x: number; y: number; w: number; h: number } {
+    const shadow = this.shadowExtents(node);
+    let faceW = node.box.w;
+    let faceH = node.box.h;
+    if (node.kind === "text" || node.kind === "check" || node.kind === "radio") {
+      if (node.lastTextWidth > faceW) faceW = node.lastTextWidth;
+      if ((node.lastTextHeight ?? 0) > faceH) faceH = node.lastTextHeight;
+      if (textW > faceW) faceW = textW;
+      if (textH > faceH) faceH = textH;
+    }
+    ({ w: faceW, h: faceH } = this.rotatedFaceSize(node, faceW, faceH));
+
+    let x0 = Math.min(baseX - shadow.left, drawX);
+    let y0 = Math.min(baseY - shadow.top, drawY);
+    let x1 = Math.max(baseX + faceW + shadow.right, drawX + faceW);
+    let y1 = Math.max(baseY + faceH + shadow.bottom, drawY + faceH);
+    if (node.outlineStyle && node.outlineWidth > 0) {
+      const o = node.outlineWidth;
+      x0 = Math.min(x0, drawX - o);
+      y0 = Math.min(y0, drawY - o);
+      x1 = Math.max(x1, drawX + faceW + o);
+      y1 = Math.max(y1, drawY + faceH + o);
+    }
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+
+  private currentPaintRect(node: MutableNode): { x: number; y: number; w: number; h: number } {
+    const displayText = node.hasTextBinding ? node.textBuffer : node.text;
+    const ts = this.nodeTextSize(node);
+    let textMaxW = node.box.w;
+    if (node.kind === "check" || node.kind === "radio") {
+      textMaxW = node.box.w > 22 ? node.box.w - 22 : 0;
+    }
+    const metrics = this.textLayout(node, displayText, textMaxW, ts);
+    let paintTextW = metrics.width;
+    let paintTextH = metrics.height;
+    if (node.kind === "check" || node.kind === "radio") {
+      paintTextW += 22;
+      if (paintTextH < 16) paintTextH = 16;
+    }
+    return this.nodePaintRect(
+      node,
+      this.baseDrawXForNode(node.index),
+      this.baseDrawYForNode(node.index),
+      this.drawXForNode(node.index),
+      this.drawYForNode(node.index),
+      paintTextW,
+      paintTextH,
+    );
+  }
+
+  private rectsIntersect(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
+    return a.x + a.w > b.x && a.x < b.x + b.w && a.y + a.h > b.y && a.y < b.y + b.h;
+  }
+
+  private markOverlappingHigherLayersDirty(nodeIndex: number): void {
+    const node = this.nodes[nodeIndex];
+    if (!node || !this.isEffectivelyVisible(node) || !this.isActiveNode(node)) return;
+    const rect = this.currentPaintRect(node);
+    if (rect.w <= 0 || rect.h <= 0) return;
+    for (const candidate of this.nodes) {
+      if (candidate.index === nodeIndex) continue;
+      if (candidate.dirty || !this.isEffectivelyVisible(candidate) || !this.isActiveNode(candidate)) continue;
+      if (!this.drawsBefore(node, candidate)) continue;
+      const candidateRect = this.currentPaintRect(candidate);
+      if (candidateRect.w <= 0 || candidateRect.h <= 0) continue;
+      if (this.rectsIntersect(rect, candidateRect)) candidate.dirty = true;
+    }
+  }
+
+  private clearCurrentNodePaint(node: MutableNode): void {
+    const displayText = node.hasTextBinding ? node.textBuffer : node.text;
+    const ts = this.nodeTextSize(node);
+    const metrics = this.textLayout(node, displayText, node.box.w, ts);
+    const rect = this.nodePaintRect(
+      node,
+      this.baseDrawXForNode(node.index),
+      this.baseDrawYForNode(node.index),
+      this.drawXForNode(node.index),
+      this.drawYForNode(node.index),
+      metrics.width,
+      metrics.height,
+    );
+    if (rect.w <= 0 || rect.h <= 0) return;
+    const clip = this.scrollClipForNode(node.index);
+    this.gfx.withClipRect(clip, () => {
+      this.gfx.fillRect(rect.x, rect.y, rect.w, rect.h, this.parentClearColor(node));
+      const parent = node.parentIndex >= 0 ? this.nodes[node.parentIndex] : undefined;
+      if (parent) {
+        const parentDrawY = this.drawYForNode(parent.index);
+        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawY, parent.borderColor || parent.fg);
+        this.drawNodeOutline(parent, parentDrawY);
+      }
+    });
+  }
+
+  private setVisible(nodeIndex: number, visible: boolean): void {
+    const node = this.nodes[nodeIndex];
+    if (!node || node.visible === visible) return;
+
+    if (!visible) {
+      for (let i = Math.min(node.subtreeEnd, this.nodes.length) - 1; i >= nodeIndex; i--) {
+        const child = this.nodes[i];
+        if (!child || !this.isActiveNode(child)) continue;
+        if (this.isEffectivelyVisible(child)) this.clearCurrentNodePaint(child);
+        child.dirty = false;
+      }
+      this.markOverlappingHigherLayersDirty(nodeIndex);
+      node.visible = false;
+      return;
+    }
+
+    node.visible = true;
+    for (let i = nodeIndex; i < Math.min(node.subtreeEnd, this.nodes.length); i++) {
+      const child = this.nodes[i];
+      if (!child || !this.isActiveNode(child) || !this.isEffectivelyVisible(child)) continue;
+      child.dirty = true;
+      this.markOverlappingHigherLayersDirty(i);
+    }
+  }
+
   private isClippedByScroll(nodeIndex: number, drawX: number, drawY: number): boolean {
     const node = this.nodes[nodeIndex];
     let parent = node.parentIndex;
@@ -496,12 +929,13 @@ export class PreviewUIRuntime {
     let changed = false;
     for (const node of this.nodes) {
       if (!this.isActiveNode(node)) continue;
-      if (!node.scrollable || !node.visible || node.contentHeight <= node.box.h) continue;
+      if (!node.scrollable || !this.isEffectivelyVisible(node) || node.contentHeight <= node.box.h) continue;
       if (node.dirty) {
         this.markScrollDescendantsDirty(node.index);
         for (let i = node.index; i < node.subtreeEnd; i++) {
-          if (this.nodes[i]?.kind === "progress") this.nodes[i].lastTextWidth = -1;
-          else if (this.nodes[i]?.kind === "range") this.nodes[i].lastTextWidth = -1;
+      if (this.nodes[i]?.kind === "progress") this.nodes[i].lastTextWidth = -1;
+      else if (this.nodes[i]?.kind === "range") this.nodes[i].lastTextWidth = -1;
+      if (this.nodes[i]) this.nodes[i].lastTextHeight = 0;
         }
         this.gfx.fillRect(node.box.x, node.box.y, node.box.w, node.box.h, node.hasBg ? node.bg : node.clearColor);
         changed = true;
@@ -514,7 +948,7 @@ export class PreviewUIRuntime {
     let changed = false;
     for (const node of this.nodes) {
       if (!this.isActiveNode(node)) continue;
-      if (!node.scrollable || node.contentHeight <= node.box.h) continue;
+      if (!node.scrollable || !this.isEffectivelyVisible(node) || node.contentHeight <= node.box.h) continue;
       if (!scrollbarDirty.has(node.index)) continue;
       const tx = node.box.x + node.box.w - 4;
       const ty = node.box.y;
@@ -568,6 +1002,30 @@ export class PreviewUIRuntime {
 
   private textHeight(size: number, fontFace = 0): number {
     return this.fontAsset(fontFace)?.lineHeight ?? this.gfx.textHeight(size);
+  }
+
+  private textLineHeight(node: MutableNode, size: number): number {
+    const lineHeight = Math.trunc(node.lineHeight || 0);
+    return lineHeight > 0 ? lineHeight : this.textHeight(size, node.fontFace);
+  }
+
+  private textWhiteSpace(node: MutableNode): string {
+    switch (node.whiteSpaceMode ?? (node.nowrap ? 1 : 0)) {
+      case 1: return "nowrap";
+      case 2: return "pre";
+      case 3: return "pre-line";
+      default: return "normal";
+    }
+  }
+
+  private textLayout(node: MutableNode, text: string | undefined, maxWidth: number | undefined, size: number) {
+    const constrainedWidth = maxWidth !== undefined && maxWidth > 0 ? maxWidth : undefined;
+    return layoutText(text ?? "", {
+      maxWidth: constrainedWidth,
+      whiteSpace: this.textWhiteSpace(node),
+      lineHeight: this.textLineHeight(node, size),
+      measureText: (value) => this.textWidth(value, size, node.fontFace, node.letterSpacing),
+    });
   }
 
   private clipTextToWidth(text: string, maxWidth: number, size: number, fontFace = 0, letterSpacing = 0): string {
@@ -777,11 +1235,28 @@ export class PreviewUIRuntime {
     let changed = this.clearDirtyScrollViewports();
     const scrollbarDirty = new Set<number>();
     for (const node of this.nodes) {
-      if (this.isActiveNode(node) && node.scrollable && node.dirty) scrollbarDirty.add(node.index);
+      if (this.isActiveNode(node) && this.isEffectivelyVisible(node) && node.scrollable && node.dirty) scrollbarDirty.add(node.index);
     }
-    for (const node of this.nodes) {
+    const dirtyNodes = this.nodes
+      .filter((node) => {
+        if (!node.dirty) return false;
+        if (!this.isActiveNode(node)) {
+          node.dirty = false;
+          return false;
+        }
+        if (!this.isEffectivelyVisible(node)) {
+          node.dirty = false;
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => this.compareDrawOrder(a, b));
+    for (const node of dirtyNodes) {
       if (!node.dirty) continue;
-      if (!node.visible) continue;
+      if (!this.isEffectivelyVisible(node)) {
+        node.dirty = false;
+        continue;
+      }
       if (!this.isActiveNode(node)) {
         node.dirty = false;
         continue;
@@ -802,10 +1277,6 @@ export class PreviewUIRuntime {
 
       const displayText = node.hasTextBinding ? node.textBuffer : node.text;
       const ts = this.nodeTextSize(node);
-      const tw = this.textWidth(displayText, ts, node.fontFace, node.letterSpacing);
-      let textX = node.box.x;
-      if (node.textAlign === 1) textX = node.box.x + Math.trunc((node.box.w - tw) / 2);
-      else if (node.textAlign === 2) textX = node.box.x + node.box.w - tw;
       let bColor = node.borderColor || node.fg;
       if (node.opacity < 100) bColor = blendRgb565(bColor, node.clearColor, node.opacity);
 
@@ -815,23 +1286,27 @@ export class PreviewUIRuntime {
         node.box.x = drawX;
         switch (node.kind) {
           case "fill":
-            if (node.gradientEnabled > 0) this.drawGradientFill(node, drawY);
-            else if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, node.bg);
-            else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
+            if (node.gradientEnabled > 0) {
+              this.drawGradientFill(node, drawY);
+            } else {
+              const fillSize = this.rotatedFaceSize(node, node.box.w, node.box.h);
+              if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, fillSize.w, fillSize.h, node.borderRadius, node.bg);
+              else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, fillSize.w, fillSize.h, node.bg);
+              if (node.borderStyle) this.drawRectOutline(node.box.x, drawY, fillSize.w, fillSize.h, node.borderRadius, node.borderStyle, node.borderWidth, bColor);
+            }
             this.drawNodeShadow(node, drawY, true);
-            if (node.borderStyle) this.drawNodeBorder(node, drawY, bColor);
             break;
           case "text":
-            this.drawTextNode(node, displayText, tw, textX, drawY, ts);
+            this.drawTextNode(node, displayText, drawY, ts);
             break;
           case "button":
-            this.drawButtonNode(node, displayText, tw, bColor, drawY, ts);
+            this.drawButtonNode(node, displayText, bColor, drawY, ts);
             break;
           case "check":
-            this.drawCheckNode(node, displayText, tw, drawY, ts);
+            this.drawCheckNode(node, displayText, drawY, ts);
             break;
           case "radio":
-            this.drawRadioNode(node, displayText, tw, drawY, ts);
+            this.drawRadioNode(node, displayText, drawY, ts);
             break;
           case "progress":
             this.drawProgressNode(node, drawY);
@@ -842,8 +1317,17 @@ export class PreviewUIRuntime {
           case "input":
             this.drawInputNode(node, drawY);
             break;
+          case "img":
+            this.drawImageNode(node, drawY);
+            break;
         }
-        this.drawNodeOutline(node, drawY);
+        if (node.kind === "fill" && this.rotationQuadrant(node.rotateDeg) !== 0 && node.outlineStyle && node.outlineWidth > 0) {
+          const w = node.outlineWidth;
+          const outlineSize = this.rotatedFaceSize(node, node.box.w, node.box.h);
+          this.drawRectOutline(node.box.x - w, drawY - w, outlineSize.w + 2 * w, outlineSize.h + 2 * w, node.borderRadius + w, node.outlineStyle, w, node.outlineColor);
+        } else {
+          this.drawNodeOutline(node, drawY);
+        }
       });
       changed = true;
       node.box.x = origBoxX;
@@ -852,52 +1336,65 @@ export class PreviewUIRuntime {
     return this.drawScrollbars(scrollbarDirty) || changed;
   }
 
-  private drawTextNode(node: MutableNode, displayText: string | undefined, tw: number, textX: number, drawY: number, ts: number): void {
-    const clearW = Math.max(node.box.w, node.lastTextWidth);
-    const clearH = Math.max(node.box.h, this.textHeight(ts, node.fontFace));
-    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, node.hasBg ? node.bg : node.clearColor);
-    node.lastTextWidth = tw;
-    const textClear = node.hasBg ? node.bg : node.clearColor;
-    if (node.textShadowCount > 0) {
-      const shadowColor = blendRgb565(node.textShadowColor, textClear, node.textShadowAlpha);
-      this.drawText(
-        displayText,
-        textX + node.textShadowOffsetX,
-        drawY + node.textShadowOffsetY,
-        shadowColor,
-        shadowColor,
-        ts,
-        node.fontAntialias,
-        node.fontFace,
-        node.letterSpacing,
-      );
-    }
-    this.drawText(displayText, textX, drawY, node.fg, textClear, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
-    if (node.underline) this.gfx.drawFastHLine(textX, drawY + this.textHeight(ts, node.fontFace) - 1, tw, node.fg);
+  private lineX(node: MutableNode, lineWidth: number, left: number, maxWidth: number, align = node.textAlign): number {
+    if (align === 1) return left + Math.trunc((maxWidth - lineWidth) / 2);
+    if (align === 2) return left + maxWidth - lineWidth;
+    return left;
   }
 
-  private drawButtonNode(node: MutableNode, displayText: string | undefined, tw: number, bColor: number, drawY: number, ts: number): void {
+  private drawTextLines(node: MutableNode, displayText: string | undefined, left: number, top: number, maxWidth: number, ts: number, fg: number, bg: number, align = node.textAlign): { width: number; height: number } {
+    const layout = this.textLayout(node, displayText, maxWidth, ts);
+    let y = top;
+    for (const line of layout.lines) {
+      const x = this.lineX(node, line.width, left, maxWidth, align);
+      this.drawText(line.text, x, y, fg, bg, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
+      if (node.underline) this.gfx.drawFastHLine(x, y + this.textHeight(ts, node.fontFace) - 1, line.width, fg);
+      y += layout.lineHeight;
+    }
+    return { width: layout.width, height: layout.height };
+  }
+
+  private drawTextNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
+    const layout = this.textLayout(node, displayText, node.box.w, ts);
+    const clearW = Math.max(node.box.w, node.lastTextWidth, layout.width);
+    const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height);
+    const textClear = node.hasBg ? node.bg : node.clearColor;
+    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
+    node.lastTextWidth = layout.width;
+    node.lastTextHeight = layout.height;
+    if (node.textShadowCount > 0) {
+      const shadowColor = blendRgb565(node.textShadowColor, textClear, node.textShadowAlpha);
+      this.drawTextLines(
+        node,
+        displayText,
+        node.box.x + node.textShadowOffsetX,
+        drawY + node.textShadowOffsetY,
+        node.box.w,
+        ts,
+        shadowColor,
+        shadowColor,
+      );
+    }
+    this.drawTextLines(node, displayText, node.box.x, drawY, node.box.w, ts, node.fg, textClear);
+  }
+
+  private drawButtonNode(node: MutableNode, displayText: string | undefined, bColor: number, drawY: number, ts: number): void {
     if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, node.bg);
     else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
     this.drawNodeShadow(node, drawY, true);
     if (node.borderStyle) this.drawNodeBorder(node, drawY, bColor);
-    this.drawText(
-      displayText,
-      node.box.x + Math.trunc((node.box.w - tw) / 2),
-      drawY + Math.trunc((node.box.h - this.textHeight(ts, node.fontFace)) / 2),
-      node.fg,
-      node.hasBg ? node.bg : node.clearColor,
-      ts,
-      node.fontAntialias,
-      node.fontFace,
-      node.letterSpacing,
-    );
+    const layout = this.textLayout(node, displayText, node.box.w, ts);
+    const top = drawY + Math.trunc((node.box.h - layout.height) / 2);
+    this.drawTextLines(node, displayText, node.box.x, top, node.box.w, ts, node.fg, node.hasBg ? node.bg : node.clearColor, 1);
   }
 
-  private drawCheckNode(node: MutableNode, displayText: string | undefined, tw: number, drawY: number, ts: number): void {
+  private drawCheckNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
+    const layout = this.textLayout(node, displayText, Math.max(0, node.box.w - 22), ts);
     const clearW = Math.max(node.box.w, node.lastTextWidth);
-    this.gfx.fillRect(node.box.x, drawY, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
-    node.lastTextWidth = tw;
+    const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height);
+    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, node.hasBg ? node.bg : node.clearColor);
+    node.lastTextWidth = 22 + layout.width;
+    node.lastTextHeight = Math.max(layout.height, 16);
 
     const cbX = node.box.x;
     const cbY = drawY;
@@ -913,13 +1410,16 @@ export class PreviewUIRuntime {
     } else {
       this.gfx.drawRect(cbX, cbY, 16, 16, node.fg);
     }
-    this.drawText(displayText, node.box.x + 22, drawY, node.fg, node.hasBg ? node.bg : node.clearColor, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
+    this.drawTextLines(node, displayText, node.box.x + 22, drawY, Math.max(0, node.box.w - 22), ts, node.fg, node.hasBg ? node.bg : node.clearColor, 0);
   }
 
-  private drawRadioNode(node: MutableNode, displayText: string | undefined, tw: number, drawY: number, ts: number): void {
+  private drawRadioNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
+    const layout = this.textLayout(node, displayText, Math.max(0, node.box.w - 22), ts);
     const clearW = Math.max(node.box.w, node.lastTextWidth);
-    this.gfx.fillRect(node.box.x, drawY, clearW, node.box.h, node.hasBg ? node.bg : node.clearColor);
-    node.lastTextWidth = tw;
+    const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height);
+    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, node.hasBg ? node.bg : node.clearColor);
+    node.lastTextWidth = 22 + layout.width;
+    node.lastTextHeight = Math.max(layout.height, 16);
 
     const cbX = node.box.x;
     const cbY = drawY;
@@ -929,7 +1429,7 @@ export class PreviewUIRuntime {
     } else {
       this.gfx.drawCircle(cbX + 8, cbY + 8, 7, node.fg);
     }
-    this.drawText(displayText, node.box.x + 22, drawY, node.fg, node.hasBg ? node.bg : node.clearColor, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
+    this.drawTextLines(node, displayText, node.box.x + 22, drawY, Math.max(0, node.box.w - 22), ts, node.fg, node.hasBg ? node.bg : node.clearColor, 0);
   }
 
   private drawProgressNode(node: MutableNode, drawY: number): void {
@@ -1021,32 +1521,34 @@ export class PreviewUIRuntime {
   }
 
   private hitTest(tx: number, ty: number): number {
-    for (let i = this.nodes.length - 1; i >= 0; i--) {
+    let best = -1;
+    for (let i = 0; i < this.nodes.length; i++) {
       const node = this.nodes[i];
-      if (!node.visible) continue;
+      if (!this.isEffectivelyVisible(node)) continue;
       if (!this.isActiveNode(node)) continue;
       const drawX = this.drawXForNode(i);
       const drawY = this.drawYForNode(i);
       if (this.isClippedByScroll(i, drawX, drawY)) continue;
       if (tx >= drawX && tx < drawX + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
-        if (this.hasAnyHandler(i)) return i;
+        if (this.hasAnyHandler(i) && (best < 0 || this.drawsBefore(this.nodes[best], node))) best = i;
       }
     }
-    return -1;
+    return best;
   }
 
   private findScrollNode(tx: number, ty: number): number {
-    for (let i = this.nodes.length - 1; i >= 0; i--) {
+    let best = -1;
+    for (let i = 0; i < this.nodes.length; i++) {
       const node = this.nodes[i];
       if (!this.isActiveNode(node)) continue;
-      if (!node.scrollable || !node.visible || node.contentHeight <= node.box.h) continue;
+      if (!node.scrollable || !this.isEffectivelyVisible(node) || node.contentHeight <= node.box.h) continue;
       const drawX = this.drawXForNode(i);
       const drawY = this.drawYForNode(i);
       if (tx >= drawX && tx < drawX + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
-        return i;
+        if (best < 0 || this.drawsBefore(this.nodes[best], node)) best = i;
       }
     }
-    return -1;
+    return best;
   }
 
   private hasAnyHandler(nodeIndex: number): boolean {
@@ -1071,6 +1573,32 @@ export class PreviewUIRuntime {
     }
   }
 
+  private applyScrollDelta(nodeIndex: number, dy: number): boolean {
+    const node = this.nodes[nodeIndex];
+    if (!node) return false;
+    const maxScroll = Math.max(0, node.contentHeight - node.box.h);
+    const rawNext = node.scrollY - dy;
+    if (dy > 0 && rawNext <= 0) this.scrollSnapTop = true;
+    let nextScrollY = Math.max(0, Math.min(maxScroll, rawNext));
+    if (nextScrollY === node.scrollY) return false;
+    node.scrollY = nextScrollY;
+    this.markScrollDescendantsDirty(nodeIndex);
+    return true;
+  }
+
+  private snapScrollToTop(nodeIndex: number, force: boolean): boolean {
+    const node = this.nodes[nodeIndex];
+    if (!node) return false;
+    if (!force && node.scrollY > UI_SCROLL_EDGE_SNAP_PX) return false;
+    const changed = node.scrollY !== 0;
+    node.scrollY = 0;
+    if (changed || force) {
+      this.markScrollDescendantsDirty(nodeIndex);
+      return true;
+    }
+    return false;
+  }
+
   private handleTouch(tx: number, ty: number): void {
     const now = Date.now();
     if (this.keyboardVisible) {
@@ -1093,7 +1621,9 @@ export class PreviewUIRuntime {
       this.dragStartX = tx;
       this.dragStartY = ty;
       this.isDragging = false;
+      this.scrollSnapTop = false;
       this.scrollNode = this.findScrollNode(tx, ty);
+      this.scrollStartY = this.scrollNode >= 0 ? this.nodes[this.scrollNode].scrollY : 0;
       this.rangeNode = node >= 0 && this.nodes[node].kind === "range" ? node : -1;
       if (node >= 0) {
         if (this.nodes[node].kind === "button") this.setPressed(node, true);
@@ -1108,13 +1638,7 @@ export class PreviewUIRuntime {
         const dy = ty - this.dragStartY;
         this.dragStartX = tx;
         this.dragStartY = ty;
-        const node = this.nodes[this.scrollNode];
-        const maxScroll = Math.max(0, node.contentHeight - node.box.h);
-        const nextScrollY = Math.max(0, Math.min(maxScroll, node.scrollY - dy));
-        if (nextScrollY !== node.scrollY) {
-          node.scrollY = nextScrollY;
-          this.markScrollDescendantsDirty(this.scrollNode);
-        }
+        this.applyScrollDelta(this.scrollNode, dy);
       } else if (this.rangeNode >= 0 && Math.abs(tx - this.dragStartX) >= UI_DRAG_THRESHOLD) {
         this.updateRangeValue(this.rangeNode, tx);
       } else if (this.touchState === 1 && this.touchNode >= 0 && now - this.touchDownTime >= UI_TOUCH_HOLD_MS) {
@@ -1135,6 +1659,8 @@ export class PreviewUIRuntime {
       this.touchNode = -1;
       this.isDragging = false;
       this.scrollNode = -1;
+      this.scrollSnapTop = false;
+      this.scrollStartY = 0;
       this.rangeNode = -1;
       this.lastReleaseTime = now;
       return;
@@ -1142,6 +1668,12 @@ export class PreviewUIRuntime {
 
     const elapsed = now - this.touchDownTime;
     const node = this.touchNode;
+    if (this.scrollNode >= 0) {
+      const scrollNode = this.nodes[this.scrollNode];
+      const shouldSnapTop = this.scrollSnapTop ||
+        (this.scrollStartY > UI_SCROLL_EDGE_SNAP_PX && scrollNode.scrollY <= UI_SCROLL_EDGE_SNAP_PX);
+      if (shouldSnapTop) this.snapScrollToTop(this.scrollNode, this.scrollSnapTop);
+    }
     if (node >= 0 && !this.isDragging) {
       if (elapsed < UI_TOUCH_HOLD_MS) {
         this.dispatchBuiltInClick(node);
@@ -1155,6 +1687,8 @@ export class PreviewUIRuntime {
     this.touchNode = -1;
     this.isDragging = false;
     this.scrollNode = -1;
+    this.scrollSnapTop = false;
+    this.scrollStartY = 0;
     this.rangeNode = -1;
     this.lastReleaseTime = now;
   }
@@ -1452,7 +1986,9 @@ export class PreviewUIRuntime {
   }
 
   private markDirty(nodeIndex: number): void {
-    if (this.nodes[nodeIndex]) this.nodes[nodeIndex].dirty = true;
+    if (!this.nodes[nodeIndex]) return;
+    this.nodes[nodeIndex].dirty = true;
+    this.markOverlappingHigherLayersDirty(nodeIndex);
   }
 
   private scriptTreeNames(): string[] {

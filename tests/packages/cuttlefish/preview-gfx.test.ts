@@ -75,19 +75,54 @@ describe("PreviewUIRuntime", () => {
       hasBg: false,
       textAlign: 0,
       textSize: 2,
+      lineHeight: 16,
       fontAntialias: false,
       fontFace: 0,
+      letterSpacing: 0,
       borderColor: 0,
       borderStyle: 0,
+      borderWidth: 0,
+      borderRadius: 0,
+      gradientEnabled: 0,
+      gradientColor1: 0,
+      gradientColor2: 0,
+      outlineColor: 0,
+      outlineStyle: 0,
+      outlineWidth: 0,
+      zIndex: 0,
+      transformOffsetX: 0,
+      transformOffsetY: 0,
+      rotateDeg: 0,
+      pressedOffsetX: 0,
+      pressedOffsetY: 0,
+      shadowCount: 0,
+      shadowOffsetX: [],
+      shadowOffsetY: [],
+      shadowBlur: [],
+      shadowColor: [],
+      shadowAlpha: [],
+      shadowInset: [],
+      textShadowCount: 0,
+      textShadowOffsetX: 0,
+      textShadowOffsetY: 0,
+      textShadowBlur: 0,
+      textShadowColor: 0,
+      textShadowAlpha: 0,
       underline: false,
+      nowrap: false,
+      whiteSpaceMode: 0,
       visible: true,
+      opacity: 100,
       clearColor: 0,
       lastTextWidth: 0,
+      lastTextHeight: 0,
       dirty: false,
       value: 0,
       scrollable: false,
       scrollY: 0,
       contentHeight: 0,
+      imgDataId: 255,
+      objectFit: 1,
       rangeMin: 0,
       rangeMax: 100,
       maxlen: 0,
@@ -99,6 +134,34 @@ describe("PreviewUIRuntime", () => {
 
   function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function makeRuntime(
+    nodes: any[],
+    imageAssets: any[] = [],
+    width = 8,
+    height = 8,
+  ): PreviewUIRuntime {
+    return new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width,
+        height,
+        colorFormat: "rgb565",
+        imageAssets,
+        nodes,
+        transitions: [],
+      },
+      font: [],
+      bindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
   }
 
   it("renders progress nodes and updates their fill incrementally", () => {
@@ -152,6 +215,181 @@ describe("PreviewUIRuntime", () => {
       runtime.tick(16);
       expect(px(4, 3)).toBe(0x07e0);
       expect(px(5, 3)).toBe(0x0000);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders object-fit contain with centered letterboxing", () => {
+    const bg = 0x2222;
+    const runtime = makeRuntime([
+      makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 6, h: 4 } }),
+      makeNode({
+        index: 1,
+        tag: "img",
+        kind: "img",
+        box: { x: 0, y: 0, w: 6, h: 4 },
+        hasBg: true,
+        bg,
+        parentIndex: 0,
+        subtreeEnd: 2,
+        imgDataId: 0,
+        objectFit: 2,
+      }),
+    ], [{ id: "logo", width: 2, height: 2, data: [0xf800, 0x07e0, 0x001f, 0xffff] }], 6, 4);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 6 + x];
+    runtime.start();
+    try {
+      expect(px(0, 0)).toBe(bg);
+      expect(px(1, 0)).toBe(0xf800);
+      expect(px(4, 0)).toBe(0x07e0);
+      expect(px(5, 3)).toBe(bg);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("clips object-fit cover to the image node box", () => {
+    const neighbor = 0x780f;
+    const runtime = makeRuntime([
+      makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 3, box: { x: 0, y: 0, w: 8, h: 6 } }),
+      makeNode({
+        index: 1,
+        tag: "view",
+        kind: "fill",
+        box: { x: 4, y: 0, w: 2, h: 6 },
+        hasBg: true,
+        bg: neighbor,
+        parentIndex: 0,
+        subtreeEnd: 2,
+      }),
+      makeNode({
+        index: 2,
+        tag: "img",
+        kind: "img",
+        box: { x: 0, y: 0, w: 4, h: 6 },
+        parentIndex: 0,
+        subtreeEnd: 3,
+        imgDataId: 0,
+        objectFit: 3,
+      }),
+    ], [{ id: "logo", width: 2, height: 2, data: [0xf800, 0x07e0, 0x001f, 0xffff] }], 8, 6);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 8 + x];
+    runtime.start();
+    try {
+      expect(px(0, 0)).not.toBe(0x0000);
+      expect(px(3, 5)).not.toBe(0x0000);
+      expect(px(4, 0)).toBe(neighbor);
+      expect(px(5, 5)).toBe(neighbor);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("quarter-turn rotates fitted preview images", () => {
+    const runtime = makeRuntime([
+      makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 4, h: 4 } }),
+      makeNode({
+        index: 1,
+        tag: "img",
+        kind: "img",
+        box: { x: 0, y: 0, w: 2, h: 3 },
+        rotateDeg: 90,
+        parentIndex: 0,
+        subtreeEnd: 2,
+        imgDataId: 0,
+        objectFit: 1,
+      }),
+    ], [{ id: "logo", width: 2, height: 3, data: [1, 2, 3, 4, 5, 6] }], 4, 4);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 4 + x];
+    runtime.start();
+    try {
+      expect(px(0, 0)).toBe(5);
+      expect(px(1, 0)).toBe(3);
+      expect(px(2, 0)).toBe(1);
+      expect(px(0, 1)).toBe(6);
+      expect(px(2, 1)).toBe(2);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("toggles preallocated conditional branches with visible bindings", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 24,
+        height: 18,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 5, box: { x: 0, y: 0, w: 24, h: 18 } }),
+          makeNode({ index: 1, id: "flag", tag: "view", box: { x: 0, y: 0, w: 1, h: 1 }, parentIndex: 0 }),
+          makeNode({
+            index: 2,
+            id: "enteredBranch",
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 24, h: 18 },
+            hasBg: true,
+            bg: 0xf800,
+            parentIndex: 0,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 3,
+            tag: "view",
+            kind: "fill",
+            box: { x: 2, y: 2, w: 6, h: 6 },
+            hasBg: true,
+            bg: 0xffff,
+            parentIndex: 2,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 4,
+            id: "emptyBranch",
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 24, h: 18 },
+            hasBg: true,
+            bg: 0x07e0,
+            parentIndex: 0,
+            subtreeEnd: 5,
+          }),
+        ],
+        transitions: [],
+      },
+      font: [],
+      bindings: [
+        { nodeId: "enteredBranch", nodeIndex: 2, property: "visible", expression: "screen.flag.value > 0" },
+        { nodeId: "emptyBranch", nodeIndex: 4, property: "visible", expression: "screen.flag.value <= 0" },
+      ],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 24 + x];
+    runtime.start();
+    try {
+      expect(px(2, 2)).toBe(0x07e0);
+
+      runtime.screen.flag.value = 1;
+      runtime.tick(16);
+      expect(px(2, 2)).toBe(0xffff);
+      expect(px(12, 10)).toBe(0xf800);
+
+      runtime.screen.flag.value = 0;
+      runtime.tick(16);
+      expect(px(2, 2)).toBe(0x07e0);
+      expect(px(12, 10)).toBe(0x07e0);
     } finally {
       runtime.stop();
     }
@@ -305,6 +543,137 @@ describe("PreviewUIRuntime", () => {
       expect(runtime.gfx.buffer[0 * 10 + 1]).toBe(0x07e0);
       expect(runtime.gfx.buffer[4 * 10 + 1]).toBe(0x07e0);
       expect(runtime.gfx.buffer[6 * 10 + 1]).toBe(0x0000);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("snaps a pulled-past-top scroll view back to scrollY zero on release", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 24,
+        height: 32,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, box: { x: 0, y: 0, w: 24, h: 32 }, subtreeEnd: 4 }),
+          makeNode({
+            index: 1,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 24, h: 20 },
+            hasBg: true,
+            bg: 0x0000,
+            parentIndex: 0,
+            scrollable: true,
+            scrollY: 8,
+            contentHeight: 60,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 2,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 24, h: 14 },
+            hasBg: true,
+            bg: 0x07e0,
+            parentIndex: 1,
+            subtreeEnd: 3,
+          }),
+          makeNode({
+            index: 3,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 30, w: 24, h: 14 },
+            hasBg: true,
+            bg: 0xf800,
+            parentIndex: 1,
+            subtreeEnd: 4,
+          }),
+        ],
+        transitions: [],
+      },
+      font: [],
+      bindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      const scrollNode = (runtime as any).nodes[1];
+      expect(scrollNode.scrollY).toBe(8);
+
+      runtime.pointerDown(4, 4);
+      runtime.pointerMove(4, 24);
+      runtime.pointerUp();
+
+      expect(scrollNode.scrollY).toBe(0);
+      expect(runtime.gfx.buffer[2 * 24 + 2]).toBe(0x07e0);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("does not snap normal scroll-down gestures that start at the top", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 24,
+        height: 32,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, box: { x: 0, y: 0, w: 24, h: 32 }, subtreeEnd: 3 }),
+          makeNode({
+            index: 1,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 24, h: 20 },
+            hasBg: true,
+            bg: 0x0000,
+            parentIndex: 0,
+            scrollable: true,
+            scrollY: 0,
+            contentHeight: 60,
+            subtreeEnd: 3,
+          }),
+          makeNode({
+            index: 2,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 30, w: 24, h: 14 },
+            hasBg: true,
+            bg: 0xf800,
+            parentIndex: 1,
+            subtreeEnd: 3,
+          }),
+        ],
+        transitions: [],
+      },
+      font: [],
+      bindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      const scrollNode = (runtime as any).nodes[1];
+      runtime.pointerDown(4, 18);
+      runtime.pointerMove(4, 4);
+      runtime.pointerUp();
+
+      expect(scrollNode.scrollY).toBe(14);
     } finally {
       runtime.stop();
     }

@@ -139,8 +139,13 @@ describe("UI end-to-end via transpileFile", () => {
       ].join("\n"),
     });
 
-    // ui_tick must appear inside a function body (indented), not at file scope.
-    expect(cpp).toMatch(/^\s+ui_tick\(/m);
+    // ui_tick must be driven by real elapsed time, not a fixed synthetic frame.
+    expect(cpp).not.toContain("ui_tick(16)");
+    expect(cpp).toContain("uint32_t __tc_ui_now = (uint32_t)millis();");
+    expect(cpp).toContain("static uint32_t __tc_ui_last_tick = __tc_ui_now;");
+    expect(cpp).toContain("uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
+    expect(cpp).toContain("if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
+    expect(cpp).toContain("ui_tick((uint16_t)__tc_ui_delta);");
   });
 
   it("lowers const pressed = ui.signal(0) + pressed.set() in a timer callback", async () => {

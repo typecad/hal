@@ -102,6 +102,35 @@ describe("UI module registry", () => {
     expect(lowered.nodeTable).toContain("hello");
   });
 
+  it("loads image assets by source and natural dimensions", () => {
+    const { dir, htmlPath } = writeProject(
+      `<screen>
+        <img id="smallLogo" src="logo.img" width="2" height="2"></img>
+        <img id="wideLogo" src="logo.img" width="3" height="2"></img>
+      </screen>`,
+      ``,
+    );
+    const pixels = Buffer.alloc(12);
+    [0xf800, 0x07e0, 0x001f, 0xffff, 0xffe0, 0x0000].forEach((value, index) => {
+      pixels.writeUInt16LE(value, index * 2);
+    });
+    fs.writeFileSync(path.join(dir, "logo.img"), pixels);
+
+    loadUIModule(htmlPath);
+    const lowered = lowerOnMount(htmlPath, {
+      colorFormat: "rgb565",
+      storage: "flash",
+      viewport: { width: 20, height: 20 },
+    });
+
+    expect(lowered.imageTables).toContain("__ui_img_smallLogo_data");
+    expect(lowered.imageTables).toContain("__ui_img_wideLogo_data");
+    expect(lowered.imageTables).toContain("{ 2, 2, __ui_img_smallLogo_data }");
+    expect(lowered.imageTables).toContain("{ 3, 2, __ui_img_wideLogo_data }");
+    expect(lowered.nodeTable).toContain(".imgDataId=0");
+    expect(lowered.nodeTable).toContain(".imgDataId=1");
+  });
+
   it("entry-has-UI flag is off until markEntryHasUI", () => {
     expect(entryHasUI()).toBe(false);
     markEntryHasUI();

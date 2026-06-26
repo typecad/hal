@@ -3,7 +3,8 @@ import { resolveColor } from "./color.js";
 import { parseAnimation, type CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 import { selectFontAssetForStyle } from "./font-assets.js";
-import type { Box } from "./layout-engine.js";
+import type { UIImageAsset } from "./image-assets.js";
+import { isDisplayNone, type Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
 import { whiteSpaceMode } from "./text-layout.js";
 
@@ -88,9 +89,9 @@ export interface UINodeModel {
   parentIndex: number;
   subtreeEnd: number;
   screenId: number;
-imgDataId: number;  // index into image table (255 = no image)
-   objectFit: 0 | 1 | 2 | 3 | 4;  // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
-   listItemHeight: number;  // px per item (for <list>, 0 = not a list)
+  imgDataId: number;  // index into image table (255 = no image)
+  objectFit: 0 | 1 | 2 | 3 | 4;  // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
+  listItemHeight: number;  // px per item (for <list>, 0 = not a list)
 }
 
 export interface UITransitionModel {
@@ -151,6 +152,7 @@ export interface UIProgram {
   colorFormat: "rgb565" | "mono";
   display?: DisplayProfile;
   fontAssets: UIFontAssetModel[];
+  imageAssets: UIImageAsset[];
   nodes: UINodeModel[];
   transitions: UITransitionModel[];
   keyframeSets: KeyframeSetModel[];
@@ -230,13 +232,13 @@ function lineHeightOf(style: CSSProperty, textSize: number): number {
     const n = parseFloat(raw);
     return Number.isFinite(n) ? Math.max(1, Math.min(255, Math.round(base * n))) : base;
   }
-const px = parseInt(raw, 10);
+  const px = parseInt(raw, 10);
   return Number.isFinite(px) && px > 0 ? Math.max(1, Math.min(255, px)) : base;
 }
 
 /** Parse object-fit value: none | fill | contain | cover | scale-down. */
 function objectFitOf(value: string): 0 | 1 | 2 | 3 | 4 {
-  const v = value.toLowerCase();
+  const v = value.trim().toLowerCase();
   if (v === "none") return 0;
   if (v === "fill") return 1;
   if (v === "contain") return 2;
@@ -698,6 +700,7 @@ export function lowerUIToModel(
   allScreens: StyledNode[] = [],
   imageAssetIds: Map<string, number> = new Map(),
   keyframeSets: KeyframeSetModel[] = [],
+  imageAssets: UIImageAsset[] = [],
 ): UIProgram {
   const flat: FlatModelSource[] = [];
   const cursor = { i: 0 };
@@ -799,7 +802,7 @@ export function lowerUIToModel(
       underline: node.style.textDecoration === "underline",
       nowrap: wsMode === 1 || wsMode === 2,
       whiteSpaceMode: wsMode,
-      visible: node.style.visibility !== "hidden",
+      visible: node.style.visibility !== "hidden" && !isDisplayNone(node),
       opacity: opacityOf(node.style),
       clearColor: clear,
       lastTextWidth: 0,
@@ -815,13 +818,13 @@ export function lowerUIToModel(
       maxlen: node.maxlen ?? 0,
       inputType: node.type,
       keyboard: node.keyboard,
-parentIndex,
-       subtreeEnd,
-       screenId,
-       imgDataId: node.id && imageAssetIds.has(node.id) ? imageAssetIds.get(node.id)! : 255,
-       // Image scaling mode: 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
-       objectFit: node.style.objectFit ? objectFitOf(node.style.objectFit) : 1,
-       listItemHeight: (node as any).itemHeight ?? 0,
+      parentIndex,
+      subtreeEnd,
+      screenId,
+      imgDataId: node.id && imageAssetIds.has(node.id) ? imageAssetIds.get(node.id)! : 255,
+      // Image scaling mode: 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
+      objectFit: node.style.objectFit ? objectFitOf(node.style.objectFit) : 1,
+      listItemHeight: (node as any).itemHeight ?? 0,
     };
   });
 
@@ -891,6 +894,7 @@ parentIndex,
     colorFormat,
     display,
     fontAssets,
+    imageAssets,
     nodes,
     transitions,
     keyframeSets,

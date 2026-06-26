@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import { StyledNode } from "./style-resolver.js";
+import { layoutText } from "./text-layout.js";
 
 export interface Box { x: number; y: number; w: number; h: number; }
 
@@ -27,8 +28,13 @@ export interface LayoutEngine {
   arrange(
     root: StyledNode,
     viewport: Box,
-    measureFn: (node: StyledNode) => IntrinsicSize,
+    measureFn: (node: StyledNode, availableWidth?: number) => IntrinsicSize,
   ): Box[];
+}
+
+/** Static display:none predicate shared by layout engines and lowering. */
+export function isDisplayNone(node: StyledNode): boolean {
+  return node.style.display?.trim().toLowerCase() === "none";
 }
 
 // The Adafruit GFX default font: 5×7 pixel glyphs, 6px advance width per char.
@@ -55,12 +61,49 @@ function gfxTextSizeOf(node: StyledNode): number {
   return size;
 }
 
+function letterSpacingOf(node: StyledNode): number {
+  if (!node.style.letterSpacing) return 0;
+  const px = parseInt(node.style.letterSpacing, 10);
+  return Number.isFinite(px) ? px : 0;
+}
+
+function lineHeightOf(node: StyledNode, charH: number): number {
+  const raw = node.style.lineHeight?.trim();
+  if (!raw || raw === "normal") return charH;
+  if (raw.endsWith("%")) {
+    const pct = parseFloat(raw);
+    return Number.isFinite(pct) ? Math.max(1, Math.round(charH * pct / 100)) : charH;
+  }
+  if (/^-?\d*\.?\d+$/.test(raw)) {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? Math.max(1, Math.round(charH * n)) : charH;
+  }
+  const px = parseInt(raw, 10);
+  return Number.isFinite(px) && px > 0 ? px : charH;
+}
+
+function applyTextTransform(text: string | undefined, node: StyledNode): string {
+  const value = text ?? "";
+  switch (node.style.textTransform) {
+    case "uppercase": return value.toUpperCase();
+    case "lowercase": return value.toLowerCase();
+    case "capitalize": return value.replace(/\b\w/g, (c) => c.toUpperCase());
+    default: return value;
+  }
+}
+
+function textWidthOf(text: string, advance: number): number {
+  let w = 0;
+  for (const _ch of text) w += advance;
+  return w;
+}
+
 /** Measure a node's intrinsic size. Accounts for the Adafruit GFX font metrics
  *  and the text size the draw dispatch will use. */
-export function measure(node: StyledNode): IntrinsicSize {
+export function measure(node: StyledNode, availableWidth?: number): IntrinsicSize {
   // Per-node text size (from font-size + font-weight CSS).
   const ts = gfxTextSizeOf(node);
-  const advance = 6 * ts;
+  const advance = 6 * ts + letterSpacingOf(node);
   const charH = 8 * ts;
   if (node.tag === "text" || node.tag === "button" || node.tag === "select") {
     if (node.tag === "select") {
@@ -69,15 +112,28 @@ export function measure(node: StyledNode): IntrinsicSize {
         ? node.options.map((option) => option.text)
         : (node.text ?? "").split(",").map(s => s.trim()).filter(Boolean);
       const longest = options.length > 0 ? options.reduce((a, b) => a.length >= b.length ? a : b) : "";
-      return { w: longest.length * advance, h: charH };
+      return { w: textWidthOf(applyTextTransform(longest, node), advance), h: lineHeightOf(node, charH) };
     }
-    const text = node.text ?? "";
-    return { w: text.length * advance, h: charH };
+    const text = applyTextTransform(node.text, node);
+    const layout = layoutText(text, {
+      maxWidth: availableWidth,
+      whiteSpace: node.style.whiteSpace,
+      lineHeight: lineHeightOf(node, charH),
+      measureText: (value) => textWidthOf(value, advance),
+    });
+    return { w: layout.width, h: layout.height };
   }
   if (node.tag === "check" || node.tag === "radio") {
     // Checkbox/radio: 16px indicator + 6px gap + label text
-    const text = node.text ?? "";
-    return { w: 16 + 6 + text.length * advance, h: Math.max(charH, 16) };
+    const text = applyTextTransform(node.text, node);
+    const labelMaxWidth = availableWidth !== undefined ? Math.max(0, availableWidth - 22) : undefined;
+    const layout = layoutText(text, {
+      maxWidth: labelMaxWidth,
+      whiteSpace: node.style.whiteSpace,
+      lineHeight: lineHeightOf(node, charH),
+      measureText: (value) => textWidthOf(value, advance),
+    });
+    return { w: 16 + 6 + layout.width, h: Math.max(layout.height, 16) };
   }
   if (node.tag === "progress") {
     // Progress bar: default 200px wide, 12px tall

@@ -10,6 +10,51 @@
       <view id="pulseIndicator"></view>
       <text id="counter">0</text>
     </view>
+    <view id="transformDemo">
+      <text id="transformDemoLabel">Transforms</text>
+      <text id="translateLabel">translate px</text>
+      <view id="transformTrack">
+        <view id="transformDot"></view>
+      </view>
+      <text id="scaleLabel">translate % + scale</text>
+      <view id="resizeTrack">
+        <view id="resizeDot"></view>
+      </view>
+      <text id="originLabel">origin</text>
+      <view id="originTrack">
+        <view id="originLeft"></view>
+        <view id="originCenter"></view>
+      </view>
+      <text id="rotateLabel">rotate</text>
+      <view id="rotateTrack">
+        <view id="rotateFill"></view>
+      </view>
+    </view>
+    <view id="textLayoutDemo">
+      <text id="textLayoutLabel">Text layout</text>
+      <text id="wrappedCopy">This paragraph wraps inside a fixed width and uses a taller line height.</text>
+      <text id="preLineCopy">Hard break<br/>then wrapped text</text>
+    </view>
+    <view id="layerDemo">
+      <text id="layerDemoLabel">Layers</text>
+      <view id="layerStage">
+        <view id="layerBack"></view>
+        <view id="layerFront">
+          <text id="layerFrontText">Z</text>
+        </view>
+      </view>
+    </view>
+    <view id="conditionalDemo">
+      <text id="conditionalDemoLabel">Conditional</text>
+      <view id="conditionalStage">
+        <view id="evenBranch">
+          <text id="evenBranchText">even count</text>
+        </view>
+        <view id="oddBranch">
+          <text id="oddBranchText">odd count</text>
+        </view>
+      </view>
+    </view>
     <button id="btn">Press</button>
     <check id="led">Enable LED</check>
     <view id="modeRow">
@@ -72,13 +117,28 @@
 </screen>
 
 <screen id="about">
-  <view id="aboutHeader">
-    <text id="aboutTitle">About</text>
-  </view>
-  <view id="aboutBody">
-    <img id="logo" src="test-logo.img" width="32" height="32"></img>
-    <text id="aboutVersion">TypeHAL UI v1.0</text>
-    <text id="aboutDesc">ESP32 Display Library</text>
-    <a id="backFromAbout" href="#home">&lt; Back</a>
-  </view>
-</screen>
+   <view id="aboutHeader">
+     <text id="aboutTitle">About</text>
+   </view>
+   <view id="aboutBody">
+     <img id="logo" src="test-logo.img" width="32" height="32"></img>
+     <text id="aboutVersion">TypeHAL UI v1.0</text>
+     <text id="aboutDesc">ESP32 Display Library</text>
+     <a id="backFromAbout" href="#home">&lt; Back</a>
+     <view id="fitDemo">
+       <text id="fitDemoLabel">object-fit 48x24 -> 60x40</text>
+       <view id="fitContainRow">
+         <text id="fitContainLabel">contain</text>
+         <img id="fitImgContain" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: contain"></img>
+       </view>
+       <view id="fitCoverRow">
+         <text id="fitCoverLabel">cover</text>
+         <img id="fitImgCover" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: cover"></img>
+       </view>
+       <view id="fitFillRow">
+         <text id="fitFillLabel">fill</text>
+         <img id="fitImgFill" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: fill"></img>
+       </view>
+     </view>
+   </view>
+ </screen>

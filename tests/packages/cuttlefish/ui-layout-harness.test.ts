@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { resolveColor } from "@typecad/cuttlefish/ui/color";
+import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
 import { buildUiFixture, collectLayoutProblems } from "./ui-layout-harness";
 
 function px(buffer: Uint16Array, width: number, x: number, y: number): number {
   return buffer[y * width + x];
+}
+
+function countColor(buffer: Uint16Array, width: number, x: number, y: number, w: number, h: number, color: number): number {
+  let count = 0;
+  for (let yy = y; yy < y + h; yy++) {
+    for (let xx = x; xx < x + w; xx++) {
+      if (buffer[yy * width + xx] === color) count++;
+    }
+  }
+  return count;
 }
 
 // These tests prove supported selector forms travel through parser -> resolver ->
@@ -11,6 +22,36 @@ function px(buffer: Uint16Array, width: number, x: number, y: number): number {
 // intentionally characterize current behavior; they are not visual approval for
 // every selector/property combination.
 describe("UI layout harness", () => {
+  it("removes display none and hidden subtrees from flex flow while preserving nodes", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="first"></view>
+          <view id="gone"><view id="insideGone"></view></view>
+          <view id="attrHidden" hidden></view>
+          <view id="last"></view>
+        </screen>
+      `,
+      css: `
+        screen { display: flex; flex-direction: column; }
+        #first, #last { width: 20px; height: 20px; background: #00ff00; }
+        #gone { display: none; width: 20px; height: 80px; background: #ff0000; }
+        #insideGone { width: 20px; height: 30px; background: #0000ff; }
+        #attrHidden { width: 20px; height: 40px; background: #ffff00; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.node("first").box).toMatchObject({ y: 0, w: 20, h: 20 });
+    expect(ui.node("gone").box).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    expect(ui.node("insideGone").box).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    expect(ui.node("attrHidden").box).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    expect(ui.node("last").box).toMatchObject({ y: 20, w: 20, h: 20 });
+    expect(ui.node("gone").visible).toBe(false);
+    expect(ui.node("attrHidden").visible).toBe(false);
+    expect(ui.node("last").index).toBe(5);
+  });
+
   describe("supported selector matrix", () => {
     const green = resolveColor("#00ff00", "rgb565");
     const white = resolveColor("#ffffff", "rgb565");
@@ -593,6 +634,177 @@ describe("UI layout harness", () => {
     expect(scroll.node("body").subtreeEnd).toBe(scroll.node("footer").index);
   });
 
+  it("lays out constrained text as multiple lines with line-height", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <text id="copy">alpha beta gamma</text>
+          <text id="breaks">Top<br/>Bottom</text>
+        </screen>
+      `,
+      css: `
+        screen { display: flex; flex-direction: column; background: #000000; }
+        #copy { width: 60px; font-size: 16px; line-height: 20px; color: #ffffff; }
+        #breaks { width: 80px; font-size: 16px; white-space: pre-line; color: #ffffff; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.node("copy").box).toMatchObject({ w: 60, h: 60 });
+    expect(ui.node("copy")).toMatchObject({ lineHeight: 20, whiteSpaceMode: 0 });
+    expect(ui.node("breaks").box.h).toBe(32);
+    expect(ui.node("breaks").whiteSpaceMode).toBe(3);
+  });
+
+  it("keeps nowrap text on one measured line", () => {
+    const ui = buildUiFixture({
+      html: `<screen id="root"><text id="copy">alpha beta gamma</text></screen>`,
+      css: `
+        screen { display: flex; flex-direction: column; }
+        #copy { max-width: 60px; font-size: 16px; white-space: nowrap; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.node("copy").box.h).toBe(16);
+    expect(ui.node("copy").whiteSpaceMode).toBe(1);
+  });
+
+  it("tracks wrapped text height in preview and clears old wrapped lines", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <text id="copy">alpha beta gamma</text>
+        </screen>
+      `,
+      css: `
+        screen { display: flex; flex-direction: column; background: #000000; }
+        #copy { width: 60px; font-size: 16px; line-height: 20px; color: #ffffff; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+
+    const runtime = ui.startPreview();
+    try {
+      const copy = ui.node("copy");
+      const black = resolveColor("#000000", "rgb565");
+      const secondLineY = copy.box.y + copy.lineHeight;
+      const mutableNode = (runtime as any).nodes[copy.index];
+
+      expect(mutableNode.lastTextHeight).toBe(60);
+
+      mutableNode.hasTextBinding = true;
+      mutableNode.textBuffer = "alpha";
+      mutableNode.dirty = true;
+      runtime.tick(16);
+
+      expect(mutableNode.lastTextHeight).toBe(20);
+      expect(countColor(runtime.gfx.buffer, ui.program.width, copy.box.x, secondLineY, copy.box.w, 16, black))
+        .toBe(copy.box.w * 16);
+      expect(px(runtime.gfx.buffer, ui.program.width, copy.box.x + 1, secondLineY + 1)).toBe(black);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders higher z-index layers above later lower-z siblings", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="overlay"><view id="badge"></view></view>
+          <view id="base"></view>
+        </screen>
+      `,
+      css: `
+        screen { display: flex; position: relative; background: #000000; }
+        #overlay { position: absolute; left: 10px; top: 10px; width: 40px; height: 40px; background: #ff0000; z-index: 10; }
+        #badge { width: 16px; height: 16px; background: #ffffff; }
+        #base { position: absolute; left: 0px; top: 0px; width: 80px; height: 80px; background: #0000ff; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.node("overlay").zIndex).toBe(10);
+    expect(ui.node("badge").zIndex).toBe(10);
+
+    const runtime = ui.startPreview();
+    try {
+      const overlay = ui.node("overlay");
+      expect(px(runtime.gfx.buffer, ui.program.width, overlay.box.x + 24, overlay.box.y + 24))
+        .toBe(resolveColor("#ff0000", "rgb565"));
+      expect(px(runtime.gfx.buffer, ui.program.width, overlay.box.x + 4, overlay.box.y + 4))
+        .toBe(resolveColor("#ffffff", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("redraws overlapping higher z-index layers when a lower layer changes", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="base"></view>
+          <view id="overlay"></view>
+        </screen>
+      `,
+      css: `
+        screen { display: flex; position: relative; background: #000000; }
+        #base { position: absolute; left: 0px; top: 0px; width: 80px; height: 80px; background: #0000ff; }
+        #overlay { position: absolute; left: 10px; top: 10px; width: 40px; height: 40px; background: #ff0000; z-index: 10; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+
+    const runtime = ui.startPreview();
+    try {
+      const base = ui.node("base");
+      const overlay = ui.node("overlay");
+      const mutableBase = (runtime as any).nodes[base.index];
+      mutableBase.bg = resolveColor("#00ff00", "rgb565");
+      (runtime as any).markDirty(base.index);
+      runtime.tick(16);
+
+      expect(px(runtime.gfx.buffer, ui.program.width, overlay.box.x + 4, overlay.box.y + 4))
+        .toBe(resolveColor("#ff0000", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("hit-tests the topmost z-index layer", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="overlay"></view>
+          <view id="base"></view>
+        </screen>
+      `,
+      css: `
+        screen { display: flex; position: relative; background: #000000; }
+        #overlay { position: absolute; left: 10px; top: 10px; width: 40px; height: 40px; background: #ff0000; z-index: 10; }
+        #base { position: absolute; left: 0px; top: 0px; width: 80px; height: 80px; background: #0000ff; }
+      `,
+    });
+
+    const snapshot = ui.previewSnapshot();
+    snapshot.callbacks = [
+      { nodeId: "overlay", nodeIndex: ui.node("overlay").index, kind: "click", body: "screen.overlay.value = 7;" },
+      { nodeId: "base", nodeIndex: ui.node("base").index, kind: "click", body: "screen.base.value = 3;" },
+    ];
+    const runtime = new PreviewUIRuntime(snapshot);
+    runtime.start();
+    try {
+      runtime.pointerDown(16, 16);
+      runtime.pointerUp();
+      expect(runtime.screen.overlay.value).toBe(7);
+      expect(runtime.screen.base.value).toBe(0);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   it("renders a lowered fixture into the preview framebuffer", () => {
     const ui = buildUiFixture({
       html: `
@@ -630,6 +842,313 @@ describe("UI layout harness", () => {
         .toBe(resolveColor("#ff0000", "rgb565"));
       expect(px(runtime.gfx.buffer, ui.program.width, bar.box.x + bar.box.w - 2, bar.box.y + 2))
         .toBe(resolveColor("#202020", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("advances keyframe animations in the preview framebuffer", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="pulse"></view>
+        </screen>
+      `,
+      css: `
+        @keyframes pulse {
+          0%, 100% { background: #ff0000; }
+          50% { background: #00ff00; }
+        }
+        screen { display: flex; padding: 4px; background: #000000; }
+        #pulse { width: 20px; height: 20px; background: #ff0000; animation: pulse 1000ms infinite; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.program.keyframeSets).toHaveLength(1);
+    expect(ui.program.animations).toHaveLength(1);
+
+    const runtime = ui.startPreview();
+    try {
+      const pulse = ui.node("pulse");
+      const sampleX = pulse.box.x + 2;
+      const sampleY = pulse.box.y + 2;
+
+      runtime.tick(484);
+      expect(px(runtime.gfx.buffer, ui.program.width, sampleX, sampleY))
+        .toBe(resolveColor("#00ff00", "rgb565"));
+
+      runtime.tick(500);
+      expect(px(runtime.gfx.buffer, ui.program.width, sampleX, sampleY))
+        .toBe(resolveColor("#ff0000", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("animates transform x/y in the preview framebuffer and clears the old location", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="mover"></view>
+        </screen>
+      `,
+      css: `
+        @keyframes slide {
+          0%, 100% { transform: translate(0px, 0px); }
+          50% { transform: translate(20px, 6px); }
+        }
+        screen { display: flex; padding: 4px; background: #000000; }
+        #mover { width: 10px; height: 10px; background: #00ff00; animation: slide 1000ms infinite; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.program.keyframeSets[0].stops[1]).toMatchObject({
+      transformOffsetX: 20,
+      transformOffsetY: 6,
+    });
+
+    const runtime = ui.startPreview();
+    try {
+      const mover = ui.node("mover");
+      const oldX = mover.box.x + 2;
+      const oldY = mover.box.y + 2;
+      const newX = mover.box.x + 20 + 2;
+      const newY = mover.box.y + 6 + 2;
+
+      expect(px(runtime.gfx.buffer, ui.program.width, oldX, oldY))
+        .toBe(resolveColor("#00ff00", "rgb565"));
+
+      runtime.tick(484);
+      expect(px(runtime.gfx.buffer, ui.program.width, oldX, oldY))
+        .toBe(resolveColor("#000000", "rgb565"));
+      expect(px(runtime.gfx.buffer, ui.program.width, newX, newY))
+        .toBe(resolveColor("#00ff00", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("restores parent border pixels when a transformed child moves away from them", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="track">
+            <view id="mover"></view>
+          </view>
+        </screen>
+      `,
+      css: `
+        @keyframes slide {
+          0%, 100% { transform: translate(0px, 0px); }
+          50% { transform: translate(20px, 8px); }
+        }
+        screen { display: flex; padding: 4px; background: #000000; }
+        #track { width: 40px; height: 28px; background: #000000; border: 1px solid #ffffff; }
+        #mover { width: 10px; height: 10px; background: #00ff00; animation: slide 1000ms infinite; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+
+    const runtime = ui.startPreview();
+    try {
+      const track = ui.node("track");
+      runtime.tick(484);
+      expect(px(runtime.gfx.buffer, ui.program.width, track.box.x, track.box.y))
+        .toBe(resolveColor("#ffffff", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("animates left top width and height in the preview framebuffer", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="box"></view>
+        </screen>
+      `,
+      css: `
+        @keyframes growMove {
+          0%, 100% { left: 0px; top: 0px; width: 10px; height: 10px; }
+          50% { left: 18px; top: 6px; width: 22px; height: 14px; }
+        }
+        screen { display: flex; padding: 4px; background: #000000; }
+        #box { width: 10px; height: 10px; background: #00ff00; animation: growMove 1000ms infinite; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.program.keyframeSets[0].stops[1]).toMatchObject({
+      transformOffsetX: 18,
+      transformOffsetY: 6,
+      width: 22,
+      height: 14,
+    });
+
+    const runtime = ui.startPreview();
+    try {
+      const box = ui.node("box");
+      runtime.tick(484);
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 1, box.box.y + 1))
+        .toBe(resolveColor("#000000", "rgb565"));
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 18 + 20, box.box.y + 6 + 12))
+        .toBe(resolveColor("#00ff00", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("applies static percentage translate and scale during model lowering", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="box"></view>
+        </screen>
+      `,
+      css: `
+        screen { display: flex; padding: 4px; background: #000000; }
+        #box {
+          width: 20px;
+          height: 10px;
+          background: #00ff00;
+          transform-origin: left top;
+          transform: translateX(50%) scale(2, 1.5);
+        }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.node("box")).toMatchObject({
+      transformOffsetX: 10,
+      transformOffsetY: 0,
+      rotateDeg: 0,
+      box: expect.objectContaining({ w: 40, h: 15 }),
+    });
+  });
+
+  it("animates percentage translate and scale in the preview framebuffer", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="box"></view>
+        </screen>
+      `,
+      css: `
+        @keyframes pctScale {
+          0%, 100% { transform: translateX(0%) scale(1); }
+          50% { transform: translateX(100%) scale(2); }
+        }
+        screen { display: flex; padding: 4px; background: #000000; }
+        #box {
+          width: 10px;
+          height: 10px;
+          background: #00ff00;
+          transform-origin: left top;
+          animation: pctScale 1000ms infinite;
+        }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.program.keyframeSets[0].stops[1]).toMatchObject({
+      transformOffsetX: 0,
+      translatePctX: 100,
+      scaleX: 200,
+      scaleY: 200,
+    });
+
+    const runtime = ui.startPreview();
+    try {
+      const box = ui.node("box");
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 1, box.box.y + 1))
+        .toBe(resolveColor("#00ff00", "rgb565"));
+
+      runtime.tick(484);
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 1, box.box.y + 1))
+        .toBe(resolveColor("#000000", "rgb565"));
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 26, box.box.y + 18))
+        .toBe(resolveColor("#00ff00", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders quarter-turn fill rotation in the preview framebuffer", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="box"></view>
+        </screen>
+      `,
+      css: `
+        @keyframes quarterTurn {
+          0%, 24% { transform: rotate(0deg); background: #ff0000; }
+          25%, 49% { transform: rotate(90deg); background: #00ff00; }
+          50%, 74% { transform: rotate(180deg); background: #0000ff; }
+          75%, 100% { transform: rotate(270deg); background: #ffffff; }
+        }
+        screen { display: flex; padding: 4px; background: #000000; }
+        #box {
+          width: 10px;
+          height: 20px;
+          background: #ff0000;
+          transform-origin: center;
+          animation: quarterTurn 1000ms infinite;
+        }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+
+    const runtime = ui.startPreview();
+    try {
+      const box = ui.node("box");
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 8, box.box.y + 18))
+        .toBe(resolveColor("#ff0000", "rgb565"));
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 18, box.box.y + 8))
+        .toBe(resolveColor("#000000", "rgb565"));
+
+      runtime.tick(250);
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 8, box.box.y + 18))
+        .toBe(resolveColor("#000000", "rgb565"));
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + 18, box.box.y + 8))
+        .toBe(resolveColor("#00ff00", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders the final frame when a finite keyframe animation completes before the redraw throttle", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="flash"></view>
+        </screen>
+      `,
+      css: `
+        @keyframes flash {
+          from { background: #ff0000; }
+          to { background: #0000ff; }
+        }
+        screen { display: flex; padding: 4px; background: #000000; }
+        #flash { width: 20px; height: 20px; background: #ff0000; animation: flash 50ms 1; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+
+    const runtime = ui.startPreview();
+    try {
+      const flash = ui.node("flash");
+      const sampleX = flash.box.x + 2;
+      const sampleY = flash.box.y + 2;
+
+      runtime.tick(34);
+      expect(px(runtime.gfx.buffer, ui.program.width, sampleX, sampleY))
+        .toBe(resolveColor("#0000ff", "rgb565"));
     } finally {
       runtime.stop();
     }

@@ -125,8 +125,8 @@ export interface CSSProperty {
   boxShadow?: string;
   textShadow?: string;
   transform?: string;
-transformOrigin?: string;
-   objectFit?: string;  // fill | contain | cover | scale-down | none
+  transformOrigin?: string;
+  objectFit?: string;  // fill | contain | cover | scale-down | none
 }
 
 export interface CSSRule {
@@ -603,7 +603,7 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "box-shadow": props.boxShadow = val; break;
     case "text-shadow": props.textShadow = val; break;
     case "transform": props.transform = val; break;
-case "transform-origin": props.transformOrigin = val; break;
+    case "transform-origin": props.transformOrigin = val; break;
     case "object-fit": props.objectFit = val; break;
     // Unknown properties are silently dropped (forward-compatible).
   }

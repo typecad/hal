@@ -1,7 +1,22 @@
-import { parseCss, type CSSRule } from "@typecad/cuttlefish/ui/css-parser";
+import { parseCss, parseKeyframes, type CSSRule } from "@typecad/cuttlefish/ui/css-parser";
+import { resolveColor } from "@typecad/cuttlefish/ui/color";
 import { extractStyleBlocks, parseHtmlWithKeyboards, type KeyboardTemplate } from "@typecad/cuttlefish/ui/html-parser";
 import { measure, type Box } from "@typecad/cuttlefish/ui/layout-engine";
-import { lowerUIToModel, type UINodeModel, type UIProgram } from "@typecad/cuttlefish/ui/model";
+import {
+  clampInt16,
+  cssOpacityToPercent,
+  cssPx,
+  KEYFRAME_PROP_BG,
+  KEYFRAME_PROP_FG,
+  KEYFRAME_PROP_OPACITY,
+  KEYFRAME_PROP_SIZE,
+  KEYFRAME_PROP_TRANSFORM,
+  lowerUIToModel,
+  parseTransform,
+  type KeyframeSetModel,
+  type UINodeModel,
+  type UIProgram,
+} from "@typecad/cuttlefish/ui/model";
 import { resolveStyles, type StyledNode } from "@typecad/cuttlefish/ui/style-resolver";
 import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
 import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
@@ -50,6 +65,7 @@ export function buildUiFixture(options: BuildUiFixtureOptions): UiLayoutHarness 
   const css = [options.css ?? "", extractStyleBlocks(options.html)].filter(Boolean).join("\n");
   const parsed = parseHtmlWithKeyboards(options.html);
   const cssRules = parseCss(css);
+  const rawKeyframes = parseKeyframes(css);
   const screens = parsed.screens.map((screen) => resolveStyles(screen, cssRules));
   const boxes = screens.flatMap((screen) => selectEngine(screen).arrange(screen, viewport, measure));
   const display = {
@@ -60,7 +76,37 @@ export function buildUiFixture(options: BuildUiFixtureOptions): UiLayoutHarness 
     rotation: 1,
     antialias: true,
   } as const;
-  const program = lowerUIToModel(screens[0], boxes, colorFormat, display, [], screens);
+  const keyframeSets: KeyframeSetModel[] = rawKeyframes.map((ks) => ({
+    name: ks.name,
+    stops: ks.stops.map((stop) => {
+      let props = 0;
+      if (stop.background) props |= KEYFRAME_PROP_BG;
+      if (stop.color) props |= KEYFRAME_PROP_FG;
+      if (stop.opacity) props |= KEYFRAME_PROP_OPACITY;
+      if (stop.transform || stop.left || stop.top) props |= KEYFRAME_PROP_TRANSFORM;
+      if (stop.width || stop.height) props |= KEYFRAME_PROP_SIZE;
+      const transform = parseTransform(stop.transform);
+      const x = transform.x + cssPx(stop.left);
+      const y = transform.y + cssPx(stop.top);
+      return {
+        percent: stop.percent,
+        props,
+        bg: stop.background ? resolveColor(stop.background, colorFormat) : 0,
+        fg: stop.color ? resolveColor(stop.color, colorFormat) : 0,
+        opacity: stop.opacity ? cssOpacityToPercent(stop.opacity) : 100,
+        transformOffsetX: clampInt16(x),
+        transformOffsetY: clampInt16(y),
+        translatePctX: clampInt16(transform.pctX),
+        translatePctY: clampInt16(transform.pctY),
+        scaleX: transform.scaleX,
+        scaleY: transform.scaleY,
+        rotateDeg: clampInt16(transform.rotateDeg),
+        width: stop.width ? Math.max(0, Math.min(32767, cssPx(stop.width))) : 0,
+        height: stop.height ? Math.max(0, Math.min(32767, cssPx(stop.height))) : 0,
+      };
+    }),
+  }));
+  const program = lowerUIToModel(screens[0], boxes, colorFormat, display, [], screens, new Map(), keyframeSets);
   const styledById = new Map<string, StyledNode>();
   for (const screen of screens) indexStyled(screen, styledById);
   const nodeById = new Map(program.nodes.filter((node) => node.id).map((node) => [node.id!, node]));

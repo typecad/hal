@@ -8,7 +8,7 @@ import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
 function layout(src: string, css: string, viewport: Box): Box[] {
   const styled = resolveStyles(parseHtml(src), parseCss(css));
   const engine: LayoutEngine = new BlockLayoutEngine();
-  return engine.arrange(styled, viewport, (n) => measure(n));
+  return engine.arrange(styled, viewport, (n, availableWidth) => measure(n, availableWidth));
 }
 
 describe("BlockLayoutEngine", () => {
@@ -37,6 +37,20 @@ describe("BlockLayoutEngine", () => {
     );
     expect(boxes[1].y).toBe(0);
     expect(boxes[2].y).toBeGreaterThan(0);  // second child below first
+  });
+
+  it("removes display none subtrees from block flow while preserving box order", () => {
+    const boxes = layout(
+      `<screen><text id="a">a</text><view id="gone"><text id="inside">hidden</text></view><text id="b">b</text></screen>`,
+      `screen { padding: 0; } #gone { display: none; }`,
+      { x: 0, y: 0, w: 100, h: 100 },
+    );
+
+    expect(boxes).toHaveLength(5);
+    expect(boxes[1]).toMatchObject({ y: 0, h: 16 });
+    expect(boxes[2]).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    expect(boxes[3]).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    expect(boxes[4]).toMatchObject({ y: 16, h: 16 });
   });
 
   it("measure returns text intrinsic size from GFX font metrics", () => {

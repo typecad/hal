@@ -110,9 +110,9 @@ struct UINode {
   uint8_t parent;       // 255 = root/no parent
   uint8_t subtreeEnd;   // exclusive pre-order end index
   uint8_t screenId;     // which <screen> this node belongs to (for navigation)
-uint8_t imgDataId;    // index into __ui_images[] (255 = no image)
-   uint8_t objectFit;    // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
-   uint16_t listItemHeight; // px per item for <list> (0 = not a list)
+  uint8_t imgDataId;    // index into __ui_images[] (255 = no image)
+  uint8_t objectFit;    // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
+  uint16_t listItemHeight; // px per item for <list> (0 = not a list)
   int16_t rangeMin;     // for <range>: minimum value
   int16_t rangeMax;     // for <range>: maximum value
   int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
@@ -266,7 +266,7 @@ static inline void ui_navigate(uint8_t screenIdx) {
   __ui_touch_state = 0;
   __ui_kb_visible = 0;
   // Clear the entire display so old screen content doesn't show.
-  __tc_display.fillScreen(0x0000);
+  display_fillScreen(0x0000);
   // Mark all nodes dirty so the new screen fully redraws.
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
@@ -309,11 +309,11 @@ static inline void ui_draw_node_outline(uint8_t i, int16_t drawY);
 static inline uint8_t ui_rotation_quadrant(int16_t deg);
 static inline int16_t ui_rotated_face_w(uint8_t nodeIdx, int16_t w, int16_t h);
 static inline int16_t ui_rotated_face_h(uint8_t nodeIdx, int16_t w, int16_t h);
- static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg);
- static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
-                                           uint8_t fitMode, int16_t targetW, int16_t targetH);
- static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
-                                        int16_t drawW, int16_t drawH);
+static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg);
+static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
+                                          uint8_t fitMode, int16_t targetW, int16_t targetH);
+static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
+                                         int16_t drawW, int16_t drawH);
 
 static Adafruit_GFX* __ui_gfx = &__tc_display;
 static GFXcanvas16* __ui_scroll_canvas = nullptr;
@@ -353,47 +353,82 @@ static inline int16_t ui_rotated_face_h(uint8_t nodeIdx, int16_t w, int16_t h) {
   return (q == 1 || q == 3) ? w : h;
 }
 
-// Draw image with object-fit: fitMode 1=fill (stretch), 2=contain, 3=cover, 4=scale-down
-// Uses nearest-neighbor scaling for embedded performance.
+// Draw image with object-fit: 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down.
+// The sampler is bounded to the target box first, then quarter-turn rotated.
+// This keeps cover cropped inside the element instead of overpainting siblings.
 static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
                                           uint8_t fitMode, int16_t targetW, int16_t targetH) {
+  if (!img || !img->data || img->w == 0 || img->h == 0 || targetW <= 0 || targetH <= 0) return;
   int16_t srcW = img->w, srcH = img->h;
   int16_t drawW = srcW, drawH = srcH;
-  int16_t offX = 0, offY = 0;
+  int16_t offX = (targetW - drawW) / 2;
+  int16_t offY = (targetH - drawH) / 2;
 
-  // Apply object-fit scaling
-  if (fitMode == 2 || fitMode == 3 || fitMode == 4) {
-    // Compute scale factors using integer math (avoid float)
+  if (fitMode == 1) {
+    drawW = targetW;
+    drawH = targetH;
+    offX = 0;
+    offY = 0;
+  } else if (fitMode == 2 || fitMode == 3 || fitMode == 4) {
     int32_t scaleX = ((int32_t)targetW * 1000) / srcW;
     int32_t scaleY = ((int32_t)targetH * 1000) / srcH;
+    if (scaleX < 1) scaleX = 1;
+    if (scaleY < 1) scaleY = 1;
     int32_t scale = scaleX;
     if (fitMode == 2) {
-      // Contain: fit inside, maintain aspect ratio
       if (scaleY < scaleX) scale = scaleY;
     } else if (fitMode == 3) {
-      // Cover: cover area, maintain aspect ratio
       if (scaleY > scaleX) scale = scaleY;
     } else {
-      // Scale-down: smaller of contain or 100%
       if (scaleY < scaleX) scale = scaleY;
       if (scale > 1000) scale = 1000;
     }
     drawW = (int16_t)((int32_t)srcW * scale / 1000);
     drawH = (int16_t)((int32_t)srcH * scale / 1000);
+    if (drawW < 1) drawW = 1;
+    if (drawH < 1) drawH = 1;
+    if (fitMode == 3) {
+      if (drawW < targetW) drawW = targetW;
+      if (drawH < targetH) drawH = targetH;
+    }
     offX = (targetW - drawW) / 2;
     offY = (targetH - drawH) / 2;
-  } else if (fitMode == 1) {
-    // Fill: stretch to fit
-    drawW = targetW;
-    drawH = targetH;
   }
-  // fitMode == 0 (none): use natural size, no scaling
 
-  ui_draw_scaled_image(img, x + offX, y + offY, rotateDeg, drawW, drawH);
+  uint8_t q = ui_rotation_quadrant(rotateDeg);
+  for (int16_t ty = 0; ty < targetH; ty++) {
+    int16_t localY = ty - offY;
+    if (localY < 0 || localY >= drawH) continue;
+    int16_t srcY = ((int32_t)localY * srcH) / drawH;
+    if (srcY < 0) srcY = 0;
+    if (srcY >= srcH) srcY = srcH - 1;
+    for (int16_t tx = 0; tx < targetW; tx++) {
+      int16_t localX = tx - offX;
+      if (localX < 0 || localX >= drawW) continue;
+      int16_t srcX = ((int32_t)localX * srcW) / drawW;
+      if (srcX < 0) srcX = 0;
+      if (srcX >= srcW) srcX = srcW - 1;
+      uint16_t color = img->data[(int32_t)srcY * srcW + srcX];
+      int16_t dx = tx;
+      int16_t dy = ty;
+      if (q == 1) {
+        dx = targetH - 1 - ty;
+        dy = tx;
+      } else if (q == 2) {
+        dx = targetW - 1 - tx;
+        dy = targetH - 1 - ty;
+      } else if (q == 3) {
+        dx = ty;
+        dy = targetW - 1 - tx;
+      }
+      __ui_gfx->drawPixel(x + dx, y + dy, color);
+    }
+  }
 }
 
 static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
                                         int16_t drawW, int16_t drawH) {
+  if (!img || !img->data || img->w == 0 || img->h == 0 || drawW <= 0 || drawH <= 0) return;
   uint8_t q = ui_rotation_quadrant(rotateDeg);
   if (q == 0) {
     // Simple case: no rotation, draw with scaling
@@ -412,7 +447,6 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
     }
     return;
   }
-  // Rotated + scaled: more complex
   for (int16_t dy = 0; dy < drawH; dy++) {
     int16_t srcY = ((int32_t)dy * img->h) / drawH;
     for (int16_t dx = 0; dx < drawW; dx++) {
@@ -420,16 +454,16 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
       uint16_t color = img->data[(int32_t)srcY * img->w + srcX];
       int16_t rdx = 0, rdy = 0;
       if (q == 1) {
-        rdx = img->h - 1 - srcY;
-        rdy = srcX;
+        rdx = drawH - 1 - dy;
+        rdy = dx;
       } else if (q == 2) {
-        rdx = img->w - 1 - srcX;
-        rdy = img->h - 1 - srcY;
+        rdx = drawW - 1 - dx;
+        rdy = drawH - 1 - dy;
       } else {
-        rdx = srcY;
-        rdy = img->w - 1 - srcX;
+        rdx = dy;
+        rdy = drawW - 1 - dx;
       }
-      __ui_gfx->drawPixel(x + dx, y + dy, color);
+      __ui_gfx->drawPixel(x + rdx, y + rdy, color);
     }
   }
 }
@@ -472,18 +506,18 @@ static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y
   int16_t stride = canvas->width();
   // The canvas is viewport-sized: buffer row 0 = the first row of the viewport.
   // The display destination is (x, y) but the source buffer starts at (0, 0).
-  __tc_display.startWrite();
-  __tc_display.setAddrWindow(x, y, w, h);
+  display_startWrite();
+  display_setAddrWindow(x, y, w, h);
   if (w == stride) {
     // Full-width: contiguous in buffer, single write.
-    __tc_display.writePixels(pixels, (uint32_t)w * h);
-    __tc_display.endWrite();
+    display_writePixels(pixels, (uint32_t)w * h);
+    display_endWrite();
     return;
   }
   for (int16_t row = 0; row < h; row++) {
-    __tc_display.writePixels(pixels + (int32_t)row * stride, w);
+    display_writePixels(pixels + (int32_t)row * stride, w);
   }
-  __tc_display.endWrite();
+  display_endWrite();
 }
 
 // Per-node dirty marker (called by press handlers and binding evaluation).
@@ -2775,14 +2809,19 @@ static inline void ui_tick(uint16_t deltaMs) {
             textCol, bgCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
         }
         break;
-case NODE_IMG:
-         if (__ui_nodes[i].imgDataId < __ui_image_count) {
-           const UIImage* img = &__ui_images[__ui_nodes[i].imgDataId];
-           int16_t targetW = __ui_nodes[i].box.w;
-           int16_t targetH = __ui_nodes[i].box.h;
-           ui_draw_image_with_fit(img, __ui_nodes[i].box.x, drawY, __ui_nodes[i].rotateDeg, __ui_nodes[i].objectFit, targetW, targetH);
-         }
-         break;
+      case NODE_IMG:
+        if (__ui_nodes[i].hasBg) {
+          int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+          int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].bg);
+        }
+        if (__ui_nodes[i].imgDataId < __ui_image_count) {
+          const UIImage* img = &__ui_images[__ui_nodes[i].imgDataId];
+          int16_t targetW = __ui_nodes[i].box.w;
+          int16_t targetH = __ui_nodes[i].box.h;
+          ui_draw_image_with_fit(img, __ui_nodes[i].box.x, drawY, __ui_nodes[i].rotateDeg, __ui_nodes[i].objectFit, targetW, targetH);
+        }
+        break;
       case NODE_LIST: {
         // Find this list's state.
         UIListState* ls = nullptr;
@@ -3218,10 +3257,10 @@ static inline void ui_kb_draw_key(uint8_t i) {
   if (k.special == 1 && __ui_kb_shift && (int8_t)i != __ui_kb_pressed_key) { bg = 0xBDF7; }
   // Pressed key: invert colors for clear tap feedback.
   if ((int8_t)i == __ui_kb_pressed_key) { uint16_t t = bg; bg = fg; fg = t; }
-  __tc_display.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
-  __tc_display.drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
-  __tc_display.setTextColor(fg, bg);
-  __tc_display.setTextSize(1);
+  __ui_gfx->fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
+  __ui_gfx->drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
+  __ui_gfx->setTextColor(fg, bg);
+  __ui_gfx->setTextSize(1);
   // Derive the label string + its length for centering.
   const char* labelStr;
   char single[2];
@@ -3243,26 +3282,26 @@ static inline void ui_kb_draw_key(uint8_t i) {
   int16_t cx = r.x + (r.w - textW) / 2;
   int16_t cy = r.y + (r.h - textH) / 2;
   if (cx < r.x + 1) cx = r.x + 1;  // clamp if label wider than key
-  __tc_display.setCursor(cx, cy);
-  __tc_display.print(labelStr);
+  __ui_gfx->setCursor(cx, cy);
+  __ui_gfx->print(labelStr);
 }
 
 // Redraw only the text display row (top of keyboard box). Used when a char is
 // inserted/deleted without changing key highlights.
 static inline void ui_kb_draw_text_row() {
   // Clear the text row area (top UI_KB_TEXT_H px of the keyboard box).
-  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, __ui_kb_bg);
-  __tc_display.setCursor(__ui_kb_box.x + 4, __ui_kb_box.y + 4);
-  __tc_display.setTextColor(0xFFFF, 0x0000);
-  __tc_display.setTextSize(2);
-  __tc_display.print(__ui_kb_buffer);
-  __tc_display.print("_");  // cursor
+  __ui_gfx->fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, __ui_kb_bg);
+  __ui_gfx->setCursor(__ui_kb_box.x + 4, __ui_kb_box.y + 4);
+  __ui_gfx->setTextColor(0xFFFF, 0x0000);
+  __ui_gfx->setTextSize(2);
+  __ui_gfx->print(__ui_kb_buffer);
+  __ui_gfx->print("_");  // cursor
 }
 
 // Draw the full keyboard overlay (background + text row + all keys).
 static inline void ui_kb_draw() {
   // Opaque background over the keyboard box.
-  __tc_display.fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, __ui_kb_bg);
+  __ui_gfx->fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, __ui_kb_bg);
   ui_kb_draw_text_row();
   // Keys: one rect per key, label centered.
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {

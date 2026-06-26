@@ -36,6 +36,8 @@ export interface UIElementNode {
   maxlength?: number;
   /** Keyboard ref id (for <input>). */
   keyboard?: string;
+  /** HTML hidden attribute: removes the element subtree from layout/rendering. */
+  hidden?: boolean;
   /** Inline style attribute: style="color: red; font-size: 16px" */
   inlineStyle?: string;
   /** Navigation target for <a href="#screenId"> links. */
@@ -80,7 +82,7 @@ export interface ParsedHtml {
   keyboards: KeyboardTemplate[];
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list", "br"]);
 
 /** Extract <style>...</style> block contents from HTML source.
  *  Returns the concatenated CSS text (empty if no style blocks). */
@@ -208,6 +210,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     ? (maxlengthAttr ? (parseInt(maxlengthAttr, 10) || 16) : 16)
     : undefined;
   const keyboardAttr = el.getAttribute("keyboard") || undefined;
+  const hiddenAttr = el.hasAttribute("hidden");
   const inlineStyleAttr = el.getAttribute("style") || undefined;
   const hrefAttr = (tag === "a" || tag === "button") ? (el.getAttribute("href") || undefined) : undefined;
   const srcAttr = tag === "img" ? (el.getAttribute("src") || undefined) : undefined;
@@ -228,6 +231,8 @@ function domToUIElementNode(el: Element): UIElementNode {
       return {
         tag: "select",
         id, classes, text: firstText, value: valueAttr,
+        hidden: hiddenAttr,
+        inlineStyle: inlineStyleAttr,
         children: [],
         options,
       };
@@ -238,6 +243,8 @@ function domToUIElementNode(el: Element): UIElementNode {
     return {
       tag: "select",
       id, classes, text: optNames[0] || "",
+      hidden: hiddenAttr,
+      inlineStyle: inlineStyleAttr,
       children: [],
       options: optNames.map(t => ({ value: t.toLowerCase(), text: t })),
     };
@@ -247,15 +254,24 @@ function domToUIElementNode(el: Element): UIElementNode {
   let text: string | undefined;
   const childElements = Array.from(el.children).filter((c) => {
     const ct = c.tagName.toLowerCase();
-    return SUPPORTED_TAGS.has(ct) && ct !== "option";
+    return SUPPORTED_TAGS.has(ct) && ct !== "option" && ct !== "br";
   });
 
   if (childElements.length === 0) {
-    const tc = el.textContent?.trim();
+    const parts: string[] = [];
+    for (const child of Array.from(el.childNodes)) {
+      if ((child as any).nodeType === 3) {
+        parts.push(child.textContent ?? "");
+        continue;
+      }
+      const childTag = (child as Element).tagName?.toLowerCase();
+      if (childTag === "br") parts.push("\n");
+    }
+    const tc = parts.join("").trim();
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child));
   }

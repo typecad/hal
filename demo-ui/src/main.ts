@@ -21,6 +21,8 @@ ui.mount(screen, {
 screen.counter.value = 0;
 ui.bind(screen.counter, 'color', () => (screen.counter.value % 2 === 0 ? 'limegreen' : 'orange'));
 ui.bind(screen.counter, 'text', () => String(screen.counter.value));
+ui.bind(screen.evenBranch, 'visible', () => screen.counter.value % 2 === 0);
+ui.bind(screen.oddBranch, 'visible', () => screen.counter.value % 2 !== 0);
 
 // Button: :pressed CSS handles the momentary visual; tap increments counter.
 screen.btn.onClick(() => {

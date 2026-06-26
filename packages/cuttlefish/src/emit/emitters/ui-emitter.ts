@@ -21,6 +21,7 @@ import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandler
 import { emitBindingTable, emitListBindings, getListBindings } from "../../ir/transformers/ui-reactive.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { generateTouchAdapter, TouchAdapterCodegen } from "../../api/shared/display-profile.js";
+import { generateDisplayAdapter } from "../../api/shared/display-adapter.js";
 import { getRadioGroups } from "../../ir/ui-element-auto-wire.js";
 
 export function emitUIRuntime(ctx: EmitterContext): void {
@@ -36,11 +37,17 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // buildEmitterContext (setup.ts), NOT here — emitPreamble runs before this
   // function, so a push here would be too late to land in the output.
 
-  // 0.5. File-scope display object declaration. Must precede the runtime header
-  // so ui_tick (a static inline in the header) can reference __tc_display.
-  // Uses the 3-arg HARDWARE SPI constructor (CS, DC, RST) with VSPI defaults.
+  // 0.5. Display adapter: includes + object declaration + inline functions.
+  // Generated per display driver type (ILI9341, ST7789, etc.) via the
+  // display-adapter registry. Must precede the runtime header so the
+  // adapter functions (__tc_display, display_init, etc.) are available.
   const profile = getDisplayProfile();
-  ctx.sourceLines.push(`Adafruit_ILI9341 __tc_display = Adafruit_ILI9341(${profile._mountCs}, ${profile._mountDc}, ${profile._mountRst});`);
+  if (profile) {
+    const adapter = generateDisplayAdapter(profile);
+    ctx.sourceLines.push(adapter.includes);
+    ctx.sourceLines.push(adapter.declaration);
+    ctx.sourceLines.push(adapter.functions);
+  }
 
   // 0.6. Touch controller declaration (if touch is configured in the profile).
   let touchAdapter: TouchAdapterCodegen | null = null;

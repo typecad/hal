@@ -98,6 +98,18 @@ A clickable button with `:pressed` pseudo-state support and transition animation
 <button id="start">Start</button>
 ```
 
+### Global attributes
+
+All UI elements support the `hidden` attribute. Hidden elements and their
+descendants stay in the generated node table, but they do not take space in
+layout and are skipped for drawing and hit testing.
+
+```html
+<view id="advancedPanel" hidden>
+  <text>Advanced settings</text>
+</view>
+```
+
 ## CSS reference
 
 ### Supported properties
@@ -117,7 +129,7 @@ A clickable button with `:pressed` pseudo-state support and transition animation
 #### Flexbox (via Yoga)
 | Property | Values |
 |---|---|
-| `display` | `flex` |
+| `display` | `flex`, `none` |
 | `flex-direction` | `row`, `column` |
 | `gap` | `8px` |
 | `flex-grow` | `1` |
@@ -127,9 +139,13 @@ A clickable button with `:pressed` pseudo-state support and transition animation
 | `align-self` | `flex-start`, `center`, `flex-end`, `stretch` |
 | `justify-content` | `flex-start`, `center`, `flex-end`, `space-between`, `space-around`, `space-evenly` |
 | `flex-wrap` | `wrap`, `nowrap`, `wrap-reverse` |
-| `order` | `1`, `2`, ... |
-| `position` | `relative`, `absolute`, `static` |
-| `top` / `right` / `bottom` / `left` | `10px` |
+  | `order` | `1`, `2`, ... |
+  | `position` | `relative`, `absolute`, `static` |
+  | `top` / `right` / `bottom` / `left` | `10px` |
+  | `z-index` | numeric layers; inherited by descendants |
+
+`display: none` removes the element subtree from layout, drawing, and hit
+testing while preserving generated node indices.
 
 #### Colors
 All standard CSS color formats are supported:
@@ -430,11 +446,10 @@ src/
 The `.ui.html` file defines the structure (elements, IDs, layout); the CSS file defines the appearance (colors, fonts, borders, shadows). Swap the CSS file in config without touching the HTML.
 
 ### Unsupported (and why)
-- `@keyframes` — transition engine exists; keyframes are separate
 - `display: grid` — needs a GridLayoutEngine
-- Text wrapping / multi-line — no text layout engine
+- Full inline rich text — basic wrapping, `line-height`, `white-space`, and `<br>` are supported; mixed inline spans are not
 - `background-image` / sprites — needs asset pipeline
-- `position: fixed` / `top` / `bottom` / `left` — no CSS positioning (layout is flexbox-only)
+- `position: fixed` — viewport-fixed positioning is not implemented
 - `:after` / `:before` pseudo-elements — no generated content
 - `text-shadow` on built-in font — needs sub-pixel font data (works with custom fonts)
 
@@ -487,6 +502,10 @@ ui.bind(screen.ledBox, 'borderColor', () =>
   (screen.ledBox.value ? 'limegreen' : '#808080')
 );
 
+// Visibility binding - preallocate both branches and toggle which one draws
+ui.bind(screen.enteredBranch, 'visible', () => screen.input.value > 0);
+ui.bind(screen.emptyBranch, 'visible', () => screen.input.value === 0);
+
 // Text binding — number to string
 ui.bind(screen.counter, 'text', () => String(screen.counter.value));
 
@@ -496,6 +515,10 @@ ui.bind(screen.modeValue, 'text', () => (
   screen.modeValue.value === 1 ? 'Manual' : 'Off'
 ));
 ```
+
+`visible` bindings are for fixed-layout conditional rendering. The nodes stay in
+the retained UI tree; hidden branches are skipped for drawing and hit testing,
+and shown branches repaint their subtree.
 
 ### Signals
 

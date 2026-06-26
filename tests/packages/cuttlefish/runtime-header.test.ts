@@ -57,8 +57,10 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/scaleOffsetX/);
     expect(header).toContain("ui_draw_image_rotated");
     expect(header).toContain("ui_draw_image_with_fit");
-    expect(header).toContain("ui_draw_image_with_fit");
-     expect(header).toMatch(/case\s+NODE_IMG:[\s\S]*ui_draw_image_with_fit/);
+    expect(header).toMatch(/for\s*\(int16_t ty = 0; ty < targetH; ty\+\+\)/);
+    expect(header).toMatch(/dx = targetH - 1 - ty/);
+    expect(header).toMatch(/__ui_gfx->drawPixel\(x \+ rdx, y \+ rdy, color\)/);
+    expect(header).toMatch(/case\s+NODE_IMG:[\s\S]*ui_draw_image_with_fit/);
   });
 
   it("uses 32-bit keyframe animation timers so redraw throttling survives long runs", () => {

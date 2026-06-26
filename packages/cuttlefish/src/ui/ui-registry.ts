@@ -20,18 +20,29 @@ import path from "node:path";
 import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "./html-parser.js";
 import type { KeyboardTemplate } from "./html-parser.js";
 import { getThemeCss } from "./theme-store.js";
-import { loadImageAssets, UIImageAsset } from "./image-assets.js";
 import { parseCss, parseFontFaces, parseKeyframes } from "./css-parser.js";
 import type { CSSFontFace, CSSRule, KeyframeSet } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
 import { resolveColor } from "./color.js";
-import type { KeyframeSetModel } from "./model.js";
+import {
+  clampInt16,
+  cssOpacityToPercent,
+  cssPx,
+  KEYFRAME_PROP_BG,
+  KEYFRAME_PROP_FG,
+  KEYFRAME_PROP_OPACITY,
+  KEYFRAME_PROP_SIZE,
+  KEYFRAME_PROP_TRANSFORM,
+  parseTransform,
+  type KeyframeSetModel,
+} from "./model.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
 import { getDisplayProfile } from "./display-profile-store.js";
 import { buildUIFontAssets } from "./font-assets.js";
 import type { UIFontAssetModel } from "./font-assets.js";
+import { emitImageTables, loadImageAssets } from "./image-assets.js";
 
 export interface UIModule {
   /** Absolute path of the .ui.html source. */
@@ -131,62 +142,48 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
     allStyled.push(screen);
   }
 
-  // Load image assets from all screens (before lowering so imgDataId can be set).
-  const htmlDir = path.dirname(abs);
-  const imageAssets: UIImageAsset[] = [];
-  for (const screen of allStyled.length > 0 ? allStyled : [mod.styled]) {
-    const screenImages = loadImageAssets(screen, htmlDir);
-    for (const img of screenImages) {
-      if (!imageAssets.some(a => a.id === img.id)) imageAssets.push(img);
-    }
-  }
-  // Build a map: node id → image index, for the model to assign imgDataId.
-  const imageAssetIds = new Map<string, number>();
-  imageAssets.forEach((a, i) => imageAssetIds.set(a.id, i));
-
   // Resolve @keyframes from the module's parsed keyframe sets.
   const keyframeSets: KeyframeSetModel[] = (mod.rawKeyframes || []).map(ks => ({
     name: ks.name,
-    stops: ks.stops.map(s => ({
-      percent: s.percent,
-      bg: s.background ? resolveColor(s.background, opts.colorFormat) : 0,
-      fg: s.color ? resolveColor(s.color, opts.colorFormat) : 0,
-      opacity: s.opacity ? Math.max(0, Math.min(100, parseInt(s.opacity, 10) || 100)) : 100,
-    })),
+    stops: ks.stops.map(s => {
+      let props = 0;
+      if (s.background) props |= KEYFRAME_PROP_BG;
+      if (s.color) props |= KEYFRAME_PROP_FG;
+      if (s.opacity) props |= KEYFRAME_PROP_OPACITY;
+      if (s.transform || s.left || s.top) props |= KEYFRAME_PROP_TRANSFORM;
+      if (s.width || s.height) props |= KEYFRAME_PROP_SIZE;
+      const transform = parseTransform(s.transform);
+      const x = transform.x + cssPx(s.left);
+      const y = transform.y + cssPx(s.top);
+      return {
+        percent: s.percent,
+        props,
+        bg: s.background ? resolveColor(s.background, opts.colorFormat) : 0,
+        fg: s.color ? resolveColor(s.color, opts.colorFormat) : 0,
+        opacity: s.opacity ? cssOpacityToPercent(s.opacity) : 100,
+        transformOffsetX: clampInt16(x),
+        transformOffsetY: clampInt16(y),
+        translatePctX: clampInt16(transform.pctX),
+        translatePctY: clampInt16(transform.pctY),
+        scaleX: transform.scaleX,
+        scaleY: transform.scaleY,
+        rotateDeg: clampInt16(transform.rotateDeg),
+        width: s.width ? Math.max(0, Math.min(32767, cssPx(s.width))) : 0,
+        height: s.height ? Math.max(0, Math.min(32767, cssPx(s.height))) : 0,
+      };
+    }),
   }));
 
-  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssetIds, keyframeSets);
+  // Load image assets before lowering so imgDataId can be set.
+
+  const imageAssets = loadImageAssets(allStyled.length > 0 ? allStyled : [mod.styled], path.dirname(abs));
+
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets);
 
   // Emit image tables.
-  result.imageTables = emitImageTables(imageAssets);
+  result.imageTables = emitImageTables(imageAssets.assets);
   lowered.set(abs, result);
   return result;
-}
-
-/** Emit C++ image data arrays + index table from image assets. */
-function emitImageTables(assets: UIImageAsset[]): string {
-  if (assets.length === 0) {
-    return "const UIImage __ui_images[] = {};\nconst uint8_t __ui_image_count = 0;";
-  }
-  const lines: string[] = [];
-  // Emit one data array per image.
-  for (const asset of assets) {
-    lines.push(`static const uint16_t __ui_img_${asset.id}_data[] = {`);
-    // Emit in rows of 16 values.
-    for (let i = 0; i < asset.data.length; i += 16) {
-      const chunk = asset.data.slice(i, i + 16).map(v => "0x" + (v & 0xFFFF).toString(16).padStart(4, "0"));
-      lines.push("  " + chunk.join(", ") + ",");
-    }
-    lines.push(`};`);
-  }
-  // Emit the index table.
-  lines.push(`const UIImage __ui_images[] = {`);
-  for (const asset of assets) {
-    lines.push(`  { ${asset.width}, ${asset.height}, __ui_img_${asset.id}_data },`);
-  }
-  lines.push(`};`);
-  lines.push(`const uint8_t __ui_image_count = ${assets.length};`);
-  return lines.join("\n");
 }
 
 export function getUIModule(htmlPath: string): UIModule | undefined {
@@ -266,3 +263,4 @@ function writeTypeDeclSibling(htmlPath: string, styled: StyledNode | StyledNode[
 
   fs.writeFileSync(dtsPath, dts, "utf-8");
 }
+

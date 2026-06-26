@@ -3,13 +3,14 @@
 // node in the styled tree declares display: flex.
 // ---------------------------------------------------------------------------
 
-import { LayoutEngine } from "./layout-engine.js";
+import { isDisplayNone, LayoutEngine } from "./layout-engine.js";
 import { BlockLayoutEngine } from "./block-layout.js";
 import { YogaLayoutEngine } from "./yoga-layout.js";
 import { StyledNode } from "./style-resolver.js";
 
 /** Check if any node in the tree uses display: flex. */
 function usesFlex(node: StyledNode): boolean {
+  if (isDisplayNone(node)) return false;
   if (node.style.display === "flex") return true;
   return node.children.some(usesFlex);
 }

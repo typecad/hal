@@ -11,7 +11,7 @@
 // boxes[] in lockstep with the styled nodes.
 // ---------------------------------------------------------------------------
 
-import { Box, IntrinsicSize, LayoutEngine } from "./layout-engine.js";
+import { Box, IntrinsicSize, isDisplayNone, LayoutEngine } from "./layout-engine.js";
 import { StyledNode } from "./style-resolver.js";
 import { CSSProperty } from "./css-parser.js";
 import Yoga from "yoga-layout";
@@ -56,7 +56,7 @@ export class YogaLayoutEngine implements LayoutEngine {
   arrange(
     root: StyledNode,
     viewport: Box,
-    measureFn: (node: StyledNode) => IntrinsicSize,
+    measureFn: (node: StyledNode, availableWidth?: number) => IntrinsicSize,
   ): Box[] {
     const metaArray: NodeMeta[] = [];
 
@@ -79,7 +79,7 @@ export class YogaLayoutEngine implements LayoutEngine {
   private buildTree(
     node: StyledNode,
     metaArray: NodeMeta[],
-    measureFn: (node: StyledNode) => IntrinsicSize,
+    measureFn: (node: StyledNode, availableWidth?: number) => IntrinsicSize,
     myIndex: number = metaArray.length,
   ): any {
     const yn = Yoga.Node.create();
@@ -87,6 +87,9 @@ export class YogaLayoutEngine implements LayoutEngine {
     metaArray.push({ style: node.style });
 
     const s = node.style;
+    if (isDisplayNone(node)) {
+      yn.setDisplay?.(Yoga.DISPLAY_NONE);
+    }
 
     // Flex container
     if (s.display === "flex") {
@@ -202,17 +205,30 @@ export class YogaLayoutEngine implements LayoutEngine {
       yn.insertChild(childNode, yn.getChildCount());
     }
 
-    // Leaf nodes with text: set content-sized dimensions
+    // Leaf nodes with text: let Yoga pass available width into measurement so
+    // wrapped text can expand height under constraints.
     if (node.children.length === 0) {
-      const intrinsic = measureFn(node);
-      const childPadV = cssPadV(s.padding);
-      const childPadH = cssPadH(s.padding);
-      const childBorder = cssBorderWidth(s.border);
-      if (intrinsic.w > 0) {
-        yn.setWidth(Math.ceil(intrinsic.w + childPadH * 2 + childBorder * 2));
-      }
-      if (intrinsic.h > 0) {
-        yn.setHeight(intrinsic.h + childPadV * 2 + childBorder * 2);
+      const textLike = node.tag === "text" || node.tag === "button" || node.tag === "check" || node.tag === "radio";
+      if (textLike) {
+        yn.setMeasureFunc((width: number, widthMode: number) => {
+          const hasWidth = widthMode !== Yoga.MEASURE_MODE_UNDEFINED && Number.isFinite(width) && width > 0;
+          const intrinsic = measureFn(node, hasWidth ? width : undefined);
+          return {
+            width: Math.ceil(intrinsic.w),
+            height: Math.ceil(intrinsic.h),
+          };
+        });
+      } else {
+        const intrinsic = measureFn(node);
+        const childPadV = cssPadV(s.padding);
+        const childPadH = cssPadH(s.padding);
+        const childBorder = cssBorderWidth(s.border);
+        if (!s.width && intrinsic.w > 0) {
+          yn.setWidth(Math.ceil(intrinsic.w + childPadH * 2 + childBorder * 2));
+        }
+        if (!s.height && intrinsic.h > 0) {
+          yn.setHeight(intrinsic.h + childPadV * 2 + childBorder * 2);
+        }
       }
     }
 

@@ -25,6 +25,10 @@ describe("reactive lowering", () => {
     expect(emitBindingEntry({ nodeIndex: 0, property: "color", fnName: "f" })).toContain("PROP_FG");
   });
 
+  it("maps visible bindings to PROP_VISIBLE", () => {
+    expect(emitBindingEntry({ nodeIndex: 0, property: "visible", fnName: "f" })).toContain("PROP_VISIBLE");
+  });
+
   it("emits a full binding table from a spec list", () => {
     const table = emitBindingTable([
       { nodeIndex: 1, property: "text", fnName: "f1" },

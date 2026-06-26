@@ -25,8 +25,9 @@ describe("HTML subset parser", () => {
     expect(() => parseHtml(`<text>hi</text>`)).toThrow(/screen/);
   });
 
-  it("rejects multiple top-level elements", () => {
-    expect(() => parseHtml(`<screen></screen><screen></screen>`)).toThrow();
+  it("returns the first screen when multiple screens are present", () => {
+    const tree = parseHtml(`<screen id="home"></screen><screen id="settings"></screen>`);
+    expect(tree.id).toBe("home");
   });
 
   it("parses the canonical hello-world tree", () => {
@@ -72,6 +73,11 @@ describe("HTML subset parser", () => {
   it("parses inline style attribute", () => {
     const tree = parseHtml(`<screen><text id="t" style="color: red; font-size: 24px">hi</text></screen>`);
     expect(tree.children[0].inlineStyle).toBe("color: red; font-size: 24px");
+  });
+
+  it("parses hidden attribute", () => {
+    const tree = parseHtml(`<screen><view id="panel" hidden></view></screen>`);
+    expect(tree.children[0].hidden).toBe(true);
   });
 
   it("parses a <keyboard> template alongside <screen>", () => {

@@ -57,6 +57,10 @@
       "types": "./dist/ui/layout-engine.d.ts",
       "default": "./dist/ui/layout-engine.js"
     },
+    "./ui/text-layout": {
+      "types": "./dist/ui/text-layout.d.ts",
+      "default": "./dist/ui/text-layout.js"
+    },
     "./ui/block-layout": {
       "types": "./dist/ui/block-layout.d.ts",
       "default": "./dist/ui/block-layout.js"

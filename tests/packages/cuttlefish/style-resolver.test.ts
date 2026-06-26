@@ -40,4 +40,12 @@ describe("style resolver", () => {
     expect(btn.style.background).toBe("#404040");
     expect(btn.style.pressed?.background).toBe("#808080");
   });
+
+  it("maps the hidden attribute to display none after inline styles", () => {
+    const styled = resolve(
+      `<screen><view id="panel" hidden style="display: flex"></view></screen>`,
+      ``,
+    );
+    expect(styled.children[0].style.display).toBe("none");
+  });
 });

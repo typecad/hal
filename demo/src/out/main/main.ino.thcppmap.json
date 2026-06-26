@@ -796,7 +796,7 @@
       "generatedStartLine": 171,
       "generatedStartColumn": 1,
       "generatedEndLine": 171,
-      "generatedEndColumn": 30,
+      "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\main.ts",
         "startOffset": 2930,
@@ -1373,7 +1373,7 @@
       "generatedStartLine": 210,
       "generatedStartColumn": 1,
       "generatedEndLine": 210,
-      "generatedEndColumn": 19,
+      "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\demo\\src\\main.ts",
         "startOffset": 0,

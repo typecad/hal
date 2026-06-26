@@ -294,7 +294,12 @@ export function emitFunctions(ctx: EmitterContext): void {
     // a UI is mounted (entryHasUI). Uses a separate gate from the async pump
     // so a pure-UI program (no async/timers) still animates.
     if (entryHasUI() && fn.name === asyncDriverFn) {
-      appendSourceLine(ctx, "  ui_tick(16);");
+      appendSourceLine(ctx, `  uint32_t __tc_ui_now = (uint32_t)${strategy.currentTimeMillis()};`);
+      appendSourceLine(ctx, "  static uint32_t __tc_ui_last_tick = __tc_ui_now;");
+      appendSourceLine(ctx, "  uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
+      appendSourceLine(ctx, "  __tc_ui_last_tick = __tc_ui_now;");
+      appendSourceLine(ctx, "  if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
+      appendSourceLine(ctx, "  ui_tick((uint16_t)__tc_ui_delta);");
     }
     if (fn.isAsync && ctx.hasAsyncRuntime) {
       appendSourceLine(ctx, `  // driven as cooperative task in ${asyncDriverFn}()`);

@@ -48,9 +48,7 @@ export function resolveILI9341Op(
       return {
         code: [
           ctx.backlight ? `pinMode(${ctx.backlight}, OUTPUT); digitalWrite(${ctx.backlight}, HIGH);` : ``,
-          ctx.spiFrequency ? `${DISPLAY_VAR}.begin(${ctx.spiFrequency});` : `${DISPLAY_VAR}.begin();`,
-          `${DISPLAY_VAR}.setRotation(${ctx.rotation ?? 1});`,
-          `${DISPLAY_VAR}.fillScreen(0x0000);`,
+          `display_init();`,
         ].filter(Boolean).join("\n"),
       };
     case "display.fill_rect":
