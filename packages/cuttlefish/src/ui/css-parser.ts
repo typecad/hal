@@ -626,10 +626,9 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "border-color": props.borderColor = val; break;
     case "border-style": props.borderStyle = val; break;
     case "border-left": case "border-top": case "border-right": case "border-bottom":
-      // Per-side border shorthand — expand into the global fields.
-      // For v1, side-specific borders apply to all sides (the runtime draws
-      // a uniform border). A future improvement could draw per-side borders.
-      props.border = val; parseBorderShorthand(props, val); break;
+      // Per-side borders are NOT supported (runtime draws uniform borders).
+      // Silently drop to avoid drawing 4-sided borders when only one side was intended.
+      break;
     case "opacity": props.opacity = val; break;
     case "visibility": props.visibility = val; break;
     case "outline": props.outline = val; break;
