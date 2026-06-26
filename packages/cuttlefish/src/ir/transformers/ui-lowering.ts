@@ -214,6 +214,10 @@ function hex(c: number): string {
   return `0x${c.toString(16).padStart(4, "0")}`;
 }
 
+function cppString(value: string | undefined): string {
+  return value ? JSON.stringify(value) : "nullptr";
+}
+
 function byteArray(values: number[]): string {
   if (values.length === 0) return "";
   const chunks: string[] = [];
@@ -224,55 +228,58 @@ function byteArray(values: number[]): string {
 }
 
 function emitFontTables(model: UIProgram): string {
-  const assets = model.fontAssets ?? [];
-  if (assets.length === 0) {
-    return [
-      `const UIFontFace __ui_font_faces[] = {};`,
-      `const uint8_t __ui_font_face_count = 0;`,
-    ].join("\n");
-  }
+   const assets = model.fontAssets ?? [];
+   if (assets.length === 0) {
+     return [
+       `const UIFontFace __ui_font_faces[] = {};`,
+       `const uint8_t __ui_font_face_count = 0;`,
+     ].join("\n");
+   }
 
-  const lines: string[] = [];
-  for (const asset of assets) {
-    lines.push(`// Font ${asset.id}: ${asset.family} ${asset.px}px ${asset.fontWeight} ${asset.fontStyle} ${asset.subset}`);
-    lines.push(`static const uint8_t __ui_font_${asset.id}_alpha[] = {`);
-    lines.push(byteArray(asset.alpha));
-    lines.push(`};`);
-    lines.push(`static const UIFontGlyph __ui_font_${asset.id}_glyphs[] = {`);
-    for (const glyph of asset.glyphs) {
-      lines.push(
-        `  { ${glyph.codepoint}, ${glyph.xOffset}, ${glyph.yOffset}, ${glyph.width}, ${glyph.height}, ${glyph.advance}, ${glyph.dataOffset} },`,
-      );
-    }
-    lines.push(`};`);
-  }
+   const lines: string[] = [];
+   for (const asset of assets) {
+     lines.push(`// Font ${asset.id}: ${asset.family} ${asset.px}px ${asset.fontWeight} ${asset.fontStyle} ${asset.subset}`);
+     // Alpha data goes in PROGMEM (constants in flash, not RAM) - accessed via pgm_read_byte on AVR
+     lines.push(`static const uint8_t __ui_font_${asset.id}_alpha[] PROGMEM = {`);
+     lines.push(byteArray(asset.alpha));
+     lines.push(`};`);
+     lines.push(`static const UIFontGlyph __ui_font_${asset.id}_glyphs[] = {`);
+     for (const glyph of asset.glyphs) {
+       lines.push(
+         `  { ${glyph.codepoint}, ${glyph.xOffset}, ${glyph.yOffset}, ${glyph.width}, ${glyph.height}, ${glyph.advance}, ${glyph.dataOffset} },`,
+       );
+     }
+     lines.push(`};`);
+   }
 
-  lines.push(`const UIFontFace __ui_font_faces[] = {`);
-  for (const asset of assets) {
-    lines.push(
-      `  { ${asset.id}, ${asset.glyphs.length}, ${asset.lineHeight}, ${asset.baseline}, __ui_font_${asset.id}_glyphs, __ui_font_${asset.id}_alpha },`,
-    );
-  }
-  lines.push(`};`);
-  lines.push(`const uint8_t __ui_font_face_count = ${assets.length};`);
-  return lines.join("\n");
-}
+   // Font faces and glyphs stay in regular memory for direct struct access
+   // (AVR optimized builds can move the whole table to PROGMEM + accessor functions)
+   lines.push(`const UIFontFace __ui_font_faces[] = {`);
+   for (const asset of assets) {
+     lines.push(
+       `  { ${asset.id}, ${asset.glyphs.length}, ${asset.lineHeight}, ${asset.baseline}, __ui_font_${asset.id}_glyphs, __ui_font_${asset.id}_alpha },`,
+     );
+   }
+   lines.push(`};`);
+   lines.push(`const uint8_t __ui_font_face_count = ${assets.length};`);
+   return lines.join("\n");
+ }
 
 function emitNodeTable(model: UIProgram): string {
   const lines = model.nodes.map((n) => {
-    const text = n.text ? `"${n.text}"` : "nullptr";
+    const text = cppString(n.text);
     const font = "nullptr";
     // Input nodes store the placeholder in .text (static literal) so the draw
     // can show it grayed when textBuffer is empty. textBuffer stays {0} so
     // ui_kb_open starts with a clean edit buffer (no placeholder to delete).
-    const inputText = n.kind === "input" && n.textBuffer ? `"${n.textBuffer}"` : text;
+    const inputText = n.kind === "input" && n.textBuffer ? cppString(n.textBuffer) : text;
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
     const parent = n.parentIndex >= 0 ? n.parentIndex : 255;
     // Progress/range use lastTextWidth as a "previous fill width" for
     // incremental redraw. -1 = never drawn, because fill width 0 is valid.
     const lastTextWidth = n.kind === "progress" || n.kind === "range" ? -1 : 0;
     const shArr = (vals: number[], n = 4) => `{${[...vals.slice(0, n), ...Array(n - Math.min(vals.length, n)).fill(0)].join(",")}}`;
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .lineHeight=${n.lineHeight}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .zIndex=${n.zIndex}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .rotateDeg=${n.rotateDeg}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .whiteSpaceMode=${n.whiteSpaceMode}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .lastTextHeight=0, .scrollable=${n.scrollable ? 1 : 0}, .scrollY=0, .contentHeight=${n.contentHeight}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.
@@ -314,7 +321,7 @@ function emitKeyframeTables(model: UIProgram): string {
     const safeName = ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
     lines.push(`static const UIKeyframeStop __ui_kf_${safeName}_stops[] = {`);
     for (const s of ks.stops) {
-      lines.push(`  { .percent=${s.percent}, .bg=${hex(s.bg)}, .fg=${hex(s.fg)}, .opacity=${s.opacity} },`);
+      lines.push(`  { .percent=${s.percent}, .props=${s.props}, .bg=${hex(s.bg)}, .fg=${hex(s.fg)}, .opacity=${s.opacity}, .transformOffsetX=${s.transformOffsetX}, .transformOffsetY=${s.transformOffsetY}, .translatePctX=${s.translatePctX}, .translatePctY=${s.translatePctY}, .scaleX=${s.scaleX}, .scaleY=${s.scaleY}, .rotateDeg=${s.rotateDeg}, .width=${s.width}, .height=${s.height} },`);
     }
     lines.push(`};`);
   }
@@ -329,7 +336,7 @@ function emitKeyframeTables(model: UIProgram): string {
   // Emit animation table (mutable — runtime advances elapsed/active).
   lines.push(`UIAnimation __ui_anims[] = {`);
   for (const a of model.animations) {
-    lines.push(`  { .node=${a.node}, .keyframeSet=${a.keyframeSet}, .durationMs=${a.durationMs}, .delayMs=${a.delayMs}, .iterations=${a.iterations}, .elapsed=0, .active=1 },`);
+    lines.push(`  { .node=${a.node}, .keyframeSet=${a.keyframeSet}, .durationMs=${a.durationMs}, .delayMs=${a.delayMs}, .iterations=${a.iterations}, .baseWidth=${a.baseWidth}, .baseHeight=${a.baseHeight}, .originX=${a.originX}, .originY=${a.originY}, .elapsed=0, .active=1, .lastUpdateMs=0 },`);
   }
   lines.push(`};`);
   lines.push(`const uint8_t __ui_anim_count = ${model.animations.length};`);
