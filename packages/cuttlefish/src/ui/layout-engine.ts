@@ -37,6 +37,25 @@ export function isDisplayNone(node: StyledNode): boolean {
   return node.style.display?.trim().toLowerCase() === "none";
 }
 
+/** Parse CSS aspect-ratio values: "16 / 9", "1/1", or "1.777". */
+export function parseAspectRatio(value: string | undefined): number | undefined {
+  const raw = value?.trim().toLowerCase();
+  if (!raw || raw === "auto") return undefined;
+  const parts = raw.split("/").map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 1) {
+    const ratio = parseFloat(parts[0]);
+    return Number.isFinite(ratio) && ratio > 0 ? ratio : undefined;
+  }
+  if (parts.length === 2) {
+    const width = parseFloat(parts[0]);
+    const height = parseFloat(parts[1]);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      return width / height;
+    }
+  }
+  return undefined;
+}
+
 // The Adafruit GFX default font: 5×7 pixel glyphs, 6px advance width per char.
 // At setTextSize(N), advance = 6×N, height = 8×N (7 glyph + 1 descender line).
 // The draw dispatch in the runtime header uses setTextSize(2).

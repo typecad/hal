@@ -49,6 +49,7 @@ export interface StyledNode {
   imgHeight?: number;
   /** Item height in pixels (for <list>). */
   itemHeight?: number;
+  disabled?: boolean;
 }
 
 /** Does a single element match a compound selector (all simples must match)? */
@@ -142,5 +143,6 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     imgWidth: node.imgWidth,
     imgHeight: node.imgHeight,
     itemHeight: node.itemHeight,
+    disabled: (node as any).disabled,
   };
 }

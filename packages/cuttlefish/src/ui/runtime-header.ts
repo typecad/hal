@@ -520,6 +520,19 @@ static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y
   display_endWrite();
 }
 
+static inline void ui_draw_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
+  if (!canvas || !canvas->getBuffer()) return;
+  uint16_t* pixels = canvas->getBuffer();
+  int16_t stride = canvas->width();
+  if (w == stride && h == canvas->height()) {
+    __ui_gfx->drawRGBBitmap(x, y, pixels, w, h);
+    return;
+  }
+  for (int16_t row = 0; row < h; row++) {
+    __ui_gfx->drawRGBBitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+  }
+}
+
 // Per-node dirty marker (called by press handlers and binding evaluation).
 static inline void ui_mark_dirty(uint8_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
@@ -769,6 +782,7 @@ static inline void ui_clear_press_offset_area(uint8_t nodeIdx, int16_t baseX, in
 
 static inline uint8_t ui_should_buffer_paint(uint8_t nodeIdx, int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return 0;
+  if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_PROGRESS || __ui_nodes[nodeIdx].kind == NODE_RANGE) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_FILL &&
       __ui_nodes[nodeIdx].hasBg &&
@@ -2055,6 +2069,28 @@ static inline void ui_draw_shadow(uint8_t i, int16_t drawY, uint8_t insetOnly) {
   }
 }
 
+static inline void ui_draw_closed_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t radius, uint16_t color) {
+  if (w <= 0 || h <= 0) return;
+  uint8_t r = radius;
+  if (r > w / 2) r = w / 2;
+  if (r > h / 2) r = h / 2;
+  if (r == 0) {
+    __ui_gfx->drawRect(x, y, w, h, color);
+    return;
+  }
+  __ui_gfx->drawRoundRect(x, y, w, h, r, color);
+  // Adafruit_GFX's circle helper omits the cardinal tangent pixels. Fill them
+  // so straight edges and corner arcs meet without visible pinholes.
+  __ui_gfx->drawPixel(x + r, y, color);
+  __ui_gfx->drawPixel(x + w - r - 1, y, color);
+  __ui_gfx->drawPixel(x + r, y + h - 1, color);
+  __ui_gfx->drawPixel(x + w - r - 1, y + h - 1, color);
+  __ui_gfx->drawPixel(x, y + r, color);
+  __ui_gfx->drawPixel(x + w - 1, y + r, color);
+  __ui_gfx->drawPixel(x, y + h - r - 1, color);
+  __ui_gfx->drawPixel(x + w - 1, y + h - r - 1, color);
+}
+
 static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t radius, uint8_t style, uint8_t width, uint16_t color) {
   if (style == 0 || width == 0 || w <= 0 || h <= 0) return;
   for (uint8_t b = 0; b < width; b++) {
@@ -2065,7 +2101,7 @@ static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t
     if (rw <= 0 || rh <= 0) return;
     uint8_t r = radius > b ? radius - b : 0;
     if (style == 1) {
-      if (r > 0) __ui_gfx->drawRoundRect(rx, ry, rw, rh, r, color);
+      if (r > 0) ui_draw_closed_round_rect(rx, ry, rw, rh, r, color);
       else __ui_gfx->drawRect(rx, ry, rw, rh, color);
     } else {
       for (int16_t dx = 0; dx < rw; dx += 8) {
@@ -2871,10 +2907,18 @@ static inline void ui_tick(uint16_t deltaMs) {
           lc->fillRect(tx, 0, 3, bh, dimFg);
           lc->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
         }
-        // Push canvas to display at viewport position.
-        ui_push_canvas_rect(lc, bx, by, bw, bh);
+        // Standalone lists push directly. Lists inside a buffered scroll
+        // container must composite into that scroll canvas; their box has
+        // already been translated to canvas-local coordinates.
+        if (drawingBufferedScroll) {
+          ui_draw_canvas_rect(lc, bx, by, bw, bh);
+        } else {
+          ui_push_canvas_rect(lc, bx, by, bw, bh);
+        }
         __ui_nodes[i].dirty = 0;
         __ui_gfx = &__tc_display;
+        __ui_nodes[i].box.x = origBoxX;
+        __ui_nodes[i].box.y = origBoxY;
         continue;  // skip outline/paint-canvas/restore (list draws its own border)
       }
     }

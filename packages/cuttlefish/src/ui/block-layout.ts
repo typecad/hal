@@ -8,7 +8,7 @@
 // handles flexbox layouts.
 // ---------------------------------------------------------------------------
 
-import { Box, IntrinsicSize, isDisplayNone, LayoutEngine } from "./layout-engine.js";
+import { Box, IntrinsicSize, isDisplayNone, LayoutEngine, parseAspectRatio } from "./layout-engine.js";
 import { StyledNode } from "./style-resolver.js";
 
 /** Parse a CSS value string ("8px", "8") to a number. */
@@ -67,11 +67,30 @@ export class BlockLayoutEngine implements LayoutEngine {
         ? intrinsic.w + childPad * 2
         : content.w;
       const childH = intrinsic.h > 0 ? intrinsic.h + (isButton ? childPad * 2 : 0) : 16;
+      const explicitW = cssNum(child.style.width);
+      const explicitH = cssNum(child.style.height);
+      const aspectRatio = parseAspectRatio(child.style.aspectRatio);
+      let resolvedW = childW;
+      let resolvedH = childH;
+      if (aspectRatio !== undefined) {
+        if (explicitW > 0 && explicitH <= 0) {
+          resolvedW = explicitW;
+          resolvedH = Math.round(resolvedW / aspectRatio);
+        } else if (explicitH > 0 && explicitW <= 0) {
+          resolvedH = explicitH;
+          resolvedW = Math.round(resolvedH * aspectRatio);
+        } else if (explicitW > 0 && explicitH > 0) {
+          resolvedW = explicitW;
+          resolvedH = explicitH;
+        } else if (!isButton) {
+          resolvedH = Math.round(resolvedW / aspectRatio);
+        }
+      }
       const childBox: Box = {
         x: content.x,
         y: cursorY,
-        w: childW,
-        h: childH,
+        w: resolvedW,
+        h: resolvedH,
       };
       this.layoutNode(child, childBox, out, measureFn);
       cursorY += childBox.h;

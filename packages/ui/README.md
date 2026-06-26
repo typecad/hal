@@ -123,6 +123,7 @@ layout and are skipped for drawing and hit testing.
 | `height` | `50px` | Explicit size |
 | `min-width` / `max-width` | `100px` | Yoga constraints |
 | `min-height` / `max-height` | `50px` | Yoga constraints |
+| `aspect-ratio` | `16 / 9`, `1 / 1`, `1.5` | Infers the missing width or height |
 | `box-sizing` | `border-box` | Yoga border-box |
 | `overflow` | `hidden` | Clips children |
 

@@ -11,12 +11,13 @@
 
 import { parse, walk, generate } from "css-tree";
 
-export type CSSSelectorKind = "element" | "id" | "class";
+export type CSSSelectorKind = "element" | "id" | "class" | "attribute";
 
 /** A single simple selector: tag name, #id, or .class. */
 export interface SimpleSelector {
   kind: CSSSelectorKind;
   name: string;
+  value?: string;
 }
 
 /** A full CSS selector, supporting compound (`.foo.bar`, `tag.class`) and
@@ -26,7 +27,8 @@ export interface SimpleSelector {
  *  - Preceding compounds are ancestor constraints (descendant combinator). */
 export interface CSSSelector {
   compounds: SimpleSelector[][];
-  pseudo?: "pressed";
+  combinators?: (">" | " ")[];
+  pseudo?: "pressed" | "disabled" | "checked" | "focus";
 }
 
 export interface TransitionDecl {
@@ -287,32 +289,56 @@ export function parseInlineStyle(src: string): CSSProperty {
  *  CSS (no dot in tag names), `parent child` (descendant), and `:pressed`.
  *  Returns null for empty/invalid selectors. */
 function parseSelector(s: string): CSSSelector | null {
-  // Strip :pressed / :active pseudo (may appear after the last compound).
-  const pseudoM = /:(pressed|active)$/.exec(s);
+  const pseudoM = /:(pressed|active|disabled|checked|focus)$/.exec(s);
+  let pseudo: CSSSelector["pseudo"];
+  if (pseudoM) {
+    const p = pseudoM[1];
+    pseudo = (p === "active") ? "pressed" : p as any;
+  }
   const base = pseudoM ? s.slice(0, pseudoM.index) : s;
-  const trimmed = base.trim().replace(/^["']|["']$/g, "");
+  const trimmed = base.trim().replace(/^[\"']/, "").replace(/[\"']$/, "");
   if (!trimmed) return null;
 
-  // Split on whitespace into compound groups (descendant combinator).
-  const groups = trimmed.split(/\s+/).filter(Boolean);
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
   const compounds: SimpleSelector[][] = [];
-  for (const group of groups) {
-    // Split a compound into simples: .class, #id, or bare tag.
-    // Use a regex that captures leading . or # prefixed tokens.
+  const combinators: (">" | " ")[] = [];
+  let expectCombinator = false;
+
+  for (const tok of tokens) {
+    if (tok === ">") {
+      combinators.push(">");
+      expectCombinator = false;
+      continue;
+    }
+    if (expectCombinator) combinators.push(" ");
+
     const simples: SimpleSelector[] = [];
-    const tokenRe = /([.#]?)([a-zA-Z_][\w-]*)/g;
-    let m: RegExpExecArray | null;
-    while ((m = tokenRe.exec(group)) !== null) {
-      const prefix = m[1];
-      const name = m[2];
-      if (prefix === "#") simples.push({ kind: "id", name });
-      else if (prefix === ".") simples.push({ kind: "class", name });
-      else simples.push({ kind: "element", name });
+    // Attribute selectors: [disabled], [type="number"]
+    const attrRe = /\[([\w-]+)(?:([~|^$*]?=)["']?([^'"\]]*)["']?)?\]/g;
+    let am: RegExpExecArray | null;
+    while ((am = attrRe.exec(tok)) !== null) {
+      simples.push({ kind: "attribute", name: am[1], value: am[3] });
+    }
+    // Remaining simples from non-attribute parts
+    const remaining = tok.replace(/\[[^\]]*\]/g, "");
+    if (remaining) {
+      const tokenRe = /([.#]?)([a-zA-Z_][\w-]*)/g;
+      let m: RegExpExecArray | null;
+      while ((m = tokenRe.exec(remaining)) !== null) {
+        if (m[1] === "#") simples.push({ kind: "id", name: m[2] });
+        else if (m[1] === ".") simples.push({ kind: "class", name: m[2] });
+        else simples.push({ kind: "element", name: m[2] });
+      }
     }
     if (simples.length > 0) compounds.push(simples);
+    expectCombinator = true;
   }
+
   if (compounds.length === 0) return null;
-  return { compounds, pseudo: pseudoM ? "pressed" : undefined };
+  const result: CSSSelector = { compounds };
+  if (combinators.length > 0) result.combinators = combinators;
+  if (pseudo) result.pseudo = pseudo;
+  return result;
 }
 
 /** Parse a numeric value from a CSS string like "8px" or "8" → 8. */

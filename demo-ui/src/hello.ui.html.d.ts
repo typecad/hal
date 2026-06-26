@@ -94,5 +94,22 @@ export interface ScreenTree {
   fitFillRow: ViewElement;
   fitFillLabel: TextElement;
   fitImgFill: TextElement;
+  displayNoneDemo: ViewElement;
+  displayNoneDemoLabel: TextElement;
+  displayNoneStack: ViewElement;
+  displayBeforeRow: ViewElement;
+  displayBeforeText: TextElement;
+  hiddenAttrRow: ViewElement;
+  hiddenAttrText: TextElement;
+  displayNoneRow: ViewElement;
+  displayNoneText: TextElement;
+  displayAfterRow: ViewElement;
+  displayAfterText: TextElement;
+  aspectDemo: ViewElement;
+  aspectDemoLabel: TextElement;
+  aspectWide: ViewElement;
+  aspectWideText: TextElement;
+  aspectSquare: ViewElement;
+  aspectSquareText: TextElement;
 }
 export const screen: ScreenTree;

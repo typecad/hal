@@ -50,6 +50,9 @@ export interface UIElementNode {
   imgHeight?: number;
   /** Item height in pixels (for <list item-height="24">). */
   itemHeight?: number;
+  
+  /** Disabled state */
+  disabled?: boolean;
   children: UIElementNode[];
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
@@ -217,6 +220,7 @@ function domToUIElementNode(el: Element): UIElementNode {
   const imgWidthAttr = tag === "img" ? parseInt(el.getAttribute("width") || "0", 10) : undefined;
   const imgHeightAttr = tag === "img" ? parseInt(el.getAttribute("height") || "0", 10) : undefined;
   const itemHeightAttr = tag === "list" ? (parseInt(el.getAttribute("item-height") || "24", 10) || 24) : undefined;
+  const disabledAttr = el.hasAttribute("disabled");
 
   // For <select>, parse <option> children into an options list
   if (tag === "select") {
@@ -271,7 +275,7 @@ function domToUIElementNode(el: Element): UIElementNode {
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, disabled: disabledAttr, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child));
   }

@@ -52,6 +52,26 @@ describe("UI layout harness", () => {
     expect(ui.node("last").index).toBe(5);
   });
 
+  it("applies aspect ratio in flex layout", () => {
+    const ui = buildUiFixture({
+      html: `
+        <screen id="root">
+          <view id="wide"></view>
+          <view id="tall"></view>
+        </screen>
+      `,
+      css: `
+        screen { display: flex; flex-direction: column; }
+        #wide { width: 160px; aspect-ratio: 16 / 9; background: #00ff00; }
+        #tall { height: 40px; aspect-ratio: 3 / 2; background: #0000ff; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+    expect(ui.node("wide").box).toMatchObject({ w: 160, h: 90 });
+    expect(ui.node("tall").box).toMatchObject({ y: 90, w: 60, h: 40 });
+  });
+
   describe("supported selector matrix", () => {
     const green = resolveColor("#00ff00", "rgb565");
     const white = resolveColor("#ffffff", "rgb565");
@@ -842,6 +862,29 @@ describe("UI layout harness", () => {
         .toBe(resolveColor("#ff0000", "rgb565"));
       expect(px(runtime.gfx.buffer, ui.program.width, bar.box.x + bar.box.w - 2, bar.box.y + 2))
         .toBe(resolveColor("#202020", "rgb565"));
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders closed rounded border corner joins in the preview framebuffer", () => {
+    const ui = buildUiFixture({
+      html: `<screen id="root"><view id="box"></view></screen>`,
+      css: `
+        screen { display: flex; padding: 4px; background: #000000; }
+        #box { width: 40px; height: 24px; background: #101010; border: 1px solid #ffffff; border-radius: 4px; }
+      `,
+    });
+
+    const runtime = ui.startPreview();
+    try {
+      const box = ui.node("box");
+      const white = resolveColor("#ffffff", "rgb565");
+      const r = box.borderRadius;
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + r, box.box.y)).toBe(white);
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x, box.box.y + r)).toBe(white);
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + box.box.w - r - 1, box.box.y)).toBe(white);
+      expect(px(runtime.gfx.buffer, ui.program.width, box.box.x + box.box.w - 1, box.box.y + r)).toBe(white);
     } finally {
       runtime.stop();
     }

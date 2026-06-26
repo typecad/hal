@@ -208,6 +208,13 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_push_canvas_rect\(bufferedScrollCanvas/);
   });
 
+  it("composites list canvases into buffered scroll containers instead of pushing at local coordinates", () => {
+    expect(header).toContain("ui_draw_canvas_rect");
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*if\s*\(drawingBufferedScroll\)\s*\{[\s\S]*ui_draw_canvas_rect\(lc,\s*bx,\s*by,\s*bw,\s*bh\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*else\s*\{[\s\S]*ui_push_canvas_rect\(lc,\s*bx,\s*by,\s*bw,\s*bh\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*__ui_nodes\[i\]\.box\.x\s*=\s*origBoxX;[\s\S]*__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY;[\s\S]*continue/);
+  });
+
   it("clips animated geometry clears inside scroll containers instead of redrawing the whole viewport", () => {
     expect(header).toContain("ui_scroll_ancestor_for_node");
     expect(header).toContain("ui_fill_rect_clipped");
@@ -223,8 +230,18 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_draw_node_decoration_clipped[\s\S]*borderRadius > 0[\s\S]*ui_draw_node_outline/);
   });
 
+  it("closes rounded border tangent pixels so outlines do not have corner pinholes", () => {
+    expect(header).toContain("ui_draw_closed_round_rect");
+    expect(header).toMatch(/drawRoundRect\(x,\s*y,\s*w,\s*h,\s*r,\s*color\)[\s\S]*drawPixel\(x \+ r,\s*y,\s*color\)/);
+    expect(header).toMatch(/ui_draw_rect_outline[\s\S]*ui_draw_closed_round_rect/);
+  });
+
   it("does not use the generic paint canvas for simple solid fills", () => {
     expect(header).toMatch(/kind == NODE_FILL[\s\S]*hasBg[\s\S]*gradientEnabled == 0[\s\S]*borderRadius == 0[\s\S]*return 0/);
+  });
+
+  it("does not wrap list drawing in the generic paint canvas", () => {
+    expect(header).toMatch(/ui_should_buffer_paint[\s\S]*kind == NODE_LIST\)\s*return 0/);
   });
 
   it("uses ui_is_clipped_by_scroll for scroll child clipping", () => {

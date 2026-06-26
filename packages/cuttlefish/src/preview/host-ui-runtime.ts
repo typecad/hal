@@ -1178,7 +1178,7 @@ export class PreviewUIRuntime {
       if (rw <= 0 || rh <= 0) return;
       const r = radius > b ? radius - b : 0;
       if (style === 1) {
-        if (r > 0) this.gfx.drawRoundRect(rx, ry, rw, rh, r, color);
+        if (r > 0) this.drawClosedRoundRect(rx, ry, rw, rh, r, color);
         else this.gfx.drawRect(rx, ry, rw, rh, color);
       } else {
         for (let dx = 0; dx < rw; dx += 8) {
@@ -1197,6 +1197,25 @@ export class PreviewUIRuntime {
         }
       }
     }
+  }
+
+  private drawClosedRoundRect(x: number, y: number, w: number, h: number, radius: number, color: number): void {
+    let r = Math.max(0, Math.trunc(radius));
+    if (w <= 0 || h <= 0) return;
+    r = Math.min(r, Math.trunc(Math.min(w, h) / 2));
+    if (r <= 0) {
+      this.gfx.drawRect(x, y, w, h, color);
+      return;
+    }
+    this.gfx.drawRoundRect(x, y, w, h, r, color);
+    this.gfx.drawPixel(x + r, y, color);
+    this.gfx.drawPixel(x + w - r - 1, y, color);
+    this.gfx.drawPixel(x + r, y + h - 1, color);
+    this.gfx.drawPixel(x + w - r - 1, y + h - 1, color);
+    this.gfx.drawPixel(x, y + r, color);
+    this.gfx.drawPixel(x + w - 1, y + r, color);
+    this.gfx.drawPixel(x, y + h - r - 1, color);
+    this.gfx.drawPixel(x + w - 1, y + h - r - 1, color);
   }
 
   private drawNodeBorder(node: MutableNode, drawY: number, color: number): void {

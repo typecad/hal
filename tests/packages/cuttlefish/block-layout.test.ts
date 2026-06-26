@@ -53,6 +53,21 @@ describe("BlockLayoutEngine", () => {
     expect(boxes[4]).toMatchObject({ y: 16, h: 16 });
   });
 
+  it("applies aspect ratio to block-flow children", () => {
+    const boxes = layout(
+      `<screen><view id="wide"></view><view id="tall"></view></screen>`,
+      `
+        screen { padding: 0; }
+        #wide { width: 80px; aspect-ratio: 16 / 9; }
+        #tall { height: 30px; aspect-ratio: 2 / 1; }
+      `,
+      { x: 0, y: 0, w: 120, h: 120 },
+    );
+
+    expect(boxes[1]).toMatchObject({ w: 80, h: 45 });
+    expect(boxes[2]).toMatchObject({ y: 45, w: 60, h: 30 });
+  });
+
   it("measure returns text intrinsic size from GFX font metrics", () => {
     const styled = resolveStyles(
       parseHtml(`<screen><text id="t">hi</text></screen>`),

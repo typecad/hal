@@ -71,6 +71,12 @@ describe("CSS subset parser", () => {
     expect(parseInlineStyle("display: none").display).toBe("none");
   });
 
+  it("parses aspect ratio declarations", () => {
+    const rules = parseCss(`#panel { aspect-ratio: 16 / 9; }`);
+    expect(rules[0].properties.aspectRatio).toBe("16/9");
+    expect(parseInlineStyle("width: 80px; aspect-ratio: 1 / 1").aspectRatio).toBe("1 / 1");
+  });
+
   it("parses font family and smoothing declarations", () => {
     const rules = parseCss(`#title { font-family: "FreeSans"; font-style: italic; font-smoothing: antialiased; font-subset: fallback; }`);
     expect(rules[0].properties.fontFamily).toBe('"FreeSans"');

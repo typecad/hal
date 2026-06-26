@@ -140,5 +140,31 @@
          <img id="fitImgFill" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: fill"></img>
        </view>
      </view>
+     <view id="displayNoneDemo">
+       <text id="displayNoneDemoLabel">display none / hidden</text>
+       <view id="displayNoneStack">
+         <view id="displayBeforeRow">
+           <text id="displayBeforeText">before</text>
+         </view>
+         <view id="hiddenAttrRow" hidden>
+           <text id="hiddenAttrText">hidden attr should not appear</text>
+         </view>
+         <view id="displayNoneRow">
+           <text id="displayNoneText">display none should not appear</text>
+         </view>
+         <view id="displayAfterRow">
+           <text id="displayAfterText">after</text>
+         </view>
+       </view>
+     </view>
+     <view id="aspectDemo">
+       <text id="aspectDemoLabel">aspect-ratio</text>
+       <view id="aspectWide">
+         <text id="aspectWideText">16:9</text>
+       </view>
+       <view id="aspectSquare">
+         <text id="aspectSquareText">1:1</text>
+       </view>
+     </view>
    </view>
  </screen>

@@ -514,6 +514,112 @@ screen {
   border: 1px solid #4a6a9c;
 }
 
+#displayNoneDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#displayNoneDemoLabel {
+  color: lightslategray;
+  font-size: 14px;
+}
+
+#displayNoneStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 180px;
+  background: #2a5a8c;
+  padding: 1px;
+}
+
+#displayBeforeRow,
+#displayAfterRow,
+#hiddenAttrRow,
+#displayNoneRow {
+  width: 180px;
+  height: 24px;
+}
+
+#displayBeforeRow {
+  background: #1a3a5c;
+  border-radius: 4px 4px 0 0;
+}
+
+#displayAfterRow {
+  background: #1a6b3c;
+  border-radius: 0 0 4px 4px;
+}
+
+#hiddenAttrRow,
+#displayNoneRow {
+  background: #5c1a1a;
+}
+
+#displayNoneRow {
+  display: none;
+}
+
+#displayBeforeText,
+#displayAfterText,
+#hiddenAttrText,
+#displayNoneText {
+  width: 180px;
+  color: white;
+  font-size: 14px;
+  text-align: center;
+}
+
+#aspectDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#aspectDemoLabel {
+  color: lightslategray;
+  font-size: 14px;
+}
+
+#aspectWide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 144px;
+  aspect-ratio: 16 / 9;
+  background: #1a3a5c;
+  border: 1px solid #2a5a8c;
+  border-radius: 4px;
+}
+
+#aspectSquare {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  aspect-ratio: 1 / 1;
+  background: #1a6b3c;
+  border: 1px solid #2a5a8c;
+  border-radius: 4px;
+}
+
+#aspectWideText,
+#aspectSquareText {
+  width: 144px;
+  color: white;
+  font-size: 14px;
+  text-align: center;
+}
+
+#aspectSquareText {
+  width: 56px;
+}
+
   /* Keyboard styling: digit/letter keys get a distinct color from special keys */
  .ui-key {
   background: #1a3a5c;
