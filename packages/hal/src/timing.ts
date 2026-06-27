@@ -1,5 +1,5 @@
-import { rawCpp, getMillis, getMicros } from './emit';
-import { callback } from './callback';
+import { rawCpp, getMillis, getMicros } from './emit.js';
+import { callback } from './callback.js';
 
 export class TimingClass {
   static readonly __instance_name = "Timing";

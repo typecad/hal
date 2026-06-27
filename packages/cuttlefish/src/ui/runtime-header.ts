@@ -27,10 +27,16 @@ export function emitRuntimeHeader(): string {
 #ifndef UI_MAX_BUFFERED_PAINT_PIXELS
 #define UI_MAX_BUFFERED_PAINT_PIXELS 20000
 #endif
+#ifndef UI_USE_FULL_FRAMEBUFFER
+#define UI_USE_FULL_FRAMEBUFFER 0
+#endif
+#ifndef UI_TRANSITION_SNAP_MS
+#define UI_TRANSITION_SNAP_MS 100
+#endif
 #define UI_SCROLL_EDGE_SNAP_PX 12
 
 enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG, NODE_LIST };
-enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR };
+enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR, PROP_VALUE };
 
 struct UIRect { int16_t x, y, w, h; };
 struct UIFontGlyph {
@@ -95,7 +101,8 @@ struct UINode {
   uint8_t textShadowBlur;
   uint16_t textShadowColor;
   uint8_t textShadowAlpha;
-  uint8_t underline;    // 0=none, 1=underline
+  uint8_t underline;    // text-decoration: 0=none,1=underline,2=line-through,3=both
+  uint8_t textOverflow; // text-overflow: 0=clip, 1=ellipsis (truncate + ...)
   uint8_t nowrap;       // 1 = no text wrapping (white-space: nowrap/pre)
   uint8_t whiteSpaceMode; // 0=normal, 1=nowrap, 2=pre, 3=pre-line
   uint8_t visible;      // 0=hidden, 1=visible
@@ -237,6 +244,18 @@ struct UIListBinding {
 extern UIListBinding __ui_list_bindings[];
 extern const uint8_t __ui_list_binding_count;
 
+// ── Input bindings (two-way) ─────────────────────────────────────────────────
+// ui.bindInput(node, cb) — cb fires with the node's current text whenever the
+// bound <input>'s textBuffer changes (e.g. user typed via on-screen keyboard).
+// lastSeen holds the previously-observed text so the runtime can detect change.
+struct UIInputBinding {
+  uint8_t node;
+  void (*cb)(const char* text);
+  char lastSeen[UI_TEXT_BUF + 1];
+};
+extern UIInputBinding __ui_input_bindings[];
+extern const uint8_t __ui_input_binding_count;
+
 struct UIListState {
   uint8_t nodeIndex;
   uint16_t scrollY;
@@ -296,6 +315,7 @@ static inline uint8_t ui_is_effectively_visible(uint8_t nodeIdx);
 static inline uint8_t ui_node_draws_before(uint8_t a, uint8_t b);
 static inline void ui_node_paint_rect(uint8_t nodeIdx, int16_t baseX, int16_t baseY, int16_t drawX, int16_t drawY, uint16_t textW, uint16_t textH, UIRect* out);
 static inline void ui_node_current_paint_rect(uint8_t nodeIdx, UIRect* out);
+static inline uint8_t ui_subtree_current_paint_rect(uint8_t nodeIdx, UIRect* out);
 static inline void ui_mark_overlapping_higher_layers_dirty(uint8_t nodeIdx);
 static inline void ui_set_visible(uint8_t nodeIdx, uint8_t visible);
 static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip);
@@ -304,8 +324,10 @@ static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRec
 static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRect* clip, uint16_t color);
 static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, uint16_t color);
 static inline void ui_draw_node_decoration_clipped(uint8_t nodeIdx, int16_t drawY, const UIRect* clip);
+static inline uint8_t ui_repair_current_node_paint_with_parent(uint8_t nodeIdx, UIRect* r);
 static inline void ui_draw_node_border(uint8_t i, int16_t drawY, uint16_t color);
 static inline void ui_draw_node_outline(uint8_t i, int16_t drawY);
+static inline void ui_draw_gradient_fill(uint8_t i, int16_t drawY);
 static inline uint8_t ui_rotation_quadrant(int16_t deg);
 static inline int16_t ui_rotated_face_w(uint8_t nodeIdx, int16_t w, int16_t h);
 static inline int16_t ui_rotated_face_h(uint8_t nodeIdx, int16_t w, int16_t h);
@@ -328,6 +350,45 @@ static inline GFXcanvas16* ui_get_scroll_canvas(int16_t w, int16_t h) {
   }
   if (!__ui_scroll_canvas || !__ui_scroll_canvas->getBuffer()) return nullptr;
   return __ui_scroll_canvas;
+}
+
+// ── Full-screen framebuffer (opt-in PSRAM perf experiment) ───────────────────
+// Disabled by default: pushing a full 320×240 frame for a tiny dirty button can
+// look like a global brightness flash on SPI TFTs. Enable only when a target
+// has enough PSRAM and a full-frame repaint is preferable to partial updates.
+static GFXcanvas16* __ui_fb = nullptr;
+static uint8_t __ui_fb_tried = 0;  // 0 = not yet attempted, 1 = alloc attempted
+
+// Get the framebuffer, allocating once (in PSRAM when available). Returns null
+// when PSRAM is absent or the allocation failed — callers fall back to direct.
+static inline GFXcanvas16* ui_get_framebuffer() {
+  if (__ui_fb_tried) return __ui_fb;  // one-time attempt; null means "none"
+  __ui_fb_tried = 1;
+#if UI_USE_FULL_FRAMEBUFFER && defined(ESP32) && defined(BOARD_HAS_PSRAM)
+  if (psramFound()) {
+    int16_t fw = __tc_display.width();
+    int16_t fh = __tc_display.height();
+    // GFXcanvas16 uses ps_malloc when ESP32 PSRAM malloc is hooked in via the
+    // Arduino core; the allocation succeeds only if PSRAM is really present.
+    __ui_fb = new (ps_malloc(sizeof(GFXcanvas16))) GFXcanvas16(fw, fh);
+    if (!__ui_fb || !__ui_fb->getBuffer()) {
+      // Allocation failed (PSRAM too small / not really mapped) — give up.
+      __ui_fb = nullptr;
+    }
+  }
+#endif
+  return __ui_fb;
+}
+
+// Push the entire framebuffer to the display in one bulk SPI transaction.
+static inline void ui_push_framebuffer() {
+  if (!__ui_fb || !__ui_fb->getBuffer()) return;
+  int16_t w = __ui_fb->width();
+  int16_t h = __ui_fb->height();
+  display_startWrite();
+  display_setAddrWindow(0, 0, w, h);
+  display_writePixels(__ui_fb->getBuffer(), (uint32_t)w * h);
+  display_endWrite();
 }
 
 static inline uint8_t ui_rotation_quadrant(int16_t deg) {
@@ -506,6 +567,19 @@ static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y
   int16_t stride = canvas->width();
   // The canvas is viewport-sized: buffer row 0 = the first row of the viewport.
   // The display destination is (x, y) but the source buffer starts at (0, 0).
+  // When a full-screen framebuffer is the active draw target, composite into it
+  // via __ui_gfx (so the single bulk push at frame end captures everything).
+  // Otherwise write straight to the display in one SPI transaction.
+  if (__ui_fb) {
+    if (w == stride) {
+      __ui_gfx->drawRGBBitmap(x, y, pixels, w, h);
+      return;
+    }
+    for (int16_t row = 0; row < h; row++) {
+      __ui_gfx->drawRGBBitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+    }
+    return;
+  }
   display_startWrite();
   display_setAddrWindow(x, y, w, h);
   if (w == stride) {
@@ -747,6 +821,39 @@ static inline void ui_node_current_paint_rect(uint8_t nodeIdx, UIRect* out) {
     out);
 }
 
+static inline uint8_t ui_subtree_current_paint_rect(uint8_t nodeIdx, UIRect* out) {
+  if (nodeIdx >= __ui_node_count) return 0;
+  int16_t end = __ui_nodes[nodeIdx].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  uint8_t hasRect = 0;
+  int16_t x0 = 0;
+  int16_t y0 = 0;
+  int16_t x1 = 0;
+  int16_t y1 = 0;
+  for (uint8_t c = nodeIdx; c < end; c++) {
+    if (__ui_nodes[c].screenId != __ui_active_screen) continue;
+    if (!ui_is_effectively_visible(c)) continue;
+    UIRect r;
+    ui_node_current_paint_rect(c, &r);
+    if (r.w <= 0 || r.h <= 0) continue;
+    if (!hasRect) {
+      x0 = r.x;
+      y0 = r.y;
+      x1 = r.x + r.w;
+      y1 = r.y + r.h;
+      hasRect = 1;
+    } else {
+      ui_expand_rect(&x0, &y0, &x1, &y1, r.x, r.y, r.x + r.w, r.y + r.h);
+    }
+  }
+  if (!hasRect) return 0;
+  out->x = x0;
+  out->y = y0;
+  out->w = x1 - x0;
+  out->h = y1 - y0;
+  return 1;
+}
+
 static inline void ui_mark_overlapping_higher_layers_dirty(uint8_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
   if (!ui_is_effectively_visible(nodeIdx)) return;
@@ -777,6 +884,7 @@ static inline void ui_clear_press_offset_area(uint8_t nodeIdx, int16_t baseX, in
   int16_t y0 = r.y;
   int16_t x1 = r.x + r.w;
   int16_t y1 = r.y + r.h;
+  if (__ui_gfx == &__tc_display && ui_repair_current_node_paint_with_parent(nodeIdx, &r)) return;
   __ui_gfx->fillRect(x0, y0, x1 - x0, y1 - y0, ui_parent_clear_color(nodeIdx));
 }
 
@@ -797,6 +905,61 @@ static inline uint8_t ui_should_buffer_paint(uint8_t nodeIdx, int16_t w, int16_t
       __ui_nodes[nodeIdx].outlineStyle == 0 &&
       __ui_nodes[nodeIdx].shadowCount == 0) return 0;
   return (uint32_t)w * (uint32_t)h <= UI_MAX_BUFFERED_PAINT_PIXELS;
+}
+
+static inline void ui_seed_paint_canvas_for_node(uint8_t nodeIdx, GFXcanvas16* canvas, int16_t canvasX, int16_t canvasY) {
+  if (!canvas || !canvas->getBuffer()) return;
+  uint8_t p = __ui_nodes[nodeIdx].parent;
+  if (p == UI_NO_PARENT || p >= __ui_node_count) {
+    canvas->fillScreen(__ui_nodes[nodeIdx].clearColor);
+    return;
+  }
+
+  uint8_t parentDecorated =
+    (__ui_nodes[p].hasBg && (__ui_nodes[p].borderRadius > 0 || __ui_nodes[p].gradientEnabled > 0)) ||
+    __ui_nodes[p].borderStyle != 0 ||
+    __ui_nodes[p].outlineStyle != 0;
+  if (!parentDecorated) {
+    canvas->fillScreen(ui_parent_clear_color(nodeIdx));
+    return;
+  }
+
+  canvas->fillScreen(ui_parent_clear_color(p));
+  int16_t parentDrawX = ui_draw_x_for_node(p);
+  int16_t parentDrawY = ui_draw_y_for_node(p);
+  int16_t origParentX = __ui_nodes[p].box.x;
+  Adafruit_GFX* previousGfx = __ui_gfx;
+  __ui_gfx = canvas;
+  __ui_nodes[p].box.x = parentDrawX - canvasX;
+  int16_t localY = parentDrawY - canvasY;
+
+  if (__ui_nodes[p].gradientEnabled > 0) {
+    ui_draw_gradient_fill(p, localY);
+  } else if (__ui_nodes[p].borderRadius > 0 && __ui_nodes[p].hasBg) {
+    __ui_gfx->fillRoundRect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h,
+      __ui_nodes[p].borderRadius, __ui_nodes[p].bg);
+  } else if (__ui_nodes[p].hasBg) {
+    __ui_gfx->fillRect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h, __ui_nodes[p].bg);
+  }
+  if (__ui_nodes[p].borderStyle != 0) {
+    uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
+    ui_draw_node_border(p, localY, bColor);
+  }
+  ui_draw_node_outline(p, localY);
+
+  __ui_nodes[p].box.x = origParentX;
+  __ui_gfx = previousGfx;
+}
+
+static inline uint8_t ui_repair_current_node_paint_with_parent(uint8_t nodeIdx, UIRect* r) {
+  if (!r || r->w <= 0 || r->h <= 0) return 0;
+  if ((uint32_t)r->w * (uint32_t)r->h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  GFXcanvas16* repairCanvas = ui_get_scroll_canvas(r->w, r->h);
+  if (!repairCanvas) return 0;
+  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y);
+  __ui_gfx = &__tc_display;
+  ui_push_canvas_rect(repairCanvas, r->x, r->y, r->w, r->h);
+  return 1;
 }
 
 static inline uint8_t ui_is_rect_clipped_by_scroll(uint8_t nodeIdx, int16_t drawX, int16_t drawY, int16_t drawW, int16_t drawH) {
@@ -946,7 +1109,10 @@ static inline void ui_clear_current_node_paint(uint8_t nodeIdx) {
       __ui_nodes[(uint8_t)scrollParent].box.w,
       __ui_nodes[(uint8_t)scrollParent].box.h
     };
-    ui_fill_rect_clipped(r.x, r.y, r.w, r.h, &clip, ui_parent_clear_color(nodeIdx));
+    UIRect clipped = r;
+    if (!ui_clip_rect_to_rect(&clipped, &clip)) return;
+    if (ui_repair_current_node_paint_with_parent(nodeIdx, &clipped)) return;
+    ui_fill_rect_clipped(clipped.x, clipped.y, clipped.w, clipped.h, &clip, ui_parent_clear_color(nodeIdx));
     uint8_t p = __ui_nodes[nodeIdx].parent;
     if (p != UI_NO_PARENT && p < __ui_node_count) {
       ui_draw_node_decoration_clipped(p, ui_draw_y_for_node(p), &clip);
@@ -966,21 +1132,56 @@ static inline void ui_clear_current_node_paint(uint8_t nodeIdx) {
   }
 }
 
+static inline void ui_clear_subtree_current_paint(uint8_t nodeIdx) {
+  if (nodeIdx >= __ui_node_count) return;
+  UIRect r;
+  if (!ui_subtree_current_paint_rect(nodeIdx, &r)) return;
+  __ui_gfx = &__tc_display;
+  int8_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
+  if (scrollParent >= 0) {
+    UIRect clip = {
+      __ui_nodes[(uint8_t)scrollParent].box.x,
+      __ui_nodes[(uint8_t)scrollParent].box.y,
+      __ui_nodes[(uint8_t)scrollParent].box.w,
+      __ui_nodes[(uint8_t)scrollParent].box.h
+    };
+    UIRect clipped = r;
+    if (!ui_clip_rect_to_rect(&clipped, &clip)) return;
+    if (ui_repair_current_node_paint_with_parent(nodeIdx, &clipped)) return;
+    ui_fill_rect_clipped(clipped.x, clipped.y, clipped.w, clipped.h, &clip, ui_parent_clear_color(nodeIdx));
+    uint8_t p = __ui_nodes[nodeIdx].parent;
+    if (p != UI_NO_PARENT && p < __ui_node_count) {
+      ui_draw_node_decoration_clipped(p, ui_draw_y_for_node(p), &clip);
+    }
+    return;
+  }
+  if (ui_repair_current_node_paint_with_parent(nodeIdx, &r)) return;
+  __ui_gfx->fillRect(r.x, r.y, r.w, r.h, ui_parent_clear_color(nodeIdx));
+  uint8_t p = __ui_nodes[nodeIdx].parent;
+  if (p != UI_NO_PARENT && p < __ui_node_count) {
+    int16_t parentDrawY = ui_draw_y_for_node(p);
+    if (__ui_nodes[p].borderStyle != 0) {
+      uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
+      ui_draw_node_border(p, parentDrawY, bColor);
+    }
+    ui_draw_node_outline(p, parentDrawY);
+  }
+}
+
 static inline void ui_set_visible(uint8_t nodeIdx, uint8_t visible) {
   if (nodeIdx >= __ui_node_count) return;
   visible = visible ? 1 : 0;
   if (__ui_nodes[nodeIdx].visible == visible) return;
 
   if (!visible) {
-    // Clear descendants first, then the container. This removes child pixels
-    // even when the container itself is transparent.
+    // Clear the whole subtree in one clipped repair. This removes child pixels
+    // even when the container itself is transparent, without separate display
+    // writes for each descendant.
+    ui_clear_subtree_current_paint(nodeIdx);
     int16_t end = __ui_nodes[nodeIdx].subtreeEnd;
     if (end > __ui_node_count) end = __ui_node_count;
     for (int16_t c = end - 1; c >= (int16_t)nodeIdx; c--) {
       if (__ui_nodes[c].screenId != __ui_active_screen) continue;
-      if (ui_is_effectively_visible((uint8_t)c)) {
-        ui_clear_current_node_paint((uint8_t)c);
-      }
       __ui_nodes[c].dirty = 0;
     }
     ui_mark_overlapping_higher_layers_dirty(nodeIdx);
@@ -1109,7 +1310,9 @@ extern const uint8_t __ui_radio_group_count;
 extern void (*__ui_click_handlers[])();
 extern void (*__ui_hold_handlers[])();
 extern void (*__ui_release_handlers[])();
+extern void (*__ui_rangechange_handlers[])();
 extern const uint8_t __ui_click_handler_count;
+extern const uint8_t __ui_rangechange_handler_count;
 
 // Touch state machine: tracks down → hold → up → click lifecycle
 // Touch node/scroll node state is defined near navigation because ui_navigate resets it.
@@ -1197,6 +1400,17 @@ static void ui_dispatch(void (**table)(), uint8_t count, int8_t node) {
   }
 }
 
+static inline void ui_open_keyboard_for_input(uint8_t nodeIdx) {
+  if (__ui_nodes[nodeIdx].kind != NODE_INPUT || __ui_kb_visible) return;
+  // Resolve the input's position in the loader dispatch table by scanning
+  // for the Nth NODE_INPUT. (The loader table is indexed by input order.)
+  uint8_t inputPos = 0;
+  for (uint8_t j = 0; j < nodeIdx; j++) {
+    if (__ui_nodes[j].kind == NODE_INPUT) inputPos++;
+  }
+  ui_kb_open(nodeIdx, inputPos);
+}
+
 // Touch down: called when screen is first touched.
 static void ui_touch_down(int16_t tx, int16_t ty) {
   int8_t node = ui_hit_test(tx, ty);
@@ -1265,16 +1479,6 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       __ui_nodes[node].value = constrain(__ui_nodes[node].value, rMin, rMax);
       ui_mark_dirty(node);
     }
-    // Open the on-screen keyboard when an input is tapped (and not already open).
-    if (__ui_nodes[node].kind == NODE_INPUT && !__ui_kb_visible) {
-      // Resolve the input's position in the loader dispatch table by scanning
-      // for the Nth NODE_INPUT. (The loader table is indexed by input order.)
-      uint8_t inputPos = 0;
-      for (int16_t j = 0; j < node; j++) {
-        if (__ui_nodes[j].kind == NODE_INPUT) inputPos++;
-      }
-      ui_kb_open((uint8_t)node, inputPos);
-    }
     ui_mark_dirty(node);
   }
 }
@@ -1315,6 +1519,9 @@ static void ui_touch_up() {
   if (__ui_touch_node >= 0 && !__ui_is_dragging) {
     int8_t clickedNode = __ui_touch_node;
     if (elapsed < UI_TOUCH_HOLD_MS) {
+      if (__ui_nodes[clickedNode].kind == NODE_INPUT) {
+        ui_open_keyboard_for_input((uint8_t)clickedNode);
+      }
       ui_dispatch(__ui_click_handlers, __ui_click_handler_count, __ui_touch_node);
     }
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
@@ -1417,6 +1624,11 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
       if (newVal != __ui_nodes[__ui_range_node].value) {
         __ui_nodes[__ui_range_node].value = newVal;
         ui_mark_dirty(__ui_range_node);
+        // Fire the onChange callback (if any) — every value change during drag.
+        if ((uint8_t)__ui_range_node < __ui_rangechange_handler_count &&
+            __ui_rangechange_handlers[__ui_range_node]) {
+          __ui_rangechange_handlers[__ui_range_node]();
+        }
       }
     }
     if (__ui_is_dragging && __ui_scroll_node >= 0) {
@@ -1877,7 +2089,10 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint1
   if (!text || !*text) return;
   if (ts == 0) ts = 2;
   uint16_t w = ui_text_width(text, ts, 0, 0);
-  uint8_t h = ui_text_height(ts, 0);
+  // Add 1px bottom padding so the AA edge-detection sampling doesn't clip the
+  // glyph bottoms (the neighbor-count at the last row rounds partial coverage
+  // to 0 without this clearance).
+  uint8_t h = ui_text_height(ts, 0) + 1;
   if (w == 0 || h == 0 || fg == bg) {
     ui_draw_bitmap_text(text, x, y, fg, bg, ts, 0);
     return;
@@ -1942,9 +2157,34 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t
 }
 #endif
 
+/** Truncate a NUL-terminated buffer in place to fit within maxWidth (px) and
+ *  append "...". Used by text-overflow: ellipsis. Adafruit_GFX has no ellipsis
+ *  glyph, so three ASCII dots approximate it. */
+static inline void ui_truncate_ellipsis(char* buf, uint8_t bufSize, uint16_t maxWidth,
+                                        uint8_t ts, uint8_t fontFace, int8_t letterSpacing) {
+  if (!buf || bufSize == 0) return;
+  uint8_t len = (uint8_t)strlen(buf);
+  // Reserve space for the three trailing dots.
+  uint16_t dotsW = (uint16_t)3 * ui_text_codepoint_advance((uint16_t)'.', ts, fontFace, letterSpacing);
+  int16_t budget = (int16_t)maxWidth - (int16_t)dotsW;
+  if (budget <= 0) { if (bufSize > 3) { buf[0]='.'; buf[1]='.'; buf[2]='.'; buf[3]=0; } return; }
+  // Trim trailing chars until the prefix fits the budget.
+  uint8_t prefix = len;
+  while (prefix > 0) {
+    uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
+    if ((int16_t)w <= budget) break;
+    prefix--;
+  }
+  if (prefix + 3 < bufSize) {
+    buf[prefix] = '.'; buf[prefix+1] = '.'; buf[prefix+2] = '.'; buf[prefix+3] = 0;
+  } else if (bufSize > 3) {
+    buf[0]='.'; buf[1]='.'; buf[2]='.'; buf[3]=0;
+  }
+}
+
 static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, uint16_t maxWidth, uint16_t fg, uint16_t bg,
                                         uint8_t ts, uint8_t antialias, uint8_t fontFace, int8_t letterSpacing,
-                                        uint8_t lineHeight, uint8_t whiteSpaceMode, uint8_t textAlign, uint8_t underline) {
+                                        uint8_t lineHeight, uint8_t whiteSpaceMode, uint8_t textAlign, uint8_t underline, uint8_t textOverflow) {
   if (!text) text = "";
   uint8_t lh = ui_text_line_height(ts, fontFace, lineHeight);
   const char* cursor = text;
@@ -1956,8 +2196,15 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
     if (textAlign == 1) lineX = x + ((int16_t)maxWidth - (int16_t)line.width) / 2;
     else if (textAlign == 2) lineX = x + (int16_t)maxWidth - (int16_t)line.width;
     ui_copy_text_span(line.start, line.end, lineBuf, UI_TEXT_LINE_BUF);
+    // text-overflow: ellipsis — if this line is wider than maxWidth,
+    // truncate the copied span and append three dots to fit.
+    if (textOverflow && (int16_t)line.width > (int16_t)maxWidth) {
+      ui_truncate_ellipsis(lineBuf, UI_TEXT_LINE_BUF, maxWidth, ts, fontFace, letterSpacing);
+    }
     ui_draw_text(lineBuf, lineX, lineY, fg, bg, ts, antialias, fontFace, letterSpacing);
-    if (underline) __ui_gfx->drawFastHLine(lineX, lineY + ui_text_height(ts, fontFace) - 1, line.width, fg);
+    // text-decoration (underline=bit0, strikethrough=bit1)
+    if (underline & 1) __ui_gfx->drawFastHLine(lineX, lineY + ui_text_height(ts, fontFace) - 1, line.width, fg);
+    if (underline & 2) __ui_gfx->drawFastHLine(lineX, lineY + ui_text_height(ts, fontFace) / 2, line.width, fg);
     lineY += lh;
   }
 }
@@ -2170,6 +2417,16 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         continue;
       }
+      if (__ui_bindings[i].prop == PROP_VALUE) {
+        // Numeric value binding: drive a progress/range node's value live.
+        uint8_t n = __ui_bindings[i].node;
+        int16_t v = (int16_t)__ui_bindings[i].fn();
+        if (v != __ui_nodes[n].value) {
+          __ui_nodes[n].value = v;
+          ui_mark_dirty(n);
+        }
+        continue;
+      }
       uint16_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
                     : (__ui_bindings[i].prop == PROP_FG) ? &__ui_nodes[__ui_bindings[i].node].fg
                     : (__ui_bindings[i].prop == PROP_BORDER_COLOR) ? &__ui_nodes[__ui_bindings[i].node].borderColor
@@ -2194,6 +2451,19 @@ static inline void ui_tick(uint16_t deltaMs) {
       ui_mark_dirty(__ui_lists[l].nodeIndex);
     }
   }
+  // ⓪c Evaluate input bindings (two-way): if a bound <input>'s textBuffer
+  // changed since last tick (e.g. the user typed via the on-screen keyboard),
+  // fire the author's callback with the new text.
+  for (uint8_t i = 0; i < __ui_input_binding_count; i++) {
+    if (!__ui_input_bindings[i].cb) continue;
+    uint8_t n = __ui_input_bindings[i].node;
+    const char* cur = __ui_nodes[n].textBuffer;
+    if (strcmp(cur, __ui_input_bindings[i].lastSeen) != 0) {
+      strncpy(__ui_input_bindings[i].lastSeen, cur, UI_TEXT_BUF);
+      __ui_input_bindings[i].lastSeen[UI_TEXT_BUF] = '\\0';
+      __ui_input_bindings[i].cb(cur);
+    }
+  }
   // ① Advance transitions.
   for (uint8_t i = 0; i < __ui_trans_count; i++) {
     if (!__ui_trans[i].active) continue;
@@ -2201,6 +2471,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint16_t k = __ui_trans[i].durationMs == 0
       ? 100
       : (uint16_t)((uint32_t)__ui_trans[i].elapsed * 100 / __ui_trans[i].durationMs);
+    if (__ui_trans[i].durationMs > 0 && __ui_trans[i].durationMs <= UI_TRANSITION_SNAP_MS) k = 100;
     uint16_t v = lerp_color(__ui_trans[i].prevValue, __ui_trans[i].targetValue, (uint8_t)k);
     if (__ui_trans[i].prop == PROP_FG) {
       __ui_nodes[__ui_trans[i].node].fg = v;
@@ -2214,6 +2485,13 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ①b Advance @keyframes animations.
   for (uint8_t i = 0; i < __ui_anim_count; i++) {
     if (!__ui_anims[i].active) continue;
+    // Skip animations on non-visible screens — their nodes are not drawn,
+    // so advancing them would paint stray fragments ("blotches") on the
+    // active screen. The animation resumes correctly on navigation back.
+    {
+      uint8_t animNode = __ui_anims[i].node;
+      if (animNode < __ui_node_count && __ui_nodes[animNode].screenId != __ui_active_screen) continue;
+    }
     __ui_anims[i].elapsed += (uint32_t)deltaMs;
     uint32_t elapsedNoDelay = __ui_anims[i].elapsed;
     if (elapsedNoDelay < __ui_anims[i].delayMs) continue;
@@ -2416,6 +2694,26 @@ static inline void ui_tick(uint16_t deltaMs) {
     // ones in the next dirty frame). This matches the original design.
     break;
   }
+  // ── Framebuffer target selection ──────────────────────────────────────────
+  // When a full-screen framebuffer is available (ESP32 + PSRAM), redirect the
+  // entire dirty-node draw pass into it and push once at the end. Otherwise
+  // __ui_draw_target == &__tc_display and draws go straight to the display
+  // (byte-identical to the pre-framebuffer path).
+  GFXcanvas16* __ui_fb = ui_get_framebuffer();
+  Adafruit_GFX* __ui_draw_target = __ui_fb ? (Adafruit_GFX*)__ui_fb : &__tc_display;
+  if (__ui_fb) {
+    // Seed the framebuffer with the active screen's background so cleared/
+    // transparent regions resolve correctly, then draw dirty nodes on top.
+    uint16_t fbBg = 0x0000;
+    for (uint8_t s = 0; s < __ui_node_count; s++) {
+      if (__ui_nodes[s].screenId == __ui_active_screen && __ui_nodes[s].kind == NODE_FILL) {
+        fbBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
+        break;
+      }
+    }
+    __ui_fb->fillScreen(fbBg);
+  }
+
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
   for (uint8_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass++) {
     int16_t selected = -1;
@@ -2438,7 +2736,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_nodes[i].box.x = origBoxX - bufferedScrollVX;
       __ui_nodes[i].box.y = origBoxY - bufferedScrollVY;
     } else {
-      __ui_gfx = &__tc_display;
+      __ui_gfx = __ui_draw_target;
     }
     int16_t baseDrawX = ui_base_draw_x_for_node(i);
     int16_t baseDrawY = ui_base_draw_y_for_node(i);
@@ -2498,7 +2796,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       if (paintCanvas) {
         drawingPaintCanvas = 1;
         __ui_gfx = paintCanvas;
-        paintCanvas->fillScreen(ui_parent_clear_color(i));
+        ui_seed_paint_canvas_for_node(i, paintCanvas, paintCanvasX, paintCanvasY);
         baseDrawX -= paintCanvasX;
         baseDrawY -= paintCanvasY;
         drawX -= paintCanvasX;
@@ -2570,15 +2868,18 @@ static inline void ui_tick(uint16_t deltaMs) {
               drawY + __ui_nodes[i].textShadowOffsetY,
               __ui_nodes[i].box.w, tsCol, tsCol, ts, __ui_nodes[i].fontAntialias,
               __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
-              __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, 0);
+              __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, 0, __ui_nodes[i].textOverflow);
           }
-          // Use transparent bg (fg as bg) when no own background, so the parent's
-          // gradient/background shows through instead of an opaque clear rect.
-          uint16_t textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].fg;
+          // Use the parent's clear color as the text background when the node
+          // has no own background. This makes Adafruit_GFX's opaque glyph-cell
+          // fill blend with the parent (instead of drawing solid fg blocks that
+          // overlap adjacent lines/elements). For AA text, fg != bg so the
+          // edge-detection path still runs correctly.
+          uint16_t textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
           ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w,
             __ui_nodes[i].fg, textBg, ts, __ui_nodes[i].fontAntialias,
             __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
-            __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline);
+            __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
         break;
       case NODE_BUTTON:
@@ -2597,7 +2898,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           __ui_nodes[i].fg,
           __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
           ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 1, __ui_nodes[i].underline);
+          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 1, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         break;
       case NODE_CHECK:
         {
@@ -2649,7 +2950,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY, textMaxW,
           __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
           ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline);
+          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         break;
       case NODE_RADIO:
         {
@@ -2694,7 +2995,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY, textMaxW,
           __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
           ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline);
+          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         break;
       case NODE_PROGRESS:
         // Progress bar: outline track + filled portion based on .value (0-100).
@@ -2916,7 +3217,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           ui_push_canvas_rect(lc, bx, by, bw, bh);
         }
         __ui_nodes[i].dirty = 0;
-        __ui_gfx = &__tc_display;
+        __ui_gfx = __ui_draw_target;
         __ui_nodes[i].box.x = origBoxX;
         __ui_nodes[i].box.y = origBoxY;
         continue;  // skip outline/paint-canvas/restore (list draws its own border)
@@ -2934,7 +3235,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       ui_draw_node_outline(i, drawY);
     }
     if (drawingPaintCanvas) {
-      __ui_gfx = &__tc_display;
+      __ui_gfx = __ui_draw_target;
       ui_push_canvas_rect(paintCanvas, paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH);
     }
     // Restore original box coords (translated for canvas-local drawing above).
@@ -2957,11 +3258,18 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint16_t dimFg = ((__ui_nodes[si].fg >> 1) & 0x7BEF);
     __ui_gfx->fillRect(tx, 0, 3, vh, dimFg);
     __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
-    // Push the canvas to the display at the viewport position.
-    __ui_gfx = &__tc_display;
+    // Push the canvas to the draw target at the viewport position (the
+    // framebuffer when active, else the display directly).
+    __ui_gfx = __ui_draw_target;
     ui_push_canvas_rect(bufferedScrollCanvas,
       bufferedScrollVX, bufferedScrollVY,
       vw, vh);
+  }
+  // ── Framebuffer bulk push ────────────────────────────────────────────────
+  // When a framebuffer was used this frame, flush it to the display in a single
+  // SPI transaction and restore the direct-draw target. No-op without one.
+  if (__ui_fb) {
+    ui_push_framebuffer();
   }
   __ui_gfx = &__tc_display;
   // ③ Flush — ILI9341 is immediate, no separate flush needed.

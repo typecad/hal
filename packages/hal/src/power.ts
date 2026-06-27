@@ -1,5 +1,5 @@
-import { rawCpp } from './emit';
-import { board } from './board';
+import { rawCpp } from './emit.js';
+import { board } from './board.js';
 
 /**
  * PowerClass provides control over MCU power states and clock frequencies.

@@ -1,6 +1,6 @@
-import { rawCpp } from './emit';
-import { LSBFIRST, MSBFIRST } from './constants';
-import type { Pin, OutputPin, InputPin } from './gpio';
+import { rawCpp } from './emit.js';
+import { LSBFIRST, MSBFIRST } from './constants.js';
+import type { Pin, OutputPin, InputPin } from './gpio.js';
 
 export declare function shiftIn(dataPin: number, clockPin: number, bitOrder: number): number;
 export declare function shiftOut(dataPin: number, clockPin: number, bitOrder: number, value: number): void;

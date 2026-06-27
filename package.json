@@ -1,6 +1,7 @@
 {
   "name": "typecad-monorepo",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/cuttlefish",
     "packages/hal",

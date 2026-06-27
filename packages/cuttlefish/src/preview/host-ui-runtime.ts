@@ -12,6 +12,7 @@ import type {
   PreviewCallbackSpec,
   PreviewInitialAssignment,
   PreviewIntervalSpec,
+  PreviewListBindingSpec,
   PreviewPinControlSpec,
   PreviewSnapshot,
 } from "./types.js";
@@ -23,6 +24,7 @@ const UI_DRAG_THRESHOLD = 10;
 const UI_SCROLL_EDGE_SNAP_PX = 12;
 const UI_KB_REPEAT_MS = 100;
 const UI_KB_TEXT_H = 24;
+const UI_TRANSITION_SNAP_MS = 100;
 
 const DEFAULT_KEY_BG = 0x4208;
 const DEFAULT_KEY_FG = 0xffff;
@@ -54,6 +56,13 @@ interface PreviewKey {
   ch: string;
   special: UIKeyTemplate["special"] | 255;
   style: PreviewKeyStyle;
+}
+
+interface PreviewListState extends PreviewListBindingSpec {
+  itemCount: number;
+  itemHeight: number;
+  scrollY: number;
+  contentHeight: number;
 }
 
 interface RuntimeOptions {
@@ -159,6 +168,7 @@ export class PreviewUIRuntime {
   private readonly fontAssets: UIFontAssetModel[];
   private readonly imageAssets: UIImageAsset[];
   private readonly bindings: PreviewBindingSpec[];
+  private readonly listStates: PreviewListState[];
   private readonly callbacks: PreviewCallbackSpec[];
   private readonly pinControls: PreviewPinControlSpec[];
   private readonly intervals: PreviewIntervalSpec[];
@@ -176,10 +186,15 @@ export class PreviewUIRuntime {
   private lastTickTime = Date.now();
   private dragStartX = 0;
   private dragStartY = 0;
+  private lastTouchX = 0;
+  private lastTouchY = 0;
   private isDragging = false;
   private scrollNode = -1;
   private scrollSnapTop = false;
   private scrollStartY = 0;
+  private listNode = -1;
+  private listSnapTop = false;
+  private listStartY = 0;
   private rangeNode = -1;
   private keyboardVisible = false;
   private keyboardDirty: 0 | 1 | 2 = 0;
@@ -206,6 +221,13 @@ export class PreviewUIRuntime {
     this.fontAssets = snapshot.program.fontAssets ?? [];
     this.imageAssets = snapshot.program.imageAssets ?? [];
     this.bindings = snapshot.bindings;
+    this.listStates = (snapshot.listBindings ?? []).map((binding) => ({
+      ...binding,
+      itemCount: 0,
+      itemHeight: 24,
+      scrollY: 0,
+      contentHeight: 0,
+    }));
     this.callbacks = snapshot.callbacks;
     this.pinControls = snapshot.pinControls;
     this.intervals = snapshot.intervals;
@@ -344,6 +366,9 @@ export class PreviewUIRuntime {
         node.textBuffer = clampText(node.options[0]?.text ?? node.text ?? "");
       }
     }
+    for (const list of this.listStates) {
+      this.refreshListState(list);
+    }
   }
 
   private isActiveNode(node: MutableNode): boolean {
@@ -428,6 +453,12 @@ export class PreviewUIRuntime {
         if (next !== node.visible) {
           this.setVisible(binding.nodeIndex, next);
         }
+      } else if (binding.property === "value") {
+        const next = Math.trunc(Number(value) || 0);
+        if (next !== node.value) {
+          node.value = next;
+          this.markDirty(binding.nodeIndex);
+        }
       }
     }
 
@@ -439,6 +470,31 @@ export class PreviewUIRuntime {
         this.markDirty(node.index);
       }
     }
+    for (const list of this.listStates) {
+      this.refreshListState(list);
+    }
+  }
+
+  private refreshListState(list: PreviewListState): void {
+    const node = this.nodes[list.nodeIndex];
+    if (!node) return;
+    const countValue = this.evaluateExpression(list.countExpression);
+    const itemCount = Math.max(0, Math.trunc(Number(countValue) || 0));
+    const itemHeight = Math.max(1, Math.trunc(node.listItemHeight || list.itemHeight || 24));
+    const contentHeight = itemCount * itemHeight;
+    const maxScroll = Math.max(0, contentHeight - node.box.h);
+    const nextScrollY = Math.max(0, Math.min(maxScroll, list.scrollY));
+    const changed = itemCount !== list.itemCount ||
+      itemHeight !== list.itemHeight ||
+      contentHeight !== list.contentHeight ||
+      nextScrollY !== list.scrollY ||
+      node.contentHeight !== contentHeight;
+    list.itemCount = itemCount;
+    list.itemHeight = itemHeight;
+    list.contentHeight = contentHeight;
+    list.scrollY = nextScrollY;
+    node.contentHeight = contentHeight;
+    if (changed) this.markDirty(list.nodeIndex);
   }
 
   private advanceTransitions(deltaMs: number): void {
@@ -448,11 +504,12 @@ export class PreviewUIRuntime {
       const k = transition.durationMs <= 0
         ? 100
         : Math.trunc((transition.elapsed * 100) / transition.durationMs);
-      const value = lerpColor(transition.prevValue, transition.targetValue, k);
+      const drawK = transition.durationMs > 0 && transition.durationMs <= UI_TRANSITION_SNAP_MS ? 100 : k;
+      const value = lerpColor(transition.prevValue, transition.targetValue, drawK);
       if (transition.prop === "color") this.nodes[transition.node].fg = value;
       else this.nodes[transition.node].bg = value;
       this.markDirty(transition.node);
-      if (k >= 100) transition.active = false;
+      if (drawK >= 100) transition.active = false;
     }
   }
 
@@ -632,6 +689,7 @@ export class PreviewUIRuntime {
     const y0 = Math.min(baseY, baseY + oy);
     const x1 = Math.max(baseX + node.box.w, baseX + ox + node.box.w);
     const y1 = Math.max(baseY + node.box.h, baseY + oy + node.box.h);
+    if (this.repairCurrentNodePaintWithParent(node, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })) return;
     this.gfx.fillRect(x0, y0, x1 - x0, y1 - y0, this.parentClearColor(node));
   }
 
@@ -807,6 +865,26 @@ export class PreviewUIRuntime {
     );
   }
 
+  private currentSubtreePaintRect(node: MutableNode): { x: number; y: number; w: number; h: number } | undefined {
+    let rect: { x: number; y: number; w: number; h: number } | undefined;
+    for (let i = node.index; i < Math.min(node.subtreeEnd, this.nodes.length); i++) {
+      const child = this.nodes[i];
+      if (!child || !this.isActiveNode(child) || !this.isEffectivelyVisible(child)) continue;
+      const childRect = this.currentPaintRect(child);
+      if (childRect.w <= 0 || childRect.h <= 0) continue;
+      if (!rect) {
+        rect = { ...childRect };
+      } else {
+        const x0 = Math.min(rect.x, childRect.x);
+        const y0 = Math.min(rect.y, childRect.y);
+        const x1 = Math.max(rect.x + rect.w, childRect.x + childRect.w);
+        const y1 = Math.max(rect.y + rect.h, childRect.y + childRect.h);
+        rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      }
+    }
+    return rect;
+  }
+
   private rectsIntersect(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean {
     return a.x + a.w > b.x && a.x < b.x + b.w && a.y + a.h > b.y && a.y < b.y + b.h;
   }
@@ -826,6 +904,34 @@ export class PreviewUIRuntime {
     }
   }
 
+  private repairCurrentNodePaintWithParent(node: MutableNode, rect: { x: number; y: number; w: number; h: number }): boolean {
+    if (rect.w <= 0 || rect.h <= 0) return false;
+    const parent = node.parentIndex >= 0 ? this.nodes[node.parentIndex] : undefined;
+    if (!parent) return false;
+
+    this.gfx.withClipRect(rect, () => {
+      this.gfx.fillRect(rect.x, rect.y, rect.w, rect.h, this.parentClearColor(parent));
+      const parentDrawX = this.drawXForNode(parent.index);
+      const parentDrawY = this.drawYForNode(parent.index);
+      const origParentX = parent.box.x;
+      parent.box.x = parentDrawX;
+      try {
+        if (parent.gradientEnabled > 0) {
+          this.drawGradientFill(parent, parentDrawY);
+        } else if (parent.borderRadius > 0 && parent.hasBg) {
+          this.gfx.fillRoundRect(parent.box.x, parentDrawY, parent.box.w, parent.box.h, parent.borderRadius, parent.bg);
+        } else if (parent.hasBg) {
+          this.gfx.fillRect(parent.box.x, parentDrawY, parent.box.w, parent.box.h, parent.bg);
+        }
+        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawY, parent.borderColor || parent.fg);
+        this.drawNodeOutline(parent, parentDrawY);
+      } finally {
+        parent.box.x = origParentX;
+      }
+    });
+    return true;
+  }
+
   private clearCurrentNodePaint(node: MutableNode): void {
     const displayText = node.hasTextBinding ? node.textBuffer : node.text;
     const ts = this.nodeTextSize(node);
@@ -841,8 +947,29 @@ export class PreviewUIRuntime {
     );
     if (rect.w <= 0 || rect.h <= 0) return;
     const clip = this.scrollClipForNode(node.index);
-    this.gfx.withClipRect(clip, () => {
-      this.gfx.fillRect(rect.x, rect.y, rect.w, rect.h, this.parentClearColor(node));
+    const repairRect = this.intersectClipRect(clip, rect);
+    if (repairRect.w <= 0 || repairRect.h <= 0) return;
+    if (this.repairCurrentNodePaintWithParent(node, repairRect)) return;
+    this.gfx.withClipRect(repairRect, () => {
+      this.gfx.fillRect(repairRect.x, repairRect.y, repairRect.w, repairRect.h, this.parentClearColor(node));
+      const parent = node.parentIndex >= 0 ? this.nodes[node.parentIndex] : undefined;
+      if (parent) {
+        const parentDrawY = this.drawYForNode(parent.index);
+        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawY, parent.borderColor || parent.fg);
+        this.drawNodeOutline(parent, parentDrawY);
+      }
+    });
+  }
+
+  private clearCurrentSubtreePaint(node: MutableNode): void {
+    const rect = this.currentSubtreePaintRect(node);
+    if (!rect || rect.w <= 0 || rect.h <= 0) return;
+    const clip = this.scrollClipForNode(node.index);
+    const repairRect = this.intersectClipRect(clip, rect);
+    if (repairRect.w <= 0 || repairRect.h <= 0) return;
+    if (this.repairCurrentNodePaintWithParent(node, repairRect)) return;
+    this.gfx.withClipRect(repairRect, () => {
+      this.gfx.fillRect(repairRect.x, repairRect.y, repairRect.w, repairRect.h, this.parentClearColor(node));
       const parent = node.parentIndex >= 0 ? this.nodes[node.parentIndex] : undefined;
       if (parent) {
         const parentDrawY = this.drawYForNode(parent.index);
@@ -857,10 +984,10 @@ export class PreviewUIRuntime {
     if (!node || node.visible === visible) return;
 
     if (!visible) {
+      this.clearCurrentSubtreePaint(node);
       for (let i = Math.min(node.subtreeEnd, this.nodes.length) - 1; i >= nodeIndex; i--) {
         const child = this.nodes[i];
         if (!child || !this.isActiveNode(child)) continue;
-        if (this.isEffectivelyVisible(child)) this.clearCurrentNodePaint(child);
         child.dirty = false;
       }
       this.markOverlappingHigherLayersDirty(nodeIndex);
@@ -923,6 +1050,18 @@ export class PreviewUIRuntime {
       node.box.x < clip.x + clip.w &&
       drawY + node.box.h > clip.y &&
       drawY < clip.y + clip.h;
+  }
+
+  private intersectClipRect(
+    a: { x: number; y: number; w: number; h: number } | undefined,
+    b: { x: number; y: number; w: number; h: number },
+  ): { x: number; y: number; w: number; h: number } {
+    if (!a) return b;
+    const x0 = Math.max(a.x, b.x);
+    const y0 = Math.max(a.y, b.y);
+    const x1 = Math.min(a.x + a.w, b.x + b.w);
+    const y1 = Math.min(a.y + a.h, b.y + b.h);
+    return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
   }
 
   private clearDirtyScrollViewports(): boolean {
@@ -1339,6 +1478,9 @@ export class PreviewUIRuntime {
           case "img":
             this.drawImageNode(node, drawY);
             break;
+          case "list":
+            this.drawListNode(node, drawY, scrollClip);
+            break;
         }
         if (node.kind === "fill" && this.rotationQuadrant(node.rotateDeg) !== 0 && node.outlineStyle && node.outlineWidth > 0) {
           const w = node.outlineWidth;
@@ -1395,6 +1537,57 @@ export class PreviewUIRuntime {
       );
     }
     this.drawTextLines(node, displayText, node.box.x, drawY, node.box.w, ts, node.fg, textClear);
+  }
+
+  private listStateForNode(nodeIndex: number): PreviewListState | undefined {
+    return this.listStates.find((list) => list.nodeIndex === nodeIndex);
+  }
+
+  private drawListNode(
+    node: MutableNode,
+    drawY: number,
+    scrollClip: { x: number; y: number; w: number; h: number } | undefined,
+  ): void {
+    const list = this.listStateForNode(node.index);
+    const bg = node.hasBg ? node.bg : node.clearColor;
+    if (!list || list.itemHeight <= 0) {
+      this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, bg);
+      return;
+    }
+
+    this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, bg);
+    const listClip = this.intersectClipRect(scrollClip, { x: node.box.x, y: drawY, w: node.box.w, h: node.box.h });
+    this.gfx.withClipRect(listClip, () => {
+      const itemHeight = list.itemHeight;
+      const ts = this.nodeTextSize(node);
+      const textH = this.textHeight(ts, node.fontFace);
+      const first = Math.max(0, Math.trunc(list.scrollY / itemHeight));
+      const last = Math.min(list.itemCount - 1, Math.trunc((list.scrollY + node.box.h - 1) / itemHeight) + 1);
+      for (let row = first; row <= last; row++) {
+        const itemY = drawY + row * itemHeight - list.scrollY;
+        const text = clampText(this.evaluateExpression(list.itemExpression, this.listLocal(list.itemParam, row)));
+        this.drawText(
+          text,
+          node.box.x + 4,
+          itemY + Math.trunc((itemHeight - textH) / 2),
+          node.fg,
+          bg,
+          ts,
+          node.fontAntialias,
+          node.fontFace,
+          node.letterSpacing,
+        );
+      }
+
+      if (list.contentHeight > node.box.h) {
+        const tx = node.box.x + node.box.w - 4;
+        const trackColor = (node.fg >> 1) & 0x7bef;
+        this.gfx.fillRect(tx, drawY, 3, node.box.h, trackColor);
+        const thumbH = Math.max(8, Math.trunc((node.box.h * node.box.h) / list.contentHeight));
+        const thumbY = drawY + Math.trunc(((node.box.h - thumbH) * list.scrollY) / Math.max(1, list.contentHeight - node.box.h));
+        this.gfx.fillRect(tx, thumbY, 3, thumbH, node.fg);
+      }
+    });
   }
 
   private drawButtonNode(node: MutableNode, displayText: string | undefined, bColor: number, drawY: number, ts: number): void {
@@ -1570,8 +1763,23 @@ export class PreviewUIRuntime {
     return best;
   }
 
+  private findListNode(tx: number, ty: number): number {
+    let best = -1;
+    for (const list of this.listStates) {
+      const node = this.nodes[list.nodeIndex];
+      if (!node || !this.isActiveNode(node) || !this.isEffectivelyVisible(node)) continue;
+      const drawX = this.drawXForNode(node.index);
+      const drawY = this.drawYForNode(node.index);
+      if (tx >= drawX && tx < drawX + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
+        if (best < 0 || this.drawsBefore(this.nodes[best], node)) best = node.index;
+      }
+    }
+    return best;
+  }
+
   private hasAnyHandler(nodeIndex: number): boolean {
     const node = this.nodes[nodeIndex];
+    if (node.kind === "list") return true;
     if (node.kind === "range") return true;
     if (node.kind === "input") return true;
     if (node.tag === "check" || node.tag === "select" || node.tag === "radio") return true;
@@ -1618,8 +1826,47 @@ export class PreviewUIRuntime {
     return false;
   }
 
+  private applyListScrollDelta(nodeIndex: number, dy: number): boolean {
+    const node = this.nodes[nodeIndex];
+    const list = this.listStateForNode(nodeIndex);
+    if (!node || !list) return false;
+    const maxScroll = Math.max(0, list.contentHeight - node.box.h);
+    const rawNext = list.scrollY - dy;
+    if (dy > 0 && rawNext <= 0) this.listSnapTop = true;
+    const nextScrollY = Math.max(0, Math.min(maxScroll, rawNext));
+    if (nextScrollY === list.scrollY) return false;
+    list.scrollY = nextScrollY;
+    this.markDirty(nodeIndex);
+    return true;
+  }
+
+  private snapListToTop(nodeIndex: number, force: boolean): boolean {
+    const list = this.listStateForNode(nodeIndex);
+    if (!list) return false;
+    if (!force && list.scrollY > UI_SCROLL_EDGE_SNAP_PX) return false;
+    const changed = list.scrollY !== 0;
+    list.scrollY = 0;
+    if (changed || force) {
+      this.markDirty(nodeIndex);
+      return true;
+    }
+    return false;
+  }
+
+  private dispatchListTap(nodeIndex: number, tx: number, ty: number): void {
+    const node = this.nodes[nodeIndex];
+    const list = this.listStateForNode(nodeIndex);
+    if (!node || !list || !list.tapBody) return;
+    const drawY = this.drawYForNode(nodeIndex);
+    const row = Math.trunc((ty - drawY + list.scrollY) / Math.max(1, list.itemHeight));
+    if (row < 0 || row >= list.itemCount) return;
+    this.runBody(list.tapBody, this.listLocal(list.tapParam, row));
+  }
+
   private handleTouch(tx: number, ty: number): void {
     const now = Date.now();
+    this.lastTouchX = tx;
+    this.lastTouchY = ty;
     if (this.keyboardVisible) {
       if (this.touchState === 0) {
         if (now - this.lastTouchTime < UI_TOUCH_DEBOUNCE_MS) return;
@@ -1643,6 +1890,10 @@ export class PreviewUIRuntime {
       this.scrollSnapTop = false;
       this.scrollNode = this.findScrollNode(tx, ty);
       this.scrollStartY = this.scrollNode >= 0 ? this.nodes[this.scrollNode].scrollY : 0;
+      this.listSnapTop = false;
+      this.listNode = this.findListNode(tx, ty);
+      const list = this.listNode >= 0 ? this.listStateForNode(this.listNode) : undefined;
+      this.listStartY = list ? list.scrollY : 0;
       this.rangeNode = node >= 0 && this.nodes[node].kind === "range" ? node : -1;
       if (node >= 0) {
         if (this.nodes[node].kind === "button") this.setPressed(node, true);
@@ -1653,7 +1904,15 @@ export class PreviewUIRuntime {
       if (!this.isDragging && this.scrollNode >= 0 && Math.abs(ty - this.dragStartY) >= UI_DRAG_THRESHOLD) {
         this.isDragging = true;
       }
-      if (this.isDragging && this.scrollNode >= 0) {
+      if (!this.isDragging && this.listNode >= 0 && Math.abs(ty - this.dragStartY) >= UI_DRAG_THRESHOLD) {
+        this.isDragging = true;
+      }
+      if (this.isDragging && this.listNode >= 0) {
+        const dy = ty - this.dragStartY;
+        this.dragStartX = tx;
+        this.dragStartY = ty;
+        this.applyListScrollDelta(this.listNode, dy);
+      } else if (this.isDragging && this.scrollNode >= 0) {
         const dy = ty - this.dragStartY;
         this.dragStartX = tx;
         this.dragStartY = ty;
@@ -1680,6 +1939,9 @@ export class PreviewUIRuntime {
       this.scrollNode = -1;
       this.scrollSnapTop = false;
       this.scrollStartY = 0;
+      this.listNode = -1;
+      this.listSnapTop = false;
+      this.listStartY = 0;
       this.rangeNode = -1;
       this.lastReleaseTime = now;
       return;
@@ -1693,8 +1955,15 @@ export class PreviewUIRuntime {
         (this.scrollStartY > UI_SCROLL_EDGE_SNAP_PX && scrollNode.scrollY <= UI_SCROLL_EDGE_SNAP_PX);
       if (shouldSnapTop) this.snapScrollToTop(this.scrollNode, this.scrollSnapTop);
     }
+    if (this.listNode >= 0) {
+      const list = this.listStateForNode(this.listNode);
+      const shouldSnapTop = !!list && (this.listSnapTop ||
+        (this.listStartY > UI_SCROLL_EDGE_SNAP_PX && list.scrollY <= UI_SCROLL_EDGE_SNAP_PX));
+      if (shouldSnapTop) this.snapListToTop(this.listNode, this.listSnapTop);
+    }
     if (node >= 0 && !this.isDragging) {
       if (elapsed < UI_TOUCH_HOLD_MS) {
+        if (this.nodes[node].kind === "list") this.dispatchListTap(node, this.lastTouchX, this.lastTouchY);
         this.dispatchBuiltInClick(node);
         this.dispatch("click", node);
       }
@@ -1708,6 +1977,9 @@ export class PreviewUIRuntime {
     this.scrollNode = -1;
     this.scrollSnapTop = false;
     this.scrollStartY = 0;
+    this.listNode = -1;
+    this.listSnapTop = false;
+    this.listStartY = 0;
     this.rangeNode = -1;
     this.lastReleaseTime = now;
   }
@@ -2029,28 +2301,36 @@ export class PreviewUIRuntime {
       .replace(/\b([$A-Z_a-z][$\w]*)\s+as\s+const\b/g, "$1");
   }
 
-  private scriptValues(aliases: string[]): unknown[] {
-    return [this.screen, this.createUiFacade(), ...aliases.map(() => this.screen)];
+  private scriptValues(aliases: string[], locals: Record<string, unknown> = {}): unknown[] {
+    return [this.screen, this.createUiFacade(), ...aliases.map(() => this.screen), ...Object.values(locals)];
   }
 
-  private evaluateExpression(expression: string | undefined): unknown {
+  private listLocal(param: string | undefined, row: number): Record<string, unknown> {
+    return param ? { [param]: row } : {};
+  }
+
+  private evaluateExpression(expression: string | undefined, locals: Record<string, unknown> = {}): unknown {
     if (!expression) return undefined;
     const aliases = this.scriptTreeNames();
+    const localNames = Object.keys(locals).filter((name) => /^[$A-Z_a-z][$\w]*$/.test(name));
+    const localValues = Object.fromEntries(localNames.map((name) => [name, locals[name]]));
     const normalized = this.normalizeScript(expression);
     try {
-      return Function("screen", "ui", ...aliases, `"use strict"; return (${normalized});`)(...this.scriptValues(aliases));
+      return Function("screen", "ui", ...aliases, ...localNames, `"use strict"; return (${normalized});`)(...this.scriptValues(aliases, localValues));
     } catch (error) {
       this.onDiagnostics?.(`Preview expression failed: ${expression} (${error instanceof Error ? error.message : String(error)})`);
       return undefined;
     }
   }
 
-  private runBody(body: string | undefined): void {
+  private runBody(body: string | undefined, locals: Record<string, unknown> = {}): void {
     if (!body) return;
     const aliases = this.scriptTreeNames();
+    const localNames = Object.keys(locals).filter((name) => /^[$A-Z_a-z][$\w]*$/.test(name));
+    const localValues = Object.fromEntries(localNames.map((name) => [name, locals[name]]));
     const normalized = this.normalizeScript(body);
     try {
-      Function("screen", "ui", ...aliases, `"use strict"; ${normalized}`)(...this.scriptValues(aliases));
+      Function("screen", "ui", ...aliases, ...localNames, `"use strict"; ${normalized}`)(...this.scriptValues(aliases, localValues));
     } catch (error) {
       this.onDiagnostics?.(`Preview callback failed: ${body} (${error instanceof Error ? error.message : String(error)})`);
     }

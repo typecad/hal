@@ -43,6 +43,7 @@ import { getDisplayProfile } from "./display-profile-store.js";
 import { buildUIFontAssets } from "./font-assets.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 import { emitImageTables, loadImageAssets } from "./image-assets.js";
+import type { Diagnostic } from "../types.js";
 
 export interface UIModule {
   /** Absolute path of the .ui.html source. */
@@ -60,6 +61,8 @@ export interface UIModule {
   fontAssets: UIFontAssetModel[];
   /** Raw @keyframes blocks parsed from CSS. */
   rawKeyframes: KeyframeSet[];
+  /** Parser-level warnings (unknown CSS properties / HTML tags). */
+  diagnostics: Diagnostic[];
 }
 
 export interface LowerOptions {
@@ -96,26 +99,28 @@ export function loadUIModule(htmlPath: string): UIModule {
     : abs.replace(/\.ui\.html$/, ".ui.css");
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
 
-  const parsed = parseHtmlWithKeyboards(htmlText);
+  const moduleDiagnostics: Diagnostic[] = [];
+  const parsed = parseHtmlWithKeyboards(htmlText, moduleDiagnostics);
   const tree = parsed.tree;
   const allScreens = parsed.screens;
   const keyboards = parsed.keyboards;
   // Merge <style> blocks from the HTML with the external .ui.css.
   const styleBlocks = extractStyleBlocks(htmlText);
   const fullCss = cssText + "\n" + styleBlocks;
-  const rules = parseCss(fullCss);
+  const rules = parseCss(fullCss, moduleDiagnostics);
   const fontFaces = parseFontFaces(fullCss);
-  const styled = resolveStyles(tree, rules);
-  const allStyledScreens = allScreens.map(s => resolveStyles(s, rules));
+  const styled = resolveStyles(tree, rules, moduleDiagnostics);
+  const allStyledScreens = allScreens.map(s => resolveStyles(s, rules, moduleDiagnostics));
   const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
   const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(cssPath));
 
   const rawKeyframes = parseKeyframes(fullCss);
-  const mod: UIModule = { htmlPath: abs, styled, allStyledScreens, keyboards, rules, fontFaces, fontAssets, rawKeyframes };
+  const mod: UIModule = { htmlPath: abs, styled, allStyledScreens, keyboards, rules, fontFaces, fontAssets, rawKeyframes, diagnostics: moduleDiagnostics };
   modules.set(abs, mod);
 
-  // Write a sibling .ui.html.d.ts so editors and the type-checker see the
-  // imported `screen` symbol with precise per-id typing.
+  // Write a sibling .ui.d.html.ts so editors and the type-checker see the
+  // imported `screen` symbol with precise per-id typing. The name follows the
+  // Node16 `allowArbitraryExtensions` convention (<base>.d.<ext>.ts).
   writeTypeDeclSibling(abs, allStyledScreens);
 
   return mod;
@@ -222,7 +227,7 @@ export function clearEntryHasUI(): void {
   entryHasUIFlag = false;
 }
 
-// ── Type-declaration sibling (.ui.html.d.ts) ────────────────────────────────
+// ── Type-declaration sibling (.ui.d.html.ts) ────────────────────────────────
 
 function uiElementTypeForTag(tag: string): string {
   switch (tag) {
@@ -240,7 +245,12 @@ function uiElementTypeForTag(tag: string): string {
 }
 
 function writeTypeDeclSibling(htmlPath: string, styled: StyledNode | StyledNode[]): void {
-  const dtsPath = htmlPath.replace(/\.ui\.html$/, ".ui.html.d.ts");
+  // Node16 module resolution with `allowArbitraryExtensions` types a non-JS
+  // module `<base>.<ext>` (here `app.ui.html`) via a sibling named
+  // `<base>.d.<ext>.ts` (here `app.ui.d.html.ts`). The older `.ui.html.d.ts`
+  // name is rejected by Node16 regardless of host hooks — the declaration file
+  // MUST follow the `<base>.d.<ext>.ts` convention.
+  const dtsPath = htmlPath.replace(/\.ui\.html$/, ".ui.d.html.ts");
   const ids = new Map<string, string>();
   const collect = (n: StyledNode) => {
     if (n.id && !ids.has(n.id)) ids.set(n.id, n.tag);

@@ -6,8 +6,8 @@
 // format lives here.
 // ---------------------------------------------------------------------------
 
-import type { PreprocessorContext } from './preprocessor';
-import type { ChainSegment } from './chain-collector';
+import type { PreprocessorContext } from './preprocessor.js';
+import type { ChainSegment } from './chain-collector.js';
 
 // ---------------------------------------------------------------------------
 // Segment emission

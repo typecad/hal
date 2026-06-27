@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseConfigFile } from "../../../packages/cuttlefish/src/config-loader";
 import { buildPreviewSnapshot } from "../../../packages/cuttlefish/src/preview/build-program";
+import { resolveColor } from "../../../packages/cuttlefish/src/ui/color";
 
 describe("preview snapshot builder", () => {
   it("resolves demo-ui ili9341-spi profile and extracts interactive specs", async () => {
@@ -19,7 +20,9 @@ describe("preview snapshot builder", () => {
     expect(snapshot.program.height).toBe(240);
     expect(snapshot.program.colorFormat).toBe("rgb565");
     expect(snapshot.program.display?.rotation).toBe(1);
-    expect(snapshot.program.nodes.some((node) => node.id === "btn" && node.kind === "button")).toBe(true);
+    const button = snapshot.program.nodes.find((node) => node.id === "btn" && node.kind === "button");
+    expect(button).toBeDefined();
+    expect(button!.bg).toBe(resolveColor("#ff6666", snapshot.program.colorFormat));
     expect(snapshot.program.nodes.find((node) => node.id === "ssid")).toMatchObject({
       kind: "input",
       inputType: "text",
@@ -31,13 +34,22 @@ describe("preview snapshot builder", () => {
     expect(speedSlow).toMatchObject({ kind: "radio", name: "speed", valueAttr: "slow", value: 0 });
     expect(speedFast).toMatchObject({ kind: "radio", name: "speed", valueAttr: "fast", checked: true, value: 1 });
     expect(snapshot.bindings.some((binding) => binding.nodeId === "counter" && binding.property === "text")).toBe(true);
+    expect(snapshot.listBindings).toContainEqual(expect.objectContaining({
+      nodeId: "deviceList",
+      countExpression: "50",
+      itemExpression: "`Device ${i + 1}`",
+      itemParam: "i",
+      tapParam: "i",
+    }));
     expect(snapshot.callbacks.some((callback) => callback.nodeId === "btn" && callback.kind === "click")).toBe(true);
     expect(snapshot.callbacks.some((callback) => callback.nodeId === "ssid" && callback.kind === "change")).toBe(true);
     expect(snapshot.cssRules.some((rule) => rule.selector.compounds.length === 1 && rule.selector.compounds[0].some(s => s.kind === "class" && s.name === "ui-key"))).toBe(true);
     expect(snapshot.program.keyframeSets.some((set) => set.name === "pulse")).toBe(true);
     expect(snapshot.program.animations.some((animation) => snapshot.program.nodes[animation.node]?.id === "pulseIndicator")).toBe(true);
     const aboutBody = snapshot.program.nodes.find((node) => node.id === "aboutBody");
-    expect(aboutBody).toMatchObject({ scrollable: true, box: { y: 70, h: 160 } });
+    expect(aboutBody).toMatchObject({ scrollable: true });
+    // The body sits below the screen header and fills the remaining viewport.
+    expect(aboutBody!.box.y).toBeGreaterThan(0);
     expect(aboutBody!.box.y + aboutBody!.box.h).toBeLessThanOrEqual(snapshot.program.height);
     expect(aboutBody!.contentHeight).toBeGreaterThan(aboutBody!.box.h);
     const fitContain = snapshot.program.nodes.find((node) => node.id === "fitImgContain");

@@ -7,8 +7,8 @@
 // C++; their bodies exist only so TypeScript authoring type-checks.
 // ---------------------------------------------------------------------------
 
-export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement } from "./types";
-import type { ScreenTree } from "./types";
+export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement } from "./types.js";
+import type { ScreenTree } from "./types.js";
 
 /** A reactive signal whose value lives on the device. */
 export interface Signal<T> {

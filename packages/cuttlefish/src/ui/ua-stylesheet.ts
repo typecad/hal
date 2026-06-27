@@ -13,12 +13,18 @@ screen {
   display: flex;
   flex-direction: column;
 }
+body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 view {
   display: flex;
   flex-direction: column;
 }
 button {
-  padding: 6px 12px;
+  padding: 4px 10px;
   border: 1px solid;
   text-align: center;
 }

@@ -1,6 +1,6 @@
-﻿import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit';
-import { include } from './include';
-import type { Pin } from './gpio';
+﻿import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit.js';
+import { include } from './include.js';
+import type { Pin } from './gpio.js';
 
 export class SPIDevice {
   private _bus: string;

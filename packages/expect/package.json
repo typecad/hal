@@ -2,7 +2,7 @@
   "name": "@typecad/expect",
   "version": "0.1.0",
   "description": "Hardware test framework for TypeCAD — vitest-style assertions over serial",
-  "type": "commonjs",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {

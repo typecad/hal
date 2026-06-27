@@ -7,13 +7,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ResolvedConfig, RunResult, FileResult } from './types';
-import { findTestFiles } from './finder';
-import { preprocess } from './preprocessor';
-import { transpileTestFile, compileSketch, uploadSketch } from './compiler';
-import { readSerialOutput } from './serial';
-import { parseProtocolLines } from './parser';
-import { reportFileResult, reportSummary } from './reporter';
+import type { ResolvedConfig, RunResult, FileResult } from './types.js';
+import { findTestFiles } from './finder.js';
+import { preprocess } from './preprocessor.js';
+import { transpileTestFile, compileSketch, uploadSketch } from './compiler.js';
+import { readSerialOutput } from './serial.js';
+import { parseProtocolLines } from './parser.js';
+import { reportFileResult, reportSummary } from './reporter.js';
 
 // ---------------------------------------------------------------------------
 // ANSI codes (for inline progress messages)

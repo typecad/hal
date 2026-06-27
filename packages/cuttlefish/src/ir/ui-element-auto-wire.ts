@@ -48,7 +48,9 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
   let nodeIndex = startIndex;
   const walk = (node: AutoWireNode) => {
     const currentIndex = nodeIndex++;
-    if (node.id) {
+    // Auto-wire nodes with an id, and <a href> links (which need
+    // navigation wiring even without an explicit id attribute).
+    if (node.id || node.href) {
       autoWireNode(treeName, node, currentIndex);
     }
     node.children?.forEach(walk);
@@ -58,6 +60,9 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
 }
 
 function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): void {
+  // The check/select/radio branches generate fnNames from node.id, so they
+  // require one. The href (navigation) branch below works with or without id.
+  if (!node.id && !node.href) return;
   if (node.tag === "check") {
     // Auto-wire: onClick toggles value 0↔1
     recordClickHandler({
@@ -123,7 +128,7 @@ function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): 
       recordClickHandler({
         nodeIndex,
         kind: "click",
-        fnName: `__ui_${node.id}_nav`,
+        fnName: `__ui_${node.id ?? "link" + nodeIndex}_nav`,
         callbackBody: `ui_navigate(${targetScreen});`,
       });
     } else {

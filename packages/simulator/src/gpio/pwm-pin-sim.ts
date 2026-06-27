@@ -5,7 +5,7 @@
 import type { PWMPin, IToneAttachment, AnalogValue } from '@typecad/hal';
 import { PinMode } from '@typecad/hal';
 import type { DigitalValue } from '@typecad/hal';
-import { SimDigitalPin } from './digital-pin-sim';
+import { SimDigitalPin } from './digital-pin-sim.js';
 
 /**
  * Simulated PWM pin. Extends digital pin with PWM duty cycle control.

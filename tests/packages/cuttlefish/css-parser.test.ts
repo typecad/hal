@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseAnimation, parseCss, parseFontFaces, parseInlineStyle, parseKeyframes } from "@typecad/cuttlefish/ui/css-parser";
+import { parseCss, parseInlineStyle, parseFontFaces, parseKeyframes, parseAnimation } from "@typecad/cuttlefish/ui/css-parser";
+// For tests that touch theme state, import parseCss from src so it shares the
+// same module instance as setThemeClass (the package export resolves to dist).
+import { parseCss as parseCssSrc } from "../../../packages/cuttlefish/src/ui/css-parser";
+import { setThemeClass } from "../../../packages/cuttlefish/src/ui/theme-store";
 
 describe("CSS subset parser", () => {
   it("parses element selectors", () => {
@@ -193,5 +197,133 @@ describe("CSS subset parser", () => {
     const rules = parseCss(css);
     expect(rules).toHaveLength(4);
     expect(rules[3].selector.pseudo).toBe("pressed");
+  });
+
+  it("parses flex-direction including reverse values", () => {
+    const rules = parseCss(`#a { flex-direction: row-reverse; } #b { flex-direction: column-reverse; }`);
+    expect(rules[0].properties.flexDirection).toBe("row-reverse");
+    expect(rules[1].properties.flexDirection).toBe("column-reverse");
+  });
+
+  it("parses align-content", () => {
+    const rules = parseCss(`#wrap { align-content: space-between; }`);
+    expect(rules[0].properties.alignContent).toBe("space-between");
+  });
+
+  it("splits row-gap and column-gap into separate fields", () => {
+    const rules = parseCss(`#grid { row-gap: 10; column-gap: 4; }`);
+    expect(rules[0].properties.rowGap).toBe("10");
+    expect(rules[0].properties.columnGap).toBe("4");
+  });
+
+  it("uniform gap sets both row-gap and column-gap", () => {
+    const rules = parseCss(`#grid { gap: 8; }`);
+    expect(rules[0].properties.gap).toBe("8");
+    expect(rules[0].properties.rowGap).toBe("8");
+    expect(rules[0].properties.columnGap).toBe("8");
+  });
+
+  it("parses text-overflow: ellipsis", () => {
+    const rules = parseCss(`#label { text-overflow: ellipsis; }`);
+    expect(rules[0].properties.textOverflow).toBe("ellipsis");
+  });
+
+  it("emits a warning for an unknown CSS property when given a diagnostics sink", () => {
+    const diags: any[] = [];
+    parseCss(`#x { bogus-prop: red; color: #fff; }`, diags);
+    const unknown = diags.filter(d => d.message.includes("bogus-prop"));
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0].severity).toBe("warning");
+    // Known property produces no warning.
+    expect(diags.some(d => d.message.includes("color"))).toBe(false);
+  });
+
+  it("emits a distinct warning for per-side border properties", () => {
+    const diags: any[] = [];
+    parseCss(`#x { border-bottom: 1px solid #888; }`, diags);
+    const border = diags.filter(d => d.message.includes("border-bottom"));
+    expect(border).toHaveLength(1);
+    expect(border[0].severity).toBe("warning");
+    expect(border[0].hint).toBeTruthy();
+  });
+
+  it("emits no warnings when no diagnostics sink is passed (backward compatible)", () => {
+    // No diagnostics param — must not throw and must return rules normally.
+    const rules = parseCss(`#x { bogus-prop: red; color: #fff; }`);
+    expect(rules).toHaveLength(1);
+    expect(rules[0].properties.color).toBe("#fff");
+  });
+
+  it("warns on unknown inline-style properties", () => {
+    const diags: any[] = [];
+    const props = parseInlineStyle(`color: #fff; made-up: 5`, diags);
+    expect(props.color).toBe("#fff");
+    expect(diags.filter(d => d.message.includes("made-up"))).toHaveLength(1);
+  });
+
+  it("skips rules inside a non-matching @media (compile-time eval)", () => {
+    // Default profile is 320x240, so max-width:240 does NOT apply.
+    const rules = parseCss(`@media (max-width: 240px) { #small { color: red; } } #always { color: green; }`);
+    const ids = rules.map(r => r.selector.compounds[0][0].name);
+    expect(ids).not.toContain("small");
+    expect(ids).toContain("always");
+  });
+
+  it("applies rules inside a matching @media", () => {
+    // min-width:100 applies on a 320-wide display.
+    const rules = parseCss(`@media (min-width: 100px) { #big { color: blue; } }`);
+    expect(rules.map(r => r.selector.compounds[0][0].name)).toContain("big");
+  });
+
+  it("warns on an unsupported @media condition", () => {
+    const diags: any[] = [];
+    parseCss(`@media (orientation: portrait) { #x { color: red; } }`, diags);
+    expect(diags.some(d => /unsupported condition/i.test(d.message))).toBe(true);
+  });
+
+  it("parses :not() negation into the not field", () => {
+    const rules = parseCss(`button:not(.disabled) { color: red; }`);
+    expect(rules[0].selector.not).toEqual([[{ kind: "class", name: "disabled" }]]);
+  });
+
+  it("parses compound :not() negation", () => {
+    const rules = parseCss(`.a:not(.b.c) { color: red; }`);
+    expect(rules[0].selector.not).toEqual([
+      [{ kind: "class", name: "b" }, { kind: "class", name: "c" }],
+    ]);
+  });
+
+  it("tokenizes adjacent sibling combinator (+)", () => {
+    const rules = parseCss(`.a + .b { color: red; }`);
+    expect(rules[0].selector.combinators).toEqual(["+"]);
+  });
+
+  it("tokenizes general sibling combinator (~)", () => {
+    const rules = parseCss(`.x ~ .y { color: red; }`);
+    expect(rules[0].selector.combinators).toEqual(["~"]);
+  });
+
+  it("resolves class-scoped variables against the active theme class", () => {
+    const css = `:root { --bg: #ffffff; } .dark { --bg: #0a0a0a; } .card { background: var(--bg); }`;
+    setThemeClass(null);
+    const light = parseCssSrc(css);
+    expect(light[0].properties.background).toBe("#ffffff");
+    setThemeClass("dark");
+    const dark = parseCssSrc(css);
+    expect(dark[0].properties.background).toBe("#0a0a0a");
+    setThemeClass(null);
+  });
+
+  it("evaluates calc() after var() substitution", () => {
+    const css = `:root { --radius: 10px; } .card { border-radius: calc(var(--radius) - 4px); }`;
+    const rules = parseCssSrc(css);
+    expect(rules[0].properties.borderRadius).toBe("6px");
+  });
+
+  it("evaluates calc() with multiplication and unit conversion", () => {
+    const css = `:root { --r: 0.625rem; } .a { padding: calc(var(--r) * 2); }`;
+    const rules = parseCssSrc(css);
+    // 0.625rem = 10px, * 2 = 20
+    expect(rules[0].properties.padding).toBe("20rem");
   });
 });

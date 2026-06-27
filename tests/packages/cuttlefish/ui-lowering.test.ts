@@ -84,7 +84,7 @@ describe("ui lowering", () => {
     expect(out.transitionTable).toContain("80");
   });
 
-  it("emits a .ui.html.d.ts with typed id properties", () => {
+  it("emits a .ui.d.html.ts with typed id properties", () => {
     const out = lower(
       `<screen><text id="greeting">hi</text><button id="btn">x</button></screen>`,
       `#greeting { font: 8x16; }`,

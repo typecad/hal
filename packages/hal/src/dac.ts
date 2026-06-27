@@ -1,4 +1,4 @@
-import { dacWrite, boardResolve } from './emit';
+import { dacWrite, boardResolve } from './emit.js';
 
 /**
  * DACClass provides access to true digital-to-analog converters.

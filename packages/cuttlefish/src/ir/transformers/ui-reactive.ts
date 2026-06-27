@@ -38,6 +38,7 @@ function propEnum(property: string): string {
     case "text": return "PROP_TEXT";
     case "visible": return "PROP_VISIBLE";
     case "borderColor": return "PROP_BORDER_COLOR";
+    case "value": return "PROP_VALUE";
     default: return `PROP_${property.toUpperCase()}`;
   }
 }
@@ -86,7 +87,49 @@ export function resetListBindings(): void {
   listBindings.length = 0;
 }
 
-/** Emit the list binding table + functions. */
+// ── Input bindings (two-way) ─────────────────────────────────────────────────
+// ui.bindInput(node, (text) => { ... }) — fires the callback whenever the
+// bound <input> node's textBuffer changes (e.g. the user typed via the
+// on-screen keyboard). Mirrors the list-binding tap-callback pattern.
+export interface InputBindingSpec {
+  nodeIndex: number;
+  cbFnName: string;   // C++ function: void fn(const char* text)
+  cbFnBody: string;   // lowered C++ body for the callback
+}
+
+const inputBindings: InputBindingSpec[] = [];
+export function recordInputBinding(spec: InputBindingSpec): void {
+  inputBindings.push(spec);
+}
+export function getInputBindings(): InputBindingSpec[] {
+  return inputBindings;
+}
+export function getInputBindingsCount(): number {
+  return inputBindings.length;
+}
+export function resetInputBindings(): void {
+  inputBindings.length = 0;
+}
+
+/** Emit the input-binding table + callback functions. */
+export function emitInputBindings(specs: InputBindingSpec[]): string {
+  if (specs.length === 0) {
+    return `UIInputBinding __ui_input_bindings[] = {};\nconst uint8_t __ui_input_binding_count = 0;`;
+  }
+  const lines: string[] = [];
+  // Emit the callback functions.
+  for (const spec of specs) {
+    lines.push(`void ${spec.cbFnName}(const char* text) { ${spec.cbFnBody} }`);
+  }
+  // Emit the binding table.
+  lines.push(`UIInputBinding __ui_input_bindings[] = {`);
+  for (const spec of specs) {
+    lines.push(`  { .node=${spec.nodeIndex}, .cb=${spec.cbFnName} },`);
+  }
+  lines.push(`};`);
+  lines.push(`const uint8_t __ui_input_binding_count = ${specs.length};`);
+  return lines.join("\n");
+}
 export function emitListBindings(specs: ListBindingSpec[]): string {
   if (specs.length === 0) {
     return `UIListBinding __ui_list_bindings[] = {};\nconst uint8_t __ui_list_binding_count = 0;`;

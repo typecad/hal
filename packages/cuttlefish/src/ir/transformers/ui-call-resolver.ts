@@ -15,7 +15,7 @@ import { StatementIR, HALOpIR } from "../../api/index.js";
 import { makeSourceSpan } from "../ast-node-utils.js";
 import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
 import { resolveMount, MountRequest } from "./ui-mount.js";
-import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getListBindingsCount } from "./ui-reactive.js";
+import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getListBindingsCount, InputBindingSpec, recordInputBinding, getInputBindingsCount, resetInputBindings } from "./ui-reactive.js";
 import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
@@ -75,7 +75,7 @@ export interface ClickHandlerSpec {
   nodeIndex: number;
   /** Handler kind: click (short tap), hold (long press ≥600ms), release (finger up),
    *  change (input text committed via keyboard). */
-  kind: "click" | "hold" | "release" | "change";
+  kind: "click" | "hold" | "release" | "change" | "rangechange";
   /** Function name of the generated handler. */
   fnName: string;
   /** C++ body of the callback. */
@@ -174,6 +174,7 @@ export function resetUICallState(): void {
   pressBindings.length = 0;
   _watchPinSpecs.length = 0;
   _clickHandlers.length = 0;
+  resetInputBindings();
   resetCallbackLoweringState();
 }
 
@@ -256,6 +257,9 @@ export function tryResolveUICall(
   }
   if (method === "bindList") {
     return resolveBindListCall(call, fileName, sourceText, diagnostics);
+  }
+  if (method === "bindInput") {
+    return resolveBindInputCall(call, fileName, sourceText, diagnostics);
   }
   if (method === "watchPin") {
     return resolveWatchPinCall(call, fileName, sourceText, diagnostics);
@@ -652,6 +656,52 @@ function resolveBindListCall(
   };
 }
 
+/** Resolve ui.bindInput(node, callback) — records a two-way input binding.
+ *  The callback fires (with the current text) whenever the bound <input>
+ *  node's textBuffer changes at runtime (e.g. the user typed via the
+ *  on-screen keyboard). Mirrors the bindList tap-callback lowering. */
+function resolveBindInputCall(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): StatementIR | null {
+  const nodeArg = call.arguments[0];
+  const cbArg = call.arguments[1];
+  if (!nodeArg || !cbArg) return null;
+
+  // Resolve the <input> node index via the standard screen.<id> path.
+  let nodeIndex = 0;
+  if (ts.isPropertyAccessExpression(nodeArg) && ts.isIdentifier(nodeArg.expression)) {
+    const htmlPath = resolveUIModuleImport(nodeArg.expression.text);
+    if (htmlPath) nodeIndex = resolveNodeIndex(htmlPath, nodeArg.name.text);
+  }
+
+  const cbFnName = `__ui_input_cb_${getInputBindingsCount()}`;
+
+  // Lower the callback body via the same mechanism as the bindList tap
+  // callback. The arrow's first param is the typed string; rename it to
+  // 'text' (the C++ arg name) so the body references resolve correctly.
+  let cbFnBody = "";
+  if (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg)) {
+    cbFnBody = lowerCallbackBody(cbArg, sourceText, diagnostics) || "";
+    if (ts.isArrowFunction(cbArg) && cbArg.parameters.length > 0) {
+      const paramName = cbArg.parameters[0].name.getText();
+      if (paramName && paramName !== "text") {
+        cbFnBody = cbFnBody.replace(new RegExp(`\\b${paramName}\\b`, "g"), "text");
+      }
+    }
+  }
+
+  recordInputBinding({ nodeIndex, cbFnName, cbFnBody });
+
+  return {
+    kind: "block",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    body: [],
+  };
+}
+
 /** Resolve ui.watchPin(pin, callback) — records a pin-watching spec.
  * The callback body is lowered to C++ for the generated async watcher. */
 function resolveWatchPinCall(
@@ -705,4 +755,25 @@ export function resolveNodeIndex(htmlPath: string, id: string): number {
     if (walk(root)) break;
   }
   return found >= 0 ? found : 0;
+}
+
+/** Look up a node's HTML tag by element id (pre-order DFS order).
+ *  Used to route generic callbacks (e.g. onChange) to the right lowering path
+ *  based on element kind (range vs input). Returns "" if not found. */
+export function resolveNodeTag(htmlPath: string, id: string): string {
+  const mod = getUIModule(htmlPath);
+  if (!mod) return "";
+  let idx = 0;
+  let foundTag = "";
+  const walk = (n: StyledNode): boolean => {
+    if (n.id === id) { foundTag = n.tag; return true; }
+    idx++;
+    for (const c of n.children) { if (walk(c)) return true; }
+    return false;
+  };
+  const roots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  for (const root of roots) {
+    if (walk(root)) break;
+  }
+  return foundTag;
 }

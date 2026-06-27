@@ -17,32 +17,44 @@ import { CSSProperty } from "./css-parser.js";
 import Yoga from "yoga-layout";
 
 /** Parse the first numeric value from a CSS string ("8px", "8px 16px" → 8). */
+/** Parse a single CSS length to device pixels.
+ *  rem/em × 16 (root font size), px/bare as-is, decimals supported. */
+function cssLength(val: string): number {
+  const v = val.trim();
+  const remM = /^(-?[\d.]+)rem$/.exec(v);
+  if (remM) return Math.round(parseFloat(remM[1]) * 16);
+  const emM = /^(-?[\d.]+)em$/.exec(v);
+  if (emM) return Math.round(parseFloat(emM[1]) * 16);
+  const m = /^(-?[\d.]+)(?:px|%)?$/.exec(v);
+  return m ? parseFloat(m[1]) : 0;
+}
+
 function cssNum(val: string | undefined): number {
   if (!val) return 0;
-  const m = val.match(/(\d+)/);
-  return m ? parseInt(m[1]) : 0;
+  return cssLength(val);
 }
 
 /** Parse horizontal padding from shorthand ("8px 16px" → 16 for left/right). */
 function cssPadH(val: string | undefined): number {
   if (!val) return 0;
-  const nums = val.match(/(\d+)/g) ?? [];
-  if (nums.length <= 1) return parseInt(nums[0] ?? "0");
-  return parseInt(nums[1] ?? nums[0]);
+  const parts = val.trim().split(/\s+/);
+  if (parts.length <= 1) return cssLength(parts[0] ?? "0");
+  return cssLength(parts[1] ?? parts[0]);
 }
 
 /** Parse vertical padding from shorthand ("8px 16px" → 8 for top/bottom). */
 function cssPadV(val: string | undefined): number {
   if (!val) return 0;
-  const nums = val.match(/(\d+)/g) ?? [];
-  return parseInt(nums[0] ?? "0");
+  const parts = val.trim().split(/\s+/);
+  return cssLength(parts[0] ?? "0");
 }
 
 /** Parse border width from "2px solid #808080" → 2. */
 function cssBorderWidth(val: string | undefined): number {
   if (!val) return 0;
-  const m = val.match(/(\d+)px/);
-  return m ? parseInt(m[1]) : 0;
+  // border shorthand: "<width> <style> <color>" — width is the first token.
+  const first = val.trim().split(/\s+/)[0];
+  return cssLength(first);
 }
 
 /** Metadata stored per Yoga node, indexed by traversal position. */
@@ -92,16 +104,14 @@ export class YogaLayoutEngine implements LayoutEngine {
     }
 
     // Flex container
-    if (s.display === "flex") {
-      yn.setFlexDirection(
-        s.flexDirection === "row"
-          ? Yoga.FLEX_DIRECTION_ROW
-          : Yoga.FLEX_DIRECTION_COLUMN,
-      );
-    } else {
-      // Default to column layout for the screen root.
-      yn.setFlexDirection(Yoga.FLEX_DIRECTION_COLUMN);
-    }
+    // flex-direction: row | row-reverse | column | column-reverse.
+    // Each value maps to a distinct Yoga enum (reverse was previously
+    // dropped — any non-"row" value collapsed to column).
+    const fd = s.display === "flex" ? s.flexDirection : "column";
+    if (fd === "row") yn.setFlexDirection(Yoga.FLEX_DIRECTION_ROW);
+    else if (fd === "row-reverse") yn.setFlexDirection(Yoga.FLEX_DIRECTION_ROW_REVERSE);
+    else if (fd === "column-reverse") yn.setFlexDirection(Yoga.FLEX_DIRECTION_COLUMN_REVERSE);
+    else yn.setFlexDirection(Yoga.FLEX_DIRECTION_COLUMN);
 
     // Padding (all edges from shorthand, using the vertical value for uniformity)
     const padV = cssPadV(s.padding);
@@ -123,9 +133,17 @@ export class YogaLayoutEngine implements LayoutEngine {
       yn.setMargin(Yoga.EDGE_RIGHT, marginH);
     }
 
-    // Gap
-    const gap = cssNum(s.gap);
-    if (gap) yn.setGap(Yoga.GUTTER_ALL, gap);
+    // Gap: row-gap / column-gap are applied per-axis. Uniform `gap`
+    // (both equal) uses GUTTER_ALL for efficiency; mismatched values
+    // set GUTTER_ROW and GUTTER_COLUMN separately.
+    const rowGap = cssNum(s.rowGap);
+    const colGap = cssNum(s.columnGap);
+    if (rowGap && colGap && rowGap === colGap) {
+      yn.setGap(Yoga.GUTTER_ALL, rowGap);
+    } else {
+      if (rowGap) yn.setGap(Yoga.GUTTER_ROW, rowGap);
+      if (colGap) yn.setGap(Yoga.GUTTER_COLUMN, colGap);
+    }
 
     // Border
     const borderW = cssBorderWidth(s.border);
@@ -146,6 +164,16 @@ export class YogaLayoutEngine implements LayoutEngine {
       else if (s.alignItems === "center") yn.setAlignItems(Yoga.ALIGN_CENTER);
       else if (s.alignItems === "stretch") yn.setAlignItems(Yoga.ALIGN_STRETCH);
       else if (s.alignItems === "flex-end") yn.setAlignItems(Yoga.ALIGN_FLEX_END);
+    }
+    // Align-content (multi-line flex-wrap cross-axis alignment)
+    if (s.alignContent) {
+      if (s.alignContent === "flex-start") yn.setAlignContent(Yoga.ALIGN_FLEX_START);
+      else if (s.alignContent === "center") yn.setAlignContent(Yoga.ALIGN_CENTER);
+      else if (s.alignContent === "flex-end") yn.setAlignContent(Yoga.ALIGN_FLEX_END);
+      else if (s.alignContent === "stretch") yn.setAlignContent(Yoga.ALIGN_STRETCH);
+      else if (s.alignContent === "space-between") yn.setAlignContent(Yoga.ALIGN_SPACE_BETWEEN);
+      else if (s.alignContent === "space-around") yn.setAlignContent(Yoga.ALIGN_SPACE_AROUND);
+      else if (s.alignContent === "space-evenly") yn.setAlignContent(Yoga.ALIGN_SPACE_EVENLY);
     }
     if (s.justifyContent) {
       if (s.justifyContent === "flex-start") yn.setJustifyContent(Yoga.JUSTIFY_FLEX_START);

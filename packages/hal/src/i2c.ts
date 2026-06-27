@@ -1,5 +1,5 @@
-﻿import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit';
-import { include } from './include';
+﻿import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit.js';
+import { include } from './include.js';
 
 export class I2CDevice {
   private _bus: string;

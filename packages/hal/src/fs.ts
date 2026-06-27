@@ -1,5 +1,5 @@
-import { rawCpp } from './emit';
-import { include } from './include';
+import { rawCpp } from './emit.js';
+import { include } from './include.js';
 
 /**
  * FSClass provides a high-level abstraction for filesystem operations.

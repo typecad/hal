@@ -25,7 +25,7 @@ export interface PinCapabilityFlags {
 // Runtime type guards
 // ---------------------------------------------------------------------------
 
-import type { BasePin, PWMPin, AnalogPin, InterruptPin } from './pin';
+import type { BasePin, PWMPin, AnalogPin, InterruptPin } from './pin.js';
 
 /** Type guard to check if a value is a BasePin (has required pin properties). */
 function isBasePin(value: unknown): value is BasePin {

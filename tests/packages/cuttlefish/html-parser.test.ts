@@ -114,4 +114,52 @@ describe("HTML subset parser", () => {
     expect(row[3].special).toBe(4);  // page-swap
     expect(row[4].special).toBe(0);  // char
   });
+
+  it("remaps HTML block-container aliases to view", () => {
+    const tree = parseHtml(`<screen><div id="d"></div><header id="h"></header><nav id="n"></nav></screen>`);
+    expect(tree.children[0].tag).toBe("view");
+    expect(tree.children[0].id).toBe("d");
+    expect(tree.children[1].tag).toBe("view");
+    expect(tree.children[2].tag).toBe("view");
+  });
+
+  it("remaps <body> to view", () => {
+    const tree = parseHtml(`<screen><body id="bd"></body></screen>`);
+    expect(tree.children[0].tag).toBe("view");
+    expect(tree.children[0].id).toBe("bd");
+  });
+
+  it("remaps HTML inline/heading aliases to text", () => {
+    const tree = parseHtml(`<screen><span id="s">x</span><p id="par">y</p><h1 id="title">z</h1></screen>`);
+    expect(tree.children[0].tag).toBe("text");
+    expect(tree.children[0].id).toBe("s");
+    expect(tree.children[1].tag).toBe("text");
+    expect(tree.children[2].tag).toBe("text");
+    expect(tree.children[2].id).toBe("title");
+  });
+
+  it("still rejects genuinely unsupported tags at the screen level", () => {
+    // A top-level non-screen, non-alias element with no screen root throws.
+    expect(() => parseHtml(`<bogus></bogus>`)).toThrow(/screen/);
+  });
+
+  it("emits a warning for an unknown child tag when given a diagnostics sink", () => {
+    const diags: any[] = [];
+    parseHtml(`<screen><marquee id="m">x</marquee></screen>`, diags);
+    const unknown = diags.filter(d => d.message.includes("marquee"));
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0].severity).toBe("warning");
+  });
+
+  it("does not warn for remapped HTML alias tags", () => {
+    const diags: any[] = [];
+    parseHtml(`<screen><div id="d"></div><span id="s">x</span><h1>y</h1></screen>`, diags);
+    expect(diags).toHaveLength(0);
+  });
+
+  it("emits no warnings when no diagnostics sink is passed (backward compatible)", () => {
+    // No diagnostics param — must not throw and must parse normally.
+    const tree = parseHtml(`<screen><div id="d"></div></screen>`);
+    expect(tree.children[0].tag).toBe("view");
+  });
 });

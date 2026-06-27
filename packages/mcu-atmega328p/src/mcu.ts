@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { MCUDefinition } from '@typecad/cuttlefish/api/schema';
-import { MCU_PERIPHERALS } from './peripherals';
+import { MCU_PERIPHERALS } from './peripherals.js';
 
 // ---------------------------------------------------------------------------
 // Pin capability shorthands

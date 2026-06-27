@@ -13,9 +13,13 @@
 // ---------------------------------------------------------------------------
 
 import { parseHTML } from "linkedom";
+import type { Diagnostic } from "../types.js";
 
 export interface UIElementNode {
   tag: string;
+  /** Original HTML tag before remapping (label/a/div/...), so CSS tag
+   *  selectors still match remapped elements. Equals tag when no remap. */
+  origTag?: string;
   id?: string;
   classes: string[];
   text?: string;
@@ -87,6 +91,18 @@ export interface ParsedHtml {
 
 const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list", "br"]);
 
+/** HTML tag aliases — common HTML elements remapped to internal primitives.
+ *  Semantic block containers -> view; inline/heading text tags -> text.
+ *  Applied before the SUPPORTED_TAGS check so authors can write familiar HTML. */
+const TAG_REMAP: Record<string, string> = {
+  // Block-level containers -> view (flexbox/positioning surface)
+  body: "view", div: "view", header: "view", footer: "view", nav: "view",
+  main: "view", section: "view", article: "view", aside: "view",
+  // Inline/heading text -> text
+  span: "text", p: "text",
+  h1: "text", h2: "text", h3: "text", h4: "text", h5: "text", h6: "text",
+};
+
 /** Extract <style>...</style> block contents from HTML source.
  *  Returns the concatenated CSS text (empty if no style blocks). */
 export function extractStyleBlocks(src: string): string {
@@ -94,13 +110,13 @@ export function extractStyleBlocks(src: string): string {
   return Array.from(matches).map(m => m[1]).join("\n");
 }
 
-export function parseHtml(src: string): UIElementNode {
-  return parseAllScreens(src)[0];
+export function parseHtml(src: string, diagnostics?: Diagnostic[]): UIElementNode {
+  return parseAllScreens(src, diagnostics)[0];
 }
 
 /** Parse all <screen> roots from HTML. Returns one tree per screen.
  *  Used for multi-screen navigation (<a href="#screenId">). */
-export function parseAllScreens(src: string): UIElementNode[] {
+export function parseAllScreens(src: string, diagnostics?: Diagnostic[]): UIElementNode[] {
   const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
 
   const wrapped = `<div id="__root__">${withoutComments}</div>`;
@@ -118,11 +134,11 @@ export function parseAllScreens(src: string): UIElementNode[] {
     throw new Error("UI HTML must have at least one <screen> root element");
   }
 
-  return screenEls.map(el => domToUIElementNode(el));
+  return screenEls.map(el => domToUIElementNode(el, diagnostics));
 }
 
 /** Parse HTML, returning both the <screen> tree and any <keyboard> templates. */
-export function parseHtmlWithKeyboards(src: string): ParsedHtml {
+export function parseHtmlWithKeyboards(src: string, diagnostics?: Diagnostic[]): ParsedHtml {
   const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
   const wrapped = `<div id="__root__">${withoutComments}</div>`;
   const { document } = parseHTML(wrapped);
@@ -139,7 +155,7 @@ export function parseHtmlWithKeyboards(src: string): ParsedHtml {
   }
 
   // Parse all screens (for multi-screen navigation) + keyboards.
-  const screens = parseAllScreens(src);
+  const screens = parseAllScreens(src, diagnostics);
   const tree = screens[0];
   return { tree, screens, keyboards };
 }
@@ -185,13 +201,16 @@ function parseKeyElement(el: Element): UIKeyTemplate {
 }
 
 /** Adapt a DOM element to UIElementNode, recursively walking children. */
-function domToUIElementNode(el: Element): UIElementNode {
+function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementNode {
   const tag = el.tagName.toLowerCase();
 
-  // <label> and <a> are treated as <text> internally
-  const effectiveTag = (tag === "label" || tag === "a") ? "text" : tag;
+  // <label> and <a> are treated as <text> internally; HTML aliases
+  // (div/header/span/p/h1-h6/...) remap to view or text.
+  const remapped = TAG_REMAP[tag];
+  const effectiveTag = remapped ? remapped
+    : (tag === "label" || tag === "a") ? "text" : tag;
 
-  if (!SUPPORTED_TAGS.has(tag)) {
+  if (!SUPPORTED_TAGS.has(effectiveTag)) {
     throw new Error(`Unsupported tag <${tag}> — supported: ${[...SUPPORTED_TAGS].join(", ")}`);
   }
 
@@ -258,7 +277,18 @@ function domToUIElementNode(el: Element): UIElementNode {
   let text: string | undefined;
   const childElements = Array.from(el.children).filter((c) => {
     const ct = c.tagName.toLowerCase();
-    return SUPPORTED_TAGS.has(ct) && ct !== "option" && ct !== "br";
+    // Accept native tags and HTML aliases (div/span/p/h1-h6/...) that remap later.
+    const accepted = SUPPORTED_TAGS.has(ct) || TAG_REMAP[ct] !== undefined;
+    if (!accepted && ct !== "option" && ct !== "br" && diagnostics) {
+      diagnostics.push({
+        severity: "warning",
+        message: `Unknown HTML tag <${ct}> — ignored.`,
+        hint: `Supported tags: ${[...SUPPORTED_TAGS].sort().join(", ")}.`,
+        code: "unknown-html-tag",
+        source: ct,
+      });
+    }
+    return accepted && ct !== "option" && ct !== "br";
   });
 
   if (childElements.length === 0) {
@@ -275,9 +305,10 @@ function domToUIElementNode(el: Element): UIElementNode {
     if (tc) text = tc;
   }
 
-  const node: UIElementNode = { tag: effectiveTag, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, disabled: disabledAttr, children: [] };
+  const remappedFrom = (remapped || tag === "label" || tag === "a") && tag !== effectiveTag ? tag : undefined;
+  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, disabled: disabledAttr, children: [] };
   for (const child of childElements) {
-    node.children.push(domToUIElementNode(child));
+    node.children.push(domToUIElementNode(child, diagnostics));
   }
   return node;
 }

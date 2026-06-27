@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { MCUDefinition } from '@typecad/cuttlefish/api/schema';
-import { MCU_PERIPHERALS } from './peripherals';
+import { MCU_PERIPHERALS } from './peripherals.js';
 
 // ---------------------------------------------------------------------------
 // Default capability flags for ESP32
@@ -268,8 +268,8 @@ export const ESP32WROOM32: MCUDefinition = {
 export default ESP32WROOM32;
 
 // Re-exports
-export * from './pins';
-export * from './peripherals';
+export * from './pins.js';
+export * from './peripherals.js';
 
 /**
  * Structured manifest consumed by the TypeCAD CLI for contract-based

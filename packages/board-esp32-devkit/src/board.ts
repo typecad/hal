@@ -20,10 +20,10 @@ import {
   D34, D35, D36, D39,
   A0, A1, A2, A3, A4, A5,
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX, TX2, RX2, DAC1, DAC2,
-} from './pins';
+} from './pins.js';
 
 import { I2C0, I2C1, SPI0, SPI1, UART0, UART2 } from '@typecad/mcu-esp32';
-import { ESP32DevKit } from './index';
+import { ESP32DevKit } from './index.js';
 
 export const Board = {
   definition: ESP32DevKit,

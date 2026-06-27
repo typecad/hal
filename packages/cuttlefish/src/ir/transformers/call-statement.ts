@@ -5,7 +5,7 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
-import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers } from "./ui-call-resolver.js";
+import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, resolveNodeTag, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers } from "./ui-call-resolver.js";
 import { lowerCallbackBody } from "./ui-callback-lowering.js";
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
 import { expressionToIR } from "../expression-to-ir.js";
@@ -177,6 +177,8 @@ export function callToStatement(
   // ── screen.input.onChange(callback) — input text committed via keyboard ─
   // Distinct from the GPIO onChange below: this variant takes a single callback
   // arg (no pin/count) and fires after ui_kb_close commits the typed text.
+  // Also handles <range> onChange — routed to "rangechange" and fired from the
+  // drag loop on every value change during a slider drag.
   if (
     ts.isPropertyAccessExpression(call.expression) &&
     call.expression.name.text === "onChange" &&
@@ -190,14 +192,17 @@ export function callToStatement(
 
     const htmlPath = resolveUIModuleImport(treeName);
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    const nodeTag = htmlPath ? resolveNodeTag(htmlPath, elemId) : "";
 
     let cbBody = "";
     if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
       cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
     }
 
-    const fnName = `__ui_${elemId}_change_${clickHandlers().length}`;
-    recordClickHandler({ nodeIndex, kind: "change", fnName, callbackBody: cbBody });
+    // <range> sliders fire on value change during drag; <input> fires on commit.
+    const kind = nodeTag === "range" ? "rangechange" : "change";
+    const fnName = `__ui_${elemId}_${kind}_${clickHandlers().length}`;
+    recordClickHandler({ nodeIndex, kind, fnName, callbackBody: cbBody });
 
     return {
       kind: "block",

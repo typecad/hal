@@ -1,4 +1,4 @@
-import { rawCpp } from './emit';
+import { rawCpp } from './emit.js';
 
 export class WDTClass {
   static readonly __instance_name = "WDT";

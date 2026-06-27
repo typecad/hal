@@ -18,7 +18,7 @@ import type { EmitterContext } from "./emitter-context.js";
 import { emitRuntimeHeader } from "../../ui/runtime-header.js";
 import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
 import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandlers } from "../../ir/transformers/ui-call-resolver.js";
-import { emitBindingTable, emitListBindings, getListBindings } from "../../ir/transformers/ui-reactive.js";
+import { emitBindingTable, emitListBindings, getListBindings, emitInputBindings, getInputBindings } from "../../ir/transformers/ui-reactive.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { generateTouchAdapter, TouchAdapterCodegen } from "../../api/shared/display-profile.js";
 import { generateDisplayAdapter } from "../../api/shared/display-adapter.js";
@@ -148,6 +148,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // 4a. List binding table + functions (from ui.bindList calls).
   ctx.sourceLines.push(emitListBindings(getListBindings()));
 
+  // 4a'. Input binding table + functions (from ui.bindInput calls).
+  ctx.sourceLines.push(emitInputBindings(getInputBindings()));
+
   // 4b. Binding compute functions. Each ui.bind(node, prop, fn) records a
   // BindingSpec whose fnName is referenced by the table. v1 emits a stub that
   // returns the node's current property value — structurally valid so the
@@ -219,8 +222,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   }
 
   // 8. Touch: handler functions + tables (click, hold, release).
-  // "change" handlers are emitted separately in 8b (input onChange dispatch).
-  const touchHandlers = clickHandlers().filter(h => h.kind !== "change");
+  // "change" (input commit) and "rangechange" (slider drag) are emitted
+  // separately in 8b/8c — they have their own dispatch points.
+  const touchHandlers = clickHandlers().filter(h => h.kind !== "change" && h.kind !== "rangechange");
   const maxIdx = touchHandlers.reduce((max, h) => Math.max(max, h.nodeIndex), -1);
   const tableSize = Math.max(maxIdx + 1, 1);
 
@@ -265,6 +269,27 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(`}`);
   } else {
     ctx.sourceLines.push(`void __ui_kb_set_onchange() { __ui_kb_onchange = nullptr; }`);
+  }
+
+  // 8c. Range onChange dispatch — per-node handler table fired from the slider
+  // drag loop on every value change. Mirrors the click/hold/release tables.
+  const rangeChangeHandlers = clickHandlers().filter(h => h.kind === "rangechange");
+  const rcMaxIdx = rangeChangeHandlers.reduce((max, h) => Math.max(max, h.nodeIndex), -1);
+  const rcTableSize = Math.max(rcMaxIdx + 1, 1);
+  for (const h of rangeChangeHandlers) {
+    ctx.sourceLines.push(`void ${h.fnName}() { ${h.callbackBody || ""} }`);
+  }
+  if (profile.touch && rangeChangeHandlers.length > 0) {
+    const rcEntries: string[] = [];
+    for (let i = 0; i < rcTableSize; i++) {
+      const handler = rangeChangeHandlers.find(h => h.nodeIndex === i);
+      rcEntries.push(handler ? handler.fnName : "nullptr");
+    }
+    ctx.sourceLines.push(`void (*__ui_rangechange_handlers[])() = { ${rcEntries.join(", ")} };`);
+    ctx.sourceLines.push(`const uint8_t __ui_rangechange_handler_count = ${rcTableSize};`);
+  } else {
+    ctx.sourceLines.push(`void (*__ui_rangechange_handlers[])() = {};`);
+    ctx.sourceLines.push(`const uint8_t __ui_rangechange_handler_count = 0;`);
   }
 
   // 9. Radio group table (from auto-wire).

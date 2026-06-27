@@ -32,6 +32,7 @@ import { CompilationContext, contextStorage } from "./ir/build-ir-state.js";
 import { buildSymbolTable, mergeSymbolTable, resolveInheritance, createSymbolTable } from "./ir/symbol-table.js";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug/index.js";
 import { collectTranspileGraph } from "./orchestrator/graph-builder.js";
+import { allUIModules } from "./ui/ui-registry.js";
 import { typeCheckFiles } from "./orchestrator/type-checker.js";
 import { runSemanticGates } from "./orchestrator/type-checker.js";
 import { autoGenerateMissingDecls } from "./orchestrator/dts-generator.js";
@@ -314,6 +315,10 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     if (configDisplay.themeCss) {
       setThemeCss(configDisplay.themeCss);
     }
+    if (configDisplay.themeClass) {
+      const { setThemeClass } = await import("./ui/theme-store.js");
+      setThemeClass(configDisplay.themeClass);
+    }
   }
 
   const outDir = path.join(outBaseDir, strategy.outputSubdirectory(sketchBaseName));
@@ -384,6 +389,16 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   let entryOutputs: GeneratedOutputs | undefined;
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
   const allRemovedSymbols: string[] = [];
+
+  // ── Parser-level warnings (unknown CSS properties / HTML tags) ────────────
+  // The graph build above already loaded all .ui.html modules; surface their
+  // parser warnings (unknown CSS properties, unknown HTML tags) here so the
+  // author sees typos and unsupported features instead of silent drops.
+  for (const mod of allUIModules()) {
+    for (const d of mod.diagnostics) {
+      diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+    }
+  }
 
   // ── Semantic gates (Phase 3) ──────────────────────────────────────────────
   // Type-resolved checks that the syntactic feature-prescan cannot express:

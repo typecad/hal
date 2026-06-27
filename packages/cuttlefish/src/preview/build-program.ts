@@ -25,12 +25,14 @@ import {
 } from "../ui/model.js";
 import { selectEngine } from "../ui/select-engine.js";
 import { resolveStyles, type StyledNode } from "../ui/style-resolver.js";
+import { getThemeClass, setThemeClass } from "../ui/theme-store.js";
 import type {
   PreviewBindingSpec,
   PreviewCallbackSpec,
   PreviewDiagnostic,
   PreviewInitialAssignment,
   PreviewIntervalSpec,
+  PreviewListBindingSpec,
   PreviewPinControlSpec,
   PreviewSnapshot,
 } from "./types.js";
@@ -101,6 +103,13 @@ function callbackExpressionText(cb: ts.Expression | undefined, source: ts.Source
   return undefined;
 }
 
+function callbackFirstParamName(cb: ts.Expression | undefined): string | undefined {
+  if (!cb || (!ts.isArrowFunction(cb) && !ts.isFunctionExpression(cb))) return undefined;
+  const param = cb.parameters[0];
+  if (!param || !ts.isIdentifier(param.name)) return undefined;
+  return param.name.text;
+}
+
 function numericArgText(arg: ts.Expression | undefined, source: ts.SourceFile, fallback: string): string {
   if (!arg) return fallback;
   if (ts.isNumericLiteral(arg)) return arg.text;
@@ -156,11 +165,11 @@ function findUIModuleImports(
   return imports;
 }
 
-function themeCssPath(displayThemeCss: string | undefined, htmlPath: string): string {
+function themeCssPath(displayThemeCss: string | undefined, htmlPath: string, configDir: string): string {
   if (!displayThemeCss) return htmlPath.replace(/\.ui\.html$/, ".ui.css");
   return path.isAbsolute(displayThemeCss)
     ? displayThemeCss
-    : path.resolve(path.dirname(htmlPath), displayThemeCss);
+    : path.resolve(configDir, displayThemeCss);
 }
 
 function collectHrefCallbacks(
@@ -201,6 +210,7 @@ function extractAuthorSpecs(
   programNodes: Array<{ id?: string; tag?: string; kind?: string; options?: Array<{ text: string; value: string }> }>,
 ): {
   bindings: PreviewBindingSpec[];
+  listBindings: PreviewListBindingSpec[];
   callbacks: PreviewCallbackSpec[];
   initialAssignments: PreviewInitialAssignment[];
   intervals: PreviewIntervalSpec[];
@@ -210,6 +220,7 @@ function extractAuthorSpecs(
   const diagnostics: PreviewDiagnostic[] = [];
   const importedTrees = new Set(uiImports.map((imp) => imp.treeName));
   const bindings: PreviewBindingSpec[] = [];
+  const listBindings: PreviewListBindingSpec[] = [];
   const callbacks: PreviewCallbackSpec[] = [];
   const initialAssignments: PreviewInitialAssignment[] = [];
   const intervals: PreviewIntervalSpec[] = [];
@@ -272,6 +283,30 @@ function extractAuthorSpecs(
           const nodeIndex = resolveNode(element.treeName, element.elemId);
           if (nodeIndex !== undefined) {
             bindings.push({ nodeId: element.elemId, nodeIndex, property, expression });
+          }
+        }
+        continue;
+      }
+      if (objectName === "ui" && method === "bindList") {
+        const elementArg = call.arguments[0];
+        const countArg = call.arguments[1];
+        const itemArg = call.arguments[2];
+        const tapArg = call.arguments[3];
+        const element = elementArg ? readTreeElement(elementArg) : undefined;
+        const countExpression = callbackExpressionText(countArg, source);
+        const itemExpression = callbackExpressionText(itemArg, source);
+        if (element && countExpression && itemExpression) {
+          const nodeIndex = resolveNode(element.treeName, element.elemId);
+          if (nodeIndex !== undefined) {
+            listBindings.push({
+              nodeId: element.elemId,
+              nodeIndex,
+              countExpression,
+              itemExpression,
+              itemParam: callbackFirstParamName(itemArg),
+              tapBody: tapArg ? callbackBodyText(tapArg, source) : undefined,
+              tapParam: callbackFirstParamName(tapArg),
+            });
           }
         }
         continue;
@@ -345,7 +380,7 @@ function extractAuthorSpecs(
     }
   }
 
-  return { bindings, callbacks, initialAssignments, intervals, pinControls, diagnostics };
+  return { bindings, listBindings, callbacks, initialAssignments, intervals, pinControls, diagnostics };
 }
 
 export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions): Promise<PreviewSnapshot> {
@@ -376,11 +411,19 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const resolved = resolveDisplayProfile(config.display ?? { profile: "ili9341-spi" }, registry);
   const profile = resolved.profile;
   const htmlText = fs.readFileSync(firstImport.htmlPath, "utf-8");
-  const cssPath = themeCssPath(config.display?.themeCss, firstImport.htmlPath);
+  const cssPath = themeCssPath(config.display?.themeCss, firstImport.htmlPath, configDir);
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
   const parsedHtml = parseHtmlWithKeyboards(htmlText);
   const fullCss = cssText + "\n" + extractStyleBlocks(htmlText);
-  const cssRules = parseCss(fullCss);
+  const cssRules = (() => {
+    const previousThemeClass = getThemeClass();
+    setThemeClass(config.display?.themeClass ?? null);
+    try {
+      return parseCss(fullCss);
+    } finally {
+      setThemeClass(previousThemeClass);
+    }
+  })();
   const fontFaces = parseFontFaces(fullCss);
   const rawKeyframes = parseKeyframes(fullCss);
   const styled = resolveStyles(parsedHtml.tree, cssRules);
@@ -438,6 +481,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     uiTreeNames: [...new Set(uiImports.map((imp) => imp.treeName))],
     font: loadFont(projectRoot, diagnostics),
     bindings: specs.bindings,
+    listBindings: specs.listBindings,
     callbacks: [...hrefCallbacks, ...specs.callbacks],
     initialAssignments: specs.initialAssignments,
     intervals: specs.intervals,

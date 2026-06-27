@@ -8,7 +8,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import ts from 'typescript';
-import type { ResolvedConfig, TestConfig } from './types';
+import type { ResolvedConfig, TestConfig } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Defaults

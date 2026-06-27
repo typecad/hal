@@ -2,7 +2,7 @@
   "name": "@typecad/mcu-esp32",
   "version": "0.1.0",
   "description": "TypeCAD MCU definition for ESP32 — datasheet pins, peripheral capabilities, and HAL instances",
-  "type": "commonjs",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

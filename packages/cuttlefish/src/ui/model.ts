@@ -64,7 +64,8 @@ export interface UINodeModel {
   textShadowBlur: number;
   textShadowColor: number;        // resolved RGB565
   textShadowAlpha: number;
-  underline: boolean;
+  underline: number;   // text-decoration: 0=none, 1=underline, 2=line-through, 3=both
+  textOverflow: boolean; // text-overflow: ellipsis (true = truncate + ...)
   nowrap: boolean;       // white-space: nowrap (true = no wrapping, the default)
   whiteSpaceMode: 0 | 1 | 2 | 3; // 0=normal, 1=nowrap, 2=pre, 3=pre-line
   visible: boolean;
@@ -207,6 +208,21 @@ function borderWidthOf(style: CSSProperty): number {
 }
 
 /** Parse border-radius px value (0 if absent). */
+/** Map CSS text-decoration to the runtime enum.
+ *  0=none, 1=underline, 2=line-through, 3=both. */
+function textDecorationOf(val: string | undefined): number {
+  if (!val) return 0;
+  const v = val.toLowerCase();
+  const hasU = /underline/.test(v);
+  const hasS = /line-through/.test(v) || /strikethrough/.test(v);
+  return (hasU && hasS) ? 3 : hasS ? 2 : hasU ? 1 : 0;
+}
+
+/** text-overflow: ellipsis -> true. clip/absent -> false. */
+function textOverflowOf(val: string | undefined): boolean {
+  return !!val && /ellipsis/.test(val.toLowerCase());
+}
+
 function borderRadiusOf(style: CSSProperty): number {
   if (!style.borderRadius) return 0;
   const px = parseInt(style.borderRadius, 10);
@@ -529,9 +545,10 @@ function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSp
     let color = 0x0000;
     let alpha = 100;
     if (colorZone) {
-      const alphaM = /rgba?\([^,]*,[^,]*,[^,]*,\s*([\d.]+)\s*\)/.exec(colorZone);
+      // Extract alpha from rgba(r,g,b,a) comma OR hsl(... / a) slash syntax.
+      const alphaM = /(?:rgba?\([^,]*,[^,]*,[^,]*,\s*([\d.]+)\s*\)|hsla?\([^)]*\/\s*([\d.]+)\s*\))/.exec(colorZone);
       if (alphaM) {
-        alpha = Math.round(parseFloat(alphaM[1]) * 100);
+        alpha = Math.round(parseFloat(alphaM[1] ?? alphaM[2]) * 100);
         alpha = Math.max(0, Math.min(100, alpha));
       }
       try { color = resolveColor(colorZone, format); } catch { color = 0x0000; }
@@ -799,7 +816,8 @@ export function lowerUIToModel(
           ? { textShadowCount: 1, textShadowOffsetX: ts.x, textShadowOffsetY: ts.y, textShadowBlur: ts.blur, textShadowColor: ts.color, textShadowAlpha: ts.alpha }
           : { textShadowCount: 0, textShadowOffsetX: 0, textShadowOffsetY: 0, textShadowBlur: 0, textShadowColor: 0, textShadowAlpha: 0 };
       })(),
-      underline: node.style.textDecoration === "underline",
+      underline: textDecorationOf(node.style.textDecoration),
+      textOverflow: textOverflowOf(node.style.textOverflow),
       nowrap: wsMode === 1 || wsMode === 2,
       whiteSpaceMode: wsMode,
       visible: node.style.visibility !== "hidden" && !isDisplayNone(node),

@@ -6,7 +6,7 @@
 // Serial protocol statements before the cuttlefish transpiler ever sees them.
 // ---------------------------------------------------------------------------
 
-import type { Suite } from './types';
+import type { Suite } from './types.js';
 
 /**
  * Open a describe group.  Returns a `Suite` to chain `.it()` / `.expect()`.

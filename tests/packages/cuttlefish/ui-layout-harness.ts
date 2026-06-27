@@ -140,6 +140,7 @@ export function buildUiFixture(options: BuildUiFixtureOptions): UiLayoutHarness 
         uiTreeNames: [],
         font: [],
         bindings: [],
+        listBindings: [],
         callbacks: [],
         initialAssignments: [],
         intervals: [],

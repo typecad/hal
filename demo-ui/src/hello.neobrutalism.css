@@ -1,8 +1,14 @@
 /* ---------------------------------------------------------------------------
-   hello.shadcn-neu-light.css — shadcn neutral dark theme
-   Uses CSS variables + the UA default stylesheet for element defaults.
-   display:flex, flex-direction:column, overflow:scroll on lists, etc.
-   are now provided by the UA layer — not repeated here.
+   hello.neobrutalism.css — NeoBrutalism theme
+   White background, bold primary colors, black 1px borders, 0 radius,
+   hard offset shadows. Light mode is :root; .dark is included for future
+   dark builds (select via themeClass: 'dark' in config).
+
+   The element rules below are the demo layout; they reference var() tokens so
+   swapping the :root/.dark palette restyles everything.
+   Tailwind-specific directives from the source theme (@import, @custom-variant,
+   @theme inline, @layer base, @apply) are omitted — they are build-time
+   Tailwind machinery, not standard CSS.
    ----------------------------------------------------------------------- */
 
 @font-face {
@@ -19,25 +25,81 @@
   font-style: normal;
 }
 
+/* ── Light theme (default :root) ── */
 :root {
-  --background: #0a0a0a;
-  --foreground: #fafafa;
-  --card: #171717;
-  --primary: #e5e5e5;
-  --primary-foreground: #171717;
-  --secondary: #262626;
-  --muted-foreground: #a1a1a1;
-  --accent: #404040;
-  --accent-foreground: #fafafa;
-  --destructive: #ff6467;
-  --destructive-foreground: #fafafa;
-  --border: #282828;
-  --input: #343434;
-  --chart-1: #91c5ff;
-  --chart-2: #3a81f6;
-  --chart-3: #2563ef;
-  --radius: 10px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.5);
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #ff3333;
+  --primary-foreground: #ffffff;
+  --secondary: #ffff00;
+  --secondary-foreground: #000000;
+  --muted: #f0f0f0;
+  --muted-foreground: #333333;
+  --accent: #0066ff;
+  --accent-foreground: #ffffff;
+  --destructive: #000000;
+  --destructive-foreground: #ffffff;
+  --border: #000000;
+  --input: #000000;
+  --ring: #ff3333;
+  --chart-1: #ff3333;
+  --chart-2: #ffff00;
+  --chart-3: #0066ff;
+  --chart-4: #00cc00;
+  --chart-5: #cc00cc;
+  --sidebar: #f0f0f0;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #ff3333;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #0066ff;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #000000;
+  --sidebar-ring: #ff3333;
+  --radius: 0px;
+  /* Hard offset shadow — NeoBrutalism signature. No blur, full opacity. */
+  --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1.00);
+}
+
+/* ── Dark theme (.dark) — select via themeClass: 'dark' ── */
+.dark {
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #333333;
+  --card-foreground: #ffffff;
+  --popover: #333333;
+  --popover-foreground: #ffffff;
+  --primary: #ff6666;
+  --primary-foreground: #000000;
+  --secondary: #ffff33;
+  --secondary-foreground: #000000;
+  --muted: #1a1a1a;
+  --muted-foreground: #cccccc;
+  --accent: #3399ff;
+  --accent-foreground: #000000;
+  --destructive: #ffffff;
+  --destructive-foreground: #000000;
+  --border: #ffffff;
+  --input: #ffffff;
+  --ring: #ff6666;
+  --chart-1: #ff6666;
+  --chart-2: #ffff33;
+  --chart-3: #3399ff;
+  --chart-4: #33cc33;
+  --chart-5: #cc33cc;
+  --sidebar: #000000;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ff6666;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #3399ff;
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: #ffffff;
+  --sidebar-ring: #ff6666;
+  --radius: 0px;
+  --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1.00);
 }
 
 /* ── Animations ── */
@@ -48,30 +110,30 @@
 }
 
 @keyframes slideXY {
-  0%, 100% { transform: translate(0px, 0px); background: #91c5ff; }
+  0%, 100% { transform: translate(0px, 0px); background: #ff3333; }
   50% { transform: translate(52px, 8px); background: #4ade80; }
 }
 
 @keyframes growMove {
-  0%, 100% { transform: translate(0%, 0px) scale(1); background: #91c5ff; }
-  50% { transform: translate(250%, 6px) scale(2.8, 1.6); background: #ff6467; }
+  0%, 100% { transform: translate(0%, 0px) scale(1); background: #ff3333; }
+  50% { transform: translate(250%, 6px) scale(2.8, 1.6); background: #cc00cc; }
 }
 
 @keyframes originScale {
-  0%, 100% { transform: translate(4px, 2px) scale(1); background: #91c5ff; }
+  0%, 100% { transform: translate(4px, 2px) scale(1); background: #ff3333; }
   50% { transform: translate(4px, 2px) scale(2); background: #4ade80; }
 }
 
 @keyframes originScaleCenter {
-  0%, 100% { transform: translate(54px, -6px) scale(1); background: #91c5ff; }
+  0%, 100% { transform: translate(54px, -6px) scale(1); background: #ff3333; }
   50% { transform: translate(54px, -6px) scale(2); background: #4ade80; }
 }
 
 @keyframes quarterTurn {
-  0%, 24% { transform: translate(30px, 3px) rotate(0deg); background: #ff6467; }
-  25%, 49% { transform: translate(30px, 3px) rotate(90deg); background: #91c5ff; }
+  0%, 24% { transform: translate(30px, 3px) rotate(0deg); background: #cc00cc; }
+  25%, 49% { transform: translate(30px, 3px) rotate(90deg); background: #ff3333; }
   50%, 74% { transform: translate(30px, 3px) rotate(180deg); background: #4ade80; }
-  75%, 100% { transform: translate(30px, 3px) rotate(270deg); background: #e5e5e5; }
+  75%, 100% { transform: translate(30px, 3px) rotate(270deg); background: #00cc00; }
 }
 
 /* ── Screen (UA provides display:flex, flex-direction:column) ── */
@@ -144,10 +206,10 @@ screen {
   color: var(--primary-foreground);
   font-family: "ColibriDemo";
   font-weight: bold;
-  font-size: 16px;
+  font-size: 20px;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 6px 16px;
+  padding: 2px 4px;
   margin: 4px 3px 8px;
   transition: background 80ms;
 }
@@ -307,14 +369,14 @@ screen {
   height: 28px;
   background: var(--secondary);
   border-color: var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 #transformDot {
   width: 20px;
   height: 20px;
   background: var(--chart-1);
-  border-radius: 4px;
+  border-radius: var(--radius);
   animation: slideXY 1800ms infinite;
 }
 
@@ -322,7 +384,7 @@ screen {
   width: 10px;
   height: 10px;
   background: var(--chart-1);
-  border-radius: 4px;
+  border-radius: var(--radius);
   transform-origin: left top;
   animation: growMove 1800ms infinite;
 }
@@ -331,7 +393,7 @@ screen {
   width: 8px;
   height: 8px;
   background: var(--chart-1);
-  border-radius: 2px;
+  border-radius: var(--radius);
 }
 
 #originLeft {
@@ -348,18 +410,18 @@ screen {
   width: 12px;
   height: 22px;
   background: var(--destructive);
-  border-radius: 2px;
+  border-radius: var(--radius);
   transform-origin: center;
   animation: quarterTurn 2000ms infinite;
 }
 
 #textLayoutDemo {
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   padding: 6px;
   background: var(--card);
   border-color: var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 #layerDemo {
@@ -373,7 +435,7 @@ screen {
   height: 64px;
   background: var(--card);
   border-color: var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 #layerBack {
@@ -383,7 +445,7 @@ screen {
   width: 72px;
   height: 36px;
   background: var(--secondary);
-  border-radius: 4px;
+  border-radius: var(--radius);
   z-index: 1;
 }
 
@@ -393,9 +455,9 @@ screen {
   top: 18px;
   width: 56px;
   height: 36px;
-  background: var(--chart-2);
+  background: var(--chart-3);
   border-color: var(--foreground);
-  border-radius: 4px;
+  border-radius: var(--radius);
   z-index: 2;
   justify-content: center;
 }
@@ -418,7 +480,7 @@ screen {
   height: 44px;
   background: var(--card);
   border-color: var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 #evenBranch, #oddBranch {
@@ -427,12 +489,12 @@ screen {
   top: 8px;
   width: 134px;
   height: 28px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   justify-content: center;
 }
 
 #evenBranch {
-  background: #1a6b3c;
+  background: var(--chart-4);
 }
 
 #oddBranch {
@@ -447,18 +509,18 @@ screen {
 }
 
 #wrappedCopy {
-  width: 170px;
+  width: 180px;
   color: var(--foreground);
-  font-size: 16px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 14px;
   text-align: center;
 }
 
 #preLineCopy {
-  width: 130px;
+  width: 140px;
   color: var(--chart-1);
-  font-size: 14px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 14px;
   white-space: pre-line;
   text-align: center;
 }
@@ -496,7 +558,7 @@ screen {
 }
 
 #fitImgContain, #fitImgCover, #fitImgFill {
-  background: #0f172a;
+  background: var(--muted);
   border-color: var(--border);
 }
 
@@ -519,12 +581,12 @@ screen {
 
 #displayBeforeRow {
   background: var(--secondary);
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--radius) var(--radius) 0 0;
 }
 
 #displayAfterRow {
-  background: #1a6b3c;
-  border-radius: 0 0 4px 4px;
+  background: var(--chart-4);
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
 #hiddenAttrRow, #displayNoneRow {
@@ -554,7 +616,7 @@ screen {
   aspect-ratio: 16 / 9;
   background: var(--secondary);
   border-color: var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 #aspectSquare {
@@ -562,9 +624,9 @@ screen {
   justify-content: center;
   height: 56px;
   aspect-ratio: 1 / 1;
-  background: #1a6b3c;
+  background: var(--chart-4);
   border-color: var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 #aspectWideText, #aspectSquareText {
@@ -580,7 +642,7 @@ screen {
 
 /* ── Navigation (UA provides text-decoration: underline for <a>) ── */
 a {
-  color: var(--chart-2);
+  color: var(--chart-3);
   font-size: 20px;
   align-self: center;
 }

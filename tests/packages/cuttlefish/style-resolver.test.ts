@@ -48,4 +48,108 @@ describe("style resolver", () => {
     );
     expect(styled.children[0].style.display).toBe("none");
   });
+
+  it("attribute selector [disabled] matches disabled elements", () => {
+    const styled = resolve(
+      `<screen><button id="a" disabled>off</button><button id="b">on</button></screen>`,
+      `[disabled] { opacity: 50; }`,
+    );
+    expect(styled.children[0].style.opacity).toBe("50");
+    // The non-disabled sibling must not match.
+    expect(styled.children[1].style.opacity).toBeUndefined();
+  });
+
+  it("attribute selector [type=\"number\"] matches by exact value", () => {
+    const styled = resolve(
+      `<screen><input id="a" type="number"/><input id="b" type="text"/></screen>`,
+      `[type="number"] { border-color: #ff0000; }`,
+    );
+    expect(styled.children[0].style.borderColor).toBe("#ff0000");
+    expect(styled.children[1].style.borderColor).toBeUndefined();
+  });
+
+  it("child combinator only matches direct children", () => {
+    // view > text matches text whose IMMEDIATE parent is a view.
+    // #direct (parent=view) matches; #nested (parent=text, grandparent=view)
+    // must NOT — it's a grandchild via a non-view parent.
+    const styled = resolve(
+      `<screen><view><text id="direct">a</text><text id="nested"><text id="deep">b</text></text></view></screen>`,
+      `view > text { color: #00ff00; }`,
+    );
+    const view = styled.children[0];
+    const direct = view.children[0];
+    const nested = view.children[1];          // parent is view → matches
+    const deep = nested.children[0];          // parent is text, not view → must NOT match
+    expect(direct.id).toBe("direct");
+    expect(direct.style.color).toBe("#00ff00");
+    expect(nested.id).toBe("nested");
+    expect(nested.style.color).toBe("#00ff00");
+    expect(deep.id).toBe("deep");
+    // deep's immediate parent is a <text>, not a <view>, so view > text fails.
+    expect(deep.style.color).toBeUndefined();
+  });
+
+  it("descendant combinator still matches at any depth", () => {
+    // Regression guard: the child-combinator fix must not break the plain
+    // descendant (space) combinator, which must still match grandchildren.
+    const styled = resolve(
+      `<screen><view><view><text id="deep">b</text></view></view></screen>`,
+      `view text { color: #0000ff; }`,
+    );
+    const deep = styled.children[0].children[0].children[0];
+    expect(deep.id).toBe("deep");
+    expect(deep.style.color).toBe("#0000ff");
+  });
+
+  it(":not() excludes matching elements", () => {
+    const styled = resolve(
+      `<screen><button id="a" class="active">x</button><button id="b">y</button></screen>`,
+      `button:not(.active) { color: #ff0000; }`,
+    );
+    // #a has .active → excluded. #b lacks it → matched.
+    expect(styled.children[0].style.color).toBeUndefined();
+    expect(styled.children[1].style.color).toBe("#ff0000");
+  });
+
+  it("adjacent sibling combinator (+) matches only the immediate next sibling", () => {
+    // .first + text → the text immediately after .first matches; a later text does not.
+    const styled = resolve(
+      `<screen><view class="first"></view><text id="adj">a</text><text id="far">b</text></screen>`,
+      `.first + text { color: #00ff00; }`,
+    );
+    expect(styled.children[1].style.color).toBe("#00ff00"); // #adj
+    expect(styled.children[2].style.color).toBeUndefined(); // #far
+  });
+
+  it("general sibling combinator (~) matches any following sibling", () => {
+    // .first ~ text → both following text siblings match.
+    const styled = resolve(
+      `<screen><view class="first"></view><text id="a">x</text><text id="b">y</text></screen>`,
+      `.first ~ text { color: #0000ff; }`,
+    );
+    expect(styled.children[1].style.color).toBe("#0000ff");
+    expect(styled.children[2].style.color).toBe("#0000ff");
+  });
+
+  it("tag selectors match remapped HTML tags (label, a) via origTag", () => {
+    // <label> and <a> are remapped to <text> internally, but CSS `label { }`
+    // and `a { }` selectors must still match them (regression for the
+    // invisible-label/link bug where remapped tags broke selector matching).
+    const styled = resolve(
+      `<screen><view id="row"><label for="x">Label</label></view><a href="#t">Link</a></screen>`,
+      `label { color: #ff0000; } a { color: #0000ff; }`,
+    );
+    // The label (child of #row) should get red from the `label` selector.
+    expect(styled.children[0].children[0].style.color).toBe("#ff0000");
+    // The link should get blue from the `a` selector.
+    expect(styled.children[1].style.color).toBe("#0000ff");
+  });
+
+  it("descendant selectors with remapped tags match (e.g. #row label)", () => {
+    const styled = resolve(
+      `<screen><view id="row"><label for="x">Label</label></view></screen>`,
+      `#row label { color: #00ff00; }`,
+    );
+    expect(styled.children[0].children[0].style.color).toBe("#00ff00");
+  });
 });

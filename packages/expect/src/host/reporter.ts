@@ -25,8 +25,8 @@
 //  Time    8.42s
 // ---------------------------------------------------------------------------
 
-import type { RunResult, FileResult, DescribeResult, TestResult, AssertionResult } from './types';
-import { describeExpected } from './evaluator';
+import type { RunResult, FileResult, DescribeResult, TestResult, AssertionResult } from './types.js';
+import { describeExpected } from './evaluator.js';
 
 // ---------------------------------------------------------------------------
 // ANSI color codes

@@ -77,6 +77,10 @@ export interface DisplayConfig {
   /** Override the CSS theme file. Relative paths resolve from the .ui.html
    *  directory; absolute paths are used as-is. Default: sibling .ui.css. */
   themeCss?: string;
+  /** Activate a class-scoped theme for CSS variables (e.g. "dark"). When set,
+   *  var() substitution prefers variables defined under `.dark { ... }` over
+   *  :root. One theme per build (transpile-time selection). */
+  themeClass?: string;
 }
 
 export function resolveDisplayProfile(

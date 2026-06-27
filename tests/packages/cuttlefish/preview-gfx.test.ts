@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HostAdafruitGFX, rgb565ToRgb888 } from "@typecad/cuttlefish/preview/host-gfx";
 import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
 
@@ -156,6 +156,7 @@ describe("PreviewUIRuntime", () => {
       },
       font: [],
       bindings: [],
+      listBindings: [],
       callbacks: [],
       initialAssignments: [],
       intervals: [],
@@ -191,6 +192,7 @@ describe("PreviewUIRuntime", () => {
       },
       font: [],
       bindings: [],
+      listBindings: [],
       callbacks: [],
       initialAssignments: [],
       intervals: [],
@@ -215,6 +217,54 @@ describe("PreviewUIRuntime", () => {
       runtime.tick(16);
       expect(px(4, 3)).toBe(0x07e0);
       expect(px(5, 3)).toBe(0x0000);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("snaps short pressed color transitions in one preview frame", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 20,
+        height: 10,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 20, h: 10 } }),
+          makeNode({
+            index: 1,
+            id: "btn",
+            tag: "button",
+            kind: "button",
+            box: { x: 2, y: 2, w: 10, h: 5 },
+            bg: 0xf800,
+            hasBg: true,
+            parentIndex: 0,
+            subtreeEnd: 2,
+          }),
+        ],
+        transitions: [
+          { node: 1, prop: "background", durationMs: 80, pressedTarget: 0x07e0, baseTarget: 0xf800 },
+        ],
+      },
+      font: [],
+      bindings: [],
+      listBindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      (runtime as any).setPressed(1, true);
+      runtime.tick(16);
+      expect((runtime as any).nodes[1].bg).toBe(0x07e0);
+      expect((runtime as any).transitions[0].active).toBe(false);
     } finally {
       runtime.stop();
     }
@@ -317,6 +367,141 @@ describe("PreviewUIRuntime", () => {
     }
   });
 
+  it("renders and scrolls preview list bindings", async () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      uiTreeNames: ["screen"],
+      program: {
+        width: 36,
+        height: 24,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 3, box: { x: 0, y: 0, w: 36, h: 24 } }),
+          makeNode({ index: 1, id: "selected", tag: "view", box: { x: 0, y: 0, w: 1, h: 1 }, parentIndex: 0 }),
+          makeNode({
+            index: 2,
+            id: "devices",
+            tag: "list",
+            kind: "list",
+            box: { x: 2, y: 2, w: 30, h: 16 },
+            fg: 0x07e0,
+            clearColor: 0x0000,
+            parentIndex: 0,
+            subtreeEnd: 3,
+            listItemHeight: 8,
+          }),
+        ],
+        transitions: [],
+      },
+      font: Array.from(loadFont()),
+      bindings: [],
+      listBindings: [{
+        nodeId: "devices",
+        nodeIndex: 2,
+        countExpression: "6",
+        itemExpression: "`Row ${i + 1}`",
+        itemParam: "i",
+        tapBody: "screen.selected.value = i + 1;",
+        tapParam: "i",
+      }],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      const states = (runtime as any).listStates;
+      expect(states[0].contentHeight).toBe(48);
+      expect(runtime.gfx.buffer[2 * 36 + 30]).toBe(0x07e0);
+
+      runtime.pointerDown(8, 16);
+      runtime.pointerMove(8, 4);
+      runtime.pointerUp();
+      expect(states[0].scrollY).toBe(12);
+
+      await wait(60);
+      runtime.pointerDown(8, 10);
+      runtime.pointerUp();
+      expect(runtime.screen.selected.value).toBe(3);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("clips preview list row text to the list box", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      uiTreeNames: ["screen"],
+      program: {
+        width: 24,
+        height: 24,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({
+            index: 0,
+            tag: "screen",
+            kind: "fill",
+            hasBg: true,
+            bg: 0xf800,
+            subtreeEnd: 2,
+            box: { x: 0, y: 0, w: 24, h: 24 },
+          }),
+          makeNode({
+            index: 1,
+            id: "devices",
+            tag: "list",
+            kind: "list",
+            box: { x: 2, y: 8, w: 20, h: 8 },
+            fg: 0x07e0,
+            clearColor: 0x0000,
+            parentIndex: 0,
+            subtreeEnd: 2,
+            listItemHeight: 8,
+            textSize: 2,
+          }),
+        ],
+        transitions: [],
+      },
+      font: Array.from(loadFont()),
+      bindings: [],
+      listBindings: [{
+        nodeId: "devices",
+        nodeIndex: 1,
+        countExpression: "1",
+        itemExpression: '"A"',
+      }],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    const hasColor = (color: number, x0: number, y0: number, x1: number, y1: number): boolean => {
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          if (runtime.gfx.buffer[y * 24 + x] === color) return true;
+        }
+      }
+      return false;
+    };
+    runtime.start();
+    try {
+      expect(hasColor(0x07e0, 2, 0, 22, 8)).toBe(false);
+      expect(hasColor(0x07e0, 2, 8, 22, 16)).toBe(true);
+      expect(hasColor(0x07e0, 2, 16, 22, 24)).toBe(false);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   it("toggles preallocated conditional branches with visible bindings", () => {
     const runtime = new PreviewUIRuntime({
       projectRoot: "",
@@ -369,6 +554,7 @@ describe("PreviewUIRuntime", () => {
         { nodeId: "enteredBranch", nodeIndex: 2, property: "visible", expression: "screen.flag.value > 0" },
         { nodeId: "emptyBranch", nodeIndex: 4, property: "visible", expression: "screen.flag.value <= 0" },
       ],
+      listBindings: [],
       callbacks: [],
       initialAssignments: [],
       intervals: [],
@@ -381,8 +567,13 @@ describe("PreviewUIRuntime", () => {
     try {
       expect(px(2, 2)).toBe(0x07e0);
 
+      const clearNodePaint = vi.spyOn(runtime as any, "clearCurrentNodePaint");
+      const clearSubtreePaint = vi.spyOn(runtime as any, "clearCurrentSubtreePaint");
+
       runtime.screen.flag.value = 1;
       runtime.tick(16);
+      expect(clearSubtreePaint).toHaveBeenCalled();
+      expect(clearNodePaint).not.toHaveBeenCalled();
       expect(px(2, 2)).toBe(0xffff);
       expect(px(12, 10)).toBe(0xf800);
 
@@ -423,6 +614,7 @@ describe("PreviewUIRuntime", () => {
       },
       font: Array.from(loadFont()),
       bindings: [],
+      listBindings: [],
       callbacks: [],
       initialAssignments: [],
       intervals: [],
@@ -476,6 +668,7 @@ describe("PreviewUIRuntime", () => {
       },
       font: [],
       bindings: [],
+      listBindings: [],
       callbacks: [],
       initialAssignments: [],
       intervals: [],
@@ -531,6 +724,7 @@ describe("PreviewUIRuntime", () => {
       },
       font: [],
       bindings: [],
+      listBindings: [],
       callbacks: [],
       initialAssignments: [],
       intervals: [],
@@ -543,6 +737,138 @@ describe("PreviewUIRuntime", () => {
       expect(runtime.gfx.buffer[0 * 10 + 1]).toBe(0x07e0);
       expect(runtime.gfx.buffer[4 * 10 + 1]).toBe(0x07e0);
       expect(runtime.gfx.buffer[6 * 10 + 1]).toBe(0x0000);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("repairs cleared transform pixels with the rounded parent fill in browser preview", () => {
+    const screenBg = 0xffff;
+    const trackBg = 0x4208;
+    const dotBg = 0xf800;
+    const runtime = makeRuntime([
+      makeNode({
+        index: 0,
+        tag: "screen",
+        kind: "fill",
+        box: { x: 0, y: 0, w: 14, h: 12 },
+        hasBg: true,
+        bg: screenBg,
+        clearColor: screenBg,
+        subtreeEnd: 4,
+      }),
+      makeNode({
+        index: 1,
+        tag: "view",
+        kind: "fill",
+        box: { x: 0, y: 0, w: 14, h: 12 },
+        hasBg: true,
+        bg: screenBg,
+        clearColor: screenBg,
+        parentIndex: 0,
+        subtreeEnd: 4,
+        scrollable: true,
+      }),
+      makeNode({
+        index: 2,
+        id: "track",
+        tag: "view",
+        kind: "fill",
+        box: { x: 2, y: 2, w: 8, h: 6 },
+        hasBg: true,
+        bg: trackBg,
+        clearColor: screenBg,
+        borderRadius: 3,
+        parentIndex: 1,
+        subtreeEnd: 4,
+      }),
+      makeNode({
+        index: 3,
+        id: "dot",
+        tag: "view",
+        kind: "fill",
+        box: { x: 2, y: 2, w: 2, h: 2 },
+        hasBg: true,
+        bg: dotBg,
+        clearColor: screenBg,
+        parentIndex: 2,
+        subtreeEnd: 4,
+      }),
+    ], [], 14, 12);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 14 + x];
+    runtime.start();
+    try {
+      expect(px(2, 2)).toBe(dotBg);
+      (runtime as any).clearCurrentNodePaint((runtime as any).nodes[3]);
+      expect(px(2, 2)).toBe(screenBg);
+      expect(px(5, 2)).toBe(trackBg);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("repairs pressed-offset clears with the rounded parent fill in browser preview", () => {
+    const screenBg = 0xffff;
+    const trackBg = 0x4208;
+    const buttonBg = 0xf800;
+    const runtime = makeRuntime([
+      makeNode({
+        index: 0,
+        tag: "screen",
+        kind: "fill",
+        box: { x: 0, y: 0, w: 14, h: 12 },
+        hasBg: true,
+        bg: screenBg,
+        clearColor: screenBg,
+        subtreeEnd: 4,
+      }),
+      makeNode({
+        index: 1,
+        tag: "view",
+        kind: "fill",
+        box: { x: 0, y: 0, w: 14, h: 12 },
+        hasBg: true,
+        bg: screenBg,
+        clearColor: screenBg,
+        parentIndex: 0,
+        subtreeEnd: 4,
+      }),
+      makeNode({
+        index: 2,
+        id: "track",
+        tag: "view",
+        kind: "fill",
+        box: { x: 2, y: 2, w: 8, h: 6 },
+        hasBg: true,
+        bg: trackBg,
+        clearColor: screenBg,
+        borderRadius: 3,
+        parentIndex: 1,
+        subtreeEnd: 4,
+      }),
+      makeNode({
+        index: 3,
+        id: "button",
+        tag: "button",
+        kind: "button",
+        box: { x: 2, y: 2, w: 4, h: 2 },
+        hasBg: true,
+        bg: buttonBg,
+        clearColor: screenBg,
+        pressedOffsetY: 2,
+        parentIndex: 2,
+        subtreeEnd: 4,
+      }),
+    ], [], 14, 12);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 14 + x];
+    runtime.start();
+    try {
+      expect(px(2, 2)).toBe(buttonBg);
+      (runtime as any).clearPressOffsetArea((runtime as any).nodes[3], 2, 2);
+      expect(px(2, 2)).not.toBe(buttonBg);
+      expect(px(5, 2)).toBe(trackBg);
     } finally {
       runtime.stop();
     }
@@ -597,6 +923,7 @@ describe("PreviewUIRuntime", () => {
       },
       font: [],
       bindings: [],
+      listBindings: [],
       callbacks: [],
       initialAssignments: [],
       intervals: [],
@@ -659,6 +986,7 @@ describe("PreviewUIRuntime", () => {
       },
       font: [],
       bindings: [],
+      listBindings: [],
       callbacks: [],
       initialAssignments: [],
       intervals: [],
@@ -674,6 +1002,65 @@ describe("PreviewUIRuntime", () => {
       runtime.pointerUp();
 
       expect(scrollNode.scrollY).toBe(14);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("does not open the preview keyboard when dragging from an input inside a scroll container", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 100,
+        height: 80,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 3, box: { x: 0, y: 0, w: 100, h: 80 } }),
+          makeNode({
+            index: 1,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 100, h: 40 },
+            parentIndex: 0,
+            subtreeEnd: 3,
+            scrollable: true,
+            contentHeight: 100,
+          }),
+          makeNode({
+            index: 2,
+            id: "ssid",
+            tag: "input",
+            kind: "input",
+            box: { x: 5, y: 18, w: 52, h: 20 },
+            parentIndex: 1,
+            subtreeEnd: 3,
+            inputType: "text",
+          }),
+        ],
+        transitions: [],
+      },
+      keyboardTemplates: [],
+      font: [],
+      bindings: [],
+      listBindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      const scrollNode = (runtime as any).nodes[1];
+      runtime.pointerDown(8, 20);
+      runtime.pointerMove(8, 4);
+      runtime.pointerUp();
+
+      expect(scrollNode.scrollY).toBe(16);
+      expect((runtime as any).keyboardVisible).toBe(false);
     } finally {
       runtime.stop();
     }
@@ -713,6 +1100,7 @@ describe("PreviewUIRuntime", () => {
       ],
       font: [],
       bindings: [],
+      listBindings: [],
       callbacks: [
         { nodeId: "ssid", nodeIndex: 1, kind: "change", body: "screen.ssid.value = screen.ssid.text.length;" },
       ],

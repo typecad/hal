@@ -74,6 +74,10 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_on_release");
   });
 
+  it("repairs pressed-offset clears with the parent-seeded local canvas", () => {
+    expect(header).toMatch(/ui_clear_press_offset_area[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&r\)[\s\S]*__ui_gfx->fillRect/);
+  });
+
   it("declares the draw dispatch (NODE_FILL / NODE_TEXT)", () => {
     expect(header).toContain("NODE_FILL");
     expect(header).toContain("NODE_TEXT");
@@ -87,6 +91,16 @@ describe("C++ reactive runtime header", () => {
 
   it("defines UI_TEXT_BUF as 32", () => {
     expect(header).toMatch(/#define\s+UI_TEXT_BUF\s+32/);
+  });
+
+  it("keeps full-screen framebuffer rendering opt-in", () => {
+    expect(header).toMatch(/#ifndef\s+UI_USE_FULL_FRAMEBUFFER[\s\S]*#define\s+UI_USE_FULL_FRAMEBUFFER\s+0/);
+    expect(header).toMatch(/#if\s+UI_USE_FULL_FRAMEBUFFER\s*&&\s*defined\(ESP32\)\s*&&\s*defined\(BOARD_HAS_PSRAM\)/);
+  });
+
+  it("snaps very short color transitions to avoid repeated hardware redraws", () => {
+    expect(header).toMatch(/#ifndef\s+UI_TRANSITION_SNAP_MS[\s\S]*#define\s+UI_TRANSITION_SNAP_MS\s+100/);
+    expect(header).toMatch(/durationMs > 0 && __ui_trans\[i\]\.durationMs <= UI_TRANSITION_SNAP_MS\) k = 100/);
   });
 
   it("UINode has a mutable textBuffer and hasTextBinding field", () => {
@@ -162,8 +176,11 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("PROP_VISIBLE");
     expect(header).toContain("ui_is_effectively_visible");
     expect(header).toContain("ui_set_visible");
+    expect(header).toContain("ui_subtree_current_paint_rect");
+    expect(header).toContain("ui_clear_subtree_current_paint");
     expect(header).toMatch(/__ui_bindings\[i\]\.prop == PROP_VISIBLE[\s\S]*ui_set_visible\(__ui_bindings\[i\]\.node,\s*nextVisible\)/);
-    expect(header).toMatch(/for \(int16_t c = end - 1; c >= \(int16_t\)nodeIdx; c--\)[\s\S]*ui_clear_current_node_paint/);
+    expect(header).toMatch(/if \(!visible\)[\s\S]*ui_clear_subtree_current_paint\(nodeIdx\)/);
+    expect(header).toMatch(/ui_subtree_current_paint_rect[\s\S]*ui_expand_rect/);
     expect(header).toMatch(/for \(uint8_t c = nodeIdx; c < end; c\+\+\)[\s\S]*__ui_nodes\[c\]\.dirty = 1/);
   });
 
@@ -215,14 +232,17 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*__ui_nodes\[i\]\.box\.x\s*=\s*origBoxX;[\s\S]*__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY;[\s\S]*continue/);
   });
 
-  it("clips animated geometry clears inside scroll containers instead of redrawing the whole viewport", () => {
+  it("repairs animated geometry clears inside scroll containers with a parent-seeded local canvas", () => {
     expect(header).toContain("ui_scroll_ancestor_for_node");
+    expect(header).toContain("ui_repair_current_node_paint_with_parent");
     expect(header).toContain("ui_fill_rect_clipped");
     expect(header).toContain("ui_draw_node_decoration_clipped");
+    expect(header).toMatch(/static inline uint8_t ui_repair_current_node_paint_with_parent\(uint8_t nodeIdx,\s*UIRect\* r\);/);
     expect(header).toMatch(/ui_clear_current_node_paint[\s\S]*scrollParent\s*=\s*ui_scroll_ancestor_for_node\(nodeIdx\)/);
-    expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_fill_rect_clipped/);
+    expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&clipped\)/);
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_draw_node_decoration_clipped/);
-    expect(header).not.toMatch(/ui_clear_current_node_paint[\s\S]*ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollParent\)/);
+    expect(header).toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_clear_current_node_paint\(n\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
+    expect(header).not.toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollParent\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
   });
 
   it("does not repair rounded borders with square clipped corner segments", () => {
@@ -242,6 +262,13 @@ describe("C++ reactive runtime header", () => {
 
   it("does not wrap list drawing in the generic paint canvas", () => {
     expect(header).toMatch(/ui_should_buffer_paint[\s\S]*kind == NODE_LIST\)\s*return 0/);
+  });
+
+  it("seeds buffered child repaints with rounded parent decoration", () => {
+    expect(header).toContain("ui_seed_paint_canvas_for_node");
+    expect(header).toMatch(/ui_seed_paint_canvas_for_node[\s\S]*fillRoundRect/);
+    expect(header).toMatch(/ui_seed_paint_canvas_for_node\(i,\s*paintCanvas,\s*paintCanvasX,\s*paintCanvasY\)/);
+    expect(header).not.toMatch(/paintCanvas->fillScreen\(ui_parent_clear_color\(i\)\)/);
   });
 
   it("uses ui_is_clipped_by_scroll for scroll child clipping", () => {
@@ -290,8 +317,12 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/__ui_kb_visible[\s\S]*ui_kb_handle_touch/);
   });
 
-  it("opens the keyboard when a NODE_INPUT is tapped", () => {
-    expect(header).toMatch(/kind\s*==\s*NODE_INPUT[\s\S]*ui_kb_open/);
+  it("opens the keyboard when a NODE_INPUT tap is released without dragging", () => {
+    const touchDown = header.match(/static void ui_touch_down[\s\S]*?static void ui_touch_up/)?.[0] ?? "";
+    const touchUp = header.match(/static void ui_touch_up[\s\S]*?static inline void ui_handle_touch/)?.[0] ?? "";
+    expect(header).toContain("ui_open_keyboard_for_input");
+    expect(touchDown).not.toContain("ui_kb_open");
+    expect(touchUp).toMatch(/elapsed < UI_TOUCH_HOLD_MS[\s\S]*kind == NODE_INPUT[\s\S]*ui_open_keyboard_for_input/);
   });
 
   it("draws NODE_INPUT as a bordered field showing textBuffer", () => {

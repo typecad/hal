@@ -19,7 +19,7 @@ import type {
   DisplayHALOp,
 } from '@typecad/cuttlefish/api/shared';
 import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
-import { resolveTerminalPreviewOp } from './graphics/terminal-preview';
+import { resolveTerminalPreviewOp } from './graphics/terminal-preview.js';
 
 export class NativeStrategy implements PlatformStrategy {
   readonly id = 'native';

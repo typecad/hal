@@ -1,6 +1,6 @@
-import { pulseIn_, pulseInLong_, rawCpp } from './emit';
-import { HIGH, LOW } from './constants';
-import type { Pin, InputPin } from './gpio';
+import { pulseIn_, pulseInLong_, rawCpp } from './emit.js';
+import { HIGH, LOW } from './constants.js';
+import type { Pin, InputPin } from './gpio.js';
 
 export declare function pulseIn(pin: number, value: number, timeout?: number): number;
 export declare function pulseInLong(pin: number, value: number, timeout?: number): number;

@@ -22,6 +22,16 @@ export interface PreviewInitialAssignment {
   expression: string;
 }
 
+export interface PreviewListBindingSpec {
+  nodeId: string;
+  nodeIndex: number;
+  countExpression: string;
+  itemExpression: string;
+  itemParam?: string;
+  tapBody?: string;
+  tapParam?: string;
+}
+
 export interface PreviewIntervalSpec {
   body: string;
   delayMs: number;
@@ -53,6 +63,7 @@ export interface PreviewSnapshot {
   uiTreeNames: string[];
   font: number[];
   bindings: PreviewBindingSpec[];
+  listBindings: PreviewListBindingSpec[];
   callbacks: PreviewCallbackSpec[];
   initialAssignments: PreviewInitialAssignment[];
   intervals: PreviewIntervalSpec[];

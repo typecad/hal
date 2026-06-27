@@ -24,6 +24,15 @@ function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
   return result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
 }
 
+function displayConfigForTranspile<T extends { configPath: string; display?: object }>(config: T | undefined): object | undefined {
+  if (!config?.display) return undefined;
+  const display = { ...(config.display as Record<string, unknown>) };
+  if (typeof display.themeCss === "string" && !path.isAbsolute(display.themeCss as string)) {
+    display.themeCss = path.resolve(path.dirname(config.configPath), display.themeCss as string);
+  }
+  return display;
+}
+
 async function handleCreate(options: CreateCommandOptions): Promise<void> {
   const targetId = options.target ?? options.board;
   const hasTarget = !!targetId;
@@ -179,7 +188,7 @@ async function main(): Promise<void> {
       (options as any).inputFile = entryFile;
       // Pass display config from cuttlefish.config.ts through to transpileFile
       if (buildConfig.display) {
-        (options as any).display = buildConfig.display;
+        (options as any).display = displayConfigForTranspile(buildConfig);
       }
     }
 
@@ -354,7 +363,7 @@ async function main(): Promise<void> {
           force: options.force,
           skipTypeCheck: options.skipTypeCheck,
           diagnostics: options.diagnostics,
-          display: config?.display,
+          display: displayConfigForTranspile(config),
         });
 
         printDiagnostics(result.diagnostics);
@@ -441,6 +450,7 @@ async function main(): Promise<void> {
               force: true, // Always force in watch mode to bypass stale cache
               skipTypeCheck: options.skipTypeCheck,
               diagnostics: options.diagnostics,
+              display: displayConfigForTranspile(config),
             });
 
             printDiagnostics(rebuildResult.diagnostics);
@@ -525,7 +535,7 @@ async function main(): Promise<void> {
         force: options.force,
         skipTypeCheck: options.skipTypeCheck,
         diagnostics: options.diagnostics,
-        display: config?.display ?? (options as any).display,
+        display: displayConfigForTranspile(config) ?? (options as any).display,
       });
 
       printDiagnostics(result.diagnostics);

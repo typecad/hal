@@ -5,7 +5,7 @@
 // sends raw actual/expected values over serial — the host does the math.
 // ---------------------------------------------------------------------------
 
-import type { MatcherName } from './types';
+import type { MatcherName } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Public API

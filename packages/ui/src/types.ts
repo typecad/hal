@@ -66,6 +66,9 @@ export interface ProgressElement extends UIElement {
  *  Drag the thumb or write .value to change it. */
 export interface RangeElement extends UIElement {
   readonly __kind: "range";
+  /** Fires whenever .value changes during a drag. Read screen.elem.value
+   *  inside the callback to get the new value. */
+  onChange(callback?: () => void): void;
 }
 
 /** A text input. .text is the string value; tap opens the on-screen keyboard. */

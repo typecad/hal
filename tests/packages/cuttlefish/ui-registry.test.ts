@@ -71,13 +71,13 @@ describe("UI module registry", () => {
     expect(mod.styled.tag).toBe("screen");
   });
 
-  it("writes a .ui.html.d.ts sibling with ScreenTree fields", () => {
+  it("writes a .ui.d.html.ts sibling with ScreenTree fields", () => {
     const { dir, htmlPath } = writeProject(
       `<screen><text id="greeting">hi</text><button id="btn">x</button></screen>`,
       ``,
     );
     loadUIModule(htmlPath);
-    const dtsPath = path.join(dir, "app.ui.html.d.ts");
+    const dtsPath = path.join(dir, "app.ui.d.html.ts");
     expect(fs.existsSync(dtsPath)).toBe(true);
     const dts = fs.readFileSync(dtsPath, "utf-8");
     expect(dts).toContain("ScreenTree");
