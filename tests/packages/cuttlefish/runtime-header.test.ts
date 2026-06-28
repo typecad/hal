@@ -169,8 +169,9 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/uint8_t\s+parent/);
     expect(header).toMatch(/uint8_t\s+subtreeEnd/);
     expect(header).toContain("ui_draw_y_for_node");
-    expect(header).toMatch(/c\s*=\s*scrollNode\s*\+\s*1;\s*c\s*<\s*__ui_nodes\[scrollNode\]\.subtreeEnd/);
-    expect(header).toMatch(/ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollNode\)/);
+    // The unified scroll-scan keys on scrollable nodes; lists are scrollable.
+    expect(header).toMatch(/for \(uint8_t i = 0; i < __ui_node_count; i\+\+\)[\s\S]*!__ui_nodes\[i\]\.scrollable/);
+    expect(header).toContain("ui_mark_scroll_subtree_dirty");
   });
 
   it("marks a scroll subtree with one container-level overlap check, not per-child", () => {
@@ -192,8 +193,10 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/int16_t\s+zIndex/);
     expect(header).toContain("ui_node_draws_before");
     expect(header).toContain("ui_mark_overlapping_higher_layers_dirty");
-    expect(header).toMatch(/static inline void ui_mark_dirty\(uint8_t nodeIdx\)[\s\S]*if \(nodeIdx >= __ui_node_count\) return/);
-    expect(header).toMatch(/static inline void ui_mark_dirty\(uint8_t nodeIdx\) \{\s*if \(nodeIdx >= __ui_node_count\) return;\s*ui_invalidate_scroll_cache_for_node\(nodeIdx\);\s*__ui_nodes\[nodeIdx\]\.dirty = 1;\s*ui_mark_overlapping_higher_layers_dirty\(nodeIdx\);\s*\}/);
+    // ui_mark_dirty no longer touches a scroll cache (the cache was deleted); it
+    // sets dirty + repairs overlapping higher-z neighbors.
+    expect(header).toMatch(/static inline void ui_mark_dirty\(uint8_t nodeIdx\) \{\s*if \(nodeIdx >= __ui_node_count\) return;\s*__ui_nodes\[nodeIdx\]\.dirty = 1;\s*ui_mark_overlapping_higher_layers_dirty\(nodeIdx\);\s*\}/);
+    expect(header).not.toContain("ui_invalidate_scroll_cache_for_node");
     expect(header).not.toContain("for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1; // z-index repair");
   });
 
@@ -227,63 +230,89 @@ describe("C++ reactive runtime header", () => {
     expect(header).not.toContain("scrollbarDirty");
   });
 
-  it("does not dirty a scroll subtree when drag motion does not change scrollY", () => {
+  it("applies the smoothed scroll delta directly each frame (no accumulator/cadence)", () => {
     expect(header).toContain("ui_apply_scroll_delta");
-    expect(header).toMatch(/if\s*\(nextScrollY\s*==\s*prevScrollY\)\s*return\s+0/);
-    expect(header).toMatch(/ui_apply_scroll_delta\(int8_t scrollNode,\s*int16_t dy\)[\s\S]*ui_mark_scroll_view_dirty\(\(uint8_t\)scrollNode\)/);
+    expect(header).toContain("ui_scroll_smooth_dy");
+    // The new engine applies dy immediately via the input→physics path; there is
+    // no pending-delta accumulator and no redraw-cadence gate.
+    expect(header).not.toContain("UI_SCROLL_DRAG_MULTIPLIER");
+    expect(header).not.toContain("__ui_scroll_pending_dy");
+    expect(header).not.toContain("UI_SCROLL_STEP_PX");
+    expect(header).not.toContain("UI_SCROLL_FRAME_MS");
+    expect(header).toMatch(/ui_scroll_smooth_dy[\s\S]*ui_apply_scroll_delta/);
   });
 
-  it("scales drag deltas before applying generic and list scrolling", () => {
-    expect(header).toContain("#define UI_SCROLL_DRAG_MULTIPLIER 4");
-    expect(header).toContain("ui_scroll_scaled_drag_delta");
-    expect(header).toContain("ui_scroll_saturating_add");
-    expect(header).toMatch(/__ui_is_dragging && __ui_scroll_node >= 0[\s\S]*int16_t dy = ui_scroll_scaled_drag_delta\(ty - __ui_drag_start_y\)[\s\S]*__ui_scroll_pending_dy = ui_scroll_saturating_add\(__ui_scroll_pending_dy,\s*dy\)/);
-    expect(header).toMatch(/__ui_is_dragging && __ui_list_drag >= 0[\s\S]*int16_t dy = ui_scroll_scaled_drag_delta\(ty - __ui_drag_start_y\)[\s\S]*rawNextY = \(int32_t\)ls->scrollY - \(int32_t\)dy/);
+  it("emits the new scroll physics + capability defines (no 3x multiplier)", () => {
+    expect(header).toContain("#ifndef UI_SCROLL_MAX_OVERSCROLL");
+    expect(header).toContain("#ifndef UI_SCROLL_STIFFNESS_X10");
+    expect(header).toContain("#ifndef UI_SCROLL_EDGE_SNAP_PX");
+    expect(header).toContain("#ifndef UI_SCROLL_SETTLE_MS");
+    expect(header).toContain("UI_SCROLL_INPUT_TIER_");
+    expect(header).toContain("UI_SCROLL_RENDER_TIER_");
+    expect(header).toContain("UI_SCROLL_HAS_TOUCH");
+    expect(header).toContain("UI_SCROLL_ELASTIC");
   });
 
-  it("snaps scroll views to the top after a pull-past-zero release", () => {
-    expect(header).toContain("UI_SCROLL_EDGE_SNAP_PX");
-    expect(header).toContain("__ui_scroll_snap_top");
-    expect(header).toContain("__ui_scroll_start_y");
-    expect(header).toContain("ui_snap_scroll_to_top");
-    expect(header).toMatch(/dy > 0 && rawNextY <= 0\)\s*__ui_scroll_snap_top = 1/);
-    expect(header).toMatch(/if\s*\(__ui_scroll_node >= 0 && __ui_scroll_snap_top\)[\s\S]*ui_snap_scroll_to_top\(__ui_scroll_node,\s*1\)/);
-    expect(header).toMatch(/__ui_scroll_start_y > UI_SCROLL_EDGE_SNAP_PX[\s\S]*scrollY <= UI_SCROLL_EDGE_SNAP_PX/);
-    expect(header).not.toContain("nextScrollY > 0 && nextScrollY <= UI_SCROLL_EDGE_SNAP_PX");
+  it("UINode carries unified scroll state on the node", () => {
+    expect(header).toMatch(/uint8_t virtualized/);
+    expect(header).toMatch(/int16_t overscrollPx/);
+    expect(header).toMatch(/uint8_t settling/);
+    expect(header).toMatch(/int16_t lastPaintedScrollY/);
+    // List function pointers live on the node now, not in a side table.
+    expect(header).toMatch(/uint16_t \(\*listCountFn\)\(void\)/);
+    expect(header).toMatch(/void \(\*listItemFn\)\(uint16_t[^)]+\)/);
+    expect(header).toMatch(/void \(\*listTapFn\)\(uint16_t[^)]*\)/);
+    // The old UIListState side table + the dual gesture are gone.
+    expect(header).not.toMatch(/struct UIListState/);
+    expect(header).not.toContain("__ui_list_drag");
+    expect(header).not.toContain("__ui_scroll_snap_top");
+    expect(header).not.toContain("__ui_scroll_start_y");
+    expect(header).not.toContain("ui_snap_scroll_to_top");
   });
 
-  it("buffers scroll viewport redraws before pushing them to hardware", () => {
-    expect(header).toContain("CuttlefishCanvas16* __ui_scroll_canvas");
-    expect(header).toContain("ui_get_scroll_canvas");
-    expect(header).toContain("ui_push_canvas_rect");
-    expect(header).toMatch(/display_canvasFillScreen\(bufferedScrollCanvas/);
-    expect(header).toMatch(/ui_display_set_target\(bufferedScrollCanvas\)/);
-    expect(header).toMatch(/ui_push_canvas_rect\(bufferedScrollCanvas/);
+  it("releases via ui_scroll_release and advances the settle in ui_tick", () => {
+    expect(header).toContain("ui_scroll_release");
+    expect(header).toContain("ui_scroll_advance_settle");
+    expect(header).toContain("ui_scroll_overscroll_for");
+    expect(header).toMatch(/ui_scroll_release\(__ui_scroll_node\)/);
+    expect(header).toMatch(/ui_scroll_advance_settle\(i,\s*deltaMs\)/);
   });
 
-  it("scroll-copies cached viewport rows and redraws only the exposed band", () => {
-    expect(header).toContain("__ui_scroll_cache_node");
-    expect(header).toContain("__ui_scroll_repaint_canvas");
-    expect(header).toContain("ui_get_scroll_canvas_keep_cache");
-    expect(header).toContain("ui_get_scroll_repaint_canvas");
-    expect(header).toContain("ui_shift_scroll_canvas");
+  it("renders scroll containers via a per-container shift-and-repair canvas (Mode B)", () => {
+    expect(header).toContain("ui_get_container_canvas");
+    expect(header).toContain("ui_shift_container_canvas");
     expect(header).toContain("memmove");
-    expect(header).toContain("ui_mark_scroll_view_dirty");
-    expect(header).toContain("ui_mark_scroll_view_overlaps_dirty");
-    expect(header).toMatch(/deltaY\s*=\s*__ui_nodes\[s\]\.scrollY\s*-\s*__ui_scroll_cache_y/);
-    expect(header).toMatch(/ui_rects_intersect\(cr\.x,\s*cr\.y,\s*cr\.w,\s*cr\.h,\s*exposed\.x,\s*exposed\.y,\s*exposed\.w,\s*exposed\.h\)/);
-    expect(header).toMatch(/ui_shift_scroll_canvas[\s\S]*memmove[\s\S]*display_canvasFillRect\(canvas,\s*contentW,\s*0,\s*w\s*-\s*contentW,\s*h,\s*bg\)/);
-    expect(header).toMatch(/bufferedScrollRepaintCanvas\s*=\s*ui_get_scroll_repaint_canvas\(vw,\s*exposedH\)/);
-    expect(header).toMatch(/__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY\s*-\s*bufferedScrollVY\s*-\s*\(bufferedScrollRepaintCanvas \? bufferedScrollRepaintY : 0\)/);
-    expect(header).toMatch(/ui_draw_canvas_rect\(bufferedScrollRepaintCanvas,\s*0,\s*bufferedScrollRepaintY,\s*vw,\s*bufferedScrollRepaintH\)/);
-    expect(header).toMatch(/__ui_scroll_cache_valid\s*=\s*1;[\s\S]*__ui_scroll_cache_y\s*=\s*__ui_nodes\[si\]\.scrollY/);
+    // The shift delta comes from the node's lastPaintedScrollY, not a global cache.
+    expect(header).toMatch(/__ui_nodes\[s\]\.scrollY\s*-\s*__ui_nodes\[s\]\.lastPaintedScrollY/);
+    // The old global scroll-cache machinery is gone.
+    expect(header).not.toContain("__ui_scroll_cache_node");
+    expect(header).not.toContain("__ui_scroll_repaint_canvas");
+    expect(header).not.toContain("ui_shift_scroll_canvas");
+    expect(header).not.toContain("ui_invalidate_scroll_cache");
   });
 
-  it("invalidates the scroll cache when non-scroll dirty work touches cached content", () => {
-    expect(header).toContain("ui_invalidate_scroll_cache_for_node");
-    expect(header).toMatch(/ui_mark_dirty\(uint8_t nodeIdx\)[\s\S]*ui_invalidate_scroll_cache_for_node\(nodeIdx\)[\s\S]*__ui_nodes\[nodeIdx\]\.dirty = 1/);
-    expect(header).toMatch(/ui_get_scroll_canvas\(int16_t w,\s*int16_t h\)[\s\S]*ui_invalidate_scroll_cache\(\)[\s\S]*ui_get_scroll_canvas_keep_cache\(w,\s*h\)/);
-    expect(header).toMatch(/ui_mark_scroll_subtree_dirty\(uint8_t scrollNode\) \{[\s\S]*ui_invalidate_scroll_cache\(\);[\s\S]*ui_mark_subtree_dirty_local\(scrollNode\)/);
+  it("drops the off-screen scroll-canvas cache compositing entirely", () => {
+    // The rewrite replaced the global scroll-cache machinery with a per-container
+    // canvas keyed on lastPaintedScrollY. None of the old cache symbols remain.
+    expect(header).not.toContain("__ui_scroll_cache_node");
+    expect(header).not.toContain("__ui_scroll_cache_valid");
+    expect(header).not.toContain("__ui_scroll_repaint_canvas");
+    expect(header).not.toContain("ui_get_scroll_canvas_keep_cache");
+    expect(header).not.toContain("ui_get_scroll_repaint_canvas");
+    expect(header).not.toContain("ui_invalidate_scroll_cache");
+    // The per-container canvas + shift helper are the replacement.
+    expect(header).toContain("ui_get_container_canvas");
+    expect(header).toContain("ui_shift_container_canvas");
+  });
+
+  it("seeds on-node list fn pointers from the UIListBinding table in ui_init", () => {
+    // ui.bindList resolves after ui.mount lowers the HTML, so the static node
+    // initializer can't see the binding; ui_init copies the pointers on-node.
+    expect(header).toContain("__ui_list_bindings[b].countFn");
+    expect(header).toMatch(/__ui_nodes\[n\]\.listCountFn\s*=\s*__ui_list_bindings\[b\]\.countFn/);
+    expect(header).toMatch(/__ui_nodes\[n\]\.listItemFn\s*=\s*__ui_list_bindings\[b\]\.itemFn/);
+    // The NODE_LIST draw reads on-node state, not a UIListState side table.
+    expect(header).toMatch(/case NODE_LIST:[\s\S]*if \(!__ui_nodes\[i\]\.listItemFn\) break/);
   });
 
   it("composites list canvases into buffered scroll containers instead of pushing at local coordinates", () => {
