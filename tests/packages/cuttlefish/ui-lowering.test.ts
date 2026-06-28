@@ -250,3 +250,15 @@ describe("ui lowering", () => {
     expect(out.keyframeTables).toContain("const uint8_t __ui_anim_count = 1");
   });
 });
+
+describe("canvas lowering", () => {
+  it("lowers <canvas> to a NODE_CANVAS row carrying canvasW/canvasH", () => {
+    const out = lower(
+      `<screen><canvas id="spark" width="60" height="30"></canvas></screen>`,
+      `#spark { width: 60px; height: 30px; }`,
+    );
+    expect(out.nodeTable).toContain("NODE_CANVAS");
+    expect(out.nodeTable).toMatch(/\.canvasW=60/);
+    expect(out.nodeTable).toMatch(/\.canvasH=30/);
+  });
+});

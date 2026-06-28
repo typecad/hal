@@ -51,6 +51,10 @@ export interface StyledNode {
   imgHeight?: number;
   /** Item height in pixels (for <list>). */
   itemHeight?: number;
+  /** Canvas buffer width in pixels (for <canvas>). */
+  canvasW?: number;
+  /** Canvas buffer height in pixels (for <canvas>). */
+  canvasH?: number;
   disabled?: boolean;
 }
 
@@ -234,6 +238,8 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     imgWidth: node.imgWidth,
     imgHeight: node.imgHeight,
     itemHeight: node.itemHeight,
+    canvasW: node.canvasW,
+    canvasH: node.canvasH,
     disabled: (node as any).disabled,
   };
 }

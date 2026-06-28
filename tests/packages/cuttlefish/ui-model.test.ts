@@ -79,3 +79,16 @@ describe("UI structured model", () => {
     expect(prog.nodes[0].textBuffer).toBe("SSID");
   });
 });
+
+describe("canvas node model", () => {
+  it("lowers <canvas> to a node with kind 'canvas' and buffer dims", () => {
+    const styled = resolveStyles(parseHtml(`<screen><canvas id="spark" width="120" height="40"></canvas></screen>`), parseCss(``));
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 240, h: 320 }, measure);
+    const program = lowerUIToModel(styled, boxes, "rgb565");
+    const canvas = program.nodes.find(n => n.tag === "canvas");
+    expect(canvas).toBeDefined();
+    expect(canvas!.kind).toBe("canvas");
+    expect(canvas!.canvasW).toBe(120);
+    expect(canvas!.canvasH).toBe(40);
+  });
+});
