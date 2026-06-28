@@ -124,11 +124,11 @@ struct UINode {
   uint8_t imgDataId;    // index into __ui_images[] (255 = no image)
   uint8_t objectFit;    // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
   uint16_t listItemHeight; // px per item for <list> (0 = not a list)
-  uint16_t canvasW;        // canvas buffer width  (for <canvas>)
-  uint16_t canvasH;        // canvas buffer height (for <canvas>)
   int16_t rangeMin;     // for <range>: minimum value
   int16_t rangeMax;     // for <range>: maximum value
   int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
+  uint16_t canvasW;        // canvas buffer width  (for <canvas>)
+  uint16_t canvasH;        // canvas buffer height (for <canvas>)
   // runtime slot
   uint8_t dirty;
   int16_t value;  // unified element state

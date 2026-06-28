@@ -38,6 +38,11 @@ describe("canvas ctx lowering", () => {
     expect(out).toBe("ui_display_draw_line(0, __ui_canvas_h, __ui_canvas_w, __ui_canvas_h, 0xf800);");
   });
 
+  it("rewrites ctx.width / ctx.height embedded in compound expressions (e.g. ctx.height - 4)", () => {
+    const out = rewriteCanvasCall(callExpr("ctx.line(0, ctx.height - 4, ctx.width, ctx.height - 4, 'red')"), "ctx", []);
+    expect(out).toBe("ui_display_draw_line(0, __ui_canvas_h - 4, __ui_canvas_w, __ui_canvas_h - 4, 0xf800);");
+  });
+
   it("rewrites ctx.text(x,y,str,color) to set_cursor + set_text_color_solid + print", () => {
     const out = rewriteCanvasCall(callExpr("ctx.text(4, 12, `50%`, 'white')"), "ctx", []);
     // Template literal lowers to a C++ string literal.

@@ -59,7 +59,7 @@ function tryColor(text: string): number | null {
 
 /** Lower one argument expression to its C++ text. Color strings → rgb565 hex. */
 function lowerArg(arg: ts.Expression, ctxName: string, sourceText: string, diagnostics: Diagnostic[]): string {
-  // ctx.width / ctx.height → __ui_canvas_w / __ui_canvas_h
+  // ctx.width / ctx.height → __ui_canvas_w / __ui_canvas_h (as a whole arg)
   if (
     ts.isPropertyAccessExpression(arg) &&
     ts.isIdentifier(arg.expression) &&
@@ -69,6 +69,10 @@ function lowerArg(arg: ts.Expression, ctxName: string, sourceText: string, diagn
     return arg.name.text === "width" ? "__ui_canvas_w" : "__ui_canvas_h";
   }
   let raw = renderExprAsText(expressionToIR(arg, sourceText, diagnostics));
+  // ctx.width / ctx.height embedded in a compound expression (e.g. ctx.height - 4).
+  // expressionToIR leaves these as literal text, so substitute on the rendered string.
+  raw = raw.replace(new RegExp(`\\b${ctxName}\\.width\\b`, "g"), "__ui_canvas_w");
+  raw = raw.replace(new RegExp(`\\b${ctxName}\\.height\\b`, "g"), "__ui_canvas_h");
   const color = tryColor(raw);
   if (color !== null) raw = `0x${color.toString(16)}`;
   return raw;

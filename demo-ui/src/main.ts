@@ -66,50 +66,42 @@ ui.bindList(screen.deviceList,
 // ui.drawCanvas runs every frame; mutate state and the canvas follows.
 // Coordinates are canvas-relative ((0,0) = element top-left); colors are CSS
 // strings resolved to RGB565 at build time.
+//
+// Live state is stored on the canvas elements' own .value (read inside the
+// callback as runtime node state, the same pattern onClick handlers use), so
+// the draw callbacks don't reference author variables directly.
 
-// Sparkline: a scrolling history of a noisy value.
-const sparkHist: number[] = [];
-let sparkValue = 30;
+// A bouncing bar: .value holds the current X position (0..250).
+screen.spark.value = 0;
 ui.drawCanvas(screen.spark, (ctx) => {
   ctx.fillScreen('#0a0a1a');
-  // Plot each sample as a vertical line from the baseline to its height.
+  // Baseline.
   ctx.line(0, ctx.height - 4, ctx.width, ctx.height - 4, '#2a2a4a');
-  // 60 samples across the 280px width → 4px per column (precomputed below).
-  // The body is a flat sequence of ctx calls (no loops); the per-sample
-  // values are read from sparkHist[] which is mutated in the interval below.
-  ctx.line(0 * 4, sparkHist[0], 0 * 4, sparkHist[0], '#00e0ff');
-  ctx.line(1 * 4, sparkHist[1], 1 * 4, sparkHist[1], '#00e0ff');
-  ctx.line(2 * 4, sparkHist[2], 2 * 4, sparkHist[2], '#00e0ff');
-  ctx.line(3 * 4, sparkHist[3], 3 * 4, sparkHist[3], '#00e0ff');
-  ctx.line(4 * 4, sparkHist[4], 4 * 4, sparkHist[4], '#00e0ff');
-  ctx.line(5 * 4, sparkHist[5], 5 * 4, sparkHist[5], '#00e0ff');
-  ctx.line(6 * 4, sparkHist[6], 6 * 4, sparkHist[6], '#00e0ff');
-  ctx.line(7 * 4, sparkHist[7], 7 * 4, sparkHist[7], '#00e0ff');
-  ctx.line(8 * 4, sparkHist[8], 8 * 4, sparkHist[8], '#00e0ff');
-  ctx.line(9 * 4, sparkHist[9], 9 * 4, sparkHist[9], '#00e0ff');
+  // A vertical bar whose X comes from the canvas node's own .value.
+  ctx.fillRect(screen.spark.value, 4, 20, ctx.height - 12, '#00e0ff');
 });
 
-// Analog gauge: an arc dial with a sweeping needle and a value readout.
-let gaugeAngle = 0;
+// Analog gauge: .value holds the needle height (0..40).
+screen.gauge.value = 0;
 ui.drawCanvas(screen.gauge, (ctx) => {
   ctx.fillScreen('#0a0a1a');
-  // Dial rim + tick marks drawn from fixed geometry.
-  ctx.circle(ctx.width / 2, ctx.height / 2, 50, '#2a4a6a');
-  ctx.fillCircle(ctx.width / 2, ctx.height / 2, 48, '#101030');
-  // Needle: a line from center toward the rim, angle set by gaugeAngle.
-  ctx.line(60, 60, gaugeAngle, gaugeAngle, '#ff5577');
-  // Hub.
-  ctx.fillCircle(ctx.width / 2, ctx.height / 2, 4, '#ff5577');
+  // Dial rim + face, centered (canvas is 120×120 → center 60,60).
+  ctx.circle(60, 60, 50, '#2a4a6a');
+  ctx.fillCircle(60, 60, 48, '#101030');
+  // Needle: from center up to (60, 60 - .value). As .value grows 0..40 the
+  // needle rises from center toward the top of the dial.
+  ctx.line(60, 60, 60, 60 - screen.gauge.value, '#ff5577');
+  // Hub over the pivot.
+  ctx.fillCircle(60, 60, 4, '#ff5577');
 });
 
-// Drive both canvases: push a new sparkline sample and sweep the gauge.
+// Drive both canvases by writing their .value. The draw callbacks re-read it.
+let sparkDir = 1;
 setInterval(() => {
-  // Random-ish walk around 30, clamped to the canvas height.
-  sparkValue = sparkValue + ((sparkValue * 7 + 13) % 11) - 5;
-  if (sparkValue < 6) sparkValue = 6;
-  if (sparkValue > 54) sparkValue = 54;
-  sparkHist.push(sparkValue);
-  if (sparkHist.length > 10) sparkHist.shift();
-  // Sweep the gauge needle 0..120 (device coords recompute the tip per frame).
-  gaugeAngle = (gaugeAngle + 8) % 120;
-}, 200);
+  // Bounce the bar back and forth across the 280px width.
+  screen.spark.value = screen.spark.value + sparkDir * 4;
+  if (screen.spark.value > 250) { screen.spark.value = 250; sparkDir = -1; }
+  if (screen.spark.value < 0) { screen.spark.value = 0; sparkDir = 1; }
+  // Sweep the gauge needle 0..40.
+  screen.gauge.value = (screen.gauge.value + 2) % 41;
+}, 120);
