@@ -264,6 +264,9 @@ export function tryResolveUICall(
   if (method === "watchPin") {
     return resolveWatchPinCall(call, fileName, sourceText, diagnostics);
   }
+  if (method === "onTap") {
+    return resolveOnTapCall(call, fileName, sourceText, diagnostics);
+  }
   // Unknown ui.* method — let it fall through
   return null;
 }
@@ -733,6 +736,55 @@ function resolveWatchPinCall(
     kind: "block",
     sourceSpan: makeSourceSpan(call, fileName, sourceText),
     body: [],
+  };
+}
+
+/** Resolve ui.onTap([node]) — an awaitable tap notification.
+ *  Lowers to a marker call IR whose callee ("__UI_TAP__") the async state
+ *  machine recognizes and turns into a tap-counter poll. Must be awaited
+ *  (statement-level). args[0] is the node filter: -1 = any tap, >=0 = node.
+ *
+ *  - await ui.onTap()           → args=[-1]   (resume on next tap anywhere)
+ *  - await ui.onTap(screen.x)   → args=[idx]  (resume only when x is tapped) */
+function resolveOnTapCall(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): StatementIR | null {
+  const nodeArg = call.arguments[0];
+
+  // Per-element form: await ui.onTap(screen.btn) → resolve the node index,
+  // the same way onClick/onToggle do (screen.id property-access shape).
+  if (nodeArg && ts.isPropertyAccessExpression(nodeArg) &&
+      ts.isIdentifier(nodeArg.expression)) {
+    const treeName = nodeArg.expression.text;          // "screen"
+    const id = nodeArg.name.text;                       // "btn"
+    const htmlPath = resolveUIModuleImport(treeName);
+    if (htmlPath) {
+      const nodeIndex = resolveNodeIndex(htmlPath, id);
+      return {
+        kind: "call",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        callee: "__UI_TAP__",
+        args: [{ kind: "number", value: nodeIndex }],
+        isAwaited: true,
+      };
+    }
+    // Unknown tree — fall through to the global form, with a warning.
+    diagnostics.push({
+      severity: "warning", code: "ui-ontap-arg",
+      message: `ui.onTap(${nodeArg.getText()}) could not be resolved; awaiting any tap instead`,
+    } as Diagnostic);
+  }
+
+  // Global form: await ui.onTap() — resume on the next tap anywhere.
+  return {
+    kind: "call",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    callee: "__UI_TAP__",
+    args: [{ kind: "number", value: -1 }],
+    isAwaited: true,
   };
 }
 

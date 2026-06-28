@@ -5,24 +5,12 @@ import type { DisplayProfile } from "../api/shared/display-profile.js";
 import { resolveDisplayProfile } from "../api/shared/display-profile.js";
 import { ResolvedCuttlefishConfig } from "../config-loader.js";
 import { parseCss, parseFontFaces, parseKeyframes } from "../ui/css-parser.js";
-import { resolveColor } from "../ui/color.js";
 import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui/html-parser.js";
 import { buildUIFontAssets } from "../ui/font-assets.js";
 import { loadImageAssets } from "../ui/image-assets.js";
+import { buildKeyframeSets } from "../ui/keyframes.js";
 import { measure, type Box } from "../ui/layout-engine.js";
-import {
-  clampInt16,
-  cssOpacityToPercent,
-  cssPx,
-  KEYFRAME_PROP_BG,
-  KEYFRAME_PROP_FG,
-  KEYFRAME_PROP_OPACITY,
-  KEYFRAME_PROP_SIZE,
-  KEYFRAME_PROP_TRANSFORM,
-  lowerUIToModel,
-  parseTransform,
-  type KeyframeSetModel,
-} from "../ui/model.js";
+import { lowerUIToModel } from "../ui/model.js";
 import { selectEngine } from "../ui/select-engine.js";
 import { resolveStyles, type StyledNode } from "../ui/style-resolver.js";
 import { getThemeClass, setThemeClass } from "../ui/theme-store.js";
@@ -435,36 +423,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     const engine = selectEngine(screen);
     return engine.arrange(screen, viewport, measure);
   });
-  const keyframeSets: KeyframeSetModel[] = rawKeyframes.map((ks) => ({
-    name: ks.name,
-    stops: ks.stops.map((stop) => {
-      let props = 0;
-      if (stop.background) props |= KEYFRAME_PROP_BG;
-      if (stop.color) props |= KEYFRAME_PROP_FG;
-      if (stop.opacity) props |= KEYFRAME_PROP_OPACITY;
-      if (stop.transform || stop.left || stop.top) props |= KEYFRAME_PROP_TRANSFORM;
-      if (stop.width || stop.height) props |= KEYFRAME_PROP_SIZE;
-      const transform = parseTransform(stop.transform);
-      const x = transform.x + cssPx(stop.left);
-      const y = transform.y + cssPx(stop.top);
-      return {
-        percent: stop.percent,
-        props,
-        bg: stop.background ? resolveColor(stop.background, profile.colorFormat) : 0,
-        fg: stop.color ? resolveColor(stop.color, profile.colorFormat) : 0,
-        opacity: stop.opacity ? cssOpacityToPercent(stop.opacity) : 100,
-        transformOffsetX: clampInt16(x),
-        transformOffsetY: clampInt16(y),
-        translatePctX: clampInt16(transform.pctX),
-        translatePctY: clampInt16(transform.pctY),
-        scaleX: transform.scaleX,
-        scaleY: transform.scaleY,
-        rotateDeg: clampInt16(transform.rotateDeg),
-        width: stop.width ? Math.max(0, Math.min(32767, cssPx(stop.width))) : 0,
-        height: stop.height ? Math.max(0, Math.min(32767, cssPx(stop.height))) : 0,
-      };
-    }),
-  }));
+  const keyframeSets = buildKeyframeSets(rawKeyframes, profile.colorFormat);
   const imageAssets = loadImageAssets(allStyledScreens.length > 0 ? allStyledScreens : [styled], path.dirname(firstImport.htmlPath));
   const program = lowerUIToModel(styled, boxes, profile.colorFormat, profile, fontAssets, allStyledScreens, imageAssets.nodeIdToAssetIndex, keyframeSets, imageAssets.assets);
   const specs = extractAuthorSpecs(sourceFile, uiImports, program.nodes);

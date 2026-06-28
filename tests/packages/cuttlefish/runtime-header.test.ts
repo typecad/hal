@@ -59,7 +59,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_draw_image_with_fit");
     expect(header).toMatch(/for\s*\(int16_t ty = 0; ty < targetH; ty\+\+\)/);
     expect(header).toMatch(/dx = targetH - 1 - ty/);
-    expect(header).toMatch(/__ui_gfx->drawPixel\(x \+ rdx, y \+ rdy, color\)/);
+    expect(header).toMatch(/ui_display_draw_pixel\(x \+ rdx, y \+ rdy, color\)/);
     expect(header).toMatch(/case\s+NODE_IMG:[\s\S]*ui_draw_image_with_fit/);
   });
 
@@ -75,7 +75,17 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("repairs pressed-offset clears with the parent-seeded local canvas", () => {
-    expect(header).toMatch(/ui_clear_press_offset_area[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&r\)[\s\S]*__ui_gfx->fillRect/);
+    expect(header).toMatch(/ui_clear_press_offset_area[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&r\)[\s\S]*ui_display_fill_rect/);
+  });
+
+  it("routes runtime display operations through Cuttlefish display shims", () => {
+    expect(header).toContain("ui_display_draw_pixel");
+    expect(header).toContain("ui_display_set_target");
+    expect(header).toContain("display_canvasBuffer");
+    expect(header).not.toMatch(/__ui_gfx->/);
+    expect(header).not.toMatch(/__tc_display\./);
+    expect(header).not.toMatch(/Adafruit_GFX\*/);
+    expect(header).not.toMatch(/GFXcanvas16\*/);
   });
 
   it("declares the draw dispatch (NODE_FILL / NODE_TEXT)", () => {
@@ -163,12 +173,27 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollNode\)/);
   });
 
+  it("marks a scroll subtree with one container-level overlap check, not per-child", () => {
+    // The scroll overlap-repair optimization: instead of calling ui_mark_dirty
+    // (which runs an O(n) overlap scan) on every child, scroll marking sets the
+    // dirty flags directly and runs a single overlap check at the container.
+    expect(header).toContain("ui_mark_subtree_dirty_local");
+    // The scroll-tree dirty loop must set dirty directly (not call ui_mark_dirty),
+    // otherwise the per-child O(n) overlap repair is reintroduced.
+    expect(header).toMatch(/ui_mark_subtree_dirty_local\(uint8_t scrollNode\)[\s\S]*?__ui_nodes\[c\]\.dirty = 1/);
+    // ui_mark_scroll_subtree_dirty delegates to the local mark + ONE overlap check
+    // (tolerant of the explanatory comments in the body).
+    expect(header).toMatch(/ui_mark_scroll_subtree_dirty\(uint8_t scrollNode\) \{[\s\S]*ui_mark_subtree_dirty_local\(scrollNode\);[\s\S]*ui_mark_overlapping_higher_layers_dirty\(scrollNode\);[\s\S]*\}/);
+    // And it must NOT loop calling ui_mark_dirty per child (the old O(K·n) form).
+    expect(header).not.toMatch(/ui_mark_scroll_subtree_dirty\(uint8_t scrollNode\) \{[\s\S]*?for[\s\S]*?ui_mark_dirty\(c\)/);
+  });
+
   it("keeps normal dirty marking local while repairing overlapping higher z-index layers", () => {
     expect(header).toMatch(/int16_t\s+zIndex/);
     expect(header).toContain("ui_node_draws_before");
     expect(header).toContain("ui_mark_overlapping_higher_layers_dirty");
     expect(header).toMatch(/static inline void ui_mark_dirty\(uint8_t nodeIdx\)[\s\S]*if \(nodeIdx >= __ui_node_count\) return/);
-    expect(header).toMatch(/static inline void ui_mark_dirty\(uint8_t nodeIdx\) \{\s*if \(nodeIdx >= __ui_node_count\) return;\s*__ui_nodes\[nodeIdx\]\.dirty = 1;\s*ui_mark_overlapping_higher_layers_dirty\(nodeIdx\);\s*\}/);
+    expect(header).toMatch(/static inline void ui_mark_dirty\(uint8_t nodeIdx\) \{\s*if \(nodeIdx >= __ui_node_count\) return;\s*ui_invalidate_scroll_cache_for_node\(nodeIdx\);\s*__ui_nodes\[nodeIdx\]\.dirty = 1;\s*ui_mark_overlapping_higher_layers_dirty\(nodeIdx\);\s*\}/);
     expect(header).not.toContain("for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1; // z-index repair");
   });
 
@@ -178,9 +203,11 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_set_visible");
     expect(header).toContain("ui_subtree_current_paint_rect");
     expect(header).toContain("ui_clear_subtree_current_paint");
+    expect(header).toContain("ui_mark_overlapping_higher_layers_dirty_for_rect");
     expect(header).toMatch(/__ui_bindings\[i\]\.prop == PROP_VISIBLE[\s\S]*ui_set_visible\(__ui_bindings\[i\]\.node,\s*nextVisible\)/);
     expect(header).toMatch(/if \(!visible\)[\s\S]*ui_clear_subtree_current_paint\(nodeIdx\)/);
     expect(header).toMatch(/ui_subtree_current_paint_rect[\s\S]*ui_expand_rect/);
+    expect(header).toMatch(/hasSubtreeRect[\s\S]*ui_mark_overlapping_higher_layers_dirty_for_rect\(nodeIdx,\s*&subtreeRect\)/);
     expect(header).toMatch(/for \(uint8_t c = nodeIdx; c < end; c\+\+\)[\s\S]*__ui_nodes\[c\]\.dirty = 1/);
   });
 
@@ -196,13 +223,22 @@ describe("C++ reactive runtime header", () => {
 
   it("draws scrollbars into the buffered canvas (not the display)", () => {
     // Scrollbar draws to the canvas before push — no direct-display flash.
-    expect(header).toMatch(/__ui_gfx\s*=\s*bufferedScrollCanvas[\s\S]*fillRect\(tx,\s*(?:ty|0)/);
+    expect(header).toMatch(/ui_display_set_target\(bufferedScrollCanvas\)[\s\S]*ui_display_fill_rect\(tx,\s*(?:ty|0)/);
     expect(header).not.toContain("scrollbarDirty");
   });
 
   it("does not dirty a scroll subtree when drag motion does not change scrollY", () => {
     expect(header).toContain("ui_apply_scroll_delta");
     expect(header).toMatch(/if\s*\(nextScrollY\s*==\s*prevScrollY\)\s*return\s+0/);
+    expect(header).toMatch(/ui_apply_scroll_delta\(int8_t scrollNode,\s*int16_t dy\)[\s\S]*ui_mark_scroll_view_dirty\(\(uint8_t\)scrollNode\)/);
+  });
+
+  it("scales drag deltas before applying generic and list scrolling", () => {
+    expect(header).toContain("#define UI_SCROLL_DRAG_MULTIPLIER 4");
+    expect(header).toContain("ui_scroll_scaled_drag_delta");
+    expect(header).toContain("ui_scroll_saturating_add");
+    expect(header).toMatch(/__ui_is_dragging && __ui_scroll_node >= 0[\s\S]*int16_t dy = ui_scroll_scaled_drag_delta\(ty - __ui_drag_start_y\)[\s\S]*__ui_scroll_pending_dy = ui_scroll_saturating_add\(__ui_scroll_pending_dy,\s*dy\)/);
+    expect(header).toMatch(/__ui_is_dragging && __ui_list_drag >= 0[\s\S]*int16_t dy = ui_scroll_scaled_drag_delta\(ty - __ui_drag_start_y\)[\s\S]*rawNextY = \(int32_t\)ls->scrollY - \(int32_t\)dy/);
   });
 
   it("snaps scroll views to the top after a pull-past-zero release", () => {
@@ -217,12 +253,37 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("buffers scroll viewport redraws before pushing them to hardware", () => {
-    expect(header).toContain("GFXcanvas16* __ui_scroll_canvas");
+    expect(header).toContain("CuttlefishCanvas16* __ui_scroll_canvas");
     expect(header).toContain("ui_get_scroll_canvas");
     expect(header).toContain("ui_push_canvas_rect");
-    expect(header).toMatch(/bufferedScrollCanvas->fillScreen/);
-    expect(header).toMatch(/__ui_gfx\s*=\s*bufferedScrollCanvas/);
+    expect(header).toMatch(/display_canvasFillScreen\(bufferedScrollCanvas/);
+    expect(header).toMatch(/ui_display_set_target\(bufferedScrollCanvas\)/);
     expect(header).toMatch(/ui_push_canvas_rect\(bufferedScrollCanvas/);
+  });
+
+  it("scroll-copies cached viewport rows and redraws only the exposed band", () => {
+    expect(header).toContain("__ui_scroll_cache_node");
+    expect(header).toContain("__ui_scroll_repaint_canvas");
+    expect(header).toContain("ui_get_scroll_canvas_keep_cache");
+    expect(header).toContain("ui_get_scroll_repaint_canvas");
+    expect(header).toContain("ui_shift_scroll_canvas");
+    expect(header).toContain("memmove");
+    expect(header).toContain("ui_mark_scroll_view_dirty");
+    expect(header).toContain("ui_mark_scroll_view_overlaps_dirty");
+    expect(header).toMatch(/deltaY\s*=\s*__ui_nodes\[s\]\.scrollY\s*-\s*__ui_scroll_cache_y/);
+    expect(header).toMatch(/ui_rects_intersect\(cr\.x,\s*cr\.y,\s*cr\.w,\s*cr\.h,\s*exposed\.x,\s*exposed\.y,\s*exposed\.w,\s*exposed\.h\)/);
+    expect(header).toMatch(/ui_shift_scroll_canvas[\s\S]*memmove[\s\S]*display_canvasFillRect\(canvas,\s*contentW,\s*0,\s*w\s*-\s*contentW,\s*h,\s*bg\)/);
+    expect(header).toMatch(/bufferedScrollRepaintCanvas\s*=\s*ui_get_scroll_repaint_canvas\(vw,\s*exposedH\)/);
+    expect(header).toMatch(/__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY\s*-\s*bufferedScrollVY\s*-\s*\(bufferedScrollRepaintCanvas \? bufferedScrollRepaintY : 0\)/);
+    expect(header).toMatch(/ui_draw_canvas_rect\(bufferedScrollRepaintCanvas,\s*0,\s*bufferedScrollRepaintY,\s*vw,\s*bufferedScrollRepaintH\)/);
+    expect(header).toMatch(/__ui_scroll_cache_valid\s*=\s*1;[\s\S]*__ui_scroll_cache_y\s*=\s*__ui_nodes\[si\]\.scrollY/);
+  });
+
+  it("invalidates the scroll cache when non-scroll dirty work touches cached content", () => {
+    expect(header).toContain("ui_invalidate_scroll_cache_for_node");
+    expect(header).toMatch(/ui_mark_dirty\(uint8_t nodeIdx\)[\s\S]*ui_invalidate_scroll_cache_for_node\(nodeIdx\)[\s\S]*__ui_nodes\[nodeIdx\]\.dirty = 1/);
+    expect(header).toMatch(/ui_get_scroll_canvas\(int16_t w,\s*int16_t h\)[\s\S]*ui_invalidate_scroll_cache\(\)[\s\S]*ui_get_scroll_canvas_keep_cache\(w,\s*h\)/);
+    expect(header).toMatch(/ui_mark_scroll_subtree_dirty\(uint8_t scrollNode\) \{[\s\S]*ui_invalidate_scroll_cache\(\);[\s\S]*ui_mark_subtree_dirty_local\(scrollNode\)/);
   });
 
   it("composites list canvases into buffered scroll containers instead of pushing at local coordinates", () => {
@@ -252,7 +313,7 @@ describe("C++ reactive runtime header", () => {
 
   it("closes rounded border tangent pixels so outlines do not have corner pinholes", () => {
     expect(header).toContain("ui_draw_closed_round_rect");
-    expect(header).toMatch(/drawRoundRect\(x,\s*y,\s*w,\s*h,\s*r,\s*color\)[\s\S]*drawPixel\(x \+ r,\s*y,\s*color\)/);
+    expect(header).toMatch(/ui_display_draw_round_rect\(x,\s*y,\s*w,\s*h,\s*r,\s*color\)[\s\S]*ui_display_draw_pixel\(x \+ r,\s*y,\s*color\)/);
     expect(header).toMatch(/ui_draw_rect_outline[\s\S]*ui_draw_closed_round_rect/);
   });
 
@@ -298,8 +359,8 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("checks AA canvas allocation before use", () => {
-    expect(header).toMatch(/if\s*\(!__ui_aa_canvas\s*\|\|\s*!__ui_aa_canvas->getBuffer\(\)\)\s*return\s+nullptr/);
-    expect(header).toMatch(/static inline void ui_aa_push[\s\S]*if\s*\(!c\s*\|\|\s*!c->getBuffer\(\)\)\s*return/);
+    expect(header).toMatch(/if\s*\(!__ui_aa_canvas\s*\|\|\s*!display_canvasBuffer\(__ui_aa_canvas\)\)\s*return\s+nullptr/);
+    expect(header).toMatch(/static inline void ui_aa_push[\s\S]*if\s*\(!c\s*\|\|\s*!display_canvasBuffer\(c\)\)\s*return/);
   });
 
   it("declares ui_kb_open, ui_kb_close, ui_kb_handle_touch", () => {
@@ -327,7 +388,7 @@ describe("C++ reactive runtime header", () => {
 
   it("draws NODE_INPUT as a bordered field showing textBuffer", () => {
     expect(header).toMatch(/case\s+NODE_INPUT:/);
-    expect(header).toMatch(/NODE_INPUT[\s\S]*drawRect/);
+    expect(header).toMatch(/NODE_INPUT[\s\S]*ui_display_draw_rect/);
   });
 
   it("keyboard key actions: insert, shift toggle, page-swap, ok close", () => {

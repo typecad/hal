@@ -85,5 +85,27 @@ export declare function bindList(
   onTap?: (index: number) => void,
 ): void;
 
-export const ui = { mount, signal, bind, watchPin, bindList };
+/**
+ * Await the next tap. Must be used inside an `async` function.
+ *
+ *   async function screensaver() {
+ *     while (true) {
+ *       await ui.onTap();       // resume on the next tap, anywhere
+ *       backlightOn();
+ *     }
+ *   }
+ *
+ * With no argument it resumes on the next tap on the screen (including empty
+ * space — useful for "wake on any touch"). Pass an element to resume only when
+ * that element is tapped:
+ *
+ *   await ui.onTap(screen.btn);
+ *
+ * A tap fires BOTH the tapped element's onClick handler AND resumes any
+ * `await ui.onTap()` awaiter. Returns a Promise<void>; it is a resume signal,
+ * not a value — there is nothing to read from it.
+ */
+export declare function onTap(node?: unknown): Promise<void>;
+
+export const ui = { mount, signal, bind, watchPin, bindList, onTap };
 export default ui;

@@ -23,19 +23,7 @@ import { getThemeCss } from "./theme-store.js";
 import { parseCss, parseFontFaces, parseKeyframes } from "./css-parser.js";
 import type { CSSFontFace, CSSRule, KeyframeSet } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
-import { resolveColor } from "./color.js";
-import {
-  clampInt16,
-  cssOpacityToPercent,
-  cssPx,
-  KEYFRAME_PROP_BG,
-  KEYFRAME_PROP_FG,
-  KEYFRAME_PROP_OPACITY,
-  KEYFRAME_PROP_SIZE,
-  KEYFRAME_PROP_TRANSFORM,
-  parseTransform,
-  type KeyframeSetModel,
-} from "./model.js";
+import { buildKeyframeSets } from "./keyframes.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
@@ -148,36 +136,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   }
 
   // Resolve @keyframes from the module's parsed keyframe sets.
-  const keyframeSets: KeyframeSetModel[] = (mod.rawKeyframes || []).map(ks => ({
-    name: ks.name,
-    stops: ks.stops.map(s => {
-      let props = 0;
-      if (s.background) props |= KEYFRAME_PROP_BG;
-      if (s.color) props |= KEYFRAME_PROP_FG;
-      if (s.opacity) props |= KEYFRAME_PROP_OPACITY;
-      if (s.transform || s.left || s.top) props |= KEYFRAME_PROP_TRANSFORM;
-      if (s.width || s.height) props |= KEYFRAME_PROP_SIZE;
-      const transform = parseTransform(s.transform);
-      const x = transform.x + cssPx(s.left);
-      const y = transform.y + cssPx(s.top);
-      return {
-        percent: s.percent,
-        props,
-        bg: s.background ? resolveColor(s.background, opts.colorFormat) : 0,
-        fg: s.color ? resolveColor(s.color, opts.colorFormat) : 0,
-        opacity: s.opacity ? cssOpacityToPercent(s.opacity) : 100,
-        transformOffsetX: clampInt16(x),
-        transformOffsetY: clampInt16(y),
-        translatePctX: clampInt16(transform.pctX),
-        translatePctY: clampInt16(transform.pctY),
-        scaleX: transform.scaleX,
-        scaleY: transform.scaleY,
-        rotateDeg: clampInt16(transform.rotateDeg),
-        width: s.width ? Math.max(0, Math.min(32767, cssPx(s.width))) : 0,
-        height: s.height ? Math.max(0, Math.min(32767, cssPx(s.height))) : 0,
-      };
-    }),
-  }));
+  const keyframeSets = buildKeyframeSets(mod.rawKeyframes || [], opts.colorFormat);
 
   // Load image assets before lowering so imgDataId can be set.
 

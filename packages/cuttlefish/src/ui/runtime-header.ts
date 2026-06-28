@@ -18,6 +18,7 @@ export function emitRuntimeHeader(): string {
 #ifndef __TC_UI_RUNTIME
 #define __TC_UI_RUNTIME
 #include <stdint.h>
+#include <string.h>
 #define UI_TEXT_BUF 32   // max stored UI text chars, excluding the trailing NUL
 #define UI_TEXT_LINE_BUF 96
 #define UI_WS_NORMAL 0
@@ -32,6 +33,9 @@ export function emitRuntimeHeader(): string {
 #endif
 #ifndef UI_TRANSITION_SNAP_MS
 #define UI_TRANSITION_SNAP_MS 100
+#endif
+#ifndef UI_SCROLL_DRAG_MULTIPLIER
+#define UI_SCROLL_DRAG_MULTIPLIER 4
 #endif
 #define UI_SCROLL_EDGE_SNAP_PX 12
 
@@ -177,6 +181,11 @@ static int8_t __ui_scroll_node = -1;
 static int16_t __ui_scroll_pending_dy = 0;
 static uint8_t __ui_scroll_snap_top = 0;
 static int16_t __ui_scroll_start_y = 0;
+static int8_t __ui_scroll_cache_node = -1;
+static int16_t __ui_scroll_cache_y = 0;
+static int16_t __ui_scroll_cache_w = 0;
+static int16_t __ui_scroll_cache_h = 0;
+static uint8_t __ui_scroll_cache_valid = 0;
 static uint8_t __ui_list_snap_top = 0;
 static int16_t __ui_list_start_y = 0;
 static uint8_t __ui_kb_visible = 0;
@@ -281,6 +290,8 @@ static inline void ui_navigate(uint8_t screenIdx) {
   // interfere with the new screen.
   __ui_scroll_node = -1;
   __ui_scroll_pending_dy = 0;
+  __ui_scroll_cache_valid = 0;
+  __ui_scroll_cache_node = -1;
   __ui_touch_node = -1;
   __ui_touch_state = 0;
   __ui_kb_visible = 0;
@@ -317,6 +328,7 @@ static inline void ui_node_paint_rect(uint8_t nodeIdx, int16_t baseX, int16_t ba
 static inline void ui_node_current_paint_rect(uint8_t nodeIdx, UIRect* out);
 static inline uint8_t ui_subtree_current_paint_rect(uint8_t nodeIdx, UIRect* out);
 static inline void ui_mark_overlapping_higher_layers_dirty(uint8_t nodeIdx);
+static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint8_t nodeIdx, const UIRect* r);
 static inline void ui_set_visible(uint8_t nodeIdx, uint8_t visible);
 static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip);
 static inline void ui_fill_rect_clipped(int16_t x, int16_t y, int16_t w, int16_t h, const UIRect* clip, uint16_t color);
@@ -325,8 +337,8 @@ static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRec
 static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, uint16_t color);
 static inline void ui_draw_node_decoration_clipped(uint8_t nodeIdx, int16_t drawY, const UIRect* clip);
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint8_t nodeIdx, UIRect* r);
-static inline void ui_draw_node_border(uint8_t i, int16_t drawY, uint16_t color);
-static inline void ui_draw_node_outline(uint8_t i, int16_t drawY);
+static inline void ui_draw_node_border(uint8_t i, int16_t drawX, int16_t drawY, uint16_t color);
+static inline void ui_draw_node_outline(uint8_t i, int16_t drawX, int16_t drawY);
 static inline void ui_draw_gradient_fill(uint8_t i, int16_t drawY);
 static inline uint8_t ui_rotation_quadrant(int16_t deg);
 static inline int16_t ui_rotated_face_w(uint8_t nodeIdx, int16_t w, int16_t h);
@@ -337,41 +349,192 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
 static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg,
                                          int16_t drawW, int16_t drawH);
 
-static Adafruit_GFX* __ui_gfx = &__tc_display;
-static GFXcanvas16* __ui_scroll_canvas = nullptr;
+static CuttlefishDisplayTarget* __ui_gfx = display_defaultTarget();
+static CuttlefishCanvas16* __ui_scroll_canvas = nullptr;
+static CuttlefishCanvas16* __ui_scroll_repaint_canvas = nullptr;
+
+static inline CuttlefishDisplayTarget* ui_display_get_target() { return __ui_gfx; }
+static inline void ui_display_set_target(CuttlefishDisplayTarget* target) {
+  __ui_gfx = target ? target : display_defaultTarget();
+}
+static inline void ui_display_use_default_target() {
+  __ui_gfx = display_defaultTarget();
+}
+static inline uint8_t ui_display_is_default_target() {
+  return __ui_gfx == display_defaultTarget();
+}
+static inline void ui_display_draw_pixel(int16_t x, int16_t y, uint16_t color) {
+  display_targetDrawPixel(__ui_gfx, x, y, color);
+}
+static inline void ui_display_draw_rgb_bitmap(int16_t x, int16_t y, const uint16_t* bitmap, int16_t w, int16_t h) {
+  display_targetDrawRGBBitmap(__ui_gfx, x, y, bitmap, w, h);
+}
+static inline void ui_display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+  display_targetFillRect(__ui_gfx, x, y, w, h, color);
+}
+static inline void ui_display_draw_fast_hline(int16_t x, int16_t y, int16_t w, uint16_t color) {
+  display_targetDrawFastHLine(__ui_gfx, x, y, w, color);
+}
+static inline void ui_display_draw_fast_vline(int16_t x, int16_t y, int16_t h, uint16_t color) {
+  display_targetDrawFastVLine(__ui_gfx, x, y, h, color);
+}
+static inline void ui_display_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+  display_targetFillRoundRect(__ui_gfx, x, y, w, h, r, color);
+}
+static inline void ui_display_draw_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+  display_targetDrawRect(__ui_gfx, x, y, w, h, color);
+}
+static inline void ui_display_draw_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+  display_targetDrawRoundRect(__ui_gfx, x, y, w, h, r, color);
+}
+static inline void ui_display_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
+  display_targetDrawLine(__ui_gfx, x0, y0, x1, y1, color);
+}
+static inline void ui_display_fill_circle(int16_t x, int16_t y, int16_t r, uint16_t color) {
+  display_targetFillCircle(__ui_gfx, x, y, r, color);
+}
+static inline void ui_display_draw_circle(int16_t x, int16_t y, int16_t r, uint16_t color) {
+  display_targetDrawCircle(__ui_gfx, x, y, r, color);
+}
+static inline void ui_display_set_cursor(int16_t x, int16_t y) {
+  display_targetSetCursor(__ui_gfx, x, y);
+}
+static inline void ui_display_set_text_color(uint16_t fg, uint16_t bg) {
+  display_targetSetTextColorBg(__ui_gfx, fg, bg);
+}
+static inline void ui_display_set_text_color_solid(uint16_t fg) {
+  display_targetSetTextColor(__ui_gfx, fg);
+}
+static inline void ui_display_set_text_size(uint8_t size) {
+  display_targetSetTextSize(__ui_gfx, size);
+}
+static inline void ui_display_set_text_wrap(bool wrap) {
+  display_targetSetTextWrap(__ui_gfx, wrap);
+}
+static inline void ui_display_print(const char* text) {
+  display_targetPrint(__ui_gfx, text);
+}
+
+static inline void ui_invalidate_scroll_cache() {
+  __ui_scroll_cache_valid = 0;
+  __ui_scroll_cache_node = -1;
+}
+
+static inline void ui_invalidate_scroll_cache_for_node(uint8_t nodeIdx) {
+  if (!__ui_scroll_cache_valid || __ui_scroll_cache_node < 0) return;
+  if (nodeIdx >= __ui_node_count) return;
+  uint8_t cacheNode = (uint8_t)__ui_scroll_cache_node;
+  if (nodeIdx == cacheNode) {
+    ui_invalidate_scroll_cache();
+    return;
+  }
+  uint8_t p = __ui_nodes[nodeIdx].parent;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (p == cacheNode) {
+      ui_invalidate_scroll_cache();
+      return;
+    }
+    p = __ui_nodes[p].parent;
+  }
+}
 
 // Get (or allocate) a canvas sized to the viewport (w×h), not the full
 // display. Much smaller allocation → allocates reliably on ESP32 without PSRAM.
-static inline GFXcanvas16* ui_get_scroll_canvas(int16_t w, int16_t h) {
+static inline CuttlefishCanvas16* ui_get_scroll_canvas_keep_cache(int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return nullptr;
-  if (!__ui_scroll_canvas || __ui_scroll_canvas->width() != w || __ui_scroll_canvas->height() != h) {
-    delete __ui_scroll_canvas;
-    __ui_scroll_canvas = new GFXcanvas16(w, h);
+  if (!__ui_scroll_canvas || display_canvasWidth(__ui_scroll_canvas) != w || display_canvasHeight(__ui_scroll_canvas) != h) {
+    ui_invalidate_scroll_cache();
+    display_deleteCanvas(__ui_scroll_canvas);
+    __ui_scroll_canvas = display_createCanvas(w, h);
   }
-  if (!__ui_scroll_canvas || !__ui_scroll_canvas->getBuffer()) return nullptr;
+  if (!__ui_scroll_canvas || !display_canvasBuffer(__ui_scroll_canvas)) {
+    ui_invalidate_scroll_cache();
+    return nullptr;
+  }
   return __ui_scroll_canvas;
+}
+
+static inline CuttlefishCanvas16* ui_get_scroll_canvas(int16_t w, int16_t h) {
+  ui_invalidate_scroll_cache();
+  return ui_get_scroll_canvas_keep_cache(w, h);
+}
+
+static inline CuttlefishCanvas16* ui_get_scroll_repaint_canvas(int16_t w, int16_t h) {
+  if (w <= 0 || h <= 0) return nullptr;
+  if (!__ui_scroll_repaint_canvas ||
+      display_canvasWidth(__ui_scroll_repaint_canvas) != w ||
+      display_canvasHeight(__ui_scroll_repaint_canvas) != h) {
+    display_deleteCanvas(__ui_scroll_repaint_canvas);
+    __ui_scroll_repaint_canvas = display_createCanvas(w, h);
+  }
+  if (!__ui_scroll_repaint_canvas || !display_canvasBuffer(__ui_scroll_repaint_canvas)) return nullptr;
+  return __ui_scroll_repaint_canvas;
+}
+
+static inline void ui_shift_scroll_canvas(CuttlefishCanvas16* canvas, int16_t deltaY, uint16_t bg,
+                                          int16_t* exposedY, int16_t* exposedH) {
+  if (exposedY) *exposedY = 0;
+  if (exposedH) *exposedH = 0;
+  if (!canvas || !display_canvasBuffer(canvas)) return;
+  int16_t w = display_canvasWidth(canvas);
+  int16_t h = display_canvasHeight(canvas);
+  int16_t shift = deltaY < 0 ? -deltaY : deltaY;
+  if (shift <= 0 || shift >= h) {
+    display_canvasFillScreen(canvas, bg);
+    if (exposedY) *exposedY = 0;
+    if (exposedH) *exposedH = h;
+    return;
+  }
+
+  uint16_t* pixels = display_canvasBuffer(canvas);
+  int16_t stride = display_canvasWidth(canvas);
+  int16_t contentW = w > 4 ? w - 4 : w;
+  if (contentW > 0) {
+    if (deltaY > 0) {
+      for (int16_t row = 0; row < h - shift; row++) {
+        memmove(pixels + (int32_t)row * stride,
+                pixels + (int32_t)(row + shift) * stride,
+                (size_t)contentW * sizeof(uint16_t));
+      }
+      if (exposedY) *exposedY = h - shift;
+    } else {
+      for (int16_t row = h - shift - 1; row >= 0; row--) {
+        memmove(pixels + (int32_t)(row + shift) * stride,
+                pixels + (int32_t)row * stride,
+                (size_t)contentW * sizeof(uint16_t));
+      }
+      if (exposedY) *exposedY = 0;
+    }
+  }
+
+  int16_t y = deltaY > 0 ? h - shift : 0;
+  display_canvasFillRect(canvas, 0, y, w, shift, bg);
+  if (w > contentW) {
+    display_canvasFillRect(canvas, contentW, 0, w - contentW, h, bg);
+  }
+  if (exposedH) *exposedH = shift;
 }
 
 // ── Full-screen framebuffer (opt-in PSRAM perf experiment) ───────────────────
 // Disabled by default: pushing a full 320×240 frame for a tiny dirty button can
 // look like a global brightness flash on SPI TFTs. Enable only when a target
 // has enough PSRAM and a full-frame repaint is preferable to partial updates.
-static GFXcanvas16* __ui_fb = nullptr;
+static CuttlefishCanvas16* __ui_fb = nullptr;
 static uint8_t __ui_fb_tried = 0;  // 0 = not yet attempted, 1 = alloc attempted
 
 // Get the framebuffer, allocating once (in PSRAM when available). Returns null
 // when PSRAM is absent or the allocation failed — callers fall back to direct.
-static inline GFXcanvas16* ui_get_framebuffer() {
+static inline CuttlefishCanvas16* ui_get_framebuffer() {
   if (__ui_fb_tried) return __ui_fb;  // one-time attempt; null means "none"
   __ui_fb_tried = 1;
 #if UI_USE_FULL_FRAMEBUFFER && defined(ESP32) && defined(BOARD_HAS_PSRAM)
   if (psramFound()) {
-    int16_t fw = __tc_display.width();
-    int16_t fh = __tc_display.height();
+    int16_t fw = display_width();
+    int16_t fh = display_height();
     // GFXcanvas16 uses ps_malloc when ESP32 PSRAM malloc is hooked in via the
     // Arduino core; the allocation succeeds only if PSRAM is really present.
-    __ui_fb = new (ps_malloc(sizeof(GFXcanvas16))) GFXcanvas16(fw, fh);
-    if (!__ui_fb || !__ui_fb->getBuffer()) {
+    __ui_fb = display_createCanvasPsram(fw, fh);
+    if (!__ui_fb || !display_canvasBuffer(__ui_fb)) {
       // Allocation failed (PSRAM too small / not really mapped) — give up.
       __ui_fb = nullptr;
     }
@@ -382,12 +545,12 @@ static inline GFXcanvas16* ui_get_framebuffer() {
 
 // Push the entire framebuffer to the display in one bulk SPI transaction.
 static inline void ui_push_framebuffer() {
-  if (!__ui_fb || !__ui_fb->getBuffer()) return;
-  int16_t w = __ui_fb->width();
-  int16_t h = __ui_fb->height();
+  if (!__ui_fb || !display_canvasBuffer(__ui_fb)) return;
+  int16_t w = display_canvasWidth(__ui_fb);
+  int16_t h = display_canvasHeight(__ui_fb);
   display_startWrite();
   display_setAddrWindow(0, 0, w, h);
-  display_writePixels(__ui_fb->getBuffer(), (uint32_t)w * h);
+  display_writePixels(display_canvasBuffer(__ui_fb), (uint32_t)w * h);
   display_endWrite();
 }
 
@@ -482,7 +645,7 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
         dx = ty;
         dy = targetW - 1 - tx;
       }
-      __ui_gfx->drawPixel(x + dx, y + dy, color);
+      ui_display_draw_pixel(x + dx, y + dy, color);
     }
   }
 }
@@ -494,7 +657,7 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
   if (q == 0) {
     // Simple case: no rotation, draw with scaling
     if (drawW == img->w && drawH == img->h) {
-      __ui_gfx->drawRGBBitmap(x, y, img->data, img->w, img->h);
+      ui_display_draw_rgb_bitmap(x, y, img->data, img->w, img->h);
     } else {
       // Scale using nearest-neighbor
       for (int16_t dy = 0; dy < drawH; dy++) {
@@ -502,7 +665,7 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
         for (int16_t dx = 0; dx < drawW; dx++) {
           int16_t srcX = ((int32_t)dx * img->w) / drawW;
           uint16_t color = img->data[(int32_t)srcY * img->w + srcX];
-          __ui_gfx->drawPixel(x + dx, y + dy, color);
+          ui_display_draw_pixel(x + dx, y + dy, color);
         }
       }
     }
@@ -524,7 +687,7 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
         rdx = dy;
         rdy = drawW - 1 - dx;
       }
-      __ui_gfx->drawPixel(x + rdx, y + rdy, color);
+      ui_display_draw_pixel(x + rdx, y + rdy, color);
     }
   }
 }
@@ -532,7 +695,7 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
 static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg) {
    uint8_t q = ui_rotation_quadrant(rotateDeg);
    if (q == 0) {
-     __ui_gfx->drawRGBBitmap(x, y, img->data, img->w, img->h);
+     ui_display_draw_rgb_bitmap(x, y, img->data, img->w, img->h);
      return;
    }
    for (uint16_t sy = 0; sy < img->h; sy++) {
@@ -550,7 +713,7 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
          dx = (int16_t)sy;
          dy = (int16_t)(img->w - 1 - sx);
        }
-       __ui_gfx->drawPixel(x + dx, y + dy, color);
+       ui_display_draw_pixel(x + dx, y + dy, color);
      }
    }
  }
@@ -561,10 +724,10 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
 static int16_t __ui_draw_off_x = 0;
 static int16_t __ui_draw_off_y = 0;
 
-static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
-  if (!canvas || !canvas->getBuffer()) return;
-  uint16_t* pixels = canvas->getBuffer();
-  int16_t stride = canvas->width();
+static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
+  if (!canvas || !display_canvasBuffer(canvas)) return;
+  uint16_t* pixels = display_canvasBuffer(canvas);
+  int16_t stride = display_canvasWidth(canvas);
   // The canvas is viewport-sized: buffer row 0 = the first row of the viewport.
   // The display destination is (x, y) but the source buffer starts at (0, 0).
   // When a full-screen framebuffer is the active draw target, composite into it
@@ -572,11 +735,11 @@ static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y
   // Otherwise write straight to the display in one SPI transaction.
   if (__ui_fb) {
     if (w == stride) {
-      __ui_gfx->drawRGBBitmap(x, y, pixels, w, h);
+      ui_display_draw_rgb_bitmap(x, y, pixels, w, h);
       return;
     }
     for (int16_t row = 0; row < h; row++) {
-      __ui_gfx->drawRGBBitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+      ui_display_draw_rgb_bitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
     }
     return;
   }
@@ -594,31 +757,79 @@ static inline void ui_push_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y
   display_endWrite();
 }
 
-static inline void ui_draw_canvas_rect(GFXcanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
-  if (!canvas || !canvas->getBuffer()) return;
-  uint16_t* pixels = canvas->getBuffer();
-  int16_t stride = canvas->width();
-  if (w == stride && h == canvas->height()) {
-    __ui_gfx->drawRGBBitmap(x, y, pixels, w, h);
+static inline void ui_draw_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
+  if (!canvas || !display_canvasBuffer(canvas)) return;
+  uint16_t* pixels = display_canvasBuffer(canvas);
+  int16_t stride = display_canvasWidth(canvas);
+  if (w == stride && h == display_canvasHeight(canvas)) {
+    ui_display_draw_rgb_bitmap(x, y, pixels, w, h);
     return;
   }
   for (int16_t row = 0; row < h; row++) {
-    __ui_gfx->drawRGBBitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+    ui_display_draw_rgb_bitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
   }
 }
 
 // Per-node dirty marker (called by press handlers and binding evaluation).
 static inline void ui_mark_dirty(uint8_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
+  ui_invalidate_scroll_cache_for_node(nodeIdx);
   __ui_nodes[nodeIdx].dirty = 1;
   ui_mark_overlapping_higher_layers_dirty(nodeIdx);
 }
 
-static inline void ui_mark_scroll_subtree_dirty(uint8_t scrollNode) {
+// Set dirty=1 across a scroll subtree WITHOUT the per-child O(n) overlap repair.
+// During scroll the subtree repaints into a freshly-cleared off-screen canvas, so
+// intra-subtree overlap repair is pointless, and scroll children are draw-clipped
+// to the container's viewport box — so all external higher-z neighbors of the
+// viewport are covered by ONE overlap check at the container's paint rect (done by
+// the caller). This drops scroll marking from O(K·n) to O(K + n).
+static inline void ui_mark_subtree_dirty_local(uint8_t scrollNode) {
+  if (scrollNode >= __ui_node_count) return;
   for (uint8_t c = scrollNode + 1; c < __ui_nodes[scrollNode].subtreeEnd; c++) {
-    ui_mark_dirty(c);
+    __ui_nodes[c].dirty = 1;
   }
-  ui_mark_dirty(scrollNode);
+  __ui_nodes[scrollNode].dirty = 1;
+}
+
+static inline void ui_mark_scroll_view_overlaps_dirty(uint8_t scrollNode) {
+  if (scrollNode >= __ui_node_count) return;
+  if (!ui_is_effectively_visible(scrollNode)) return;
+  if (__ui_nodes[scrollNode].screenId != __ui_active_screen) return;
+  UIRect r;
+  ui_node_current_paint_rect(scrollNode, &r);
+  if (r.w <= 0 || r.h <= 0) return;
+  for (uint8_t c = 0; c < __ui_node_count; c++) {
+    if (c == scrollNode) continue;
+    if (c > scrollNode && c < __ui_nodes[scrollNode].subtreeEnd) continue;
+    if (__ui_nodes[c].dirty) continue;
+    if (!ui_is_effectively_visible(c)) continue;
+    if (__ui_nodes[c].screenId != __ui_active_screen) continue;
+    if (!ui_node_draws_before(scrollNode, c)) continue;
+    UIRect cr;
+    ui_node_current_paint_rect(c, &cr);
+    if (cr.w <= 0 || cr.h <= 0) continue;
+    if (ui_rects_intersect(r.x, r.y, r.w, r.h, cr.x, cr.y, cr.w, cr.h)) {
+      __ui_nodes[c].dirty = 1;
+    }
+  }
+}
+
+static inline void ui_mark_scroll_subtree_dirty(uint8_t scrollNode) {
+  ui_invalidate_scroll_cache();
+  ui_mark_subtree_dirty_local(scrollNode);
+  // Single overlap check at the container's paint rect covers every external
+  // higher-z neighbor of the viewport. The container index is the right one to
+  // pass: scroll content lives within the container's stacking context, so
+  // ui_node_draws_before(scrollNode, c) selects exactly the external layers that
+  // should be repaired when the viewport is repainted.
+  ui_mark_overlapping_higher_layers_dirty(scrollNode);
+}
+
+static inline void ui_mark_scroll_view_dirty(uint8_t scrollNode) {
+  if (scrollNode >= __ui_node_count) return;
+  __ui_nodes[scrollNode].dirty = 1;
+  ui_mark_scroll_view_overlaps_dirty(scrollNode);
 }
 
 static inline uint8_t ui_snap_scroll_to_top(int8_t scrollNode, uint8_t force) {
@@ -654,13 +865,29 @@ static inline uint8_t ui_apply_scroll_delta(int8_t scrollNode, int16_t dy) {
   int16_t nextScrollY = constrain(rawNextY, 0, maxScroll);
   if (nextScrollY == prevScrollY) return 0;
   __ui_nodes[scrollNode].scrollY = nextScrollY;
-  ui_mark_scroll_subtree_dirty((uint8_t)scrollNode);
+  ui_mark_scroll_view_dirty((uint8_t)scrollNode);
   return 1;
 }
 
 static inline uint8_t ui_rects_intersect(int16_t ax, int16_t ay, int16_t aw, int16_t ah,
                                          int16_t bx, int16_t by, int16_t bw, int16_t bh) {
   return ax + aw > bx && ax < bx + bw && ay + ah > by && ay < by + bh;
+}
+
+static inline int16_t ui_scroll_scaled_drag_delta(int16_t dy) {
+  int16_t mult = (int16_t)UI_SCROLL_DRAG_MULTIPLIER;
+  if (mult <= 0) return dy;
+  int32_t scaled = (int32_t)dy * (int32_t)mult;
+  if (scaled > 32767) return 32767;
+  if (scaled < -32768) return -32768;
+  return (int16_t)scaled;
+}
+
+static inline int16_t ui_scroll_saturating_add(int16_t a, int16_t b) {
+  int32_t sum = (int32_t)a + (int32_t)b;
+  if (sum > 32767) return 32767;
+  if (sum < -32768) return -32768;
+  return (int16_t)sum;
 }
 
 static inline uint8_t ui_is_effectively_visible(uint8_t nodeIdx) {
@@ -860,7 +1087,14 @@ static inline void ui_mark_overlapping_higher_layers_dirty(uint8_t nodeIdx) {
   if (__ui_nodes[nodeIdx].screenId != __ui_active_screen) return;
   UIRect r;
   ui_node_current_paint_rect(nodeIdx, &r);
-  if (r.w <= 0 || r.h <= 0) return;
+  ui_mark_overlapping_higher_layers_dirty_for_rect(nodeIdx, &r);
+}
+
+static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint8_t nodeIdx, const UIRect* r) {
+  if (nodeIdx >= __ui_node_count || !r) return;
+  if (!ui_is_effectively_visible(nodeIdx)) return;
+  if (__ui_nodes[nodeIdx].screenId != __ui_active_screen) return;
+  if (r->w <= 0 || r->h <= 0) return;
   for (uint8_t c = 0; c < __ui_node_count; c++) {
     if (c == nodeIdx) continue;
     if (__ui_nodes[c].dirty) continue;
@@ -870,7 +1104,8 @@ static inline void ui_mark_overlapping_higher_layers_dirty(uint8_t nodeIdx) {
     UIRect cr;
     ui_node_current_paint_rect(c, &cr);
     if (cr.w <= 0 || cr.h <= 0) continue;
-    if (ui_rects_intersect(r.x, r.y, r.w, r.h, cr.x, cr.y, cr.w, cr.h)) {
+    if (ui_rects_intersect(r->x, r->y, r->w, r->h, cr.x, cr.y, cr.w, cr.h)) {
+      ui_invalidate_scroll_cache_for_node(c);
       __ui_nodes[c].dirty = 1;
     }
   }
@@ -884,8 +1119,8 @@ static inline void ui_clear_press_offset_area(uint8_t nodeIdx, int16_t baseX, in
   int16_t y0 = r.y;
   int16_t x1 = r.x + r.w;
   int16_t y1 = r.y + r.h;
-  if (__ui_gfx == &__tc_display && ui_repair_current_node_paint_with_parent(nodeIdx, &r)) return;
-  __ui_gfx->fillRect(x0, y0, x1 - x0, y1 - y0, ui_parent_clear_color(nodeIdx));
+  if (ui_display_is_default_target() && ui_repair_current_node_paint_with_parent(nodeIdx, &r)) return;
+  ui_display_fill_rect(x0, y0, x1 - x0, y1 - y0, ui_parent_clear_color(nodeIdx));
 }
 
 static inline uint8_t ui_should_buffer_paint(uint8_t nodeIdx, int16_t w, int16_t h) {
@@ -907,11 +1142,11 @@ static inline uint8_t ui_should_buffer_paint(uint8_t nodeIdx, int16_t w, int16_t
   return (uint32_t)w * (uint32_t)h <= UI_MAX_BUFFERED_PAINT_PIXELS;
 }
 
-static inline void ui_seed_paint_canvas_for_node(uint8_t nodeIdx, GFXcanvas16* canvas, int16_t canvasX, int16_t canvasY) {
-  if (!canvas || !canvas->getBuffer()) return;
+static inline void ui_seed_paint_canvas_for_node(uint8_t nodeIdx, CuttlefishCanvas16* canvas, int16_t canvasX, int16_t canvasY) {
+  if (!canvas || !display_canvasBuffer(canvas)) return;
   uint8_t p = __ui_nodes[nodeIdx].parent;
   if (p == UI_NO_PARENT || p >= __ui_node_count) {
-    canvas->fillScreen(__ui_nodes[nodeIdx].clearColor);
+    display_canvasFillScreen(canvas, __ui_nodes[nodeIdx].clearColor);
     return;
   }
 
@@ -920,44 +1155,44 @@ static inline void ui_seed_paint_canvas_for_node(uint8_t nodeIdx, GFXcanvas16* c
     __ui_nodes[p].borderStyle != 0 ||
     __ui_nodes[p].outlineStyle != 0;
   if (!parentDecorated) {
-    canvas->fillScreen(ui_parent_clear_color(nodeIdx));
+    display_canvasFillScreen(canvas, ui_parent_clear_color(nodeIdx));
     return;
   }
 
-  canvas->fillScreen(ui_parent_clear_color(p));
+  display_canvasFillScreen(canvas, ui_parent_clear_color(p));
   int16_t parentDrawX = ui_draw_x_for_node(p);
   int16_t parentDrawY = ui_draw_y_for_node(p);
   int16_t origParentX = __ui_nodes[p].box.x;
-  Adafruit_GFX* previousGfx = __ui_gfx;
-  __ui_gfx = canvas;
+  CuttlefishDisplayTarget* previousGfx = ui_display_get_target();
+  ui_display_set_target(canvas);
   __ui_nodes[p].box.x = parentDrawX - canvasX;
   int16_t localY = parentDrawY - canvasY;
 
   if (__ui_nodes[p].gradientEnabled > 0) {
     ui_draw_gradient_fill(p, localY);
   } else if (__ui_nodes[p].borderRadius > 0 && __ui_nodes[p].hasBg) {
-    __ui_gfx->fillRoundRect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h,
+    ui_display_fill_round_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h,
       __ui_nodes[p].borderRadius, __ui_nodes[p].bg);
   } else if (__ui_nodes[p].hasBg) {
-    __ui_gfx->fillRect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h, __ui_nodes[p].bg);
+    ui_display_fill_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h, __ui_nodes[p].bg);
   }
   if (__ui_nodes[p].borderStyle != 0) {
     uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
-    ui_draw_node_border(p, localY, bColor);
+    ui_draw_node_border(p, __ui_nodes[p].box.x, localY, bColor);
   }
-  ui_draw_node_outline(p, localY);
+  ui_draw_node_outline(p, __ui_nodes[p].box.x, localY);
 
   __ui_nodes[p].box.x = origParentX;
-  __ui_gfx = previousGfx;
+  ui_display_set_target(previousGfx);
 }
 
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint8_t nodeIdx, UIRect* r) {
   if (!r || r->w <= 0 || r->h <= 0) return 0;
   if ((uint32_t)r->w * (uint32_t)r->h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
-  GFXcanvas16* repairCanvas = ui_get_scroll_canvas(r->w, r->h);
+  CuttlefishCanvas16* repairCanvas = ui_get_scroll_canvas(r->w, r->h);
   if (!repairCanvas) return 0;
   ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y);
-  __ui_gfx = &__tc_display;
+  ui_display_use_default_target();
   ui_push_canvas_rect(repairCanvas, r->x, r->y, r->w, r->h);
   return 1;
 }
@@ -998,7 +1233,7 @@ static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip) {
 static inline void ui_fill_rect_clipped(int16_t x, int16_t y, int16_t w, int16_t h, const UIRect* clip, uint16_t color) {
   UIRect r = { x, y, w, h };
   if (!ui_clip_rect_to_rect(&r, clip)) return;
-  __ui_gfx->fillRect(r.x, r.y, r.w, r.h, color);
+  ui_display_fill_rect(r.x, r.y, r.w, r.h, color);
 }
 
 static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRect* clip, uint16_t color) {
@@ -1006,7 +1241,7 @@ static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRec
   int16_t x0 = x > clip->x ? x : clip->x;
   int16_t x1 = x + w < clip->x + clip->w ? x + w : clip->x + clip->w;
   if (x1 <= x0) return;
-  __ui_gfx->drawFastHLine(x0, y, x1 - x0, color);
+  ui_display_draw_fast_hline(x0, y, x1 - x0, color);
 }
 
 static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRect* clip, uint16_t color) {
@@ -1014,7 +1249,7 @@ static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRec
   int16_t y0 = y > clip->y ? y : clip->y;
   int16_t y1 = y + h < clip->y + clip->h ? y + h : clip->y + clip->h;
   if (y1 <= y0) return;
-  __ui_gfx->drawFastVLine(x, y0, y1 - y0, color);
+  ui_display_draw_fast_vline(x, y0, y1 - y0, color);
 }
 
 static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, uint16_t color) {
@@ -1055,7 +1290,7 @@ static inline void ui_draw_node_decoration_clipped(uint8_t nodeIdx, int16_t draw
     int16_t h = __ui_nodes[nodeIdx].box.h;
     if (__ui_nodes[nodeIdx].borderRadius > 0) {
       if (x >= clip->x && y >= clip->y && x + w <= clip->x + clip->w && y + h <= clip->y + clip->h) {
-        ui_draw_node_border(nodeIdx, drawY, bColor);
+        ui_draw_node_border(nodeIdx, x, drawY, bColor);
       }
     } else {
       ui_draw_rect_outline_clipped(x, y, w, h,
@@ -1070,7 +1305,7 @@ static inline void ui_draw_node_decoration_clipped(uint8_t nodeIdx, int16_t draw
     int16_t oh = __ui_nodes[nodeIdx].box.h + 2 * w;
     if (__ui_nodes[nodeIdx].borderRadius > 0) {
       if (x >= clip->x && y >= clip->y && x + ow <= clip->x + clip->w && y + oh <= clip->y + clip->h) {
-        ui_draw_node_outline(nodeIdx, drawY);
+        ui_draw_node_outline(nodeIdx, __ui_nodes[nodeIdx].box.x, drawY);
       }
     } else {
       ui_draw_rect_outline_clipped(x, y, ow, oh,
@@ -1101,7 +1336,7 @@ static inline void ui_clear_current_node_paint(uint8_t nodeIdx) {
   int16_t drawY = ui_draw_y_for_node(nodeIdx);
   UIRect r;
   ui_node_paint_rect(nodeIdx, baseDrawX, baseDrawY, drawX, drawY, tw, th, &r);
-  __ui_gfx = &__tc_display;
+  ui_display_use_default_target();
   if (scrollParent >= 0) {
     UIRect clip = {
       __ui_nodes[(uint8_t)scrollParent].box.x,
@@ -1120,15 +1355,15 @@ static inline void ui_clear_current_node_paint(uint8_t nodeIdx) {
     return;
   }
   if (ui_is_rect_clipped_by_scroll(nodeIdx, r.x, r.y, r.w, r.h)) return;
-  __ui_gfx->fillRect(r.x, r.y, r.w, r.h, ui_parent_clear_color(nodeIdx));
+  ui_display_fill_rect(r.x, r.y, r.w, r.h, ui_parent_clear_color(nodeIdx));
   uint8_t p = __ui_nodes[nodeIdx].parent;
   if (p != UI_NO_PARENT && p < __ui_node_count) {
     int16_t parentDrawY = ui_draw_y_for_node(p);
     if (__ui_nodes[p].borderStyle != 0) {
       uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
-      ui_draw_node_border(p, parentDrawY, bColor);
+      ui_draw_node_border(p, ui_draw_x_for_node(p), parentDrawY, bColor);
     }
-    ui_draw_node_outline(p, parentDrawY);
+    ui_draw_node_outline(p, ui_draw_x_for_node(p), parentDrawY);
   }
 }
 
@@ -1136,7 +1371,7 @@ static inline void ui_clear_subtree_current_paint(uint8_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
   UIRect r;
   if (!ui_subtree_current_paint_rect(nodeIdx, &r)) return;
-  __ui_gfx = &__tc_display;
+  ui_display_use_default_target();
   int8_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
   if (scrollParent >= 0) {
     UIRect clip = {
@@ -1156,15 +1391,15 @@ static inline void ui_clear_subtree_current_paint(uint8_t nodeIdx) {
     return;
   }
   if (ui_repair_current_node_paint_with_parent(nodeIdx, &r)) return;
-  __ui_gfx->fillRect(r.x, r.y, r.w, r.h, ui_parent_clear_color(nodeIdx));
+  ui_display_fill_rect(r.x, r.y, r.w, r.h, ui_parent_clear_color(nodeIdx));
   uint8_t p = __ui_nodes[nodeIdx].parent;
   if (p != UI_NO_PARENT && p < __ui_node_count) {
     int16_t parentDrawY = ui_draw_y_for_node(p);
     if (__ui_nodes[p].borderStyle != 0) {
       uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
-      ui_draw_node_border(p, parentDrawY, bColor);
+      ui_draw_node_border(p, ui_draw_x_for_node(p), parentDrawY, bColor);
     }
-    ui_draw_node_outline(p, parentDrawY);
+    ui_draw_node_outline(p, ui_draw_x_for_node(p), parentDrawY);
   }
 }
 
@@ -1172,11 +1407,14 @@ static inline void ui_set_visible(uint8_t nodeIdx, uint8_t visible) {
   if (nodeIdx >= __ui_node_count) return;
   visible = visible ? 1 : 0;
   if (__ui_nodes[nodeIdx].visible == visible) return;
+  ui_invalidate_scroll_cache_for_node(nodeIdx);
 
   if (!visible) {
     // Clear the whole subtree in one clipped repair. This removes child pixels
     // even when the container itself is transparent, without separate display
     // writes for each descendant.
+    UIRect subtreeRect;
+    uint8_t hasSubtreeRect = ui_subtree_current_paint_rect(nodeIdx, &subtreeRect);
     ui_clear_subtree_current_paint(nodeIdx);
     int16_t end = __ui_nodes[nodeIdx].subtreeEnd;
     if (end > __ui_node_count) end = __ui_node_count;
@@ -1184,7 +1422,7 @@ static inline void ui_set_visible(uint8_t nodeIdx, uint8_t visible) {
       if (__ui_nodes[c].screenId != __ui_active_screen) continue;
       __ui_nodes[c].dirty = 0;
     }
-    ui_mark_overlapping_higher_layers_dirty(nodeIdx);
+    if (hasSubtreeRect) ui_mark_overlapping_higher_layers_dirty_for_rect(nodeIdx, &subtreeRect);
     __ui_nodes[nodeIdx].visible = 0;
     return;
   }
@@ -1326,6 +1564,14 @@ static uint8_t __ui_is_dragging = 0;     // 1 once movement exceeds threshold
 static int8_t __ui_range_node = -1;      // range slider being dragged
 // Scroll delta state is defined near navigation because ui_navigate resets it.
 static uint32_t __ui_last_scroll_draw_time = 0;
+
+// ── Awaitable tap source (for \`await ui.onTap()\`) ─────────────────────────
+// __ui_tap_seq increments on every completed tap (after click/release dispatch);
+// async awaiters poll it for change. __ui_tap_node records the node hit by the
+// last tap (-1 = empty space / non-interactive area) for per-element awaiters.
+// volatile: written in the touch path, read from task .step() polls.
+static volatile uint32_t __ui_tap_seq = 0;
+static volatile int8_t   __ui_tap_node = -1;
 // Keyboard overlay state.
 #define UI_KB_MAX 48   // max key cells (4 rows × 11 padded cols + margin)
 #define UI_KB_HOLD_MS 600
@@ -1530,6 +1776,12 @@ static void ui_touch_up() {
     }
     ui_mark_dirty(clickedNode);
   }
+  // Resume any \`await ui.onTap()\` awaiter. Runs for EVERY completed tap —
+  // including holds (released above) and taps on empty space (__ui_touch_node
+  // == -1), which is what makes "wake on any touch" work for display-sleep.
+  // Placed AFTER the click/release dispatch so onClick always fires first.
+  __ui_tap_seq++;
+  __ui_tap_node = __ui_touch_node;
   // List item tap: if the touch was inside a list, compute item index.
   // Use total movement (not drag flag) to distinguish tap from scroll:
   // a tap moves < itemHeight/2 total; a scroll moves more.
@@ -1633,9 +1885,9 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     }
     if (__ui_is_dragging && __ui_scroll_node >= 0) {
       // Scroll: accumulate small touch deltas and redraw at a bounded cadence.
-      int16_t dy = ty - __ui_drag_start_y;
+      int16_t dy = ui_scroll_scaled_drag_delta(ty - __ui_drag_start_y);
       __ui_drag_start_y = ty;
-      __ui_scroll_pending_dy += dy;
+      __ui_scroll_pending_dy = ui_scroll_saturating_add(__ui_scroll_pending_dy, dy);
       if (__ui_scroll_pending_dy > 0 &&
           (int32_t)__ui_nodes[(uint8_t)__ui_scroll_node].scrollY - (int32_t)__ui_scroll_pending_dy <= 0) {
         __ui_scroll_snap_top = 1;
@@ -1649,7 +1901,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     }
     // List scroll: apply drag delta to the active list's scrollY.
     if (__ui_is_dragging && __ui_list_drag >= 0) {
-      int16_t dy = ty - __ui_drag_start_y;
+      int16_t dy = ui_scroll_scaled_drag_delta(ty - __ui_drag_start_y);
       __ui_drag_start_y = ty;
       UIListState* ls = &__ui_lists[__ui_list_drag];
       int16_t maxScroll = ls->contentHeight - __ui_nodes[ls->nodeIndex].box.h;
@@ -2001,12 +2253,12 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
             // Transparent mode: can't blend (fg==bg → all alphas become fg).
             // Use a threshold so only high-coverage pixels draw, avoiding
             // the bumpy look from flattening sub-pixel coverage to solid.
-            if (alpha >= 8) __ui_gfx->drawPixel(dx, dy, fg);
+            if (alpha >= 8) ui_display_draw_pixel(dx, dy, fg);
           } else {
-            __ui_gfx->drawPixel(dx, dy, alpha >= 15 ? fg : ui_blend565(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
+            ui_display_draw_pixel(dx, dy, alpha >= 15 ? fg : ui_blend565(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
           }
         } else if (alpha >= 8) {
-          __ui_gfx->drawPixel(dx, dy, fg);
+          ui_display_draw_pixel(dx, dy, fg);
         }
       }
     }
@@ -2018,41 +2270,41 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
 static inline void ui_draw_bitmap_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts, int8_t letterSpacing) {
   if (!text) text = "";
   if (ts == 0) ts = 2;
-  __ui_gfx->setTextColor(fg, bg);
-  __ui_gfx->setTextSize(ts);
-  __ui_gfx->setTextWrap(false);
+  ui_display_set_text_color(fg, bg);
+  ui_display_set_text_size(ts);
+  ui_display_set_text_wrap(false);
   // Draw char-by-char to apply letterSpacing between glyphs.
   if (letterSpacing == 0) {
-    __ui_gfx->setCursor(x, y);
-    __ui_gfx->print(text);
+    ui_display_set_cursor(x, y);
+    ui_display_print(text);
   } else {
     int16_t cx = x;
     char buf[2] = {0, 0};
     for (const char* p = text; *p; p++) {
-      __ui_gfx->setCursor(cx, y);
+      ui_display_set_cursor(cx, y);
       buf[0] = *p;
-      __ui_gfx->print(buf);
+      ui_display_print(buf);
       cx += ts * 6 + letterSpacing;
     }
 }
  }
 
  #ifdef UI_AA
- static GFXcanvas16* __ui_aa_canvas = nullptr;
- static GFXcanvas16* __ui_text_src_canvas = nullptr;
- static GFXcanvas16* __ui_text_dst_canvas = nullptr;
+ static CuttlefishCanvas16* __ui_aa_canvas = nullptr;
+ static CuttlefishCanvas16* __ui_text_src_canvas = nullptr;
+ static CuttlefishCanvas16* __ui_text_dst_canvas = nullptr;
 
- static inline GFXcanvas16* ui_text_canvas(GFXcanvas16** slot, int16_t w, int16_t h) {
+ static inline CuttlefishCanvas16* ui_text_canvas(CuttlefishCanvas16** slot, int16_t w, int16_t h) {
    if (w <= 0) w = 1;
    if (h <= 0) h = 1;
-   if (!*slot || (*slot)->width() < w || (*slot)->height() < h) {
-     delete *slot;
-     *slot = new GFXcanvas16(w, h);
+   if (!*slot || display_canvasWidth(*slot) < w || display_canvasHeight(*slot) < h) {
+     display_deleteCanvas(*slot);
+     *slot = display_createCanvas(w, h);
    }
    return *slot;
  }
 
- static inline uint8_t ui_text_fg_neighbors(GFXcanvas16* src, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t fg, uint8_t radius = 1) {
+ static inline uint8_t ui_text_fg_neighbors(CuttlefishCanvas16* src, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t fg, uint8_t radius = 1) {
   uint8_t count = 0;
   for (int8_t dy = -(int8_t)radius; dy <= (int8_t)radius; dy++) {
     int16_t yy = y + dy;
@@ -2060,7 +2312,7 @@ static inline void ui_draw_bitmap_text(const char* text, int16_t x, int16_t y, u
     for (int8_t dx = -(int8_t)radius; dx <= (int8_t)radius; dx++) {
       int16_t xx = x + dx;
       if (xx < 0 || xx >= w) continue;
-      if (src->getPixel(xx, yy) == fg) count++;
+      if (display_canvasGetPixel(src, xx, yy) == fg) count++;
     }
   }
   return count;
@@ -2099,38 +2351,38 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint1
   }
 
 // Use pre-allocated static canvases (no dynamic allocation)
-   GFXcanvas16* src = ui_text_canvas(&__ui_text_src_canvas, (int16_t)w, (int16_t)h);
-   GFXcanvas16* dst = ui_text_canvas(&__ui_text_dst_canvas, (int16_t)w, (int16_t)h);
-   if (!src || !dst || !src->getBuffer() || !dst->getBuffer()) {
+   CuttlefishCanvas16* src = ui_text_canvas(&__ui_text_src_canvas, (int16_t)w, (int16_t)h);
+   CuttlefishCanvas16* dst = ui_text_canvas(&__ui_text_dst_canvas, (int16_t)w, (int16_t)h);
+   if (!src || !dst || !display_canvasBuffer(src) || !display_canvasBuffer(dst)) {
      ui_draw_bitmap_text(text, x, y, fg, bg, ts, 0);
      return;
    }
 
-   src->fillRect(0, 0, w, h, bg);
-   dst->fillRect(0, 0, w, h, bg);
-   src->setCursor(0, 0);
-   src->setTextColor(fg, bg);
-   src->setTextSize(ts);
-   src->setTextWrap(false);
-   src->print(text);
+   display_canvasFillRect(src, 0, 0, w, h, bg);
+   display_canvasFillRect(dst, 0, 0, w, h, bg);
+   display_targetSetCursor((CuttlefishDisplayTarget*)src, 0, 0);
+   display_targetSetTextColorBg((CuttlefishDisplayTarget*)src, fg, bg);
+   display_targetSetTextSize((CuttlefishDisplayTarget*)src, ts);
+   display_targetSetTextWrap((CuttlefishDisplayTarget*)src, false);
+   display_targetPrint((CuttlefishDisplayTarget*)src, text);
 
    for (int16_t yy = 0; yy < (int16_t)h; yy++) {
      for (int16_t xx = 0; xx < (int16_t)w; xx++) {
-       uint16_t px = src->getPixel(xx, yy);
+       uint16_t px = display_canvasGetPixel(src, xx, yy);
        uint8_t neighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg);
        uint8_t outerNeighbors = 0;
        if (ts >= 3 && px != fg && neighbors == 0) {
          outerNeighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg, 2);
        }
        uint8_t coverage = ui_text_aa_coverage(neighbors, outerNeighbors, px == fg ? 1 : 0, ts);
-       dst->drawPixel(xx, yy, coverage == 0 ? bg : ui_blend565(fg, bg, coverage));
+       display_targetDrawPixel((CuttlefishDisplayTarget*)dst, xx, yy, coverage == 0 ? bg : ui_blend565(fg, bg, coverage));
      }
    }
 
-   int16_t stride = dst->width();
-   uint16_t* pixels = dst->getBuffer();
+   int16_t stride = display_canvasWidth(dst);
+   uint16_t* pixels = display_canvasBuffer(dst);
    for (int16_t row = 0; row < (int16_t)h; row++) {
-     __ui_gfx->drawRGBBitmap(x, y + row, pixels + (int32_t)row * stride, (int16_t)w, 1);
+     ui_display_draw_rgb_bitmap(x, y + row, pixels + (int32_t)row * stride, (int16_t)w, 1);
    }
  }
 
@@ -2203,8 +2455,8 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
     }
     ui_draw_text(lineBuf, lineX, lineY, fg, bg, ts, antialias, fontFace, letterSpacing);
     // text-decoration (underline=bit0, strikethrough=bit1)
-    if (underline & 1) __ui_gfx->drawFastHLine(lineX, lineY + ui_text_height(ts, fontFace) - 1, line.width, fg);
-    if (underline & 2) __ui_gfx->drawFastHLine(lineX, lineY + ui_text_height(ts, fontFace) / 2, line.width, fg);
+    if (underline & 1) ui_display_draw_fast_hline(lineX, lineY + ui_text_height(ts, fontFace) - 1, line.width, fg);
+    if (underline & 2) ui_display_draw_fast_hline(lineX, lineY + ui_text_height(ts, fontFace) / 2, line.width, fg);
     lineY += lh;
   }
 }
@@ -2225,14 +2477,14 @@ static inline void ui_draw_gradient_fill(uint8_t i, int16_t drawY) {
     for (int16_t y = 0; y < bh; y++) {
       uint8_t op = (uint8_t)((uint16_t)y * 100 / (bh > 1 ? bh - 1 : 1));
       uint16_t col = ui_blend565(c1, c2, op);
-      __ui_gfx->drawFastHLine(bx, by + y, bw, col);
+      ui_display_draw_fast_hline(bx, by + y, bw, col);
     }
   } else {
     // Horizontal: left=c1, right=c2. Draw column by column.
     for (int16_t x = 0; x < bw; x++) {
       uint8_t op = (uint8_t)((uint16_t)x * 100 / (bw > 1 ? bw - 1 : 1));
       uint16_t col = ui_blend565(c1, c2, op);
-      __ui_gfx->drawFastVLine(bx + x, by, bh, col);
+      ui_display_draw_fast_vline(bx + x, by, bh, col);
     }
   }
 }
@@ -2263,17 +2515,17 @@ static inline void ui_draw_shadow(uint8_t i, int16_t drawY, uint8_t insetOnly) {
       uint16_t insetBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
       uint16_t col = ui_blend565(shadowCol, insetBg, baseAlpha);
       if (oy > 0) {
-        __ui_gfx->fillRect(bx, by, bw, oy, col);
+        ui_display_fill_rect(bx, by, bw, oy, col);
       } else if (oy < 0) {
-        __ui_gfx->fillRect(bx, by + bh + oy, bw, -oy, col);
+        ui_display_fill_rect(bx, by + bh + oy, bw, -oy, col);
       }
       if (ox > 0) {
-        __ui_gfx->fillRect(bx, by, ox, bh, col);
+        ui_display_fill_rect(bx, by, ox, bh, col);
       } else if (ox < 0) {
-        __ui_gfx->fillRect(bx + bw + ox, by, -ox, bh, col);
+        ui_display_fill_rect(bx + bw + ox, by, -ox, bh, col);
       }
       if (ox == 0 && oy == 0) {
-        __ui_gfx->drawRect(bx, by, bw, bh, col);
+        ui_display_draw_rect(bx, by, bw, bh, col);
       }
       continue;
     }
@@ -2293,10 +2545,10 @@ static inline void ui_draw_shadow(uint8_t i, int16_t drawY, uint8_t insetOnly) {
         ix += ox;
         // Draw only the edge ring (4 thin rects), not a full fill — the
         // element's own background will cover the center anyway.
-        __ui_gfx->fillRect(ix, iy, iw, 1, col);         // top edge
-        __ui_gfx->fillRect(ix, iy + ih - 1, iw, 1, col); // bottom edge
-        __ui_gfx->fillRect(ix, iy, 1, ih, col);          // left edge
-        __ui_gfx->fillRect(ix + iw - 1, iy, 1, ih, col); // right edge
+        ui_display_fill_rect(ix, iy, iw, 1, col);         // top edge
+        ui_display_fill_rect(ix, iy + ih - 1, iw, 1, col); // bottom edge
+        ui_display_fill_rect(ix, iy, 1, ih, col);          // left edge
+        ui_display_fill_rect(ix + iw - 1, iy, 1, ih, col); // right edge
       } else {
         // Outset: expand outward from box + offset.
         int16_t sx = bx + ox - pass;
@@ -2307,9 +2559,9 @@ static inline void ui_draw_shadow(uint8_t i, int16_t drawY, uint8_t insetOnly) {
           uint8_t r = radius + (uint8_t)pass;
           if (r > sw / 2) r = sw / 2;
           if (r > sh_ / 2) r = sh_ / 2;
-          __ui_gfx->fillRoundRect(sx, sy, sw, sh_, r, col);
+          ui_display_fill_round_rect(sx, sy, sw, sh_, r, col);
         } else {
-          __ui_gfx->fillRect(sx, sy, sw, sh_, col);
+          ui_display_fill_rect(sx, sy, sw, sh_, col);
         }
       }
     }
@@ -2322,20 +2574,20 @@ static inline void ui_draw_closed_round_rect(int16_t x, int16_t y, int16_t w, in
   if (r > w / 2) r = w / 2;
   if (r > h / 2) r = h / 2;
   if (r == 0) {
-    __ui_gfx->drawRect(x, y, w, h, color);
+    ui_display_draw_rect(x, y, w, h, color);
     return;
   }
-  __ui_gfx->drawRoundRect(x, y, w, h, r, color);
+  ui_display_draw_round_rect(x, y, w, h, r, color);
   // Adafruit_GFX's circle helper omits the cardinal tangent pixels. Fill them
   // so straight edges and corner arcs meet without visible pinholes.
-  __ui_gfx->drawPixel(x + r, y, color);
-  __ui_gfx->drawPixel(x + w - r - 1, y, color);
-  __ui_gfx->drawPixel(x + r, y + h - 1, color);
-  __ui_gfx->drawPixel(x + w - r - 1, y + h - 1, color);
-  __ui_gfx->drawPixel(x, y + r, color);
-  __ui_gfx->drawPixel(x + w - 1, y + r, color);
-  __ui_gfx->drawPixel(x, y + h - r - 1, color);
-  __ui_gfx->drawPixel(x + w - 1, y + h - r - 1, color);
+  ui_display_draw_pixel(x + r, y, color);
+  ui_display_draw_pixel(x + w - r - 1, y, color);
+  ui_display_draw_pixel(x + r, y + h - 1, color);
+  ui_display_draw_pixel(x + w - r - 1, y + h - 1, color);
+  ui_display_draw_pixel(x, y + r, color);
+  ui_display_draw_pixel(x + w - 1, y + r, color);
+  ui_display_draw_pixel(x, y + h - r - 1, color);
+  ui_display_draw_pixel(x + w - 1, y + h - r - 1, color);
 }
 
 static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t radius, uint8_t style, uint8_t width, uint16_t color) {
@@ -2349,35 +2601,35 @@ static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t
     uint8_t r = radius > b ? radius - b : 0;
     if (style == 1) {
       if (r > 0) ui_draw_closed_round_rect(rx, ry, rw, rh, r, color);
-      else __ui_gfx->drawRect(rx, ry, rw, rh, color);
+      else ui_display_draw_rect(rx, ry, rw, rh, color);
     } else {
       for (int16_t dx = 0; dx < rw; dx += 8) {
         int16_t seg = (dx + 4 <= rw) ? 4 : (rw - dx);
         if (seg > 0) {
-          __ui_gfx->drawFastHLine(rx + dx, ry, seg, color);
-          __ui_gfx->drawFastHLine(rx + dx, ry + rh - 1, seg, color);
+          ui_display_draw_fast_hline(rx + dx, ry, seg, color);
+          ui_display_draw_fast_hline(rx + dx, ry + rh - 1, seg, color);
         }
       }
       for (int16_t dy = 0; dy < rh; dy += 8) {
         int16_t seg = (dy + 4 <= rh) ? 4 : (rh - dy);
         if (seg > 0) {
-          __ui_gfx->drawFastVLine(rx, ry + dy, seg, color);
-          __ui_gfx->drawFastVLine(rx + rw - 1, ry + dy, seg, color);
+          ui_display_draw_fast_vline(rx, ry + dy, seg, color);
+          ui_display_draw_fast_vline(rx + rw - 1, ry + dy, seg, color);
         }
       }
     }
   }
 }
 
-static inline void ui_draw_node_border(uint8_t i, int16_t drawY, uint16_t color) {
-  ui_draw_rect_outline(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
+static inline void ui_draw_node_border(uint8_t i, int16_t drawX, int16_t drawY, uint16_t color) {
+  ui_draw_rect_outline(drawX, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
     __ui_nodes[i].borderRadius, __ui_nodes[i].borderStyle, __ui_nodes[i].borderWidth, color);
 }
 
-static inline void ui_draw_node_outline(uint8_t i, int16_t drawY) {
+static inline void ui_draw_node_outline(uint8_t i, int16_t drawX, int16_t drawY) {
   if (__ui_nodes[i].outlineStyle == 0 || __ui_nodes[i].outlineWidth == 0) return;
   uint8_t w = __ui_nodes[i].outlineWidth;
-  ui_draw_rect_outline(__ui_nodes[i].box.x - w, drawY - w,
+  ui_draw_rect_outline(drawX - w, drawY - w,
     __ui_nodes[i].box.w + 2 * w, __ui_nodes[i].box.h + 2 * w,
     __ui_nodes[i].borderRadius + w, __ui_nodes[i].outlineStyle, w, __ui_nodes[i].outlineColor);
 }
@@ -2652,43 +2904,98 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_kb_repaint_key = -1;
     return;
   }
-  // Process each dirty scroll container: mark subtree dirty, set up the
-  // viewport-sized canvas for the main draw loop to redirect into.
+  // Process each dirty scroll container. Full invalidations repaint the
+  // subtree; normal scroll deltas shift cached canvas rows and repaint only the
+  // newly exposed strip.
   int8_t bufferedScrollNode = -1;
   int16_t bufferedScrollVX = 0;  // viewport origin X for coord translation
   int16_t bufferedScrollVY = 0;  // viewport origin Y
-  GFXcanvas16* bufferedScrollCanvas = nullptr;
+  CuttlefishCanvas16* bufferedScrollCanvas = nullptr;
+  CuttlefishCanvas16* bufferedScrollRepaintCanvas = nullptr;
+  int16_t bufferedScrollRepaintY = 0;
+  int16_t bufferedScrollRepaintH = 0;
   for (uint8_t s = 0; s < __ui_node_count; s++) {
     if (!__ui_nodes[s].scrollable || !ui_is_effectively_visible(s)) continue;
     if (__ui_nodes[s].screenId != __ui_active_screen) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
     if (!__ui_nodes[s].dirty) continue;
 
-    // Mark the whole subtree dirty + reset incremental redraw state.
-    for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
-      ui_mark_dirty(c);
-      if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
-      else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
-      __ui_nodes[c].lastTextHeight = 0;
-    }
-
+    // The scroll canvas is viewport-sized. The setup below either shifts cached
+    // pixels for a small delta or falls back to a full subtree redraw.
     int16_t vw = __ui_nodes[s].box.w;
     int16_t vh = __ui_nodes[s].box.h;
     int16_t vox = __ui_nodes[s].box.x;
     int16_t voy = __ui_nodes[s].box.y;
-    bufferedScrollCanvas = ui_get_scroll_canvas(vw, vh);
+    uint16_t scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
+    bufferedScrollCanvas = ui_get_scroll_canvas_keep_cache(vw, vh);
     if (bufferedScrollCanvas) {
       bufferedScrollNode = (int8_t)s;
       bufferedScrollVX = vox;
       bufferedScrollVY = voy;
-      // Clear canvas (it's viewport-sized, so fillScreen is efficient).
-      bufferedScrollCanvas->fillScreen(
-        __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
+
+      int16_t deltaY = 0;
+      uint8_t canShift = 0;
+      if (__ui_scroll_cache_valid &&
+          __ui_scroll_cache_node == (int8_t)s &&
+          __ui_scroll_cache_w == vw &&
+          __ui_scroll_cache_h == vh) {
+        deltaY = __ui_nodes[s].scrollY - __ui_scroll_cache_y;
+        int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
+        if (deltaY != 0 && absDelta < vh) canShift = 1;
+      }
+
+      if (canShift) {
+        int16_t exposedY = 0;
+        int16_t exposedH = 0;
+        ui_shift_scroll_canvas(bufferedScrollCanvas, deltaY, scrollBg, &exposedY, &exposedH);
+        bufferedScrollRepaintCanvas = ui_get_scroll_repaint_canvas(vw, exposedH);
+        if (bufferedScrollRepaintCanvas) {
+          bufferedScrollRepaintY = exposedY;
+          bufferedScrollRepaintH = exposedH;
+          display_canvasFillScreen(bufferedScrollRepaintCanvas, scrollBg);
+          UIRect exposed = { vox, (int16_t)(voy + exposedY), vw, exposedH };
+          for (uint8_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
+            if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
+              __ui_nodes[c].dirty = 0;
+              continue;
+            }
+            if (!__ui_nodes[c].dirty && exposedH > 0) {
+              UIRect cr;
+              ui_node_current_paint_rect(c, &cr);
+              if (cr.w > 0 && cr.h > 0 &&
+                  ui_rects_intersect(cr.x, cr.y, cr.w, cr.h, exposed.x, exposed.y, exposed.w, exposed.h)) {
+                __ui_nodes[c].dirty = 1;
+              }
+            }
+            if (__ui_nodes[c].dirty) {
+              if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
+              else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
+              __ui_nodes[c].lastTextHeight = 0;
+            }
+          }
+        } else {
+          canShift = 0;
+        }
+      }
+      if (!canShift) {
+        for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
+          __ui_nodes[c].dirty = 1;
+          if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
+          else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
+          __ui_nodes[c].lastTextHeight = 0;
+        }
+        display_canvasFillScreen(bufferedScrollCanvas, scrollBg);
+      }
     } else {
-      // Fallback: clear display viewport directly.
-      __ui_gfx->fillRect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
-        __ui_nodes[s].box.w, __ui_nodes[s].box.h,
-        __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor);
+      ui_invalidate_scroll_cache();
+      for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
+        __ui_nodes[c].dirty = 1;
+        if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
+        else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
+        __ui_nodes[c].lastTextHeight = 0;
+      }
+      ui_display_fill_rect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
+        __ui_nodes[s].box.w, __ui_nodes[s].box.h, scrollBg);
     }
     // Only one scroll container per frame (the canvas is reused for subsequent
     // ones in the next dirty frame). This matches the original design.
@@ -2697,10 +3004,10 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ── Framebuffer target selection ──────────────────────────────────────────
   // When a full-screen framebuffer is available (ESP32 + PSRAM), redirect the
   // entire dirty-node draw pass into it and push once at the end. Otherwise
-  // __ui_draw_target == &__tc_display and draws go straight to the display
+  // __ui_draw_target == display_defaultTarget() and draws go straight to the display
   // (byte-identical to the pre-framebuffer path).
-  GFXcanvas16* __ui_fb = ui_get_framebuffer();
-  Adafruit_GFX* __ui_draw_target = __ui_fb ? (Adafruit_GFX*)__ui_fb : &__tc_display;
+  CuttlefishCanvas16* __ui_fb = ui_get_framebuffer();
+  CuttlefishDisplayTarget* __ui_draw_target = __ui_fb ? (CuttlefishDisplayTarget*)__ui_fb : display_defaultTarget();
   if (__ui_fb) {
     // Seed the framebuffer with the active screen's background so cleared/
     // transparent regions resolve correctly, then draw dirty nodes on top.
@@ -2711,7 +3018,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         break;
       }
     }
-    __ui_fb->fillScreen(fbBg);
+    display_canvasFillScreen(__ui_fb, fbBg);
   }
 
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
@@ -2731,12 +3038,13 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t origBoxX = __ui_nodes[i].box.x;
     int16_t origBoxY = __ui_nodes[i].box.y;
     if (drawingBufferedScroll) {
-      __ui_gfx = bufferedScrollCanvas;
+      CuttlefishCanvas16* scrollDrawCanvas = bufferedScrollRepaintCanvas ? bufferedScrollRepaintCanvas : bufferedScrollCanvas;
+      ui_display_set_target(scrollDrawCanvas);
       // Translate display coords → canvas-local coords (subtract viewport origin).
       __ui_nodes[i].box.x = origBoxX - bufferedScrollVX;
-      __ui_nodes[i].box.y = origBoxY - bufferedScrollVY;
+      __ui_nodes[i].box.y = origBoxY - bufferedScrollVY - (bufferedScrollRepaintCanvas ? bufferedScrollRepaintY : 0);
     } else {
-      __ui_gfx = __ui_draw_target;
+      ui_display_set_target(__ui_draw_target);
     }
     int16_t baseDrawX = ui_base_draw_x_for_node(i);
     int16_t baseDrawY = ui_base_draw_y_for_node(i);
@@ -2771,8 +3079,9 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t cullH = paintRect.h;
     if (drawingBufferedScroll) {
       // Canvas-local clip: skip nodes fully outside the viewport (0..vw, 0..vh).
-      if (cullY + cullH <= 0 || cullY >= bufferedScrollCanvas->height() ||
-          cullX + cullW <= 0 || cullX >= bufferedScrollCanvas->width()) {
+      CuttlefishCanvas16* scrollDrawCanvas = bufferedScrollRepaintCanvas ? bufferedScrollRepaintCanvas : bufferedScrollCanvas;
+      if (cullY + cullH <= 0 || cullY >= display_canvasHeight(scrollDrawCanvas) ||
+          cullX + cullW <= 0 || cullX >= display_canvasWidth(scrollDrawCanvas)) {
         __ui_nodes[i].box.x = origBoxX;
         __ui_nodes[i].box.y = origBoxY;
         __ui_nodes[i].dirty = 0;
@@ -2786,7 +3095,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
 
     uint8_t drawingPaintCanvas = 0;
-    GFXcanvas16* paintCanvas = nullptr;
+    CuttlefishCanvas16* paintCanvas = nullptr;
     int16_t paintCanvasX = paintRect.x;
     int16_t paintCanvasY = paintRect.y;
     int16_t paintCanvasW = paintRect.w;
@@ -2795,7 +3104,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       paintCanvas = ui_get_scroll_canvas(paintCanvasW, paintCanvasH);
       if (paintCanvas) {
         drawingPaintCanvas = 1;
-        __ui_gfx = paintCanvas;
+        ui_display_set_target(paintCanvas);
         ui_seed_paint_canvas_for_node(i, paintCanvas, paintCanvasX, paintCanvasY);
         baseDrawX -= paintCanvasX;
         baseDrawY -= paintCanvasY;
@@ -2824,11 +3133,11 @@ static inline void ui_tick(uint16_t deltaMs) {
         } else if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
           int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          __ui_gfx->fillRoundRect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
         } else if (__ui_nodes[i].hasBg) {
           int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].bg);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].bg);
         }
         ui_draw_shadow(i, drawY, 1);
         if (__ui_nodes[i].borderStyle != 0) {
@@ -2854,7 +3163,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           // Dynamic transparent text still needs a clear, otherwise old glyph
           // pixels accumulate when only this text node is dirty.
           uint16_t clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
           __ui_nodes[i].lastTextWidth = tw;
           __ui_nodes[i].lastTextHeight = th;
         }
@@ -2884,12 +3193,12 @@ static inline void ui_tick(uint16_t deltaMs) {
         break;
       case NODE_BUTTON:
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
-          __ui_gfx->fillRoundRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
         else if (__ui_nodes[i].hasBg)
-          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
         ui_draw_shadow(i, drawY, 1);
         if (__ui_nodes[i].borderStyle != 0) {
-          ui_draw_node_border(i, drawY, bColor);
+          ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
         }
         ui_draw_wrapped_text(displayText,
           __ui_nodes[i].box.x,
@@ -2912,7 +3221,7 @@ static inline void ui_tick(uint16_t deltaMs) {
             clearH = (uint16_t)__ui_nodes[i].lastTextHeight;
           }
           if (paintTextH > clearH) clearH = paintTextH;
-          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, clearH,
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
@@ -2921,12 +3230,12 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t cbX = __ui_nodes[i].box.x;
           int16_t cbY = drawY;
           if (__ui_nodes[i].value) {
-            __ui_gfx->fillRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
+            ui_display_fill_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
             uint16_t inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
 #ifdef UI_AA
             {
               // Draw the checkmark to a 16×16 AA canvas for smooth diagonals.
-              GFXcanvas16* c = ui_aa_begin(16, 16, __ui_nodes[i].fg);
+              CuttlefishCanvas16* c = ui_aa_begin(16, 16, __ui_nodes[i].fg);
               // First stroke: down-left (3,8 → 7,12)
               ui_aa_line(c, 4.0f, 8.0f, 7.0f, 12.0f, inv);
               ui_aa_line(c, 5.0f, 8.0f, 8.0f, 12.0f, inv);
@@ -2936,15 +3245,15 @@ static inline void ui_tick(uint16_t deltaMs) {
               ui_aa_push(c, cbX, cbY);
             }
 #else
-            __ui_gfx->drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
-            __ui_gfx->drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
-            __ui_gfx->drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
-            __ui_gfx->drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
-            __ui_gfx->drawLine(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
-            __ui_gfx->drawLine(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
+            ui_display_draw_line(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
+            ui_display_draw_line(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
+            ui_display_draw_line(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
+            ui_display_draw_line(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
+            ui_display_draw_line(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
+            ui_display_draw_line(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
 #endif
           } else {
-            __ui_gfx->drawRect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
+            ui_display_draw_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
           }
         }
         ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY, textMaxW,
@@ -2964,7 +3273,7 @@ static inline void ui_tick(uint16_t deltaMs) {
             clearH = (uint16_t)__ui_nodes[i].lastTextHeight;
           }
           if (paintTextH > clearH) clearH = paintTextH;
-          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, clearW, clearH,
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
@@ -2974,7 +3283,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           {
             // Render the radio circle to a 16×16 AA canvas, then push.
             uint16_t radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-            GFXcanvas16* c = ui_aa_begin(16, 16, radioBg);
+            CuttlefishCanvas16* c = ui_aa_begin(16, 16, radioBg);
             if (__ui_nodes[i].value) {
               ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
               ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
@@ -2985,10 +3294,10 @@ static inline void ui_tick(uint16_t deltaMs) {
           }
 #else
           if (__ui_nodes[i].value) {
-            __ui_gfx->fillCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
-            __ui_gfx->fillCircle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            ui_display_fill_circle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           } else {
-            __ui_gfx->drawCircle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
           }
 #endif
         }
@@ -3016,17 +3325,17 @@ static inline void ui_tick(uint16_t deltaMs) {
 
           if (prevW < 0) {
             // Full redraw: outline + background + fill
-            __ui_gfx->drawRect(bx, by, bw, bh, fgCol);
-            __ui_gfx->fillRect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
+            ui_display_draw_rect(bx, by, bw, bh, fgCol);
+            ui_display_fill_rect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
             if (fillW > 0) {
-              __ui_gfx->fillRect(bx + 1, by + 1, fillW, bh - 2, fgCol);
+              ui_display_fill_rect(bx + 1, by + 1, fillW, bh - 2, fgCol);
             }
           } else if (fillW > prevW) {
             // Value increased: draw new fill segment on top (no clear needed)
-            __ui_gfx->fillRect(bx + 1 + prevW, by + 1, fillW - prevW, bh - 2, fgCol);
+            ui_display_fill_rect(bx + 1 + prevW, by + 1, fillW - prevW, bh - 2, fgCol);
           } else if (fillW < prevW) {
             // Value decreased: clear the removed portion
-            __ui_gfx->fillRect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
+            ui_display_fill_rect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
           }
           // Remember current fill width for next incremental update
           __ui_nodes[i].lastTextWidth = fillW;
@@ -3061,8 +3370,8 @@ static inline void ui_tick(uint16_t deltaMs) {
 
           if (prevFillW < 0) {
             // First draw: redraw the whole track + fill from scratch.
-            __ui_gfx->drawFastHLine(bx, trackY, bw, dimFg);
-            __ui_gfx->drawFastHLine(bx + 4, trackY, fillW, fgCol);
+            ui_display_draw_fast_hline(bx, trackY, bw, dimFg);
+            ui_display_draw_fast_hline(bx + 4, trackY, fillW, fgCol);
           } else {
             // Incremental: wipe the strip between the old and new thumb
             // positions (whichever extends further on each side), then restore
@@ -3074,24 +3383,24 @@ static inline void ui_tick(uint16_t deltaMs) {
             if (left < bx) left = bx;
             if (right > bx + bw) right = bx + bw;
             // Erase the thumb band (10px tall) to background.
-            __ui_gfx->fillRect(left, trackY - 5, right - left, 10, bgCol);
+            ui_display_fill_rect(left, trackY - 5, right - left, 10, bgCol);
             // Restore the track line over the wiped strip: bright up to the
             // current fill end, dim beyond it.
             int16_t fillEnd = bx + 4 + fillW;
             if (right <= fillEnd) {
-              __ui_gfx->drawFastHLine(left, trackY, right - left, fgCol);
+              ui_display_draw_fast_hline(left, trackY, right - left, fgCol);
             } else if (left >= fillEnd) {
-              __ui_gfx->drawFastHLine(left, trackY, right - left, dimFg);
+              ui_display_draw_fast_hline(left, trackY, right - left, dimFg);
             } else {
-              __ui_gfx->drawFastHLine(left, trackY, fillEnd - left, fgCol);
-              __ui_gfx->drawFastHLine(fillEnd, trackY, right - fillEnd, dimFg);
+              ui_display_draw_fast_hline(left, trackY, fillEnd - left, fgCol);
+              ui_display_draw_fast_hline(fillEnd, trackY, right - fillEnd, dimFg);
             }
           }
 
           // Thumb: small filled rectangle at the current position.
           if (newThumbX < bx + 1) newThumbX = bx + 1;
           if (newThumbX > bx + bw - 7) newThumbX = bx + bw - 7;
-          __ui_gfx->fillRect(newThumbX, trackY - 5, 6, 10, fgCol);
+          ui_display_fill_rect(newThumbX, trackY - 5, 6, 10, fgCol);
 
           // Remember current fill width for the next incremental update.
           __ui_nodes[i].lastTextWidth = fillW;
@@ -3107,9 +3416,9 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint16_t fgCol = __ui_nodes[i].fg;
           uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           if (__ui_nodes[i].borderRadius > 0) {
-            __ui_gfx->fillRoundRect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
+            ui_display_fill_round_rect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
           } else {
-            __ui_gfx->fillRect(bx, by, bw, bh, bgCol);
+            ui_display_fill_rect(bx, by, bw, bh, bgCol);
           }
           uint16_t inputBorder = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : fgCol;
           uint8_t inputBorderStyle = __ui_nodes[i].borderStyle ? __ui_nodes[i].borderStyle : 1;
@@ -3126,9 +3435,9 @@ static inline void ui_tick(uint16_t deltaMs) {
           // The setCursor/setTextColor/setTextSize below are legacy — ui_draw_text
           // handles its own cursor/colors. Keep them on __ui_gfx for consistency
           // (in case __ui_gfx is the scroll canvas, not __tc_display).
-          __ui_gfx->setCursor(bx + 4, by + (bh - ts * 8) / 2);
-          __ui_gfx->setTextColor(textCol, bgCol);
-          __ui_gfx->setTextSize(ts);
+          ui_display_set_cursor(bx + 4, by + (bh - ts * 8) / 2);
+          ui_display_set_text_color(textCol, bgCol);
+          ui_display_set_text_size(ts);
           // Clip: at textSize ts, each char is ts*6px advance. Only print chars
           // that fit within the box (bw - 8px margin), so text never overflows
           // the border or wraps to the next line.
@@ -3150,7 +3459,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         if (__ui_nodes[i].hasBg) {
           int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          __ui_gfx->fillRect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].bg);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].bg);
         }
         if (__ui_nodes[i].imgDataId < __ui_image_count) {
           const UIImage* img = &__ui_images[__ui_nodes[i].imgDataId];
@@ -3174,29 +3483,29 @@ static inline void ui_tick(uint16_t deltaMs) {
         uint16_t clearCol = __ui_nodes[i].clearColor;
         // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
         // Use a dedicated list canvas to avoid conflicts with the scroll canvas.
-        static GFXcanvas16* __ui_list_canvas = nullptr;
-        if (!__ui_list_canvas || __ui_list_canvas->width() != bw || __ui_list_canvas->height() != bh) {
-          delete __ui_list_canvas;
-          __ui_list_canvas = new GFXcanvas16(bw, bh);
+        static CuttlefishCanvas16* __ui_list_canvas = nullptr;
+        if (!__ui_list_canvas || display_canvasWidth(__ui_list_canvas) != bw || display_canvasHeight(__ui_list_canvas) != bh) {
+          display_deleteCanvas(__ui_list_canvas);
+          __ui_list_canvas = display_createCanvas(bw, bh);
         }
-        GFXcanvas16* lc = __ui_list_canvas;
-        if (!lc || !lc->getBuffer()) break;
-        lc->fillScreen(clearCol);
+        CuttlefishCanvas16* lc = __ui_list_canvas;
+        if (!lc || !display_canvasBuffer(lc)) break;
+        display_canvasFillScreen(lc, clearCol);
         // Compute visible range.
         uint16_t first = ls->scrollY / ih;
         uint16_t last = (ls->scrollY + bh - 1) / ih + 1;
         if (ls->itemCount > 0 && last >= ls->itemCount) last = ls->itemCount - 1;
         // Draw each visible item (canvas-local coords: 0,0 = viewport top).
         char listBuf[UI_TEXT_BUF + 1];
-        lc->setTextWrap(false);
+        display_targetSetTextWrap((CuttlefishDisplayTarget*)lc, false);
         for (uint16_t idx = first; idx <= last; idx++) {
           int16_t itemY = (int16_t)(idx * ih) - ls->scrollY;
           ls->itemFn(idx, listBuf, UI_TEXT_BUF + 1);
           listBuf[UI_TEXT_BUF] = 0;
-          lc->setCursor(4, itemY + (ih - 16) / 2);
-          lc->setTextColor(__ui_nodes[i].fg);
-          lc->setTextSize(2);
-          lc->print(listBuf);
+          display_targetSetCursor((CuttlefishDisplayTarget*)lc, 4, itemY + (ih - 16) / 2);
+          display_targetSetTextColor((CuttlefishDisplayTarget*)lc, __ui_nodes[i].fg);
+          display_targetSetTextSize((CuttlefishDisplayTarget*)lc, 2);
+          display_targetPrint((CuttlefishDisplayTarget*)lc, listBuf);
         }
         // Scrollbar (canvas-local coords).
         if (ls->contentHeight > (uint16_t)bh) {
@@ -3205,8 +3514,8 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (thumbH < 8) thumbH = 8;
           uint16_t thumbY = (uint32_t)(bh - thumbH) * ls->scrollY / (ls->contentHeight - bh);
           uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
-          lc->fillRect(tx, 0, 3, bh, dimFg);
-          lc->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
+          display_canvasFillRect(lc, tx, 0, 3, bh, dimFg);
+          display_canvasFillRect(lc, tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
         }
         // Standalone lists push directly. Lists inside a buffered scroll
         // container must composite into that scroll canvas; their box has
@@ -3217,7 +3526,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           ui_push_canvas_rect(lc, bx, by, bw, bh);
         }
         __ui_nodes[i].dirty = 0;
-        __ui_gfx = __ui_draw_target;
+        ui_display_set_target(__ui_draw_target);
         __ui_nodes[i].box.x = origBoxX;
         __ui_nodes[i].box.y = origBoxY;
         continue;  // skip outline/paint-canvas/restore (list draws its own border)
@@ -3232,10 +3541,10 @@ static inline void ui_tick(uint16_t deltaMs) {
         outlineW + 2 * w, outlineH + 2 * w,
         __ui_nodes[i].borderRadius + w, __ui_nodes[i].outlineStyle, w, __ui_nodes[i].outlineColor);
     } else {
-      ui_draw_node_outline(i, drawY);
+      ui_draw_node_outline(i, __ui_nodes[i].box.x, drawY);
     }
     if (drawingPaintCanvas) {
-      __ui_gfx = __ui_draw_target;
+      ui_display_set_target(__ui_draw_target);
       ui_push_canvas_rect(paintCanvas, paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH);
     }
     // Restore original box coords (translated for canvas-local drawing above).
@@ -3246,21 +3555,29 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
   if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
     // Draw scrollbar into the canvas (canvas-local coords: 0,0 = viewport top-left).
-    __ui_gfx = bufferedScrollCanvas;
+    ui_display_set_target(bufferedScrollCanvas);
     uint8_t si = (uint8_t)bufferedScrollNode;
     int16_t vw = __ui_nodes[si].box.w;
     int16_t vh = __ui_nodes[si].box.h;
+    if (bufferedScrollRepaintCanvas && bufferedScrollRepaintH > 0) {
+      ui_draw_canvas_rect(bufferedScrollRepaintCanvas, 0, bufferedScrollRepaintY, vw, bufferedScrollRepaintH);
+    }
     int16_t tx = vw - 4;
     uint16_t thumbH = (uint32_t)vh * vh / __ui_nodes[si].contentHeight;
     if (thumbH < 8) thumbH = 8;
     int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
     uint16_t thumbY = (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
     uint16_t dimFg = ((__ui_nodes[si].fg >> 1) & 0x7BEF);
-    __ui_gfx->fillRect(tx, 0, 3, vh, dimFg);
-    __ui_gfx->fillRect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
+    ui_display_fill_rect(tx, 0, 3, vh, dimFg);
+    ui_display_fill_rect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
+    __ui_scroll_cache_valid = 1;
+    __ui_scroll_cache_node = bufferedScrollNode;
+    __ui_scroll_cache_y = __ui_nodes[si].scrollY;
+    __ui_scroll_cache_w = vw;
+    __ui_scroll_cache_h = vh;
     // Push the canvas to the draw target at the viewport position (the
     // framebuffer when active, else the display directly).
-    __ui_gfx = __ui_draw_target;
+    ui_display_set_target(__ui_draw_target);
     ui_push_canvas_rect(bufferedScrollCanvas,
       bufferedScrollVX, bufferedScrollVY,
       vw, vh);
@@ -3271,7 +3588,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   if (__ui_fb) {
     ui_push_framebuffer();
   }
-  __ui_gfx = &__tc_display;
+  ui_display_use_default_target();
   // ③ Flush — ILI9341 is immediate, no separate flush needed.
 }
 
@@ -3283,43 +3600,43 @@ static inline void ui_tick(uint16_t deltaMs) {
 #ifdef UI_AA
 
 // Get (or allocate) a canvas sized to the element being drawn.
-static inline GFXcanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg) {
+static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg) {
   if (w <= 0 || h <= 0) return nullptr;
-  if (!__ui_aa_canvas || __ui_aa_canvas->width() < w || __ui_aa_canvas->height() < h) {
-    delete __ui_aa_canvas;
-    __ui_aa_canvas = new GFXcanvas16(w > 0 ? w : 1, h > 0 ? h : 1);
+  if (!__ui_aa_canvas || display_canvasWidth(__ui_aa_canvas) < w || display_canvasHeight(__ui_aa_canvas) < h) {
+    display_deleteCanvas(__ui_aa_canvas);
+    __ui_aa_canvas = display_createCanvas(w > 0 ? w : 1, h > 0 ? h : 1);
   }
-  if (!__ui_aa_canvas || !__ui_aa_canvas->getBuffer()) return nullptr;
-  __ui_aa_canvas->fillScreen(bg);
+  if (!__ui_aa_canvas || !display_canvasBuffer(__ui_aa_canvas)) return nullptr;
+  display_canvasFillScreen(__ui_aa_canvas, bg);
   return __ui_aa_canvas;
  }
 
 // Push the canvas rect to the display at (dx, dy).
-static inline void ui_aa_push(GFXcanvas16* c, int16_t dx, int16_t dy) {
-  if (!c || !c->getBuffer()) return;
-  int16_t w = c->width(), h = c->height();
+static inline void ui_aa_push(CuttlefishCanvas16* c, int16_t dx, int16_t dy) {
+  if (!c || !display_canvasBuffer(c)) return;
+  int16_t w = display_canvasWidth(c), h = display_canvasHeight(c);
   // Push via __ui_gfx so the AA output goes to the scroll canvas when active,
   // or the display directly when not. Row-by-row drawRGBBitmap (no transparent
   // alpha — the AA canvas already has the blended pixels).
   for (int16_t row = 0; row < h; row++) {
-    __ui_gfx->drawRGBBitmap(dx, dy + row, c->getBuffer() + (int32_t)row * w, w, 1);
+    ui_display_draw_rgb_bitmap(dx, dy + row, display_canvasBuffer(c) + (int32_t)row * w, w, 1);
   }
 }
 
 // Blend a pixel at integer coords with a coverage fraction (0-255).
-static inline void ui_aa_pixel(GFXcanvas16* c, int16_t x, int16_t y, uint16_t color, uint8_t cov) {
-  if (!c || !c->getBuffer()) return;
+static inline void ui_aa_pixel(CuttlefishCanvas16* c, int16_t x, int16_t y, uint16_t color, uint8_t cov) {
+  if (!c || !display_canvasBuffer(c)) return;
   if (cov == 0) return;
-  if (x < 0 || y < 0 || x >= c->width() || y >= c->height()) return;
-  if (cov >= 255) { c->drawPixel(x, y, color); return; }
-  uint16_t bg = c->getPixel(x, y);
+  if (x < 0 || y < 0 || x >= display_canvasWidth(c) || y >= display_canvasHeight(c)) return;
+  if (cov >= 255) { display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, color); return; }
+  uint16_t bg = display_canvasGetPixel(c, x, y);
   uint8_t op = (uint8_t)((uint16_t)cov * 100 / 255);
-  c->drawPixel(x, y, ui_blend565(color, bg, op));
+  display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, ui_blend565(color, bg, op));
 }
 
 // Xiaolin Wu antialiased line. Coordinates are in canvas-local space.
-static inline void ui_aa_line(GFXcanvas16* c, float x0, float y0, float x1, float y1, uint16_t color) {
-  if (!c || !c->getBuffer()) return;
+static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, uint16_t color) {
+  if (!c || !display_canvasBuffer(c)) return;
   auto ipart = [](float f) { return (int16_t)f; };
   auto round_f = [](float f) { return (int16_t)(f + 0.5f); };
   auto fpart = [](float f) { return f - (float)(int16_t)f; };
@@ -3349,8 +3666,8 @@ static inline void ui_aa_line(GFXcanvas16* c, float x0, float y0, float x1, floa
 }
 
 // Antialiased circle outline. cx,cy,r are in canvas-local space.
-static inline void ui_aa_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
-  if (!c || !c->getBuffer()) return;
+static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
+  if (!c || !display_canvasBuffer(c)) return;
   if (r <= 0) return;
   // Walk each scanline from top to bottom of the bounding box.
   int16_t y0 = (int16_t)floor(cy - r);
@@ -3374,14 +3691,14 @@ static inline void ui_aa_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r,
     ui_aa_pixel(c, rx + 1, y, color, 0);
     // Solid fill between edges (skip the edge pixels already blended).
     for (int16_t x = lx + 1; x < rx; x++) {
-      if (x >= 0 && x < c->width()) c->drawPixel(x, y, color);
+      if (x >= 0 && x < display_canvasWidth(c)) display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, color);
     }
   }
 }
 
 // Antialiased filled circle.
-static inline void ui_aa_fill_circle(GFXcanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
-  if (!c || !c->getBuffer()) return;
+static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
+  if (!c || !display_canvasBuffer(c)) return;
   if (r <= 0) return;
   int16_t y0 = (int16_t)floor(cy - r);
   int16_t y1 = (int16_t)ceil(cy + r);
@@ -3400,7 +3717,7 @@ static inline void ui_aa_fill_circle(GFXcanvas16* c, int16_t cx, int16_t cy, flo
     ui_aa_pixel(c, rx, y, color, (uint8_t)((rightX - (rx - 1)) * 255));
     // Solid interior.
     for (int16_t x = lx + 1; x < rx; x++) {
-      if (x >= 0 && x < c->width() && y >= 0 && y < c->height()) c->drawPixel(x, y, color);
+      if (x >= 0 && x < display_canvasWidth(c) && y >= 0 && y < display_canvasHeight(c)) display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, color);
     }
   }
 }
@@ -3615,10 +3932,10 @@ static inline void ui_kb_draw_key(uint8_t i) {
   if (k.special == 1 && __ui_kb_shift && (int8_t)i != __ui_kb_pressed_key) { bg = 0xBDF7; }
   // Pressed key: invert colors for clear tap feedback.
   if ((int8_t)i == __ui_kb_pressed_key) { uint16_t t = bg; bg = fg; fg = t; }
-  __ui_gfx->fillRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
-  __ui_gfx->drawRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
-  __ui_gfx->setTextColor(fg, bg);
-  __ui_gfx->setTextSize(1);
+  ui_display_fill_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
+  ui_display_draw_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
+  ui_display_set_text_color(fg, bg);
+  ui_display_set_text_size(1);
   // Derive the label string + its length for centering.
   const char* labelStr;
   char single[2];
@@ -3640,26 +3957,26 @@ static inline void ui_kb_draw_key(uint8_t i) {
   int16_t cx = r.x + (r.w - textW) / 2;
   int16_t cy = r.y + (r.h - textH) / 2;
   if (cx < r.x + 1) cx = r.x + 1;  // clamp if label wider than key
-  __ui_gfx->setCursor(cx, cy);
-  __ui_gfx->print(labelStr);
+  ui_display_set_cursor(cx, cy);
+  ui_display_print(labelStr);
 }
 
 // Redraw only the text display row (top of keyboard box). Used when a char is
 // inserted/deleted without changing key highlights.
 static inline void ui_kb_draw_text_row() {
   // Clear the text row area (top UI_KB_TEXT_H px of the keyboard box).
-  __ui_gfx->fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, __ui_kb_bg);
-  __ui_gfx->setCursor(__ui_kb_box.x + 4, __ui_kb_box.y + 4);
-  __ui_gfx->setTextColor(0xFFFF, 0x0000);
-  __ui_gfx->setTextSize(2);
-  __ui_gfx->print(__ui_kb_buffer);
-  __ui_gfx->print("_");  // cursor
+  ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, __ui_kb_bg);
+  ui_display_set_cursor(__ui_kb_box.x + 4, __ui_kb_box.y + 4);
+  ui_display_set_text_color(0xFFFF, 0x0000);
+  ui_display_set_text_size(2);
+  ui_display_print(__ui_kb_buffer);
+  ui_display_print("_");  // cursor
 }
 
 // Draw the full keyboard overlay (background + text row + all keys).
 static inline void ui_kb_draw() {
   // Opaque background over the keyboard box.
-  __ui_gfx->fillRect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, __ui_kb_bg);
+  ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, __ui_kb_bg);
   ui_kb_draw_text_row();
   // Keys: one rect per key, label centered.
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {

@@ -180,6 +180,13 @@ export class PreviewUIRuntime {
   private activeScreen = 0;
   private touchState = 0;
   private touchNode = -1;
+  // Awaitable tap source (mirrors the device __ui_tap_seq / __ui_tap_node).
+  // Incremented on every completed tap (after click/release dispatch) so an
+  // `await ui.onTap()` Promise can resolve by polling tapSeq. tapNode records
+  // the hit node (-1 = empty space) for per-element awaiters. Public so the
+  // onTap shim in build-program.ts can read them.
+  tapSeq = 0;
+  tapNode = -1;
   private touchDownTime = 0;
   private lastTouchTime = -UI_TOUCH_DEBOUNCE_MS;
   private lastReleaseTime = -UI_TOUCH_DEBOUNCE_MS;
@@ -893,6 +900,12 @@ export class PreviewUIRuntime {
     const node = this.nodes[nodeIndex];
     if (!node || !this.isEffectivelyVisible(node) || !this.isActiveNode(node)) return;
     const rect = this.currentPaintRect(node);
+    this.markOverlappingHigherLayersDirtyForRect(nodeIndex, rect);
+  }
+
+  private markOverlappingHigherLayersDirtyForRect(nodeIndex: number, rect: { x: number; y: number; w: number; h: number }): void {
+    const node = this.nodes[nodeIndex];
+    if (!node || !this.isEffectivelyVisible(node) || !this.isActiveNode(node)) return;
     if (rect.w <= 0 || rect.h <= 0) return;
     for (const candidate of this.nodes) {
       if (candidate.index === nodeIndex) continue;
@@ -923,8 +936,8 @@ export class PreviewUIRuntime {
         } else if (parent.hasBg) {
           this.gfx.fillRect(parent.box.x, parentDrawY, parent.box.w, parent.box.h, parent.bg);
         }
-        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawY, parent.borderColor || parent.fg);
-        this.drawNodeOutline(parent, parentDrawY);
+        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawX, parentDrawY, parent.borderColor || parent.fg);
+        this.drawNodeOutline(parent, parentDrawX, parentDrawY);
       } finally {
         parent.box.x = origParentX;
       }
@@ -955,8 +968,9 @@ export class PreviewUIRuntime {
       const parent = node.parentIndex >= 0 ? this.nodes[node.parentIndex] : undefined;
       if (parent) {
         const parentDrawY = this.drawYForNode(parent.index);
-        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawY, parent.borderColor || parent.fg);
-        this.drawNodeOutline(parent, parentDrawY);
+        const parentDrawX = this.drawXForNode(parent.index);
+        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawX, parentDrawY, parent.borderColor || parent.fg);
+        this.drawNodeOutline(parent, parentDrawX, parentDrawY);
       }
     });
   }
@@ -973,8 +987,9 @@ export class PreviewUIRuntime {
       const parent = node.parentIndex >= 0 ? this.nodes[node.parentIndex] : undefined;
       if (parent) {
         const parentDrawY = this.drawYForNode(parent.index);
-        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawY, parent.borderColor || parent.fg);
-        this.drawNodeOutline(parent, parentDrawY);
+        const parentDrawX = this.drawXForNode(parent.index);
+        if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawX, parentDrawY, parent.borderColor || parent.fg);
+        this.drawNodeOutline(parent, parentDrawX, parentDrawY);
       }
     });
   }
@@ -984,13 +999,14 @@ export class PreviewUIRuntime {
     if (!node || node.visible === visible) return;
 
     if (!visible) {
+      const subtreeRect = this.currentSubtreePaintRect(node);
       this.clearCurrentSubtreePaint(node);
       for (let i = Math.min(node.subtreeEnd, this.nodes.length) - 1; i >= nodeIndex; i--) {
         const child = this.nodes[i];
         if (!child || !this.isActiveNode(child)) continue;
         child.dirty = false;
       }
-      this.markOverlappingHigherLayersDirty(nodeIndex);
+      if (subtreeRect) this.markOverlappingHigherLayersDirtyForRect(nodeIndex, subtreeRect);
       node.visible = false;
       return;
     }
@@ -1070,7 +1086,7 @@ export class PreviewUIRuntime {
       if (!this.isActiveNode(node)) continue;
       if (!node.scrollable || !this.isEffectivelyVisible(node) || node.contentHeight <= node.box.h) continue;
       if (node.dirty) {
-        this.markScrollDescendantsDirty(node.index);
+        this.markScrollDescendantsDirtyLocal(node.index);
         for (let i = node.index; i < node.subtreeEnd; i++) {
       if (this.nodes[i]?.kind === "progress") this.nodes[i].lastTextWidth = -1;
       else if (this.nodes[i]?.kind === "range") this.nodes[i].lastTextWidth = -1;
@@ -1357,22 +1373,35 @@ export class PreviewUIRuntime {
     this.gfx.drawPixel(x + w - 1, y + h - r - 1, color);
   }
 
-  private drawNodeBorder(node: MutableNode, drawY: number, color: number): void {
-    this.drawRectOutline(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, node.borderStyle, node.borderWidth, color);
+  private drawNodeBorder(node: MutableNode, drawX: number, drawY: number, color: number): void {
+    this.drawRectOutline(drawX, drawY, node.box.w, node.box.h, node.borderRadius, node.borderStyle, node.borderWidth, color);
   }
 
-  private drawNodeOutline(node: MutableNode, drawY: number): void {
+  private drawNodeOutline(node: MutableNode, drawX: number, drawY: number): void {
     if (!node.outlineStyle || !node.outlineWidth) return;
     const w = node.outlineWidth;
-    this.drawRectOutline(node.box.x - w, drawY - w, node.box.w + 2 * w, node.box.h + 2 * w, node.borderRadius + w, node.outlineStyle, w, node.outlineColor);
+    this.drawRectOutline(drawX - w, drawY - w, node.box.w + 2 * w, node.box.h + 2 * w, node.borderRadius + w, node.outlineStyle, w, node.outlineColor);
+  }
+
+  // Set dirty=true across a scroll subtree WITHOUT the per-child O(n) overlap
+  // repair. During scroll the subtree repaints into a freshly-cleared canvas, so
+  // intra-subtree repair is pointless, and scroll children are draw-clipped to
+  // the container's viewport box — so a single overlap check at the container
+  // (done by markScrollDescendantsDirty) covers all external higher-z neighbors.
+  private markScrollDescendantsDirtyLocal(nodeIndex: number): void {
+    const node = this.nodes[nodeIndex];
+    for (let i = nodeIndex + 1; i < node.subtreeEnd; i++) {
+      if (this.nodes[i]) this.nodes[i].dirty = true;
+    }
+    this.nodes[nodeIndex].dirty = true;
   }
 
   private markScrollDescendantsDirty(nodeIndex: number): void {
-    const node = this.nodes[nodeIndex];
-    for (let i = nodeIndex + 1; i < node.subtreeEnd; i++) {
-      if (this.nodes[i]) this.markDirty(i);
-    }
-    this.markDirty(nodeIndex);
+    this.markScrollDescendantsDirtyLocal(nodeIndex);
+    // Single overlap check at the container covers every external higher-z
+    // neighbor of the viewport (children are clipped to this box). Drops scroll
+    // marking from O(K·n) to O(K + n).
+    this.markOverlappingHigherLayersDirty(nodeIndex);
   }
 
   private drawDirty(): boolean {
@@ -1487,7 +1516,7 @@ export class PreviewUIRuntime {
           const outlineSize = this.rotatedFaceSize(node, node.box.w, node.box.h);
           this.drawRectOutline(node.box.x - w, drawY - w, outlineSize.w + 2 * w, outlineSize.h + 2 * w, node.borderRadius + w, node.outlineStyle, w, node.outlineColor);
         } else {
-          this.drawNodeOutline(node, drawY);
+          this.drawNodeOutline(node, node.box.x, drawY);
         }
       });
       changed = true;
@@ -1594,7 +1623,7 @@ export class PreviewUIRuntime {
     if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, node.bg);
     else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
     this.drawNodeShadow(node, drawY, true);
-    if (node.borderStyle) this.drawNodeBorder(node, drawY, bColor);
+    if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
     const layout = this.textLayout(node, displayText, node.box.w, ts);
     const top = drawY + Math.trunc((node.box.h - layout.height) / 2);
     this.drawTextLines(node, displayText, node.box.x, top, node.box.w, ts, node.fg, node.hasBg ? node.bg : node.clearColor, 1);
@@ -1971,6 +2000,12 @@ export class PreviewUIRuntime {
       if (this.nodes[node].kind === "button") this.setPressed(node, false);
       this.markDirty(node);
     }
+    // Resume any `await ui.onTap()` awaiter. Runs for EVERY completed tap —
+    // including empty-space taps (node == -1) and holds released above — so
+    // "wake on any touch" works. After the click/release dispatch so onClick
+    // fires first (matches the device runtime, "both fire").
+    this.tapSeq++;
+    this.tapNode = node;
     this.touchState = 0;
     this.touchNode = -1;
     this.isDragging = false;

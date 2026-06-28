@@ -51,7 +51,7 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
       const tProfile = getDisplayProfile();
       if (tProfile.touch) {
         uiInterruptStmts.push(
-          { kind: "call" as const, callee: `__RAW_STMT____tc_touch.begin();`, args: [],
+          { kind: "call" as const, callee: `__RAW_STMT__touch_init();`, args: [],
             sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
         );
       }

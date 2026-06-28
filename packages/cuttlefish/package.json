@@ -61,6 +61,10 @@
       "types": "./dist/ui/text-layout.d.ts",
       "default": "./dist/ui/text-layout.js"
     },
+    "./ui/keyframes": {
+      "types": "./dist/ui/keyframes.d.ts",
+      "default": "./dist/ui/keyframes.js"
+    },
     "./ui/block-layout": {
       "types": "./dist/ui/block-layout.d.ts",
       "default": "./dist/ui/block-layout.js"

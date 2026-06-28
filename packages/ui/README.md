@@ -1081,6 +1081,49 @@ The touch system implements a state machine:
 
 Hit-testing walks nodes topmost-first and skips containers without click handlers.
 
+### Awaitable tap notifications (`ui.onTap`)
+
+`ui.onTap()` is an **awaitable** tap signal — use it inside an `async` function
+to suspend until the next tap. It's the building block for display-sleep /
+screensaver behavior and custom flow control ("tap to continue"):
+
+```typescript
+// Display-sleep: wake on ANY touch, dim again after 10s of inactivity.
+async function screensaver() {
+  while (true) {
+    backlightOff();
+    await ui.onTap();        // resume on the next tap, anywhere on the screen
+    backlightOn();
+    await delay(10000);      // keep the display awake for 10 seconds
+  }
+}
+```
+
+With no argument it resumes on the next tap **anywhere** — including empty
+space, which is what makes "wake on any touch" work even when the finger lands
+on no element. Pass an element to resume only when that element is tapped:
+
+```typescript
+// Tap-to-continue wizard: wait for the Start button specifically.
+async function setupWizard() {
+  await ui.onTap(screen.start);
+  beginSetup();
+}
+```
+
+A tap fires **both** the tapped element's `onClick` handler **and** resumes any
+`await ui.onTap()` awaiter — they don't compete. `ui.onTap()` is a resume signal,
+not a value: there is nothing to read from it (it returns `Promise<void>`).
+
+| Call | Resumes on |
+|---|---|
+| `await ui.onTap()` | the next tap anywhere (including empty space) |
+| `await ui.onTap(screen.elem)` | the next tap on that specific element |
+
+Under the hood this lowers to a cooperative state-machine state that polls a
+tap counter incremented by the touch driver each frame — no ISRs, natural
+debounce from the ~16ms tick, same model as `await delay()`.
+
 ### Custom touch adapters
 
 For libraries not in the built-in list, write a TypeScript adapter:

@@ -141,13 +141,8 @@ export interface TouchAdapterCodegen {
   includes: string[];
   /** C++ declaration(s) for the touch object (file scope). */
   declaration: string;
-  /** C++ init call(s) for setup(). */
-  init: string;
-  /** C++ statement(s) to read a point into __tp (a TS_Point/local var).
-   *  Must assign __tp.x, __tp.y, __tp.z. Called once per poll — NOT three times. */
-  readPointStmt: string;
-  /** C++ expression: true if currently touched. */
-  isTouchedExpr: string;
+  /** C++ static inline shim functions: touch_init, touch_isTouched, touch_readRaw. */
+  functions: string;
 }
 
 /** Generate C++ code for a built-in touch library adapter. */
@@ -159,9 +154,16 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
     return {
       includes: ["#include <XPT2046_Touchscreen.h>"],
       declaration: `XPT2046_Touchscreen __tc_touch(${cs}${irq ? `, ${irq}` : ""});`,
-      init: `__tc_touch.begin();`,
-      isTouchedExpr: `__tc_touch.touched()`,
-      readPointStmt: `TS_Point __tp = __tc_touch.getPoint();`,
+      functions: [
+        `static inline void touch_init() { __tc_touch.begin(); }`,
+        `static inline bool touch_isTouched() { return __tc_touch.touched(); }`,
+        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
+        `  TS_Point __tp = __tc_touch.getPoint();`,
+        `  if (x) *x = (int16_t)__tp.x;`,
+        `  if (y) *y = (int16_t)__tp.y;`,
+        `  if (z) *z = (int16_t)__tp.z;`,
+        `}`,
+      ].join("\n"),
     };
   }
 
@@ -170,9 +172,16 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
     return {
       includes: ["#include <TouchScreen.h>"],
       declaration: `TouchScreen __tc_touch = TouchScreen(${a.xp}, ${a.yp}, ${a.xm}, ${a.ym}, ${a.rx});`,
-      init: `// Adafruit_TouchScreen needs no begin()`,
-      isTouchedExpr: `__tc_touch.isTouching()`,
-      readPointStmt: `TS_Point __tp = __tc_touch.getPoint();`,
+      functions: [
+        `static inline void touch_init() {}`,
+        `static inline bool touch_isTouched() { return __tc_touch.isTouching(); }`,
+        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
+        `  TS_Point __tp = __tc_touch.getPoint();`,
+        `  if (x) *x = (int16_t)__tp.x;`,
+        `  if (y) *y = (int16_t)__tp.y;`,
+        `  if (z) *z = (int16_t)__tp.z;`,
+        `}`,
+      ].join("\n"),
     };
   }
 
@@ -180,9 +189,16 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
     return {
       includes: ["#include <Adafruit_STMPE610.h>"],
       declaration: `Adafruit_STMPE610 __tc_touch(${cs});`,
-      init: `__tc_touch.begin();`,
-      isTouchedExpr: `__tc_touch.touched() && !__tc_touch.bufferEmpty()`,
-      readPointStmt: `TS_Point __tp = __tc_touch.getPoint();`,
+      functions: [
+        `static inline void touch_init() { __tc_touch.begin(); }`,
+        `static inline bool touch_isTouched() { return __tc_touch.touched() && !__tc_touch.bufferEmpty(); }`,
+        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
+        `  TS_Point __tp = __tc_touch.getPoint();`,
+        `  if (x) *x = (int16_t)__tp.x;`,
+        `  if (y) *y = (int16_t)__tp.y;`,
+        `  if (z) *z = (int16_t)__tp.z;`,
+        `}`,
+      ].join("\n"),
     };
   }
 

@@ -586,6 +586,81 @@ describe("PreviewUIRuntime", () => {
     }
   });
 
+  it("repairs higher z-index layers after hiding an overflowing visible subtree", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 20,
+        height: 10,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 5, box: { x: 0, y: 0, w: 20, h: 10 } }),
+          makeNode({ index: 1, id: "flag", tag: "view", box: { x: 0, y: 0, w: 1, h: 1 }, parentIndex: 0 }),
+          makeNode({
+            index: 2,
+            id: "branch",
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 4, h: 4 },
+            hasBg: true,
+            bg: 0xf800,
+            parentIndex: 0,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 3,
+            tag: "view",
+            kind: "fill",
+            box: { x: 8, y: 0, w: 8, h: 8 },
+            hasBg: true,
+            bg: 0x07e0,
+            parentIndex: 2,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 4,
+            id: "overlay",
+            tag: "view",
+            kind: "fill",
+            box: { x: 10, y: 2, w: 5, h: 5 },
+            hasBg: true,
+            bg: 0x001f,
+            parentIndex: 0,
+            subtreeEnd: 5,
+            zIndex: 10,
+          }),
+        ],
+        transitions: [],
+      },
+      font: [],
+      bindings: [
+        { nodeId: "branch", nodeIndex: 2, property: "visible", expression: "screen.flag.value === 0" },
+      ],
+      listBindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 20 + x];
+    runtime.start();
+    try {
+      expect(px(11, 3)).toBe(0x001f);
+
+      runtime.screen.flag.value = 1;
+      runtime.tick(16);
+
+      expect(px(11, 3)).toBe(0x001f);
+      expect(px(8, 1)).toBe(0x0000);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   it("renders antialiased text with blended edge pixels", () => {
     const runtime = new PreviewUIRuntime({
       projectRoot: "",

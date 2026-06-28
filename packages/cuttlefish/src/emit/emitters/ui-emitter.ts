@@ -65,6 +65,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
         ctx.sourceLines.push(touchAdapter.includes[i]);
       }
       ctx.sourceLines.push(touchAdapter.declaration);
+      ctx.sourceLines.push(touchAdapter.functions);
     }
   }
 
@@ -94,20 +95,21 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     let mapX, mapY;
     if (isLandscape) {
       mapX = invertX
-        ? `map(__tp.x, ${xMin}, ${xMax}, ${profile.width}, 0)`
-        : `map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.width})`;
+        ? `map(__rawX, ${xMin}, ${xMax}, ${profile.width}, 0)`
+        : `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.width})`;
       mapY = invertY
-        ? `map(__tp.y, ${yMin}, ${yMax}, ${profile.height}, 0)`
-        : `map(__tp.y, ${yMin}, ${yMax}, 0, ${profile.height})`;
+        ? `map(__rawY, ${yMin}, ${yMax}, ${profile.height}, 0)`
+        : `map(__rawY, ${yMin}, ${yMax}, 0, ${profile.height})`;
     } else {
-      mapX = `map(__tp.y, ${yMin}, ${yMax}, ${profile.width}, 0)`;
-      mapY = `map(__tp.x, ${xMin}, ${xMax}, 0, ${profile.height})`;
+      mapX = `map(__rawY, ${yMin}, ${yMax}, ${profile.width}, 0)`;
+      mapY = `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.height})`;
     }
     const pollLines = [
       `void ui_poll_touch() {`,
-      `  if (${touchAdapter.isTouchedExpr}) {`,
-      `    ${touchAdapter.readPointStmt}`,
-      `    if (__tp.z >= ${minPress}) {`,
+      `  if (touch_isTouched()) {`,
+      `    int16_t __rawX = 0, __rawY = 0, __rawZ = 0;`,
+      `    touch_readRaw(&__rawX, &__rawY, &__rawZ);`,
+      `    if (__rawZ >= ${minPress}) {`,
       `      int16_t __tx = ${mapX};`,
       `      int16_t __ty = ${mapY};`,
       `      ui_handle_touch(__tx, __ty);`,
