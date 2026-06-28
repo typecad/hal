@@ -80,6 +80,29 @@ export interface InputElement extends UIElement {
   onChange(callback?: () => void): void;
 }
 
+/** Drawing context handed to a ui.drawCanvas callback. Each method maps to a
+ *  display graphics primitive; coordinates are canvas-relative ((0,0) = element
+ *  top-left) and drawing is auto-clipped to the buffer. Color args are CSS color
+ *  strings resolved to RGB565 at transpile time. */
+export interface CanvasCtx {
+  /** Read-only canvas buffer dimensions (px). */
+  readonly width: number;
+  readonly height: number;
+  drawPixel(x: number, y: number, color: string): void;
+  fillRect(x: number, y: number, w: number, h: number, color: string): void;
+  rect(x: number, y: number, w: number, h: number, color: string): void;
+  fillRoundRect(x: number, y: number, w: number, h: number, r: number, color: string): void;
+  roundRect(x: number, y: number, w: number, h: number, r: number, color: string): void;
+  line(x0: number, y0: number, x1: number, y1: number, color: string): void;
+  hline(x: number, y: number, w: number, color: string): void;
+  vline(x: number, y: number, h: number, color: string): void;
+  fillCircle(x: number, y: number, r: number, color: string): void;
+  circle(x: number, y: number, r: number, color: string): void;
+  rgbBitmap(x: number, y: number, data: number[], w: number, h: number): void;
+  text(x: number, y: number, str: string, color?: string): void;
+  fillScreen(color: string): void;
+}
+
 /** A user-drawn canvas. Contents are drawn by a ui.drawCanvas callback each
  *  frame using the display shim primitives (fillRect, line, circle, text, ...).
  *  Coordinates are canvas-relative ((0,0) = top-left); drawing is auto-clipped. */

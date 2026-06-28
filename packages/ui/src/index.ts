@@ -7,8 +7,8 @@
 // C++; their bodies exist only so TypeScript authoring type-checks.
 // ---------------------------------------------------------------------------
 
-export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement, CanvasElement } from "./types.js";
-import type { ScreenTree } from "./types.js";
+export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement, CanvasElement, CanvasCtx } from "./types.js";
+import type { ScreenTree, CanvasCtx } from "./types.js";
 
 /** A reactive signal whose value lives on the device. */
 export interface Signal<T> {
@@ -123,7 +123,7 @@ export declare function onTap(node?: unknown): Promise<void>;
  * Color arguments are CSS color strings resolved to RGB565 at transpile time.
  * `ctx.width` / `ctx.height` are the canvas buffer dimensions.
  */
-export declare function drawCanvas(node: unknown, callback: (ctx: unknown) => void): void;
+export declare function drawCanvas(node: unknown, callback: (ctx: CanvasCtx) => void): void;
 
 export const ui = { mount, signal, bind, watchPin, bindList, onTap, drawCanvas };
 export default ui;
