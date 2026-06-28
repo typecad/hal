@@ -16,6 +16,7 @@
       <nav id="navLinks">
         <a href="#controls">Controls ></a>
         <a href="#transforms">Transforms ></a>
+        <a href="#canvas">Canvas ></a>
         <a href="#layout">Layout ></a>
         <a href="#settings">Settings ></a>
         <a href="#about">About ></a>
@@ -92,6 +93,26 @@
         <div id="rotateTrack">
           <div id="rotateFill"></div>
         </div>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Canvas (user-drawn graphics) ─────────────────────────────────────── -->
+<screen id="canvas">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Canvas</h2>
+    </header>
+    <main class="body">
+      <section id="canvasDemo">
+        <h3 id="canvasDemoLabel">User-drawn graphics</h3>
+        <span id="sparkLabel">Live sparkline</span>
+        <canvas id="spark" width="280" height="60"></canvas>
+        <span id="gaugeLabel">Analog gauge</span>
+        <canvas id="gauge" width="120" height="120"></canvas>
+        <span id="canvasHint">ui.drawCanvas — pixels from your code</span>
       </section>
     </main>
   </body>

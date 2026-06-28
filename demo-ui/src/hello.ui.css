@@ -645,3 +645,45 @@ screen {
 .ui-keyboard {
   background: #0a0a1a;
 }
+
+/* ── Canvas demo ──────────────────────────────────────────────────────── */
+#canvasDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+#canvasDemoLabel {
+  color: lightslategray;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+#sparkLabel,
+#gaugeLabel,
+#canvasHint {
+  color: lightslategray;
+  font-size: 14px;
+}
+
+/* Layout box matches the drawing buffer (width/height attrs) so nothing clips. */
+#spark {
+  width: 280px;
+  height: 60px;
+  border: 1px solid #2a2a4a;
+  border-radius: 3px;
+}
+
+#gauge {
+  width: 120px;
+  height: 120px;
+  border: 1px solid #2a2a4a;
+  border-radius: 3px;
+}
+
+#canvasHint {
+  color: dodgerblue;
+  font-size: 12px;
+  margin-top: 6px;
+}
