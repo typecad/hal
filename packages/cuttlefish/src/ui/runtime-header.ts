@@ -1583,9 +1583,19 @@ static inline void ui_init(void) {
       __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
     }
   }
-  // Seed virtualized-list runtime state. The fn pointers live on each node
-  // (set by the static initializer); here we just compute the initial count and
-  // contentHeight so the first paint and the scroll clamp bound are correct.
+  // Seed virtualized-list runtime state. The fn pointers can't be baked into
+  // the static node initializer: ui.bindList is resolved AFTER ui.mount lowers
+  // the HTML, so the lowering can't see the binding yet. Instead the lowering
+  // emits the UIListBinding table (the binding's fn bodies) and ui_init copies
+  // the pointers onto each <list> node here, then computes the initial count
+  // and contentHeight so the first paint and the scroll clamp bound are correct.
+  for (uint8_t b = 0; b < __ui_list_binding_count; b++) {
+    uint8_t n = __ui_list_bindings[b].node;
+    if (n >= __ui_node_count || !__ui_nodes[n].virtualized) continue;
+    __ui_nodes[n].listCountFn = __ui_list_bindings[b].countFn;
+    __ui_nodes[n].listItemFn = __ui_list_bindings[b].itemFn;
+    __ui_nodes[n].listTapFn = __ui_list_bindings[b].tapFn;
+  }
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].virtualized || !__ui_nodes[i].listCountFn) continue;
     uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
