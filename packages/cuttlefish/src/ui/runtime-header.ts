@@ -431,23 +431,33 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
   }
   uint16_t* pixels = display_canvasBuffer(canvas);
   int16_t stride = display_canvasWidth(canvas);
-  if (deltaY > 0) {  // content moves down: rows shift toward higher indices
-    for (int16_t row = h - shift - 1; row >= 0; row--) {
-      memmove(pixels + (int32_t)(row + shift) * stride,
-              pixels + (int32_t)row * stride,
-              (size_t)w * sizeof(uint16_t));
-    }
-    if (exposedY) *exposedY = 0;
-  } else {           // content moves up: rows shift toward lower indices
+  // Reserve the rightmost 4px gutter so the memmove never smears scrollbar
+  // pixels; the gutter is repainted separately by ui_draw_scrollbar.
+  int16_t contentW = w > 4 ? w - 4 : w;
+  // deltaY > 0: scrollY increased → finger moved up → content moves up.
+  // Cached rows shift toward LOWER indices; the exposed band is at the BOTTOM.
+  // deltaY < 0: content moves down → rows shift toward higher indices; exposed
+  // band at the TOP. (Matches the proven pre-rewrite direction.)
+  if (deltaY > 0) {
     for (int16_t row = 0; row < h - shift; row++) {
       memmove(pixels + (int32_t)row * stride,
               pixels + (int32_t)(row + shift) * stride,
-              (size_t)w * sizeof(uint16_t));
+              (size_t)contentW * sizeof(uint16_t));
     }
     if (exposedY) *exposedY = h - shift;
+  } else {
+    for (int16_t row = h - shift - 1; row >= 0; row--) {
+      memmove(pixels + (int32_t)(row + shift) * stride,
+              pixels + (int32_t)row * stride,
+              (size_t)contentW * sizeof(uint16_t));
+    }
+    if (exposedY) *exposedY = 0;
   }
-  int16_t fillY = deltaY > 0 ? 0 : h - shift;
-  display_canvasFillRect(canvas, 0, fillY, w, shift, bg);
+  int16_t fillY = deltaY > 0 ? h - shift : 0;
+  display_canvasFillRect(canvas, 0, fillY, contentW, shift, bg);
+  if (w > contentW) {
+    display_canvasFillRect(canvas, contentW, 0, w - contentW, h, bg);
+  }
   if (exposedH) *exposedH = shift;
 }
 
