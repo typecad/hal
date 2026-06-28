@@ -54,6 +54,10 @@ export interface UIElementNode {
   imgHeight?: number;
   /** Item height in pixels (for <list item-height="24">). */
   itemHeight?: number;
+  /** Canvas buffer width in pixels (for <canvas>). */
+  canvasW?: number;
+  /** Canvas buffer height in pixels (for <canvas>). */
+  canvasH?: number;
   
   /** Disabled state */
   disabled?: boolean;
@@ -89,7 +93,7 @@ export interface ParsedHtml {
   keyboards: KeyboardTemplate[];
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list", "br"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list", "canvas", "br"]);
 
 /** HTML tag aliases — common HTML elements remapped to internal primitives.
  *  Semantic block containers -> view; inline/heading text tags -> text.
@@ -239,6 +243,8 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   const imgWidthAttr = tag === "img" ? parseInt(el.getAttribute("width") || "0", 10) : undefined;
   const imgHeightAttr = tag === "img" ? parseInt(el.getAttribute("height") || "0", 10) : undefined;
   const itemHeightAttr = tag === "list" ? (parseInt(el.getAttribute("item-height") || "24", 10) || 24) : undefined;
+  const canvasWAttr = tag === "canvas" ? (parseInt(el.getAttribute("width") || "0", 10) || 0) : undefined;
+  const canvasHAttr = tag === "canvas" ? (parseInt(el.getAttribute("height") || "0", 10) || 0) : undefined;
   const disabledAttr = el.hasAttribute("disabled");
 
   // For <select>, parse <option> children into an options list
@@ -306,7 +312,7 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   }
 
   const remappedFrom = (remapped || tag === "label" || tag === "a") && tag !== effectiveTag ? tag : undefined;
-  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, disabled: disabledAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, children: [] };
   for (const child of childElements) {
     node.children.push(domToUIElementNode(child, diagnostics));
   }

@@ -163,3 +163,32 @@ describe("HTML subset parser", () => {
     expect(tree.children[0].tag).toBe("view");
   });
 });
+
+describe("canvas element parsing", () => {
+  it("parses <canvas> with width/height into a canvas node", () => {
+    const tree = parseHtml(`<screen><canvas id="spark" width="120" height="40"></canvas></screen>`);
+    const find = (n: any): any => {
+      if (n.tag === "canvas") return n;
+      for (const c of n.children ?? []) { const r = find(c); if (r) return r; }
+      return null;
+    };
+    const canvas = find(tree);
+    expect(canvas).not.toBeNull();
+    expect(canvas.tag).toBe("canvas");
+    expect(canvas.id).toBe("spark");
+    expect(canvas.canvasW).toBe(120);
+    expect(canvas.canvasH).toBe(40);
+  });
+
+  it("defaults canvas width/height to 0 when absent", () => {
+    const tree = parseHtml(`<screen><canvas id="c"></canvas></screen>`);
+    const find = (n: any): any => {
+      if (n.tag === "canvas") return n;
+      for (const c of n.children ?? []) { const r = find(c); if (r) return r; }
+      return null;
+    };
+    const canvas = find(tree);
+    expect(canvas.canvasW).toBe(0);
+    expect(canvas.canvasH).toBe(0);
+  });
+});
