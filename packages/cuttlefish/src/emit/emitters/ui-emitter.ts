@@ -19,6 +19,7 @@ import { emitRuntimeHeader } from "../../ui/runtime-header.js";
 import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
 import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandlers } from "../../ir/transformers/ui-call-resolver.js";
 import { emitBindingTable, emitListBindings, getListBindings, emitInputBindings, getInputBindings } from "../../ir/transformers/ui-reactive.js";
+import { emitCanvasBindings, canvasBindings } from "../../ir/transformers/canvas-lowering.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { generateTouchAdapter, TouchAdapterCodegen } from "../../api/shared/display-profile.js";
 import { generateDisplayAdapter } from "../../api/shared/display-adapter.js";
@@ -310,6 +311,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(`UIRadioGroup __ui_radio_groups[] = {};`);
     ctx.sourceLines.push(`const uint8_t __ui_radio_group_count = 0;`);
   }
+
+  // 10. Canvas draw bindings (ui.drawCanvas). Each spec emits a draw wrapper
+  // that runs the lowered callback body against the node's offscreen canvas.
+  ctx.sourceLines.push(emitCanvasBindings(canvasBindings()));
 }
 
 /** Count NODE_FILL/NODE_TEXT entries in the emitted node table (one per node). */
