@@ -45,10 +45,9 @@ export interface ScreenTree {
   canvas: ViewElement;
   canvasDemo: ViewElement;
   canvasDemoLabel: TextElement;
-  sparkLabel: TextElement;
-  spark: CanvasElement;
   gaugeLabel: TextElement;
   gauge: CanvasElement;
+  gaugeTip: TextElement;
   canvasHint: TextElement;
   layout: ViewElement;
   textLayoutDemo: ViewElement;

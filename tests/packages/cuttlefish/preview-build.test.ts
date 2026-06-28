@@ -65,12 +65,9 @@ describe("preview snapshot builder", () => {
     // Two intervals: the progress-bar animator + the canvas-demo driver.
     expect(snapshot.intervals).toHaveLength(2);
     expect(snapshot.font).toHaveLength(1280);
-    // Canvas demo: the sparkline + gauge canvases each get a draw binding.
-    const spark = snapshot.program.nodes.find((node) => node.id === "spark" && node.kind === "canvas");
+    // Canvas demo: the hemisphere gauge canvas gets a draw binding.
     const gauge = snapshot.program.nodes.find((node) => node.id === "gauge" && node.kind === "canvas");
-    expect(spark).toMatchObject({ kind: "canvas", canvasW: 280, canvasH: 60 });
-    expect(gauge).toMatchObject({ kind: "canvas", canvasW: 120, canvasH: 120 });
-    expect(snapshot.canvasBindings.some((b) => b.nodeId === "spark")).toBe(true);
+    expect(gauge).toMatchObject({ kind: "canvas", canvasW: 160, canvasH: 100 });
     expect(snapshot.canvasBindings.some((b) => b.nodeId === "gauge")).toBe(true);
   });
 });

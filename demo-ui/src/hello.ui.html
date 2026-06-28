@@ -108,11 +108,12 @@
     <main class="body">
       <section id="canvasDemo">
         <h3 id="canvasDemoLabel">User-drawn graphics</h3>
-        <span id="sparkLabel">Live sparkline</span>
-        <canvas id="spark" width="280" height="60"></canvas>
-        <span id="gaugeLabel">Analog gauge</span>
-        <canvas id="gauge" width="120" height="120"></canvas>
-        <span id="canvasHint">ui.drawCanvas — pixels from your code</span>
+        <span id="gaugeLabel">Hemisphere gauge</span>
+        <canvas id="gauge" width="160" height="100"></canvas>
+        <!-- Hidden helper node: holds the needle tip's Y so the draw callback
+             can read both tip coordinates as runtime node state. -->
+        <text id="gaugeTip" hidden>0</text>
+        <span id="canvasHint">drawn with ui.drawCanvas</span>
       </section>
     </main>
   </body>

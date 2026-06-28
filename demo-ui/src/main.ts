@@ -67,41 +67,40 @@ ui.bindList(screen.deviceList,
 // Coordinates are canvas-relative ((0,0) = element top-left); colors are CSS
 // strings resolved to RGB565 at build time.
 //
-// Live state is stored on the canvas elements' own .value (read inside the
-// callback as runtime node state, the same pattern onClick handlers use), so
-// the draw callbacks don't reference author variables directly.
+// Hemisphere gauge: a needle pivoting at the bottom-center sweeps from left to
+// right across the dome. The needle is a CONSTANT-LENGTH line — it rotates, it
+// does not stretch — so both tip coordinates are needed. The draw callback is a
+// flat sequence of ctx calls (no trig, no locals), so the tip point is computed
+// in the setInterval with real Math.sin/cos and stored as runtime node state:
+//   screen.gauge.value     = tip X
+//   screen.gaugeTip.value  = tip Y
+// The callback reads both and draws the needle between the pivot and the tip.
 
-// A bouncing bar: .value holds the current X position (0..250).
-screen.spark.value = 0;
-ui.drawCanvas(screen.spark, (ctx) => {
-  ctx.fillScreen('#0a0a1a');
-  // Baseline.
-  ctx.line(0, ctx.height - 4, ctx.width, ctx.height - 4, '#2a2a4a');
-  // A vertical bar whose X comes from the canvas node's own .value.
-  ctx.fillRect(screen.spark.value, 4, 20, ctx.height - 12, '#00e0ff');
-});
+// Hemisphere gauge: the dome is the TOP HALF of a circle whose center sits on
+// the bottom edge of the 160×100 canvas (y=100). The bottom half is outside the
+// buffer, so it is naturally clipped — no manual cropping, no wraparound.
+// Needle pivot is that same bottom-center point; length 78 sweeps the dome.
+let gaugeAngle = 180;        // degrees, sweeps 180 (left) → 270 (up) → 360 (right)
 
-// Analog gauge: .value holds the needle height (0..40).
-screen.gauge.value = 0;
 ui.drawCanvas(screen.gauge, (ctx) => {
   ctx.fillScreen('#0a0a1a');
-  // Dial rim + face, centered (canvas is 120×120 → center 60,60).
-  ctx.circle(60, 60, 50, '#2a4a6a');
-  ctx.fillCircle(60, 60, 48, '#101030');
-  // Needle: from center up to (60, 60 - .value). As .value grows 0..40 the
-  // needle rises from center toward the top of the dial.
-  ctx.line(60, 60, 60, 60 - screen.gauge.value, '#ff5577');
+  // Dome: full circle centered on the bottom edge → only the top half shows.
+  ctx.fillCircle(80, 100, 80, '#101030');
+  ctx.circle(80, 100, 80, '#2a4a6a');
+  // Flat base line across the bottom (the hemisphere's diameter).
+  ctx.line(0, 99, 160, 99, '#2a4a6a');
+  // Needle: constant-length line from the pivot (80,100) to the tip (.value).
+  ctx.line(80, 100, screen.gauge.value, screen.gaugeTip.value, '#ff5577');
   // Hub over the pivot.
-  ctx.fillCircle(60, 60, 4, '#ff5577');
+  ctx.fillCircle(80, 100, 4, '#ff5577');
 });
 
-// Drive both canvases by writing their .value. The draw callbacks re-read it.
-let sparkDir = 1;
+// Drive the needle: advance the angle, compute the tip on the circle, write
+// both coordinates into node .value for the draw callback to read next frame.
 setInterval(() => {
-  // Bounce the bar back and forth across the 280px width.
-  screen.spark.value = screen.spark.value + sparkDir * 4;
-  if (screen.spark.value > 250) { screen.spark.value = 250; sparkDir = -1; }
-  if (screen.spark.value < 0) { screen.spark.value = 0; sparkDir = 1; }
-  // Sweep the gauge needle 0..40.
-  screen.gauge.value = (screen.gauge.value + 2) % 41;
-}, 120);
+  gaugeAngle = gaugeAngle + 3;
+  if (gaugeAngle > 360) gaugeAngle = 180;
+  const rad = gaugeAngle * 3.14 / 180;
+  screen.gauge.value = 80 + Math.round(78 * Math.cos(rad));
+  screen.gaugeTip.value = 100 + Math.round(78 * Math.sin(rad));
+}, 60);
