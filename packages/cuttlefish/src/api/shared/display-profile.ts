@@ -56,6 +56,9 @@ export interface DisplayProfile {
    *  unless a node opts out with font-smoothing:none.
    *  Renders AA work to offscreen GFXcanvas16 buffers, blends edges, then draws. */
   antialias?: boolean;
+  /** Scroll engine capability + physics tunables. Defaults are derived from the
+   *  declared touch hardware when omitted (see resolveScrollConfig). */
+  scroll?: ScrollConfig;
 }
 
 export interface DisplayConfig {
@@ -81,6 +84,91 @@ export interface DisplayConfig {
    *  var() substitution prefers variables defined under `.dark { ... }` over
    *  :root. One theme per build (transpile-time selection). */
   themeClass?: string;
+  /** Scroll engine capability + physics tunables. Defaults are derived from the
+   *  declared touch hardware when omitted (see resolveScrollConfig). */
+  scroll?: ScrollConfig;
+}
+
+// ---------------------------------------------------------------------------
+// Scroll engine config — capability tiers + physics tunables.
+//
+// All optional on the author side; resolveScrollConfig() fills defaults from
+// the declared touch hardware (resistive chip → resistive input tier; ESP32-class
+// SRAM → full render tier). Spec: docs/superpowers/specs/2026-06-28-scroll-engine-rewrite-design.md
+// ---------------------------------------------------------------------------
+
+/** Input-quality axis: how raw touch becomes a smoothed scroll delta. */
+export type ScrollInputTier = "capacitive" | "resistive" | "none";
+
+/** Frame/refresh-budget axis: whether per-frame canvas repaint (incl. the
+ *  rubber-band animation) is affordable. Constrained tiers get a cheaper path. */
+export type ScrollRenderTier = "full" | "constrained";
+
+/** Author-facing scroll config (all optional; defaults derived from hardware). */
+export interface ScrollConfig {
+  inputTier?: ScrollInputTier;
+  renderTier?: ScrollRenderTier;
+  /** Ceiling on rubber-band excursion past a boundary, in px. Default 40. */
+  maxOverscroll?: number;
+  /** Rubber-band resistance curve (higher = stiffer, less stretch). Default 0.5. */
+  stiffness?: number;
+  /** Radius within which release snaps to a boundary for free, in px. Default 12. */
+  edgeSnapPx?: number;
+  /** Low-pass coefficient for the resistive input filter (0 = passthrough).
+   *  Capacitive/preview always passthrough regardless. Default 0.3. */
+  inputSmoothing?: number;
+  /** default true: trust the declared tiers (deterministic). When false, runtime
+   *  probes may refine the input smoothing level from observed sample quality. */
+  overrideProbes?: boolean;
+}
+
+/** Fully-resolved scroll config — every field populated, ready for emit. */
+export interface ResolvedScrollConfig {
+  inputTier: ScrollInputTier;
+  renderTier: ScrollRenderTier;
+  maxOverscroll: number;
+  stiffness: number;
+  edgeSnapPx: number;
+  inputSmoothing: number;
+  overrideProbes: boolean;
+}
+
+/** Touch libraries treated as resistive (noisy, low-sample-rate) panels. */
+const RESISTIVE_TOUCH_LIBS: ReadonlySet<string> = new Set([
+  "XPT2046_Touchscreen",
+  "Adafruit_TouchScreen",
+]);
+
+/**
+ * Resolve scroll config from a display profile. Declared overrides win;
+ * otherwise derive the input tier from the touch library (resistive chips →
+ * "resistive", any other touch → "capacitive", no touch → "none") and assume a
+ * full render tier (ESP32-class SRAM can fit a viewport canvas).
+ */
+export function resolveScrollConfig(display: {
+  touch?: TouchProfile | false;
+  scroll?: ScrollConfig;
+}): ResolvedScrollConfig {
+  const s = display.scroll ?? {};
+  const lib =
+    display.touch && typeof display.touch === "object"
+      ? display.touch.library
+      : undefined;
+  const derivedInput: ScrollInputTier =
+    lib && RESISTIVE_TOUCH_LIBS.has(lib)
+      ? "resistive"
+      : display.touch
+        ? "capacitive"
+        : "none";
+  return {
+    inputTier: s.inputTier ?? derivedInput,
+    renderTier: s.renderTier ?? "full",
+    maxOverscroll: s.maxOverscroll ?? 40,
+    stiffness: s.stiffness ?? 0.5,
+    edgeSnapPx: s.edgeSnapPx ?? 12,
+    inputSmoothing: s.inputSmoothing ?? 0.3,
+    overrideProbes: s.overrideProbes ?? true,
+  };
 }
 
 export function resolveDisplayProfile(
@@ -121,6 +209,8 @@ export function resolveDisplayProfile(
   if (config.touch === false) base.touch = undefined;
   else if (config.touch !== undefined) base.touch = config.touch;
   if (config.antialias !== undefined) base.antialias = config.antialias;
+  // Carry scroll config through resolution so it reaches getDisplayProfile().
+  if (config.scroll !== undefined) base.scroll = config.scroll;
 
   return {
     profile: base,

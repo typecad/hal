@@ -21,7 +21,7 @@ import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandler
 import { emitBindingTable, emitListBindings, getListBindings, emitInputBindings, getInputBindings } from "../../ir/transformers/ui-reactive.js";
 import { emitCanvasBindings, canvasBindings } from "../../ir/transformers/canvas-lowering.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
-import { generateTouchAdapter, TouchAdapterCodegen } from "../../api/shared/display-profile.js";
+import { generateTouchAdapter, TouchAdapterCodegen, resolveScrollConfig } from "../../api/shared/display-profile.js";
 import { generateDisplayAdapter } from "../../api/shared/display-adapter.js";
 import { getRadioGroups } from "../../ir/ui-element-auto-wire.js";
 
@@ -83,6 +83,21 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (needsAntialias) {
     ctx.sourceLines.push("#define UI_AA 1");
   }
+  // 1b. Scroll capability + physics overrides — emitted BEFORE the runtime
+  //     header so its #ifndef guards adopt them. Source of truth:
+  //     resolveScrollConfig(profile.scroll). Defaults derive from the declared
+  //     touch hardware, so the demo (XPT2046) gets resistive+full with no config.
+  const scroll = resolveScrollConfig(profile);
+  ctx.sourceLines.push(
+    `#define UI_SCROLL_MAX_OVERSCROLL ${scroll.maxOverscroll}`,
+    `#define UI_SCROLL_STIFFNESS_X10 ${Math.round(scroll.stiffness * 10)}`,
+    `#define UI_SCROLL_EDGE_SNAP_PX ${scroll.edgeSnapPx}`,
+    `#define UI_SCROLL_INPUT_TIER_CAPACITIVE ${scroll.inputTier === "capacitive" ? 1 : 0}`,
+    `#define UI_SCROLL_INPUT_TIER_RESISTIVE ${scroll.inputTier === "resistive" ? 1 : 0}`,
+    `#define UI_SCROLL_INPUT_TIER_NONE ${scroll.inputTier === "none" ? 1 : 0}`,
+    `#define UI_SCROLL_RENDER_TIER_FULL ${scroll.renderTier === "full" ? 1 : 0}`,
+    `#define UI_SCROLL_RENDER_TIER_CONSTRAINED ${scroll.renderTier === "constrained" ? 1 : 0}`,
+  );
   ctx.sourceLines.push(emitRuntimeHeader());
 
   // 1.5. Touch poll function (uses the adapter pattern).
