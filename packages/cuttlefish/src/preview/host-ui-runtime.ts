@@ -23,6 +23,10 @@ const UI_TOUCH_DEBOUNCE_MS = 50;
 const UI_TOUCH_HOLD_MS = 600;
 const UI_DRAG_THRESHOLD = 10;
 const UI_SCROLL_EDGE_SNAP_PX = 12;
+// Scroll physics (preview = capacitive + full-render tier; mirrors the C++ engine).
+const UI_SCROLL_MAX_OVERSCROLL = 40;
+const UI_SCROLL_STIFFNESS = 0.5;
+const UI_SCROLL_SETTLE_MS = 180;
 const UI_KB_REPEAT_MS = 100;
 const UI_KB_TEXT_H = 24;
 const UI_TRANSITION_SNAP_MS = 100;
@@ -62,8 +66,9 @@ interface PreviewKey {
 interface PreviewListState extends PreviewListBindingSpec {
   itemCount: number;
   itemHeight: number;
-  scrollY: number;
   contentHeight: number;
+  // NOTE: scroll no longer lives here — it's on the node (node.scrollY), mirroring
+  // the C++ engine. This object now carries only the binding + computed geometry.
 }
 
 interface RuntimeOptions {
@@ -144,6 +149,9 @@ function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: 
       hasTextBinding: false,
       lastTextWidth: node.kind === "progress" || node.kind === "range" ? -1 : 0,
       lastTextHeight: 0,
+      overscrollPx: 0,
+      settling: false,
+      lastPaintedScrollY: 0,
       lineHeight: node.lineHeight || 0,
       whiteSpaceMode: node.whiteSpaceMode ?? (node.nowrap ? 1 : 0),
       zIndex: node.zIndex ?? 0,
@@ -198,12 +206,12 @@ export class PreviewUIRuntime {
   private lastTouchX = 0;
   private lastTouchY = 0;
   private isDragging = false;
+  // Unified scroll gesture: one owner per gesture (single hit-scan; lists are
+  // scrollable and found by the same scan). Settle-animation state lives here.
   private scrollNode = -1;
-  private scrollSnapTop = false;
-  private scrollStartY = 0;
-  private listNode = -1;
-  private listSnapTop = false;
-  private listStartY = 0;
+  private settleStartMs = 0;
+  private settleFromOverscroll = 0;  // settle start value (bounce-back; +top/-bottom)
+  private settleFromScrollY = 0;     // settle start value (edge snap; +toward 0, -toward max)
   private rangeNode = -1;
   private keyboardVisible = false;
   private keyboardDirty: 0 | 1 | 2 = 0;
@@ -234,7 +242,6 @@ export class PreviewUIRuntime {
       ...binding,
       itemCount: 0,
       itemHeight: 24,
-      scrollY: 0,
       contentHeight: 0,
     }));
     this.callbacks = snapshot.callbacks;
@@ -276,6 +283,10 @@ export class PreviewUIRuntime {
     this.evaluateBindings();
     this.advanceTransitions(delta);
     this.advanceAnimations(delta);
+    // Advance any in-flight scroll settle animation (bounce-back / edge-snap).
+    for (let i = 0; i < this.nodes.length; i++) {
+      if (this.nodes[i].settling) this.advanceScrollSettle(i);
+    }
     if (this.drawDirty()) {
       this.onFrame?.(this.gfx.toRgbaBytes());
     }
@@ -493,16 +504,17 @@ export class PreviewUIRuntime {
     const itemHeight = Math.max(1, Math.trunc(node.listItemHeight || list.itemHeight || 24));
     const contentHeight = itemCount * itemHeight;
     const maxScroll = Math.max(0, contentHeight - node.box.h);
-    const nextScrollY = Math.max(0, Math.min(maxScroll, list.scrollY));
+    // Scroll lives on the node now; keep it clamped as the content size changes.
+    const nextScrollY = Math.max(0, Math.min(maxScroll, node.scrollY));
     const changed = itemCount !== list.itemCount ||
       itemHeight !== list.itemHeight ||
       contentHeight !== list.contentHeight ||
-      nextScrollY !== list.scrollY ||
+      nextScrollY !== node.scrollY ||
       node.contentHeight !== contentHeight;
     list.itemCount = itemCount;
     list.itemHeight = itemHeight;
     list.contentHeight = contentHeight;
-    list.scrollY = nextScrollY;
+    node.scrollY = nextScrollY;
     node.contentHeight = contentHeight;
     if (changed) this.markDirty(list.nodeIndex);
   }
@@ -664,7 +676,13 @@ export class PreviewUIRuntime {
     let y = this.nodes[nodeIndex].box.y + (this.nodes[nodeIndex].transformOffsetY ?? 0);
     let parent = this.nodes[nodeIndex].parentIndex;
     while (parent >= 0 && this.nodes[parent]) {
-      if (this.nodes[parent].scrollable) y -= this.nodes[parent].scrollY;
+      if (this.nodes[parent].scrollable) {
+        y -= this.nodes[parent].scrollY;
+        // Rubber-band: overscrollPx (+top/-bottom) visibly offsets content past
+        // the boundary during drag/settle. Applies to generic containers; lists
+        // virtualize and manage their own offset in drawListNode.
+        if (!this.nodes[parent].virtualized) y += this.nodes[parent].overscrollPx;
+      }
       parent = this.nodes[parent].parentIndex;
     }
     return y;
@@ -1596,10 +1614,13 @@ export class PreviewUIRuntime {
       const itemHeight = list.itemHeight;
       const ts = this.nodeTextSize(node);
       const textH = this.textHeight(ts, node.fontFace);
-      const first = Math.max(0, Math.trunc(list.scrollY / itemHeight));
-      const last = Math.min(list.itemCount - 1, Math.trunc((list.scrollY + node.box.h - 1) / itemHeight) + 1);
+      // Scroll + content size live on the node now (unified with containers).
+      const listScrollY = node.scrollY;
+      const listContentH = node.contentHeight;
+      const first = Math.max(0, Math.trunc(listScrollY / itemHeight));
+      const last = Math.min(list.itemCount - 1, Math.trunc((listScrollY + node.box.h - 1) / itemHeight) + 1);
       for (let row = first; row <= last; row++) {
-        const itemY = drawY + row * itemHeight - list.scrollY;
+        const itemY = drawY + row * itemHeight - listScrollY;
         const text = clampText(this.evaluateExpression(list.itemExpression, this.listLocal(list.itemParam, row)));
         this.drawText(
           text,
@@ -1614,12 +1635,16 @@ export class PreviewUIRuntime {
         );
       }
 
-      if (list.contentHeight > node.box.h) {
+      if (listContentH > node.box.h) {
         const tx = node.box.x + node.box.w - 4;
         const trackColor = (node.fg >> 1) & 0x7bef;
         this.gfx.fillRect(tx, drawY, 3, node.box.h, trackColor);
-        const thumbH = Math.max(8, Math.trunc((node.box.h * node.box.h) / list.contentHeight));
-        const thumbY = drawY + Math.trunc(((node.box.h - thumbH) * list.scrollY) / Math.max(1, list.contentHeight - node.box.h));
+        const thumbH = Math.max(8, Math.trunc((node.box.h * node.box.h) / listContentH));
+        const maxScroll = Math.max(1, listContentH - node.box.h);
+        // Clamp the thumb to the track during overscroll (scrollY stays in range,
+        // but overscrollPx can push the visual; the thumb pins to the ends).
+        const clampedScrollY = Math.max(0, Math.min(listScrollY, listContentH - node.box.h));
+        const thumbY = drawY + Math.trunc(((node.box.h - thumbH) * clampedScrollY) / maxScroll);
         this.gfx.fillRect(tx, thumbY, 3, thumbH, node.fg);
       }
     });
@@ -1829,6 +1854,10 @@ export class PreviewUIRuntime {
     return best;
   }
 
+  // Unified scroll hit-scan: one pass over scrollable nodes. Lists are
+  // scrollable (UA rule) and their contentHeight is seeded on the node by
+  // refreshListState, so this single scan finds the owning container — list or
+  // generic — topmost first.
   private findScrollNode(tx: number, ty: number): number {
     let best = -1;
     for (let i = 0; i < this.nodes.length; i++) {
@@ -1839,20 +1868,6 @@ export class PreviewUIRuntime {
       const drawY = this.drawYForNode(i);
       if (tx >= drawX && tx < drawX + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
         if (best < 0 || this.drawsBefore(this.nodes[best], node)) best = i;
-      }
-    }
-    return best;
-  }
-
-  private findListNode(tx: number, ty: number): number {
-    let best = -1;
-    for (const list of this.listStates) {
-      const node = this.nodes[list.nodeIndex];
-      if (!node || !this.isActiveNode(node) || !this.isEffectivelyVisible(node)) continue;
-      const drawX = this.drawXForNode(node.index);
-      const drawY = this.drawYForNode(node.index);
-      if (tx >= drawX && tx < drawX + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
-        if (best < 0 || this.drawsBefore(this.nodes[best], node)) best = node.index;
       }
     }
     return best;
@@ -1881,57 +1896,111 @@ export class PreviewUIRuntime {
     }
   }
 
+  // ── Scroll engine: Input layer ────────────────────────────────────────────
+  // Preview is the capacitive tier → passthrough 1:1 (no deadband).
+  private smoothDragDelta(dy: number): number {
+    return dy;
+  }
+
+  private scrollMax(nodeIndex: number): number {
+    const node = this.nodes[nodeIndex];
+    if (!node) return 0;
+    return Math.max(0, node.contentHeight - node.box.h);
+  }
+
+  // Rubber-band excursion for d cumulative pixels dragged past a boundary.
+  private overscrollFor(d: number): number {
+    if (d <= 0) return 0;
+    return Math.min(UI_SCROLL_MAX_OVERSCROLL, Math.round((UI_SCROLL_MAX_OVERSCROLL * d) / (d + UI_SCROLL_STIFFNESS)));
+  }
+
+  // ── Scroll engine: Physics layer ──────────────────────────────────────────
+  // 1:1 in-bounds; rubber-band at edges; scrollY stays in [0, maxScroll] while
+  // overscrollPx tracks the elastic excursion. Mirrors the C++ engine exactly.
   private applyScrollDelta(nodeIndex: number, dy: number): boolean {
     const node = this.nodes[nodeIndex];
     if (!node) return false;
-    const maxScroll = Math.max(0, node.contentHeight - node.box.h);
-    const rawNext = node.scrollY - dy;
-    if (dy > 0 && rawNext <= 0) this.scrollSnapTop = true;
-    let nextScrollY = Math.max(0, Math.min(maxScroll, rawNext));
-    if (nextScrollY === node.scrollY) return false;
-    node.scrollY = nextScrollY;
-    this.markScrollDescendantsDirty(nodeIndex);
-    return true;
+    const maxS = this.scrollMax(nodeIndex);
+    const sy = node.scrollY;
+    const nextY = sy - dy;
+    const prevOv = node.overscrollPx;
+    let nextOv = prevOv;
+    if (nextY < 0) {
+      node.scrollY = 0;
+      const draggedPast = dy - sy;
+      const cum = Math.max(0, prevOv + draggedPast);
+      nextOv = this.overscrollFor(cum);
+    } else if (nextY > maxS) {
+      node.scrollY = maxS;
+      const draggedPast = nextY - maxS;
+      const cum = (prevOv < 0 ? -prevOv : 0) + draggedPast;
+      nextOv = -this.overscrollFor(cum);
+    } else {
+      node.scrollY = nextY;
+      nextOv = 0;
+    }
+    node.overscrollPx = nextOv;
+    const changed = node.scrollY !== sy || nextOv !== prevOv;
+    if (changed) this.markScrollDescendantsDirty(nodeIndex);
+    return changed;
   }
 
-  private snapScrollToTop(nodeIndex: number, force: boolean): boolean {
+  // On release: arm a bounded settle — bounce overscroll back to 0, or edge-snap
+  // scrollY within edgeSnapPx. The animation runs in advanceScrollSettle (tick).
+  private releaseScroll(nodeIndex: number): boolean {
     const node = this.nodes[nodeIndex];
     if (!node) return false;
-    if (!force && node.scrollY > UI_SCROLL_EDGE_SNAP_PX) return false;
-    const changed = node.scrollY !== 0;
-    node.scrollY = 0;
-    if (changed || force) {
-      this.markScrollDescendantsDirty(nodeIndex);
+    if (node.overscrollPx !== 0) {
+      node.settling = true;
+      this.settleFromOverscroll = node.overscrollPx;
+      this.settleFromScrollY = 0;
+      this.settleStartMs = Date.now();
+      return true;
+    }
+    const sy = node.scrollY;
+    const maxS = this.scrollMax(nodeIndex);
+    if (sy > 0 && sy <= UI_SCROLL_EDGE_SNAP_PX) {
+      node.settling = true;
+      this.settleFromScrollY = sy;
+      this.settleFromOverscroll = 0;
+      this.settleStartMs = Date.now();
+      return true;
+    }
+    if (maxS > 0 && sy < maxS && sy >= maxS - UI_SCROLL_EDGE_SNAP_PX) {
+      node.settling = true;
+      this.settleFromScrollY = sy - maxS;
+      this.settleFromOverscroll = 0;
+      this.settleStartMs = Date.now();
       return true;
     }
     return false;
   }
 
-  private applyListScrollDelta(nodeIndex: number, dy: number): boolean {
+  // Advance the settle animation for one node (ease-out, bounded ~180ms).
+  private advanceScrollSettle(nodeIndex: number): void {
     const node = this.nodes[nodeIndex];
-    const list = this.listStateForNode(nodeIndex);
-    if (!node || !list) return false;
-    const maxScroll = Math.max(0, list.contentHeight - node.box.h);
-    const rawNext = list.scrollY - dy;
-    if (dy > 0 && rawNext <= 0) this.listSnapTop = true;
-    const nextScrollY = Math.max(0, Math.min(maxScroll, rawNext));
-    if (nextScrollY === list.scrollY) return false;
-    list.scrollY = nextScrollY;
-    this.markDirty(nodeIndex);
-    return true;
-  }
-
-  private snapListToTop(nodeIndex: number, force: boolean): boolean {
-    const list = this.listStateForNode(nodeIndex);
-    if (!list) return false;
-    if (!force && list.scrollY > UI_SCROLL_EDGE_SNAP_PX) return false;
-    const changed = list.scrollY !== 0;
-    list.scrollY = 0;
-    if (changed || force) {
-      this.markDirty(nodeIndex);
-      return true;
+    if (!node || !node.settling) return;
+    const elapsed = Date.now() - this.settleStartMs;
+    const t = elapsed >= UI_SCROLL_SETTLE_MS ? 1 : elapsed / UI_SCROLL_SETTLE_MS;
+    const k = 1 - (1 - t) * (1 - t);  // ease-out
+    if (node.overscrollPx !== 0) {
+      const from = this.settleFromOverscroll;
+      node.overscrollPx = Math.round(from - from * k);
+      if (t >= 1) node.overscrollPx = 0;
+    } else if (this.settleFromScrollY !== 0) {
+      const from = this.settleFromScrollY;
+      const maxS = this.scrollMax(nodeIndex);
+      if (from > 0) {
+        node.scrollY = Math.round(from - from * k);
+        if (t >= 1) node.scrollY = 0;
+      } else {
+        const target = maxS;
+        node.scrollY = Math.round(target + (from * (1 - k)));
+        if (t >= 1) node.scrollY = target;
+      }
     }
-    return false;
+    if (t >= 1) node.settling = false;
+    this.markScrollDescendantsDirty(nodeIndex);
   }
 
   private dispatchListTap(nodeIndex: number, tx: number, ty: number): void {
@@ -1939,7 +2008,7 @@ export class PreviewUIRuntime {
     const list = this.listStateForNode(nodeIndex);
     if (!node || !list || !list.tapBody) return;
     const drawY = this.drawYForNode(nodeIndex);
-    const row = Math.trunc((ty - drawY + list.scrollY) / Math.max(1, list.itemHeight));
+    const row = Math.trunc((ty - drawY + node.scrollY) / Math.max(1, list.itemHeight));
     if (row < 0 || row >= list.itemCount) return;
     this.runBody(list.tapBody, this.listLocal(list.tapParam, row));
   }
@@ -1968,13 +2037,8 @@ export class PreviewUIRuntime {
       this.dragStartX = tx;
       this.dragStartY = ty;
       this.isDragging = false;
-      this.scrollSnapTop = false;
+      // Unified scroll owner: one hit-scan covers containers and lists.
       this.scrollNode = this.findScrollNode(tx, ty);
-      this.scrollStartY = this.scrollNode >= 0 ? this.nodes[this.scrollNode].scrollY : 0;
-      this.listSnapTop = false;
-      this.listNode = this.findListNode(tx, ty);
-      const list = this.listNode >= 0 ? this.listStateForNode(this.listNode) : undefined;
-      this.listStartY = list ? list.scrollY : 0;
       this.rangeNode = node >= 0 && this.nodes[node].kind === "range" ? node : -1;
       if (node >= 0) {
         if (this.nodes[node].kind === "button") this.setPressed(node, true);
@@ -1985,19 +2049,18 @@ export class PreviewUIRuntime {
       if (!this.isDragging && this.scrollNode >= 0 && Math.abs(ty - this.dragStartY) >= UI_DRAG_THRESHOLD) {
         this.isDragging = true;
       }
-      if (!this.isDragging && this.listNode >= 0 && Math.abs(ty - this.dragStartY) >= UI_DRAG_THRESHOLD) {
-        this.isDragging = true;
-      }
-      if (this.isDragging && this.listNode >= 0) {
-        const dy = ty - this.dragStartY;
-        this.dragStartX = tx;
-        this.dragStartY = ty;
-        this.applyListScrollDelta(this.listNode, dy);
-      } else if (this.isDragging && this.scrollNode >= 0) {
-        const dy = ty - this.dragStartY;
-        this.dragStartX = tx;
-        this.dragStartY = ty;
-        this.applyScrollDelta(this.scrollNode, dy);
+      // Unified scroll drag: immediate-apply each frame via the physics layer
+      // (1:1 in-bounds, rubber-band at edges). No accumulator, no cadence gate.
+      if (this.isDragging && this.scrollNode >= 0) {
+        const rawDy = ty - this.dragStartY;
+        if (rawDy !== 0) {
+          const dy = this.smoothDragDelta(rawDy);
+          if (dy !== 0) {
+            this.applyScrollDelta(this.scrollNode, dy);
+            this.dragStartX = tx;
+            this.dragStartY = ty;
+          }
+        }
       } else if (this.rangeNode >= 0 && Math.abs(tx - this.dragStartX) >= UI_DRAG_THRESHOLD) {
         this.updateRangeValue(this.rangeNode, tx);
       } else if (this.touchState === 1 && this.touchNode >= 0 && now - this.touchDownTime >= UI_TOUCH_HOLD_MS) {
@@ -2018,11 +2081,6 @@ export class PreviewUIRuntime {
       this.touchNode = -1;
       this.isDragging = false;
       this.scrollNode = -1;
-      this.scrollSnapTop = false;
-      this.scrollStartY = 0;
-      this.listNode = -1;
-      this.listSnapTop = false;
-      this.listStartY = 0;
       this.rangeNode = -1;
       this.lastReleaseTime = now;
       return;
@@ -2030,17 +2088,11 @@ export class PreviewUIRuntime {
 
     const elapsed = now - this.touchDownTime;
     const node = this.touchNode;
+    // Release the scroll owner: arm a bounded settle (bounce-back / edge-snap).
+    // No fling — motion ends with the finger; the settle is the only post-lift
+    // motion and terminates within UI_SCROLL_SETTLE_MS.
     if (this.scrollNode >= 0) {
-      const scrollNode = this.nodes[this.scrollNode];
-      const shouldSnapTop = this.scrollSnapTop ||
-        (this.scrollStartY > UI_SCROLL_EDGE_SNAP_PX && scrollNode.scrollY <= UI_SCROLL_EDGE_SNAP_PX);
-      if (shouldSnapTop) this.snapScrollToTop(this.scrollNode, this.scrollSnapTop);
-    }
-    if (this.listNode >= 0) {
-      const list = this.listStateForNode(this.listNode);
-      const shouldSnapTop = !!list && (this.listSnapTop ||
-        (this.listStartY > UI_SCROLL_EDGE_SNAP_PX && list.scrollY <= UI_SCROLL_EDGE_SNAP_PX));
-      if (shouldSnapTop) this.snapListToTop(this.listNode, this.listSnapTop);
+      this.releaseScroll(this.scrollNode);
     }
     if (node >= 0 && !this.isDragging) {
       if (elapsed < UI_TOUCH_HOLD_MS) {
@@ -2062,11 +2114,6 @@ export class PreviewUIRuntime {
     this.touchNode = -1;
     this.isDragging = false;
     this.scrollNode = -1;
-    this.scrollSnapTop = false;
-    this.scrollStartY = 0;
-    this.listNode = -1;
-    this.listSnapTop = false;
-    this.listStartY = 0;
     this.rangeNode = -1;
     this.lastReleaseTime = now;
   }

@@ -79,6 +79,12 @@ export interface UINodeModel {
   scrollable: boolean;
   scrollY: number;
   contentHeight: number;
+  /** Elastic excursion past a scroll boundary (0 in-bounds; +top, -bottom). */
+  overscrollPx: number;
+  /** True while a bounce-back / edge-snap settle animation is running. */
+  settling: boolean;
+  /** scrollY captured at the last container repaint (Mode B shift delta). */
+  lastPaintedScrollY: number;
   rangeMin: number;
   rangeMax: number;
   /** For <input>: max character length (0 = use UI_TEXT_BUF). */
@@ -838,6 +844,9 @@ export function lowerUIToModel(
       scrollable: node.style.overflow === "scroll" || node.style.overflow === "hidden",
       scrollY: 0,
       contentHeight: 0, // computed after layout
+      overscrollPx: 0,
+      settling: false,
+      lastPaintedScrollY: 0,
       rangeMin: node.min ? (parseInt(node.min, 10) || 0) : 0,
       rangeMax: node.max ? (parseInt(node.max, 10) || 100) : 100,
       maxlen: node.maxlen ?? 0,

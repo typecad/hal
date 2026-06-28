@@ -391,6 +391,8 @@ describe("PreviewUIRuntime", () => {
             parentIndex: 0,
             subtreeEnd: 3,
             listItemHeight: 8,
+            scrollable: true,  // lists are scrollable (UA rule); unified scan needs this
+            virtualized: true,
           }),
         ],
         transitions: [],
@@ -416,18 +418,22 @@ describe("PreviewUIRuntime", () => {
     runtime.start();
     try {
       const states = (runtime as any).listStates;
+      const listNode = (runtime as any).nodes[2];
       expect(states[0].contentHeight).toBe(48);
+      expect(listNode.contentHeight).toBe(48);  // list geometry now also on-node
       expect(runtime.gfx.buffer[2 * 36 + 30]).toBe(0x07e0);
 
       runtime.pointerDown(8, 16);
-      runtime.pointerMove(8, 4);
+      runtime.pointerMove(8, 0);   // drag up 16px → scrollY=16 (past the edge-snap band)
       runtime.pointerUp();
-      expect(states[0].scrollY).toBe(12);
+      expect(listNode.scrollY).toBe(16);  // scroll lives on the node now
 
       await wait(60);
       runtime.pointerDown(8, 10);
       runtime.pointerUp();
-      expect(runtime.screen.selected.value).toBe(3);
+      // scrollY=16, tap at y=10, list top at y=2, itemHeight=8:
+      // row = (10 - 2 + 16) / 8 = 3 → value = row + 1 = 4.
+      expect(runtime.screen.selected.value).toBe(4);
     } finally {
       runtime.stop();
     }
@@ -949,7 +955,7 @@ describe("PreviewUIRuntime", () => {
     }
   });
 
-  it("snaps a pulled-past-top scroll view back to scrollY zero on release", () => {
+  it("snaps a pulled-past-top scroll view back to scrollY zero on release", async () => {
     const runtime = new PreviewUIRuntime({
       projectRoot: "",
       entryFile: "",
@@ -1013,9 +1019,18 @@ describe("PreviewUIRuntime", () => {
 
       runtime.pointerDown(4, 4);
       runtime.pointerMove(4, 24);
+      // Pulling past the top arms a rubber-band overscroll (scrollY clamps to 0,
+      // overscrollPx grows) — not a synchronous snap.
+      expect(scrollNode.scrollY).toBe(0);
+      expect(scrollNode.overscrollPx).toBeGreaterThan(0);
       runtime.pointerUp();
+      // On release a bounded settle animation bounces overscroll back to 0.
+      // Let it complete (UI_SCROLL_SETTLE_MS), then the content rests at scrollY 0.
+      await wait(200);
+      runtime.tick();
 
       expect(scrollNode.scrollY).toBe(0);
+      expect(scrollNode.overscrollPx).toBe(0);
       expect(runtime.gfx.buffer[2 * 24 + 2]).toBe(0x07e0);
     } finally {
       runtime.stop();
