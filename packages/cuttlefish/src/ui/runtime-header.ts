@@ -2995,6 +2995,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   int16_t bufferedScrollRepaintH = 0;
   for (uint8_t s = 0; s < __ui_node_count; s++) {
     if (!__ui_nodes[s].scrollable || !ui_is_effectively_visible(s)) continue;
+    if (__ui_nodes[s].virtualized) continue;  // lists render via NODE_LIST, not Mode B
     if (__ui_nodes[s].screenId != __ui_active_screen) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
     if (!__ui_nodes[s].dirty) continue;
