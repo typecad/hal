@@ -199,3 +199,42 @@ export function emitCanvasBindings(specs: DrawCanvasSpec[]): string {
   lines.push(`const uint8_t __ui_canvas_binding_count = ${specs.length};`);
   return lines.join("\n");
 }
+
+import { makeSourceSpan } from "../ast-node-utils.js";
+import type { StatementIR } from "../../api/index.js";
+import { resolveNodeIndex, resolveUIModuleImport } from "./ui-call-resolver.js";
+
+/**
+ * Resolve a `ui.drawCanvas(node, (ctx) => {...})` call.
+ *  - node: screen.<id> property access → resolve to a node index
+ *  - callback: arrow whose body is lowered via lowerCanvasBody
+ * Records a DrawCanvasSpec and returns an empty block IR.
+ * Returns null if the call doesn't match the expected shape.
+ */
+export function resolveDrawCanvasCall(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): StatementIR | null {
+  const nodeArg = call.arguments[0];
+  const cbArg = call.arguments[1];
+  if (!nodeArg || !ts.isPropertyAccessExpression(nodeArg) || !ts.isIdentifier(nodeArg.expression)) return null;
+  if (!cbArg || !(ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) return null;
+
+  const treeName = nodeArg.expression.text;       // "screen"
+  const id = nodeArg.name.text;                    // "spark"
+  const htmlPath = resolveUIModuleImport(treeName);
+  if (!htmlPath) return null;
+
+  const nodeIndex = resolveNodeIndex(htmlPath, id);
+  const callbackBody = lowerCanvasBody(cbArg, sourceText, diagnostics);
+  const fnName = `__ui_canvas_draw_${getCanvasBindingsCount()}`;
+  recordCanvasBinding({ nodeIndex, fnName, callbackBody });
+
+  return {
+    kind: "block",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    body: [],
+  };
+}

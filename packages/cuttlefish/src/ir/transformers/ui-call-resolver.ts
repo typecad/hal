@@ -22,6 +22,7 @@ import { renderExprAsText } from "../render-expr.js";
 import { resolveColor } from "../../ui/color.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { lowerCallbackBody, resetCallbackLoweringState } from "./ui-callback-lowering.js";
+import { resolveDrawCanvasCall, resetCanvasBindings } from "./canvas-lowering.js";
 import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
 import { escapeCppStringLiteral } from "../../utils/strings.js";
@@ -176,6 +177,7 @@ export function resetUICallState(): void {
   _clickHandlers.length = 0;
   resetInputBindings();
   resetCallbackLoweringState();
+  resetCanvasBindings();
 }
 
 // ── Signal name synthesis ───────────────────────────────────────────────────
@@ -266,6 +268,9 @@ export function tryResolveUICall(
   }
   if (method === "onTap") {
     return resolveOnTapCall(call, fileName, sourceText, diagnostics);
+  }
+  if (method === "drawCanvas") {
+    return resolveDrawCanvasCall(call, fileName, sourceText, diagnostics);
   }
   // Unknown ui.* method — let it fall through
   return null;
