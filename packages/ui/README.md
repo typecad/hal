@@ -109,6 +109,7 @@ A clickable button with `:pressed` pseudo-state support and transition animation
 | `<range>` | Draggable slider | between `min` and `max` |
 | `<input>` | Text input (tap opens the on-screen keyboard) | — (use `.text`) |
 | `<list>` | Virtualized, data-bound list (renders only visible items) | — |
+| `<canvas>` | User-drawn graphics (sparklines, gauges, custom shapes) via `ui.drawCanvas` | — |
 
 ```html
 <range id="brightness" min="0" max="100"></range>
@@ -711,6 +712,52 @@ ui.bindList(
 The count function re-evaluates each frame; if it changes, the list recomputes
 its content height and repaints. Drag to scroll; tap an item to fire the
 optional third callback.
+
+### User-drawn canvas (`<canvas>`)
+
+`<canvas>` is an element whose contents you draw yourself, every frame, using
+the display graphics primitives. It follows all CSS rules (layout, borders,
+transforms, z-index) like any other element, but its pixels come from your
+callback. Use it for sparkline graphs, analog gauges, or custom-shaped controls.
+
+```html
+<canvas id="spark" width="120" height="40"></canvas>
+```
+
+`width`/`height` set the **drawing buffer** size (px). The CSS box is the
+**layout** size — size them to match unless you want clipping.
+
+```typescript
+ui.drawCanvas(screen.spark, (ctx) => {
+  ctx.fillScreen('black');
+  ctx.line(0, 30, ctx.width, 30, 'limegreen');      // baseline
+  ctx.rect(2, 2, ctx.width - 4, ctx.height - 4, '#333');
+  ctx.fillCircle(needleX, 30, 3, 'red');
+  ctx.text(4, 12, `${temp}°`, 'white');             // optional color arg
+});
+```
+
+Coordinates are **canvas-relative** (`(0,0)` = element top-left) and drawing is
+**auto-clipped** to the buffer — you cannot accidentally paint over neighbors.
+Color arguments are CSS color strings resolved to RGB565 at build time.
+
+The callback runs **every frame**; to animate, mutate state in a `setInterval`
+or signal and the canvas picks it up next frame. Taps hit-test as the full CSS
+box, so `screen.spark.onClick(...)` works for interactive canvases.
+
+#### `ctx` methods (the display graphics primitives)
+
+| Method | Notes |
+|---|---|
+| `ctx.fillRect(x,y,w,h,color)` / `ctx.rect(...)` | Filled / outline rectangle |
+| `ctx.fillRoundRect(x,y,w,h,r,color)` / `ctx.roundRect(...)` | Rounded variant |
+| `ctx.line(x0,y0,x1,y1,color)` | Arbitrary line |
+| `ctx.hline(x,y,w,color)` / `ctx.vline(x,y,h,color)` | Fast horizontal / vertical line |
+| `ctx.fillCircle(x,y,r,color)` / `ctx.circle(...)` | Filled / outline circle |
+| `ctx.drawPixel(x,y,color)` | Single pixel |
+| `ctx.text(x,y,str,color?)` | Bitmap text (built-in font) |
+| `ctx.fillScreen(color)` | Clear the whole buffer |
+| `ctx.width` / `ctx.height` | Read-only buffer dimensions |
 
 ### Signals
 
