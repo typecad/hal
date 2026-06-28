@@ -39,7 +39,7 @@ export function emitRuntimeHeader(): string {
 #endif
 #define UI_SCROLL_EDGE_SNAP_PX 12
 
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG, NODE_LIST };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG, NODE_LIST, NODE_CANVAS };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR, PROP_VALUE };
 
 struct UIRect { int16_t x, y, w, h; };
@@ -124,6 +124,8 @@ struct UINode {
   uint8_t imgDataId;    // index into __ui_images[] (255 = no image)
   uint8_t objectFit;    // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
   uint16_t listItemHeight; // px per item for <list> (0 = not a list)
+  uint16_t canvasW;        // canvas buffer width  (for <canvas>)
+  uint16_t canvasH;        // canvas buffer height (for <canvas>)
   int16_t rangeMin;     // for <range>: minimum value
   int16_t rangeMax;     // for <range>: maximum value
   int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
@@ -252,6 +254,17 @@ struct UIListBinding {
 };
 extern UIListBinding __ui_list_bindings[];
 extern const uint8_t __ui_list_binding_count;
+
+// ── Canvas bindings (ui.drawCanvas) ─────────────────────────────────────────
+// Each canvas node's user-supplied draw function. Called each frame with the
+// node's offscreen CuttlefishCanvas16 set as the active draw target, so the
+// lowered callback body draws via the same ui_display_* wrappers as everything.
+struct UICanvasBinding {
+  uint8_t node;
+  void (*fn)(CuttlefishCanvas16* canvas);
+};
+extern UICanvasBinding __ui_canvas_bindings[];
+extern const uint8_t __ui_canvas_binding_count;
 
 // ── Input bindings (two-way) ─────────────────────────────────────────────────
 // ui.bindInput(node, cb) — cb fires with the node's current text whenever the
@@ -3468,6 +3481,35 @@ static inline void ui_tick(uint16_t deltaMs) {
           ui_draw_image_with_fit(img, __ui_nodes[i].box.x, drawY, __ui_nodes[i].rotateDeg, __ui_nodes[i].objectFit, targetW, targetH);
         }
         break;
+      case NODE_CANVAS: {
+        // Find this node's draw callback.
+        void (*__ui_canvas_fn)(CuttlefishCanvas16*) = nullptr;
+        for (uint8_t b = 0; b < __ui_canvas_binding_count; b++) {
+          if (__ui_canvas_bindings[b].node == i) { __ui_canvas_fn = __ui_canvas_bindings[b].fn; break; }
+        }
+        if (__ui_canvas_fn) {
+          int16_t __ui_cw = __ui_nodes[i].canvasW;
+          int16_t __ui_ch = __ui_nodes[i].canvasH;
+          if (__ui_cw > 0 && __ui_ch > 0) {
+            // Cache a canvas sized to the buffer (reused across frames, like __ui_list_canvas).
+            static CuttlefishCanvas16* __ui_node_canvas = nullptr;
+            if (!__ui_node_canvas || display_canvasWidth(__ui_node_canvas) != __ui_cw || display_canvasHeight(__ui_node_canvas) != __ui_ch) {
+              display_deleteCanvas(__ui_node_canvas);
+              __ui_node_canvas = display_createCanvas(__ui_cw, __ui_ch);
+            }
+            CuttlefishCanvas16* __ui_lc = __ui_node_canvas;
+            if (__ui_lc && display_canvasBuffer(__ui_lc)) {
+              display_canvasFillScreen(__ui_lc, __ui_nodes[i].clearColor);
+              CuttlefishDisplayTarget* __ui_prev_target = ui_display_get_target();
+              ui_display_set_target((CuttlefishDisplayTarget*)__ui_lc);
+              __ui_canvas_fn(__ui_lc);
+              ui_display_set_target(__ui_prev_target);
+              ui_draw_canvas_rect(__ui_lc, __ui_nodes[i].box.x, drawY, __ui_cw, __ui_ch);
+            }
+          }
+        }
+        break;
+      }
       case NODE_LIST: {
         // Find this list's state.
         UIListState* ls = nullptr;

@@ -399,3 +399,21 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/case\s+4:[\s\S]*load_default/);
   });
 });
+
+describe("canvas runtime", () => {
+  const header = emitRuntimeHeader();
+  it("declares NODE_CANVAS + canvas buffer fields + canvas binding table", () => {
+    expect(header).toMatch(/NODE_CANVAS/);
+    expect(header).toMatch(/uint16_t\s+canvasW/);
+    expect(header).toMatch(/uint16_t\s+canvasH/);
+    expect(header).toMatch(/struct\s+UICanvasBinding/);
+    expect(header).toMatch(/extern\s+UICanvasBinding\s+__ui_canvas_bindings/);
+    expect(header).toMatch(/extern\s+const\s+uint8_t\s+__ui_canvas_binding_count/);
+  });
+
+  it("has a NODE_CANVAS draw case that sets the canvas target and blits", () => {
+    expect(header).toMatch(/case\s+NODE_CANVAS:/);
+    expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*ui_display_set_target/);
+    expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*ui_draw_canvas_rect/);
+  });
+});
