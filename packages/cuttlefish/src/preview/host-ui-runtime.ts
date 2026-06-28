@@ -14,6 +14,7 @@ import type {
   PreviewIntervalSpec,
   PreviewListBindingSpec,
   PreviewPinControlSpec,
+  PreviewCanvasBindingSpec,
   PreviewSnapshot,
 } from "./types.js";
 
@@ -171,6 +172,7 @@ export class PreviewUIRuntime {
   private readonly listStates: PreviewListState[];
   private readonly callbacks: PreviewCallbackSpec[];
   private readonly pinControls: PreviewPinControlSpec[];
+  private readonly canvasBindings: PreviewCanvasBindingSpec[];
   private readonly intervals: PreviewIntervalSpec[];
   private readonly initialAssignments: PreviewInitialAssignment[];
   private readonly onFrame?: (rgba: Uint8ClampedArray) => void;
@@ -237,6 +239,7 @@ export class PreviewUIRuntime {
     }));
     this.callbacks = snapshot.callbacks;
     this.pinControls = snapshot.pinControls;
+    this.canvasBindings = snapshot.canvasBindings ?? [];
     this.intervals = snapshot.intervals;
     this.initialAssignments = snapshot.initialAssignments;
     this.screenCount = Math.max(1, ...this.nodes.map((node) => (node.screenId ?? 0) + 1));
@@ -1510,6 +1513,9 @@ export class PreviewUIRuntime {
           case "list":
             this.drawListNode(node, drawY, scrollClip);
             break;
+          case "canvas":
+            this.drawCanvasNode(node, drawY);
+            break;
         }
         if (node.kind === "fill" && this.rotationQuadrant(node.rotateDeg) !== 0 && node.outlineStyle && node.outlineWidth > 0) {
           const w = node.outlineWidth;
@@ -1619,6 +1625,52 @@ export class PreviewUIRuntime {
     });
   }
 
+  private drawCanvasNode(node: MutableNode, drawY: number): void {
+    const binding = this.canvasBindings.find((b) => b.nodeIndex === node.index);
+    if (!binding) return;
+    this.runCanvasBody(binding.drawBody, node.box.x, drawY, node.canvasW ?? node.box.w, node.canvasH ?? node.box.h);
+  }
+
+  /** Lower a canvas drawBody (`ctx.X(...)` source) against the host gfx.
+   *  Mirrors the device ctx→ui_display_* rewrite so preview and device match.
+   *  Coordinates are translated to the node origin (ox, oy). Only the flat call
+   *  sequence is supported — same constraint as bindList item expressions. */
+  private runCanvasBody(body: string, ox: number, oy: number, cw: number, ch: number): void {
+    const color = (c: string): number => {
+      try { return resolveColor(c.replace(/^['"]|['"]$/g, ""), "rgb565"); } catch { return 0xffff; }
+    };
+    const n = (i: number, args: string[]) => parseInt(args[i], 10) || 0;
+    // Resolve ctx.width / ctx.height to the canvas buffer dims.
+    const num = (i: number, args: string[]): number => {
+      const t = args[i].trim();
+      if (t === "ctx.width" || t === "ctx?.width") return cw;
+      if (t === "ctx.height" || t === "ctx?.height") return ch;
+      return parseInt(t, 10) || 0;
+    };
+    const g = this.gfx;
+    const re = /ctx\.(fillRect|rect|fillCircle|circle|line|hline|vline|fillRoundRect|roundRect|drawPixel|fillScreen|text)\(([^)]*)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body)) !== null) {
+      const method = m[1];
+      const args = m[2].split(",").map((s) => s.trim());
+      if (method === "fillRect") g.fillRect(ox + num(0, args), oy + num(1, args), num(2, args), num(3, args), color(args[4]));
+      else if (method === "rect") g.drawRect(ox + num(0, args), oy + num(1, args), num(2, args), num(3, args), color(args[4]));
+      else if (method === "fillCircle") g.fillCircle(ox + num(0, args), oy + num(1, args), num(2, args), color(args[3]));
+      else if (method === "circle") g.drawCircle(ox + num(0, args), oy + num(1, args), num(2, args), color(args[3]));
+      else if (method === "line") g.drawLine(ox + num(0, args), oy + num(1, args), ox + num(2, args), oy + num(3, args), color(args[4]));
+      else if (method === "hline") g.drawFastHLine(ox + num(0, args), oy + num(1, args), num(2, args), color(args[3]));
+      else if (method === "vline") g.drawFastVLine(ox + num(0, args), oy + num(1, args), num(2, args), color(args[3]));
+      else if (method === "fillRoundRect") g.fillRoundRect(ox + num(0, args), oy + num(1, args), num(2, args), num(3, args), num(4, args), color(args[5]));
+      else if (method === "roundRect") g.drawRoundRect(ox + num(0, args), oy + num(1, args), num(2, args), num(3, args), num(4, args), color(args[5]));
+      else if (method === "drawPixel") g.drawPixel(ox + num(0, args), oy + num(1, args), color(args[2]));
+      else if (method === "fillScreen") g.fillRect(ox, oy, cw, ch, color(args[0]));
+      else if (method === "text") {
+        g.setCursor(ox + num(0, args), oy + num(1, args));
+        if (args.length >= 4) g.setTextColor(color(args[3]));
+        g.print(args[2].replace(/^['"`]|['"`]$/g, ""));
+      }
+    }
+  }
   private drawButtonNode(node: MutableNode, displayText: string | undefined, bColor: number, drawY: number, ts: number): void {
     if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, node.bg);
     else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);

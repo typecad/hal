@@ -47,6 +47,13 @@ export interface PreviewPinControlSpec {
   body?: string;
 }
 
+export interface PreviewCanvasBindingSpec {
+  nodeId: string;
+  nodeIndex: number;
+  /** The drawBody source text: `ctx.X(...)` calls the host runtime re-lowers. */
+  drawBody: string;
+}
+
 export interface PreviewDiagnostic {
   severity: "info" | "warning" | "error";
   message: string;
@@ -68,5 +75,6 @@ export interface PreviewSnapshot {
   initialAssignments: PreviewInitialAssignment[];
   intervals: PreviewIntervalSpec[];
   pinControls: PreviewPinControlSpec[];
+  canvasBindings: PreviewCanvasBindingSpec[];
   diagnostics: PreviewDiagnostic[];
 }

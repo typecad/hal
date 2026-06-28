@@ -22,6 +22,7 @@ import type {
   PreviewIntervalSpec,
   PreviewListBindingSpec,
   PreviewPinControlSpec,
+  PreviewCanvasBindingSpec,
   PreviewSnapshot,
 } from "./types.js";
 
@@ -203,6 +204,7 @@ function extractAuthorSpecs(
   initialAssignments: PreviewInitialAssignment[];
   intervals: PreviewIntervalSpec[];
   pinControls: PreviewPinControlSpec[];
+  canvasBindings: PreviewCanvasBindingSpec[];
   diagnostics: PreviewDiagnostic[];
 } {
   const diagnostics: PreviewDiagnostic[] = [];
@@ -213,6 +215,7 @@ function extractAuthorSpecs(
   const initialAssignments: PreviewInitialAssignment[] = [];
   const intervals: PreviewIntervalSpec[] = [];
   const pinControls: PreviewPinControlSpec[] = [];
+  const canvasBindings: PreviewCanvasBindingSpec[] = [];
 
   const resolveNode = (treeName: string, elemId: string): number | undefined => {
     if (!importedTrees.has(treeName)) return undefined;
@@ -299,6 +302,22 @@ function extractAuthorSpecs(
         }
         continue;
       }
+      if (objectName === "ui" && method === "drawCanvas") {
+        const elementArg = call.arguments[0];
+        const cbArg = call.arguments[1];
+        const element = elementArg ? readTreeElement(elementArg) : undefined;
+        if (element && cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+          const nodeIndex = resolveNode(element.treeName, element.elemId);
+          if (nodeIndex !== undefined) {
+            canvasBindings.push({
+              nodeId: element.elemId,
+              nodeIndex,
+              drawBody: callbackBodyText(cbArg, source),
+            });
+          }
+        }
+        continue;
+      }
       if (objectName === "ui" && method === "watchPin") {
         const pin = numericArgText(call.arguments[0], source, "0");
         pinControls.push({
@@ -368,7 +387,7 @@ function extractAuthorSpecs(
     }
   }
 
-  return { bindings, listBindings, callbacks, initialAssignments, intervals, pinControls, diagnostics };
+  return { bindings, listBindings, callbacks, initialAssignments, intervals, pinControls, canvasBindings, diagnostics };
 }
 
 export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions): Promise<PreviewSnapshot> {
@@ -445,6 +464,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     initialAssignments: specs.initialAssignments,
     intervals: specs.intervals,
     pinControls: specs.pinControls,
+    canvasBindings: specs.canvasBindings,
     diagnostics: [...diagnostics, ...specs.diagnostics],
   };
 }
