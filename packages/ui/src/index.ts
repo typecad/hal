@@ -7,7 +7,7 @@
 // C++; their bodies exist only so TypeScript authoring type-checks.
 // ---------------------------------------------------------------------------
 
-export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement } from "./types.js";
+export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement, CanvasElement } from "./types.js";
 import type { ScreenTree } from "./types.js";
 
 /** A reactive signal whose value lives on the device. */
@@ -107,5 +107,23 @@ export declare function bindList(
  */
 export declare function onTap(node?: unknown): Promise<void>;
 
-export const ui = { mount, signal, bind, watchPin, bindList, onTap };
+/**
+ * Register a draw callback for a `<canvas>` element. The callback runs every
+ * frame and receives a `ctx` whose methods map to the display graphics
+ * primitives. Coordinates are canvas-relative ((0,0) = top-left of the element);
+ * drawing is clipped to the canvas buffer.
+ *
+ *   ui.drawCanvas(screen.spark, (ctx) => {
+ *     ctx.fillScreen('black');
+ *     ctx.line(0, ctx.height / 2, ctx.width, ctx.height / 2, 'limegreen');
+ *     ctx.fillCircle(needleX, 20, 3, 'red');
+ *     ctx.text(4, 12, `${temp}°`, 'white');
+ *   });
+ *
+ * Color arguments are CSS color strings resolved to RGB565 at transpile time.
+ * `ctx.width` / `ctx.height` are the canvas buffer dimensions.
+ */
+export declare function drawCanvas(node: unknown, callback: (ctx: unknown) => void): void;
+
+export const ui = { mount, signal, bind, watchPin, bindList, onTap, drawCanvas };
 export default ui;

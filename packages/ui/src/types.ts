@@ -80,6 +80,13 @@ export interface InputElement extends UIElement {
   onChange(callback?: () => void): void;
 }
 
+/** A user-drawn canvas. Contents are drawn by a ui.drawCanvas callback each
+ *  frame using the display shim primitives (fillRect, line, circle, text, ...).
+ *  Coordinates are canvas-relative ((0,0) = top-left); drawing is auto-clipped. */
+export interface CanvasElement extends UIElement {
+  readonly __kind: "canvas";
+}
+
 export interface ScreenTree {
-  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement | ProgressElement | RangeElement | InputElement;
+  [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement | ProgressElement | RangeElement | InputElement | CanvasElement;
 }
