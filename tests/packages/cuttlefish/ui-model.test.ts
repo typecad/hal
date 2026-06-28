@@ -80,6 +80,35 @@ describe("UI structured model", () => {
   });
 });
 
+describe("scroll & virtualization", () => {
+  it("marks <list> nodes as virtualized scroll containers", () => {
+    const styled = resolveStyles(
+      parseHtml(`<screen><list id="lst" item-height="20"></list></screen>`),
+      parseCss(``),
+    );
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 240, h: 320 }, measure);
+    const model = lowerUIToModel(styled, boxes, "rgb565");
+    const list = model.nodes.find((n) => n.id === "lst");
+    expect(list).toBeDefined();
+    expect(list!.scrollable).toBe(true);          // UA rule: list { overflow: scroll }
+    expect(list!.virtualized).toBe(true);
+    expect(list!.listItemHeight).toBe(20);
+  });
+
+  it("marks generic overflow:scroll containers as scrollable but not virtualized", () => {
+    const styled = resolveStyles(
+      parseHtml(`<screen><view id="box" style="overflow: scroll"><view id="c1"></view><view id="c2"></view></view></screen>`),
+      parseCss(``),
+    );
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 240, h: 320 }, measure);
+    const model = lowerUIToModel(styled, boxes, "rgb565");
+    const box = model.nodes.find((n) => n.id === "box");
+    expect(box!.scrollable).toBe(true);
+    expect(box!.virtualized).toBe(false);
+    expect(box!.listItemHeight).toBe(0);
+  });
+});
+
 describe("canvas node model", () => {
   it("lowers <canvas> to a node with kind 'canvas' and buffer dims", () => {
     const styled = resolveStyles(parseHtml(`<screen><canvas id="spark" width="120" height="40"></canvas></screen>`), parseCss(``));

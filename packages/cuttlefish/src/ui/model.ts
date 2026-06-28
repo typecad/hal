@@ -93,6 +93,8 @@ export interface UINodeModel {
   imgDataId: number;  // index into image table (255 = no image)
   objectFit: 0 | 1 | 2 | 3 | 4;  // 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
   listItemHeight: number;  // px per item (for <list>, 0 = not a list)
+  /** Children are produced by callbacks (virtualized), not static nodes. Set for <list>. */
+  virtualized: boolean;
   /** Canvas buffer width in pixels (for kind "canvas"). */
   canvasW: number;
   /** Canvas buffer height in pixels (for kind "canvas"). */
@@ -848,6 +850,7 @@ export function lowerUIToModel(
       // Image scaling mode: 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down
       objectFit: node.style.objectFit ? objectFitOf(node.style.objectFit) : 1,
       listItemHeight: (node as any).itemHeight ?? 0,
+      virtualized: node.tag === "list",
       canvasW: node.canvasW ?? 0,
       canvasH: node.canvasH ?? 0,
     };
