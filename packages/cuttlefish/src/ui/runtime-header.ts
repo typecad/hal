@@ -34,10 +34,49 @@ export function emitRuntimeHeader(): string {
 #ifndef UI_TRANSITION_SNAP_MS
 #define UI_TRANSITION_SNAP_MS 100
 #endif
-#ifndef UI_SCROLL_DRAG_MULTIPLIER
-#define UI_SCROLL_DRAG_MULTIPLIER 4
+// Scroll physics + capability defaults. The per-TU #define overrides emitted
+// by the UI emitter (from resolveScrollConfig) hit BEFORE this header, so these
+// #ifndef guards adopt the configured values. Spec: 2026-06-28-scroll-engine-rewrite-design.md
+#ifndef UI_SCROLL_MAX_OVERSCROLL
+#define UI_SCROLL_MAX_OVERSCROLL 40
 #endif
+#ifndef UI_SCROLL_STIFFNESS_X10
+#define UI_SCROLL_STIFFNESS_X10 5
+#endif
+#ifndef UI_SCROLL_EDGE_SNAP_PX
 #define UI_SCROLL_EDGE_SNAP_PX 12
+#endif
+#ifndef UI_SCROLL_SETTLE_MS
+#define UI_SCROLL_SETTLE_MS 180
+#endif
+#ifndef UI_SCROLL_DEADBAND_PX
+#define UI_SCROLL_DEADBAND_PX 2
+#endif
+// Capability tier flags (emitted per-TU before this header; defaults = full).
+#ifndef UI_SCROLL_INPUT_TIER_CAPACITIVE
+#define UI_SCROLL_INPUT_TIER_CAPACITIVE 0
+#endif
+#ifndef UI_SCROLL_INPUT_TIER_RESISTIVE
+#define UI_SCROLL_INPUT_TIER_RESISTIVE 0
+#endif
+#ifndef UI_SCROLL_INPUT_TIER_NONE
+#define UI_SCROLL_INPUT_TIER_NONE 0
+#endif
+#ifndef UI_SCROLL_RENDER_TIER_FULL
+#define UI_SCROLL_RENDER_TIER_FULL 1
+#endif
+#ifndef UI_SCROLL_RENDER_TIER_CONSTRAINED
+#define UI_SCROLL_RENDER_TIER_CONSTRAINED 0
+#endif
+#if (UI_SCROLL_INPUT_TIER_CAPACITIVE + UI_SCROLL_INPUT_TIER_RESISTIVE + UI_SCROLL_INPUT_TIER_NONE) == 0
+#define UI_SCROLL_INPUT_TIER_RESISTIVE 1
+#endif
+#define UI_SCROLL_HAS_TOUCH (UI_SCROLL_INPUT_TIER_CAPACITIVE || UI_SCROLL_INPUT_TIER_RESISTIVE)
+#define UI_SCROLL_ELASTIC (UI_SCROLL_RENDER_TIER_FULL)
+// Telemetry: emits per-frame scrollY/overscrollPx/dy over Serial when defined.
+#ifndef UI_SCROLL_DEBUG
+#define UI_SCROLL_DEBUG 0
+#endif
 
 enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG, NODE_LIST, NODE_CANVAS };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR, PROP_VALUE };
@@ -114,10 +153,18 @@ struct UINode {
   uint16_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
   int16_t lastTextWidth;
   int16_t lastTextHeight;
-  // scroll
-  uint8_t scrollable;   // 1 = children are offset by scrollY and clipped to this box
-  int16_t scrollY;      // current scroll offset (children Y -= scrollY)
-  int16_t contentHeight; // total height of children (for scrollbar ratio)
+  // scroll (unified: containers and virtualized lists share these)
+  uint8_t scrollable;   // 1 = children offset by scrollY, clipped to this box
+  uint8_t virtualized;  // 1 = children produced by list*Fn callbacks (<list>)
+  int16_t scrollY;      // committed offset (always in [0, maxScroll]); draw subtracts it
+  int16_t contentHeight; // total child height (clamp bound + scrollbar ratio)
+  int16_t overscrollPx; // elastic excursion past a boundary (0 in-bounds; +top, -bottom)
+  uint8_t settling;     // 1 while a bounce-back/snap animation runs
+  int16_t lastPaintedScrollY;  // scrollY at last container repaint (Mode B shift delta)
+  uint16_t listCount;   // virtualized: current item count (refreshed each frame)
+  uint16_t (*listCountFn)(void);
+  void (*listItemFn)(uint16_t idx, char* buf, uint8_t size);
+  void (*listTapFn)(uint16_t idx);  // nullptr if no tap handler
   uint8_t parent;       // 255 = root/no parent
   uint8_t subtreeEnd;   // exclusive pre-order end index
   uint8_t screenId;     // which <screen> this node belongs to (for navigation)
@@ -179,17 +226,12 @@ extern const uint8_t __ui_binding_count;
 // Touch/scroll/keyboard state reset by navigation.
 static uint8_t __ui_touch_state = 0;
 static int8_t __ui_touch_node = -1;
-static int8_t __ui_scroll_node = -1;
-static int16_t __ui_scroll_pending_dy = 0;
-static uint8_t __ui_scroll_snap_top = 0;
-static int16_t __ui_scroll_start_y = 0;
-static int8_t __ui_scroll_cache_node = -1;
-static int16_t __ui_scroll_cache_y = 0;
-static int16_t __ui_scroll_cache_w = 0;
-static int16_t __ui_scroll_cache_h = 0;
-static uint8_t __ui_scroll_cache_valid = 0;
-static uint8_t __ui_list_snap_top = 0;
-static int16_t __ui_list_start_y = 0;
+// Unified scroll gesture: one owning scroll container per gesture, one baseline.
+// overscrollPx/settling live on the node; only the settle-animation state is here.
+static int8_t __ui_scroll_node = -1;             // owning scroll container for the gesture
+static uint32_t __ui_settle_start_ms = 0;        // when the active settle animation began
+static int16_t __ui_settle_from_overscroll = 0;  // settle start value (bounce-back)
+static int16_t __ui_settle_from_scrollY = 0;     // settle start value (edge snap; sign: +toward 0, -toward max)
 static uint8_t __ui_kb_visible = 0;
 
 static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
@@ -278,19 +320,10 @@ struct UIInputBinding {
 extern UIInputBinding __ui_input_bindings[];
 extern const uint8_t __ui_input_binding_count;
 
-struct UIListState {
-  uint8_t nodeIndex;
-  uint16_t scrollY;
-  uint16_t itemHeight;
-  uint16_t contentHeight;
-  uint16_t itemCount;
-  uint16_t (*countFn)(void);
-  void (*itemFn)(uint16_t idx, char* buf, uint8_t size);
-  void (*tapFn)(uint16_t idx);  // optional: called when an item is tapped
-};
-static UIListState __ui_lists[4];
-static uint8_t __ui_list_count = 0;
-static int8_t __ui_list_drag = -1;  // index into __ui_lists[] being scrolled (-1=none)
+// List bindings are now carried ON each node (listCountFn/listItemFn/listTapFn).
+// The UIListBinding table below is still emitted by the lowering for the
+// node-initializer to read at static-init time; the runtime never indexes it.
+
 static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 100=full)
 static uint16_t __ui_fade_elapsed = 0;
 static uint16_t __ui_fade_duration = 200; // ms
@@ -302,9 +335,6 @@ static inline void ui_navigate(uint8_t screenIdx) {
   // Reset scroll/touch state so the old screen's scroll container doesn't
   // interfere with the new screen.
   __ui_scroll_node = -1;
-  __ui_scroll_pending_dy = 0;
-  __ui_scroll_cache_valid = 0;
-  __ui_scroll_cache_node = -1;
   __ui_touch_node = -1;
   __ui_touch_state = 0;
   __ui_kb_visible = 0;
@@ -363,8 +393,78 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
                                          int16_t drawW, int16_t drawH);
 
 static CuttlefishDisplayTarget* __ui_gfx = display_defaultTarget();
-static CuttlefishCanvas16* __ui_scroll_canvas = nullptr;
-static CuttlefishCanvas16* __ui_scroll_repaint_canvas = nullptr;
+// Reusable per-container viewport canvas (Mode B shift-and-repair). One slot:
+// only the active scroll owner repaints via the canvas at a time.
+static CuttlefishCanvas16* __ui_container_canvas = nullptr;
+
+// Lazily allocate/reuse a viewport-sized canvas for a scroll container. Resizes
+// when the container's box changes; returns null if allocation fails (caller
+// falls back to Mode C direct redraw). Only used on full render tiers.
+static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) {
+  if (w <= 0 || h <= 0) return nullptr;
+  if (!__ui_container_canvas ||
+      display_canvasWidth(__ui_container_canvas) != w ||
+      display_canvasHeight(__ui_container_canvas) != h) {
+    display_deleteCanvas(__ui_container_canvas);
+    __ui_container_canvas = display_createCanvas(w, h);
+  }
+  return (__ui_container_canvas && display_canvasBuffer(__ui_container_canvas))
+    ? __ui_container_canvas : nullptr;
+}
+
+// Shift the canvas buffer vertically by deltaY (cheap memmove of existing
+// pixels), then fill the exposed band with bg. Reports the exposed band via
+// *exposedY/*exposedH so the caller can redraw only that strip (Mode B).
+static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t deltaY, uint16_t bg,
+                                             int16_t* exposedY, int16_t* exposedH) {
+  if (exposedY) *exposedY = 0;
+  if (exposedH) *exposedH = 0;
+  if (!canvas || !display_canvasBuffer(canvas)) return;
+  int16_t w = display_canvasWidth(canvas);
+  int16_t h = display_canvasHeight(canvas);
+  int16_t shift = deltaY < 0 ? -deltaY : deltaY;
+  if (shift <= 0 || shift >= h) {
+    display_canvasFillScreen(canvas, bg);
+    if (exposedY) *exposedY = 0;
+    if (exposedH) *exposedH = h;
+    return;
+  }
+  uint16_t* pixels = display_canvasBuffer(canvas);
+  int16_t stride = display_canvasWidth(canvas);
+  if (deltaY > 0) {  // content moves down: rows shift toward higher indices
+    for (int16_t row = h - shift - 1; row >= 0; row--) {
+      memmove(pixels + (int32_t)(row + shift) * stride,
+              pixels + (int32_t)row * stride,
+              (size_t)w * sizeof(uint16_t));
+    }
+    if (exposedY) *exposedY = 0;
+  } else {           // content moves up: rows shift toward lower indices
+    for (int16_t row = 0; row < h - shift; row++) {
+      memmove(pixels + (int32_t)row * stride,
+              pixels + (int32_t)(row + shift) * stride,
+              (size_t)w * sizeof(uint16_t));
+    }
+    if (exposedY) *exposedY = h - shift;
+  }
+  int16_t fillY = deltaY > 0 ? 0 : h - shift;
+  display_canvasFillRect(canvas, 0, fillY, w, shift, bg);
+  if (exposedH) *exposedH = shift;
+}
+
+// Short-lived repair canvas for parent-seeded background repaints (not scroll
+// related — distinct from the scroll container canvas). Lazily reused/resized.
+static CuttlefishCanvas16* __ui_repair_canvas = nullptr;
+static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
+  if (w <= 0 || h <= 0) return nullptr;
+  if (!__ui_repair_canvas ||
+      display_canvasWidth(__ui_repair_canvas) != w ||
+      display_canvasHeight(__ui_repair_canvas) != h) {
+    display_deleteCanvas(__ui_repair_canvas);
+    __ui_repair_canvas = display_createCanvas(w, h);
+  }
+  return (__ui_repair_canvas && display_canvasBuffer(__ui_repair_canvas))
+    ? __ui_repair_canvas : nullptr;
+}
 
 static inline CuttlefishDisplayTarget* ui_display_get_target() { return __ui_gfx; }
 static inline void ui_display_set_target(CuttlefishDisplayTarget* target) {
@@ -428,104 +528,154 @@ static inline void ui_display_print(const char* text) {
   display_targetPrint(__ui_gfx, text);
 }
 
-static inline void ui_invalidate_scroll_cache() {
-  __ui_scroll_cache_valid = 0;
-  __ui_scroll_cache_node = -1;
+// ── Scroll engine: Input layer ───────────────────────────────────────────────
+// raw touch sample → smoothed delta (dy). Capacitive: passthrough 1:1.
+// Resistive: deadband suppresses sub-N-px jitter (steady drag still 1:1).
+// 'none' tier compiles drag scroll out entirely.
+static int16_t __ui_scroll_prev_dy = 0;  // last smoothed delta (low-pass state)
+
+static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
+#if UI_SCROLL_INPUT_TIER_CAPACITIVE
+  __ui_scroll_prev_dy = dy;
+  return dy;
+#elif UI_SCROLL_INPUT_TIER_RESISTIVE
+  int16_t db = (int16_t)UI_SCROLL_DEADBAND_PX;
+  if (dy >= -db && dy <= db) {
+    // Deadband: kill per-sample jitter around zero. Steady drag (|dy|>db) below
+    // passes through unchanged, so steady-state is 1:1 (spec Q1).
+    __ui_scroll_prev_dy = 0;
+    return 0;
+  }
+  __ui_scroll_prev_dy = dy;
+  return dy;
+#else
+  (void)dy;
+  return 0;
+#endif
 }
 
-static inline void ui_invalidate_scroll_cache_for_node(uint8_t nodeIdx) {
-  if (!__ui_scroll_cache_valid || __ui_scroll_cache_node < 0) return;
-  if (nodeIdx >= __ui_node_count) return;
-  uint8_t cacheNode = (uint8_t)__ui_scroll_cache_node;
-  if (nodeIdx == cacheNode) {
-    ui_invalidate_scroll_cache();
-    return;
+// ── Scroll engine: Physics layer ─────────────────────────────────────────────
+// 1:1 in bounds; rubber-band at edges; bounce-back/snap on release. No fling.
+// On constrained render tiers (no elastic), overscroll is hard-clamped away.
+
+static inline int16_t ui_scroll_max(int8_t node) {
+  if (node < 0) return 0;
+  int16_t m = __ui_nodes[node].contentHeight - __ui_nodes[node].box.h;
+  return m < 0 ? 0 : m;
+}
+
+// Rubber-band excursion for d cumulative pixels dragged past a boundary.
+// r = maxOverscroll * d / (d + stiffness). stiffness held as X10 fixed-point.
+static inline int16_t ui_scroll_overscroll_for(int16_t d) {
+  if (d <= 0) return 0;
+  int16_t maxOv = (int16_t)UI_SCROLL_MAX_OVERSCROLL;
+  int16_t stiffX10 = (int16_t)UI_SCROLL_STIFFNESS_X10;
+  if (stiffX10 <= 0) stiffX10 = 1;
+  int32_t r = ((int32_t)maxOv * (int32_t)d) / ((int32_t)d + (int32_t)stiffX10);
+  return r > maxOv ? maxOv : (int16_t)r;
+}
+
+// Apply a smoothed drag delta to the owning scroll node. Returns 1 if the view
+// changed (needs redraw). Sets overscrollPx for rubber-band excursions; scrollY
+// itself never leaves [0, maxScroll] so the committed position stays valid.
+static inline uint8_t ui_apply_scroll_delta(int8_t node, int16_t dy) {
+  if (node < 0 || dy == 0) return 0;
+  int16_t sy = __ui_nodes[node].scrollY;
+  int16_t maxS = ui_scroll_max(node);
+  int16_t nextY = sy - dy;
+  int16_t prevOv = __ui_nodes[node].overscrollPx;
+  int16_t nextOv = prevOv;
+  if (nextY < 0) {
+    __ui_nodes[node].scrollY = 0;
+    // Cumulative drag past the top boundary since crossing it.
+    int16_t draggedPast = dy - sy;            // how far past 0 this delta pushed
+    int16_t cum = prevOv + draggedPast;
+    if (cum < 0) cum = 0;
+#if UI_SCROLL_ELASTIC
+    nextOv = ui_scroll_overscroll_for(cum);
+#else
+    nextOv = 0;
+#endif
+  } else if (nextY > maxS) {
+    __ui_nodes[node].scrollY = maxS;
+    int16_t draggedPast = nextY - maxS;
+    int16_t cum = (prevOv < 0 ? -prevOv : 0) + draggedPast;  // prevOv<0 = bottom
+    if (cum < 0) cum = 0;
+#if UI_SCROLL_ELASTIC
+    nextOv = -ui_scroll_overscroll_for(cum);   // negative = bottom overshoot
+#else
+    nextOv = 0;
+#endif
+  } else {
+    __ui_nodes[node].scrollY = nextY;
+    nextOv = 0;                                 // returned in-bounds → reset
   }
-  uint8_t p = __ui_nodes[nodeIdx].parent;
-  while (p != UI_NO_PARENT && p < __ui_node_count) {
-    if (p == cacheNode) {
-      ui_invalidate_scroll_cache();
-      return;
+  __ui_nodes[node].overscrollPx = nextOv;
+  uint8_t changed = (__ui_nodes[node].scrollY != sy) || (nextOv != prevOv);
+  if (changed) ui_mark_scroll_view_dirty((uint8_t)node);
+  return changed;
+}
+
+// On release: arm a bounded settle animation — bounce overscroll back to 0, or
+// edge-snap scrollY within edgeSnapPx. The animation runs in ui_tick.
+static inline uint8_t ui_scroll_release(int8_t node) {
+  if (node < 0) return 0;
+  uint8_t changed = 0;
+  if (__ui_nodes[node].overscrollPx != 0) {
+    __ui_nodes[node].settling = 1;
+    __ui_settle_from_overscroll = __ui_nodes[node].overscrollPx;
+    __ui_settle_from_scrollY = 0;
+    __ui_settle_start_ms = millis();
+    changed = 1;
+  } else {
+    int16_t sy = __ui_nodes[node].scrollY;
+    int16_t maxS = ui_scroll_max(node);
+    int16_t snap = (int16_t)UI_SCROLL_EDGE_SNAP_PX;
+    if (sy > 0 && sy <= snap) {
+      __ui_nodes[node].settling = 1;
+      __ui_settle_from_scrollY = sy;            // positive → snap toward 0
+      __ui_settle_from_overscroll = 0;
+      __ui_settle_start_ms = millis();
+      changed = 1;
+    } else if (maxS > 0 && sy < maxS && sy >= maxS - snap) {
+      __ui_nodes[node].settling = 1;
+      __ui_settle_from_scrollY = sy - maxS;     // negative → snap toward max
+      __ui_settle_from_overscroll = 0;
+      __ui_settle_start_ms = millis();
+      changed = 1;
     }
-    p = __ui_nodes[p].parent;
   }
+  return changed;
 }
 
-// Get (or allocate) a canvas sized to the viewport (w×h), not the full
-// display. Much smaller allocation → allocates reliably on ESP32 without PSRAM.
-static inline CuttlefishCanvas16* ui_get_scroll_canvas_keep_cache(int16_t w, int16_t h) {
-  if (w <= 0 || h <= 0) return nullptr;
-  if (!__ui_scroll_canvas || display_canvasWidth(__ui_scroll_canvas) != w || display_canvasHeight(__ui_scroll_canvas) != h) {
-    ui_invalidate_scroll_cache();
-    display_deleteCanvas(__ui_scroll_canvas);
-    __ui_scroll_canvas = display_createCanvas(w, h);
-  }
-  if (!__ui_scroll_canvas || !display_canvasBuffer(__ui_scroll_canvas)) {
-    ui_invalidate_scroll_cache();
-    return nullptr;
-  }
-  return __ui_scroll_canvas;
-}
-
-static inline CuttlefishCanvas16* ui_get_scroll_canvas(int16_t w, int16_t h) {
-  ui_invalidate_scroll_cache();
-  return ui_get_scroll_canvas_keep_cache(w, h);
-}
-
-static inline CuttlefishCanvas16* ui_get_scroll_repaint_canvas(int16_t w, int16_t h) {
-  if (w <= 0 || h <= 0) return nullptr;
-  if (!__ui_scroll_repaint_canvas ||
-      display_canvasWidth(__ui_scroll_repaint_canvas) != w ||
-      display_canvasHeight(__ui_scroll_repaint_canvas) != h) {
-    display_deleteCanvas(__ui_scroll_repaint_canvas);
-    __ui_scroll_repaint_canvas = display_createCanvas(w, h);
-  }
-  if (!__ui_scroll_repaint_canvas || !display_canvasBuffer(__ui_scroll_repaint_canvas)) return nullptr;
-  return __ui_scroll_repaint_canvas;
-}
-
-static inline void ui_shift_scroll_canvas(CuttlefishCanvas16* canvas, int16_t deltaY, uint16_t bg,
-                                          int16_t* exposedY, int16_t* exposedH) {
-  if (exposedY) *exposedY = 0;
-  if (exposedH) *exposedH = 0;
-  if (!canvas || !display_canvasBuffer(canvas)) return;
-  int16_t w = display_canvasWidth(canvas);
-  int16_t h = display_canvasHeight(canvas);
-  int16_t shift = deltaY < 0 ? -deltaY : deltaY;
-  if (shift <= 0 || shift >= h) {
-    display_canvasFillScreen(canvas, bg);
-    if (exposedY) *exposedY = 0;
-    if (exposedH) *exposedH = h;
-    return;
-  }
-
-  uint16_t* pixels = display_canvasBuffer(canvas);
-  int16_t stride = display_canvasWidth(canvas);
-  int16_t contentW = w > 4 ? w - 4 : w;
-  if (contentW > 0) {
-    if (deltaY > 0) {
-      for (int16_t row = 0; row < h - shift; row++) {
-        memmove(pixels + (int32_t)row * stride,
-                pixels + (int32_t)(row + shift) * stride,
-                (size_t)contentW * sizeof(uint16_t));
-      }
-      if (exposedY) *exposedY = h - shift;
-    } else {
-      for (int16_t row = h - shift - 1; row >= 0; row--) {
-        memmove(pixels + (int32_t)(row + shift) * stride,
-                pixels + (int32_t)row * stride,
-                (size_t)contentW * sizeof(uint16_t));
-      }
-      if (exposedY) *exposedY = 0;
+// Advance the settle animation for a node (called from ui_tick). Ease-out over
+// UI_SCROLL_SETTLE_MS, terminating at the boundary. Bounded — always ends.
+static inline void ui_scroll_advance_settle(uint8_t node, uint16_t deltaMs) {
+  (void)deltaMs;
+  if (node >= __ui_node_count || !__ui_nodes[node].settling) return;
+  uint32_t elapsed = millis() - __ui_settle_start_ms;
+  uint16_t dur = (uint16_t)UI_SCROLL_SETTLE_MS;
+  // ease-out: k = 1 - (1 - t)^2, t in [0,1]
+  uint32_t t = elapsed >= dur ? 100 : (elapsed * 100) / dur;
+  uint32_t k = 100 - ((100 - t) * (100 - t)) / 100;
+  if (__ui_nodes[node].overscrollPx != 0) {
+    int16_t from = __ui_settle_from_overscroll;
+    __ui_nodes[node].overscrollPx = (int16_t)(from - (int32_t)(from * k) / 100);
+    if (t >= 100) __ui_nodes[node].overscrollPx = 0;
+  } else if (__ui_settle_from_scrollY != 0) {
+    int16_t from = __ui_settle_from_scrollY;   // +toward 0, -toward max
+    int16_t maxS = ui_scroll_max((int8_t)node);
+    if (from > 0) {
+      __ui_nodes[node].scrollY = (int16_t)(from - (int32_t)(from * k) / 100);
+      if (t >= 100) __ui_nodes[node].scrollY = 0;
+    } else {  // from < 0: snap toward maxS
+      int16_t target = maxS;
+      __ui_nodes[node].scrollY = target + (int16_t)((int32_t)from * (100 - k) / 100);
+      if (t >= 100) __ui_nodes[node].scrollY = target;
     }
   }
-
-  int16_t y = deltaY > 0 ? h - shift : 0;
-  display_canvasFillRect(canvas, 0, y, w, shift, bg);
-  if (w > contentW) {
-    display_canvasFillRect(canvas, contentW, 0, w - contentW, h, bg);
-  }
-  if (exposedH) *exposedH = shift;
+  if (t >= 100) __ui_nodes[node].settling = 0;
+  ui_mark_scroll_view_dirty(node);
 }
 
 // ── Full-screen framebuffer (opt-in PSRAM perf experiment) ───────────────────
@@ -786,7 +936,6 @@ static inline void ui_draw_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
 // Per-node dirty marker (called by press handlers and binding evaluation).
 static inline void ui_mark_dirty(uint8_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
-  ui_invalidate_scroll_cache_for_node(nodeIdx);
   __ui_nodes[nodeIdx].dirty = 1;
   ui_mark_overlapping_higher_layers_dirty(nodeIdx);
 }
@@ -829,7 +978,6 @@ static inline void ui_mark_scroll_view_overlaps_dirty(uint8_t scrollNode) {
 }
 
 static inline void ui_mark_scroll_subtree_dirty(uint8_t scrollNode) {
-  ui_invalidate_scroll_cache();
   ui_mark_subtree_dirty_local(scrollNode);
   // Single overlap check at the container's paint rect covers every external
   // higher-z neighbor of the viewport. The container index is the right one to
@@ -845,20 +993,6 @@ static inline void ui_mark_scroll_view_dirty(uint8_t scrollNode) {
   ui_mark_scroll_view_overlaps_dirty(scrollNode);
 }
 
-static inline uint8_t ui_snap_scroll_to_top(int8_t scrollNode, uint8_t force) {
-  if (scrollNode < 0) return 0;
-  if (!force && __ui_nodes[scrollNode].scrollY > UI_SCROLL_EDGE_SNAP_PX) return 0;
-  uint8_t changed = __ui_nodes[scrollNode].scrollY != 0;
-  __ui_nodes[scrollNode].scrollY = 0;
-  // Force redraw even when scrollY is already 0: a pull beyond the top can leave
-  // stale clipped children on incremental displays if the final delta is ignored.
-  if (changed || force) {
-    ui_mark_scroll_subtree_dirty((uint8_t)scrollNode);
-    return 1;
-  }
-  return 0;
-}
-
 static inline int8_t ui_scroll_ancestor_for_node(uint8_t nodeIdx) {
   uint8_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
@@ -868,39 +1002,9 @@ static inline int8_t ui_scroll_ancestor_for_node(uint8_t nodeIdx) {
   return -1;
 }
 
-static inline uint8_t ui_apply_scroll_delta(int8_t scrollNode, int16_t dy) {
-  if (scrollNode < 0) return 0;
-  int16_t maxScroll = __ui_nodes[scrollNode].contentHeight - __ui_nodes[scrollNode].box.h;
-  if (maxScroll < 0) maxScroll = 0;
-  int16_t prevScrollY = __ui_nodes[scrollNode].scrollY;
-  int32_t rawNextY = (int32_t)prevScrollY - (int32_t)dy;
-  if (dy > 0 && rawNextY <= 0) __ui_scroll_snap_top = 1;
-  int16_t nextScrollY = constrain(rawNextY, 0, maxScroll);
-  if (nextScrollY == prevScrollY) return 0;
-  __ui_nodes[scrollNode].scrollY = nextScrollY;
-  ui_mark_scroll_view_dirty((uint8_t)scrollNode);
-  return 1;
-}
-
 static inline uint8_t ui_rects_intersect(int16_t ax, int16_t ay, int16_t aw, int16_t ah,
                                          int16_t bx, int16_t by, int16_t bw, int16_t bh) {
   return ax + aw > bx && ax < bx + bw && ay + ah > by && ay < by + bh;
-}
-
-static inline int16_t ui_scroll_scaled_drag_delta(int16_t dy) {
-  int16_t mult = (int16_t)UI_SCROLL_DRAG_MULTIPLIER;
-  if (mult <= 0) return dy;
-  int32_t scaled = (int32_t)dy * (int32_t)mult;
-  if (scaled > 32767) return 32767;
-  if (scaled < -32768) return -32768;
-  return (int16_t)scaled;
-}
-
-static inline int16_t ui_scroll_saturating_add(int16_t a, int16_t b) {
-  int32_t sum = (int32_t)a + (int32_t)b;
-  if (sum > 32767) return 32767;
-  if (sum < -32768) return -32768;
-  return (int16_t)sum;
 }
 
 static inline uint8_t ui_is_effectively_visible(uint8_t nodeIdx) {
@@ -1118,7 +1222,6 @@ static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint8_t node
     ui_node_current_paint_rect(c, &cr);
     if (cr.w <= 0 || cr.h <= 0) continue;
     if (ui_rects_intersect(r->x, r->y, r->w, r->h, cr.x, cr.y, cr.w, cr.h)) {
-      ui_invalidate_scroll_cache_for_node(c);
       __ui_nodes[c].dirty = 1;
     }
   }
@@ -1202,7 +1305,7 @@ static inline void ui_seed_paint_canvas_for_node(uint8_t nodeIdx, CuttlefishCanv
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint8_t nodeIdx, UIRect* r) {
   if (!r || r->w <= 0 || r->h <= 0) return 0;
   if ((uint32_t)r->w * (uint32_t)r->h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
-  CuttlefishCanvas16* repairCanvas = ui_get_scroll_canvas(r->w, r->h);
+  CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(r->w, r->h);
   if (!repairCanvas) return 0;
   ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y);
   ui_display_use_default_target();
@@ -1420,7 +1523,6 @@ static inline void ui_set_visible(uint8_t nodeIdx, uint8_t visible) {
   if (nodeIdx >= __ui_node_count) return;
   visible = visible ? 1 : 0;
   if (__ui_nodes[nodeIdx].visible == visible) return;
-  ui_invalidate_scroll_cache_for_node(nodeIdx);
 
   if (!visible) {
     // Clear the whole subtree in one clipped repair. This removes child pixels
@@ -1471,20 +1573,18 @@ static inline void ui_init(void) {
       __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
     }
   }
-  // Initialize list state from bindings.
-  for (uint8_t i = 0; i < __ui_list_binding_count && __ui_list_count < 4; i++) {
-    uint8_t n = __ui_list_bindings[i].node;
-    if (n >= __ui_node_count) continue;
-    UIListState* ls = &__ui_lists[__ui_list_count];
-    ls->nodeIndex = n;
-    ls->itemHeight = __ui_nodes[n].listItemHeight > 0 ? __ui_nodes[n].listItemHeight : 24;
-    ls->scrollY = 0;
-    ls->countFn = __ui_list_bindings[i].countFn;
-    ls->itemFn = __ui_list_bindings[i].itemFn;
-    ls->tapFn = __ui_list_bindings[i].tapFn;
-    ls->itemCount = ls->countFn ? ls->countFn() : 0;
-    ls->contentHeight = ls->itemCount * ls->itemHeight;
-    __ui_list_count++;
+  // Seed virtualized-list runtime state. The fn pointers live on each node
+  // (set by the static initializer); here we just compute the initial count and
+  // contentHeight so the first paint and the scroll clamp bound are correct.
+  for (uint8_t i = 0; i < __ui_node_count; i++) {
+    if (!__ui_nodes[i].virtualized || !__ui_nodes[i].listCountFn) continue;
+    uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
+    uint16_t cnt = __ui_nodes[i].listCountFn();
+    __ui_nodes[i].listCount = cnt;
+    __ui_nodes[i].contentHeight = (int16_t)((uint32_t)cnt * ih);
+    __ui_nodes[i].scrollY = 0;
+    __ui_nodes[i].overscrollPx = 0;
+    __ui_nodes[i].settling = 0;
   }
 }
 
@@ -1575,8 +1675,6 @@ static int16_t __ui_drag_start_x = 0;
 static int16_t __ui_drag_start_y = 0;
 static uint8_t __ui_is_dragging = 0;     // 1 once movement exceeds threshold
 static int8_t __ui_range_node = -1;      // range slider being dragged
-// Scroll delta state is defined near navigation because ui_navigate resets it.
-static uint32_t __ui_last_scroll_draw_time = 0;
 
 // ── Awaitable tap source (for \`await ui.onTap()\`) ─────────────────────────
 // __ui_tap_seq increments on every completed tap (after click/release dispatch);
@@ -1620,8 +1718,6 @@ static inline void ui_kb_compute_box();
 #define UI_TOUCH_DEBOUNCE_MS 50
 #define UI_TOUCH_HOLD_MS 600
 #define UI_DRAG_THRESHOLD 10
-#define UI_SCROLL_FRAME_MS 16
-#define UI_SCROLL_STEP_PX 1
 
 // Hit-test a touch point against all visible nodes (topmost first).
 // Returns the node index of the topmost node that BOTH contains the point
@@ -1681,44 +1777,28 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   __ui_drag_start_y = ty;
   __ui_is_dragging = 0;
   __ui_scroll_node = -1;
-  __ui_scroll_pending_dy = 0;
-  __ui_scroll_snap_top = 0;
-  __ui_scroll_start_y = 0;
-  __ui_list_snap_top = 0;
-  __ui_list_start_y = 0;
-  // Check if the touch is inside a scrollable container
+  // Unified scroll-scan: one pass over scrollable nodes (containers AND lists —
+  // lists are scrollable via the UA stylesheet) finds the owning container.
+  // One owner per gesture; the double-delta bug class (node in both a container
+  // and a list) is gone because there's no second mechanism.
+#if UI_SCROLL_HAS_TOUCH
   int16_t bestScroll = -1;
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+    // Only scrollable if content overflows the viewport.
+    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
     int16_t drawX = ui_draw_x_for_node((uint8_t)i);
     int16_t drawY = ui_draw_y_for_node((uint8_t)i);
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      if (__ui_nodes[i].contentHeight > __ui_nodes[i].box.h) {
-        if (bestScroll < 0 || ui_node_draws_before((uint8_t)bestScroll, i)) bestScroll = i;
-      }
+      if (bestScroll < 0 || ui_node_draws_before((uint8_t)bestScroll, i)) bestScroll = i;
     }
   }
   __ui_scroll_node = (int8_t)bestScroll;
-  if (__ui_scroll_node >= 0) {
-    __ui_scroll_start_y = __ui_nodes[(uint8_t)__ui_scroll_node].scrollY;
-  }
-  // Check if the touch is inside a list node (for list scrolling).
-  __ui_list_drag = -1;
-  for (uint8_t i = 0; i < __ui_node_count; i++) {
-    if (__ui_nodes[i].kind != NODE_LIST || !ui_is_effectively_visible(i)) continue;
-    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-    int16_t drawX = ui_draw_x_for_node(i);
-    int16_t drawY = ui_draw_y_for_node(i);
-    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
-        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      for (uint8_t l = 0; l < __ui_list_count; l++) {
-        if (__ui_lists[l].nodeIndex == i) { __ui_list_drag = l; __ui_list_start_y = __ui_lists[l].scrollY; break; }
-      }
-      break;
-    }
-  }
+#else
+  (void)tx; (void)ty;
+#endif
   if (node >= 0) {
     if (__ui_nodes[node].kind == NODE_BUTTON) {
       ui_set_pressed((uint8_t)node, 1);
@@ -1753,27 +1833,11 @@ static void ui_touch_up() {
     return;
   }
   uint32_t elapsed = millis() - __ui_touch_down_time;
-  if (__ui_scroll_node >= 0 && __ui_scroll_pending_dy > 0 &&
-      (int32_t)__ui_nodes[(uint8_t)__ui_scroll_node].scrollY - (int32_t)__ui_scroll_pending_dy <= 0) {
-    __ui_scroll_snap_top = 1;
-  }
-  if (__ui_scroll_node >= 0 && __ui_scroll_snap_top) {
-    if (ui_snap_scroll_to_top(__ui_scroll_node, 1)) {
-      __ui_last_scroll_draw_time = millis();
-    }
-    __ui_scroll_pending_dy = 0;
-  } else if (__ui_scroll_node >= 0 && __ui_scroll_pending_dy != 0) {
-    if (ui_apply_scroll_delta(__ui_scroll_node, __ui_scroll_pending_dy)) {
-      __ui_last_scroll_draw_time = millis();
-    }
-    __ui_scroll_pending_dy = 0;
-  }
-  if (__ui_scroll_node >= 0 &&
-      __ui_scroll_start_y > UI_SCROLL_EDGE_SNAP_PX &&
-      __ui_nodes[(uint8_t)__ui_scroll_node].scrollY <= UI_SCROLL_EDGE_SNAP_PX) {
-    if (ui_snap_scroll_to_top(__ui_scroll_node, 0)) {
-      __ui_last_scroll_draw_time = millis();
-    }
+  // Release the scroll owner: arm a bounded settle (bounce-back / edge-snap).
+  // No fling — motion ends with the finger (the settle animation is the only
+  // post-lift motion, terminating within UI_SCROLL_SETTLE_MS).
+  if (__ui_scroll_node >= 0) {
+    ui_scroll_release(__ui_scroll_node);
   }
   if (__ui_touch_node >= 0 && !__ui_is_dragging) {
     int8_t clickedNode = __ui_touch_node;
@@ -1795,29 +1859,21 @@ static void ui_touch_up() {
   // Placed AFTER the click/release dispatch so onClick always fires first.
   __ui_tap_seq++;
   __ui_tap_node = __ui_touch_node;
-  // List item tap: if the touch was inside a list, compute item index.
-  // Use total movement (not drag flag) to distinguish tap from scroll:
-  // a tap moves < itemHeight/2 total; a scroll moves more.
-  if (__ui_list_drag >= 0 && __ui_is_dragging) {
-    UIListState* ls = &__ui_lists[__ui_list_drag];
-    if (__ui_list_snap_top ||
-        (__ui_list_start_y > UI_SCROLL_EDGE_SNAP_PX && ls->scrollY <= UI_SCROLL_EDGE_SNAP_PX)) {
-      ls->scrollY = 0;
-      ui_mark_dirty(ls->nodeIndex);
-    }
-  }
-  if (__ui_list_drag >= 0) {
-    UIListState* ls = &__ui_lists[__ui_list_drag];
-    if (ls->tapFn) {
-      uint8_t n = ls->nodeIndex;
+  // Virtualized list item tap: if the touch was inside a list, compute the item
+  // index from the touch Y. Use total movement (not drag flag) to distinguish
+  // tap from scroll: a tap moves < itemHeight/2 total; a scroll moves more.
+  if (__ui_scroll_node >= 0 && __ui_nodes[(uint8_t)__ui_scroll_node].virtualized) {
+    uint8_t n = (uint8_t)__ui_scroll_node;
+    if (__ui_nodes[n].listTapFn) {
       int16_t drawY = ui_draw_y_for_node(n);
       int16_t relY = __ui_last_touch_y - drawY;
       int16_t totalMove = abs(__ui_last_touch_y - __ui_touch_down_y_pos);
-      if (totalMove < (int16_t)(ls->itemHeight / 2) &&
+      uint16_t ih = __ui_nodes[n].listItemHeight > 0 ? __ui_nodes[n].listItemHeight : 24;
+      if (totalMove < (int16_t)(ih / 2) &&
           relY >= 0 && relY < __ui_nodes[n].box.h) {
-        uint16_t itemIdx = (uint16_t)((relY + ls->scrollY) / ls->itemHeight);
-        if (itemIdx < ls->itemCount) {
-          ls->tapFn(itemIdx);
+        uint16_t itemIdx = (uint16_t)((relY + __ui_nodes[n].scrollY) / ih);
+        if (itemIdx < __ui_nodes[n].listCount) {
+          __ui_nodes[n].listTapFn(itemIdx);
         }
       }
     }
@@ -1826,13 +1882,7 @@ static void ui_touch_up() {
   __ui_touch_node = -1;
   __ui_is_dragging = 0;
   __ui_scroll_node = -1;
-  __ui_list_drag = -1;
   __ui_range_node = -1;
-  __ui_scroll_pending_dy = 0;
-  __ui_scroll_snap_top = 0;
-  __ui_scroll_start_y = 0;
-  __ui_list_snap_top = 0;
-  __ui_list_start_y = 0;
 }
 
 // Called each frame from ui_poll_touch when touch is detected.
@@ -1868,7 +1918,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     ui_touch_down(tx, ty);
   } else {
     // Already touching: check for drag or hold
-    if (!__ui_is_dragging && (__ui_scroll_node >= 0 || __ui_list_drag >= 0)) {
+    if (!__ui_is_dragging && __ui_scroll_node >= 0) {
       // Check if movement exceeds drag threshold
       int16_t dy = ty - __ui_drag_start_y;
       if (abs(dy) >= UI_DRAG_THRESHOLD) {
@@ -1896,35 +1946,24 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
         }
       }
     }
+    // Unified scroll drag: one owning node, immediate-apply each frame (the
+    // list's proven model, now used for all scroll containers). No accumulator,
+    // no cadence gate, no pending buffer — the smoothed delta is applied via the
+    // physics layer (1:1 in-bounds, rubber-band at edges). Telemetry optional.
     if (__ui_is_dragging && __ui_scroll_node >= 0) {
-      // Scroll: accumulate small touch deltas and redraw at a bounded cadence.
-      int16_t dy = ui_scroll_scaled_drag_delta(ty - __ui_drag_start_y);
-      __ui_drag_start_y = ty;
-      __ui_scroll_pending_dy = ui_scroll_saturating_add(__ui_scroll_pending_dy, dy);
-      if (__ui_scroll_pending_dy > 0 &&
-          (int32_t)__ui_nodes[(uint8_t)__ui_scroll_node].scrollY - (int32_t)__ui_scroll_pending_dy <= 0) {
-        __ui_scroll_snap_top = 1;
-      }
-      if (abs(__ui_scroll_pending_dy) >= UI_SCROLL_STEP_PX &&
-          now - __ui_last_scroll_draw_time >= UI_SCROLL_FRAME_MS) {
-        ui_apply_scroll_delta(__ui_scroll_node, __ui_scroll_pending_dy);
-        __ui_scroll_pending_dy = 0;
-        __ui_last_scroll_draw_time = now;
-      }
-    }
-    // List scroll: apply drag delta to the active list's scrollY.
-    if (__ui_is_dragging && __ui_list_drag >= 0) {
-      int16_t dy = ui_scroll_scaled_drag_delta(ty - __ui_drag_start_y);
-      __ui_drag_start_y = ty;
-      UIListState* ls = &__ui_lists[__ui_list_drag];
-      int16_t maxScroll = ls->contentHeight - __ui_nodes[ls->nodeIndex].box.h;
-      if (maxScroll < 0) maxScroll = 0;
-      int32_t rawNextY = (int32_t)ls->scrollY - (int32_t)dy;
-      if (dy > 0 && rawNextY <= 0) __ui_list_snap_top = 1;
-      int16_t nextY = constrain(rawNextY, 0, maxScroll);
-      if (nextY != (int16_t)ls->scrollY) {
-        ls->scrollY = nextY;
-        ui_mark_dirty(ls->nodeIndex);
+      int16_t rawDy = ty - __ui_drag_start_y;
+      if (rawDy != 0) {
+        int16_t dy = ui_scroll_smooth_dy(rawDy);
+        if (dy != 0) {
+          ui_apply_scroll_delta(__ui_scroll_node, dy);
+          __ui_drag_start_y = ty;
+#if UI_SCROLL_DEBUG
+          Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\n",
+            dy, __ui_nodes[(uint8_t)__ui_scroll_node].scrollY,
+            __ui_nodes[(uint8_t)__ui_scroll_node].overscrollPx,
+            (int)__ui_nodes[(uint8_t)__ui_scroll_node].virtualized);
+#endif
+        }
       }
     }
     if (__ui_touch_state == 1 && __ui_touch_node >= 0 && !__ui_is_dragging) {
@@ -2706,14 +2745,20 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
     }
   }
-  // ⓪b Evaluate list bindings: refresh item count, recompute content height.
-  for (uint8_t l = 0; l < __ui_list_count; l++) {
-    if (!__ui_lists[l].countFn) continue;
-    uint16_t newCount = __ui_lists[l].countFn();
-    if (newCount != __ui_lists[l].itemCount) {
-      __ui_lists[l].itemCount = newCount;
-      __ui_lists[l].contentHeight = newCount * __ui_lists[l].itemHeight;
-      ui_mark_dirty(__ui_lists[l].nodeIndex);
+  // ⓪b Evaluate list bindings (on-node): refresh item count, recompute content
+  // height, and advance any in-flight settle animation (bounce-back / edge-snap).
+  for (uint8_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].virtualized && __ui_nodes[i].listCountFn) {
+      uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
+      uint16_t newCount = __ui_nodes[i].listCountFn();
+      if (newCount != __ui_nodes[i].listCount) {
+        __ui_nodes[i].listCount = newCount;
+        __ui_nodes[i].contentHeight = (int16_t)((uint32_t)newCount * ih);
+        ui_mark_dirty(i);
+      }
+    }
+    if (__ui_nodes[i].settling) {
+      ui_scroll_advance_settle(i, deltaMs);
     }
   }
   // ⓪c Evaluate input bindings (two-way): if a bound <input>'s textBuffer
@@ -2917,9 +2962,10 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_kb_repaint_key = -1;
     return;
   }
-  // Process each dirty scroll container. Full invalidations repaint the
-  // subtree; normal scroll deltas shift cached canvas rows and repaint only the
-  // newly exposed strip.
+  // Process each dirty scroll container (Mode B shift-and-repair). A scroll
+  // delta shifts existing canvas pixels by the delta and repaints only the
+  // newly-exposed strip; a full invalidation (or no canvas) redraws the subtree.
+  // One container per frame — the active scroll owner repaints via its canvas.
   int8_t bufferedScrollNode = -1;
   int16_t bufferedScrollVX = 0;  // viewport origin X for coord translation
   int16_t bufferedScrollVY = 0;  // viewport origin Y
@@ -2933,35 +2979,32 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
     if (!__ui_nodes[s].dirty) continue;
 
-    // The scroll canvas is viewport-sized. The setup below either shifts cached
-    // pixels for a small delta or falls back to a full subtree redraw.
     int16_t vw = __ui_nodes[s].box.w;
     int16_t vh = __ui_nodes[s].box.h;
     int16_t vox = __ui_nodes[s].box.x;
     int16_t voy = __ui_nodes[s].box.y;
     uint16_t scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
-    bufferedScrollCanvas = ui_get_scroll_canvas_keep_cache(vw, vh);
+#if UI_SCROLL_RENDER_TIER_FULL
+    bufferedScrollCanvas = ui_get_container_canvas(vw, vh);
+#else
+    bufferedScrollCanvas = nullptr;  // Mode C: direct partial, no canvas
+#endif
     if (bufferedScrollCanvas) {
       bufferedScrollNode = (int8_t)s;
       bufferedScrollVX = vox;
       bufferedScrollVY = voy;
 
-      int16_t deltaY = 0;
-      uint8_t canShift = 0;
-      if (__ui_scroll_cache_valid &&
-          __ui_scroll_cache_node == (int8_t)s &&
-          __ui_scroll_cache_w == vw &&
-          __ui_scroll_cache_h == vh) {
-        deltaY = __ui_nodes[s].scrollY - __ui_scroll_cache_y;
-        int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
-        if (deltaY != 0 && absDelta < vh) canShift = 1;
-      }
+      // Mode B: shift delta = how far scrollY moved since this canvas was last
+      // painted. Small non-zero delta within one viewport → shift + repair strip.
+      int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
+      int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
+      uint8_t canShift = (deltaY != 0 && absDelta < vh);
 
       if (canShift) {
         int16_t exposedY = 0;
         int16_t exposedH = 0;
-        ui_shift_scroll_canvas(bufferedScrollCanvas, deltaY, scrollBg, &exposedY, &exposedH);
-        bufferedScrollRepaintCanvas = ui_get_scroll_repaint_canvas(vw, exposedH);
+        ui_shift_container_canvas(bufferedScrollCanvas, deltaY, scrollBg, &exposedY, &exposedH);
+        bufferedScrollRepaintCanvas = ui_get_repair_canvas(vw, exposedH);
         if (bufferedScrollRepaintCanvas) {
           bufferedScrollRepaintY = exposedY;
           bufferedScrollRepaintH = exposedH;
@@ -3000,7 +3043,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         display_canvasFillScreen(bufferedScrollCanvas, scrollBg);
       }
     } else {
-      ui_invalidate_scroll_cache();
+      // Mode C (constrained tier / allocation failure): direct partial redraw.
       for (uint8_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
         __ui_nodes[c].dirty = 1;
         if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
@@ -3114,7 +3157,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t paintCanvasW = paintRect.w;
     int16_t paintCanvasH = paintRect.h;
     if (!drawingBufferedScroll && bufferedScrollNode < 0 && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH)) {
-      paintCanvas = ui_get_scroll_canvas(paintCanvasW, paintCanvasH);
+      paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
       if (paintCanvas) {
         drawingPaintCanvas = 1;
         ui_display_set_target(paintCanvas);
@@ -3511,20 +3554,19 @@ static inline void ui_tick(uint16_t deltaMs) {
         break;
       }
       case NODE_LIST: {
-        // Find this list's state.
-        UIListState* ls = nullptr;
-        for (uint8_t l = 0; l < __ui_list_count; l++) {
-          if (__ui_lists[l].nodeIndex == i) { ls = &__ui_lists[l]; break; }
-        }
-        if (!ls || !ls->itemFn) break;
+        // Virtualized list: state lives on the node now (listCountFn/listItemFn/
+        // listCount/scrollY/contentHeight/listItemHeight), not in a side table.
+        if (!__ui_nodes[i].listItemFn) break;
         int16_t bx = __ui_nodes[i].box.x;
         int16_t by = drawY;
         int16_t bw = __ui_nodes[i].box.w;
         int16_t bh = __ui_nodes[i].box.h;
-        uint16_t ih = ls->itemHeight;
+        uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
+        uint16_t itemCount = __ui_nodes[i].listCount;
+        int16_t listScrollY = __ui_nodes[i].scrollY;
+        int16_t listContentH = __ui_nodes[i].contentHeight;
         uint16_t clearCol = __ui_nodes[i].clearColor;
         // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
-        // Use a dedicated list canvas to avoid conflicts with the scroll canvas.
         static CuttlefishCanvas16* __ui_list_canvas = nullptr;
         if (!__ui_list_canvas || display_canvasWidth(__ui_list_canvas) != bw || display_canvasHeight(__ui_list_canvas) != bh) {
           display_deleteCanvas(__ui_list_canvas);
@@ -3534,15 +3576,15 @@ static inline void ui_tick(uint16_t deltaMs) {
         if (!lc || !display_canvasBuffer(lc)) break;
         display_canvasFillScreen(lc, clearCol);
         // Compute visible range.
-        uint16_t first = ls->scrollY / ih;
-        uint16_t last = (ls->scrollY + bh - 1) / ih + 1;
-        if (ls->itemCount > 0 && last >= ls->itemCount) last = ls->itemCount - 1;
+        uint16_t first = listScrollY / ih;
+        uint16_t last = (listScrollY + bh - 1) / ih + 1;
+        if (itemCount > 0 && last >= itemCount) last = itemCount - 1;
         // Draw each visible item (canvas-local coords: 0,0 = viewport top).
         char listBuf[UI_TEXT_BUF + 1];
         display_targetSetTextWrap((CuttlefishDisplayTarget*)lc, false);
         for (uint16_t idx = first; idx <= last; idx++) {
-          int16_t itemY = (int16_t)(idx * ih) - ls->scrollY;
-          ls->itemFn(idx, listBuf, UI_TEXT_BUF + 1);
+          int16_t itemY = (int16_t)(idx * ih) - listScrollY;
+          __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
           listBuf[UI_TEXT_BUF] = 0;
           display_targetSetCursor((CuttlefishDisplayTarget*)lc, 4, itemY + (ih - 16) / 2);
           display_targetSetTextColor((CuttlefishDisplayTarget*)lc, __ui_nodes[i].fg);
@@ -3550,11 +3592,12 @@ static inline void ui_tick(uint16_t deltaMs) {
           display_targetPrint((CuttlefishDisplayTarget*)lc, listBuf);
         }
         // Scrollbar (canvas-local coords).
-        if (ls->contentHeight > (uint16_t)bh) {
+        if (listContentH > bh) {
           int16_t tx = bw - 4;
-          uint16_t thumbH = (uint32_t)bh * bh / ls->contentHeight;
+          uint16_t thumbH = (uint32_t)bh * bh / listContentH;
           if (thumbH < 8) thumbH = 8;
-          uint16_t thumbY = (uint32_t)(bh - thumbH) * ls->scrollY / (ls->contentHeight - bh);
+          int16_t maxScroll = listContentH - bh;
+          uint16_t thumbY = maxScroll > 0 ? (uint32_t)(bh - thumbH) * listScrollY / maxScroll : 0;
           uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
           display_canvasFillRect(lc, tx, 0, 3, bh, dimFg);
           display_canvasFillRect(lc, tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
@@ -3612,11 +3655,9 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint16_t dimFg = ((__ui_nodes[si].fg >> 1) & 0x7BEF);
     ui_display_fill_rect(tx, 0, 3, vh, dimFg);
     ui_display_fill_rect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
-    __ui_scroll_cache_valid = 1;
-    __ui_scroll_cache_node = bufferedScrollNode;
-    __ui_scroll_cache_y = __ui_nodes[si].scrollY;
-    __ui_scroll_cache_w = vw;
-    __ui_scroll_cache_h = vh;
+    // Record the scrollY this canvas now reflects, so the next scroll frame can
+    // compute its shift delta (Mode B) from scrollY - lastPaintedScrollY.
+    __ui_nodes[si].lastPaintedScrollY = __ui_nodes[si].scrollY;
     // Push the canvas to the draw target at the viewport position (the
     // framebuffer when active, else the display directly).
     ui_display_set_target(__ui_draw_target);
