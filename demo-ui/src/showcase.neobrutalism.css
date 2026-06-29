@@ -313,12 +313,13 @@ screen {
 #layerCorner { position: absolute; right: 4px; bottom: 4px; width: 70px; height: 22px; background: var(--chart-5); border: 1px solid var(--foreground); z-index: 3; justify-content: center; align-items: center; }
 .layerTag { color: var(--foreground); font-size: 13px; text-align: center; }
 #visStack { gap: 2px; width: 220px; background: var(--border); padding: 1px; }
-#visBefore, #visAfter, #visHiddenAttr, #visDisplayNone, #visCollapsed { width: 220px; height: 24px; justify-content: center; align-items: center; }
-#visBefore { background: var(--chart-4); }
-#visAfter { background: var(--chart-4); }
+#visBefore, #visAfter1, #visBefore2, #visAfter2, #visBefore3, #visAfter3,
+#visHiddenAttr, #visDisplayNone, #visCollapsed { width: 220px; height: 24px; justify-content: center; align-items: center; }
+#visBefore, #visAfter1, #visBefore2, #visAfter2, #visBefore3, #visAfter3 { background: var(--chart-4); }
 #visHiddenAttr { background: var(--destructive); }
 #visDisplayNone { background: var(--destructive); display: none; }
 #visCollapsed { background: var(--destructive); }
+.visCaption { color: var(--muted-foreground); font-size: 12px; text-align: center; width: 220px; margin-top: 4px; }
 .visText { color: var(--foreground); font-size: 13px; text-align: center; }
 #opacityRow { flex-direction: row; gap: 10px; align-items: center; }
 .opaqChip { width: 50px; height: 36px; background: var(--primary); color: var(--primary-foreground); font-size: 13px; text-align: center; justify-content: center; align-items: center; }

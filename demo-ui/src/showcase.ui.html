@@ -150,13 +150,20 @@
         </div>
       </section>
       <section id="visibilityDemo">
-        <h3 class="demoLabel">display:none / hidden / visibility</h3>
+        <h3 class="demoLabel">display:none / hidden / collapse</h3>
         <div id="visStack">
+          <span class="visCaption">hidden attr — no space</span>
           <div id="visBefore"><span class="visText">visible</span></div>
-          <div id="visHiddenAttr" hidden><span class="visText">hidden attr</span></div>
+          <div id="visHiddenAttr" hidden><span class="visText">hidden</span></div>
+          <div id="visAfter1"><span class="visText">visible</span></div>
+          <span class="visCaption">display:none — no space</span>
+          <div id="visBefore2"><span class="visText">visible</span></div>
           <div id="visDisplayNone"><span class="visText">display:none</span></div>
-          <div id="visCollapsed" style="visibility: collapse"><span class="visText">visibility collapse</span></div>
-          <div id="visAfter"><span class="visText">visible</span></div>
+          <div id="visAfter2"><span class="visText">visible</span></div>
+          <span class="visCaption">visibility:collapse — reserves space</span>
+          <div id="visBefore3"><span class="visText">visible</span></div>
+          <div id="visCollapsed" style="visibility: collapse"><span class="visText">collapse</span></div>
+          <div id="visAfter3"><span class="visText">visible</span></div>
         </div>
       </section>
       <section id="opacityDemo">
