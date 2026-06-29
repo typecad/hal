@@ -226,14 +226,14 @@ function borderWidthOf(style: CSSProperty): number {
 function textDecorationOf(val: string | undefined): number {
   if (!val) return 0;
   const v = val.toLowerCase();
-  const hasU = /underline/.test(v);
-  const hasS = /line-through/.test(v) || /strikethrough/.test(v);
+  const hasU = /underline/.test(v);
+  const hasS = /line-through/.test(v) || /strikethrough/.test(v);
   return (hasU && hasS) ? 3 : hasS ? 2 : hasU ? 1 : 0;
 }
 
 /** text-overflow: ellipsis -> true. clip/absent -> false. */
 function textOverflowOf(val: string | undefined): boolean {
-  return !!val && /ellipsis/.test(val.toLowerCase());
+  return !!val && /ellipsis/.test(val.toLowerCase());
 }
 
 function borderRadiusOf(style: CSSProperty): number {

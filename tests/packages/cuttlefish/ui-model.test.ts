@@ -121,3 +121,34 @@ describe("canvas node model", () => {
     expect(canvas!.canvasH).toBe(40);
   });
 });
+
+describe("text-decoration and text-overflow lowering", () => {
+  // Regression: the regexes in textDecorationOf/textOverflowOf were corrupted
+  // with backspace (0x08) bytes, so every value mapped to 0/false.
+  it("maps text-decoration: underline to underline=1", () => {
+    const html = `<screen><p id="u" style="text-decoration: underline">u</p></screen>`;
+    const styled = resolveStyles(parseHtml(html), parseCss(``));
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 320, h: 240 }, measure);
+    const prog = lowerUIToModel(styled, boxes, "rgb565");
+    const u = prog.nodes.find(n => n.id === "u");
+    expect(u!.underline).toBe(1);
+  });
+
+  it("maps text-decoration: line-through to underline=2", () => {
+    const html = `<screen><p id="s" style="text-decoration: line-through">s</p></screen>`;
+    const styled = resolveStyles(parseHtml(html), parseCss(``));
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 320, h: 240 }, measure);
+    const prog = lowerUIToModel(styled, boxes, "rgb565");
+    const s = prog.nodes.find(n => n.id === "s");
+    expect(s!.underline).toBe(2);
+  });
+
+  it("maps text-overflow: ellipsis to textOverflow=true", () => {
+    const html = `<screen><p id="e" style="text-overflow: ellipsis">e</p></screen>`;
+    const styled = resolveStyles(parseHtml(html), parseCss(``));
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 320, h: 240 }, measure);
+    const prog = lowerUIToModel(styled, boxes, "rgb565");
+    const e = prog.nodes.find(n => n.id === "e");
+    expect(e!.textOverflow).toBe(true);
+  });
+});
