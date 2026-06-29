@@ -1,6 +1,7 @@
 {
   "name": "typecad-monorepo",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/cuttlefish",
     "packages/hal",
@@ -24,6 +25,7 @@
     "ci": "npm test && npm run build --workspaces",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:ui-layout": "vitest run tests/packages/cuttlefish/ui-layout-harness.test.ts",
     "test:hw": "npm run test:hw --workspace @typecad/framework-arduino",
     "test:hw:basics": "npm run test:hw:basics --workspace @typecad/framework-arduino",
     "publish:cuttlefish": "npm publish --workspace @typecad/cuttlefish --access public",

@@ -14,7 +14,7 @@ import type {
   BasePin,
   ErrorPolicy,
 } from '@typecad/hal';
-import type { ISimSPIDevice } from '../types';
+import type { ISimSPIDevice } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // SimSPIBus

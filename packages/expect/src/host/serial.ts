@@ -5,7 +5,7 @@
 // or timeout.  Filters protocol lines from debug output.
 // ---------------------------------------------------------------------------
 
-import { PROTOCOL_PREFIX } from './types';
+import { PROTOCOL_PREFIX } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Public API

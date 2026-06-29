@@ -1,5 +1,5 @@
-import type { BasePin } from '../pin';
-import type { ErrorPolicy } from './error-policy';
+import type { BasePin } from '../pin.js';
+import type { ErrorPolicy } from './error-policy.js';
 
 export type SPIBitOrder = 'msb' | 'lsb';
 export type SPIMode = 0 | 1 | 2 | 3;

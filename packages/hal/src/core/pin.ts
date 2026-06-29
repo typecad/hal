@@ -12,9 +12,9 @@
 //   - Events: onRising(), onFalling(), onChange(), offInterrupts()
 // ---------------------------------------------------------------------------
 
-import type { DigitalValue, AnalogValue } from './gpio';
-import { PinMode } from './gpio';
-import type { PinCapabilityFlags } from './capabilities';
+import type { DigitalValue, AnalogValue } from './gpio.js';
+import { PinMode } from './gpio.js';
+import type { PinCapabilityFlags } from './capabilities.js';
 
 // ---------------------------------------------------------------------------
 // Branded types for mode safety
@@ -295,7 +295,7 @@ export interface IInputModePin {
 // Pin Groups
 // ---------------------------------------------------------------------------
 
-export type { IPinGroup } from './gpio';
+export type { IPinGroup } from './gpio.js';
 
 // ---------------------------------------------------------------------------
 // Capability-narrowed pin types

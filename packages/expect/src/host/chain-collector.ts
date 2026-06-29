@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import ts from 'typescript';
-import type { PreprocessorContext } from './preprocessor';
+import type { PreprocessorContext } from './preprocessor.js';
 
 // ---------------------------------------------------------------------------
 // Chain segment types

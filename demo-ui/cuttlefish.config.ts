@@ -52,6 +52,26 @@ const config: CuttlefishConfig = {
   console: {
     baudRate: 9600,
   },
+
+  // Display profile — describes the ILI9341's capabilities and wiring.
+  display: {
+    profile: 'ili9341-spi',
+    cs: 5,
+    dc: 21,
+    rst: 22,
+    backlight: 33,
+    spiFrequency: 80000000,
+    antialias: true,
+    themeCss: 'C:/typecad/typecode/demo-ui/src/hello.neobrutalism.css',
+    themeClass: 'dark',
+    touch: {
+      library: 'XPT2046_Touchscreen',
+      cs: 15,
+      irq: 17,
+      calibration: { xMin: 375, xMax: 3950, yMin: 200, yMax: 3750 },
+      minPressure: 10,
+    },
+  },
 };
 
 export default config;

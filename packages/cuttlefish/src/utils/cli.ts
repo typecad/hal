@@ -16,6 +16,7 @@ export function printHelp(): void {
   console.log(`  cuttlefish <input.ts> [options]`);
   console.log(`  cuttlefish create [name] [options]`);
   console.log(`  cuttlefish build [options]`);
+  console.log(`  cuttlefish preview [--config <path>] [--port <port>]`);
   console.log(`  cuttlefish gen-libdefs <input.ts>`);
   console.log(`  cuttlefish gen-decls <input.cpp|--all <directory>>`);
   console.log(`  cuttlefish map-error <mapFile> [options]`);
@@ -75,6 +76,9 @@ export function printHelp(): void {
   console.log(`  build                    Build using entry point from cuttlefish.config.ts`);
   console.log(`                           Requires 'entry' field in config file.`);
   console.log(`                           Supports all transpile, compile, upload, and watch options.`);
+  console.log();
+  console.log(`  preview                  Start a browser preview for the configured UI display.`);
+  console.log(`                           Uses cuttlefish.config.ts by default.`);
   console.log();
   console.log(chalk.cyan(`WATCH MODE`));
   console.log();
@@ -344,6 +348,27 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
   // build subcommand — entry point comes from cuttlefish.config.ts
   if (firstArg === "build") {
     return parsePipelineCommand(argv, "build");
+  }
+
+  if (firstArg === "preview") {
+    const configPath = readFirstFlagValue(argv, ["--config"]);
+    const port = readNumberFlag(argv, ["--port"]);
+    return {
+      command: "preview",
+      inputFile: undefined,
+      emitMode: "split",
+      target: "generic",
+      emitMaps: true,
+      noTranspile: false,
+      compile: false,
+      upload: false,
+      monitor: false,
+      watch: false,
+      baud: 9600,
+      platformContext: {},
+      configPath: configPath ? path.resolve(process.cwd(), configPath) : undefined,
+      port: port ? String(port) : undefined,
+    };
   }
 
   // Named subcommands

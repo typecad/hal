@@ -5,5 +5,5 @@
 //   import { describe, done } from '@typecad/expect';
 // ---------------------------------------------------------------------------
 
-export type { Suite, Expectation, StringExpectation } from './types';
-export { describe, done } from './stubs';
+export type { Suite, Expectation, StringExpectation } from './types.js';
+export { describe, done } from './stubs.js';

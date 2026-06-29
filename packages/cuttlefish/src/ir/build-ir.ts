@@ -13,7 +13,9 @@ import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } f
 import { runProgramValidations } from "./validation-orchestrator.js";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
-import { registerUIModuleImport } from "./transformers/ui-call-resolver.js";
+import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
+import { getUIModule } from "../ui/ui-registry.js";
+import { autoWireElements, registerScreenId } from "./ui-element-auto-wire.js";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver.js";
 import { prescanUnsupportedFeatures } from "./feature-prescan.js";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
@@ -306,6 +308,30 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     if (!htmlPath) continue;
     for (const name of imp.namedImports) {
       registerUIModuleImport(name, htmlPath);
+      // Register each element in the tree for .value access
+      const mod = getUIModule(htmlPath);
+      if (mod) {
+        // Register screen IDs → indices for <a href="#screenId"> navigation.
+        for (let si = 0; si < mod.allStyledScreens.length; si++) {
+          const screenNode = mod.allStyledScreens[si] as any;
+          if (screenNode.id) registerScreenId(screenNode.id, si);
+        }
+        // Register each element in ALL screens for .value access + auto-wire.
+        const collectIds = (node: any) => {
+          if (node.id) registerElementValue(name, node.id, htmlPath);
+          node.children?.forEach(collectIds);
+        };
+        if (mod.allStyledScreens.length > 0) {
+          let nextUiNodeIndex = 0;
+          for (const screen of mod.allStyledScreens) {
+            collectIds(screen);
+            nextUiNodeIndex = autoWireElements(name, screen as any, nextUiNodeIndex);
+          }
+        } else {
+          collectIds(mod.styled);
+          autoWireElements(name, mod.styled as any, 0);
+        }
+      }
     }
   }
 

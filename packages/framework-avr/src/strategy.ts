@@ -17,7 +17,7 @@ import {
   getPWMInfo,
   inferReceiverKind,
   getInterruptInfo,
-} from './registers';
+} from './registers.js';
 
 // ---------------------------------------------------------------------------
 // Native AVR code generation functions

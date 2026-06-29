@@ -26,8 +26,8 @@ export {
   inferReceiverKind,
   getInterruptInfo,
   isInterruptPin,
-} from './registers';
+} from './registers.js';
 
 // Platform strategy for native AVR code generation
 // Export as FrameworkStrategy for consistency with other framework packages
-export { NativeAVRStrategy, NativeAVRStrategy as FrameworkStrategy, PlatformStrategy } from './strategy';
+export { NativeAVRStrategy, NativeAVRStrategy as FrameworkStrategy, PlatformStrategy } from './strategy.js';

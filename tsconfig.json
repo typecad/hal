@@ -11,14 +11,16 @@
     "experimentalDecorators": true
   },
   "references": [
-    { "path": "packages/core" },
-    { "path": "packages/schema" },
+    { "path": "packages/cuttlefish" },
+    { "path": "packages/hal" },
+    { "path": "packages/mcu-atmega328p" },
+    { "path": "packages/mcu-esp32" },
     { "path": "packages/framework-avr" },
     { "path": "packages/framework-arduino" },
     { "path": "packages/framework-native" },
     { "path": "packages/board-arduino-uno" },
     { "path": "packages/board-esp32-devkit" },
-    { "path": "packages/transpiler" },
+    { "path": "packages/ui" },
     { "path": "packages/expect" },
     { "path": "packages/simulator" }
   ]

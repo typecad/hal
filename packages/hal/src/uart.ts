@@ -1,4 +1,4 @@
-﻿import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit';
+﻿import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit.js';
 
 export class SerialPort {
   private _port: string;

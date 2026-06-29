@@ -2,7 +2,7 @@
   "name": "@typecad/framework-avr",
   "version": "0.1.0",
   "description": "TypeCAD framework package for native AVR register-level code generation",
-  "type": "commonjs",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

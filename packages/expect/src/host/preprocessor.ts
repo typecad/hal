@@ -23,8 +23,8 @@
 // ---------------------------------------------------------------------------
 
 import ts from 'typescript';
-import { isDescribeChain, collectChainSegments } from './chain-collector';
-import { emitSegments } from './protocol-emitter';
+import { isDescribeChain, collectChainSegments } from './chain-collector.js';
+import { emitSegments } from './protocol-emitter.js';
 
 // ---------------------------------------------------------------------------
 // Public API

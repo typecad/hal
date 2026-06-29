@@ -9,7 +9,7 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { CompileResult, ToolchainOptions } from "@typecad/cuttlefish/api/shared";
 import { parseCompileErrors, collectCppFiles } from "@typecad/cuttlefish/api/shared";
-import type { NativeCompileConfig } from "./native-config";
+import type { NativeCompileConfig } from "./native-config.js";
 
 function findCppSource(outputDir: string, sourcePath: string): string {
   if (sourcePath.endsWith(".cpp") && fs.existsSync(sourcePath)) {

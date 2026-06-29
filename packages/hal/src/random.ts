@@ -1,4 +1,4 @@
-import { rawCpp } from './emit';
+import { rawCpp } from './emit.js';
 
 export declare function randomSeed(seed: number): void;
 export declare function random(max: number): number;

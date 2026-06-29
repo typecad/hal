@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "@typecad/cuttlefish",
   "version": "0.1.0",
   "description": "TypeScript to C++ transpiler — native, Arduino, and bare-metal targets",
@@ -41,6 +41,10 @@
       "types": "./dist/ui/html-parser.d.ts",
       "default": "./dist/ui/html-parser.js"
     },
+    "./ui/default-keyboards": {
+      "types": "./dist/ui/default-keyboards.d.ts",
+      "default": "./dist/ui/default-keyboards.js"
+    },
     "./ui/css-parser": {
       "types": "./dist/ui/css-parser.d.ts",
       "default": "./dist/ui/css-parser.js"
@@ -52,6 +56,14 @@
     "./ui/layout-engine": {
       "types": "./dist/ui/layout-engine.d.ts",
       "default": "./dist/ui/layout-engine.js"
+    },
+    "./ui/text-layout": {
+      "types": "./dist/ui/text-layout.d.ts",
+      "default": "./dist/ui/text-layout.js"
+    },
+    "./ui/keyframes": {
+      "types": "./dist/ui/keyframes.d.ts",
+      "default": "./dist/ui/keyframes.js"
     },
     "./ui/block-layout": {
       "types": "./dist/ui/block-layout.d.ts",
@@ -77,9 +89,21 @@
       "types": "./dist/ui/transpile-ui.d.ts",
       "default": "./dist/ui/transpile-ui.js"
     },
+    "./ui/model": {
+      "types": "./dist/ui/model.d.ts",
+      "default": "./dist/ui/model.js"
+    },
     "./ui/ui-registry": {
       "types": "./dist/ui/ui-registry.d.ts",
       "default": "./dist/ui/ui-registry.js"
+    },
+    "./preview/host-gfx": {
+      "types": "./dist/preview/host-gfx.d.ts",
+      "default": "./dist/preview/host-gfx.js"
+    },
+    "./preview/host-ui-runtime": {
+      "types": "./dist/preview/host-ui-runtime.d.ts",
+      "default": "./dist/preview/host-ui-runtime.js"
     }
   },
   "files": [
@@ -94,10 +118,10 @@
   },
   "dependencies": {
     "chalk": "^4.1.2",
+    "opentype.js": "^2.0.0",
     "typescript": "^5.7.3",
     "zod": "^3.24.0"
   },
-  "peerDependencies": {},
   "peerDependenciesMeta": {},
   "optionalDependencies": {
     "@typecad/framework-native": "*"

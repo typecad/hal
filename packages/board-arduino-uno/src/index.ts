@@ -114,10 +114,10 @@ export const PeripheralPins = {
 } as const;
 
 // Board-level typed pins (including Arduino-style aliases D0, A0, etc.)
-export * from './pins';
+export * from './pins.js';
 
 // Board-specific analog constants
-export * from './analog';
+export * from './analog.js';
 
 // Board namespace (single-import convenience)
-export { Board } from './board';
+export { Board } from './board.js';

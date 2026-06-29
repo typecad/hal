@@ -17,18 +17,40 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseHtml } from "./html-parser.js";
-import { parseCss } from "./css-parser.js";
+import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "./html-parser.js";
+import type { KeyboardTemplate } from "./html-parser.js";
+import { getThemeCss } from "./theme-store.js";
+import { parseCss, parseFontFaces, parseKeyframes } from "./css-parser.js";
+import type { CSSFontFace, CSSRule, KeyframeSet } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
+import { buildKeyframeSets } from "./keyframes.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
+import { getDisplayProfile } from "./display-profile-store.js";
+import { buildUIFontAssets } from "./font-assets.js";
+import type { UIFontAssetModel } from "./font-assets.js";
+import { emitImageTables, loadImageAssets } from "./image-assets.js";
+import type { Diagnostic } from "../types.js";
 
 export interface UIModule {
   /** Absolute path of the .ui.html source. */
   htmlPath: string;
   /** Resolved-style tree (HTML + CSS merged). Layout deferred to mount. */
   styled: StyledNode;
+  /** All resolved <screen> trees (for multi-screen navigation). */
+  allStyledScreens: StyledNode[];
+  /** <keyboard> templates parsed from the same .ui.html (sibling declarations). */
+  keyboards: KeyboardTemplate[];
+  /** CSS rules from the sibling .ui.css (used for keyboard key styling). */
+  rules: CSSRule[];
+  /** @font-face rules from CSS, resolved into build-time font assets. */
+  fontFaces: CSSFontFace[];
+  fontAssets: UIFontAssetModel[];
+  /** Raw @keyframes blocks parsed from CSS. */
+  rawKeyframes: KeyframeSet[];
+  /** Parser-level warnings (unknown CSS properties / HTML tags). */
+  diagnostics: Diagnostic[];
 }
 
 export interface LowerOptions {
@@ -58,19 +80,36 @@ export function loadUIModule(htmlPath: string): UIModule {
     throw new Error(`UI module not found: ${abs}`);
   }
   const htmlText = fs.readFileSync(abs, "utf-8");
-  const cssPath = abs.replace(/\.ui\.html$/, ".ui.css");
+  // CSS path: use theme override if set, else the default sibling .ui.css.
+  const themeOverride = getThemeCss();
+  const cssPath = themeOverride
+    ? (path.isAbsolute(themeOverride) ? themeOverride : path.resolve(path.dirname(abs), themeOverride))
+    : abs.replace(/\.ui\.html$/, ".ui.css");
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
 
-  const tree = parseHtml(htmlText);
-  const rules = parseCss(cssText);
-  const styled = resolveStyles(tree, rules);
+  const moduleDiagnostics: Diagnostic[] = [];
+  const parsed = parseHtmlWithKeyboards(htmlText, moduleDiagnostics);
+  const tree = parsed.tree;
+  const allScreens = parsed.screens;
+  const keyboards = parsed.keyboards;
+  // Merge <style> blocks from the HTML with the external .ui.css.
+  const styleBlocks = extractStyleBlocks(htmlText);
+  const fullCss = cssText + "\n" + styleBlocks;
+  const rules = parseCss(fullCss, moduleDiagnostics);
+  const fontFaces = parseFontFaces(fullCss);
+  const styled = resolveStyles(tree, rules, moduleDiagnostics);
+  const allStyledScreens = allScreens.map(s => resolveStyles(s, rules, moduleDiagnostics));
+  const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
+  const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(cssPath));
 
-  const mod: UIModule = { htmlPath: abs, styled };
+  const rawKeyframes = parseKeyframes(fullCss);
+  const mod: UIModule = { htmlPath: abs, styled, allStyledScreens, keyboards, rules, fontFaces, fontAssets, rawKeyframes, diagnostics: moduleDiagnostics };
   modules.set(abs, mod);
 
-  // Write a sibling .ui.html.d.ts so editors and the type-checker see the
-  // imported `screen` symbol with precise per-id typing.
-  writeTypeDeclSibling(abs, styled);
+  // Write a sibling .ui.d.html.ts so editors and the type-checker see the
+  // imported `screen` symbol with precise per-id typing. The name follows the
+  // Node16 `allowArbitraryExtensions` convention (<base>.d.<ext>.ts).
+  writeTypeDeclSibling(abs, allStyledScreens);
 
   return mod;
 }
@@ -84,10 +123,29 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const mod = modules.get(abs);
   if (!mod) throw new Error(`Cannot lower unregistered UI module: ${abs}`);
 
-  const engine = selectEngine(mod.styled);
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
-  const boxes = engine.arrange(mod.styled, viewport, measure);
-  const result = lowerUIToCpp(mod.styled, boxes, opts.colorFormat, opts.storage);
+
+  // Layout all screens (each gets its own Yoga layout pass; boxes concatenated).
+  let allBoxes: Box[] = [];
+  let allStyled: StyledNode[] = [];
+  for (const screen of mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled]) {
+    const engine = selectEngine(screen);
+    const screenBoxes = engine.arrange(screen, viewport, measure);
+    allBoxes = allBoxes.concat(screenBoxes);
+    allStyled.push(screen);
+  }
+
+  // Resolve @keyframes from the module's parsed keyframe sets.
+  const keyframeSets = buildKeyframeSets(mod.rawKeyframes || [], opts.colorFormat);
+
+  // Load image assets before lowering so imgDataId can be set.
+
+  const imageAssets = loadImageAssets(allStyled.length > 0 ? allStyled : [mod.styled], path.dirname(abs));
+
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets);
+
+  // Emit image tables.
+  result.imageTables = emitImageTables(imageAssets.assets);
   lowered.set(abs, result);
   return result;
 }
@@ -128,25 +186,45 @@ export function clearEntryHasUI(): void {
   entryHasUIFlag = false;
 }
 
-// ── Type-declaration sibling (.ui.html.d.ts) ────────────────────────────────
+// ── Type-declaration sibling (.ui.d.html.ts) ────────────────────────────────
 
-function writeTypeDeclSibling(htmlPath: string, styled: StyledNode): void {
-  const dtsPath = htmlPath.replace(/\.ui\.html$/, ".ui.html.d.ts");
-  const ids: Array<{ id: string; tag: string }> = [];
+function uiElementTypeForTag(tag: string): string {
+  switch (tag) {
+    case "button": return "ButtonElement";
+    case "view":
+    case "screen": return "ViewElement";
+    case "check": return "CheckElement";
+    case "select": return "SelectElement";
+    case "radio": return "RadioElement";
+    case "progress": return "ProgressElement";
+    case "range": return "RangeElement";
+    case "input": return "InputElement";
+    case "canvas": return "CanvasElement";
+    default: return "TextElement";
+  }
+}
+
+function writeTypeDeclSibling(htmlPath: string, styled: StyledNode | StyledNode[]): void {
+  // Node16 module resolution with `allowArbitraryExtensions` types a non-JS
+  // module `<base>.<ext>` (here `app.ui.html`) via a sibling named
+  // `<base>.d.<ext>.ts` (here `app.ui.d.html.ts`). The older `.ui.html.d.ts`
+  // name is rejected by Node16 regardless of host hooks — the declaration file
+  // MUST follow the `<base>.d.<ext>.ts` convention.
+  const dtsPath = htmlPath.replace(/\.ui\.html$/, ".ui.d.html.ts");
+  const ids = new Map<string, string>();
   const collect = (n: StyledNode) => {
-    if (n.id) ids.push({ id: n.id, tag: n.tag });
+    if (n.id && !ids.has(n.id)) ids.set(n.id, n.tag);
     n.children.forEach(collect);
   };
-  collect(styled);
+  for (const root of Array.isArray(styled) ? styled : [styled]) collect(root);
 
-  const fields = ids.map(({ id, tag }) => {
-    const typeName = tag.charAt(0).toUpperCase() + tag.slice(1);
-    return `  ${id}: ${typeName}Element;`;
-  }).join("\n");
+  const fields = [...ids.entries()]
+    .map(([id, tag]) => `  ${id}: ${uiElementTypeForTag(tag)};`)
+    .join("\n");
 
   const dts = [
     `// Auto-generated by cuttlefish (UI lowering). Do not edit.`,
-    `import type { TextElement, ButtonElement, ViewElement } from "@typecad/ui";`,
+    `import type { TextElement, ButtonElement, ViewElement, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement, CanvasElement } from "@typecad/ui";`,
     `export interface ScreenTree {`,
     fields,
     `}`,
@@ -155,3 +233,4 @@ function writeTypeDeclSibling(htmlPath: string, styled: StyledNode): void {
 
   fs.writeFileSync(dtsPath, dts, "utf-8");
 }
+

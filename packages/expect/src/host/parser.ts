@@ -18,8 +18,8 @@ import type {
   TestResult,
   AssertionResult,
   MatcherName,
-} from './types';
-import { evaluate } from './evaluator';
+} from './types.js';
+import { evaluate } from './evaluator.js';
 
 // ---------------------------------------------------------------------------
 // Public API

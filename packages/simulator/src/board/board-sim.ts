@@ -3,14 +3,14 @@
 // ---------------------------------------------------------------------------
 
 import type { BasePin, AnalogPin, PWMPin, InterruptPin } from '@typecad/hal';
-import type { SimBoardConfig } from '../types';
-import { SimDigitalPin } from '../gpio/digital-pin-sim';
-import { SimAnalogPin } from '../gpio/analog-pin-sim';
-import { SimPWMPin } from '../gpio/pwm-pin-sim';
-import { SimInterruptPin } from '../gpio/interrupt-sim';
-import { SimSerialPort } from '../bus/serial-sim';
-import { SimI2CBus } from '../bus/i2c-sim';
-import { SimSPIBus } from '../bus/spi-sim';
+import type { SimBoardConfig } from '../types.js';
+import { SimDigitalPin } from '../gpio/digital-pin-sim.js';
+import { SimAnalogPin } from '../gpio/analog-pin-sim.js';
+import { SimPWMPin } from '../gpio/pwm-pin-sim.js';
+import { SimInterruptPin } from '../gpio/interrupt-sim.js';
+import { SimSerialPort } from '../bus/serial-sim.js';
+import { SimI2CBus } from '../bus/i2c-sim.js';
+import { SimSPIBus } from '../bus/spi-sim.js';
 
 // ---------------------------------------------------------------------------
 // SimBoard

@@ -6,13 +6,13 @@
 // ---------------------------------------------------------------------------
 
 // Interface definitions
-export type { II2CArduino } from './i2c-arduino';
-export type { ISPIArduino } from './spi-arduino';
-export type { ISerialArduino } from './uart-arduino';
+export type { II2CArduino } from './i2c-arduino.js';
+export type { ISPIArduino } from './spi-arduino.js';
+export type { ISerialArduino } from './uart-arduino.js';
 
 // Supporting types from core (re-exported for convenience)
 export type { I2CAddress } from '@typecad/hal';
 export type { SPIMode, SPIBitOrder, SPISettings } from '@typecad/hal';
 
 // Arduino Uno stubs
-export { I2C0, SPI0, UART0 } from './stubs-uno';
+export { I2C0, SPI0, UART0 } from './stubs-uno.js';

@@ -32,6 +32,7 @@ import { CompilationContext, contextStorage } from "./ir/build-ir-state.js";
 import { buildSymbolTable, mergeSymbolTable, resolveInheritance, createSymbolTable } from "./ir/symbol-table.js";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug/index.js";
 import { collectTranspileGraph } from "./orchestrator/graph-builder.js";
+import { allUIModules } from "./ui/ui-registry.js";
 import { typeCheckFiles } from "./orchestrator/type-checker.js";
 import { runSemanticGates } from "./orchestrator/type-checker.js";
 import { autoGenerateMissingDecls } from "./orchestrator/dts-generator.js";
@@ -285,6 +286,41 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // consistent strategy drives both the output directory and emission.
   const strategy = boardStrategy ?? resolveStrategy(options.target);
   setActiveStrategy(strategy);
+
+  // Load display profile from config (if present) into the profile store.
+  const { setDisplayProfile, resetDisplayProfile } = await import("./ui/display-profile-store.js");
+  const { setThemeCss, resetThemeCss } = await import("./ui/theme-store.js");
+  resetDisplayProfile();
+  resetThemeCss();
+  const configDisplay = (options as any).display;
+  if (configDisplay) {
+    const { resolveDisplayProfile } = await import("./api/shared/display-profile.js");
+    try {
+      // Load built-in profiles from the framework package via its exported path
+      const registry = new Map();
+      if (options.frameworkPackage) {
+        const profileMod = await import(options.frameworkPackage + "/displays/ili9341-spi").catch(() => null);
+        if (profileMod?.BUILT_IN_PROFILES) {
+          for (const [k, v] of Object.entries(profileMod.BUILT_IN_PROFILES)) {
+            registry.set(k, v as any);
+          }
+        }
+      }
+      const resolved = resolveDisplayProfile(configDisplay, registry);
+      setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus });
+    } catch {
+      // Fall back to default profile — not fatal
+    }
+    // Apply theme CSS override if specified.
+    if (configDisplay.themeCss) {
+      setThemeCss(configDisplay.themeCss);
+    }
+    if (configDisplay.themeClass) {
+      const { setThemeClass } = await import("./ui/theme-store.js");
+      setThemeClass(configDisplay.themeClass);
+    }
+  }
+
   const outDir = path.join(outBaseDir, strategy.outputSubdirectory(sketchBaseName));
 
   // Start fresh: clean the output directory. (Incremental builds are disabled —
@@ -353,6 +389,16 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   let entryOutputs: GeneratedOutputs | undefined;
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
   const allRemovedSymbols: string[] = [];
+
+  // ── Parser-level warnings (unknown CSS properties / HTML tags) ────────────
+  // The graph build above already loaded all .ui.html modules; surface their
+  // parser warnings (unknown CSS properties, unknown HTML tags) here so the
+  // author sees typos and unsupported features instead of silent drops.
+  for (const mod of allUIModules()) {
+    for (const d of mod.diagnostics) {
+      diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+    }
+  }
 
   // ── Semantic gates (Phase 3) ──────────────────────────────────────────────
   // Type-resolved checks that the syntactic feature-prescan cannot express:
@@ -688,23 +734,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.startTimer("post:native-modules");
   const nativeModuleOutputs: string[] = [];
   for (const [moduleSpecifier, nativeModule] of graphResult.nativeModules) {
-    // Read the C++ source
-    const cppContent = readText(nativeModule.cppPath);
-
-    // Write to output directory
-    const outputCppPath = path.join(outDir, `${nativeModule.moduleKey}.cpp`);
-    fs.writeFileSync(outputCppPath, cppContent, "utf8");
-    nativeModuleOutputs.push(outputCppPath);
-
-    // Also copy the header file if it exists
-    if (nativeModule.headerPath) {
-      const headerContent = readText(nativeModule.headerPath);
-      const outputHeaderPath = path.join(outDir, `${nativeModule.moduleKey}.h`);
-      fs.writeFileSync(outputHeaderPath, headerContent, "utf8");
-      nativeModuleOutputs.push(outputHeaderPath);
-    }
-
-    info(`Copied native module: ${outputCppPath}`);
+    // Skip copying — Arduino's library system provides both .h and .cpp.
+    // Copying either causes conflicts: the .cpp merges into the .ino (duplicate
+    // definitions), and the .h shadows the library's own header (link failures).
+    // The gen-decls .d.ts files are sufficient for TypeScript type-checking.
+    info(`Native module (library-managed): ${moduleSpecifier}`);
   }
   profiler.endTimer("post:native-modules");
 

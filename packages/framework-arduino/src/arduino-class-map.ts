@@ -1,4 +1,4 @@
-import { getArduinoLibraryClassNames, isArduinoLibraryImport } from "./arduino-libs";
+import { getArduinoLibraryClassNames, isArduinoLibraryImport } from "./arduino-libs.js";
 
 // Module-level cache for Arduino library class name mappings.
 // Maps module specifier -> (simple class name -> fully qualified name)

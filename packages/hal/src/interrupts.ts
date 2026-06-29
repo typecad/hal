@@ -2,8 +2,8 @@
 // @typecad/hal — Interrupt helpers
 // ---------------------------------------------------------------------------
 
-import type { InterruptHandler } from './core/pin';
-import type { InterruptMode } from './core/gpio';
+import type { InterruptHandler } from './core/pin.js';
+import type { InterruptMode } from './core/gpio.js';
 
 /**
  * Globally disable interrupts.

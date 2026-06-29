@@ -130,7 +130,7 @@ describe("init-templates", () => {
       const content = generateProjectEnvDts(ARDUINO_UNO_OPTIONS);
 
       expect(content).toContain("declare module '@typecad'");
-      expect(content).toContain("export * from './.cuttlefish/board'");
+      expect(content).toContain("export * from './.cuttlefish/board.js'");
       expect(content).toContain("type Owned<T = unknown> = T");
       expect(content).toContain("type Shared<T = unknown> = T");
       expect(content).toContain("type Mutable<T = unknown> = T");

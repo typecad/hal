@@ -19,9 +19,9 @@
 // If no files are given, discovers tests via config include patterns.
 // ---------------------------------------------------------------------------
 
-import { loadConfig } from './config';
-import { run } from './runner';
-import type { TestConfig } from './types';
+import { loadConfig } from './config.js';
+import { run } from './runner.js';
+import type { TestConfig } from './types.js';
 import path from 'node:path';
 
 // ---------------------------------------------------------------------------

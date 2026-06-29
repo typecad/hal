@@ -5,12 +5,14 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
-import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex } from "./ui-call-resolver.js";
+import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, resolveNodeTag, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers } from "./ui-call-resolver.js";
+import { lowerCallbackBody } from "./ui-callback-lowering.js";
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { lowerStatementList } from "../statement-to-ir.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { renderExprAsText, calleeToText } from "../render-expr.js";
+import { resolveColor } from "../../ui/color.js";
 import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
 
 /**
@@ -122,6 +124,190 @@ export function callToStatement(
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
     const handlerName = `__ui_${elemId}_${edge}_${uiPressBindings().length}`;
     recordPressBinding({ nodeIndex, pin: pinText, edge, handlerName });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
+  // ── screen.led.onToggle(pin, callback) — checkbox toggle ──────────────
+  // Flips the node's checked state on falling edge and optionally calls
+  // the user's callback (for signal writes). Uses the pin-watching system.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "onToggle" &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const pinArg = call.arguments[0];
+    const cbArg = call.arguments[1];
+    const pin = pinArg ? (ts.isNumericLiteral(pinArg) ? pinArg.text : pinArg.getText()) : "0";
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    // Lower the user's callback body to C++ (shared with watchPin in
+    // ui-call-resolver.ts). Handles console.* → platform transform, signal
+    // .set()/() reads, and color-name resolution — see ui-callback-lowering.ts.
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    // The toggle callback: flip .value, mark dirty, then run optional callback
+    const fnName = `__ui_${elemId}_toggle_${watchPinSpecs().length}`;
+    const fullBody = `__ui_nodes[${nodeIndex}].value = !__ui_nodes[${nodeIndex}].value; ui_mark_dirty(${nodeIndex}); ${cbBody}`;
+    recordWatchPin({ pin: String(pin), fnName, callbackBody: fullBody });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
+  // ── screen.input.onChange(callback) — input text committed via keyboard ─
+  // Distinct from the GPIO onChange below: this variant takes a single callback
+  // arg (no pin/count) and fires after ui_kb_close commits the typed text.
+  // Also handles <range> onChange — routed to "rangechange" and fired from the
+  // drag loop on every value change during a slider drag.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "onChange" &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression) &&
+    call.arguments.length === 1
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const cbArg = call.arguments[0];
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    const nodeTag = htmlPath ? resolveNodeTag(htmlPath, elemId) : "";
+
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    // <range> sliders fire on value change during drag; <input> fires on commit.
+    const kind = nodeTag === "range" ? "rangechange" : "change";
+    const fnName = `__ui_${elemId}_${kind}_${clickHandlers().length}`;
+    recordClickHandler({ nodeIndex, kind, fnName, callbackBody: cbBody });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
+  // ── screen.modeSelect.onChange(pin, optionCount, callback?) ───────────
+  // Cycles .value through 0..optionCount-1 on each falling edge.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "onChange" &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const pinArg = call.arguments[0];
+    const countArg = call.arguments[1];
+    const cbArg = call.arguments[2];
+    const pin = pinArg ? (ts.isNumericLiteral(pinArg) ? pinArg.text : pinArg.getText()) : "0";
+    const optionCount = countArg ? (ts.isNumericLiteral(countArg) ? countArg.text : "2") : "2";
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    // Lower optional callback
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    // Cycle: value = (value + 1) % optionCount, mark dirty, optional callback
+    const fnName = `__ui_${elemId}_change_${watchPinSpecs().length}`;
+    const fullBody = `__ui_nodes[${nodeIndex}].value = (__ui_nodes[${nodeIndex}].value + 1) % ${optionCount}; ui_mark_dirty(${nodeIndex}); ${cbBody}`;
+    recordWatchPin({ pin: String(pin), fnName, callbackBody: fullBody });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
+  // ── screen.element.onClick(callback?) — touch click handler ──────────
+  // Records a click handler for touch hit-testing. No pin needed — the
+  // touch poll loop calls ui_handle_touch which hit-tests and dispatches.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "onClick" &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const cbArg = call.arguments[0];
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    // Lower callback body (reuse the shared callback lowering)
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    const fnName = `__ui_${elemId}_click_${clickHandlers().length}`;
+    recordClickHandler({ nodeIndex, kind: "click", fnName, callbackBody: cbBody });
+
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
+
+  // ── screen.element.onHold/onRelease — touch long-press + release handlers ─
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    (call.expression.name.text === "onHold" || call.expression.name.text === "onRelease") &&
+    ts.isPropertyAccessExpression(call.expression.expression) &&
+    ts.isIdentifier(call.expression.expression.expression)
+  ) {
+    const kind = call.expression.name.text === "onHold" ? "hold" : "release";
+    const treeName = call.expression.expression.expression.text;
+    const elemId = call.expression.expression.name.text;
+    const cbArg = call.arguments[0];
+
+    const htmlPath = resolveUIModuleImport(treeName);
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+
+    let cbBody = "";
+    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+    }
+
+    const fnName = `__ui_${elemId}_${kind}_${clickHandlers().length}`;
+    recordClickHandler({ nodeIndex, kind, fnName, callbackBody: cbBody });
 
     return {
       kind: "block",
@@ -481,3 +667,7 @@ function hoistTimerArrowArg(
     args: [{ kind: "identifier", value: fnName }, ...remainingArgs],
   };
 }
+
+// ── Helper: lower a callback expression to C++ text ─────────────────────────
+// (Moved to ui-callback-lowering.ts so onToggle and watchPin share one path,
+// including console.* → platform transform which lived in neither copy.)

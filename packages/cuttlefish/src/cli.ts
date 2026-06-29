@@ -16,11 +16,21 @@ import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js"
 import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
+import { runPreviewServer } from "./preview/server.js";
 import * as ui from "./utils/ui.js";
 import chalk from "chalk";
 
 function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
   return result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
+}
+
+function displayConfigForTranspile<T extends { configPath: string; display?: object }>(config: T | undefined): object | undefined {
+  if (!config?.display) return undefined;
+  const display = { ...(config.display as Record<string, unknown>) };
+  if (typeof display.themeCss === "string" && !path.isAbsolute(display.themeCss as string)) {
+    display.themeCss = path.resolve(path.dirname(config.configPath), display.themeCss as string);
+  }
+  return display;
 }
 
 async function handleCreate(options: CreateCommandOptions): Promise<void> {
@@ -109,6 +119,14 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (options.command === "preview") {
+      await runPreviewServer({
+        configPath: options.configPath,
+        port: options.port ? Number(options.port) : undefined,
+      });
+      return;
+    }
+
     if (options.command === "map-error") {
       if (!options.mapFile || !options.cppLine || !options.cppColumn) {
         throw new Error("map-error requires map file and C++ line/column options.");
@@ -168,6 +186,10 @@ async function main(): Promise<void> {
 
       assertTypeScriptInput(entryFile);
       (options as any).inputFile = entryFile;
+      // Pass display config from cuttlefish.config.ts through to transpileFile
+      if (buildConfig.display) {
+        (options as any).display = displayConfigForTranspile(buildConfig);
+      }
     }
 
     // gen-decls runs before the !options.inputFile guard below: in --all mode
@@ -341,6 +363,7 @@ async function main(): Promise<void> {
           force: options.force,
           skipTypeCheck: options.skipTypeCheck,
           diagnostics: options.diagnostics,
+          display: displayConfigForTranspile(config),
         });
 
         printDiagnostics(result.diagnostics);
@@ -427,6 +450,7 @@ async function main(): Promise<void> {
               force: true, // Always force in watch mode to bypass stale cache
               skipTypeCheck: options.skipTypeCheck,
               diagnostics: options.diagnostics,
+              display: displayConfigForTranspile(config),
             });
 
             printDiagnostics(rebuildResult.diagnostics);
@@ -511,6 +535,7 @@ async function main(): Promise<void> {
         force: options.force,
         skipTypeCheck: options.skipTypeCheck,
         diagnostics: options.diagnostics,
+        display: displayConfigForTranspile(config) ?? (options as any).display,
       });
 
       printDiagnostics(result.diagnostics);

@@ -1,0 +1,37 @@
+screen {
+  background: #0a0a0a;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+#navBody, #settingsBody, #aboutBody {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+#navTitle, #settingsTitle, #aboutTitle {
+  color: #fafafa;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+#navCounter {
+  color: #a1a1a1;
+  font-size: 16px;
+}
+
+#settingsHint, #aboutText {
+  color: #a1a1a1;
+  font-size: 16px;
+}
+
+a {
+  color: #3a81f6;
+  font-size: 20px;
+  text-decoration: underline;
+}

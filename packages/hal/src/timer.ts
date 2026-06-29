@@ -1,6 +1,6 @@
-import { rawCpp } from './emit';
-import { board } from './board';
-import { callback } from './callback';
+import { rawCpp } from './emit.js';
+import { board } from './board.js';
+import { callback } from './callback.js';
 
 /**
  * HardwareTimer provides direct control over the board's hardware timers.

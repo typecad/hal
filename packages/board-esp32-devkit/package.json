@@ -2,7 +2,7 @@
   "name": "@typecad/board-esp32-devkit",
   "version": "0.1.0",
   "description": "TypeCAD ESP32 DevKit (WROOM-32) board definition with typed pins and peripherals",
-  "type": "commonjs",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

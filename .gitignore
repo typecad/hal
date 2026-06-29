@@ -11,3 +11,12 @@ tmp-*.txt
 # website is a separate repo (was orphaned submodule gitlink)
 website/
 nul
+
+# brainstorming visual companion
+.superpowers/
+
+# vendor libraries (copied into demo for hardware testing)
+demo-ui/lib/
+
+# editor
+.vscode/

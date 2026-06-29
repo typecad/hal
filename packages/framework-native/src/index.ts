@@ -9,10 +9,10 @@
 //     framework: '@typecad/framework-native'
 // ---------------------------------------------------------------------------
 
-export { NativeStrategy, NativeStrategy as FrameworkStrategy } from './strategy';
+export { NativeStrategy, NativeStrategy as FrameworkStrategy } from './strategy.js';
 
 // Native C++ toolchain (g++/clang++ compilation)
-export { NativeToolchain as Toolchain } from './native-compile';
+export { NativeToolchain as Toolchain } from './native-compile.js';
 
 // Configuration types
-export type { NativeCompileConfig } from './native-config';
+export type { NativeCompileConfig } from './native-config.js';

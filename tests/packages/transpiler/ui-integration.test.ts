@@ -139,8 +139,13 @@ describe("UI end-to-end via transpileFile", () => {
       ].join("\n"),
     });
 
-    // ui_tick must appear inside a function body (indented), not at file scope.
-    expect(cpp).toMatch(/^\s+ui_tick\(/m);
+    // ui_tick must be driven by real elapsed time, not a fixed synthetic frame.
+    expect(cpp).not.toContain("ui_tick(16)");
+    expect(cpp).toContain("uint32_t __tc_ui_now = (uint32_t)millis();");
+    expect(cpp).toContain("static uint32_t __tc_ui_last_tick = __tc_ui_now;");
+    expect(cpp).toContain("uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
+    expect(cpp).toContain("if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
+    expect(cpp).toContain("ui_tick((uint16_t)__tc_ui_delta);");
   });
 
   it("lowers const pressed = ui.signal(0) + pressed.set() in a timer callback", async () => {
@@ -216,5 +221,72 @@ describe("UI end-to-end via transpileFile", () => {
     // produce a binding-table entry in the emitted C++.
     expect(cpp).toContain("UIBinding");
     expect(cpp).toContain("__ui_bindings");
+  });
+
+  it("lowers <range>.onChange as a rangechange handler table fired during drag", async () => {
+    const { cpp } = await transpileUIProgram({
+      html: `<screen><range id="brightness" min="0" max="100"></range></screen>`,
+      css: `#brightness { width: 100%; height: 20px; }`,
+      ts: [
+        `import { ui } from "@typecad/ui";`,
+        `import { screen } from "./app.ui.html";`,
+        ``,
+        `const brightness = ui.signal(50);`,
+        `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
+        `screen.brightness.onChange(() => { brightness.set(screen.brightness.value); });`,
+        `export function main(): void { while (true) {} }`,
+        ``,
+      ].join("\n"),
+    });
+
+    // A rangechange handler function + per-node lookup table must be emitted.
+    expect(cpp).toContain("__ui_rangechange_handlers");
+    expect(cpp).toContain("__ui_rangechange_handler_count");
+    // The callback function name follows the __ui_<id>_rangechange_<n> pattern.
+    expect(cpp).toMatch(/__ui_brightness_rangechange_\d+/);
+  });
+
+  it("routes <input>.onChange to the change path, not rangechange", async () => {
+    const { cpp } = await transpileUIProgram({
+      html: `<screen><input id="ssid" type="text"></input></screen>`,
+      css: `#ssid { width: 100%; height: 20px; }`,
+      ts: [
+        `import { ui } from "@typecad/ui";`,
+        `import { screen } from "./app.ui.html";`,
+        ``,
+        `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
+        `screen.ssid.onChange(() => {});`,
+        `export function main(): void { while (true) {} }`,
+        ``,
+      ].join("\n"),
+    });
+
+    // Input onChange must NOT produce a rangechange handler function for the
+    // input node (regression guard for the routing change that detects <range>
+    // by node tag). Note: an empty rangechange table is always emitted for
+    // symmetry with the click/hold/release tables.
+    expect(cpp).not.toMatch(/__ui_ssid_rangechange_\d+/);
+    expect(cpp).toContain("__ui_kb_set_onchange");
+  });
+
+  it("surfaces unknown CSS property and HTML tag warnings in output diagnostics", async () => {
+    const { result } = await transpileUIProgram({
+      html: `<screen><marquee id="m">x</marquee><text id="t">hi</text></screen>`,
+      css: `#t { color: #fff; bogus-prop: red; }`,
+      ts: [
+        `import { ui } from "@typecad/ui";`,
+        `import { screen } from "./app.ui.html";`,
+        `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
+        `export function main(): void { while (true) {} }`,
+      ].join("\n"),
+    });
+
+    const msgs = result.diagnostics.map(d => d.message);
+    // Unknown CSS property warning surfaces.
+    expect(msgs.some(m => m.includes("bogus-prop"))).toBe(true);
+    // Unknown HTML tag warning surfaces.
+    expect(msgs.some(m => m.includes("marquee"))).toBe(true);
+    // Known property/tag produce no warning.
+    expect(msgs.some(m => m.includes("color"))).toBe(false);
   });
 });

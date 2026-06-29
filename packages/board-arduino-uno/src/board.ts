@@ -18,10 +18,10 @@ import {
   D8, D9, D10, D11, D12, D13,
   A0, A1, A2, A3, A4, A5,
   LED, SDA, SCL, MOSI, MISO, SCK, SS, TX, RX,
-} from './pins';
+} from './pins.js';
 
 import { I2C0, SPI0, UART0 } from '@typecad/mcu-atmega328p';
-import { ArduinoUno } from './index';
+import { ArduinoUno } from './index.js';
 
 export const Board = {
   definition: ArduinoUno,

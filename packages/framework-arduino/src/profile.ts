@@ -5,14 +5,14 @@
 // ---------------------------------------------------------------------------
 
 import type { ExpressionIR, ProgramIR, StatementIR, Diagnostic, PlatformContext } from "@typecad/cuttlefish/api/shared";
-import type { ArduinoPlatformContext } from "./strategy";
+import type { ArduinoPlatformContext } from "./strategy.js";
 
 function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
   const data = ctx?.frameworkData as { buildTarget?: string } | undefined;
   return data ?? undefined;
 }
-import type { ArduinoCliMetadata } from "./cli-metadata";
-import { loadArduinoCliMetadata } from "./cli-metadata";
+import type { ArduinoCliMetadata } from "./cli-metadata.js";
+import { loadArduinoCliMetadata } from "./cli-metadata.js";
 
 /**
  * Extract architecture from FQBN string.

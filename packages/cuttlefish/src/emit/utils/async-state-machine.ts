@@ -126,6 +126,25 @@ export function generateAsyncTaskClass(
     }
   }
 
+  // Collect awaitable-tap markers (await ui.onTap()). args[0] is the node
+  // filter: -1 = any tap, >=0 = a specific node index. Each tap-await needs a
+  // per-await snapshot of __ui_tap_seq to detect the NEXT bump.
+  const tapInfoMap = new Map<number, { nodeIndex: number }>();
+  const tapMembers = new Map<string, number>(); // member name → segment index
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.awaitedCallee === "__UI_TAP__" && seg.awaitedArgs.length > 0) {
+      const nodeArg = seg.awaitedArgs[0];
+      const nodeIndex = nodeArg.kind === "number"
+        ? (nodeArg as Extract<ExpressionIR, { kind: "number" }>).value
+        : -1;
+      const member = `_tapPrev_${i}`;
+      tapInfoMap.set(i, { nodeIndex });
+      tapMembers.set(member, i);
+    }
+  }
+
   const caseLines: string[] = [];
 
   for (let i = 0; i < segments.length; i++) {
@@ -136,6 +155,8 @@ export function generateAsyncTaskClass(
 
     const edgeSetup = edgeInfoMap.get(i);
     const edgePoll = i > 0 ? edgeInfoMap.get(i - 1) : undefined;
+    const tapSetup = tapInfoMap.get(i);
+    const tapPoll = i > 0 ? tapInfoMap.get(i - 1) : undefined;
 
     if (edgePoll) {
       // Poll state: check pin transition via digitalRead
@@ -190,6 +211,54 @@ export function generateAsyncTaskClass(
         body.push(`          _state = STATE_${i + 1};`);
         body.push(`        }`);
       }
+    } else if (tapPoll) {
+      // Tap-poll state: a previous segment ended with `await ui.onTap()`.
+      // Wait until __ui_tap_seq bumps from the captured snapshot. A per-node
+      // await also requires __ui_tap_node to match the awaited node index.
+      const prevVar = `_tapPrev_${i - 1}`;
+      const nodeFilter = tapPoll.nodeIndex;
+      const cond = nodeFilter < 0
+        ? `__ui_tap_seq != ${prevVar}`
+        : `(__ui_tap_seq != ${prevVar}) && (__ui_tap_node == ${nodeFilter})`;
+      body.push(`        if (${cond}) {`);
+      for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
+      // What does the NEXT await (ending this segment) look like? Re-derive
+      // from the maps via a fresh lookup so TS doesn't narrow edgeSetup away.
+      const nextEdge = edgeInfoMap.get(i) ?? null;
+      if (tapSetup) {
+        // Next await is also a tap — capture its snapshot now.
+        body.push(`          _tapPrev_${i} = __ui_tap_seq;`);
+        body.push(`          _state = STATE_${i + 1};`);
+      } else if (nextEdge) {
+        body.push(`          _edgePrev_p${nextEdge.pin} = digitalRead(${nextEdge.pin});`);
+        if (nextEdge.timeout !== null) {
+          body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${nextEdge.timeout};`);
+        }
+        body.push(`          _state = STATE_${i + 1};`);
+      } else if (!isTerminal) {
+        // Next await is a normal timed wait (delay) — arm its deadline.
+        const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
+        body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
+        body.push(`          _state = STATE_${i + 1};`);
+      } else {
+        body.push(`          _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+      }
+      body.push(`        }`);
+    } else if (tapSetup && !edgePoll) {
+      // Tap-setup state: this segment ends with `await ui.onTap()`. Capture the
+      // current tap counter so the poll state can detect the NEXT bump.
+      // (edgePoll takes precedence when the previous await was an edge.)
+      if (i === 0) {
+        for (const stmt of seg.preStatements) body.push(`        ${renderStmt(stmt)}`);
+        body.push(`        _tapPrev_${i} = __ui_tap_seq;`);
+        body.push(`        _state = STATE_${i + 1};`);
+      } else {
+        body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
+        for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
+        body.push(`          _tapPrev_${i} = __ui_tap_seq;`);
+        body.push(`          _state = STATE_${i + 1};`);
+        body.push(`        }`);
+      }
     } else {
       // Normal timed-wait state
       if (i === 0) {
@@ -223,13 +292,18 @@ export function generateAsyncTaskClass(
   const stateEnumList = stateNames.join(", ");
   const isCompleteExpr = isCyclic ? "false" : "_state == STATE_DONE";
 
-  // Build constructor initializer list and edge member declarations
+  // Build constructor initializer list and edge/tap member declarations
   const edgeMemberArr = Array.from(edgeMembers);
-  const ctorInitList = edgeMemberArr.length > 0
-    ? `_state(STATE_0), _waitUntil(0), ${edgeMemberArr.map(m => `${m}(LOW)`).join(", ")}`
-    : `_state(STATE_0), _waitUntil(0)`;
+  const tapMemberArr = Array.from(tapMembers.keys());
+  const inits: string[] = [`_state(STATE_0)`, `_waitUntil(0)`];
+  for (const m of edgeMemberArr) inits.push(`${m}(LOW)`);
+  for (const m of tapMemberArr) inits.push(`${m}(0)`);
+  const ctorInitList = inits.join(", ");
   const edgeResetList = edgeMemberArr.map(m => ` ${m} = LOW;`).join("");
+  const tapResetList = tapMemberArr.map(m => ` ${m} = 0;`).join("");
   const edgeMemberDecls = edgeMemberArr.map(m => `  int ${m};`);
+  // __ui_tap_seq is uint32_t; the snapshot must match to detect bumps correctly.
+  const tapMemberDecls = tapMemberArr.map(m => `  uint32_t ${m};`);
 
   const classDef = [
     `// Async state machine for ${fnName}`,
@@ -243,11 +317,12 @@ export function generateAsyncTaskClass(
     `    }`,
     `  }`,
     `  bool isComplete() const { return ${isCompleteExpr}; }`,
-    `  void reset() { _state = STATE_0; _waitUntil = 0;${edgeResetList} }`,
+    `  void reset() { _state = STATE_0; _waitUntil = 0;${edgeResetList}${tapResetList} }`,
     `private:`,
     `  State _state;`,
     `  unsigned long _waitUntil;`,
     ...edgeMemberDecls,
+    ...tapMemberDecls,
     `};`,
   ].join("\n");
 

@@ -25,6 +25,9 @@ export interface ILI9341Context {
   rst: number;
   width: number;
   height: number;
+  rotation?: number;
+  backlight?: number;
+  spiFrequency?: number;
 }
 
 /** Render a color value as a C++ hex literal (e.g. 0x07e0) for readable RGB565. */
@@ -42,16 +45,11 @@ export function resolveILI9341Op(
 ): { code?: string; expression?: string } | undefined {
   switch (op.operation) {
     case "display.init":
-      // __tc_display is declared at file scope by the UI emitter (so ui_tick,
-      // a file-scope static inline, can access it). Here we only initialize it.
-      // 6-arg bit-bang constructor: (CS, DC, MOSI, SCLK, RST, MISO).
       return {
         code: [
-          `pinMode(17, OUTPUT); digitalWrite(17, HIGH);`,  // backlight LED on
-          `${DISPLAY_VAR}.begin();`,
-          `${DISPLAY_VAR}.setRotation(1);`,
-          `${DISPLAY_VAR}.fillScreen(0x0000);`,
-        ].join("\n"),
+          ctx.backlight ? `pinMode(${ctx.backlight}, OUTPUT); digitalWrite(${ctx.backlight}, HIGH);` : ``,
+          `display_init();`,
+        ].filter(Boolean).join("\n"),
       };
     case "display.fill_rect":
       // Adafruit_GFX fillRect(x, y, w, h, color) — color is uint16 RGB565.

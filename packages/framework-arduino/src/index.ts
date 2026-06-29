@@ -6,10 +6,10 @@
 // ---------------------------------------------------------------------------
 
 // Export the main strategy class
-export { ArduinoStrategy } from './strategy';
+export { ArduinoStrategy } from './strategy.js';
 
 // Export as FrameworkStrategy for consistency with framework package naming
-export { ArduinoStrategy as FrameworkStrategy } from './strategy';
+export { ArduinoStrategy as FrameworkStrategy } from './strategy.js';
 
 // Arduino compile/upload/monitor
 export {
@@ -17,10 +17,10 @@ export {
   compileArduinoSketch,
   uploadArduinoSketch,
   monitorArduinoSketch,
-} from './arduino-compile';
+} from './arduino-compile.js';
 
 // Toolchain object for the framework registry
-import { flattenGeneratedModulesIntoSketch, compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from './arduino-compile';
+import { flattenGeneratedModulesIntoSketch, compileArduinoSketch, uploadArduinoSketch, monitorArduinoSketch } from './arduino-compile.js';
 export const Toolchain = {
   prepare: flattenGeneratedModulesIntoSketch,
   compile: (options: any) => compileArduinoSketch(options.sourcePath, options.buildTarget),
@@ -29,6 +29,6 @@ export const Toolchain = {
 };
 
 // Library discovery — consumed by the transpiler's dynamic module loader
-export { isArduinoLibraryImport as isFrameworkLibraryImport, getArduinoLibraryHeaderName as getFrameworkLibraryHeaderName } from './arduino-libs';
-export { tryGenerateArduinoLibDecl as tryGenerateLibDecl } from './arduino-libs';
-export { buildArduinoClassNameMap as buildClassNameMap } from './arduino-class-map';
+export { isArduinoLibraryImport as isFrameworkLibraryImport, getArduinoLibraryHeaderName as getFrameworkLibraryHeaderName } from './arduino-libs.js';
+export { tryGenerateArduinoLibDecl as tryGenerateLibDecl } from './arduino-libs.js';
+export { buildArduinoClassNameMap as buildClassNameMap } from './arduino-class-map.js';

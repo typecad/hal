@@ -1,4 +1,4 @@
-import { adcRead, adcSetReference, boardResolve } from './emit';
+import { adcRead, adcSetReference, boardResolve } from './emit.js';
 
 export class ADCClass {
   static readonly __instance_name = "ADC";

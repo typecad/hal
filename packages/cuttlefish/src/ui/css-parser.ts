@@ -10,18 +10,60 @@
 // ---------------------------------------------------------------------------
 
 import { parse, walk, generate } from "css-tree";
+import type { Diagnostic } from "../types.js";
+import { getDisplayProfile } from "./display-profile-store.js";
+import { getThemeClass } from "./theme-store.js";
 
-export type CSSSelectorKind = "element" | "id" | "class";
+export type CSSSelectorKind = "element" | "id" | "class" | "attribute";
 
-export interface CSSSelector {
+/** A single simple selector: tag name, #id, or .class. */
+export interface SimpleSelector {
   kind: CSSSelectorKind;
   name: string;
-  pseudo?: "pressed";
+  value?: string;
+}
+
+/** A full CSS selector, supporting compound (`.foo.bar`, `tag.class`) and
+ *  descendant (`parent child`) combinators.
+ *  - `compounds[last]` is the target compound (the element the rule applies to).
+ *  - Each compound is an array of simples that must ALL match (AND).
+ *  - Preceding compounds are ancestor constraints (descendant combinator). */
+export interface CSSSelector {
+  compounds: SimpleSelector[][];
+  combinators?: (">" | " " | "+" | "~")[];
+  pseudo?: "pressed" | "disabled" | "checked" | "focus";
+  /** :not(...) negation compounds. Each is a compound that must NOT match. */
+  not?: SimpleSelector[][];
 }
 
 export interface TransitionDecl {
   property: "background" | "color";
   durationMs: number;
+}
+
+export interface KeyframeStop {
+  percent: number;   // 0-100
+  background?: string;
+  color?: string;
+  opacity?: string;
+  transform?: string;
+  transformOrigin?: string;
+  left?: string;
+  top?: string;
+  width?: string;
+  height?: string;
+}
+
+export interface KeyframeSet {
+  name: string;
+  stops: KeyframeStop[];
+}
+
+export interface AnimationDecl {
+  name: string;
+  durationMs: number;
+  iterations: number;  // -1 = infinite
+  delayMs: number;
 }
 
 export interface CSSProperty {
@@ -34,6 +76,7 @@ export interface CSSProperty {
   maxWidth?: string;
   minHeight?: string;
   maxHeight?: string;
+  aspectRatio?: string;
   boxSizing?: string;
   overflow?: string;
   // Colors
@@ -41,29 +84,43 @@ export interface CSSProperty {
   background?: string;
   // Text
   font?: string;
+  fontFamily?: string;
   fontSize?: string;
   textAlign?: string;       // left | center | right
   textDecoration?: string;  // underline | none
   fontWeight?: string;      // normal | bold
+  fontStyle?: string;       // normal | italic | oblique
+  fontSmoothing?: string;   // antialiased | none
+  fontSubset?: string;      // exact | fallback/auto
   lineHeight?: string;
   letterSpacing?: string;
   whiteSpace?: string;      // nowrap | normal
   textTransform?: string;   // uppercase | lowercase | capitalize | none
+  textOverflow?: string;    // ellipsis | clip
   // Animation
   transition?: TransitionDecl;
+  animation?: string;  // shorthand: "pulse 2s infinite"
+  animationName?: string;
+  animationDuration?: string;
+  animationIterationCount?: string;
+  animationDelay?: string;
   // Flexbox / layout (Yoga)
   display?: string;
   flexDirection?: string;
   gap?: string;
+  rowGap?: string;
+  columnGap?: string;
   flexGrow?: string;
   flexShrink?: string;
   flexBasis?: string;
   alignSelf?: string;
   alignItems?: string;
+  alignContent?: string;
   justifyContent?: string;
   flexWrap?: string;
   order?: string;
   position?: string;        // relative | absolute | static
+  zIndex?: string;
   top?: string;
   right?: string;
   bottom?: string;
@@ -78,6 +135,10 @@ export interface CSSProperty {
   visibility?: string;      // visible | hidden
   outline?: string;
   boxShadow?: string;
+  textShadow?: string;
+  transform?: string;
+  transformOrigin?: string;
+  objectFit?: string;  // fill | contain | cover | scale-down | none
 }
 
 export interface CSSRule {
@@ -85,10 +146,55 @@ export interface CSSRule {
   properties: CSSProperty;
 }
 
-export function parseCss(src: string): CSSRule[] {
+export interface CSSFontFace {
+  fontFamily: string;
+  src: string;
+  fontWeight?: string;
+  fontStyle?: string;
+}
+
+/** Evaluate an @media condition (css-tree prelude string) against the resolved
+ *  display profile at transpile time. Each firmware build targets ONE display
+ *  size, so @media is a compile-time variant selector, not responsive design.
+ *  Returns true if the rule should apply. Supports max/min width/height in px.
+ *  Unsupported conditions return null (caller warns + skips the rule). */
+function evalMediaCondition(prelude: string): boolean | null {
+  const s = prelude.trim();
+  // @media all / @media (no condition) -> always apply.
+  if (s === "" || s === "all" || /(?<![\w-])all(?![\w-])/i.test(s)) return true;
+  const profile = getDisplayProfile();
+  const w = profile.width;
+  const h = profile.height;
+  let result = true;
+  let matched = false;
+  // Match each (feature: value) pair. AND-combine (comma = OR not supported).
+  // Groups: [1]=min|max, [2]=width|height, [3]=value; or [4]=width|height, [5]=value (bare).
+  const featRe = /\((?:\s*(min|max)-(width|height)\s*:\s*(\d+)(?:px)?\s*|\s*(width|height)\s*:\s*(\d+)(?:px)?\s*)\)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = featRe.exec(s)) !== null) {
+    matched = true;
+    if (m[1] && m[2] && m[3]) {
+      const n = parseInt(m[3], 10);
+      const axis = m[2] === "width" ? w : h;
+      result = result && (m[1] === "min" ? axis >= n : axis <= n);
+    } else if (m[4] && m[5]) {
+      // bare (width: N) -> exact match
+      const n = parseInt(m[5], 10);
+      result = result && ((m[4] === "width" ? w : h) === n);
+    }
+  }
+  if (!matched) return null;  // unrecognized condition
+  return result;
+}
+
+export function parseCss(src: string, diagnostics?: Diagnostic[]): CSSRule[] {
   // Strip CSS comments before parsing (they may contain { or }).
-  const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const withoutComments = stripKeyframes(src.replace(/\/\*[\s\S]*?\*\//g, ""));
   const rules: CSSRule[] = [];
+  // CSS custom properties (--name: value), extracted from :root-like rules.
+  const variables: Record<string, string> = {};
+  // Class-scoped variables (".dark { --x: ... }"), keyed by class name.
+  const scopedVars: Record<string, Record<string, string>> = {};
 
   let ast;
   try {
@@ -98,12 +204,75 @@ export function parseCss(src: string): CSSRule[] {
     return rules;
   }
 
+  // Track @media nesting so rules inside @media evaluate their condition
+  // against the resolved display profile (compile-time variant selection).
+  const mediaStack: string[] = [];
   walk(ast, {
     enter(node: any) {
+      if (node.type === "Atrule" && node.name === "media") {
+        mediaStack.push(generate(node.prelude));
+        return;
+      }
+      // @import / @supports are unsupported at-rules - warn + skip contents.
+      if (node.type === "Atrule" && (node.name === "import" || node.name === "supports")) {
+        if (diagnostics) diagnostics.push({
+          severity: "warning",
+          message: `Unsupported @${node.name} at-rule - ignored.`,
+          hint: "Only @font-face, @keyframes, and @media are supported.",
+          code: "unsupported-at-rule",
+          source: node.name,
+        });
+        return;
+      }
       if (node.type !== "Rule") return;
+      // If inside @media, evaluate the condition against the display profile.
+      if (mediaStack.length > 0) {
+        const cond = mediaStack[mediaStack.length - 1];
+        const applies = evalMediaCondition(cond);
+        if (applies === null) {
+          if (diagnostics) diagnostics.push({
+            severity: "warning",
+            message: `@media ${cond} has an unsupported condition - rule ignored.`,
+            hint: "Supported: (max-width:Npx), (min-width:Npx), (max-height:Npx), (min-height:Npx).",
+            code: "unsupported-media-condition",
+            source: "media",
+          });
+          return;
+        }
+        if (!applies) return;
+      }
 
       // Extract selector text via generate (robust across css-tree versions).
       const selectorText = generate(node.prelude).trim();
+
+      // Capture CSS custom properties from :root declarations.
+      if (selectorText === ":root") {
+        node.block.children.forEach((child: any) => {
+          if (child.type === "Declaration" && child.property.startsWith("--")) {
+            variables[child.property] = generate(child.value).trim();
+          }
+        });
+        return; // :root is not a styling rule
+      }
+
+      // Class-scoped variables: `.dark { --x: ... }`. Extract into scopedVars
+      // keyed by class name so an active theme class (from config) can override
+      // :root at substitution time. A rule that contains ONLY --var declarations
+      // is treated as a variable scope, not a styling rule.
+      const singleClassM = /^\.([\w-]+)$/.exec(selectorText);
+      const decls = Array.from(node.block.children as any[]).filter(c => c.type === "Declaration");
+      const varDecls = decls.filter(c => typeof c.property === "string" && c.property.startsWith("--"));
+      if (singleClassM && varDecls.length > 0) {
+        const cls = singleClassM[1];
+        if (!scopedVars[cls]) scopedVars[cls] = {};
+        for (const c of varDecls) {
+          scopedVars[cls][c.property] = generate(c.value).trim();
+        }
+        // If ALL declarations are variables, this is a pure scope block — skip
+        // it as a styling rule (its --var props would match nothing useful).
+        if (varDecls.length === decls.length) return;
+      }
+
       const selector = parseSelector(selectorText);
       if (!selector) return;
 
@@ -111,38 +280,308 @@ export function parseCss(src: string): CSSRule[] {
       const props: CSSProperty = {};
       node.block.children.forEach((child: any) => {
         if (child.type !== "Declaration") return;
-        const prop = child.property;
+        // Strip vendor prefixes (-webkit-, -moz-, -ms-, -o-) so authors can
+        // paste cross-browser CSS without manual cleanup.
+        const prop = child.property.replace(/^-(?:webkit|moz|ms|o)-/, "");
         const val = generate(child.value).trim();
-        assignProp(props, prop, val);
+        assignProp(props, prop, val, diagnostics);
       });
 
-      rules.push({ selector, properties: props });
+      // css-tree emits comma-separated selectors as one string ("a, b").
+      // Split on commas to produce one CSSRule per selector.
+      const selectorParts = selectorText.split(",").map(s => s.trim()).filter(Boolean);
+      for (const part of selectorParts) {
+        const sel = parseSelector(part);
+        if (sel) rules.push({ selector: sel, properties: props });
+      }
+    },
+    leave(node: any) {
+      if (node.type === "Atrule" && node.name === "media") mediaStack.pop();
     },
   });
+
+  // Build the effective variable map: :root overridden by the active theme
+  // class (e.g. "dark") if one is configured and present in scopedVars.
+  const themeClass = getThemeClass();
+  const effectiveVars: Record<string, string> = { ...variables };
+  if (themeClass && scopedVars[themeClass]) {
+    Object.assign(effectiveVars, scopedVars[themeClass]);
+  }
+
+  // Substitute var(--name) references in all property values.
+  if (Object.keys(effectiveVars).length > 0) {
+    for (const rule of rules) {
+      substituteVars(rule.properties, effectiveVars);
+    }
+  }
 
   return rules;
 }
 
-/** Parse a single selector string into a CSSSelector (element/#id/.class + :pressed). */
-function parseSelector(s: string): CSSSelector | null {
-  // Handle :pressed pseudo-state (may also appear as :active for browser compat).
-  const pseudoM = /:(pressed|active)$/.exec(s);
-  const base = pseudoM ? s.slice(0, pseudoM.index) : s;
-  const trimmed = base.trim().replace(/^["']|["']$/g, "");
+export function parseFontFaces(src: string): CSSFontFace[] {
+  const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const faces: CSSFontFace[] = [];
 
-  let kind: CSSSelectorKind;
-  let name: string;
-  if (trimmed.startsWith("#")) { kind = "id"; name = trimmed.slice(1); }
-  else if (trimmed.startsWith(".")) { kind = "class"; name = trimmed.slice(1); }
-  else { kind = "element"; name = trimmed; }
+  let ast;
+  try {
+    ast = parse(withoutComments, { parseCustomProperty: true });
+  } catch {
+    return faces;
+  }
 
-  if (!name) return null;
-  return { kind, name, pseudo: pseudoM ? "pressed" : undefined };
+  walk(ast, {
+    enter(node: any) {
+      if (node.type !== "Atrule" || node.name !== "font-face" || !node.block) return;
+      const decls: Record<string, string> = {};
+      node.block.children.forEach((child: any) => {
+        if (child.type !== "Declaration") return;
+        decls[child.property] = generate(child.value).trim();
+      });
+      const fontFamily = decls["font-family"] ? unquoteCss(decls["font-family"]) : "";
+      const src = extractFontSrc(decls.src ?? "");
+      if (!fontFamily || !src) return;
+      faces.push({
+        fontFamily,
+        src,
+        fontWeight: decls["font-weight"],
+        fontStyle: decls["font-style"],
+      });
+    },
+  });
+
+  return faces;
 }
 
-/** Parse a numeric value from a CSS string like "8px" or "8" → 8. */
+/** Replace var(--name) in all string-valued CSS properties. */
+function substituteVars(props: CSSProperty, variables: Record<string, string>): void {
+  for (const key of Object.keys(props) as (keyof CSSProperty)[]) {
+    const val = props[key];
+    if (typeof val === "string" && (val.includes("var(") || val.includes("calc("))) {
+      let resolved = val.replace(/var\(\s*(--[\w-]+)\s*\)/g, (_, name) => variables[name] ?? "");
+      // After var substitution, evaluate any calc(...) expressions.
+      resolved = resolveCalc(resolved);
+      (props[key] as string) = resolved;
+    } else if (val && typeof val === "object" && "property" in val) {
+      // TransitionDecl — no var() in its fields, skip
+    }
+  }
+}
+
+/** Evaluate calc(...) expressions in a value string. Handles + - * / on
+ *  lengths (px/rem/em/%) after var() substitution. Returns the input with
+ *  calc(...) replaced by the computed value (with the dominant unit appended).
+ *  e.g. "calc(0.625rem - 4px)" → "6px". Unrecognized calc → left as-is. */
+function resolveCalc(value: string): string {
+  if (!value.includes("calc(")) return value;
+  // Repeat to handle nested calc().
+  let out = value;
+  for (let i = 0; i < 8; i++) {
+    const m = /calc\(([^()]*)\)/.exec(out);
+    if (!m) break;
+    const computed = evalCalcExpr(m[1].trim());
+    out = out.slice(0, m.index) + computed + out.slice(m.index + m[0].length);
+  }
+  return out;
+}
+
+/** Evaluate a simple arithmetic expression of lengths to a length string.
+ *  Each term may have a unit (px/rem/em/%); the first unit found wins.
+ *  Supports + - * /.  e.g. "10px - 4" → "6px". */
+function evalCalcExpr(expr: string): string {
+  // Tokenize into numbers-with-units and operators.
+  const tokens = expr.match(/(?:[\d.]+(?:rem|em|px|%)?|[-+*/])/g);
+  if (!tokens || tokens.length === 0) return `calc(${expr})`;
+  // Determine the dominant unit from the first length token.
+  const unitMatch = expr.match(/(\d)(rem|em|px|%)/);
+  const unit = unitMatch ? unitMatch[2] : "";
+  // Convert each token to a plain number (rem/em × 16).
+  const toNum = (tok: string): number => {
+    const remM = /^(-?[\d.]+)rem$/.exec(tok);
+    if (remM) return parseFloat(remM[1]) * 16;
+    const emM = /^(-?[\d.]+)em$/.exec(tok);
+    if (emM) return parseFloat(emM[1]) * 16;
+    const numM = /^(-?[\d.]+)(?:rem|em|px|%)?$/.exec(tok);
+    return numM ? parseFloat(numM[1]) : NaN;
+  };
+  // Left-to-right evaluation (no operator precedence — matches calc() for the
+  // simple two-term cases this targets; * / bind tighter via a tiny pass).
+  const nums: number[] = [];
+  const ops: string[] = [];
+  for (const tok of tokens) {
+    if (tok === "+" || tok === "-" || tok === "*" || tok === "/") ops.push(tok);
+    else nums.push(toNum(tok));
+  }
+  if (nums.length === 0 || nums.some(isNaN)) return `calc(${expr})`;
+  // First pass: * and /.
+  const vals = [nums[0]];
+  const lateOps: string[] = [];
+  for (let i = 0; i < ops.length; i++) {
+    if (ops[i] === "*") vals[vals.length - 1] = vals[vals.length - 1] * nums[i + 1];
+    else if (ops[i] === "/") vals[vals.length - 1] = vals[vals.length - 1] / nums[i + 1];
+    else { lateOps.push(ops[i]); vals.push(nums[i + 1]); }
+  }
+  // Second pass: + and -.
+  let result = vals[0];
+  for (let i = 0; i < lateOps.length; i++) {
+    if (lateOps[i] === "+") result += vals[i + 1];
+    else result -= vals[i + 1];
+  }
+  const rounded = Math.round(result * 1000) / 1000;
+  return `${rounded}${unit}`;
+}
+
+function unquoteCss(value: string): string {
+  const trimmed = value.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function extractFontSrc(value: string): string {
+  const url = /url\(\s*(['"]?)(.*?)\1\s*\)/.exec(value);
+  if (url?.[2]) return url[2].trim();
+  return unquoteCss(value.split(",")[0] ?? "");
+}
+
+/** Parse an inline style string ("color: red; font-size: 16px") into CSSProperty.
+ *  Uses the same assignProp pipeline as rule parsing. */
+export function parseInlineStyle(src: string, diagnostics?: Diagnostic[]): CSSProperty {
+  const props: CSSProperty = {};
+  for (const decl of src.split(";")) {
+    const colonIdx = decl.indexOf(":");
+    if (colonIdx < 0) continue;
+    const prop = decl.slice(0, colonIdx).trim();
+    const val = decl.slice(colonIdx + 1).trim();
+    if (prop && val) assignProp(props, prop, val, diagnostics);
+  }
+  return props;
+}
+
+/** Parse a selector string into compounds + simples.
+ *  Supports: `.foo`, `#bar`, `tag`, `.foo.bar` (compound), `tag.cls` is not valid
+ *  CSS (no dot in tag names), `parent child` (descendant), and `:pressed`.
+ *  Returns null for empty/invalid selectors. */
+/** Re-space the child combinator so whitespace tokenization can isolate it.
+ *  css-tree serializes "a > b" as "a>b"; we add spaces around '>' while
+ *  leaving any '>' inside [...] attribute brackets untouched. */
+function normalizeCombinators(s: string): string {
+  let out = "";
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "[") depth++;
+    else if (ch === "]") depth = Math.max(0, depth - 1);
+    // Re-space combinators so whitespace tokenization can isolate them.
+    // Only outside attribute brackets so values like [data-x=">"] survive.
+    if (depth === 0 && (ch === ">" || ch === "+" || ch === "~")) {
+      out += " " + ch + " ";
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/** Parse the inner part of :not(...) into a SimpleSelector compound. */
+function parseInnerCompound(inner: string): SimpleSelector[] {
+  const simples: SimpleSelector[] = [];
+  const attrRe = /\[([\w-]+)(?:([~|^$*]?=)[\"']?([^'\"\]]*)[\"']?)?\]/g;
+  let am: RegExpExecArray | null;
+  while ((am = attrRe.exec(inner)) !== null) {
+    simples.push({ kind: "attribute", name: am[1], value: am[3] });
+  }
+  const remaining = inner.replace(/\[[^\]]*\]/g, "");
+  if (remaining) {
+    const tokenRe = /([.#]?)([a-zA-Z_][\w-]*)/g;
+    let m: RegExpExecArray | null;
+    while ((m = tokenRe.exec(remaining)) !== null) {
+      if (m[1] === "#") simples.push({ kind: "id", name: m[2] });
+      else if (m[1] === ".") simples.push({ kind: "class", name: m[2] });
+      else simples.push({ kind: "element", name: m[2] });
+    }
+  }
+  return simples;
+}
+
+function parseSelector(s: string): CSSSelector | null {
+  // Extract :not(...) negation groups BEFORE the trailing-pseudo regex.
+  const notGroups: SimpleSelector[][] = [];
+  const notRe = /:not\(([^)]*)\)/g;
+  let notM: RegExpExecArray | null;
+  let sNoNot = s;
+  while ((notM = notRe.exec(s)) !== null) {
+    const inner = parseInnerCompound(notM[1]);
+    if (inner.length > 0) notGroups.push(inner);
+  }
+  if (notGroups.length > 0) sNoNot = s.replace(/:not\([^)]*\)/g, "");
+  const pseudoM = /:(pressed|active|disabled|checked|focus)$/.exec(sNoNot);
+  let pseudo: CSSSelector["pseudo"];
+  if (pseudoM) {
+    const p = pseudoM[1];
+    pseudo = (p === "active") ? "pressed" : p as any;
+  }
+  const base = pseudoM ? sNoNot.slice(0, pseudoM.index) : sNoNot;
+  const trimmed = base.trim().replace(/^[\"']/, "").replace(/[\"']$/, "");
+  if (!trimmed) return null;
+
+  // css-tree's generate() emits the child combinator without surrounding
+  // spaces ("view>text"), so a plain whitespace split would merge the two
+  // compounds into one. Normalize ">" into " > ", but only OUTSIDE attribute
+  // brackets so values like [data-x=">"] are preserved.
+  const tokens = normalizeCombinators(trimmed).split(/\s+/).filter(Boolean);
+  const compounds: SimpleSelector[][] = [];
+  const combinators: (">" | " " | "+" | "~")[] = [];
+  let expectCombinator = false;
+
+  for (const tok of tokens) {
+    if (tok === ">" || tok === "+" || tok === "~") {
+      combinators.push(tok);
+      expectCombinator = false;
+      continue;
+    }
+    if (expectCombinator) combinators.push(" ");
+
+    const simples: SimpleSelector[] = [];
+    // Attribute selectors: [disabled], [type="number"]
+    const attrRe = /\[([\w-]+)(?:([~|^$*]?=)["']?([^'"\]]*)["']?)?\]/g;
+    let am: RegExpExecArray | null;
+    while ((am = attrRe.exec(tok)) !== null) {
+      simples.push({ kind: "attribute", name: am[1], value: am[3] });
+    }
+    // Remaining simples from non-attribute parts
+    const remaining = tok.replace(/\[[^\]]*\]/g, "");
+    if (remaining) {
+      const tokenRe = /([.#]?)([a-zA-Z_][\w-]*)/g;
+      let m: RegExpExecArray | null;
+      while ((m = tokenRe.exec(remaining)) !== null) {
+        if (m[1] === "#") simples.push({ kind: "id", name: m[2] });
+        else if (m[1] === ".") simples.push({ kind: "class", name: m[2] });
+        else simples.push({ kind: "element", name: m[2] });
+      }
+    }
+    if (simples.length > 0) compounds.push(simples);
+    expectCombinator = true;
+  }
+
+  if (compounds.length === 0) return null;
+  const result: CSSSelector = { compounds };
+  if (combinators.length > 0) result.combinators = combinators;
+  if (pseudo) result.pseudo = pseudo;
+  if (notGroups.length > 0) result.not = notGroups;
+  return result;
+}
+
+/** Parse a numeric value from a CSS string to device pixels.
+ *  Supports px (as-is), bare numbers (as-is), rem/em (× root font size = 16),
+ *  and % (number used as-is, meaningful only in flex/position contexts). */
 function num(val: string): number {
-  const digits = val.replace(/px$|rem$|em$|%$/g, "").trim();
+  const v = val.trim();
+  const remM = /^(-?[\d.]+)rem$/.exec(v);
+  if (remM) return Math.round(parseFloat(remM[1]) * 16);
+  const emM = /^(-?[\d.]+)em$/.exec(v);
+  if (emM) return Math.round(parseFloat(emM[1]) * 16);
+  const digits = v.replace(/px$|%$|rem$|em$/g, "").trim();
   const n = Number(digits);
   return isNaN(n) ? 0 : n;
 }
@@ -162,8 +601,205 @@ function parseTransition(val: string): TransitionDecl {
   return { property: property as "background" | "color", durationMs };
 }
 
-/** Assign a CSS property to the CSSProperty object. Unknown properties are silently dropped. */
-function assignProp(props: CSSProperty, prop: string, val: string): void {
+/** Parse the animation shorthand: "pulse 2s infinite 500ms".
+ *  Fields: name (identifier), duration (Nms/Ns), iterations (number|infinite), delay (Nms/Ns). */
+export function parseAnimation(val: string): AnimationDecl | null {
+  const first = val.split(",")[0]?.trim() ?? "";
+  const parts = first.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  const decl: AnimationDecl = { name: "", durationMs: 1000, iterations: 1, delayMs: 0 };
+  let foundDuration = false;
+  for (const part of parts) {
+    const lower = part.toLowerCase();
+    if (lower === "none") {
+      return null;
+    } else if (lower === "infinite") {
+      decl.iterations = -1;
+    } else if (/^\d+(?:\.\d+)?ms$/.test(lower)) {
+      const ms = Math.round(parseFloat(lower));
+      if (!foundDuration) { decl.durationMs = ms; foundDuration = true; }
+      else decl.delayMs = ms;
+    } else if (/^\d+(?:\.\d+)?s$/.test(lower)) {
+      const ms = Math.round(parseFloat(lower) * 1000);
+      if (!foundDuration) { decl.durationMs = ms; foundDuration = true; }
+      else decl.delayMs = ms;
+    } else if (/^\d+$/.test(lower)) {
+      decl.iterations = parseInt(lower, 10);
+    } else if (
+      lower === "linear" ||
+      lower === "ease" ||
+      lower === "ease-in" ||
+      lower === "ease-out" ||
+      lower === "ease-in-out" ||
+      lower === "normal" ||
+      lower === "reverse" ||
+      lower === "alternate" ||
+      lower === "alternate-reverse" ||
+      lower === "forwards" ||
+      lower === "backwards" ||
+      lower === "both" ||
+      lower === "running" ||
+      lower === "paused"
+    ) {
+      continue;
+    } else {
+      // Identifier: the first non-keyword token is the animation name.
+      decl.name = part;
+    }
+  }
+  if (!decl.name) return null;
+  return decl;
+}
+
+/** Parse @keyframes blocks from CSS source.
+ *  Returns KeyframeSet[] — one per @keyframes name. */
+export function parseKeyframes(src: string): KeyframeSet[] {
+  const withoutComments = src.replace(/\/\*[\s\S]*?\*\//g, "");
+  const sets: KeyframeSet[] = [];
+
+  let ast;
+  try {
+    ast = parse(withoutComments, { parseCustomProperty: true });
+  } catch {
+    return sets;
+  }
+
+  const variables = extractVariables(withoutComments);
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type !== "Atrule" || node.name !== "keyframes" || !node.block) return;
+      const name = node.prelude ? generate(node.prelude).trim() : "";
+      if (!name) return;
+
+      const merged = new Map<number, KeyframeStop>();
+      node.block.children.forEach((rule: any) => {
+        if (rule.type !== "Rule" || !rule.block) return;
+        const percents = keyframePercents(rule.prelude ? generate(rule.prelude) : "");
+        if (percents.length === 0) return;
+
+        const props: Omit<KeyframeStop, "percent"> = {};
+        rule.block.children.forEach((decl: any) => {
+          if (decl.type !== "Declaration") return;
+          const prop = decl.property.replace(/^-(?:webkit|moz|ms|o)-/, "");
+          const val = substituteVarsInValue(generate(decl.value).trim(), variables);
+          if (prop === "background" || prop === "background-color") props.background = val;
+          else if (prop === "color") props.color = val;
+          else if (prop === "opacity") props.opacity = val;
+          else if (prop === "transform") props.transform = val;
+          else if (prop === "transform-origin") props.transformOrigin = val;
+          else if (prop === "left") props.left = val;
+          else if (prop === "top") props.top = val;
+          else if (prop === "width") props.width = val;
+          else if (prop === "height") props.height = val;
+        });
+
+        for (const percent of percents) {
+          const existing = merged.get(percent) ?? { percent };
+          merged.set(percent, { ...existing, ...props, percent });
+        }
+      });
+
+      const stops = [...merged.values()].sort((a, b) => a.percent - b.percent);
+      if (stops.length > 0) sets.push({ name, stops });
+    },
+  });
+
+  return sets;
+}
+
+function keyframePercents(selectorText: string): number[] {
+  return selectorText
+    .split(",")
+    .map((part) => {
+      const trimmed = part.trim().toLowerCase();
+      if (trimmed === "from") return 0;
+      if (trimmed === "to") return 100;
+      const match = /^(\d+(?:\.\d+)?)%$/.exec(trimmed);
+      if (!match) return undefined;
+      const value = Math.round(Number(match[1]));
+      return value >= 0 && value <= 100 ? value : undefined;
+    })
+    .filter((value): value is number => value !== undefined);
+}
+
+function extractVariables(src: string): Record<string, string> {
+  const variables: Record<string, string> = {};
+  let ast;
+  try {
+    ast = parse(src, { parseCustomProperty: true });
+  } catch {
+    return variables;
+  }
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type !== "Rule") return;
+      const selectorText = generate(node.prelude).trim();
+      if (selectorText !== ":root") return;
+      node.block.children.forEach((child: any) => {
+        if (child.type === "Declaration" && child.property.startsWith("--")) {
+          variables[child.property] = generate(child.value).trim();
+        }
+      });
+    },
+  });
+
+  return variables;
+}
+
+function substituteVarsInValue(value: string, variables: Record<string, string>): string {
+  return value.includes("var(")
+    ? value.replace(/var\(\s*(--[\w-]+)\s*\)/g, (_, name) => variables[name] ?? "")
+    : value;
+}
+
+function stripKeyframes(src: string): string {
+  let out = "";
+  let i = 0;
+  while (i < src.length) {
+    const match = /@keyframes\s+[\w-]+\s*\{/iy;
+    match.lastIndex = i;
+    const found = match.exec(src);
+    if (!found) {
+      out += src[i++];
+      continue;
+    }
+
+    out += src.slice(i, found.index);
+    let depth = 1;
+    let j = match.lastIndex;
+    while (j < src.length && depth > 0) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}") depth--;
+      j++;
+    }
+    i = j;
+  }
+  return out;
+}
+function parseFontShorthand(props: CSSProperty, val: string): void {
+  const parts = val.trim().split(/\s+/);
+  const sizeIndex = parts.findIndex((part) => /^\d+(?:\.\d+)?(?:px|pt|em|rem)?(?:\/.+)?$/.test(part));
+  if (sizeIndex < 0) return;
+  const beforeSize = parts.slice(0, sizeIndex);
+  const size = parts[sizeIndex].split("/")[0];
+  const family = parts.slice(sizeIndex + 1).join(" ").trim();
+  if (size) props.fontSize = size;
+  if (family) props.fontFamily = family;
+  for (const part of beforeSize) {
+    const lower = part.toLowerCase();
+    if (lower === "italic" || lower === "oblique" || lower === "normal") props.fontStyle = lower;
+    else if (lower === "bold" || lower === "bolder" || lower === "lighter" || /^\d{3}$/.test(lower)) props.fontWeight = lower;
+  }
+}
+
+/** Assign a CSS property to the CSSProperty object. Unknown properties emit a warning
+ *  (forward-compatible: they are dropped from output, but the author is notified). */
+function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?: Diagnostic[]): void {
+  const warn = (message: string, hint?: string): void => {
+    if (diagnostics) diagnostics.push({ severity: "warning", message, hint, code: "unknown-css-property", source: prop });
+  };
   switch (prop) {
     // Box model
     case "padding": props.padding = val; break;
@@ -174,6 +810,7 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "max-width": props.maxWidth = val; break;
     case "min-height": props.minHeight = val; break;
     case "max-height": props.maxHeight = val; break;
+    case "aspect-ratio": props.aspectRatio = val; break;
     case "box-sizing": props.boxSizing = val; break;
     case "overflow": props.overflow = val; break;
     // Colors
@@ -181,33 +818,47 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "background":
     case "background-color": props.background = val; break;
     // Text
-    case "font": props.font = val; break;
+    case "font": props.font = val; parseFontShorthand(props, val); break;
+    case "font-family": props.fontFamily = val; break;
     case "font-size": props.fontSize = val; break;
     case "text-align": props.textAlign = val; break;
     case "text-decoration": props.textDecoration = val; break;
     case "font-weight": props.fontWeight = val; break;
+    case "font-style": props.fontStyle = val; break;
+    case "font-smoothing":
+    case "font-smooth":
+    case "-webkit-font-smoothing": props.fontSmoothing = val; break;
+    case "font-subset": props.fontSubset = val; break;
     case "line-height": props.lineHeight = val; break;
     case "letter-spacing": props.letterSpacing = val; break;
     case "white-space": props.whiteSpace = val; break;
     case "text-transform": props.textTransform = val; break;
+    case "text-overflow": props.textOverflow = val; break;
     // Animation
     case "transition": props.transition = parseTransition(val); break;
+    case "animation": props.animation = val; break;
+    case "animation-name": props.animationName = val; break;
+    case "animation-duration": props.animationDuration = val; break;
+    case "animation-iteration-count": props.animationIterationCount = val; break;
+    case "animation-delay": props.animationDelay = val; break;
     // Flexbox / layout
     case "display": props.display = val; break;
     case "flex-direction": props.flexDirection = val; break;
-    case "gap":
-    case "row-gap":
-    case "column-gap": props.gap = val; break;
+    case "gap": props.gap = val; props.rowGap = val; props.columnGap = val; break;
+    case "row-gap": props.rowGap = val; if (!props.columnGap) props.columnGap = val; break;
+    case "column-gap": props.columnGap = val; if (!props.rowGap) props.rowGap = val; break;
     case "flex": parseFlexShorthand(props, val); break;
     case "flex-grow": props.flexGrow = val; break;
     case "flex-shrink": props.flexShrink = val; break;
     case "flex-basis": props.flexBasis = val; break;
     case "align-self": props.alignSelf = val; break;
     case "align-items": props.alignItems = val; break;
+    case "align-content": props.alignContent = val; break;
     case "justify-content": props.justifyContent = val; break;
     case "flex-wrap": props.flexWrap = val; break;
     case "order": props.order = val; break;
     case "position": props.position = val; break;
+    case "z-index": props.zIndex = val; break;
     case "top": props.top = val; break;
     case "right": props.right = val; break;
     case "bottom": props.bottom = val; break;
@@ -218,11 +869,25 @@ function assignProp(props: CSSProperty, prop: string, val: string): void {
     case "border-width": props.borderWidth = val; break;
     case "border-color": props.borderColor = val; break;
     case "border-style": props.borderStyle = val; break;
+    case "border-left": case "border-top": case "border-right": case "border-bottom":
+      // Per-side borders are NOT supported (runtime draws uniform borders).
+      // Drop to avoid drawing 4-sided borders when only one side was intended.
+      warn(`Unsupported CSS property "${prop}" — runtime draws uniform borders only.`,
+           `Use the shorthand "border" instead (e.g. border: 1px solid #888).`);
+      break;
     case "opacity": props.opacity = val; break;
     case "visibility": props.visibility = val; break;
     case "outline": props.outline = val; break;
     case "box-shadow": props.boxShadow = val; break;
-    // Unknown properties are silently dropped (forward-compatible).
+    case "text-shadow": props.textShadow = val; break;
+    case "transform": props.transform = val; break;
+    case "transform-origin": props.transformOrigin = val; break;
+    case "object-fit": props.objectFit = val; break;
+    // Unknown properties are dropped (forward-compatible) but reported as a warning
+    // so authors notice typos and unsupported features.
+    default:
+      warn(`Unknown CSS property "${prop}" — ignored.`);
+      break;
   }
 }
 

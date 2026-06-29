@@ -57,7 +57,15 @@ describe("color formats", () => {
   });
 
   it("throws on unsupported format", () => {
-    expect(() => parseColor("hsl(0, 100%, 50%)")).toThrow(/Unsupported color format/);
+    expect(() => parseColor("hsl(0, 100%, 50%)")).not.toThrow();
     expect(() => parseColor("not-a-color")).toThrow(/Unsupported color format/);
+  });
+
+  it("parses hsl/hsla colors (comma, space, and slash-alpha syntaxes)", () => {
+    expect(parseColor("hsl(0, 100%, 50%)")).toEqual({ r: 255, g: 0, b: 0 });
+    expect(parseColor("hsl(240 100% 50%)")).toEqual({ r: 0, g: 0, b: 255 });
+    expect(parseColor("hsl(120, 100%, 25%)")).toEqual({ r: 0, g: 128, b: 0 });
+    // slash-alpha: alpha ignored, color still resolves
+    expect(parseColor("hsla(0 0% 0% / 0.05)")).toEqual({ r: 0, g: 0, b: 0 });
   });
 });

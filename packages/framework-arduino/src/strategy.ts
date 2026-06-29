@@ -8,9 +8,9 @@
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp } from "@typecad/cuttlefish/api/shared";
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
 import { generatePromiseRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
-import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen";
-import { resolveArduinoProfile } from "./profile";
-import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341";
+import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
+import { resolveArduinoProfile } from "./profile.js";
+import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
 
 /**
  * Arduino-specific platform context.
@@ -456,15 +456,13 @@ struct __tc_StaticArray {
       dependencies: [],
     }];
 
-    // Add timer methods if used
-    const hasHwTimer = program.boardConstants?.has("peripherals.timers.0.instance");
-    const isEsp32 = ctx?.architecture === "esp32";
-    
+    // Add cooperative timer methods if used. Callbacks run from loop(), so
+    // generated UI/state mutations stay on the main Arduino execution path.
     helpers.push({
       kind: "polyfill",
       id: "timer_methods",
       domain: "arduino",
-      requiredIncludes: isEsp32 ? ["esp_timer.h"] : [],
+      requiredIncludes: [],
       forwardDeclarations: [],
       helperStructs: [`
 struct __tc_TimerTask {
@@ -513,25 +511,7 @@ public:
     }
 } __tc_timer_runtime;
 `],
-      helperFunctions: [
-        isEsp32 ? `
-int __tc_setInterval(void (*cb)(), long ms) {
-    const esp_timer_create_args_t periodic_timer_args = { .callback = (esp_timer_cb_t)cb, .arg = NULL, .name = "periodic" };
-    esp_timer_handle_t timer;
-    esp_timer_create(&periodic_timer_args, &timer);
-    esp_timer_start_periodic(timer, ms * 1000);
-    return (int)timer;
-}
-int __tc_setTimeout(void (*cb)(), long ms) {
-    const esp_timer_create_args_t once_timer_args = { .callback = (esp_timer_cb_t)cb, .arg = NULL, .name = "one-shot" };
-    esp_timer_handle_t timer;
-    esp_timer_create(&once_timer_args, &timer);
-    esp_timer_start_once(timer, ms * 1000);
-    return (int)timer;
-}
-void __tc_clearInterval(int id) { esp_timer_stop((esp_timer_handle_t)id); esp_timer_delete((esp_timer_handle_t)id); }
-void __tc_clearTimeout(int id) { esp_timer_stop((esp_timer_handle_t)id); esp_timer_delete((esp_timer_handle_t)id); }
-` : `
+      helperFunctions: [`
 int __tc_setInterval(void (*cb)(), long ms) { return __tc_timer_runtime.add(cb, ms, true); }
 int __tc_setTimeout(void (*cb)(), long ms) { return __tc_timer_runtime.add(cb, ms, false); }
 void __tc_clearInterval(int id) { __tc_timer_runtime.clear(id); }
@@ -787,20 +767,43 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     // Wrap bare string literals with F() to store them in program memory
     const isBareLiteral = /^"[^"]*"$/.test(renderedArgs);
     const safeArgs = isBareLiteral ? `F(${renderedArgs})` : renderedArgs;
+
+    // Multi-arg console.log joins args with `<<`, but Serial.println takes a
+    // single value (no operator<< on HardwareSerial). Split the chain into a
+    // sequence of Serial.print(...) calls ending with Serial.println() so
+    // mixed-type args ("label", number) compile and print on one line.
+    const isChain = !isBareLiteral && renderedArgs.includes("<<");
+    let prefix = "";
     switch (method) {
       case "log":
-        return `Serial.println(${safeArgs})${semi}`;
+        break;
       case "error":
-        return `Serial.print(F("[ERROR] ")); Serial.println(${safeArgs})${semi}`;
+        prefix = `Serial.print(F("[ERROR] "))${semi} `;
+        break;
       case "warn":
-        return `Serial.print(F("[WARN] ")); Serial.println(${safeArgs})${semi}`;
+        prefix = `Serial.print(F("[WARN] "))${semi} `;
+        break;
       case "info":
-        return `Serial.print(F("[INFO] ")); Serial.println(${safeArgs})${semi}`;
+        prefix = `Serial.print(F("[INFO] "))${semi} `;
+        break;
       case "debug":
-        return `Serial.print(F("[DEBUG] ")); Serial.println(${safeArgs})${semi}`;
+        prefix = `Serial.print(F("[DEBUG] "))${semi} `;
+        break;
       default:
-        return `Serial.println(${safeArgs})${semi}`;
+        break;
     }
+    if (isChain) {
+      // Split "a" << b << c into ["a", "b", "c"] (respecting string literals).
+      const parts = splitStreamChain(renderedArgs);
+      const prints = parts.map((p, i) => {
+        const last = i === parts.length - 1;
+        return last
+          ? `Serial.println(${wrapArg(p)})${semi}`
+          : `Serial.print(${wrapArg(p)})${semi}`;
+      });
+      return prefix + prints.join(" ");
+    }
+    return `${prefix}Serial.println(${safeArgs})${semi}`;
   }
 
   transformConsoleExpression(_method: string, _renderedArgs: string): string | undefined {
@@ -1284,9 +1287,13 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
     if (op.operation === "display.init") {
+      const dop = op as any;
       this._displayCtx = {
         bus: op.bus, cs: op.cs, dc: op.dc, rst: op.rst,
         width: op.width, height: op.height,
+        rotation: dop.rotation ?? 1,
+        backlight: dop.backlight ?? 17,
+        spiFrequency: dop.spiFrequency,
       };
     }
     // Only resolve once a display is initialized (display.init sets the context).
@@ -1561,4 +1568,46 @@ function detectPinGroupUsage(program: ProgramIR): boolean {
     if (cls.constructor) { for (const s of cls.constructor.statements) { if (checkStmt(s)) return true; } }
   }
   return false;
+}
+/**
+ * Split a stream-chain expression ("a" << b << "c << d") into its parts,
+ * without breaking on `<<` that appears inside a string literal. Each part is
+ * returned trimmed. Used by transformConsoleCall to emit one Serial.print per
+ * argument (HardwareSerial has no operator<<).
+ */
+function splitStreamChain(renderedArgs: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;          // paren/bracket nesting
+  let inString = false;   // inside a "..." literal
+  let escape = false;     // previous char was backslash
+  let start = 0;
+  for (let i = 0; i < renderedArgs.length; i++) {
+    const c = renderedArgs[i];
+    if (inString) {
+      if (escape) { escape = false; continue; }
+      if (c === "\\") { escape = true; continue; }
+      if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") depth--;
+    else if (c === "<" && depth === 0 && renderedArgs[i + 1] === "<") {
+      parts.push(renderedArgs.slice(start, i).trim());
+      i++; // skip second '<'
+      start = i + 1;
+    }
+  }
+  parts.push(renderedArgs.slice(start).trim());
+  return parts.filter((p) => p.length > 0);
+}
+
+/**
+ * Wrap a bare C-string literal in F() so it lands in program memory (Flash)
+ * instead of RAM — matches the single-arg console.log path. Non-literal parts
+ * (numbers, identifiers, expressions) pass through unchanged.
+ */
+function wrapArg(part: string): string {
+  if (/^"[^"]*"$/.test(part)) return `F(${part})`;
+  return part;
 }

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // UI lowering — styled tree + computed boxes → C++ node/binding/transition
-// tables + a .ui.html.d.ts declaration file.
+// tables + a .ui.d.html.ts declaration file.
 //
 // This is the bridge between the host-side parse/layout pipeline and the
 // device-side retained runtime. Colors are resolved to the target color format
@@ -14,98 +14,286 @@
 
 import { StyledNode } from "../../ui/style-resolver.js";
 import { Box } from "../../ui/layout-engine.js";
+import { lowerUIToModel, UIProgram, UINodeModel, KeyframeSetModel } from "../../ui/model.js";
 import { resolveColor } from "../../ui/color.js";
-import { CSSProperty } from "../../ui/css-parser.js";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../ui/default-keyboards.js";
+import type { KeyboardTemplate, UIKeyTemplate } from "../../ui/html-parser.js";
+import { getListBindings } from "./ui-reactive.js";
+import type { CSSRule, CSSProperty } from "../../ui/css-parser.js";
+import type { DisplayProfile } from "../../api/shared/display-profile.js";
+import type { UIFontAssetModel } from "../../ui/font-assets.js";
 
 export interface LoweredUI {
+  fontTables: string;
   nodeTable: string;
   transitionTable: string;
   typeDecl: string;
+  /** C++ keyboard loader function bodies (one per keyboard in use). */
+  keyboardLoaders: string;
+  /** C++ dispatch table mapping input node index → loader function. */
+  keyboardDispatch: string;
+  /** Number of distinct screens (for multi-screen navigation). */
+  screenCount: number;
+  /** C++ image data arrays + index table (for <img> support). */
+  imageTables: string;
+  /** C++ keyframe data arrays + animation table. */
+  keyframeTables: string;
 }
 
 type ColorFormat = "rgb565" | "mono";
 type Storage = "progmem" | "flash";
-
-interface FlatNode {
-  index: number;
-  tag: string;
-  id?: string;
-  text?: string;
-  style: CSSProperty;
-  box: Box;
-  hasPressed: boolean;
-  hasBg: boolean;
-}
 
 export function lowerUIToCpp(
   root: StyledNode,
   boxes: Box[],
   colorFormat: ColorFormat,
   storage: Storage,
+  keyboards: KeyboardTemplate[] = [],
+  rules: CSSRule[] = [],
+  display?: DisplayProfile,
+  fontAssets: UIFontAssetModel[] = [],
+  allScreens: StyledNode[] = [],
+  imageAssetIds: Map<string, number> = new Map(),
+  keyframeSets: KeyframeSetModel[] = [],
 ): LoweredUI {
-  const flat: FlatNode[] = [];
-  flatten(root, boxes, flat, { i: 0 });
+  void storage;
+  const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets, allScreens, imageAssetIds, keyframeSets);
 
   // Tables are mutable RAM (ui_tick updates bg/dirty/elapsed/active each
   // frame), so no PROGMEM/flash storage keyword — those imply read-only.
-  const nodeTable = emitNodeTable(flat, colorFormat);
-  const transitionTable = emitTransitionTable(flat, colorFormat);
+  const fontTables = emitFontTables(model);
+  const nodeTable = emitNodeTable(model);
+  const transitionTable = emitTransitionTable(model);
   const typeDecl = emitTypeDecl(root);
 
-  return { nodeTable, transitionTable, typeDecl };
+  // Keyboard loaders + dispatch: collect input nodes in tree order, resolve
+  // each to its loader (default by type, or a referenced <keyboard>).
+  // Walk ALL screens (inputs may live on any screen, not just the root).
+  const inputSpecs: Array<{ type?: string; keyboard?: string }> = [];
+  const collectInputs = (n: StyledNode) => {
+    if (n.tag === "input") inputSpecs.push({ type: n.type, keyboard: n.keyboard });
+    n.children.forEach(collectInputs);
+  };
+  const inputRoots = allScreens.length > 0 ? allScreens : [root];
+  for (const sr of inputRoots) collectInputs(sr);
+
+  const neededKeyboards: KeyboardTemplate[] = [];
+  const addIfNeeded = (kb: KeyboardTemplate) => {
+    if (!neededKeyboards.some(k => k.id === kb.id)) neededKeyboards.push(kb);
+  };
+  for (const spec of inputSpecs) {
+    if (spec.keyboard) {
+      const match = keyboards.find(k => k.id === spec.keyboard);
+      if (match) addIfNeeded(match);
+    } else {
+      addIfNeeded(spec.type === "number" ? DEFAULT_NUMBER_KEYBOARD : DEFAULT_ALPHA_KEYBOARD);
+    }
+  }
+
+  const keyboardLoaders = neededKeyboards
+    .map(kb => emitKeyboardLoader(loaderNameForId(kb.id), kb, rules, colorFormat))
+    .join("\n\n");
+
+  const dispatchEntries = inputSpecs.map(spec => loaderNameForInput(spec, keyboards));
+  const keyboardDispatch = dispatchEntries.length > 0
+    ? `void (*__ui_kb_loaders[])() = { ${dispatchEntries.join(", ")} };\nconst uint8_t __ui_kb_loader_count = ${dispatchEntries.length};`
+    : `void (*__ui_kb_loaders[])() = {};\nconst uint8_t __ui_kb_loader_count = 0;`;
+
+  const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
+  const imageTables = "const UIImage __ui_images[] = {};\nconst uint8_t __ui_image_count = 0;";
+  const keyframeTables = emitKeyframeTables(model);
+  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables };
 }
 
-function flatten(
-  node: StyledNode,
-  boxes: Box[],
-  out: FlatNode[],
-  cursor: { i: number },
-): void {
-  const index = cursor.i++;
-  const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
-  const hasPressed = !!(node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
-  const hasBg = !!node.style.background;
-  out.push({
-    index,
-    tag: node.tag,
-    id: node.id,
-    text: node.text,
-    style: node.style,
-    box,
-    hasPressed,
-    hasBg,
-  });
-  for (const child of node.children) flatten(child, boxes, out, cursor);
+function sanitizedId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
-  const lines = flat.map((n) => {
-    const kind = n.tag === "screen" || n.tag === "view" ? "NODE_FILL"
-      : n.tag === "button" ? "NODE_BUTTON"
-      : "NODE_TEXT";
-    const bg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
-    const fg = n.style.color ? resolveColor(n.style.color, colorFormat) : 0xffff;
-    const text = n.text ? `"${n.text}"` : "nullptr";
+function loaderNameForId(id: string): string {
+  return `__ui_kb_load_${sanitizedId(id)}`;
+}
+
+function loaderNameForInput(input: { type?: string; keyboard?: string }, keyboards: KeyboardTemplate[]): string {
+  if (input.keyboard) {
+    const match = keyboards.find(k => k.id === input.keyboard);
+    if (match) return loaderNameForId(match.id);
+  }
+  return input.type === "number" ? "__ui_kb_load_default_number" : "__ui_kb_load_default_alpha";
+}
+
+// Default key colors (fallback when no CSS matches). Used for all keys.
+const DEFAULT_KEY_BG = 0x4208;    // dark gray
+const DEFAULT_KEY_FG = 0xFFFF;    // white
+const DEFAULT_KEY_BORDER = 0xFFFF; // white
+const DEFAULT_KB_BG = 0x0000;     // black
+
+/** Resolve a key's CSS classes into a merged CSSProperty (cascade: last wins). */
+/** Check if a CSS rule's selector matches any of the given class names.
+ *  Only matches single-compound class selectors (no descendant for keys). */
+function ruleMatchesClass(rule: CSSRule, classes: string[]): boolean {
+  // Must be a single compound (no descendant combinator).
+  if (rule.selector.compounds.length !== 1) return false;
+  const compound = rule.selector.compounds[0];
+  // Every simple in the compound must be a class that's in the list.
+  for (const s of compound) {
+    if (s.kind !== "class" || !classes.includes(s.name)) return false;
+  }
+  return true;
+}
+
+function resolveKeyStyle(keyClasses: string[] | undefined, kbClasses: string[] | undefined, rules: CSSRule[]): CSSProperty {
+  const merged: CSSProperty = {};
+  const allClasses = [...(kbClasses ?? []), ...(keyClasses ?? [])];
+  for (const rule of rules) {
+    if (ruleMatchesClass(rule, allClasses)) {
+      Object.assign(merged, rule.properties);
+    }
+  }
+  return merged;
+}
+
+/** Resolve the keyboard-level background from CSS (keyboard classes). */
+function resolveKbBg(kbClasses: string[] | undefined, rules: CSSRule[], colorFormat: ColorFormat): number {
+  const merged: CSSProperty = {};
+  const classes = kbClasses ?? [];
+  for (const rule of rules) {
+    if (ruleMatchesClass(rule, classes)) {
+      Object.assign(merged, rule.properties);
+    }
+  }
+  return merged.background ? resolveColor(merged.background, colorFormat) : DEFAULT_KB_BG;
+}
+
+function emitKeyboardLoader(name: string, kb: KeyboardTemplate, rules: CSSRule[], colorFormat: ColorFormat): string {
+  const rows = kb.rows;
+  const cols = rows.length > 0 ? Math.max(...rows.map(r => r.length)) : 0;
+  const kbBg = resolveKbBg(kb.classes, rules, colorFormat);
+  const lines: string[] = [];
+  lines.push(`void ${name}() {`);
+  lines.push(`  __ui_kb_rows = ${rows.length};`);
+  lines.push(`  __ui_kb_cols = ${cols};`);
+  lines.push(`  __ui_kb_keyCount = 0;`);
+  lines.push(`  __ui_kb_bg = ${hex(kbBg)};`);
+  for (const row of rows) {
+    for (const key of row) {
+      lines.push(`  ${emitKeyLine(key, kb.classes, rules, colorFormat)}`);
+    }
+    // Pad short rows so ui_kb_key_rect's idx/cols math stays aligned. Padded
+    // cells use special=255 (skipped in draw + hit-test) with a space char.
+    for (let p = row.length; p < cols; p++) {
+      lines.push(`  ui_kb_add_key(' ', 255, ${hex(DEFAULT_KEY_BG)}, ${hex(DEFAULT_KEY_FG)}, ${hex(DEFAULT_KEY_BORDER)});`);
+    }
+  }
+  lines.push(`}`);
+  return lines.join("\n");
+}
+
+/** Emit one key's keys[] + styles[] lines, resolving CSS classes to colors. */
+function emitKeyLine(key: UIKeyTemplate, kbClasses: string[] | undefined, rules: CSSRule[], colorFormat: ColorFormat): string {
+  const chEsc = key.ch === "\\" ? "\\\\" : key.ch === "'" ? "\\'" : key.ch;
+  const style = resolveKeyStyle(key.classes, kbClasses, rules);
+  const bg = style.background ? resolveColor(style.background, colorFormat) : DEFAULT_KEY_BG;
+  const fg = style.color ? resolveColor(style.color, colorFormat) : DEFAULT_KEY_FG;
+  const border = style.borderColor ? resolveColor(style.borderColor, colorFormat) : DEFAULT_KEY_BORDER;
+  return `ui_kb_add_key('${chEsc}', ${key.special}, ${hex(bg)}, ${hex(fg)}, ${hex(border)});`;
+}
+
+function cppKind(kind: UINodeModel["kind"]): string {
+  switch (kind) {
+    case "fill": return "NODE_FILL";
+    case "button": return "NODE_BUTTON";
+    case "check": return "NODE_CHECK";
+    case "radio": return "NODE_RADIO";
+    case "progress": return "NODE_PROGRESS";
+    case "range": return "NODE_RANGE";
+    case "input": return "NODE_INPUT";
+    case "img": return "NODE_IMG";
+    case "list": return "NODE_LIST";
+    case "canvas": return "NODE_CANVAS";
+    case "text": return "NODE_TEXT";
+  }
+}
+
+function hex(c: number): string {
+  return `0x${c.toString(16).padStart(4, "0")}`;
+}
+
+function cppString(value: string | undefined): string {
+  return value ? JSON.stringify(value) : "nullptr";
+}
+
+function byteArray(values: number[]): string {
+  if (values.length === 0) return "";
+  const chunks: string[] = [];
+  for (let i = 0; i < values.length; i += 16) {
+    chunks.push("  " + values.slice(i, i + 16).map((v) => `0x${(v & 0xff).toString(16).padStart(2, "0")}`).join(", "));
+  }
+  return chunks.join(",\n");
+}
+
+function emitFontTables(model: UIProgram): string {
+   const assets = model.fontAssets ?? [];
+   if (assets.length === 0) {
+     return [
+       `const UIFontFace __ui_font_faces[] = {};`,
+       `const uint8_t __ui_font_face_count = 0;`,
+     ].join("\n");
+   }
+
+   const lines: string[] = [];
+   for (const asset of assets) {
+     lines.push(`// Font ${asset.id}: ${asset.family} ${asset.px}px ${asset.fontWeight} ${asset.fontStyle} ${asset.subset}`);
+     // Alpha data goes in PROGMEM (constants in flash, not RAM) - accessed via pgm_read_byte on AVR
+     lines.push(`static const uint8_t __ui_font_${asset.id}_alpha[] PROGMEM = {`);
+     lines.push(byteArray(asset.alpha));
+     lines.push(`};`);
+     lines.push(`static const UIFontGlyph __ui_font_${asset.id}_glyphs[] = {`);
+     for (const glyph of asset.glyphs) {
+       lines.push(
+         `  { ${glyph.codepoint}, ${glyph.xOffset}, ${glyph.yOffset}, ${glyph.width}, ${glyph.height}, ${glyph.advance}, ${glyph.dataOffset} },`,
+       );
+     }
+     lines.push(`};`);
+   }
+
+   // Font faces and glyphs stay in regular memory for direct struct access
+   // (AVR optimized builds can move the whole table to PROGMEM + accessor functions)
+   lines.push(`const UIFontFace __ui_font_faces[] = {`);
+   for (const asset of assets) {
+     lines.push(
+       `  { ${asset.id}, ${asset.glyphs.length}, ${asset.lineHeight}, ${asset.baseline}, __ui_font_${asset.id}_glyphs, __ui_font_${asset.id}_alpha },`,
+     );
+   }
+   lines.push(`};`);
+   lines.push(`const uint8_t __ui_font_face_count = ${assets.length};`);
+   return lines.join("\n");
+ }
+
+function emitNodeTable(model: UIProgram): string {
+  // Map node index → list binding so virtualized nodes carry their count/item/
+  // tap function pointers on-node (no UIListBinding side table at runtime).
+  const listBindingByNode = new Map<number, ReturnType<typeof getListBindings>[number]>();
+  for (const lb of getListBindings()) listBindingByNode.set(lb.nodeIndex, lb);
+  const lines = model.nodes.map((n) => {
+    const text = cppString(n.text);
     const font = "nullptr";
+    // Input nodes store the placeholder in .text (static literal) so the draw
+    // can show it grayed when textBuffer is empty. textBuffer stays {0} so
+    // ui_kb_open starts with a clean edit buffer (no placeholder to delete).
+    const inputText = n.kind === "input" && n.textBuffer ? cppString(n.textBuffer) : text;
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
-    const bgStr = `0x${bg.toString(16).padStart(4, "0")}`;
-    const fgStr = `0x${fg.toString(16).padStart(4, "0")}`;
-    // text-align: 0=left, 1=center, 2=right
-    const textAlign = n.style.textAlign === "center" ? 1 : n.style.textAlign === "right" ? 2 : 0;
-    // border color: resolve if set
-    const borderColor = n.style.borderColor ? resolveColor(n.style.borderColor, colorFormat) : 0;
-    const borderColorStr = `0x${borderColor.toString(16).padStart(4, "0")}`;
-    // border style: 0=none, 1=solid, 2=dashed
-    const borderStyle = n.style.borderStyle === "solid" ? 1
-      : n.style.borderStyle === "dashed" ? 2
-      : n.style.borderStyle === "dotted" ? 2  // dotted approximated as dashed
-      : n.style.border || n.style.borderWidth ? 1  // default to solid if border is set
-      : 0;
-    // underline: 1 if text-decoration: underline
-    const underline = n.style.textDecoration === "underline" ? 1 : 0;
-    // visibility: 0=hidden, 1=visible (default)
-    const visible = n.style.visibility === "hidden" ? 0 : 1;
-    return `  { .box=${box}, .bg=${bgStr}, .fg=${fgStr}, .kind=${kind}, .text=${text}, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${textAlign}, .borderColor=${borderColorStr}, .borderStyle=${borderStyle}, .underline=${underline}, .visible=${visible} },`;
+    const parent = n.parentIndex >= 0 ? n.parentIndex : 255;
+    // Progress/range use lastTextWidth as a "previous fill width" for
+    // incremental redraw. -1 = never drawn, because fill width 0 is valid.
+    const lastTextWidth = n.kind === "progress" || n.kind === "range" ? -1 : 0;
+    const shArr = (vals: number[], n = 4) => `{${[...vals.slice(0, n), ...Array(n - Math.min(vals.length, n)).fill(0)].join(",")}}`;
+    // Virtualized list: resolve on-node function pointers from the binding.
+    const lb = listBindingByNode.get(n.index);
+    const virtualized = n.virtualized ? 1 : 0;
+    const listCountFn = lb ? lb.countFnName : "nullptr";
+    const listItemFn = lb ? lb.itemFnName : "nullptr";
+    const listTapFn = lb && lb.tapFnName ? lb.tapFnName : "nullptr";
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .lineHeight=${n.lineHeight}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .zIndex=${n.zIndex}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .rotateDeg=${n.rotateDeg}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline}, .textOverflow=${n.textOverflow ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .whiteSpaceMode=${n.whiteSpaceMode}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .lastTextHeight=0, .scrollable=${n.scrollable ? 1 : 0}, .virtualized=${virtualized}, .scrollY=0, .contentHeight=${n.contentHeight}, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=${listCountFn}, .listItemFn=${listItemFn}, .listTapFn=${listTapFn}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .objectFit=${n.objectFit ?? 1}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .canvasW=${n.canvasW ?? 0}, .canvasH=${n.canvasH ?? 0}, .dirty=0, .value=${n.checked ? 1 : 0} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.
@@ -116,32 +304,57 @@ function emitNodeTable(flat: FlatNode[], colorFormat: ColorFormat): string {
   ].join("\n");
 }
 
-function emitTransitionTable(flat: FlatNode[], colorFormat: ColorFormat): string {
-  const entries: string[] = [];
-  for (const n of flat) {
-    if (!n.style.transition) continue;
-    const prop = n.style.transition.property === "background" ? "PROP_BG" : "PROP_FG";
-    // The :pressed state's target color for this property. On press,
-    // ui_on_press arms the transition toward this value; on release,
-    // ui_on_release arms it back toward the base value.
-    const pressedStyle = (n.style as CSSProperty & { pressed?: CSSProperty }).pressed;
-    const pressedBg = pressedStyle?.background
-      ? resolveColor(pressedStyle.background, colorFormat)
-      : n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
-    const baseBg = n.style.background ? resolveColor(n.style.background, colorFormat) : 0;
-    const pressedHex = `0x${pressedBg.toString(16).padStart(4, "0")}`;
-    const baseHex = `0x${baseBg.toString(16).padStart(4, "0")}`;
-    entries.push(`  { .node=${n.index}, .prop=${prop}, .durationMs=${n.style.transition.durationMs}, .pressedTarget=${pressedHex}, .baseTarget=${baseHex} },`);
-  }
+function emitTransitionTable(model: UIProgram): string {
+  const entries = model.transitions.map((t) => {
+    const prop = t.prop === "background" ? "PROP_BG" : "PROP_FG";
+    return `  { .node=${t.node}, .prop=${prop}, .durationMs=${t.durationMs}, .pressedTarget=${hex(t.pressedTarget)}, .baseTarget=${hex(t.baseTarget)} },`;
+  });
   if (entries.length === 0) {
-    return `const UITransition __ui_trans[] = {};`;
+    return `UITransition __ui_trans[] = {};`;
   }
   return [
-    // Mutable: ui_tick updates elapsed/active each frame.
     `UITransition __ui_trans[] = {`,
     ...entries,
     `};`,
   ].join("\n");
+}
+
+/** Emit keyframe stop arrays + keyframe set index + animation table. */
+function emitKeyframeTables(model: UIProgram): string {
+  if (model.keyframeSets.length === 0 && model.animations.length === 0) {
+    return [
+      `const UIKeyframeSet __ui_keyframe_sets[] = {};`,
+      `const uint8_t __ui_keyframe_set_count = 0;`,
+      `UIAnimation __ui_anims[] = {};`,
+      `const uint8_t __ui_anim_count = 0;`,
+    ].join("\n");
+  }
+  const lines: string[] = [];
+  // Emit one stop array per keyframe set.
+  for (const ks of model.keyframeSets) {
+    const safeName = ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
+    lines.push(`static const UIKeyframeStop __ui_kf_${safeName}_stops[] = {`);
+    for (const s of ks.stops) {
+      lines.push(`  { .percent=${s.percent}, .props=${s.props}, .bg=${hex(s.bg)}, .fg=${hex(s.fg)}, .opacity=${s.opacity}, .transformOffsetX=${s.transformOffsetX}, .transformOffsetY=${s.transformOffsetY}, .translatePctX=${s.translatePctX}, .translatePctY=${s.translatePctY}, .scaleX=${s.scaleX}, .scaleY=${s.scaleY}, .rotateDeg=${s.rotateDeg}, .width=${s.width}, .height=${s.height} },`);
+    }
+    lines.push(`};`);
+  }
+  // Emit keyframe set index table.
+  lines.push(`const UIKeyframeSet __ui_keyframe_sets[] = {`);
+  model.keyframeSets.forEach((ks) => {
+    const safeName = ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
+    lines.push(`  { .stopCount=${ks.stops.length}, .stops=__ui_kf_${safeName}_stops },`);
+  });
+  lines.push(`};`);
+  lines.push(`const uint8_t __ui_keyframe_set_count = ${model.keyframeSets.length};`);
+  // Emit animation table (mutable — runtime advances elapsed/active).
+  lines.push(`UIAnimation __ui_anims[] = {`);
+  for (const a of model.animations) {
+    lines.push(`  { .node=${a.node}, .keyframeSet=${a.keyframeSet}, .durationMs=${a.durationMs}, .delayMs=${a.delayMs}, .iterations=${a.iterations}, .baseWidth=${a.baseWidth}, .baseHeight=${a.baseHeight}, .originX=${a.originX}, .originY=${a.originY}, .elapsed=0, .active=1, .lastUpdateMs=0 },`);
+  }
+  lines.push(`};`);
+  lines.push(`const uint8_t __ui_anim_count = ${model.animations.length};`);
+  return lines.join("\n");
 }
 
 function emitTypeDecl(root: StyledNode): string {

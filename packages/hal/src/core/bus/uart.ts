@@ -1,4 +1,4 @@
-import type { ErrorPolicy } from './error-policy';
+import type { ErrorPolicy } from './error-policy.js';
 
 export enum UARTParity {
   NONE = 0,

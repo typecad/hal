@@ -5,11 +5,11 @@
 // C++ calls via framework-arduino handlers.
 // ---------------------------------------------------------------------------
 
-import type { II2CArduino } from './i2c-arduino';
+import type { II2CArduino } from './i2c-arduino.js';
 import type { I2CAddress } from '@typecad/hal';
-import type { ISPIArduino } from './spi-arduino';
+import type { ISPIArduino } from './spi-arduino.js';
 import type { SPIMode, SPIBitOrder, SPISettings } from '@typecad/hal';
-import type { ISerialArduino } from './uart-arduino';
+import type { ISerialArduino } from './uart-arduino.js';
 
 // ---------------------------------------------------------------------------
 // I2C — Wire (bus 0) - Arduino API

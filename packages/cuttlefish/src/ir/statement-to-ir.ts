@@ -22,6 +22,7 @@ import { collectChainedHALEmits, emitLinesToIR, halOpsToIR } from "./transformer
 import { NamespaceMethodResult, resolveNamespaceMethodCall } from "./transformers/namespace-methods.js";
 
 import { tryResolveHALMethod, resolveHALCallForVarInit, tryResolveHALExpression } from "./transformers/hal-call-resolver.js";
+import { resolveElementValue } from "./transformers/ui-call-resolver.js";
 export { tryResolveHALMethod, resolveHALCallForVarInit, tryResolveHALExpression };
 import { hoistNestedFunction, hoistNestedClass } from "./function-builder.js";
 import { prescanArrayUsage, buildInlineForLoop } from "./transformers/array-methods.js";
@@ -152,6 +153,57 @@ export function lowerStatement(
         if (isCompileTimeOnlyClassName(className)) {
           return []; // Skip silently
         }
+      }
+    }
+
+    // ── UI element .value write: screen.led.value = 1 ────────────────────
+    // Lowers to __ui_nodes[N].value = X; ui_mark_dirty(N);
+    if (
+      ts.isBinaryExpression(statement.expression) &&
+      statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(statement.expression.left) &&
+      statement.expression.left.name.text === "value" &&
+      ts.isPropertyAccessExpression(statement.expression.left.expression) &&
+      ts.isIdentifier(statement.expression.left.expression.expression)
+    ) {
+      const treeName = statement.expression.left.expression.expression.text;
+      const elemId = statement.expression.left.expression.name.text;
+      const nodeIdx = resolveElementValue(treeName, elemId);
+      if (nodeIdx !== undefined) {
+        const valIR = expressionToIR(statement.expression.right, sourceText, diagnostics, pointerVars);
+        const valText = renderExprAsText(valIR);
+        return [{
+          kind: "call" as const,
+          sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+          callee: `__RAW_STMT____ui_nodes[${nodeIdx}].value = ${valText}; ui_mark_dirty(${nodeIdx});`,
+          args: [],
+        }];
+      }
+    }
+
+    // ── UI element .text write: screen.ssid.text = "x" ──────────────────
+    // Lowers to strncpy(__ui_nodes[N].textBuffer, "x", UI_TEXT_BUF);
+    //         __ui_nodes[N].textBuffer[UI_TEXT_BUF] = 0; ui_mark_dirty(N);
+    if (
+      ts.isBinaryExpression(statement.expression) &&
+      statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(statement.expression.left) &&
+      statement.expression.left.name.text === "text" &&
+      ts.isPropertyAccessExpression(statement.expression.left.expression) &&
+      ts.isIdentifier(statement.expression.left.expression.expression)
+    ) {
+      const treeName = statement.expression.left.expression.expression.text;
+      const elemId = statement.expression.left.expression.name.text;
+      const nodeIdx = resolveElementValue(treeName, elemId);
+      if (nodeIdx !== undefined) {
+        const valIR = expressionToIR(statement.expression.right, sourceText, diagnostics, pointerVars);
+        const valText = renderExprAsText(valIR);
+        return [{
+          kind: "call" as const,
+          sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+          callee: `__RAW_STMT__strncpy(__ui_nodes[${nodeIdx}].textBuffer, ${valText}, UI_TEXT_BUF); __ui_nodes[${nodeIdx}].textBuffer[UI_TEXT_BUF] = 0; ui_mark_dirty(${nodeIdx});`,
+          args: [],
+        }];
       }
     }
 

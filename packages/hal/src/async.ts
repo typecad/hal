@@ -12,7 +12,7 @@
 // implementation at compile time.
 // ---------------------------------------------------------------------------
 
-import { rawCpp } from './emit';
+import { rawCpp } from './emit.js';
 
 export class AsyncClass {
   static readonly __instance_name = "Async";

@@ -37,7 +37,7 @@ export enum InterruptMode {
 // GPIO configuration
 // ---------------------------------------------------------------------------
 
-import type { PinCapabilityFlags } from './capabilities';
+import type { PinCapabilityFlags } from './capabilities.js';
 
 interface GPIOConfig {
   pin: number;
@@ -51,7 +51,7 @@ interface GPIOConfig {
 // Pin groups
 // ---------------------------------------------------------------------------
 
-import type { BasePin } from './pin';
+import type { BasePin } from './pin.js';
 
 /**
  * A group of digital output pins that can be controlled together.

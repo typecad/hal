@@ -16,6 +16,7 @@ import {
   recordBinding,
   uiBindings,
   isUICall,
+  signalCppType,
 } from "../../../packages/cuttlefish/src/ir/transformers/ui-call-resolver";
 
 const tempDirs: string[] = [];
@@ -61,6 +62,14 @@ describe("UI call resolver — pure helpers", () => {
     recordSignal("temp", "int", 22);
     recordSignal("__ui_sig_0", "int", 0);
     expect(uiSignalNames()).toEqual(["temp", "__ui_sig_0"]);
+  });
+
+  it("signalCppType returns the recorded cpp type for a signal", () => {
+    recordSignal("temp", "int", 22);
+    recordSignal("ratio", "float", 1.5);
+    expect(signalCppType("temp")).toBe("int");
+    expect(signalCppType("ratio")).toBe("float");
+    expect(signalCppType("nonexistent")).toBeUndefined();
   });
 
   it("recordBinding registers a binding spec; uiBindings returns them", () => {

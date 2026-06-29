@@ -5,15 +5,21 @@ import type { DisplayHALOp } from "@typecad/cuttlefish/api/shared";
 const ctx: ILI9341Context = { bus: "SPI", cs: 10, dc: 9, rst: 8, width: 240, height: 320 };
 
 describe("ILI9341 op resolver (Adafruit_ILI9341 library)", () => {
-  it("display.init initializes the file-scope display object + backlight", () => {
+  it("display.init delegates to display_init() + optional backlight pin setup", () => {
+    // Construction (begin/setRotation/fillScreen) now lives in the transpile-time
+    // display adapter's display_init() inline function (see display-adapter.ts).
+    // The resolver only emits the call to it, plus backlight pin setup when present.
     const op: DisplayHALOp = { operation: "display.init", ...ctx, driver: "ili9341" };
-    const out = resolveILI9341Op(op, ctx)!.code!;
-    // The display object is declared at file scope by the UI emitter;
-    // display.init only calls begin/setRotation/backlight.
-    expect(out).toContain(`${DISPLAY_VAR}.begin()`);
-    expect(out).toContain(`${DISPLAY_VAR}.setRotation(1)`);
-    expect(out).toContain(`${DISPLAY_VAR}.fillScreen(0x0000)`);
-    expect(out).toContain("pinMode(17, OUTPUT)");   // backlight LED
+    expect(resolveILI9341Op(op, ctx)!.code).toBe(`display_init();`);
+
+    // With a backlight, the resolver also configures the LED pin high.
+    const ctxWithBacklight: ILI9341Context = { ...ctx, backlight: 17 };
+    const op2: DisplayHALOp = { operation: "display.init", ...ctxWithBacklight, driver: "ili9341" };
+    const out2 = resolveILI9341Op(op2, ctxWithBacklight)!.code!;
+    expect(out2).toContain(`display_init();`);
+    expect(out2).toContain("pinMode(17, OUTPUT)");
+    expect(out2).toContain("digitalWrite(17, HIGH)");
+    expect(out2).not.toContain(`${DISPLAY_VAR}.begin()`);   // not the resolver's job
   });
 
   it("display.fill_rect calls Adafruit_GFX fillRect", () => {

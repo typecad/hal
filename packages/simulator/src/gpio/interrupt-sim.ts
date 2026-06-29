@@ -7,7 +7,7 @@ import type {
   InterruptHandler,
   InterruptOptions,
 } from '@typecad/hal';
-import { SimDigitalPin } from './digital-pin-sim';
+import { SimDigitalPin } from './digital-pin-sim.js';
 
 type InterruptMode = 'rising' | 'falling' | 'change';
 

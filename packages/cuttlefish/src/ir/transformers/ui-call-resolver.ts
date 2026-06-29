@@ -15,18 +15,37 @@ import { StatementIR, HALOpIR } from "../../api/index.js";
 import { makeSourceSpan } from "../ast-node-utils.js";
 import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
 import { resolveMount, MountRequest } from "./ui-mount.js";
-import { emitSignalDecl, BindingSpec } from "./ui-reactive.js";
+import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getListBindingsCount, InputBindingSpec, recordInputBinding, getInputBindingsCount, resetInputBindings } from "./ui-reactive.js";
 import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { resolveColor } from "../../ui/color.js";
+import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { lowerCallbackBody, resetCallbackLoweringState } from "./ui-callback-lowering.js";
+import { resolveDrawCanvasCall, resetCanvasBindings } from "./canvas-lowering.js";
 import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
+import { escapeCppStringLiteral } from "../../utils/strings.js";
 
 // ── Pure-helper state ───────────────────────────────────────────────────────
 
 /** Maps an imported UI tree name (e.g. "screen") → its resolved .ui.html path. */
 const uiModuleImports = new Map<string, string>();
+
+/** Maps "treeName.elemId" (e.g. "screen.led") → node index in the UI tree. */
+const elementValueMap = new Map<string, number>();
+
+/** Register an element's node index for .value access. Called during
+ *  build-ir.ts's import processing (alongside registerUIModuleImport). */
+export function registerElementValue(treeName: string, elemId: string, htmlPath: string): void {
+  const nodeIndex = resolveNodeIndex(htmlPath, elemId);
+  elementValueMap.set(`${treeName}.${elemId}`, nodeIndex);
+}
+
+/** Resolve "screen.led" → node index, or undefined if not registered. */
+export function resolveElementValue(treeName: string, elemId: string): number | undefined {
+  return elementValueMap.get(`${treeName}.${elemId}`);
+}
 
 /** Recorded signals: name → { cppType, initialValue, decl, emitted }. */
 const signals = new Map<string, { cppType: string; initialValue: number | string | boolean; decl: string; emitted: boolean }>();
@@ -49,6 +68,34 @@ export function recordPressBinding(binding: PressBinding): void {
 
 export function uiPressBindings(): PressBinding[] {
   return pressBindings;
+}
+
+// ── Click handler specs (touch input) ───────────────────────────────────────
+
+export interface ClickHandlerSpec {
+  nodeIndex: number;
+  /** Handler kind: click (short tap), hold (long press ≥600ms), release (finger up),
+   *  change (input text committed via keyboard). */
+  kind: "click" | "hold" | "release" | "change" | "rangechange";
+  /** Function name of the generated handler. */
+  fnName: string;
+  /** C++ body of the callback. */
+  callbackBody: string;
+}
+
+const _clickHandlers: ClickHandlerSpec[] = [];
+
+export function recordClickHandler(spec: ClickHandlerSpec): void {
+  _clickHandlers.push(spec);
+}
+
+export function clickHandlers(): ClickHandlerSpec[] {
+  return _clickHandlers;
+}
+
+/** Max node index that has a click handler (for sizing the handler array). */
+export function maxClickNodeIndex(): number {
+  return _clickHandlers.reduce((max, h) => Math.max(max, h.nodeIndex), -1);
 }
 
 // ── Pin-watching specs (async event-loop input model) ───────────────────────
@@ -100,6 +147,12 @@ export function isSignalName(name: string): boolean {
   return signals.has(name);
 }
 
+/** The recorded C++ type of a signal, or undefined if not a signal.
+ *  Used by the text-binding lowerer to pick %d vs %g (spec §5.3). */
+export function signalCppType(name: string): string | undefined {
+  return signals.get(name)?.cppType;
+}
+
 export function uiSignalDecls(): string[] {
   // Skip signals already emitted via their own const X = ui.signal(...) var_decl
   // — those are declared in the function body, not at file scope.
@@ -116,10 +169,15 @@ export function uiBindings(): BindingSpec[] {
 
 export function resetUICallState(): void {
   uiModuleImports.clear();
+  elementValueMap.clear();
   signals.clear();
   bindings.length = 0;
   pressBindings.length = 0;
   _watchPinSpecs.length = 0;
+  _clickHandlers.length = 0;
+  resetInputBindings();
+  resetCallbackLoweringState();
+  resetCanvasBindings();
 }
 
 // ── Signal name synthesis ───────────────────────────────────────────────────
@@ -199,8 +257,20 @@ export function tryResolveUICall(
   if (method === "bind") {
     return resolveBindCall(call, fileName, sourceText, diagnostics);
   }
+  if (method === "bindList") {
+    return resolveBindListCall(call, fileName, sourceText, diagnostics);
+  }
+  if (method === "bindInput") {
+    return resolveBindInputCall(call, fileName, sourceText, diagnostics);
+  }
   if (method === "watchPin") {
     return resolveWatchPinCall(call, fileName, sourceText, diagnostics);
+  }
+  if (method === "onTap") {
+    return resolveOnTapCall(call, fileName, sourceText, diagnostics);
+  }
+  if (method === "drawCanvas") {
+    return resolveDrawCanvasCall(call, fileName, sourceText, diagnostics);
   }
   // Unknown ui.* method — let it fall through
   return null;
@@ -246,9 +316,9 @@ function resolveMountCall(
     return null;
   }
 
-  // ILI9341 viewport in landscape (setRotation(1) swaps 240×320 → 320×240).
-  // The driver hardcodes setRotation(1), so layout must use the landscape dims.
-  const viewport = { width: 320, height: 240 };
+  // Viewport from the display profile (data-driven, not hardcoded).
+  const profile = getDisplayProfile();
+  const viewport = { width: profile.width, height: profile.height };
 
   // Final layout + lower using the mount's viewport.
   const lowered = lowerOnMount(htmlPath, {
@@ -263,6 +333,9 @@ function resolveMountCall(
     cs: Number(opts.cs),
     dc: Number(opts.dc),
     rst: Number(opts.rst),
+    rotation: profile.rotation,
+    backlight: profile.backlight,
+    spiFrequency: profile.spiFrequency,
   };
   const displayInitOp = resolveMount(req, strategy, viewport);
 
@@ -308,6 +381,140 @@ function resolveSignalCall(
   };
 }
 
+// ── Text-binding lowering (spec §5) ──────────────────────────────────────────
+
+/** Result of lowering a text-binding arrow body. */
+export interface LoweredTextBody {
+  /** Imperative C++ statement(s) writing into `buf` (the textFn param). */
+  cppBody: string;
+}
+
+/** Format specifier for a single numeric interpolation per spec §5.3.
+ *  - bare int/uint/bool signal read  → "%d"
+ *  - bare float/double signal read   → "%g"
+ *  - anything else (arithmetic, non-signal, literal) → "%d" (default; v1) */
+function numericFormat(expr: ts.Expression): string {
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
+      expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
+    const t = signalCppType(expr.expression.text);
+    if (t === "float" || t === "double") return "%g";
+  }
+  return "%d";
+}
+
+/** Lower a single expression as a snprintf argument.
+ *  - signal read `name()` → "name"
+ *  - numeric literal / other → rendered via the shared expression renderer */
+function lowerInterpolationArg(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[]): string {
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
+      expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
+    return expr.expression.text;
+  }
+  return renderExprAsText(expressionToIR(expr, sourceText, diagnostics));
+}
+
+/**
+ * Lower a text-binding arrow body to an imperative C++ statement that writes
+ * into `buf` (the textFn's first parameter, size `size`). Recognizes three
+ * shapes (spec §5.2): String(<numeric>), a bare string literal, and a template
+ * literal with numeric interpolations. Anything else produces a safe no-op
+ * (`buf[0] = 0;`) plus a `ui-bind-text-unlowered` warning so the author sees it.
+ *
+ * Pure function of the AST + the recorded signal table; no side effects beyond
+ * pushing diagnostics.
+ */
+export function lowerTextBindingBody(
+  body: ts.Expression,
+  _fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): LoweredTextBody {
+  const warn = (): LoweredTextBody => {
+    diagnostics.push({
+      severity: "warning",
+      code: "ui-bind-text-unlowered",
+      message: `ui.bind text: this arrow-body shape is not supported in v1. Supported: String(<signal>), a string literal, or a template literal with numeric interpolations. The node will display an empty string.`,
+    } as Diagnostic);
+    return { cppBody: "buf[0] = 0;" };
+  };
+
+  // Shape 1: String(<numeric expr>)
+  if (ts.isCallExpression(body) && ts.isIdentifier(body.expression) &&
+      body.expression.text === "String" && body.arguments.length === 1) {
+    const arg = body.arguments[0];
+    const fmt = numericFormat(arg);
+    const argText = lowerInterpolationArg(arg, sourceText, diagnostics);
+    return { cppBody: `snprintf(buf, size, "${fmt}", ${argText});` };
+  }
+
+  // Shape 2: bare string literal
+  if (ts.isStringLiteral(body)) {
+    const escaped = escapeCppStringLiteral(body.text);
+    return { cppBody: `snprintf(buf, size, "%s", "${escaped}");` };
+  }
+
+  // Shape 3: template literal with numeric interpolations.
+  // Build the format string by alternating literal fragments and %specifiers,
+  // and collect the matching argument expressions in order.
+  if (ts.isTemplateExpression(body)) {
+    const fmtBuf: string[] = [escapeCppStringLiteral(body.head.text)];
+    const args: string[] = [];
+    for (const span of body.templateSpans) {
+      fmtBuf.push(numericFormat(span.expression));
+      args.push(lowerInterpolationArg(span.expression, sourceText, diagnostics));
+      fmtBuf.push(escapeCppStringLiteral(span.literal.text));
+    }
+    const fmt = fmtBuf.join("");
+    const argList = args.length ? ", " + args.join(", ") : "";
+    return { cppBody: `snprintf(buf, size, "${fmt}"${argList});` };
+  }
+
+  // Shape 4: ternary with string literals (e.g. val === 0 ? 'Auto' : val === 1 ? 'Manual' : 'Off')
+  // Lowers to a chain of if/else with snprintf.
+  // Unwrap parentheses first: () => (cond ? 'a' : 'b')
+  const unwrapped = ts.isParenthesizedExpression(body) ? body.expression : body;
+  if (ts.isConditionalExpression(unwrapped)) {
+    return lowerTernaryTextChain(unwrapped, sourceText, diagnostics) ?? warn();
+  }
+
+  return warn();
+}
+
+/** Lower a chain of ternary expressions with string branches to C++ if/else. */
+function lowerTernaryTextChain(
+  expr: ts.ConditionalExpression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): LoweredTextBody | null {
+  const cases: { cond: string | null; value: string }[] = [];
+  let current: ts.Expression = expr;
+
+  while (ts.isConditionalExpression(current)) {
+    const condText = renderExprAsText(expressionToIR(current.condition, sourceText, diagnostics));
+    if (!ts.isStringLiteral(current.whenTrue)) return null;
+    cases.push({ cond: condText, value: escapeCppStringLiteral(current.whenTrue.text) });
+    current = current.whenFalse;
+  }
+
+  // The final else value
+  if (ts.isStringLiteral(current)) {
+    cases.push({ cond: null, value: escapeCppStringLiteral(current.text) });
+  } else {
+    return null;
+  }
+
+  const lines = cases.map((c, i) => {
+    if (c.cond !== null) {
+      const prefix = i === 0 ? "if" : "else if";
+      return `${prefix} (${c.cond}) { snprintf(buf, size, "%s", "${c.value}"); }`;
+    } else {
+      return `else { snprintf(buf, size, "%s", "${c.value}"); }`;
+    }
+  });
+
+  return { cppBody: lines.join(" ") };
+}
+
 function resolveBindCall(
   call: ts.CallExpression,
   fileName: string,
@@ -335,27 +542,166 @@ function resolveBindCall(
 
   const fnName = `__ui_bind_${property}_${bindings.length}`;
 
-  // Try to extract the C++ expression from the arrow body for the binding fn.
-  // For v1 this handles the common pattern: () => (signal() > N ? '#hex' : '#hex')
-  // by lowering it to the equivalent C++ ternary with pre-resolved colors.
+  // Text bindings lower through a dedicated path (spec §5) that emits an
+  // imperative snprintf statement into the node's buffer. Color/numeric
+  // bindings keep the generic expression path with color-literal resolution.
   let cppExpr = "";
+  let cppBody: string | undefined;
   if (fnArg && (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg))) {
-    // For arrow functions with expression bodies (not block bodies), lower the
-    // expression to C++. Block bodies would need statement lowering (future).
     const body = fnArg.body;
     if (ts.isExpression(body)) {
-      let raw = renderExprAsText(expressionToIR(body, sourceText, diagnostics));
-      // Resolve color string literals to RGB565 hex values. Handles hex,
-      // named colors, and rgb()/rgba().
-      raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
-        try {
-          return `0x${resolveColor(color, "rgb565").toString(16)}`;
-        } catch { return match; }
-      });
-      cppExpr = raw;
+      if (property === "text") {
+        cppBody = lowerTextBindingBody(body, fileName, sourceText, diagnostics).cppBody;
+      } else {
+        let raw = renderExprAsText(expressionToIR(body, sourceText, diagnostics));
+        // Resolve color string literals to RGB565 hex values. Handles hex,
+        // named colors, and rgb()/rgba().
+        raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
+          try {
+            return `0x${resolveColor(color, "rgb565").toString(16)}`;
+          } catch { return match; }
+        });
+        cppExpr = raw;
+      }
     }
   }
-  recordBinding({ nodeIndex, property, fnName, cppExpr });
+  recordBinding({ nodeIndex, property, fnName, cppExpr, cppBody });
+
+  return {
+    kind: "block",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    body: [],
+  };
+}
+
+/** Resolve ui.bindList(node, countFn, itemFn) — records a list binding spec.
+ *  countFn: () => number (total item count)
+ *  itemFn: (index) => string (text for item at index)
+ *  Both arrows are lowered to C++ functions. */
+function resolveBindListCall(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  _diagnostics: Diagnostic[],
+): StatementIR | null {
+  if (call.arguments.length < 3) return null;
+  const nodeArg = call.arguments[0];
+  const countArg = call.arguments[1];
+  const itemArg = call.arguments[2];
+
+  // Resolve the <list> node index.
+  let nodeIndex = 0;
+  if (ts.isPropertyAccessExpression(nodeArg) && ts.isIdentifier(nodeArg.expression)) {
+    const htmlPath = resolveUIModuleImport(nodeArg.expression.text);
+    if (htmlPath) nodeIndex = resolveNodeIndex(htmlPath, nodeArg.name.text);
+  }
+
+  // Lower the count function: () => N → "return N;"
+  let countBody = "return 0;";
+  if (countArg && (ts.isArrowFunction(countArg) || ts.isFunctionExpression(countArg))) {
+    const body = countArg.body;
+    if (body && ts.isExpression(body)) {
+      // Handle bare numeric/identifier directly (lowerTextBindingBody doesn't cover these).
+      const exprText = (body as ts.Expression).getText();
+      if (exprText && (/^\d+$/.test(exprText) || /^\w+$/.test(exprText))) {
+        countBody = `return ${exprText};`;
+      } else {
+        // Try lowerTextBindingBody for more complex expressions.
+        const { cppBody } = lowerTextBindingBody(body, fileName, sourceText, []);
+        if (cppBody) {
+          const m = /snprintf\([^,]+,\s*[^,]+,\s*"[^"]*"(?:,\s*(.+))?\)/.exec(cppBody);
+          countBody = m?.[1] ? `return ${m[1].replace(/[;]\s*$/, "")};` : "return 0;";
+        }
+      }
+    }
+  }
+
+  // Lower the item function: (i) => `text ${i}` → "snprintf(buf, size, ...);"
+  let itemBody = "buf[0] = 0;";
+  if (itemArg && (ts.isArrowFunction(itemArg) || ts.isFunctionExpression(itemArg))) {
+    const body = itemArg.body;
+    if (body && ts.isExpression(body)) {
+      const { cppBody } = lowerTextBindingBody(body, fileName, sourceText, []);
+      itemBody = cppBody || "buf[0] = 0;";
+      // Replace the arrow's first parameter name with 'idx' (the C++ arg name).
+      if (ts.isArrowFunction(itemArg) && itemArg.parameters.length > 0) {
+        const paramName = itemArg.parameters[0].name.getText();
+        if (paramName && paramName !== "idx") {
+          itemBody = itemBody.replace(new RegExp(`\\b${paramName}\\b`, "g"), "idx");
+        }
+      }
+    }
+  }
+
+  const countFnName = `__ui_list_count_${getListBindingsCount()}`;
+  const itemFnName = `__ui_list_item_${getListBindingsCount()}`;
+  const tapFnName = `__ui_list_tap_${getListBindingsCount()}`;
+
+  // Optional 4th arg: onTap callback (index) => { ... }
+  let tapFnBody: string | null = null;
+  if (call.arguments.length >= 4) {
+    const tapArg = call.arguments[3];
+    if (tapArg && (ts.isArrowFunction(tapArg) || ts.isFunctionExpression(tapArg))) {
+      const cbBody = lowerCallbackBody(tapArg, sourceText, _diagnostics);
+      // Replace the arrow's parameter name with 'idx' (the C++ arg name).
+      let body = cbBody || "";
+      if (ts.isArrowFunction(tapArg) && tapArg.parameters.length > 0) {
+        const paramName = tapArg.parameters[0].name.getText();
+        if (paramName && paramName !== "idx") {
+          body = body.replace(new RegExp(`\\b${paramName}\\b`, "g"), "idx");
+        }
+      }
+      tapFnBody = body || null;
+    }
+  }
+
+  recordListBinding({ nodeIndex, countFnName, itemFnName, tapFnName: tapFnBody ? tapFnName : null, countFnBody: countBody, itemFnBody: itemBody, tapFnBody });
+
+  return {
+    kind: "block",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    body: [],
+  };
+}
+
+/** Resolve ui.bindInput(node, callback) — records a two-way input binding.
+ *  The callback fires (with the current text) whenever the bound <input>
+ *  node's textBuffer changes at runtime (e.g. the user typed via the
+ *  on-screen keyboard). Mirrors the bindList tap-callback lowering. */
+function resolveBindInputCall(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): StatementIR | null {
+  const nodeArg = call.arguments[0];
+  const cbArg = call.arguments[1];
+  if (!nodeArg || !cbArg) return null;
+
+  // Resolve the <input> node index via the standard screen.<id> path.
+  let nodeIndex = 0;
+  if (ts.isPropertyAccessExpression(nodeArg) && ts.isIdentifier(nodeArg.expression)) {
+    const htmlPath = resolveUIModuleImport(nodeArg.expression.text);
+    if (htmlPath) nodeIndex = resolveNodeIndex(htmlPath, nodeArg.name.text);
+  }
+
+  const cbFnName = `__ui_input_cb_${getInputBindingsCount()}`;
+
+  // Lower the callback body via the same mechanism as the bindList tap
+  // callback. The arrow's first param is the typed string; rename it to
+  // 'text' (the C++ arg name) so the body references resolve correctly.
+  let cbFnBody = "";
+  if (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg)) {
+    cbFnBody = lowerCallbackBody(cbArg, sourceText, diagnostics) || "";
+    if (ts.isArrowFunction(cbArg) && cbArg.parameters.length > 0) {
+      const paramName = cbArg.parameters[0].name.getText();
+      if (paramName && paramName !== "text") {
+        cbFnBody = cbFnBody.replace(new RegExp(`\\b${paramName}\\b`, "g"), "text");
+      }
+    }
+  }
+
+  recordInputBinding({ nodeIndex, cbFnName, cbFnBody });
 
   return {
     kind: "block",
@@ -380,43 +726,12 @@ function resolveWatchPinCall(
     : ts.isNumericLiteral(pinArg) ? pinArg.text
     : pinArg.getText();
 
-  // Lower the callback body to C++. Handles signal.set(v) → v = expr,
-  // and signal() reads → signal variable references.
+  // Lower the callback body to C++ via the shared helper (same path as
+  // onToggle). Handles console.* → platform transform, signal .set()/()
+  // reads, and color-name resolution.
   let callbackBody = "";
   if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
-    const body = cbArg.body;
-    const lowerExpr = (expr: ts.Expression): string => {
-      // signal.set(value) → signal = value
-      if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression) &&
-          expr.expression.name.text === "set" && ts.isIdentifier(expr.expression.expression) &&
-          isSignalName(expr.expression.expression.text)) {
-        const sigName = expr.expression.expression.text;
-        const argText = expr.arguments[0] ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics)) : "0";
-        return `${sigName} = ${argText}`;
-      }
-      // signal() → signal (read)
-      if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
-          expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
-        return expr.expression.text;
-      }
-      let raw = renderExprAsText(expressionToIR(expr, sourceText, diagnostics));
-      raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
-        try { return `0x${resolveColor(color, "rgb565").toString(16)}`; } catch { return match; }
-      });
-      return raw;
-    };
-
-    if (ts.isExpression(body)) {
-      callbackBody = lowerExpr(body) + ";";
-    } else if (ts.isBlock(body)) {
-      const parts: string[] = [];
-      for (const stmt of body.statements) {
-        if (ts.isExpressionStatement(stmt) && stmt.expression) {
-          parts.push(lowerExpr(stmt.expression) + ";");
-        }
-      }
-      callbackBody = parts.join(" ");
-    }
+    callbackBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
   }
 
   const fnName = `__ui_watchpin_${_watchPinSpecs.length}`;
@@ -429,6 +744,55 @@ function resolveWatchPinCall(
   };
 }
 
+/** Resolve ui.onTap([node]) — an awaitable tap notification.
+ *  Lowers to a marker call IR whose callee ("__UI_TAP__") the async state
+ *  machine recognizes and turns into a tap-counter poll. Must be awaited
+ *  (statement-level). args[0] is the node filter: -1 = any tap, >=0 = node.
+ *
+ *  - await ui.onTap()           → args=[-1]   (resume on next tap anywhere)
+ *  - await ui.onTap(screen.x)   → args=[idx]  (resume only when x is tapped) */
+function resolveOnTapCall(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): StatementIR | null {
+  const nodeArg = call.arguments[0];
+
+  // Per-element form: await ui.onTap(screen.btn) → resolve the node index,
+  // the same way onClick/onToggle do (screen.id property-access shape).
+  if (nodeArg && ts.isPropertyAccessExpression(nodeArg) &&
+      ts.isIdentifier(nodeArg.expression)) {
+    const treeName = nodeArg.expression.text;          // "screen"
+    const id = nodeArg.name.text;                       // "btn"
+    const htmlPath = resolveUIModuleImport(treeName);
+    if (htmlPath) {
+      const nodeIndex = resolveNodeIndex(htmlPath, id);
+      return {
+        kind: "call",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        callee: "__UI_TAP__",
+        args: [{ kind: "number", value: nodeIndex }],
+        isAwaited: true,
+      };
+    }
+    // Unknown tree — fall through to the global form, with a warning.
+    diagnostics.push({
+      severity: "warning", code: "ui-ontap-arg",
+      message: `ui.onTap(${nodeArg.getText()}) could not be resolved; awaiting any tap instead`,
+    } as Diagnostic);
+  }
+
+  // Global form: await ui.onTap() — resume on the next tap anywhere.
+  return {
+    kind: "call",
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+    callee: "__UI_TAP__",
+    args: [{ kind: "number", value: -1 }],
+    isAwaited: true,
+  };
+}
+
 /** Look up a node's index in its tree by element id (pre-order DFS order). */
 export function resolveNodeIndex(htmlPath: string, id: string): number {
   // Node indices follow pre-order DFS of the styled tree. The lowered tables
@@ -436,13 +800,37 @@ export function resolveNodeIndex(htmlPath: string, id: string): number {
   const mod = getUIModule(htmlPath);
   if (!mod) return 0;
   let idx = 0;
-  let found = 0;
+  let found = -1;
   const walk = (n: StyledNode): boolean => {
     if (n.id === id) { found = idx; return true; }
     idx++;
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
   };
-  walk(mod.styled);
-  return found;
+  const roots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  for (const root of roots) {
+    if (walk(root)) break;
+  }
+  return found >= 0 ? found : 0;
+}
+
+/** Look up a node's HTML tag by element id (pre-order DFS order).
+ *  Used to route generic callbacks (e.g. onChange) to the right lowering path
+ *  based on element kind (range vs input). Returns "" if not found. */
+export function resolveNodeTag(htmlPath: string, id: string): string {
+  const mod = getUIModule(htmlPath);
+  if (!mod) return "";
+  let idx = 0;
+  let foundTag = "";
+  const walk = (n: StyledNode): boolean => {
+    if (n.id === id) { foundTag = n.tag; return true; }
+    idx++;
+    for (const c of n.children) { if (walk(c)) return true; }
+    return false;
+  };
+  const roots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  for (const root of roots) {
+    if (walk(root)) break;
+  }
+  return foundTag;
 }

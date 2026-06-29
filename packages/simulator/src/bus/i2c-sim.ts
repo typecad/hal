@@ -11,7 +11,7 @@ import type {
   I2CAddress,
   ErrorPolicy,
 } from '@typecad/hal';
-import type { ISimI2CDevice } from '../types';
+import type { ISimI2CDevice } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // SimI2CBus

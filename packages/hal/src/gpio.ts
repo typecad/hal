@@ -1,8 +1,8 @@
-﻿import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp } from './emit';
-import { board } from './board';
-import { callback } from './callback';
-import { ADC } from './adc';
-import { HIGH } from './constants';
+﻿import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp } from './emit.js';
+import { board } from './board.js';
+import { callback } from './callback.js';
+import { ADC } from './adc.js';
+import { HIGH } from './constants.js';
 
 export class OutputPin {
   private _pin: number;

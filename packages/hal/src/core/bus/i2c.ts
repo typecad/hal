@@ -1,5 +1,5 @@
-import type { BasePin } from '../pin';
-import type { ErrorPolicy } from './error-policy';
+import type { BasePin } from '../pin.js';
+import type { ErrorPolicy } from './error-policy.js';
 
 export type I2CAddress = number;
 

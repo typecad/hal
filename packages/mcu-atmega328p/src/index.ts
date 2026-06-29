@@ -8,16 +8,16 @@
 // ---------------------------------------------------------------------------
 
 // Re-export all pin definitions
-export * from './pins';
+export * from './pins.js';
 
 // Re-export hardware peripheral descriptions
-export * from './peripherals';
+export * from './peripherals.js';
 
 // Re-export MCU definition
-export * from './mcu';
+export * from './mcu.js';
 
 // Re-export Arduino pin mapping (used by transpiler and framework strategy)
-export * from './arduino-map';
+export * from './arduino-map.js';
 
 /**
  * Structured manifest consumed by the TypeCAD CLI for contract-based

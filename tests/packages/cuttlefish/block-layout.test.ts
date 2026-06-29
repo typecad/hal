@@ -8,7 +8,7 @@ import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
 function layout(src: string, css: string, viewport: Box): Box[] {
   const styled = resolveStyles(parseHtml(src), parseCss(css));
   const engine: LayoutEngine = new BlockLayoutEngine();
-  return engine.arrange(styled, viewport, (n) => measure(n));
+  return engine.arrange(styled, viewport, (n, availableWidth) => measure(n, availableWidth));
 }
 
 describe("BlockLayoutEngine", () => {
@@ -37,6 +37,35 @@ describe("BlockLayoutEngine", () => {
     );
     expect(boxes[1].y).toBe(0);
     expect(boxes[2].y).toBeGreaterThan(0);  // second child below first
+  });
+
+  it("removes display none subtrees from block flow while preserving box order", () => {
+    const boxes = layout(
+      `<screen><text id="a">a</text><view id="gone"><text id="inside">hidden</text></view><text id="b">b</text></screen>`,
+      `screen { padding: 0; } #gone { display: none; }`,
+      { x: 0, y: 0, w: 100, h: 100 },
+    );
+
+    expect(boxes).toHaveLength(5);
+    expect(boxes[1]).toMatchObject({ y: 0, h: 16 });
+    expect(boxes[2]).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    expect(boxes[3]).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    expect(boxes[4]).toMatchObject({ y: 16, h: 16 });
+  });
+
+  it("applies aspect ratio to block-flow children", () => {
+    const boxes = layout(
+      `<screen><view id="wide"></view><view id="tall"></view></screen>`,
+      `
+        screen { padding: 0; }
+        #wide { width: 80px; aspect-ratio: 16 / 9; }
+        #tall { height: 30px; aspect-ratio: 2 / 1; }
+      `,
+      { x: 0, y: 0, w: 120, h: 120 },
+    );
+
+    expect(boxes[1]).toMatchObject({ w: 80, h: 45 });
+    expect(boxes[2]).toMatchObject({ y: 45, w: 60, h: 30 });
   });
 
   it("measure returns text intrinsic size from GFX font metrics", () => {

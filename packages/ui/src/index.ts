@@ -7,8 +7,8 @@
 // C++; their bodies exist only so TypeScript authoring type-checks.
 // ---------------------------------------------------------------------------
 
-export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding } from "./types";
-import type { ScreenTree } from "./types";
+export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement, CanvasElement, CanvasCtx } from "./types.js";
+import type { ScreenTree, CanvasCtx } from "./types.js";
 
 /** A reactive signal whose value lives on the device. */
 export interface Signal<T> {
@@ -66,5 +66,64 @@ export declare function bind<K extends string>(
  */
 export declare function watchPin(pin: number, onFalling: () => void): void;
 
-export const ui = { mount, signal, bind, watchPin };
+/**
+ * Bind a `<list>` element to dynamic data via two callbacks.
+ *
+ *   ui.bindList(screen.myList,
+ *     () => itemCount,          // total number of items
+ *     (i) => `Item ${i}`        // text for item at index i
+ *   );
+ *
+ * The list virtualizes: only visible items are rendered. Scroll by dragging.
+ * The count function is called each frame; if the count changes, the list
+ * refreshes automatically.
+ */
+export declare function bindList(
+  node: unknown,
+  countFn: () => number,
+  itemFn: (index: number) => string,
+  onTap?: (index: number) => void,
+): void;
+
+/**
+ * Await the next tap. Must be used inside an `async` function.
+ *
+ *   async function screensaver() {
+ *     while (true) {
+ *       await ui.onTap();       // resume on the next tap, anywhere
+ *       backlightOn();
+ *     }
+ *   }
+ *
+ * With no argument it resumes on the next tap on the screen (including empty
+ * space — useful for "wake on any touch"). Pass an element to resume only when
+ * that element is tapped:
+ *
+ *   await ui.onTap(screen.btn);
+ *
+ * A tap fires BOTH the tapped element's onClick handler AND resumes any
+ * `await ui.onTap()` awaiter. Returns a Promise<void>; it is a resume signal,
+ * not a value — there is nothing to read from it.
+ */
+export declare function onTap(node?: unknown): Promise<void>;
+
+/**
+ * Register a draw callback for a `<canvas>` element. The callback runs every
+ * frame and receives a `ctx` whose methods map to the display graphics
+ * primitives. Coordinates are canvas-relative ((0,0) = top-left of the element);
+ * drawing is clipped to the canvas buffer.
+ *
+ *   ui.drawCanvas(screen.spark, (ctx) => {
+ *     ctx.fillScreen('black');
+ *     ctx.line(0, ctx.height / 2, ctx.width, ctx.height / 2, 'limegreen');
+ *     ctx.fillCircle(needleX, 20, 3, 'red');
+ *     ctx.text(4, 12, `${temp}°`, 'white');
+ *   });
+ *
+ * Color arguments are CSS color strings resolved to RGB565 at transpile time.
+ * `ctx.width` / `ctx.height` are the canvas buffer dimensions.
+ */
+export declare function drawCanvas(node: unknown, callback: (ctx: CanvasCtx) => void): void;
+
+export const ui = { mount, signal, bind, watchPin, bindList, onTap, drawCanvas };
 export default ui;

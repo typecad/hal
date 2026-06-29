@@ -98,6 +98,8 @@ export interface TranspileOptions {
   force?: boolean;
   /** Generate diagnostics.md and diagnostics.json reports (default: false) */
   diagnostics?: boolean;
+  /** Display profile config from cuttlefish.config.ts */
+  display?: import("./api/shared/display-profile.js").DisplayConfig;
 }
 
 export interface LibraryDefinitionCondition {
@@ -121,7 +123,7 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error";
+  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "preview";
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;
@@ -171,6 +173,8 @@ export interface CommandLineOptions {
   expectFile?: string;
   /** Generate diagnostics.md and diagnostics.json reports */
   diagnostics?: boolean;
+  /** Config file for preview command */
+  configPath?: string;
 }
 
 export interface GenerateLibdefOptions {
