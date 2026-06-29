@@ -528,3 +528,18 @@ describe("overflow: hidden clips a node's own text", () => {
     expect(header).toMatch(/clearW[\s\S]*?scrollable[\s\S]*?clearW\s*=\s*__ui_nodes\[i\]\.box\.w/);
   });
 });
+
+describe("opacity blends the background fill", () => {
+  const header = emitRuntimeHeader();
+
+  it("NODE_FILL draws a blended bg when opacity < 100", () => {
+    // Regression: the opacity block blended only the border color (bColor)
+    // toward clearColor, but the NODE_FILL fill_rect call used the raw,
+    // unmodified __ui_nodes[i].bg — so opacity had no visible effect on a
+    // filled element's background. The fix computes a blended fill color
+    // (bg blended toward clearColor by opacity) and passes THAT to fill_rect /
+    // fill_round_rect, not the raw bg.
+    expect(header).toMatch(/ui_blend565\([^)]*bg[^)]*clearColor[^)]*\)/);
+    expect(header).toMatch(/fill_rect\([^,]*,[^,]*,[^,]*,[^,]*,\s*fillBg\s*\)/);
+  });
+});

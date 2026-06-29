@@ -3235,10 +3235,15 @@ static inline void ui_tick(uint16_t deltaMs) {
 
     // Border color: use borderColor if set, otherwise fg.
     uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
+    // Background color blended toward clearColor by opacity (raw bg when 100%).
+    // NODE_FILL draws the fill at this color so opacity actually fades the
+    // element's background toward what's behind it.
+    uint16_t fillBg = __ui_nodes[i].bg;
     // Apply opacity: blend fg/bg/border toward clearColor when < 100%.
     if (__ui_nodes[i].opacity < 100) {
       uint16_t clear = __ui_nodes[i].clearColor;
       bColor = ui_blend565(bColor, clear, __ui_nodes[i].opacity);
+      fillBg = ui_blend565(__ui_nodes[i].bg, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
     }
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
@@ -3247,11 +3252,11 @@ static inline void ui_tick(uint16_t deltaMs) {
         } else if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
           int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].borderRadius, fillBg);
         } else if (__ui_nodes[i].hasBg) {
           int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].bg);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, fillBg);
         }
         ui_draw_shadow(i, drawY, 1);
         if (__ui_nodes[i].borderStyle != 0) {
