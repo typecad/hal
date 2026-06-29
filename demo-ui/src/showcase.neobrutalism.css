@@ -283,7 +283,7 @@ screen {
 #boxFixed { width: 160px; height: 30px; background: var(--chart-1); }
 #boxMin { background: var(--chart-3); }
 #boxPadded { width: 160px; background: var(--secondary); border: 1px solid var(--border); padding: 12px 20px; color: var(--secondary-foreground); font-size: 14px; text-align: center; }
-#boxMargin { width: 160px; background: var(--chart-4); margin: 16px; color: var(--foreground); font-size: 14px; text-align: center; }
+#boxMargin { width: 160px; min-height: 24px; background: var(--chart-4); margin: 16px; color: var(--foreground); font-size: 14px; text-align: center; }
 #boxBordered { width: 160px; background: var(--card); border: 2px solid var(--foreground); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
 #boxRadius { width: 160px; background: var(--accent); border-radius: 10px; color: var(--accent-foreground); font-size: 14px; text-align: center; padding: 4px; }
 /* Per-side border: documented best-effort — runtime draws uniform borders. */
