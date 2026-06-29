@@ -284,10 +284,10 @@ screen {
 #boxMin { background: var(--chart-3); }
 #boxPadded { width: 160px; background: var(--secondary); border: 1px solid var(--border); padding: 12px 20px; color: var(--secondary-foreground); font-size: 14px; text-align: center; }
 #boxMargin { width: 160px; min-height: 24px; background: var(--chart-4); margin: 16px; color: var(--foreground); font-size: 14px; text-align: center; }
-#boxBordered { width: 160px; background: var(--card); border: 2px solid var(--foreground); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
-#boxRadius { width: 160px; background: var(--accent); border-radius: 10px; color: var(--accent-foreground); font-size: 14px; text-align: center; padding: 4px; }
+#boxBordered { width: 160px; min-height: 24px; background: var(--card); border: 2px solid var(--foreground); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
+#boxRadius { width: 160px; min-height: 24px; background: var(--accent); border-radius: 10px; color: var(--accent-foreground); font-size: 14px; text-align: center; padding: 4px; }
 /* Per-side border: documented best-effort — runtime draws uniform borders. */
-#boxPerSide { width: 160px; background: var(--muted); border-left: 4px solid var(--primary); border-top: 2px solid var(--chart-3); color: var(--foreground); font-size: 13px; text-align: center; padding: 4px; }
+#boxPerSide { width: 160px; min-height: 24px; background: var(--muted); border-left: 4px solid var(--primary); border-top: 2px solid var(--chart-3); color: var(--foreground); font-size: 13px; text-align: center; padding: 4px; }
 #boxShadowed { width: 160px; background: var(--primary); box-shadow: 4px 4px 0 var(--foreground); color: var(--primary-foreground); font-size: 14px; text-align: center; padding: 4px; }
 #boxOutlined { width: 160px; background: var(--card); outline: 2px solid var(--chart-5); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
 #boxAspectWide { width: 200px; aspect-ratio: 16 / 9; background: var(--secondary); border: 1px solid var(--border); justify-content: center; align-items: center; }
