@@ -8,7 +8,7 @@ describe("ui.onTap runtime source (awaitable tap notifications)", () => {
 
   it("declares the awaitable tap counter globals", () => {
     expect(header).toMatch(/volatile\s+uint32_t\s+__ui_tap_seq\s*=\s*0/);
-    expect(header).toMatch(/volatile\s+int8_t\s+__ui_tap_node\s*=\s*-1/);
+    expect(header).toMatch(/volatile\s+int16_t\s+__ui_tap_node\s*=\s*-1/);
   });
 
   it("bumps __ui_tap_seq inside ui_touch_up (after click/release dispatch)", () => {

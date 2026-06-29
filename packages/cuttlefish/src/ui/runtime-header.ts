@@ -225,7 +225,7 @@ extern const uint8_t __ui_binding_count;
 // ── Multi-screen navigation ─────────────────────────────────────────────────
 // Touch/scroll/keyboard state reset by navigation.
 static uint8_t __ui_touch_state = 0;
-static int8_t __ui_touch_node = -1;
+static int16_t __ui_touch_node = -1;  // int16: node index can exceed 127
 // Unified scroll gesture: one owning scroll container per gesture, one baseline.
 // overscrollPx/settling live on the node; only the settle-animation state is here.
 static int16_t __ui_scroll_node = -1;            // owning scroll container (int16: node index can exceed 127)
@@ -1714,7 +1714,7 @@ static uint32_t __ui_last_release_time = 0;  // for release debounce
 static int16_t __ui_drag_start_x = 0;
 static int16_t __ui_drag_start_y = 0;
 static uint8_t __ui_is_dragging = 0;     // 1 once movement exceeds threshold
-static int8_t __ui_range_node = -1;      // range slider being dragged
+static int16_t __ui_range_node = -1;     // range slider being dragged (int16: node index can exceed 127)
 
 // ── Awaitable tap source (for \`await ui.onTap()\`) ─────────────────────────
 // __ui_tap_seq increments on every completed tap (after click/release dispatch);
@@ -1722,7 +1722,7 @@ static int8_t __ui_range_node = -1;      // range slider being dragged
 // last tap (-1 = empty space / non-interactive area) for per-element awaiters.
 // volatile: written in the touch path, read from task .step() polls.
 static volatile uint32_t __ui_tap_seq = 0;
-static volatile int8_t   __ui_tap_node = -1;
+static volatile int16_t  __ui_tap_node = -1;   // int16: node index can exceed 127
 // Keyboard overlay state.
 #define UI_KB_MAX 48   // max key cells (4 rows × 11 padded cols + margin)
 #define UI_KB_HOLD_MS 600
@@ -1762,7 +1762,7 @@ static inline void ui_kb_compute_box();
 // Hit-test a touch point against all visible nodes (topmost first).
 // Returns the node index of the topmost node that BOTH contains the point
 // AND has a click handler registered. Returns -1 if none.
-static int8_t ui_hit_test(int16_t tx, int16_t ty) {
+static int16_t ui_hit_test(int16_t tx, int16_t ty) {
   int16_t best = -1;
   for (uint8_t i = 0; i < __ui_node_count; i++) {
     if (!ui_is_effectively_visible(i)) continue;
@@ -1789,8 +1789,8 @@ static int8_t ui_hit_test(int16_t tx, int16_t ty) {
 }
 
 // Dispatch a handler from the given table if registered for the node.
-static void ui_dispatch(void (**table)(), uint8_t count, int8_t node) {
-  if (node >= 0 && (uint8_t)node < count && table[node]) {
+static void ui_dispatch(void (**table)(), uint8_t count, int16_t node) {
+  if (node >= 0 && (uint16_t)node < count && table[node]) {
     table[node]();
   }
 }
@@ -1808,7 +1808,7 @@ static inline void ui_open_keyboard_for_input(uint8_t nodeIdx) {
 
 // Touch down: called when screen is first touched.
 static void ui_touch_down(int16_t tx, int16_t ty) {
-  int8_t node = ui_hit_test(tx, ty);
+  int16_t node = ui_hit_test(tx, ty);
   __ui_touch_node = node;
   __ui_touch_state = 1;
   __ui_touch_down_time = millis();
@@ -1880,7 +1880,7 @@ static void ui_touch_up() {
     ui_scroll_release(__ui_scroll_node);
   }
   if (__ui_touch_node >= 0 && !__ui_is_dragging) {
-    int8_t clickedNode = __ui_touch_node;
+    int16_t clickedNode = __ui_touch_node;
     if (elapsed < UI_TOUCH_HOLD_MS) {
       if (__ui_nodes[clickedNode].kind == NODE_INPUT) {
         ui_open_keyboard_for_input((uint8_t)clickedNode);

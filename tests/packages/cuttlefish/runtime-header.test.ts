@@ -270,6 +270,20 @@ describe("C++ reactive runtime header", () => {
     expect(header).not.toContain("ui_snap_scroll_to_top");
   });
 
+  it("stores node-index owners in int16_t, not int8_t (index >= 128 regression)", () => {
+    // Node tables can hold 144+ nodes (the demo has 144), so any holder of a
+    // node index must be wide enough for 0..254. int8_t wraps negative at 128
+    // and silently breaks taps/presses/range-drag/scroll for high-index nodes.
+    expect(header).toMatch(/int16_t ui_hit_test\(/);
+    expect(header).toMatch(/int16_t __ui_touch_node\s*=\s*-1/);
+    expect(header).toMatch(/int16_t __ui_range_node\s*=\s*-1/);
+    expect(header).toMatch(/volatile\s+int16_t\s+__ui_tap_node\s*=\s*-1/);
+    expect(header).toMatch(/int16_t __ui_scroll_node\s*=\s*-1/);
+    expect(header).toMatch(/void ui_dispatch\([\s\S]*int16_t node\)/);
+    // No int8_t node-index owner remains.
+    expect(header).not.toMatch(/int8_t __ui_(touch|range|tap|scroll)_node/);
+  });
+
   it("releases via ui_scroll_release and advances the settle in ui_tick", () => {
     expect(header).toContain("ui_scroll_release");
     expect(header).toContain("ui_scroll_advance_settle");
