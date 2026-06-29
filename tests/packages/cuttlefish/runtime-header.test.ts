@@ -536,10 +536,12 @@ describe("opacity blends the background fill", () => {
     // Regression: the opacity block blended only the border color (bColor)
     // toward clearColor, but the NODE_FILL fill_rect call used the raw,
     // unmodified __ui_nodes[i].bg — so opacity had no visible effect on a
-    // filled element's background. The fix computes a blended fill color
-    // (bg blended toward clearColor by opacity) and passes THAT to fill_rect /
-    // fill_round_rect, not the raw bg.
-    expect(header).toMatch(/ui_blend565\([^)]*bg[^)]*clearColor[^)]*\)/);
+    // filled element's background. Worse, blending toward the node's own
+    // clearColor is a no-op for a filled node (its clearColor == its bg, so
+    // red-toward-red = red). The fix blends bg toward the PARENT's clear color
+    // (the actual backdrop) and passes that to fill_rect / fill_round_rect.
+    expect(header).toMatch(/ui_blend565\([^)]*bg[^)]*backdrop[^)]*\)/);
+    expect(header).toMatch(/ui_parent_clear_color/);
     expect(header).toMatch(/fill_rect\([^,]*,[^,]*,[^,]*,[^,]*,\s*fillBg\s*\)/);
   });
 });

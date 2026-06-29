@@ -3239,11 +3239,15 @@ static inline void ui_tick(uint16_t deltaMs) {
     // NODE_FILL draws the fill at this color so opacity actually fades the
     // element's background toward what's behind it.
     uint16_t fillBg = __ui_nodes[i].bg;
-    // Apply opacity: blend fg/bg/border toward clearColor when < 100%.
+    // Apply opacity: blend fg/bg/border toward what's BEHIND the node when <100%.
+    // NOTE: blend toward the parent's clear color (ui_parent_clear_color), not
+    // the node's own clearColor — a filled node's clearColor IS its own bg, so
+    // blending bg toward it is a no-op (red toward red = red). The parent clear
+    // is the actual backdrop showing through the translucent element.
     if (__ui_nodes[i].opacity < 100) {
-      uint16_t clear = __ui_nodes[i].clearColor;
-      bColor = ui_blend565(bColor, clear, __ui_nodes[i].opacity);
-      fillBg = ui_blend565(__ui_nodes[i].bg, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
+      uint16_t backdrop = ui_parent_clear_color(i);
+      bColor = ui_blend565(bColor, backdrop, __ui_nodes[i].opacity);
+      fillBg = ui_blend565(__ui_nodes[i].bg, backdrop, __ui_nodes[i].opacity);
     }
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
