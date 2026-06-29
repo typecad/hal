@@ -19,17 +19,20 @@ const HTML = `<!doctype html>
   <title>Cuttlefish Preview</title>
   <style>
     :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; background: #111315; color: #e8ecef; }
-    body { margin: 0; min-height: 100vh; display: grid; grid-template-columns: minmax(360px, 1fr) 280px; }
+    body { margin: 0; height: 100vh; overflow: hidden; display: grid; grid-template-columns: minmax(360px, 1fr) 280px; }
     main { display: grid; place-items: center; padding: 24px; background: #191d20; }
     canvas { image-rendering: pixelated; width: min(92vw, 960px); max-height: calc(100vh - 48px); aspect-ratio: 4 / 3; background: #000; box-shadow: 0 12px 36px rgba(0,0,0,.35); }
-    aside { border-left: 1px solid #2d3338; padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+    aside { border-left: 1px solid #2d3338; padding: 18px; display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+    aside > section:first-child, aside > section:nth-child(2) { flex-shrink: 0; }  /* Display + GPIO stay visible */
+    aside > section:last-child { min-height: 0; display: flex; flex-direction: column; }
+    #diagnostics { overflow-y: auto; min-height: 0; }
     h1 { font-size: 15px; margin: 0 0 8px; font-weight: 650; }
     #status, #diagnostics, .empty { color: #aab3ba; font-size: 12px; line-height: 1.4; }
     #pins { display: grid; gap: 8px; }
     button { appearance: none; border: 1px solid #44505a; background: #252b30; color: #f3f6f8; border-radius: 6px; padding: 9px 10px; text-align: left; font: inherit; cursor: pointer; }
     button:hover { background: #303841; }
     @media (max-width: 760px) {
-      body { grid-template-columns: 1fr; }
+      body { height: auto; min-height: 100vh; overflow: auto; grid-template-rows: auto 1fr; grid-template-columns: 1fr; }
       aside { border-left: 0; border-top: 1px solid #2d3338; }
       canvas { width: min(94vw, 640px); }
     }
