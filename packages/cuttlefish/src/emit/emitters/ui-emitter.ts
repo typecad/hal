@@ -203,7 +203,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     (sum, { lowered }) => sum + countNodes(lowered.nodeTable),
     0,
   );
-  ctx.sourceLines.push(`const uint8_t __ui_node_count = ${totalNodes};`);
+  ctx.sourceLines.push(`const uint16_t __ui_node_count = ${totalNodes};`);
   ctx.sourceLines.push(`const uint8_t __ui_trans_count = ${countTransitions()};`);
   ctx.sourceLines.push(`const uint8_t __ui_binding_count = ${uiBindings().length};`);
   // Count screens across all modules (for multi-screen navigation).

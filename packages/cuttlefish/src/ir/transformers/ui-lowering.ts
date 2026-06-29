@@ -282,7 +282,7 @@ function emitNodeTable(model: UIProgram): string {
     // ui_kb_open starts with a clean edit buffer (no placeholder to delete).
     const inputText = n.kind === "input" && n.textBuffer ? cppString(n.textBuffer) : text;
     const box = `{${n.box.x},${n.box.y},${n.box.w},${n.box.h}}`;
-    const parent = n.parentIndex >= 0 ? n.parentIndex : 255;
+    const parent = n.parentIndex >= 0 ? n.parentIndex : 0xFFFF;  // UI_NO_PARENT
     // Progress/range use lastTextWidth as a "previous fill width" for
     // incremental redraw. -1 = never drawn, because fill width 0 is valid.
     const lastTextWidth = n.kind === "progress" || n.kind === "range" ? -1 : 0;

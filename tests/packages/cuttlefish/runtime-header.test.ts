@@ -166,11 +166,11 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("uses tree metadata for scroll ownership", () => {
-    expect(header).toMatch(/uint8_t\s+parent/);
-    expect(header).toMatch(/uint8_t\s+subtreeEnd/);
+    expect(header).toMatch(/uint16_t\s+parent/);
+    expect(header).toMatch(/uint16_t\s+subtreeEnd/);
     expect(header).toContain("ui_draw_y_for_node");
     // The unified scroll-scan keys on scrollable nodes; lists are scrollable.
-    expect(header).toMatch(/for \(uint8_t i = 0; i < __ui_node_count; i\+\+\)[\s\S]*!__ui_nodes\[i\]\.scrollable/);
+    expect(header).toMatch(/for \(uint16_t i = 0; i < __ui_node_count; i\+\+\)[\s\S]*!__ui_nodes\[i\]\.scrollable/);
     expect(header).toContain("ui_mark_scroll_subtree_dirty");
   });
 
@@ -181,10 +181,10 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_mark_subtree_dirty_local");
     // The scroll-tree dirty loop must set dirty directly (not call ui_mark_dirty),
     // otherwise the per-child O(n) overlap repair is reintroduced.
-    expect(header).toMatch(/ui_mark_subtree_dirty_local\(uint8_t scrollNode\)[\s\S]*?__ui_nodes\[c\]\.dirty = 1/);
+    expect(header).toMatch(/ui_mark_subtree_dirty_local\(uint16_t scrollNode\)[\s\S]*?__ui_nodes\[c\]\.dirty = 1/);
     // ui_mark_scroll_subtree_dirty delegates to the local mark + ONE overlap check
     // (tolerant of the explanatory comments in the body).
-    expect(header).toMatch(/ui_mark_scroll_subtree_dirty\(uint8_t scrollNode\) \{[\s\S]*ui_mark_subtree_dirty_local\(scrollNode\);[\s\S]*ui_mark_overlapping_higher_layers_dirty\(scrollNode\);[\s\S]*\}/);
+    expect(header).toMatch(/ui_mark_scroll_subtree_dirty\(uint16_t scrollNode\) \{[\s\S]*ui_mark_subtree_dirty_local\(scrollNode\);[\s\S]*ui_mark_overlapping_higher_layers_dirty\(scrollNode\);[\s\S]*\}/);
     // And it must NOT loop calling ui_mark_dirty per child (the old O(K·n) form).
     expect(header).not.toMatch(/ui_mark_scroll_subtree_dirty\(uint8_t scrollNode\) \{[\s\S]*?for[\s\S]*?ui_mark_dirty\(c\)/);
   });
@@ -195,7 +195,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_mark_overlapping_higher_layers_dirty");
     // ui_mark_dirty no longer touches a scroll cache (the cache was deleted); it
     // sets dirty + repairs overlapping higher-z neighbors.
-    expect(header).toMatch(/static inline void ui_mark_dirty\(uint8_t nodeIdx\) \{\s*if \(nodeIdx >= __ui_node_count\) return;\s*__ui_nodes\[nodeIdx\]\.dirty = 1;\s*ui_mark_overlapping_higher_layers_dirty\(nodeIdx\);\s*\}/);
+    expect(header).toMatch(/static inline void ui_mark_dirty\(uint16_t nodeIdx\) \{\s*if \(nodeIdx >= __ui_node_count\) return;\s*__ui_nodes\[nodeIdx\]\.dirty = 1;\s*ui_mark_overlapping_higher_layers_dirty\(nodeIdx\);\s*\}/);
     expect(header).not.toContain("ui_invalidate_scroll_cache_for_node");
     expect(header).not.toContain("for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1; // z-index repair");
   });
@@ -211,12 +211,12 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/if \(!visible\)[\s\S]*ui_clear_subtree_current_paint\(nodeIdx\)/);
     expect(header).toMatch(/ui_subtree_current_paint_rect[\s\S]*ui_expand_rect/);
     expect(header).toMatch(/hasSubtreeRect[\s\S]*ui_mark_overlapping_higher_layers_dirty_for_rect\(nodeIdx,\s*&subtreeRect\)/);
-    expect(header).toMatch(/for \(uint8_t c = nodeIdx; c < end; c\+\+\)[\s\S]*__ui_nodes\[c\]\.dirty = 1/);
+    expect(header).toMatch(/for \(uint16_t c = nodeIdx; c < end; c\+\+\)[\s\S]*__ui_nodes\[c\]\.dirty = 1/);
   });
 
   it("draws dirty nodes in z-index order", () => {
-    expect(header).toMatch(/for \(uint8_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass\+\+\)/);
-    expect(header).toMatch(/ui_node_draws_before\(candidate,\s*\(uint8_t\)selected\)/);
+    expect(header).toMatch(/for \(uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass\+\+\)/);
+    expect(header).toMatch(/ui_node_draws_before\(candidate,\s*selected\)/);
   });
 
   it("only clears a scroll viewport when the scroll container itself is dirty", () => {
@@ -284,6 +284,21 @@ describe("C++ reactive runtime header", () => {
     expect(header).not.toMatch(/int8_t __ui_(touch|range|tap|scroll)_node/);
   });
 
+  it("widens node-index storage past 255 (uint16_t count/parent/subtreeEnd, 0xFFFF sentinel)", () => {
+    // Node tables can grow beyond 255 (the demo has 144); the count, parent, and
+    // subtreeEnd fields plus their loop counters must be uint16_t, and the
+    // no-parent sentinel must be out of uint16_t range (not 255, which collides
+    // with a valid node index once >255 nodes exist).
+    expect(header).toMatch(/extern const uint16_t __ui_node_count/);
+    expect(header).toMatch(/uint16_t parent;/);
+    expect(header).toMatch(/uint16_t subtreeEnd;/);
+    expect(header).toMatch(/#define UI_NO_PARENT 0xFFFF/);
+    // Node-count-bounded loops must use uint16_t counters (a uint8_t counter
+    // would wrap at 255 and never reach higher indices).
+    expect(header).toMatch(/for \(uint16_t i = 0; i < __ui_node_count; i\+\+\)/);
+    expect(header).not.toMatch(/for \(uint8_t i = 0; i < __ui_node_count/);
+  });
+
   it("releases via ui_scroll_release and advances the settle in ui_tick", () => {
     expect(header).toContain("ui_scroll_release");
     expect(header).toContain("ui_scroll_advance_settle");
@@ -341,7 +356,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_repair_current_node_paint_with_parent");
     expect(header).toContain("ui_fill_rect_clipped");
     expect(header).toContain("ui_draw_node_decoration_clipped");
-    expect(header).toMatch(/static inline uint8_t ui_repair_current_node_paint_with_parent\(uint8_t nodeIdx,\s*UIRect\* r\);/);
+    expect(header).toMatch(/static inline uint8_t ui_repair_current_node_paint_with_parent\(uint16_t nodeIdx,\s*UIRect\* r\);/);
     expect(header).toMatch(/ui_clear_current_node_paint[\s\S]*scrollParent\s*=\s*ui_scroll_ancestor_for_node\(nodeIdx\)/);
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&clipped\)/);
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_draw_node_decoration_clipped/);
