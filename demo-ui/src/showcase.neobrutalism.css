@@ -281,6 +281,9 @@ screen {
   box-shadow: var(--shadow);
 }
 #boxFixed { width: 160px; height: 30px; background: var(--chart-1); }
+/* Label spans inside the box-demo divs. text-align doesn't inherit from the
+   parent div in this model, so the span must center its own text. */
+.boxLabel { text-align: center; }
 #boxMin { background: var(--chart-3); }
 #boxPadded { width: 160px; background: var(--secondary); border: 1px solid var(--border); padding: 12px 20px; color: var(--secondary-foreground); font-size: 14px; text-align: center; }
 #boxMargin { width: 160px; min-height: 24px; background: var(--chart-4); margin: 16px; color: var(--foreground); font-size: 14px; text-align: center; }
