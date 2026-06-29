@@ -9,5 +9,13 @@ export interface ScreenTree {
   homeFooter: ViewElement;
   homeHint: TextElement;
   homeNativeText: TextElement;
+  typography: ViewElement;
+  typeHeadings: ViewElement;
+  typeStyle: ViewElement;
+  typeSpacing: ViewElement;
+  typeWrap: ViewElement;
+  typeFont: ViewElement;
+  typeArticle: ViewElement;
+  typeAside: ViewElement;
 }
 export const screen: ScreenTree;

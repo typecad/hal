@@ -192,6 +192,51 @@ screen {
   text-align: center;
 }
 
+/* ── Typography screen ── */
+#typeHeadings, #typeStyle, #typeSpacing, #typeWrap, #typeFont {
+  align-items: flex-start;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.demoH1 { color: var(--primary); font-family: "ColibriDemo"; }
+.demoH2 { color: var(--accent); font-family: "ColibriDemo"; }
+.demoH3 { color: var(--foreground); font-family: "ColibriDemo"; }
+.demoH4 { color: var(--foreground); }
+.demoH5 { color: var(--muted-foreground); }
+.demoH6 { color: var(--muted-foreground); }
+.tBold { color: var(--foreground); font-weight: bold; font-size: 16px; }
+.tItalic { color: var(--foreground); font-size: 16px; }
+.tUnderline { color: var(--accent); font-size: 16px; }
+.tUpper { color: var(--secondary-foreground); background: var(--secondary); font-size: 16px; }
+.tCenter { color: var(--foreground); font-size: 16px; }
+.tShadow { color: var(--foreground); font-size: 16px; }
+.tLeading { color: var(--foreground); font-size: 14px; }
+.tTracking { color: var(--foreground); font-size: 14px; }
+.tNowrap { color: var(--destructive); font-size: 14px; }
+.tPreLine { color: var(--chart-3); font-size: 14px; }
+.tCustom { color: var(--foreground); }
+.tSmooth { color: var(--foreground); }
+.tBitmap { color: var(--muted-foreground); }
+#typeArticle {
+  align-items: center;
+  width: 280px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+#typeAside {
+  align-items: center;
+  width: 280px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+.tAside { color: var(--muted-foreground); font-size: 13px; text-align: center; }
+
 /* ── Cross-screen nav links (UA underlines <a>) ── */
 a {
   color: var(--accent);
