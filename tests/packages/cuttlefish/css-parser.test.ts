@@ -326,4 +326,19 @@ describe("CSS subset parser", () => {
     // 0.625rem = 10px, * 2 = 20
     expect(rules[0].properties.padding).toBe("20rem");
   });
+
+  it("border shorthand captures a var() color (not silently dropped)", () => {
+    // Regression: parseBorderShorthand only matched #hex/rgb()/named colors, so
+    // `border: 2px solid var(--fg)` set borderWidth + borderStyle but left
+    // borderColor unset. var() substitution runs AFTER shorthand parsing (on
+    // the string properties), so the dropped borderColor never got the token
+    // value and resolved to the default (black). var() must be recognized as a
+    // color token so borderColor is captured, then substituted like the rest.
+    const css = `:root { --fg: #ffffff; } #b { border: 2px solid var(--fg); }`;
+    const rules = parseCssSrc(css);
+    const props = rules.find(r => r.selector.compounds.flat().some(s => s.name === "b"))!.properties;
+    expect(props.borderWidth).toBe("2px");
+    expect(props.borderStyle).toBe("solid");
+    expect(props.borderColor).toBe("#ffffff");  // var(--fg) captured + substituted
+  });
 });

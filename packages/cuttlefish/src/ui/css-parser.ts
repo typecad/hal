@@ -917,6 +917,8 @@ function parseBorderShorthand(props: CSSProperty, val: string): void {
   for (const p of parts) {
     if (/^\d+px$/.test(p)) props.borderWidth = p;
     else if (["solid", "dashed", "dotted", "double", "none"].includes(p)) props.borderStyle = p;
-    else if (p.startsWith("#") || p.startsWith("rgb") || /^[a-z]+$/i.test(p)) props.borderColor = p;
+    // Color: #hex, rgb()/hsl(), a CSS named color, or a var() reference (the
+    // token is substituted later by substituteVars, like other properties).
+    else if (p.startsWith("#") || p.startsWith("rgb") || p.startsWith("hsl") || p.startsWith("var(") || /^[a-z]+$/i.test(p)) props.borderColor = p;
   }
 }
