@@ -54,6 +54,12 @@ export interface PreviewCanvasBindingSpec {
   drawBody: string;
 }
 
+export interface PreviewModuleVarSpec {
+  name: string;
+  /** Initializer source text (without the `=`), e.g. "180" for `let x = 180;`. */
+  initializer?: string;
+}
+
 export interface PreviewDiagnostic {
   severity: "info" | "warning" | "error";
   message: string;
@@ -76,5 +82,7 @@ export interface PreviewSnapshot {
   intervals: PreviewIntervalSpec[];
   pinControls: PreviewPinControlSpec[];
   canvasBindings: PreviewCanvasBindingSpec[];
+  /** Top-level `let`/`const`/`var` declarations, hoisted like the device does. */
+  moduleVars: PreviewModuleVarSpec[];
   diagnostics: PreviewDiagnostic[];
 }
