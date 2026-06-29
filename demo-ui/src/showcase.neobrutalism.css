@@ -395,6 +395,22 @@ screen {
 #formDisabledBtn { background: var(--muted); color: var(--muted-foreground); font-size: 16px; border: 1px solid var(--border); padding: 4px 12px; }
 #formDisabledBtn:disabled { opacity: 0.5; }
 
+/* ── Images & Canvas screen ── */
+#imgFit, #imgTransform, #canvasDemo {
+  align-items: center;
+  gap: 6px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.imgRow { flex-direction: row; align-items: center; gap: 10px; width: 200px; }
+.imgLabel { width: 60px; color: var(--muted-foreground); font-size: 13px; }
+#imgContain, #imgCover, #imgFill { background: var(--muted); border: 1px solid var(--border); }
+#imgLogo { background: var(--muted); border: 1px solid var(--border); }
+#demoCanvas { background: #0a0a1a; border: 1px solid var(--border); }
+
 /* ── Cross-screen nav links (UA underlines <a>) ── */
 a {
   color: var(--accent);

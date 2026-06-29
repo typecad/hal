@@ -267,3 +267,30 @@
     </main>
   </body>
 </screen>
+
+<!-- ── Images & Canvas ──────────────────────────────────────────────────── -->
+<screen id="media">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">‹ Back</a>
+      <h2 class="screenTitle">Images &amp; Canvas</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="imgFit">
+        <h3 class="demoLabel">img object-fit</h3>
+        <div class="imgRow"><span class="imgLabel">contain</span><img id="imgContain" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: contain"></img></div>
+        <div class="imgRow"><span class="imgLabel">cover</span><img id="imgCover" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: cover"></img></div>
+        <div class="imgRow"><span class="imgLabel">fill</span><img id="imgFill" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: fill"></img></div>
+      </section>
+      <section id="imgTransform">
+        <h3 class="demoLabel">img transform (rotate)</h3>
+        <img id="imgLogo" src="test-logo.img" width="32" height="32" style="transform: rotate(45deg); transform-origin: center"></img>
+      </section>
+      <section id="canvasDemo">
+        <h3 class="demoLabel">canvas (ui.drawCanvas)</h3>
+        <canvas id="demoCanvas" width="200" height="120"></canvas>
+        <span class="demoCap">rects · circles · lines · pixels · text</span>
+      </section>
+    </main>
+  </body>
+</screen>

@@ -84,5 +84,14 @@ export interface ScreenTree {
   formAge: InputElement;
   formDisabled: ViewElement;
   formDisabledBtn: ButtonElement;
+  media: ViewElement;
+  imgFit: ViewElement;
+  imgContain: TextElement;
+  imgCover: TextElement;
+  imgFill: TextElement;
+  imgTransform: ViewElement;
+  imgLogo: TextElement;
+  canvasDemo: ViewElement;
+  demoCanvas: CanvasElement;
 }
 export const screen: ScreenTree;
