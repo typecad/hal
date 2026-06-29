@@ -213,3 +213,57 @@
     </main>
   </body>
 </screen>
+
+<!-- ── Forms ────────────────────────────────────────────────────────────── -->
+<screen id="forms">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">‹ Back</a>
+      <h2 class="screenTitle">Forms</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="formButton">
+        <h3 class="demoLabel">button + :pressed</h3>
+        <button id="formBtn">tap me</button>
+        <span id="formBtnCount">taps: 0</span>
+      </section>
+      <section id="formCheck">
+        <h3 class="demoLabel">check</h3>
+        <check id="formCheck1">Enable feature</check>
+      </section>
+      <section id="formSelect">
+        <h3 class="demoLabel">select + option</h3>
+        <select id="formSelect1">
+          <option value="a">Alpha</option>
+          <option value="b">Beta</option>
+          <option value="c">Gamma</option>
+        </select>
+      </section>
+      <section id="formRadio">
+        <h3 class="demoLabel">radio (grouped name)</h3>
+        <radio id="formRadio1" name="grp" value="x" checked>One</radio>
+        <radio id="formRadio2" name="grp" value="y">Two</radio>
+      </section>
+      <section id="formProgress">
+        <h3 class="demoLabel">progress</h3>
+        <progress id="formProg" value="0"></progress>
+      </section>
+      <section id="formRange">
+        <h3 class="demoLabel">range</h3>
+        <label for="formRange1">Volume</label>
+        <range id="formRange1" min="0" max="10" value="3"></range>
+      </section>
+      <section id="formInput">
+        <h3 class="demoLabel">input (text + number)</h3>
+        <label for="formName">Name</label>
+        <input id="formName" type="text" placeholder="enter name" maxlength="20"></input>
+        <label for="formAge">Age</label>
+        <input id="formAge" type="number" placeholder="0" maxlength="3"></input>
+      </section>
+      <section id="formDisabled">
+        <h3 class="demoLabel">:disabled</h3>
+        <button id="formDisabledBtn" disabled>cannot tap</button>
+      </section>
+    </main>
+  </body>
+</screen>

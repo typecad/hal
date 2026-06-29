@@ -64,5 +64,25 @@ export interface ScreenTree {
   dotRotate: ViewElement;
   transitionDemo: ViewElement;
   transitionBtn: ButtonElement;
+  forms: ViewElement;
+  formButton: ViewElement;
+  formBtn: ButtonElement;
+  formBtnCount: TextElement;
+  formCheck: ViewElement;
+  formCheck1: CheckElement;
+  formSelect: ViewElement;
+  formSelect1: SelectElement;
+  formRadio: ViewElement;
+  formRadio1: RadioElement;
+  formRadio2: RadioElement;
+  formProgress: ViewElement;
+  formProg: ProgressElement;
+  formRange: ViewElement;
+  formRange1: RangeElement;
+  formInput: ViewElement;
+  formName: InputElement;
+  formAge: InputElement;
+  formDisabled: ViewElement;
+  formDisabledBtn: ButtonElement;
 }
 export const screen: ScreenTree;
