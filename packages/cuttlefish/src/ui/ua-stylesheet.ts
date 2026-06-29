@@ -52,12 +52,12 @@ a {
 label {
   text-align: left;
 }
-h1 { font-size: 24px; font-weight: bold; }
-h2 { font-size: 20px; font-weight: bold; }
-h3 { font-size: 18px; font-weight: bold; }
-h4 { font-size: 16px; font-weight: bold; }
-h5 { font-size: 14px; }
-h6 { font-size: 12px; }
+h1 { font-size: 24px; font-weight: bold; white-space: nowrap; }
+h2 { font-size: 20px; font-weight: bold; white-space: nowrap; }
+h3 { font-size: 18px; font-weight: bold; white-space: nowrap; }
+h4 { font-size: 16px; font-weight: bold; white-space: nowrap; }
+h5 { font-size: 14px; white-space: nowrap; }
+h6 { font-size: 12px; white-space: nowrap; }
 p { font-size: 16px; }
 `;
 

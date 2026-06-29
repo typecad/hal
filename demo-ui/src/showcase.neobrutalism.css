@@ -223,17 +223,16 @@ screen {
   padding: 8px;
   box-shadow: var(--shadow);
 }
-.demoH1 { color: var(--primary); font-family: "ColibriDemo"; font-size: 30px; white-space: nowrap; }
-/* The runtime shrink-wraps text-node boxes to their measured content width, so
-   a heading whose box lands near its text width can wrap ("H6 heading" → two
-   lines). white-space:nowrap keeps each heading on one line, as headings should
-   be. H2–H6 are non-bold so each lands in its own text-size bucket (the runtime
-   bumps textSize for bold and only has 4 buckets). */
-.demoH2 { color: var(--accent); font-family: "ColibriDemo"; font-size: 24px; font-weight: normal; white-space: nowrap; }
-.demoH3 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: normal; white-space: nowrap; }
-.demoH4 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 14px; white-space: nowrap; }
-.demoH5 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; white-space: nowrap; }
-.demoH6 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; font-style: italic; white-space: nowrap; }
+.demoH1 { color: var(--primary); font-family: "ColibriDemo"; font-size: 30px; }
+/* H2–H6 are non-bold so each lands in its own text-size bucket: the runtime
+   bumps textSize for bold text AND only has 4 buckets, so keeping every
+   heading bold would collapse several into one rendered size. Headings stay
+   on a single line via the UA stylesheet (h1-h6 { white-space: nowrap }). */
+.demoH2 { color: var(--accent); font-family: "ColibriDemo"; font-size: 24px; font-weight: normal; }
+.demoH3 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: normal; }
+.demoH4 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 14px; }
+.demoH5 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; }
+.demoH6 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; font-style: italic; }
 .tBold { color: var(--foreground); font-weight: bold; font-size: 16px; }
 .tItalic { color: var(--foreground); font-family: "ColibriDemo"; font-size: 16px; }
 .tUnderline { color: var(--accent); font-size: 16px; }
