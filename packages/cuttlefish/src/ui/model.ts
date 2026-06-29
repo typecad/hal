@@ -833,7 +833,7 @@ export function lowerUIToModel(
       textOverflow: textOverflowOf(node.style.textOverflow),
       nowrap: wsMode === 1 || wsMode === 2,
       whiteSpaceMode: wsMode,
-      visible: node.style.visibility !== "hidden" && !isDisplayNone(node),
+      visible: node.style.visibility !== "hidden" && node.style.visibility !== "collapse" && !isDisplayNone(node),
       opacity: opacityOf(node.style),
       clearColor: clear,
       lastTextWidth: 0,

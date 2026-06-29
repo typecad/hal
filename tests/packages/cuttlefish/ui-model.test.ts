@@ -152,3 +152,25 @@ describe("text-decoration and text-overflow lowering", () => {
     expect(e!.textOverflow).toBe(true);
   });
 });
+
+describe("visibility lowering", () => {
+  // Regression: model.ts only checked visibility === "hidden", so
+  // visibility: collapse was treated as visible and the element rendered.
+  it("visibility: collapse lowers to visible=false (treated like hidden)", () => {
+    const html = `<screen><div id="c" style="visibility: collapse"></div></screen>`;
+    const styled = resolveStyles(parseHtml(html), parseCss(``));
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 320, h: 240 }, measure);
+    const prog = lowerUIToModel(styled, boxes, "rgb565");
+    const c = prog.nodes.find(n => n.id === "c");
+    expect(c!.visible).toBe(false);
+  });
+
+  it("visibility: hidden lowers to visible=false", () => {
+    const html = `<screen><div id="h" style="visibility: hidden"></div></screen>`;
+    const styled = resolveStyles(parseHtml(html), parseCss(``));
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 320, h: 240 }, measure);
+    const prog = lowerUIToModel(styled, boxes, "rgb565");
+    const h = prog.nodes.find(n => n.id === "h");
+    expect(h!.visible).toBe(false);
+  });
+});
