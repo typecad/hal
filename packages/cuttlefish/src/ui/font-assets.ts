@@ -138,6 +138,25 @@ export function selectFontAssetForStyle(fontAssets: UIFontAssetModel[], style: C
   )[0];
 }
 
+/** Measure a string's pixel width using the real per-glyph advances of the
+ *  asset font a node resolves to. Returns undefined when the node uses the
+ *  default font (no matching asset), so callers fall back to the 6*ts advance.
+ *  Characters missing from the asset's subset fall back to half the line height
+ *  (matching the runtime's ui_asset_text_width fallback). */
+export function assetTextWidth(text: string, style: CSSProperty, fontAssets: UIFontAssetModel[]): number | undefined {
+  const asset = selectFontAssetForStyle(fontAssets, style);
+  if (!asset) return undefined;
+  if (text.length === 0) return 0;
+  const fallback = Math.max(1, Math.floor(asset.lineHeight / 2));
+  let w = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!;
+    const glyph = asset.glyphs.find((g) => g.codepoint === cp);
+    w += glyph ? glyph.advance : fallback;
+  }
+  return w;
+}
+
 export function buildUIFontAssets(
   root: StyledNode,
   fontFaces: CSSFontFace[],

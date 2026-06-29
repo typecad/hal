@@ -9,7 +9,7 @@ import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui/html-parser.js
 import { buildUIFontAssets } from "../ui/font-assets.js";
 import { loadImageAssets } from "../ui/image-assets.js";
 import { buildKeyframeSets } from "../ui/keyframes.js";
-import { measure, type Box } from "../ui/layout-engine.js";
+import { measure, measureWithFonts, type Box } from "../ui/layout-engine.js";
 import { lowerUIToModel } from "../ui/model.js";
 import { selectEngine } from "../ui/select-engine.js";
 import { resolveStyles, type StyledNode } from "../ui/style-resolver.js";
@@ -470,7 +470,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const viewport: Box = { x: 0, y: 0, w: profile.width, h: profile.height };
   const boxes = allStyledScreens.flatMap((screen) => {
     const engine = selectEngine(screen);
-    return engine.arrange(screen, viewport, measure);
+    return engine.arrange(screen, viewport, measureWithFonts(fontAssets));
   });
   const keyframeSets = buildKeyframeSets(rawKeyframes, profile.colorFormat);
   const imageAssets = loadImageAssets(allStyledScreens.length > 0 ? allStyledScreens : [styled], path.dirname(firstImport.htmlPath));

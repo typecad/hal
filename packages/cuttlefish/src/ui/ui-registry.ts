@@ -25,7 +25,7 @@ import type { CSSFontFace, CSSRule, KeyframeSet } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
 import { buildKeyframeSets } from "./keyframes.js";
 import { selectEngine } from "./select-engine.js";
-import { measure, Box } from "./layout-engine.js";
+import { measure, measureWithFonts, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
 import { getDisplayProfile } from "./display-profile-store.js";
 import { buildUIFontAssets } from "./font-assets.js";
@@ -130,7 +130,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   let allStyled: StyledNode[] = [];
   for (const screen of mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled]) {
     const engine = selectEngine(screen);
-    const screenBoxes = engine.arrange(screen, viewport, measure);
+    const screenBoxes = engine.arrange(screen, viewport, measureWithFonts(mod.fontAssets));
     allBoxes = allBoxes.concat(screenBoxes);
     allStyled.push(screen);
   }

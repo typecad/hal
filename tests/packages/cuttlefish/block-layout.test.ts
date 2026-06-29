@@ -95,3 +95,32 @@ describe("flex-forward scaffolding", () => {
     expect(styled.style).toBeDefined();
   });
 });
+
+describe("custom-font (asset) text measurement", () => {
+  // Regression: measure() sized every text node's box at 6*ts per char (the
+  // default-font advance), even when the node used a custom @font-face whose
+  // real glyph advances differ. The drawn text then overflowed its too-narrow
+  // box and got clipped (e.g. italic "H6 heading" lost its trailing 'g').
+  it("measures a custom-font text node to the real glyph-advance sum, not 6*ts", () => {
+    // Fake asset: family "Wide", px 12, every glyph advances 10px (vs 6*ts=6
+    // for the default font at ts=1). "ABC" must measure 30, not 18.
+    const fakeAsset = {
+      id: 1, family: "Wide", sourcePath: "Wide.ttf", px: 12,
+      fontWeight: "400", fontStyle: "normal", subset: "exact" as const,
+      lineHeight: 12, baseline: 10,
+      glyphs: [..."ABC"].map((ch) => ({ codepoint: ch.codePointAt(0)!, xOffset: 0, yOffset: 0, width: 8, height: 10, advance: 10, dataOffset: 0 })),
+      alpha: [],
+    };
+    const styled = resolveStyles(
+      parseHtml(`<screen><text id="t" style="font-family: 'Wide'; font-size: 12px">ABC</text></screen>`),
+      parseCss(``),
+    );
+    const text = styled.children[0];
+    // measure() with the asset must use the real 10px/glyph advance (30 total),
+    // not the 6*ts default-font advance (18 total).
+    expect(measure(text, undefined, [fakeAsset]).w).toBe(30);
+    // Without the asset it falls back to the 6*ts default (18) — proving the
+    // asset path is what changed the result.
+    expect(measure(text, undefined, []).w).toBe(18);
+  });
+});

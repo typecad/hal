@@ -13,6 +13,8 @@
 
 import { StyledNode } from "./style-resolver.js";
 import { layoutText } from "./text-layout.js";
+import { assetTextWidth } from "./font-assets.js";
+import type { UIFontAssetModel } from "./font-assets.js";
 
 export interface Box { x: number; y: number; w: number; h: number; }
 
@@ -118,12 +120,20 @@ function textWidthOf(text: string, advance: number): number {
 }
 
 /** Measure a node's intrinsic size. Accounts for the Adafruit GFX font metrics
- *  and the text size the draw dispatch will use. */
-export function measure(node: StyledNode, availableWidth?: number): IntrinsicSize {
+ *  and the text size the draw dispatch will use. When `fontAssets` is provided,
+ *  text widths use the real per-glyph advances of any matching custom
+ *  @font-face (the runtime draws at those advances); otherwise they fall back
+ *  to the 6*ts default-font advance. */
+export function measure(node: StyledNode, availableWidth?: number, fontAssets: UIFontAssetModel[] = []): IntrinsicSize {
   // Per-node text size (from font-size + font-weight CSS).
   const ts = gfxTextSizeOf(node);
   const advance = 6 * ts + letterSpacingOf(node);
   const charH = 8 * ts;
+  // Width of a string using the asset font's real advances when the node has
+  // one, else the 6*ts default-font advance. This keeps the measured box width
+  // in sync with what the runtime actually draws (avoids overflow/clipping).
+  const widthOf = (value: string): number =>
+    assetTextWidth(value, node.style, fontAssets) ?? textWidthOf(value, advance);
   if (node.tag === "text" || node.tag === "button" || node.tag === "select") {
     if (node.tag === "select") {
       // Size to the longest option, not the full comma-separated text
@@ -131,14 +141,14 @@ export function measure(node: StyledNode, availableWidth?: number): IntrinsicSiz
         ? node.options.map((option) => option.text)
         : (node.text ?? "").split(",").map(s => s.trim()).filter(Boolean);
       const longest = options.length > 0 ? options.reduce((a, b) => a.length >= b.length ? a : b) : "";
-      return { w: textWidthOf(applyTextTransform(longest, node), advance), h: lineHeightOf(node, charH) };
+      return { w: widthOf(applyTextTransform(longest, node)), h: lineHeightOf(node, charH) };
     }
     const text = applyTextTransform(node.text, node);
     const layout = layoutText(text, {
       maxWidth: availableWidth,
       whiteSpace: node.style.whiteSpace,
       lineHeight: lineHeightOf(node, charH),
-      measureText: (value) => textWidthOf(value, advance),
+      measureText: widthOf,
     });
     return { w: layout.width, h: layout.height };
   }
@@ -150,7 +160,7 @@ export function measure(node: StyledNode, availableWidth?: number): IntrinsicSiz
       maxWidth: labelMaxWidth,
       whiteSpace: node.style.whiteSpace,
       lineHeight: lineHeightOf(node, charH),
-      measureText: (value) => textWidthOf(value, advance),
+      measureText: widthOf,
     });
     return { w: 16 + 6 + layout.width, h: Math.max(layout.height, 16) };
   }
@@ -176,4 +186,11 @@ export function measure(node: StyledNode, availableWidth?: number): IntrinsicSiz
   }
   // Containers have no intrinsic size in block layout — they fill available.
   return { w: 0, h: 0 };
+}
+
+/** Bind a set of font assets to measure(), returning a measureFn the layout
+ *  engines accept. Text nodes using a custom @font-face then measure at the
+ *  font's real glyph advances; nodes on the default font are unaffected. */
+export function measureWithFonts(fontAssets: UIFontAssetModel[]): (node: StyledNode, availableWidth?: number) => IntrinsicSize {
+  return (node, availableWidth) => measure(node, availableWidth, fontAssets);
 }
