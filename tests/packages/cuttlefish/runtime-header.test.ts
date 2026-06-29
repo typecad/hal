@@ -515,3 +515,16 @@ describe("text-overflow: clip rendering", () => {
     expect(header).toMatch(/line\.width[\s\S]*?maxWidth[\s\S]*?if\s*\(textOverflow\)[\s\S]*?ui_truncate_ellipsis[\s\S]*?else[\s\S]*?ui_truncate_clip/);
   });
 });
+
+describe("overflow: hidden clips a node's own text", () => {
+  const header = emitRuntimeHeader();
+
+  it("bounds the NODE_TEXT clear rect to box.w when the node is scrollable", () => {
+    // Regression: a nowrap text node whose text was wider than its box cleared
+    // and drew across box.w, erasing the parent's border. overflow:hidden
+    // (scrollable==1) must cap the clear at the node's own box width so it
+    // never repaints past its edge. The cap must be a conditional on scrollable
+    // right where clearW is finalized, not just any loose co-occurrence.
+    expect(header).toMatch(/clearW[\s\S]*?scrollable[\s\S]*?clearW\s*=\s*__ui_nodes\[i\]\.box\.w/);
+  });
+});

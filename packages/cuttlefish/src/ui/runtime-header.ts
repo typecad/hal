@@ -3269,6 +3269,9 @@ static inline void ui_tick(uint16_t deltaMs) {
             clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
           }
           if (tw > clearW) clearW = tw;
+          // overflow:hidden/scroll: never clear past the node's own box. A nowrap
+          // line wider than its box would otherwise erase the parent's border.
+          if (__ui_nodes[i].scrollable) clearW = __ui_nodes[i].box.w;
           uint16_t clearH = __ui_nodes[i].box.h;
           if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > (int16_t)clearH) {
             clearH = (uint16_t)__ui_nodes[i].lastTextHeight;
