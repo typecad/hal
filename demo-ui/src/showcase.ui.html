@@ -308,3 +308,34 @@
     </main>
   </body>
 </screen>
+
+<!-- ── Keyboard ─────────────────────────────────────────────────────────── -->
+<screen id="keyboard">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">‹ Back</a>
+      <h2 class="screenTitle">Keyboard</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">tap the field to open the keyboard</h3>
+      <label for="kbInput">Message</label>
+      <input id="kbInput" type="text" placeholder="type here" maxlength="32"></input>
+    </main>
+  </body>
+</screen>
+
+<!-- Custom keyboard template (sibling of <screen>). -->
+<keyboard id="kbAlpha" variant="alpha" class="ui-keyboard">
+  <row>
+    <key>q</key><key>w</key><key>e</key><key>r</key><key>t</key><key>y</key><key>u</key><key>i</key><key>o</key><key>p</key>
+  </row>
+  <row>
+    <key>a</key><key>s</key><key>d</key><key>f</key><key>g</key><key>h</key><key>j</key><key>k</key><key>l</key>
+  </row>
+  <row>
+    <key special="1">⇧</key><key>z</key><key>x</key><key>c</key><key>v</key><key>b</key><key>n</key><key>m</key><key special="2">⌫</key>
+  </row>
+  <row>
+    <key special="4">123</key><key> </key><key special="3">OK</key>
+  </row>
+</keyboard>

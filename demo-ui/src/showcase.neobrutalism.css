@@ -421,6 +421,16 @@ screen {
   margin: 8px 0;
 }
 
+/* ── Keyboard screen + custom keyboard template ── */
+#keyboard .scrollBody { align-items: stretch; }
+#keyboard label { color: var(--muted-foreground); font-size: 14px; }
+#kbInput { color: var(--foreground); background: var(--secondary); border: 1px solid var(--border); width: 240px; }
+.ui-key { background: var(--card); color: var(--foreground); border: 1px solid var(--border); }
+.ui-key-ok { background: var(--chart-4); color: var(--foreground); }
+.ui-key-del { background: var(--destructive); color: var(--destructive-foreground); }
+.ui-key-page { background: var(--accent); color: var(--accent-foreground); }
+.ui-keyboard { background: var(--muted); }
+
 /* ── Cross-screen nav links (UA underlines <a>) ── */
 a {
   color: var(--accent);

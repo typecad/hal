@@ -95,5 +95,7 @@ export interface ScreenTree {
   demoCanvas: CanvasElement;
   lists: ViewElement;
   demoList: TextElement;
+  keyboard: ViewElement;
+  kbInput: InputElement;
 }
 export const screen: ScreenTree;
