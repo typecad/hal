@@ -247,7 +247,7 @@ describe("ui lowering", () => {
     expect(out.keyframeTables).toContain(".baseHeight=16");
     expect(out.keyframeTables).toContain(".originX=0");
     expect(out.keyframeTables).toContain(".originY=0");
-    expect(out.keyframeTables).toContain("const uint8_t __ui_anim_count = 1");
+    expect(out.keyframeTables).toContain("const uint16_t __ui_anim_count = 1");
   });
 });
 

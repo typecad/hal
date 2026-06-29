@@ -204,14 +204,14 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     0,
   );
   ctx.sourceLines.push(`const uint16_t __ui_node_count = ${totalNodes};`);
-  ctx.sourceLines.push(`const uint8_t __ui_trans_count = ${countTransitions()};`);
-  ctx.sourceLines.push(`const uint8_t __ui_binding_count = ${uiBindings().length};`);
+  ctx.sourceLines.push(`const uint16_t __ui_trans_count = ${countTransitions()};`);
+  ctx.sourceLines.push(`const uint16_t __ui_binding_count = ${uiBindings().length};`);
   // Count screens across all modules (for multi-screen navigation).
   let maxScreens = 1;
   for (const { lowered } of allLoweredUIModules()) {
     if (lowered.screenCount > maxScreens) maxScreens = lowered.screenCount;
   }
-  ctx.sourceLines.push(`const uint8_t __ui_screen_count = ${maxScreens};`);
+  ctx.sourceLines.push(`const uint16_t __ui_screen_count = ${maxScreens};`);
 
   // 6. Press/release handler functions (from screen.btn.onPress/onRelease).
   // Each calls ui_on_press/ui_on_release(nodeIndex), defined in the runtime
@@ -234,10 +234,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       ctx.sourceLines.push(`  { .pin=${wp.pin}, .lastState=1, .cb=${wp.fnName} },`);
     }
     ctx.sourceLines.push(`};`);
-    ctx.sourceLines.push(`const uint8_t __ui_pin_watch_count = ${watchPinSpecs().length};`);
+    ctx.sourceLines.push(`const uint16_t __ui_pin_watch_count = ${watchPinSpecs().length};`);
   } else {
     ctx.sourceLines.push(`UIPinWatch __ui_pin_watches[] = {};`);
-    ctx.sourceLines.push(`const uint8_t __ui_pin_watch_count = 0;`);
+    ctx.sourceLines.push(`const uint16_t __ui_pin_watch_count = 0;`);
   }
 
   // 8. Touch: handler functions + tables (click, hold, release).
@@ -266,12 +266,12 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(`void (*__ui_click_handlers[])() = { ${buildTable("click")} };`);
     ctx.sourceLines.push(`void (*__ui_hold_handlers[])() = { ${buildTable("hold")} };`);
     ctx.sourceLines.push(`void (*__ui_release_handlers[])() = { ${buildTable("release")} };`);
-    ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = ${tableSize};`);
+    ctx.sourceLines.push(`const uint16_t __ui_click_handler_count = ${tableSize};`);
   } else {
     ctx.sourceLines.push(`void (*__ui_click_handlers[])() = {};`);
     ctx.sourceLines.push(`void (*__ui_hold_handlers[])() = {};`);
     ctx.sourceLines.push(`void (*__ui_release_handlers[])() = {};`);
-    ctx.sourceLines.push(`const uint8_t __ui_click_handler_count = 0;`);
+    ctx.sourceLines.push(`const uint16_t __ui_click_handler_count = 0;`);
   }
 
   // 8b. Input onChange dispatch — assigns __ui_kb_onchange based on __ui_kb_target.
@@ -305,10 +305,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       rcEntries.push(handler ? handler.fnName : "nullptr");
     }
     ctx.sourceLines.push(`void (*__ui_rangechange_handlers[])() = { ${rcEntries.join(", ")} };`);
-    ctx.sourceLines.push(`const uint8_t __ui_rangechange_handler_count = ${rcTableSize};`);
+    ctx.sourceLines.push(`const uint16_t __ui_rangechange_handler_count = ${rcTableSize};`);
   } else {
     ctx.sourceLines.push(`void (*__ui_rangechange_handlers[])() = {};`);
-    ctx.sourceLines.push(`const uint8_t __ui_rangechange_handler_count = 0;`);
+    ctx.sourceLines.push(`const uint16_t __ui_rangechange_handler_count = 0;`);
   }
 
   // 9. Radio group table (from auto-wire).
@@ -322,10 +322,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       ctx.sourceLines.push(`  { .nodeIndices={${indices}}, .count=${members.length} },`);
     }
     ctx.sourceLines.push(`};`);
-    ctx.sourceLines.push(`const uint8_t __ui_radio_group_count = ${groupEntries.length};`);
+    ctx.sourceLines.push(`const uint16_t __ui_radio_group_count = ${groupEntries.length};`);
   } else {
     ctx.sourceLines.push(`UIRadioGroup __ui_radio_groups[] = {};`);
-    ctx.sourceLines.push(`const uint8_t __ui_radio_group_count = 0;`);
+    ctx.sourceLines.push(`const uint16_t __ui_radio_group_count = 0;`);
   }
 
   // 10. Canvas draw bindings (ui.drawCanvas). Each spec emits a draw wrapper

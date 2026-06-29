@@ -93,7 +93,7 @@ export function loadImageAssets(roots: StyledNode | StyledNode[], htmlDir: strin
 
 export function emitImageTables(assets: UIImageAsset[]): string {
   if (assets.length === 0) {
-    return "const UIImage __ui_images[] = {};\nconst uint8_t __ui_image_count = 0;";
+    return "const UIImage __ui_images[] = {};\nconst uint16_t __ui_image_count = 0;";
   }
 
   const lines: string[] = [];
@@ -113,7 +113,7 @@ export function emitImageTables(assets: UIImageAsset[]): string {
     lines.push(`  { ${asset.width}, ${asset.height}, __ui_img_${asset.id}_data },`);
   }
   lines.push("};");
-  lines.push(`const uint8_t __ui_image_count = ${assets.length};`);
+  lines.push(`const uint16_t __ui_image_count = ${assets.length};`);
   return lines.join("\n");
 }
 

@@ -114,7 +114,7 @@ export function resetInputBindings(): void {
 /** Emit the input-binding table + callback functions. */
 export function emitInputBindings(specs: InputBindingSpec[]): string {
   if (specs.length === 0) {
-    return `UIInputBinding __ui_input_bindings[] = {};\nconst uint8_t __ui_input_binding_count = 0;`;
+    return `UIInputBinding __ui_input_bindings[] = {};\nconst uint16_t __ui_input_binding_count = 0;`;
   }
   const lines: string[] = [];
   // Emit the callback functions.
@@ -127,12 +127,12 @@ export function emitInputBindings(specs: InputBindingSpec[]): string {
     lines.push(`  { .node=${spec.nodeIndex}, .cb=${spec.cbFnName} },`);
   }
   lines.push(`};`);
-  lines.push(`const uint8_t __ui_input_binding_count = ${specs.length};`);
+  lines.push(`const uint16_t __ui_input_binding_count = ${specs.length};`);
   return lines.join("\n");
 }
 export function emitListBindings(specs: ListBindingSpec[]): string {
   if (specs.length === 0) {
-    return `UIListBinding __ui_list_bindings[] = {};\nconst uint8_t __ui_list_binding_count = 0;`;
+    return `UIListBinding __ui_list_bindings[] = {};\nconst uint16_t __ui_list_binding_count = 0;`;
   }
   const lines: string[] = [];
   // Emit count + item + tap functions.
@@ -150,6 +150,6 @@ export function emitListBindings(specs: ListBindingSpec[]): string {
     lines.push(`  { .node=${spec.nodeIndex}, .countFn=${spec.countFnName}, .itemFn=${spec.itemFnName}, .tapFn=${tap} },`);
   }
   lines.push(`};`);
-  lines.push(`const uint8_t __ui_list_binding_count = ${specs.length};`);
+  lines.push(`const uint16_t __ui_list_binding_count = ${specs.length};`);
   return lines.join("\n");
 }

@@ -219,8 +219,8 @@ extern UITransition __ui_trans[];
 extern UIBinding __ui_bindings[];
 extern const UIFontFace __ui_font_faces[];
 extern const uint16_t __ui_node_count;
-extern const uint8_t __ui_trans_count;
-extern const uint8_t __ui_binding_count;
+extern const uint16_t __ui_trans_count;
+extern const uint16_t __ui_binding_count;
 
 // ── Multi-screen navigation ─────────────────────────────────────────────────
 // Touch/scroll/keyboard state reset by navigation.
@@ -235,12 +235,12 @@ static int16_t __ui_settle_from_scrollY = 0;     // settle start value (edge sna
 static uint8_t __ui_kb_visible = 0;
 
 static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
-extern const uint8_t __ui_screen_count;  // total number of screens (emitted by lowering)
+extern const uint16_t __ui_screen_count;  // total number of screens (emitted by lowering)
 
 // ── Image assets ────────────────────────────────────────────────────────────
 struct UIImage { uint16_t w; uint16_t h; const uint16_t* data; };
 extern const UIImage __ui_images[];
-extern const uint8_t __ui_image_count;
+extern const uint16_t __ui_image_count;
 
 // ── @keyframes animations ───────────────────────────────────────────────────
 struct UIKeyframeStop {
@@ -283,9 +283,9 @@ struct UIAnimation {
   uint32_t lastUpdateMs;  // throttle: only redraw every ~100ms to avoid tearing
 };
 extern const UIKeyframeSet __ui_keyframe_sets[];
-extern const uint8_t __ui_keyframe_set_count;
+extern const uint16_t __ui_keyframe_set_count;
 extern UIAnimation __ui_anims[];
-extern const uint8_t __ui_anim_count;
+extern const uint16_t __ui_anim_count;
 
 // ── List bindings ───────────────────────────────────────────────────────────
 struct UIListBinding {
@@ -295,7 +295,7 @@ struct UIListBinding {
   void (*tapFn)(uint16_t idx);  // optional: called when an item is tapped
 };
 extern UIListBinding __ui_list_bindings[];
-extern const uint8_t __ui_list_binding_count;
+extern const uint16_t __ui_list_binding_count;
 
 // ── Canvas bindings (ui.drawCanvas) ─────────────────────────────────────────
 // Each canvas node's user-supplied draw function. Called each frame with the
@@ -306,7 +306,7 @@ struct UICanvasBinding {
   void (*fn)(CuttlefishCanvas16* canvas);
 };
 extern UICanvasBinding __ui_canvas_bindings[];
-extern const uint8_t __ui_canvas_binding_count;
+extern const uint16_t __ui_canvas_binding_count;
 
 // ── Input bindings (two-way) ─────────────────────────────────────────────────
 // ui.bindInput(node, cb) — cb fires with the node's current text whenever the
@@ -318,7 +318,7 @@ struct UIInputBinding {
   char lastSeen[UI_TEXT_BUF + 1];
 };
 extern UIInputBinding __ui_input_bindings[];
-extern const uint8_t __ui_input_binding_count;
+extern const uint16_t __ui_input_binding_count;
 
 // List bindings are now carried ON each node (listCountFn/listItemFn/listTapFn).
 // The UIListBinding table below is still emitted by the lowering for the
@@ -353,7 +353,7 @@ static inline void ui_navigate(uint8_t screenIdx) {
     else __ui_nodes[i].lastTextWidth = 0;
   }
 }
-extern const uint8_t __ui_font_face_count;
+extern const uint16_t __ui_font_face_count;
 
 #define UI_NO_PARENT 0xFFFF   // sentinel: out of uint16_t node-index range
 
@@ -1595,9 +1595,9 @@ static inline void ui_init(void) {
       __ui_nodes[i].lastTextWidth = -1;
     }
   }
-  for (uint8_t i = 0; i < __ui_binding_count; i++) {
+  for (uint16_t i = 0; i < __ui_binding_count; i++) {
     if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
-      uint8_t n = __ui_bindings[i].node;
+      uint16_t n = __ui_bindings[i].node;
       __ui_nodes[n].hasTextBinding = 1;
       strncpy(__ui_nodes[n].textBuffer, __ui_nodes[n].text ? __ui_nodes[n].text : "", UI_TEXT_BUF);
       __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
@@ -1609,8 +1609,8 @@ static inline void ui_init(void) {
   // emits the UIListBinding table (the binding's fn bodies) and ui_init copies
   // the pointers onto each <list> node here, then computes the initial count
   // and contentHeight so the first paint and the scroll clamp bound are correct.
-  for (uint8_t b = 0; b < __ui_list_binding_count; b++) {
-    uint8_t n = __ui_list_bindings[b].node;
+  for (uint16_t b = 0; b < __ui_list_binding_count; b++) {
+    uint16_t n = __ui_list_bindings[b].node;
     if (n >= __ui_node_count || !__ui_nodes[n].virtualized) continue;
     __ui_nodes[n].listCountFn = __ui_list_bindings[b].countFn;
     __ui_nodes[n].listItemFn = __ui_list_bindings[b].itemFn;
@@ -1637,7 +1637,7 @@ static volatile uint32_t __ui_last_edge_time = 0;
 static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed) {
   __ui_nodes[nodeIdx].value = pressed ? 1 : 0;
   ui_mark_dirty(nodeIdx);
-  for (uint8_t i = 0; i < __ui_trans_count; i++) {
+  for (uint16_t i = 0; i < __ui_trans_count; i++) {
     if (__ui_trans[i].node == nodeIdx) {
       __ui_trans[i].prevValue = __ui_trans[i].prop == PROP_FG ? __ui_nodes[nodeIdx].fg : __ui_nodes[nodeIdx].bg;
       __ui_trans[i].targetValue = pressed ? __ui_trans[i].pressedTarget : __ui_trans[i].baseTarget;
@@ -1674,12 +1674,12 @@ struct UIPinWatch {
 
 // Populated by the emit layer from ui.watchPin() calls.
 extern UIPinWatch __ui_pin_watches[];
-extern const uint8_t __ui_pin_watch_count;
+extern const uint16_t __ui_pin_watch_count;
 
 // Poll all configured pin-watchers. Called at the start of ui_tick each frame.
 // Detects falling edges with natural debounce from the ~16ms frame rate.
 static inline void ui_poll_inputs() {
-  for (uint8_t i = 0; i < __ui_pin_watch_count; i++) {
+  for (uint16_t i = 0; i < __ui_pin_watch_count; i++) {
     uint8_t val = digitalRead(__ui_pin_watches[i].pin);
     if (val == LOW && __ui_pin_watches[i].lastState == HIGH) {
       if (__ui_pin_watches[i].cb) __ui_pin_watches[i].cb();
@@ -1695,15 +1695,15 @@ struct UIRadioGroup {
   uint8_t count;
 };
 extern UIRadioGroup __ui_radio_groups[];
-extern const uint8_t __ui_radio_group_count;
+extern const uint16_t __ui_radio_group_count;
 
 // Forward-declare the click handler type + tables (defined by the emit layer).
 extern void (*__ui_click_handlers[])();
 extern void (*__ui_hold_handlers[])();
 extern void (*__ui_release_handlers[])();
 extern void (*__ui_rangechange_handlers[])();
-extern const uint8_t __ui_click_handler_count;
-extern const uint8_t __ui_rangechange_handler_count;
+extern const uint16_t __ui_click_handler_count;
+extern const uint16_t __ui_rangechange_handler_count;
 
 // Touch state machine: tracks down → hold → up → click lifecycle
 // Touch node/scroll node state is defined near navigation because ui_navigate resets it.
@@ -1789,7 +1789,7 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
 }
 
 // Dispatch a handler from the given table if registered for the node.
-static void ui_dispatch(void (**table)(), uint8_t count, int16_t node) {
+static void ui_dispatch(void (**table)(), uint16_t count, int16_t node) {
   if (node >= 0 && (uint16_t)node < count && table[node]) {
     table[node]();
   }
@@ -1980,7 +1980,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
         __ui_nodes[__ui_range_node].value = newVal;
         ui_mark_dirty(__ui_range_node);
         // Fire the onChange callback (if any) — every value change during drag.
-        if ((uint8_t)__ui_range_node < __ui_rangechange_handler_count &&
+        if (__ui_range_node < (int16_t)__ui_rangechange_handler_count &&
             __ui_rangechange_handlers[__ui_range_node]) {
           __ui_rangechange_handlers[__ui_range_node]();
         }
@@ -2041,7 +2041,7 @@ static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
 
 static inline const UIFontFace* ui_font_face(uint8_t id) {
    if (id == 0) return nullptr;
-   for (uint8_t i = 0; i < __ui_font_face_count; i++) {
+   for (uint16_t i = 0; i < __ui_font_face_count; i++) {
      if (__ui_font_faces[i].id == id) return &__ui_font_faces[i];
    }
    return nullptr;
@@ -2739,10 +2739,10 @@ static inline void ui_tick(uint16_t deltaMs) {
   ui_poll_inputs();
   // ⓪ Evaluate bindings: call each binding's fn, compare to the node's
   // current property value, mark dirty if changed.
-  for (uint8_t i = 0; i < __ui_binding_count; i++) {
+  for (uint16_t i = 0; i < __ui_binding_count; i++) {
     if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
       // Text binding: fill the node's buffer, compare content, mark dirty if changed.
-      uint8_t n = __ui_bindings[i].node;
+      uint16_t n = __ui_bindings[i].node;
       char oldBuf[UI_TEXT_BUF + 1];
       strncpy(oldBuf, __ui_nodes[n].textBuffer, UI_TEXT_BUF);
       oldBuf[UI_TEXT_BUF] = '\\0';
@@ -2763,7 +2763,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
       if (__ui_bindings[i].prop == PROP_VALUE) {
         // Numeric value binding: drive a progress/range node's value live.
-        uint8_t n = __ui_bindings[i].node;
+        uint16_t n = __ui_bindings[i].node;
         int16_t v = (int16_t)__ui_bindings[i].fn();
         if (v != __ui_nodes[n].value) {
           __ui_nodes[n].value = v;
@@ -2804,9 +2804,9 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ⓪c Evaluate input bindings (two-way): if a bound <input>'s textBuffer
   // changed since last tick (e.g. the user typed via the on-screen keyboard),
   // fire the author's callback with the new text.
-  for (uint8_t i = 0; i < __ui_input_binding_count; i++) {
+  for (uint16_t i = 0; i < __ui_input_binding_count; i++) {
     if (!__ui_input_bindings[i].cb) continue;
-    uint8_t n = __ui_input_bindings[i].node;
+    uint16_t n = __ui_input_bindings[i].node;
     const char* cur = __ui_nodes[n].textBuffer;
     if (strcmp(cur, __ui_input_bindings[i].lastSeen) != 0) {
       strncpy(__ui_input_bindings[i].lastSeen, cur, UI_TEXT_BUF);
@@ -2815,7 +2815,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
   }
   // ① Advance transitions.
-  for (uint8_t i = 0; i < __ui_trans_count; i++) {
+  for (uint16_t i = 0; i < __ui_trans_count; i++) {
     if (!__ui_trans[i].active) continue;
     __ui_trans[i].elapsed += deltaMs;
     uint16_t k = __ui_trans[i].durationMs == 0
@@ -2833,7 +2833,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   }
 
   // ①b Advance @keyframes animations.
-  for (uint8_t i = 0; i < __ui_anim_count; i++) {
+  for (uint16_t i = 0; i < __ui_anim_count; i++) {
     if (!__ui_anims[i].active) continue;
     // Skip animations on non-visible screens — their nodes are not drawn,
     // so advancing them would paint stray fragments ("blotches") on the
@@ -2877,7 +2877,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint8_t range = sHi->percent - sLo->percent;
     uint8_t lerpK = range > 0 ? (uint8_t)((uint16_t)(pct - sLo->percent) * 100 / range) : 0;
     // Apply to node — only mark dirty if a value actually changed.
-    uint8_t n = __ui_anims[i].node;
+    uint16_t n = __ui_anims[i].node;
     if (n >= __ui_node_count) continue;
     uint8_t changed = 0;
     if ((sLo->props & UI_KF_BG) && (sHi->props & UI_KF_BG)) {
@@ -3568,7 +3568,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       case NODE_CANVAS: {
         // Find this node's draw callback.
         void (*__ui_canvas_fn)(CuttlefishCanvas16*) = nullptr;
-        for (uint8_t b = 0; b < __ui_canvas_binding_count; b++) {
+        for (uint16_t b = 0; b < __ui_canvas_binding_count; b++) {
           if (__ui_canvas_bindings[b].node == i) { __ui_canvas_fn = __ui_canvas_bindings[b].fn; break; }
         }
         if (__ui_canvas_fn) {
@@ -3881,7 +3881,7 @@ static uint32_t __ui_kb_bs_repeat;   // last auto-repeat deletion time
 static void    (*__ui_kb_onchange)();
 // Dispatch table: one loader per input node. Indexed by input position.
 extern void (*__ui_kb_loaders[])();
-extern const uint8_t __ui_kb_loader_count;
+extern const uint16_t __ui_kb_loader_count;
 
 static inline void ui_kb_add_key(char ch, uint8_t special, uint16_t bg, uint16_t fg, uint16_t borderColor) {
   if (__ui_kb_keyCount >= UI_KB_MAX) return;

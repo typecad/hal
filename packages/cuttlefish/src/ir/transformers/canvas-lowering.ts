@@ -184,7 +184,7 @@ export function lowerCanvasBody(
 /** Emit the canvas binding table + callback functions as a C++ string. */
 export function emitCanvasBindings(specs: DrawCanvasSpec[]): string {
   if (specs.length === 0) {
-    return `UICanvasBinding __ui_canvas_bindings[] = {};\nconst uint8_t __ui_canvas_binding_count = 0;`;
+    return `UICanvasBinding __ui_canvas_bindings[] = {};\nconst uint16_t __ui_canvas_binding_count = 0;`;
   }
   const lines: string[] = [];
   for (const spec of specs) {
@@ -200,7 +200,7 @@ export function emitCanvasBindings(specs: DrawCanvasSpec[]): string {
     lines.push(`  { .node=${spec.nodeIndex}, .fn=${spec.fnName} },`);
   }
   lines.push(`};`);
-  lines.push(`const uint8_t __ui_canvas_binding_count = ${specs.length};`);
+  lines.push(`const uint16_t __ui_canvas_binding_count = ${specs.length};`);
   return lines.join("\n");
 }
 

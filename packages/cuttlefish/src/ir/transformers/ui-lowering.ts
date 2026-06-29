@@ -96,11 +96,11 @@ export function lowerUIToCpp(
 
   const dispatchEntries = inputSpecs.map(spec => loaderNameForInput(spec, keyboards));
   const keyboardDispatch = dispatchEntries.length > 0
-    ? `void (*__ui_kb_loaders[])() = { ${dispatchEntries.join(", ")} };\nconst uint8_t __ui_kb_loader_count = ${dispatchEntries.length};`
-    : `void (*__ui_kb_loaders[])() = {};\nconst uint8_t __ui_kb_loader_count = 0;`;
+    ? `void (*__ui_kb_loaders[])() = { ${dispatchEntries.join(", ")} };\nconst uint16_t __ui_kb_loader_count = ${dispatchEntries.length};`
+    : `void (*__ui_kb_loaders[])() = {};\nconst uint16_t __ui_kb_loader_count = 0;`;
 
   const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
-  const imageTables = "const UIImage __ui_images[] = {};\nconst uint8_t __ui_image_count = 0;";
+  const imageTables = "const UIImage __ui_images[] = {};\nconst uint16_t __ui_image_count = 0;";
   const keyframeTables = emitKeyframeTables(model);
   return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables };
 }
@@ -236,7 +236,7 @@ function emitFontTables(model: UIProgram): string {
    if (assets.length === 0) {
      return [
        `const UIFontFace __ui_font_faces[] = {};`,
-       `const uint8_t __ui_font_face_count = 0;`,
+       `const uint16_t __ui_font_face_count = 0;`,
      ].join("\n");
    }
 
@@ -265,7 +265,7 @@ function emitFontTables(model: UIProgram): string {
      );
    }
    lines.push(`};`);
-   lines.push(`const uint8_t __ui_font_face_count = ${assets.length};`);
+   lines.push(`const uint16_t __ui_font_face_count = ${assets.length};`);
    return lines.join("\n");
  }
 
@@ -324,9 +324,9 @@ function emitKeyframeTables(model: UIProgram): string {
   if (model.keyframeSets.length === 0 && model.animations.length === 0) {
     return [
       `const UIKeyframeSet __ui_keyframe_sets[] = {};`,
-      `const uint8_t __ui_keyframe_set_count = 0;`,
+      `const uint16_t __ui_keyframe_set_count = 0;`,
       `UIAnimation __ui_anims[] = {};`,
-      `const uint8_t __ui_anim_count = 0;`,
+      `const uint16_t __ui_anim_count = 0;`,
     ].join("\n");
   }
   const lines: string[] = [];
@@ -346,14 +346,14 @@ function emitKeyframeTables(model: UIProgram): string {
     lines.push(`  { .stopCount=${ks.stops.length}, .stops=__ui_kf_${safeName}_stops },`);
   });
   lines.push(`};`);
-  lines.push(`const uint8_t __ui_keyframe_set_count = ${model.keyframeSets.length};`);
+  lines.push(`const uint16_t __ui_keyframe_set_count = ${model.keyframeSets.length};`);
   // Emit animation table (mutable — runtime advances elapsed/active).
   lines.push(`UIAnimation __ui_anims[] = {`);
   for (const a of model.animations) {
     lines.push(`  { .node=${a.node}, .keyframeSet=${a.keyframeSet}, .durationMs=${a.durationMs}, .delayMs=${a.delayMs}, .iterations=${a.iterations}, .baseWidth=${a.baseWidth}, .baseHeight=${a.baseHeight}, .originX=${a.originX}, .originY=${a.originY}, .elapsed=0, .active=1, .lastUpdateMs=0 },`);
   }
   lines.push(`};`);
-  lines.push(`const uint8_t __ui_anim_count = ${model.animations.length};`);
+  lines.push(`const uint16_t __ui_anim_count = ${model.animations.length};`);
   return lines.join("\n");
 }
 

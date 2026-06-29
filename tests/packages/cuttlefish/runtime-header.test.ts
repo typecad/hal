@@ -299,6 +299,27 @@ describe("C++ reactive runtime header", () => {
     expect(header).not.toMatch(/for \(uint8_t i = 0; i < __ui_node_count/);
   });
 
+  it("widens every *_count past 255 (uint16_t counts + loops; demo has 128 click handlers)", () => {
+    // The binding/handler counts scale with UI complexity (the demo already has
+    // __ui_click_handler_count = 128, ~half the uint8_t ceiling). All counts and
+    // their bounded loops must be uint16_t, or a UI with >255 of any kind silently
+    // drops the overflow.
+    for (const c of [
+      "__ui_trans_count", "__ui_binding_count", "__ui_screen_count", "__ui_image_count",
+      "__ui_keyframe_set_count", "__ui_anim_count", "__ui_list_binding_count",
+      "__ui_canvas_binding_count", "__ui_input_binding_count", "__ui_font_face_count",
+      "__ui_pin_watch_count", "__ui_radio_group_count", "__ui_click_handler_count",
+      "__ui_rangechange_handler_count", "__ui_kb_loader_count",
+    ]) {
+      expect(header).toMatch(new RegExp(`extern\\s+const\\s+uint16_t\\s+${c}`));
+    }
+    // No count remains uint8_t; no count-bounded loop uses a uint8_t counter.
+    expect(header).not.toMatch(/extern const uint8_t __ui_[a-z_]*_count/);
+    expect(header).not.toMatch(/for \(uint8_t [a-z]+ = 0; [a-z]+ < __ui_[a-z_]*_count/);
+    // ui_dispatch's count param must be wide enough for >255 handlers.
+    expect(header).toMatch(/void ui_dispatch\([\s\S]*uint16_t count, int16_t node\)/);
+  });
+
   it("releases via ui_scroll_release and advances the settle in ui_tick", () => {
     expect(header).toContain("ui_scroll_release");
     expect(header).toContain("ui_scroll_advance_settle");
@@ -466,7 +487,7 @@ describe("canvas runtime", () => {
     expect(header).toMatch(/uint16_t\s+canvasH/);
     expect(header).toMatch(/struct\s+UICanvasBinding/);
     expect(header).toMatch(/extern\s+UICanvasBinding\s+__ui_canvas_bindings/);
-    expect(header).toMatch(/extern\s+const\s+uint8_t\s+__ui_canvas_binding_count/);
+    expect(header).toMatch(/extern\s+const\s+uint16_t\s+__ui_canvas_binding_count/);
   });
 
   it("has a NODE_CANVAS draw case that sets the canvas target and blits", () => {
