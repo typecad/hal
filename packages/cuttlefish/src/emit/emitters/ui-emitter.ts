@@ -97,6 +97,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     `#define UI_SCROLL_INPUT_TIER_NONE ${scroll.inputTier === "none" ? 1 : 0}`,
     `#define UI_SCROLL_RENDER_TIER_FULL ${scroll.renderTier === "full" ? 1 : 0}`,
     `#define UI_SCROLL_RENDER_TIER_CONSTRAINED ${scroll.renderTier === "constrained" ? 1 : 0}`,
+    ...(scroll.debug ? [`#define UI_SCROLL_DEBUG 1`] : []),
   );
   ctx.sourceLines.push(emitRuntimeHeader());
 
@@ -334,7 +335,11 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
 /** Count NODE_FILL/NODE_TEXT entries in the emitted node table (one per node). */
 function countNodes(nodeTable: string): number {
-  const matches = nodeTable.match(/NODE_(FILL|TEXT|BUTTON|CHECK|RADIO|PROGRESS|RANGE|INPUT|IMG|LIST)/g);
+  // Count node-table entries directly. Every node initializer starts with
+  // "{ .box="; counting those cannot under/over-count regardless of kind (the
+  // previous kind-regex approach missed NODE_CANVAS and any future kind,
+  // undercounting __ui_node_count so the last node(s) were never drawn).
+  const matches = nodeTable.match(/\{\s*\.box=/g);
   return matches ? matches.length : 0;
 }
 

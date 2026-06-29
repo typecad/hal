@@ -120,6 +120,9 @@ export interface ScrollConfig {
   /** default true: trust the declared tiers (deterministic). When false, runtime
    *  probes may refine the input smoothing level from observed sample quality. */
   overrideProbes?: boolean;
+  /** Emit per-frame scroll/canvas telemetry over Serial (UI_SCROLL_DEBUG). Off by
+   *  default — enable temporarily to diagnose scroll/canvas draw skips on-device. */
+  debug?: boolean;
 }
 
 /** Fully-resolved scroll config — every field populated, ready for emit. */
@@ -131,6 +134,7 @@ export interface ResolvedScrollConfig {
   edgeSnapPx: number;
   inputSmoothing: number;
   overrideProbes: boolean;
+  debug: boolean;
 }
 
 /** Touch libraries treated as resistive (noisy, low-sample-rate) panels. */
@@ -168,6 +172,7 @@ export function resolveScrollConfig(display: {
     edgeSnapPx: s.edgeSnapPx ?? 12,
     inputSmoothing: s.inputSmoothing ?? 0.3,
     overrideProbes: s.overrideProbes ?? true,
+    debug: s.debug ?? false,
   };
 }
 

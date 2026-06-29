@@ -54,6 +54,38 @@ describe("UI end-to-end (hello world)", () => {
   });
 });
 
+describe("node-table count covers every kind (countNodes regression)", () => {
+  // Regression: countNodes used a kind-regex that omitted NODE_CANVAS (and would
+  // miss any future kind), so __ui_node_count undercounted and the last node(s)
+  // in the table were never drawn at runtime. The count must equal the number of
+  // node-table entries regardless of kind.
+  const out = transpileUI(
+    [
+      `<screen>`,
+      `  <canvas id="cv" width="20" height="20"></canvas>`,
+      `  <text id="t">x</text>`,
+      `</screen>`,
+    ].join("\n"),
+    ``,
+    { colorFormat: "rgb565", storage: "flash", viewport: { width: 60, height: 80 } },
+  );
+
+  it("emits NODE_CANVAS (a kind the old countNodes regex missed)", () => {
+    expect(out.nodeTable).toContain("NODE_CANVAS");
+  });
+
+  it("counts every node-table entry, including the canvas node", () => {
+    // screen (FILL) + canvas (CANVAS) + text (TEXT) = 3 nodes.
+    const entries = out.nodeTable.match(/\{\s*\.box=/g) ?? [];
+    expect(entries).toHaveLength(3);
+    // The kind-regex approach would count only 2 (miss NODE_CANVAS); assert the
+    // robust entry-count matches the per-kind total including canvas.
+    const kinds = out.nodeTable.match(/NODE_(FILL|CANVAS|TEXT)/g) ?? [];
+    expect(kinds).toHaveLength(3);
+    expect(entries.length).toBe(kinds.length);
+  });
+});
+
 import type { BindingSpec } from "../../../packages/cuttlefish/src/ir/transformers/ui-reactive";
 
 describe("text-binding emission (ui.bind → void textFn)", () => {

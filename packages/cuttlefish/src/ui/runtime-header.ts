@@ -228,7 +228,7 @@ static uint8_t __ui_touch_state = 0;
 static int8_t __ui_touch_node = -1;
 // Unified scroll gesture: one owning scroll container per gesture, one baseline.
 // overscrollPx/settling live on the node; only the settle-animation state is here.
-static int8_t __ui_scroll_node = -1;             // owning scroll container for the gesture
+static int16_t __ui_scroll_node = -1;            // owning scroll container (int16: node index can exceed 127)
 static uint32_t __ui_settle_start_ms = 0;        // when the active settle animation began
 static int16_t __ui_settle_from_overscroll = 0;  // settle start value (bounce-back)
 static int16_t __ui_settle_from_scrollY = 0;     // settle start value (edge snap; sign: +toward 0, -toward max)
@@ -338,6 +338,11 @@ static inline void ui_navigate(uint8_t screenIdx) {
   __ui_touch_node = -1;
   __ui_touch_state = 0;
   __ui_kb_visible = 0;
+  // Free every persistent canvas so the new screen allocates into a clean,
+  // unfragmented heap. Without this, the previous screen's canvas buffer stays
+  // resident and fragments the heap, so the new screen's buffer can't get a
+  // contiguous block (the "works first, then blanks until reset" symptom).
+  ui_release_canvas_state();
   // Clear the entire display so old screen content doesn't show.
   display_fillScreen(0x0000);
   // Mark all nodes dirty so the new screen fully redraws.
@@ -393,9 +398,25 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
                                          int16_t drawW, int16_t drawH);
 
 static CuttlefishDisplayTarget* __ui_gfx = display_defaultTarget();
-// Reusable per-container viewport canvas (Mode B shift-and-repair). One slot:
-// only the active scroll owner repaints via the canvas at a time.
-static CuttlefishCanvas16* __ui_container_canvas = nullptr;
+// Persistent canvas slots, all freed on screen change (ui_navigate) so each
+// screen starts with a clean heap. Without this, the first screen's canvas
+// buffer stays resident and fragments the heap, so a later screen's buffer
+// can't get a contiguous block — manifesting as that element blanking until a
+// hard reset. File-scoped (not function-static) so ui_release_canvas_state can
+// reach them.
+static CuttlefishCanvas16* __ui_container_canvas = nullptr;  // Mode B shift-and-repair
+static CuttlefishCanvas16* __ui_list_canvas = nullptr;       // virtualized <list> viewport
+static CuttlefishCanvas16* __ui_node_canvas = nullptr;       // <canvas> element offscreen
+static CuttlefishCanvas16* __ui_repair_canvas = nullptr;     // buffered-paint / exposed-strip
+
+// Release every persistent canvas so the next screen allocates into a clean
+// heap. Called from ui_navigate. Safe with null pointers.
+static inline void ui_release_canvas_state() {
+  display_deleteCanvas(__ui_container_canvas); __ui_container_canvas = nullptr;
+  display_deleteCanvas(__ui_list_canvas);      __ui_list_canvas = nullptr;
+  display_deleteCanvas(__ui_node_canvas);      __ui_node_canvas = nullptr;
+  display_deleteCanvas(__ui_repair_canvas);    __ui_repair_canvas = nullptr;
+}
 
 // Lazily allocate/reuse a viewport-sized canvas for a scroll container. Resizes
 // when the container's box changes; returns null if allocation fails (caller
@@ -461,9 +482,8 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
   if (exposedH) *exposedH = shift;
 }
 
-// Short-lived repair canvas for parent-seeded background repaints (not scroll
-// related — distinct from the scroll container canvas). Lazily reused/resized.
-static CuttlefishCanvas16* __ui_repair_canvas = nullptr;
+// Repair canvas: parent-seeded background repaints + exposed-strip redraws.
+// Lazily reused/resized; released on navigation (see __ui_repair_canvas decl).
 static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return nullptr;
   if (!__ui_repair_canvas ||
@@ -568,7 +588,7 @@ static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
 // 1:1 in bounds; rubber-band at edges; bounce-back/snap on release. No fling.
 // On constrained render tiers (no elastic), overscroll is hard-clamped away.
 
-static inline int16_t ui_scroll_max(int8_t node) {
+static inline int16_t ui_scroll_max(int16_t node) {
   if (node < 0) return 0;
   int16_t m = __ui_nodes[node].contentHeight - __ui_nodes[node].box.h;
   return m < 0 ? 0 : m;
@@ -588,7 +608,7 @@ static inline int16_t ui_scroll_overscroll_for(int16_t d) {
 // Apply a smoothed drag delta to the owning scroll node. Returns 1 if the view
 // changed (needs redraw). Sets overscrollPx for rubber-band excursions; scrollY
 // itself never leaves [0, maxScroll] so the committed position stays valid.
-static inline uint8_t ui_apply_scroll_delta(int8_t node, int16_t dy) {
+static inline uint8_t ui_apply_scroll_delta(int16_t node, int16_t dy) {
   if (node < 0 || dy == 0) return 0;
   int16_t sy = __ui_nodes[node].scrollY;
   int16_t maxS = ui_scroll_max(node);
@@ -628,7 +648,7 @@ static inline uint8_t ui_apply_scroll_delta(int8_t node, int16_t dy) {
 
 // On release: arm a bounded settle animation — bounce overscroll back to 0, or
 // edge-snap scrollY within edgeSnapPx. The animation runs in ui_tick.
-static inline uint8_t ui_scroll_release(int8_t node) {
+static inline uint8_t ui_scroll_release(int16_t node) {
   if (node < 0) return 0;
   uint8_t changed = 0;
   if (__ui_nodes[node].overscrollPx != 0) {
@@ -1003,10 +1023,10 @@ static inline void ui_mark_scroll_view_dirty(uint8_t scrollNode) {
   ui_mark_scroll_view_overlaps_dirty(scrollNode);
 }
 
-static inline int8_t ui_scroll_ancestor_for_node(uint8_t nodeIdx) {
+static inline int16_t ui_scroll_ancestor_for_node(uint8_t nodeIdx) {
   uint8_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
-    if (__ui_nodes[p].scrollable) return (int8_t)p;
+    if (__ui_nodes[p].scrollable) return (int16_t)p;
     p = __ui_nodes[p].parent;
   }
   return -1;
@@ -1442,7 +1462,7 @@ static inline void ui_draw_node_decoration_clipped(uint8_t nodeIdx, int16_t draw
 
 static inline void ui_clear_current_node_paint(uint8_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
-  int8_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
+  int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
   const char* displayText = __ui_nodes[nodeIdx].hasTextBinding
     ? __ui_nodes[nodeIdx].textBuffer
     : __ui_nodes[nodeIdx].text;
@@ -1498,7 +1518,7 @@ static inline void ui_clear_subtree_current_paint(uint8_t nodeIdx) {
   UIRect r;
   if (!ui_subtree_current_paint_rect(nodeIdx, &r)) return;
   ui_display_use_default_target();
-  int8_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
+  int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
   if (scrollParent >= 0) {
     UIRect clip = {
       __ui_nodes[(uint8_t)scrollParent].box.x,
@@ -1815,7 +1835,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       if (bestScroll < 0 || ui_node_draws_before((uint8_t)bestScroll, i)) bestScroll = i;
     }
   }
-  __ui_scroll_node = (int8_t)bestScroll;
+  __ui_scroll_node = bestScroll;
 #else
   (void)tx; (void)ty;
 #endif
@@ -1978,7 +1998,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
           ui_apply_scroll_delta(__ui_scroll_node, dy);
           __ui_drag_start_y = ty;
 #if UI_SCROLL_DEBUG
-          Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\n",
+          Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\\n",
             dy, __ui_nodes[(uint8_t)__ui_scroll_node].scrollY,
             __ui_nodes[(uint8_t)__ui_scroll_node].overscrollPx,
             (int)__ui_nodes[(uint8_t)__ui_scroll_node].virtualized);
@@ -2986,7 +3006,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   // delta shifts existing canvas pixels by the delta and repaints only the
   // newly-exposed strip; a full invalidation (or no canvas) redraws the subtree.
   // One container per frame — the active scroll owner repaints via its canvas.
-  int8_t bufferedScrollNode = -1;
+  int16_t bufferedScrollNode = -1;  // int16: node index can exceed 127
   int16_t bufferedScrollVX = 0;  // viewport origin X for coord translation
   int16_t bufferedScrollVY = 0;  // viewport origin Y
   CuttlefishCanvas16* bufferedScrollCanvas = nullptr;
@@ -3011,7 +3031,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     bufferedScrollCanvas = nullptr;  // Mode C: direct partial, no canvas
 #endif
     if (bufferedScrollCanvas) {
-      bufferedScrollNode = (int8_t)s;
+      bufferedScrollNode = (int16_t)s;
       bufferedScrollVX = vox;
       bufferedScrollVY = voy;
 
@@ -3556,8 +3576,14 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t __ui_ch = __ui_nodes[i].canvasH;
           if (__ui_cw > 0 && __ui_ch > 0) {
             // Cache a canvas sized to the buffer (reused across frames, like __ui_list_canvas).
-            static CuttlefishCanvas16* __ui_node_canvas = nullptr;
-            if (!__ui_node_canvas || display_canvasWidth(__ui_node_canvas) != __ui_cw || display_canvasHeight(__ui_node_canvas) != __ui_ch) {
+            // A canvas can construct but fail its internal pixel-buffer malloc (returns a
+            // non-null canvas with a null buffer). That zombie must NOT be cached: treat a
+            // null buffer as "no canvas" and retry the allocation every frame until it
+            // succeeds, so a transient malloc failure self-heals instead of blanking the
+            // element permanently (the original symptom: stuck until hard reset).
+            // __ui_node_canvas is file-scoped so ui_release_canvas_state() can free it.
+            if (!__ui_node_canvas || !display_canvasBuffer(__ui_node_canvas) ||
+                display_canvasWidth(__ui_node_canvas) != __ui_cw || display_canvasHeight(__ui_node_canvas) != __ui_ch) {
               display_deleteCanvas(__ui_node_canvas);
               __ui_node_canvas = display_createCanvas(__ui_cw, __ui_ch);
             }
@@ -3588,13 +3614,18 @@ static inline void ui_tick(uint16_t deltaMs) {
         int16_t listContentH = __ui_nodes[i].contentHeight;
         uint16_t clearCol = __ui_nodes[i].clearColor;
         // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
-        static CuttlefishCanvas16* __ui_list_canvas = nullptr;
-        if (!__ui_list_canvas || display_canvasWidth(__ui_list_canvas) != bw || display_canvasHeight(__ui_list_canvas) != bh) {
+        // Treat a null buffer (failed internal malloc) as "no canvas" and retry —
+        // see __ui_node_canvas for the zombie-caching rationale.
+        // __ui_list_canvas is file-scoped so ui_release_canvas_state() can free it.
+        if (!__ui_list_canvas || !display_canvasBuffer(__ui_list_canvas) ||
+            display_canvasWidth(__ui_list_canvas) != bw || display_canvasHeight(__ui_list_canvas) != bh) {
           display_deleteCanvas(__ui_list_canvas);
           __ui_list_canvas = display_createCanvas(bw, bh);
         }
         CuttlefishCanvas16* lc = __ui_list_canvas;
-        if (!lc || !display_canvasBuffer(lc)) break;
+        if (!lc || !display_canvasBuffer(lc)) {
+          break;
+        }
         display_canvasFillScreen(lc, clearCol);
         // Compute visible range.
         uint16_t first = listScrollY / ih;

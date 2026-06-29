@@ -232,4 +232,33 @@ describe("scroll physics (preview)", () => {
       runtime.stop();
     }
   });
+
+  it("acquires the gesture for a scroll container at a node index >= 128 (int8 overflow regression)", () => {
+    // Regression: __ui_scroll_node was int8_t, so a node index of 130 wrapped
+    // to -126 and the drag never armed. The scroll owner must be stored in a
+    // type wide enough for any node index (the demo has 144 nodes).
+    // Build a dense node array 0..130 so subtreeEnd walks are safe.
+    const nodes = [];
+    nodes.push(makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 131, box: { x: 0, y: 0, w: 100, h: 120 } }));
+    for (let i = 1; i < 130; i++) {
+      nodes.push(makeNode({ index: i, tag: "view", kind: "fill", box: { x: 0, y: 0, w: 1, h: 1 }, parentIndex: 0, subtreeEnd: i + 1 }));
+    }
+    // The scroll container at index 130 (>= 128), with overflowing content.
+    nodes.push(makeNode({ index: 130, tag: "view", kind: "fill", box: { x: 0, y: 10, w: 100, h: 100 }, hasBg: true, parentIndex: 0, scrollable: true, contentHeight: 200, subtreeEnd: 131 }));
+    const runtime: any = new PreviewUIRuntime({
+      projectRoot: "", entryFile: "", htmlFile: "", uiTreeNames: ["screen"],
+      program: { width: 100, height: 120, colorFormat: "rgb565", nodes, transitions: [] },
+      font: new Uint8Array(0), bindings: [], listBindings: [], callbacks: [], initialAssignments: [], intervals: [], pinControls: [], diagnostics: [],
+    } as any);
+    runtime.start();
+    try {
+      const node = (runtime as any).nodes[130];
+      expect(node).toBeDefined();
+      runtime.pointerDown(10, 50);
+      runtime.pointerMove(10, 30); // drag up 20px → scrollY = 20 (1:1)
+      expect(node.scrollY).toBe(20); // the int8 regression would leave this at 0
+    } finally {
+      runtime.stop();
+    }
+  });
 });
