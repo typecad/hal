@@ -23,6 +23,7 @@ import type {
   PreviewListBindingSpec,
   PreviewPinControlSpec,
   PreviewCanvasBindingSpec,
+  PreviewModuleVarSpec,
   PreviewSnapshot,
 } from "./types.js";
 
@@ -172,24 +173,36 @@ function collectHrefCallbacks(
 
   const callbacks: PreviewCallbackSpec[] = [];
 
-  const visit = (node: StyledNode) => {
-    if (node.id && node.href) {
+  // Walk in document order with a running index, matching how lowerUIToModel
+  // assigns node indices (flatten(): index = cursor.i++ for every node, depth-
+  // first). The cursor advances by each subtree's size, so a child's index is
+  // always (parent + 1 + sum of earlier siblings' subtree sizes). This lets us
+  // resolve id-less <a href> links the same way the device does
+  // (ui-element-auto-wire.ts wires any node with href, id or not).
+  const visit = (node: StyledNode, nodeIndex: number): number => {
+    if (node.href) {
       const target = node.href.startsWith("#") ? node.href.slice(1) : node.href;
       const targetScreen = screenIds.get(target);
-      const nodeIndex = nodeIndexById(programNodes, node.id);
-      if (targetScreen !== undefined && nodeIndex !== undefined) {
+      if (targetScreen !== undefined && nodeIndex < programNodes.length) {
         callbacks.push({
-          nodeId: node.id,
+          nodeId: node.id ?? `__ui_link${nodeIndex}_nav`,
           nodeIndex,
           kind: "click",
           body: `ui.navigate(${targetScreen});`,
         });
       }
     }
-    for (const child of node.children) visit(child);
+    let nextIndex = nodeIndex + 1;
+    for (const child of node.children) nextIndex = visit(child, nextIndex);
+    return nextIndex;
   };
 
-  for (const screen of screens) visit(screen);
+  // Each screen is a contiguous subtree in the flattened node table; find where
+  // screen i starts (first node with that screenId) and walk its styled tree.
+  for (let i = 0; i < screens.length; i++) {
+    const startIndex = programNodes.findIndex((n) => (n as { screenId?: number }).screenId === i);
+    if (startIndex >= 0) visit(screens[i], startIndex);
+  }
   return callbacks;
 }
 
@@ -205,6 +218,7 @@ function extractAuthorSpecs(
   intervals: PreviewIntervalSpec[];
   pinControls: PreviewPinControlSpec[];
   canvasBindings: PreviewCanvasBindingSpec[];
+  moduleVars: PreviewModuleVarSpec[];
   diagnostics: PreviewDiagnostic[];
 } {
   const diagnostics: PreviewDiagnostic[] = [];
@@ -216,6 +230,7 @@ function extractAuthorSpecs(
   const intervals: PreviewIntervalSpec[] = [];
   const pinControls: PreviewPinControlSpec[] = [];
   const canvasBindings: PreviewCanvasBindingSpec[] = [];
+  const moduleVars: PreviewModuleVarSpec[] = [];
 
   const resolveNode = (treeName: string, elemId: string): number | undefined => {
     if (!importedTrees.has(treeName)) return undefined;
@@ -227,6 +242,21 @@ function extractAuthorSpecs(
   };
 
   for (const statement of source.statements) {
+    // Top-level `let`/`const`/`var` declarations become module-scoped bindings
+    // the device hoists to C++ globals. Capture each declared name + initializer
+    // so callback bodies (setInterval, onClick, ui.bind, ...) that reference them
+    // resolve at preview runtime instead of throwing ReferenceError.
+    if (ts.isVariableStatement(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name)) {
+          moduleVars.push({
+            name: decl.name.text,
+            initializer: decl.initializer ? decl.initializer.getText(source) : undefined,
+          });
+        }
+      }
+      continue;
+    }
     if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)) {
       const expr = statement.expression;
       if (
@@ -387,7 +417,7 @@ function extractAuthorSpecs(
     }
   }
 
-  return { bindings, listBindings, callbacks, initialAssignments, intervals, pinControls, canvasBindings, diagnostics };
+  return { bindings, listBindings, callbacks, initialAssignments, intervals, pinControls, canvasBindings, moduleVars, diagnostics };
 }
 
 export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions): Promise<PreviewSnapshot> {
@@ -465,6 +495,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     intervals: specs.intervals,
     pinControls: specs.pinControls,
     canvasBindings: specs.canvasBindings,
+    moduleVars: specs.moduleVars,
     diagnostics: [...diagnostics, ...specs.diagnostics],
   };
 }

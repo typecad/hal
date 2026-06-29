@@ -183,6 +183,9 @@ export class PreviewUIRuntime {
   private readonly canvasBindings: PreviewCanvasBindingSpec[];
   private readonly intervals: PreviewIntervalSpec[];
   private readonly initialAssignments: PreviewInitialAssignment[];
+  /** Module-scoped `let`/`const`/`var` bindings, seeded once and shared (mutably)
+   * across every callback body — mirrors the device hoisting them to globals. */
+  private readonly moduleScope: Record<string, unknown> = {};
   private readonly onFrame?: (rgba: Uint8ClampedArray) => void;
   private readonly onDiagnostics?: (message: string) => void;
   private readonly screenCount: number;
@@ -260,6 +263,7 @@ export class PreviewUIRuntime {
     this.gfx.begin();
     this.gfx.setRotation(this.snapshot.program.display?.rotation ?? 1);
     this.gfx.fillScreen(0x0000);
+    this.seedModuleScope();
     this.applyInitialAssignments();
     this.uiInit();
     this.tick(16);
@@ -371,6 +375,24 @@ export class PreviewUIRuntime {
       this.nodes[assignment.nodeIndex].value = Number(value) || 0;
       this.markDirty(assignment.nodeIndex);
     }
+  }
+
+  /** Seed module-scoped variables from their initializers, evaluated once. These
+   * live for the lifetime of the runtime and are shared mutably with callback
+   * bodies via runBody/evaluateExpression (see moduleVarNames()). */
+  private seedModuleScope(): void {
+    for (const v of this.snapshot.moduleVars ?? []) {
+      if (!/^[$A-Z_a-z][$\w]*$/.test(v.name)) continue;
+      this.moduleScope[v.name] = v.initializer !== undefined
+        ? this.evaluateExpression(v.initializer)
+        : undefined;
+    }
+  }
+
+  private moduleVarNames(): string[] {
+    return (this.snapshot.moduleVars ?? [])
+      .map((v) => v.name)
+      .filter((name) => /^[$A-Z_a-z][$\w]*$/.test(name));
   }
 
   private uiInit(): void {
@@ -538,6 +560,13 @@ export class PreviewUIRuntime {
   private advanceAnimations(deltaMs: number): void {
     for (const animation of this.animations) {
       if (!animation.active) continue;
+      // Mirrors the C++ engine (runtime-header.ts ~line 2842): only advance
+      // animations whose node is on the active screen. Otherwise advancing a
+      // cross-screen node mutates its geometry and clearCurrentNodePaint/markDirty
+      // repaint its parent's background into the *active* screen's framebuffer
+      // (e.g. the transform-screen dots bleeding onto home).
+      const animNode = this.nodes[animation.node];
+      if (animNode && !this.isActiveNode(animNode)) continue;
       animation.elapsed += deltaMs;
       let elapsedNoDelay = animation.elapsed;
       if (elapsedNoDelay < animation.delayMs) continue;
@@ -1665,12 +1694,21 @@ export class PreviewUIRuntime {
       try { return resolveColor(c.replace(/^['"]|['"]$/g, ""), "rgb565"); } catch { return 0xffff; }
     };
     const n = (i: number, args: string[]) => parseInt(args[i], 10) || 0;
-    // Resolve ctx.width / ctx.height to the canvas buffer dims.
+    // Resolve each numeric argument: ctx.width/height → canvas dims, integer
+    // literals parse directly, anything else (e.g. screen.gauge.value, Math.*,
+    // module vars) is evaluated against the screen proxy / module scope. This
+    // mirrors the device, which emits these as real C++ expressions evaluated at
+    // draw time (`__ui_nodes[i].value`), so the canvas tracks live state.
     const num = (i: number, args: string[]): number => {
       const t = args[i].trim();
       if (t === "ctx.width" || t === "ctx?.width") return cw;
       if (t === "ctx.height" || t === "ctx?.height") return ch;
-      return parseInt(t, 10) || 0;
+      const parsed = parseInt(t, 10);
+      if (Number.isNaN(parsed)) {
+        const value = this.evaluateExpression(t);
+        return Math.trunc(Number(value)) || 0;
+      }
+      return parsed || 0;
     };
     const g = this.gfx;
     const re = /ctx\.(fillRect|rect|fillCircle|circle|line|hline|vline|fillRoundRect|roundRect|drawPixel|fillScreen|text)\(([^)]*)\)/g;
@@ -2429,14 +2467,25 @@ export class PreviewUIRuntime {
   }
 
   private normalizeScript(text: string): string {
-    return text
+    let out = text
       .replace(/\(([$A-Z_a-z][$\w]*)\s+as\s+any\)/g, "$1")
       .replace(/\b([$A-Z_a-z][$\w]*)\s+as\s+any\b/g, "$1")
       .replace(/\b([$A-Z_a-z][$\w]*)\s+as\s+const\b/g, "$1");
+    // Rewrite bare references to module-scoped variables into moduleScope.NAME
+    // so reads/writes hit the shared mutable binding (mirrors the device hoisting
+    // them to globals). Skip property accesses (foo.bar) so `screen.gauge.value`
+    // etc. are untouched. Identifiers are the exact, finite set of module vars.
+    const names = this.moduleVarNames();
+    if (names.length) {
+      const alt = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+      const re = new RegExp(`(?<![\\w.$])\\b(${alt})\\b(?!\\s*:)`, "g");
+      out = out.replace(re, "moduleScope.$1");
+    }
+    return out;
   }
 
   private scriptValues(aliases: string[], locals: Record<string, unknown> = {}): unknown[] {
-    return [this.screen, this.createUiFacade(), ...aliases.map(() => this.screen), ...Object.values(locals)];
+    return [this.screen, this.createUiFacade(), this.moduleScope, ...aliases.map(() => this.screen), ...Object.values(locals)];
   }
 
   private listLocal(param: string | undefined, row: number): Record<string, unknown> {
@@ -2450,7 +2499,7 @@ export class PreviewUIRuntime {
     const localValues = Object.fromEntries(localNames.map((name) => [name, locals[name]]));
     const normalized = this.normalizeScript(expression);
     try {
-      return Function("screen", "ui", ...aliases, ...localNames, `"use strict"; return (${normalized});`)(...this.scriptValues(aliases, localValues));
+      return Function("screen", "ui", "moduleScope", ...aliases, ...localNames, `"use strict"; return (${normalized});`)(...this.scriptValues(aliases, localValues));
     } catch (error) {
       this.onDiagnostics?.(`Preview expression failed: ${expression} (${error instanceof Error ? error.message : String(error)})`);
       return undefined;
@@ -2464,7 +2513,7 @@ export class PreviewUIRuntime {
     const localValues = Object.fromEntries(localNames.map((name) => [name, locals[name]]));
     const normalized = this.normalizeScript(body);
     try {
-      Function("screen", "ui", ...aliases, ...localNames, `"use strict"; ${normalized}`)(...this.scriptValues(aliases, localValues));
+      Function("screen", "ui", "moduleScope", ...aliases, ...localNames, `"use strict"; ${normalized}`)(...this.scriptValues(aliases, localValues));
     } catch (error) {
       this.onDiagnostics?.(`Preview callback failed: ${body} (${error instanceof Error ? error.message : String(error)})`);
     }
