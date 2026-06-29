@@ -148,3 +148,41 @@
     </main>
   </body>
 </screen>
+
+<!-- ── Flexbox ──────────────────────────────────────────────────────────── -->
+<screen id="flex">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">‹ Back</a>
+      <h2 class="screenTitle">Flexbox</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="flexJustify">
+        <h3 class="demoLabel">justify-content</h3>
+        <div class="flexRow flexStart"><span class="chip">A</span><span class="chip">B</span></div>
+        <div class="flexRow flexCenter"><span class="chip">A</span><span class="chip">B</span></div>
+        <div class="flexRow flexBetween"><span class="chip">A</span><span class="chip">B</span></div>
+      </section>
+      <section id="flexAlign">
+        <h3 class="demoLabel">align-items / gap</h3>
+        <div class="flexRow alignRow"><span class="chipTall">A</span><span class="chipTall">B</span><span class="chipTall">C</span></div>
+      </section>
+      <section id="flexGrow">
+        <h3 class="demoLabel">flex-grow / flex-basis</h3>
+        <div class="flexRow growRow">
+          <span class="chip grow1">1</span>
+          <span class="chip grow2">2</span>
+          <span class="chip grow0">0</span>
+        </div>
+      </section>
+      <section id="flexOrder">
+        <h3 class="demoLabel">order + flex-wrap</h3>
+        <div class="flexRow wrapRow">
+          <span class="chip ord3">3→1</span>
+          <span class="chip ord1">1→2</span>
+          <span class="chip ord2">2→3</span>
+        </div>
+      </section>
+    </main>
+  </body>
+</screen>

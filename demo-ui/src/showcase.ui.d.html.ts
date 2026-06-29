@@ -51,5 +51,10 @@ export interface ScreenTree {
   opaqFull: ViewElement;
   opaqHalf: ViewElement;
   opaqFaint: ViewElement;
+  flex: ViewElement;
+  flexJustify: ViewElement;
+  flexAlign: ViewElement;
+  flexGrow: ViewElement;
+  flexOrder: ViewElement;
 }
 export const screen: ScreenTree;
