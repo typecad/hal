@@ -154,10 +154,15 @@ screen {
   font-weight: bold;
 }
 
-/* Shared section caption (used across showcase screens). */
+/* Shared section caption (used across showcase screens). Non-bold: the UA
+   stylesheet makes h3 bold, but the runtime bumps textSize for bold text
+   (roughly doubling per-char advance), which would wrap multi-word captions
+   like "width / height / min / max" to 3 lines and overlap the next element.
+   Normal weight keeps them on one line. */
 .demoLabel {
   color: var(--muted-foreground);
   font-size: 14px;
+  font-weight: normal;
 }
 .demoCap {
   color: var(--muted-foreground);
