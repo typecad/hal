@@ -226,8 +226,7 @@ screen {
 .demoH1 { color: var(--primary); font-family: "ColibriDemo"; font-size: 30px; }
 /* H2–H6 are non-bold so each lands in its own text-size bucket: the runtime
    bumps textSize for bold text AND only has 4 buckets, so keeping every
-   heading bold would collapse several into one rendered size. Headings stay
-   on a single line via the UA stylesheet (h1-h6 { white-space: nowrap }). */
+   heading bold would collapse several into one rendered size. */
 .demoH2 { color: var(--accent); font-family: "ColibriDemo"; font-size: 24px; font-weight: normal; }
 .demoH3 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: normal; }
 .demoH4 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 14px; }

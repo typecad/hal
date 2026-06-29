@@ -7,16 +7,19 @@ import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
 // on, so a regression in the UA rules surfaces immediately.
 
 describe("UA stylesheet defaults", () => {
-  it("applies white-space: nowrap to every heading (h1-h6) so headings never wrap", () => {
-    // Regression: heading text-nodes shrink-wrap their box to the measured text
-    // width, so a heading whose box lands near its text width wrapped onto two
-    // lines (e.g. italic "H6 heading"). Headings are single-line by nature, so
-    // the UA stylesheet forces nowrap on h1-h6. User CSS still overrides it.
+  it("does NOT force white-space:nowrap on headings (long headings must be able to wrap)", () => {
+    // Regression guard: an earlier fix added white-space:nowrap to the UA h1-h6
+    // rules to stop a short heading wrapping inside a shrink-wrapped box. That
+    // was the wrong layer — it forced long descriptive headings (e.g.
+    // "width / height / min / max") to overflow their container instead of
+    // wrapping, breaking the container's border. The shrink-wrap case is now
+    // handled by measuring custom-font text at its real glyph advance (so the
+    // box fits the text and there's nothing to wrap). Headings must therefore
+    // wrap by default; a project opts into nowrap per-heading in its own CSS.
     for (const tag of ["h1", "h2", "h3", "h4", "h5", "h6"]) {
       const html = `<screen><${tag} id="h">Heading</${tag}></screen>`;
       const styled = resolveStyles(parseHtml(html), []);
-      const node = styled.children[0];
-      expect(node.style.whiteSpace, `${tag} should be nowrap via UA`).toBe("nowrap");
+      expect(styled.children[0].style.whiteSpace, `${tag} should not be nowrap via UA`).toBeUndefined();
     }
   });
 
