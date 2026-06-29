@@ -496,3 +496,22 @@ describe("canvas runtime", () => {
     expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*ui_draw_canvas_rect/);
   });
 });
+
+describe("text-overflow: clip rendering", () => {
+  const header = emitRuntimeHeader();
+
+  it("declares a ui_truncate_clip helper that trims a span to maxWidth without dots", () => {
+    // text-overflow: clip must cut overflowing text at the box edge (no "...").
+    // The helper trims trailing chars until the prefix fits maxWidth, then NUL-
+    // terminates — mirroring ui_truncate_ellipsis minus the appended dots.
+    expect(header).toMatch(/ui_truncate_clip\s*\(/);
+    expect(header).toMatch(/ui_text_span_width/);
+  });
+
+  it("ui_draw_wrapped_text clips the line when textOverflow==0 and it overflows", () => {
+    // The overflow guard runs first (line.width > maxWidth), then branches:
+    // ellipsis when textOverflow is truthy, clip when it is falsy (!textOverflow).
+    // The clip branch must be reachable so text-overflow: clip actually cuts.
+    expect(header).toMatch(/line\.width[\s\S]*?maxWidth[\s\S]*?if\s*\(textOverflow\)[\s\S]*?ui_truncate_ellipsis[\s\S]*?else[\s\S]*?ui_truncate_clip/);
+  });
+});

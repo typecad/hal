@@ -2526,6 +2526,21 @@ static inline void ui_truncate_ellipsis(char* buf, uint8_t bufSize, uint16_t max
   }
 }
 
+// text-overflow: clip — trim trailing chars until the prefix fits maxWidth,
+// then NUL-terminate. No trailing dots (contrast with ui_truncate_ellipsis).
+static inline void ui_truncate_clip(char* buf, uint8_t bufSize, uint16_t maxWidth,
+                                     uint8_t ts, uint8_t fontFace, int8_t letterSpacing) {
+  if (!buf || bufSize == 0) return;
+  uint8_t len = (uint8_t)strlen(buf);
+  uint8_t prefix = len;
+  while (prefix > 0) {
+    uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
+    if ((int16_t)w <= (int16_t)maxWidth) break;
+    prefix--;
+  }
+  if (prefix < bufSize) buf[prefix] = 0;
+}
+
 static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, uint16_t maxWidth, uint16_t fg, uint16_t bg,
                                         uint8_t ts, uint8_t antialias, uint8_t fontFace, int8_t letterSpacing,
                                         uint8_t lineHeight, uint8_t whiteSpaceMode, uint8_t textAlign, uint8_t underline, uint8_t textOverflow) {
@@ -2540,10 +2555,12 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
     if (textAlign == 1) lineX = x + ((int16_t)maxWidth - (int16_t)line.width) / 2;
     else if (textAlign == 2) lineX = x + (int16_t)maxWidth - (int16_t)line.width;
     ui_copy_text_span(line.start, line.end, lineBuf, UI_TEXT_LINE_BUF);
-    // text-overflow: ellipsis — if this line is wider than maxWidth,
-    // truncate the copied span and append three dots to fit.
-    if (textOverflow && (int16_t)line.width > (int16_t)maxWidth) {
-      ui_truncate_ellipsis(lineBuf, UI_TEXT_LINE_BUF, maxWidth, ts, fontFace, letterSpacing);
+    // text-overflow — only applies when the line is wider than maxWidth.
+    //   textOverflow==1 (ellipsis): trim the span and append "...".
+    //   textOverflow==0 (clip):     trim the span to the edge, no dots.
+    if ((int16_t)line.width > (int16_t)maxWidth) {
+      if (textOverflow) ui_truncate_ellipsis(lineBuf, UI_TEXT_LINE_BUF, maxWidth, ts, fontFace, letterSpacing);
+      else              ui_truncate_clip(lineBuf, UI_TEXT_LINE_BUF, maxWidth, ts, fontFace, letterSpacing);
     }
     ui_draw_text(lineBuf, lineX, lineY, fg, bg, ts, antialias, fontFace, letterSpacing);
     // text-decoration (underline=bit0, strikethrough=bit1)
