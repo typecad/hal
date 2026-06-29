@@ -411,6 +411,16 @@ screen {
 #imgLogo { background: var(--muted); border: 1px solid var(--border); }
 #demoCanvas { background: #0a0a1a; border: 1px solid var(--border); }
 
+/* ── Lists screen ── */
+#demoList {
+  color: var(--foreground);
+  width: 280px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  margin: 8px 0;
+}
+
 /* ── Cross-screen nav links (UA underlines <a>) ── */
 a {
   color: var(--accent);

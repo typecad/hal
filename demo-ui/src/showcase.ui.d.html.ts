@@ -93,5 +93,7 @@ export interface ScreenTree {
   imgLogo: TextElement;
   canvasDemo: ViewElement;
   demoCanvas: CanvasElement;
+  lists: ViewElement;
+  demoList: TextElement;
 }
 export const screen: ScreenTree;
