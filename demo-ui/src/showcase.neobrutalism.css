@@ -1,0 +1,198 @@
+/* ---------------------------------------------------------------------------
+   showcase.neobrutalism.css — NeoBrutalism theme for the capability showcase.
+
+   Because display.themeCss replaces the sibling .ui.css entirely, this single
+   file holds everything: @font-face, the :root/.dark token palette, @keyframes,
+   and every element rule. Select the dark palette via themeClass:'dark' in
+   cuttlefish.config.ts.
+   ----------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRI.TTF");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRIB.TTF");
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* ── Light theme (default :root) ── */
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #ff3333;
+  --primary-foreground: #ffffff;
+  --secondary: #ffff00;
+  --secondary-foreground: #000000;
+  --muted: #f0f0f0;
+  --muted-foreground: #333333;
+  --accent: #0066ff;
+  --accent-foreground: #ffffff;
+  --destructive: #000000;
+  --destructive-foreground: #ffffff;
+  --border: #000000;
+  --input: #000000;
+  --ring: #ff3333;
+  --chart-1: #ff3333;
+  --chart-2: #ffff00;
+  --chart-3: #0066ff;
+  --chart-4: #00cc00;
+  --chart-5: #cc00cc;
+  --sidebar: #f0f0f0;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #ff3333;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #0066ff;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #000000;
+  --sidebar-ring: #ff3333;
+  --radius: 0px;
+  /* Hard offset shadow — NeoBrutalism signature. No blur, full opacity. */
+  --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1.00);
+}
+
+/* ── Dark theme (.dark) — select via themeClass: 'dark' ── */
+.dark {
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #333333;
+  --card-foreground: #ffffff;
+  --popover: #333333;
+  --popover-foreground: #ffffff;
+  --primary: #ff6666;
+  --primary-foreground: #000000;
+  --secondary: #ffff33;
+  --secondary-foreground: #000000;
+  --muted: #1a1a1a;
+  --muted-foreground: #cccccc;
+  --accent: #3399ff;
+  --accent-foreground: #000000;
+  --destructive: #ffffff;
+  --destructive-foreground: #000000;
+  --border: #ffffff;
+  --input: #ffffff;
+  --ring: #ff6666;
+  --chart-1: #ff6666;
+  --chart-2: #ffff33;
+  --chart-3: #3399ff;
+  --chart-4: #33cc33;
+  --chart-5: #cc33cc;
+  --sidebar: #000000;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ff6666;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #3399ff;
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: #ffffff;
+  --sidebar-ring: #ff6666;
+  --radius: 0px;
+  --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1.00);
+}
+
+/* ── Shared screen scaffolding ── */
+screen {
+  background: var(--background);
+  gap: 8px;
+  padding: 10px;
+}
+
+/* Scrollable main column (UA gives body display:flex column flex:1). */
+.scrollBody {
+  overflow: scroll;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Shared content-screen header: Back link + title. */
+.screenHeader {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 8px 10px;
+  box-shadow: var(--shadow);
+}
+.backLink {
+  font-size: 16px;
+}
+.screenTitle {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 20px;
+  font-weight: bold;
+}
+
+/* Shared section caption (used across showcase screens). */
+.demoLabel {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.demoCap {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* ── Home ── */
+#homeHeader {
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+#homeTitle {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+}
+#homeSubtitle {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  text-align: center;
+}
+#homeNav {
+  align-items: stretch;
+  gap: 6px;
+  width: 280px;
+}
+#homeNav a {
+  color: var(--accent);
+  font-size: 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  box-shadow: var(--shadow);
+}
+#homeFooter {
+  padding: 2px 0;
+}
+#homeHint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+#homeNativeText {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ── Cross-screen nav links (UA underlines <a>) ── */
+a {
+  color: var(--accent);
+}

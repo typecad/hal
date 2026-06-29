@@ -62,7 +62,7 @@ const config: CuttlefishConfig = {
     backlight: 33,
     spiFrequency: 80000000,
     antialias: true,
-    themeCss: 'C:/typecad/typecode/demo-ui/src/hello.neobrutalism.css',
+    themeCss: 'C:/typecad/typecode/demo-ui/src/showcase.neobrutalism.css',
     themeClass: 'dark',
     touch: {
       library: 'XPT2046_Touchscreen',
