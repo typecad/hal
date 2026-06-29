@@ -274,6 +274,7 @@ screen {
 #layerStage { position: relative; width: 220px; height: 70px; background: var(--muted); border: 1px solid var(--border); }
 #layerBack { position: absolute; left: 16px; top: 12px; width: 120px; height: 40px; background: var(--secondary); border: 1px solid var(--border); z-index: 1; justify-content: center; align-items: center; }
 #layerFront { position: absolute; left: 70px; top: 26px; width: 120px; height: 40px; background: var(--chart-3); border: 1px solid var(--foreground); z-index: 2; justify-content: center; align-items: center; }
+#layerCorner { position: absolute; right: 4px; bottom: 4px; width: 70px; height: 22px; background: var(--chart-5); border: 1px solid var(--foreground); z-index: 3; justify-content: center; align-items: center; }
 .layerTag { color: var(--foreground); font-size: 13px; text-align: center; }
 #visStack { gap: 2px; width: 220px; background: var(--border); padding: 1px; }
 #visBefore, #visAfter, #visHiddenAttr, #visDisplayNone, #visCollapsed { width: 220px; height: 24px; justify-content: center; align-items: center; }
@@ -303,6 +304,9 @@ screen {
 .alignRow { align-items: center; gap: 10px; height: 50px; }
 .growRow { align-items: center; gap: 4px; }
 .wrapRow { flex-wrap: wrap; gap: 4px; }
+.shrinkRow { align-content: center; gap: 2px; }
+.shrink1 { flex-shrink: 1; }
+.shrink0 { flex-shrink: 0; }
 .chip { width: 28px; height: 24px; background: var(--chart-3); color: var(--foreground); font-size: 13px; text-align: center; justify-content: center; align-items: center; }
 .chipTall { width: 28px; height: 40px; background: var(--chart-4); color: var(--foreground); font-size: 13px; justify-content: center; align-items: center; }
 .grow1 { flex-grow: 1; }
@@ -355,6 +359,17 @@ screen {
 #dotScale { width: 10px; height: 10px; background: var(--chart-1); transform-origin: left top; animation: growMove 1800ms infinite; }
 #dotOrigin { width: 8px; height: 8px; background: var(--chart-1); transform-origin: center; animation: originScaleCenter 1600ms infinite; }
 #dotRotate { width: 12px; height: 20px; background: var(--chart-5); transform-origin: center; animation: quarterTurn 2000ms infinite; }
+/* Same effect as `animation: pulse 1200ms infinite` but via longhands,
+   exercising animation-name/-duration/-iteration-count/-delay separately. */
+#dotPulse {
+  width: 16px;
+  height: 16px;
+  background: var(--chart-4);
+  animation-name: pulse;
+  animation-duration: 1200ms;
+  animation-iteration-count: infinite;
+  animation-delay: 0ms;
+}
 #transitionBtn {
   background: var(--primary);
   color: var(--primary-foreground);

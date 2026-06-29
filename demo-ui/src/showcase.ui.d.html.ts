@@ -17,10 +17,13 @@ export interface ScreenTree {
   typeFont: ViewElement;
   typeArticle: ViewElement;
   typeAside: ViewElement;
+  typeView: ViewElement;
   box: ViewElement;
   boxSize: ViewElement;
   boxFixed: ViewElement;
   boxMin: ViewElement;
+  boxMax: ViewElement;
+  boxSizing: ViewElement;
   boxPadMargin: ViewElement;
   boxPadded: ViewElement;
   boxMargin: ViewElement;
@@ -28,6 +31,7 @@ export interface ScreenTree {
   boxBordered: ViewElement;
   boxRadius: ViewElement;
   boxPerSide: ViewElement;
+  boxBorderLong: ViewElement;
   boxShadowSec: ViewElement;
   boxShadowed: ViewElement;
   boxOutlined: ViewElement;
@@ -39,6 +43,7 @@ export interface ScreenTree {
   layerStage: ViewElement;
   layerBack: ViewElement;
   layerFront: ViewElement;
+  layerCorner: ViewElement;
   visibilityDemo: ViewElement;
   visStack: ViewElement;
   visBefore: ViewElement;
@@ -62,6 +67,7 @@ export interface ScreenTree {
   dotScale: ViewElement;
   dotOrigin: ViewElement;
   dotRotate: ViewElement;
+  dotPulse: ViewElement;
   transitionDemo: ViewElement;
   transitionBtn: ButtonElement;
   forms: ViewElement;
