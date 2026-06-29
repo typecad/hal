@@ -312,6 +312,60 @@ screen {
 .ord2 { order: 2; }
 .ord3 { order: 3; }
 
+/* ── Transforms screen — keyframes + transform/animation rules ── */
+@keyframes pulse {
+  0%   { background: var(--chart-4); }
+  50%  { background: var(--secondary); }
+  100% { background: var(--chart-4); }
+}
+@keyframes slideXY {
+  0%, 100% { transform: translate(0px, 0px); background: var(--chart-1); }
+  50% { transform: translate(52px, 4px); background: var(--chart-4); }
+}
+@keyframes growMove {
+  0%, 100% { transform: translate(0%, 0px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(250%, 2px) scale(2.8, 1.6); background: var(--chart-5); }
+}
+@keyframes originScale {
+  0%, 100% { transform: translate(4px, 2px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(4px, 2px) scale(2); background: var(--chart-4); }
+}
+@keyframes originScaleCenter {
+  0%, 100% { transform: translate(40px, 2px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(40px, 2px) scale(2); background: var(--chart-4); }
+}
+@keyframes quarterTurn {
+  0%, 24% { transform: translate(38px, 3px) rotate(0deg); background: var(--chart-5); }
+  25%, 49% { transform: translate(38px, 3px) rotate(90deg); background: var(--chart-1); }
+  50%, 74% { transform: translate(38px, 3px) rotate(180deg); background: var(--chart-4); }
+  75%, 100% { transform: translate(38px, 3px) rotate(270deg); background: var(--secondary); }
+}
+
+#transformDemo, #transitionDemo {
+  align-items: center;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.track { width: 88px; height: 28px; background: var(--muted); border: 1px solid var(--border); }
+#dotTranslate { width: 18px; height: 18px; background: var(--chart-1); animation: slideXY 1800ms infinite; }
+#dotScale { width: 10px; height: 10px; background: var(--chart-1); transform-origin: left top; animation: growMove 1800ms infinite; }
+#dotOrigin { width: 8px; height: 8px; background: var(--chart-1); transform-origin: center; animation: originScaleCenter 1600ms infinite; }
+#dotRotate { width: 12px; height: 20px; background: var(--chart-5); transform-origin: center; animation: quarterTurn 2000ms infinite; }
+#transitionBtn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 16px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 6px 12px;
+  transition: background 120ms;
+}
+#transitionBtn:pressed { background: var(--accent); color: var(--accent-foreground); }
+
 /* ── Cross-screen nav links (UA underlines <a>) ── */
 a {
   color: var(--accent);

@@ -56,5 +56,13 @@ export interface ScreenTree {
   flexAlign: ViewElement;
   flexGrow: ViewElement;
   flexOrder: ViewElement;
+  transforms: ViewElement;
+  transformDemo: ViewElement;
+  dotTranslate: ViewElement;
+  dotScale: ViewElement;
+  dotOrigin: ViewElement;
+  dotRotate: ViewElement;
+  transitionDemo: ViewElement;
+  transitionBtn: ButtonElement;
 }
 export const screen: ScreenTree;
