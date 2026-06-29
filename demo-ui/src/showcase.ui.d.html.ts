@@ -17,5 +17,22 @@ export interface ScreenTree {
   typeFont: ViewElement;
   typeArticle: ViewElement;
   typeAside: ViewElement;
+  box: ViewElement;
+  boxSize: ViewElement;
+  boxFixed: ViewElement;
+  boxMin: ViewElement;
+  boxPadMargin: ViewElement;
+  boxPadded: ViewElement;
+  boxMargin: ViewElement;
+  boxBorder: ViewElement;
+  boxBordered: ViewElement;
+  boxRadius: ViewElement;
+  boxPerSide: ViewElement;
+  boxShadowSec: ViewElement;
+  boxShadowed: ViewElement;
+  boxOutlined: ViewElement;
+  boxAspect: ViewElement;
+  boxAspectWide: ViewElement;
+  boxAspectSquare: ViewElement;
 }
 export const screen: ScreenTree;
