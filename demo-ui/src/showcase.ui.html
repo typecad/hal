@@ -111,3 +111,40 @@
     </main>
   </body>
 </screen>
+
+<!-- ── Position & Layers ────────────────────────────────────────────────── -->
+<screen id="layout">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">‹ Back</a>
+      <h2 class="screenTitle">Position &amp; Layers</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="layerDemo">
+        <h3 class="demoLabel">z-index layers</h3>
+        <div id="layerStage">
+          <div id="layerBack"><span class="layerTag">back z1</span></div>
+          <div id="layerFront"><span class="layerTag">front z2</span></div>
+        </div>
+      </section>
+      <section id="visibilityDemo">
+        <h3 class="demoLabel">display:none / hidden / visibility</h3>
+        <div id="visStack">
+          <div id="visBefore"><span class="visText">visible</span></div>
+          <div id="visHiddenAttr" hidden><span class="visText">hidden attr</span></div>
+          <div id="visDisplayNone"><span class="visText">display:none</span></div>
+          <div id="visCollapsed" style="visibility: collapse"><span class="visText">visibility collapse</span></div>
+          <div id="visAfter"><span class="visText">visible</span></div>
+        </div>
+      </section>
+      <section id="opacityDemo">
+        <h3 class="demoLabel">opacity</h3>
+        <div id="opacityRow">
+          <div id="opaqFull" class="opaqChip">1.0</div>
+          <div id="opaqHalf" class="opaqChip" style="opacity: 0.5">0.5</div>
+          <div id="opaqFaint" class="opaqChip" style="opacity: 0.25">0.25</div>
+        </div>
+      </section>
+    </main>
+  </body>
+</screen>

@@ -34,5 +34,22 @@ export interface ScreenTree {
   boxAspect: ViewElement;
   boxAspectWide: ViewElement;
   boxAspectSquare: ViewElement;
+  layout: ViewElement;
+  layerDemo: ViewElement;
+  layerStage: ViewElement;
+  layerBack: ViewElement;
+  layerFront: ViewElement;
+  visibilityDemo: ViewElement;
+  visStack: ViewElement;
+  visBefore: ViewElement;
+  visHiddenAttr: ViewElement;
+  visDisplayNone: ViewElement;
+  visCollapsed: ViewElement;
+  visAfter: ViewElement;
+  opacityDemo: ViewElement;
+  opacityRow: ViewElement;
+  opaqFull: ViewElement;
+  opaqHalf: ViewElement;
+  opaqFaint: ViewElement;
 }
 export const screen: ScreenTree;
