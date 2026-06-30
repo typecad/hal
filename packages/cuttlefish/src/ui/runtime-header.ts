@@ -371,13 +371,14 @@ static inline uint8_t ui_text_next_line(const char** cursor, uint16_t maxWidth, 
 static inline void ui_text_layout_metrics(const char* text, uint16_t maxWidth, uint8_t whiteSpaceMode, uint8_t ts, uint8_t fontFace, int8_t letterSpacing, uint8_t lineHeight, uint16_t* outW, uint16_t* outH);
 static inline uint8_t ui_rects_intersect(int16_t ax, int16_t ay, int16_t aw, int16_t ah, int16_t bx, int16_t by, int16_t bw, int16_t bh);
 static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx);
-static inline uint8_t ui_node_draws_before(uint8_t a, uint8_t b);
+static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b);
 static inline void ui_node_paint_rect(uint16_t nodeIdx, int16_t baseX, int16_t baseY, int16_t drawX, int16_t drawY, uint16_t textW, uint16_t textH, UIRect* out);
 static inline void ui_node_current_paint_rect(uint16_t nodeIdx, UIRect* out);
 static inline uint8_t ui_subtree_current_paint_rect(uint16_t nodeIdx, UIRect* out);
 static inline void ui_mark_overlapping_higher_layers_dirty(uint16_t nodeIdx);
 static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint16_t nodeIdx, const UIRect* r);
 static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible);
+static inline void ui_invalidate_scroll_canvas_for_node(uint16_t nodeIdx);
 static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip);
 static inline void ui_fill_rect_clipped(int16_t x, int16_t y, int16_t w, int16_t h, const UIRect* clip, uint16_t color);
 static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRect* clip, uint16_t color);
@@ -385,9 +386,9 @@ static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRec
 static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, uint16_t color);
 static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t drawY, const UIRect* clip);
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r);
-static inline void ui_draw_node_border(uint8_t i, int16_t drawX, int16_t drawY, uint16_t color);
-static inline void ui_draw_node_outline(uint8_t i, int16_t drawX, int16_t drawY);
-static inline void ui_draw_gradient_fill(uint8_t i, int16_t drawY);
+static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, uint16_t color);
+static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY);
+static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY);
 static inline uint8_t ui_rotation_quadrant(int16_t deg);
 static inline int16_t ui_rotated_face_w(uint16_t nodeIdx, int16_t w, int16_t h);
 static inline int16_t ui_rotated_face_h(uint16_t nodeIdx, int16_t w, int16_t h);
@@ -1032,6 +1033,15 @@ static inline int16_t ui_scroll_ancestor_for_node(uint16_t nodeIdx) {
   return -1;
 }
 
+static inline void ui_invalidate_scroll_canvas_for_node(uint16_t nodeIdx) {
+  int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
+  if (scrollParent < 0) return;
+  if (__ui_nodes[scrollParent].virtualized) return;
+  if (__ui_nodes[scrollParent].contentHeight <= __ui_nodes[scrollParent].box.h) return;
+  int16_t span = __ui_nodes[scrollParent].box.h > 0 ? __ui_nodes[scrollParent].box.h : 1;
+  __ui_nodes[scrollParent].lastPaintedScrollY = __ui_nodes[scrollParent].scrollY - span;
+}
+
 static inline uint8_t ui_rects_intersect(int16_t ax, int16_t ay, int16_t aw, int16_t ah,
                                          int16_t bx, int16_t by, int16_t bw, int16_t bh) {
   return ax + aw > bx && ax < bx + bw && ay + ah > by && ay < by + bh;
@@ -1048,14 +1058,14 @@ static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx) {
   return 1;
 }
 
-static inline uint8_t ui_node_draws_before(uint8_t a, uint8_t b) {
+static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b) {
   if (__ui_nodes[a].zIndex != __ui_nodes[b].zIndex) {
     return __ui_nodes[a].zIndex < __ui_nodes[b].zIndex;
   }
   return a < b;
 }
 
-static inline uint8_t ui_is_ancestor_of(uint8_t candidate, uint16_t nodeIdx) {
+static inline uint8_t ui_is_ancestor_of(uint16_t candidate, uint16_t nodeIdx) {
   uint16_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
     if (p == candidate) return 1;
@@ -1272,7 +1282,6 @@ static inline void ui_clear_press_offset_area(uint16_t nodeIdx, int16_t baseX, i
 static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
-  if (__ui_nodes[nodeIdx].kind == NODE_PROGRESS || __ui_nodes[nodeIdx].kind == NODE_RANGE) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_FILL &&
       __ui_nodes[nodeIdx].hasBg &&
       __ui_nodes[nodeIdx].gradientEnabled == 0 &&
@@ -1828,6 +1837,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   __ui_drag_start_y = ty;
   __ui_is_dragging = 0;
   __ui_scroll_node = -1;
+  __ui_range_node = -1;
   // Unified scroll-scan: one pass over scrollable nodes (containers AND lists —
   // lists are scrollable via the UA stylesheet) finds the owning container.
   // One owner per gesture; the double-delta bug class (node in both a container
@@ -1851,12 +1861,17 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   (void)tx; (void)ty;
 #endif
   if (node >= 0) {
+    uint8_t handledTouchTarget = 0;
     if (__ui_nodes[node].kind == NODE_BUTTON) {
       ui_set_pressed((uint16_t)node, 1);
+      handledTouchTarget = 1;
     }
     // Track range nodes for horizontal drag
     if (__ui_nodes[node].kind == NODE_RANGE) {
       __ui_range_node = node;
+      // Range owns this gesture. Do not let vertical touch jitter also scroll
+      // the containing view, which would dirty and repaint the whole viewport.
+      __ui_scroll_node = -1;
       // Immediately set value from touch position
       int16_t rMin = __ui_nodes[node].rangeMin;
       int16_t rMax = __ui_nodes[node].rangeMax;
@@ -1865,11 +1880,15 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       int16_t relX = tx - ui_draw_x_for_node((uint16_t)node) - 4;
       int16_t usable = __ui_nodes[node].box.w - 8;
       if (usable <= 0) usable = 1;
-      __ui_nodes[node].value = rMin + ((int32_t)relX * range) / usable;
-      __ui_nodes[node].value = constrain(__ui_nodes[node].value, rMin, rMax);
-      ui_mark_dirty(node);
+      int16_t nextVal = rMin + ((int32_t)relX * range) / usable;
+      nextVal = constrain(nextVal, rMin, rMax);
+      if (nextVal != __ui_nodes[node].value) {
+        __ui_nodes[node].value = nextVal;
+        ui_mark_dirty(node);
+      }
+      handledTouchTarget = 1;
     }
-    ui_mark_dirty(node);
+    if (!handledTouchTarget) ui_mark_dirty(node);
   }
 }
 
@@ -1969,7 +1988,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     ui_touch_down(tx, ty);
   } else {
     // Already touching: check for drag or hold
-    if (!__ui_is_dragging && __ui_scroll_node >= 0) {
+    if (__ui_range_node < 0 && !__ui_is_dragging && __ui_scroll_node >= 0) {
       // Check if movement exceeds drag threshold
       int16_t dy = ty - __ui_drag_start_y;
       if (abs(dy) >= UI_DRAG_THRESHOLD) {
@@ -2001,7 +2020,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     // list's proven model, now used for all scroll containers). No accumulator,
     // no cadence gate, no pending buffer — the smoothed delta is applied via the
     // physics layer (1:1 in-bounds, rubber-band at edges). Telemetry optional.
-    if (__ui_is_dragging && __ui_scroll_node >= 0) {
+    if (__ui_range_node < 0 && __ui_is_dragging && __ui_scroll_node >= 0) {
       int16_t rawDy = ty - __ui_drag_start_y;
       if (rawDy != 0) {
         int16_t dy = ui_scroll_smooth_dy(rawDy);
@@ -2584,7 +2603,7 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
 // Draw shadows for an element. Loops over up to 4 shadow specs. Outset shadows
 // are drawn behind the element; inset shadows are drawn over the element fill.
 // Draw a gradient fill for an element. Replaces solid fillRect/fillRoundRect.
-static inline void ui_draw_gradient_fill(uint8_t i, int16_t drawY) {
+static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY) {
   int16_t bx = __ui_nodes[i].box.x;
   int16_t by = drawY;
   int16_t bw = __ui_nodes[i].box.w;
@@ -2609,7 +2628,7 @@ static inline void ui_draw_gradient_fill(uint8_t i, int16_t drawY) {
   }
 }
 
-static inline void ui_draw_shadow(uint8_t i, int16_t drawY, uint8_t insetOnly) {
+static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) {
   if (__ui_nodes[i].shadowCount == 0) return;
   int16_t bx = __ui_nodes[i].box.x;
   int16_t by = drawY;
@@ -2741,12 +2760,12 @@ static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t
   }
 }
 
-static inline void ui_draw_node_border(uint8_t i, int16_t drawX, int16_t drawY, uint16_t color) {
+static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, uint16_t color) {
   ui_draw_rect_outline(drawX, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
     __ui_nodes[i].borderRadius, __ui_nodes[i].borderStyle, __ui_nodes[i].borderWidth, color);
 }
 
-static inline void ui_draw_node_outline(uint8_t i, int16_t drawX, int16_t drawY) {
+static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY) {
   if (__ui_nodes[i].outlineStyle == 0 || __ui_nodes[i].outlineWidth == 0) return;
   uint8_t w = __ui_nodes[i].outlineWidth;
   ui_draw_rect_outline(drawX - w, drawY - w,
@@ -2993,15 +3012,28 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (changed) {
       // Throttle redraws to ~10fps to avoid ILI9341 tearing from rapid SPI writes.
       if (completing || __ui_anims[i].elapsed - __ui_anims[i].lastUpdateMs >= 100) {
+        int16_t geometryScrollParent = -1;
         if (geometryChanged) {
-          ui_clear_current_node_paint(n);
+          geometryScrollParent = ui_scroll_ancestor_for_node(n);
+          if (geometryScrollParent >= 0 &&
+              (__ui_nodes[geometryScrollParent].virtualized ||
+               __ui_nodes[geometryScrollParent].contentHeight <= __ui_nodes[geometryScrollParent].box.h)) {
+            geometryScrollParent = -1;
+          }
+          if (geometryScrollParent < 0) {
+            ui_clear_current_node_paint(n);
+          }
           __ui_nodes[n].transformOffsetX = nextTransformX;
           __ui_nodes[n].transformOffsetY = nextTransformY;
           __ui_nodes[n].rotateDeg = nextRotateDeg;
           __ui_nodes[n].box.w = nextWidth;
           __ui_nodes[n].box.h = nextHeight;
         }
-        ui_mark_dirty(n);
+        if (geometryScrollParent >= 0) {
+          ui_mark_scroll_view_dirty((uint16_t)geometryScrollParent);
+        } else {
+          ui_mark_dirty(n);
+        }
         __ui_anims[i].lastUpdateMs = __ui_anims[i].elapsed;
       }
     }
@@ -3235,6 +3267,9 @@ static inline void ui_tick(uint16_t deltaMs) {
         baseDrawY -= paintCanvasY;
         drawX -= paintCanvasX;
         drawY -= paintCanvasY;
+        if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) {
+          __ui_nodes[i].lastTextWidth = -1;
+        }
       }
     }
     if (!drawingPaintCanvas) {
@@ -3653,8 +3688,16 @@ static inline void ui_tick(uint16_t deltaMs) {
               CuttlefishDisplayTarget* __ui_prev_target = ui_display_get_target();
               ui_display_set_target((CuttlefishDisplayTarget*)__ui_lc);
               __ui_canvas_fn(__ui_lc);
+              // Blit to the MAIN display (not a partial scroll-repair canvas).
+              // Canvas content is generated wholesale by the callback, so it must
+              // always land on the real display — drawing it into the scroll
+              // repair canvas (which only covers the exposed strip) left the
+              // non-overlapping portion stale (gray) until a further scroll.
+              // Use origBoxY (un-translated absolute Y) since we target the main
+              // display, not the scroll/repair canvas.
+              ui_display_set_target(__ui_draw_target);
+              ui_draw_canvas_rect(__ui_lc, origBoxX, origBoxY, __ui_cw, __ui_ch);
               ui_display_set_target(__ui_prev_target);
-              ui_draw_canvas_rect(__ui_lc, __ui_nodes[i].box.x, drawY, __ui_cw, __ui_ch);
             }
           }
         }
@@ -3743,6 +3786,9 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (drawingPaintCanvas) {
       ui_display_set_target(__ui_draw_target);
       ui_push_canvas_rect(paintCanvas, paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH);
+    }
+    if (!drawingBufferedScroll) {
+      ui_invalidate_scroll_canvas_for_node(i);
     }
     // Restore original box coords (translated for canvas-local drawing above).
     __ui_nodes[i].box.x = origBoxX;
