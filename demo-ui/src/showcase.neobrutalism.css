@@ -334,7 +334,7 @@ screen {
   padding: 8px;
   box-shadow: var(--shadow);
 }
-.flexRow { flex-direction: row; width: 260px; background: var(--muted); padding: 4px; border: 1px solid var(--border); }
+.flexRow { display: flex; flex-direction: row; width: 260px; background: var(--muted); padding: 4px; border: 1px solid var(--border); }
 .flexStart { justify-content: flex-start; gap: 4px; }
 .flexCenter { justify-content: center; column-gap: 12px; }
 .flexBetween { justify-content: space-between; row-gap: 4px; }
