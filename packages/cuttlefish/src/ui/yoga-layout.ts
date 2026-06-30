@@ -229,9 +229,24 @@ export class YogaLayoutEngine implements LayoutEngine {
     const aspectRatio = parseAspectRatio(s.aspectRatio);
     if (aspectRatio !== undefined) yn.setAspectRatio(aspectRatio);
 
-    // Children
-    for (const child of node.children) {
+    // Children. The yoga binding in use has no setOrder API, so CSS `order`
+    // can't be applied via yoga — sort children by their order value first
+    // (stable sort: source order preserved for equal order) so the flex engine
+    // lays items out in their order sequence.
+    const orderedChildren = [...node.children].sort((a, b) => {
+      const ao = cssNum(a.style.order);
+      const bo = cssNum(b.style.order);
+      return ao - bo;
+    });
+    // Build yoga nodes in the sorted (visual) order so yoga positions them by
+    // order, but record the SOURCE index of each so extractBoxes can emit boxes
+    // in source-tree order (the contract lowerUIToModel relies on).
+    for (let si = 0; si < orderedChildren.length; si++) {
+      const child = orderedChildren[si];
+      const sourceIndex = node.children.indexOf(child);
       const childNode = this.buildTree(child, metaArray, measureFn);
+      // Tag the yoga node with its source index so extraction can reorder.
+      (childNode as any).__sourceIndex = sourceIndex;
       yn.insertChild(childNode, yn.getChildCount());
     }
 

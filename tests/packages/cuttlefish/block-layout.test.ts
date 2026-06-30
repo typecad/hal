@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Box, LayoutEngine, measure } from "@typecad/cuttlefish/ui/layout-engine";
 import { BlockLayoutEngine } from "@typecad/cuttlefish/ui/block-layout";
+import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
 import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
 import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
 import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
@@ -122,5 +123,31 @@ describe("custom-font (asset) text measurement", () => {
     // Without the asset it falls back to the 6*ts default (18) — proving the
     // asset path is what changed the result.
     expect(measure(text, undefined, []).w).toBe(18);
+  });
+});
+
+describe("flex order reorders children", () => {
+  // Regression: the yoga binding has no setOrder API, so yoga-layout's
+  // `yn.setOrder?.()` was a silent no-op and `order` never repositioned items.
+  it("lays out children in order sequence, not source order", () => {
+    // Source order: a(order 3), b(order 1), c(order 2). By order the visual
+    // sequence must be b(1), c(2), a(3) — leftmost to rightmost. The box array
+    // follows the same order-sorted DFS as flatten (and the node table), so
+    // boxes[1..3] are in order sequence b, c, a with ascending x.
+    const css = `
+      #row { display: flex; flex-direction: row; width: 300px; height: 24px; }
+      .c { width: 40px; height: 24px; }
+      #a { order: 3; }
+      #b { order: 1; }
+      #c { order: 2; }
+    `;
+    const html = `<screen id="row"><div id="a" class="c">a</div><div id="b" class="c">b</div><div id="c" class="c">c</div></screen>`;
+    const styled = resolveStyles(parseHtml(html), parseCss(css));
+    const boxes = selectEngine(styled).arrange(styled, { x: 0, y: 0, w: 320, h: 240 }, measure);
+    // box[0] is the screen; boxes[1..3] are the children in order sequence.
+    // Visual order by x must be ascending (each chip 40px wide, packed left):
+    // position 0, 40, 80 — proving order (not source) drove the layout.
+    const xs = boxes.slice(1, 4).map(b => b.x);
+    expect(xs).toEqual([0, 40, 80]);
   });
 });

@@ -726,7 +726,15 @@ function flatten(
   // node repaints a solid block of the (translucent) parent's raw fill around
   // its glyphs, making the area around the text look opaque.
   const childParentBg = (effectiveOpacity < 100) ? parentBg : (hasBg ? bgBaseColor : parentBg);
-  for (const child of node.children) {
+  // Iterate children in the same order sequence the flex engine lays them out
+  // (the yoga binding can't apply order, so yoga-layout sorts children by order
+  // first). flatten must match that order so each node pairs with its box.
+  const orderNum = (v: string | undefined) => {
+    const n = parseInt(String(v ?? "0"), 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const orderedChildren = node.children.slice().sort((a, b) => orderNum(a.style.order) - orderNum(b.style.order));
+  for (const child of orderedChildren) {
     flatten(child, boxes, out, cursor, childParentBg, index, screenId, zIndex, effectiveOpacity);
   }
   out[index].subtreeEnd = cursor.i;
