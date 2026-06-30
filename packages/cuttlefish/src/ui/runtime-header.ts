@@ -3653,8 +3653,20 @@ static inline void ui_tick(uint16_t deltaMs) {
               CuttlefishDisplayTarget* __ui_prev_target = ui_display_get_target();
               ui_display_set_target((CuttlefishDisplayTarget*)__ui_lc);
               __ui_canvas_fn(__ui_lc);
+              // Blit to the MAIN display at the scroll-adjusted absolute Y.
+              // During buffered-scroll repair, box.y is translated to canvas-local
+              // coords and drawY reflects that — drawing the full-canvas blit there
+              // only covered the exposed strip, leaving the rest stale (gray). The
+              // canvas generates its content wholesale, so it must always land on
+              // the real display. Restore box.y to origBoxY so ui_base_draw_y_for_node
+              // computes the true scroll-adjusted absolute position.
+              ui_display_set_target(__ui_draw_target);
+              int16_t __ui_saved_box_y = __ui_nodes[i].box.y;
+              __ui_nodes[i].box.y = origBoxY;
+              int16_t __ui_abs_y = ui_base_draw_y_for_node(i);
+              __ui_nodes[i].box.y = __ui_saved_box_y;
+              ui_draw_canvas_rect(__ui_lc, origBoxX, __ui_abs_y, __ui_cw, __ui_ch);
               ui_display_set_target(__ui_prev_target);
-              ui_draw_canvas_rect(__ui_lc, __ui_nodes[i].box.x, drawY, __ui_cw, __ui_ch);
             }
           }
         }
