@@ -181,6 +181,12 @@ export function measure(node: StyledNode, availableWidth?: number, fontAssets: U
   if (node.tag === "img") {
     return { w: (node as any).imgWidth ?? 32, h: (node as any).imgHeight ?? 32 };
   }
+  if (node.tag === "canvas") {
+    // Canvas intrinsic size = its width/height attributes. Without this the
+    // layout collapsed the node to 0x0 (no intrinsic size), so ui.drawCanvas
+    // content drew into a 2x2 sliver and was invisible.
+    return { w: (node as any).canvasW ?? 0, h: (node as any).canvasH ?? 0 };
+  }
   if (node.tag === "list") {
     return { w: 0, h: 100 };  // lists default to 100px tall, expand via flex
   }
