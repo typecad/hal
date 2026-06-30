@@ -3316,7 +3316,21 @@ static inline void ui_tick(uint16_t deltaMs) {
           // fill blend with the parent (instead of drawing solid fg blocks that
           // overlap adjacent lines/elements). For AA text, fg != bg so the
           // edge-detection path still runs correctly.
-          uint16_t textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
+          // Glyph-cell background. For a translucent text node sitting on a
+          // filled translucent parent, the glyph cells must match the parent's
+          // blended fill: blend565(parent.bg, backdrop, opacity). The node's own
+          // clearColor carries the backdrop (set by flatten), and opacity has
+          // already inherited from the parent. Use the parent's raw bg as the
+          // source so the glyph cells reproduce the parent's translucent fill.
+          uint16_t textBg;
+          if (__ui_nodes[i].opacity < 100) {
+            uint16_t p = __ui_nodes[i].parent;
+            uint16_t source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
+                          : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            textBg = ui_blend565(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
+          } else {
+            textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
+          }
           ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w,
             __ui_nodes[i].fg, textBg, ts, __ui_nodes[i].fontAntialias,
             __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
