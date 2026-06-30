@@ -3289,6 +3289,12 @@ static inline void ui_tick(uint16_t deltaMs) {
           // Dynamic transparent text still needs a clear, otherwise old glyph
           // pixels accumulate when only this text node is dirty.
           uint16_t clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          // Blend the clear toward the backdrop by opacity so a translucent text
+          // node (inherited from an opacity:<1 parent) doesn't repaint a solid
+          // block of its parent's fill around the glyphs.
+          if (__ui_nodes[i].opacity < 100) {
+            clearCol = ui_blend565(clearCol, ui_parent_clear_color(i), __ui_nodes[i].opacity);
+          }
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
           __ui_nodes[i].lastTextWidth = tw;
           __ui_nodes[i].lastTextHeight = th;

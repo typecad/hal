@@ -184,6 +184,7 @@ interface FlatModelSource {
   subtreeEnd: number;
   screenId: number;
   zIndex: number;
+  effectiveOpacity: number;
 }
 
 function nodeKind(tag: string): UINodeKindModel {
@@ -701,6 +702,7 @@ function flatten(
   parentIndex: number = -1,
   screenId: number = 0,
   parentZIndex: number = 0,
+  parentOpacity: number = 100,
 ): void {
   const index = cursor.i++;
   const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -712,11 +714,15 @@ function flatten(
   const bgBaseColor = bgIsGradient ? extractFirstGradientColor(bgStr!) : bgStr;
   const clearColor = hasBg ? bgBaseColor : parentBg;
   const zIndex = Math.max(-32768, Math.min(32767, parentZIndex + zIndexOf(node.style)));
-  out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1, screenId, zIndex });
+  // Opacity compounds down the tree: a child's effective opacity is its own
+  // value scaled by the parent's effective opacity (50% parent × 100% child = 50%).
+  const ownOpacity = opacityOf(node.style);
+  const effectiveOpacity = Math.round((parentOpacity * ownOpacity) / 100);
+  out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1, screenId, zIndex, effectiveOpacity });
 
   const childParentBg = hasBg ? bgBaseColor : parentBg;
   for (const child of node.children) {
-    flatten(child, boxes, out, cursor, childParentBg, index, screenId, zIndex);
+    flatten(child, boxes, out, cursor, childParentBg, index, screenId, zIndex, effectiveOpacity);
   }
   out[index].subtreeEnd = cursor.i;
 }
@@ -742,7 +748,7 @@ export function lowerUIToModel(
     flatten(root, boxes, flat, cursor, undefined);
   }
 
-  const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd, screenId, zIndex }): UINodeModel => {
+  const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd, screenId, zIndex, effectiveOpacity }): UINodeModel => {
     // If background is a gradient, use the first stop as the base bg color
     // (the runtime draws the actual gradient per-row on top of this).
     const grad = parseGradient(node.style.background, colorFormat);
@@ -834,7 +840,7 @@ export function lowerUIToModel(
       nowrap: wsMode === 1 || wsMode === 2,
       whiteSpaceMode: wsMode,
       visible: node.style.visibility !== "hidden" && node.style.visibility !== "collapse" && !isDisplayNone(node),
-      opacity: opacityOf(node.style),
+      opacity: effectiveOpacity,
       clearColor: clear,
       lastTextWidth: 0,
       lastTextHeight: 0,
