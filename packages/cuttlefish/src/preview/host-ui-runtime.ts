@@ -1245,6 +1245,21 @@ export class PreviewUIRuntime {
     return out;
   }
 
+  // text-overflow: ellipsis — trim trailing chars until the prefix + "..." fits
+  // maxWidth, then append "...". Mirrors the C++ ui_truncate_ellipsis.
+  private truncateEllipsis(text: string, maxWidth: number, size: number, fontFace = 0, letterSpacing = 0): string {
+    const dotsW = this.textWidth("...", size, fontFace, letterSpacing);
+    let prefix = "";
+    let width = 0;
+    for (const ch of text) {
+      const next = this.textWidth(ch, size, fontFace, letterSpacing);
+      if (width + next + dotsW > maxWidth) break;
+      prefix += ch;
+      width += next;
+    }
+    return prefix.length > 0 ? prefix + "..." : (maxWidth >= dotsW ? "..." : "");
+  }
+
   private drawAssetText(text: string, x: number, y: number, fg: number, bg: number, antialias: boolean | undefined, fontFace = 0): boolean {
     const asset = this.fontAsset(fontFace);
     if (!asset) return false;
@@ -1516,6 +1531,13 @@ export class PreviewUIRuntime {
       const ts = this.nodeTextSize(node);
       let bColor = node.borderColor || node.fg;
       if (node.opacity < 100) bColor = blendRgb565(bColor, node.clearColor, node.opacity);
+      // Opacity background: blend the node's bg toward the backdrop (the parent
+      // clear color — what's actually behind the node) so a translucent element
+      // fades toward what's behind it. Mirrors the C++ fillBg computation.
+      // (node.clearColor is the node's own bg for filled nodes — a no-op blend
+      // target — so we use parentClearColor, the real backdrop.)
+      let fillBg = node.bg;
+      if (node.opacity < 100) fillBg = blendRgb565(node.bg, this.parentClearColor(node), node.opacity);
 
       this.gfx.withClipRect(scrollClip, () => {
         node.box.x = baseX;
@@ -1527,8 +1549,8 @@ export class PreviewUIRuntime {
               this.drawGradientFill(node, drawY);
             } else {
               const fillSize = this.rotatedFaceSize(node, node.box.w, node.box.h);
-              if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, fillSize.w, fillSize.h, node.borderRadius, node.bg);
-              else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, fillSize.w, fillSize.h, node.bg);
+              if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, fillSize.w, fillSize.h, node.borderRadius, fillBg);
+              else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, fillSize.w, fillSize.h, fillBg);
               if (node.borderStyle) this.drawRectOutline(node.box.x, drawY, fillSize.w, fillSize.h, node.borderRadius, node.borderStyle, node.borderWidth, bColor);
             }
             this.drawNodeShadow(node, drawY, true);
@@ -1537,7 +1559,7 @@ export class PreviewUIRuntime {
             this.drawTextNode(node, displayText, drawY, ts);
             break;
           case "button":
-            this.drawButtonNode(node, displayText, bColor, drawY, ts);
+            this.drawButtonNode(node, displayText, bColor, fillBg, drawY, ts);
             break;
           case "check":
             this.drawCheckNode(node, displayText, drawY, ts);
@@ -1589,9 +1611,20 @@ export class PreviewUIRuntime {
     const layout = this.textLayout(node, displayText, maxWidth, ts);
     let y = top;
     for (const line of layout.lines) {
-      const x = this.lineX(node, line.width, left, maxWidth, align);
-      this.drawText(line.text, x, y, fg, bg, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
-      if (node.underline) this.gfx.drawFastHLine(x, y + this.textHeight(ts, node.fontFace) - 1, line.width, fg);
+      // text-overflow: when a line is wider than maxWidth, truncate it. Ellipsis
+      // (textOverflow truthy) appends "..."; clip (falsy) hard-cuts. Mirrors the
+      // C++ ui_draw_wrapped_text overflow branch (ui_truncate_ellipsis/_clip).
+      let lineText = line.text;
+      if (line.width > maxWidth && maxWidth > 0) {
+        if (node.textOverflow) {
+          lineText = this.truncateEllipsis(line.text, maxWidth, ts, node.fontFace, node.letterSpacing);
+        } else {
+          lineText = this.clipTextToWidth(line.text, maxWidth, ts, node.fontFace, node.letterSpacing);
+        }
+      }
+      const x = this.lineX(node, this.textWidth(lineText, ts, node.fontFace, node.letterSpacing), left, maxWidth, align);
+      this.drawText(lineText, x, y, fg, bg, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
+      if (node.underline) this.gfx.drawFastHLine(x, y + this.textHeight(ts, node.fontFace) - 1, this.textWidth(lineText, ts, node.fontFace, node.letterSpacing), fg);
       y += layout.lineHeight;
     }
     return { width: layout.width, height: layout.height };
@@ -1599,9 +1632,22 @@ export class PreviewUIRuntime {
 
   private drawTextNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
     const layout = this.textLayout(node, displayText, node.box.w, ts);
-    const clearW = Math.max(node.box.w, node.lastTextWidth, layout.width);
+    // overflow:hidden/scroll: cap the clear at the node's own box width so a
+    // nowrap line wider than its box doesn't repaint past the edge (mirrors the
+    // C++ scrollable clearW cap).
+    let clearW = Math.max(node.box.w, node.lastTextWidth, layout.width);
+    if (node.scrollable) clearW = node.box.w;
     const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height);
-    const textClear = node.hasBg ? node.bg : node.clearColor;
+    // Clear + glyph-cell background. When the node is translucent (inherited
+    // from an opacity:<1 parent), blend toward the parent's clear color (the
+    // backdrop behind the translucent element) so the text area matches the
+    // parent's blended fill rather than repainting solid. Mirrors the C++ text
+    // clear + textBg blend.
+    let textClear = node.hasBg ? node.bg : node.clearColor;
+    if (node.opacity < 100) {
+      const backdrop = this.parentClearColor(node);
+      textClear = blendRgb565(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
+    }
     this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
     node.lastTextWidth = layout.width;
     node.lastTextHeight = layout.height;
@@ -1734,14 +1780,15 @@ export class PreviewUIRuntime {
       }
     }
   }
-  private drawButtonNode(node: MutableNode, displayText: string | undefined, bColor: number, drawY: number, ts: number): void {
-    if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, node.bg);
-    else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, node.bg);
+  private drawButtonNode(node: MutableNode, displayText: string | undefined, bColor: number, fillBg: number, drawY: number, ts: number): void {
+    if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, fillBg);
+    else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, fillBg);
     this.drawNodeShadow(node, drawY, true);
     if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
     const layout = this.textLayout(node, displayText, node.box.w, ts);
     const top = drawY + Math.trunc((node.box.h - layout.height) / 2);
-    this.drawTextLines(node, displayText, node.box.x, top, node.box.w, ts, node.fg, node.hasBg ? node.bg : node.clearColor, 1);
+    const glyphBg = node.opacity < 100 ? blendRgb565(node.bg, this.parentClearColor(node), node.opacity) : (node.hasBg ? node.bg : node.clearColor);
+    this.drawTextLines(node, displayText, node.box.x, top, node.box.w, ts, node.fg, glyphBg, 1);
   }
 
   private drawCheckNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
@@ -1916,6 +1963,7 @@ export class PreviewUIRuntime {
     if (node.kind === "list") return true;
     if (node.kind === "range") return true;
     if (node.kind === "input") return true;
+    if (node.kind === "button") return true;  // pressable for :pressed/transition feedback even with no JS onClick
     if (node.tag === "check" || node.tag === "select" || node.tag === "radio") return true;
     return this.callbacks.some((callback) => callback.nodeIndex === nodeIndex);
   }
