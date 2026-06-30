@@ -694,7 +694,7 @@ static inline void ui_scroll_advance_settle(uint8_t node, uint16_t deltaMs) {
     if (t >= 100) __ui_nodes[node].overscrollPx = 0;
   } else if (__ui_settle_from_scrollY != 0) {
     int16_t from = __ui_settle_from_scrollY;   // +toward 0, -toward max
-    int16_t maxS = ui_scroll_max((int8_t)node);
+    int16_t maxS = ui_scroll_max(node);
     if (from > 0) {
       __ui_nodes[node].scrollY = (int16_t)(from - (int32_t)(from * k) / 100);
       if (t >= 100) __ui_nodes[node].scrollY = 0;
@@ -1785,7 +1785,7 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
       }
     }
   }
-  return (int8_t)best;
+  return best;
 }
 
 // Dispatch a handler from the given table if registered for the node.
@@ -3924,7 +3924,7 @@ static uint8_t __ui_kb_maxlen;
 static uint8_t __ui_kb_shift;
 // __ui_kb_visible, __ui_kb_bs_held, __ui_last_touch_x/y are forward-declared
 // earlier (near the touch state machine) because ui_touch_up references them.
-static int8_t  __ui_kb_target;       // node index of input being edited (-1 = none)
+static int16_t  __ui_kb_target;       // node index of input being edited (-1 = none)
 static uint32_t __ui_kb_bs_repeat;   // last auto-repeat deletion time
 // __ui_kb_dirty is forward-declared earlier (near the touch state machine).
 static void    (*__ui_kb_onchange)();
@@ -3973,7 +3973,7 @@ static inline void ui_kb_compute_box() {
 
 // Open the keyboard for an input node.
 static inline void ui_kb_open(uint16_t nodeIdx, uint8_t inputPosition) {
-  __ui_kb_target = (int8_t)nodeIdx;
+  __ui_kb_target = nodeIdx;
   strncpy(__ui_kb_buffer, __ui_nodes[nodeIdx].textBuffer, UI_TEXT_BUF);
   __ui_kb_buffer[UI_TEXT_BUF] = 0;
   __ui_kb_len = strlen(__ui_kb_buffer);

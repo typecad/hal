@@ -545,3 +545,23 @@ describe("opacity blends the background fill", () => {
     expect(header).toMatch(/fill_rect\([^,]*,[^,]*,[^,]*,[^,]*,\s*fillBg\s*\)/);
   });
 });
+
+describe("touch hit-test supports node indices > 127", () => {
+  const header = emitRuntimeHeader();
+
+  it("ui_hit_test returns int16_t (not int8_t, which truncates indices >127)", () => {
+    // Regression: ui_hit_test did `return (int8_t)best;`. A back link at node
+    // 150 (the flex screen) wrapped to -106, so its tap never fired — back
+    // buttons on screens 4-9 (nodes 150/210/236/272/296/304) were dead while
+    // screens 1-3 (nodes 22/61/102) worked. The return must be int16_t.
+    expect(header).not.toMatch(/ui_hit_test[\s\S]*?return \(int8_t\)best/);
+    expect(header).toMatch(/ui_hit_test[\s\S]*?return best/);
+  });
+
+  it("does not cast a node index to int8_t anywhere it could truncate", () => {
+    // Other node-index int8 truncations found alongside: ui_scroll_max arg and
+    // the keyboard target. None of these should narrow a node index to int8_t.
+    expect(header).not.toMatch(/ui_scroll_max\(\(int8_t\)node\)/);
+    expect(header).not.toMatch(/__ui_kb_target\s*=\s*\(int8_t\)nodeIdx/);
+  });
+});
