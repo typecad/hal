@@ -3470,13 +3470,6 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
           int16_t fillW = ((int32_t)(bw - 2) * pct) / 100;
           int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
-          // Force a full redraw if the draw position changed since last paint
-          // (e.g. the scroll container moved). The incremental delta would draw
-          // at the new Y while the stale fill sits at the old Y, leaving a gap.
-          // lastTextHeight (unused by non-text progress) tracks the last drawY.
-          if (__ui_nodes[i].lastTextHeight != 0 && __ui_nodes[i].lastTextHeight != by) {
-            prevW = -1;
-          }
 
           if (prevW < 0) {
             // Full redraw: outline + background + fill
@@ -3492,9 +3485,8 @@ static inline void ui_tick(uint16_t deltaMs) {
             // Value decreased: clear the removed portion
             ui_display_fill_rect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
           }
-          // Remember current fill width + draw position for next incremental update
+          // Remember current fill width for next incremental update
           __ui_nodes[i].lastTextWidth = fillW;
-          __ui_nodes[i].lastTextHeight = by;
         }
         break;
       case NODE_RANGE:
@@ -3523,12 +3515,6 @@ static inline void ui_tick(uint16_t deltaMs) {
           // has never been drawn (fillW=0 at value=min is a valid thumb pos).
           int16_t prevFillW = __ui_nodes[i].lastTextWidth;
           int16_t newThumbX = bx + 4 + fillW - 3;
-          // Force a full redraw if the draw position changed since last paint
-          // (e.g. the scroll container moved) — same fix as NODE_PROGRESS.
-          // lastTextHeight (unused by range) tracks the previous drawY.
-          if (__ui_nodes[i].lastTextHeight != 0 && __ui_nodes[i].lastTextHeight != by) {
-            prevFillW = -1;
-          }
 
           if (prevFillW < 0) {
             // First draw: redraw the whole track + fill from scratch.
@@ -3564,9 +3550,8 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (newThumbX > bx + bw - 7) newThumbX = bx + bw - 7;
           ui_display_fill_rect(newThumbX, trackY - 5, 6, 10, fgCol);
 
-          // Remember current fill width + draw position for the next incremental update.
+          // Remember current fill width for the next incremental update.
           __ui_nodes[i].lastTextWidth = fillW;
-          __ui_nodes[i].lastTextHeight = by;
         }
         break;
       case NODE_INPUT:
