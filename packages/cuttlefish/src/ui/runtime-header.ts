@@ -1773,9 +1773,11 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       // Skip nodes without any click handler — they're containers, not targets.
-      // Exceptions: NODE_RANGE (horizontal drag) and NODE_INPUT (opens keyboard)
-      // are always interactive.
-      if (__ui_nodes[i].kind == NODE_RANGE || __ui_nodes[i].kind == NODE_INPUT || __ui_nodes[i].kind == NODE_LIST) {
+      // Exceptions: NODE_RANGE (horizontal drag), NODE_INPUT (opens keyboard),
+      // NODE_LIST (virtualized item tap), and NODE_BUTTON — the last so a button
+      // gets :pressed/transition visual feedback even with no JS onClick wired
+      // (a pure-CSS button like a demo "tap to transition" control).
+      if (__ui_nodes[i].kind == NODE_RANGE || __ui_nodes[i].kind == NODE_INPUT || __ui_nodes[i].kind == NODE_LIST || __ui_nodes[i].kind == NODE_BUTTON) {
         if (best < 0 || ui_node_draws_before(best, i)) best = i;
         continue;
       }

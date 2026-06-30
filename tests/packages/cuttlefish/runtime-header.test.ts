@@ -565,3 +565,18 @@ describe("touch hit-test supports node indices > 127", () => {
     expect(header).not.toMatch(/__ui_kb_target\s*=\s*\(int8_t\)nodeIdx/);
   });
 });
+
+describe("button press feedback without a click handler", () => {
+  const header = emitRuntimeHeader();
+
+  it("ui_hit_test treats NODE_BUTTON as a tappable target even with no handler", () => {
+    // Regression: hit_test skipped any node lacking a click/hold/release handler
+    // (except RANGE/INPUT/LIST). A pure-CSS button (no JS onClick, relies on
+    // :pressed/transition for feedback) was therefore not tappable at all — its
+    // :pressed state never armed. NODE_BUTTON must be in the always-interactive
+    // list so a button gets press feedback regardless of a wired handler.
+    const m = header.match(/kind == NODE_RANGE[\s\S]*?NODE_LIST[\s\S]*?best = i/);
+    expect(m).toBeTruthy();
+    expect(m![0]).toMatch(/NODE_BUTTON/);
+  });
+});
