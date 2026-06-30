@@ -441,7 +441,7 @@ screen {
 #formRadio { flex-direction: column; gap: 6px; }
 #formRadio1, #formRadio2 { color: var(--foreground); font-size: 16px; }
 #formProg { color: var(--chart-4); }
-#formRange { flex-direction: row; gap: 8px; align-items: center; justify-content: center; }
+#formRange { flex-direction: column; gap: 6px; }
 #formRange label { color: var(--muted-foreground); font-size: 14px; }
 #formRange1 { color: var(--chart-1); width: 180px; }
 #formInput { gap: 4px; }

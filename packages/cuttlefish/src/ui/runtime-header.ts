@@ -3523,6 +3523,12 @@ static inline void ui_tick(uint16_t deltaMs) {
           // has never been drawn (fillW=0 at value=min is a valid thumb pos).
           int16_t prevFillW = __ui_nodes[i].lastTextWidth;
           int16_t newThumbX = bx + 4 + fillW - 3;
+          // Force a full redraw if the draw position changed since last paint
+          // (e.g. the scroll container moved) — same fix as NODE_PROGRESS.
+          // lastTextHeight (unused by range) tracks the previous drawY.
+          if (__ui_nodes[i].lastTextHeight != 0 && __ui_nodes[i].lastTextHeight != by) {
+            prevFillW = -1;
+          }
 
           if (prevFillW < 0) {
             // First draw: redraw the whole track + fill from scratch.
@@ -3558,8 +3564,9 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (newThumbX > bx + bw - 7) newThumbX = bx + bw - 7;
           ui_display_fill_rect(newThumbX, trackY - 5, 6, 10, fgCol);
 
-          // Remember current fill width for the next incremental update.
+          // Remember current fill width + draw position for the next incremental update.
           __ui_nodes[i].lastTextWidth = fillW;
+          __ui_nodes[i].lastTextHeight = by;
         }
         break;
       case NODE_INPUT:
