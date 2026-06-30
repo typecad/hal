@@ -720,7 +720,12 @@ function flatten(
   const effectiveOpacity = Math.round((parentOpacity * ownOpacity) / 100);
   out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1, screenId, zIndex, effectiveOpacity });
 
-  const childParentBg = hasBg ? bgBaseColor : parentBg;
+  // For opaque nodes, children clear/redraw against this node's own fill
+  // (the normal case). For translucent nodes, children must clear against the
+  // same BACKDROP this node blends toward (parentBg) — otherwise a child text
+  // node repaints a solid block of the (translucent) parent's raw fill around
+  // its glyphs, making the area around the text look opaque.
+  const childParentBg = (effectiveOpacity < 100) ? parentBg : (hasBg ? bgBaseColor : parentBg);
   for (const child of node.children) {
     flatten(child, boxes, out, cursor, childParentBg, index, screenId, zIndex, effectiveOpacity);
   }
