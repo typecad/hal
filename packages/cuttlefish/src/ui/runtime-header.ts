@@ -1314,13 +1314,22 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
   __ui_nodes[p].box.x = parentDrawX - canvasX;
   int16_t localY = parentDrawY - canvasY;
 
+  // Parent fill color: blended toward the parent's backdrop when the parent is
+  // translucent (matching the main NODE_FILL draw, which uses fillBg). Without
+  // this, scroll repair seeds the canvas with the parent's RAW bg while the
+  // main draw used the blended color → shearing on translucent nodes during scroll.
+  uint16_t parentFillBg = __ui_nodes[p].bg;
+  if (__ui_nodes[p].opacity < 100) {
+    parentFillBg = ui_blend565(__ui_nodes[p].bg, ui_parent_clear_color(p), __ui_nodes[p].opacity);
+  }
+
   if (__ui_nodes[p].gradientEnabled > 0) {
     ui_draw_gradient_fill(p, localY);
   } else if (__ui_nodes[p].borderRadius > 0 && __ui_nodes[p].hasBg) {
     ui_display_fill_round_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h,
-      __ui_nodes[p].borderRadius, __ui_nodes[p].bg);
+      __ui_nodes[p].borderRadius, parentFillBg);
   } else if (__ui_nodes[p].hasBg) {
-    ui_display_fill_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h, __ui_nodes[p].bg);
+    ui_display_fill_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h, parentFillBg);
   }
   if (__ui_nodes[p].borderStyle != 0) {
     uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
