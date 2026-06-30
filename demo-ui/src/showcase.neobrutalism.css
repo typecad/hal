@@ -432,7 +432,7 @@ screen {
   padding: 8px;
   box-shadow: var(--shadow);
 }
-#formButton { flex-direction: row; justify-content: center; }
+#formButton { flex-direction: column; gap: 6px; }
 #formBtn { background: var(--primary); color: var(--primary-foreground); font-size: 16px; border: 1px solid var(--border); box-shadow: var(--shadow); padding: 4px 12px; transition: background 100ms; }
 #formBtn:pressed { background: var(--accent); }
 #formBtnCount { color: var(--foreground); font-size: 14px; }
