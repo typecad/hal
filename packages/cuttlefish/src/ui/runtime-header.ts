@@ -1020,7 +1020,24 @@ static inline void ui_mark_scroll_subtree_dirty(uint16_t scrollNode) {
 static inline void ui_mark_scroll_view_dirty(uint16_t scrollNode) {
   if (scrollNode >= __ui_node_count) return;
   __ui_nodes[scrollNode].dirty = 1;
+  ui_invalidate_incremental_in_subtree(scrollNode);
   ui_mark_scroll_view_overlaps_dirty(scrollNode);
+}
+
+// Reset the incremental-redraw state of NODE_PROGRESS/NODE_RANGE descendants
+// of a scroll container when it scrolls. Their incremental redraws assume the
+// previous fill pixels are still valid at the current drawY; a scroll shifts
+// that position, so the next paint must be a clean full redraw (lastTextWidth
+// = -1) to avoid leaving a stale gap. Called once per scroll change, not per
+// frame, so it doesn't cause continuous tearing.
+static inline void ui_invalidate_incremental_in_subtree(uint16_t root) {
+  if (root >= __ui_node_count) return;
+  for (uint16_t j = root; j < __ui_nodes[root].subtreeEnd && j < __ui_node_count; j++) {
+    if ((__ui_nodes[j].kind == NODE_PROGRESS || __ui_nodes[j].kind == NODE_RANGE)
+        && __ui_nodes[j].lastTextWidth >= 0) {
+      __ui_nodes[j].lastTextWidth = -1;  // force clean full redraw on next paint
+    }
+  }
 }
 
 static inline int16_t ui_scroll_ancestor_for_node(uint16_t nodeIdx) {
