@@ -438,7 +438,7 @@ screen {
 #formBtnCount { color: var(--foreground); font-size: 14px; }
 #formCheck1 { color: var(--foreground); font-size: 16px; }
 #formSelect1 { color: var(--foreground); font-size: 16px; }
-#formRadio { flex-direction: row; gap: 16px; justify-content: center; }
+#formRadio { flex-direction: column; gap: 6px; }
 #formRadio1, #formRadio2 { color: var(--foreground); font-size: 16px; }
 #formRadio1:checked, #formRadio2:checked { color: var(--accent); }
 #formProg { color: var(--chart-4); }
