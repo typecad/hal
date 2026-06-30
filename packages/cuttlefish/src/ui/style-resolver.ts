@@ -193,8 +193,20 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
 
   for (const rule of rules) {
     if (!matches(node, rule.selector, ancestors, precedingSiblings)) continue;
-    if (rule.selector.pseudo === "pressed") {
+    // Gate pseudo-class rules on the node's actual state. :pressed is stored
+    // separately (the transition driver reads it); :checked/:disabled/:focus
+    // apply to base only when the node is in that state, otherwise skip.
+    const pseudo = rule.selector.pseudo;
+    if (pseudo === "pressed") {
       Object.assign(pressed, rule.properties);
+    } else if (pseudo === "checked") {
+      if (node.checked) Object.assign(base, rule.properties);
+    } else if (pseudo === "disabled") {
+      if (node.disabled) Object.assign(base, rule.properties);
+    } else if (pseudo === "focus") {
+      // Focus is a runtime-only state (set on tap), not known at resolve time,
+      // so :focus rules can't match statically — skip them here.
+      continue;
     } else {
       Object.assign(base, rule.properties);
     }

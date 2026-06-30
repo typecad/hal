@@ -153,3 +153,34 @@ describe("style resolver", () => {
     expect(styled.children[0].children[0].style.color).toBe("#00ff00");
   });
 });
+
+describe("pseudo-class state gating (:checked/:disabled/:focus)", () => {
+  // Regression: the resolver only gated :pressed; :checked/:disabled/:focus
+  // rules were applied UNCONDITIONALLY (the else branch), so an unchecked
+  // radio got the :checked color, an enabled button got :disabled styling, etc.
+  it(":checked applies only when the node is checked", () => {
+    const styled = resolve(
+      `<screen>
+         <radio id="on" checked>On</radio>
+         <radio id="off">Off</radio>
+       </screen>`,
+      `radio { color: #ffffff; } radio:checked { color: #0066ff; }`,
+    );
+    const on = styled.children[0];
+    const off = styled.children[1];
+    expect(on.style.color).toBe("#0066ff");   // checked → accent
+    expect(off.style.color).toBe("#ffffff");  // unchecked → base white
+  });
+
+  it(":disabled applies only when the node is disabled", () => {
+    const styled = resolve(
+      `<screen>
+         <button id="d" disabled>D</button>
+         <button id="e">E</button>
+       </screen>`,
+      `button { opacity: 1; } button:disabled { opacity: 0.5; }`,
+    );
+    expect(styled.children[0].style.opacity).toBe("0.5");  // disabled → faded
+    expect(styled.children[1].style.opacity).toBe("1");   // enabled → full
+  });
+});
