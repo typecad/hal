@@ -191,6 +191,19 @@ function collectHrefCallbacks(
           body: `ui.navigate(${targetScreen});`,
         });
       }
+    } else if (node.runs?.some(r => r.href)) {
+      // Run-bearing link node (inline <a href> inside a paragraph). The link
+      // targets are resolved into the model at lower time; the preview tap path
+      // calls richLinkHit to pick the target. Register a no-op click callback so
+      // the node is hit-testable.
+      if (nodeIndex < programNodes.length) {
+        callbacks.push({
+          nodeId: node.id ?? `__ui_richlink${nodeIndex}_nav`,
+          nodeIndex,
+          kind: "click",
+          body: `/* rich-text link; target resolved by richLinkHit */`,
+        });
+      }
     }
     let nextIndex = nodeIndex + 1;
     for (const child of node.children) nextIndex = visit(child, nextIndex);

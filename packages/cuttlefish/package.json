@@ -81,6 +81,10 @@
       "types": "./dist/ir/transformers/ui-lowering.d.ts",
       "default": "./dist/ir/transformers/ui-lowering.js"
     },
+    "./ir/ui-element-auto-wire": {
+      "types": "./dist/ir/ui-element-auto-wire.d.ts",
+      "default": "./dist/ir/ui-element-auto-wire.js"
+    },
     "./ir/transformers/ui-mount": {
       "types": "./dist/ir/transformers/ui-mount.d.ts",
       "default": "./dist/ir/transformers/ui-mount.js"

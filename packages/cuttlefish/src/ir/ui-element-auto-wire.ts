@@ -18,6 +18,10 @@ interface AutoWireNode {
   name?: string;
   checked?: boolean;
   href?: string;
+  /** Rich-text runs (present only for text nodes with mixed inline content).
+   *  A run may carry an href (inline <a href>); those make the node a link
+   *  target that needs a click handler so it's hit-testable. */
+  runs?: Array<{ href?: string }>;
 }
 
 // Track radio groups for mutual exclusion
@@ -48,9 +52,10 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
   let nodeIndex = startIndex;
   const walk = (node: AutoWireNode) => {
     const currentIndex = nodeIndex++;
-    // Auto-wire nodes with an id, and <a href> links (which need
-    // navigation wiring even without an explicit id attribute).
-    if (node.id || node.href) {
+    // Auto-wire nodes with an id, <a href> links, and run-bearing link nodes
+    // (an inline <a href> inside a paragraph makes the paragraph a tap target).
+    const hasLinkRun = !!node.runs?.some(r => r.href);
+    if (node.id || node.href || hasLinkRun) {
       autoWireNode(treeName, node, currentIndex);
     }
     node.children?.forEach(walk);
@@ -62,7 +67,10 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
 function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): void {
   // The check/select/radio branches generate fnNames from node.id, so they
   // require one. The href (navigation) branch below works with or without id.
-  if (!node.id && !node.href) return;
+  // Run-bearing link nodes also work without id (handler body is a no-op; the
+  // real navigation happens via the run hit-test in the tap path).
+  const hasLinkRun = !!node.runs?.some(r => r.href);
+  if (!node.id && !node.href && !hasLinkRun) return;
   if (node.tag === "check") {
     // Auto-wire: onClick toggles value 0↔1
     recordClickHandler({
@@ -134,5 +142,17 @@ function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): 
     } else {
       console.error(`[auto-wire] WARNING: <a href="${node.href}"> (id=${node.id}) target screen not found. Known screens: ${[...screenIdMap.keys()].join(", ")}`);
     }
+  } else if (hasLinkRun) {
+    // Run-bearing link node (an inline <a href> inside a paragraph). The link
+    // targets live on the runs and are resolved into the model at lower time;
+    // the tap path calls ui_rich_link_hit / richLinkHit to pick the target.
+    // Register a no-op click handler so the node is hit-testable in the first
+    // place (hit-test only considers nodes with a registered handler).
+    recordClickHandler({
+      nodeIndex,
+      kind: "click",
+      fnName: `__ui_${node.id ?? "richlink" + nodeIndex}_nav`,
+      callbackBody: `/* rich-text link; target resolved by ui_rich_link_hit */`,
+    });
   }
 }
