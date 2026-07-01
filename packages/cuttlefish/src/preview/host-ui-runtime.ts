@@ -543,7 +543,10 @@ export class PreviewUIRuntime {
     list.contentHeight = contentHeight;
     node.scrollY = nextScrollY;
     node.contentHeight = contentHeight;
-    if (changed) this.markDirty(list.nodeIndex);
+    if (changed) {
+      node.lastPaintedScrollY = node.scrollY - Math.max(1, node.box.h);
+      this.markDirty(list.nodeIndex);
+    }
   }
 
   private advanceTransitions(deltaMs: number): void {
@@ -1738,7 +1741,77 @@ export class PreviewUIRuntime {
     return { width: layout.width, height: layout.height };
   }
 
+  // Draw a rich-text node from its precomputed run/segment/line geometry (the
+  // host twin of the C++ ui_draw_rich_text). Does NOT re-wrap — geometry was
+  // baked at transpile time. Per line: compute the x-origin from textAlign +
+  // line width, then draw each segment with its own run's fg/textSize/fontFace.
+  // Segments of different font-sizes align on the line's baseline.
+  private drawRichNode(node: MutableNode, drawY: number, ts: number): void {
+    if (!node.runLines || !node.runs) return;
+    // Clear (mirrors drawTextNode's clear + translucent blend).
+    const clearW = Math.max(node.box.w, node.lastTextWidth ?? 0);
+    const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0);
+    let textClear = node.hasBg ? node.bg : node.clearColor;
+    if (node.opacity < 100) {
+      const backdrop = this.parentClearColor(node);
+      textClear = blendRgb565(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
+    }
+    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
+
+    const drawSegs = (xOffset: number, yOffset: number, fgOverride?: number) => {
+      for (let li = 0; li < node.runLines!.lineY.length; li++) {
+        const originX = this.lineX(node, node.runLines!.lineW[li], node.box.x + xOffset, node.box.w) - node.box.x;
+        for (let si = 0; si < node.runLines!.segRun.length; si++) {
+          if (node.runLines!.segLine[si] !== li) continue;
+          const run = node.runs![node.runLines!.segRun[si]];
+          const baseline = drawY + yOffset + node.runLines!.lineBaseline[li];
+          const segY = baseline - (7 * run.textSize);
+          const sx = node.box.x + xOffset + originX + node.runLines!.segX[si];
+          const fg = fgOverride ?? run.fg;
+          this.drawText(node.runLines!.segText[si], sx, segY, fg, textClear, run.textSize, node.fontAntialias, run.fontFace, run.letterSpacing);
+          if (run.underline & 1) this.gfx.drawFastHLine(sx, segY + 8 * run.textSize - 1, node.runLines!.segW[si], fg);
+          if (run.underline & 2) this.gfx.drawFastHLine(sx, segY + 4 * run.textSize, node.runLines!.segW[si], fg);
+        }
+      }
+    };
+    if (node.textShadowCount > 0) {
+      const shadowColor = blendRgb565(node.textShadowColor, textClear, node.textShadowAlpha);
+      drawSegs(node.textShadowOffsetX, node.textShadowOffsetY, shadowColor);
+    }
+    drawSegs(0, 0);
+  }
+
+  // Hit-test a tap point (screen coords) against a rich-text node's link runs.
+  // Returns the link run's screen index, or -1. Mirrors the C++ ui_rich_link_hit.
+  private richLinkHit(nodeIndex: number, tx: number, ty: number): number {
+    const node = this.nodes[nodeIndex];
+    if (!node.runs || !node.runLines) return -1;
+    const drawX = this.drawXForNode(nodeIndex);
+    const drawY = this.drawYForNode(nodeIndex);
+    const nx = tx - drawX;
+    const ny = ty - drawY;
+    for (let si = 0; si < node.runLines.segRun.length; si++) {
+      const run = node.runs[node.runLines.segRun[si]];
+      if (run.linkTarget < 0) continue;
+      const li = node.runLines.segLine[si];
+      // Account for center/right alignment the same way draw does.
+      const originX = this.lineX(node, node.runLines.lineW[li], 0, node.box.w);
+      const sx = originX + node.runLines.segX[si];
+      const sy = node.runLines.lineY[li];
+      const sw = node.runLines.segW[si];
+      const sh = node.runLines.lineH[li];
+      if (nx >= sx && nx < sx + sw && ny >= sy && ny < sy + sh) return run.linkTarget;
+    }
+    return -1;
+  }
+
   private drawTextNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
+    // Rich-text (inline runs): draw from precomputed geometry instead of the
+    // single-string wrapped path.
+    if (node.runs && node.runLines) {
+      this.drawRichNode(node, drawY, ts);
+      return;
+    }
     const layout = this.textLayout(node, displayText, node.box.w, ts);
     // overflow:hidden/scroll: cap the clear at the node's own box width so a
     // nowrap line wider than its box doesn't repaint past the edge (mirrors the
@@ -1779,29 +1852,65 @@ export class PreviewUIRuntime {
     return this.listStates.find((list) => list.nodeIndex === nodeIndex);
   }
 
-  private drawListNode(
-    node: MutableNode,
-    drawY: number,
-    scrollClip: { x: number; y: number; w: number; h: number } | undefined,
-  ): void {
-    const list = this.listStateForNode(node.index);
-    const bg = node.hasBg ? node.bg : node.clearColor;
-    if (!list || list.itemHeight <= 0) {
-      this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, bg);
-      return;
+  private shiftListViewport(node: MutableNode, drawY: number, deltaY: number, bg: number): { y: number; h: number } {
+    const x = Math.trunc(node.box.x);
+    const y = Math.trunc(drawY);
+    const w = Math.trunc(node.box.w);
+    const h = Math.trunc(node.box.h);
+    const shift = Math.abs(Math.trunc(deltaY));
+    if (w <= 0 || h <= 0) return { y: 0, h: 0 };
+    const borderInset = node.borderStyle ? Math.max(0, Math.trunc(node.borderWidth || 1)) : 0;
+    const contentW = w > 4 ? w - 4 : w;
+    const copyX = x + borderInset;
+    const copyY = y + borderInset;
+    const copyW = Math.max(0, contentW - borderInset);
+    const copyH = Math.max(0, h - 2 * borderInset);
+    if (x < 0 || y < 0 || x + w > this.gfx.width || y + h > this.gfx.height || shift <= 0 || shift >= copyH || copyW <= 0) {
+      this.gfx.fillRect(x, y, w, h, bg);
+      return { y: 0, h };
     }
 
-    this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, bg);
-    const listClip = this.intersectClipRect(scrollClip, { x: node.box.x, y: drawY, w: node.box.w, h: node.box.h });
-    this.gfx.withClipRect(listClip, () => {
+    const stride = this.gfx.width;
+    const pixels = this.gfx.buffer;
+    let exposedY = 0;
+    if (deltaY > 0) {
+      for (let row = 0; row < copyH - shift; row++) {
+        const dst = (copyY + row) * stride + copyX;
+        const src = (copyY + row + shift) * stride + copyX;
+        pixels.copyWithin(dst, src, src + copyW);
+      }
+      exposedY = borderInset + copyH - shift;
+    } else {
+      for (let row = copyH - shift - 1; row >= 0; row--) {
+        const dst = (copyY + row + shift) * stride + copyX;
+        const src = (copyY + row) * stride + copyX;
+        pixels.copyWithin(dst, src, src + copyW);
+      }
+      exposedY = borderInset;
+    }
+    this.gfx.fillRect(copyX, y + exposedY, copyW, shift, bg);
+    if (w > contentW) this.gfx.fillRect(x + contentW, y, w - contentW, h, bg);
+    return { y: exposedY, h: shift };
+  }
+
+  private drawListRows(
+    node: MutableNode,
+    list: PreviewListState,
+    drawY: number,
+    scrollClip: { x: number; y: number; w: number; h: number } | undefined,
+    bg: number,
+    repaintY: number,
+    repaintH: number,
+  ): void {
+    if (list.itemCount <= 0 || repaintH <= 0) return;
+    const stripClip = this.intersectClipRect(scrollClip, { x: node.box.x, y: drawY + repaintY, w: node.box.w, h: repaintH });
+    this.gfx.withClipRect(stripClip, () => {
       const itemHeight = list.itemHeight;
       const ts = this.nodeTextSize(node);
       const textH = this.textHeight(ts, node.fontFace);
-      // Scroll + content size live on the node now (unified with containers).
       const listScrollY = node.scrollY;
-      const listContentH = node.contentHeight;
-      const first = Math.max(0, Math.trunc(listScrollY / itemHeight));
-      const last = Math.min(list.itemCount - 1, Math.trunc((listScrollY + node.box.h - 1) / itemHeight) + 1);
+      const first = Math.max(0, Math.trunc((listScrollY + repaintY) / itemHeight));
+      const last = Math.min(list.itemCount - 1, Math.trunc((listScrollY + repaintY + repaintH - 1) / itemHeight) + 1);
       for (let row = first; row <= last; row++) {
         const itemY = drawY + row * itemHeight - listScrollY;
         const text = clampText(this.evaluateExpression(list.itemExpression, this.listLocal(list.itemParam, row)));
@@ -1817,8 +1926,37 @@ export class PreviewUIRuntime {
           node.letterSpacing,
         );
       }
+    });
+  }
 
-      if (listContentH > node.box.h) {
+  private drawListNode(
+    node: MutableNode,
+    drawY: number,
+    scrollClip: { x: number; y: number; w: number; h: number } | undefined,
+  ): void {
+    const list = this.listStateForNode(node.index);
+    const bg = node.hasBg ? node.bg : node.clearColor;
+    if (!list || list.itemHeight <= 0) {
+      this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, bg);
+      return;
+    }
+
+    const deltaY = node.scrollY - node.lastPaintedScrollY;
+    const absDelta = Math.abs(deltaY);
+    const canShift = deltaY !== 0 && absDelta < node.box.h;
+    const repaint = canShift
+      ? this.shiftListViewport(node, drawY, deltaY, bg)
+      : (() => {
+          this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, bg);
+          return { y: 0, h: node.box.h };
+        })();
+
+    this.drawListRows(node, list, drawY, scrollClip, bg, repaint.y, repaint.h);
+
+    const listContentH = node.contentHeight;
+    if (listContentH > node.box.h) {
+      const listClip = this.intersectClipRect(scrollClip, { x: node.box.x, y: drawY, w: node.box.w, h: node.box.h });
+      this.gfx.withClipRect(listClip, () => {
         const tx = node.box.x + node.box.w - 4;
         const trackColor = (node.fg >> 1) & 0x7bef;
         this.gfx.fillRect(tx, drawY, 3, node.box.h, trackColor);
@@ -1826,11 +1964,16 @@ export class PreviewUIRuntime {
         const maxScroll = Math.max(1, listContentH - node.box.h);
         // Clamp the thumb to the track during overscroll (scrollY stays in range,
         // but overscrollPx can push the visual; the thumb pins to the ends).
-        const clampedScrollY = Math.max(0, Math.min(listScrollY, listContentH - node.box.h));
+        const clampedScrollY = Math.max(0, Math.min(node.scrollY, listContentH - node.box.h));
         const thumbY = drawY + Math.trunc(((node.box.h - thumbH) * clampedScrollY) / maxScroll);
         this.gfx.fillRect(tx, thumbY, 3, thumbH, node.fg);
-      }
-    });
+      });
+    }
+    let bColor = node.borderColor || node.fg;
+    if (node.opacity < 100) bColor = blendRgb565(bColor, node.clearColor, node.opacity);
+    this.drawNodeShadow(node, drawY, true);
+    if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
+    node.lastPaintedScrollY = node.scrollY;
   }
 
   private drawCanvasNode(node: MutableNode, drawY: number): void {
@@ -2249,7 +2392,8 @@ export class PreviewUIRuntime {
           this.updateRangeValue(node, tx);
           handledTouchTarget = true;
         }
-        if (!handledTouchTarget) this.markDirty(node);
+        const touchStartsScrollableView = this.scrollNode >= 0 && node === this.scrollNode;
+        if (!handledTouchTarget && !touchStartsScrollableView) this.markDirty(node);
       }
     } else {
       if (this.rangeNode < 0 && !this.isDragging && this.scrollNode >= 0 && Math.abs(ty - this.dragStartY) >= UI_DRAG_THRESHOLD) {
@@ -2305,6 +2449,10 @@ export class PreviewUIRuntime {
         if (this.nodes[node].kind === "list") this.dispatchListTap(node, this.lastTouchX, this.lastTouchY);
         this.dispatchBuiltInClick(node);
         this.dispatch("click", node);
+        // Rich-text inline link: if the tapped node has link runs, navigate to
+        // the target screen of the link segment the tap landed on.
+        const richTarget = this.richLinkHit(node, this.lastTouchX, this.lastTouchY);
+        if (richTarget >= 0) this.navigate(richTarget);
       }
       this.dispatch("release", node);
       if (this.nodes[node].kind === "button") this.setPressed(node, false);
