@@ -160,12 +160,35 @@ export function uiSignalDecls(): string[] {
 }
 
 export function recordBinding(spec: BindingSpec): void {
+  // Runs are static-content only: a node with rich-text runs cannot also have
+  // a PROP_TEXT binding (the binding model replaces the whole text buffer,
+  // which is incompatible with the node's precomputed run geometry). Reject the
+  // binding with a diagnostic instead of silently producing an unrenderable node.
+  if (spec.property === "text" && isRunNode(spec.nodeIndex)) {
+    _diagnostics.push({
+      severity: "warning",
+      message: `text binding on node ${spec.nodeIndex} ignored — node has rich-text runs (runs are static-only).`,
+      code: "run-text-binding-conflict",
+    });
+    return;
+  }
   bindings.push(spec);
 }
 
 export function uiBindings(): BindingSpec[] {
   return [...bindings];
 }
+
+// Node indices that carry rich-text runs (populated by auto-wire's tree walk,
+// which assigns the same document-order indices the binding resolver uses).
+const _runNodeIndices = new Set<number>();
+export function markRunNode(nodeIndex: number): void { _runNodeIndices.add(nodeIndex); }
+export function isRunNode(nodeIndex: number): boolean { return _runNodeIndices.has(nodeIndex); }
+
+// Diagnostics collected during binding resolution (e.g. run-text-binding-conflict).
+export interface CallResolverDiagnostic { severity: "warning" | "error"; message: string; code: string; }
+const _diagnostics: CallResolverDiagnostic[] = [];
+export function getDiagnostics(): CallResolverDiagnostic[] { return [..._diagnostics]; }
 
 export function resetUICallState(): void {
   uiModuleImports.clear();
@@ -175,6 +198,8 @@ export function resetUICallState(): void {
   pressBindings.length = 0;
   _watchPinSpecs.length = 0;
   _clickHandlers.length = 0;
+  _runNodeIndices.clear();
+  _diagnostics.length = 0;
   resetInputBindings();
   resetCallbackLoweringState();
   resetCanvasBindings();

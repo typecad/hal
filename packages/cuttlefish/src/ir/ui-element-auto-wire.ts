@@ -7,7 +7,7 @@
 // For custom elements, use <view> + <text> + manual bindings.
 // ---------------------------------------------------------------------------
 
-import { recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
+import { recordClickHandler, recordBinding, markRunNode } from "./transformers/ui-call-resolver.js";
 
 interface AutoWireNode {
   tag: string;
@@ -52,6 +52,9 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
   let nodeIndex = startIndex;
   const walk = (node: AutoWireNode) => {
     const currentIndex = nodeIndex++;
+    // Record run-bearing node indices so the binding resolver can reject
+    // PROP_TEXT bindings on them (runs are static-only).
+    if (node.runs && node.runs.length > 0) markRunNode(currentIndex);
     // Auto-wire nodes with an id, <a href> links, and run-bearing link nodes
     // (an inline <a href> inside a paragraph makes the paragraph a tap target).
     const hasLinkRun = !!node.runs?.some(r => r.href);
