@@ -1056,6 +1056,7 @@ describe("PreviewUIRuntime", () => {
             baseHeight: 2,
             originX: 0,
             originY: 0,
+            timingFunction: 0,
           },
         ],
       },

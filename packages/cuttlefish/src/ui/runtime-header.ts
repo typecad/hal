@@ -278,10 +278,61 @@ struct UIAnimation {
   int16_t baseHeight;
   int8_t originX;
   int8_t originY;
+  uint8_t timingFunction;  // UI_TIMING_* — applied to the lerp factor between stops
   uint32_t elapsed;
   uint8_t active;
   uint32_t lastUpdateMs;  // throttle: only redraw every ~100ms to avoid tearing
 };
+// animation-timing-function codes (kept in sync with model.ts TIMING_*).
+#define UI_TIMING_LINEAR 0
+#define UI_TIMING_EASE_IN_OUT 1
+#define UI_TIMING_EASE 2
+#define UI_TIMING_EASE_IN 3
+#define UI_TIMING_EASE_OUT 4
+
+// Apply an easing curve to a 0..100 linear lerp factor. Pure integer math
+// (no floats on device). Uses Newton-Raphson to solve the cubic-bezier x axis
+// for the input k, then returns the bezier's y — identical algorithm + control
+// points to easeCurveLerpK in model.ts so preview and device agree.
+// Control points are /1000 fixed point; bezierX/Y(t) = 3(1-t)²t·c1 + 3(1-t)t²·c2 + t³.
+static inline uint8_t ui_ease_lerp_k(uint8_t timing, uint8_t k) {
+  if (timing == UI_TIMING_LINEAR || k == 0) return k;
+  if (k >= 100) return 100;
+  int32_t x1, y1, x2, y2;
+  switch (timing) {
+    case UI_TIMING_EASE_IN_OUT: x1 = 420; y1 = 0;   x2 = 580; y2 = 1000; break;
+    case UI_TIMING_EASE:        x1 = 250; y1 = 100; x2 = 250; y2 = 1000; break;
+    case UI_TIMING_EASE_IN:     x1 = 420; y1 = 0;   x2 = 1000; y2 = 1000; break;
+    case UI_TIMING_EASE_OUT:    x1 = 0;   y1 = 0;   x2 = 580; y2 = 1000; break;
+    default: return k;
+  }
+  // Control points are /1000 (0..1000 == 0..1). t is parametric, also /1000.
+  // X(t) = 3(1-t)²t·x1 + 3(1-t)t²·x2 + t³. Solve X(t)=targetX for t by bisection,
+  // then return Y(t). Bisection (not Newton-Raphson): Newton diverges for curves
+  // whose x-derivative is ~0 near an endpoint (ease-out: x1=0), snapping the dot
+  // to the wrong stop. X(t) is monotonic for valid CSS points, so bisection always
+  // converges. Products of four /1000 values are /1e12; t³ is /1e9 (×1000 to align).
+  // int64 accumulation avoids overflow (3e12 > INT32_MAX). Identical algorithm +
+  // control points to easeCurveLerpK in model.ts — preview and device must agree.
+  int32_t targetX = (int32_t)k * 10;          // input on the /1000 x axis
+  int32_t lo = 0, hi = 1000;
+  for (uint8_t i = 0; i < 14; i++) {
+    int32_t t = (lo + hi) >> 1;
+    int32_t mt = 1000 - t;
+    int64_t termX1 = (int64_t)3 * mt * mt * t * x1;   // /1e12
+    int64_t termX2 = (int64_t)3 * mt * t * t * x2;    // /1e12
+    int64_t termX3 = (int64_t)t * t * t * 1000;       // /1e12 (t³ was /1e9)
+    int32_t X = (int32_t)((termX1 + termX2 + termX3) / 1000000000LL);  // back to /1000
+    if (X < targetX) lo = t; else hi = t;
+  }
+  int32_t t = (lo + hi) >> 1;
+  int32_t mt = 1000 - t;
+  int64_t termY1 = (int64_t)3 * mt * mt * t * y1;
+  int64_t termY2 = (int64_t)3 * mt * t * t * y2;
+  int64_t termY3 = (int64_t)t * t * t * 1000;
+  int32_t Y = (int32_t)((termY1 + termY2 + termY3) / 1000000000LL);  // /1000
+  return (uint8_t)(Y / 10);  // back to /100
+}
 extern const UIKeyframeSet __ui_keyframe_sets[];
 extern const uint16_t __ui_keyframe_set_count;
 extern UIAnimation __ui_anims[];
@@ -386,6 +437,8 @@ static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRec
 static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, uint16_t color);
 static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t drawY, const UIRect* clip);
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r);
+static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* paintRect);
+static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect* oldRect);
 static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, uint16_t color);
 static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY);
 static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY);
@@ -1529,28 +1582,10 @@ static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t dra
   }
 }
 
-static inline void ui_clear_current_node_paint(uint16_t nodeIdx) {
-  if (nodeIdx >= __ui_node_count) return;
+static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* paintRect) {
+  if (nodeIdx >= __ui_node_count || !paintRect || paintRect->w <= 0 || paintRect->h <= 0) return;
   int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
-  const char* displayText = __ui_nodes[nodeIdx].hasTextBinding
-    ? __ui_nodes[nodeIdx].textBuffer
-    : __ui_nodes[nodeIdx].text;
-  uint8_t ts = __ui_nodes[nodeIdx].textSize ? __ui_nodes[nodeIdx].textSize : 2;
-  uint16_t tw = 0;
-  uint16_t th = 0;
-  uint16_t maxTextW = __ui_nodes[nodeIdx].box.w;
-  if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
-    maxTextW = __ui_nodes[nodeIdx].box.w > 22 ? __ui_nodes[nodeIdx].box.w - 22 : 0;
-  }
-  ui_text_layout_metrics(displayText, maxTextW, __ui_nodes[nodeIdx].whiteSpaceMode, ts,
-    __ui_nodes[nodeIdx].fontFace, __ui_nodes[nodeIdx].letterSpacing, __ui_nodes[nodeIdx].lineHeight, &tw, &th);
-  if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) tw += 22;
-  int16_t baseDrawX = ui_base_draw_x_for_node(nodeIdx);
-  int16_t baseDrawY = ui_base_draw_y_for_node(nodeIdx);
-  int16_t drawX = ui_draw_x_for_node(nodeIdx);
-  int16_t drawY = ui_draw_y_for_node(nodeIdx);
-  UIRect r;
-  ui_node_paint_rect(nodeIdx, baseDrawX, baseDrawY, drawX, drawY, tw, th, &r);
+  UIRect r = *paintRect;
   ui_display_use_default_target();
   if (scrollParent >= 0) {
     UIRect clip = {
@@ -1580,6 +1615,88 @@ static inline void ui_clear_current_node_paint(uint16_t nodeIdx) {
     }
     ui_draw_node_outline(p, ui_draw_x_for_node(p), parentDrawY);
   }
+}
+
+static inline void ui_clear_current_node_paint(uint16_t nodeIdx) {
+  if (nodeIdx >= __ui_node_count) return;
+  const char* displayText = __ui_nodes[nodeIdx].hasTextBinding
+    ? __ui_nodes[nodeIdx].textBuffer
+    : __ui_nodes[nodeIdx].text;
+  uint8_t ts = __ui_nodes[nodeIdx].textSize ? __ui_nodes[nodeIdx].textSize : 2;
+  uint16_t tw = 0;
+  uint16_t th = 0;
+  uint16_t maxTextW = __ui_nodes[nodeIdx].box.w;
+  if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
+    maxTextW = __ui_nodes[nodeIdx].box.w > 22 ? __ui_nodes[nodeIdx].box.w - 22 : 0;
+  }
+  ui_text_layout_metrics(displayText, maxTextW, __ui_nodes[nodeIdx].whiteSpaceMode, ts,
+    __ui_nodes[nodeIdx].fontFace, __ui_nodes[nodeIdx].letterSpacing, __ui_nodes[nodeIdx].lineHeight, &tw, &th);
+  if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) tw += 22;
+  int16_t baseDrawX = ui_base_draw_x_for_node(nodeIdx);
+  int16_t baseDrawY = ui_base_draw_y_for_node(nodeIdx);
+  int16_t drawX = ui_draw_x_for_node(nodeIdx);
+  int16_t drawY = ui_draw_y_for_node(nodeIdx);
+  UIRect r;
+  ui_node_paint_rect(nodeIdx, baseDrawX, baseDrawY, drawX, drawY, tw, th, &r);
+  ui_clear_node_paint_rect(nodeIdx, &r);
+}
+
+static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect* oldRect) {
+  if (nodeIdx >= __ui_node_count || !oldRect || oldRect->w <= 0 || oldRect->h <= 0) return 0;
+  if (__ui_nodes[nodeIdx].kind != NODE_FILL) return 0;
+  if (!__ui_nodes[nodeIdx].hasBg) return 0;
+  if (__ui_nodes[nodeIdx].gradientEnabled != 0) return 0;
+  if (__ui_nodes[nodeIdx].borderRadius != 0 ||
+      __ui_nodes[nodeIdx].borderStyle != 0 ||
+      __ui_nodes[nodeIdx].outlineStyle != 0 ||
+      __ui_nodes[nodeIdx].shadowCount != 0) return 0;
+
+  UIRect newRect;
+  ui_node_current_paint_rect(nodeIdx, &newRect);
+  if (newRect.w <= 0 || newRect.h <= 0) return 0;
+  int16_t x0 = oldRect->x < newRect.x ? oldRect->x : newRect.x;
+  int16_t y0 = oldRect->y < newRect.y ? oldRect->y : newRect.y;
+  int16_t x1 = oldRect->x + oldRect->w > newRect.x + newRect.w ? oldRect->x + oldRect->w : newRect.x + newRect.w;
+  int16_t y1 = oldRect->y + oldRect->h > newRect.y + newRect.h ? oldRect->y + oldRect->h : newRect.y + newRect.h;
+  UIRect repair = { x0, y0, (int16_t)(x1 - x0), (int16_t)(y1 - y0) };
+  int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
+  if (scrollParent >= 0) {
+    UIRect clip = {
+      __ui_nodes[scrollParent].box.x,
+      __ui_nodes[scrollParent].box.y,
+      __ui_nodes[scrollParent].box.w,
+      __ui_nodes[scrollParent].box.h
+    };
+    if (!ui_clip_rect_to_rect(&repair, &clip)) {
+      ui_invalidate_scroll_canvas_for_node(nodeIdx);
+      return 1;
+    }
+  } else if (ui_is_rect_clipped_by_scroll(nodeIdx, repair.x, repair.y, repair.w, repair.h)) {
+    return 0;
+  }
+  if (repair.w <= 0 || repair.h <= 0) return 0;
+  if ((uint32_t)repair.w * (uint32_t)repair.h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(repair.w, repair.h);
+  if (!repairCanvas) return 0;
+
+  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, repair.x, repair.y);
+  CuttlefishDisplayTarget* previousGfx = ui_display_get_target();
+  ui_display_set_target(repairCanvas);
+  uint16_t fillBg = __ui_nodes[nodeIdx].bg;
+  if (__ui_nodes[nodeIdx].opacity < 100) {
+    fillBg = ui_blend565(__ui_nodes[nodeIdx].bg, ui_parent_clear_color(nodeIdx), __ui_nodes[nodeIdx].opacity);
+  }
+  int16_t drawX = ui_draw_x_for_node(nodeIdx) - repair.x;
+  int16_t drawY = ui_draw_y_for_node(nodeIdx) - repair.y;
+  int16_t fillW = ui_rotated_face_w(nodeIdx, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
+  int16_t fillH = ui_rotated_face_h(nodeIdx, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
+  ui_display_fill_rect(drawX, drawY, fillW, fillH, fillBg);
+  ui_display_set_target(previousGfx);
+  ui_display_use_default_target();
+  ui_push_canvas_rect(repairCanvas, repair.x, repair.y, repair.w, repair.h);
+  if (scrollParent >= 0) ui_invalidate_scroll_canvas_for_node(nodeIdx);
+  ui_mark_overlapping_higher_layers_dirty_for_rect(nodeIdx, &repair);
+  return 1;
 }
 
 static inline void ui_clear_subtree_current_paint(uint16_t nodeIdx) {
@@ -2977,6 +3094,9 @@ static inline void ui_tick(uint16_t deltaMs) {
     // Lerp factor between lo and hi.
     uint8_t range = sHi->percent - sLo->percent;
     uint8_t lerpK = range > 0 ? (uint8_t)((uint16_t)(pct - sLo->percent) * 100 / range) : 0;
+    // Shape the lerp by the animation's timing function (ease-in-out, etc.).
+    // CSS attaches it to the animation and applies it between stops.
+    lerpK = ui_ease_lerp_k(__ui_anims[i].timingFunction, lerpK);
     // Apply to node — only mark dirty if a value actually changed.
     uint16_t n = __ui_anims[i].node;
     if (n >= __ui_node_count) continue;
@@ -3064,33 +3184,42 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
     }
     if (changed) {
-      // Throttle redraws to ~10fps to avoid ILI9341 tearing from rapid SPI writes.
-      if (completing || __ui_anims[i].elapsed - __ui_anims[i].lastUpdateMs >= 100) {
-        int16_t geometryScrollParent = -1;
+      // Throttle color/opacity-only redraws to ~10fps to avoid ILI9341 tearing
+      // from rapid SPI writes (ada49b4). Spatial transforms (translate/scale/
+      // rotate/size) are exempt: at 10fps a small dot moving a few px reads as
+      // a jump, and the redraw is only the node's own tiny footprint, so the
+      // tearing risk that motivated the gate doesn't apply. Geometry redraws
+      // every frame a value actually changes (the 'changed' guard above still
+      // suppresses no-op repaints).
+      uint8_t throttleRedraw = !geometryChanged &&
+        !(completing || __ui_anims[i].elapsed - __ui_anims[i].lastUpdateMs >= 100);
+      if (!throttleRedraw) {
+        UIRect oldGeometryRect = {0, 0, 0, 0};
+        uint8_t hasOldGeometryRect = 0;
         if (geometryChanged) {
-          geometryScrollParent = ui_scroll_ancestor_for_node(n);
-          if (geometryScrollParent >= 0 &&
-              (__ui_nodes[geometryScrollParent].virtualized ||
-               __ui_nodes[geometryScrollParent].contentHeight <= __ui_nodes[geometryScrollParent].box.h)) {
-            geometryScrollParent = -1;
-          }
-          if (geometryScrollParent < 0) {
-            ui_clear_current_node_paint(n);
-          } else {
-            // Animated geometry inside an overflowing scroll container should
-            // repair only the moving node's old footprint. Marking the scroll
-            // owner dirty with no scroll delta falls back to a full viewport
-            // repaint every animation tick, which visibly flashes on SPI TFTs.
-            ui_clear_current_node_paint(n);
-            ui_invalidate_scroll_canvas_for_node(n);
-          }
+          ui_node_current_paint_rect(n, &oldGeometryRect);
+          hasOldGeometryRect = oldGeometryRect.w > 0 && oldGeometryRect.h > 0;
           __ui_nodes[n].transformOffsetX = nextTransformX;
           __ui_nodes[n].transformOffsetY = nextTransformY;
           __ui_nodes[n].rotateDeg = nextRotateDeg;
           __ui_nodes[n].box.w = nextWidth;
           __ui_nodes[n].box.h = nextHeight;
         }
-        ui_mark_dirty(n);
+        uint8_t repairedGeometry = 0;
+        if (geometryChanged && hasOldGeometryRect) {
+          // Small moving solid fills can be repaired as one old+new union
+          // bitmap. This avoids the visible erase-then-redraw blink that shows
+          // up when transform animations run at full frame rate on SPI TFTs.
+          repairedGeometry = ui_try_repair_geometry_fill(n, &oldGeometryRect);
+        }
+        if (geometryChanged && !repairedGeometry) {
+          // Fallback: preserve the old behavior, but clear the captured OLD
+          // footprint after the node fields have been updated.
+          if (hasOldGeometryRect) ui_clear_node_paint_rect(n, &oldGeometryRect);
+          else ui_clear_current_node_paint(n);
+          ui_invalidate_scroll_canvas_for_node(n);
+        }
+        if (!repairedGeometry) ui_mark_dirty(n);
         __ui_anims[i].lastUpdateMs = __ui_anims[i].elapsed;
       }
     }

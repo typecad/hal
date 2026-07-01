@@ -142,6 +142,65 @@ export const KEYFRAME_PROP_OPACITY = 4;
 export const KEYFRAME_PROP_TRANSFORM = 8;
 export const KEYFRAME_PROP_SIZE = 16;
 
+// ── animation-timing-function ──────────────────────────────────────────────
+// Easing applied to the lerp factor BETWEEN keyframe stops (CSS attaches it to
+// the animation, not per-stop). Encoded as an int so it travels through the
+// UIAnimation struct without floats. The two runtimes (C++ device loop and JS
+// preview) MUST evaluate these to the same value for preview/device parity —
+// both call the same `easeCurveLerpK` logic (integer fixed-point cubic-bezier).
+export const TIMING_LINEAR = 0;
+export const TIMING_EASE_IN_OUT = 1;
+export const TIMING_EASE = 2;
+export const TIMING_EASE_IN = 3;
+export const TIMING_EASE_OUT = 4;
+
+/** Map a CSS animation-timing-function keyword to its TIMING_* code.
+ *  Unknown/unsupported (cubic-bezier(), steps()) → linear. */
+export function timingFunctionCode(keyword: string | undefined): number {
+  switch ((keyword ?? "").trim().toLowerCase()) {
+    case "ease-in-out": return TIMING_EASE_IN_OUT;
+    case "ease": return TIMING_EASE;
+    case "ease-in": return TIMING_EASE_IN;
+    case "ease-out": return TIMING_EASE_OUT;
+    default: return TIMING_LINEAR;  // linear + cubic-bezier() + steps() unsupported
+  }
+}
+
+/** Apply the easing curve to a 0..100 linear lerp factor (fixed-point, no
+ *  floats). Mirrors the C++ ui_ease_lerp_k in runtime-header.ts exactly.
+ *  Returns k unchanged for TIMING_LINEAR. */
+export function easeCurveLerpK(timing: number, k: number): number {
+  if (timing === TIMING_LINEAR || k <= 0) return k;
+  if (k >= 100) return 100;
+  // CSS cubic-bezier control points (normalized 0..1). Endpoints are (0,0),(1,1).
+  let x1 = 0, y1 = 0, x2 = 1, y2 = 1;
+  switch (timing) {
+    case TIMING_EASE_IN_OUT: x1 = 0.42; y1 = 0;    x2 = 0.58; y2 = 1;    break;
+    case TIMING_EASE:        x1 = 0.25; y1 = 0.1;  x2 = 0.25; y2 = 1;    break;
+    case TIMING_EASE_IN:     x1 = 0.42; y1 = 0;    x2 = 1;    y2 = 1;    break;
+    case TIMING_EASE_OUT:    x1 = 0;    y1 = 0;    x2 = 0.58; y2 = 1;    break;
+    default: return k;
+  }
+  // Solve X(t)=input for t, then return Y(t). X(t)=3(1-t)²t·x1 + 3(1-t)t²·x2 + t³.
+  // Bisection (not Newton-Raphson): Newton diverges for curves whose x-derivative
+  // is ~0 near an endpoint (ease-out: x1=0), snapping the dot to the wrong stop.
+  // X(t) is monotonic increasing for valid CSS control points, so bisection always
+  // converges. The device runtime's ui_ease_lerp_k uses the identical algorithm +
+  // control points (in /1000 fixed point) so preview and device agree.
+  const input = k / 100;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 20; i++) {
+    const t = (lo + hi) / 2;
+    const mt = 1 - t;
+    const x = 3 * mt * mt * t * x1 + 3 * mt * t * t * x2 + t * t * t;
+    if (x < input) lo = t; else hi = t;
+  }
+  const t = (lo + hi) / 2;
+  const mt = 1 - t;
+  const y = 3 * mt * mt * t * y1 + 3 * mt * t * t * y2 + t * t * t;
+  return Math.round(y * 100);
+}
+
 export interface KeyframeSetModel {
   name: string;
   stops: KeyframeStopModel[];
@@ -157,6 +216,7 @@ export interface AnimationModel {
   baseHeight: number;
   originX: number;       // percent, 0=left, 50=center, 100=right
   originY: number;       // percent, 0=top, 50=center, 100=bottom
+  timingFunction: number;  // TIMING_* code (applied to the lerp factor between stops)
 }
 
 export interface UIProgram {
@@ -703,15 +763,25 @@ function firstListValue(value: string | undefined): string | undefined {
 
 function animationDeclOf(style: CSSProperty) {
   const shorthand = firstListValue(style.animation);
-  if (shorthand) return parseAnimation(shorthand);
+  if (shorthand) {
+    const decl = parseAnimation(shorthand);
+    // Shorthand resets all longhands; if it omitted timing-function, fall back
+    // to the explicit longhand (or default linear).
+    if (decl && !decl.timingFunction && style.animationTimingFunction) {
+      decl.timingFunction = style.animationTimingFunction;
+    }
+    return decl;
+  }
   const name = firstListValue(style.animationName);
   if (!name || name === "none") return null;
-  return parseAnimation([
+  const decl = parseAnimation([
     name,
     firstListValue(style.animationDuration),
     firstListValue(style.animationIterationCount),
     firstListValue(style.animationDelay),
   ].filter(Boolean).join(" "));
+  if (decl && style.animationTimingFunction) decl.timingFunction = style.animationTimingFunction;
+  return decl;
 }
 
 function flatten(
@@ -966,6 +1036,7 @@ export function lowerUIToModel(
       baseHeight: Math.max(0, Math.min(32767, fn.box.h)),
       originX: transformOriginPercent(fn.node.style.transformOrigin).x,
       originY: transformOriginPercent(fn.node.style.transformOrigin).y,
+      timingFunction: timingFunctionCode(animation.timingFunction),
     });
   }
 

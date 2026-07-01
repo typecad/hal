@@ -122,13 +122,25 @@ describe("CSS subset parser", () => {
       durationMs: 2000,
       iterations: -1,
       delayMs: 150,
+      timingFunction: "",
     });
     expect(parseAnimation("750ms fade 3")).toEqual({
       name: "fade",
       durationMs: 750,
       iterations: 3,
       delayMs: 0,
+      timingFunction: "",
     });
+  });
+
+  it("captures animation-timing-function from the shorthand", () => {
+    // The keyword is no longer swallowed — it rides on the decl and is applied
+    // to the lerp factor between keyframe stops. Order-invariant.
+    expect(parseAnimation("slideXY 1800ms ease-in-out infinite")!.timingFunction).toBe("ease-in-out");
+    expect(parseAnimation("ease 2s pulse")!.timingFunction).toBe("ease");
+    expect(parseAnimation("pulse 2s linear infinite")!.timingFunction).toBe("linear");
+    // Non-timing keywords (fill-mode, direction, play-state) are still ignored.
+    expect(parseAnimation("pulse 2s infinite forwards alternate")!.timingFunction).toBe("");
   });
 
   it("parses @keyframes grouped stops without leaking them as CSS selectors", () => {

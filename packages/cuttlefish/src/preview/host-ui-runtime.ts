@@ -5,6 +5,7 @@ import type { UIFontAssetModel, UIFontGlyphModel } from "../ui/font-assets.js";
 import type { UIImageAsset } from "../ui/image-assets.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../ui/html-parser.js";
 import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
+import { easeCurveLerpK } from "../ui/model.js";
 import { layoutText } from "../ui/text-layout.js";
 import { blendRgb565, HostAdafruitGFX } from "./host-gfx.js";
 import type {
@@ -600,7 +601,13 @@ export class PreviewUIRuntime {
       const from = set.stops[lo];
       const to = set.stops[hi];
       const range = to.percent - from.percent;
-      const k = range > 0 ? Math.trunc(((pct - from.percent) * 100) / range) : 0;
+      // Shape the lerp by the animation's timing function (ease-in-out, etc.).
+      // Same control points + algorithm as the C++ ui_ease_lerp_k — preview and
+      // device must agree on the curve.
+      const k = easeCurveLerpK(
+        animation.timingFunction,
+        range > 0 ? Math.trunc(((pct - from.percent) * 100) / range) : 0,
+      );
       let changed = false;
 
       if ((from.props & KF_BG) && (to.props & KF_BG)) {

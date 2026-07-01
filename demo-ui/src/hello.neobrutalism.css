@@ -332,8 +332,8 @@ screen {
 
 /* UA provides border:1px solid + padding:4px 8px for input */
 #ssid, #port {
-  color: var(--foreground);
-  background: var(--secondary);
+  color: #ffffff;
+  background: #333333;
   border-color: var(--input);
   border-radius: var(--radius);
   width: 200px;
@@ -694,10 +694,10 @@ a {
 
 /* UA provides overflow:scroll + flex-grow:1 for list */
 #deviceList {
-  color: var(--foreground);
+  color: #ffffff;
   flex-basis: 0;
   width: 280;
-  background: var(--secondary);
+  background: #333333;
   border-color: var(--border);
   border-radius: var(--radius);
   margin: 8px 0;

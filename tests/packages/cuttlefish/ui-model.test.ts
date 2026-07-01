@@ -2,12 +2,61 @@ import { describe, expect, it } from "vitest";
 import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
 import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
 import { measure } from "@typecad/cuttlefish/ui/layout-engine";
-import { lowerUIToModel } from "@typecad/cuttlefish/ui/model";
+import {
+  easeCurveLerpK,
+  lowerUIToModel,
+  TIMING_EASE_IN,
+  TIMING_EASE_IN_OUT,
+  TIMING_EASE_OUT,
+  TIMING_LINEAR,
+  timingFunctionCode,
+} from "@typecad/cuttlefish/ui/model";
 import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
 import type { StyledNode } from "@typecad/cuttlefish/ui/style-resolver";
 import type { Box } from "@typecad/cuttlefish/ui/layout-engine";
 import { lowerUIToCpp } from "@typecad/cuttlefish/ir/transformers/ui-lowering";
 import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
+
+describe("animation timing-function easing", () => {
+  // Regression: the original easeCurveLerpK had a fixed-point scaling bug that
+  // returned 0 for most of the upper half of the input range (and wildly wrong
+  // values for ease-out near 0). That forced the lerp factor to wrong values
+  // mid-animation, snapping transform dots to the wrong keyframe stop — on
+  // hardware this read as the dots jumping outside their tracks. The curve must
+  // be smooth, monotonic, and bound the keyframe endpoints exactly.
+  it("ease-in-out is monotonic, symmetric about k=50, and pins the endpoints", () => {
+    const out: number[] = [];
+    for (let k = 0; k <= 100; k++) out.push(easeCurveLerpK(TIMING_EASE_IN_OUT, k));
+    expect(out[0]).toBe(0);
+    expect(out[100]).toBe(100);
+    expect(out[50]).toBe(50);            // symmetric S-curve crosses the midpoint
+    for (let i = 1; i < 100; i++) expect(out[i]).toBeGreaterThanOrEqual(out[i - 1]);  // monotonic
+    // Slow at the ends, fast in the middle (ease-in-out signature).
+    expect(out[20]).toBeLessThan(20);
+    expect(out[80]).toBeGreaterThan(80);
+  });
+
+  it("ease-out starts fast (not snapped to 0) and ease-in starts slow", () => {
+    // ease-out x1=0 made Newton-Raphson diverge to ~0 near k=0. Bisection must
+    // return a real fast-start value.
+    expect(easeCurveLerpK(TIMING_EASE_OUT, 10)).toBeGreaterThan(10);
+    expect(easeCurveLerpK(TIMING_EASE_IN, 10)).toBeLessThan(10);
+  });
+
+  it("linear is the identity and out-of-range clamps to the endpoints", () => {
+    for (let k = 0; k <= 100; k += 10) expect(easeCurveLerpK(TIMING_LINEAR, k)).toBe(k);
+    expect(easeCurveLerpK(TIMING_EASE_IN_OUT, 0)).toBe(0);
+    expect(easeCurveLerpK(TIMING_EASE_IN_OUT, 100)).toBe(100);
+  });
+
+  it("timingFunctionCode maps CSS keywords to TIMING_* codes", () => {
+    expect(timingFunctionCode("ease-in-out")).toBe(TIMING_EASE_IN_OUT);
+    expect(timingFunctionCode("ease-out")).toBe(TIMING_EASE_OUT);
+    expect(timingFunctionCode("linear")).toBe(TIMING_LINEAR);
+    expect(timingFunctionCode(undefined)).toBe(TIMING_LINEAR);
+    expect(timingFunctionCode("cubic-bezier(0.1,0.2,0.3,0.4)")).toBe(TIMING_LINEAR);  // unsupported → linear
+  });
+});
 
 describe("UI structured model", () => {
   it("contains the same resolved box/color data used by C++ lowering", () => {

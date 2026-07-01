@@ -42,11 +42,13 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/int16_t\s+height/);
   });
 
-  it("applies animated transforms by clearing previous paint before moving standalone nodes", () => {
+  it("applies animated transforms by repairing the old+new footprint before falling back to clears", () => {
     expect(header).toContain("ui_clear_current_node_paint");
     expect(header).toMatch(/sLo->props\s*&\s*UI_KF_TRANSFORM/);
-    expect(header).toMatch(/if\s*\(geometryScrollParent\s*<\s*0\)\s*\{[\s\S]*ui_clear_current_node_paint\(n\);[\s\S]*\}/);
-    expect(header).toMatch(/ui_clear_current_node_paint\(n\)[\s\S]*transformOffsetX\s*=\s*nextTransformX/);
+    expect(header).toContain("ui_try_repair_geometry_fill");
+    expect(header).toMatch(/ui_node_current_paint_rect\(n,\s*&oldGeometryRect\)[\s\S]*transformOffsetX\s*=\s*nextTransformX/);
+    expect(header).toMatch(/repairedGeometry\s*=\s*ui_try_repair_geometry_fill\(n,\s*&oldGeometryRect\)/);
+    expect(header).toMatch(/if\s*\(geometryChanged && !repairedGeometry\)[\s\S]*ui_clear_node_paint_rect\(n,\s*&oldGeometryRect\)[\s\S]*if\s*\(!repairedGeometry\)\s*ui_mark_dirty\(n\)/);
     expect(header).toMatch(/sLo->props\s*&\s*UI_KF_SIZE/);
     expect(header).toMatch(/box\.w\s*=\s*nextWidth/);
   });
@@ -69,6 +71,41 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/struct\s+UIAnimation[\s\S]*uint32_t\s+elapsed/);
     expect(header).toMatch(/struct\s+UIAnimation[\s\S]*uint32_t\s+lastUpdateMs/);
     expect(header).toMatch(/uint32_t\s+elapsedNoDelay\s*=\s*__ui_anims\[i\]\.elapsed/);
+  });
+
+  it("carries a timingFunction field on UIAnimation and applies it to the lerp factor", () => {
+    // animation-timing-function lives on the animation (not per-stop) and shapes
+    // the lerp factor BETWEEN stops. Must be a field on the struct, fed through
+    // ui_ease_lerp_k right after lerpK is computed.
+    expect(header).toMatch(/struct\s+UIAnimation[\s\S]*uint8_t\s+timingFunction/);
+    expect(header).toContain("ui_ease_lerp_k");
+    expect(header).toMatch(/uint8_t\s+lerpK\s*=[\s\S]*lerpK\s*=\s*ui_ease_lerp_k\(__ui_anims\[i\]\.timingFunction,\s*lerpK\)/);
+  });
+
+  it("does not throttle geometry-animation redraws (60fps) while keeping color at ~10fps", () => {
+    // ada49b4 throttled all animation redraws to 10fps to avoid ILI9341 tearing
+    // for a color indicator. Spatial transforms are exempt — at 10fps a small
+    // moving dot reads as a jump, and only its own tiny footprint repaints.
+    // The throttle gate must be gated on !geometryChanged; color/opacity-only
+    // animations still honor the 100ms gate.
+    expect(header).toMatch(/uint8_t\s+throttleRedraw\s*=\s*!geometryChanged/);
+    expect(header).toMatch(/!throttleRedraw\)\s*\{/);
+    // The 100ms gate survives for the color-only path.
+    expect(header).toMatch(/completing\s*\|\|\s*__ui_anims\[i\]\.elapsed\s*-\s*__ui_anims\[i\]\.lastUpdateMs\s*>=\s*100/);
+  });
+
+  it("ease helper solves the cubic-bezier by bisection in pure integer math (no floats)", () => {
+    // Newton-Raphson diverged for ease-out (x1=0 → X'(0)=0), snapping animated
+    // dots to the wrong keyframe stop and making transforms appear to jump out
+    // of bounds. Bisection over t∈[0,1000] always converges (X is monotonic for
+    // valid CSS points). int64 accumulation avoids overflow (3e12 > INT32_MAX).
+    expect(header).toMatch(/static inline uint8_t ui_ease_lerp_k\s*\(uint8_t timing,\s*uint8_t k\)/);
+    expect(header).toMatch(/case\s+UI_TIMING_EASE_IN_OUT:\s*x1\s*=\s*420;\s*y1\s*=\s*0;\s*x2\s*=\s*580;\s*y2\s*=\s*1000/);
+    expect(header).toMatch(/int32_t lo\s*=\s*0,\s*hi\s*=\s*1000/);
+    expect(header).toMatch(/int64_t termX1\s*=\s*\(int64_t\)3\s*\*\s*mt\s*\*\s*mt\s*\*\s*t\s*\*\s*x1/);
+    // The helper body (signature → closing brace) must not use floating-point types.
+    const helperBody = header.match(/static inline uint8_t ui_ease_lerp_k[\s\S]*?\n}/)?.[0] ?? "";
+    expect(helperBody).not.toMatch(/\b(float|double)\b/);
   });
 
   it("contains press/release entry points", () => {
@@ -413,13 +450,12 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_fill_rect_clipped");
     expect(header).toContain("ui_draw_node_decoration_clipped");
     expect(header).toMatch(/static inline uint8_t ui_repair_current_node_paint_with_parent\(uint16_t nodeIdx,\s*UIRect\* r\);/);
-    expect(header).toMatch(/ui_clear_current_node_paint[\s\S]*scrollParent\s*=\s*ui_scroll_ancestor_for_node\(nodeIdx\)/);
+    expect(header).toMatch(/ui_clear_node_paint_rect[\s\S]*scrollParent\s*=\s*ui_scroll_ancestor_for_node\(nodeIdx\)/);
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&clipped\)/);
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_draw_node_decoration_clipped/);
-    expect(header).toMatch(/geometryScrollParent\s*=\s*ui_scroll_ancestor_for_node\(n\)[\s\S]*contentHeight\s*<=\s*__ui_nodes\[geometryScrollParent\]\.box\.h/);
-    expect(header).toMatch(/if\s*\(geometryScrollParent\s*<\s*0\)[\s\S]*ui_clear_current_node_paint\(n\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
-    expect(header).toMatch(/else\s*\{[\s\S]*ui_clear_current_node_paint\(n\);[\s\S]*ui_invalidate_scroll_canvas_for_node\(n\);[\s\S]*\}/);
-    expect(header).toMatch(/__ui_nodes\[n\]\.box\.h = nextHeight;[\s\S]*ui_mark_dirty\(n\);/);
+    expect(header).toMatch(/ui_try_repair_geometry_fill[\s\S]*if\s*\(scrollParent >= 0\) ui_invalidate_scroll_canvas_for_node\(nodeIdx\)/);
+    expect(header).toMatch(/if\s*\(geometryChanged && !repairedGeometry\)[\s\S]*ui_invalidate_scroll_canvas_for_node\(n\)/);
+    expect(header).toMatch(/__ui_nodes\[n\]\.box\.h = nextHeight;[\s\S]*if\s*\(!repairedGeometry\)\s*ui_mark_dirty\(n\);/);
     expect(header).not.toMatch(/if\s*\(geometryScrollParent\s*>=\s*0\)\s*\{[\s\S]*ui_mark_scroll_view_dirty\(\(uint16_t\)geometryScrollParent\)/);
     expect(header).not.toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollParent\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
   });

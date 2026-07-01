@@ -350,7 +350,7 @@ function emitKeyframeTables(model: UIProgram): string {
   // Emit animation table (mutable — runtime advances elapsed/active).
   lines.push(`UIAnimation __ui_anims[] = {`);
   for (const a of model.animations) {
-    lines.push(`  { .node=${a.node}, .keyframeSet=${a.keyframeSet}, .durationMs=${a.durationMs}, .delayMs=${a.delayMs}, .iterations=${a.iterations}, .baseWidth=${a.baseWidth}, .baseHeight=${a.baseHeight}, .originX=${a.originX}, .originY=${a.originY}, .elapsed=0, .active=1, .lastUpdateMs=0 },`);
+    lines.push(`  { .node=${a.node}, .keyframeSet=${a.keyframeSet}, .durationMs=${a.durationMs}, .delayMs=${a.delayMs}, .iterations=${a.iterations}, .baseWidth=${a.baseWidth}, .baseHeight=${a.baseHeight}, .originX=${a.originX}, .originY=${a.originY}, .timingFunction=${a.timingFunction}, .elapsed=0, .active=1, .lastUpdateMs=0 },`);
   }
   lines.push(`};`);
   lines.push(`const uint16_t __ui_anim_count = ${model.animations.length};`);

@@ -64,6 +64,7 @@ export interface AnimationDecl {
   durationMs: number;
   iterations: number;  // -1 = infinite
   delayMs: number;
+  timingFunction: string;  // raw keyword, e.g. "ease-in-out" ("" / "linear" = linear)
 }
 
 export interface CSSProperty {
@@ -104,6 +105,7 @@ export interface CSSProperty {
   animationDuration?: string;
   animationIterationCount?: string;
   animationDelay?: string;
+  animationTimingFunction?: string;  // linear | ease | ease-in | ease-out | ease-in-out
   // Flexbox / layout (Yoga)
   display?: string;
   flexDirection?: string;
@@ -607,7 +609,7 @@ export function parseAnimation(val: string): AnimationDecl | null {
   const first = val.split(",")[0]?.trim() ?? "";
   const parts = first.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return null;
-  const decl: AnimationDecl = { name: "", durationMs: 1000, iterations: 1, delayMs: 0 };
+  const decl: AnimationDecl = { name: "", durationMs: 1000, iterations: 1, delayMs: 0, timingFunction: "" };
   let foundDuration = false;
   for (const part of parts) {
     const lower = part.toLowerCase();
@@ -630,7 +632,10 @@ export function parseAnimation(val: string): AnimationDecl | null {
       lower === "ease" ||
       lower === "ease-in" ||
       lower === "ease-out" ||
-      lower === "ease-in-out" ||
+      lower === "ease-in-out"
+    ) {
+      decl.timingFunction = lower;  // capture (applied to the lerp factor between stops)
+    } else if (
       lower === "normal" ||
       lower === "reverse" ||
       lower === "alternate" ||
@@ -841,6 +846,7 @@ function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?:
     case "animation-duration": props.animationDuration = val; break;
     case "animation-iteration-count": props.animationIterationCount = val; break;
     case "animation-delay": props.animationDelay = val; break;
+    case "animation-timing-function": props.animationTimingFunction = val; break;
     // Flexbox / layout
     case "display": props.display = val; break;
     case "flex-direction": props.flexDirection = val; break;
