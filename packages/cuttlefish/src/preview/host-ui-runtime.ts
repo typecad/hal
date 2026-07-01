@@ -677,15 +677,25 @@ export class PreviewUIRuntime {
       }
 
       if (changed && (completing || animation.elapsed - animation.lastUpdateMs >= 100)) {
+        let geometryScrollParent = -1;
         if (geometryChanged) {
-          this.clearCurrentNodePaint(node);
+          geometryScrollParent = this.scrollAncestorForNode(node.index);
+          if (
+            geometryScrollParent >= 0 &&
+            (this.nodes[geometryScrollParent].virtualized ||
+              this.nodes[geometryScrollParent].contentHeight <= this.nodes[geometryScrollParent].box.h)
+          ) {
+            geometryScrollParent = -1;
+          }
+          if (geometryScrollParent < 0) this.clearCurrentNodePaint(node);
           node.transformOffsetX = nextTransformX;
           node.transformOffsetY = nextTransformY;
           node.rotateDeg = nextRotateDeg;
           node.box.w = nextWidth;
           node.box.h = nextHeight;
         }
-        this.markDirty(animation.node);
+        if (geometryScrollParent >= 0) this.markScrollViewDirty(geometryScrollParent);
+        else this.markDirty(animation.node);
         animation.lastUpdateMs = animation.elapsed;
       }
       if (completing) animation.active = false;
@@ -715,6 +725,15 @@ export class PreviewUIRuntime {
       parent = this.nodes[parent].parentIndex;
     }
     return y;
+  }
+
+  private scrollAncestorForNode(nodeIndex: number): number {
+    let parent = this.nodes[nodeIndex]?.parentIndex ?? -1;
+    while (parent >= 0 && this.nodes[parent]) {
+      if (this.nodes[parent].scrollable) return parent;
+      parent = this.nodes[parent].parentIndex;
+    }
+    return -1;
   }
 
   private pressedOffsetXForNode(nodeIndex: number): number {
@@ -1469,6 +1488,12 @@ export class PreviewUIRuntime {
     this.markOverlappingHigherLayersDirty(nodeIndex);
   }
 
+  private markScrollViewDirty(nodeIndex: number): void {
+    if (!this.nodes[nodeIndex]) return;
+    this.nodes[nodeIndex].dirty = true;
+    this.markOverlappingHigherLayersDirty(nodeIndex);
+  }
+
   private drawDirty(): boolean {
     if (this.keyboardVisible) {
       this.keyboardTick(Date.now());
@@ -2126,18 +2151,30 @@ export class PreviewUIRuntime {
       // Unified scroll owner: one hit-scan covers containers and lists.
       this.scrollNode = this.findScrollNode(tx, ty);
       this.rangeNode = node >= 0 && this.nodes[node].kind === "range" ? node : -1;
+      if (this.rangeNode >= 0) {
+        // Range owns this gesture. Do not let vertical touch jitter also scroll
+        // the containing view, which would dirty and repaint the whole viewport.
+        this.scrollNode = -1;
+      }
       if (node >= 0) {
-        if (this.nodes[node].kind === "button") this.setPressed(node, true);
-        if (this.nodes[node].kind === "range") this.updateRangeValue(node, tx);
-        this.markDirty(node);
+        let handledTouchTarget = false;
+        if (this.nodes[node].kind === "button") {
+          this.setPressed(node, true);
+          handledTouchTarget = true;
+        }
+        if (this.nodes[node].kind === "range") {
+          this.updateRangeValue(node, tx);
+          handledTouchTarget = true;
+        }
+        if (!handledTouchTarget) this.markDirty(node);
       }
     } else {
-      if (!this.isDragging && this.scrollNode >= 0 && Math.abs(ty - this.dragStartY) >= UI_DRAG_THRESHOLD) {
+      if (this.rangeNode < 0 && !this.isDragging && this.scrollNode >= 0 && Math.abs(ty - this.dragStartY) >= UI_DRAG_THRESHOLD) {
         this.isDragging = true;
       }
       // Unified scroll drag: immediate-apply each frame via the physics layer
       // (1:1 in-bounds, rubber-band at edges). No accumulator, no cadence gate.
-      if (this.isDragging && this.scrollNode >= 0) {
+      if (this.rangeNode < 0 && this.isDragging && this.scrollNode >= 0) {
         const rawDy = ty - this.dragStartY;
         if (rawDy !== 0) {
           const dy = this.smoothDragDelta(rawDy);

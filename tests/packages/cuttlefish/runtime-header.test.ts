@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emitRuntimeHeader } from "@typecad/cuttlefish/ui/runtime-header";
+import { emitRuntimeHeader } from "../../../packages/cuttlefish/src/ui/runtime-header";
 
 describe("C++ reactive runtime header", () => {
   const header = emitRuntimeHeader();
@@ -42,9 +42,10 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/int16_t\s+height/);
   });
 
-  it("applies animated transforms by clearing the previous paint before moving the node", () => {
+  it("applies animated transforms by clearing previous paint before moving standalone nodes", () => {
     expect(header).toContain("ui_clear_current_node_paint");
     expect(header).toMatch(/sLo->props\s*&\s*UI_KF_TRANSFORM/);
+    expect(header).toMatch(/if\s*\(geometryScrollParent\s*<\s*0\)\s*\{[\s\S]*ui_clear_current_node_paint\(n\);[\s\S]*\}/);
     expect(header).toMatch(/ui_clear_current_node_paint\(n\)[\s\S]*transformOffsetX\s*=\s*nextTransformX/);
     expect(header).toMatch(/sLo->props\s*&\s*UI_KF_SIZE/);
     expect(header).toMatch(/box\.w\s*=\s*nextWidth/);
@@ -299,6 +300,16 @@ describe("C++ reactive runtime header", () => {
     expect(header).not.toMatch(/for \(uint8_t i = 0; i < __ui_node_count/);
   });
 
+  it("does not truncate high node indexes in draw-order or decoration helpers", () => {
+    expect(header).toMatch(/ui_node_draws_before\(uint16_t a,\s*uint16_t b\)/);
+    expect(header).not.toMatch(/ui_node_draws_before\(uint8_t a,\s*uint8_t b\)/);
+    expect(header).toMatch(/ui_is_ancestor_of\(uint16_t candidate,\s*uint16_t nodeIdx\)/);
+    expect(header).toMatch(/ui_draw_gradient_fill\(uint16_t i,\s*int16_t drawY\)/);
+    expect(header).toMatch(/ui_draw_shadow\(uint16_t i,\s*int16_t drawY,\s*uint8_t insetOnly\)/);
+    expect(header).toMatch(/ui_draw_node_border\(uint16_t i,\s*int16_t drawX,\s*int16_t drawY,\s*uint16_t color\)/);
+    expect(header).toMatch(/ui_draw_node_outline\(uint16_t i,\s*int16_t drawX,\s*int16_t drawY\)/);
+  });
+
   it("widens every *_count past 255 (uint16_t counts + loops; demo has 128 click handlers)", () => {
     // The binding/handler counts scale with UI complexity (the demo already has
     // __ui_click_handler_count = 128, ~half the uint8_t ceiling). All counts and
@@ -326,6 +337,13 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_scroll_overscroll_for");
     expect(header).toMatch(/ui_scroll_release\(__ui_scroll_node\)/);
     expect(header).toMatch(/ui_scroll_advance_settle\(i,\s*deltaMs\)/);
+  });
+
+  it("keeps range gestures out of the scroll drag path", () => {
+    expect(header).toMatch(/if \(__ui_nodes\[node\]\.kind == NODE_RANGE\) \{[\s\S]*__ui_range_node = node;[\s\S]*__ui_scroll_node = -1;[\s\S]*handledTouchTarget = 1;/);
+    expect(header).toMatch(/if \(__ui_range_node < 0 && !__ui_is_dragging && __ui_scroll_node >= 0\)/);
+    expect(header).toMatch(/if \(__ui_range_node < 0 && __ui_is_dragging && __ui_scroll_node >= 0\)/);
+    expect(header).toMatch(/if \(!handledTouchTarget\) ui_mark_dirty\(node\);/);
   });
 
   it("renders scroll containers via a per-container shift-and-repair canvas (Mode B)", () => {
@@ -372,8 +390,9 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*__ui_nodes\[i\]\.box\.x\s*=\s*origBoxX;[\s\S]*__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY;[\s\S]*continue/);
   });
 
-  it("repairs animated geometry clears inside scroll containers with a parent-seeded local canvas", () => {
+  it("invalidates buffered scroll viewports for animated geometry inside overflowing scroll containers", () => {
     expect(header).toContain("ui_scroll_ancestor_for_node");
+    expect(header).toContain("ui_mark_scroll_view_dirty");
     expect(header).toContain("ui_repair_current_node_paint_with_parent");
     expect(header).toContain("ui_fill_rect_clipped");
     expect(header).toContain("ui_draw_node_decoration_clipped");
@@ -381,7 +400,9 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_clear_current_node_paint[\s\S]*scrollParent\s*=\s*ui_scroll_ancestor_for_node\(nodeIdx\)/);
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&clipped\)/);
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_draw_node_decoration_clipped/);
-    expect(header).toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_clear_current_node_paint\(n\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
+    expect(header).toMatch(/geometryScrollParent\s*=\s*ui_scroll_ancestor_for_node\(n\)[\s\S]*contentHeight\s*<=\s*__ui_nodes\[geometryScrollParent\]\.box\.h/);
+    expect(header).toMatch(/if\s*\(geometryScrollParent\s*<\s*0\)[\s\S]*ui_clear_current_node_paint\(n\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
+    expect(header).toMatch(/if\s*\(geometryScrollParent\s*>=\s*0\)\s*\{[\s\S]*ui_mark_scroll_view_dirty\(\(uint16_t\)geometryScrollParent\)/);
     expect(header).not.toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollParent\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
   });
 
@@ -402,6 +423,17 @@ describe("C++ reactive runtime header", () => {
 
   it("does not wrap list drawing in the generic paint canvas", () => {
     expect(header).toMatch(/ui_should_buffer_paint[\s\S]*kind == NODE_LIST\)\s*return 0/);
+  });
+
+  it("buffers progress and range paints as full local-canvas updates", () => {
+    expect(header).not.toMatch(/kind == NODE_PROGRESS \|\| __ui_nodes\[nodeIdx\]\.kind == NODE_RANGE\)\s*return 0/);
+    expect(header).toMatch(/if \(__ui_nodes\[i\]\.kind == NODE_PROGRESS \|\| __ui_nodes\[i\]\.kind == NODE_RANGE\) \{[\s\S]*__ui_nodes\[i\]\.lastTextWidth = -1;/);
+  });
+
+  it("invalidates stale scroll backing canvases after direct child repaints", () => {
+    expect(header).toContain("ui_invalidate_scroll_canvas_for_node");
+    expect(header).toMatch(/ui_invalidate_scroll_canvas_for_node\(uint16_t nodeIdx\)[\s\S]*scrollParent\s*=\s*ui_scroll_ancestor_for_node\(nodeIdx\)[\s\S]*contentHeight\s*<=\s*__ui_nodes\[scrollParent\]\.box\.h[\s\S]*lastPaintedScrollY\s*=\s*__ui_nodes\[scrollParent\]\.scrollY\s*-\s*span/);
+    expect(header).toMatch(/if\s*\(!drawingBufferedScroll\)\s*\{[\s\S]*ui_invalidate_scroll_canvas_for_node\(i\);[\s\S]*\}/);
   });
 
   it("seeds buffered child repaints with rounded parent decoration", () => {

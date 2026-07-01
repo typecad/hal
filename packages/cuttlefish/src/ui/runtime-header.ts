@@ -1314,22 +1314,13 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
   __ui_nodes[p].box.x = parentDrawX - canvasX;
   int16_t localY = parentDrawY - canvasY;
 
-  // Parent fill color: blended toward the parent's backdrop when the parent is
-  // translucent (matching the main NODE_FILL draw, which uses fillBg). Without
-  // this, scroll repair seeds the canvas with the parent's RAW bg while the
-  // main draw used the blended color → shearing on translucent nodes during scroll.
-  uint16_t parentFillBg = __ui_nodes[p].bg;
-  if (__ui_nodes[p].opacity < 100) {
-    parentFillBg = ui_blend565(__ui_nodes[p].bg, ui_parent_clear_color(p), __ui_nodes[p].opacity);
-  }
-
   if (__ui_nodes[p].gradientEnabled > 0) {
     ui_draw_gradient_fill(p, localY);
   } else if (__ui_nodes[p].borderRadius > 0 && __ui_nodes[p].hasBg) {
     ui_display_fill_round_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h,
-      __ui_nodes[p].borderRadius, parentFillBg);
+      __ui_nodes[p].borderRadius, __ui_nodes[p].bg);
   } else if (__ui_nodes[p].hasBg) {
-    ui_display_fill_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h, parentFillBg);
+    ui_display_fill_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h, __ui_nodes[p].bg);
   }
   if (__ui_nodes[p].borderStyle != 0) {
     uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
@@ -3613,16 +3604,23 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         break;
       case NODE_IMG:
-        if (__ui_nodes[i].hasBg) {
+        {
           int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].bg);
+          uint16_t imgBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, imgBg);
         }
         if (__ui_nodes[i].imgDataId < __ui_image_count) {
           const UIImage* img = &__ui_images[__ui_nodes[i].imgDataId];
           int16_t targetW = __ui_nodes[i].box.w;
           int16_t targetH = __ui_nodes[i].box.h;
           ui_draw_image_with_fit(img, __ui_nodes[i].box.x, drawY, __ui_nodes[i].rotateDeg, __ui_nodes[i].objectFit, targetW, targetH);
+        }
+        if (__ui_nodes[i].borderStyle != 0) {
+          int16_t borderW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+          int16_t borderH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+          ui_draw_rect_outline(__ui_nodes[i].box.x, drawY, borderW, borderH,
+            __ui_nodes[i].borderRadius, __ui_nodes[i].borderStyle, __ui_nodes[i].borderWidth, bColor);
         }
         break;
       case NODE_CANVAS: {

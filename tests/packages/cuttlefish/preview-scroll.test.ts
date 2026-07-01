@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
+import { PreviewUIRuntime } from "../../../packages/cuttlefish/src/preview/host-ui-runtime";
 
 // Behavioral tests for the unified scroll engine (preview = capacitive + full
 // tier). Mirrors the C++ engine: 1:1 in-bounds, rubber-band at edges, snap/bounce
@@ -228,6 +228,125 @@ describe("scroll physics (preview)", () => {
       runtime.pointerDown(10, 50);
       runtime.pointerMove(10, 30);
       expect((runtime as any).nodes[1].scrollY).toBe(0); // no scroll acquired
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("lets a range own diagonal drags inside a scroll container", () => {
+    const runtime: any = new PreviewUIRuntime({
+      projectRoot: "", entryFile: "", htmlFile: "", uiTreeNames: ["screen"],
+      program: {
+        width: 100, height: 120, colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 3, box: { x: 0, y: 0, w: 100, h: 120 } }),
+          makeNode({
+            index: 1,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 100, h: 40 },
+            hasBg: true,
+            parentIndex: 0,
+            scrollable: true,
+            contentHeight: 100,
+            subtreeEnd: 3,
+          }),
+          makeNode({
+            index: 2,
+            tag: "range",
+            kind: "range",
+            box: { x: 10, y: 12, w: 70, h: 20 },
+            parentIndex: 1,
+            subtreeEnd: 3,
+            rangeMin: 0,
+            rangeMax: 100,
+            value: 0,
+          }),
+        ],
+        transitions: [],
+      },
+      font: new Uint8Array(0), bindings: [], listBindings: [], callbacks: [], initialAssignments: [], intervals: [], pinControls: [], diagnostics: [],
+    } as any);
+    runtime.start();
+    try {
+      const scrollNode = (runtime as any).nodes[1];
+      const rangeNode = (runtime as any).nodes[2];
+
+      runtime.pointerDown(30, 20);
+      const valueAfterDown = rangeNode.value;
+      expect((runtime as any).scrollNode).toBe(-1);
+
+      runtime.pointerMove(80, 35);
+      expect(scrollNode.scrollY).toBe(0);
+      expect(scrollNode.overscrollPx).toBe(0);
+      expect(rangeNode.value).toBeGreaterThan(valueAfterDown);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("preserves a moved range value after its scroll container repaints", () => {
+    const runtime: any = new PreviewUIRuntime({
+      projectRoot: "", entryFile: "", htmlFile: "", uiTreeNames: ["screen"],
+      program: {
+        width: 100, height: 120, colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 4, box: { x: 0, y: 0, w: 100, h: 120 } }),
+          makeNode({
+            index: 1,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 100, h: 60 },
+            hasBg: true,
+            parentIndex: 0,
+            scrollable: true,
+            contentHeight: 140,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 2,
+            tag: "range",
+            kind: "range",
+            box: { x: 10, y: 12, w: 70, h: 20 },
+            parentIndex: 1,
+            subtreeEnd: 3,
+            rangeMin: 0,
+            rangeMax: 100,
+            value: 0,
+          }),
+          makeNode({
+            index: 3,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 90, w: 100, h: 30 },
+            hasBg: true,
+            parentIndex: 1,
+            subtreeEnd: 4,
+          }),
+        ],
+        transitions: [],
+      },
+      font: new Uint8Array(0), bindings: [], listBindings: [], callbacks: [], initialAssignments: [], intervals: [], pinControls: [], diagnostics: [],
+    } as any);
+    runtime.start();
+    try {
+      const scrollNode = (runtime as any).nodes[1];
+      const rangeNode = (runtime as any).nodes[2];
+
+      runtime.pointerDown(30, 20);
+      runtime.pointerMove(70, 20);
+      const movedValue = rangeNode.value;
+      expect(movedValue).toBeGreaterThan(0);
+      runtime.pointerUp();
+
+      (runtime as any).lastTouchTime = -1000;
+      (runtime as any).lastReleaseTime = -1000;
+      runtime.pointerDown(5, 55);
+      runtime.pointerMove(5, 35);
+
+      expect(scrollNode.scrollY).toBeGreaterThan(0);
+      expect(rangeNode.value).toBe(movedValue);
+      expect(rangeNode.lastTextWidth).toBeGreaterThan(0);
     } finally {
       runtime.stop();
     }

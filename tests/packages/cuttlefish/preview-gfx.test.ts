@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { HostAdafruitGFX, rgb565ToRgb888 } from "@typecad/cuttlefish/preview/host-gfx";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
+import { HostAdafruitGFX, rgb565ToRgb888 } from "../../../packages/cuttlefish/src/preview/host-gfx";
+import { PreviewUIRuntime } from "../../../packages/cuttlefish/src/preview/host-ui-runtime";
 
 function loadFont(): Uint8Array {
   const source = fs.readFileSync(path.resolve("demo-ui/lib/Adafruit_GFX_Library/glcdfont.c"), "utf-8");
@@ -884,6 +884,142 @@ describe("PreviewUIRuntime", () => {
       (runtime as any).clearCurrentNodePaint((runtime as any).nodes[3]);
       expect(px(2, 2)).toBe(screenBg);
       expect(px(5, 2)).toBe(trackBg);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("invalidates the scroll viewport instead of clearing animated transform pixels inside scroll views", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 16,
+        height: 12,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({
+            index: 0,
+            tag: "screen",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 16, h: 12 },
+            hasBg: true,
+            bg: 0xffff,
+            clearColor: 0xffff,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 1,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 16, h: 8 },
+            hasBg: true,
+            bg: 0xffff,
+            clearColor: 0xffff,
+            parentIndex: 0,
+            scrollable: true,
+            contentHeight: 24,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 2,
+            tag: "view",
+            kind: "fill",
+            box: { x: 1, y: 1, w: 12, h: 4 },
+            hasBg: true,
+            bg: 0x4208,
+            clearColor: 0xffff,
+            parentIndex: 1,
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 3,
+            id: "dot",
+            tag: "view",
+            kind: "fill",
+            box: { x: 1, y: 1, w: 2, h: 2 },
+            hasBg: true,
+            bg: 0xf800,
+            clearColor: 0xffff,
+            parentIndex: 2,
+            subtreeEnd: 4,
+          }),
+        ],
+        transitions: [],
+        keyframeSets: [
+          {
+            name: "move",
+            stops: [
+              {
+                percent: 0,
+                props: 8,
+                bg: 0,
+                fg: 0,
+                opacity: 100,
+                transformOffsetX: 0,
+                transformOffsetY: 0,
+                translatePctX: 0,
+                translatePctY: 0,
+                scaleX: 100,
+                scaleY: 100,
+                rotateDeg: 0,
+                width: 0,
+                height: 0,
+              },
+              {
+                percent: 100,
+                props: 8,
+                bg: 0,
+                fg: 0,
+                opacity: 100,
+                transformOffsetX: 50,
+                transformOffsetY: 0,
+                translatePctX: 0,
+                translatePctY: 0,
+                scaleX: 100,
+                scaleY: 100,
+                rotateDeg: 0,
+                width: 0,
+                height: 0,
+              },
+            ],
+          },
+        ],
+        animations: [
+          {
+            node: 3,
+            keyframeSet: 0,
+            durationMs: 1000,
+            delayMs: 0,
+            iterations: -1,
+            baseWidth: 2,
+            baseHeight: 2,
+            originX: 0,
+            originY: 0,
+          },
+        ],
+      },
+      font: [],
+      bindings: [],
+      listBindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      const clearNodePaint = vi.spyOn(runtime as any, "clearCurrentNodePaint");
+      const markScrollViewDirty = vi.spyOn(runtime as any, "markScrollViewDirty");
+
+      runtime.tick(120);
+
+      expect(clearNodePaint).not.toHaveBeenCalled();
+      expect(markScrollViewDirty).toHaveBeenCalledWith(1);
+      expect((runtime as any).nodes[3].transformOffsetX).toBeGreaterThan(0);
     } finally {
       runtime.stop();
     }

@@ -201,6 +201,27 @@ function nodeKind(tag: string): UINodeKindModel {
   return "text";
 }
 
+function intAttr(value: string | undefined, fallback: number): number {
+  if (value == null || value.trim() === "") return fallback;
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function initialValueOf(node: StyledNode, kind: UINodeKindModel, rangeMin: number, rangeMax: number): number {
+  if (kind === "radio") return node.checked ? 1 : 0;
+  if (kind === "range") {
+    const parsed = intAttr(node.value, rangeMin);
+    const value = rangeMax > rangeMin ? clampNumber(parsed, rangeMin, rangeMax) : parsed;
+    return clampInt16(value);
+  }
+  if (kind === "progress") return clampNumber(intAttr(node.value, 0), 0, 100);
+  return 0;
+}
+
 function textAlign(style: CSSProperty): 0 | 1 | 2 {
   if (style.textAlign === "center") return 1;
   if (style.textAlign === "right") return 2;
@@ -779,6 +800,10 @@ export function lowerUIToModel(
     const pressedOffset = pressedOffsetOf(node.style);
     const textSize = textSizeOf(node.style);
     const wsMode = whiteSpaceModeOf(node.style);
+    const kind = nodeKind(node.tag);
+    const rangeMin = intAttr(node.min, 0);
+    const rangeMax = intAttr(node.max, 100);
+    const value = initialValueOf(node, kind, rangeMin, rangeMax);
 
     return {
       index,
@@ -788,7 +813,7 @@ export function lowerUIToModel(
       box: baseTransformOffset.box,
       bg,
       fg,
-      kind: nodeKind(node.tag),
+      kind,
       text: applyTextTransform(node.text, node.style),
       placeholder: applyTextTransform(node.placeholder, node.style),
       valueAttr: node.value,
@@ -858,7 +883,7 @@ export function lowerUIToModel(
       lastTextWidth: 0,
       lastTextHeight: 0,
       dirty: false,
-      value: node.tag === "radio" && node.checked ? 1 : 0,
+      value,
       options: node.options,
       scrollable: node.style.overflow === "scroll" || node.style.overflow === "hidden",
       scrollY: 0,
@@ -866,8 +891,8 @@ export function lowerUIToModel(
       overscrollPx: 0,
       settling: false,
       lastPaintedScrollY: 0,
-      rangeMin: node.min ? (parseInt(node.min, 10) || 0) : 0,
-      rangeMax: node.max ? (parseInt(node.max, 10) || 100) : 100,
+      rangeMin,
+      rangeMax,
       maxlen: node.maxlen ?? 0,
       inputType: node.type,
       keyboard: node.keyboard,

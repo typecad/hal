@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { lowerUIToCpp } from "@typecad/cuttlefish/ir/transformers/ui-lowering";
-import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
-import type { KeyboardTemplate } from "@typecad/cuttlefish/ui/html-parser";
-import { parseCss, parseKeyframes } from "@typecad/cuttlefish/ui/css-parser";
-import { BlockLayoutEngine } from "@typecad/cuttlefish/ui/block-layout";
-import { measure } from "@typecad/cuttlefish/ui/layout-engine";
-import { buildKeyframeSets } from "@typecad/cuttlefish/ui/keyframes";
+import { lowerUIToCpp } from "../../../packages/cuttlefish/src/ir/transformers/ui-lowering";
+import { resolveStyles } from "../../../packages/cuttlefish/src/ui/style-resolver";
+import { parseHtml } from "../../../packages/cuttlefish/src/ui/html-parser";
+import type { KeyboardTemplate } from "../../../packages/cuttlefish/src/ui/html-parser";
+import { parseCss, parseKeyframes } from "../../../packages/cuttlefish/src/ui/css-parser";
+import { BlockLayoutEngine } from "../../../packages/cuttlefish/src/ui/block-layout";
+import { measure } from "../../../packages/cuttlefish/src/ui/layout-engine";
+import { buildKeyframeSets } from "../../../packages/cuttlefish/src/ui/keyframes";
 import {
   KEYFRAME_PROP_BG,
   KEYFRAME_PROP_FG,
@@ -15,7 +15,7 @@ import {
   KEYFRAME_PROP_TRANSFORM,
   lowerUIToModel,
   type KeyframeSetModel,
-} from "@typecad/cuttlefish/ui/model";
+} from "../../../packages/cuttlefish/src/ui/model";
 
 function lower(html: string, css: string) {
   const styled = resolveStyles(parseHtml(html), parseCss(css));
@@ -167,6 +167,22 @@ describe("ui lowering", () => {
     );
     expect(out.nodeTable).toContain("NODE_INPUT");
     expect(out.nodeTable).toContain(".maxlen=32");
+  });
+
+  it("preserves range and progress value attributes in the model and generated node table", () => {
+    const html = `<screen><range id="volume" min="0" max="10" value="3"></range><progress id="load" value="42"></progress></screen>`;
+    const styled = resolveStyles(parseHtml(html), parseCss(``));
+    const boxes = new BlockLayoutEngine().arrange(styled, { x: 0, y: 0, w: 120, h: 120 }, measure);
+    const model = lowerUIToModel(styled, boxes, "rgb565");
+    const volume = model.nodes.find((node) => node.id === "volume");
+    const load = model.nodes.find((node) => node.id === "load");
+
+    expect(volume).toMatchObject({ kind: "range", rangeMin: 0, rangeMax: 10, value: 3 });
+    expect(load).toMatchObject({ kind: "progress", value: 42 });
+
+    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash");
+    expect(out.nodeTable).toMatch(/NODE_RANGE[^\n]*\.rangeMin=0[^\n]*\.rangeMax=10[^\n]*\.value=3/);
+    expect(out.nodeTable).toMatch(/NODE_PROGRESS[^\n]*\.value=42/);
   });
 
   it("emits a keyboard loader function and dispatch table for an input", () => {

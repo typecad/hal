@@ -48,9 +48,13 @@ export interface ScreenTree {
   visStack: ViewElement;
   visBefore: ViewElement;
   visHiddenAttr: ViewElement;
+  visAfter1: ViewElement;
+  visBefore2: ViewElement;
   visDisplayNone: ViewElement;
+  visAfter2: ViewElement;
+  visBefore3: ViewElement;
   visCollapsed: ViewElement;
-  visAfter: ViewElement;
+  visAfter3: ViewElement;
   opacityDemo: ViewElement;
   opacityRow: ViewElement;
   opaqFull: ViewElement;
