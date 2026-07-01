@@ -45,6 +45,10 @@
       "types": "./dist/ui/inline-parser.d.ts",
       "default": "./dist/ui/inline-parser.js"
     },
+    "./ui/rich-layout": {
+      "types": "./dist/ui/rich-layout.d.ts",
+      "default": "./dist/ui/rich-layout.js"
+    },
     "./ui/default-keyboards": {
       "types": "./dist/ui/default-keyboards.d.ts",
       "default": "./dist/ui/default-keyboards.js"
