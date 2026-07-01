@@ -12,6 +12,20 @@ import type { Diagnostic } from "../types.js";
 import { CSSRule, CSSProperty, CSSSelector, SimpleSelector, parseInlineStyle } from "./css-parser.js";
 import { getUARules } from "./ua-stylesheet.js";
 
+// The CSS-standard set of properties that inherit from parent to child. A
+// child inherits the parent's resolved value for each of these unless the
+// child sets its own (rule or inline); the child's own value always wins.
+// Box-model and decorative properties (background, border, padding, margin,
+// width/height, opacity, ...) do NOT inherit — matching browser behavior.
+// `opacity` is excluded because the lowering already compounds
+// effectiveOpacity down the tree; `text-decoration` is excluded because the
+// only producer of default underlines is the UA `a` rule applied directly.
+export const INHERITED_KEYS = [
+  "color", "fontFamily", "fontSize", "fontWeight", "fontStyle", "fontSmoothing",
+  "lineHeight", "letterSpacing", "textAlign", "textTransform", "whiteSpace",
+  "textShadow", "textOverflow", "visibility",
+] as const;
+
 export interface StyledNode {
   tag: string;
   origTag?: string;
@@ -175,10 +189,10 @@ function matches(node: UIElementNode, sel: CSSSelector, ancestors: UIElementNode
 
 export function resolveStyles(root: UIElementNode, rules: CSSRule[], diagnostics?: Diagnostic[]): StyledNode {
   const allRules = [...getUARules(), ...rules];
-  return resolveNode(root, allRules, [], diagnostics);
+  return resolveNode(root, allRules, [], diagnostics, undefined);
 }
 
-function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElementNode[], diagnostics?: Diagnostic[]): StyledNode {
+function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElementNode[], diagnostics?: Diagnostic[], parentInherited?: CSSProperty): StyledNode {
   const base: CSSProperty = {};
   const pressed: CSSProperty = {};
 
@@ -225,6 +239,25 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     (style as CSSProperty & { pressed?: CSSProperty }).pressed = pressed;
   }
 
+  // Apply CSS inheritance: for each inherited key the node didn't set itself
+  // (no rule, no inline, no hidden override), take the parent's resolved value.
+  // The node's own value always wins; only the gaps are filled.
+  if (parentInherited) {
+    for (const key of INHERITED_KEYS) {
+      if (style[key] === undefined && parentInherited[key] !== undefined) {
+        style[key] = parentInherited[key];
+      }
+    }
+  }
+
+  // The resolved inherited subset to pass to this node's children: the node's
+  // own value where it set one, else whatever it inherited. Since `style` now
+  // holds the effective value after the merge above, read straight off it.
+  const inherited: CSSProperty = {};
+  for (const key of INHERITED_KEYS) {
+    if (style[key] !== undefined) inherited[key] = style[key];
+  }
+
   const childAncestors = [...ancestors, node];
   return {
     tag: node.tag,
@@ -234,7 +267,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     text: node.text,
     value: node.value,
     style,
-    children: node.children.map(c => resolveNode(c, rules, childAncestors, diagnostics)),
+    children: node.children.map(c => resolveNode(c, rules, childAncestors, diagnostics, inherited)),
     options: node.options,
     name: node.name,
     checked: node.checked,

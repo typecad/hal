@@ -948,7 +948,8 @@ describe("PreviewUIRuntime", () => {
     }
   });
 
-  it("invalidates the scroll viewport instead of clearing animated transform pixels inside scroll views", () => {
+  it("repairs animated transform fills in preview without the old 100ms geometry throttle", () => {
+    const onFrame = vi.fn();
     const runtime = new PreviewUIRuntime({
       projectRoot: "",
       entryFile: "",
@@ -1068,18 +1069,26 @@ describe("PreviewUIRuntime", () => {
       intervals: [],
       pinControls: [],
       diagnostics: [],
-    } as any);
+    } as any, { onFrame });
 
     runtime.start();
     try {
       const clearNodePaint = vi.spyOn(runtime as any, "clearCurrentNodePaint");
       const markScrollViewDirty = vi.spyOn(runtime as any, "markScrollViewDirty");
+      const repairGeometryFill = vi.spyOn(runtime as any, "tryRepairGeometryFill");
+      const px = (x: number, y: number) => runtime.gfx.buffer[y * 16 + x];
 
-      runtime.tick(120);
+      expect(px(1, 1)).toBe(0xf800);
+
+      runtime.tick(40);
 
       expect(clearNodePaint).not.toHaveBeenCalled();
-      expect(markScrollViewDirty).toHaveBeenCalledWith(1);
+      expect(markScrollViewDirty).not.toHaveBeenCalled();
+      expect(repairGeometryFill).toHaveBeenCalled();
       expect((runtime as any).nodes[3].transformOffsetX).toBeGreaterThan(0);
+      expect(px(1, 1)).toBe(0x4208);
+      expect(px(3, 1)).toBe(0xf800);
+      expect(onFrame).toHaveBeenCalled();
     } finally {
       runtime.stop();
     }

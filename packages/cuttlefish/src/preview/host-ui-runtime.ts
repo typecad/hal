@@ -5,7 +5,7 @@ import type { UIFontAssetModel, UIFontGlyphModel } from "../ui/font-assets.js";
 import type { UIImageAsset } from "../ui/image-assets.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../ui/html-parser.js";
 import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
-import { easeCurveLerpK } from "../ui/model.js";
+import { easeCurveLerpK } from "../ui/easing.js";
 import { layoutText } from "../ui/text-layout.js";
 import { blendRgb565, HostAdafruitGFX } from "./host-gfx.js";
 import type {
@@ -31,6 +31,7 @@ const UI_SCROLL_SETTLE_MS = 180;
 const UI_KB_REPEAT_MS = 100;
 const UI_KB_TEXT_H = 24;
 const UI_TRANSITION_SNAP_MS = 100;
+const UI_MAX_BUFFERED_PAINT_PIXELS = 20000;
 
 const DEFAULT_KEY_BG = 0x4208;
 const DEFAULT_KEY_FG = 0xffff;
@@ -232,6 +233,7 @@ export class PreviewUIRuntime {
   private keyboardBackspaceRepeat = 0;
   private keyboardPressedKey = -1;
   private keyboardRepaintKey = -1;
+  private directFrameChanged = false;
 
   constructor(private readonly snapshot: PreviewSnapshot, options: RuntimeOptions = {}) {
     const { nodes, transitions, animations } = cloneProgram(snapshot.program);
@@ -292,7 +294,9 @@ export class PreviewUIRuntime {
     for (let i = 0; i < this.nodes.length; i++) {
       if (this.nodes[i].settling) this.advanceScrollSettle(i);
     }
-    if (this.drawDirty()) {
+    const changed = this.drawDirty() || this.directFrameChanged;
+    this.directFrameChanged = false;
+    if (changed) {
       this.onFrame?.(this.gfx.toRgbaBytes());
     }
   }
@@ -683,26 +687,33 @@ export class PreviewUIRuntime {
         }
       }
 
-      if (changed && (completing || animation.elapsed - animation.lastUpdateMs >= 100)) {
-        let geometryScrollParent = -1;
+      if (changed) {
+        const throttleRedraw = !geometryChanged &&
+          !(completing || animation.elapsed - animation.lastUpdateMs >= 100);
+        if (throttleRedraw) {
+          if (completing) animation.active = false;
+          continue;
+        }
+        let oldGeometryRect: { x: number; y: number; w: number; h: number } | undefined;
         if (geometryChanged) {
-          geometryScrollParent = this.scrollAncestorForNode(node.index);
-          if (
-            geometryScrollParent >= 0 &&
-            (this.nodes[geometryScrollParent].virtualized ||
-              this.nodes[geometryScrollParent].contentHeight <= this.nodes[geometryScrollParent].box.h)
-          ) {
-            geometryScrollParent = -1;
-          }
-          if (geometryScrollParent < 0) this.clearCurrentNodePaint(node);
+          const rect = this.currentPaintRect(node);
+          if (rect.w > 0 && rect.h > 0) oldGeometryRect = rect;
           node.transformOffsetX = nextTransformX;
           node.transformOffsetY = nextTransformY;
           node.rotateDeg = nextRotateDeg;
           node.box.w = nextWidth;
           node.box.h = nextHeight;
         }
-        if (geometryScrollParent >= 0) this.markScrollViewDirty(geometryScrollParent);
-        else this.markDirty(animation.node);
+        let repairedGeometry = false;
+        if (geometryChanged && oldGeometryRect) {
+          repairedGeometry = this.tryRepairGeometryFill(node, oldGeometryRect);
+        }
+        if (geometryChanged && !repairedGeometry) {
+          if (oldGeometryRect) this.clearNodePaintRect(node, oldGeometryRect);
+          else this.clearCurrentNodePaint(node);
+          this.invalidateScrollCanvasForNode(node.index);
+        }
+        if (!repairedGeometry) this.markDirty(animation.node);
         animation.lastUpdateMs = animation.elapsed;
       }
       if (completing) animation.active = false;
@@ -1018,12 +1029,16 @@ export class PreviewUIRuntime {
       const origParentX = parent.box.x;
       parent.box.x = parentDrawX;
       try {
+        let parentFillBg = parent.bg;
+        if (parent.opacity < 100) {
+          parentFillBg = blendRgb565(parent.bg, this.parentClearColor(parent), parent.opacity);
+        }
         if (parent.gradientEnabled > 0) {
           this.drawGradientFill(parent, parentDrawY);
         } else if (parent.borderRadius > 0 && parent.hasBg) {
-          this.gfx.fillRoundRect(parent.box.x, parentDrawY, parent.box.w, parent.box.h, parent.borderRadius, parent.bg);
+          this.gfx.fillRoundRect(parent.box.x, parentDrawY, parent.box.w, parent.box.h, parent.borderRadius, parentFillBg);
         } else if (parent.hasBg) {
-          this.gfx.fillRect(parent.box.x, parentDrawY, parent.box.w, parent.box.h, parent.bg);
+          this.gfx.fillRect(parent.box.x, parentDrawY, parent.box.w, parent.box.h, parentFillBg);
         }
         if (parent.borderStyle) this.drawNodeBorder(parent, parentDrawX, parentDrawY, parent.borderColor || parent.fg);
         this.drawNodeOutline(parent, parentDrawX, parentDrawY);
@@ -1034,19 +1049,7 @@ export class PreviewUIRuntime {
     return true;
   }
 
-  private clearCurrentNodePaint(node: MutableNode): void {
-    const displayText = node.hasTextBinding ? node.textBuffer : node.text;
-    const ts = this.nodeTextSize(node);
-    const metrics = this.textLayout(node, displayText, node.box.w, ts);
-    const rect = this.nodePaintRect(
-      node,
-      this.baseDrawXForNode(node.index),
-      this.baseDrawYForNode(node.index),
-      this.drawXForNode(node.index),
-      this.drawYForNode(node.index),
-      metrics.width,
-      metrics.height,
-    );
+  private clearNodePaintRect(node: MutableNode, rect: { x: number; y: number; w: number; h: number }): void {
     if (rect.w <= 0 || rect.h <= 0) return;
     const clip = this.scrollClipForNode(node.index);
     const repairRect = this.intersectClipRect(clip, rect);
@@ -1062,6 +1065,60 @@ export class PreviewUIRuntime {
         this.drawNodeOutline(parent, parentDrawX, parentDrawY);
       }
     });
+    this.directFrameChanged = true;
+  }
+
+  private clearCurrentNodePaint(node: MutableNode): void {
+    const displayText = node.hasTextBinding ? node.textBuffer : node.text;
+    const ts = this.nodeTextSize(node);
+    const metrics = this.textLayout(node, displayText, node.box.w, ts);
+    const rect = this.nodePaintRect(
+      node,
+      this.baseDrawXForNode(node.index),
+      this.baseDrawYForNode(node.index),
+      this.drawXForNode(node.index),
+      this.drawYForNode(node.index),
+      metrics.width,
+      metrics.height,
+    );
+    this.clearNodePaintRect(node, rect);
+  }
+
+  private tryRepairGeometryFill(node: MutableNode, oldRect: { x: number; y: number; w: number; h: number }): boolean {
+    if (oldRect.w <= 0 || oldRect.h <= 0) return false;
+    if (node.kind !== "fill" || !node.hasBg) return false;
+    if (node.gradientEnabled !== 0) return false;
+    if (node.borderRadius !== 0 || node.borderStyle !== 0 || node.outlineStyle !== 0 || (node.shadowCount ?? 0) !== 0) return false;
+
+    const newRect = this.currentPaintRect(node);
+    if (newRect.w <= 0 || newRect.h <= 0) return false;
+    const x0 = Math.min(oldRect.x, newRect.x);
+    const y0 = Math.min(oldRect.y, newRect.y);
+    const x1 = Math.max(oldRect.x + oldRect.w, newRect.x + newRect.w);
+    const y1 = Math.max(oldRect.y + oldRect.h, newRect.y + newRect.h);
+    let repair = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    repair = this.intersectClipRect(this.scrollClipForNode(node.index), repair);
+    if (repair.w <= 0 || repair.h <= 0) {
+      this.invalidateScrollCanvasForNode(node.index);
+      return true;
+    }
+    if (repair.w * repair.h > UI_MAX_BUFFERED_PAINT_PIXELS) return false;
+
+    if (!this.repairCurrentNodePaintWithParent(node, repair)) {
+      this.gfx.withClipRect(repair, () => {
+        this.gfx.fillRect(repair.x, repair.y, repair.w, repair.h, this.parentClearColor(node));
+      });
+    }
+    this.gfx.withClipRect(repair, () => {
+      let fillBg = node.bg;
+      if (node.opacity < 100) fillBg = blendRgb565(node.bg, this.parentClearColor(node), node.opacity);
+      const fillSize = this.rotatedFaceSize(node, node.box.w, node.box.h);
+      this.gfx.fillRect(this.drawXForNode(node.index), this.drawYForNode(node.index), fillSize.w, fillSize.h, fillBg);
+    });
+    this.invalidateScrollCanvasForNode(node.index);
+    this.markOverlappingHigherLayersDirtyForRect(node.index, repair);
+    this.directFrameChanged = true;
+    return true;
   }
 
   private clearCurrentSubtreePaint(node: MutableNode): void {
@@ -1512,6 +1569,12 @@ export class PreviewUIRuntime {
     if (!this.nodes[nodeIndex]) return;
     this.nodes[nodeIndex].dirty = true;
     this.markOverlappingHigherLayersDirty(nodeIndex);
+  }
+
+  private invalidateScrollCanvasForNode(_nodeIndex: number): void {
+    // Device runtime invalidates its cached shifted scroll canvas here. The
+    // preview renderer draws into one framebuffer and has no persistent scroll
+    // backing canvas, so the equivalent operation is intentionally empty.
   }
 
   private drawDirty(): boolean {

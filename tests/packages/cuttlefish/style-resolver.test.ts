@@ -72,21 +72,27 @@ describe("style resolver", () => {
     // view > text matches text whose IMMEDIATE parent is a view.
     // #direct (parent=view) matches; #nested (parent=text, grandparent=view)
     // must NOT — it's a grandchild via a non-view parent.
+    //
+    // Uses `background` (not `color`) because color now inherits: a `color` set
+    // on #nested would otherwise flow into #deep and make the `undefined`
+    // assertion below pass for the wrong reason. `background` does not inherit,
+    // so it isolates the selector-boundary behavior under test.
     const styled = resolve(
       `<screen><view><text id="direct">a</text><text id="nested"><text id="deep">b</text></text></view></screen>`,
-      `view > text { color: #00ff00; }`,
+      `view > text { background: #00ff00; }`,
     );
     const view = styled.children[0];
     const direct = view.children[0];
     const nested = view.children[1];          // parent is view → matches
     const deep = nested.children[0];          // parent is text, not view → must NOT match
     expect(direct.id).toBe("direct");
-    expect(direct.style.color).toBe("#00ff00");
+    expect(direct.style.background).toBe("#00ff00");
     expect(nested.id).toBe("nested");
-    expect(nested.style.color).toBe("#00ff00");
+    expect(nested.style.background).toBe("#00ff00");
     expect(deep.id).toBe("deep");
-    // deep's immediate parent is a <text>, not a <view>, so view > text fails.
-    expect(deep.style.color).toBeUndefined();
+    // deep's immediate parent is a <text>, not a <view>, so view > text fails,
+    // AND background does not inherit, so #deep stays unset.
+    expect(deep.style.background).toBeUndefined();
   });
 
   it("descendant combinator still matches at any depth", () => {
@@ -182,5 +188,108 @@ describe("pseudo-class state gating (:checked/:disabled/:focus)", () => {
     );
     expect(styled.children[0].style.opacity).toBe("0.5");  // disabled → faded
     expect(styled.children[1].style.opacity).toBe("1");   // enabled → full
+  });
+});
+
+describe("CSS inheritance", () => {
+  // The standard browser set of inherited properties (color, font-*, text-align,
+  // line-height, letter-spacing, white-space, text-transform, text-shadow,
+  // text-overflow, visibility) flows from parent to child unless the child sets
+  // its own value. Box-model and decorative properties do NOT inherit.
+
+  it("inherits color from the parent", () => {
+    const styled = resolve(
+      `<screen><view id="row"><text id="child">hi</text></view></screen>`,
+      `#row { color: #ff0000; }`,
+    );
+    expect(styled.children[0].children[0].style.color).toBe("#ff0000");
+  });
+
+  it("inherits color through multiple levels (grandchild)", () => {
+    const styled = resolve(
+      `<screen><view id="a"><view id="b"><text id="deep">hi</text></view></view></screen>`,
+      `#a { color: #00ff00; }`,
+    );
+    const deep = styled.children[0].children[0].children[0];
+    expect(deep.style.color).toBe("#00ff00");
+  });
+
+  it("inherits font-size and font-weight from a grandparent", () => {
+    const styled = resolve(
+      `<screen><view id="gp"><view><text id="deep">hi</text></view></view></screen>`,
+      `#gp { font-size: 28px; font-weight: bold; }`,
+    );
+    const deep = styled.children[0].children[0].children[0];
+    expect(deep.style.fontSize).toBe("28px");
+    expect(deep.style.fontWeight).toBe("bold");
+  });
+
+  it("child's own rule overrides the inherited value", () => {
+    const styled = resolve(
+      `<screen><view id="row"><text id="child">hi</text></view></screen>`,
+      `#row { color: #ff0000; } #child { color: #0000ff; }`,
+    );
+    expect(styled.children[0].children[0].style.color).toBe("#0000ff");
+  });
+
+  it("inline style on the child overrides the inherited value", () => {
+    const styled = resolve(
+      `<screen><view id="row"><text id="child" style="color: #0000ff">hi</text></view></screen>`,
+      `#row { color: #ff0000; }`,
+    );
+    expect(styled.children[0].children[0].style.color).toBe("#0000ff");
+  });
+
+  it("does NOT inherit non-inherited properties (background, padding)", () => {
+    const styled = resolve(
+      `<screen><view id="row"><text id="child">hi</text></view></screen>`,
+      `#row { background: #ff0000; padding: 8; }`,
+    );
+    const child = styled.children[0].children[0];
+    expect(child.style.background).toBeUndefined();
+    expect(child.style.padding).toBeUndefined();
+  });
+
+  it("a child overriding an inherited value does not change the parent's value", () => {
+    // The parent keeps its own resolved value even when a child sets its own.
+    const styled = resolve(
+      `<screen><view id="row"><text id="c1">a</text><text id="c2" style="color: #00ff00">b</text></view></screen>`,
+      `#row { color: #ff0000; }`,
+    );
+    const row = styled.children[0];
+    expect(row.style.color).toBe("#ff0000");
+    expect(row.children[0].style.color).toBe("#ff0000");   // inherits
+    expect(row.children[1].style.color).toBe("#00ff00");   // own inline wins
+  });
+
+  it("inherits font-size/font-weight set by the UA stylesheet (h1 > span)", () => {
+    // The UA sheet sets font-size and font-weight on h1-h6. A <span> inside an
+    // <h1> now inherits those UA-provided values.
+    const styled = resolveStyles(parseHtml(`<screen><h1 id="h"><span id="s">Title</span></h1></screen>`), []);
+    const span = styled.children[0].children[0];
+    expect(span.style.fontSize).toBe(styled.children[0].style.fontSize);
+    expect(span.style.fontWeight).toBe(styled.children[0].style.fontWeight);
+  });
+
+  it("inherits text-align and line-height", () => {
+    const styled = resolve(
+      `<screen><view id="row"><text id="child">hi</text></view></screen>`,
+      `#row { text-align: center; line-height: 1.4; }`,
+    );
+    const child = styled.children[0].children[0];
+    expect(child.style.textAlign).toBe("center");
+    expect(child.style.lineHeight).toBe("1.4");
+  });
+
+  it("opacity does not inherit (compounded separately at lower time)", () => {
+    // Opacity is excluded from inheritance: the lowering compounds
+    // effectiveOpacity down the tree instead. Here, a child with no opacity
+    // rule keeps its own style.opacity undefined.
+    const styled = resolve(
+      `<screen><view id="row" style="opacity: 0.5"><text id="child">hi</text></view></screen>`,
+      ``,
+    );
+    expect(styled.children[0].style.opacity).toBe("0.5");
+    expect(styled.children[0].children[0].style.opacity).toBeUndefined();
   });
 });
