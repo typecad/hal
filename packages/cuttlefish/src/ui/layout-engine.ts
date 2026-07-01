@@ -13,6 +13,7 @@
 
 import { StyledNode } from "./style-resolver.js";
 import { layoutText } from "./text-layout.js";
+import { layoutRuns } from "./rich-layout.js";
 import { assetTextWidth } from "./font-assets.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 
@@ -125,6 +126,26 @@ function textWidthOf(text: string, advance: number): number {
  *  @font-face (the runtime draws at those advances); otherwise they fall back
  *  to the 6*ts default-font advance. */
 export function measure(node: StyledNode, availableWidth?: number, fontAssets: UIFontAssetModel[] = []): IntrinsicSize {
+  // Rich-text (inline runs): size the node from its multi-run layout. Each run
+  // is measured at its own font/size advance (per-run style), and the laid-out
+  // width/height drive the node's box. This keeps flex sizing in sync with the
+  // precomputed runLines the lowering bakes (and the runtime draws).
+  if (node.runs && node.runs.length > 0) {
+    const layoutInput = node.runs.map(r => {
+      const rs = { ...node.style, ...r.style } as typeof node.style;
+      const rTs = gfxTextSizeOf({ ...node, style: rs });
+      const rAdvance = 6 * rTs + letterSpacingOf({ ...node, style: rs });
+      return {
+        text: applyTextTransform(r.text, { ...node, style: rs }),
+        hardBreak: r.hardBreak,
+        measureText: (s: string) => assetTextWidth(s, rs, fontAssets) ?? textWidthOf(s, rAdvance),
+        height: 8 * rTs,
+        ascent: 7 * rTs,
+      };
+    });
+    const layout = layoutRuns(layoutInput, { maxWidth: availableWidth, whiteSpace: node.style.whiteSpace });
+    return { w: layout.width, h: layout.height };
+  }
   // Per-node text size (from font-size + font-weight CSS).
   const ts = gfxTextSizeOf(node);
   const advance = 6 * ts + letterSpacingOf(node);

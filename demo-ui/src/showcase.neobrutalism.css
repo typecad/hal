@@ -230,6 +230,19 @@ screen {
   box-shadow: var(--shadow);
 }
 .demoH1 { color: var(--primary); font-family: "ColibriDemo"; font-size: 30px; }
+/* Rich-text (inline flow) screen: paragraphs carry mixed inline runs; the
+   inline <a> runs get the accent color so links are visible mid-sentence. */
+#richMixed, #richBreak, #richNested {
+  align-items: flex-start;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+#richtext a { color: var(--accent); text-decoration: underline; }
+#richtext p { color: var(--foreground); font-size: 16px; }
 /* H2–H6 are non-bold so each lands in its own text-size bucket: the runtime
    bumps textSize for bold text AND only has 4 buckets, so keeping every
    heading bold would collapse several into one rendered size. */

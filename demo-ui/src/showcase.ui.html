@@ -22,6 +22,7 @@
     <main class="scrollBody">
       <nav id="homeNav">
         <a href="#typography">Typography &gt;</a>
+        <a href="#richtext">Rich Text &gt;</a>
         <a href="#box">Box &amp; Sizing &gt;</a>
         <a href="#layout">Position &amp; Layers &gt;</a>
         <a href="#flex">Flexbox &gt;</a>
@@ -88,6 +89,29 @@
       <view id="typeView">
         <span class="tAside">&lt;view&gt; native container</span>
       </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Rich Text (inline flow) ──────────────────────────────────────────── -->
+<screen id="richtext">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Rich Text</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="richMixed">
+        <!-- Mixed inline content flows on shared wrapped lines with per-run
+             style: bold, italic, underline, color, and a tappable link. -->
+        <p style="padding:8px; width:200px">This is a <b>rich text</b> paragraph with <i>italic</i>, <u>underline</u>, and a <a href="#home">link home</a>. It wraps across lines with <span style="color:#ff6666">colored</span> runs and a <span style="font-size:22px">bigger</span> word on the same line.</p>
+      </section>
+      <section id="richBreak">
+        <p style="padding:8px; width:200px">Line one.<br/>Line two after a hard break.<br/><br/>After a blank line.</p>
+      </section>
+      <section id="richNested">
+        <p style="padding:8px; width:200px">Nested <b>bold and <i>both</i></b> styles in one run sequence.</p>
+      </section>
     </main>
   </body>
 </screen>
