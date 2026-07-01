@@ -41,6 +41,10 @@
       "types": "./dist/ui/html-parser.d.ts",
       "default": "./dist/ui/html-parser.js"
     },
+    "./ui/inline-parser": {
+      "types": "./dist/ui/inline-parser.d.ts",
+      "default": "./dist/ui/inline-parser.js"
+    },
     "./ui/default-keyboards": {
       "types": "./dist/ui/default-keyboards.d.ts",
       "default": "./dist/ui/default-keyboards.js"
