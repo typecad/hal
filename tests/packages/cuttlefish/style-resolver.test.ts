@@ -262,13 +262,18 @@ describe("CSS inheritance", () => {
     expect(row.children[1].style.color).toBe("#00ff00");   // own inline wins
   });
 
-  it("inherits font-size/font-weight set by the UA stylesheet (h1 > span)", () => {
-    // The UA sheet sets font-size and font-weight on h1-h6. A <span> inside an
-    // <h1> now inherits those UA-provided values.
-    const styled = resolveStyles(parseHtml(`<screen><h1 id="h"><span id="s">Title</span></h1></screen>`), []);
-    const span = styled.children[0].children[0];
-    expect(span.style.fontSize).toBe(styled.children[0].style.fontSize);
-    expect(span.style.fontWeight).toBe(styled.children[0].style.fontWeight);
+  it("inherits font-size/font-weight set on an ancestor (view > text)", () => {
+    // Ancestor-set inherited font properties flow to a descendant leaf node.
+    // (Previously this used h1 > span, but <span> is now absorbed as inline
+    // content of the heading — see inline-runs. A view > text nesting keeps
+    // the child as a separate node so node-to-node inheritance is testable.)
+    const styled = resolve(
+      `<screen><view id="row" style="font-size: 28px; font-weight: bold"><text id="child">hi</text></view></screen>`,
+      ``,
+    );
+    const child = styled.children[0].children[0];
+    expect(child.style.fontSize).toBe("28px");
+    expect(child.style.fontWeight).toBe("bold");
   });
 
   it("inherits text-align and line-height", () => {

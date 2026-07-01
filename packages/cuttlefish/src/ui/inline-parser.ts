@@ -29,8 +29,12 @@ export function collectInlineSequence(el: Element, diagnostics: Diagnostic[]): I
   if (hasBlockChild) return undefined;
 
   // Only build a sequence when there's at least one recognized inline element
-  // child. A node with only bare text nodes is plain text (existing path).
-  const hasInlineChild = childElements.some((c) => INLINE_TAGS.has(c.tagName.toLowerCase()));
+  // child OR a <br> among mixed text (a <br> mid-paragraph is inline content
+  // that needs the rich-text path to render as a hard line break). A node with
+  // only bare text nodes (no elements, no <br>) is plain text — existing path.
+  const hasInlineChild = childElements.some(
+    (c) => INLINE_TAGS.has(c.tagName.toLowerCase()) || c.tagName.toLowerCase() === "br",
+  );
   if (!hasInlineChild) return undefined;
 
   const seq: InlineItem[] = [];

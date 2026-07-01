@@ -14,6 +14,7 @@
 
 import { parseHTML } from "linkedom";
 import type { Diagnostic } from "../types.js";
+import { collectInlineSequence, INLINE_TAGS, InlineItem } from "./inline-parser.js";
 
 export interface UIElementNode {
   tag: string;
@@ -62,6 +63,9 @@ export interface UIElementNode {
   /** Disabled state */
   disabled?: boolean;
   children: UIElementNode[];
+  /** Ordered inline content sequence (text/element/break items). Present only
+   *  for text nodes with mixed inline children; absent for plain-text nodes. */
+  inline?: InlineItem[];
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
 }
@@ -105,6 +109,9 @@ const TAG_REMAP: Record<string, string> = {
   // Inline/heading text -> text
   span: "text", p: "text",
   h1: "text", h2: "text", h3: "text", h4: "text", h5: "text", h6: "text",
+  // Styling tags -> text (inline; resolver applies bold/italic/underline defaults
+  // and absorbs them into the parent's run list).
+  b: "text", strong: "text", i: "text", em: "text", u: "text",
 };
 
 /** Extract <style>...</style> block contents from HTML source.
@@ -297,7 +304,17 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
     return accepted && ct !== "option" && ct !== "br";
   });
 
-  if (childElements.length === 0) {
+  // Inline-bearing text nodes collect an ordered inline sequence instead of a
+  // single text string. Only effective-tag "text" can be inline-bearing;
+  // collectInlineSequence returns undefined for plain text or block-child nodes.
+  let inline: InlineItem[] | undefined;
+  if (effectiveTag === "text") {
+    inline = collectInlineSequence(el, diagnostics ?? []);
+  }
+
+  // Text content: only direct text, and only when there's no inline sequence
+  // (inline content is captured above; the plain-text path is unchanged).
+  if (!inline && childElements.length === 0) {
     const parts: string[] = [];
     for (const child of Array.from(el.childNodes)) {
       if ((child as any).nodeType === 3) {
@@ -312,8 +329,10 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   }
 
   const remappedFrom = (remapped || tag === "label" || tag === "a") && tag !== effectiveTag ? tag : undefined;
-  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, children: [] };
   for (const child of childElements) {
+    // Inline children are absorbed into `inline`; don't also emit them as nodes.
+    if (inline && INLINE_TAGS.has(child.tagName.toLowerCase())) continue;
     node.children.push(domToUIElementNode(child, diagnostics));
   }
   return node;
