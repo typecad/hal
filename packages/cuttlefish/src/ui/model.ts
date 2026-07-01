@@ -2,11 +2,12 @@ import type { DisplayProfile } from "../api/shared/display-profile.js";
 import { resolveColor } from "./color.js";
 import { parseAnimation, type CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";
-import { selectFontAssetForStyle } from "./font-assets.js";
+import { selectFontAssetForStyle, assetTextWidth } from "./font-assets.js";
 import type { UIImageAsset } from "./image-assets.js";
 import { isDisplayNone, type Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
 import { whiteSpaceMode } from "./text-layout.js";
+import { layoutRuns } from "./rich-layout.js";
 import { timingFunctionCode } from "./easing.js";
 export {
   easeCurveLerpK,
@@ -115,6 +116,48 @@ export interface UINodeModel {
   canvasW: number;
   /** Canvas buffer height in pixels (for kind "canvas"). */
   canvasH: number;
+  /** Rich-text runs. Present only for text nodes with mixed inline content;
+   *  absent for plain single-string text nodes. When present, the runs are the
+   *  node's content and `text` is empty. */
+  runs?: UITextRunModel[];
+  /** Precomputed wrapped-line geometry for rich-text runs (struct-of-arrays).
+   *  The parallel arrays are indexed together; segment i is
+   *  (segRun[i], segText[i], segX[i], segW[i], segLine[i]). Baked at lower time
+   *  because runs are static-content only (no runtime re-flow). */
+  runLines?: RunLines;
+}
+
+/** One rich-text run in lowered form: a piece of styled inline text with all
+ *  style fields pre-resolved to their runtime representations. */
+export interface UITextRunModel {
+  text: string;
+  /** Resolved RGB565/mono foreground color. */
+  fg: number;
+  /** GFX text size 1-4 (from run font-size + font-weight). */
+  textSize: number;
+  /** Font asset id (0 = classic GFX bitmap font). */
+  fontFace: number;
+  /** text-decoration: 0=none, 1=underline, 2=line-through, 3=both. */
+  underline: number;
+  /** Letter spacing in px. */
+  letterSpacing: number;
+  /** Resolved screen index for an <a href> run, or -1 if not a link. */
+  linkTarget: number;
+}
+
+/** Precomputed wrapped-line geometry for a rich-text node, as parallel arrays
+ *  (mirrors how the C++ runtime emits them). Segment arrays are indexed
+ *  together; each segment belongs to the line given by its segLine entry. */
+export interface RunLines {
+  segRun: number[];      // runIndex per segment
+  segText: string[];     // segment text
+  segX: number[];        // segment x offset within its line (pre-alignment)
+  segW: number[];        // segment measured width
+  segLine: number[];     // which line each segment is on
+  lineY: number[];       // top y of each line
+  lineH: number[];       // height of each line
+  lineBaseline: number[];// baseline y of each line
+  lineW: number[];       // total width of each line (for alignment)
 }
 
 export interface UITransitionModel {
@@ -708,6 +751,16 @@ function applyTextTransform(text: string | undefined, style: CSSProperty): strin
   }
 }
 
+/** Default-font (Adafruit GFX bitmap) advance width for a string: 6*textSize
+ *  per character plus the per-character letter spacing. Used when a run has no
+ *  matching custom @font-face asset (mirrors layout-engine.ts textWidthOf). */
+function textWidthOfDefault(text: string, textSize: number, letterSpacing: number): number {
+  const advance = 6 * textSize + letterSpacing;
+  let w = 0;
+  for (const _ch of text) w += advance;
+  return w;
+}
+
 function firstListValue(value: string | undefined): string | undefined {
   return value?.split(",")[0]?.trim();
 }
@@ -799,9 +852,18 @@ export function lowerUIToModel(
     for (let s = 0; s < allScreens.length; s++) {
       flatten(allScreens[s], boxes, flat, cursor, undefined, -1, s);
     }
-  } else {
-    flatten(root, boxes, flat, cursor, undefined);
-  }
+    } else {
+      flatten(root, boxes, flat, cursor, undefined);
+    }
+
+  // Build a screen-id → screen-index map for resolving <a href="#screenId">
+  // runs to their target screen index. Screens are indexed by their position in
+  // allScreens; their id attribute names them. Built once here so each run's
+  // linkTarget can be resolved without crossing into the ir/ layer.
+  const screenIdToIndex = new Map<string, number>();
+  allScreens.forEach((s, i) => {
+    if (s.id) screenIdToIndex.set(s.id, i);
+  });
 
   const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd, screenId, zIndex, effectiveOpacity }): UINodeModel => {
     // If background is a gradient, use the first stop as the base bg color
@@ -825,6 +887,77 @@ export function lowerUIToModel(
     const rangeMin = intAttr(node.min, 0);
     const rangeMax = intAttr(node.max, 100);
     const value = initialValueOf(node, kind, rangeMin, rangeMax);
+
+    // Rich-text runs: build the run model + precomputed line geometry. Only
+    // text nodes with mixed inline content carry runs; all other nodes (and
+    // plain single-string text nodes) leave runs/runLines undefined.
+    let runsModel: UITextRunModel[] | undefined;
+    let runLinesModel: RunLines | undefined;
+    if (node.runs && node.runs.length > 0) {
+      // Per-run resolved style = node style + run style (run overrides).
+      const runStyleOf = (r: { style: Partial<CSSProperty> }): CSSProperty =>
+        ({ ...node.style, ...r.style }) as CSSProperty;
+      // Build layoutRuns input: each run measured at its own font/size advance.
+      const layoutInput = node.runs.map(r => {
+        const rs = runStyleOf(r);
+        const rTextSize = textSizeOf(rs);
+        const rLetterSpacing = letterSpacingOf(rs);
+        return {
+          text: applyTextTransform(r.text, rs) ?? "",
+          hardBreak: r.hardBreak,
+          // Per-glyph asset advance when the run has a custom font, else the
+          // flat 6*textSize + letterSpacing per-char default-font advance.
+          measureText: (s: string) =>
+            assetTextWidth(s, rs, fontAssets) ?? textWidthOfDefault(s, rTextSize, rLetterSpacing),
+          height: 8 * rTextSize,
+          ascent: 7 * rTextSize,
+        };
+      });
+      const layout = layoutRuns(layoutInput, { maxWidth: box.w, whiteSpace: node.style.whiteSpace });
+
+      runsModel = node.runs.map(r => {
+        const rs = runStyleOf(r);
+        let target = -1;
+        if (r.href) {
+          const id = r.href.startsWith("#") ? r.href.slice(1) : r.href;
+          target = screenIdToIndex.has(id) ? screenIdToIndex.get(id)! : -1;
+        }
+        return {
+          text: applyTextTransform(r.text, rs) ?? "",
+          fg: rs.color ? resolveColor(rs.color, colorFormat) : fg,
+          textSize: textSizeOf(rs),
+          fontFace: fontFaceOf(rs, fontAssets),
+          underline: textDecorationOf(rs.textDecoration),
+          letterSpacing: letterSpacingOf(rs),
+          linkTarget: target,
+        };
+      });
+
+      // Bake the laid-out lines into the struct-of-arrays. Cursor advance uses
+      // the node's explicit line-height if set (uniform lines), else each
+      // line's tallest run height (variable — new for mixed font-sizes).
+      const rl: RunLines = {
+        segRun: [], segText: [], segX: [], segW: [], segLine: [],
+        lineY: [], lineH: [], lineBaseline: [], lineW: [],
+      };
+      const explicitLineHeight = node.style.lineHeight ? lineHeightOf(node.style, textSize) : 0;
+      let y = 0;
+      layout.lines.forEach((line, li) => {
+        rl.lineY.push(y);
+        rl.lineH.push(line.height);
+        rl.lineBaseline.push(y + line.ascent);
+        rl.lineW.push(line.width);
+        y += explicitLineHeight > 0 ? explicitLineHeight : line.height;
+        for (const seg of line.segments) {
+          rl.segRun.push(seg.runIndex);
+          rl.segText.push(seg.text);
+          rl.segX.push(seg.x);
+          rl.segW.push(seg.width);
+          rl.segLine.push(li);
+        }
+      });
+      runLinesModel = rl;
+    }
 
     return {
       index,
@@ -927,6 +1060,8 @@ export function lowerUIToModel(
       virtualized: node.tag === "list",
       canvasW: node.canvasW ?? 0,
       canvasH: node.canvasH ?? 0,
+      runs: runsModel,
+      runLines: runLinesModel,
     };
   });
 

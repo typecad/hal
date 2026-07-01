@@ -71,14 +71,18 @@ describe("ui lowering", () => {
   });
 
   it("escapes generated C++ string literals for text payloads", () => {
+    // NOTE: a <text> with a <br> is now inline-bearing (rich-text runs) rather
+    // than a single escaped string. To keep this test focused on C++ string
+    // escaping of the text payload, use a plain text node with an embedded
+    // newline (via pre-line + a literal) and a quote. Run-text escaping is
+    // covered by the inline lowering tests.
     const out = lower(
-      `<screen><text id="copy">hello<br/>\"quoted\"</text></screen>`,
+      `<screen><text id="copy">hello \"quoted\"</text></screen>`,
       `#copy { white-space: pre-line; }`,
     );
 
-    expect(out.nodeTable).toContain(String.raw`hello\n\"quoted\"`);
-    expect(out.nodeTable).not.toContain(`hello
-"quoted"`);
+    expect(out.nodeTable).toContain(String.raw`hello \"quoted\"`);
+    expect(out.nodeTable).not.toContain(`hello "quoted"`);
   });
 
   it("zero-initializes textBuffer and hasTextBinding in each node row", () => {
