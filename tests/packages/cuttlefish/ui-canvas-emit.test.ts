@@ -13,7 +13,8 @@ describe("emitCanvasBindings", () => {
       { nodeIndex: 3, fnName: "__ui_canvas_draw_0", callbackBody: "ui_display_fill_rect(0,0,10,10,0xf800);" },
     ]);
     expect(out).toContain("void __ui_canvas_draw_0(CuttlefishCanvas16* __c) {");
-    expect(out).toContain("int16_t __ui_canvas_w = display_canvasWidth(__c);");
+    expect(out).toContain("int16_t __ui_canvas_w = __c ? display_canvasWidth(__c) : __ui_canvas_fallback_w;");
+    expect(out).toContain("int16_t __ui_canvas_h = __c ? display_canvasHeight(__c) : __ui_canvas_fallback_h;");
     expect(out).toContain("ui_display_fill_rect(0,0,10,10,0xf800);");
     expect(out).toContain("UICanvasBinding __ui_canvas_bindings[] = {");
     expect(out).toContain("{ .node=3, .fn=__ui_canvas_draw_0 },");

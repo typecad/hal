@@ -117,6 +117,7 @@ describe("canvas node model", () => {
     const canvas = program.nodes.find(n => n.tag === "canvas");
     expect(canvas).toBeDefined();
     expect(canvas!.kind).toBe("canvas");
+    expect(canvas!.box).toMatchObject({ w: 120, h: 40 });
     expect(canvas!.canvasW).toBe(120);
     expect(canvas!.canvasH).toBe(40);
   });

@@ -300,6 +300,65 @@ describe("PreviewUIRuntime", () => {
     }
   });
 
+  it("clears transparent image letterboxing to the node clear color", () => {
+    const clearColor = 0x3333;
+    const runtime = makeRuntime([
+      makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 6, h: 4 } }),
+      makeNode({
+        index: 1,
+        tag: "img",
+        kind: "img",
+        box: { x: 0, y: 0, w: 6, h: 4 },
+        hasBg: false,
+        clearColor,
+        parentIndex: 0,
+        subtreeEnd: 2,
+        imgDataId: 0,
+        objectFit: 2,
+      }),
+    ], [{ id: "logo", width: 2, height: 2, data: [0xf800, 0x07e0, 0x001f, 0xffff] }], 6, 4);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 6 + x];
+    runtime.start();
+    try {
+      expect(px(0, 0)).toBe(clearColor);
+      expect(px(1, 0)).toBe(0xf800);
+      expect(px(5, 3)).toBe(clearColor);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("renders image borders after clearing and drawing the bitmap", () => {
+    const clearColor = 0x3333;
+    const borderColor = 0x07e0;
+    const runtime = makeRuntime([
+      makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 4, h: 4 } }),
+      makeNode({
+        index: 1,
+        tag: "img",
+        kind: "img",
+        box: { x: 0, y: 0, w: 4, h: 4 },
+        hasBg: false,
+        clearColor,
+        borderStyle: 1,
+        borderWidth: 1,
+        borderColor,
+        parentIndex: 0,
+        subtreeEnd: 2,
+      }),
+    ], [], 4, 4);
+
+    const px = (x: number, y: number) => runtime.gfx.buffer[y * 4 + x];
+    runtime.start();
+    try {
+      expect(px(0, 0)).toBe(borderColor);
+      expect(px(1, 1)).toBe(clearColor);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   it("clips object-fit cover to the image node box", () => {
     const neighbor = 0x780f;
     const runtime = makeRuntime([

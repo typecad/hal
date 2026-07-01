@@ -876,18 +876,31 @@ export class PreviewUIRuntime {
 
   private drawImageNode(node: MutableNode, drawY: number): void {
     const faceSize = this.rotatedFaceSize(node, node.box.w, node.box.h);
-    if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, faceSize.w, faceSize.h, node.bg);
+    this.gfx.fillRect(node.box.x, drawY, faceSize.w, faceSize.h, node.hasBg ? node.bg : node.clearColor);
     const assetId = node.imgDataId ?? 255;
-    if (assetId >= this.imageAssets.length) return;
-    this.drawImageWithFit(
-      this.imageAssets[assetId],
-      node.box.x,
-      drawY,
-      node.rotateDeg,
-      node.objectFit,
-      node.box.w,
-      node.box.h,
-    );
+    if (assetId < this.imageAssets.length) {
+      this.drawImageWithFit(
+        this.imageAssets[assetId],
+        node.box.x,
+        drawY,
+        node.rotateDeg,
+        node.objectFit,
+        node.box.w,
+        node.box.h,
+      );
+    }
+    if (node.borderStyle) {
+      this.drawRectOutline(
+        node.box.x,
+        drawY,
+        faceSize.w,
+        faceSize.h,
+        node.borderRadius,
+        node.borderStyle,
+        node.borderWidth,
+        node.borderColor || node.fg,
+      );
+    }
   }
 
   private nodePaintRect(node: MutableNode, baseX: number, baseY: number, drawX: number, drawY: number, textW: number, textH: number): { x: number; y: number; w: number; h: number } {

@@ -132,6 +132,7 @@ screen {
   flex: 1;
   align-items: center;
   gap: 10px;
+  background: var(--card);
 }
 
 /* Shared content-screen header: Back link + title. */
@@ -462,8 +463,8 @@ screen {
 }
 .imgRow { flex-direction: row; align-items: center; gap: 10px; width: 200px; }
 .imgLabel { width: 60px; color: var(--muted-foreground); font-size: 13px; }
-#imgContain, #imgCover, #imgFill { border: 1px solid var(--border); }
-#imgLogo { border: 1px solid var(--border); }
+#imgContain, #imgCover, #imgFill { background: var(--card); border: 1px solid var(--border); }
+#imgLogo { background: var(--card); border: 1px solid var(--border); }
 #demoCanvas { background: #0a0a1a; border: 1px solid var(--border); }
 
 /* ── Lists screen ── */

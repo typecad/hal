@@ -189,9 +189,11 @@ export function emitCanvasBindings(specs: DrawCanvasSpec[]): string {
   const lines: string[] = [];
   for (const spec of specs) {
     // The wrapper sets the canvas dims as locals + runs the lowered body.
+    // __c is null only when the runtime falls back to drawing directly into the
+    // current display target because the node offscreen canvas allocation failed.
     lines.push(`void ${spec.fnName}(CuttlefishCanvas16* __c) {`);
-    lines.push(`  int16_t __ui_canvas_w = display_canvasWidth(__c);`);
-    lines.push(`  int16_t __ui_canvas_h = display_canvasHeight(__c);`);
+    lines.push(`  int16_t __ui_canvas_w = __c ? display_canvasWidth(__c) : __ui_canvas_fallback_w;`);
+    lines.push(`  int16_t __ui_canvas_h = __c ? display_canvasHeight(__c) : __ui_canvas_fallback_h;`);
     lines.push(`  ${spec.callbackBody || ""}`);
     lines.push(`}`);
   }

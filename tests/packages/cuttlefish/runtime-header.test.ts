@@ -62,6 +62,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/dx = targetH - 1 - ty/);
     expect(header).toMatch(/ui_display_draw_pixel\(x \+ rdx, y \+ rdy, color\)/);
     expect(header).toMatch(/case\s+NODE_IMG:[\s\S]*ui_draw_image_with_fit/);
+    expect(header).toMatch(/case\s+NODE_IMG:[\s\S]*imgBg[\s\S]*ui_display_fill_rect[\s\S]*ui_draw_image_with_fit[\s\S]*ui_draw_rect_outline/);
   });
 
   it("uses 32-bit keyframe animation timers so redraw throttling survives long runs", () => {
@@ -359,6 +360,21 @@ describe("C++ reactive runtime header", () => {
     expect(header).not.toContain("ui_invalidate_scroll_cache");
   });
 
+  it("keeps the buffered scroll owner out of the direct display draw pass", () => {
+    // The scroll owner is represented by the viewport canvas during Mode B.
+    // Leaving it dirty lets the normal draw pass clear the live display first,
+    // which causes visible flashing before the shifted canvas is pushed.
+    expect(header).toMatch(/if \(bufferedScrollCanvas\) \{[\s\S]*__ui_nodes\[s\]\.dirty = 0;[\s\S]*\} else \{\s*\/\/ Mode C/);
+    expect(header).toMatch(/uint8_t drawingBufferedScroll = bufferedScrollNode >= 0 && i > bufferedScrollNode/);
+  });
+
+  it("pushes buffered scroll canvases before later outside layers can be repaired", () => {
+    expect(header).toContain("ui_push_buffered_scroll_canvas");
+    expect(header).toContain("ui_scroll_subtree_has_dirty");
+    expect(header).toMatch(/!ui_scroll_subtree_has_dirty\(\(uint16_t\)bufferedScrollNode\)\) \{[\s\S]*ui_push_buffered_scroll_canvas/);
+    expect(header).toMatch(/if \(bufferedScrollNode >= 0 && bufferedScrollCanvas\) \{[\s\S]*ui_push_buffered_scroll_canvas/);
+  });
+
   it("drops the off-screen scroll-canvas cache compositing entirely", () => {
     // The rewrite replaced the global scroll-cache machinery with a per-container
     // canvas keyed on lastPaintedScrollY. None of the old cache symbols remain.
@@ -402,7 +418,9 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_draw_node_decoration_clipped/);
     expect(header).toMatch(/geometryScrollParent\s*=\s*ui_scroll_ancestor_for_node\(n\)[\s\S]*contentHeight\s*<=\s*__ui_nodes\[geometryScrollParent\]\.box\.h/);
     expect(header).toMatch(/if\s*\(geometryScrollParent\s*<\s*0\)[\s\S]*ui_clear_current_node_paint\(n\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
-    expect(header).toMatch(/if\s*\(geometryScrollParent\s*>=\s*0\)\s*\{[\s\S]*ui_mark_scroll_view_dirty\(\(uint16_t\)geometryScrollParent\)/);
+    expect(header).toMatch(/else\s*\{[\s\S]*ui_clear_current_node_paint\(n\);[\s\S]*ui_invalidate_scroll_canvas_for_node\(n\);[\s\S]*\}/);
+    expect(header).toMatch(/__ui_nodes\[n\]\.box\.h = nextHeight;[\s\S]*ui_mark_dirty\(n\);/);
+    expect(header).not.toMatch(/if\s*\(geometryScrollParent\s*>=\s*0\)\s*\{[\s\S]*ui_mark_scroll_view_dirty\(\(uint16_t\)geometryScrollParent\)/);
     expect(header).not.toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollParent\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
   });
 
@@ -527,6 +545,16 @@ describe("canvas runtime", () => {
     expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*ui_display_set_target/);
     expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*ui_draw_canvas_rect/);
   });
+
+  it("falls back to drawing canvas callbacks directly when the node canvas buffer is unavailable", () => {
+    expect(header).toContain("__ui_canvas_fallback_w");
+    expect(header).toContain("__ui_canvas_fallback_h");
+    expect(header).toMatch(/ui_display_fill_rect\(int16_t x[\s\S]*x \+ __ui_draw_off_x/);
+    expect(header).toMatch(/ui_display_set_cursor\(int16_t x[\s\S]*x \+ __ui_draw_off_x/);
+    expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*uint8_t\s+__ui_canvas_drawn\s*=\s*0/);
+    expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*if\s*\(ui_display_is_default_target\(\)\)[\s\S]*display_createCanvas/);
+    expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*if\s*\(!__ui_canvas_drawn\)[\s\S]*__ui_draw_off_x = \(int16_t\)\(__ui_prev_off_x \+ __ui_nodes\[i\]\.box\.x\)[\s\S]*__ui_canvas_fn\(nullptr\)[\s\S]*__ui_draw_off_x = __ui_prev_off_x/);
+  });
 });
 
 describe("text-overflow: clip rendering", () => {
@@ -595,6 +623,17 @@ describe("touch hit-test supports node indices > 127", () => {
     // the keyboard target. None of these should narrow a node index to int8_t.
     expect(header).not.toMatch(/ui_scroll_max\(\(int8_t\)node\)/);
     expect(header).not.toMatch(/__ui_kb_target\s*=\s*\(int8_t\)nodeIdx/);
+  });
+
+  it("ui_open_keyboard_for_input counts NODE_INPUTs with a uint16_t loop (inputs past node 255)", () => {
+    // Regression: the input-position scan used `uint8_t j < nodeIdx`. demo-ui's
+    // inputs live at node indices 263/265/309 (> 255). A uint8_t counter wraps
+    // 255→0 and can never reach nodeIdx, so the loop never terminates — tapping
+    // an <input> froze the device (no further touches accepted, hard reset only).
+    // The scan counter must be uint16_t to cover the full node-index range.
+    const fn = header.match(/ui_open_keyboard_for_input[\s\S]*?\{[\s\S]*?\}/)?.[0] ?? "";
+    expect(fn).toMatch(/uint16_t\s+j\s*=\s*0;\s*j\s*<\s*nodeIdx/);
+    expect(fn).not.toMatch(/uint8_t\s+j\s*=\s*0;\s*j\s*<\s*nodeIdx/);
   });
 });
 
