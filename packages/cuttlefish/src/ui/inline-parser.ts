@@ -53,7 +53,15 @@ export function collectInlineSequence(el: Element, diagnostics: Diagnostic[]): I
     if (childTag && INLINE_TAGS.has(childTag)) {
       const cel = child as Element;
       const classes = (cel.getAttribute("class") || "").split(/\s+/).filter(Boolean);
-      const subInline = collectInlineSequence(cel, diagnostics);
+      let subInline = collectInlineSequence(cel, diagnostics);
+      // A leaf inline element (only text, no nested inline children) collects
+      // no sub-sequence — synthesize one text item from its text content so the
+      // resolver emits a run for it. Without this, <b>world</b> would carry no
+      // text and produce no run.
+      if (subInline === undefined) {
+        const leafText = cel.textContent ?? "";
+        subInline = leafText ? [{ kind: "text" as const, text: leafText }] : [];
+      }
       seq.push({
         kind: "element",
         tag: "text",

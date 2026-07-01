@@ -11,6 +11,8 @@ import { UIElementNode } from "./html-parser.js";
 import type { Diagnostic } from "../types.js";
 import { CSSRule, CSSProperty, CSSSelector, SimpleSelector, parseInlineStyle } from "./css-parser.js";
 import { getUARules } from "./ua-stylesheet.js";
+import { TextRun } from "./run-types.js";
+import { InlineItem } from "./inline-parser.js";
 
 // The CSS-standard set of properties that inherit from parent to child. A
 // child inherits the parent's resolved value for each of these unless the
@@ -32,6 +34,9 @@ export interface StyledNode {
   id?: string;
   classes: string[];
   text?: string;
+  /** Rich-text runs. Present only for text nodes with mixed inline content;
+   *  when present, `text` is empty and the runs are the node's content. */
+  runs?: TextRun[];
   value?: string;
   style: CSSProperty;
   children: StyledNode[];
@@ -187,6 +192,100 @@ function matches(node: UIElementNode, sel: CSSSelector, ancestors: UIElementNode
   return matchAncestors(compounds, sel.combinators ?? [], compounds.length - 2, ancestors.length, ancestors, precedingSiblings);
 }
 
+// Styling-tag default style, applied as a low-priority UA-equivalent rule on
+// inline runs derived from <b>/<strong>/<i>/<em>/<u>.
+const INLINE_TAG_DEFAULTS: Record<string, Partial<CSSProperty>> = {
+  b: { fontWeight: "bold" }, strong: { fontWeight: "bold" },
+  i: { fontStyle: "italic" }, em: { fontStyle: "italic" },
+  u: { textDecoration: "underline" },
+};
+
+/** A minimal node-like shape for matching inline element items against the
+ *  existing matchesCompound() helper (which reads tag/origTag/id/classes). */
+interface InlineMatchable {
+  tag: string;
+  origTag?: string;
+  id?: string;
+  classes: string[];
+}
+
+/** Does an inline element item match a compound selector? Reuses the same
+ *  element/class/id/attribute semantics as the main resolver. Attribute and id
+ *  selectors always fail for inline items (they carry neither), which matches
+ *  browser behavior where inline elements are usually targeted by tag/class. */
+function inlineMatchesCompound(item: Extract<InlineItem, { kind: "element" }>, compound: SimpleSelector[]): boolean {
+  for (const s of compound) {
+    switch (s.kind) {
+      case "element":
+        if (item.origTag !== s.name) return false;
+        break;
+      case "class":
+        if (!item.classes.includes(s.name)) return false;
+        break;
+      case "id":
+      case "attribute":
+        return false;
+    }
+  }
+  return true;
+}
+
+/** Resolve an inline element item's style: match its class/origTag selectors
+ *  against the rule list (source order, last-wins), then layer its inlineStyle
+ *  on top. Returns only the keys this item sets. */
+function matchInlineRules(item: Extract<InlineItem, { kind: "element" }>, rules: CSSRule[]): Partial<CSSProperty> {
+  const out: Partial<CSSProperty> = {};
+  for (const rule of rules) {
+    const compounds = rule.selector.compounds;
+    const target = compounds[compounds.length - 1];
+    // v1: match by the target compound only (no ancestor combinators for inline
+    // items — they're absorbed and no longer have a stable ancestor chain).
+    if (inlineMatchesCompound(item, target)) {
+      Object.assign(out, rule.properties);
+    }
+  }
+  if (item.inlineStyle) {
+    Object.assign(out, parseInlineStyle(item.inlineStyle));
+  }
+  return out;
+}
+
+/** Flatten the inline sequence into a runs[] list in document order. Each run
+ *  carries the most-specific style at that point: inherited (parent's resolved
+ *  style) → styling-tag default → matched rules → inlineStyle, last-wins.
+ *  An <a href> element threads its href onto every text run inside it. */
+function flattenInline(
+  items: InlineItem[],
+  parentStyle: CSSProperty,
+  rules: CSSRule[],
+  ancestors: UIElementNode[],
+  diagnostics: Diagnostic[] | undefined,
+): TextRun[] {
+  const runs: TextRun[] = [];
+  const walk = (items: InlineItem[], inheritedStyle: Partial<CSSProperty>, inheritedHref: string | undefined) => {
+    for (const item of items) {
+      if (item.kind === "break") {
+        runs.push({ text: "\n", style: { ...inheritedStyle }, hardBreak: true, href: inheritedHref });
+        continue;
+      }
+      if (item.kind === "text") {
+        if (item.text) runs.push({ text: item.text, style: { ...inheritedStyle }, href: inheritedHref });
+        continue;
+      }
+      // element: compute its style and recurse / emit.
+      const tagDefault = item.origTag ? INLINE_TAG_DEFAULTS[item.origTag] ?? {} : {};
+      const matched = matchInlineRules(item, rules);
+      const runStyle: Partial<CSSProperty> = { ...inheritedStyle, ...tagDefault, ...matched };
+      const runHref = item.href ?? inheritedHref;
+      if (item.inline && item.inline.length > 0) {
+        walk(item.inline, runStyle, runHref);
+      }
+    }
+  };
+  walk(items, parentStyle, undefined);
+  return runs;
+}
+
 export function resolveStyles(root: UIElementNode, rules: CSSRule[], diagnostics?: Diagnostic[]): StyledNode {
   const allRules = [...getUARules(), ...rules];
   return resolveNode(root, allRules, [], diagnostics, undefined);
@@ -258,6 +357,16 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     if (style[key] !== undefined) inherited[key] = style[key];
   }
 
+  // Absorb an inline sequence into runs. Each run's style = the parent text
+  // node's resolved style + the inline element's matched rules + inheritance,
+  // with styling-tag defaults (b/strong→bold, i/em→italic, u→underline) applied
+  // as low-priority UA-equivalent rules. Inline children do not become separate
+  // StyledNodes — they're flattened into this node's run list.
+  let runs: TextRun[] | undefined;
+  if (node.inline && node.inline.length > 0) {
+    runs = flattenInline(node.inline, style, rules, ancestors, diagnostics);
+  }
+
   const childAncestors = [...ancestors, node];
   return {
     tag: node.tag,
@@ -265,6 +374,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     id: node.id,
     classes: node.classes,
     text: node.text,
+    runs,
     value: node.value,
     style,
     children: node.children.map(c => resolveNode(c, rules, childAncestors, diagnostics, inherited)),
