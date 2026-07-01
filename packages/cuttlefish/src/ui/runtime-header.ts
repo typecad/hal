@@ -176,9 +176,43 @@ struct UINode {
   int16_t maxlen;       // for <input>: max character length (0 = UI_TEXT_BUF)
   uint16_t canvasW;        // canvas buffer width  (for <canvas>)
   uint16_t canvasH;        // canvas buffer height (for <canvas>)
+  // Rich-text runs (runCount > 0 for text nodes with mixed inline content).
+  // The node references a contiguous slice of the global run / segment / line
+  // arrays; geometry is precomputed at transpile time (runs are static-only).
+  uint8_t runCount;       // number of runs in this node (0 = plain single-string text)
+  uint8_t richLineCount;  // number of wrapped lines
+  uint16_t runStart;      // first index into __ui_runs[]
+  uint16_t richSegStart;  // first index into __ui_rich_segs[]
+  uint16_t richSegCount;  // total segments across all lines
+  uint16_t richLineStart; // first index into __ui_rich_lines[]
   // runtime slot
   uint8_t dirty;
   int16_t value;  // unified element state
+};
+// Rich-text run: one piece of styled inline text within a node's run list.
+struct UIRichRun {
+  const char* text;
+  uint16_t fg;
+  uint8_t textSize;
+  uint8_t fontFace;
+  uint8_t underline;     // 0=none,1=underline,2=line-through,3=both
+  int8_t letterSpacing;
+  int8_t linkTarget;     // resolved screen index, -1 = not a link
+};
+// One laid-out segment of a run on one line (precomputed geometry).
+struct UIRichSeg {
+  uint8_t runIndex;      // index into the node's runs (0..runCount-1)
+  const char* text;
+  int16_t x;             // offset from the line's left edge (pre-alignment)
+  uint16_t w;            // measured width
+  uint8_t line;          // which line (0..richLineCount-1) this segment is on
+};
+// One wrapped line of rich text (precomputed).
+struct UIRichLine {
+  int16_t y;             // top y relative to the node's text top
+  uint16_t h;            // line height (tallest run on this line)
+  int16_t baseline;      // baseline y (for mixed-size baseline alignment)
+  uint16_t w;            // total line width (for alignment)
 };
 struct UITransition {
   uint16_t node;
@@ -218,9 +252,17 @@ extern UINode __ui_nodes[];
 extern UITransition __ui_trans[];
 extern UIBinding __ui_bindings[];
 extern const UIFontFace __ui_font_faces[];
+// Rich-text run / segment / line tables (parallel arrays; nodes reference
+// contiguous slices via runStart/richSegStart/richLineStart + counts).
+extern UIRichRun __ui_runs[];
+extern UIRichSeg __ui_rich_segs[];
+extern UIRichLine __ui_rich_lines[];
 extern const uint16_t __ui_node_count;
 extern const uint16_t __ui_trans_count;
 extern const uint16_t __ui_binding_count;
+extern const uint16_t __ui_run_count;
+extern const uint16_t __ui_rich_seg_count;
+extern const uint16_t __ui_rich_line_count;
 
 // ── Multi-screen navigation ─────────────────────────────────────────────────
 // Touch/scroll/keyboard state reset by navigation.
@@ -460,6 +502,7 @@ static CuttlefishDisplayTarget* __ui_gfx = display_defaultTarget();
 // reach them.
 static CuttlefishCanvas16* __ui_container_canvas = nullptr;  // Mode B shift-and-repair
 static CuttlefishCanvas16* __ui_list_canvas = nullptr;       // virtualized <list> viewport
+static int16_t __ui_list_canvas_node = -1;                   // node currently represented by __ui_list_canvas
 static CuttlefishCanvas16* __ui_node_canvas = nullptr;       // <canvas> element offscreen
 static CuttlefishCanvas16* __ui_repair_canvas = nullptr;     // buffered-paint / exposed-strip
 static int16_t __ui_canvas_fallback_w = 0;                   // dimensions for direct <canvas> fallback
@@ -474,6 +517,7 @@ static int16_t __ui_draw_off_y = 0;
 static inline void ui_release_canvas_state() {
   display_deleteCanvas(__ui_container_canvas); __ui_container_canvas = nullptr;
   display_deleteCanvas(__ui_list_canvas);      __ui_list_canvas = nullptr;
+  __ui_list_canvas_node = -1;
   display_deleteCanvas(__ui_node_canvas);      __ui_node_canvas = nullptr;
   display_deleteCanvas(__ui_repair_canvas);    __ui_repair_canvas = nullptr;
 }
@@ -543,12 +587,13 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
 }
 
 // Repair canvas: parent-seeded background repaints + exposed-strip redraws.
-// Lazily reused/resized; released on navigation (see __ui_repair_canvas decl).
+// Grow-only between navigations so small scroll-delta changes do not allocate
+// and free a new strip canvas during drag.
 static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return nullptr;
-  if (!__ui_repair_canvas ||
-      display_canvasWidth(__ui_repair_canvas) != w ||
-      display_canvasHeight(__ui_repair_canvas) != h) {
+  if (!__ui_repair_canvas || !display_canvasBuffer(__ui_repair_canvas) ||
+      display_canvasWidth(__ui_repair_canvas) < w ||
+      display_canvasHeight(__ui_repair_canvas) < h) {
     display_deleteCanvas(__ui_repair_canvas);
     __ui_repair_canvas = display_createCanvas(w, h);
   }
@@ -1811,6 +1856,7 @@ static inline void ui_init(void) {
     __ui_nodes[i].scrollY = 0;
     __ui_nodes[i].overscrollPx = 0;
     __ui_nodes[i].settling = 0;
+    __ui_nodes[i].lastPaintedScrollY = -(__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1);
   }
 }
 
@@ -2059,7 +2105,9 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       }
       handledTouchTarget = 1;
     }
-    if (!handledTouchTarget) ui_mark_dirty(node);
+    uint8_t touchStartsScrollableView =
+      (__ui_scroll_node >= 0 && node == __ui_scroll_node);
+    if (!handledTouchTarget && !touchStartsScrollableView) ui_mark_dirty(node);
   }
 }
 
@@ -2087,6 +2135,15 @@ static void ui_touch_up() {
         ui_open_keyboard_for_input((uint16_t)clickedNode);
       }
       ui_dispatch(__ui_click_handlers, __ui_click_handler_count, __ui_touch_node);
+      // Rich-text inline link: if the tapped node has link runs, find which link
+      // segment the tap falls within and navigate to its target screen. Copies
+      // the list-item subdivision precedent with measured run rects.
+      if (__ui_nodes[clickedNode].runCount > 0) {
+        int16_t ndx = __ui_last_touch_x - ui_draw_x_for_node((uint16_t)clickedNode);
+        int16_t ndy = __ui_last_touch_y - ui_draw_y_for_node((uint16_t)clickedNode);
+        int8_t target = ui_rich_link_hit((uint16_t)clickedNode, ndx, ndy);
+        if (target >= 0) ui_navigate((uint8_t)target);
+      }
     }
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
     if (__ui_nodes[clickedNode].kind == NODE_BUTTON) {
@@ -2771,6 +2828,58 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
   }
 }
 
+// Draw a rich-text node from its precomputed run/segment/line geometry. Does
+// NOT re-wrap — the geometry was baked at transpile time (runs are static-only,
+// so the text never changes at runtime). Per line: compute the x-origin from
+// textAlign + line width, then draw each segment with its own run's fg/ts/
+// fontFace/underline. Segments of different font-sizes align on the line's
+// baseline (each segment's top = baseline − its own ascent).
+static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, uint16_t bg, uint8_t antialias) {
+  UINode* n = &__ui_nodes[nodeIdx];
+  for (uint8_t li = 0; li < n->richLineCount; li++) {
+    UIRichLine* line = &__ui_rich_lines[n->richLineStart + li];
+    int16_t lineX = x;
+    if (n->textAlign == 1) lineX = x + ((int16_t)n->box.w - (int16_t)line->w) / 2;
+    else if (n->textAlign == 2) lineX = x + (int16_t)n->box.w - (int16_t)line->w;
+    int16_t lineTop = y + line->y;
+    for (uint16_t si = n->richSegStart; si < n->richSegStart + n->richSegCount; si++) {
+      UIRichSeg* seg = &__ui_rich_segs[si];
+      if (seg->line != li) continue;
+      UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
+      int16_t segY = y + line->baseline - (7 * (int16_t)run->textSize);  // baseline alignment
+      ui_draw_text(seg->text, lineX + seg->x, segY, run->fg, bg, run->textSize, antialias, run->fontFace, run->letterSpacing);
+      if (run->underline & 1) ui_display_draw_fast_hline(lineX + seg->x, segY + 8 * run->textSize - 1, seg->w, run->fg);
+      if (run->underline & 2) ui_display_draw_fast_hline(lineX + seg->x, segY + 4 * run->textSize, seg->w, run->fg);
+      (void)lineTop;
+    }
+  }
+}
+
+// Hit-test a tap point (in node-local coordinates) against a rich-text node's
+// link runs. Returns the link run's resolved screen index, or -1 if the point
+// doesn't land on a link segment. Mirrors the list-item subdivision precedent
+// but uses measured segment rects instead of fixed row heights.
+static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py) {
+  UINode* n = &__ui_nodes[nodeIdx];
+  for (uint16_t si = n->richSegStart; si < n->richSegStart + n->richSegCount; si++) {
+    UIRichSeg* seg = &__ui_rich_segs[si];
+    UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
+    if (run->linkTarget < 0) continue;
+    UIRichLine* line = &__ui_rich_lines[n->richLineStart + seg->line];
+    // Segment x is relative to its line's left edge (pre-alignment). For the
+    // hit-test, account for center/right alignment the same way draw does.
+    int16_t originX = 0;
+    if (n->textAlign == 1) originX = ((int16_t)n->box.w - (int16_t)line->w) / 2;
+    else if (n->textAlign == 2) originX = (int16_t)n->box.w - (int16_t)line->w;
+    int16_t sx = originX + seg->x;
+    int16_t sy = line->y;
+    if (px >= sx && px < sx + (int16_t)seg->w && py >= sy && py < sy + (int16_t)line->h) {
+      return run->linkTarget;
+    }
+  }
+  return -1;
+}
+
 // Draw shadows for an element. Loops over up to 4 shadow specs. Outset shadows
 // are drawn behind the element; inset shadows are drawn over the element fill.
 // Draw a gradient fill for an element. Replaces solid fillRect/fillRoundRect.
@@ -3012,6 +3121,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       if (newCount != __ui_nodes[i].listCount) {
         __ui_nodes[i].listCount = newCount;
         __ui_nodes[i].contentHeight = (int16_t)((uint32_t)newCount * ih);
+        __ui_nodes[i].lastPaintedScrollY = __ui_nodes[i].scrollY - (__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1);
         ui_mark_dirty(i);
       }
     }
@@ -3439,8 +3549,14 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (drawingBufferedScroll) {
       // Canvas-local clip: skip nodes fully outside the viewport (0..vw, 0..vh).
       CuttlefishCanvas16* scrollDrawCanvas = bufferedScrollRepaintCanvas ? bufferedScrollRepaintCanvas : bufferedScrollCanvas;
-      if (cullY + cullH <= 0 || cullY >= display_canvasHeight(scrollDrawCanvas) ||
-          cullX + cullW <= 0 || cullX >= display_canvasWidth(scrollDrawCanvas)) {
+      int16_t scrollDrawW = display_canvasWidth(scrollDrawCanvas);
+      int16_t scrollDrawH = display_canvasHeight(scrollDrawCanvas);
+      if (bufferedScrollRepaintCanvas) {
+        scrollDrawW = __ui_nodes[bufferedScrollNode].box.w;
+        scrollDrawH = bufferedScrollRepaintH;
+      }
+      if (cullY + cullH <= 0 || cullY >= scrollDrawH ||
+          cullX + cullW <= 0 || cullX >= scrollDrawW) {
         __ui_nodes[i].box.x = origBoxX;
         __ui_nodes[i].box.y = origBoxY;
         __ui_nodes[i].dirty = 0;
@@ -3477,9 +3593,15 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (!drawingPaintCanvas) {
       ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
     }
-    __ui_nodes[i].box.x = baseDrawX;
-    ui_draw_shadow(i, baseDrawY, 0);
-    __ui_nodes[i].box.x = drawX;
+    uint8_t skipListOutsetShadow =
+      (__ui_nodes[i].kind == NODE_LIST && !drawingBufferedScroll && !__ui_fb);
+    if (!skipListOutsetShadow) {
+      __ui_nodes[i].box.x = baseDrawX;
+      ui_draw_shadow(i, baseDrawY, 0);
+      __ui_nodes[i].box.x = drawX;
+    } else {
+      __ui_nodes[i].box.x = drawX;
+    }
 
     // Border color: use borderColor if set, otherwise fg.
     uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
@@ -3546,6 +3668,34 @@ static inline void ui_tick(uint16_t deltaMs) {
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
           __ui_nodes[i].lastTextWidth = tw;
           __ui_nodes[i].lastTextHeight = th;
+        }
+        // Rich-text (inline runs): draw from precomputed geometry instead of the
+        // single-string wrapped path. Geometry is baked at transpile time; the
+        // runtime does not re-wrap.
+        if (__ui_nodes[i].runCount > 0) {
+          uint16_t richTextBg;
+          if (__ui_nodes[i].opacity < 100) {
+            uint16_t p = __ui_nodes[i].parent;
+            uint16_t source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
+                          : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            richTextBg = ui_blend565(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
+          } else {
+            richTextBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
+          }
+          if (__ui_nodes[i].textShadowCount > 0) {
+            uint16_t tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            uint16_t tsCol = ui_blend565(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
+            // Shadow pass: draw the rich block in the shadow color at the offset.
+            // (Per-segment shadow color is approximated by drawing the whole
+            // block once in tsCol; full offset translation is deferred.)
+            (void)tsCol;
+            ui_draw_rich_text(i,
+              __ui_nodes[i].box.x + __ui_nodes[i].textShadowOffsetX,
+              drawY + __ui_nodes[i].textShadowOffsetY,
+              tsClear, __ui_nodes[i].fontAntialias);
+          }
+          ui_draw_rich_text(i, __ui_nodes[i].box.x, drawY, richTextBg, __ui_nodes[i].fontAntialias);
+          break;
         }
         {
           // Text shadow: draw the text in the shadow color at the offset first.
@@ -3938,6 +4088,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         int16_t listScrollY = __ui_nodes[i].scrollY;
         int16_t listContentH = __ui_nodes[i].contentHeight;
         uint16_t clearCol = __ui_nodes[i].clearColor;
+        uint8_t listFullRepaint = 0;
         // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
         // Treat a null buffer (failed internal malloc) as "no canvas" and retry —
         // see __ui_node_canvas for the zombie-caching rationale.
@@ -3945,28 +4096,72 @@ static inline void ui_tick(uint16_t deltaMs) {
         if (!__ui_list_canvas || !display_canvasBuffer(__ui_list_canvas) ||
             display_canvasWidth(__ui_list_canvas) != bw || display_canvasHeight(__ui_list_canvas) != bh) {
           display_deleteCanvas(__ui_list_canvas);
+          __ui_list_canvas_node = -1;
           __ui_list_canvas = display_createCanvas(bw, bh);
+          listFullRepaint = 1;
         }
         CuttlefishCanvas16* lc = __ui_list_canvas;
         if (!lc || !display_canvasBuffer(lc)) {
           break;
         }
-        display_canvasFillScreen(lc, clearCol);
-        // Compute visible range.
-        uint16_t first = listScrollY / ih;
-        uint16_t last = (listScrollY + bh - 1) / ih + 1;
+        if (__ui_list_canvas_node != (int16_t)i) listFullRepaint = 1;
+        int16_t repaintY = 0;
+        int16_t repaintH = bh;
+        int16_t deltaY = listScrollY - __ui_nodes[i].lastPaintedScrollY;
+        int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
+        uint8_t canShiftList = (!listFullRepaint && deltaY != 0 && absDelta < bh);
+        if (canShiftList) {
+          ui_shift_container_canvas(lc, deltaY, clearCol, &repaintY, &repaintH);
+        } else {
+          display_canvasFillScreen(lc, clearCol);
+          repaintY = 0;
+          repaintH = bh;
+        }
+        // GFXcanvas text has no clipping. For shift-and-repair frames, draw row
+        // text into a strip-sized repair canvas first, then blit only that strip
+        // into the shifted list canvas. This prevents a 1-5px repair from
+        // repainting full glyphs across pixels that were already shifted.
+        CuttlefishCanvas16* listTextCanvas = lc;
+        int16_t listTextOffsetY = 0;
+        uint8_t drawingListRepair = 0;
+        if (canShiftList && repaintH > 0 && repaintH < bh) {
+          CuttlefishCanvas16* rc = ui_get_repair_canvas(bw, repaintH);
+          if (rc) {
+            display_canvasFillScreen(rc, clearCol);
+            listTextCanvas = rc;
+            listTextOffsetY = repaintY;
+            drawingListRepair = 1;
+          } else {
+            display_canvasFillScreen(lc, clearCol);
+            repaintY = 0;
+            repaintH = bh;
+            canShiftList = 0;
+          }
+        }
+        // Compute visible range for the repainted strip. Previously-rendered
+        // pixels are shifted in-place; only the exposed band needs new rows.
+        uint16_t first = (listScrollY + repaintY) / ih;
+        uint16_t last = (listScrollY + repaintY + repaintH - 1) / ih + 1;
         if (itemCount > 0 && last >= itemCount) last = itemCount - 1;
         // Draw each visible item (canvas-local coords: 0,0 = viewport top).
         char listBuf[UI_TEXT_BUF + 1];
-        display_targetSetTextWrap((CuttlefishDisplayTarget*)lc, false);
-        for (uint16_t idx = first; idx <= last; idx++) {
-          int16_t itemY = (int16_t)(idx * ih) - listScrollY;
-          __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
-          listBuf[UI_TEXT_BUF] = 0;
-          display_targetSetCursor((CuttlefishDisplayTarget*)lc, 4, itemY + (ih - 16) / 2);
-          display_targetSetTextColor((CuttlefishDisplayTarget*)lc, __ui_nodes[i].fg);
-          display_targetSetTextSize((CuttlefishDisplayTarget*)lc, 2);
-          display_targetPrint((CuttlefishDisplayTarget*)lc, listBuf);
+        display_targetSetTextWrap((CuttlefishDisplayTarget*)listTextCanvas, false);
+        if (itemCount > 0 && repaintH > 0) {
+          for (uint16_t idx = first; idx <= last; idx++) {
+            int16_t itemY = (int16_t)(idx * ih) - listScrollY - listTextOffsetY;
+            __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
+            listBuf[UI_TEXT_BUF] = 0;
+            display_targetSetCursor((CuttlefishDisplayTarget*)listTextCanvas, 4, itemY + (ih - 16) / 2);
+            display_targetSetTextColor((CuttlefishDisplayTarget*)listTextCanvas, __ui_nodes[i].fg);
+            display_targetSetTextSize((CuttlefishDisplayTarget*)listTextCanvas, 2);
+            display_targetPrint((CuttlefishDisplayTarget*)listTextCanvas, listBuf);
+          }
+        }
+        if (drawingListRepair) {
+          CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
+          ui_display_set_target((CuttlefishDisplayTarget*)lc);
+          ui_draw_canvas_rect(listTextCanvas, 0, repaintY, bw, repaintH);
+          ui_display_set_target(prevTarget);
         }
         // Scrollbar (canvas-local coords).
         if (listContentH > bh) {
@@ -3979,6 +4174,13 @@ static inline void ui_tick(uint16_t deltaMs) {
           display_canvasFillRect(lc, tx, 0, 3, bh, dimFg);
           display_canvasFillRect(lc, tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
         }
+        // Outset shadows are static decoration. Redrawing the hard shadow
+        // directly to the panel before every small scroll-frame creates a
+        // visible shadow-then-content intermediate state on SPI TFTs. Keep it
+        // for full list repaints, but skip it for shift-and-repair scrolls.
+        if (!drawingBufferedScroll && !__ui_fb && !canShiftList) {
+          ui_draw_shadow(i, by, 0);
+        }
         // Standalone lists push directly. Lists inside a buffered scroll
         // container must composite into that scroll canvas; their box has
         // already been translated to canvas-local coordinates.
@@ -3987,11 +4189,21 @@ static inline void ui_tick(uint16_t deltaMs) {
         } else {
           ui_push_canvas_rect(lc, bx, by, bw, bh);
         }
+        // Draw static decoration after the scrollable pixels are composited.
+        // Keeping border rows out of __ui_list_canvas prevents the cached
+        // shift step from dragging top/bottom border pixels through the list.
+        ui_draw_shadow(i, by, 1);
+        if (__ui_nodes[i].borderStyle != 0) {
+          ui_draw_node_border(i, bx, by, bColor);
+        }
+        ui_draw_node_outline(i, bx, by);
+        __ui_list_canvas_node = (int16_t)i;
+        __ui_nodes[i].lastPaintedScrollY = listScrollY;
         __ui_nodes[i].dirty = 0;
         ui_display_set_target(__ui_draw_target);
         __ui_nodes[i].box.x = origBoxX;
         __ui_nodes[i].box.y = origBoxY;
-        continue;  // skip outline/paint-canvas/restore (list draws its own border)
+        continue;  // list handled canvas push, decoration, and coordinate restore
       }
     }
     if (__ui_nodes[i].kind == NODE_FILL && ui_rotation_quadrant(__ui_nodes[i].rotateDeg) != 0 &&

@@ -274,6 +274,35 @@ function emitNodeTable(model: UIProgram): string {
   // tap function pointers on-node (no UIListBinding side table at runtime).
   const listBindingByNode = new Map<number, ReturnType<typeof getListBindings>[number]>();
   for (const lb of getListBindings()) listBindingByNode.set(lb.nodeIndex, lb);
+
+  // Accumulate rich-text run / segment / line parallel arrays across all
+  // run-bearing nodes, assigning each a contiguous slice (runStart/richSegStart/
+  // richLineStart + counts). Emitted as global tables after the node table.
+  const runRows: string[] = [];
+  const segRows: string[] = [];
+  const lineRows: string[] = [];
+  const richRanges = new Map<number, { runCount: number; runStart: number; richLineCount: number; richSegStart: number; richSegCount: number; richLineStart: number }>();
+  for (const n of model.nodes) {
+    if (!n.runs || !n.runLines || n.runs.length === 0) continue;
+    const runStart = runRows.length;
+    for (const r of n.runs) {
+      runRows.push(`  { .text=${cppString(r.text)}, .fg=${hex(r.fg)}, .textSize=${r.textSize}, .fontFace=${r.fontFace}, .underline=${r.underline}, .letterSpacing=${r.letterSpacing}, .linkTarget=${r.linkTarget} },`);
+    }
+    const richSegStart = segRows.length;
+    for (let s = 0; s < n.runLines.segRun.length; s++) {
+      segRows.push(`  { .runIndex=${n.runLines.segRun[s]}, .text=${cppString(n.runLines.segText[s])}, .x=${n.runLines.segX[s]}, .w=${n.runLines.segW[s]}, .line=${n.runLines.segLine[s]} },`);
+    }
+    const richLineStart = lineRows.length;
+    for (let l = 0; l < n.runLines.lineY.length; l++) {
+      lineRows.push(`  { .y=${n.runLines.lineY[l]}, .h=${n.runLines.lineH[l]}, .baseline=${n.runLines.lineBaseline[l]}, .w=${n.runLines.lineW[l]} },`);
+    }
+    richRanges.set(n.index, {
+      runCount: n.runs.length, runStart,
+      richLineCount: n.runLines.lineY.length, richSegStart,
+      richSegCount: n.runLines.segRun.length, richLineStart,
+    });
+  }
+
   const lines = model.nodes.map((n) => {
     const text = cppString(n.text);
     const font = "nullptr";
@@ -293,7 +322,14 @@ function emitNodeTable(model: UIProgram): string {
     const listCountFn = lb ? lb.countFnName : "nullptr";
     const listItemFn = lb ? lb.itemFnName : "nullptr";
     const listTapFn = lb && lb.tapFnName ? lb.tapFnName : "nullptr";
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .lineHeight=${n.lineHeight}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .zIndex=${n.zIndex}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .rotateDeg=${n.rotateDeg}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline}, .textOverflow=${n.textOverflow ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .whiteSpaceMode=${n.whiteSpaceMode}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .lastTextHeight=0, .scrollable=${n.scrollable ? 1 : 0}, .virtualized=${virtualized}, .scrollY=0, .contentHeight=${n.contentHeight}, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=${listCountFn}, .listItemFn=${listItemFn}, .listTapFn=${listTapFn}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .objectFit=${n.objectFit ?? 1}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .canvasW=${n.canvasW ?? 0}, .canvasH=${n.canvasH ?? 0}, .dirty=0, .value=${n.value} },`;
+    const rr = richRanges.get(n.index);
+    const runCount = rr ? rr.runCount : 0;
+    const runStart = rr ? rr.runStart : 0;
+    const richLineCount = rr ? rr.richLineCount : 0;
+    const richSegStart = rr ? rr.richSegStart : 0;
+    const richSegCount = rr ? rr.richSegCount : 0;
+    const richLineStart = rr ? rr.richLineStart : 0;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .lineHeight=${n.lineHeight}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderRadius=${n.borderRadius}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .zIndex=${n.zIndex}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .rotateDeg=${n.rotateDeg}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline}, .textOverflow=${n.textOverflow ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .whiteSpaceMode=${n.whiteSpaceMode}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .lastTextHeight=0, .scrollable=${n.scrollable ? 1 : 0}, .virtualized=${virtualized}, .scrollY=0, .contentHeight=${n.contentHeight}, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=${listCountFn}, .listItemFn=${listItemFn}, .listTapFn=${listTapFn}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .objectFit=${n.objectFit ?? 1}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .canvasW=${n.canvasW ?? 0}, .canvasH=${n.canvasH ?? 0}, .runCount=${runCount}, .richLineCount=${richLineCount}, .runStart=${runStart}, .richSegStart=${richSegStart}, .richSegCount=${richSegCount}, .richLineStart=${richLineStart}, .dirty=0, .value=${n.value} },`;
   });
   return [
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.
@@ -301,6 +337,20 @@ function emitNodeTable(model: UIProgram): string {
     `UINode __ui_nodes[] = {`,
     ...lines,
     `};`,
+    // Rich-text parallel arrays. Mutable is unnecessary (static content) but
+    // matches __ui_nodes[] linkage; nodes reference slices via runStart etc.
+    runRows.length > 0
+      ? [`UIRichRun __ui_runs[] = {`, ...runRows, `};`].join("\n")
+      : `UIRichRun __ui_runs[1];`,
+    segRows.length > 0
+      ? [`UIRichSeg __ui_rich_segs[] = {`, ...segRows, `};`].join("\n")
+      : `UIRichSeg __ui_rich_segs[1];`,
+    lineRows.length > 0
+      ? [`UIRichLine __ui_rich_lines[] = {`, ...lineRows, `};`].join("\n")
+      : `UIRichLine __ui_rich_lines[1];`,
+    `const uint16_t __ui_run_count = ${runRows.length};`,
+    `const uint16_t __ui_rich_seg_count = ${segRows.length};`,
+    `const uint16_t __ui_rich_line_count = ${lineRows.length};`,
   ].join("\n");
 }
 
