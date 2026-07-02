@@ -300,6 +300,33 @@ static inline uint32_t lerp_color_888(uint32_t a, uint32_t b, uint8_t k100);
   #define UI_LERP_COLOR(a, b, k)      lerp_color((uint16_t)(a), (uint16_t)(b), (k))
 #endif
 
+// ── 1-bit mono snap (UI_NATIVE_MONO) ─────────────────────────────────────────
+// On a B&W e-ink panel, any color value must resolve to black or white. Node
+// fields are pre-snapped at transpile, but blended/lerped runtime values
+// (opacity, shadows, gradients) need a defensive snap in the draw path. The
+// macro is a no-op on color targets so TFT output is byte-identical.
+#ifdef UI_NATIVE_MONO
+// Snap an RGB888 value to 1-bit mono (white/black) by luminance.
+static inline uint32_t ui_snap_mono(uint32_t c) {
+  uint8_t r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+  // Match the transpile-time toMono threshold: (0.299r + 0.587g + 0.114b)/255 >= 0.27.
+  // Integer form: 299r+587g+114b >= 68850 (= 0.27*255*1000). Verified 0 mismatches.
+  return ((uint32_t)(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffffu : 0x000000u;
+}
+// Snap an RGB565 value to 1-bit mono. Mono panels run at UI_COLOR_DEPTH 565, so
+// node fields hold 565 values; reconstruct 8-bit channels then apply the threshold.
+static inline uint16_t ui_snap_mono565(uint16_t c) {
+  uint8_t r5 = (c >> 11) & 0x1f, g6 = (c >> 5) & 0x3f, b5 = c & 0x1f;
+  uint8_t r = (r5 << 3) | (r5 >> 2), g = (g6 << 2) | (g6 >> 4), b = (b5 << 3) | (b5 >> 2);
+  return ((uint32_t)(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffu : 0x0000u;
+}
+#define UI_MAYBE_SNAP_MONO(c)    (ui_snap_mono((uint32_t)(c)))
+#define UI_MAYBE_SNAP_MONO565(c) (ui_snap_mono565((uint16_t)(c)))
+#else
+#define UI_MAYBE_SNAP_MONO(c)    (c)
+#define UI_MAYBE_SNAP_MONO565(c) (c)
+#endif
+
 // ── Multi-screen navigation ─────────────────────────────────────────────────
 // Touch/scroll/keyboard state reset by navigation.
 static uint8_t __ui_touch_state = 0;
@@ -472,8 +499,12 @@ static inline void ui_navigate(uint8_t screenIdx) {
   // resident and fragments the heap, so the new screen's buffer can't get a
   // contiguous block (the "works first, then blanks until reset" symptom).
   ui_release_canvas_state();
-  // Clear the entire display so old screen content doesn't show.
+  // Clear the entire display so old screen content doesn't show. On deferred-
+  // refresh panels (e-ink) a full clear flashes, so skip it — the all-nodes-
+  // dirty marking below drives a full repaint via partial refresh instead.
+#ifndef UI_REFRESH_DEFERRED
   display_fillScreen(0x0000);
+#endif
   // Mark all nodes dirty so the new screen fully redraws.
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
@@ -682,19 +713,19 @@ static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int
   return 1;
 }
 static inline void ui_display_draw_pixel(int16_t x, int16_t y, uint16_t color) {
-  display_targetDrawPixel(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, color);
+  display_targetDrawPixel(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_draw_rgb_bitmap(int16_t x, int16_t y, const uint16_t* bitmap, int16_t w, int16_t h) {
   display_targetDrawRGBBitmap(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, bitmap, w, h);
 }
 static inline void ui_display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-  display_targetFillRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, color);
+  display_targetFillRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_draw_fast_hline(int16_t x, int16_t y, int16_t w, uint16_t color) {
-  display_targetDrawFastHLine(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, color);
+  display_targetDrawFastHLine(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_draw_fast_vline(int16_t x, int16_t y, int16_t h, uint16_t color) {
-  display_targetDrawFastVLine(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, h, color);
+  display_targetDrawFastVLine(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, h, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
   display_targetFillRoundRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, r, color);
