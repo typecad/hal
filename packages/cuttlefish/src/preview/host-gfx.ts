@@ -68,6 +68,10 @@ export class HostAdafruitGFX {
     } : undefined;
   }
 
+  getClipRect(): { x: number; y: number; w: number; h: number } | undefined {
+    return this.clipRect ? { ...this.clipRect } : undefined;
+  }
+
   withClipRect<T>(rect: { x: number; y: number; w: number; h: number } | undefined, fn: () => T): T {
     const previous = this.clipRect;
     this.setClipRect(rect);
@@ -391,6 +395,18 @@ export class HostAdafruitGFX {
       this.print(text);
       return;
     }
+    const destX = Math.trunc(x);
+    const destY = Math.trunc(y);
+    const activeClip = this.clipRect ?? { x: 0, y: 0, w: this.width, h: this.height };
+    const clipX0 = Math.max(destX, activeClip.x, 0);
+    const clipY0 = Math.max(destY, activeClip.y, 0);
+    const clipX1 = Math.min(destX + w, activeClip.x + activeClip.w, this.width);
+    const clipY1 = Math.min(destY + h, activeClip.y + activeClip.h, this.height);
+    if (clipX0 >= clipX1 || clipY0 >= clipY1) return;
+    const localX0 = clipX0 - destX;
+    const localY0 = clipY0 - destY;
+    const localX1 = clipX1 - destX;
+    const localY1 = clipY1 - destY;
 
     const src = new HostAdafruitGFX(w, h, this.font);
     src.fillScreen(bg);
@@ -431,8 +447,8 @@ export class HostAdafruitGFX {
       return Math.min(cap, neighbors * step);
     };
 
-    for (let yy = 0; yy < h; yy++) {
-      for (let xx = 0; xx < w; xx++) {
+    for (let yy = localY0; yy < localY1; yy++) {
+      for (let xx = localX0; xx < localX1; xx++) {
         const px = src.buffer[yy * w + xx];
         const neighbors = foregroundNeighbors(xx, yy);
         const outerNeighbors = size >= 3 && px !== fg && neighbors === 0 ? foregroundNeighbors(xx, yy, 2) : 0;
@@ -441,9 +457,9 @@ export class HostAdafruitGFX {
       }
     }
 
-    for (let yy = 0; yy < h; yy++) {
-      for (let xx = 0; xx < w; xx++) {
-        this.drawPixel(x + xx, y + yy, out[yy * w + xx]);
+    for (let yy = localY0; yy < localY1; yy++) {
+      for (let xx = localX0; xx < localX1; xx++) {
+        this.drawPixel(destX + xx, destY + yy, out[yy * w + xx]);
       }
     }
   }

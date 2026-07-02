@@ -87,6 +87,37 @@ describe("layoutRuns", () => {
     expect(segs[1].x).toBe(30);  // after "foo" (no space between adjacent runs here)
   });
 
+  it("wraps within a single run as words accumulate past maxWidth", () => {
+    // One run "aaa bb" at 10px/char. "aaa"=30 fits in 50, but "aaa bb"=60
+    // overflows, so "bb" must wrap to its own line. This is the worst case for
+    // intra-run wrapping: lineW is 0 (the in-progress segment isn't flushed
+    // yet), so the candidate-width check must account for the segment already
+    // accumulated in `cur` — not subtract it.
+    const runs = [{ text: "aaa bb", measureText: mono, height: 16, ascent: 14 }];
+    const r = layoutRuns(runs, { maxWidth: 50, whiteSpace: "normal" });
+    expect(r.lines.length).toBe(2);
+    expect(r.lines[0].segments[0].text).toBe("aaa");
+    expect(r.lines[1].segments[0].text).toBe("bb");
+    // No laid-out line may exceed maxWidth.
+    for (const line of r.lines) expect(line.width).toBeLessThanOrEqual(50);
+  });
+
+  it("wraps a long same-run tail after earlier runs fill the line", () => {
+    // Mirrors the showcase richMixed case: a short run fills the start of the
+    // line, then a longer run whose own words must wrap within the remaining
+    // space. "foo"(30) + "aa bbbb"(20/40): "foo aa"=50 fits, "foo aa bbbb" would
+    // overflow, so "bbbb" wraps. maxWidth 50.
+    const runs = [
+      { text: "foo", measureText: mono, height: 16, ascent: 14 },
+      { text: "aa bbbb", measureText: mono, height: 16, ascent: 14 },
+    ];
+    const r = layoutRuns(runs, { maxWidth: 50, whiteSpace: "normal" });
+    // Line 0: "foo aa" (30+10+20... actually "foo"+"aa" adjacent: 30+20=50, fits).
+    // "bbbb"(40) doesn't fit beside them → wraps to line 1.
+    expect(r.lines.length).toBe(2);
+    for (const line of r.lines) expect(line.width).toBeLessThanOrEqual(50);
+  });
+
   it("splits a single word longer than maxWidth character-by-character", () => {
     const runs = [{ text: "aaaaaaaa", measureText: mono, height: 16, ascent: 14 }];  // 80px
     const r = layoutRuns(runs, { maxWidth: 30, whiteSpace: "normal" });

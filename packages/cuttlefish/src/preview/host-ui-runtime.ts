@@ -565,7 +565,18 @@ export class PreviewUIRuntime {
     }
   }
 
+  private scrollMotionActive(): boolean {
+    if (this.scrollNode >= 0 && this.isDragging) return true;
+    return this.nodes.some((node) => this.isActiveNode(node) && !!node.settling);
+  }
+
+  private keyframeSetHasScrollSensitiveGeometry(setIndex: number): boolean {
+    const set = this.keyframeSets[setIndex];
+    return !!set?.stops.some((stop) => (stop.props & (KF_TRANSFORM | KF_SIZE)) !== 0);
+  }
+
   private advanceAnimations(deltaMs: number): void {
+    const scrollMotionActive = this.scrollMotionActive();
     for (const animation of this.animations) {
       if (!animation.active) continue;
       // Mirrors the C++ engine (runtime-header.ts ~line 2842): only advance
@@ -575,6 +586,7 @@ export class PreviewUIRuntime {
       // (e.g. the transform-screen dots bleeding onto home).
       const animNode = this.nodes[animation.node];
       if (animNode && !this.isActiveNode(animNode)) continue;
+      if (scrollMotionActive && this.keyframeSetHasScrollSensitiveGeometry(animation.keyframeSet)) continue;
       animation.elapsed += deltaMs;
       let elapsedNoDelay = animation.elapsed;
       if (elapsedNoDelay < animation.delayMs) continue;
@@ -828,6 +840,21 @@ export class PreviewUIRuntime {
     return q === 1 || q === 3 ? { w: h, h: w } : { w, h };
   }
 
+  private activeDrawClip(): { x: number; y: number; w: number; h: number } {
+    return this.gfx.getClipRect() ?? { x: 0, y: 0, w: this.gfx.width, h: this.gfx.height };
+  }
+
+  private intersectRect(
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+  ): { x: number; y: number; w: number; h: number } | undefined {
+    const x0 = Math.max(a.x, b.x);
+    const y0 = Math.max(a.y, b.y);
+    const x1 = Math.min(a.x + a.w, b.x + b.w);
+    const y1 = Math.min(a.y + a.h, b.y + b.h);
+    return x0 < x1 && y0 < y1 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : undefined;
+  }
+
   private drawImageWithFit(asset: UIImageAsset, x: number, y: number, rotateDeg: number | undefined, fitMode: number | undefined, targetW: number, targetH: number): void {
     const srcW = Math.trunc(asset.width);
     const srcH = Math.trunc(asset.height);
@@ -869,11 +896,42 @@ export class PreviewUIRuntime {
     }
 
     const q = this.rotationQuadrant(rotateDeg);
-    for (let ty = 0; ty < targetH; ty++) {
+    const clip = this.intersectRect(
+      { x, y, w: q === 1 || q === 3 ? targetH : targetW, h: q === 1 || q === 3 ? targetW : targetH },
+      this.activeDrawClip(),
+    );
+    if (!clip) return;
+    let txStart = 0;
+    let txEnd = targetW;
+    let tyStart = 0;
+    let tyEnd = targetH;
+    if (q === 0) {
+      txStart = Math.max(0, Math.min(targetW, clip.x - x));
+      txEnd = Math.max(0, Math.min(targetW, clip.x + clip.w - x));
+      tyStart = Math.max(0, Math.min(targetH, clip.y - y));
+      tyEnd = Math.max(0, Math.min(targetH, clip.y + clip.h - y));
+    } else if (q === 1) {
+      txStart = Math.max(0, Math.min(targetW, clip.y - y));
+      txEnd = Math.max(0, Math.min(targetW, clip.y + clip.h - y));
+      tyStart = Math.max(0, Math.min(targetH, x + targetH - (clip.x + clip.w)));
+      tyEnd = Math.max(0, Math.min(targetH, x + targetH - clip.x));
+    } else if (q === 2) {
+      txStart = Math.max(0, Math.min(targetW, x + targetW - (clip.x + clip.w)));
+      txEnd = Math.max(0, Math.min(targetW, x + targetW - clip.x));
+      tyStart = Math.max(0, Math.min(targetH, y + targetH - (clip.y + clip.h)));
+      tyEnd = Math.max(0, Math.min(targetH, y + targetH - clip.y));
+    } else {
+      txStart = Math.max(0, Math.min(targetW, y + targetW - (clip.y + clip.h)));
+      txEnd = Math.max(0, Math.min(targetW, y + targetW - clip.y));
+      tyStart = Math.max(0, Math.min(targetH, clip.x - x));
+      tyEnd = Math.max(0, Math.min(targetH, clip.x + clip.w - x));
+    }
+    if (txStart >= txEnd || tyStart >= tyEnd) return;
+    for (let ty = tyStart; ty < tyEnd; ty++) {
       const localY = ty - offY;
       if (localY < 0 || localY >= drawH) continue;
       const srcY = Math.max(0, Math.min(srcH - 1, Math.trunc((localY * srcH) / drawH)));
-      for (let tx = 0; tx < targetW; tx++) {
+      for (let tx = txStart; tx < txEnd; tx++) {
         const localX = tx - offX;
         if (localX < 0 || localX >= drawW) continue;
         const srcX = Math.max(0, Math.min(srcW - 1, Math.trunc((localX * srcW) / drawW)));
@@ -1169,25 +1227,6 @@ export class PreviewUIRuntime {
     }
   }
 
-  private isClippedByScroll(nodeIndex: number, drawX: number, drawY: number): boolean {
-    const node = this.nodes[nodeIndex];
-    let parent = node.parentIndex;
-    while (parent >= 0 && this.nodes[parent]) {
-      const scrollParent = this.nodes[parent];
-      if (
-        scrollParent.scrollable &&
-        (drawX < scrollParent.box.x ||
-          drawX + node.box.w > scrollParent.box.x + scrollParent.box.w ||
-          drawY < scrollParent.box.y ||
-          drawY + node.box.h > scrollParent.box.y + scrollParent.box.h)
-      ) {
-        return true;
-      }
-      parent = scrollParent.parentIndex;
-    }
-    return false;
-  }
-
   private scrollClipForNode(nodeIndex: number): { x: number; y: number; w: number; h: number } | undefined {
     let parent = this.nodes[nodeIndex].parentIndex;
     let clip: { x: number; y: number; w: number; h: number } | undefined;
@@ -1364,18 +1403,30 @@ export class PreviewUIRuntime {
     if (!asset) return false;
     let cursor = x;
     const baseline = y + asset.baseline;
+    const clip = this.activeDrawClip();
     for (const ch of text) {
       const glyph = this.fontGlyph(asset, ch.codePointAt(0) ?? 0);
       if (!glyph) {
         cursor += Math.trunc(asset.lineHeight / 2);
         continue;
       }
-      for (let gy = 0; gy < glyph.height; gy++) {
-        for (let gx = 0; gx < glyph.width; gx++) {
+      const glyphX = cursor + glyph.xOffset;
+      const glyphY = baseline + glyph.yOffset;
+      if (glyphX + glyph.width <= clip.x || glyphX >= clip.x + clip.w ||
+        glyphY + glyph.height <= clip.y || glyphY >= clip.y + clip.h) {
+        cursor += glyph.advance;
+        continue;
+      }
+      const gxStart = Math.max(0, clip.x - glyphX);
+      const gyStart = Math.max(0, clip.y - glyphY);
+      const gxEnd = Math.min(glyph.width, clip.x + clip.w - glyphX);
+      const gyEnd = Math.min(glyph.height, clip.y + clip.h - glyphY);
+      for (let gy = gyStart; gy < gyEnd; gy++) {
+        for (let gx = gxStart; gx < gxEnd; gx++) {
           const alpha = this.fontAlpha(asset, glyph, gy * glyph.width + gx);
           if (alpha === 0) continue;
-          const dx = cursor + glyph.xOffset + gx;
-          const dy = baseline + glyph.yOffset + gy;
+          const dx = glyphX + gx;
+          const dy = glyphY + gy;
           if (antialias) {
             this.gfx.drawPixel(dx, dy, alpha >= 15 ? fg : blendRgb565(fg, bg, Math.trunc((alpha * 100) / 15)));
           } else if (alpha >= 8) {
@@ -1417,15 +1468,21 @@ export class PreviewUIRuntime {
     const bw = node.box.w;
     const bh = node.box.h;
     if (bw <= 0 || bh <= 0) return;
+    const clip = this.intersectRect({ x: bx, y: by, w: bw, h: bh }, this.activeDrawClip());
+    if (!clip) return;
     if (node.gradientEnabled === 1) {
-      for (let y = 0; y < bh; y++) {
+      const yStart = clip.y - by;
+      const yEnd = clip.y + clip.h - by;
+      for (let y = yStart; y < yEnd; y++) {
         const opacity = Math.trunc((y * 100) / (bh > 1 ? bh - 1 : 1));
-        this.gfx.drawFastHLine(bx, by + y, bw, blendRgb565(node.gradientColor1, node.gradientColor2, opacity));
+        this.gfx.drawFastHLine(clip.x, by + y, clip.w, blendRgb565(node.gradientColor1, node.gradientColor2, opacity));
       }
     } else if (node.gradientEnabled === 2) {
-      for (let x = 0; x < bw; x++) {
+      const xStart = clip.x - bx;
+      const xEnd = clip.x + clip.w - bx;
+      for (let x = xStart; x < xEnd; x++) {
         const opacity = Math.trunc((x * 100) / (bw > 1 ? bw - 1 : 1));
-        this.gfx.drawFastVLine(bx + x, by, bh, blendRgb565(node.gradientColor1, node.gradientColor2, opacity));
+        this.gfx.drawFastVLine(bx + x, clip.y, clip.h, blendRgb565(node.gradientColor1, node.gradientColor2, opacity));
       }
     }
   }
@@ -1721,7 +1778,12 @@ export class PreviewUIRuntime {
   private drawTextLines(node: MutableNode, displayText: string | undefined, left: number, top: number, maxWidth: number, ts: number, fg: number, bg: number, align = node.textAlign): { width: number; height: number } {
     const layout = this.textLayout(node, displayText, maxWidth, ts);
     let y = top;
+    const clip = this.activeDrawClip();
     for (const line of layout.lines) {
+      if (y + layout.lineHeight <= clip.y || y >= clip.y + clip.h) {
+        y += layout.lineHeight;
+        continue;
+      }
       // text-overflow: when a line is wider than maxWidth, truncate it. Ellipsis
       // (textOverflow truthy) appends "..."; clip (falsy) hard-cuts. Mirrors the
       // C++ ui_draw_wrapped_text overflow branch (ui_truncate_ellipsis/_clip).
@@ -1733,9 +1795,12 @@ export class PreviewUIRuntime {
           lineText = this.clipTextToWidth(line.text, maxWidth, ts, node.fontFace, node.letterSpacing);
         }
       }
-      const x = this.lineX(node, this.textWidth(lineText, ts, node.fontFace, node.letterSpacing), left, maxWidth, align);
-      this.drawText(lineText, x, y, fg, bg, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
-      if (node.underline) this.gfx.drawFastHLine(x, y + this.textHeight(ts, node.fontFace) - 1, this.textWidth(lineText, ts, node.fontFace, node.letterSpacing), fg);
+      const lineW = this.textWidth(lineText, ts, node.fontFace, node.letterSpacing);
+      const x = this.lineX(node, lineW, left, maxWidth, align);
+      if (x + lineW > clip.x && x < clip.x + clip.w) {
+        this.drawText(lineText, x, y, fg, bg, ts, node.fontAntialias, node.fontFace, node.letterSpacing);
+        if (node.underline) this.gfx.drawFastHLine(x, y + this.textHeight(ts, node.fontFace) - 1, lineW, fg);
+      }
       y += layout.lineHeight;
     }
     return { width: layout.width, height: layout.height };
@@ -1743,9 +1808,9 @@ export class PreviewUIRuntime {
 
   // Draw a rich-text node from its precomputed run/segment/line geometry (the
   // host twin of the C++ ui_draw_rich_text). Does NOT re-wrap — geometry was
-  // baked at transpile time. Per line: compute the x-origin from textAlign +
-  // line width, then draw each segment with its own run's fg/textSize/fontFace.
-  // Segments of different font-sizes align on the line's baseline.
+  // baked at transpile time. Iterate segments once, skip lines and segments
+  // outside the active clip, and compute each segment's x-origin from textAlign
+  // + line width. Segments of different font-sizes align on the line's baseline.
   private drawRichNode(node: MutableNode, drawY: number, ts: number): void {
     if (!node.runLines || !node.runs) return;
     // Clear (mirrors drawTextNode's clear + translucent blend).
@@ -1759,19 +1824,26 @@ export class PreviewUIRuntime {
     this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
 
     const drawSegs = (xOffset: number, yOffset: number, fgOverride?: number) => {
-      for (let li = 0; li < node.runLines!.lineY.length; li++) {
-        const originX = this.lineX(node, node.runLines!.lineW[li], node.box.x + xOffset, node.box.w) - node.box.x;
-        for (let si = 0; si < node.runLines!.segRun.length; si++) {
-          if (node.runLines!.segLine[si] !== li) continue;
-          const run = node.runs![node.runLines!.segRun[si]];
-          const baseline = drawY + yOffset + node.runLines!.lineBaseline[li];
-          const segY = baseline - (7 * run.textSize);
-          const sx = node.box.x + xOffset + originX + node.runLines!.segX[si];
-          const fg = fgOverride ?? run.fg;
-          this.drawText(node.runLines!.segText[si], sx, segY, fg, textClear, run.textSize, node.fontAntialias, run.fontFace, run.letterSpacing);
-          if (run.underline & 1) this.gfx.drawFastHLine(sx, segY + 8 * run.textSize - 1, node.runLines!.segW[si], fg);
-          if (run.underline & 2) this.gfx.drawFastHLine(sx, segY + 4 * run.textSize, node.runLines!.segW[si], fg);
-        }
+      const rl = node.runLines!;
+      const runs = node.runs!;
+      const clip = this.gfx.getClipRect();
+      for (let si = 0; si < rl.segRun.length; si++) {
+        const li = rl.segLine[si];
+        if (li >= rl.lineY.length) continue;
+        const lineTop = drawY + yOffset + rl.lineY[li];
+        const lineBottom = lineTop + rl.lineH[li];
+        if (clip && (lineBottom <= clip.y || lineTop >= clip.y + clip.h)) continue;
+        const lineX = this.lineX(node, rl.lineW[li], node.box.x + xOffset, node.box.w);
+        const sx = lineX + rl.segX[si];
+        if (clip && (sx + rl.segW[si] <= clip.x || sx >= clip.x + clip.w)) continue;
+        const run = runs[rl.segRun[si]];
+        if (!run) continue;
+        const baseline = drawY + yOffset + rl.lineBaseline[li];
+        const segY = baseline - (7 * run.textSize);
+        const fg = fgOverride ?? run.fg;
+        this.drawText(rl.segText[si], sx, segY, fg, textClear, run.textSize, node.fontAntialias, run.fontFace, run.letterSpacing);
+        if (run.underline & 1) this.gfx.drawFastHLine(sx, segY + 8 * run.textSize - 1, rl.segW[si], fg);
+        if (run.underline & 2) this.gfx.drawFastHLine(sx, segY + 4 * run.textSize, rl.segW[si], fg);
       }
     };
     if (node.textShadowCount > 0) {
@@ -2182,8 +2254,13 @@ export class PreviewUIRuntime {
       if (!this.isActiveNode(node)) continue;
       const drawX = this.drawXForNode(i);
       const drawY = this.drawYForNode(i);
-      if (this.isClippedByScroll(i, drawX, drawY)) continue;
       if (tx >= drawX && tx < drawX + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
+        // The node's box contains the tap. For nodes inside a scroll container,
+        // the tap point (not the whole box) must lie within the visible
+        // viewport: a tall paragraph whose box overflows below the fold can
+        // still have a tappable link segment in its visible portion.
+        const clip = this.scrollClipForNode(i);
+        if (clip && (tx < clip.x || tx >= clip.x + clip.w || ty < clip.y || ty >= clip.y + clip.h)) continue;
         if (this.hasAnyHandler(i) && (best < 0 || this.drawsBefore(this.nodes[best], node))) best = i;
       }
     }

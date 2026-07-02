@@ -498,6 +498,82 @@ describe("PreviewUIRuntime", () => {
     }
   });
 
+  it("scrolls preview lists by shifting the existing viewport and repainting the exposed band", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      uiTreeNames: ["screen"],
+      program: {
+        width: 40,
+        height: 32,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, subtreeEnd: 2, box: { x: 0, y: 0, w: 40, h: 32 } }),
+          makeNode({
+            index: 1,
+            id: "devices",
+            tag: "list",
+            kind: "list",
+            box: { x: 2, y: 2, w: 30, h: 24 },
+            fg: 0x07e0,
+            borderColor: 0xffff,
+            borderStyle: 1,
+            borderWidth: 1,
+            clearColor: 0x0000,
+            parentIndex: 0,
+            subtreeEnd: 2,
+            listItemHeight: 8,
+            scrollable: true,
+            virtualized: true,
+          }),
+        ],
+        transitions: [],
+      },
+      font: Array.from(loadFont()),
+      bindings: [],
+      listBindings: [{
+        nodeId: "devices",
+        nodeIndex: 1,
+        countExpression: "8",
+        itemExpression: "`Row ${i + 1}`",
+        itemParam: "i",
+      }],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      const shiftListViewport = vi.spyOn(runtime as any, "shiftListViewport");
+      const drawListRows = vi.spyOn(runtime as any, "drawListRows");
+      const drawNodeBorder = vi.spyOn(runtime as any, "drawNodeBorder");
+      const listNode = (runtime as any).nodes[1];
+
+      runtime.pointerDown(8, 22);
+      expect(listNode.dirty).toBe(false);
+      shiftListViewport.mockClear();
+      drawListRows.mockClear();
+      drawNodeBorder.mockClear();
+
+      runtime.pointerMove(8, 10);
+
+      expect(listNode.scrollY).toBe(12);
+      expect(shiftListViewport).toHaveBeenCalled();
+      const rowCall = drawListRows.mock.calls.at(-1);
+      expect(rowCall).toBeDefined();
+      expect(rowCall![5]).toBe(11);
+      expect(rowCall![6]).toBe(12);
+      expect(rowCall![6]).toBeLessThan(listNode.box.h);
+      expect(drawNodeBorder).toHaveBeenCalledWith(listNode, listNode.box.x, listNode.box.y, 0xffff);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   it("clips preview list row text to the list box", () => {
     const runtime = new PreviewUIRuntime({
       projectRoot: "",
@@ -1089,6 +1165,142 @@ describe("PreviewUIRuntime", () => {
       expect(px(1, 1)).toBe(0x4208);
       expect(px(3, 1)).toBe(0xf800);
       expect(onFrame).toHaveBeenCalled();
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  it("pauses preview transform animation time while scroll dragging is active", () => {
+    const runtime = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      program: {
+        width: 16,
+        height: 12,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({
+            index: 0,
+            tag: "screen",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 16, h: 12 },
+            hasBg: true,
+            bg: 0xffff,
+            clearColor: 0xffff,
+            subtreeEnd: 3,
+          }),
+          makeNode({
+            index: 1,
+            tag: "view",
+            kind: "fill",
+            box: { x: 0, y: 0, w: 16, h: 8 },
+            hasBg: true,
+            bg: 0xffff,
+            clearColor: 0xffff,
+            parentIndex: 0,
+            scrollable: true,
+            contentHeight: 24,
+            subtreeEnd: 3,
+          }),
+          makeNode({
+            index: 2,
+            id: "dot",
+            tag: "view",
+            kind: "fill",
+            box: { x: 1, y: 1, w: 2, h: 2 },
+            hasBg: true,
+            bg: 0xf800,
+            clearColor: 0xffff,
+            parentIndex: 1,
+            subtreeEnd: 3,
+          }),
+        ],
+        transitions: [],
+        keyframeSets: [
+          {
+            name: "move",
+            stops: [
+              {
+                percent: 0,
+                props: 8,
+                bg: 0,
+                fg: 0,
+                opacity: 100,
+                transformOffsetX: 0,
+                transformOffsetY: 0,
+                translatePctX: 0,
+                translatePctY: 0,
+                scaleX: 100,
+                scaleY: 100,
+                rotateDeg: 0,
+                width: 0,
+                height: 0,
+              },
+              {
+                percent: 100,
+                props: 8,
+                bg: 0,
+                fg: 0,
+                opacity: 100,
+                transformOffsetX: 50,
+                transformOffsetY: 0,
+                translatePctX: 0,
+                translatePctY: 0,
+                scaleX: 100,
+                scaleY: 100,
+                rotateDeg: 0,
+                width: 0,
+                height: 0,
+              },
+            ],
+          },
+        ],
+        animations: [
+          {
+            node: 2,
+            keyframeSet: 0,
+            durationMs: 1000,
+            delayMs: 0,
+            iterations: -1,
+            baseWidth: 2,
+            baseHeight: 2,
+            originX: 0,
+            originY: 0,
+            timingFunction: 0,
+          },
+        ],
+      },
+      font: [],
+      bindings: [],
+      listBindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+
+    runtime.start();
+    try {
+      const animation = (runtime as any).animations[0];
+      const dot = (runtime as any).nodes[2];
+      const elapsedBeforeScroll = animation.elapsed;
+      const offsetBeforeScroll = dot.transformOffsetX;
+
+      (runtime as any).scrollNode = 1;
+      (runtime as any).isDragging = true;
+      runtime.tick(100);
+
+      expect(animation.elapsed).toBe(elapsedBeforeScroll);
+      expect(dot.transformOffsetX).toBe(offsetBeforeScroll);
+
+      (runtime as any).isDragging = false;
+      (runtime as any).scrollNode = -1;
+      runtime.tick(100);
+
+      expect(animation.elapsed).toBeGreaterThan(elapsedBeforeScroll);
+      expect(dot.transformOffsetX).toBeGreaterThan(offsetBeforeScroll);
     } finally {
       runtime.stop();
     }

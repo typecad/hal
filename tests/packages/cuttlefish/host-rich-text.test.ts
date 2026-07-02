@@ -22,6 +22,13 @@ describe("host runtime rich-text parity", () => {
     expect(src).toMatch(/if\s*\(\s*node\.runs\b[\s\S]*?drawRichNode/);
   });
 
+  it("clips rich-text draw work to the active preview clip before drawing segments", () => {
+    expect(src).toMatch(/drawRichNode[\s\S]*getClipRect\(\)/);
+    expect(src).toMatch(/drawRichNode[\s\S]*for \(let si = 0; si < rl\.segRun\.length; si\+\+\)/);
+    expect(src).toMatch(/drawRichNode[\s\S]*lineBottom <= clip\.y \|\| lineTop >= clip\.y \+ clip\.h[\s\S]*continue/);
+    expect(src).toMatch(/drawRichNode[\s\S]*sx \+ rl\.segW\[si\] <= clip\.x \|\| sx >= clip\.x \+ clip\.w[\s\S]*continue/);
+  });
+
   it("defines a run hit-test helper for inline links", () => {
     expect(src).toMatch(/richLinkHit\s*\(/);
   });

@@ -18,6 +18,10 @@ export interface ScreenTree {
   typeArticle: ViewElement;
   typeAside: ViewElement;
   typeView: ViewElement;
+  richtext: ViewElement;
+  richMixed: ViewElement;
+  richBreak: ViewElement;
+  richNested: ViewElement;
   box: ViewElement;
   boxSize: ViewElement;
   boxFixed: ViewElement;

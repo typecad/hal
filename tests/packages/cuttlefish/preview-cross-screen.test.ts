@@ -88,4 +88,49 @@ describe("preview ↔ hardware parity: cross-screen animations & links", () => {
     rt.stop();
     expect(navigated).toBe(true);
   }, 15000);
+
+  it("tapping a visible inline rich-text <a href> link navigates to its target", async () => {
+    // The richtext screen's richMixed <p> contains an inline
+    // <a href="#home">link home</a>. The paragraph wraps across several lines
+    // and is taller than the scroll viewport, so its bounding box overflows
+    // below the visible region — but the link segment itself sits in the
+    // visible part. A tap on the visible link must still navigate. Regression
+    // for hit-test rejecting a node whose *box* overflows the scroll viewport
+    // even though the *tap point* is visible.
+    const rt = await makeRuntime();
+    const nodes = (rt as unknown as { nodes: any[] }).nodes;
+    const activeScreen = () => (rt as unknown as { activeScreen: number }).activeScreen;
+
+    // Locate the richMixed <p> by its runs + a link run (linkTarget >= 0).
+    const rich = nodes.find((n) => n.runs?.some((r: any) => r.linkTarget >= 0));
+    expect(rich).toBeDefined();
+
+    // Switch to the richtext screen.
+    (rt as unknown as { navigate: (i: number) => void }).navigate(rich!.screenId ?? 0);
+    rt.tick(16);
+    const targetScreen = activeScreen();
+
+    // Find the link segment's geometry and tap its midpoint.
+    const rl = rich!.runLines;
+    let segIdx = -1;
+    for (let si = 0; si < rl.segRun.length; si++) {
+      if (rich!.runs[rl.segRun[si]].linkTarget >= 0) { segIdx = si; break; }
+    }
+    expect(segIdx).toBeGreaterThanOrEqual(0);
+    const li = rl.segLine[segIdx];
+    const originX = (rt as unknown as {
+      lineX: (n: any, lw: number, x: number, w: number) => number,
+    }).lineX(rich, rl.lineW[li], 0, rich!.box.w);
+    const drawX = (rt as unknown as { drawXForNode: (i: number) => number }).drawXForNode(rich!.index ?? 0);
+    const drawY = (rt as unknown as { drawYForNode: (i: number) => number }).drawYForNode(rich!.index ?? 0);
+    const tapX = drawX + originX + rl.segX[segIdx] + Math.floor(rl.segW[segIdx] / 2);
+    const tapY = drawY + rl.lineY[li] + Math.floor(rl.lineH[li] / 2);
+
+    rt.pointerDown(tapX, tapY);
+    rt.pointerUp();
+
+    const navigated = activeScreen() !== targetScreen;
+    rt.stop();
+    expect(navigated).toBe(true);
+  }, 15000);
 });

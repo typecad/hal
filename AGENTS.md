@@ -39,6 +39,11 @@ tearing.
 - Keep preview rendering behavior aligned with runtime rendering whenever adding
   UI features. CSS support is only useful if preview and generated graphics
   agree on layout, text metrics, clipping, and paint order.
+- In loop-heavy render helpers, clip before doing expensive work. Compute the
+  active draw target/clip once, then skip whole logical units such as wrapped
+  text lines, rich-text segments, generated-font glyphs, image sample rows, and
+  gradient rows/columns before calling `ui_display_*`/preview draw APIs. This is
+  especially important while drawing into scroll repair strips.
 - Build `@typecad/cuttlefish` before running tests that import package exports,
   so tests do not exercise stale `dist` files.
 
@@ -53,6 +58,10 @@ tearing.
   into the active scroll canvas.
 - Do not add per-frame heap allocation, string allocation, or large temporary
   buffers in the dirty-node or scroll-drag paths.
+- Do not rely on Adafruit_GFX or preview pixel clipping as the only protection
+  inside nested loops. If a helper loops over glyph pixels, image pixels, text
+  lines, or gradient rows, cull the invisible range before entering the inner
+  loop.
 - Do not enable full-screen framebuffer rendering by default to hide tearing. It
   can make small updates look like a whole-screen brightness flash on SPI TFTs.
 - Do not add scroll cadence gates or accumulators that make touch lag behind the

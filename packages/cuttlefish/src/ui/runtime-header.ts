@@ -611,6 +611,40 @@ static inline void ui_display_use_default_target() {
 static inline uint8_t ui_display_is_default_target() {
   return __ui_gfx == display_defaultTarget();
 }
+static inline int16_t ui_display_target_width() {
+  return display_targetWidth(__ui_gfx);
+}
+static inline int16_t ui_display_target_height() {
+  return display_targetHeight(__ui_gfx);
+}
+static inline int16_t ui_clamp_i16(int16_t value, int16_t lo, int16_t hi) {
+  if (value < lo) return lo;
+  if (value > hi) return hi;
+  return value;
+}
+static inline void ui_display_target_bounds(int16_t* left, int16_t* top, int16_t* right, int16_t* bottom) {
+  if (left) *left = (int16_t)(-__ui_draw_off_x);
+  if (top) *top = (int16_t)(-__ui_draw_off_y);
+  if (right) *right = (int16_t)(ui_display_target_width() - __ui_draw_off_x);
+  if (bottom) *bottom = (int16_t)(ui_display_target_height() - __ui_draw_off_y);
+}
+static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int16_t* w, int16_t* h) {
+  if (!x || !y || !w || !h || *w <= 0 || *h <= 0) return 0;
+  int16_t left, top, right, bottom;
+  ui_display_target_bounds(&left, &top, &right, &bottom);
+  int16_t x0 = *x > left ? *x : left;
+  int16_t y0 = *y > top ? *y : top;
+  int16_t x1 = (int16_t)(*x + *w);
+  int16_t y1 = (int16_t)(*y + *h);
+  if (x1 > right) x1 = right;
+  if (y1 > bottom) y1 = bottom;
+  if (x0 >= x1 || y0 >= y1) return 0;
+  *x = x0;
+  *y = y0;
+  *w = (int16_t)(x1 - x0);
+  *h = (int16_t)(y1 - y0);
+  return 1;
+}
 static inline void ui_display_draw_pixel(int16_t x, int16_t y, uint16_t color) {
   display_targetDrawPixel(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, color);
 }
@@ -919,13 +953,41 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
   }
 
   uint8_t q = ui_rotation_quadrant(rotateDeg);
-  for (int16_t ty = 0; ty < targetH; ty++) {
+  int16_t clipX = x;
+  int16_t clipY = y;
+  int16_t clipW = (q == 1 || q == 3) ? targetH : targetW;
+  int16_t clipH = (q == 1 || q == 3) ? targetW : targetH;
+  if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
+  int16_t txStart = 0, txEnd = targetW, tyStart = 0, tyEnd = targetH;
+  if (q == 0) {
+    txStart = ui_clamp_i16((int16_t)(clipX - x), 0, targetW);
+    txEnd = ui_clamp_i16((int16_t)(clipX + clipW - x), 0, targetW);
+    tyStart = ui_clamp_i16((int16_t)(clipY - y), 0, targetH);
+    tyEnd = ui_clamp_i16((int16_t)(clipY + clipH - y), 0, targetH);
+  } else if (q == 1) {
+    txStart = ui_clamp_i16((int16_t)(clipY - y), 0, targetW);
+    txEnd = ui_clamp_i16((int16_t)(clipY + clipH - y), 0, targetW);
+    tyStart = ui_clamp_i16((int16_t)(x + targetH - (clipX + clipW)), 0, targetH);
+    tyEnd = ui_clamp_i16((int16_t)(x + targetH - clipX), 0, targetH);
+  } else if (q == 2) {
+    txStart = ui_clamp_i16((int16_t)(x + targetW - (clipX + clipW)), 0, targetW);
+    txEnd = ui_clamp_i16((int16_t)(x + targetW - clipX), 0, targetW);
+    tyStart = ui_clamp_i16((int16_t)(y + targetH - (clipY + clipH)), 0, targetH);
+    tyEnd = ui_clamp_i16((int16_t)(y + targetH - clipY), 0, targetH);
+  } else {
+    txStart = ui_clamp_i16((int16_t)(y + targetW - (clipY + clipH)), 0, targetW);
+    txEnd = ui_clamp_i16((int16_t)(y + targetW - clipY), 0, targetW);
+    tyStart = ui_clamp_i16((int16_t)(clipX - x), 0, targetH);
+    tyEnd = ui_clamp_i16((int16_t)(clipX + clipW - x), 0, targetH);
+  }
+  if (txStart >= txEnd || tyStart >= tyEnd) return;
+  for (int16_t ty = tyStart; ty < tyEnd; ty++) {
     int16_t localY = ty - offY;
     if (localY < 0 || localY >= drawH) continue;
     int16_t srcY = ((int32_t)localY * srcH) / drawH;
     if (srcY < 0) srcY = 0;
     if (srcY >= srcH) srcY = srcH - 1;
-    for (int16_t tx = 0; tx < targetW; tx++) {
+    for (int16_t tx = txStart; tx < txEnd; tx++) {
       int16_t localX = tx - offX;
       if (localX < 0 || localX >= drawW) continue;
       int16_t srcX = ((int32_t)localX * srcW) / drawW;
@@ -953,15 +1015,48 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
                                         int16_t drawW, int16_t drawH) {
   if (!img || !img->data || img->w == 0 || img->h == 0 || drawW <= 0 || drawH <= 0) return;
   uint8_t q = ui_rotation_quadrant(rotateDeg);
+  int16_t clipX = x;
+  int16_t clipY = y;
+  int16_t clipW = (q == 1 || q == 3) ? drawH : drawW;
+  int16_t clipH = (q == 1 || q == 3) ? drawW : drawH;
+  if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
+  int16_t dxStart = 0, dxEnd = drawW, dyStart = 0, dyEnd = drawH;
+  if (q == 0) {
+    dxStart = ui_clamp_i16((int16_t)(clipX - x), 0, drawW);
+    dxEnd = ui_clamp_i16((int16_t)(clipX + clipW - x), 0, drawW);
+    dyStart = ui_clamp_i16((int16_t)(clipY - y), 0, drawH);
+    dyEnd = ui_clamp_i16((int16_t)(clipY + clipH - y), 0, drawH);
+  } else if (q == 1) {
+    dxStart = ui_clamp_i16((int16_t)(clipY - y), 0, drawW);
+    dxEnd = ui_clamp_i16((int16_t)(clipY + clipH - y), 0, drawW);
+    dyStart = ui_clamp_i16((int16_t)(x + drawH - (clipX + clipW)), 0, drawH);
+    dyEnd = ui_clamp_i16((int16_t)(x + drawH - clipX), 0, drawH);
+  } else if (q == 2) {
+    dxStart = ui_clamp_i16((int16_t)(x + drawW - (clipX + clipW)), 0, drawW);
+    dxEnd = ui_clamp_i16((int16_t)(x + drawW - clipX), 0, drawW);
+    dyStart = ui_clamp_i16((int16_t)(y + drawH - (clipY + clipH)), 0, drawH);
+    dyEnd = ui_clamp_i16((int16_t)(y + drawH - clipY), 0, drawH);
+  } else {
+    dxStart = ui_clamp_i16((int16_t)(y + drawW - (clipY + clipH)), 0, drawW);
+    dxEnd = ui_clamp_i16((int16_t)(y + drawW - clipY), 0, drawW);
+    dyStart = ui_clamp_i16((int16_t)(clipX - x), 0, drawH);
+    dyEnd = ui_clamp_i16((int16_t)(clipX + clipW - x), 0, drawH);
+  }
+  if (dxStart >= dxEnd || dyStart >= dyEnd) return;
   if (q == 0) {
     // Simple case: no rotation, draw with scaling
     if (drawW == img->w && drawH == img->h) {
-      ui_display_draw_rgb_bitmap(x, y, img->data, img->w, img->h);
+      int16_t rows = (int16_t)(dyEnd - dyStart);
+      int16_t cols = (int16_t)(dxEnd - dxStart);
+      for (int16_t row = 0; row < rows; row++) {
+        ui_display_draw_rgb_bitmap((int16_t)(x + dxStart), (int16_t)(y + dyStart + row),
+          img->data + (int32_t)(dyStart + row) * img->w + dxStart, cols, 1);
+      }
     } else {
       // Scale using nearest-neighbor
-      for (int16_t dy = 0; dy < drawH; dy++) {
+      for (int16_t dy = dyStart; dy < dyEnd; dy++) {
         int16_t srcY = ((int32_t)dy * img->h) / drawH;
-        for (int16_t dx = 0; dx < drawW; dx++) {
+        for (int16_t dx = dxStart; dx < dxEnd; dx++) {
           int16_t srcX = ((int32_t)dx * img->w) / drawW;
           uint16_t color = img->data[(int32_t)srcY * img->w + srcX];
           ui_display_draw_pixel(x + dx, y + dy, color);
@@ -970,9 +1065,9 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
     }
     return;
   }
-  for (int16_t dy = 0; dy < drawH; dy++) {
+  for (int16_t dy = dyStart; dy < dyEnd; dy++) {
     int16_t srcY = ((int32_t)dy * img->h) / drawH;
-    for (int16_t dx = 0; dx < drawW; dx++) {
+    for (int16_t dx = dxStart; dx < dxEnd; dx++) {
       int16_t srcX = ((int32_t)dx * img->w) / drawW;
       uint16_t color = img->data[(int32_t)srcY * img->w + srcX];
       int16_t rdx = 0, rdy = 0;
@@ -993,12 +1088,42 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
 
 static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t y, int16_t rotateDeg) {
    uint8_t q = ui_rotation_quadrant(rotateDeg);
+   int16_t clipX = x;
+   int16_t clipY = y;
+   int16_t clipW = (q == 1 || q == 3) ? img->h : img->w;
+   int16_t clipH = (q == 1 || q == 3) ? img->w : img->h;
+   if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
    if (q == 0) {
-     ui_display_draw_rgb_bitmap(x, y, img->data, img->w, img->h);
+     int16_t sx0 = ui_clamp_i16((int16_t)(clipX - x), 0, (int16_t)img->w);
+     int16_t sy0 = ui_clamp_i16((int16_t)(clipY - y), 0, (int16_t)img->h);
+     int16_t sw = ui_clamp_i16(clipW, 0, (int16_t)(img->w - sx0));
+     int16_t sh = ui_clamp_i16(clipH, 0, (int16_t)(img->h - sy0));
+     for (int16_t row = 0; row < sh; row++) {
+       ui_display_draw_rgb_bitmap((int16_t)(x + sx0), (int16_t)(y + sy0 + row),
+         img->data + (int32_t)(sy0 + row) * img->w + sx0, sw, 1);
+     }
      return;
    }
-   for (uint16_t sy = 0; sy < img->h; sy++) {
-     for (uint16_t sx = 0; sx < img->w; sx++) {
+   uint16_t sxStart = 0, sxEnd = img->w, syStart = 0, syEnd = img->h;
+   if (q == 1) {
+     sxStart = (uint16_t)ui_clamp_i16((int16_t)(clipY - y), 0, (int16_t)img->w);
+     sxEnd = (uint16_t)ui_clamp_i16((int16_t)(clipY + clipH - y), 0, (int16_t)img->w);
+     syStart = (uint16_t)ui_clamp_i16((int16_t)(x + img->h - (clipX + clipW)), 0, (int16_t)img->h);
+     syEnd = (uint16_t)ui_clamp_i16((int16_t)(x + img->h - clipX), 0, (int16_t)img->h);
+   } else if (q == 2) {
+     sxStart = (uint16_t)ui_clamp_i16((int16_t)(x + img->w - (clipX + clipW)), 0, (int16_t)img->w);
+     sxEnd = (uint16_t)ui_clamp_i16((int16_t)(x + img->w - clipX), 0, (int16_t)img->w);
+     syStart = (uint16_t)ui_clamp_i16((int16_t)(y + img->h - (clipY + clipH)), 0, (int16_t)img->h);
+     syEnd = (uint16_t)ui_clamp_i16((int16_t)(y + img->h - clipY), 0, (int16_t)img->h);
+   } else {
+     sxStart = (uint16_t)ui_clamp_i16((int16_t)(y + img->w - (clipY + clipH)), 0, (int16_t)img->w);
+     sxEnd = (uint16_t)ui_clamp_i16((int16_t)(y + img->w - clipY), 0, (int16_t)img->w);
+     syStart = (uint16_t)ui_clamp_i16((int16_t)(clipX - x), 0, (int16_t)img->h);
+     syEnd = (uint16_t)ui_clamp_i16((int16_t)(clipX + clipW - x), 0, (int16_t)img->h);
+   }
+   if (sxStart >= sxEnd || syStart >= syEnd) return;
+   for (uint16_t sy = syStart; sy < syEnd; sy++) {
+     for (uint16_t sx = sxStart; sx < sxEnd; sx++) {
        uint16_t color = img->data[(uint32_t)sy * img->w + sx];
        int16_t dx = 0;
        int16_t dy = 0;
@@ -1530,6 +1655,29 @@ static inline uint8_t ui_is_clipped_by_scroll(uint16_t nodeIdx, int16_t drawX, i
   return ui_is_rect_clipped_by_scroll(nodeIdx, drawX, drawY, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
 }
 
+// Point-in-viewport test for hit-testing. A tap point is tappable if it lies
+// within EVERY scrollable ancestor's viewport (logical AND, matching the
+// preview's intersected scroll clip). This differs from ui_is_clipped_by_scroll,
+// which tests the node's whole bounding box — a tall node (e.g. a wrapped
+// rich-text paragraph) can overflow below the fold yet have a tappable link in
+// its visible portion. Use this in the hit-test path; keep the whole-box check
+// for draw culling, where a partially-visible node still needs repainting.
+static inline uint8_t ui_is_point_clipped_by_scroll(uint16_t nodeIdx, int16_t px, int16_t py) {
+  uint16_t p = __ui_nodes[nodeIdx].parent;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (__ui_nodes[p].scrollable) {
+      if (px < __ui_nodes[p].box.x ||
+          px >= __ui_nodes[p].box.x + __ui_nodes[p].box.w ||
+          py < __ui_nodes[p].box.y ||
+          py >= __ui_nodes[p].box.y + __ui_nodes[p].box.h) {
+        return 1;
+      }
+    }
+    p = __ui_nodes[p].parent;
+  }
+  return 0;
+}
+
 static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip) {
   int16_t x0 = r->x > clip->x ? r->x : clip->x;
   int16_t y0 = r->y > clip->y ? r->y : clip->y;
@@ -2001,9 +2149,13 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
     int16_t drawX = ui_draw_x_for_node((uint16_t)i);
     int16_t drawY = ui_draw_y_for_node((uint16_t)i);
-    if (ui_is_clipped_by_scroll((uint16_t)i, drawX, drawY)) continue;
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
+      // The node's box contains the tap. For nodes inside a scroll container,
+      // the tap point (not the whole box) must lie within the visible viewport:
+      // a tall wrapped paragraph can overflow below the fold yet still have a
+      // tappable link segment in its visible portion.
+      if (ui_is_point_clipped_by_scroll((uint16_t)i, tx, ty)) continue;
       // Skip nodes without any click handler — they're containers, not targets.
       // Exceptions: NODE_RANGE (horizontal drag), NODE_INPUT (opens keyboard),
       // NODE_LIST (virtualized item tap), and NODE_BUTTON — the last so a button
@@ -2583,6 +2735,8 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
   if (!text || !face) return 0;
   int16_t cursor = x;
   int16_t baseline = y + face->baseline;
+  int16_t targetLeft, targetTop, targetRight, targetBottom;
+  ui_display_target_bounds(&targetLeft, &targetTop, &targetRight, &targetBottom);
   const unsigned char* p = (const unsigned char*)text;
   while (*p) {
     uint16_t codepoint = ui_next_utf8_codepoint(&p);
@@ -2591,13 +2745,24 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
       cursor += face->lineHeight / 2;
       continue;
     }
-    for (uint8_t gy = 0; gy < glyph->height; gy++) {
-      for (uint8_t gx = 0; gx < glyph->width; gx++) {
-        uint16_t pixelIndex = (uint16_t)gy * glyph->width + gx;
+    int16_t glyphX = cursor + glyph->xOffset;
+    int16_t glyphY = baseline + glyph->yOffset;
+    if (glyphX + (int16_t)glyph->width <= targetLeft || glyphX >= targetRight ||
+        glyphY + (int16_t)glyph->height <= targetTop || glyphY >= targetBottom) {
+      cursor += glyph->advance;
+      continue;
+    }
+    int16_t gxStart = glyphX < targetLeft ? (int16_t)(targetLeft - glyphX) : 0;
+    int16_t gyStart = glyphY < targetTop ? (int16_t)(targetTop - glyphY) : 0;
+    int16_t gxEnd = glyphX + (int16_t)glyph->width > targetRight ? (int16_t)(targetRight - glyphX) : glyph->width;
+    int16_t gyEnd = glyphY + (int16_t)glyph->height > targetBottom ? (int16_t)(targetBottom - glyphY) : glyph->height;
+    for (int16_t gy = gyStart; gy < gyEnd; gy++) {
+      for (int16_t gx = gxStart; gx < gxEnd; gx++) {
+        uint16_t pixelIndex = (uint16_t)gy * glyph->width + (uint16_t)gx;
         uint8_t alpha = ui_font_alpha_at(face, glyph, pixelIndex);
         if (alpha == 0) continue;
-        int16_t dx = cursor + glyph->xOffset + gx;
-        int16_t dy = baseline + glyph->yOffset + gy;
+        int16_t dx = glyphX + gx;
+        int16_t dy = glyphY + gy;
         if (antialias) {
           if (fg == bg) {
             // Transparent mode: can't blend (fg==bg → all alphas become fg).
@@ -2699,6 +2864,13 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint1
     ui_draw_bitmap_text(text, x, y, fg, bg, ts, 0);
     return;
   }
+  int16_t clipX = x;
+  int16_t clipY = y;
+  int16_t clipW = (int16_t)w;
+  int16_t clipH = (int16_t)h;
+  if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
+  int16_t localX = (int16_t)(clipX - x);
+  int16_t localY = (int16_t)(clipY - y);
 
 // Use pre-allocated static canvases (no dynamic allocation)
    CuttlefishCanvas16* src = ui_text_canvas(&__ui_text_src_canvas, (int16_t)w, (int16_t)h);
@@ -2709,15 +2881,15 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint1
    }
 
    display_canvasFillRect(src, 0, 0, w, h, bg);
-   display_canvasFillRect(dst, 0, 0, w, h, bg);
+   display_canvasFillRect(dst, localX, localY, clipW, clipH, bg);
    display_targetSetCursor((CuttlefishDisplayTarget*)src, 0, 0);
    display_targetSetTextColorBg((CuttlefishDisplayTarget*)src, fg, bg);
    display_targetSetTextSize((CuttlefishDisplayTarget*)src, ts);
    display_targetSetTextWrap((CuttlefishDisplayTarget*)src, false);
    display_targetPrint((CuttlefishDisplayTarget*)src, text);
 
-   for (int16_t yy = 0; yy < (int16_t)h; yy++) {
-     for (int16_t xx = 0; xx < (int16_t)w; xx++) {
+   for (int16_t yy = localY; yy < localY + clipH; yy++) {
+     for (int16_t xx = localX; xx < localX + clipW; xx++) {
        uint16_t px = display_canvasGetPixel(src, xx, yy);
        uint8_t neighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg);
        uint8_t outerNeighbors = 0;
@@ -2731,8 +2903,9 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint1
 
    int16_t stride = display_canvasWidth(dst);
    uint16_t* pixels = display_canvasBuffer(dst);
-   for (int16_t row = 0; row < (int16_t)h; row++) {
-     ui_display_draw_rgb_bitmap(x, y + row, pixels + (int32_t)row * stride, (int16_t)w, 1);
+   for (int16_t row = 0; row < clipH; row++) {
+     ui_display_draw_rgb_bitmap(clipX, (int16_t)(clipY + row),
+       pixels + (int32_t)(localY + row) * stride + localX, clipW, 1);
    }
  }
 
@@ -2808,10 +2981,21 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
   int16_t lineY = y;
   UITextLine line;
   char lineBuf[UI_TEXT_LINE_BUF];
+  int16_t targetLeft, targetTop, targetRight, targetBottom;
+  ui_display_target_bounds(&targetLeft, &targetTop, &targetRight, &targetBottom);
   while (ui_text_next_line(&cursor, maxWidth, whiteSpaceMode, ts, fontFace, letterSpacing, &line)) {
+    int16_t lineBottom = (int16_t)(lineY + lh);
+    if (lineBottom <= targetTop || lineY >= targetBottom) {
+      lineY += lh;
+      continue;
+    }
     int16_t lineX = x;
     if (textAlign == 1) lineX = x + ((int16_t)maxWidth - (int16_t)line.width) / 2;
     else if (textAlign == 2) lineX = x + (int16_t)maxWidth - (int16_t)line.width;
+    if (lineX + (int16_t)line.width <= targetLeft || lineX >= targetRight) {
+      lineY += lh;
+      continue;
+    }
     ui_copy_text_span(line.start, line.end, lineBuf, UI_TEXT_LINE_BUF);
     // text-overflow — only applies when the line is wider than maxWidth.
     //   textOverflow==1 (ellipsis): trim the span and append "...".
@@ -2830,28 +3014,35 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
 
 // Draw a rich-text node from its precomputed run/segment/line geometry. Does
 // NOT re-wrap — the geometry was baked at transpile time (runs are static-only,
-// so the text never changes at runtime). Per line: compute the x-origin from
-// textAlign + line width, then draw each segment with its own run's fg/ts/
-// fontFace/underline. Segments of different font-sizes align on the line's
+// so the text never changes at runtime). Iterate segments once, skip lines and
+// segments outside the active draw target, and compute each segment's line
+// origin from textAlign + line width. Mixed font sizes align on the line's
 // baseline (each segment's top = baseline − its own ascent).
 static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, uint16_t bg, uint8_t antialias) {
   UINode* n = &__ui_nodes[nodeIdx];
-  for (uint8_t li = 0; li < n->richLineCount; li++) {
-    UIRichLine* line = &__ui_rich_lines[n->richLineStart + li];
+  int16_t targetLeft = (int16_t)(-__ui_draw_off_x);
+  int16_t targetTop = (int16_t)(-__ui_draw_off_y);
+  int16_t targetRight = (int16_t)(ui_display_target_width() - __ui_draw_off_x);
+  int16_t targetBottom = (int16_t)(ui_display_target_height() - __ui_draw_off_y);
+  uint16_t richSegEnd = (uint16_t)(n->richSegStart + n->richSegCount);
+  for (uint16_t si = n->richSegStart; si < richSegEnd; si++) {
+    UIRichSeg* seg = &__ui_rich_segs[si];
+    if (seg->line >= n->richLineCount) continue;
+    UIRichLine* line = &__ui_rich_lines[n->richLineStart + seg->line];
+    int16_t lineTop = y + line->y;
+    int16_t lineBottom = (int16_t)(lineTop + (int16_t)line->h);
+    if (lineBottom <= targetTop || lineTop >= targetBottom) continue;
     int16_t lineX = x;
     if (n->textAlign == 1) lineX = x + ((int16_t)n->box.w - (int16_t)line->w) / 2;
     else if (n->textAlign == 2) lineX = x + (int16_t)n->box.w - (int16_t)line->w;
-    int16_t lineTop = y + line->y;
-    for (uint16_t si = n->richSegStart; si < n->richSegStart + n->richSegCount; si++) {
-      UIRichSeg* seg = &__ui_rich_segs[si];
-      if (seg->line != li) continue;
-      UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
-      int16_t segY = y + line->baseline - (7 * (int16_t)run->textSize);  // baseline alignment
-      ui_draw_text(seg->text, lineX + seg->x, segY, run->fg, bg, run->textSize, antialias, run->fontFace, run->letterSpacing);
-      if (run->underline & 1) ui_display_draw_fast_hline(lineX + seg->x, segY + 8 * run->textSize - 1, seg->w, run->fg);
-      if (run->underline & 2) ui_display_draw_fast_hline(lineX + seg->x, segY + 4 * run->textSize, seg->w, run->fg);
-      (void)lineTop;
-    }
+    int16_t segX = (int16_t)(lineX + seg->x);
+    int16_t segRight = (int16_t)(segX + (int16_t)seg->w);
+    if (segRight <= targetLeft || segX >= targetRight) continue;
+    UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
+    int16_t segY = y + line->baseline - (7 * (int16_t)run->textSize);  // baseline alignment
+    ui_draw_text(seg->text, segX, segY, run->fg, bg, run->textSize, antialias, run->fontFace, run->letterSpacing);
+    if (run->underline & 1) ui_display_draw_fast_hline(segX, segY + 8 * run->textSize - 1, seg->w, run->fg);
+    if (run->underline & 2) ui_display_draw_fast_hline(segX, segY + 4 * run->textSize, seg->w, run->fg);
   }
 }
 
@@ -2888,22 +3079,31 @@ static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY) {
   int16_t by = drawY;
   int16_t bw = __ui_nodes[i].box.w;
   int16_t bh = __ui_nodes[i].box.h;
+  int16_t clipX = bx;
+  int16_t clipY = by;
+  int16_t clipW = bw;
+  int16_t clipH = bh;
+  if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
   uint16_t c1 = __ui_nodes[i].gradientColor1;
   uint16_t c2 = __ui_nodes[i].gradientColor2;
   uint8_t dir = __ui_nodes[i].gradientEnabled;  // 1=vertical, 2=horizontal
   if (dir == 1) {
     // Vertical: top=c1, bottom=c2. Draw row by row.
-    for (int16_t y = 0; y < bh; y++) {
+    int16_t yStart = (int16_t)(clipY - by);
+    int16_t yEnd = (int16_t)(clipY + clipH - by);
+    for (int16_t y = yStart; y < yEnd; y++) {
       uint8_t op = (uint8_t)((uint16_t)y * 100 / (bh > 1 ? bh - 1 : 1));
       uint16_t col = ui_blend565(c1, c2, op);
-      ui_display_draw_fast_hline(bx, by + y, bw, col);
+      ui_display_draw_fast_hline(clipX, by + y, clipW, col);
     }
   } else {
     // Horizontal: left=c1, right=c2. Draw column by column.
-    for (int16_t x = 0; x < bw; x++) {
+    int16_t xStart = (int16_t)(clipX - bx);
+    int16_t xEnd = (int16_t)(clipX + clipW - bx);
+    for (int16_t x = xStart; x < xEnd; x++) {
       uint8_t op = (uint8_t)((uint16_t)x * 100 / (bw > 1 ? bw - 1 : 1));
       uint16_t col = ui_blend565(c1, c2, op);
-      ui_display_draw_fast_vline(bx + x, by, bh, col);
+      ui_display_draw_fast_vline(bx + x, clipY, clipH, col);
     }
   }
 }
@@ -3053,6 +3253,23 @@ static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY
     __ui_nodes[i].borderRadius + w, __ui_nodes[i].outlineStyle, w, __ui_nodes[i].outlineColor);
 }
 
+static inline uint8_t ui_scroll_motion_active() {
+  if (__ui_scroll_node >= 0 && __ui_is_dragging) return 1;
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].screenId == __ui_active_screen && __ui_nodes[i].settling) return 1;
+  }
+  return 0;
+}
+
+static inline uint8_t ui_keyframe_set_has_scroll_sensitive_geometry(uint8_t setIdx) {
+  if (setIdx >= __ui_keyframe_set_count) return 0;
+  const UIKeyframeSet* ks = &__ui_keyframe_sets[setIdx];
+  for (uint8_t s = 0; s < ks->stopCount; s++) {
+    if (ks->stops[s].props & (UI_KF_TRANSFORM | UI_KF_SIZE)) return 1;
+  }
+  return 0;
+}
+
 // Per-frame driver. The host async/loop pump calls this each tick (~16ms).
 // Phase -2: poll touch (if configured). Phase -1: poll input pins.
 // Phase 0: evaluate bindings. Phase 1: transitions. Phase 2: draw.
@@ -3161,6 +3378,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   }
 
   // ①b Advance @keyframes animations.
+  uint8_t scrollMotionActive = ui_scroll_motion_active();
   for (uint16_t i = 0; i < __ui_anim_count; i++) {
     if (!__ui_anims[i].active) continue;
     // Skip animations on non-visible screens — their nodes are not drawn,
@@ -3169,6 +3387,10 @@ static inline void ui_tick(uint16_t deltaMs) {
     {
       uint16_t animNode = __ui_anims[i].node;
       if (animNode < __ui_node_count && __ui_nodes[animNode].screenId != __ui_active_screen) continue;
+    }
+    if (scrollMotionActive &&
+        ui_keyframe_set_has_scroll_sensitive_geometry(__ui_anims[i].keyframeSet)) {
+      continue;
     }
     __ui_anims[i].elapsed += (uint32_t)deltaMs;
     uint32_t elapsedNoDelay = __ui_anims[i].elapsed;

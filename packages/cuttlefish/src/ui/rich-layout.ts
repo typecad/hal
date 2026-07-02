@@ -142,7 +142,12 @@ export function layoutRuns(
       // Extending the current segment: "cur word" (space included only if wanted).
       if (wantSpace) {
         const candidate = cur!.text + " " + word.text;
-        const candidateW = lineW - cur!.mt(cur!.text) + cur!.mt(candidate);
+        // lineW holds only committed/flushed width + separator spaces; the
+        // in-progress segment `cur` is NOT yet in lineW (only flushCurrent
+        // adds it). So the true line width after extending cur is lineW plus
+        // the candidate's full width — not lineW minus cur plus candidate
+        // (that would under-count by cur's width and fail to wrap intra-run).
+        const candidateW = lineW + cur!.mt(candidate);
         if (canWrap && candidateW > maxWidth! && cur!.text) {
           commitLine();
           cur = { runIndex: word.runIndex, text: word.text, mt: word.mt, h: word.h, a: word.a };
@@ -155,7 +160,7 @@ export function layoutRuns(
       } else {
         // No space: append directly (adjacent words with no source whitespace).
         const candidate = cur!.text + word.text;
-        const candidateW = lineW - cur!.mt(cur!.text) + cur!.mt(candidate);
+        const candidateW = lineW + cur!.mt(candidate);
         if (canWrap && candidateW > maxWidth! && cur!.text) {
           commitLine();
           cur = { runIndex: word.runIndex, text: word.text, mt: word.mt, h: word.h, a: word.a };

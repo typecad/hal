@@ -22,6 +22,14 @@ describe("C++ runtime rich-text support", () => {
     expect(header).toMatch(/runCount\s*>\s*0[\s\S]*?ui_draw_rich_text/);
   });
 
+  it("clips rich-text draw work to the active target before drawing segments", () => {
+    expect(header).toMatch(/ui_draw_rich_text[\s\S]*ui_display_target_width\(\)/);
+    expect(header).toMatch(/ui_draw_rich_text[\s\S]*ui_display_target_height\(\)/);
+    expect(header).toMatch(/ui_draw_rich_text[\s\S]*for \(uint16_t si = n->richSegStart; si < richSegEnd; si\+\+\)/);
+    expect(header).toMatch(/ui_draw_rich_text[\s\S]*lineBottom <= targetTop \|\| lineTop >= targetBottom[\s\S]*continue/);
+    expect(header).toMatch(/ui_draw_rich_text[\s\S]*segRight <= targetLeft \|\| segX >= targetRight[\s\S]*continue/);
+  });
+
   it("declares a run hit-test helper for inline links", () => {
     expect(header).toMatch(/ui_rich_link_hit/);
   });

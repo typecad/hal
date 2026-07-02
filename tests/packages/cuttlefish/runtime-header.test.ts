@@ -60,7 +60,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/scaleOffsetX/);
     expect(header).toContain("ui_draw_image_rotated");
     expect(header).toContain("ui_draw_image_with_fit");
-    expect(header).toMatch(/for\s*\(int16_t ty = 0; ty < targetH; ty\+\+\)/);
+    expect(header).toMatch(/for\s*\(int16_t ty = tyStart; ty < tyEnd; ty\+\+\)/);
     expect(header).toMatch(/dx = targetH - 1 - ty/);
     expect(header).toMatch(/ui_display_draw_pixel\(x \+ rdx, y \+ rdy, color\)/);
     expect(header).toMatch(/case\s+NODE_IMG:[\s\S]*ui_draw_image_with_fit/);
@@ -120,6 +120,8 @@ describe("C++ reactive runtime header", () => {
   it("routes runtime display operations through Cuttlefish display shims", () => {
     expect(header).toContain("ui_display_draw_pixel");
     expect(header).toContain("ui_display_set_target");
+    expect(header).toContain("ui_display_target_width");
+    expect(header).toContain("ui_display_target_height");
     expect(header).toContain("display_canvasBuffer");
     expect(header).not.toMatch(/__ui_gfx->/);
     expect(header).not.toMatch(/__tc_display\./);
@@ -191,6 +193,15 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_text_layout_metrics");
     expect(header).toContain("char lineBuf[UI_TEXT_LINE_BUF]");
     expect(header).not.toMatch(/new\s+char/);
+  });
+
+  it("clips loop-heavy render helpers to the active display target before inner work", () => {
+    expect(header).toContain("ui_clip_rect_to_display_target");
+    expect(header).toMatch(/ui_draw_wrapped_text[\s\S]*ui_display_target_bounds\(&targetLeft[\s\S]*lineBottom <= targetTop \|\| lineY >= targetBottom[\s\S]*ui_copy_text_span/);
+    expect(header).toMatch(/ui_draw_asset_text[\s\S]*ui_display_target_bounds\(&targetLeft[\s\S]*glyphX \+ \(int16_t\)glyph->width <= targetLeft[\s\S]*for \(int16_t gy = gyStart; gy < gyEnd; gy\+\+\)/);
+    expect(header).toMatch(/ui_draw_aa_text[\s\S]*ui_clip_rect_to_display_target\(&clipX,\s*&clipY,\s*&clipW,\s*&clipH\)[\s\S]*for \(int16_t yy = localY; yy < localY \+ clipH; yy\+\+\)/);
+    expect(header).toMatch(/ui_draw_image_with_fit[\s\S]*ui_clip_rect_to_display_target\(&clipX,\s*&clipY,\s*&clipW,\s*&clipH\)[\s\S]*for \(int16_t ty = tyStart; ty < tyEnd; ty\+\+\)/);
+    expect(header).toMatch(/ui_draw_gradient_fill[\s\S]*ui_clip_rect_to_display_target\(&clipX,\s*&clipY,\s*&clipW,\s*&clipH\)[\s\S]*for \(int16_t y = yStart; y < yEnd; y\+\+\)/);
   });
 
   it("decodes UTF-8 before generated font glyph lookup", () => {
@@ -381,7 +392,8 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/if \(__ui_nodes\[node\]\.kind == NODE_RANGE\) \{[\s\S]*__ui_range_node = node;[\s\S]*__ui_scroll_node = -1;[\s\S]*handledTouchTarget = 1;/);
     expect(header).toMatch(/if \(__ui_range_node < 0 && !__ui_is_dragging && __ui_scroll_node >= 0\)/);
     expect(header).toMatch(/if \(__ui_range_node < 0 && __ui_is_dragging && __ui_scroll_node >= 0\)/);
-    expect(header).toMatch(/if \(!handledTouchTarget\) ui_mark_dirty\(node\);/);
+    expect(header).toMatch(/touchStartsScrollableView\s*=[\s\S]*__ui_scroll_node >= 0 && node == __ui_scroll_node/);
+    expect(header).toMatch(/if \(!handledTouchTarget && !touchStartsScrollableView\) ui_mark_dirty\(node\);/);
   });
 
   it("renders scroll containers via a per-container shift-and-repair canvas (Mode B)", () => {
@@ -443,6 +455,27 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*__ui_nodes\[i\]\.box\.x\s*=\s*origBoxX;[\s\S]*__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY;[\s\S]*continue/);
   });
 
+  it("scrolls virtualized lists by shifting cached pixels and repainting only the exposed strip", () => {
+    expect(header).toContain("__ui_list_canvas_node");
+    expect(header).not.toContain("ui_push_canvas_rect_rows");
+    expect(header).toMatch(/ui_get_repair_canvas[\s\S]*display_canvasWidth\(__ui_repair_canvas\) < w[\s\S]*display_canvasHeight\(__ui_repair_canvas\) < h/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*deltaY\s*=\s*listScrollY\s*-\s*__ui_nodes\[i\]\.lastPaintedScrollY/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*canShiftList[\s\S]*ui_shift_container_canvas\(lc,\s*deltaY,\s*clearCol,\s*&repaintY,\s*&repaintH\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_get_repair_canvas\(bw,\s*repaintH\)[\s\S]*listTextOffsetY\s*=\s*repaintY/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*display_targetPrint\(\(CuttlefishDisplayTarget\*\)listTextCanvas,\s*listBuf\)[\s\S]*ui_draw_canvas_rect\(listTextCanvas,\s*0,\s*repaintY,\s*bw,\s*repaintH\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*uint16_t first\s*=\s*\(listScrollY \+ repaintY\) \/ ih/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*__ui_nodes\[i\]\.lastPaintedScrollY\s*=\s*listScrollY/);
+    expect(header).toMatch(/newCount != __ui_nodes\[i\]\.listCount[\s\S]*lastPaintedScrollY\s*=\s*__ui_nodes\[i\]\.scrollY\s*-/);
+  });
+
+  it("does not repaint static list shadows on small scroll frames", () => {
+    expect(header).toMatch(/skipListOutsetShadow\s*=[\s\S]*__ui_nodes\[i\]\.kind == NODE_LIST[\s\S]*!drawingBufferedScroll[\s\S]*!__ui_fb/);
+    expect(header).toMatch(/if \(!skipListOutsetShadow\) \{[\s\S]*ui_draw_shadow\(i,\s*baseDrawY,\s*0\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*if \(!drawingBufferedScroll && !__ui_fb && !canShiftList\) \{[\s\S]*ui_draw_shadow\(i,\s*by,\s*0\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_push_canvas_rect\(lc,\s*bx,\s*by,\s*bw,\s*bh\)[\s\S]*ui_draw_shadow\(i,\s*by,\s*1\)[\s\S]*ui_draw_node_border\(i,\s*bx,\s*by,\s*bColor\)[\s\S]*ui_draw_node_outline\(i,\s*bx,\s*by\)/);
+    expect(header).not.toMatch(/case\s+NODE_LIST:[\s\S]*ui_draw_node_border\(i,\s*0,\s*0,\s*bColor\)/);
+  });
+
   it("invalidates buffered scroll viewports for animated geometry inside overflowing scroll containers", () => {
     expect(header).toContain("ui_scroll_ancestor_for_node");
     expect(header).toContain("ui_mark_scroll_view_dirty");
@@ -454,10 +487,20 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&clipped\)/);
     expect(header).toMatch(/if\s*\(scrollParent\s*>=\s*0\)[\s\S]*ui_draw_node_decoration_clipped/);
     expect(header).toMatch(/ui_try_repair_geometry_fill[\s\S]*if\s*\(scrollParent >= 0\) ui_invalidate_scroll_canvas_for_node\(nodeIdx\)/);
+    expect(header).toMatch(/if\s*\(bufferedScrollRepaintCanvas\)\s*\{[\s\S]*scrollDrawW\s*=\s*__ui_nodes\[bufferedScrollNode\]\.box\.w;[\s\S]*scrollDrawH\s*=\s*bufferedScrollRepaintH/);
     expect(header).toMatch(/if\s*\(geometryChanged && !repairedGeometry\)[\s\S]*ui_invalidate_scroll_canvas_for_node\(n\)/);
     expect(header).toMatch(/__ui_nodes\[n\]\.box\.h = nextHeight;[\s\S]*if\s*\(!repairedGeometry\)\s*ui_mark_dirty\(n\);/);
     expect(header).not.toMatch(/if\s*\(geometryScrollParent\s*>=\s*0\)\s*\{[\s\S]*ui_mark_scroll_view_dirty\(\(uint16_t\)geometryScrollParent\)/);
     expect(header).not.toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollParent\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
+  });
+
+  it("pauses geometry keyframe animations while scroll motion is active", () => {
+    expect(header).toContain("ui_scroll_motion_active");
+    expect(header).toContain("ui_keyframe_set_has_scroll_sensitive_geometry");
+    expect(header).toMatch(/__ui_scroll_node >= 0 && __ui_is_dragging/);
+    expect(header).toMatch(/__ui_nodes\[i\]\.screenId == __ui_active_screen && __ui_nodes\[i\]\.settling/);
+    expect(header).toMatch(/ks->stops\[s\]\.props & \(UI_KF_TRANSFORM \| UI_KF_SIZE\)/);
+    expect(header).toMatch(/uint8_t scrollMotionActive = ui_scroll_motion_active\(\);[\s\S]*if \(scrollMotionActive &&[\s\S]*ui_keyframe_set_has_scroll_sensitive_geometry\(__ui_anims\[i\]\.keyframeSet\)[\s\S]*continue;[\s\S]*__ui_anims\[i\]\.elapsed \+=/);
   });
 
   it("does not repair rounded borders with square clipped corner segments", () => {
@@ -670,6 +713,27 @@ describe("touch hit-test supports node indices > 127", () => {
     const fn = header.match(/ui_open_keyboard_for_input[\s\S]*?\{[\s\S]*?\}/)?.[0] ?? "";
     expect(fn).toMatch(/uint16_t\s+j\s*=\s*0;\s*j\s*<\s*nodeIdx/);
     expect(fn).not.toMatch(/uint8_t\s+j\s*=\s*0;\s*j\s*<\s*nodeIdx/);
+  });
+});
+
+describe("touch hit-test clips the tap point, not the whole node box", () => {
+  const header = emitRuntimeHeader();
+
+  it("provides a point-in-scroll-viewport helper (ui_is_point_clipped_by_scroll)", () => {
+    // Regression: ui_hit_test used ui_is_clipped_by_scroll, which tests the
+    // node's whole bounding box against the scroll viewport. A wrapped rich-text
+    // paragraph is taller than the viewport, so its box overflows below the
+    // fold and the whole-box check rejected it — yet an inline <a href> link
+    // segment can sit in the visible portion. The fix tests the tap POINT.
+    expect(header).toMatch(/ui_is_point_clipped_by_scroll\s*\(/);
+  });
+
+  it("ui_hit_test checks the tap point (not the whole box) against scroll parents", () => {
+    // The hit-test body must use ui_is_point_clipped_by_scroll on the touch
+    // coordinates, and must NOT short-circuit with ui_is_clipped_by_scroll.
+    const fn = header.match(/int16_t ui_hit_test\([\s\S]*?\n\}/)?.[0] ?? "";
+    expect(fn).toMatch(/ui_is_point_clipped_by_scroll\(/);
+    expect(fn).not.toMatch(/ui_is_clipped_by_scroll\(/);
   });
 });
 

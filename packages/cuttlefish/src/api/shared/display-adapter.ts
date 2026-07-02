@@ -109,6 +109,8 @@ registerDisplayAdapter("ili9341", (display) => {
       `}`,
       ``,
       `static inline void display_targetDrawPixel(CuttlefishDisplayTarget* target, int16_t x, int16_t y, uint16_t color) { target->drawPixel(x, y, color); }`,
+      `static inline int16_t display_targetWidth(CuttlefishDisplayTarget* target) { return target->width(); }`,
+      `static inline int16_t display_targetHeight(CuttlefishDisplayTarget* target) { return target->height(); }`,
       `static inline void display_targetDrawRGBBitmap(CuttlefishDisplayTarget* target, int16_t x, int16_t y, const uint16_t* bitmap, int16_t w, int16_t h) {`,
       `  target->drawRGBBitmap(x, y, bitmap, w, h);`,
       `}`,
