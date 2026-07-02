@@ -130,32 +130,40 @@ function collectEventCallbacks(
   return out;
 }
 
-/** Walk styled trees for bind:* declarative two-way bindings and synthesize the
- *  READ half (signal → node) as preview bindings. The write half (node → signal,
- *  e.g. keyboard commit → signal.set) requires preview input-commit machinery
- *  not yet present; until then, the runtime handles both directions and the
- *  preview reflects signal → node (the visible behavior). */
+/** Walk styled trees for bind:* declarative two-way bindings. Returns the READ
+ *  half (signal → node) as preview bindings AND the WRITE half (node → signal)
+ *  as preview callbacks. bind:text write-back fires on the keyboard-commit
+ *  "change" dispatch (keyboardClose → dispatch("change", target)); the callback
+ *  body reads the committed text via screen.<id>.text and calls signal.set.
+ *  bind:value write-back fires on the range/check change handler. */
 function collectBindBindings(
   trees: StyledNode[],
   programNodes: Array<{ id?: string }>,
-): PreviewBindingSpec[] {
-  const out: PreviewBindingSpec[] = [];
+): { bindings: PreviewBindingSpec[]; callbacks: PreviewCallbackSpec[] } {
+  const bindings: PreviewBindingSpec[] = [];
+  const callbacks: PreviewCallbackSpec[] = [];
   const walk = (node: StyledNode): void => {
     if (node.bind) {
       const nodeIndex = node.id ? nodeIndexById(programNodes, node.id) : undefined;
-      if (nodeIndex !== undefined) {
+      if (nodeIndex !== undefined && node.id) {
         if (node.bind.text) {
-          out.push({ nodeId: node.id ?? `__bind_${nodeIndex}`, nodeIndex, property: "text", expression: node.bind.text });
+          // Read: signal → input text.
+          bindings.push({ nodeId: node.id, nodeIndex, property: "text", expression: node.bind.text });
+          // Write: keyboard commit → signal.set(committed text).
+          callbacks.push({ nodeId: node.id, nodeIndex, kind: "change", body: `${node.bind.text}.set(screen.${node.id}.text)` });
         }
         if (node.bind.value) {
-          out.push({ nodeId: node.id ?? `__bind_${nodeIndex}`, nodeIndex, property: "value", expression: node.bind.value });
+          // Read: signal → node value.
+          bindings.push({ nodeId: node.id, nodeIndex, property: "value", expression: node.bind.value });
+          // Write: range drag / check toggle → signal.set(value).
+          callbacks.push({ nodeId: node.id, nodeIndex, kind: "change", body: `${node.bind.value}.set(screen.${node.id}.value)` });
         }
       }
     }
     node.children?.forEach(walk);
   };
   trees.forEach(walk);
-  return out;
+  return { bindings, callbacks };
 }
 
 async function loadProfileRegistry(frameworkPackage: string | undefined): Promise<Map<string, DisplayProfile>> {
@@ -618,8 +626,9 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     allStyledScreens.length > 0 ? allStyledScreens : [styled],
     program.nodes,
   );
-  // bind:* declarative two-way read bindings (signal → node).
-  const bindBindings = collectBindBindings(
+  // bind:* declarative two-way bindings: read (signal → node) + write-back
+  // (node → signal via change callbacks).
+  const bindResult = collectBindBindings(
     allStyledScreens.length > 0 ? allStyledScreens : [styled],
     program.nodes,
   );
@@ -634,9 +643,9 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     cssRules,
     uiTreeNames: [...new Set(uiImports.map((imp) => imp.treeName))],
     font: loadFont(projectRoot, diagnostics),
-    bindings: [...specs.bindings, ...interpolationBindings, ...bindBindings],
+    bindings: [...specs.bindings, ...interpolationBindings, ...bindResult.bindings],
     listBindings: specs.listBindings,
-    callbacks: [...hrefCallbacks, ...specs.callbacks, ...eventCallbacks],
+    callbacks: [...hrefCallbacks, ...specs.callbacks, ...eventCallbacks, ...bindResult.callbacks],
     initialAssignments: specs.initialAssignments,
     intervals: specs.intervals,
     pinControls: specs.pinControls,
