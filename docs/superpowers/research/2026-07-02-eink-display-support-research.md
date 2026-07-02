@@ -267,59 +267,70 @@ full refresh once). A stricter render tier.
 
 ---
 
-## Three approaches
+## Resolution — display-agnostic core (decided)
 
-All share the easy wins (palette descriptor, `@media (e-ink)`, e-ink adapter
-registration, theme-class escape hatch). They differ on how deep the
-refresh/color change goes.
+The e-ink thread (keep RGB565 internal, reduce at boundary) and the ST7796S
+RGB666 thread (565 internal cannot serve wider-gamut panels) pointed at the
+same architectural fork. The goal — **a display-agnostic core with shims for a
+large set of displays** — decides it:
 
-**Approach A — Boundary quantization + deferred refresh backend (recommended).**
-Keep RGB565 internally everywhere — do not touch the ~80 fields or
-`ui_blend565`. Add: (1) a palette descriptor on `DisplayProfile`; (2) per-node
-color snapping at transpile; (3) an **always-on backing store** for e-ink
-(compose into it, since e-ink needs it for dithering anyway); (4) a **dither
-pass at push** that reduces the RGB565 buffer to panel levels; (5) a **refresh
-scheduler** behind `display_*` that aggregates dirty rects and chooses partial
-vs full refresh. Preview gains an e-ink simulation mode. Trade-off: two
-rendering models (direct-to-panel for TFT, buffered+dithered+scheduled for
-e-ink), but the TFT path is untouched and AGENTS.md guardrails stay intact.
+**Internal color widens to RGB888 (`uint32_t`). Every shim quantizes down.**
 
-**Approach B — Native palette-aware runtime.** Make `colorFormat` first-class:
-a color type that is RGB565 *or* palette-index, forked blend/lerp/AA/gradients
-with mono/grayscale variants, palette-indexed image data. Trade-off: most
-"correct," touches everything, highest risk to the stable TFT path and the
-no-allocation guardrail. Biggest blast radius.
+- ILI9341 / ST7796S(565): 888→565
+- ST7796S(666): 888→666
+- native-888 panels: 888 passthrough
+- E-ink mono/palette: 888→levels/inks (the dither pass now starts from
+  full-precision source — *better* dithering as a consequence)
 
-**Approach C — Capability-descriptor core, ship 1-bit first.** Same descriptor
-as A, but scope the first cut to 1-bit B&W with partial refresh only (no
-dithering, no grayscale, animations snap). Fastest to real hardware on the
-cheapest/most-common panels, with the descriptor designed to extend to
-grayscale/color later. Trade-off: photos/gradients look poor until dithering
-lands; rework seam when grayscale is added.
+Superseding the earlier "three approaches," the design is a three-layer model:
 
-**Recommendation: A.** The backing-store requirement is *forced* by dithering
-regardless of approach (cannot dither without a region), so the buffering is
-not optional complexity — it is the cost of good e-ink output. Keeping RGB565
-internal means the stable TFT runtime and its guardrails stay untouched, and
-the entire e-ink delta lives behind the `display_*` seam + one frame-end hook +
-`color.ts` + `css-parser.ts`. C is a fine way to *stage* A.
+1. **Core (display-agnostic)** — layout, node tree, style resolution, dirty
+   tracking, paint operations in RGB888. Emits *operations* + dirty regions.
+   Stops assuming a display class: no routine `display_fillScreen` clears, no
+   "a draw is immediately visible" assumption.
+2. **Capability descriptor** — every shim declares `nativeFormat`, `palette`,
+   `refreshModel`, `partialRefresh`, `refreshBudget`, `buffering`, and
+   `capabilities` (antialias/gradients/opacityBlend/smoothScroll/animation).
+   The core adapts to capabilities rather than assuming them. Generalizes the
+   existing `ScrollConfig` tiers and `antialias` flag.
+3. **Shim (per display class)** — owns the native framebuffer, format
+   conversion, refresh strategy. The backing store, dither pass, and refresh
+   scheduler for e-ink live *here*, not in the core. The TFT-immediate-565
+   shim reproduces today's exact behavior so output is unchanged.
+
+This unifies e-ink and RGB666 as two views of one decision and makes future
+panels (OLED, high-color) into shims rather than separate projects. The cost
+is a refactor of the stable TFT path, bounded by the existing AGENTS.md
+verification suite (`runtime-header.test.ts`, `preview-gfx.test.ts`,
+`npm run compile --workspace demo-ui`) as a regression net.
+
+### Existing seams this fits onto
+
+- `PlatformGraphicsStrategy.colorFormat()` (`graphics-strategy.ts:33`) —
+  **the bottleneck to widen** from `"rgb565" | "mono"` to a capability set.
+- `PlatformGraphicsStrategy.resolveDisplayOp()` — per-op C++ generation seam.
+- `DisplayHALOp` (`display-op-ir.ts`) — the IR already carries
+  `display.flush` with dirty rects (`DisplayFlushOp`, line 54); the batching
+  hook exists structurally.
+- Display adapter registry (`display-adapter.ts:47`) —
+  `registerDisplayAdapter("driver", gen)`; only ILI9341 registered today.
+- `@media` / `evalMediaCondition` (`css-parser.ts:163`) — transpile-time
+  variant selector keyed off the profile; extend to read the descriptor.
+- `color.ts:186 resolveColor` — single transpile-time color resolution point.
 
 ---
 
 ## Decisions captured from discussion
 
-- **Panel class scope:** general framework — handle 1-bit, grayscale, and
-  multi-color e-ink via a palette/refresh capability descriptor.
+- **Goal (decisive):** display-agnostic core with shims for a large set of
+  displays.
+- **Architecture (decided):** RGB888 internal color; three-layer
+  core/descriptor/shim model. Supersedes the earlier per-display approaches.
+- **Panel class scope:** general framework — 1-bit, grayscale, and multi-color
+  e-ink, plus RGB565/RGB666/RGB888 TFT, via capability descriptors.
 - **CSS targeting:** `@media (e-ink)` feature query (extend
   `evalMediaCondition`), with the existing theme-class mechanism retained as
   a manual escape hatch.
-- **Engagement model:** discussion first; spec only if the design holds up.
-
-## Open questions before a spec
-
-- Confirm Approach A (RGB565 internal, buffer+dither+schedule at boundary) vs
-  native-palette (Approach B).
-- Scroll/animation behavior on e-ink: snap to endpoints, or stepped/chunky
-  transitions?
-- Whether semantic roles (intent → ink) should be part of the v1 design or a
-  follow-on.
+- **Scroll/animation on e-ink:** render-tier-driven — snap to endpoints on
+  `update: slow`; paged/instant scroll for multi-color panels. Refined in spec.
+- **Next step:** detailed design spec, then implementation plan.
