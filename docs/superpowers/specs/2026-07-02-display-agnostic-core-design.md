@@ -294,9 +294,18 @@ behavioral change; the package is built before tests import dist.
 The spec is the full architecture. Implementation is phased to keep the TFT
 path stable at each step:
 
-- **Phase 1 — Core widen (no behavior change).** RGB888 internal, quantizers,
-  `tft-immediate-565` shim reproducing current 565 output. Full regression
-  suite must stay green. This is the load-bearing refactor.
+- **Phase 1 — Core widen (no behavior change).** ✅ COMPLETE (commits
+  `9746724`..`f456a9e`). RGB888 quantizers + `resolveColor888` in `color.ts`;
+  C++ color fields widened `uint16_t`→`uint32_t` (UINode, UIRichRun,
+  UIKeyframeStop, UIKeyStyle, UIBinding) with `ui_blend888`/`lerp_color_888`
+  added alongside; preview framebuffer widened `Uint16Array`→`Uint32Array`
+  with `blendRgb888`/`rgb888To565`/`rgb565To888` added alongside. **Storage
+  widened only — values and all blend math stay 565**, so TFT output is
+  byte-identical (proven: 888 operands in 565 math give wrong results, so
+  values must stay 565 until Phase 2 routes them through `resolveColor888`
+  together). Verified: AGENTS.md suite green (build, 93/93 runtime-header
+  tests, demo-ui compiles), 607/612 cuttlefish tests pass (5 failures are
+  pre-existing/unrelated). Byte-identity guards in `runtime-header.test.ts`.
 - **Phase 2 — Descriptor + CSS.** `DisplayCapabilities`, `@media (e-ink)` /
   `(update)` / `(monochrome)`, descriptor-driven feature flags. TFT path still
   unchanged in output.
