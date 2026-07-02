@@ -327,6 +327,56 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
 #define UI_MAYBE_SNAP_MONO565(c) (c)
 #endif
 
+// ── Deferred-refresh (e-ink) dirty-rect aggregation ──────────────────────────
+// Under UI_REQUIRES_BACKING_STORE (e-ink), each painted node reports its paint
+// rect into this accumulator; at frame end the union is refreshed as one partial
+// update via the shim's display_partial_refresh. On TFT (no backing store) the
+// symbols compile to no-op stubs so call sites are unchanged — byte-identical.
+#ifndef UI_REQUIRES_BACKING_STORE
+  #define ui_refresh_begin_frame()  ((void)0)
+  #define ui_refresh_add_rect(x, y, w, h) ((void)0)
+  #define ui_refresh_flush()        ((void)0)
+#else
+  #define UI_REFRESH_MAX_RECTS 16
+  struct UIRect16 { int16_t x, y, w, h; };
+  static UIRect16 __ui_refresh_rects[UI_REFRESH_MAX_RECTS];
+  static uint8_t __ui_refresh_rect_n = 0;
+  static inline void ui_refresh_begin_frame() { __ui_refresh_rect_n = 0; }
+  static inline void ui_refresh_add_rect(int16_t x, int16_t y, int16_t w, int16_t h) {
+    if (w <= 0 || h <= 0) return;
+    if (__ui_refresh_rect_n < UI_REFRESH_MAX_RECTS) {
+      __ui_refresh_rects[__ui_refresh_rect_n].x = x;
+      __ui_refresh_rects[__ui_refresh_rect_n].y = y;
+      __ui_refresh_rects[__ui_refresh_rect_n].w = w;
+      __ui_refresh_rects[__ui_refresh_rect_n].h = h;
+      __ui_refresh_rect_n++;
+    }
+    // TODO Phase 5: coalesce overlapping rects into a tighter union; cap by
+    // refresh budget; trigger a periodic full refresh for ghost clearing.
+  }
+  // Union all accumulated rects and issue one partial refresh of the bounding
+  // region via the shim's display_partial_refresh entry point.
+  static inline void ui_refresh_flush() {
+    if (__ui_refresh_rect_n == 0) return;
+    int16_t x0 = 32767, y0 = 32767, x1 = -32768, y1 = -32768;
+    for (uint8_t i = 0; i < __ui_refresh_rect_n; i++) {
+      const UIRect16& r = __ui_refresh_rects[i];
+      if (r.x < x0) x0 = r.x;
+      if (r.y < y0) y0 = r.y;
+      int16_t rx1 = (int16_t)(r.x + r.w), ry1 = (int16_t)(r.y + r.h);
+      if (rx1 > x1) x1 = rx1;
+      if (ry1 > y1) y1 = ry1;
+    }
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > display_width()) x1 = display_width();
+    if (y1 > display_height()) y1 = display_height();
+    if (x1 > x0 && y1 > y0) {
+      display_partial_refresh(x0, y0, (int16_t)(x1 - x0), (int16_t)(y1 - y0));
+    }
+  }
+#endif
+
 // ── Multi-screen navigation ─────────────────────────────────────────────────
 // Touch/scroll/keyboard state reset by navigation.
 static uint8_t __ui_touch_state = 0;
@@ -3643,6 +3693,9 @@ static inline void ui_tick(uint16_t deltaMs) {
   }
 
   // ② Draw dirty nodes directly to the display object.
+  // Begin a deferred-refresh frame: resets the dirty-rect accumulator. On TFT
+  // (no backing store) this compiles to a no-op.
+  ui_refresh_begin_frame();
   // Skip the node draw pass while the keyboard overlay is visible — its opaque
   // background covers everything underneath, so redrawing app nodes wastes SPI
   // bandwidth and causes flashing. Nodes redraw once when the keyboard closes
@@ -4533,6 +4586,10 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_nodes[i].box.x = origBoxX;
     __ui_nodes[i].box.y = origBoxY;
     __ui_nodes[i].dirty = 0;
+    // Report this node's bounding box to the deferred-refresh accumulator. Phase
+    // 4 uses the box as the dirty rect (a safe over-estimate); Phase 5 tightens
+    // to the actual paint rect. No-op on TFT (compiles to nothing).
+    ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
   }
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
   if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
@@ -4547,7 +4604,10 @@ static inline void ui_tick(uint16_t deltaMs) {
     ui_push_framebuffer();
   }
   ui_display_use_default_target();
-  // ③ Flush — ILI9341 is immediate, no separate flush needed.
+  // ③ Flush — ILI9341 is immediate, no separate flush needed. On deferred-
+  // refresh panels (e-ink), flush the union of this frame's dirty paint rects
+  // as one partial refresh. No-op on TFT.
+  ui_refresh_flush();
 }
 
 // ── Antialiasing subsystem (offscreen canvas + coverage blending) ──────────
