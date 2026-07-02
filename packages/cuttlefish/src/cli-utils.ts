@@ -50,9 +50,9 @@ export function runExpectTests(options: { port?: string; buildTarget?: string; b
 
 export function assertTypeScriptInput(filePath: string): void {
   const extension = path.extname(filePath).toLowerCase();
-  if (extension !== ".ts" && extension !== ".tsx") {
+  if (extension !== ".ts" && extension !== ".tsx" && extension !== ".ui") {
     throw new Error(
-      `Expected a .ts or .tsx file, received '${extension || "<no extension>"}'.`,
+      `Expected a .ts, .tsx, or .ui file, received '${extension || "<no extension>"}'.`,
     );
   }
 }

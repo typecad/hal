@@ -7,6 +7,7 @@ import ts from "typescript";
 import { buildProgramIR } from "./ir/build-ir.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
+import { splitUiFile } from "./ui/ui-file-splitter.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
 import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
 import { readText } from "./utils/fs.js";
@@ -502,6 +503,16 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     profiler.startTimer(`ir:build:${fileBasename}`);
 
     let sourceText = await fs.promises.readFile(filePath, "utf8");
+    const fileExtension = path.extname(filePath).toLowerCase();
+
+    // .ui single-file component: extract the <script> as the TS source, with an
+    // injected `import { screen }` so the script can reference the in-file
+    // template (registered as a UI module by the graph builder).
+    if (fileExtension === ".ui") {
+      const parts = splitUiFile(sourceText);
+      const baseName = path.basename(filePath, ".ui");
+      sourceText = `import { screen } from './${baseName}.ui.html';\n` + parts.script;
+    }
 
     // If the file imports @typecad/expect, run the AST preprocessor
     // to rewrite describe/it/expect/done calls into Serial protocol statements.
