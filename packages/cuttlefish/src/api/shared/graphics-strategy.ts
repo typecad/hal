@@ -29,7 +29,12 @@ export interface PlatformGraphicsStrategy {
   /** Display driver ids this framework provides (e.g. new Set(["ili9341"])). */
   supportedDisplayDrivers(): ReadonlySet<string>;
 
-  /** Target color format — drives transpile-time color resolution. */
+  /** Target color format — drives transpile-time color resolution.
+   *  Phase 1: 565/mono active. Phase 2+ will widen the plumbing (ColorFormat
+   *  aliases in model.ts/ui-lowering.ts, resolveColor signature) to admit
+   *  rgb666/rgb888/palette, at which point resolveColor888 is the resolution
+   *  entry point. Widening only the return type now would break assignment to
+   *  the "rgb565" | "mono" field types downstream. */
   colorFormat(): "rgb565" | "mono";
 
   /** Per-target capacity caps (node/binding/transition limits, storage). */
