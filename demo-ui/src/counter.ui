@@ -30,5 +30,5 @@
 
 <screen id="counter" style="background: #ffffff">
   <text id="label">taps: {count}</text>
-  <button id="tapBtn" on:click="incrementTaps">tap me</button>
+  <button id="tapBtn" on:click={incrementTaps}>tap me</button>
 </screen>

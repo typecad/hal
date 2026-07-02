@@ -266,25 +266,36 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   const inlineStyleAttr = el.getAttribute("style") || undefined;
   const hrefAttr = (tag === "a" || tag === "button") ? (el.getAttribute("href") || undefined) : undefined;
 
-  // Declarative on:* event attributes → named-function references. Each value
-  // names an exported TS function the transpiler emits as a standalone C++ fn;
-  // the click-handler table references it by name (no inlined body).
+  // Directive value normalization: Svelte encloses directive values in braces
+  // (on:click={handler}, bind:value={signal}). The bare-string form
+  // (on:click="handler") is also accepted for backward compatibility. Strip the
+  // surrounding braces when present so both forms produce the same value.
+  const normalizeDirective = (v: string | null): string | undefined => {
+    if (!v) return undefined;
+    const trimmed = v.trim();
+    if (!trimmed) return undefined;
+    // Svelte brace form: {expr} → expr
+    const braceMatch = /^\{(.+)\}$/.exec(trimmed);
+    return braceMatch ? braceMatch[1].trim() : trimmed;
+  };
+
+  // Declarative on:* event attributes → named-function references. Accept both
+  // Svelte form (on:click={fn}) and quoted form (on:click="fn").
   const EVENT_KINDS = ["click", "hold", "release", "change"] as const;
   const events: { click?: string; hold?: string; release?: string; change?: string } = {};
   for (const kind of EVENT_KINDS) {
-    const v = el.getAttribute(`on:${kind}`);
-    if (v && v.trim()) events[kind] = v.trim();
+    const v = normalizeDirective(el.getAttribute(`on:${kind}`));
+    if (v) events[kind] = v;
   }
   const hasEvents = Object.keys(events).length > 0;
 
-  // Declarative bind:* two-way bindings → signal names. bind:text on <input>
-  // composes a text binding (signal→text) with an input binding (text→signal).
-  // bind:value on <range>/<check> composes a value binding with a change handler.
+  // Declarative bind:* two-way bindings → signal names. Accept both
+  // Svelte form (bind:text={signal}) and quoted form (bind:text="signal").
   const BIND_KINDS = ["text", "value"] as const;
   const bind: { text?: string; value?: string } = {};
   for (const kind of BIND_KINDS) {
-    const v = el.getAttribute(`bind:${kind}`);
-    if (v && v.trim()) bind[kind] = v.trim();
+    const v = normalizeDirective(el.getAttribute(`bind:${kind}`));
+    if (v) bind[kind] = v;
   }
   const hasBind = Object.keys(bind).length > 0;
   const srcAttr = tag === "img" ? (el.getAttribute("src") || undefined) : undefined;

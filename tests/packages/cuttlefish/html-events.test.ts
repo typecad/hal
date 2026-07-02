@@ -32,4 +32,16 @@ describe("on:* declarative event attributes", () => {
     const btn = root.children![0];
     expect(btn.events).toBeUndefined();
   });
+
+  it("accepts Svelte brace form: on:click={fn}", () => {
+    const root = parseHtml(`<screen><button id="btn" on:click={saveSettings}>Save</button></screen>`);
+    const btn = root.children![0];
+    expect(btn.events).toEqual({ click: "saveSettings" });
+  });
+
+  it("brace and quoted forms produce the same value", () => {
+    const braceRoot = parseHtml(`<screen><button id="a" on:click={handler}>A</button></screen>`);
+    const quotedRoot = parseHtml(`<screen><button id="b" on:click="handler">B</button></screen>`);
+    expect(braceRoot.children![0].events).toEqual(quotedRoot.children![0].events);
+  });
 });

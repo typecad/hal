@@ -25,4 +25,16 @@ describe("bind:* declarative two-way bindings", () => {
     const input = root.children![0];
     expect(input.bind).toBeUndefined();
   });
+
+  it("accepts Svelte brace form: bind:text={signal}", () => {
+    const root = parseHtml(`<screen><input id="ssid" bind:text={ssidValue}></input></screen>`);
+    const input = root.children![0];
+    expect(input.bind).toEqual({ text: "ssidValue" });
+  });
+
+  it("brace and quoted forms produce the same value", () => {
+    const braceRoot = parseHtml(`<screen><range id="a" bind:value={volume}></range></screen>`);
+    const quotedRoot = parseHtml(`<screen><range id="b" bind:value="volume"></range></screen>`);
+    expect(braceRoot.children![0].bind).toEqual(quotedRoot.children![0].bind);
+  });
 });
