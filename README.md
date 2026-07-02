@@ -154,6 +154,152 @@ const board = createSimBoard();
 
 Register simulated I2C/SPI devices, inject data, and assert on operation logs — all without a physical board connected.
 
+## Build hardware UIs with HTML + CSS
+
+TypeHAL includes a compile-time UI framework: write HTML and CSS, and the transpiler generates C++ that renders directly on SPI TFT displays (ILI9341, ST7796S), OLED, and e-ink panels. No browser, no runtime interpreter — the markup compiles to the same retained-mode node tables and draw dispatch as hand-written display code.
+
+### Single-file `.ui` components
+
+Combine script, styles, and template in one file — the Svelte-compatible `.ui` format:
+
+```html
+<script>
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen, {
+    display: 'ili9341',
+    bus: 'SPI',
+    cs: 5,
+    dc: 21,
+    rst: 22,
+  });
+
+  export const count = ui.signal(0);
+
+  export function incrementTaps() {
+    count.set(count() + 1);
+  }
+</script>
+
+<style>
+  #tapBtn {
+    background: #3399ff;
+    border: 2px solid #1a73e8;
+    border-radius: 8;
+  }
+</style>
+
+<screen id="counter" style="background: #ffffff">
+  <text id="label">taps: {count}</text>
+  <button id="tapBtn" on:click={incrementTaps}>tap me</button>
+</screen>
+```
+
+The transpiler splits the `.ui` file into its three streams and feeds them through the existing HTML/CSS/TS pipelines. Set `entry: './src/app.ui'` in your config. The VS Code Svelte extension provides syntax highlighting and linting for `.ui` files.
+
+### Declarative bindings
+
+**Text interpolation** — reactive text from any signal or expression:
+
+```html
+<span>taps: {count}</span>
+<text>temp: {sensorValue}°C</text>
+```
+
+The `{expr}` compiles to an implicit text binding that re-evaluates every frame. v1 defaults to numeric (`%d`); use `ui.bind` for string-type signals.
+
+**Declarative events** — wire handlers in markup, name functions in script:
+
+```html
+<button on:click={saveSettings}>Save</button>
+<range on:change={updateVolume}></range>
+```
+
+```typescript
+export function saveSettings() { /* ... */ }
+export function updateVolume() { /* ... */ }
+```
+
+The function name in the directive resolves to the C++ function the transpiler emits from your `export function` declaration. Supports `on:click`, `on:hold`, `on:release`, `on:change`.
+
+**Two-way bindings** — form controls backed by signals:
+
+```html
+<input bind:text={ssid}></input>
+<range bind:value={brightness}></range>
+<check bind:value={enabled}></check>
+```
+
+The control reflects the signal (signal → UI), and user input writes back (UI → `signal.set`). Works for keyboard text input (`bind:text`) and range/check values (`bind:value`).
+
+### `ref` — separate CSS identity from TS handles
+
+```html
+<button id="primaryButton" ref="saveButton" on:click={save}>Save</button>
+```
+
+CSS targets `#primaryButton`. TypeScript accesses `screen.saveButton`. When `ref` is absent, the handle falls back to `id` (backward-compatible).
+
+### Grouped screen handles
+
+When screens have `id` attributes, elements are grouped under `screen.groups.<screenId>.<handle>`:
+
+```typescript
+screen.groups.forms.formBtn   // grouped access
+screen.formBtn                // flat access (backward-compatible)
+```
+
+This relieves naming pressure — two screens can both have `id="btn"` and they won't collide.
+
+### CSS support
+
+The transpiler resolves a substantial CSS subset at compile time:
+
+- Flexbox layout (justify-content, align-items, flex-grow/shrink/basis, gap, order, wrap)
+- Box model (width, height, padding, margin, border, border-radius, box-sizing)
+- Typography (font-size, font-weight, font-style, line-height, letter-spacing, text-align, text-decoration, text-overflow, white-space)
+- Colors (hex, rgb(), hsl(), named colors, CSS variables, `var()` with theme classes)
+- Shadows and outlines (box-shadow, outline)
+- Transitions and animations (@keyframes, transition properties)
+- Transforms (translate, scale, rotate, transform-origin)
+- Gradients, opacity, visibility, z-index layering
+- Rich text (inline bold/italic/underline/links with per-run styling)
+- Scrolling containers (touch-drag scroll with rubber-band physics)
+
+CSS variables with theme classes let you switch palettes at build time:
+
+```css
+:root { --bg: #ffffff; --fg: #000000; }
+.dark { --bg: #1a1a2e; --fg: #e0e0e0; }
+```
+
+Set `themeClass: 'dark'` in the display config to activate the dark palette.
+
+### Display-agnostic rendering
+
+The same UI compiles for different display types via a capability descriptor:
+
+```typescript
+display: {
+  profile: 'ili9341-spi',
+  // For e-ink:
+  // driver: 'ssd1680',
+  // displayClass: 'eink',
+  // colorFormat: 'mono',
+}
+```
+
+Target e-ink with `@media` in your CSS:
+
+```css
+@media (e-ink) {
+  .card { background: white; border: 2px solid black; box-shadow: none; }
+  .danger { color: red; }
+}
+```
+
+Supported `@media` features: `(e-ink)`, `(update: slow|fast)`, `(monochrome)`, `(monochrome: N)`, `(color-gamut: srgb|p3)`, plus width/height queries.
+
 ## Debug in VS Code
 
 Set breakpoints in your `.ts` source files. The transpiler injects serial instrumentation that reports variable values and lets you step through execution — directly from your TypeScript code.
