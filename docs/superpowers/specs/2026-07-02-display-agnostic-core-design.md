@@ -306,9 +306,15 @@ path stable at each step:
   together). Verified: AGENTS.md suite green (build, 93/93 runtime-header
   tests, demo-ui compiles), 607/612 cuttlefish tests pass (5 failures are
   pre-existing/unrelated). Byte-identity guards in `runtime-header.test.ts`.
-- **Phase 2 — Descriptor + CSS.** `DisplayCapabilities`, `@media (e-ink)` /
-  `(update)` / `(monochrome)`, descriptor-driven feature flags. TFT path still
-  unchanged in output.
+- **Phase 2 — Descriptor + CSS.** ✅ COMPLETE (commits `28f0bc9`..`706c90f`).
+  `DisplayCapabilities` descriptor + `deriveCapabilities`/`defaultTftCapabilities`
+  (defaults to today's TFT behavior); `displayClass`/`capabilities` on
+  `DisplayProfile`/`DisplayConfig`; `@media` recognizes `(e-ink)`/`(update: slow|fast)`/
+  `(monochrome)`/`(monochrome: N)`/`(color-gamut: srgb|p3)`; antialias feature
+  flag reads capabilities via `fontAntialiasOf` (TFT default unchanged, eink
+  disables — propagates to preview via `node.fontAntialias`). **Purely
+  additive** — no 888-value switch. Verified: build clean, 617/622 tests pass
+  (5 failures pre-existing/unrelated), demo-ui compiles (TFT byte-identical).
 - **Phase 3 — RGB666 shim + ST7796S.** `tft-immediate-666`, ST7796S driver
   registrations (565 and 666), preview quantization. First new display class.
 - **Phase 4 — E-ink.** Backing store, dither (1-bit then multi-ink), refresh
