@@ -17,6 +17,18 @@ export function rgb565ToRgb888(color: number): { r: number; g: number; b: number
   };
 }
 
+/** Quantize a packed RGB888 value to RGB565 (uint16). */
+export function rgb888To565(color: number): number {
+  const r = (color >> 16) & 0xff, g = (color >> 8) & 0xff, b = color & 0xff;
+  return ((r & 0xf8) << 8) | ((g & 0xfc) << 3) | (b >> 3);
+}
+
+/** Reconstruct a packed RGB888 value from a 565 value (lossy). */
+export function rgb565To888(color: number): number {
+  const { r, g, b } = rgb565ToRgb888(color);
+  return (r << 16) | (g << 8) | b;
+}
+
 export function blendRgb565(fg: number, bg: number, opacity: number): number {
   if (opacity >= 100) return fg & 0xffff;
   if (opacity <= 0) return bg & 0xffff;
@@ -32,12 +44,26 @@ export function blendRgb565(fg: number, bg: number, opacity: number): number {
   return ((r & 0x1f) << 11) | ((g & 0x3f) << 5) | (b & 0x1f);
 }
 
+/** Blend two RGB888 colors by opacity (0-100). Added for Phase 2 (RGB888/RGB666
+ *  targets); unused in Phase 1, whose TFT path keeps 565 values and blends via
+ *  blendRgb565 above for byte-identity with the device runtime. */
+export function blendRgb888(fg: number, bg: number, opacity: number): number {
+  if (opacity >= 100) return fg & 0xffffff;
+  if (opacity <= 0) return bg & 0xffffff;
+  const fr = (fg >> 16) & 0xff, fg8 = (fg >> 8) & 0xff, fb = fg & 0xff;
+  const br = (bg >> 16) & 0xff, bg8 = (bg >> 8) & 0xff, bb = bg & 0xff;
+  const r = Math.trunc((fr * opacity + br * (100 - opacity)) / 100);
+  const g = Math.trunc((fg8 * opacity + bg8 * (100 - opacity)) / 100);
+  const b = Math.trunc((fb * opacity + bb * (100 - opacity)) / 100);
+  return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
+}
+
 export class HostAdafruitGFX {
-  readonly buffer: Uint16Array;
+  readonly buffer: Uint32Array;
   private cursorX = 0;
   private cursorY = 0;
-  private textColor = 0xffff;
-  private textBgColor = 0xffff;
+  private textColor = 0xffffff;
+  private textBgColor = 0xffffff;
   private textSizeX = 1;
   private textSizeY = 1;
   private wrap = true;
@@ -48,7 +74,7 @@ export class HostAdafruitGFX {
     readonly height: number,
     private readonly font: Uint8Array = new Uint8Array(GFX_FONT_BYTES),
   ) {
-    this.buffer = new Uint16Array(width * height);
+    this.buffer = new Uint32Array(width * height);
   }
 
   begin(): void {
@@ -92,7 +118,7 @@ export class HostAdafruitGFX {
     y = Math.trunc(y);
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return;
     if (!this.insideClip(x, y)) return;
-    this.buffer[y * this.width + x] = color & 0xffff;
+    this.buffer[y * this.width + x] = color & 0xffffff;
   }
 
   writePixel(x: number, y: number, color: number): void {
@@ -126,14 +152,14 @@ export class HostAdafruitGFX {
     }
     if (x0 >= x1 || y0 >= y1) return;
 
-    const c = color & 0xffff;
+    const c = color & 0xffffff;
     for (let yy = y0; yy < y1; yy++) {
       this.buffer.fill(c, yy * this.width + x0, yy * this.width + x1);
     }
   }
 
   fillScreen(color: number): void {
-    this.buffer.fill(color & 0xffff);
+    this.buffer.fill(color & 0xffffff);
   }
 
   drawFastHLine(x: number, y: number, w: number, color: number): void {
@@ -353,8 +379,8 @@ export class HostAdafruitGFX {
   }
 
   setTextColor(color: number, bg?: number): void {
-    this.textColor = color & 0xffff;
-    this.textBgColor = bg === undefined ? this.textColor : bg & 0xffff;
+    this.textColor = color & 0xffffff;
+    this.textBgColor = bg === undefined ? this.textColor : bg & 0xffffff;
   }
 
   setTextSize(size: number, sy?: number): void {
