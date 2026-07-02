@@ -288,6 +288,15 @@ extern const uint16_t __ui_rich_line_count;
 #ifndef UI_COLOR_DEPTH
 #define UI_COLOR_DEPTH 565
 #endif
+// Color value type tracks the depth: 888 holds 24-bit RGB (R<<16|G<<8|B),
+// 565 holds 16-bit. Draw wrappers and locals use UI_COLOR_T so 888 is not
+// narrowed before reaching the HAL. Under 565/mono this is uint16_t and the
+// emitted code is byte-identical with the pre-widening runtime.
+#if UI_COLOR_DEPTH == 888
+  #define UI_COLOR_T uint32_t
+#else
+  #define UI_COLOR_T uint16_t
+#endif
 static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity);
 static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity);
 static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100);
@@ -762,38 +771,38 @@ static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int
   *h = (int16_t)(y1 - y0);
   return 1;
 }
-static inline void ui_display_draw_pixel(int16_t x, int16_t y, uint16_t color) {
+static inline void ui_display_draw_pixel(int16_t x, int16_t y, UI_COLOR_T color) {
   display_targetDrawPixel(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_draw_rgb_bitmap(int16_t x, int16_t y, const uint16_t* bitmap, int16_t w, int16_t h) {
   display_targetDrawRGBBitmap(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, bitmap, w, h);
 }
-static inline void ui_display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+static inline void ui_display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T color) {
   display_targetFillRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, UI_MAYBE_SNAP_MONO565(color));
 }
-static inline void ui_display_draw_fast_hline(int16_t x, int16_t y, int16_t w, uint16_t color) {
+static inline void ui_display_draw_fast_hline(int16_t x, int16_t y, int16_t w, UI_COLOR_T color) {
   display_targetDrawFastHLine(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, UI_MAYBE_SNAP_MONO565(color));
 }
-static inline void ui_display_draw_fast_vline(int16_t x, int16_t y, int16_t h, uint16_t color) {
+static inline void ui_display_draw_fast_vline(int16_t x, int16_t y, int16_t h, UI_COLOR_T color) {
   display_targetDrawFastVLine(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, h, UI_MAYBE_SNAP_MONO565(color));
 }
-static inline void ui_display_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+static inline void ui_display_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, UI_COLOR_T color) {
   display_targetFillRoundRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, r, color);
 }
-static inline void ui_display_draw_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+static inline void ui_display_draw_rect(int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T color) {
   display_targetDrawRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, color);
 }
-static inline void ui_display_draw_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+static inline void ui_display_draw_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, UI_COLOR_T color) {
   display_targetDrawRoundRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, r, color);
 }
-static inline void ui_display_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
+static inline void ui_display_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, UI_COLOR_T color) {
   display_targetDrawLine(__ui_gfx, x0 + __ui_draw_off_x, y0 + __ui_draw_off_y,
     x1 + __ui_draw_off_x, y1 + __ui_draw_off_y, color);
 }
-static inline void ui_display_fill_circle(int16_t x, int16_t y, int16_t r, uint16_t color) {
+static inline void ui_display_fill_circle(int16_t x, int16_t y, int16_t r, UI_COLOR_T color) {
   display_targetFillCircle(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, r, color);
 }
-static inline void ui_display_draw_circle(int16_t x, int16_t y, int16_t r, uint16_t color) {
+static inline void ui_display_draw_circle(int16_t x, int16_t y, int16_t r, UI_COLOR_T color) {
   display_targetDrawCircle(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, r, color);
 }
 static inline void ui_display_set_cursor(int16_t x, int16_t y) {

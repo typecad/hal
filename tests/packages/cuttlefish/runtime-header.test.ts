@@ -812,4 +812,14 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     // The runtime's full-screen clear still uses the 565 black literal.
     expect(header).toMatch(/display_fillScreen\(0x0000\)/);
   });
+
+  it("defines UI_COLOR_T as uint32_t under 888 and uint16_t otherwise", () => {
+    expect(header).toMatch(/#define UI_COLOR_T uint32_t\b[\s\S]*?#else[\s\S]*?#define UI_COLOR_T uint16_t/);
+  });
+  it("widens ui_display_fill_rect color param to UI_COLOR_T", () => {
+    expect(header).toMatch(/ui_display_fill_rect\([^)]*UI_COLOR_T color\)/);
+  });
+  it("widens ui_display_draw_pixel color param to UI_COLOR_T", () => {
+    expect(header).toMatch(/ui_display_draw_pixel\([^)]*UI_COLOR_T color\)/);
+  });
 });
