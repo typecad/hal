@@ -25,6 +25,9 @@ interface AutoWireNode {
   /** True when text contains a `{expr}` interpolation; auto-wire synthesizes an
    *  implicit text binding for it (no id required — {expr} references a signal). */
   hasInterpolation?: boolean;
+  /** Declarative on:* event handlers (named-function references). Each value
+   *  names an exported TS function emitted as a standalone C++ function. */
+  events?: { click?: string; hold?: string; release?: string; change?: string };
 }
 
 // Track radio groups for mutual exclusion
@@ -60,10 +63,11 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
     if (node.runs && node.runs.length > 0) markRunNode(currentIndex);
     // Auto-wire nodes with an id, <a href> links, run-bearing link nodes
     // (an inline <a href> inside a paragraph makes the paragraph a tap target),
-    // and {expr} text interpolations (which synthesize a text binding — these
-    // may have no id, since {expr} references a signal, not a screen.<id>).
+    // {expr} text interpolations, and on:* declarative event handlers. The last
+    // two may have no id — {expr} references a signal; on:* names a function.
     const hasLinkRun = !!node.runs?.some(r => r.href);
-    if (node.id || node.href || hasLinkRun || node.hasInterpolation) {
+    const hasEvents = !!node.events && Object.keys(node.events).length > 0;
+    if (node.id || node.href || hasLinkRun || node.hasInterpolation || hasEvents) {
       autoWireNode(treeName, node, currentIndex);
     }
     node.children?.forEach(walk);
@@ -87,6 +91,26 @@ function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): 
         fnName: `__ui_interp_${nodeIndex}`,
         cppBody,
       });
+    }
+  }
+
+  // on:* declarative event handlers → record click/hold/release/change handlers
+  // that reference the named C++ function by name (no inlined body). The named
+  // function comes from the author's `export function name() {...}` in TS,
+  // which the transpiler emits as a standalone C++ function.
+  if (node.events) {
+    const kindMap = { click: "click", hold: "hold", release: "release", change: "change" } as const;
+    for (const key of Object.keys(node.events) as Array<keyof typeof kindMap>) {
+      const fnName = node.events[key];
+      if (fnName) {
+        recordClickHandler({
+          nodeIndex,
+          kind: kindMap[key],
+          fnName,
+          callbackBody: "",
+          isNamedRef: true,
+        });
+      }
     }
   }
 

@@ -78,6 +78,9 @@ export interface StyledNode {
   /** True when text contains a `{expr}` interpolation; auto-wire synthesizes an
    *  implicit text binding. Propagated from UIElementNode for the auto-wire walk. */
   hasInterpolation?: boolean;
+  /** Declarative on:* event handlers (named-function references). Propagated
+   *  from UIElementNode for the auto-wire walk. */
+  events?: { click?: string; hold?: string; release?: string; change?: string };
 }
 
 /** Look up an HTML attribute value on a node by name, for attribute selectors.
@@ -400,5 +403,6 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     canvasH: node.canvasH,
     disabled: (node as any).disabled,
     hasInterpolation: node.hasInterpolation,
+    events: node.events,
   };
 }

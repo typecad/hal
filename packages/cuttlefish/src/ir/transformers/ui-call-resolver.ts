@@ -81,6 +81,10 @@ export interface ClickHandlerSpec {
   fnName: string;
   /** C++ body of the callback. */
   callbackBody: string;
+  /** True when fnName references an existing author-declared C++ function (from
+   *  an on:* attribute like on:click="saveSettings"). When true, the emitter
+   *  must NOT synthesize a wrapper void fnName() {...} — the function exists. */
+  isNamedRef?: boolean;
 }
 
 const _clickHandlers: ClickHandlerSpec[] = [];

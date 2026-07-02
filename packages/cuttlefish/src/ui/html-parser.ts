@@ -70,6 +70,11 @@ export interface UIElementNode {
    *  auto-wire layer lowers to an implicit ui.bind(node,'text',...) text
    *  binding. Plain text (no braces) is unchanged. */
   hasInterpolation?: boolean;
+  /** Declarative event handlers from on:* attributes (e.g. on:click="save").
+   *  Keys: click | hold | release | change. Values: a named TS export function
+   *  the transpiler emits as a standalone C++ function; the handler table
+   *  references it by name. Absent when no on:* attributes are present. */
+  events?: { click?: string; hold?: string; release?: string; change?: string };
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
 }
@@ -250,6 +255,17 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   const hiddenAttr = el.hasAttribute("hidden");
   const inlineStyleAttr = el.getAttribute("style") || undefined;
   const hrefAttr = (tag === "a" || tag === "button") ? (el.getAttribute("href") || undefined) : undefined;
+
+  // Declarative on:* event attributes → named-function references. Each value
+  // names an exported TS function the transpiler emits as a standalone C++ fn;
+  // the click-handler table references it by name (no inlined body).
+  const EVENT_KINDS = ["click", "hold", "release", "change"] as const;
+  const events: { click?: string; hold?: string; release?: string; change?: string } = {};
+  for (const kind of EVENT_KINDS) {
+    const v = el.getAttribute(`on:${kind}`);
+    if (v && v.trim()) events[kind] = v.trim();
+  }
+  const hasEvents = Object.keys(events).length > 0;
   const srcAttr = tag === "img" ? (el.getAttribute("src") || undefined) : undefined;
   const imgWidthAttr = tag === "img" ? parseInt(el.getAttribute("width") || "0", 10) : undefined;
   const imgHeightAttr = tag === "img" ? parseInt(el.getAttribute("height") || "0", 10) : undefined;
@@ -339,7 +355,7 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   }
 
   const remappedFrom = (remapped || tag === "label" || tag === "a") && tag !== effectiveTag ? tag : undefined;
-  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, children: [] };
   for (const child of childElements) {
     // Inline children are absorbed into `inline`; don't also emit them as nodes.
     if (inline && INLINE_TAGS.has(child.tagName.toLowerCase())) continue;

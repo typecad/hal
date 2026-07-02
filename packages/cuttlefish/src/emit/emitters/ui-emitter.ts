@@ -272,8 +272,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   const maxIdx = touchHandlers.reduce((max, h) => Math.max(max, h.nodeIndex), -1);
   const tableSize = Math.max(maxIdx + 1, 1);
 
-  // Handler functions
+  // Handler functions (skip named-ref handlers — their function is the author's
+  // own exported function, already emitted by the general transpiler pipeline).
   for (const ch of touchHandlers) {
+    if (ch.isNamedRef) continue;
     ctx.sourceLines.push(`void ${ch.fnName}() { ${ch.callbackBody || ""} }`);
   }
 
@@ -303,6 +305,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   const inputChangeHandlers = clickHandlers().filter(h => h.kind === "change");
   if (inputChangeHandlers.length > 0) {
     for (const h of inputChangeHandlers) {
+      if (h.isNamedRef) continue;  // author's own function; no wrapper.
       ctx.sourceLines.push(`void ${h.fnName}() { ${h.callbackBody || ""} }`);
     }
     ctx.sourceLines.push(`void __ui_kb_set_onchange() {`);
