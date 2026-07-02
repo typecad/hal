@@ -27,9 +27,9 @@ ui.mount(screen, {
 // so this TS only owns the signal state. (Svelte-like markup-driven authoring;
 // compare to the older ui.bind(screen.formBtnCount, 'text', ...) form.)
 export const count = ui.signal(0);
-screen.formBtn.onClick(() => {
+export function incrementTaps() {
   count.set(count() + 1);
-});
+}
 
 // ── Forms screen: progress 0→100 loop ──────────────────────────────────────
 screen.formProg.value = 0;

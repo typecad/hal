@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 import { buildProgramIR } from "./ir/build-ir.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
+import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
 import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
 import { readText } from "./utils/fs.js";
@@ -602,6 +603,13 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     // Detect symbols that other files import from this one
     const importedByOthers = crossModuleImports.get(filePath) ?? new Set<string>();
     const exportedEntryPoints = detectExportedEntryPoints(rawIR, importedByOthers);
+    // Functions referenced by on:* HTML attributes (on:click="saveSettings") are
+    // named-ref handlers — the click-handler table references them, but the TS
+    // call-graph doesn't (the reference is in HTML). Keep them as tree-shake
+    // entry points so they aren't stripped before the table is emitted.
+    const onAttrEntryPoints = clickHandlers()
+      .filter(h => h.isNamedRef)
+      .map(h => h.fnName);
 
     profiler.startTimer(`tree-shake:${fileBasename}`);
     let shakingResult: { programIR: ProgramIR; removedSymbols: string[] };
@@ -609,10 +617,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       shakingResult = applyTreeShaking(rawIR, options.target, {
         ...options.treeShaking,
         keepUnusedVariables: options.treeShaking?.keepUnusedVariables ?? false,
-        // Merge exported entry points so cross-module imports aren't shaken out
+        // Merge exported entry points so cross-module imports aren't shaken out,
+        // plus on:* HTML-attribute handler refs (named fns not called in TS).
         entryPoints: [
           ...(options.treeShaking?.entryPoints ?? []),
           ...exportedEntryPoints,
+          ...onAttrEntryPoints,
         ],
       });
     } else {
@@ -623,10 +633,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         keepUnusedTypeAliases: options.treeShaking?.keepUnusedTypeAliases,
         reportUnused: options.treeShaking?.reportUnused,
         keepUnusedVariables: true,
-        // Merge exported entry points so cross-module imports aren't shaken out
+        // Merge exported entry points so cross-module imports aren't shaken out,
+        // plus on:* HTML-attribute handler refs (named fns not called in TS).
         entryPoints: [
           ...(options.treeShaking?.entryPoints ?? []),
           ...exportedEntryPoints,
+          ...onAttrEntryPoints,
         ],
       });
     }

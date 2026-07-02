@@ -272,6 +272,17 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   const maxIdx = touchHandlers.reduce((max, h) => Math.max(max, h.nodeIndex), -1);
   const tableSize = Math.max(maxIdx + 1, 1);
 
+  // Forward-declare named-ref handlers (on:* attributes) BEFORE the handler
+  // tables — the table references these author-declared functions by name, but
+  // their definitions are emitted later (in the author-function section). The
+  // general transpiler's own forward declarations land after the UI tables, so
+  // without these the table's reference is out of scope.
+  for (const ch of touchHandlers) {
+    if (ch.isNamedRef) {
+      ctx.sourceLines.push(`void ${ch.fnName}();`);
+    }
+  }
+
   // Handler functions (skip named-ref handlers — their function is the author's
   // own exported function, already emitted by the general transpiler pipeline).
   for (const ch of touchHandlers) {
@@ -304,6 +315,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // 8b. Input onChange dispatch — assigns __ui_kb_onchange based on __ui_kb_target.
   const inputChangeHandlers = clickHandlers().filter(h => h.kind === "change");
   if (inputChangeHandlers.length > 0) {
+    // Forward-declare named-ref onChange handlers before the dispatch wiring.
+    for (const h of inputChangeHandlers) {
+      if (h.isNamedRef) ctx.sourceLines.push(`void ${h.fnName}();`);
+    }
     for (const h of inputChangeHandlers) {
       if (h.isNamedRef) continue;  // author's own function; no wrapper.
       ctx.sourceLines.push(`void ${h.fnName}() { ${h.callbackBody || ""} }`);
