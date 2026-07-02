@@ -280,6 +280,9 @@ export class PreviewUIRuntime {
     this.onFrame = options.onFrame;
     this.onDiagnostics = options.onDiagnostics;
     this.gfx = new HostAdafruitGFX(snapshot.program.width, snapshot.program.height, new Uint8Array(snapshot.font));
+    // Snap draw colors to black/white for mono/e-ink targets (parity with the
+    // device's UI_NATIVE_MONO draw-path snap). No-op for color targets.
+    this.gfx.setMonoSnap(snapshot.program.colorFormat === "mono");
     this.createScreenProxy();
   }
 

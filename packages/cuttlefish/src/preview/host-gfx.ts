@@ -64,6 +64,9 @@ export class HostAdafruitGFX {
   private cursorY = 0;
   private textColor = 0xffffff;
   private textBgColor = 0xffffff;
+  // When true (mono/e-ink target), draw primitives snap color values to black/
+  // white by luminance — mirrors the device's UI_MAYBE_SNAP_MONO565 choke-point.
+  private monoSnap = false;
   private textSizeX = 1;
   private textSizeY = 1;
   private wrap = true;
@@ -79,6 +82,19 @@ export class HostAdafruitGFX {
 
   begin(): void {
     // Hardware driver compatibility hook.
+  }
+
+  /** Enable 1-bit mono snapping (e-ink targets). When on, draw primitives snap
+   *  every color to black/white by luminance, matching the device's
+   *  UI_MAYBE_SNAP_MONO565. Uses the same threshold as toMono (0.27). */
+  setMonoSnap(on: boolean): void {
+    this.monoSnap = on;
+  }
+
+  private snap(c: number): number {
+    if (!this.monoSnap) return c;
+    const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+    return (299 * r + 587 * g + 114 * b >= 68850) ? 0xffffff : 0x000000;
   }
 
   setRotation(_rotation: number): void {
@@ -118,7 +134,7 @@ export class HostAdafruitGFX {
     y = Math.trunc(y);
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return;
     if (!this.insideClip(x, y)) return;
-    this.buffer[y * this.width + x] = color & 0xffffff;
+    this.buffer[y * this.width + x] = this.snap(color) & 0xffffff;
   }
 
   writePixel(x: number, y: number, color: number): void {
@@ -152,14 +168,14 @@ export class HostAdafruitGFX {
     }
     if (x0 >= x1 || y0 >= y1) return;
 
-    const c = color & 0xffffff;
+    const c = this.snap(color) & 0xffffff;
     for (let yy = y0; yy < y1; yy++) {
       this.buffer.fill(c, yy * this.width + x0, yy * this.width + x1);
     }
   }
 
   fillScreen(color: number): void {
-    this.buffer.fill(color & 0xffffff);
+    this.buffer.fill(this.snap(color) & 0xffffff);
   }
 
   drawFastHLine(x: number, y: number, w: number, color: number): void {

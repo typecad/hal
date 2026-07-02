@@ -1640,3 +1640,28 @@ describe("PreviewUIRuntime", () => {
     }
   });
 });
+
+describe("HostAdafruitGFX mono snap (e-ink parity)", () => {
+  it("snaps colors to black/white when monoSnap is on", () => {
+    const gfx = new HostAdafruitGFX(2, 1);
+    gfx.setMonoSnap(true);
+    gfx.drawPixel(0, 0, 0xff0000);   // red, high luminance → white
+    gfx.drawPixel(1, 0, 0x0000ff);   // blue, low luminance → black
+    expect(gfx.buffer[0]).toBe(0xffffff);
+    expect(gfx.buffer[1]).toBe(0x000000);
+  });
+
+  it("leaves colors untouched when monoSnap is off (color byte-identity)", () => {
+    const gfx = new HostAdafruitGFX(1, 1);
+    gfx.setMonoSnap(false);
+    gfx.drawPixel(0, 0, 0x1a73e8);
+    expect(gfx.buffer[0]).toBe(0x1a73e8);
+  });
+
+  it("fillScreen snaps under mono", () => {
+    const gfx = new HostAdafruitGFX(1, 1);
+    gfx.setMonoSnap(true);
+    gfx.fillScreen(0x404040); // dim gray → black (below 0.27)
+    expect(gfx.buffer[0]).toBe(0x000000);
+  });
+});
