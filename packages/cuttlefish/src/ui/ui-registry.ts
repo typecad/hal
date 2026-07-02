@@ -87,12 +87,30 @@ export function loadUIModule(htmlPath: string): UIModule {
     : abs.replace(/\.ui\.html$/, ".ui.css");
   const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
 
+  return loadUIModuleFromText(abs, htmlText, cssText, cssPath);
+}
+
+/**
+ * Load a UI module from already-read HTML + CSS text (used by the .ui single-file
+ * component path, which splits the file and passes the parts directly). The
+ * disk-reading `loadUIModule` delegates here after reading the files.
+ */
+export function loadUIModuleFromText(
+  htmlPath: string,
+  htmlText: string,
+  cssText: string,
+  cssPathForFonts: string = path.dirname(htmlPath),
+): UIModule {
+  const abs = path.resolve(htmlPath);
+  const cached = modules.get(abs);
+  if (cached) return cached;
+
   const moduleDiagnostics: Diagnostic[] = [];
   const parsed = parseHtmlWithKeyboards(htmlText, moduleDiagnostics);
   const tree = parsed.tree;
   const allScreens = parsed.screens;
   const keyboards = parsed.keyboards;
-  // Merge <style> blocks from the HTML with the external .ui.css.
+  // Merge <style> blocks from the HTML with the external CSS.
   const styleBlocks = extractStyleBlocks(htmlText);
   const fullCss = cssText + "\n" + styleBlocks;
   const rules = parseCss(fullCss, moduleDiagnostics);
@@ -100,15 +118,14 @@ export function loadUIModule(htmlPath: string): UIModule {
   const styled = resolveStyles(tree, rules, moduleDiagnostics);
   const allStyledScreens = allScreens.map(s => resolveStyles(s, rules, moduleDiagnostics));
   const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
-  const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(cssPath));
+  const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(cssPathForFonts));
 
   const rawKeyframes = parseKeyframes(fullCss);
   const mod: UIModule = { htmlPath: abs, styled, allStyledScreens, keyboards, rules, fontFaces, fontAssets, rawKeyframes, diagnostics: moduleDiagnostics };
   modules.set(abs, mod);
 
-  // Write a sibling .ui.d.html.ts so editors and the type-checker see the
-  // imported `screen` symbol with precise per-id typing. The name follows the
-  // Node16 `allowArbitraryExtensions` convention (<base>.d.<ext>.ts).
+  // Write a sibling type-decl so editors and the type-checker see the
+  // imported `screen` symbol with precise per-id typing.
   writeTypeDeclSibling(abs, allStyledScreens);
 
   return mod;
