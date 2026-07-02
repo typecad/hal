@@ -228,7 +228,22 @@ export function rgb888ToNearest(c: number, palette888: number[]): number {
   return best;
 }
 
-export function resolveColor(input: string, format: "rgb565" | "mono"): number {
+/**
+ * Resolve any CSS color string to packed RGB888 (uint32, R<<16 | G<<8 | B).
+ * Canonical color resolution for the display-agnostic core. Alpha is ignored
+ * (no blending), matching parseColor semantics.
+ */
+export function resolveColor888(input: string): number {
   const { r, g, b } = parseColor(input);
-  return format === "rgb565" ? toRGB565(r, g, b) : toMono(r, g, b);
+  return pack888(r, g, b);
+}
+
+/**
+ * Resolve a CSS color string and quantize to a target format. Backwards-
+ * compatible wrapper over resolveColor888 + quantizer. Existing call sites
+ * keep their behavior (565/mono output unchanged).
+ */
+export function resolveColor(input: string, format: "rgb565" | "mono"): number {
+  const c = resolveColor888(input);
+  return format === "rgb565" ? rgb888To565(c) : rgb888ToMono(c);
 }

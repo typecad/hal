@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseColor, toRGB565, toMono, resolveColor, rgb888To565, rgb888To666, rgb888ToMono, pack888, unpack888 } from "@typecad/cuttlefish/ui/color";
+import { parseColor, toRGB565, toMono, resolveColor, resolveColor888, rgb888To565, rgb888To666, rgb888ToMono, pack888, unpack888 } from "@typecad/cuttlefish/ui/color";
 
 describe("color formats", () => {
   it("parses #rrggbb hex", () => {
@@ -111,5 +111,25 @@ describe("color formats", () => {
     expect(pack888(0, 0, 255)).toBe(0x0000ff);
     expect(unpack888(0x1a73e8)).toEqual({ r: 0x1a, g: 0x73, b: 0xe8 });
     expect(unpack888(pack888(100, 150, 200))).toEqual({ r: 100, g: 150, b: 200 });
+  });
+
+  it("resolveColor888 always returns packed RGB888", () => {
+    expect(resolveColor888("#ff0000")).toBe(0xff0000);
+    expect(resolveColor888("red")).toBe(0xff0000);
+    expect(resolveColor888("rgb(0,255,0)")).toBe(0x00ff00);
+    expect(resolveColor888("#1a73e8")).toBe(0x1a73e8);
+    expect(resolveColor888("white")).toBe(0xffffff);
+    expect(resolveColor888("transparent")).toBe(0x000000);
+  });
+
+  it("resolveColor is now resolveColor888 + quantize (unchanged 565/mono output)", () => {
+    // Every existing resolveColor(...,"rgb565") value must be unchanged — this is
+    // the Phase 1 byte-identity guard for the color API.
+    expect(resolveColor("#ff0000", "rgb565")).toBe(0xf800);
+    expect(resolveColor("#00ff00", "rgb565")).toBe(0x07e0);
+    expect(resolveColor("#0000ff", "rgb565")).toBe(0x001f);
+    expect(resolveColor("#1a73e8", "rgb565")).toBe(rgb888To565(0x1a73e8));
+    expect(resolveColor("#ffffff", "mono")).toBe(1);
+    expect(resolveColor("#000000", "mono")).toBe(0);
   });
 });
