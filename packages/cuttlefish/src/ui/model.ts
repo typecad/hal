@@ -1,4 +1,5 @@
 import type { DisplayProfile } from "../api/shared/display-profile.js";
+import { deriveCapabilities } from "../api/shared/display-capabilities.js";
 import { resolveColor } from "./color.js";
 import { parseAnimation, type CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";
@@ -731,7 +732,10 @@ function fontAntialiasOf(style: CSSProperty, display?: DisplayProfile): boolean 
       return false;
     }
   }
-  return display?.antialias === true;
+  // Explicit profile.antialias === false still wins for back-compat (existing
+  // configs). Otherwise derive from capabilities: TFT default true, eink false.
+  if (display?.antialias === false) return false;
+  return deriveCapabilities(display ?? { width: 0, height: 0, colorFormat: "rgb565" }).features.antialias;
 }
 
 function fontFaceOf(style: CSSProperty, fontAssets: UIFontAssetModel[]): number {
