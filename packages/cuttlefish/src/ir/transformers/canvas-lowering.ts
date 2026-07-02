@@ -13,7 +13,8 @@ import ts from "typescript";
 import { Diagnostic } from "../../types.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
-import { resolveColor } from "../../ui/color.js";
+import { resolveColorInternal } from "../../ui/color.js";
+import { getDisplayProfile } from "../../ui/display-profile-store.js";
 
 /** One user draw callback: the node it targets + the lowered C++ body string. */
 export interface DrawCanvasSpec {
@@ -46,12 +47,12 @@ function isColorLiteral(text: string): boolean {
   return /^["'](#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})|[a-z]+|rgba?\([^)]*\))["']$/i.test(t);
 }
 
-/** Lower a CSS color string to an rgb565 hex literal, or null if not a color. */
+/** Lower a CSS color string to the target's internal color literal, or null if not a color. */
 function tryColor(text: string): number | null {
   if (!isColorLiteral(text)) return null;
   const color = text.trim().replace(/^["']|["']$/g, "");
   try {
-    return resolveColor(color, "rgb565");
+    return resolveColorInternal(color, getDisplayProfile().colorFormat);
   } catch {
     return null;
   }

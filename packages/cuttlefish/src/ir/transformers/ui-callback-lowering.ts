@@ -20,7 +20,8 @@ import ts from "typescript";
 import { Diagnostic } from "../../types.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
-import { resolveColor } from "../../ui/color.js";
+import { resolveColorInternal } from "../../ui/color.js";
+import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { getContext } from "../build-ir-state.js";
 import { getConsoleMethod } from "../../emit/utils/type-inference.js";
 import { isSignalName } from "./ui-call-resolver.js";
@@ -122,11 +123,12 @@ export function lowerCallbackExpr(
 
   // 4. Generic expression: lower via expressionToIR, then resolve color names.
   let raw = renderExprAsText(expressionToIR(expr, sourceText, diagnostics));
+  const fmt = getDisplayProfile().colorFormat;
   raw = raw.replace(
     /"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g,
     (match: string, color: string) => {
       try {
-        return `0x${resolveColor(color, "rgb565").toString(16)}`;
+        return `0x${resolveColorInternal(color, fmt).toString(16)}`;
       } catch {
         return match;
       }

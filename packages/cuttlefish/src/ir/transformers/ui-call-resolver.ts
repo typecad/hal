@@ -19,7 +19,7 @@ import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getLis
 import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
-import { resolveColor } from "../../ui/color.js";
+import { resolveColorInternal } from "../../ui/color.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { lowerCallbackBody, resetCallbackLoweringState } from "./ui-callback-lowering.js";
 import { resolveDrawCanvasCall, resetCanvasBindings } from "./canvas-lowering.js";
@@ -579,11 +579,13 @@ function resolveBindCall(
         cppBody = lowerTextBindingBody(body, fileName, sourceText, diagnostics).cppBody;
       } else {
         let raw = renderExprAsText(expressionToIR(body, sourceText, diagnostics));
-        // Resolve color string literals to RGB565 hex values. Handles hex,
-        // named colors, and rgb()/rgba().
+        // Resolve color string literals to the target's INTERNAL representation
+        // (565 for TFT, 888 for rgb666 so blends keep precision). Handles hex,
+        // named colors, and rgb()/rgba(). Format comes from the resolved profile.
+        const fmt = getDisplayProfile().colorFormat;
         raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
           try {
-            return `0x${resolveColor(color, "rgb565").toString(16)}`;
+            return `0x${resolveColorInternal(color, fmt).toString(16)}`;
           } catch { return match; }
         });
         cppExpr = raw;

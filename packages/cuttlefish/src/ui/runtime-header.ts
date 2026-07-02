@@ -277,6 +277,29 @@ extern const uint16_t __ui_run_count;
 extern const uint16_t __ui_rich_seg_count;
 extern const uint16_t __ui_rich_line_count;
 
+// ── Color depth → blend/lerp selection ───────────────────────────────────────
+// UI_COLOR_DEPTH is emitted by the UI emitter from the display profile's
+// colorFormat (565 for TFT byte-identity, 888 for rgb666+). The value depth
+// and the blend math MUST switch together: on 565, node fields hold 565 values
+// and ui_blend565 is correct; on 888, node fields hold 888 values and
+// ui_blend888 is correct. Forward-declare the four functions and define the
+// ui_blend/UI_LERP_COLOR macros here (before any call site) so they resolve
+// everywhere; the function bodies are defined later in this header.
+#ifndef UI_COLOR_DEPTH
+#define UI_COLOR_DEPTH 565
+#endif
+static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity);
+static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity);
+static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100);
+static inline uint32_t lerp_color_888(uint32_t a, uint32_t b, uint8_t k100);
+#if UI_COLOR_DEPTH == 888
+  #define ui_blend(fg, bg, op)        ui_blend888((uint32_t)(fg), (uint32_t)(bg), (op))
+  #define UI_LERP_COLOR(a, b, k)      lerp_color_888((uint32_t)(a), (uint32_t)(b), (k))
+#else
+  #define ui_blend(fg, bg, op)        ui_blend565((uint16_t)(fg), (uint16_t)(bg), (op))
+  #define UI_LERP_COLOR(a, b, k)      lerp_color((uint16_t)(a), (uint16_t)(b), (k))
+#endif
+
 // ── Multi-screen navigation ─────────────────────────────────────────────────
 // Touch/scroll/keyboard state reset by navigation.
 static uint8_t __ui_touch_state = 0;
@@ -1616,7 +1639,7 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
   // main draw used the blended color → shearing on translucent nodes during scroll.
   uint16_t parentFillBg = __ui_nodes[p].bg;
   if (__ui_nodes[p].opacity < 100) {
-    parentFillBg = ui_blend565(__ui_nodes[p].bg, ui_parent_clear_color(p), __ui_nodes[p].opacity);
+    parentFillBg = ui_blend(__ui_nodes[p].bg, ui_parent_clear_color(p), __ui_nodes[p].opacity);
   }
 
   if (__ui_nodes[p].gradientEnabled > 0) {
@@ -1890,7 +1913,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   ui_display_set_target(repairCanvas);
   uint16_t fillBg = __ui_nodes[nodeIdx].bg;
   if (__ui_nodes[nodeIdx].opacity < 100) {
-    fillBg = ui_blend565(__ui_nodes[nodeIdx].bg, ui_parent_clear_color(nodeIdx), __ui_nodes[nodeIdx].opacity);
+    fillBg = ui_blend(__ui_nodes[nodeIdx].bg, ui_parent_clear_color(nodeIdx), __ui_nodes[nodeIdx].opacity);
   }
   int16_t drawX = ui_draw_x_for_node(nodeIdx) - repair.x;
   int16_t drawY = ui_draw_y_for_node(nodeIdx) - repair.y;
@@ -2798,7 +2821,7 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
             // the bumpy look from flattening sub-pixel coverage to solid.
             if (alpha >= 8) ui_display_draw_pixel(dx, dy, fg);
           } else {
-            ui_display_draw_pixel(dx, dy, alpha >= 15 ? fg : ui_blend565(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
+            ui_display_draw_pixel(dx, dy, alpha >= 15 ? fg : ui_blend(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
           }
         } else if (alpha >= 8) {
           ui_display_draw_pixel(dx, dy, fg);
@@ -2925,7 +2948,7 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint1
          outerNeighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg, 2);
        }
        uint8_t coverage = ui_text_aa_coverage(neighbors, outerNeighbors, px == fg ? 1 : 0, ts);
-       display_targetDrawPixel((CuttlefishDisplayTarget*)dst, xx, yy, coverage == 0 ? bg : ui_blend565(fg, bg, coverage));
+       display_targetDrawPixel((CuttlefishDisplayTarget*)dst, xx, yy, coverage == 0 ? bg : ui_blend(fg, bg, coverage));
      }
    }
 
@@ -3123,7 +3146,7 @@ static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY) {
     int16_t yEnd = (int16_t)(clipY + clipH - by);
     for (int16_t y = yStart; y < yEnd; y++) {
       uint8_t op = (uint8_t)((uint16_t)y * 100 / (bh > 1 ? bh - 1 : 1));
-      uint16_t col = ui_blend565(c1, c2, op);
+      uint32_t col = ui_blend(c1, c2, op);
       ui_display_draw_fast_hline(clipX, by + y, clipW, col);
     }
   } else {
@@ -3132,7 +3155,7 @@ static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY) {
     int16_t xEnd = (int16_t)(clipX + clipW - bx);
     for (int16_t x = xStart; x < xEnd; x++) {
       uint8_t op = (uint8_t)((uint16_t)x * 100 / (bw > 1 ? bw - 1 : 1));
-      uint16_t col = ui_blend565(c1, c2, op);
+      uint32_t col = ui_blend(c1, c2, op);
       ui_display_draw_fast_vline(bx + x, clipY, clipH, col);
     }
   }
@@ -3162,7 +3185,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
 
     if (inset && rawBlur == 0) {
       uint16_t insetBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-      uint16_t col = ui_blend565(shadowCol, insetBg, baseAlpha);
+      uint32_t col = ui_blend(shadowCol, insetBg, baseAlpha);
       if (oy > 0) {
         ui_display_fill_rect(bx, by, bw, oy, col);
       } else if (oy < 0) {
@@ -3181,7 +3204,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
 
     for (int8_t pass = blur; pass >= 1; pass--) {
       uint8_t opacity = (uint8_t)((uint16_t)baseAlpha / (pass + 1));
-      uint16_t col = ui_blend565(shadowCol, inset ? (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : clearCol) : clearCol, opacity);
+      uint32_t col = ui_blend(shadowCol, inset ? (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : clearCol) : clearCol, opacity);
       if (inset) {
         // Inset: draw inside the element, shrinking inward by pass.
         int16_t ix = bx + pass;
@@ -3397,7 +3420,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       ? 100
       : (uint16_t)((uint32_t)__ui_trans[i].elapsed * 100 / __ui_trans[i].durationMs);
     if (__ui_trans[i].durationMs > 0 && __ui_trans[i].durationMs <= UI_TRANSITION_SNAP_MS) k = 100;
-    uint16_t v = lerp_color(__ui_trans[i].prevValue, __ui_trans[i].targetValue, (uint8_t)k);
+    uint32_t v = UI_LERP_COLOR(__ui_trans[i].prevValue, __ui_trans[i].targetValue, (uint8_t)k);
     if (__ui_trans[i].prop == PROP_FG) {
       __ui_nodes[__ui_trans[i].node].fg = v;
     } else {
@@ -3464,11 +3487,11 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (n >= __ui_node_count) continue;
     uint8_t changed = 0;
     if ((sLo->props & UI_KF_BG) && (sHi->props & UI_KF_BG)) {
-      uint16_t newBg = range > 0 ? lerp_color(sLo->bg, sHi->bg, lerpK) : sLo->bg;
+      uint32_t newBg = range > 0 ? UI_LERP_COLOR(sLo->bg, sHi->bg, lerpK) : sLo->bg;
       if (newBg != __ui_nodes[n].bg) { __ui_nodes[n].bg = newBg; __ui_nodes[n].hasBg = 1; changed = 1; }
     }
     if ((sLo->props & UI_KF_FG) && (sHi->props & UI_KF_FG)) {
-      uint16_t newFg = range > 0 ? lerp_color(sLo->fg, sHi->fg, lerpK) : sLo->fg;
+      uint32_t newFg = range > 0 ? UI_LERP_COLOR(sLo->fg, sHi->fg, lerpK) : sLo->fg;
       if (newFg != __ui_nodes[n].fg) { __ui_nodes[n].fg = newFg; changed = 1; }
     }
     if ((sLo->props & UI_KF_OPACITY) && (sHi->props & UI_KF_OPACITY)) {
@@ -3868,8 +3891,8 @@ static inline void ui_tick(uint16_t deltaMs) {
     // is the actual backdrop showing through the translucent element.
     if (__ui_nodes[i].opacity < 100) {
       uint16_t backdrop = ui_parent_clear_color(i);
-      bColor = ui_blend565(bColor, backdrop, __ui_nodes[i].opacity);
-      fillBg = ui_blend565(__ui_nodes[i].bg, backdrop, __ui_nodes[i].opacity);
+      bColor = ui_blend(bColor, backdrop, __ui_nodes[i].opacity);
+      fillBg = ui_blend(__ui_nodes[i].bg, backdrop, __ui_nodes[i].opacity);
     }
     switch (__ui_nodes[i].kind) {
       case NODE_FILL:
@@ -3915,7 +3938,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           // node (inherited from an opacity:<1 parent) doesn't repaint a solid
           // block of its parent's fill around the glyphs.
           if (__ui_nodes[i].opacity < 100) {
-            clearCol = ui_blend565(clearCol, ui_parent_clear_color(i), __ui_nodes[i].opacity);
+            clearCol = ui_blend(clearCol, ui_parent_clear_color(i), __ui_nodes[i].opacity);
           }
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
           __ui_nodes[i].lastTextWidth = tw;
@@ -3930,13 +3953,13 @@ static inline void ui_tick(uint16_t deltaMs) {
             uint16_t p = __ui_nodes[i].parent;
             uint16_t source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
                           : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
-            richTextBg = ui_blend565(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
+            richTextBg = ui_blend(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
           } else {
             richTextBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
           }
           if (__ui_nodes[i].textShadowCount > 0) {
             uint16_t tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-            uint16_t tsCol = ui_blend565(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
+            uint32_t tsCol = ui_blend(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
             // Shadow pass: draw the rich block in the shadow color at the offset.
             // (Per-segment shadow color is approximated by drawing the whole
             // block once in tsCol.)
@@ -3952,7 +3975,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           // Text shadow: draw the text in the shadow color at the offset first.
           uint16_t tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           if (__ui_nodes[i].textShadowCount > 0) {
-            uint16_t tsCol = ui_blend565(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
+            uint32_t tsCol = ui_blend(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
             ui_draw_wrapped_text(displayText,
               __ui_nodes[i].box.x + __ui_nodes[i].textShadowOffsetX,
               drawY + __ui_nodes[i].textShadowOffsetY,
@@ -3976,7 +3999,7 @@ static inline void ui_tick(uint16_t deltaMs) {
             uint16_t p = __ui_nodes[i].parent;
             uint16_t source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
                           : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
-            textBg = ui_blend565(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
+            textBg = ui_blend(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
           } else {
             textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
           }
@@ -4535,7 +4558,7 @@ static inline void ui_aa_pixel(CuttlefishCanvas16* c, int16_t x, int16_t y, uint
   if (cov >= 255) { display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, color); return; }
   uint16_t bg = display_canvasGetPixel(c, x, y);
   uint8_t op = (uint8_t)((uint16_t)cov * 100 / 255);
-  display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, ui_blend565(color, bg, op));
+  display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, ui_blend(color, bg, op));
 }
 
 // Xiaolin Wu antialiased line. Coordinates are in canvas-local space.

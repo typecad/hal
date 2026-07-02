@@ -249,3 +249,14 @@ export function resolveColor(input: string, format: "rgb565" | "rgb666" | "mono"
   if (format === "rgb666") return rgb888To666(c);
   return rgb888ToMono(c);
 }
+
+/**
+ * Resolve a CSS color to the INTERNAL representation value stored in node
+ * fields. For rgb666 targets this is RGB888 (666 quantization happens at the
+ * push boundary so blends keep full precision); for rgb565 it is RGB565
+ * (byte-identical with pre-Phase-3 behavior); for mono it is 0/1. The value
+ * depth and the runtime blend math switch together (see UI_COLOR_DEPTH). */
+export function resolveColorInternal(input: string, format: "rgb565" | "rgb666" | "mono"): number {
+  if (format === "rgb666") return resolveColor888(input);
+  return resolveColor(input, format);
+}

@@ -83,6 +83,15 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (needsAntialias) {
     ctx.sourceLines.push("#define UI_AA 1");
   }
+  // 1a. Color depth — drives blend/lerp selection in the runtime header. 565
+  //     for TFT byte-identity (node fields hold 565 values); 888 for rgb666+
+  //     targets (node fields hold 888 values, blend via ui_blend888). The value
+  //     depth and blend math switch TOGETHER — see Phase 1 counterexample.
+  ctx.sourceLines.push(
+    profile.colorFormat === "rgb666"
+      ? "#define UI_COLOR_DEPTH 888"
+      : "#define UI_COLOR_DEPTH 565",
+  );
   // 1b. Scroll capability + physics overrides — emitted BEFORE the runtime
   //     header so its #ifndef guards adopt them. Source of truth:
   //     resolveScrollConfig(profile.scroll). Defaults derive from the declared

@@ -679,7 +679,7 @@ describe("opacity blends the background fill", () => {
     // clearColor is a no-op for a filled node (its clearColor == its bg, so
     // red-toward-red = red). The fix blends bg toward the PARENT's clear color
     // (the actual backdrop) and passes that to fill_rect / fill_round_rect.
-    expect(header).toMatch(/ui_blend565\([^)]*bg[^)]*backdrop[^)]*\)/);
+    expect(header).toMatch(/ui_blend\([^)]*bg[^)]*backdrop[^)]*\)/);
     expect(header).toMatch(/ui_parent_clear_color/);
     expect(header).toMatch(/fill_rect\([^,]*,[^,]*,[^,]*,[^,]*,\s*fillBg\s*\)/);
   });
@@ -779,20 +779,26 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     expect(header).toMatch(/struct UIKeyStyle { uint32_t bg, fg, borderColor; }/);
   });
 
-  it("keeps ui_blend565 active for the TFT path (565 math in wider fields)", () => {
+  it("keeps ui_blend565 + lerp_color defined for the TFT (565) path", () => {
+    // Phase 3 routes blend/lerp through ui_blend/UI_LERP_COLOR macros selected
+    // by UI_COLOR_DEPTH. The 565 variants remain defined and are selected when
+    // UI_COLOR_DEPTH != 888 (the TFT default), so 565 output is byte-identical.
     expect(header).toMatch(/static inline uint16_t ui_blend565/);
-    // A 565 value held in a uint32_t field is bit-identical to one in uint16_t,
-    // so the 565 blend math produces the same result on the widened storage.
-    expect(header).toMatch(/ui_blend565\(/);
-  });
-
-  it("keeps lerp_color (565) active for transitions", () => {
     expect(header).toMatch(/static inline uint16_t lerp_color/);
   });
 
-  it("adds ui_blend888 + lerp_color_888 alongside (unused in Phase 1)", () => {
+  it("defines ui_blend888 + lerp_color_888 for the rgb666 path", () => {
     expect(header).toMatch(/static inline uint32_t ui_blend888/);
     expect(header).toMatch(/static inline uint32_t lerp_color_888/);
+  });
+
+  it("routes blend/lerp through UI_COLOR_DEPTH-selected macros", () => {
+    expect(header).toMatch(/#define UI_COLOR_DEPTH/);
+    expect(header).toMatch(/#define ui_blend\(fg, bg, op\)/);
+    expect(header).toMatch(/#define UI_LERP_COLOR\(a, b, k\)/);
+    // Call sites use the macros, not the raw functions.
+    expect(header).toMatch(/\bui_blend\(/);
+    expect(header).toMatch(/\bUI_LERP_COLOR\(/);
   });
 
   it("binding fn pointer widened to uint32_t return", () => {

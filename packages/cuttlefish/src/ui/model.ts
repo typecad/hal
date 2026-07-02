@@ -1,6 +1,6 @@
 import type { DisplayProfile } from "../api/shared/display-profile.js";
 import { deriveCapabilities } from "../api/shared/display-capabilities.js";
-import { resolveColor } from "./color.js";
+import { resolveColorInternal } from "./color.js";
 import { parseAnimation, type CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 import { selectFontAssetForStyle, assetTextWidth } from "./font-assets.js";
@@ -641,7 +641,7 @@ function parseBoxShadow(style: CSSProperty, format: ColorFormat): ShadowSpec[] {
         alpha = Math.round(parseFloat(alphaM[1] ?? alphaM[2]) * 100);
         alpha = Math.max(0, Math.min(100, alpha));
       }
-      try { color = resolveColor(colorZone, format); } catch { color = 0x0000; }
+      try { color = resolveColorInternal(colorZone, format); } catch { color = 0x0000; }
     }
     specs.push({ x, y, blur, color, alpha, inset });
   }
@@ -699,8 +699,8 @@ function parseGradient(bg: string | undefined, format: ColorFormat): GradientSpe
   if (/to\s+right/i.test(inner) || /to\s+left/i.test(inner)) dir = 2;
   return {
     dir,
-    color1: resolveColor(colors[0], format),
-    color2: resolveColor(colors[1], format),
+    color1: resolveColorInternal(colors[0], format),
+    color2: resolveColorInternal(colors[1], format),
   };
 }
 
@@ -874,13 +874,13 @@ export function lowerUIToModel(
     // (the runtime draws the actual gradient per-row on top of this).
     const grad = parseGradient(node.style.background, colorFormat);
     const bg = node.style.background
-      ? (grad ? grad.color1 : resolveColor(node.style.background, colorFormat))
+      ? (grad ? grad.color1 : resolveColorInternal(node.style.background, colorFormat))
       : 0;
-    const fg = node.style.color ? resolveColor(node.style.color, colorFormat) : 0xffff;
-    const bColor = node.style.borderColor ? resolveColor(node.style.borderColor, colorFormat) : 0;
-    const clear = clearColor ? resolveColor(clearColor, colorFormat) : 0;
+    const fg = node.style.color ? resolveColorInternal(node.style.color, colorFormat) : 0xffff;
+    const bColor = node.style.borderColor ? resolveColorInternal(node.style.borderColor, colorFormat) : 0;
+    const clear = clearColor ? resolveColorInternal(clearColor, colorFormat) : 0;
     const outline = outlineOf(node.style);
-    const outlineColor = outline.color ? resolveColor(outline.color, colorFormat) : fg;
+    const outlineColor = outline.color ? resolveColorInternal(outline.color, colorFormat) : fg;
     const baseTransform = parseTransform(node.style.transform);
     const transformOrigin = transformOriginPercent(node.style.transformOrigin);
     const baseTransformOffset = transformedBox(box, baseTransform, transformOrigin);
@@ -928,7 +928,7 @@ export function lowerUIToModel(
         }
         return {
           text: applyTextTransform(r.text, rs) ?? "",
-          fg: rs.color ? resolveColor(rs.color, colorFormat) : fg,
+          fg: rs.color ? resolveColorInternal(rs.color, colorFormat) : fg,
           textSize: textSizeOf(rs),
           fontFace: fontFaceOf(rs, fontAssets),
           underline: textDecorationOf(rs.textDecoration),
@@ -1088,14 +1088,14 @@ export function lowerUIToModel(
     const pressedStyle = (node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
     const pressedTarget = prop === "background"
       ? pressedStyle?.background
-        ? resolveColor(pressedStyle.background, colorFormat)
-        : node.style.background ? resolveColor(node.style.background, colorFormat) : 0
+        ? resolveColorInternal(pressedStyle.background, colorFormat)
+        : node.style.background ? resolveColorInternal(node.style.background, colorFormat) : 0
       : pressedStyle?.color
-        ? resolveColor(pressedStyle.color, colorFormat)
-        : node.style.color ? resolveColor(node.style.color, colorFormat) : 0xffff;
+        ? resolveColorInternal(pressedStyle.color, colorFormat)
+        : node.style.color ? resolveColorInternal(node.style.color, colorFormat) : 0xffff;
     const baseTarget = prop === "background"
-      ? node.style.background ? resolveColor(node.style.background, colorFormat) : 0
-      : node.style.color ? resolveColor(node.style.color, colorFormat) : 0xffff;
+      ? node.style.background ? resolveColorInternal(node.style.background, colorFormat) : 0
+      : node.style.color ? resolveColorInternal(node.style.color, colorFormat) : 0xffff;
     transitions.push({
       node: index,
       prop,
