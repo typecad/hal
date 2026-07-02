@@ -193,7 +193,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       const access = spec.property === "background" ? "bg" : spec.property === "color" ? "fg" : "bg";
       const body = spec.cppExpr || `__ui_nodes[${spec.nodeIndex}].${access}`;
       ctx.sourceLines.push(
-        `uint16_t ${spec.fnName}(void) { return ${body}; }`,
+        `uint32_t ${spec.fnName}(void) { return ${body}; }`,
       );
     }
   }

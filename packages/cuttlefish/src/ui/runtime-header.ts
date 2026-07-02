@@ -101,8 +101,8 @@ struct UIFontFace {
 };
 struct UINode {
   UIRect box;
-  uint16_t bg;
-  uint16_t fg;
+  uint32_t bg;
+  uint32_t fg;
   UINodeKind kind;
   const char* text;
   char textBuffer[UI_TEXT_BUF + 1]; // dynamic text — read only when hasTextBinding == 1
@@ -115,14 +115,14 @@ struct UINode {
   int8_t letterSpacing; // px between chars (0 = default advance)
   uint8_t fontAntialias; // 1 = smooth text edges when UI_AA is available
   uint8_t fontFace;     // 0 = classic GFX bitmap font; otherwise UIFontFace id
-  uint16_t borderColor; // resolved color for the border (0 = use fg)
+  uint32_t borderColor; // resolved color for the border (0 = use fg)
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
   uint8_t borderWidth;  // px, 0=none
   uint8_t borderRadius; // px, 0=square
   uint8_t gradientEnabled; // 0=none, 1=vertical, 2=horizontal
-  uint16_t gradientColor1;
-  uint16_t gradientColor2;
-  uint16_t outlineColor;
+  uint32_t gradientColor1;
+  uint32_t gradientColor2;
+  uint32_t outlineColor;
   uint8_t outlineStyle; // 0=none, 1=solid, 2=dashed
   uint8_t outlineWidth;
   int16_t zIndex;      // effective draw layer; higher layers draw later
@@ -135,14 +135,14 @@ struct UINode {
   int8_t shadowOffsetX[4];
   int8_t shadowOffsetY[4];
   uint8_t shadowBlur[4];
-  uint16_t shadowColor[4];
+  uint32_t shadowColor[4];
   uint8_t shadowAlpha[4];
   uint8_t shadowInset[4]; // 0=outset, 1=inset
   uint8_t textShadowCount;
   int8_t textShadowOffsetX;
   int8_t textShadowOffsetY;
   uint8_t textShadowBlur;
-  uint16_t textShadowColor;
+  uint32_t textShadowColor;
   uint8_t textShadowAlpha;
   uint8_t underline;    // text-decoration: 0=none,1=underline,2=line-through,3=both
   uint8_t textOverflow; // text-overflow: 0=clip, 1=ellipsis (truncate + ...)
@@ -150,7 +150,7 @@ struct UINode {
   uint8_t whiteSpaceMode; // 0=normal, 1=nowrap, 2=pre, 3=pre-line
   uint8_t visible;      // 0=hidden, 1=visible
   uint8_t opacity;      // 0-100
-  uint16_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
+  uint32_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
   int16_t lastTextWidth;
   int16_t lastTextHeight;
   // scroll (unified: containers and virtualized lists share these)
@@ -192,7 +192,7 @@ struct UINode {
 // Rich-text run: one piece of styled inline text within a node's run list.
 struct UIRichRun {
   const char* text;
-  uint16_t fg;
+  uint32_t fg;
   uint8_t textSize;
   uint8_t fontFace;
   uint8_t underline;     // 0=none,1=underline,2=line-through,3=both
@@ -231,7 +231,7 @@ struct UITransition {
 struct UIBinding {
   uint16_t node;
   UIProperty prop;
-  uint16_t (*fn)(void);       // for color/numeric bindings
+  uint32_t (*fn)(void);       // for color/numeric bindings
   void (*textFn)(char* buf, uint8_t size); // for text bindings (PROP_TEXT): fills buf
 };
 
@@ -244,6 +244,19 @@ static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100) {
   int16_t g = ag + (int16_t)(((int16_t)bg - (int16_t)ag) * k100 / 100);
   int16_t bl = ab + (int16_t)(((int16_t)bb - (int16_t)ab) * k100 / 100);
   return ((uint16_t)(r & 0x1f) << 11) | ((uint16_t)(g & 0x3f) << 5) | (uint16_t)(bl & 0x1f);
+}
+
+// RGB888 lerp — for transitions on RGB888/RGB666 targets (Phase 2+). Unused in
+// Phase 1; the 565 lerp_color above remains the active path for TFT targets,
+// whose node colors are still emitted as 565 values stored in uint32_t fields.
+static inline uint32_t lerp_color_888(uint32_t a, uint32_t b, uint8_t k100) {
+  if (k100 >= 100) return b;
+  uint8_t ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  uint8_t br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  int16_t r = ar + (int16_t)(((int16_t)br - (int16_t)ar) * k100 / 100);
+  int16_t g = ag + (int16_t)(((int16_t)bg - (int16_t)ag) * k100 / 100);
+  int16_t bl = ab + (int16_t)(((int16_t)bb - (int16_t)ab) * k100 / 100);
+  return ((uint32_t)(r & 0xff) << 16) | ((uint32_t)(g & 0xff) << 8) | (uint32_t)(bl & 0xff);
 }
 
 // Declared by the lowering output (the tables). Matches the mutable (non-const)
@@ -288,8 +301,8 @@ extern const uint16_t __ui_image_count;
 struct UIKeyframeStop {
   uint8_t percent;
   uint8_t props; // bitmask: 1=background, 2=color, 4=opacity, 8=transform, 16=size
-  uint16_t bg;
-  uint16_t fg;
+  uint32_t bg;
+  uint32_t fg;
   uint8_t opacity;
   int16_t transformOffsetX;
   int16_t transformOffsetY;
@@ -2109,7 +2122,7 @@ static volatile int16_t  __ui_tap_node = -1;   // int16: node index can exceed 1
 #define UI_KB_REPEAT_MS 100
 #define UI_KB_TEXT_H 24  // height reserved for the preview text row at the top
 struct UIKey { char ch; uint8_t special; };  // special: 0=char,1=shift,2=bs,3=ok,4=page
-struct UIKeyStyle { uint16_t bg, fg, borderColor; };
+struct UIKeyStyle { uint32_t bg, fg, borderColor; };
 static UIRect  __ui_kb_box;
 static UIKey   __ui_kb_keys[UI_KB_MAX];
 static UIKeyStyle __ui_kb_styles[UI_KB_MAX];
@@ -2447,6 +2460,21 @@ static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
   uint8_t g = (fg5 * opacity + bg5 * (100 - opacity)) / 100;
   uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
   return (r << 11) | (g << 5) | b;
+}
+
+// Blend two RGB888 colors by opacity (0-100). Added for Phase 2 (RGB888/RGB666
+// targets); unused in Phase 1, whose TFT path keeps 565 node values and blends
+// via ui_blend565 above. Kept alongside so the 888 path is ready when the
+// descriptor routes emit through resolveColor888.
+static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity) {
+  if (opacity >= 100) return fg;
+  if (opacity == 0) return bg;
+  uint8_t fr = (fg >> 16) & 0xff, fg8 = (fg >> 8) & 0xff, fb = fg & 0xff;
+  uint8_t br = (bg >> 16) & 0xff, bg8 = (bg >> 8) & 0xff, bb = bg & 0xff;
+  uint8_t r = (fr * opacity + br * (100 - opacity)) / 100;
+  uint8_t g = (fg8 * opacity + bg8 * (100 - opacity)) / 100;
+  uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
+  return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
 }
 
 static inline const UIFontFace* ui_font_face(uint8_t id) {
@@ -3018,7 +3046,8 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
 // segments outside the active draw target, and compute each segment's line
 // origin from textAlign + line width. Mixed font sizes align on the line's
 // baseline (each segment's top = baseline − its own ascent).
-static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, uint16_t bg, uint8_t antialias) {
+static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, uint16_t bg, uint8_t antialias,
+                                     uint8_t useFgOverride = 0, uint16_t fgOverride = 0) {
   UINode* n = &__ui_nodes[nodeIdx];
   int16_t targetLeft = (int16_t)(-__ui_draw_off_x);
   int16_t targetTop = (int16_t)(-__ui_draw_off_y);
@@ -3040,9 +3069,10 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, uin
     if (segRight <= targetLeft || segX >= targetRight) continue;
     UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
     int16_t segY = y + line->baseline - (7 * (int16_t)run->textSize);  // baseline alignment
-    ui_draw_text(seg->text, segX, segY, run->fg, bg, run->textSize, antialias, run->fontFace, run->letterSpacing);
-    if (run->underline & 1) ui_display_draw_fast_hline(segX, segY + 8 * run->textSize - 1, seg->w, run->fg);
-    if (run->underline & 2) ui_display_draw_fast_hline(segX, segY + 4 * run->textSize, seg->w, run->fg);
+    uint16_t fg = useFgOverride ? fgOverride : run->fg;
+    ui_draw_text(seg->text, segX, segY, fg, bg, run->textSize, antialias, run->fontFace, run->letterSpacing);
+    if (run->underline & 1) ui_display_draw_fast_hline(segX, segY + 8 * run->textSize - 1, seg->w, fg);
+    if (run->underline & 2) ui_display_draw_fast_hline(segX, segY + 4 * run->textSize, seg->w, fg);
   }
 }
 
@@ -3297,7 +3327,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
     } else if (__ui_bindings[i].fn) {
       // Color/numeric binding
-      uint16_t newVal = __ui_bindings[i].fn();
+      uint32_t newVal = __ui_bindings[i].fn();
       if (__ui_bindings[i].prop == PROP_VISIBLE) {
         uint8_t nextVisible = newVal ? 1 : 0;
         if (nextVisible != __ui_nodes[__ui_bindings[i].node].visible) {
@@ -3315,7 +3345,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         continue;
       }
-      uint16_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
+      uint32_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
                     : (__ui_bindings[i].prop == PROP_FG) ? &__ui_nodes[__ui_bindings[i].node].fg
                     : (__ui_bindings[i].prop == PROP_BORDER_COLOR) ? &__ui_nodes[__ui_bindings[i].node].borderColor
                     : &__ui_nodes[__ui_bindings[i].node].bg;
@@ -3909,12 +3939,11 @@ static inline void ui_tick(uint16_t deltaMs) {
             uint16_t tsCol = ui_blend565(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
             // Shadow pass: draw the rich block in the shadow color at the offset.
             // (Per-segment shadow color is approximated by drawing the whole
-            // block once in tsCol; full offset translation is deferred.)
-            (void)tsCol;
+            // block once in tsCol.)
             ui_draw_rich_text(i,
               __ui_nodes[i].box.x + __ui_nodes[i].textShadowOffsetX,
               drawY + __ui_nodes[i].textShadowOffsetY,
-              tsClear, __ui_nodes[i].fontAntialias);
+              tsClear, __ui_nodes[i].fontAntialias, 1, tsCol);
           }
           ui_draw_rich_text(i, __ui_nodes[i].box.x, drawY, richTextBg, __ui_nodes[i].fontAntialias);
           break;
