@@ -89,7 +89,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   //     targets (node fields hold 888 values, blend via ui_blend888). The value
   //     depth and blend math switch TOGETHER — see Phase 1 counterexample.
   ctx.sourceLines.push(
-    profile.colorFormat === "rgb666"
+    profile.colorFormat === "rgb666" || profile.colorFormat === "rgb888"
       ? "#define UI_COLOR_DEPTH 888"
       : "#define UI_COLOR_DEPTH 565",
   );

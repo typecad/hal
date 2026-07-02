@@ -54,7 +54,7 @@ export interface UIModule {
 }
 
 export interface LowerOptions {
-  colorFormat: "rgb565" | "mono";
+  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
   storage: "progmem" | "flash";
   viewport: { width: number; height: number };
 }

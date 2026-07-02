@@ -88,5 +88,11 @@ export function deriveCapabilities(profile: ProfileLike): DisplayCapabilities {
       },
     };
   }
-  return defaultTftCapabilities();
+  const base = defaultTftCapabilities();
+  // rgb888 TFT (e.g. the SDL native target) carries true 888 to the surface;
+  // all other TFT color formats are 565 by default (byte-identical history).
+  if (profile.colorFormat === "rgb888") {
+    base.nativeFormat = "rgb888";
+  }
+  return base;
 }

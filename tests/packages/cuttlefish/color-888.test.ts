@@ -5,6 +5,7 @@ import {
   rgb888To666,
   rgb888To565,
 } from "../../../packages/cuttlefish/src/ui/color";
+import { deriveCapabilities } from "../../../packages/cuttlefish/src/api/shared/display-capabilities";
 
 describe("rgb888 color format", () => {
   it("resolveColorInternal returns true 888 for rgb888 (red)", () => {
@@ -29,5 +30,17 @@ describe("rgb888 color format", () => {
     expect(rgb888To666(0xff0000)).toBe(0x3f000); // red 6 bits @ bits 12-17
     expect(rgb888To666(0x00ff00)).toBe(0x00fc0); // green 6 bits @ bits 6-11
     expect(rgb888To666(0x0000ff)).toBe(0x00003f); // blue 6 bits @ bits 0-5
+  });
+
+  it("deriveCapabilities maps rgb888 TFT to nativeFormat rgb888, immediate refresh", () => {
+    const caps = deriveCapabilities({ width: 320, height: 240, colorFormat: "rgb888" });
+    expect(caps.nativeFormat).toBe("rgb888");
+    expect(caps.refreshModel).toBe("immediate");
+    expect(caps.requiresBackingStore).toBe(false);
+  });
+
+  it("deriveCapabilities still defaults rgb565 TFT to rgb565 (byte-identical)", () => {
+    const caps = deriveCapabilities({ width: 320, height: 240, colorFormat: "rgb565" });
+    expect(caps.nativeFormat).toBe("rgb565");
   });
 });

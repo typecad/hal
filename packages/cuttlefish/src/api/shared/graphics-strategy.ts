@@ -35,7 +35,7 @@ export interface PlatformGraphicsStrategy {
    *  rgb666/rgb888/palette, at which point resolveColor888 is the resolution
    *  entry point. Widening only the return type now would break assignment to
    *  the "rgb565" | "mono" field types downstream. */
-  colorFormat(): "rgb565" | "mono";
+  colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono";
 
   /** Per-target capacity caps (node/binding/transition limits, storage). */
   graphicsCapacity(): GraphicsCapacity;
