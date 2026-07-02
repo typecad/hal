@@ -40,7 +40,7 @@ export interface LoweredUI {
   keyframeTables: string;
 }
 
-type ColorFormat = "rgb565" | "rgb666" | "mono";
+type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono";
 type Storage = "progmem" | "flash";
 
 export function lowerUIToCpp(

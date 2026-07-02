@@ -243,10 +243,11 @@ export function resolveColor888(input: string): number {
  * compatible wrapper over resolveColor888 + quantizer. Existing call sites
  * keep their behavior (565/mono output unchanged).
  */
-export function resolveColor(input: string, format: "rgb565" | "rgb666" | "mono"): number {
+export function resolveColor(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono"): number {
   const c = resolveColor888(input);
   if (format === "rgb565") return rgb888To565(c);
   if (format === "rgb666") return rgb888To666(c);
+  if (format === "rgb888") return c;
   return rgb888ToMono(c);
 }
 
@@ -256,7 +257,7 @@ export function resolveColor(input: string, format: "rgb565" | "rgb666" | "mono"
  * push boundary so blends keep full precision); for rgb565 it is RGB565
  * (byte-identical with pre-Phase-3 behavior); for mono it is 0/1. The value
  * depth and the runtime blend math switch together (see UI_COLOR_DEPTH). */
-export function resolveColorInternal(input: string, format: "rgb565" | "rgb666" | "mono"): number {
-  if (format === "rgb666") return resolveColor888(input);
+export function resolveColorInternal(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono"): number {
+  if (format === "rgb666" || format === "rgb888") return resolveColor888(input);
   return resolveColor(input, format);
 }

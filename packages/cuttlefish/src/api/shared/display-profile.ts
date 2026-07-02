@@ -48,7 +48,7 @@ export interface DisplayProfile {
   driver: string;
   width: number;
   height: number;
-  colorFormat: "rgb565" | "rgb666" | "mono";
+  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
   /** Display class: "tft" (default) for fast-refresh panels, "eink" for
    *  bistable/slow-refresh panels. Drives capability derivation + @media. */
   displayClass?: "tft" | "eink";
@@ -74,7 +74,7 @@ export interface DisplayConfig {
   driver?: string;
   width?: number;
   height?: number;
-  colorFormat?: "rgb565" | "mono";
+  colorFormat?: "rgb565" | "rgb888" | "mono";
   displayClass?: "tft" | "eink";
   capabilities?: DisplayCapabilities;
   rotation?: number;

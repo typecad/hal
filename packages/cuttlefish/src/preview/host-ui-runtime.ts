@@ -100,23 +100,27 @@ function lerpColor(a: number, b: number, k100: number): number {
 // Lets the free resolveRuntimeColor helper resolve at the target's depth without
 // `this` access (keyboard + binding callbacks are module-scope functions).
 // rgb666 → 888 (blends keep precision, quantize at the canvas push); else 565.
-let runtimeColorFormat: "rgb565" | "rgb666" | "mono" = "rgb565";
+let runtimeColorFormat: "rgb565" | "rgb666" | "rgb888" | "mono" = "rgb565";
 
 function resolveRuntimeColor(value: unknown): number {
-  const is666 = runtimeColorFormat === "rgb666";
-  const mask = is666 ? 0xffffff : 0xffff;
+  // rgb666 and rgb888 both store full 888 internally (quantization happens at
+  // the push boundary for rgb666; rgb888 carries 888 to the surface).
+  const is888 = runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888";
+  const mask = is888 ? 0xffffff : 0xffff;
   if (typeof value === "number") return value & mask;
   if (typeof value === "string") {
-    return (is666 ? resolveColor888(value) : resolveColor(value, "rgb565")) & mask;
+    return (is888 ? resolveColor888(value) : resolveColor(value, "rgb565")) & mask;
   }
   return 0;
 }
 
-/** Blend by opacity in the active color depth (888 for rgb666, 565 otherwise).
+/** Blend by opacity in the active color depth (888 for rgb666/rgb888, 565 otherwise).
  *  Mirrors the device's UI_COLOR_DEPTH-driven ui_blend macro — the value depth
  *  and the blend math switch together (see Phase 1 counterexample). */
 function blendRuntime(fg: number, bg: number, opacity: number): number {
-  return runtimeColorFormat === "rgb666" ? blendRgb888(fg, bg, opacity) : blendRgb565(fg, bg, opacity);
+  return (runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888")
+    ? blendRgb888(fg, bg, opacity)
+    : blendRgb565(fg, bg, opacity);
 }
 
 function mergeClassRules(classes: string[] | undefined, rules: CSSRule[]): CSSProperty {

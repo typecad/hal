@@ -63,7 +63,7 @@ export function defaultTftCapabilities(): DisplayCapabilities {
 interface ProfileLike {
   width: number;
   height: number;
-  colorFormat: "rgb565" | "rgb666" | "mono";
+  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
   displayClass?: "tft" | "eink";
   capabilities?: DisplayCapabilities;
 }
