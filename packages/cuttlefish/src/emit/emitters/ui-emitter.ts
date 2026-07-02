@@ -22,6 +22,7 @@ import { emitBindingTable, emitListBindings, getListBindings, emitInputBindings,
 import { emitCanvasBindings, canvasBindings } from "../../ir/transformers/canvas-lowering.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { generateTouchAdapter, TouchAdapterCodegen, resolveScrollConfig } from "../../api/shared/display-profile.js";
+import { deriveCapabilities } from "../../api/shared/display-capabilities.js";
 import { generateDisplayAdapter } from "../../api/shared/display-adapter.js";
 import { getRadioGroups } from "../../ir/ui-element-auto-wire.js";
 
@@ -92,6 +93,21 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       ? "#define UI_COLOR_DEPTH 888"
       : "#define UI_COLOR_DEPTH 565",
   );
+  // 1a-bis. Refresh model + native format from derived capabilities. E-ink
+  //        (displayClass: "eink") derives refreshModel "deferred-partial" +
+  //        requiresBackingStore; TFT stays "immediate". When these are absent
+  //        (TFT), the runtime's backing-store + refresh-scheduler + clear-
+  //        suppression paths compile out — byte-identical with pre-Phase-4.
+  const caps = deriveCapabilities(profile);
+  if (caps.refreshModel !== "immediate") {
+    ctx.sourceLines.push("#define UI_REFRESH_DEFERRED 1");
+  }
+  if (caps.nativeFormat === "mono") {
+    ctx.sourceLines.push("#define UI_NATIVE_MONO 1");
+  }
+  if (caps.requiresBackingStore) {
+    ctx.sourceLines.push("#define UI_REQUIRES_BACKING_STORE 1");
+  }
   // 1b. Scroll capability + physics overrides — emitted BEFORE the runtime
   //     header so its #ifndef guards adopt them. Source of truth:
   //     resolveScrollConfig(profile.scroll). Defaults derive from the declared
