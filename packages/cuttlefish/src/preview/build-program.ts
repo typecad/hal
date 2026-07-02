@@ -103,6 +103,33 @@ function collectInterpolationBindings(
   return out;
 }
 
+/** Walk styled trees for on:* declarative event handlers and synthesize preview
+ *  callback specs. Each on:click="saveSettings" becomes a callback whose body is
+ *  `saveSettings()` — the preview evaluates it (calling the named function from
+ *  module scope) on tap. Mirrors the runtime's named-ref handler synthesis. */
+function collectEventCallbacks(
+  trees: StyledNode[],
+  programNodes: Array<{ id?: string }>,
+): PreviewCallbackSpec[] {
+  const out: PreviewCallbackSpec[] = [];
+  const walk = (node: StyledNode): void => {
+    if (node.events) {
+      const nodeIndex = node.id ? nodeIndexById(programNodes, node.id) : undefined;
+      if (nodeIndex !== undefined) {
+        for (const kind of ["click", "hold", "release", "change"] as const) {
+          const fn = node.events[kind];
+          if (fn) {
+            out.push({ nodeId: node.id ?? `__event_${nodeIndex}`, nodeIndex, kind, body: `${fn}()` });
+          }
+        }
+      }
+    }
+    node.children?.forEach(walk);
+  };
+  trees.forEach(walk);
+  return out;
+}
+
 async function loadProfileRegistry(frameworkPackage: string | undefined): Promise<Map<string, DisplayProfile>> {
   const registry = new Map<string, DisplayProfile>();
   if (!frameworkPackage) return registry;
@@ -558,6 +585,11 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     allStyledScreens.length > 0 ? allStyledScreens : [styled],
     program.nodes,
   );
+  // on:* declarative event handlers from markup → preview callbacks (named fn).
+  const eventCallbacks = collectEventCallbacks(
+    allStyledScreens.length > 0 ? allStyledScreens : [styled],
+    program.nodes,
+  );
 
   return {
     projectRoot,
@@ -571,7 +603,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     font: loadFont(projectRoot, diagnostics),
     bindings: [...specs.bindings, ...interpolationBindings],
     listBindings: specs.listBindings,
-    callbacks: [...hrefCallbacks, ...specs.callbacks],
+    callbacks: [...hrefCallbacks, ...specs.callbacks, ...eventCallbacks],
     initialAssignments: specs.initialAssignments,
     intervals: specs.intervals,
     pinControls: specs.pinControls,
