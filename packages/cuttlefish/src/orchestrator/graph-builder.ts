@@ -11,7 +11,8 @@ import {
   resolveImport,
   isCuttlefishSDKPath,
 } from "../transpile/resolution.js";
-import { loadUIModule } from "../ui/ui-registry.js";
+import { loadUIModule, loadUIModuleFromText } from "../ui/ui-registry.js";
+import { splitUiFile } from "../ui/ui-file-splitter.js";
 
 /**
  * Sort files in dependency order using Kahn's algorithm.
@@ -115,6 +116,44 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
 
     const sourceText = readText(filePath);
     const extension = path.extname(filePath).toLowerCase();
+
+    // .ui single-file component: split into script/style/template. The <script>
+    // becomes the TS source for graph walking; the template+style are registered
+    // as a UI module at a synthetic .ui.html path (so loadUIModuleFromText caches
+    // it + writeTypeDeclSibling generates the sibling type-decl). The script's
+    // `screen` reference resolves to the in-file template.
+    if (extension === ".ui") {
+      const parts = splitUiFile(sourceText);
+      // Register the template as a UI module at <file>.ui.html (synthetic path).
+      const uiHtmlPath = filePath + ".html";
+      loadUIModuleFromText(uiHtmlPath, parts.html, parts.style, filePath);
+      uiModules.add(uiHtmlPath);
+      // Use the <script> as the TS source for import-graph walking. Inject an
+      // implicit `import { screen } from './<base>.ui.html'` so the script can
+      // reference `screen` without an explicit import.
+      const baseName = path.basename(filePath, ".ui");
+      const scriptWithImport = `import { screen } from './${baseName}.ui.html';\n` + parts.script;
+      const uiSource = ts.createSourceFile(filePath, scriptWithImport, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      // Walk the script's imports to discover dependencies.
+      for (const statement of uiSource.statements) {
+        let moduleSpecifier: string | undefined;
+        if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+          moduleSpecifier = statement.moduleSpecifier.text;
+        } else if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)) {
+          moduleSpecifier = statement.moduleSpecifier.text;
+        }
+        if (!moduleSpecifier) continue;
+        if (moduleSpecifier === "@typecad/expect" || moduleSpecifier === "@typecad/ui") continue;
+        if (moduleSpecifier.startsWith("@typecad/")) continue;
+        const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
+        if (!resolved) continue;
+        if (resolved.uiModule) continue; // already handled above
+        fileDeps.add(resolved.sourcePath);
+        if (!visited.has(resolved.sourcePath)) pending.push(resolved.sourcePath);
+      }
+      continue; // .ui file itself is not a TS file; the script is inlined at emit
+    }
+
     const source = ts.createSourceFile(
       filePath,
       sourceText,
