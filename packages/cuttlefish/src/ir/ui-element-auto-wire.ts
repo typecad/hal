@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { recordClickHandler, recordBinding, markRunNode, lowerInterpolationText } from "./transformers/ui-call-resolver.js";
+import { recordInputBinding } from "./transformers/ui-reactive.js";
 
 interface AutoWireNode {
   tag: string;
@@ -28,6 +29,10 @@ interface AutoWireNode {
   /** Declarative on:* event handlers (named-function references). Each value
    *  names an exported TS function emitted as a standalone C++ function. */
   events?: { click?: string; hold?: string; release?: string; change?: string };
+  /** Declarative bind:* two-way bindings (signal names). bind:text on <input>
+   *  composes a text binding + an input binding; bind:value on <range>/<check>
+   *  composes a value binding + a change/click handler. */
+  bind?: { text?: string; value?: string };
 }
 
 // Track radio groups for mutual exclusion
@@ -67,7 +72,8 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
     // two may have no id — {expr} references a signal; on:* names a function.
     const hasLinkRun = !!node.runs?.some(r => r.href);
     const hasEvents = !!node.events && Object.keys(node.events).length > 0;
-    if (node.id || node.href || hasLinkRun || node.hasInterpolation || hasEvents) {
+    const hasBind = !!node.bind && Object.keys(node.bind).length > 0;
+    if (node.id || node.href || hasLinkRun || node.hasInterpolation || hasEvents || hasBind) {
       autoWireNode(treeName, node, currentIndex);
     }
     node.children?.forEach(walk);
@@ -90,6 +96,46 @@ function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): 
         property: "text",
         fnName: `__ui_interp_${nodeIndex}`,
         cppBody,
+      });
+    }
+  }
+
+  // bind:* declarative two-way bindings → compose a read-binding (signal→node)
+  // with a write-callback (node→signal). bind:text on <input> uses a text
+  // binding + an input binding (fires on keyboard commit). bind:value on
+  // <range>/<check> uses a value binding + a change/click handler.
+  if (node.bind) {
+    if (node.bind.text) {
+      const sig = node.bind.text;
+      // Read: signal → node text (reuses the binding table).
+      recordBinding({
+        nodeIndex,
+        property: "text",
+        fnName: `__ui_bindtext_${nodeIndex}`,
+        cppBody: `snprintf(buf, size, "%s", ${sig});`,
+      });
+      // Write: keyboard commit → signal.set(text).
+      recordInputBinding({
+        nodeIndex,
+        cbFnName: `__ui_bindtext_cb_${nodeIndex}`,
+        cbFnBody: `${sig}.set(std::string(text));`,
+      });
+    }
+    if (node.bind.value) {
+      const sig = node.bind.value;
+      // Read: signal → node value.
+      recordBinding({
+        nodeIndex,
+        property: "value",
+        fnName: `__ui_bindval_${nodeIndex}`,
+        cppExpr: sig,
+      });
+      // Write: range drag / check toggle → signal.set(value).
+      recordClickHandler({
+        nodeIndex,
+        kind: node.tag === "check" ? "click" : "rangechange",
+        fnName: `__ui_bindval_cb_${nodeIndex}`,
+        callbackBody: `${sig}.set(__ui_nodes[${nodeIndex}].value);`,
       });
     }
   }

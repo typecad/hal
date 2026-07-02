@@ -81,6 +81,9 @@ export interface StyledNode {
   /** Declarative on:* event handlers (named-function references). Propagated
    *  from UIElementNode for the auto-wire walk. */
   events?: { click?: string; hold?: string; release?: string; change?: string };
+  /** Declarative bind:* two-way bindings (signal names). Propagated from
+   *  UIElementNode for the auto-wire walk. */
+  bind?: { text?: string; value?: string };
 }
 
 /** Look up an HTML attribute value on a node by name, for attribute selectors.
@@ -404,5 +407,6 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     disabled: (node as any).disabled,
     hasInterpolation: node.hasInterpolation,
     events: node.events,
+    bind: node.bind,
   };
 }

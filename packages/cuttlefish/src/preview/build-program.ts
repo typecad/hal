@@ -130,6 +130,34 @@ function collectEventCallbacks(
   return out;
 }
 
+/** Walk styled trees for bind:* declarative two-way bindings and synthesize the
+ *  READ half (signal → node) as preview bindings. The write half (node → signal,
+ *  e.g. keyboard commit → signal.set) requires preview input-commit machinery
+ *  not yet present; until then, the runtime handles both directions and the
+ *  preview reflects signal → node (the visible behavior). */
+function collectBindBindings(
+  trees: StyledNode[],
+  programNodes: Array<{ id?: string }>,
+): PreviewBindingSpec[] {
+  const out: PreviewBindingSpec[] = [];
+  const walk = (node: StyledNode): void => {
+    if (node.bind) {
+      const nodeIndex = node.id ? nodeIndexById(programNodes, node.id) : undefined;
+      if (nodeIndex !== undefined) {
+        if (node.bind.text) {
+          out.push({ nodeId: node.id ?? `__bind_${nodeIndex}`, nodeIndex, property: "text", expression: node.bind.text });
+        }
+        if (node.bind.value) {
+          out.push({ nodeId: node.id ?? `__bind_${nodeIndex}`, nodeIndex, property: "value", expression: node.bind.value });
+        }
+      }
+    }
+    node.children?.forEach(walk);
+  };
+  trees.forEach(walk);
+  return out;
+}
+
 async function loadProfileRegistry(frameworkPackage: string | undefined): Promise<Map<string, DisplayProfile>> {
   const registry = new Map<string, DisplayProfile>();
   if (!frameworkPackage) return registry;
@@ -590,6 +618,11 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     allStyledScreens.length > 0 ? allStyledScreens : [styled],
     program.nodes,
   );
+  // bind:* declarative two-way read bindings (signal → node).
+  const bindBindings = collectBindBindings(
+    allStyledScreens.length > 0 ? allStyledScreens : [styled],
+    program.nodes,
+  );
 
   return {
     projectRoot,
@@ -601,7 +634,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     cssRules,
     uiTreeNames: [...new Set(uiImports.map((imp) => imp.treeName))],
     font: loadFont(projectRoot, diagnostics),
-    bindings: [...specs.bindings, ...interpolationBindings],
+    bindings: [...specs.bindings, ...interpolationBindings, ...bindBindings],
     listBindings: specs.listBindings,
     callbacks: [...hrefCallbacks, ...specs.callbacks, ...eventCallbacks],
     initialAssignments: specs.initialAssignments,

@@ -75,6 +75,11 @@ export interface UIElementNode {
    *  the transpiler emits as a standalone C++ function; the handler table
    *  references it by name. Absent when no on:* attributes are present. */
   events?: { click?: string; hold?: string; release?: string; change?: string };
+  /** Declarative two-way bindings from bind:* attributes (e.g. bind:text="ssid").
+   *  Keys: text | value. Values: a signal name — the node reflects the signal
+   *  (one-way: signal → node), and user input writes back (node → signal.set).
+   *  Absent when no bind:* attributes are present. */
+  bind?: { text?: string; value?: string };
   /** For <select>: parsed option list from <option> children. */
   options?: Array<{ value: string; text: string }>;
 }
@@ -266,6 +271,17 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
     if (v && v.trim()) events[kind] = v.trim();
   }
   const hasEvents = Object.keys(events).length > 0;
+
+  // Declarative bind:* two-way bindings → signal names. bind:text on <input>
+  // composes a text binding (signal→text) with an input binding (text→signal).
+  // bind:value on <range>/<check> composes a value binding with a change handler.
+  const BIND_KINDS = ["text", "value"] as const;
+  const bind: { text?: string; value?: string } = {};
+  for (const kind of BIND_KINDS) {
+    const v = el.getAttribute(`bind:${kind}`);
+    if (v && v.trim()) bind[kind] = v.trim();
+  }
+  const hasBind = Object.keys(bind).length > 0;
   const srcAttr = tag === "img" ? (el.getAttribute("src") || undefined) : undefined;
   const imgWidthAttr = tag === "img" ? parseInt(el.getAttribute("width") || "0", 10) : undefined;
   const imgHeightAttr = tag === "img" ? parseInt(el.getAttribute("height") || "0", 10) : undefined;
@@ -355,7 +371,7 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   }
 
   const remappedFrom = (remapped || tag === "label" || tag === "a") && tag !== effectiveTag ? tag : undefined;
-  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, bind: hasBind ? bind : undefined, children: [] };
   for (const child of childElements) {
     // Inline children are absorbed into `inline`; don't also emit them as nodes.
     if (inline && INLINE_TAGS.has(child.tagName.toLowerCase())) continue;
