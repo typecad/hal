@@ -517,12 +517,33 @@ git commit -m "feat(preview): widen host-gfx framebuffer to RGB888 storage; add 
 
 ---
 
-## Task 5: Update preview runtime color resolution to 888 storage
+## Task 5: Preview runtime color resolution — NO CHANGE in Phase 1
 
-**Files:**
-- Modify: `packages/cuttlefish/src/preview/host-ui-runtime.ts:1, 36-39, 99-103, 268, 461, 1300, 2033, 2063, 2192, 2239, 2791`
+**Files:** none.
 
-**Phase 1 boundary:** `resolveRuntimeColor` returns 888 so the framebuffer holds true 888 values. Hardcoded 565 literals used as colors are converted to their 888 equivalents. **Blend call sites stay `blendRgb565`** — operands are 888, but 565 blend math is preserved for byte-identity (both preview and runtime blend in 565 in Phase 1). The `0x7bef`-mask dimming idiom is the 565 channel-halve; its 888 equivalent is `0x7f7f7f` (halve each 8-bit channel) — convert it so the idiom stays meaningful on 888 values.
+**Phase 1 boundary (revised during execution):** `resolveRuntimeColor` keeps
+returning 565 values, and the framebuffer stores 565 values in the widened
+`Uint32Array`. This is a deliberate departure from the original Task 5 draft,
+which proposed making preview values "true 888."
+
+**Why the change:** Making preview values true 888 while keeping device values
+565 breaks every blend site. Proven by counterexample during Task 4 execution:
+blending 888 operands with 565 math gives wrong results (e.g. 888 R-channel 36
+blended with 0 at 50% → 565 R=16 under 888-blend, but the device's 565 path
+gives R=2). Phase 1's invariant is byte-identity, which requires values to
+stay 565 everywhere (preview and runtime). True-888 values + 888 blend math
+land together in Phase 2, when the descriptor routes emit through
+`resolveColor888` and both sides switch consistently.
+
+The current `resolveRuntimeColor` (returns `resolveColor(value, "rgb565") &
+0xffff`) and all hardcoded 565 literals + the `0x7bef` dimming idiom are left
+untouched. The `& 0xffff` mask is harmless on 565 values stored in a
+`Uint32Array`.
+
+**Verification:** `tests/packages/cuttlefish/host-rich-text.test.ts`,
+`preview-cross-screen.test.ts`, `preview-scroll.test.ts`,
+`host-render-clipping.test.ts` (20 tests) all pass with no change, confirming
+the 565 values store correctly in the widened buffer.
 
 - [ ] **Step 1: Update the import and resolveRuntimeColor**
 
