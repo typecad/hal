@@ -44,6 +44,10 @@ export function generateDisplayAdapter(display: ResolvedDisplay): DisplayAdapter
 import { st7796Adapter } from "./display-adapters/st7796.js";
 registerDisplayAdapter("st7796", st7796Adapter);
 
+// ── eink-mono adapter (SSD1680-class, 1-bit, deferred partial refresh) ───────
+import { einkMonoAdapter } from "./display-adapters/eink-mono.js";
+registerDisplayAdapter("ssd1680", einkMonoAdapter);
+
 // ── ILI9341 adapter ─────────────────────────────────────────────────────────
 // The first built-in adapter. Mirrors the code previously hardcoded in
 // ui-emitter.ts and runtime-header.ts.
