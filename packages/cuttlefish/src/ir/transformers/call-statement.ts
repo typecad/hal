@@ -16,6 +16,34 @@ import { resolveColor } from "../../ui/color.js";
 import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
 
 /**
+ * Resolve a `screen.<id>` or `screen.groups.<screenId>.<id>` element receiver
+ * (the object a method like .onClick is called on) into its tree name, element
+ * handle, and optional screen-id scope. Returns undefined when the expression
+ * is neither shape. The screenId is present only for the grouped form; callers
+ * pass it to resolveNodeIndex/resolveNodeTag to scope the search.
+ */
+function resolveElementReceiver(expr: ts.Expression): { treeName: string; elemId: string; screenId?: string } | undefined {
+  if (!ts.isPropertyAccessExpression(expr)) return undefined;
+  // Flat: screen.<id>  →  expr.expression is an Identifier ("screen").
+  if (ts.isIdentifier(expr.expression)) {
+    return { treeName: expr.expression.text, elemId: expr.name.text };
+  }
+  // Grouped: screen.groups.<screenId>.<id>  →  expr.expression is
+  //   PropertyAccess(screen.groups, screenId), i.e. two levels deeper.
+  const inner = expr.expression;  // screen.groups.<screenId>
+  if (
+    ts.isPropertyAccessExpression(inner) &&
+    ts.isPropertyAccessExpression(inner.expression) &&
+    ts.isIdentifier(inner.expression.expression) &&
+    inner.expression.expression.text === "screen" &&
+    inner.expression.name.text === "groups"
+  ) {
+    return { treeName: "screen", elemId: expr.name.text, screenId: inner.name.text };
+  }
+  return undefined;
+}
+
+/**
  * When a Map/Set key is an enum-typed expression and the container's key type
  * is an integral type, the lowered `map[key]` / `map.count(key)` / `map.at(key)`
  * would pass the enum operand directly. A C++ `enum class` does not implicitly
@@ -255,18 +283,19 @@ export function callToStatement(
   // ── screen.element.onClick(callback?) — touch click handler ──────────
   // Records a click handler for touch hit-testing. No pin needed — the
   // touch poll loop calls ui_handle_touch which hit-tests and dispatches.
+  // Supports both flat (screen.<id>) and grouped (screen.groups.<sid>.<id>).
   if (
     ts.isPropertyAccessExpression(call.expression) &&
-    call.expression.name.text === "onClick" &&
-    ts.isPropertyAccessExpression(call.expression.expression) &&
-    ts.isIdentifier(call.expression.expression.expression)
+    call.expression.name.text === "onClick"
   ) {
-    const treeName = call.expression.expression.expression.text;
-    const elemId = call.expression.expression.name.text;
+    const recv = resolveElementReceiver(call.expression.expression);
+    if (recv) {
+    const treeName = recv.treeName;
+    const elemId = recv.elemId;
     const cbArg = call.arguments[0];
 
     const htmlPath = resolveUIModuleImport(treeName);
-    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId, recv.screenId) : 0;
 
     // Lower callback body (reuse the shared callback lowering)
     let cbBody = "";
@@ -284,6 +313,7 @@ export function callToStatement(
       trailingComments: comments.trailingComments,
       body: [],
     };
+    }  // end if (recv)
   }
 
   // ── screen.element.onHold/onRelease — touch long-press + release handlers ─

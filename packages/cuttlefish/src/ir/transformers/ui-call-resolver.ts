@@ -883,9 +883,11 @@ function resolveOnTapCall(
 }
 
 /** Look up a node's index in its tree by element id (pre-order DFS order). */
-export function resolveNodeIndex(htmlPath: string, id: string): number {
+export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string): number {
   // Node indices follow pre-order DFS of the styled tree. The lowered tables
   // share this order, so we walk the registry's styled tree to find the id.
+  // When screenId is given (grouped handle screen.groups.<screenId>.<id>),
+  // search only within that screen root.
   const mod = getUIModule(htmlPath);
   if (!mod) return 0;
   let idx = 0;
@@ -897,7 +899,8 @@ export function resolveNodeIndex(htmlPath: string, id: string): number {
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
   };
-  const roots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  const allRoots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  const roots = screenId ? allRoots.filter(r => r.id === screenId) : allRoots;
   for (const root of roots) {
     if (walk(root)) break;
   }
@@ -907,7 +910,7 @@ export function resolveNodeIndex(htmlPath: string, id: string): number {
 /** Look up a node's HTML tag by element id (pre-order DFS order).
  *  Used to route generic callbacks (e.g. onChange) to the right lowering path
  *  based on element kind (range vs input). Returns "" if not found. */
-export function resolveNodeTag(htmlPath: string, id: string): string {
+export function resolveNodeTag(htmlPath: string, id: string, screenId?: string): string {
   const mod = getUIModule(htmlPath);
   if (!mod) return "";
   let idx = 0;
@@ -918,7 +921,8 @@ export function resolveNodeTag(htmlPath: string, id: string): string {
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
   };
-  const roots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  const allRoots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  const roots = screenId ? allRoots.filter(r => r.id === screenId) : allRoots;
   for (const root of roots) {
     if (walk(root)) break;
   }
