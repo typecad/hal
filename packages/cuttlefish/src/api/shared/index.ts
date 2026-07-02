@@ -127,6 +127,16 @@ export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-stra
 export type { DisplayProfile, DisplayConfig, TouchProfile, TouchLibrary } from './display-profile.js';
 export { resolveDisplayProfile } from './display-profile.js';
 
+// Display capabilities descriptor (Phase 2: display-agnostic core)
+export type {
+  DisplayCapabilities,
+  DisplayFeatureFlags,
+  NativeFormat,
+  RefreshModel,
+  PartialRefreshScope,
+} from './display-capabilities.js';
+export { defaultTftCapabilities, deriveCapabilities } from './display-capabilities.js';
+
 // Board resolver
 export type { BoardConstants } from './board-resolver.js';
 
