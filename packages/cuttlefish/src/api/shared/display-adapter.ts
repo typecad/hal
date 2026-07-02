@@ -40,6 +40,10 @@ export function generateDisplayAdapter(display: ResolvedDisplay): DisplayAdapter
   return gen(display);
 }
 
+// ── ST7796S adapter (RGB565 + RGB666 modes) ─────────────────────────────────
+import { st7796Adapter } from "./display-adapters/st7796.js";
+registerDisplayAdapter("st7796", st7796Adapter);
+
 // ── ILI9341 adapter ─────────────────────────────────────────────────────────
 // The first built-in adapter. Mirrors the code previously hardcoded in
 // ui-emitter.ts and runtime-header.ts.

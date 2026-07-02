@@ -1302,7 +1302,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {
-    return new Set(["ili9341"]);
+    return new Set(["ili9341", "st7796"]);
   }
 
   colorFormat(): "rgb565" | "mono" {
