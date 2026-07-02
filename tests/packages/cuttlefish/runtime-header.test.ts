@@ -751,3 +751,59 @@ describe("button press feedback without a click handler", () => {
     expect(m![0]).toMatch(/NODE_BUTTON/);
   });
 });
+
+// Phase 1 of the display-agnostic refactor widens color *storage* from
+// uint16_t (RGB565) to uint32_t (RGB888-ready) across the node/runtime structs,
+// while keeping every value and all blend math in 565 so TFT output is
+// byte-identical. These guards lock that invariant: the fields are wide, the
+// 565 blend path is still active, and the 888 blend/lerp sit alongside unused.
+// See docs/superpowers/specs/2026-07-02-display-agnostic-core-design.md.
+describe("Phase 1 color storage widen (byte-identity)", () => {
+  const header = emitRuntimeHeader();
+
+  it("UINode color fields are uint32_t (888-ready storage)", () => {
+    expect(header).toMatch(/uint32_t bg;/);
+    expect(header).toMatch(/uint32_t fg;/);
+    expect(header).toMatch(/uint32_t borderColor;/);
+    expect(header).toMatch(/uint32_t clearColor;/);
+    expect(header).toMatch(/uint32_t gradientColor1;/);
+    expect(header).toMatch(/uint32_t gradientColor2;/);
+    expect(header).toMatch(/uint32_t outlineColor;/);
+    expect(header).toMatch(/uint32_t shadowColor\[4\];/);
+    expect(header).toMatch(/uint32_t textShadowColor;/);
+  });
+
+  it("UIRichRun/UIKeyframeStop/UIKeyStyle color fields are uint32_t", () => {
+    expect(header).toMatch(/struct UIRichRun[\s\S]*?uint32_t fg;/);
+    expect(header).toMatch(/struct UIKeyframeStop[\s\S]*?uint32_t bg;[\s\S]*?uint32_t fg;/);
+    expect(header).toMatch(/struct UIKeyStyle { uint32_t bg, fg, borderColor; }/);
+  });
+
+  it("keeps ui_blend565 active for the TFT path (565 math in wider fields)", () => {
+    expect(header).toMatch(/static inline uint16_t ui_blend565/);
+    // A 565 value held in a uint32_t field is bit-identical to one in uint16_t,
+    // so the 565 blend math produces the same result on the widened storage.
+    expect(header).toMatch(/ui_blend565\(/);
+  });
+
+  it("keeps lerp_color (565) active for transitions", () => {
+    expect(header).toMatch(/static inline uint16_t lerp_color/);
+  });
+
+  it("adds ui_blend888 + lerp_color_888 alongside (unused in Phase 1)", () => {
+    expect(header).toMatch(/static inline uint32_t ui_blend888/);
+    expect(header).toMatch(/static inline uint32_t lerp_color_888/);
+  });
+
+  it("binding fn pointer widened to uint32_t return", () => {
+    expect(header).toMatch(/uint32_t \(\*fn\)\(void\)/);
+  });
+
+  it("565 color literals and sentinels unchanged (not widened to 888)", () => {
+    // UI_NO_PARENT is a node-index sentinel that happens to equal 565 white;
+    // it must stay 0xFFFF, not become 0xFFFFFF (it's compared to node indices).
+    expect(header).toMatch(/UI_NO_PARENT\s+0xFFFF/);
+    // The runtime's full-screen clear still uses the 565 black literal.
+    expect(header).toMatch(/display_fillScreen\(0x0000\)/);
+  });
+});
