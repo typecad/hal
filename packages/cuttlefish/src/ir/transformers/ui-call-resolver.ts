@@ -505,6 +505,64 @@ export function lowerTextBindingBody(
   return warn();
 }
 
+/**
+ * Lower a `{expr}` interpolation text string to an imperative snprintf body
+ * that writes into `buf`/`size`. Mirrors `lowerTextBindingBody` Shape 3 but
+ * operates on a raw string (from HTML markup) rather than a TS AST node.
+ *
+ * Each `{...}` span becomes a `%d` argument (v1: numeric default — the dominant
+ * use case is counters/progress; string-signal interpolation should use the
+ * `ui.bind` path which has TS type information). Literal `%` in surrounding text
+ * is escaped to `%%` so snprintf doesn't misread it.
+ *
+ *   "taps: {count}"          → 'snprintf(buf, size, "taps: %d", count);'
+ *   "a:{x} b:{y}"            → 'snprintf(buf, size, "a:%d b:%d", x, y);'
+ *   "{n}% done"              → 'snprintf(buf, size, "%d%% done", n);'
+ *
+ * Empty braces `{}` are treated as literal text (not interpolation). Returns
+ * null if no interpolation is present (caller keeps the static text).
+ */
+export function lowerInterpolationText(raw: string): string | null {
+  // Scan for non-empty {expr} spans. Track brace depth so `{a + {b}}` (malformed)
+  // is handled conservatively: only top-level `{...}` with no nested braces is
+  // treated as an interpolation.
+  const fmtBuf: string[] = [];
+  const args: string[] = [];
+  let i = 0;
+  let hasInterp = false;
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (ch === "{") {
+      // Find the matching close brace at the same depth.
+      let depth = 1;
+      let j = i + 1;
+      while (j < raw.length && depth > 0) {
+        if (raw[j] === "{") depth++;
+        else if (raw[j] === "}") depth--;
+        if (depth === 0) break;
+        j++;
+      }
+      const content = raw.slice(i + 1, j);
+      // Only non-empty, non-nested braces count as an interpolation.
+      if (depth === 0 && content.length > 0 && !content.includes("{")) {
+        hasInterp = true;
+        args.push(content.trim());
+        fmtBuf.push("%d");
+        i = j + 1;
+        continue;
+      }
+      // Else: literal '{' (empty {} or nested). Emit it verbatim.
+    }
+    // Literal character — escape % for snprintf format-string safety.
+    fmtBuf.push(ch === "%" ? "%%" : escapeCppStringLiteral(ch));
+    i++;
+  }
+  if (!hasInterp) return null;
+  const fmt = fmtBuf.join("");
+  const argList = args.length ? ", " + args.join(", ") : "";
+  return `snprintf(buf, size, "${fmt}"${argList});`;
+}
+
 /** Lower a chain of ternary expressions with string branches to C++ if/else. */
 function lowerTernaryTextChain(
   expr: ts.ConditionalExpression,

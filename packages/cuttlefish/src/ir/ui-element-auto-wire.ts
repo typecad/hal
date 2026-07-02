@@ -7,7 +7,7 @@
 // For custom elements, use <view> + <text> + manual bindings.
 // ---------------------------------------------------------------------------
 
-import { recordClickHandler, recordBinding, markRunNode } from "./transformers/ui-call-resolver.js";
+import { recordClickHandler, recordBinding, markRunNode, lowerInterpolationText } from "./transformers/ui-call-resolver.js";
 
 interface AutoWireNode {
   tag: string;
@@ -22,6 +22,9 @@ interface AutoWireNode {
    *  A run may carry an href (inline <a href>); those make the node a link
    *  target that needs a click handler so it's hit-testable. */
   runs?: Array<{ href?: string }>;
+  /** True when text contains a `{expr}` interpolation; auto-wire synthesizes an
+   *  implicit text binding for it (no id required — {expr} references a signal). */
+  hasInterpolation?: boolean;
 }
 
 // Track radio groups for mutual exclusion
@@ -55,10 +58,12 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
     // Record run-bearing node indices so the binding resolver can reject
     // PROP_TEXT bindings on them (runs are static-only).
     if (node.runs && node.runs.length > 0) markRunNode(currentIndex);
-    // Auto-wire nodes with an id, <a href> links, and run-bearing link nodes
-    // (an inline <a href> inside a paragraph makes the paragraph a tap target).
+    // Auto-wire nodes with an id, <a href> links, run-bearing link nodes
+    // (an inline <a href> inside a paragraph makes the paragraph a tap target),
+    // and {expr} text interpolations (which synthesize a text binding — these
+    // may have no id, since {expr} references a signal, not a screen.<id>).
     const hasLinkRun = !!node.runs?.some(r => r.href);
-    if (node.id || node.href || hasLinkRun) {
+    if (node.id || node.href || hasLinkRun || node.hasInterpolation) {
       autoWireNode(treeName, node, currentIndex);
     }
     node.children?.forEach(walk);
@@ -68,6 +73,23 @@ export function autoWireElements(treeName: string, root: AutoWireNode, startInde
 }
 
 function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): void {
+  // {expr} text interpolation → synthesize an implicit text binding. This runs
+  // before the id/href guard below because an interpolation node may have no id
+  // ({expr} references a signal, not a screen.<id> handle). recordBinding rejects
+  // run-bearing nodes via the run-text-binding-conflict guard, so inline+interp
+  // combinations are caught there rather than here.
+  if (node.hasInterpolation && node.text) {
+    const cppBody = lowerInterpolationText(node.text);
+    if (cppBody) {
+      recordBinding({
+        nodeIndex,
+        property: "text",
+        fnName: `__ui_interp_${nodeIndex}`,
+        cppBody,
+      });
+    }
+  }
+
   // The check/select/radio branches generate fnNames from node.id, so they
   // require one. The href (navigation) branch below works with or without id.
   // Run-bearing link nodes also work without id (handler body is a no-op; the

@@ -75,6 +75,9 @@ export interface StyledNode {
   /** Canvas buffer height in pixels (for <canvas>). */
   canvasH?: number;
   disabled?: boolean;
+  /** True when text contains a `{expr}` interpolation; auto-wire synthesizes an
+   *  implicit text binding. Propagated from UIElementNode for the auto-wire walk. */
+  hasInterpolation?: boolean;
 }
 
 /** Look up an HTML attribute value on a node by name, for attribute selectors.
@@ -396,5 +399,6 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     canvasW: node.canvasW,
     canvasH: node.canvasH,
     disabled: (node as any).disabled,
+    hasInterpolation: node.hasInterpolation,
   };
 }
