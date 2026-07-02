@@ -183,6 +183,51 @@ export function toMono(r: number, g: number, b: number): 0 | 1 {
   return lum >= 0.27 ? 1 : 0;
 }
 
+/** Pack 8-bit channels into a uint32 RGB888 value (R<<16 | G<<8 | B). */
+export function pack888(r: number, g: number, b: number): number {
+  return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
+}
+
+/** Unpack a uint32 RGB888 value into 8-bit channels. */
+export function unpack888(c: number): { r: number; g: number; b: number } {
+  return { r: (c >> 16) & 0xff, g: (c >> 8) & 0xff, b: c & 0xff };
+}
+
+/** Quantize RGB888 → RGB565 (uint16). Channel math identical to toRGB565. */
+export function rgb888To565(c: number): number {
+  const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+  return ((r & 0xf8) << 8) | ((g & 0xfc) << 3) | (b >> 3);
+}
+
+/** Quantize RGB888 → RGB666 (uint18 packed in lower 18 bits). */
+export function rgb888To666(c: number): number {
+  const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+  return ((r & 0xfc) << 10) | ((g & 0xfc) << 4) | (b >> 2);
+}
+
+/** Quantize RGB888 → 1-bit mono via luminance threshold (matches toMono). */
+export function rgb888ToMono(c: number): 0 | 1 {
+  const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+  return toMono(r, g, b);
+}
+
+/**
+ * Snap RGB888 to the nearest ink in a palette. Palette entries are RGB888 values.
+ * Used by e-ink palette shims (Phase 4); included so the quantizer set is complete.
+ */
+export function rgb888ToNearest(c: number, palette888: number[]): number {
+  const r1 = (c >> 16) & 0xff, g1 = (c >> 8) & 0xff, b1 = c & 0xff;
+  let best = palette888[0];
+  let bestD = Infinity;
+  for (const ink of palette888) {
+    const dr = (ink >> 16) & 0xff, dg = (ink >> 8) & 0xff, db = ink & 0xff;
+    const dr2 = r1 - dr, dg2 = g1 - dg, db2 = b1 - db;
+    const d = dr2 * dr2 + dg2 * dg2 + db2 * db2;
+    if (d < bestD) { bestD = d; best = ink; }
+  }
+  return best;
+}
+
 export function resolveColor(input: string, format: "rgb565" | "mono"): number {
   const { r, g, b } = parseColor(input);
   return format === "rgb565" ? toRGB565(r, g, b) : toMono(r, g, b);
