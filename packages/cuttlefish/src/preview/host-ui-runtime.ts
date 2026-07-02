@@ -1,4 +1,4 @@
-import { resolveColor } from "../ui/color.js";
+import { resolveColor, resolveColor888 } from "../ui/color.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui/default-keyboards.js";
 import type { CSSProperty, CSSRule } from "../ui/css-parser.js";
 import type { UIFontAssetModel, UIFontGlyphModel } from "../ui/font-assets.js";
@@ -7,7 +7,7 @@ import type { KeyboardTemplate, UIKeyTemplate } from "../ui/html-parser.js";
 import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
 import { easeCurveLerpK } from "../ui/easing.js";
 import { layoutText } from "../ui/text-layout.js";
-import { blendRgb565, HostAdafruitGFX } from "./host-gfx.js";
+import { blendRgb565, blendRgb888, HostAdafruitGFX } from "./host-gfx.js";
 import type {
   PreviewBindingSpec,
   PreviewCallbackSpec,
@@ -96,10 +96,27 @@ function lerpColor(a: number, b: number, k100: number): number {
   return ((r & 0x1f) << 11) | ((g & 0x3f) << 5) | (bl & 0x1f);
 }
 
+// Module-level current color format, seeded by PreviewUIRuntime's constructor.
+// Lets the free resolveRuntimeColor helper resolve at the target's depth without
+// `this` access (keyboard + binding callbacks are module-scope functions).
+// rgb666 → 888 (blends keep precision, quantize at the canvas push); else 565.
+let runtimeColorFormat: "rgb565" | "rgb666" | "mono" = "rgb565";
+
 function resolveRuntimeColor(value: unknown): number {
-  if (typeof value === "number") return value & 0xffff;
-  if (typeof value === "string") return resolveColor(value, "rgb565") & 0xffff;
+  const is666 = runtimeColorFormat === "rgb666";
+  const mask = is666 ? 0xffffff : 0xffff;
+  if (typeof value === "number") return value & mask;
+  if (typeof value === "string") {
+    return (is666 ? resolveColor888(value) : resolveColor(value, "rgb565")) & mask;
+  }
   return 0;
+}
+
+/** Blend by opacity in the active color depth (888 for rgb666, 565 otherwise).
+ *  Mirrors the device's UI_COLOR_DEPTH-driven ui_blend macro — the value depth
+ *  and the blend math switch together (see Phase 1 counterexample). */
+function blendRuntime(fg: number, bg: number, opacity: number): number {
+  return runtimeColorFormat === "rgb666" ? blendRgb888(fg, bg, opacity) : blendRgb565(fg, bg, opacity);
 }
 
 function mergeClassRules(classes: string[] | undefined, rules: CSSRule[]): CSSProperty {
@@ -237,6 +254,10 @@ export class PreviewUIRuntime {
 
   constructor(private readonly snapshot: PreviewSnapshot, options: RuntimeOptions = {}) {
     const { nodes, transitions, animations } = cloneProgram(snapshot.program);
+    // Seed the module-level format so the free resolveRuntimeColor helper (used
+    // by keyboard + binding callbacks without `this` access) resolves in the
+    // target's depth: 888 for rgb666 (blends keep precision), 565 otherwise.
+    runtimeColorFormat = snapshot.program.colorFormat;
     this.nodes = nodes;
     this.transitions = transitions;
     this.keyframeSets = snapshot.program.keyframeSets ?? [];
@@ -1092,7 +1113,7 @@ export class PreviewUIRuntime {
       try {
         let parentFillBg = parent.bg;
         if (parent.opacity < 100) {
-          parentFillBg = blendRgb565(parent.bg, this.parentClearColor(parent), parent.opacity);
+          parentFillBg = blendRuntime(parent.bg, this.parentClearColor(parent), parent.opacity);
         }
         if (parent.gradientEnabled > 0) {
           this.drawGradientFill(parent, parentDrawY);
@@ -1172,7 +1193,7 @@ export class PreviewUIRuntime {
     }
     this.gfx.withClipRect(repair, () => {
       let fillBg = node.bg;
-      if (node.opacity < 100) fillBg = blendRgb565(node.bg, this.parentClearColor(node), node.opacity);
+      if (node.opacity < 100) fillBg = blendRuntime(node.bg, this.parentClearColor(node), node.opacity);
       const fillSize = this.rotatedFaceSize(node, node.box.w, node.box.h);
       this.gfx.fillRect(this.drawXForNode(node.index), this.drawYForNode(node.index), fillSize.w, fillSize.h, fillBg);
     });
@@ -1428,7 +1449,7 @@ export class PreviewUIRuntime {
           const dx = glyphX + gx;
           const dy = glyphY + gy;
           if (antialias) {
-            this.gfx.drawPixel(dx, dy, alpha >= 15 ? fg : blendRgb565(fg, bg, Math.trunc((alpha * 100) / 15)));
+            this.gfx.drawPixel(dx, dy, alpha >= 15 ? fg : blendRuntime(fg, bg, Math.trunc((alpha * 100) / 15)));
           } else if (alpha >= 8) {
             this.gfx.drawPixel(dx, dy, fg);
           }
@@ -1475,14 +1496,14 @@ export class PreviewUIRuntime {
       const yEnd = clip.y + clip.h - by;
       for (let y = yStart; y < yEnd; y++) {
         const opacity = Math.trunc((y * 100) / (bh > 1 ? bh - 1 : 1));
-        this.gfx.drawFastHLine(clip.x, by + y, clip.w, blendRgb565(node.gradientColor1, node.gradientColor2, opacity));
+        this.gfx.drawFastHLine(clip.x, by + y, clip.w, blendRuntime(node.gradientColor1, node.gradientColor2, opacity));
       }
     } else if (node.gradientEnabled === 2) {
       const xStart = clip.x - bx;
       const xEnd = clip.x + clip.w - bx;
       for (let x = xStart; x < xEnd; x++) {
         const opacity = Math.trunc((x * 100) / (bw > 1 ? bw - 1 : 1));
-        this.gfx.drawFastVLine(bx + x, clip.y, clip.h, blendRgb565(node.gradientColor1, node.gradientColor2, opacity));
+        this.gfx.drawFastVLine(bx + x, clip.y, clip.h, blendRuntime(node.gradientColor1, node.gradientColor2, opacity));
       }
     }
   }
@@ -1510,7 +1531,7 @@ export class PreviewUIRuntime {
 
       if (inset && rawBlur === 0) {
         const insetBg = node.hasBg ? node.bg : node.clearColor;
-        const col = blendRgb565(shadowCol, insetBg, baseAlpha);
+        const col = blendRuntime(shadowCol, insetBg, baseAlpha);
         if (oy > 0) this.gfx.fillRect(bx, by, bw, oy, col);
         else if (oy < 0) this.gfx.fillRect(bx, by + bh + oy, bw, -oy, col);
         if (ox > 0) this.gfx.fillRect(bx, by, ox, bh, col);
@@ -1521,7 +1542,7 @@ export class PreviewUIRuntime {
 
       for (let pass = blur; pass >= 1; pass--) {
         const opacity = Math.trunc(baseAlpha / (pass + 1));
-        const col = blendRgb565(shadowCol, inset ? (node.hasBg ? node.bg : clearCol) : clearCol, opacity);
+        const col = blendRuntime(shadowCol, inset ? (node.hasBg ? node.bg : clearCol) : clearCol, opacity);
         if (inset) {
           const ix = bx + pass + ox;
           const iy = by + pass + oy;
@@ -1698,14 +1719,14 @@ export class PreviewUIRuntime {
       const displayText = node.hasTextBinding ? node.textBuffer : node.text;
       const ts = this.nodeTextSize(node);
       let bColor = node.borderColor || node.fg;
-      if (node.opacity < 100) bColor = blendRgb565(bColor, node.clearColor, node.opacity);
+      if (node.opacity < 100) bColor = blendRuntime(bColor, node.clearColor, node.opacity);
       // Opacity background: blend the node's bg toward the backdrop (the parent
       // clear color — what's actually behind the node) so a translucent element
       // fades toward what's behind it. Mirrors the C++ fillBg computation.
       // (node.clearColor is the node's own bg for filled nodes — a no-op blend
       // target — so we use parentClearColor, the real backdrop.)
       let fillBg = node.bg;
-      if (node.opacity < 100) fillBg = blendRgb565(node.bg, this.parentClearColor(node), node.opacity);
+      if (node.opacity < 100) fillBg = blendRuntime(node.bg, this.parentClearColor(node), node.opacity);
 
       this.gfx.withClipRect(scrollClip, () => {
         node.box.x = baseX;
@@ -1819,7 +1840,7 @@ export class PreviewUIRuntime {
     let textClear = node.hasBg ? node.bg : node.clearColor;
     if (node.opacity < 100) {
       const backdrop = this.parentClearColor(node);
-      textClear = blendRgb565(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
+      textClear = blendRuntime(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
     }
     this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
 
@@ -1847,7 +1868,7 @@ export class PreviewUIRuntime {
       }
     };
     if (node.textShadowCount > 0) {
-      const shadowColor = blendRgb565(node.textShadowColor, textClear, node.textShadowAlpha);
+      const shadowColor = blendRuntime(node.textShadowColor, textClear, node.textShadowAlpha);
       drawSegs(node.textShadowOffsetX, node.textShadowOffsetY, shadowColor);
     }
     drawSegs(0, 0);
@@ -1899,13 +1920,13 @@ export class PreviewUIRuntime {
     let textClear = node.hasBg ? node.bg : node.clearColor;
     if (node.opacity < 100) {
       const backdrop = this.parentClearColor(node);
-      textClear = blendRgb565(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
+      textClear = blendRuntime(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
     }
     this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
     node.lastTextWidth = layout.width;
     node.lastTextHeight = layout.height;
     if (node.textShadowCount > 0) {
-      const shadowColor = blendRgb565(node.textShadowColor, textClear, node.textShadowAlpha);
+      const shadowColor = blendRuntime(node.textShadowColor, textClear, node.textShadowAlpha);
       this.drawTextLines(
         node,
         displayText,
@@ -2042,7 +2063,7 @@ export class PreviewUIRuntime {
       });
     }
     let bColor = node.borderColor || node.fg;
-    if (node.opacity < 100) bColor = blendRgb565(bColor, node.clearColor, node.opacity);
+    if (node.opacity < 100) bColor = blendRuntime(bColor, node.clearColor, node.opacity);
     this.drawNodeShadow(node, drawY, true);
     if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
     node.lastPaintedScrollY = node.scrollY;
@@ -2110,7 +2131,7 @@ export class PreviewUIRuntime {
     if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
     const layout = this.textLayout(node, displayText, node.box.w, ts);
     const top = drawY + Math.trunc((node.box.h - layout.height) / 2);
-    const glyphBg = node.opacity < 100 ? blendRgb565(node.bg, this.parentClearColor(node), node.opacity) : (node.hasBg ? node.bg : node.clearColor);
+    const glyphBg = node.opacity < 100 ? blendRuntime(node.bg, this.parentClearColor(node), node.opacity) : (node.hasBg ? node.bg : node.clearColor);
     this.drawTextLines(node, displayText, node.box.x, top, node.box.w, ts, node.fg, glyphBg, 1);
   }
 
