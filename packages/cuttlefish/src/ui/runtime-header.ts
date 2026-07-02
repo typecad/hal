@@ -1741,7 +1741,7 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
     ui_display_fill_rect(__ui_nodes[p].box.x, localY, __ui_nodes[p].box.w, __ui_nodes[p].box.h, parentFillBg);
   }
   if (__ui_nodes[p].borderStyle != 0) {
-    uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
+    UI_COLOR_T bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
     ui_draw_node_border(p, __ui_nodes[p].box.x, localY, bColor);
   }
   ui_draw_node_outline(p, __ui_nodes[p].box.x, localY);
@@ -1870,7 +1870,7 @@ static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w,
 static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t drawY, const UIRect* clip) {
   if (nodeIdx >= __ui_node_count) return;
   if (__ui_nodes[nodeIdx].borderStyle != 0) {
-    uint16_t bColor = __ui_nodes[nodeIdx].borderColor ? __ui_nodes[nodeIdx].borderColor : __ui_nodes[nodeIdx].fg;
+    UI_COLOR_T bColor = __ui_nodes[nodeIdx].borderColor ? __ui_nodes[nodeIdx].borderColor : __ui_nodes[nodeIdx].fg;
     int16_t x = __ui_nodes[nodeIdx].box.x;
     int16_t y = drawY;
     int16_t w = __ui_nodes[nodeIdx].box.w;
@@ -1929,7 +1929,7 @@ static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* pain
   if (p != UI_NO_PARENT && p < __ui_node_count) {
     int16_t parentDrawY = ui_draw_y_for_node(p);
     if (__ui_nodes[p].borderStyle != 0) {
-      uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
+      UI_COLOR_T bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
       ui_draw_node_border(p, ui_draw_x_for_node(p), parentDrawY, bColor);
     }
     ui_draw_node_outline(p, ui_draw_x_for_node(p), parentDrawY);
@@ -2001,7 +2001,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, repair.x, repair.y);
   CuttlefishDisplayTarget* previousGfx = ui_display_get_target();
   ui_display_set_target(repairCanvas);
-  uint16_t fillBg = __ui_nodes[nodeIdx].bg;
+  UI_COLOR_T fillBg = __ui_nodes[nodeIdx].bg;
   if (__ui_nodes[nodeIdx].opacity < 100) {
     fillBg = ui_blend(__ui_nodes[nodeIdx].bg, ui_parent_clear_color(nodeIdx), __ui_nodes[nodeIdx].opacity);
   }
@@ -2047,7 +2047,7 @@ static inline void ui_clear_subtree_current_paint(uint16_t nodeIdx) {
   if (p != UI_NO_PARENT && p < __ui_node_count) {
     int16_t parentDrawY = ui_draw_y_for_node(p);
     if (__ui_nodes[p].borderStyle != 0) {
-      uint16_t bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
+      UI_COLOR_T bColor = __ui_nodes[p].borderColor ? __ui_nodes[p].borderColor : __ui_nodes[p].fg;
       ui_draw_node_border(p, ui_draw_x_for_node(p), parentDrawY, bColor);
     }
     ui_draw_node_outline(p, ui_draw_x_for_node(p), parentDrawY);
@@ -3227,8 +3227,8 @@ static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY) {
   int16_t clipW = bw;
   int16_t clipH = bh;
   if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
-  uint16_t c1 = __ui_nodes[i].gradientColor1;
-  uint16_t c2 = __ui_nodes[i].gradientColor2;
+  UI_COLOR_T c1 = __ui_nodes[i].gradientColor1;
+  UI_COLOR_T c2 = __ui_nodes[i].gradientColor2;
   uint8_t dir = __ui_nodes[i].gradientEnabled;  // 1=vertical, 2=horizontal
   if (dir == 1) {
     // Vertical: top=c1, bottom=c2. Draw row by row.
@@ -3262,7 +3262,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
 
   for (uint8_t s = 0; s < __ui_nodes[i].shadowCount && s < 4; s++) {
     if (s >= __ui_nodes[i].shadowCount) continue;  // use count, not color check (0 is valid black)
-    uint16_t shadowCol = __ui_nodes[i].shadowColor[s];
+    UI_COLOR_T shadowCol = __ui_nodes[i].shadowColor[s];
     int8_t ox = __ui_nodes[i].shadowOffsetX[s];
     int8_t oy = __ui_nodes[i].shadowOffsetY[s];
     uint8_t rawBlur = __ui_nodes[i].shadowBlur[s];
@@ -3972,11 +3972,11 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
 
     // Border color: use borderColor if set, otherwise fg.
-    uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
+    UI_COLOR_T bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
     // Background color blended toward clearColor by opacity (raw bg when 100%).
     // NODE_FILL draws the fill at this color so opacity actually fades the
     // element's background toward what's behind it.
-    uint16_t fillBg = __ui_nodes[i].bg;
+    UI_COLOR_T fillBg = __ui_nodes[i].bg;
     // Apply opacity: blend fg/bg/border toward what's BEHIND the node when <100%.
     // NOTE: blend toward the parent's clear color (ui_parent_clear_color), not
     // the node's own clearColor — a filled node's clearColor IS its own bg, so
@@ -4002,7 +4002,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         ui_draw_shadow(i, drawY, 1);
         if (__ui_nodes[i].borderStyle != 0) {
-          uint16_t bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
+          UI_COLOR_T bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
           int16_t borderW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           int16_t borderH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           ui_draw_rect_outline(__ui_nodes[i].box.x, drawY, borderW, borderH,

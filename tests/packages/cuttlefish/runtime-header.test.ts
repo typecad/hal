@@ -822,4 +822,13 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
   it("widens ui_display_draw_pixel color param to UI_COLOR_T", () => {
     expect(header).toMatch(/ui_display_draw_pixel\([^)]*UI_COLOR_T color\)/);
   });
+  it("does not narrow node bg/borderColor/shadow/gradient into a uint16_t local", () => {
+    // locals must be UI_COLOR_T so the upper 16 bits of an 888 value survive.
+    // (the uint16_t dimFg locals are handled separately — depth-aware math.)
+    expect(header).not.toMatch(/uint16_t fillBg = __ui_nodes/);
+    expect(header).not.toMatch(/uint16_t bColor = __ui_nodes/);
+    expect(header).not.toMatch(/uint16_t shadowCol = __ui_nodes/);
+    expect(header).not.toMatch(/uint16_t c1 = __ui_nodes/);
+    expect(header).not.toMatch(/uint16_t c2 = __ui_nodes/);
+  });
 });
