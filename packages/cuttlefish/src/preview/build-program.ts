@@ -42,6 +42,67 @@ function nodeIndexById(programNodes: Array<{ id?: string }>, id: string): number
   return found?.id ? programNodes.indexOf(found) : undefined;
 }
 
+/** Convert a `{expr}` interpolation text into a TS template-literal expression
+ *  string the preview can evaluate. E.g. `taps: {count}` → `` `taps: ${count}` ``.
+ *  Mirrors lowerInterpolationText's scanning but produces a JS expression rather
+ *  than a snprintf format string. Returns undefined when there's no interpolation. */
+function interpolationToExpression(raw: string): string | undefined {
+  const parts: string[] = [];
+  let hasInterp = false;
+  let i = 0;
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (ch === "{") {
+      let depth = 1;
+      let j = i + 1;
+      while (j < raw.length && depth > 0) {
+        if (raw[j] === "{") depth++;
+        else if (raw[j] === "}") depth--;
+        if (depth === 0) break;
+        j++;
+      }
+      const content = raw.slice(i + 1, j);
+      if (depth === 0 && content.length > 0 && !content.includes("{")) {
+        hasInterp = true;
+        parts.push("${" + content.trim() + "}");
+        i = j + 1;
+        continue;
+      }
+    }
+    // Literal text — escape backticks and ${ in the literal parts.
+    parts.push(ch === "`" ? "\\`" : (ch === "$" && raw[i + 1] === "{") ? "\\${" : ch);
+    i++;
+  }
+  if (!hasInterp) return undefined;
+  return "`" + parts.join("") + "`";
+}
+
+/** Walk styled trees for {expr} interpolation nodes and synthesize preview text
+ *  bindings (mirroring the runtime's auto-wire synthesis). Each produces a
+ *  PreviewBindingSpec whose expression is a template-literal the preview evals. */
+function collectInterpolationBindings(
+  trees: StyledNode[],
+  programNodes: Array<{ id?: string }>,
+): PreviewBindingSpec[] {
+  const out: PreviewBindingSpec[] = [];
+  const walk = (node: StyledNode): void => {
+    if (node.hasInterpolation && node.text) {
+      const expression = interpolationToExpression(node.text);
+      if (expression) {
+        // Resolve nodeIndex by id; interpolation nodes may lack an id (when the
+        // text references a signal directly), but the demo keeps the id for CSS.
+        const nodeIndex = node.id ? nodeIndexById(programNodes, node.id) : undefined;
+        if (nodeIndex !== undefined) {
+          out.push({ nodeId: node.id ?? `__interp_${nodeIndex}`, nodeIndex, property: "text", expression });
+        }
+      }
+    }
+    node.children?.forEach(walk);
+  };
+  trees.forEach(walk);
+  return out;
+}
+
 async function loadProfileRegistry(frameworkPackage: string | undefined): Promise<Map<string, DisplayProfile>> {
   const registry = new Map<string, DisplayProfile>();
   if (!frameworkPackage) return registry;
@@ -490,6 +551,13 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const program = lowerUIToModel(styled, boxes, profile.colorFormat, profile, fontAssets, allStyledScreens, imageAssets.nodeIdToAssetIndex, keyframeSets, imageAssets.assets);
   const specs = extractAuthorSpecs(sourceFile, uiImports, program.nodes);
   const hrefCallbacks = collectHrefCallbacks(allStyledScreens, program.nodes);
+  // {expr} interpolation bindings synthesized from the HTML (mirrors the runtime's
+  // auto-wire synthesis). Authors write `taps: {count}` in markup; this collects
+  // them so the preview evaluates the template-literal expression each frame.
+  const interpolationBindings = collectInterpolationBindings(
+    allStyledScreens.length > 0 ? allStyledScreens : [styled],
+    program.nodes,
+  );
 
   return {
     projectRoot,
@@ -501,7 +569,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     cssRules,
     uiTreeNames: [...new Set(uiImports.map((imp) => imp.treeName))],
     font: loadFont(projectRoot, diagnostics),
-    bindings: specs.bindings,
+    bindings: [...specs.bindings, ...interpolationBindings],
     listBindings: specs.listBindings,
     callbacks: [...hrefCallbacks, ...specs.callbacks],
     initialAssignments: specs.initialAssignments,

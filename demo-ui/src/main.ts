@@ -22,10 +22,13 @@ ui.mount(screen, {
 // The count lives in element state (screen.formBtnCount.value), the same
 // pattern as the original demo's counter — element .value is mutable device
 // state, so this avoids a local `let` the ownership analyzer flags as const.
-screen.formBtnCount.value = 0;
-ui.bind(screen.formBtnCount, 'text', () => `taps: ${screen.formBtnCount.value}`);
+// The label text is authored in the HTML as `taps: {count}` — the {count}
+// interpolation compiles to an implicit text binding (both runtime + preview),
+// so this TS only owns the signal state. (Svelte-like markup-driven authoring;
+// compare to the older ui.bind(screen.formBtnCount, 'text', ...) form.)
+export const count = ui.signal(0);
 screen.formBtn.onClick(() => {
-  screen.formBtnCount.value = screen.formBtnCount.value + 1;
+  count.set(count() + 1);
 });
 
 // ── Forms screen: progress 0→100 loop ──────────────────────────────────────
