@@ -217,7 +217,7 @@ export interface AnimationModel {
 export interface UIProgram {
   width: number;
   height: number;
-  colorFormat: "rgb565" | "mono";
+  colorFormat: "rgb565" | "rgb666" | "mono";
   display?: DisplayProfile;
   fontAssets: UIFontAssetModel[];
   imageAssets: UIImageAsset[];
@@ -227,7 +227,7 @@ export interface UIProgram {
   animations: AnimationModel[];
 }
 
-type ColorFormat = "rgb565" | "mono";
+type ColorFormat = "rgb565" | "rgb666" | "mono";
 
 interface FlatModelSource {
   index: number;
@@ -596,7 +596,7 @@ function pressedOffsetOf(style: CSSProperty): { x: number; y: number } {
  *  Format per shadow: [inset] offsetX offsetY [blur] [spread] color. */
 const MAX_SHADOWS = 4;
 interface ShadowSpec { x: number; y: number; blur: number; color: number; alpha: number; inset: boolean; }
-function parseBoxShadow(style: CSSProperty, format: "rgb565" | "mono"): ShadowSpec[] {
+function parseBoxShadow(style: CSSProperty, format: ColorFormat): ShadowSpec[] {
   const raw = style.boxShadow;
   if (!raw || raw === "none") return [];
   // Split on commas that are NOT inside parentheses (so rgba(0,0,0,0.5) isn't split).
@@ -679,7 +679,7 @@ function extractFirstGradientColor(bg: string): string | undefined {
   return undefined;
 }
 
-function parseGradient(bg: string | undefined, format: "rgb565" | "mono"): GradientSpec | null {
+function parseGradient(bg: string | undefined, format: ColorFormat): GradientSpec | null {
   if (!bg || !bg.includes("linear-gradient")) return null;
   // Extract the content inside linear-gradient(...).
   const innerM = /linear-gradient\(\s*([^)]+)\)/.exec(bg);

@@ -243,7 +243,9 @@ export function resolveColor888(input: string): number {
  * compatible wrapper over resolveColor888 + quantizer. Existing call sites
  * keep their behavior (565/mono output unchanged).
  */
-export function resolveColor(input: string, format: "rgb565" | "mono"): number {
+export function resolveColor(input: string, format: "rgb565" | "rgb666" | "mono"): number {
   const c = resolveColor888(input);
-  return format === "rgb565" ? rgb888To565(c) : rgb888ToMono(c);
+  if (format === "rgb565") return rgb888To565(c);
+  if (format === "rgb666") return rgb888To666(c);
+  return rgb888ToMono(c);
 }
