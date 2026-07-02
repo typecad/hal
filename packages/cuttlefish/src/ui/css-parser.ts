@@ -156,10 +156,13 @@ export interface CSSFontFace {
 }
 
 /** Evaluate an @media condition (css-tree prelude string) against the resolved
- *  display profile at transpile time. Each firmware build targets ONE display
- *  size, so @media is a compile-time variant selector, not responsive design.
- *  Returns true if the rule should apply. Supports max/min width/height in px.
- *  Unsupported conditions return null (caller warns + skips the rule). */
+ *  display profile at transpile time. Each firmware build targets ONE display,
+ *  so @media is a compile-time variant selector, not responsive design.
+ *  Returns true if the rule should apply. Supports:
+ *   - (min|max)-(width|height):Npx, (width|height):Npx
+ *   - (e-ink), (update: slow|fast), (monochrome), (monochrome: N),
+ *     (color-gamut: srgb|p3)
+ *  Clauses AND-combine (comma = OR not supported). Unsupported → null (warn). */
 function evalMediaCondition(prelude: string): boolean | null {
   const s = prelude.trim();
   // @media all / @media (no condition) -> always apply.
@@ -167,6 +170,11 @@ function evalMediaCondition(prelude: string): boolean | null {
   const profile = getDisplayProfile();
   const w = profile.width;
   const h = profile.height;
+  const isEink = profile.displayClass === "eink";
+  const isMono = profile.colorFormat === "mono";
+  // Mono level count: mono colorFormat = 2 (B&W). (4/7-level descriptor arrives in Phase 4.)
+  const monoLevels = isMono ? 2 : 0;
+
   let result = true;
   let matched = false;
   // Match each (feature: value) pair. AND-combine (comma = OR not supported).
@@ -185,6 +193,33 @@ function evalMediaCondition(prelude: string): boolean | null {
       result = result && ((m[4] === "width" ? w : h) === n);
     }
   }
+
+  // (e-ink) — boolean feature: true on an eink display class.
+  if (/\(\s*e-?ink\s*\)/i.test(s)) {
+    matched = true;
+    result = result && isEink;
+  }
+  // (update: slow|fast) — slow = eink, fast = tft.
+  const updateM = /\(\s*update\s*:\s*(slow|fast)\s*\)/i.exec(s);
+  if (updateM) {
+    matched = true;
+    const want = updateM[1].toLowerCase();
+    result = result && (want === "slow" ? isEink : !isEink);
+  }
+  // (monochrome) and (monochrome: N) — true when colorFormat is mono with >=N levels.
+  const monoM = /\(\s*monochrome(?:\s*:\s*(\d+))?\s*\)/i.exec(s);
+  if (monoM) {
+    matched = true;
+    const want = monoM[1] ? parseInt(monoM[1], 10) : 1;
+    result = result && isMono && monoLevels >= want;
+  }
+  // (color-gamut: srgb|p3) — srgb is the baseline for both TFT and eink; p3 unsupported.
+  const gamutM = /\(\s*color-gamut\s*:\s*(srgb|p3)\s*\)/i.exec(s);
+  if (gamutM) {
+    matched = true;
+    result = result && gamutM[1].toLowerCase() === "srgb";
+  }
+
   if (!matched) return null;  // unrecognized condition
   return result;
 }
@@ -235,7 +270,7 @@ export function parseCss(src: string, diagnostics?: Diagnostic[]): CSSRule[] {
           if (diagnostics) diagnostics.push({
             severity: "warning",
             message: `@media ${cond} has an unsupported condition - rule ignored.`,
-            hint: "Supported: (max-width:Npx), (min-width:Npx), (max-height:Npx), (min-height:Npx).",
+            hint: "Supported: (max-width:Npx), (min-width:Npx), (max-height:Npx), (min-height:Npx), (e-ink), (update: slow|fast), (monochrome), (monochrome: N), (color-gamut: srgb).",
             code: "unsupported-media-condition",
             source: "media",
           });
