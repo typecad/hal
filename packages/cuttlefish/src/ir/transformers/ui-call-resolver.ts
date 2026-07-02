@@ -891,7 +891,8 @@ export function resolveNodeIndex(htmlPath: string, id: string): number {
   let idx = 0;
   let found = -1;
   const walk = (n: StyledNode): boolean => {
-    if (n.id === id) { found = idx; return true; }
+    // TS handle name: prefer `ref`, fall back to `id` (backward-compatible).
+    if ((n.ref ?? n.id) === id) { found = idx; return true; }
     idx++;
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
@@ -912,7 +913,7 @@ export function resolveNodeTag(htmlPath: string, id: string): string {
   let idx = 0;
   let foundTag = "";
   const walk = (n: StyledNode): boolean => {
-    if (n.id === id) { foundTag = n.tag; return true; }
+    if ((n.ref ?? n.id) === id) { foundTag = n.tag; return true; }
     idx++;
     for (const c of n.children) { if (walk(c)) return true; }
     return false;

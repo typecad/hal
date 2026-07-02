@@ -84,6 +84,9 @@ export interface StyledNode {
   /** Declarative bind:* two-way bindings (signal names). Propagated from
    *  UIElementNode for the auto-wire walk. */
   bind?: { text?: string; value?: string };
+  /** TS handle name (screen.<ref>), separate from CSS #id. Falls back to id.
+   *  Propagated for type-decl generation + node-index resolution. */
+  ref?: string;
 }
 
 /** Look up an HTML attribute value on a node by name, for attribute selectors.
@@ -408,5 +411,6 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     hasInterpolation: node.hasInterpolation,
     events: node.events,
     bind: node.bind,
+    ref: node.ref,
   };
 }

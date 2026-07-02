@@ -213,7 +213,10 @@ function writeTypeDeclSibling(htmlPath: string, styled: StyledNode | StyledNode[
   const dtsPath = htmlPath.replace(/\.ui\.html$/, ".ui.d.html.ts");
   const ids = new Map<string, string>();
   const collect = (n: StyledNode) => {
-    if (n.id && !ids.has(n.id)) ids.set(n.id, n.tag);
+    // TS handle name: prefer `ref` (separates CSS id from the TS surface),
+    // fall back to `id` for backward compatibility.
+    const handle = n.ref ?? n.id;
+    if (handle && !ids.has(handle)) ids.set(handle, n.tag);
     n.children.forEach(collect);
   };
   for (const root of Array.isArray(styled) ? styled : [styled]) collect(root);
