@@ -315,8 +315,18 @@ path stable at each step:
   disables — propagates to preview via `node.fontAntialias`). **Purely
   additive** — no 888-value switch. Verified: build clean, 617/622 tests pass
   (5 failures pre-existing/unrelated), demo-ui compiles (TFT byte-identical).
-- **Phase 3 — RGB666 shim + ST7796S.** `tft-immediate-666`, ST7796S driver
-  registrations (565 and 666), preview quantization. First new display class.
+- **Phase 3 — RGB666 shim + ST7796S.** ✅ COMPLETE (commits `aa2418f`..`847b597`).
+  `ColorFormat` widened to admit `"rgb666"`; `resolveColor` routes 888→666,
+  `resolveColorInternal` emits 888 into node fields on rgb666 (666 quantization
+  at the push boundary). Runtime blend/lerp selected by `UI_COLOR_DEPTH` macro
+  (565→`ui_blend565`/`lerp_color`, 888→`ui_blend888`/`lerp_color_888`) — forward-
+  declared before call sites so macro ordering is correct. ST7796S adapter
+  registered in 565 (standard `uint16_t` push) and 666 (888→18-bit/3-byte pack)
+  modes; added to `supportedDisplayDrivers`. Preview `resolveRuntimeColor` +
+  `blendRuntime` select 888/`blendRgb888` for rgb666 via module-level format.
+  **The 888 value depth + 888 blend math activate together** on rgb666 (Phase 1
+  lesson applied); 565 path byte-identical. Verified: build clean, 625/630 tests
+  (5 pre-existing/unrelated), demo-ui (ILI9341/565) compiles unchanged.
 - **Phase 4 — E-ink.** Backing store, dither (1-bit then multi-ink), refresh
   scheduler, `eink-mono` / `eink-palette` shims, deferred refresh ops,
   preview e-ink simulation. Staged: 1-bit partial first, multi-color full
