@@ -6,6 +6,8 @@
 // display hardware: dimensions, color depth, rotation, pins, touch.
 //
 // Adding a new display = adding a profile. No framework code changes.
+
+import type { DisplayCapabilities } from "./display-capabilities.js";
 //
 // Touch uses an adapter pattern: either a built-in library name or a custom
 // TypeScript file. The adapter provides isTouched() + read() → {x,y,z}.
@@ -47,6 +49,12 @@ export interface DisplayProfile {
   width: number;
   height: number;
   colorFormat: "rgb565" | "mono";
+  /** Display class: "tft" (default) for fast-refresh panels, "eink" for
+   *  bistable/slow-refresh panels. Drives capability derivation + @media. */
+  displayClass?: "tft" | "eink";
+  /** Explicit capabilities override. If absent, capabilities are derived from
+   *  displayClass + colorFormat. Phase 2 default (bare TFT) = today's behavior. */
+  capabilities?: DisplayCapabilities;
   rotation: number;
   backlight?: number;
   spiFrequency?: number;
@@ -67,6 +75,8 @@ export interface DisplayConfig {
   width?: number;
   height?: number;
   colorFormat?: "rgb565" | "mono";
+  displayClass?: "tft" | "eink";
+  capabilities?: DisplayCapabilities;
   rotation?: number;
   backlight?: number;
   spiFrequency?: number;
@@ -201,12 +211,16 @@ export function resolveDisplayProfile(
       spiFrequency: config.spiFrequency,
       spiPins: config.spiPins,
       touch: config.touch === false ? undefined : config.touch,
+      displayClass: config.displayClass,
+      capabilities: config.capabilities,
     };
   }
 
   if (config.width !== undefined) base.width = config.width;
   if (config.height !== undefined) base.height = config.height;
   if (config.colorFormat !== undefined) base.colorFormat = config.colorFormat;
+  if (config.displayClass !== undefined) base.displayClass = config.displayClass;
+  if (config.capabilities !== undefined) base.capabilities = config.capabilities;
   if (config.rotation !== undefined) base.rotation = config.rotation;
   if (config.backlight !== undefined) base.backlight = config.backlight;
   if (config.spiFrequency !== undefined) base.spiFrequency = config.spiFrequency;
