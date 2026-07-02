@@ -327,10 +327,20 @@ path stable at each step:
   **The 888 value depth + 888 blend math activate together** on rgb666 (Phase 1
   lesson applied); 565 path byte-identical. Verified: build clean, 625/630 tests
   (5 pre-existing/unrelated), demo-ui (ILI9341/565) compiles unchanged.
-- **Phase 4 — E-ink.** Backing store, dither (1-bit then multi-ink), refresh
-  scheduler, `eink-mono` / `eink-palette` shims, deferred refresh ops,
-  preview e-ink simulation. Staged: 1-bit partial first, multi-color full
-  after.
+- **Phase 4 — E-ink (1-bit foundation).** ✅ COMPLETE (commits `58b3819`..`ec40c1b`).
+  Emitter sets `UI_REFRESH_DEFERRED`/`UI_NATIVE_MONO`/`UI_REQUIRES_BACKING_STORE`
+  from derived capabilities (absent on TFT). Runtime: descriptor-gated clear
+  suppression (no `fillScreen` flash on navigate), mono color snap at the draw-
+  primitive choke points (`UI_MAYBE_SNAP_MONO565`), and a dirty-rect refresh
+  union that aggregates each frame's painted node boxes into one partial refresh
+  (`ui_refresh_flush` → `display_partial_refresh`). `eink-mono` shim registered
+  for SSD1680-class (1-bit, partial refresh, no init flash). Preview snaps mono
+  at the GFX draw primitives (`setMonoSnap`). All e-ink paths compile to no-op
+  stubs on TFT — byte-identical. Verified: build clean, 636/641 tests (5 pre-
+  existing/unrelated), demo-ui compiles unchanged.
+  **Deferred to Phase 5:** dithering (apparent grays), multi-color e-ink
+  (BWR/7-color palette + semantic roles), dirty-rect coalescing/ghost-clearing
+  cadence, refresh-latency preview simulation, EPD library API verification.
 
 Each phase is independently shippable and verifiable.
 
