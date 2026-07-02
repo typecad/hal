@@ -115,8 +115,10 @@ export function layoutRuns(
       cur = null;
     }
   };
-  const commitLine = () => {
+  const commitLine = (minHeight = 0, minAscent = 0) => {
     flushCurrent();
+    lineH = Math.max(lineH, minHeight);
+    lineA = Math.max(lineA, minAscent);
     lines.push({ segments: segs, width: lineW, height: lineH, ascent: lineA });
     segs = [];
     lineW = 0;
@@ -126,7 +128,7 @@ export function layoutRuns(
 
   for (const tok of tokens) {
     if (tok.kind === "break") {
-      commitLine();
+      commitLine(tok.b.h, tok.b.a);
       continue;
     }
     const word = tok.w;

@@ -22,6 +22,12 @@ describe("C++ runtime rich-text support", () => {
     expect(header).toMatch(/runCount\s*>\s*0[\s\S]*?ui_draw_rich_text/);
   });
 
+  it("can tint rich-text shadow passes with a foreground override", () => {
+    expect(header).toMatch(/ui_draw_rich_text\([^)]*uint8_t useFgOverride = 0,\s*uint16_t fgOverride = 0/);
+    expect(header).toMatch(/uint16_t fg = useFgOverride \? fgOverride : run->fg/);
+    expect(header).toMatch(/textShadowCount > 0[\s\S]*ui_draw_rich_text\([^;]*,\s*1,\s*tsCol\)/);
+  });
+
   it("clips rich-text draw work to the active target before drawing segments", () => {
     expect(header).toMatch(/ui_draw_rich_text[\s\S]*ui_display_target_width\(\)/);
     expect(header).toMatch(/ui_draw_rich_text[\s\S]*ui_display_target_height\(\)/);

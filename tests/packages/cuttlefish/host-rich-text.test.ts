@@ -22,6 +22,12 @@ describe("host runtime rich-text parity", () => {
     expect(src).toMatch(/if\s*\(\s*node\.runs\b[\s\S]*?drawRichNode/);
   });
 
+  it("tints rich-text shadow passes with a foreground override", () => {
+    expect(src).toMatch(/drawSegs\s*=\s*\([^)]*fgOverride\?: number/);
+    expect(src).toMatch(/const fg = fgOverride \?\? run\.fg/);
+    expect(src).toMatch(/textShadowCount > 0[\s\S]*drawSegs\(node\.textShadowOffsetX,\s*node\.textShadowOffsetY,\s*shadowColor\)/);
+  });
+
   it("clips rich-text draw work to the active preview clip before drawing segments", () => {
     expect(src).toMatch(/drawRichNode[\s\S]*getClipRect\(\)/);
     expect(src).toMatch(/drawRichNode[\s\S]*for \(let si = 0; si < rl\.segRun\.length; si\+\+\)/);

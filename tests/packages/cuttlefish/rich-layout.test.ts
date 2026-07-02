@@ -49,6 +49,19 @@ describe("layoutRuns", () => {
     expect(r.lines.length).toBe(2);
   });
 
+  it("consecutive hardBreaks reserve height for a blank line", () => {
+    const runs = [
+      { text: "a", measureText: mono, height: 16, ascent: 14 },
+      { text: "\n", hardBreak: true, measureText: mono, height: 16, ascent: 14 },
+      { text: "\n", hardBreak: true, measureText: mono, height: 16, ascent: 14 },
+      { text: "b", measureText: mono, height: 16, ascent: 14 },
+    ];
+    const r = layoutRuns(runs, { maxWidth: 200, whiteSpace: "normal" });
+    expect(r.lines).toHaveLength(3);
+    expect(r.lines[1]).toMatchObject({ width: 0, height: 16, ascent: 14 });
+    expect(r.height).toBe(48);
+  });
+
   it("nowrap produces a single line", () => {
     const runs = [{ text: "aaa bbb ccc ddd", measureText: mono, height: 16, ascent: 14 }];
     const r = layoutRuns(runs, { maxWidth: 30, whiteSpace: "nowrap" });
