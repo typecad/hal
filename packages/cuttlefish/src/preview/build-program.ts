@@ -6,6 +6,7 @@ import { resolveDisplayProfile } from "../api/shared/display-profile.js";
 import { ResolvedCuttlefishConfig } from "../config-loader.js";
 import { parseCss, parseFontFaces, parseKeyframes } from "../ui/css-parser.js";
 import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui/html-parser.js";
+import { splitUiFile } from "../ui/ui-file-splitter.js";
 import { buildUIFontAssets } from "../ui/font-assets.js";
 import { loadImageAssets } from "../ui/image-assets.js";
 import { buildKeyframeSets } from "../ui/keyframes.js";
@@ -567,26 +568,49 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
 
   const entryFile = path.resolve(configDir, config.entry);
   const entrySource = fs.readFileSync(entryFile, "utf-8");
-  const sourceFile = ts.createSourceFile(entryFile, entrySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const entryDir = path.dirname(entryFile);
-  const uiImports = findUIModuleImports(sourceFile, entryDir, diagnostics);
-  const firstImport = uiImports[0];
-  if (!firstImport) {
-    throw new Error(`Preview could not find a .ui.html import in ${entryFile}`);
-  }
-  if (uiImports.length > 1) {
-    diagnostics.push({
-      severity: "warning",
-      message: "Preview v1 renders the first imported UI tree only.",
-    });
+  const entryExt = path.extname(entryFile).toLowerCase();
+
+  let sourceFile: ts.SourceFile;
+  let htmlText: string;
+  let cssText: string;
+  let htmlFilePath: string;   // the effective .ui.html path (real or synthetic)
+  let uiImports: UIModuleImport[];
+
+  if (entryExt === ".ui") {
+    // .ui single-file component: split into script/style/template.
+    const parts = splitUiFile(entrySource);
+    const baseName = path.basename(entryFile, ".ui");
+    htmlFilePath = entryFile + ".html";  // synthetic .ui.html path
+    // Inject the implicit screen import so the script's `screen` reference
+    // resolves during preview-expression evaluation.
+    const scriptWithImport = `import { screen } from './${baseName}.ui.html';\n` + parts.script;
+    sourceFile = ts.createSourceFile(entryFile, scriptWithImport, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    htmlText = parts.html;
+    cssText = parts.style;
+    uiImports = [{ treeName: "screen", htmlPath: htmlFilePath }];
+  } else {
+    sourceFile = ts.createSourceFile(entryFile, entrySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    uiImports = findUIModuleImports(sourceFile, entryDir, diagnostics);
+    const firstImport = uiImports[0];
+    if (!firstImport) {
+      throw new Error(`Preview could not find a .ui.html import in ${entryFile}`);
+    }
+    if (uiImports.length > 1) {
+      diagnostics.push({
+        severity: "warning",
+        message: "Preview v1 renders the first imported UI tree only.",
+      });
+    }
+    htmlFilePath = firstImport.htmlPath;
+    htmlText = fs.readFileSync(firstImport.htmlPath, "utf-8");
+    const cssPath = themeCssPath(config.display?.themeCss, firstImport.htmlPath, configDir);
+    cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
   }
 
   const registry = await loadProfileRegistry(config.framework);
   const resolved = resolveDisplayProfile(config.display ?? { profile: "ili9341-spi" }, registry);
   const profile = resolved.profile;
-  const htmlText = fs.readFileSync(firstImport.htmlPath, "utf-8");
-  const cssPath = themeCssPath(config.display?.themeCss, firstImport.htmlPath, configDir);
-  const cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
   const parsedHtml = parseHtmlWithKeyboards(htmlText);
   const fullCss = cssText + "\n" + extractStyleBlocks(htmlText);
   const cssRules = (() => {
@@ -603,14 +627,14 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const styled = resolveStyles(parsedHtml.tree, cssRules);
   const allStyledScreens = parsedHtml.screens.map((screen) => resolveStyles(screen, cssRules));
   const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
-  const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(cssPath));
+  const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(htmlFilePath));
   const viewport: Box = { x: 0, y: 0, w: profile.width, h: profile.height };
   const boxes = allStyledScreens.flatMap((screen) => {
     const engine = selectEngine(screen);
     return engine.arrange(screen, viewport, measureWithFonts(fontAssets));
   });
   const keyframeSets = buildKeyframeSets(rawKeyframes, profile.colorFormat);
-  const imageAssets = loadImageAssets(allStyledScreens.length > 0 ? allStyledScreens : [styled], path.dirname(firstImport.htmlPath));
+  const imageAssets = loadImageAssets(allStyledScreens.length > 0 ? allStyledScreens : [styled], path.dirname(htmlFilePath));
   const program = lowerUIToModel(styled, boxes, profile.colorFormat, profile, fontAssets, allStyledScreens, imageAssets.nodeIdToAssetIndex, keyframeSets, imageAssets.assets);
   const specs = extractAuthorSpecs(sourceFile, uiImports, program.nodes);
   const hrefCallbacks = collectHrefCallbacks(allStyledScreens, program.nodes);
@@ -636,7 +660,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   return {
     projectRoot,
     entryFile,
-    htmlFile: firstImport.htmlPath,
+    htmlFile: htmlFilePath,
     profileName: typeof config.display?.profile === "string" ? config.display.profile : undefined,
     program,
     keyboardTemplates: parsedHtml.keyboards,

@@ -9,9 +9,9 @@
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
-  // Entry point — the main TypeScript file to transpile. The transpiler wraps
-  // top-level statements into `setup()` and synthesizes an empty `loop()`.
-  entry: './src/main.ts',
+  // Entry point — the single-file .ui component (script + style + template).
+  // The transpiler splits it into TS/CSS/HTML streams internally.
+  entry: './src/showcase.ui',
 
   // Target architecture — ESP32 (32-bit Xtensa LX6, STL available, FreeRTOS
   // under the Arduino core).
