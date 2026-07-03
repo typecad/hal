@@ -560,7 +560,7 @@ export class NativeStrategy implements PlatformStrategy {
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {
-    return new Set(["native-preview"]);
+    return new Set(["native-preview", "sdl"]);
   }
 
   colorFormat(): "rgb565" | "mono" {
