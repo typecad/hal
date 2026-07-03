@@ -558,16 +558,24 @@ static uint16_t __ui_fade_elapsed = 0;
 static uint16_t __ui_fade_duration = 200; // ms
 
 // Early forward declaration: ui_navigate (below) calls ui_release_canvas_state
-// (defined later) during screen changes. Needed on native (single TU, no
-// Arduino auto-prototyper).
+// and ui_set_pressed (defined later) during screen changes. Needed on native
+// (single TU, no Arduino auto-prototyper).
 static inline void ui_release_canvas_state();
+static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed);
 
 // Navigate to a screen by index. Marks the new screen's nodes dirty + starts fade.
 static inline void ui_navigate(uint8_t screenIdx) {
   if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
   __ui_active_screen = screenIdx;
   // Reset scroll/touch state so the old screen's scroll container doesn't
-  // interfere with the new screen.
+  // interfere with the new screen. Release any currently-pressed button FIRST:
+  // navigation fires from a button's click handler during touch-down, so the
+  // matching touch-up release would otherwise be suppressed by the reset below
+  // and the button would stay stuck in its :pressed color.
+  if (__ui_touch_node >= 0 && __ui_touch_node < __ui_node_count &&
+      __ui_nodes[__ui_touch_node].kind == NODE_BUTTON && __ui_nodes[__ui_touch_node].value != 0) {
+    ui_set_pressed((uint16_t)__ui_touch_node, 0);
+  }
   __ui_scroll_node = -1;
   __ui_touch_node = -1;
   __ui_touch_state = 0;
