@@ -311,6 +311,12 @@ function addNodeText(chars: Set<string>, node: StyledNode): void {
   for (const option of node.options ?? []) {
     addText(chars, applyTextTransform(option.text, node.style));
   }
+  // Interpolation ({expr}) and text bindings produce runtime text the static
+  // template can't predict (numbers, dates, etc). Add digits + common
+  // formatting chars so the font subset can render the runtime output.
+  if (node.text && node.text.includes("{")) {
+    addText(chars, "0123456789.,-+/()%");
+  }
 }
 
 function applyTextTransform(text: string | undefined, style: CSSProperty): string | undefined {
