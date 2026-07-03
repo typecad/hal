@@ -331,8 +331,14 @@ function resolveMountCall(
   }
 
   const opts = extractMountOptions(optsArg, diagnostics);
-  if (!opts || opts.display === undefined || opts.bus === undefined ||
-      opts.cs === undefined || opts.dc === undefined || opts.rst === undefined) {
+  if (!opts || opts.display === undefined) {
+    return null;
+  }
+  // SPI-bus displays (ILI9341, ST7796, …) need bus/cs/dc/rst wiring. Host
+  // render targets (sdl, native-preview) have no SPI pins, so don't require them.
+  const spiDisplay = opts.display !== "sdl" && opts.display !== "native-preview";
+  if (spiDisplay && (opts.bus === undefined || opts.cs === undefined ||
+      opts.dc === undefined || opts.rst === undefined)) {
     return null;
   }
 
@@ -358,10 +364,10 @@ function resolveMountCall(
 
   const req: MountRequest = {
     display: String(opts.display),
-    bus: String(opts.bus),
-    cs: Number(opts.cs),
-    dc: Number(opts.dc),
-    rst: Number(opts.rst),
+    bus: opts.bus !== undefined ? String(opts.bus) : "",
+    cs: opts.cs !== undefined ? Number(opts.cs) : 0,
+    dc: opts.dc !== undefined ? Number(opts.dc) : 0,
+    rst: opts.rst !== undefined ? Number(opts.rst) : 0,
     rotation: profile.rotation,
     backlight: profile.backlight,
     spiFrequency: profile.spiFrequency,

@@ -290,29 +290,6 @@ export function emitFunctions(ctx: EmitterContext): void {
     if (hasPromiseRuntime && fn.name === asyncDriverFn) {
       appendSourceLine(ctx, "  cuttlefish_pump_microtasks();");
     }
-    // Drive the UI runtime each frame. Fires only in the driver function when
-    // a UI is mounted (entryHasUI). Uses a separate gate from the async pump
-    // so a pure-UI program (no async/timers) still animates. When the strategy
-    // provides hostEventLoop, the per-frame work runs inside a while loop so a
-    // host target (SDL) can pump events and present between ticks.
-    if (entryHasUI() && fn.name === asyncDriverFn) {
-      const loop = strategy.hostEventLoop?.();
-      if (loop) {
-        appendSourceLine(ctx, `  bool ${loop.flagName} = true;`);
-        appendSourceLine(ctx, `  while (${loop.continueCondition}) {`);
-        appendSourceLine(ctx, `    ${loop.preIteration}`);
-      }
-      appendSourceLine(ctx, `  uint32_t __tc_ui_now = (uint32_t)${strategy.currentTimeMillis()};`);
-      appendSourceLine(ctx, "  static uint32_t __tc_ui_last_tick = __tc_ui_now;");
-      appendSourceLine(ctx, "  uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
-      appendSourceLine(ctx, "  __tc_ui_last_tick = __tc_ui_now;");
-      appendSourceLine(ctx, "  if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
-      appendSourceLine(ctx, "  ui_tick((uint16_t)__tc_ui_delta);");
-      if (loop) {
-        appendSourceLine(ctx, `    ${loop.postIteration}`);
-        appendSourceLine(ctx, `  }`);
-      }
-    }
     if (fn.isAsync && ctx.hasAsyncRuntime) {
       appendSourceLine(ctx, `  // driven as cooperative task in ${asyncDriverFn}()`);
     } else {
@@ -333,6 +310,32 @@ export function emitFunctions(ctx: EmitterContext): void {
 
       for (const statement of stmtsToEmit) {
         appendRenderedStatement(ctx, statement, "  ", functionScope);
+      }
+
+      // Drive the UI runtime each frame. Fires only in the driver function when
+      // a UI is mounted (entryHasUI). Uses a separate gate from the async pump
+      // so a pure-UI program (no async/timers) still animates. When the strategy
+      // provides hostEventLoop, the per-frame work runs inside a while loop so a
+      // host target (SDL) can pump events and present between ticks. Emitted
+      // AFTER the function's init statements (ui_init/display_init/touch_init)
+      // so initialization precedes the loop.
+      if (entryHasUI() && fn.name === asyncDriverFn) {
+        const loop = strategy.hostEventLoop?.();
+        if (loop) {
+          appendSourceLine(ctx, `  bool ${loop.flagName} = true;`);
+          appendSourceLine(ctx, `  while (${loop.continueCondition}) {`);
+          appendSourceLine(ctx, `    ${loop.preIteration}`);
+        }
+        appendSourceLine(ctx, `  uint32_t __tc_ui_now = (uint32_t)${strategy.currentTimeMillis()};`);
+        appendSourceLine(ctx, "  static uint32_t __tc_ui_last_tick = __tc_ui_now;");
+        appendSourceLine(ctx, "  uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
+        appendSourceLine(ctx, "  __tc_ui_last_tick = __tc_ui_now;");
+        appendSourceLine(ctx, "  if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
+        appendSourceLine(ctx, "  ui_tick((uint16_t)__tc_ui_delta);");
+        if (loop) {
+          appendSourceLine(ctx, `    ${loop.postIteration}`);
+          appendSourceLine(ctx, `  }`);
+        }
       }
 
       if (isLoopDriver && (hasPromiseRuntime || asyncTaskClasses.length > 0 || usesTimers)) {

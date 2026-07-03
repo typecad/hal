@@ -543,6 +543,14 @@ export class NativeStrategy implements PlatformStrategy {
 
   // ── Graphics ───────────────────────────────────────────────────────────
   resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    // The sdl driver has a real display adapter (SdlGfxTarget) that defines
+    // display_init() etc., so route its display.init op to a real call instead
+    // of the terminal-preview comment. Other ops (fill_rect/draw_text/flush)
+    // are drawn by the reactive runtime through the HAL, not via DisplayHALOp,
+    // so they stay as comments (harmless — the runtime drives the real draws).
+    if (op.operation === "display.init" && op.driver === "sdl") {
+      return { code: "display_init();" };
+    }
     return resolveTerminalPreviewOp(op);
   }
 
@@ -563,7 +571,17 @@ export class NativeStrategy implements PlatformStrategy {
     return new Set(["native-preview", "sdl"]);
   }
 
-  colorFormat(): "rgb565" | "mono" {
+  colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono" {
+    // Honor the resolved display profile's colorFormat so an rgb888 SDL target
+    // lowers colors at full 888 precision (and emits UI_COLOR_DEPTH 888).
+    // Defaults to rgb565 for non-display native programs (byte-identical).
+    try {
+      const { getDisplayProfile } = require("@typecad/cuttlefish/api/shared");
+      const profile = getDisplayProfile?.();
+      if (profile?.colorFormat) return profile.colorFormat as any;
+    } catch {
+      // getDisplayProfile not available (e.g. capability query before a build) → default.
+    }
     return "rgb565";
   }
 
