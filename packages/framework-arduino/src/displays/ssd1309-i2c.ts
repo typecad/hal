@@ -15,6 +15,6 @@ export const SSD1309_I2C: DisplayProfile = {
   width: 128,
   height: 64,
   colorFormat: "mono",
-  displayClass: "eink",
+  displayClass: "oled",
   rotation: 0,
 };

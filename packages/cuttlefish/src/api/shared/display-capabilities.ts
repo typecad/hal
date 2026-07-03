@@ -64,7 +64,7 @@ interface ProfileLike {
   width: number;
   height: number;
   colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
-  displayClass?: "tft" | "eink";
+  displayClass?: "tft" | "eink" | "oled";
   capabilities?: DisplayCapabilities;
 }
 
@@ -73,7 +73,7 @@ interface ProfileLike {
  *  (no displayClass) defaults to defaultTftCapabilities() — byte-identical. */
 export function deriveCapabilities(profile: ProfileLike): DisplayCapabilities {
   if (profile.capabilities) return profile.capabilities;
-  if (profile.displayClass === "eink") {
+  if (profile.displayClass === "eink" || profile.displayClass === "oled") {
     return {
       nativeFormat: profile.colorFormat === "mono" ? "mono" : "palette",
       refreshModel: "deferred-partial",

@@ -830,23 +830,23 @@ static inline void ui_display_draw_fast_vline(int16_t x, int16_t y, int16_t h, U
   display_targetDrawFastVLine(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, h, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_fill_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, UI_COLOR_T color) {
-  display_targetFillRoundRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, r, color);
+  display_targetFillRoundRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, r, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_draw_rect(int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T color) {
-  display_targetDrawRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, color);
+  display_targetDrawRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_draw_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, UI_COLOR_T color) {
-  display_targetDrawRoundRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, r, color);
+  display_targetDrawRoundRect(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, w, h, r, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_draw_line(int16_t x0, int16_t y0, int16_t x1, int16_t y1, UI_COLOR_T color) {
   display_targetDrawLine(__ui_gfx, x0 + __ui_draw_off_x, y0 + __ui_draw_off_y,
-    x1 + __ui_draw_off_x, y1 + __ui_draw_off_y, color);
+    x1 + __ui_draw_off_x, y1 + __ui_draw_off_y, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_fill_circle(int16_t x, int16_t y, int16_t r, UI_COLOR_T color) {
-  display_targetFillCircle(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, r, color);
+  display_targetFillCircle(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, r, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_draw_circle(int16_t x, int16_t y, int16_t r, UI_COLOR_T color) {
-  display_targetDrawCircle(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, r, color);
+  display_targetDrawCircle(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, r, UI_MAYBE_SNAP_MONO565(color));
 }
 static inline void ui_display_set_cursor(int16_t x, int16_t y) {
   display_targetSetCursor(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y);

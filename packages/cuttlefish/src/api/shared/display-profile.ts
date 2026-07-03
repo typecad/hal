@@ -51,7 +51,7 @@ export interface DisplayProfile {
   colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
   /** Display class: "tft" (default) for fast-refresh panels, "eink" for
    *  bistable/slow-refresh panels. Drives capability derivation + @media. */
-  displayClass?: "tft" | "eink";
+  displayClass?: "tft" | "eink" | "oled";
   /** Explicit capabilities override. If absent, capabilities are derived from
    *  displayClass + colorFormat. Phase 2 default (bare TFT) = today's behavior. */
   capabilities?: DisplayCapabilities;
@@ -75,7 +75,7 @@ export interface DisplayConfig {
   width?: number;
   height?: number;
   colorFormat?: "rgb565" | "rgb888" | "mono";
-  displayClass?: "tft" | "eink";
+  displayClass?: "tft" | "eink" | "oled";
   capabilities?: DisplayCapabilities;
   rotation?: number;
   backlight?: number;
