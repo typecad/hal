@@ -224,12 +224,12 @@ struct UITransition {
   uint16_t durationMs;
   // The :pressed and base-state target colors. ui_on_press arms toward
   // pressedTarget; ui_on_release arms toward baseTarget.
-  uint16_t pressedTarget;
-  uint16_t baseTarget;
+  uint32_t pressedTarget;
+  uint32_t baseTarget;
   // runtime
   uint16_t elapsed;
-  uint16_t prevValue;
-  uint16_t targetValue;
+  uint32_t prevValue;
+  uint32_t targetValue;
   uint8_t  active;
 };
 struct UIBinding {
@@ -629,7 +629,7 @@ static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t dra
 // single native translation unit (Arduino's auto-prototyper hides this;
 // native emits one TU so explicit forwards are needed).
 static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py);
-static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg);
+static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, UI_COLOR_T bg);
 static inline void ui_aa_end(CuttlefishCanvas16* c);
 static inline void ui_aa_push(CuttlefishCanvas16* c, int16_t dx, int16_t dy);
 static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, UI_COLOR_T color);
@@ -697,7 +697,7 @@ static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) 
 // Shift the canvas buffer vertically by deltaY (cheap memmove of existing
 // pixels), then fill the exposed band with bg. Reports the exposed band via
 // *exposedY/*exposedH so the caller can redraw only that strip (Mode B).
-static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t deltaY, uint16_t bg,
+static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t deltaY, UI_COLOR_T bg,
                                              int16_t* exposedY, int16_t* exposedH) {
   if (exposedY) *exposedY = 0;
   if (exposedH) *exposedH = 0;
@@ -724,14 +724,14 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
     for (int16_t row = 0; row < h - shift; row++) {
       memmove(pixels + (int32_t)row * stride,
               pixels + (int32_t)(row + shift) * stride,
-              (size_t)contentW * sizeof(uint16_t));
+              (size_t)contentW * sizeof(UI_COLOR_T));
     }
     if (exposedY) *exposedY = h - shift;
   } else {
     for (int16_t row = h - shift - 1; row >= 0; row--) {
       memmove(pixels + (int32_t)(row + shift) * stride,
               pixels + (int32_t)row * stride,
-              (size_t)contentW * sizeof(uint16_t));
+              (size_t)contentW * sizeof(UI_COLOR_T));
     }
     if (exposedY) *exposedY = 0;
   }
@@ -2304,7 +2304,7 @@ struct UIKeyStyle { uint32_t bg, fg, borderColor; };
 static UIRect  __ui_kb_box;
 static UIKey   __ui_kb_keys[UI_KB_MAX];
 static UIKeyStyle __ui_kb_styles[UI_KB_MAX];
-static uint16_t __ui_kb_bg = 0x0000;  // keyboard background (resolved from CSS)
+static UI_COLOR_T __ui_kb_bg = 0x0000;  // keyboard background (resolved from CSS)
 static uint8_t __ui_kb_bs_held = 0;
 static uint8_t __ui_kb_dirty = 0;     // 0=clean, 1=full redraw, 2=text row + single key
 static int8_t __ui_kb_pressed_key = -1; // key index under the current touch (-1=none)
@@ -3025,7 +3025,7 @@ static inline void ui_draw_bitmap_text(const char* text, int16_t x, int16_t y, U
    return *slot;
  }
 
- static inline uint8_t ui_text_fg_neighbors(CuttlefishCanvas16* src, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t fg, uint8_t radius = 1) {
+ static inline uint8_t ui_text_fg_neighbors(CuttlefishCanvas16* src, int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T fg, uint8_t radius = 1) {
   uint8_t count = 0;
   for (int8_t dy = -(int8_t)radius; dy <= (int8_t)radius; dy++) {
     int16_t yy = y + dy;
@@ -3096,7 +3096,7 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_CO
 
    for (int16_t yy = localY; yy < localY + clipH; yy++) {
      for (int16_t xx = localX; xx < localX + clipW; xx++) {
-       uint16_t px = display_canvasGetPixel(src, xx, yy);
+       UI_COLOR_T px = display_canvasGetPixel(src, xx, yy);
        uint8_t neighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg);
        uint8_t outerNeighbors = 0;
        if (ts >= 3 && px != fg && neighbors == 0) {
@@ -3224,9 +3224,10 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
 // segments outside the active draw target, and compute each segment's line
 // origin from textAlign + line width. Mixed font sizes align on the line's
 // baseline (each segment's top = baseline − its own ascent).
-static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, uint16_t bg, uint8_t antialias,
-                                     uint8_t useFgOverride = 0, uint16_t fgOverride = 0) {
+static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, UI_COLOR_T bg, uint8_t antialias,
+                                     uint8_t useFgOverride = 0, UI_COLOR_T fgOverride = 0, uint16_t maxWidth = 0) {
   UINode* n = &__ui_nodes[nodeIdx];
+  uint16_t alignWidth = maxWidth ? maxWidth : n->box.w;
   int16_t targetLeft = (int16_t)(-__ui_draw_off_x);
   int16_t targetTop = (int16_t)(-__ui_draw_off_y);
   int16_t targetRight = (int16_t)(ui_display_target_width() - __ui_draw_off_x);
@@ -3240,14 +3241,14 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, uin
     int16_t lineBottom = (int16_t)(lineTop + (int16_t)line->h);
     if (lineBottom <= targetTop || lineTop >= targetBottom) continue;
     int16_t lineX = x;
-    if (n->textAlign == 1) lineX = x + ((int16_t)n->box.w - (int16_t)line->w) / 2;
-    else if (n->textAlign == 2) lineX = x + (int16_t)n->box.w - (int16_t)line->w;
+    if (n->textAlign == 1) lineX = x + ((int16_t)alignWidth - (int16_t)line->w) / 2;
+    else if (n->textAlign == 2) lineX = x + (int16_t)alignWidth - (int16_t)line->w;
     int16_t segX = (int16_t)(lineX + seg->x);
     int16_t segRight = (int16_t)(segX + (int16_t)seg->w);
     if (segRight <= targetLeft || segX >= targetRight) continue;
     UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
     int16_t segY = y + line->baseline - (7 * (int16_t)run->textSize);  // baseline alignment
-    uint16_t fg = useFgOverride ? fgOverride : run->fg;
+    UI_COLOR_T fg = useFgOverride ? fgOverride : run->fg;
     ui_draw_text(seg->text, segX, segY, fg, bg, run->textSize, antialias, run->fontFace, run->letterSpacing);
     if (run->underline & 1) ui_display_draw_fast_hline(segX, segY + 8 * run->textSize - 1, seg->w, fg);
     if (run->underline & 2) ui_display_draw_fast_hline(segX, segY + 4 * run->textSize, seg->w, fg);
@@ -3260,6 +3261,14 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, uin
 // but uses measured segment rects instead of fixed row heights.
 static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py) {
   UINode* n = &__ui_nodes[nodeIdx];
+  int16_t insetL = (int16_t)n->borderWidth + (int16_t)n->paddingLeft;
+  int16_t insetR = (int16_t)n->borderWidth + (int16_t)n->paddingRight;
+  int16_t insetT = (int16_t)n->borderWidth + (int16_t)n->paddingTop;
+  int16_t localX = px - insetL;
+  int16_t localY = py - insetT;
+  uint16_t alignWidth = n->box.w > (uint16_t)(insetL + insetR)
+    ? (uint16_t)((int16_t)n->box.w - insetL - insetR)
+    : 0;
   for (uint16_t si = n->richSegStart; si < n->richSegStart + n->richSegCount; si++) {
     UIRichSeg* seg = &__ui_rich_segs[si];
     UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
@@ -3268,11 +3277,11 @@ static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py) 
     // Segment x is relative to its line's left edge (pre-alignment). For the
     // hit-test, account for center/right alignment the same way draw does.
     int16_t originX = 0;
-    if (n->textAlign == 1) originX = ((int16_t)n->box.w - (int16_t)line->w) / 2;
-    else if (n->textAlign == 2) originX = (int16_t)n->box.w - (int16_t)line->w;
+    if (n->textAlign == 1) originX = ((int16_t)alignWidth - (int16_t)line->w) / 2;
+    else if (n->textAlign == 2) originX = (int16_t)alignWidth - (int16_t)line->w;
     int16_t sx = originX + seg->x;
     int16_t sy = line->y;
-    if (px >= sx && px < sx + (int16_t)seg->w && py >= sy && py < sy + (int16_t)line->h) {
+    if (localX >= sx && localX < sx + (int16_t)seg->w && localY >= sy && localY < sy + (int16_t)line->h) {
       return run->linkTarget;
     }
   }
@@ -3959,7 +3968,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       : __ui_nodes[i].text;
     uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
     uint16_t textMaxW = __ui_nodes[i].box.w;
-    if (__ui_nodes[i].kind == NODE_BUTTON) {
+    if (__ui_nodes[i].kind == NODE_TEXT || __ui_nodes[i].kind == NODE_BUTTON) {
       uint16_t hInset = (uint16_t)__ui_nodes[i].paddingLeft + (uint16_t)__ui_nodes[i].paddingRight + (uint16_t)__ui_nodes[i].borderWidth * 2;
       textMaxW = __ui_nodes[i].box.w > hInset ? __ui_nodes[i].box.w - hInset : 0;
     }
@@ -3972,6 +3981,12 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight, &tw, &th);
     uint16_t paintTextW = tw;
     uint16_t paintTextH = th;
+    if (__ui_nodes[i].kind == NODE_TEXT) {
+      uint16_t hInset = (uint16_t)__ui_nodes[i].paddingLeft + (uint16_t)__ui_nodes[i].paddingRight + (uint16_t)__ui_nodes[i].borderWidth * 2;
+      uint16_t vInset = (uint16_t)__ui_nodes[i].paddingTop + (uint16_t)__ui_nodes[i].paddingBottom + (uint16_t)__ui_nodes[i].borderWidth * 2;
+      paintTextW = (uint16_t)(tw + hInset);
+      paintTextH = (uint16_t)(th + vInset);
+    }
     if (__ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
       paintTextW = tw + 22;
       if (paintTextH < 16) paintTextH = 16;
@@ -4052,7 +4067,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     // blending bg toward it is a no-op (red toward red = red). The parent clear
     // is the actual backdrop showing through the translucent element.
     if (__ui_nodes[i].opacity < 100) {
-      uint16_t backdrop = ui_parent_clear_color(i);
+      UI_COLOR_T backdrop = ui_parent_clear_color(i);
       bColor = ui_blend(bColor, backdrop, __ui_nodes[i].opacity);
       fillBg = ui_blend(__ui_nodes[i].bg, backdrop, __ui_nodes[i].opacity);
     }
@@ -4080,36 +4095,48 @@ static inline void ui_tick(uint16_t deltaMs) {
         break;
       case NODE_TEXT:
         {
-          uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
-            clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
+          int16_t insetL = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingLeft;
+          int16_t insetR = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingRight;
+          int16_t insetT = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingTop;
+          int16_t textX = __ui_nodes[i].box.x + insetL;
+          int16_t textY = drawY + insetT;
+          int16_t textW = (int16_t)__ui_nodes[i].box.w - insetL - insetR;
+          if (textW < 1) textW = 1;
+          {
+            uint16_t clearW = __ui_nodes[i].box.w;
+            int16_t paintedTextW = (int16_t)__ui_nodes[i].lastTextWidth + insetL + insetR;
+            if (__ui_nodes[i].lastTextWidth > 0 && paintedTextW > (int16_t)clearW) {
+              clearW = (uint16_t)paintedTextW;
+            }
+            uint16_t paddedTw = (uint16_t)((int16_t)tw + insetL + insetR);
+            if (paddedTw > clearW) clearW = paddedTw;
+            // overflow:hidden/scroll: never clear past the node's own box. A nowrap
+            // line wider than its box would otherwise erase the parent's border.
+            if (__ui_nodes[i].scrollable) clearW = __ui_nodes[i].box.w;
+            uint16_t clearH = __ui_nodes[i].box.h;
+            int16_t paintedTextH = (int16_t)__ui_nodes[i].lastTextHeight + insetT + (int16_t)__ui_nodes[i].paddingBottom + (int16_t)__ui_nodes[i].borderWidth;
+            if (__ui_nodes[i].lastTextHeight > 0 && paintedTextH > (int16_t)clearH) {
+              clearH = (uint16_t)paintedTextH;
+            }
+            uint16_t paddedTh = (uint16_t)((int16_t)th + insetT + (int16_t)__ui_nodes[i].paddingBottom + (int16_t)__ui_nodes[i].borderWidth);
+            if (paddedTh > clearH) clearH = paddedTh;
+            // Dynamic transparent text still needs a clear, otherwise old glyph
+            // pixels accumulate when only this text node is dirty.
+            UI_COLOR_T clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            // Blend the clear toward the backdrop by opacity so a translucent text
+            // node (inherited from an opacity:<1 parent) doesn't repaint a solid
+            // block of its parent's fill around the glyphs.
+            if (__ui_nodes[i].opacity < 100) {
+              clearCol = ui_blend(clearCol, ui_parent_clear_color(i), __ui_nodes[i].opacity);
+            }
+            ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
+            __ui_nodes[i].lastTextWidth = tw;
+            __ui_nodes[i].lastTextHeight = th;
           }
-          if (tw > clearW) clearW = tw;
-          // overflow:hidden/scroll: never clear past the node's own box. A nowrap
-          // line wider than its box would otherwise erase the parent's border.
-          if (__ui_nodes[i].scrollable) clearW = __ui_nodes[i].box.w;
-          uint16_t clearH = __ui_nodes[i].box.h;
-          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > (int16_t)clearH) {
-            clearH = (uint16_t)__ui_nodes[i].lastTextHeight;
-          }
-          if (th > clearH) clearH = th;
-          // Dynamic transparent text still needs a clear, otherwise old glyph
-          // pixels accumulate when only this text node is dirty.
-          UI_COLOR_T clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          // Blend the clear toward the backdrop by opacity so a translucent text
-          // node (inherited from an opacity:<1 parent) doesn't repaint a solid
-          // block of its parent's fill around the glyphs.
-          if (__ui_nodes[i].opacity < 100) {
-            clearCol = ui_blend(clearCol, ui_parent_clear_color(i), __ui_nodes[i].opacity);
-          }
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
-          __ui_nodes[i].lastTextWidth = tw;
-          __ui_nodes[i].lastTextHeight = th;
-        }
-        // Rich-text (inline runs): draw from precomputed geometry instead of the
-        // single-string wrapped path. Geometry is baked at transpile time; the
-        // runtime does not re-wrap.
-        if (__ui_nodes[i].runCount > 0) {
+          // Rich-text (inline runs): draw from precomputed geometry instead of the
+          // single-string wrapped path. Geometry is baked at transpile time; the
+          // runtime does not re-wrap.
+          if (__ui_nodes[i].runCount > 0) {
           UI_COLOR_T richTextBg;
           if (__ui_nodes[i].opacity < 100) {
             uint16_t p = __ui_nodes[i].parent;
@@ -4126,11 +4153,11 @@ static inline void ui_tick(uint16_t deltaMs) {
             // (Per-segment shadow color is approximated by drawing the whole
             // block once in tsCol.)
             ui_draw_rich_text(i,
-              __ui_nodes[i].box.x + __ui_nodes[i].textShadowOffsetX,
-              drawY + __ui_nodes[i].textShadowOffsetY,
-              tsClear, __ui_nodes[i].fontAntialias, 1, tsCol);
+              textX + __ui_nodes[i].textShadowOffsetX,
+              textY + __ui_nodes[i].textShadowOffsetY,
+              tsClear, __ui_nodes[i].fontAntialias, 1, tsCol, (uint16_t)textW);
           }
-          ui_draw_rich_text(i, __ui_nodes[i].box.x, drawY, richTextBg, __ui_nodes[i].fontAntialias);
+          ui_draw_rich_text(i, textX, textY, richTextBg, __ui_nodes[i].fontAntialias, 0, 0, (uint16_t)textW);
           break;
         }
         {
@@ -4139,9 +4166,9 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (__ui_nodes[i].textShadowCount > 0) {
             uint32_t tsCol = ui_blend(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
             ui_draw_wrapped_text(displayText,
-              __ui_nodes[i].box.x + __ui_nodes[i].textShadowOffsetX,
-              drawY + __ui_nodes[i].textShadowOffsetY,
-              __ui_nodes[i].box.w, tsCol, tsCol, ts, __ui_nodes[i].fontAntialias,
+              textX + __ui_nodes[i].textShadowOffsetX,
+              textY + __ui_nodes[i].textShadowOffsetY,
+              (uint16_t)textW, tsCol, tsCol, ts, __ui_nodes[i].fontAntialias,
               __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
               __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, 0, __ui_nodes[i].textOverflow);
           }
@@ -4156,7 +4183,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           // clearColor carries the backdrop (set by flatten), and opacity has
           // already inherited from the parent. Use the parent's raw bg as the
           // source so the glyph cells reproduce the parent's translucent fill.
-          uint16_t textBg;
+          UI_COLOR_T textBg;
           if (__ui_nodes[i].opacity < 100) {
             uint16_t p = __ui_nodes[i].parent;
             UI_COLOR_T source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
@@ -4165,10 +4192,11 @@ static inline void ui_tick(uint16_t deltaMs) {
           } else {
             textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
           }
-          ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w,
+          ui_draw_wrapped_text(displayText, textX, textY, (uint16_t)textW,
             __ui_nodes[i].fg, textBg, ts, __ui_nodes[i].fontAntialias,
             __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
             __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+          }
         }
         break;
       case NODE_BUTTON:
@@ -4418,11 +4446,17 @@ static inline void ui_tick(uint16_t deltaMs) {
           ui_draw_rect_outline(bx, by, bw, bh, __ui_nodes[i].borderRadius, inputBorderStyle, inputBorderWidth, inputBorder);
           // Show typed text (textBuffer) in fg color, or placeholder (.text)
           // dimmed gray when the buffer is empty.
-          uint16_t textCol = fgCol;
+          UI_COLOR_T textCol = fgCol;
           const char* disp = (__ui_nodes[i].textBuffer[0] != 0)
             ? __ui_nodes[i].textBuffer
             : (__ui_nodes[i].text ? __ui_nodes[i].text : "");
-          if (__ui_nodes[i].textBuffer[0] == 0) textCol = 0x8410;  // dim gray for placeholder
+          if (__ui_nodes[i].textBuffer[0] == 0) {
+#if UI_COLOR_DEPTH == 888
+            textCol = 0x848484;
+#else
+            textCol = 0x8410;
+#endif
+          }
           // Note: the actual text draw is via ui_draw_text (which uses __ui_gfx).
           // The setCursor/setTextColor/setTextSize below are legacy — ui_draw_text
           // handles its own cursor/colors. Keep them on __ui_gfx for consistency
@@ -4708,7 +4742,7 @@ static inline void ui_tick(uint16_t deltaMs) {
 #ifdef UI_AA
 
 // Get (or allocate) a canvas sized to the element being drawn.
-static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg) {
+static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, UI_COLOR_T bg) {
   if (w <= 0 || h <= 0) return nullptr;
   if (!__ui_aa_canvas || display_canvasWidth(__ui_aa_canvas) < w || display_canvasHeight(__ui_aa_canvas) < h) {
     display_deleteCanvas(__ui_aa_canvas);
@@ -4737,7 +4771,7 @@ static inline void ui_aa_pixel(CuttlefishCanvas16* c, int16_t x, int16_t y, UI_C
   if (cov == 0) return;
   if (x < 0 || y < 0 || x >= display_canvasWidth(c) || y >= display_canvasHeight(c)) return;
   if (cov >= 255) { display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, color); return; }
-  uint16_t bg = display_canvasGetPixel(c, x, y);
+  UI_COLOR_T bg = display_canvasGetPixel(c, x, y);
   uint8_t op = (uint8_t)((uint16_t)cov * 100 / 255);
   display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, ui_blend(color, bg, op));
 }
@@ -4856,7 +4890,7 @@ static void    (*__ui_kb_onchange)();
 extern void (*__ui_kb_loaders[])();
 extern const uint16_t __ui_kb_loader_count;
 
-static inline void ui_kb_add_key(char ch, uint8_t special, uint16_t bg, uint16_t fg, uint16_t borderColor) {
+static inline void ui_kb_add_key(char ch, uint8_t special, UI_COLOR_T bg, UI_COLOR_T fg, UI_COLOR_T borderColor) {
   if (__ui_kb_keyCount >= UI_KB_MAX) return;
   __ui_kb_keys[__ui_kb_keyCount] = { ch, special };
   __ui_kb_styles[__ui_kb_keyCount] = { bg, fg, borderColor };
@@ -5032,14 +5066,20 @@ static inline void ui_kb_draw_key(uint8_t i) {
   UIKeyStyle ks = __ui_kb_styles[i];
   UIRect r;
   ui_kb_key_rect(i, &r);
-  uint16_t bg = ks.bg;
-  uint16_t fg = ks.fg;
-  uint16_t border = ks.borderColor;
+  UI_COLOR_T bg = ks.bg;
+  UI_COLOR_T fg = ks.fg;
+  UI_COLOR_T border = ks.borderColor;
   // Shift-active highlight: brighten the shift key's background — but only
   // when not pressed, so the press inversion stays high-contrast.
-  if (k.special == 1 && __ui_kb_shift && (int8_t)i != __ui_kb_pressed_key) { bg = 0xBDF7; }
+  if (k.special == 1 && __ui_kb_shift && (int8_t)i != __ui_kb_pressed_key) {
+#if UI_COLOR_DEPTH == 888
+    bg = 0xBDEFFF;
+#else
+    bg = 0xBDF7;
+#endif
+  }
   // Pressed key: invert colors for clear tap feedback.
-  if ((int8_t)i == __ui_kb_pressed_key) { uint16_t t = bg; bg = fg; fg = t; }
+  if ((int8_t)i == __ui_kb_pressed_key) { UI_COLOR_T t = bg; bg = fg; fg = t; }
   ui_display_fill_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
   ui_display_draw_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
   ui_display_set_text_color(fg, bg);
@@ -5075,7 +5115,11 @@ static inline void ui_kb_draw_text_row() {
   // Clear the text row area (top UI_KB_TEXT_H px of the keyboard box).
   ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, __ui_kb_bg);
   ui_display_set_cursor(__ui_kb_box.x + 4, __ui_kb_box.y + 4);
+#if UI_COLOR_DEPTH == 888
+  ui_display_set_text_color(0xFFFFFF, 0x000000);
+#else
   ui_display_set_text_color(0xFFFF, 0x0000);
+#endif
   ui_display_set_text_size(2);
   ui_display_print(__ui_kb_buffer);
   ui_display_print("_");  // cursor
