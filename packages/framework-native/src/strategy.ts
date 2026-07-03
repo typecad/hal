@@ -72,6 +72,7 @@ export class NativeStrategy implements PlatformStrategy {
       '// The runtime header references these; native provides no-op/identity impls.',
       '#ifndef HIGH', '#define HIGH 1', '#endif',
       '#ifndef LOW', '#define LOW 0', '#endif',
+      '#ifndef PROGMEM', '#define PROGMEM', '#endif',
       'inline int digitalRead(int) { return LOW; }',
       'inline long map(long x, long in_min, long in_max, long out_min, long out_max) { return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min; }',
       'inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }',
