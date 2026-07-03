@@ -46,6 +46,11 @@ const config: TypeCADConfig = {
     height: 240,
     colorFormat: 'rgb888',
     rotation: 0,
+    // Disable AA: the antialiased asset-font path blends against a backdrop
+    // read via display_canvasGetPixel, which on the SDL target reads back the
+    // raw 888 framebuffer — but the AA canvas compositing assumes 565 layout.
+    // The bitmap-font print() path (fontAntialias=0) renders cleanly.
+    antialias: false,
     touch: {
       library: 'sdl',
       // Identity calibration: raw mouse coords are already screen-space, so the
