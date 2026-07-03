@@ -546,6 +546,19 @@ export class NativeStrategy implements PlatformStrategy {
     return resolveTerminalPreviewOp(op);
   }
 
+  // SDL event loop: pump SDL events (quit → exit), tick the UI, present the
+  // framebuffer each frame. Only active when a UI is mounted (the emitter's
+  // entryHasUI() gate), so non-UI native programs stay single-shot.
+  hostEventLoop() {
+    return {
+      flagName: "sdl_running",
+      continueCondition: "sdl_running",
+      preIteration:
+        "SDL_Event __e; while (SDL_PollEvent(&__e)) { if (__e.type == SDL_QUIT) sdl_running = false; }",
+      postIteration: "display_present();",
+    };
+  }
+
   supportedDisplayDrivers(): ReadonlySet<string> {
     return new Set(["native-preview"]);
   }

@@ -457,6 +457,19 @@ export interface PlatformAsyncStrategy {
    * Embedded targets: "loop"; Hosted: "main".
    */
   asyncDriverFunctionName(): string;
+
+  /** Optional host event-loop scaffolding wrapping ui_tick in the driver
+   *  function. Return null/undefined for single-shot (today's native behavior)
+   *  or the Arduino repeatedly-called loop(). When provided, the emitter
+   *  declares `flagName` as a bool, then wraps the per-frame work in
+   *  `while (continueCondition) { preIteration; <tick>; postIteration; }`.
+   *  Used by the SDL native target to pump SDL events and present each frame. */
+  hostEventLoop?(): {
+    flagName: string;
+    continueCondition: string;
+    preIteration: string;
+    postIteration: string;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
