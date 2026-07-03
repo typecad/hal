@@ -1,0 +1,80 @@
+<script lang="ts">
+  // native_demo showcase — exercises RGB888 rendering + SDL mouse/touch.
+  // Minimal single-file component: a header, a gradient banner, a tap button
+  // with a live counter, and a line of text. Click the button (mouse = touch)
+  // to verify the full reactive path runs natively.
+
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen, { display: 'sdl' });
+
+  // Reactive counter — the button's on:click handler increments it and the
+  // {taps} interpolation in the template updates reactively.
+  export const taps = ui.signal(0);
+
+  export function incrementTaps() {
+    taps.set(taps() + 1);
+  }
+</script>
+
+<style>
+  :root {
+    --bg: #101820;
+    --fg: #7fe7cb;
+    --accent: #2d9cdb;
+    --accent-fg: #ffffff;
+    --warm: #f2c94c;
+    --pink: #dd2476;
+    --orange: #ff512f;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: sans-serif;
+  }
+
+  header {
+    font-size: 18px;
+    padding: 8px 12px;
+    color: var(--fg);
+  }
+
+  /* True-color gradient — exercises the RGB888 → RGBA8888 blit path. */
+  .banner {
+    background: linear-gradient(to right, var(--orange), var(--pink));
+    height: 70px;
+    margin: 4px 8px;
+    border-radius: 6px;
+  }
+
+  .btn {
+    background: var(--accent);
+    color: var(--accent-fg);
+    padding: 10px 16px;
+    margin: 8px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 14px;
+  }
+
+  .btn:active {
+    background: var(--warm);
+    color: var(--bg);
+  }
+
+  .count {
+    color: var(--warm);
+    font-size: 14px;
+    padding: 4px 12px;
+  }
+</style>
+
+<screen id="home">
+  <body>
+    <header>rgb888 + SDL</header>
+    <div class="banner"></div>
+    <a id="btn" class="btn" href="#" on:click="incrementTaps">Tap me</a>
+    <div id="countLabel" class="count">taps: {taps}</div>
+  </body>
+</screen>

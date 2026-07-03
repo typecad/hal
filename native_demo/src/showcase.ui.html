@@ -1,0 +1,61 @@
+<style>
+  :root {
+    --bg: #101820;
+    --fg: #7fe7cb;
+    --accent: #2d9cdb;
+    --accent-fg: #ffffff;
+    --warm: #f2c94c;
+    --pink: #dd2476;
+    --orange: #ff512f;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: sans-serif;
+  }
+
+  header {
+    font-size: 18px;
+    padding: 8px 12px;
+    color: var(--fg);
+  }
+
+  /* True-color gradient — exercises the RGB888 → RGBA8888 blit path. */
+  .banner {
+    background: linear-gradient(to right, var(--orange), var(--pink));
+    height: 70px;
+    margin: 4px 8px;
+    border-radius: 6px;
+  }
+
+  .btn {
+    background: var(--accent);
+    color: var(--accent-fg);
+    padding: 10px 16px;
+    margin: 8px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 14px;
+  }
+
+  .btn:active {
+    background: var(--warm);
+    color: var(--bg);
+  }
+
+  .count {
+    color: var(--warm);
+    font-size: 14px;
+    padding: 4px 12px;
+  }
+</style>
+
+<screen id="home">
+  <body>
+    <header>rgb888 + SDL</header>
+    <div class="banner"></div>
+    <a id="btn" class="btn" href="#" on:click="incrementTaps">Tap me</a>
+    <div id="countLabel" class="count">taps: {taps}</div>
+  </body>
+</screen>
