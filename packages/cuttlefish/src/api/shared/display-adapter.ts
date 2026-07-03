@@ -48,6 +48,10 @@ registerDisplayAdapter("st7796", st7796Adapter);
 import { einkMonoAdapter } from "./display-adapters/eink-mono.js";
 registerDisplayAdapter("ssd1680", einkMonoAdapter);
 
+// ── SSD1309 OLED adapter (1-bit mono, I2C, page-buffered) ───────────────────
+import { ssd1309Adapter } from "./display-adapters/ssd1309.js";
+registerDisplayAdapter("ssd1309", ssd1309Adapter);
+
 // ── SDL2 adapter (native desktop window, RGB888) ────────────────────────────
 import { sdlAdapter } from "./display-adapters/sdl.js";
 registerDisplayAdapter("sdl", sdlAdapter);
