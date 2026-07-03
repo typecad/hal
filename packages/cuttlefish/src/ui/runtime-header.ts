@@ -242,12 +242,16 @@ struct UIBinding {
 // Color lerp for transitions (rgb565). For mono, this collapses to a snap.
 static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100) {
   if (k100 >= 100) return b;
-  uint8_t ar = (a >> 11) & 0x1f, ag = (a >> 5) & 0x3f, ab = a & 0x1f;
-  uint8_t br = (b >> 11) & 0x1f, bg = (b >> 5) & 0x3f, bb = b & 0x1f;
-  int16_t r = ar + (int16_t)(((int16_t)br - (int16_t)ar) * k100 / 100);
-  int16_t g = ag + (int16_t)(((int16_t)bg - (int16_t)ag) * k100 / 100);
-  int16_t bl = ab + (int16_t)(((int16_t)bb - (int16_t)ab) * k100 / 100);
-  return ((uint16_t)(r & 0x1f) << 11) | ((uint16_t)(g & 0x3f) << 5) | (uint16_t)(bl & 0x1f);
+  // Lerp in 888 internally for smoother color transitions (keyframe animation,
+  // :pressed transitions). Unpack 565→888, lerp at 8-bit, re-quantize to 565.
+  uint8_t ar5 = (a >> 11) & 0x1f, ag6 = (a >> 5) & 0x3f, ab5 = a & 0x1f;
+  uint8_t br5 = (b >> 11) & 0x1f, bg6 = (b >> 5) & 0x3f, bb5 = b & 0x1f;
+  uint16_t ar8 = (ar5 << 3) | (ar5 >> 2), ag8 = (ag6 << 2) | (ag6 >> 4), ab8 = (ab5 << 3) | (ab5 >> 2);
+  uint16_t br8 = (br5 << 3) | (br5 >> 2), bg8 = (bg6 << 2) | (bg6 >> 4), bb8 = (bb5 << 3) | (bb5 >> 2);
+  int16_t r = (int16_t)(ar8 + (int16_t)((br8 - ar8) * k100 / 100));
+  int16_t g = (int16_t)(ag8 + (int16_t)((bg8 - ag8) * k100 / 100));
+  int16_t bl = (int16_t)(ab8 + (int16_t)((bb8 - ab8) * k100 / 100));
+  return ((uint16_t)((r >> 3) & 0x1f) << 11) | ((uint16_t)((g >> 2) & 0x3f) << 5) | (uint16_t)((bl >> 3) & 0x1f);
 }
 
 // RGB888 lerp — for transitions on RGB888/RGB666 targets (Phase 2+). Unused in
@@ -2645,12 +2649,19 @@ static inline void ui_handle_no_touch() {
 static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
   if (opacity >= 100) return fg;
   if (opacity == 0) return bg;
+  // Blend in 888 internally for higher precision: unpack 565→888 (replicating
+  // high bits), blend at 8-bit, then re-quantize to 565. This produces smoother
+  // intermediate values for AA text edges, opacity, shadows, and gradients —
+  // the 565-channel blend (32 red levels) was too coarse and showed banding.
   uint8_t fr = (fg >> 11) & 0x1F, fg5 = (fg >> 5) & 0x3F, fb = fg & 0x1F;
   uint8_t br = (bg >> 11) & 0x1F, bg5 = (bg >> 5) & 0x3F, bb = bg & 0x1F;
-  uint8_t r = (fr * opacity + br * (100 - opacity)) / 100;
-  uint8_t g = (fg5 * opacity + bg5 * (100 - opacity)) / 100;
-  uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
-  return (r << 11) | (g << 5) | b;
+  // Unpack to 8-bit (5-bit → 8-bit: (v << 3) | (v >> 2)).
+  uint16_t fr8 = (fr << 3) | (fr >> 2), fg8 = (fg5 << 2) | (fg5 >> 4), fb8 = (fb << 3) | (fb >> 2);
+  uint16_t br8 = (br << 3) | (br >> 2), bg8 = (bg5 << 2) | (bg5 >> 4), bb8 = (bb << 3) | (bb >> 2);
+  uint16_t r = (uint16_t)((fr8 * opacity + br8 * (100 - opacity)) / 100);
+  uint16_t g = (uint16_t)((fg8 * opacity + bg8 * (100 - opacity)) / 100);
+  uint16_t b = (uint16_t)((fb8 * opacity + bb8 * (100 - opacity)) / 100);
+  return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
 }
 
 // Blend two RGB888 colors by opacity (0-100). Added for Phase 2 (RGB888/RGB666
