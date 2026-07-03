@@ -2497,10 +2497,15 @@ static void ui_touch_up() {
       }
     }
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
-    if (__ui_nodes[clickedNode].kind == NODE_BUTTON) {
-      ui_set_pressed((uint16_t)clickedNode, 0);
-    }
     ui_mark_dirty(clickedNode);
+  }
+  // Release the pressed button's :pressed state unconditionally — even when a
+  // drag/scroll hijacked the gesture (the click above is correctly gated on
+  // !__ui_is_dragging, but the visual press state should always reset on lift,
+  // otherwise a touch-down on a button followed by a scroll leaves it stuck).
+  if (__ui_touch_node >= 0 && __ui_touch_node < __ui_node_count &&
+      __ui_nodes[__ui_touch_node].kind == NODE_BUTTON && __ui_nodes[__ui_touch_node].value != 0) {
+    ui_set_pressed((uint16_t)__ui_touch_node, 0);
   }
   // Resume any \`await ui.onTap()\` awaiter. Runs for EVERY completed tap —
   // including holds (released above) and taps on empty space (__ui_touch_node
