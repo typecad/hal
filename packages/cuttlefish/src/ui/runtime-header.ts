@@ -119,6 +119,10 @@ struct UINode {
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
   uint8_t borderWidth;  // px, 0=none
   uint8_t borderRadius; // px, 0=square
+  uint8_t paddingTop;
+  uint8_t paddingRight;
+  uint8_t paddingBottom;
+  uint8_t paddingLeft;
   uint8_t gradientEnabled; // 0=none, 1=vertical, 2=horizontal
   uint32_t gradientColor1;
   uint32_t gradientColor2;
@@ -294,8 +298,10 @@ extern const uint16_t __ui_rich_line_count;
 // emitted code is byte-identical with the pre-widening runtime.
 #if UI_COLOR_DEPTH == 888
   #define UI_COLOR_T uint32_t
+  #define UI_DIM_MASK 0x7F7F7Fu   // halve each 8-bit channel independently
 #else
   #define UI_COLOR_T uint16_t
+  #define UI_DIM_MASK 0x7BEFu     // 565 dim mask (top bit clear per channel)
 #endif
 static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity);
 static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity);
@@ -596,6 +602,7 @@ static inline void ui_node_current_paint_rect(uint16_t nodeIdx, UIRect* out);
 static inline uint8_t ui_subtree_current_paint_rect(uint16_t nodeIdx, UIRect* out);
 static inline void ui_mark_overlapping_higher_layers_dirty(uint16_t nodeIdx);
 static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint16_t nodeIdx, const UIRect* r);
+static inline void ui_mark_scroll_view_dirty(uint16_t scrollNode);
 static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible);
 static inline void ui_invalidate_scroll_canvas_for_node(uint16_t nodeIdx);
 static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip);
@@ -1336,7 +1343,7 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
   if (thumbH < 8) thumbH = 8;
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
-  uint16_t dimFg = ((__ui_nodes[si].fg >> 1) & 0x7BEF);
+  UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
   ui_display_fill_rect(tx, 0, 3, vh, dimFg);
   ui_display_fill_rect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
   // Record the scrollY this canvas now reflects, so the next scroll frame can
@@ -1354,6 +1361,40 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
 static inline void ui_mark_dirty(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
   __ui_nodes[nodeIdx].dirty = 1;
+  if (ui_is_effectively_visible(nodeIdx) &&
+      __ui_nodes[nodeIdx].screenId == __ui_active_screen) {
+    UIRect r;
+    ui_node_current_paint_rect(nodeIdx, &r);
+    if (r.w <= 0 || r.h <= 0) {
+      ui_mark_overlapping_higher_layers_dirty(nodeIdx);
+      return;
+    }
+    uint16_t p = __ui_nodes[nodeIdx].parent;
+    while (p != UI_NO_PARENT && p < __ui_node_count) {
+      if (__ui_nodes[p].scrollable &&
+          !__ui_nodes[p].virtualized &&
+          __ui_nodes[p].contentHeight > __ui_nodes[p].box.h) {
+        UIRect clip = {
+          __ui_nodes[p].box.x,
+          __ui_nodes[p].box.y,
+          __ui_nodes[p].box.w,
+          __ui_nodes[p].box.h
+        };
+        if (!ui_rects_intersect(r.x, r.y, r.w, r.h, clip.x, clip.y, clip.w, clip.h)) {
+          __ui_nodes[nodeIdx].dirty = 0;
+          return;
+        }
+        if (r.x < clip.x ||
+            r.x + r.w > clip.x + clip.w ||
+            r.y < clip.y ||
+            r.y + r.h > clip.y + clip.h) {
+          ui_mark_scroll_view_dirty(p);
+          return;
+        }
+      }
+      p = __ui_nodes[p].parent;
+    }
+  }
   ui_mark_overlapping_higher_layers_dirty(nodeIdx);
 }
 
@@ -2197,7 +2238,7 @@ static inline void ui_poll_inputs() {
 // ── Touch hit-testing + click dispatch ─────────────────────────────────────
 // Radio groups for mutual exclusion
 struct UIRadioGroup {
-  uint8_t nodeIndices[8];
+  uint16_t nodeIndices[8];
   uint8_t count;
 };
 extern UIRadioGroup __ui_radio_groups[];
@@ -3894,6 +3935,10 @@ static inline void ui_tick(uint16_t deltaMs) {
       : __ui_nodes[i].text;
     uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
     uint16_t textMaxW = __ui_nodes[i].box.w;
+    if (__ui_nodes[i].kind == NODE_BUTTON) {
+      uint16_t hInset = (uint16_t)__ui_nodes[i].paddingLeft + (uint16_t)__ui_nodes[i].paddingRight + (uint16_t)__ui_nodes[i].borderWidth * 2;
+      textMaxW = __ui_nodes[i].box.w > hInset ? __ui_nodes[i].box.w - hInset : 0;
+    }
     if (__ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
       textMaxW = __ui_nodes[i].box.w > 22 ? __ui_nodes[i].box.w - 22 : 0;
     }
@@ -4111,14 +4156,26 @@ static inline void ui_tick(uint16_t deltaMs) {
         if (__ui_nodes[i].borderStyle != 0) {
           ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
         }
-        ui_draw_wrapped_text(displayText,
-          __ui_nodes[i].box.x,
-          drawY + (__ui_nodes[i].box.h - (int16_t)th) / 2,
-          __ui_nodes[i].box.w,
-          __ui_nodes[i].fg,
-          __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
-          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 1, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+        {
+          int16_t insetL = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingLeft;
+          int16_t insetR = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingRight;
+          int16_t insetT = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingTop;
+          int16_t insetB = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingBottom;
+          int16_t textX = __ui_nodes[i].box.x + insetL;
+          int16_t textY = drawY + insetT;
+          int16_t textW = (int16_t)__ui_nodes[i].box.w - insetL - insetR;
+          int16_t textH = (int16_t)__ui_nodes[i].box.h - insetT - insetB;
+          if (textW < 1) textW = 1;
+          if (textH < 1) textH = (int16_t)th;
+          ui_draw_wrapped_text(displayText,
+            textX,
+            textY + (textH - (int16_t)th) / 2,
+            (uint16_t)textW,
+            __ui_nodes[i].fg,
+            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
+            __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+        }
         break;
       case NODE_CHECK:
         {
@@ -4265,7 +4322,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t bh = __ui_nodes[i].box.h;
           uint16_t fgCol = __ui_nodes[i].fg;
           uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          uint16_t dimFg = ((fgCol >> 1) & 0x7BEF);
+          UI_COLOR_T dimFg = (UI_COLOR_T)((fgCol >> 1) & UI_DIM_MASK);
 
           int16_t trackY = by + bh / 2;
           int16_t rMin = __ui_nodes[i].rangeMin;
@@ -4537,7 +4594,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (thumbH < 8) thumbH = 8;
           int16_t maxScroll = listContentH - bh;
           uint16_t thumbY = maxScroll > 0 ? (uint32_t)(bh - thumbH) * listScrollY / maxScroll : 0;
-          uint16_t dimFg = ((__ui_nodes[i].fg >> 1) & 0x7BEF);
+          UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[i].fg >> 1) & UI_DIM_MASK);
           display_canvasFillRect(lc, tx, 0, 3, bh, dimFg);
           display_canvasFillRect(lc, tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
         }

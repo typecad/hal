@@ -107,6 +107,32 @@ describe("UI end-to-end via transpileFile", () => {
     expect(cpp).toContain("0xf800");
   });
 
+  it("emits radio-group clearing with uint16_t member indexes past node 255", async () => {
+    const padding = Array.from({ length: 260 }, (_, i) => `<text id="pad${i}">x</text>`).join("\n");
+    const { cpp } = await transpileUIProgram({
+      html: [
+        `<screen>`,
+        padding,
+        `<radio id="r1" name="group" value="a" checked>A</radio>`,
+        `<radio id="r2" name="group" value="b">B</radio>`,
+        `</screen>`,
+      ].join("\n"),
+      css: ``,
+      ts: [
+        `import { ui } from "@typecad/ui";`,
+        `import { screen } from "./app.ui.html";`,
+        `ui.mount(screen, { display: "ili9341", bus: "SPI", cs: 10, dc: 9, rst: 8 });`,
+        `export function main(): void { while (true) {} }`,
+        ``,
+      ].join("\n"),
+    });
+
+    expect(cpp).toMatch(/struct\s+UIRadioGroup\s*\{\s*uint16_t\s+nodeIndices\[8\];/);
+    expect(cpp).toContain(`{ .nodeIndices={261, 262}, .count=2 },`);
+    expect(cpp).toMatch(/void __ui_r1_autoclick\(\) \{ for \(uint8_t __r = 0; __r < __ui_radio_groups\[0\]\.count; __r\+\+\) \{ uint16_t __rn = __ui_radio_groups\[0\]\.nodeIndices\[__r\];/);
+    expect(cpp).not.toMatch(/uint8_t __rn = __ui_radio_groups/);
+  });
+
   it("emits display.init through the ILI9341 library driver", async () => {
     const { cpp } = await transpileUIProgram({
       html: `<screen></screen>`,

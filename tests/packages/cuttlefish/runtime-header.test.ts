@@ -243,11 +243,20 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/int16_t\s+zIndex/);
     expect(header).toContain("ui_node_draws_before");
     expect(header).toContain("ui_mark_overlapping_higher_layers_dirty");
-    // ui_mark_dirty no longer touches a scroll cache (the cache was deleted); it
-    // sets dirty + repairs overlapping higher-z neighbors.
-    expect(header).toMatch(/static inline void ui_mark_dirty\(uint16_t nodeIdx\) \{\s*if \(nodeIdx >= __ui_node_count\) return;\s*__ui_nodes\[nodeIdx\]\.dirty = 1;\s*ui_mark_overlapping_higher_layers_dirty\(nodeIdx\);\s*\}/);
+    // Fully-contained dirty nodes stay local: dirty flag + overlap repair.
+    // Clipped scroll descendants are promoted separately below so they render
+    // through the scroll canvas instead of being skipped by direct-display cull.
+    expect(header).toMatch(/static inline void ui_mark_dirty\(uint16_t nodeIdx\) \{\s*if \(nodeIdx >= __ui_node_count\) return;\s*__ui_nodes\[nodeIdx\]\.dirty = 1;/);
+    expect(header).toMatch(/ui_mark_dirty\(uint16_t nodeIdx\)[\s\S]*ui_mark_overlapping_higher_layers_dirty\(nodeIdx\);\s*\}/);
     expect(header).not.toContain("ui_invalidate_scroll_cache_for_node");
     expect(header).not.toContain("for (uint8_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1; // z-index repair");
+  });
+
+  it("promotes clipped dirty descendants to a generic scroll viewport repaint", () => {
+    expect(header).toMatch(/static inline void ui_mark_dirty\(uint16_t nodeIdx\)[\s\S]*ui_node_current_paint_rect\(nodeIdx,\s*&r\)/);
+    expect(header).toMatch(/while \(p != UI_NO_PARENT && p < __ui_node_count\)[\s\S]*__ui_nodes\[p\]\.scrollable[\s\S]*!__ui_nodes\[p\]\.virtualized[\s\S]*contentHeight > __ui_nodes\[p\]\.box\.h/);
+    expect(header).toMatch(/if \(!ui_rects_intersect\(r\.x,\s*r\.y,\s*r\.w,\s*r\.h,\s*clip\.x,\s*clip\.y,\s*clip\.w,\s*clip\.h\)\)[\s\S]*__ui_nodes\[nodeIdx\]\.dirty = 0;[\s\S]*return;/);
+    expect(header).toMatch(/r\.x < clip\.x[\s\S]*r\.y \+ r\.h > clip\.y \+ clip\.h[\s\S]*ui_mark_scroll_view_dirty\(p\);\s*return;/);
   });
 
   it("applies visible bindings by clearing hidden branches and repainting shown subtrees", () => {
@@ -332,6 +341,14 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/void ui_dispatch\([\s\S]*int16_t node\)/);
     // No int8_t node-index owner remains.
     expect(header).not.toMatch(/int8_t __ui_(touch|range|tap|scroll)_node/);
+  });
+
+  it("stores radio group member node indexes as uint16_t", () => {
+    // Showcase radios live past node 255. A uint8_t group member truncates 275
+    // to 19, so radio auto-click clears the wrong nodes and both options stay
+    // selected.
+    expect(header).toMatch(/struct\s+UIRadioGroup\s*\{\s*uint16_t\s+nodeIndices\[8\];\s*uint8_t\s+count;/);
+    expect(header).not.toMatch(/struct\s+UIRadioGroup\s*\{\s*uint8_t\s+nodeIndices/);
   });
 
   it("widens node-index storage past 255 (uint16_t count/parent/subtreeEnd, 0xFFFF sentinel)", () => {
@@ -830,5 +847,11 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     expect(header).not.toMatch(/uint16_t shadowCol = __ui_nodes/);
     expect(header).not.toMatch(/uint16_t c1 = __ui_nodes/);
     expect(header).not.toMatch(/uint16_t c2 = __ui_nodes/);
+  });
+  it("defines a depth-aware dim mask (0x7F7F7F under 888, 0x7BEF under 565)", () => {
+    // Under 888, dimming halves each 8-bit channel independently (0x7F7F7F).
+    // The 565 mask 0x7BEF must still exist for the 565 path.
+    expect(header).toMatch(/0x7F7F7F/);
+    expect(header).toContain("UI_DIM_MASK");
   });
 });

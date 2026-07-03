@@ -19,6 +19,11 @@ tearing.
 - Keep scroll drag invalidation small. A drag should call
   `ui_mark_scroll_view_dirty` for the scroll owner and repair external overlaps,
   not mark every child dirty unless a full scroll canvas repaint is required.
+- Classify dirty descendants under scroll containers before promoting repaint
+  work. If the dirty paint rect is fully outside the scroll viewport, clear/drop
+  that node's dirty flag and return; if it is partially clipped, mark the scroll
+  viewport dirty; if it is fully contained, keep the repaint local. This prevents
+  offscreen transform animations from flashing the visible viewport.
 - When a buffered scroll canvas is active, keep the scroll owner out of the
   direct dirty-node display pass. The owner is represented by the canvas for
   that frame; direct-drawing it first clears the live viewport and causes flash.
@@ -66,6 +71,10 @@ tearing.
   can make small updates look like a whole-screen brightness flash on SPI TFTs.
 - Do not add scroll cadence gates or accumulators that make touch lag behind the
   finger unless there is a measured hardware reason and a test/demo proving it.
+- Do not promote a dirty node inside an overflowing scroll container to a scroll
+  viewport repaint without first checking whether the node's paint rect actually
+  intersects the viewport. Fully offscreen animations must not dirty the visible
+  scroll canvas.
 - Do not mix direct display writes with shim-targeted writes in the same runtime
   path. The active target may be a canvas, not the physical display.
 - Do not edit generated `src/out/main/main.ino` as the source of truth. Change
@@ -83,4 +92,6 @@ npm run compile --workspace demo-ui
 
 Add or update focused runtime-header and preview tests when changing scroll
 invalidation, canvas composition, paint order, text layout, or CSS rendering
-support.
+support. For `ui_mark_dirty` or scroll clipping changes, include coverage for
+fully offscreen animated descendants not invalidating the visible scroll
+viewport, plus partially clipped descendants promoting only the scroll viewport.

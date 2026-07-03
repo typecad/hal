@@ -2136,10 +2136,18 @@ export class PreviewUIRuntime {
     else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, fillBg);
     this.drawNodeShadow(node, drawY, true);
     if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
-    const layout = this.textLayout(node, displayText, node.box.w, ts);
-    const top = drawY + Math.trunc((node.box.h - layout.height) / 2);
+    const insetL = (node.borderWidth || 0) + (node.paddingLeft || 0);
+    const insetR = (node.borderWidth || 0) + (node.paddingRight || 0);
+    const insetT = (node.borderWidth || 0) + (node.paddingTop || 0);
+    const insetB = (node.borderWidth || 0) + (node.paddingBottom || 0);
+    const textX = node.box.x + insetL;
+    const textY = drawY + insetT;
+    const textW = Math.max(1, node.box.w - insetL - insetR);
+    const textH = Math.max(1, node.box.h - insetT - insetB);
+    const layout = this.textLayout(node, displayText, textW, ts);
+    const top = textY + Math.trunc((textH - layout.height) / 2);
     const glyphBg = node.opacity < 100 ? blendRuntime(node.bg, this.parentClearColor(node), node.opacity) : (node.hasBg ? node.bg : node.clearColor);
-    this.drawTextLines(node, displayText, node.box.x, top, node.box.w, ts, node.fg, glyphBg, 1);
+    this.drawTextLines(node, displayText, textX, top, textW, ts, node.fg, glyphBg, node.textAlign);
   }
 
   private drawCheckNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {

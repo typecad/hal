@@ -50,6 +50,10 @@ export interface UINodeModel {
   borderStyle: 0 | 1 | 2;
   borderWidth: number;
   borderRadius: number;  // px, 0=square
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
   gradientEnabled: number;  // 0=none, 1=vertical, 2=horizontal
   gradientColor1: number;   // resolved RGB565 (top/left stop)
   gradientColor2: number;   // resolved RGB565 (bottom/right stop)
@@ -317,6 +321,21 @@ function borderRadiusOf(style: CSSProperty): number {
   if (!style.borderRadius) return 0;
   const px = parseInt(style.borderRadius, 10);
   return isNaN(px) ? 0 : px;
+}
+
+function paddingOf(style: CSSProperty): { top: number; right: number; bottom: number; left: number } {
+  if (!style.padding) return { top: 0, right: 0, bottom: 0, left: 0 };
+  const parts = style.padding.trim().split(/\s+/).filter(Boolean).map(cssPx);
+  const top = parts[0] ?? 0;
+  const right = parts.length > 1 ? parts[1] : top;
+  const bottom = parts.length > 2 ? parts[2] : top;
+  const left = parts.length > 3 ? parts[3] : right;
+  return {
+    top: Math.max(0, Math.min(255, top)),
+    right: Math.max(0, Math.min(255, right)),
+    bottom: Math.max(0, Math.min(255, bottom)),
+    left: Math.max(0, Math.min(255, left)),
+  };
 }
 
 /** Parse letter-spacing px value (0 if absent). */
@@ -990,6 +1009,15 @@ export function lowerUIToModel(
       borderStyle: borderStyle(node.style),
       borderWidth: borderWidthOf(node.style),
       borderRadius: borderRadiusOf(node.style),
+      ...(() => {
+        const padding = paddingOf(node.style);
+        return {
+          paddingTop: padding.top,
+          paddingRight: padding.right,
+          paddingBottom: padding.bottom,
+          paddingLeft: padding.left,
+        };
+      })(),
       outlineColor,
       outlineStyle: outline.style,
       outlineWidth: outline.width,

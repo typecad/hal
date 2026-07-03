@@ -13,30 +13,37 @@
     rst: 22,
   });
 
-  // ── Forms screen: button counter + dynamic label ───────────────────────────
-  // The label text is authored in the template as `taps: {count}` — the {count}
-  // interpolation compiles to an implicit text binding.
+  // ── Forms screen: Svelte-like reactive state ───────────────────────────────
+  // The button and input callbacks are declared here, while the template owns
+  // the event attributes and interpolation sites. The rest of the form controls
+  // use their element state directly through ui.bind() so every input has a
+  // visible reactive effect.
   export const count = ui.signal(0);
+  export const nameCommits = ui.signal(0);
+  export const ageCommits = ui.signal(0);
+
   export function incrementTaps() {
     count.set(count() + 1);
   }
 
-  // ── Forms screen: progress 0→100 loop ──────────────────────────────────────
-  screen.formProg.value = 0;
-  setInterval(() => {
-    screen.formProg.value = (screen.formProg.value + 5) % 105;
-  }, 400);
-
-  // ── Forms screen: range + inputs log on change ─────────────────────────────
-  screen.formRange1.onChange(() => {
-    console.log('volume:', screen.formRange1.value);
-  });
-  screen.formName.onChange(() => {
+  export function captureName() {
+    nameCommits.set(nameCommits() + 1);
     console.log('name:', screen.formName.text);
-  });
-  screen.formAge.onChange(() => {
+  }
+
+  export function captureAge() {
+    ageCommits.set(ageCommits() + 1);
     console.log('age:', screen.formAge.text);
-  });
+  }
+
+  ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'feature: enabled' : 'feature: disabled');
+  ui.bind(screen.featureLamp, 'background', () => screen.formCheck1.value ? '#29d391' : '#4b5563');
+  ui.bind(screen.modeStatus, 'text', () => screen.formSelect1.value == 0 ? 'mode: alpha' : screen.formSelect1.value == 1 ? 'mode: beta' : 'mode: gamma');
+  ui.bind(screen.modeAccent, 'background', () => screen.formSelect1.value == 0 ? '#38bdf8' : screen.formSelect1.value == 1 ? '#f6c84c' : '#b985ff');
+  ui.bind(screen.radioStatus, 'text', () => screen.formRadio2.value ? 'speed: fast' : 'speed: calm');
+  ui.bind(screen.volumeStatus, 'text', () => `volume: ${screen.formRange1.value}`);
+  ui.bind(screen.formProg, 'value', () => screen.formRange1.value * 10);
+  ui.bind(screen.formProgressCaption, 'text', () => `meter: ${screen.formRange1.value * 10}%`);
 
   // ── Lists screen: virtualized list ─────────────────────────────────────────
   ui.bindList(
@@ -119,79 +126,78 @@
 
 /* ── Light theme (default :root) ── */
 :root {
-  --background: #ffffff;
-  --foreground: #000000;
-  --card: #ffffff;
-  --card-foreground: #000000;
-  --popover: #ffffff;
-  --popover-foreground: #000000;
-  --primary: #ff3333;
+  --background: #f7f3e8;
+  --foreground: #15171a;
+  --card: #fffaf0;
+  --card-foreground: #15171a;
+  --popover: #fffaf0;
+  --popover-foreground: #15171a;
+  --primary: #ef5b3f;
   --primary-foreground: #ffffff;
-  --secondary: #ffff00;
-  --secondary-foreground: #000000;
-  --muted: #f0f0f0;
-  --muted-foreground: #333333;
-  --accent: #0066ff;
-  --accent-foreground: #ffffff;
-  --destructive: #000000;
+  --secondary: #f6c84c;
+  --secondary-foreground: #15171a;
+  --muted: #e8e0d0;
+  --muted-foreground: #596168;
+  --accent: #1f9f9a;
+  --accent-foreground: #071012;
+  --destructive: #15171a;
   --destructive-foreground: #ffffff;
-  --border: #000000;
-  --input: #000000;
-  --ring: #ff3333;
-  --chart-1: #ff3333;
-  --chart-2: #ffff00;
-  --chart-3: #0066ff;
-  --chart-4: #00cc00;
-  --chart-5: #cc00cc;
-  --sidebar: #f0f0f0;
-  --sidebar-foreground: #000000;
-  --sidebar-primary: #ff3333;
+  --border: #15171a;
+  --input: #15171a;
+  --ring: #ef5b3f;
+  --chart-1: #ef5b3f;
+  --chart-2: #f6c84c;
+  --chart-3: #38bdf8;
+  --chart-4: #29d391;
+  --chart-5: #9f7aea;
+  --sidebar: #ebe4d7;
+  --sidebar-foreground: #15171a;
+  --sidebar-primary: #ef5b3f;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #0066ff;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #000000;
-  --sidebar-ring: #ff3333;
-  --radius: 0px;
-  /* Hard offset shadow — NeoBrutalism signature. No blur, full opacity. */
-  --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1.00);
+  --sidebar-accent: #1f9f9a;
+  --sidebar-accent-foreground: #071012;
+  --sidebar-border: #15171a;
+  --sidebar-ring: #ef5b3f;
+  --radius: 6px;
+  --shadow: 3px 3px 0px 0px hsl(210 10% 8% / 1.00);
 }
 
 /* ── Dark theme (.dark) — select via themeClass: 'dark' ── */
 .dark {
-  --background: #000000;
-  --foreground: #ffffff;
-  --card: #333333;
-  --card-foreground: #ffffff;
-  --popover: #333333;
-  --popover-foreground: #ffffff;
-  --primary: #ff6666;
-  --primary-foreground: #000000;
-  --secondary: #ffff33;
-  --secondary-foreground: #000000;
-  --muted: #1a1a1a;
-  --muted-foreground: #cccccc;
-  --accent: #3399ff;
-  --accent-foreground: #000000;
-  --destructive: #ffffff;
-  --destructive-foreground: #000000;
-  --border: #ffffff;
-  --input: #ffffff;
-  --ring: #ff6666;
-  --chart-1: #ff6666;
-  --chart-2: #ffff33;
-  --chart-3: #3399ff;
-  --chart-4: #33cc33;
-  --chart-5: #cc33cc;
-  --sidebar: #000000;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #ff6666;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #3399ff;
-  --sidebar-accent-foreground: #000000;
-  --sidebar-border: #ffffff;
-  --sidebar-ring: #ff6666;
-  --radius: 0px;
-  --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1.00);
+  --background: #111418;
+  --foreground: #f7f3e8;
+  --card: #1c2228;
+  --card-foreground: #f7f3e8;
+  --popover: #1c2228;
+  --popover-foreground: #f7f3e8;
+  --primary: #ff765c;
+  --primary-foreground: #111418;
+  --secondary: #f6c84c;
+  --secondary-foreground: #111418;
+  --muted: #29313a;
+  --muted-foreground: #b9c3c8;
+  --accent: #43d2c8;
+  --accent-foreground: #071012;
+  --destructive: #f7f3e8;
+  --destructive-foreground: #111418;
+  --border: #f6c84c;
+  --input: #f6c84c;
+  --ring: #ff765c;
+  --chart-1: #ff765c;
+  --chart-2: #f6c84c;
+  --chart-3: #38bdf8;
+  --chart-4: #29d391;
+  --chart-5: #b985ff;
+  --sidebar: #151a1f;
+  --sidebar-foreground: #f7f3e8;
+  --sidebar-primary: #ff765c;
+  --sidebar-primary-foreground: #111418;
+  --sidebar-accent: #43d2c8;
+  --sidebar-accent-foreground: #071012;
+  --sidebar-border: #f6c84c;
+  --sidebar-ring: #ff765c;
+  --radius: 6px;
+  --shadow: 3px 3px 0px 0px hsl(0 0% 0% / 1.00);
 }
 
 /* ── Shared screen scaffolding ── */
@@ -207,7 +213,7 @@ screen {
   flex: 1;
   align-items: center;
   gap: 10px;
-  background: var(--card);
+  background: var(--background);
 }
 
 /* Shared content-screen header: Back link + title. */
@@ -218,6 +224,7 @@ screen {
   border: 1px solid var(--border);
   background: var(--card);
   padding: 8px 10px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 .backLink {
@@ -250,9 +257,11 @@ screen {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  width: 280px;
   border: 1px solid var(--border);
   background: var(--card);
   padding: 8px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 #homeTitle {
@@ -272,12 +281,18 @@ screen {
   gap: 6px;
   width: 280px;
 }
-#homeNav a {
+#homeNav button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 32px;
   color: var(--accent);
   font-size: 18px;
+  text-align: left;
   background: var(--card);
   border: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: 0 10px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 #homeFooter {
@@ -512,31 +527,129 @@ screen {
 #transitionBtn:pressed { background: var(--accent); color: var(--accent-foreground); }
 
 /* ── Forms screen ── */
-#formButton, #formCheck, #formSelect, #formRadio, #formProgress, #formRange, #formInput, #formDisabled {
-  align-items: center;
-  gap: 6px;
+#forms .scrollBody {
+  gap: 9px;
+}
+.formPanel {
+  align-items: stretch;
+  gap: 7px;
   width: 280px;
   background: var(--card);
   border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 8px;
   box-shadow: var(--shadow);
 }
-#formButton { flex-direction: column; gap: 6px; }
-#formBtn { background: var(--primary); color: var(--primary-foreground); font-size: 16px; border: 1px solid var(--border); box-shadow: var(--shadow); padding: 4px 12px; transition: background 100ms; }
-#formBtn:pressed { background: var(--accent); }
-#formBtnCount { color: var(--foreground); font-size: 14px; }
+.formPanel .demoLabel {
+  color: var(--secondary);
+  font-size: 13px;
+}
+.formRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 250px;
+}
+.formStack {
+  align-items: flex-start;
+  gap: 5px;
+}
+.formStatus {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.formPill {
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 13px;
+}
+#formHero {
+  background: var(--muted);
+}
+#formHeroTitle {
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: bold;
+}
+#formHeroCopy {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+#formBtn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 5px 14px;
+  transition: background 100ms;
+}
+#formBtn:pressed { background: var(--accent); color: var(--accent-foreground); }
+#formBtnCount {
+  color: var(--foreground);
+  font-size: 13px;
+  width: 136px;
+  padding: 3px 5px;
+  text-align: center;
+  white-space: nowrap;
+}
 #formCheck1 { color: var(--foreground); font-size: 16px; }
-#formSelect1 { color: var(--accent); font-size: 16px; text-decoration: underline; }
-#formRadio { flex-direction: column; gap: 6px; }
+#featureLamp, #modeAccent {
+  width: 18px;
+  height: 18px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+#formSelect1 {
+  color: var(--accent);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 16px;
+  padding: 4px 8px;
+  text-decoration: underline;
+}
+#radioChoices {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
 #formRadio1, #formRadio2 { color: var(--foreground); font-size: 16px; }
-#formProg { color: var(--chart-4); }
-#formRange { flex-direction: column; gap: 6px; }
-#formRange label { color: var(--muted-foreground); font-size: 14px; }
-#formRange1 { color: var(--chart-1); width: 180px; }
-#formInput { gap: 4px; }
-#formInput label { color: var(--muted-foreground); font-size: 14px; align-self: flex-start; }
-#formName, #formAge { color: #ffffff; background: #333333; border: 1px solid var(--border); width: 200px; }
-#formDisabledBtn { background: var(--muted); color: var(--muted-foreground); font-size: 16px; border: 1px solid var(--border); padding: 4px 12px; }
+#formProg {
+  color: var(--chart-4);
+  width: 190px;
+}
+#formRange label, #formInput label {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  align-self: flex-start;
+}
+#formRange1 {
+  color: var(--chart-1);
+  width: 205px;
+}
+#formName, #formAge {
+  color: var(--foreground);
+  background: #12161b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 205px;
+  padding: 4px;
+}
+#formDisabledBtn {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 12px;
+}
 #formDisabledBtn:disabled { opacity: 0.5; }
 
 /* ── Images & Canvas screen ── */
@@ -599,16 +712,16 @@ a {
     </header>
     <main class="scrollBody">
       <nav id="homeNav">
-        <a href="#typography">Typography &gt;</a>
-        <a href="#richtext">Rich Text &gt;</a>
-        <a href="#box">Box &amp; Sizing &gt;</a>
-        <a href="#layout">Position &amp; Layers &gt;</a>
-        <a href="#flex">Flexbox &gt;</a>
-        <a href="#transforms">Transforms &gt;</a>
-        <a href="#forms">Forms &gt;</a>
-        <a href="#media">Images &amp; Canvas &gt;</a>
-        <a href="#lists">Lists &gt;</a>
-        <a href="#keyboard">Keyboard &gt;</a>
+        <button href="#typography">Typography &gt;</button>
+        <button href="#richtext">Rich Text &gt;</button>
+        <button href="#box">Box &amp; Sizing &gt;</button>
+        <button href="#layout">Position &amp; Layers &gt;</button>
+        <button href="#flex">Flexbox &gt;</button>
+        <button href="#transforms">Transforms &gt;</button>
+        <button href="#forms">Forms &gt;</button>
+        <button href="#media">Images &amp; Canvas &gt;</button>
+        <button href="#lists">Lists &gt;</button>
+        <button href="#keyboard">Keyboard &gt;</button>
       </nav>
     </main>
     <footer id="homeFooter">
@@ -862,47 +975,72 @@ a {
       <h2 class="screenTitle">Forms</h2>
     </header>
     <main class="scrollBody">
-      <section id="formButton">
-        <h3 class="demoLabel">button + :pressed</h3>
-        <button id="formBtn" on:click={incrementTaps}>tap me</button>
-        <span id="formBtnCount">taps: {count}</span>
+      <section id="formHero" class="formPanel">
+        <h3 id="formHeroTitle">Reactive controls</h3>
+        <span id="formHeroCopy">Each input drives live text, color, or meter state.</span>
       </section>
-      <section id="formCheck">
-        <h3 class="demoLabel">check</h3>
-        <check id="formCheck1">Enable feature</check>
+      <section id="formButton" class="formPanel">
+        <h3 class="demoLabel">button event</h3>
+        <div class="formRow">
+          <button id="formBtn" on:click={incrementTaps}>tap me</button>
+          <span id="formBtnCount" class="formPill">taps: {count}</span>
+        </div>
       </section>
-      <section id="formSelect">
-        <h3 class="demoLabel">select + option</h3>
-        <select id="formSelect1">
-          <option value="a">Alpha</option>
-          <option value="b">Beta</option>
-          <option value="c">Gamma</option>
-        </select>
+      <section id="formCheck" class="formPanel">
+        <h3 class="demoLabel">checkbox value</h3>
+        <div class="formRow">
+          <check id="formCheck1">Enable feature</check>
+          <div id="featureLamp"></div>
+        </div>
+        <span id="featureStatus" class="formStatus">feature: disabled</span>
       </section>
-      <section id="formRadio">
-        <h3 class="demoLabel">radio (grouped name)</h3>
-        <radio id="formRadio1" name="grp" value="x" checked>One</radio>
-        <radio id="formRadio2" name="grp" value="y">Two</radio>
+      <section id="formSelect" class="formPanel">
+        <h3 class="demoLabel">select value</h3>
+        <div class="formRow">
+          <select id="formSelect1">
+            <option value="a">Alpha</option>
+            <option value="b">Beta</option>
+            <option value="c">Gamma</option>
+          </select>
+          <div id="modeAccent"></div>
+        </div>
+        <span id="modeStatus" class="formStatus">mode: alpha</span>
       </section>
-      <section id="formProgress">
-        <h3 class="demoLabel">progress</h3>
-        <progress id="formProg" value="0"></progress>
+      <section id="formRadio" class="formPanel">
+        <h3 class="demoLabel">radio group</h3>
+        <div id="radioChoices">
+          <radio id="formRadio1" name="grp" value="x" checked>Calm</radio>
+          <radio id="formRadio2" name="grp" value="y">Fast</radio>
+        </div>
+        <span id="radioStatus" class="formStatus">speed: calm</span>
       </section>
-      <section id="formRange">
-        <h3 class="demoLabel">range</h3>
-        <label for="formRange1">Volume</label>
-        <range id="formRange1" min="0" max="10" value="3"></range>
+      <section id="formRange" class="formPanel">
+        <h3 class="demoLabel">range binding</h3>
+        <div class="formStack">
+          <label for="formRange1">Volume</label>
+          <range id="formRange1" min="0" max="10" value="3"></range>
+          <span id="volumeStatus" class="formStatus">volume: 3</span>
+          <progress id="formProg" value="30"></progress>
+          <span id="formProgressCaption" class="formStatus">meter: 30%</span>
+        </div>
       </section>
-      <section id="formInput">
+      <section id="formInput" class="formPanel">
         <h3 class="demoLabel">input (text + number)</h3>
-        <label for="formName">Name</label>
-        <input id="formName" type="text" placeholder="enter name" maxlength="20"></input>
-        <label for="formAge">Age</label>
-        <input id="formAge" type="number" placeholder="0" maxlength="3"></input>
+        <div class="formStack">
+          <label for="formName">Name</label>
+          <input id="formName" type="text" placeholder="enter name" maxlength="20" on:change={captureName}></input>
+          <span id="nameStatus" class="formStatus">name commits: {nameCommits}</span>
+          <label for="formAge">Age</label>
+          <input id="formAge" type="number" placeholder="0" maxlength="3" on:change={captureAge}></input>
+          <span id="ageStatus" class="formStatus">age commits: {ageCommits}</span>
+        </div>
       </section>
-      <section id="formDisabled">
+      <section id="formDisabled" class="formPanel">
         <h3 class="demoLabel">:disabled</h3>
-        <button id="formDisabledBtn" disabled>cannot tap</button>
+        <div class="formRow">
+          <button id="formDisabledBtn" disabled>cannot tap</button>
+          <span class="formStatus">ignored by input</span>
+        </div>
       </section>
     </main>
   </body>

@@ -105,12 +105,13 @@ function collectInterpolationBindings(
 }
 
 /** Walk styled trees for on:* declarative event handlers and synthesize preview
- *  callback specs. Each on:click="saveSettings" becomes a callback whose body is
- *  `saveSettings()` — the preview evaluates it (calling the named function from
- *  module scope) on tap. Mirrors the runtime's named-ref handler synthesis. */
+ *  callback specs. Each on:click="saveSettings" becomes the named function's
+ *  body when the source is available, so preview callbacks execute the same
+ *  author code the device emits as a standalone function. */
 function collectEventCallbacks(
   trees: StyledNode[],
   programNodes: Array<{ id?: string }>,
+  namedFunctionBodies: Map<string, string>,
 ): PreviewCallbackSpec[] {
   const out: PreviewCallbackSpec[] = [];
   const walk = (node: StyledNode): void => {
@@ -120,7 +121,7 @@ function collectEventCallbacks(
         for (const kind of ["click", "hold", "release", "change"] as const) {
           const fn = node.events[kind];
           if (fn) {
-            out.push({ nodeId: node.id ?? `__event_${nodeIndex}`, nodeIndex, kind, body: `${fn}()` });
+            out.push({ nodeId: node.id ?? `__event_${nodeIndex}`, nodeIndex, kind, body: namedFunctionBodies.get(fn) ?? `${fn}()` });
           }
         }
       }
@@ -205,6 +206,15 @@ function callbackBodyText(cb: ts.Expression | undefined, source: ts.SourceFile):
   if (!cb || (!ts.isArrowFunction(cb) && !ts.isFunctionExpression(cb))) return "";
   if (ts.isExpression(cb.body)) return `${cb.body.getText(source)};`;
   return cb.body.statements.map((statement) => statement.getText(source)).join("\n");
+}
+
+function collectNamedFunctionBodies(source: ts.SourceFile): Map<string, string> {
+  const bodies = new Map<string, string>();
+  for (const statement of source.statements) {
+    if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.body) continue;
+    bodies.set(statement.name.text, statement.body.statements.map((s) => s.getText(source)).join("\n"));
+  }
+  return bodies;
 }
 
 function callbackExpressionText(cb: ts.Expression | undefined, source: ts.SourceFile): string | undefined {
@@ -649,6 +659,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const eventCallbacks = collectEventCallbacks(
     allStyledScreens.length > 0 ? allStyledScreens : [styled],
     program.nodes,
+    collectNamedFunctionBodies(sourceFile),
   );
   // bind:* declarative two-way bindings: read (signal → node) + write-back
   // (node → signal via change callbacks).

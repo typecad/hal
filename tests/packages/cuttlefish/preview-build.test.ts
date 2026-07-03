@@ -23,7 +23,7 @@ describe("preview snapshot builder", () => {
 
     const button = snapshot.program.nodes.find((node) => node.id === "formBtn" && node.kind === "button");
     expect(button).toBeDefined();
-    expect(button!.bg).toBe(resolveColor("#ff6666", snapshot.program.colorFormat));
+    expect(button!.bg).toBe(resolveColor("#ff765c", snapshot.program.colorFormat));
     expect(snapshot.program.nodes.find((node) => node.id === "formName")).toMatchObject({
       kind: "input",
       inputType: "text",
@@ -48,8 +48,8 @@ describe("preview snapshot builder", () => {
       itemParam: "i",
       tapParam: "i",
     }));
-    expect(snapshot.callbacks.some((callback) => callback.nodeId === "formBtn" && callback.kind === "click")).toBe(true);
-    expect(snapshot.callbacks.some((callback) => callback.nodeId === "formName" && callback.kind === "change")).toBe(true);
+    expect(snapshot.callbacks.find((callback) => callback.nodeId === "formBtn" && callback.kind === "click")?.body).toContain("count.set");
+    expect(snapshot.callbacks.find((callback) => callback.nodeId === "formName" && callback.kind === "change")?.body).toContain("nameCommits.set");
     expect(snapshot.callbacks.some((callback) => callback.nodeId === "formAge" && callback.kind === "change")).toBe(true);
     expect(snapshot.callbacks.some((callback) => callback.nodeId === "kbInput" && callback.kind === "change")).toBe(true);
     expect(snapshot.cssRules.some((rule) => rule.selector.compounds.length === 1 && rule.selector.compounds[0].some(s => s.kind === "class" && s.name === "ui-key"))).toBe(true);
@@ -86,8 +86,8 @@ describe("preview snapshot builder", () => {
     expect(fitCover?.imgDataId).toBe(fitContain?.imgDataId);
     expect(fitFill?.imgDataId).toBe(fitContain?.imgDataId);
     expect(snapshot.program.imageAssets[fitContain!.imgDataId]).toMatchObject({ width: 48, height: 24 });
-    // One interval: the progress-bar animator.
-    expect(snapshot.intervals).toHaveLength(1);
+    // The progress bar is now bound to the range input instead of a timer.
+    expect(snapshot.intervals).toHaveLength(0);
     expect(snapshot.font).toHaveLength(1280);
     const canvas = snapshot.program.nodes.find((node) => node.id === "demoCanvas" && node.kind === "canvas");
     expect(canvas).toMatchObject({ kind: "canvas", canvasW: 200, canvasH: 120 });

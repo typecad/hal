@@ -83,8 +83,10 @@ describe("UI structured model", () => {
     expect(model.nodes[0].bg).toBe(0x0400);
     expect(model.nodes[1].kind).toBe("button");
     expect(model.nodes[1].borderColor).toBe(0x3666);
+    expect(model.nodes[1]).toMatchObject({ paddingTop: 4, paddingRight: 8, paddingBottom: 4, paddingLeft: 8 });
     expect(model.transitions[0]).toMatchObject({ node: 1, durationMs: 80, pressedTarget: 0x3666 });
     expect(cpp.nodeTable).toContain(`.box={${model.nodes[1].box.x},${model.nodes[1].box.y},${model.nodes[1].box.w},${model.nodes[1].box.h}}`);
+    expect(cpp.nodeTable).toContain(".paddingLeft=8");
     expect(cpp.transitionTable).toContain(".durationMs=80");
   });
 

@@ -76,7 +76,7 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #000000;
   --sidebar-ring: #ff3333;
-  --radius: 0px;
+  --radius: 6px;
   /* Hard offset shadow — NeoBrutalism signature. No blur, full opacity. */
   --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1.00);
 }
@@ -115,7 +115,7 @@
   --sidebar-accent-foreground: #000000;
   --sidebar-border: #ffffff;
   --sidebar-ring: #ff6666;
-  --radius: 0px;
+  --radius: 6px;
   --shadow: 4px 4px 0px 0px hsl(0 0% 0% / 1.00);
 }
 
@@ -143,6 +143,7 @@ screen {
   border: 1px solid var(--border);
   background: var(--card);
   padding: 8px 10px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 .backLink {
@@ -175,9 +176,11 @@ screen {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  width: 280px;
   border: 1px solid var(--border);
   background: var(--card);
   padding: 8px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 #homeTitle {
@@ -197,12 +200,18 @@ screen {
   gap: 6px;
   width: 280px;
 }
-#homeNav a {
+#homeNav button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 32px;
   color: var(--accent);
   font-size: 18px;
+  text-align: left;
   background: var(--card);
   border: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: 0 10px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 #homeFooter {

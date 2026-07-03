@@ -9,7 +9,7 @@
     rst: 22,
   });
 
-  export const count = ui.signal(0);
+  let count = ui.signal(0);
 
   export function incrementTaps() {
     count.set(count() + 1);
