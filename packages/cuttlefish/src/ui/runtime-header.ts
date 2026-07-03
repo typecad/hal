@@ -3260,7 +3260,18 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, UI_
     int16_t segRight = (int16_t)(segX + (int16_t)seg->w);
     if (segRight <= targetLeft || segX >= targetRight) continue;
     UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
-    int16_t segY = y + line->baseline - (7 * (int16_t)run->textSize);  // baseline alignment
+    // Baseline alignment: for asset fonts, the ascent is the font face's
+    // baseline (baked per px size); for the bitmap font (fontFace=0), it's the
+    // 5x8 glyph ascent (7px × textSize). Using the wrong ascent misaligns runs
+    // vertically and makes mixed rich-text lines look garbled.
+    int16_t ascent;
+    if (run->fontFace) {
+      const UIFontFace* face = ui_font_face(run->fontFace);
+      ascent = face ? (int16_t)face->baseline : (7 * (int16_t)run->textSize);
+    } else {
+      ascent = 7 * (int16_t)run->textSize;
+    }
+    int16_t segY = y + line->baseline - ascent;
     UI_COLOR_T fg = useFgOverride ? fgOverride : run->fg;
     ui_draw_text(seg->text, segX, segY, fg, bg, run->textSize, antialias, run->fontFace, run->letterSpacing);
     if (run->underline & 1) ui_display_draw_fast_hline(segX, segY + 8 * run->textSize - 1, seg->w, fg);
