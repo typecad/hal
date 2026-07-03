@@ -48,6 +48,10 @@ registerDisplayAdapter("st7796", st7796Adapter);
 import { einkMonoAdapter } from "./display-adapters/eink-mono.js";
 registerDisplayAdapter("ssd1680", einkMonoAdapter);
 
+// ── SDL2 adapter (native desktop window, RGB888) ────────────────────────────
+import { sdlAdapter } from "./display-adapters/sdl.js";
+registerDisplayAdapter("sdl", sdlAdapter);
+
 // ── ILI9341 adapter ─────────────────────────────────────────────────────────
 // The first built-in adapter. Mirrors the code previously hardcoded in
 // ui-emitter.ts and runtime-header.ts.
