@@ -26,6 +26,10 @@ export interface DisplayInitOp {
   driver: string;
   /** Optional SPI clock frequency in Hz for SPI-backed displays. */
   spiFrequency?: number;
+  /** I2C address (hex) for I2C-backed displays like SSD1309. */
+  address?: number;
+  /** Reset pin for I2C displays (separate from SPI rst). */
+  reset?: number;
 }
 
 export interface DisplayFillRectOp {

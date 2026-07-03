@@ -86,6 +86,10 @@ export interface DisplayConfig {
   dc?: number;
   rst?: number;
   bus?: string;
+  /** I2C address (hex, e.g. 0x3C). Used by I2C display drivers like SSD1309. */
+  address?: number;
+  /** Reset pin for I2C displays (separate from SPI `rst`). */
+  reset?: number;
   antialias?: boolean;
   /** Override the CSS theme file. Relative paths resolve from the .ui.html
    *  directory; absolute paths are used as-is. Default: sibling .ui.css. */
@@ -189,7 +193,7 @@ export function resolveScrollConfig(display: {
 export function resolveDisplayProfile(
   config: DisplayConfig,
   registry: Map<string, DisplayProfile>,
-): { profile: DisplayProfile; cs: number; dc: number; rst: number; bus: string } {
+): { profile: DisplayProfile; cs: number; dc: number; rst: number; bus: string; address: number; reset: number } {
   let base: DisplayProfile;
 
   if (config.profile) {
@@ -237,6 +241,8 @@ export function resolveDisplayProfile(
     dc: config.dc ?? 21,
     rst: config.rst ?? 22,
     bus: config.bus ?? "SPI",
+    address: config.address ?? 0x3C,
+    reset: config.reset ?? -1,
   };
 }
 

@@ -11,12 +11,14 @@
 
 import type { DisplayProfile } from "../api/shared/index.js";
 
-/** Extended profile with mount wiring (cs/dc/rst from ui.mount options). */
+/** Extended profile with mount wiring (cs/dc/rst/address/reset from ui.mount). */
 export interface ResolvedDisplay extends DisplayProfile {
   _mountCs: number;
   _mountDc: number;
   _mountRst: number;
   _mountBus: string;
+  _mountAddress: number;
+  _mountReset: number;
 }
 
 let currentProfile: ResolvedDisplay | null = null;
@@ -24,7 +26,7 @@ let currentProfile: ResolvedDisplay | null = null;
 /** Set the display profile for this transpile run. Called from transpileFile. */
 export function setDisplayProfile(
   profile: DisplayProfile,
-  wiring: { cs?: number; dc?: number; rst?: number; bus?: string },
+  wiring: { cs?: number; dc?: number; rst?: number; bus?: string; address?: number; reset?: number },
 ): void {
   currentProfile = {
     ...profile,
@@ -32,6 +34,8 @@ export function setDisplayProfile(
     _mountDc: wiring.dc ?? 21,
     _mountRst: wiring.rst ?? 22,
     _mountBus: wiring.bus ?? "SPI",
+    _mountAddress: wiring.address ?? 0x3C,
+    _mountReset: wiring.reset ?? -1,
   };
 }
 
@@ -50,6 +54,8 @@ export function getDisplayProfile(): ResolvedDisplay {
     _mountDc: 21,
     _mountRst: 22,
     _mountBus: "SPI",
+    _mountAddress: 0x3C,
+    _mountReset: -1,
   };
 }
 
