@@ -243,7 +243,7 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `  __tc_display.ren = SDL_CreateRenderer(__tc_display.win, -1,`,
       `    SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);`,
       `  __tc_display.tex = SDL_CreateTexture(__tc_display.ren,`,
-      `    SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING,`,
+      `    SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,`,
       `    __tc_display.w_, __tc_display.h_);`,
       `  __tc_display.fillScreen(0);`,
       `}`,
