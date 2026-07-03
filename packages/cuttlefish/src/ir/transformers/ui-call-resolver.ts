@@ -355,9 +355,13 @@ function resolveMountCall(
   const profile = getDisplayProfile();
   const viewport = { width: profile.width, height: profile.height };
 
-  // Final layout + lower using the mount's viewport.
+  // Final layout + lower using the mount's viewport. Source the colorFormat
+  // from the resolved display profile (authoritative — set from config), not
+  // strategy.colorFormat() (capability-level, may default to rgb565 before the
+  // profile is wired into the strategy). This ensures node colors lower at the
+  // target's true depth (rgb888 for SDL → full 888, no 565 quantization).
   const lowered = lowerOnMount(htmlPath, {
-    colorFormat: strategy.colorFormat(),
+    colorFormat: profile.colorFormat,
     storage: strategy.graphicsCapacity().nodeStorage,
     viewport,
   });
