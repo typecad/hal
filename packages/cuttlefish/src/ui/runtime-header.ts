@@ -297,11 +297,19 @@ extern const uint16_t __ui_rich_line_count;
 // narrowed before reaching the HAL. Under 565/mono this is uint16_t and the
 // emitted code is byte-identical with the pre-widening runtime.
 #if UI_COLOR_DEPTH == 888
-  #define UI_COLOR_T uint32_t
-  #define UI_DIM_MASK 0x7F7F7Fu   // halve each 8-bit channel independently
+  #ifndef UI_COLOR_T
+    #define UI_COLOR_T uint32_t
+  #endif
+  #ifndef UI_DIM_MASK
+    #define UI_DIM_MASK 0x7F7F7Fu   // halve each 8-bit channel independently
+  #endif
 #else
-  #define UI_COLOR_T uint16_t
-  #define UI_DIM_MASK 0x7BEFu     // 565 dim mask (top bit clear per channel)
+  #ifndef UI_COLOR_T
+    #define UI_COLOR_T uint16_t
+  #endif
+  #ifndef UI_DIM_MASK
+    #define UI_DIM_MASK 0x7BEFu     // 565 dim mask (top bit clear per channel)
+  #endif
 #endif
 static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity);
 static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity);

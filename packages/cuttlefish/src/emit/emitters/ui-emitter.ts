@@ -50,6 +50,16 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     // the whole .ino and generates prototypes that reference GFXcanvas16
     // etc. before any #include, so the GFX header must come first.
     ctx.sourceLines.unshift(adapter.includes);
+    // Color-depth preamble: UI_COLOR_T is referenced by adapter draw
+    // signatures, so the depth + type defines must precede the adapter
+    // functions (which come before the runtime header). Under 565/mono
+    // these resolve to uint16_t/0x7BEF — byte-identical with history.
+    const is888 = profile.colorFormat === "rgb666" || profile.colorFormat === "rgb888";
+    ctx.sourceLines.push(
+      is888
+        ? "#define UI_COLOR_DEPTH 888\n#define UI_COLOR_T uint32_t\n#define UI_DIM_MASK 0x7F7F7Fu"
+        : "#define UI_COLOR_DEPTH 565\n#define UI_COLOR_T uint16_t\n#define UI_DIM_MASK 0x7BEFu",
+    );
     ctx.sourceLines.push(adapter.declaration);
     ctx.sourceLines.push(adapter.functions);
   }
@@ -88,10 +98,12 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   //     for TFT byte-identity (node fields hold 565 values); 888 for rgb666+
   //     targets (node fields hold 888 values, blend via ui_blend888). The value
   //     depth and blend math switch TOGETHER — see Phase 1 counterexample.
+  //     Guarded: the display-adapter preamble (0.5) may already define it so
+  //     UI_COLOR_T precedes the adapter's draw signatures.
   ctx.sourceLines.push(
     profile.colorFormat === "rgb666" || profile.colorFormat === "rgb888"
-      ? "#define UI_COLOR_DEPTH 888"
-      : "#define UI_COLOR_DEPTH 565",
+      ? "#ifndef UI_COLOR_DEPTH\n#define UI_COLOR_DEPTH 888\n#endif"
+      : "#ifndef UI_COLOR_DEPTH\n#define UI_COLOR_DEPTH 565\n#endif",
   );
   // 1a-bis. Refresh model + native format from derived capabilities. E-ink
   //        (displayClass: "eink") derives refreshModel "deferred-partial" +

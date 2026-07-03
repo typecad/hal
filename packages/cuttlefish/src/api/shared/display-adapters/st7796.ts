@@ -55,8 +55,8 @@ export const st7796Adapter: DisplayAdapterGenerator = (display) => {
       ].join("\n");
 
   const fillScreenSig = is666
-    ? "static inline void display_fillScreen(uint32_t color) { __tc_display.fillScreen((uint16_t)color); }"
-    : "static inline void display_fillScreen(uint16_t color) { __tc_display.fillScreen(color); }";
+    ? "static inline void display_fillScreen(UI_COLOR_T color) { __tc_display.fillScreen((uint16_t)color); }"
+    : "static inline void display_fillScreen(UI_COLOR_T color) { __tc_display.fillScreen((uint16_t)color); }";
 
   return {
     includes,
