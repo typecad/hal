@@ -602,7 +602,7 @@ static inline const UIFontGlyph* ui_font_glyph(const UIFontFace* face, uint16_t 
 static inline uint8_t ui_font_alpha_at(const UIFontFace* face, const UIFontGlyph* glyph, uint16_t pixelIndex);
 static inline uint16_t ui_asset_text_width(const char* text, const UIFontFace* face);
 static inline uint8_t ui_asset_text_height(const UIFontFace* face);
-static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t antialias, uint8_t fontFace);
+static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y, UI_COLOR_T fg, UI_COLOR_T bg, uint8_t antialias, uint8_t fontFace);
 static inline uint16_t ui_text_width(const char* text, uint8_t ts, uint8_t fontFace, int8_t letterSpacing);
 struct UITextLine;
 static inline uint8_t ui_text_next_line(const char** cursor, uint16_t maxWidth, uint8_t whiteSpaceMode, uint8_t ts, uint8_t fontFace, int8_t letterSpacing, UITextLine* out);
@@ -620,10 +620,10 @@ static inline void ui_release_canvas_state();
 static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible);
 static inline void ui_invalidate_scroll_canvas_for_node(uint16_t nodeIdx);
 static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip);
-static inline void ui_fill_rect_clipped(int16_t x, int16_t y, int16_t w, int16_t h, const UIRect* clip, uint16_t color);
-static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRect* clip, uint16_t color);
-static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRect* clip, uint16_t color);
-static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, uint16_t color);
+static inline void ui_fill_rect_clipped(int16_t x, int16_t y, int16_t w, int16_t h, const UIRect* clip, UI_COLOR_T color);
+static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRect* clip, UI_COLOR_T color);
+static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRect* clip, UI_COLOR_T color);
+static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, UI_COLOR_T color);
 static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t drawY, const UIRect* clip);
 // Forward declarations for functions used before their definition in the
 // single native translation unit (Arduino's auto-prototyper hides this;
@@ -632,13 +632,13 @@ static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py);
 static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg);
 static inline void ui_aa_end(CuttlefishCanvas16* c);
 static inline void ui_aa_push(CuttlefishCanvas16* c, int16_t dx, int16_t dy);
-static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, uint16_t color);
-static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color);
-static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color);
+static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, UI_COLOR_T color);
+static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color);
+static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color);
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r);
 static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* paintRect);
 static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect* oldRect);
-static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, uint16_t color);
+static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, UI_COLOR_T color);
 static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY);
 static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY);
 static inline uint8_t ui_rotation_quadrant(int16_t deg);
@@ -839,10 +839,10 @@ static inline void ui_display_draw_circle(int16_t x, int16_t y, int16_t r, UI_CO
 static inline void ui_display_set_cursor(int16_t x, int16_t y) {
   display_targetSetCursor(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y);
 }
-static inline void ui_display_set_text_color(uint16_t fg, uint16_t bg) {
+static inline void ui_display_set_text_color(UI_COLOR_T fg, UI_COLOR_T bg) {
   display_targetSetTextColorBg(__ui_gfx, fg, bg);
 }
-static inline void ui_display_set_text_color_solid(uint16_t fg) {
+static inline void ui_display_set_text_color_solid(UI_COLOR_T fg) {
   display_targetSetTextColor(__ui_gfx, fg);
 }
 static inline void ui_display_set_text_size(uint8_t size) {
@@ -1150,7 +1150,7 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
       int16_t srcX = ((int32_t)localX * srcW) / drawW;
       if (srcX < 0) srcX = 0;
       if (srcX >= srcW) srcX = srcW - 1;
-      uint16_t color = img->data[(int32_t)srcY * srcW + srcX];
+      UI_COLOR_T color = img->data[(int32_t)srcY * srcW + srcX];
       int16_t dx = tx;
       int16_t dy = ty;
       if (q == 1) {
@@ -1215,7 +1215,7 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
         int16_t srcY = ((int32_t)dy * img->h) / drawH;
         for (int16_t dx = dxStart; dx < dxEnd; dx++) {
           int16_t srcX = ((int32_t)dx * img->w) / drawW;
-          uint16_t color = img->data[(int32_t)srcY * img->w + srcX];
+          UI_COLOR_T color = img->data[(int32_t)srcY * img->w + srcX];
           ui_display_draw_pixel(x + dx, y + dy, color);
         }
       }
@@ -1226,7 +1226,7 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
     int16_t srcY = ((int32_t)dy * img->h) / drawH;
     for (int16_t dx = dxStart; dx < dxEnd; dx++) {
       int16_t srcX = ((int32_t)dx * img->w) / drawW;
-      uint16_t color = img->data[(int32_t)srcY * img->w + srcX];
+      UI_COLOR_T color = img->data[(int32_t)srcY * img->w + srcX];
       int16_t rdx = 0, rdy = 0;
       if (q == 1) {
         rdx = drawH - 1 - dy;
@@ -1281,7 +1281,7 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
    if (sxStart >= sxEnd || syStart >= syEnd) return;
    for (uint16_t sy = syStart; sy < syEnd; sy++) {
      for (uint16_t sx = sxStart; sx < sxEnd; sx++) {
-       uint16_t color = img->data[(uint32_t)sy * img->w + sx];
+       UI_COLOR_T color = img->data[(uint32_t)sy * img->w + sx];
        int16_t dx = 0;
        int16_t dy = 0;
        if (q == 1) {
@@ -1569,7 +1569,7 @@ static inline int16_t ui_draw_y_for_node(uint16_t nodeIdx) {
   return ui_base_draw_y_for_node(nodeIdx) + ui_pressed_offset_y_for_node(nodeIdx);
 }
 
-static inline uint16_t ui_parent_clear_color(uint16_t nodeIdx) {
+static inline UI_COLOR_T ui_parent_clear_color(uint16_t nodeIdx) {
   uint16_t p = __ui_nodes[nodeIdx].parent;
   if (p != UI_NO_PARENT && p < __ui_node_count) {
     return __ui_nodes[p].hasBg ? __ui_nodes[p].bg : __ui_nodes[p].clearColor;
@@ -1792,7 +1792,7 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
   // translucent (matching the main NODE_FILL draw, which uses fillBg). Without
   // this, scroll repair seeds the canvas with the parent's RAW bg while the
   // main draw used the blended color → shearing on translucent nodes during scroll.
-  uint16_t parentFillBg = __ui_nodes[p].bg;
+  UI_COLOR_T parentFillBg = __ui_nodes[p].bg;
   if (__ui_nodes[p].opacity < 100) {
     parentFillBg = ui_blend(__ui_nodes[p].bg, ui_parent_clear_color(p), __ui_nodes[p].opacity);
   }
@@ -1882,13 +1882,13 @@ static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip) {
   return 1;
 }
 
-static inline void ui_fill_rect_clipped(int16_t x, int16_t y, int16_t w, int16_t h, const UIRect* clip, uint16_t color) {
+static inline void ui_fill_rect_clipped(int16_t x, int16_t y, int16_t w, int16_t h, const UIRect* clip, UI_COLOR_T color) {
   UIRect r = { x, y, w, h };
   if (!ui_clip_rect_to_rect(&r, clip)) return;
   ui_display_fill_rect(r.x, r.y, r.w, r.h, color);
 }
 
-static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRect* clip, uint16_t color) {
+static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRect* clip, UI_COLOR_T color) {
   if (w <= 0 || y < clip->y || y >= clip->y + clip->h) return;
   int16_t x0 = x > clip->x ? x : clip->x;
   int16_t x1 = x + w < clip->x + clip->w ? x + w : clip->x + clip->w;
@@ -1896,7 +1896,7 @@ static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRec
   ui_display_draw_fast_hline(x0, y, x1 - x0, color);
 }
 
-static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRect* clip, uint16_t color) {
+static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRect* clip, UI_COLOR_T color) {
   if (h <= 0 || x < clip->x || x >= clip->x + clip->w) return;
   int16_t y0 = y > clip->y ? y : clip->y;
   int16_t y1 = y + h < clip->y + clip->h ? y + h : clip->y + clip->h;
@@ -1904,7 +1904,7 @@ static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRec
   ui_display_draw_fast_vline(x, y0, y1 - y0, color);
 }
 
-static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, uint16_t color) {
+static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, UI_COLOR_T color) {
   if (style == 0 || width == 0 || w <= 0 || h <= 0) return;
   for (uint8_t b = 0; b < width; b++) {
     int16_t rx = x + b;
@@ -2936,7 +2936,7 @@ static inline void ui_copy_text_span(const char* start, const char* end, char* o
   out[len] = 0;
 }
 
-static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t antialias, uint8_t fontFace) {
+static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y, UI_COLOR_T fg, UI_COLOR_T bg, uint8_t antialias, uint8_t fontFace) {
   const UIFontFace* face = ui_font_face(fontFace);
   if (!text || !face) return 0;
   int16_t cursor = x;
@@ -2988,7 +2988,7 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
   return 1;
 }
 
-static inline void ui_draw_bitmap_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts, int8_t letterSpacing) {
+static inline void ui_draw_bitmap_text(const char* text, int16_t x, int16_t y, UI_COLOR_T fg, UI_COLOR_T bg, uint8_t ts, int8_t letterSpacing) {
   if (!text) text = "";
   if (ts == 0) ts = 2;
   ui_display_set_text_color(fg, bg);
@@ -3058,7 +3058,7 @@ static inline uint8_t ui_text_aa_coverage(uint8_t neighbors, uint8_t outerNeighb
   return coverage > cap ? cap : coverage;
 }
 
-static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts) {
+static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_COLOR_T fg, UI_COLOR_T bg, uint8_t ts) {
   if (!text || !*text) return;
   if (ts == 0) ts = 2;
   uint16_t w = ui_text_width(text, ts, 0, 0);
@@ -3115,7 +3115,7 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint1
    }
  }
 
-static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts, uint8_t antialias, uint8_t fontFace, int8_t letterSpacing) {
+static inline void ui_draw_text(const char* text, int16_t x, int16_t y, UI_COLOR_T fg, UI_COLOR_T bg, uint8_t ts, uint8_t antialias, uint8_t fontFace, int8_t letterSpacing) {
   if (fontFace && ui_draw_asset_text(text, x, y, fg, bg, antialias, fontFace)) {
     return;
   }
@@ -3129,7 +3129,7 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t
   ui_draw_bitmap_text(text, x, y, fg, bg, ts, letterSpacing);
 }
 #else
-static inline void ui_draw_text(const char* text, int16_t x, int16_t y, uint16_t fg, uint16_t bg, uint8_t ts, uint8_t antialias, uint8_t fontFace, int8_t letterSpacing) {
+static inline void ui_draw_text(const char* text, int16_t x, int16_t y, UI_COLOR_T fg, UI_COLOR_T bg, uint8_t ts, uint8_t antialias, uint8_t fontFace, int8_t letterSpacing) {
   (void)antialias;
   if (fontFace && ui_draw_asset_text(text, x, y, fg, bg, antialias, fontFace)) {
     return;
@@ -3178,7 +3178,7 @@ static inline void ui_truncate_clip(char* buf, uint8_t bufSize, uint16_t maxWidt
   if (prefix < bufSize) buf[prefix] = 0;
 }
 
-static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, uint16_t maxWidth, uint16_t fg, uint16_t bg,
+static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, uint16_t maxWidth, UI_COLOR_T fg, UI_COLOR_T bg,
                                         uint8_t ts, uint8_t antialias, uint8_t fontFace, int8_t letterSpacing,
                                         uint8_t lineHeight, uint8_t whiteSpaceMode, uint8_t textAlign, uint8_t underline, uint8_t textOverflow) {
   if (!text) text = "";
@@ -3322,7 +3322,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
   int16_t by = drawY;
   int16_t bw = __ui_nodes[i].box.w;
   int16_t bh = __ui_nodes[i].box.h;
-  uint16_t clearCol = __ui_nodes[i].clearColor;
+  UI_COLOR_T clearCol = __ui_nodes[i].clearColor;
   uint8_t radius = __ui_nodes[i].borderRadius;
 
   for (uint8_t s = 0; s < __ui_nodes[i].shadowCount && s < 4; s++) {
@@ -3339,7 +3339,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
     if (!insetOnly && inset) continue;
 
     if (inset && rawBlur == 0) {
-      uint16_t insetBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+      UI_COLOR_T insetBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
       uint32_t col = ui_blend(shadowCol, insetBg, baseAlpha);
       if (oy > 0) {
         ui_display_fill_rect(bx, by, bw, oy, col);
@@ -3395,7 +3395,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
   }
 }
 
-static inline void ui_draw_closed_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t radius, uint16_t color) {
+static inline void ui_draw_closed_round_rect(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t radius, UI_COLOR_T color) {
   if (w <= 0 || h <= 0) return;
   uint8_t r = radius;
   if (r > w / 2) r = w / 2;
@@ -3417,7 +3417,7 @@ static inline void ui_draw_closed_round_rect(int16_t x, int16_t y, int16_t w, in
   ui_display_draw_pixel(x + w - 1, y + h - r - 1, color);
 }
 
-static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t radius, uint8_t style, uint8_t width, uint16_t color) {
+static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t radius, uint8_t style, uint8_t width, UI_COLOR_T color) {
   if (style == 0 || width == 0 || w <= 0 || h <= 0) return;
   for (uint8_t b = 0; b < width; b++) {
     int16_t rx = x + b;
@@ -3448,7 +3448,7 @@ static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t
   }
 }
 
-static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, uint16_t color) {
+static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, UI_COLOR_T color) {
   ui_draw_rect_outline(drawX, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
     __ui_nodes[i].borderRadius, __ui_nodes[i].borderStyle, __ui_nodes[i].borderWidth, color);
 }
@@ -3813,7 +3813,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t vh = __ui_nodes[s].box.h;
     int16_t vox = __ui_nodes[s].box.x;
     int16_t voy = __ui_nodes[s].box.y;
-    uint16_t scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
+    UI_COLOR_T scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
 #if UI_SCROLL_RENDER_TIER_FULL
     bufferedScrollCanvas = ui_get_container_canvas(vw, vh);
 #else
@@ -4095,7 +4095,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           if (th > clearH) clearH = th;
           // Dynamic transparent text still needs a clear, otherwise old glyph
           // pixels accumulate when only this text node is dirty.
-          uint16_t clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          UI_COLOR_T clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           // Blend the clear toward the backdrop by opacity so a translucent text
           // node (inherited from an opacity:<1 parent) doesn't repaint a solid
           // block of its parent's fill around the glyphs.
@@ -4110,17 +4110,17 @@ static inline void ui_tick(uint16_t deltaMs) {
         // single-string wrapped path. Geometry is baked at transpile time; the
         // runtime does not re-wrap.
         if (__ui_nodes[i].runCount > 0) {
-          uint16_t richTextBg;
+          UI_COLOR_T richTextBg;
           if (__ui_nodes[i].opacity < 100) {
             uint16_t p = __ui_nodes[i].parent;
-            uint16_t source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
+            UI_COLOR_T source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
                           : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
             richTextBg = ui_blend(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
           } else {
             richTextBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
           }
           if (__ui_nodes[i].textShadowCount > 0) {
-            uint16_t tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            UI_COLOR_T tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
             uint32_t tsCol = ui_blend(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
             // Shadow pass: draw the rich block in the shadow color at the offset.
             // (Per-segment shadow color is approximated by drawing the whole
@@ -4135,7 +4135,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         {
           // Text shadow: draw the text in the shadow color at the offset first.
-          uint16_t tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          UI_COLOR_T tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           if (__ui_nodes[i].textShadowCount > 0) {
             uint32_t tsCol = ui_blend(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
             ui_draw_wrapped_text(displayText,
@@ -4159,7 +4159,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           uint16_t textBg;
           if (__ui_nodes[i].opacity < 100) {
             uint16_t p = __ui_nodes[i].parent;
-            uint16_t source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
+            UI_COLOR_T source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
                           : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
             textBg = ui_blend(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
           } else {
@@ -4223,7 +4223,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t cbY = drawY;
           if (__ui_nodes[i].value) {
             ui_display_fill_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
-            uint16_t inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            UI_COLOR_T inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
 #ifdef UI_AA
             {
               // Draw the checkmark to a 16×16 AA canvas for smooth diagonals.
@@ -4274,7 +4274,7 @@ static inline void ui_tick(uint16_t deltaMs) {
 #ifdef UI_AA
           {
             // Render the radio circle to a 16×16 AA canvas, then push.
-            uint16_t radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            UI_COLOR_T radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
             CuttlefishCanvas16* c = ui_aa_begin(16, 16, radioBg);
             if (__ui_nodes[i].value) {
               ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
@@ -4306,8 +4306,8 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t by = drawY;
           int16_t bw = __ui_nodes[i].box.w;
           int16_t bh = __ui_nodes[i].box.h;
-          uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          uint16_t fgCol = __ui_nodes[i].fg;
+          UI_COLOR_T bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          UI_COLOR_T fgCol = __ui_nodes[i].fg;
 
           // On first draw (lastTextWidth < 0), draw everything.
           // Otherwise incremental: only update the changed portion.
@@ -4344,8 +4344,8 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t by = drawY;
           int16_t bw = __ui_nodes[i].box.w;
           int16_t bh = __ui_nodes[i].box.h;
-          uint16_t fgCol = __ui_nodes[i].fg;
-          uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          UI_COLOR_T fgCol = __ui_nodes[i].fg;
+          UI_COLOR_T bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           UI_COLOR_T dimFg = (UI_COLOR_T)((fgCol >> 1) & UI_DIM_MASK);
 
           int16_t trackY = by + bh / 2;
@@ -4405,14 +4405,14 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t by = drawY;
           int16_t bw = __ui_nodes[i].box.w;
           int16_t bh = __ui_nodes[i].box.h;
-          uint16_t fgCol = __ui_nodes[i].fg;
-          uint16_t bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          UI_COLOR_T fgCol = __ui_nodes[i].fg;
+          UI_COLOR_T bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           if (__ui_nodes[i].borderRadius > 0) {
             ui_display_fill_round_rect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
           } else {
             ui_display_fill_rect(bx, by, bw, bh, bgCol);
           }
-          uint16_t inputBorder = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : fgCol;
+          UI_COLOR_T inputBorder = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : fgCol;
           uint8_t inputBorderStyle = __ui_nodes[i].borderStyle ? __ui_nodes[i].borderStyle : 1;
           uint8_t inputBorderWidth = __ui_nodes[i].borderWidth ? __ui_nodes[i].borderWidth : 1;
           ui_draw_rect_outline(bx, by, bw, bh, __ui_nodes[i].borderRadius, inputBorderStyle, inputBorderWidth, inputBorder);
@@ -4449,7 +4449,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         break;
       case NODE_IMG:
         {
-          uint16_t imgBg = __ui_nodes[i].hasBg ? fillBg : __ui_nodes[i].clearColor;
+          UI_COLOR_T imgBg = __ui_nodes[i].hasBg ? fillBg : __ui_nodes[i].clearColor;
           int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, imgBg);
@@ -4503,7 +4503,7 @@ static inline void ui_tick(uint16_t deltaMs) {
               }
             }
             if (!__ui_canvas_drawn) {
-              uint16_t __ui_canvas_bg = __ui_nodes[i].hasBg ? fillBg : __ui_nodes[i].clearColor;
+              UI_COLOR_T __ui_canvas_bg = __ui_nodes[i].hasBg ? fillBg : __ui_nodes[i].clearColor;
               ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_canvas_bg);
               int16_t __ui_prev_off_x = __ui_draw_off_x;
               int16_t __ui_prev_off_y = __ui_draw_off_y;
@@ -4535,7 +4535,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         uint16_t itemCount = __ui_nodes[i].listCount;
         int16_t listScrollY = __ui_nodes[i].scrollY;
         int16_t listContentH = __ui_nodes[i].contentHeight;
-        uint16_t clearCol = __ui_nodes[i].clearColor;
+        UI_COLOR_T clearCol = __ui_nodes[i].clearColor;
         uint8_t listFullRepaint = 0;
         // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
         // Treat a null buffer (failed internal malloc) as "no canvas" and retry —
@@ -4732,7 +4732,7 @@ static inline void ui_aa_push(CuttlefishCanvas16* c, int16_t dx, int16_t dy) {
 }
 
 // Blend a pixel at integer coords with a coverage fraction (0-255).
-static inline void ui_aa_pixel(CuttlefishCanvas16* c, int16_t x, int16_t y, uint16_t color, uint8_t cov) {
+static inline void ui_aa_pixel(CuttlefishCanvas16* c, int16_t x, int16_t y, UI_COLOR_T color, uint8_t cov) {
   if (!c || !display_canvasBuffer(c)) return;
   if (cov == 0) return;
   if (x < 0 || y < 0 || x >= display_canvasWidth(c) || y >= display_canvasHeight(c)) return;
@@ -4743,7 +4743,7 @@ static inline void ui_aa_pixel(CuttlefishCanvas16* c, int16_t x, int16_t y, uint
 }
 
 // Xiaolin Wu antialiased line. Coordinates are in canvas-local space.
-static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, uint16_t color) {
+static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, UI_COLOR_T color) {
   if (!c || !display_canvasBuffer(c)) return;
   auto ipart = [](float f) { return (int16_t)f; };
   auto round_f = [](float f) { return (int16_t)(f + 0.5f); };
@@ -4774,7 +4774,7 @@ static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x
 }
 
 // Antialiased circle outline. cx,cy,r are in canvas-local space.
-static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
+static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color) {
   if (!c || !display_canvasBuffer(c)) return;
   if (r <= 0) return;
   // Walk each scanline from top to bottom of the bounding box.
@@ -4805,7 +4805,7 @@ static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, f
 }
 
 // Antialiased filled circle.
-static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color) {
+static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color) {
   if (!c || !display_canvasBuffer(c)) return;
   if (r <= 0) return;
   int16_t y0 = (int16_t)floor(cy - r);

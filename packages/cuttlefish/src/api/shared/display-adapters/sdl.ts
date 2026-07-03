@@ -228,6 +228,7 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `    SDL_RenderClear(ren);`,
       `    SDL_RenderCopy(ren, tex, nullptr, nullptr);`,
       `    SDL_RenderPresent(ren);`,
+      `    }`,
       `  }`,
       `};`,
       ``,

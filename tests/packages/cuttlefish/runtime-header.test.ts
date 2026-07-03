@@ -372,7 +372,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_is_ancestor_of\(uint16_t candidate,\s*uint16_t nodeIdx\)/);
     expect(header).toMatch(/ui_draw_gradient_fill\(uint16_t i,\s*int16_t drawY\)/);
     expect(header).toMatch(/ui_draw_shadow\(uint16_t i,\s*int16_t drawY,\s*uint8_t insetOnly\)/);
-    expect(header).toMatch(/ui_draw_node_border\(uint16_t i,\s*int16_t drawX,\s*int16_t drawY,\s*uint16_t color\)/);
+    expect(header).toMatch(/ui_draw_node_border\(uint16_t i,\s*int16_t drawX,\s*int16_t drawY,\s*UI_COLOR_T color\)/);
     expect(header).toMatch(/ui_draw_node_outline\(uint16_t i,\s*int16_t drawX,\s*int16_t drawY\)/);
   });
 
