@@ -38,7 +38,7 @@ export class NativeStrategy implements PlatformStrategy {
     // or cross-module type with no literal at the use site, which would
     // leave the type undefined. Including them here is cheap (header only)
     // and matches how <cstdint> is already justified.
-    return ['<cctype>', '<cstdint>', '<vector>', '<map>', '<set>'];
+    return ['<cctype>', '<cstdint>', '<vector>', '<map>', '<set>', '<chrono>', '<algorithm>'];
   }
 
   symbolAliases(): Record<string, string> {
@@ -68,6 +68,13 @@ export class NativeStrategy implements PlatformStrategy {
       'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
       'namespace Date { inline long now() { auto t = std::chrono::system_clock::now(); return (long)std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count(); } }',
       'inline unsigned long millis() { return (unsigned long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }',
+      '// Arduino-compat polyfills used by the UI runtime (pin reads, constrain, map).',
+      '// The runtime header references these; native provides no-op/identity impls.',
+      '#ifndef HIGH', '#define HIGH 1', '#endif',
+      '#ifndef LOW', '#define LOW 0', '#endif',
+      'inline int digitalRead(int) { return LOW; }',
+      'inline long map(long x, long in_min, long in_max, long out_min, long out_max) { return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min; }',
+      'inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }',
       '#endif // CUTTLEFISH_SHIM_DEFINED',
     ];
   }

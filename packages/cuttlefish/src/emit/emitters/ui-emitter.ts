@@ -30,20 +30,22 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // Only the entry file carries the UI runtime + tables.
   if (!ctx.isEntryFile || !entryHasUI()) return;
 
-  // 0. The display driver (ILI9341 over SPI) needs the SPI library. Includes
-  // are gathered at preamble time; push this so it lands at file top.
-  if (!ctx.includes.includes("<SPI.h>")) {
+  // 0.5. Display adapter: includes + object declaration + inline functions.
+  // Generated per display driver type (ILI9341, ST7789, etc.) via the
+  // display-adapter registry. Must precede the runtime header so the
+  // adapter functions (__tc_display, display_init, etc.) are available.
+  const profile = getDisplayProfile();
+
+  // 0. SPI-bus display drivers (ILI9341, ST7796, …) need the SPI library.
+  // Host render targets (sdl, native-preview) have no SPI bus, so skip it.
+  const spiDriver = profile?.driver !== "sdl" && profile?.driver !== "native-preview";
+  if (spiDriver && !ctx.includes.includes("<SPI.h>")) {
     ctx.includes.push("<SPI.h>");
   }
   // NOTE: <stdio.h> (needed by text-binding snprintf bodies) is pushed in
   // buildEmitterContext (setup.ts), NOT here — emitPreamble runs before this
   // function, so a push here would be too late to land in the output.
 
-  // 0.5. Display adapter: includes + object declaration + inline functions.
-  // Generated per display driver type (ILI9341, ST7789, etc.) via the
-  // display-adapter registry. Must precede the runtime header so the
-  // adapter functions (__tc_display, display_init, etc.) are available.
-  const profile = getDisplayProfile();
   if (profile) {
     const adapter = generateDisplayAdapter(profile);
     // Prepend includes to the very front — Arduino's auto-prototyper scans
@@ -79,6 +81,13 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       ctx.sourceLines.push(touchAdapter.declaration);
       ctx.sourceLines.push(touchAdapter.functions);
     }
+  }
+  // SDL_MAIN_HANDLED must be the absolute first line — it must precede every
+  // #include <SDL2/SDL.h> (the display adapter's and the touch shim's). The
+  // touch unshift above runs after the display-adapter block, so this final
+  // unshift lands at the very front.
+  if (profile.driver === "sdl") {
+    ctx.sourceLines.unshift("#define SDL_MAIN_HANDLED");
   }
 
   // Forward declaration for touch poll (used inside the runtime header's ui_tick)
@@ -136,6 +145,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     `#define UI_SCROLL_RENDER_TIER_CONSTRAINED ${scroll.renderTier === "constrained" ? 1 : 0}`,
     ...(scroll.debug ? [`#define UI_SCROLL_DEBUG 1`] : []),
   );
+  // Forward-declare __ui_kb_set_onchange before the runtime header: the
+  // header's keyboard-open function calls it, but the definition is emitted
+  // later (section 8b). On native (single TU) this must precede the header.
+  ctx.sourceLines.push(`void __ui_kb_set_onchange();`);
   ctx.sourceLines.push(emitRuntimeHeader());
 
   // 1.5. Touch poll function (uses the adapter pattern).
@@ -199,6 +212,17 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   }
 
   // 4. Binding table (accumulated from ui.bind calls).
+  // Forward-declare the binding compute functions first: the table references
+  // them via fn/textFn, but the function bodies are emitted below (4b). On
+  // native (single TU, no Arduino auto-prototyper) the use-before-def would
+  // fail to compile.
+  for (const spec of uiBindings()) {
+    if (spec.property === "text") {
+      ctx.sourceLines.push(`void ${spec.fnName}(char* buf, uint8_t size);`);
+    } else {
+      ctx.sourceLines.push(`uint32_t ${spec.fnName}();`);
+    }
+  }
   ctx.sourceLines.push(emitBindingTable(uiBindings()));
 
   // 4a. List binding table + functions (from ui.bindList calls).
@@ -325,6 +349,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   }
 
   // 8b. Input onChange dispatch — assigns __ui_kb_onchange based on __ui_kb_target.
+  // Forward-declare __ui_kb_set_onchange unconditionally: the runtime header's
+  // keyboard-open function (emitted earlier) calls it, and on native (single
+  // TU) the definition below would be too late.
+  ctx.sourceLines.push(`void __ui_kb_set_onchange();`);
   const inputChangeHandlers = clickHandlers().filter(h => h.kind === "change");
   if (inputChangeHandlers.length > 0) {
     // Forward-declare named-ref onChange handlers before the dispatch wiring.

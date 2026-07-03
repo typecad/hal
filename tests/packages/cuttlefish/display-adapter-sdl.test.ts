@@ -13,11 +13,13 @@ describe("SDL display adapter", () => {
   it("includes SDL2", () => {
     expect(a.includes).toContain("#include <SDL2/SDL.h>");
   });
-  it("aliases CuttlefishDisplayTarget to SdlGfxTarget", () => {
-    expect(a.includes).toMatch(/#define CuttlefishDisplayTarget\s+SdlGfxTarget/);
+  it("aliases CuttlefishDisplayTarget to SdlGfxCanvas (shared base for canvas+target)", () => {
+    expect(a.includes).toMatch(/#define CuttlefishDisplayTarget\s+SdlGfxCanvas/);
   });
-  it("declares the global display object with width/height", () => {
-    expect(a.declaration).toMatch(/SdlGfxTarget\s+__tc_display\s*\(\s*320\s*,\s*240\s*\)/);
+  it("declares the global display object with width/height (in functions block)", () => {
+    // declaration is empty; __tc_display is emitted inside the functions block
+    // after the class definitions (so the type is visible).
+    expect(a.functions).toMatch(/SdlGfxTarget\s+__tc_display\s*\(\s*320\s*,\s*240\s*\)/);
   });
   it("display_init calls SDL_Init and creates a window", () => {
     expect(a.functions).toContain("SDL_Init");

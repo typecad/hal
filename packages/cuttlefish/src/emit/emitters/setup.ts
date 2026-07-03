@@ -218,7 +218,10 @@ export function buildEmitterContext(
     if (!programAnalysis.usesDateNow) {
       shimLines = shimLines.filter(l => !l.includes('namespace Date'));
     }
-    if (!programAnalysis.usesMillis) {
+    // The UI runtime's per-frame tick uses millis() (injected by the emitter,
+    // not authored in user source), so keep the millis() shim when a UI is
+    // mounted even if the source-level analysis didn't flag usesMillis.
+    if (!programAnalysis.usesMillis && !entryHasUI()) {
       shimLines = shimLines.filter(l => !l.includes('millis()'));
     }
     // Strip the nullish helper FUNCTIONS (not the CUTTLEFISH_UNDEFINED macro)

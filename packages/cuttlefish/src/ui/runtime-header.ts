@@ -416,7 +416,7 @@ static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
 extern const uint16_t __ui_screen_count;  // total number of screens (emitted by lowering)
 
 // ── Image assets ────────────────────────────────────────────────────────────
-struct UIImage { uint16_t w; uint16_t h; const uint16_t* data; };
+struct UIImage { uint16_t w; uint16_t h; const UI_COLOR_T* data; };
 extern const UIImage __ui_images[];
 extern const uint16_t __ui_image_count;
 
@@ -557,6 +557,11 @@ static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 10
 static uint16_t __ui_fade_elapsed = 0;
 static uint16_t __ui_fade_duration = 200; // ms
 
+// Early forward declaration: ui_navigate (below) calls ui_release_canvas_state
+// (defined later) during screen changes. Needed on native (single TU, no
+// Arduino auto-prototyper).
+static inline void ui_release_canvas_state();
+
 // Navigate to a screen by index. Marks the new screen's nodes dirty + starts fade.
 static inline void ui_navigate(uint8_t screenIdx) {
   if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
@@ -611,6 +616,7 @@ static inline uint8_t ui_subtree_current_paint_rect(uint16_t nodeIdx, UIRect* ou
 static inline void ui_mark_overlapping_higher_layers_dirty(uint16_t nodeIdx);
 static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint16_t nodeIdx, const UIRect* r);
 static inline void ui_mark_scroll_view_dirty(uint16_t scrollNode);
+static inline void ui_release_canvas_state();
 static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible);
 static inline void ui_invalidate_scroll_canvas_for_node(uint16_t nodeIdx);
 static inline uint8_t ui_clip_rect_to_rect(UIRect* r, const UIRect* clip);
@@ -619,6 +625,16 @@ static inline void ui_hline_clipped(int16_t x, int16_t y, int16_t w, const UIRec
 static inline void ui_vline_clipped(int16_t x, int16_t y, int16_t h, const UIRect* clip, uint16_t color);
 static inline void ui_draw_rect_outline_clipped(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t style, uint8_t width, const UIRect* clip, uint16_t color);
 static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t drawY, const UIRect* clip);
+// Forward declarations for functions used before their definition in the
+// single native translation unit (Arduino's auto-prototyper hides this;
+// native emits one TU so explicit forwards are needed).
+static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py);
+static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, uint16_t bg);
+static inline void ui_aa_end(CuttlefishCanvas16* c);
+static inline void ui_aa_push(CuttlefishCanvas16* c, int16_t dx, int16_t dy);
+static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, uint16_t color);
+static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color);
+static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, uint16_t color);
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r);
 static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* paintRect);
 static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect* oldRect);
@@ -695,7 +711,7 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
     if (exposedH) *exposedH = h;
     return;
   }
-  uint16_t* pixels = display_canvasBuffer(canvas);
+  UI_COLOR_T* pixels = display_canvasBuffer(canvas);
   int16_t stride = display_canvasWidth(canvas);
   // Reserve the rightmost 4px gutter so the memmove never smears scrollbar
   // pixels; the gutter is repainted separately by ui_draw_scrollbar.
@@ -789,7 +805,7 @@ static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int
 static inline void ui_display_draw_pixel(int16_t x, int16_t y, UI_COLOR_T color) {
   display_targetDrawPixel(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, UI_MAYBE_SNAP_MONO565(color));
 }
-static inline void ui_display_draw_rgb_bitmap(int16_t x, int16_t y, const uint16_t* bitmap, int16_t w, int16_t h) {
+static inline void ui_display_draw_rgb_bitmap(int16_t x, int16_t y, const UI_COLOR_T* bitmap, int16_t w, int16_t h) {
   display_targetDrawRGBBitmap(__ui_gfx, x + __ui_draw_off_x, y + __ui_draw_off_y, bitmap, w, h);
 }
 static inline void ui_display_fill_rect(int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T color) {
@@ -1285,7 +1301,7 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
 
 static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
   if (!canvas || !display_canvasBuffer(canvas)) return;
-  uint16_t* pixels = display_canvasBuffer(canvas);
+  UI_COLOR_T* pixels = display_canvasBuffer(canvas);
   int16_t stride = display_canvasWidth(canvas);
   // The canvas is viewport-sized: buffer row 0 = the first row of the viewport.
   // The display destination is (x, y) but the source buffer starts at (0, 0).
@@ -1318,7 +1334,7 @@ static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
 
 static inline void ui_draw_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h) {
   if (!canvas || !display_canvasBuffer(canvas)) return;
-  uint16_t* pixels = display_canvasBuffer(canvas);
+  UI_COLOR_T* pixels = display_canvasBuffer(canvas);
   int16_t stride = display_canvasWidth(canvas);
   if (w == stride && h == display_canvasHeight(canvas)) {
     ui_display_draw_rgb_bitmap(x, y, pixels, w, h);
@@ -3092,7 +3108,7 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, uint1
    }
 
    int16_t stride = display_canvasWidth(dst);
-   uint16_t* pixels = display_canvasBuffer(dst);
+   UI_COLOR_T* pixels = display_canvasBuffer(dst);
    for (int16_t row = 0; row < clipH; row++) {
      ui_display_draw_rgb_bitmap(clipX, (int16_t)(clipY + row),
        pixels + (int32_t)(localY + row) * stride + localX, clipW, 1);

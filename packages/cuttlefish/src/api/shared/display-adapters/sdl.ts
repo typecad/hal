@@ -21,14 +21,19 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
 
   return {
     includes: [
-      `#define CuttlefishDisplayTarget SdlGfxTarget`,
+      `#define CuttlefishDisplayTarget SdlGfxCanvas`,
       `#define CuttlefishCanvas16 SdlGfxCanvas`,
+      // Handle main() ourselves: SDL's default header renames main→SDL_main and
+      // expects an int(argc,argv) signature. The cuttlefish-generated main() is
+      // int main(void), so suppress the rename and call SDL_SetMainReady() in
+      // display_init() instead.
+      `#define SDL_MAIN_HANDLED`,
       `#include <SDL2/SDL.h>`,
       `#include <cstdint>`,
       `#include <cstring>`,
     ].join("\n"),
 
-    declaration: `SdlGfxTarget __tc_display(${w}, ${h});`,
+    declaration: ``,
 
     functions: [
       `// --- Display adapter: SDL2 (RGB888 → RGBA8888 window) ---`,
@@ -162,12 +167,10 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `    fillCircleHelper(x + rw - r - 1, y + r, r, 1, delta, c);`,
       `    fillCircleHelper(x + r, y + r, r, 2, delta, c);`,
       `  }`,
-      `  void drawRGBBitmap(int16_t x, int16_t y, const uint16_t* b, int16_t bw, int16_t bh) {`,
+      `  void drawRGBBitmap(int16_t x, int16_t y, const UI_COLOR_T* b, int16_t bw, int16_t bh) {`,
       `    for (int16_t j = 0; j < bh; j++)`,
       `      for (int16_t i = 0; i < bw; i++) {`,
-      `        uint16_t p = b[(size_t)j * bw + i];`,
-      `        uint32_t r = ((p >> 11) & 0x1f) << 3, g = ((p >> 5) & 0x3f) << 2, bb = (p & 0x1f) << 3;`,
-      `        put(x + i, y + j, 0xFF000000u | (r << 16) | (g << 8) | bb);`,
+      `        put(x + i, y + j, 0xFF000000u | (uint32_t)b[(size_t)j * bw + i]);`,
       `      }`,
       `  }`,
       `  void setCursor(int16_t x, int16_t y) { cx = x; cy = y; }`,
@@ -228,7 +231,11 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `  }`,
       `};`,
       ``,
+      `// Global display instance (declared after the class definitions above).`,
+      `SdlGfxTarget __tc_display(${w}, ${h});`,
+      ``,
       `static inline void display_init() {`,
+      `  SDL_SetMainReady();`,
       `  SDL_Init(SDL_INIT_VIDEO);`,
       `  __tc_display.win = SDL_CreateWindow("cuttlefish",`,
       `    SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,`,
@@ -263,7 +270,7 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `static inline void display_targetDrawPixel(CuttlefishDisplayTarget* t, int16_t x, int16_t y, UI_COLOR_T color) { t->drawPixel(x, y, color); }`,
       `static inline int16_t display_targetWidth(CuttlefishDisplayTarget* t) { return t->width(); }`,
       `static inline int16_t display_targetHeight(CuttlefishDisplayTarget* t) { return t->height(); }`,
-      `static inline void display_targetDrawRGBBitmap(CuttlefishDisplayTarget* t, int16_t x, int16_t y, const uint16_t* b, int16_t w, int16_t h) { t->drawRGBBitmap(x, y, b, w, h); }`,
+      `static inline void display_targetDrawRGBBitmap(CuttlefishDisplayTarget* t, int16_t x, int16_t y, const UI_COLOR_T* b, int16_t w, int16_t h) { t->drawRGBBitmap(x, y, b, w, h); }`,
       `static inline void display_targetFillRect(CuttlefishDisplayTarget* t, int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T color) { t->fillRect(x, y, w, h, color); }`,
       `static inline void display_targetDrawFastHLine(CuttlefishDisplayTarget* t, int16_t x, int16_t y, int16_t w, UI_COLOR_T color) { t->drawFastHLine(x, y, w, color); }`,
       `static inline void display_targetDrawFastVLine(CuttlefishDisplayTarget* t, int16_t x, int16_t y, int16_t h, UI_COLOR_T color) { t->drawFastVLine(x, y, h, color); }`,
@@ -290,7 +297,9 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
 // historically stable (Adafruit_GFX glcdfont.c); reproduced here from the
 // canonical source. If a row is all zeros it's a space/control glyph.
 function glcdfontRows(): string[] {
-  return GLCDFONT.map((row) => `  { ${row.map((b) => "0x" + b.toString(16).padStart(2, "0")).join(", ")}, },`);
+  // ASCII 0x20-0x7F = exactly 96 glyphs. Slice defensively in case the
+  // constant has a stray extra row from transcription.
+  return GLCDFONT.slice(0, 96).map((row) => `  { ${row.map((b) => "0x" + b.toString(16).padStart(2, "0")).join(", ")}, },`);
 }
 
 // Canonical Adafruit GFX 5x7 glcdfont (96 glyphs, ASCII 0x20-0x7F).
