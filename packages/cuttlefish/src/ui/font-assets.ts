@@ -226,6 +226,37 @@ export function planUIFontAssets(
       }
       addNodeText(request.chars, node);
     }
+    // Rich-text inline runs: each run has its own resolved style (bold, italic,
+    // different font-size) which maps to a different font face/asset. Collect
+    // each run's text under its OWN style so the per-face subsetting includes
+    // the run's characters. Without this, the run's font face is subsetted from
+    // unrelated text and glyphs go missing at draw time.
+    if (node.runs) {
+      for (const run of node.runs) {
+        const runStyle = { ...node.style, ...run.style } as CSSProperty;
+        const runFace = selectFontFaceForStyle(fontFaces, runStyle);
+        if (!runFace) continue;
+        const runPx = fontPxOf(runStyle);
+        const runSourcePath = resolveFontPath(runFace.src, baseDir);
+        const runWeight = normalizeFontWeight(runFace.fontWeight ?? runStyle.fontWeight);
+        const runStyleAttr = normalizeFontStyle(runFace.fontStyle ?? runStyle.fontStyle);
+        const runKey = `${runSourcePath}:${runPx}:${runWeight}:${runStyleAttr}`;
+        let runReq = requests.get(runKey);
+        if (!runReq) {
+          runReq = {
+            family: runFace.fontFamily,
+            sourcePath: runSourcePath,
+            px: runPx,
+            fontWeight: runWeight,
+            fontStyle: runStyleAttr,
+            subset: "exact",
+            chars: new Set<string>(),
+          };
+          requests.set(runKey, runReq);
+        }
+        addText(runReq.chars, applyTextTransform(run.text, runStyle));
+      }
+    }
     for (const child of node.children) collect(child);
   };
   collect(root);
