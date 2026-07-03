@@ -15,9 +15,8 @@
 //              C:\msys64\ucrt64\bin is on PATH (the toolchain probes it).
 // ---------------------------------------------------------------------------
 
-import type { TypeCADConfig } from '@typecad/hal';
-
-const config: TypeCADConfig = {
+import type { CuttlefishConfig } from '@typecad/hal@typecad/cuttlefish/api
+const config: CuttlefishConfig = {
   entry: './src/showcase.ui',
   framework: '@typecad/framework-native',
   target: 'generic',
@@ -46,11 +45,13 @@ const config: TypeCADConfig = {
     height: 240,
     colorFormat: 'rgb888',
     rotation: 0,
-    // Disable AA: the antialiased asset-font path blends against a backdrop
-    // read via display_canvasGetPixel, which on the SDL target reads back the
-    // raw 888 framebuffer — but the AA canvas compositing assumes 565 layout.
-    // The bitmap-font print() path (fontAntialias=0) renders cleanly.
-    antialias: false,
+    // Antialiased rendering for text, circles, lines, and rounded corners.
+    // (An earlier workaround disabled this because the SDL canvas stored
+    // 0xFF alpha in every pixel, breaking the AA coverage comparison. That's
+    // fixed — the canvas now stores raw RGB888 and present() adds alpha — so
+    // AA is safe and gives smooth CALIBRI font rendering.)
+    antialias: true,
+    themeClass: 'dark',
     touch: {
       library: 'sdl',
       // Identity calibration: raw mouse coords are already screen-space, so the
