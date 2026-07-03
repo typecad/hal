@@ -42,7 +42,7 @@ export const ssd1309Adapter: DisplayAdapterGenerator = (display): DisplayAdapter
       `static inline void display_init() {`,
       `  // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally.`,
       `  // The per-pixel charge pump produces a brief init flash on some panels.`,
-      `  __tc_display.begin(SSD1306_SWITCHCAPVCC, ${address});`,
+      `  __tc_display.begin(SSD1306_SWITCHCAPVCC, 0x${address.toString(16)});`,
       `  __tc_display.setRotation(${rotation});`,
       `  __tc_display.clearDisplay();`,
       `}`,
