@@ -25,13 +25,20 @@ const config: TypeCADConfig = {
     outDir: './out',
   },
   // Native compile options — passed to g++/clang++ by NativeToolchain.
-  // SDL2 link flags: -lSDL2 (Linux/macOS). On Windows/MSYS2 ucrt64 the set is
-  // -lmingw32 -lSDL2main -lSDL2; if the bare `['SDL2']` fails to link there,
-  // expand libraries and add libraryPaths as documented in the README.
+  // Link flags: Windows/MSYS2 ucrt64 needs -lmingw32 -lSDL2main -lSDL2 (the
+  // SDL_MAIN_HANDLED define + SDL_SetMainReady in display_init handle the
+  // entry-point glue). Linux/macOS can use just ['SDL2'].
   native: {
     cxxStandard: 'c++17',
-    libraries: ['SDL2'],
-    warnings: 'all',
+    libraries: ['mingw32', 'SDL2main', 'SDL2'],
+    // Link dynamically against the SDL2 DLL (installed via MSYS2 ucrt64) to
+    // avoid pulling in the full set of Windows system libs that static SDL2
+    // requires (-lole32 -lwinmm -lgdi32 …).
+    staticLink: false,
+    // The UI runtime emits some -Warray-bounds/-Wunused warnings that GCC -O2
+    // promotes; suppress for the demo (the manual g++ build confirms the code
+    // is correct).
+    warnings: 'none',
   },
   display: {
     driver: 'sdl',
