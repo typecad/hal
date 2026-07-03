@@ -1,80 +1,1137 @@
-<script lang="ts">
-  // native_demo showcase — exercises RGB888 rendering + SDL mouse/touch.
-  // Minimal single-file component: a header, a gradient banner, a tap button
-  // with a live counter, and a line of text. Click the button (mouse = touch)
-  // to verify the full reactive path runs natively.
+<script>
+  // showcase.ui — cuttlefish UI capability showcase (single-file component).
+  // Combines script, styles, and template in one file. The transpiler splits
+  // these into the three streams (TS/CSS/HTML) it already handles.
 
   import { ui } from '@typecad/ui';
 
-  ui.mount(screen, { display: 'sdl' });
+  ui.mount(screen, {
+    display: 'sdl',
+  });
 
-  // Reactive counter — the button's on:click handler increments it and the
-  // {taps} interpolation in the template updates reactively.
-  export const taps = ui.signal(0);
+  // ── Forms screen: Svelte-like reactive state ───────────────────────────────
+  // The button and input callbacks are declared here, while the template owns
+  // the event attributes and interpolation sites. The rest of the form controls
+  // use their element state directly through ui.bind() so every input has a
+  // visible reactive effect.
+  export const count = ui.signal(0);
+  export const nameCommits = ui.signal(0);
+  export const ageCommits = ui.signal(0);
 
   export function incrementTaps() {
-    taps.set(taps() + 1);
+    count.set(count() + 1);
   }
+
+  export function captureName() {
+    nameCommits.set(nameCommits() + 1);
+    console.log('name:', screen.formName.text);
+  }
+
+  export function captureAge() {
+    ageCommits.set(ageCommits() + 1);
+    console.log('age:', screen.formAge.text);
+  }
+
+  ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'feature: enabled' : 'feature: disabled');
+  ui.bind(screen.featureLamp, 'background', () => screen.formCheck1.value ? '#29d391' : '#4b5563');
+  ui.bind(screen.modeStatus, 'text', () => screen.formSelect1.value == 0 ? 'mode: alpha' : screen.formSelect1.value == 1 ? 'mode: beta' : 'mode: gamma');
+  ui.bind(screen.modeAccent, 'background', () => screen.formSelect1.value == 0 ? '#38bdf8' : screen.formSelect1.value == 1 ? '#f6c84c' : '#b985ff');
+  ui.bind(screen.radioStatus, 'text', () => screen.formRadio2.value ? 'speed: fast' : 'speed: calm');
+  ui.bind(screen.volumeStatus, 'text', () => `volume: ${screen.formRange1.value}`);
+  ui.bind(screen.formProg, 'value', () => screen.formRange1.value * 10);
+  ui.bind(screen.formProgressCaption, 'text', () => `meter: ${screen.formRange1.value * 10}%`);
+
+  // ── Lists screen: virtualized list ─────────────────────────────────────────
+  ui.bindList(
+    screen.demoList,
+    () => 40,
+    (i: number) => `Item ${i + 1}`,
+    (i: number) => { console.log('tapped:', i); },
+  );
+
+  // ── Media screen: canvas drawing every primitive once ─────────────────────
+  ui.drawCanvas(screen.demoCanvas, (ctx) => {
+    ctx.fillScreen('#0a0a1a');
+    ctx.fillRect(8, 8, 40, 24, '#1a3a5c');
+    ctx.rect(8, 8, 40, 24, '#3399ff');
+    ctx.fillRoundRect(56, 8, 40, 24, 6, '#1a6b3c');
+    ctx.roundRect(56, 8, 40, 24, 6, '#4ade80');
+    ctx.fillCircle(120, 20, 14, '#5c1a1a');
+    ctx.circle(120, 20, 14, '#ff5577');
+    ctx.line(150, 6, 190, 40, '#ffff33');
+    ctx.hline(8, 48, 180, '#2a4a6a');
+    ctx.vline(196, 8, 40, '#2a4a6a');
+    ctx.drawPixel(10, 70, '#ffffff');
+    ctx.drawPixel(14, 72, '#ffffff');
+    ctx.drawPixel(18, 70, '#ffffff');
+    ctx.drawPixel(22, 74, '#ffffff');
+    ctx.drawPixel(26, 70, '#ffffff');
+    ctx.text(8, 100, 'canvas primitives', '#cccccc');
+  });
+
+  // ── Keyboard screen: input opens the custom keyboard ───────────────────────
+  screen.kbInput.onChange(() => {
+    console.log('message:', screen.kbInput.text);
+  });
 </script>
 
 <style>
-  :root {
-    --bg: #101820;
-    --fg: #7fe7cb;
-    --accent: #2d9cdb;
-    --accent-fg: #ffffff;
-    --warm: #f2c94c;
-    --pink: #dd2476;
-    --orange: #ff512f;
-  }
+/* ---------------------------------------------------------------------------
+   showcase.neobrutalism.css — NeoBrutalism theme for the capability showcase.
 
-  body {
-    background: var(--bg);
-    color: var(--fg);
-    font-family: sans-serif;
-  }
+   Because display.themeCss replaces the sibling .ui.css entirely, this single
+   file holds everything: @font-face, the :root/.dark token palette, @keyframes,
+   and every element rule. Select the dark palette via themeClass:'dark' in
+   cuttlefish.config.ts.
+   ----------------------------------------------------------------------- */
 
-  header {
-    font-size: 18px;
-    padding: 8px 12px;
-    color: var(--fg);
-  }
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRI.TTF");
+  font-weight: 400;
+  font-style: normal;
+}
 
-  /* True-color gradient — exercises the RGB888 → RGBA8888 blit path. */
-  .banner {
-    background: linear-gradient(to right, var(--orange), var(--pink));
-    height: 70px;
-    margin: 4px 8px;
-    border-radius: 6px;
-  }
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRIB.TTF");
+  font-weight: 700;
+  font-style: normal;
+}
 
-  .btn {
-    background: var(--accent);
-    color: var(--accent-fg);
-    padding: 10px 16px;
-    margin: 8px;
-    border-radius: 6px;
-    text-align: center;
-    font-size: 14px;
-  }
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRII.TTF");
+  font-weight: 400;
+  font-style: italic;
+}
 
-  .btn:active {
-    background: var(--warm);
-    color: var(--bg);
-  }
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRILI.TTF");
+  font-weight: 300;
+  font-style: italic;
+}
 
-  .count {
-    color: var(--warm);
-    font-size: 14px;
-    padding: 4px 12px;
-  }
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("CALIBRIL.TTF");
+  font-weight: 300;
+  font-style: normal;
+}
+
+/* ── Light theme (default :root) ── */
+:root {
+  --background: #f7f3e8;
+  --foreground: #15171a;
+  --card: #fffaf0;
+  --card-foreground: #15171a;
+  --popover: #fffaf0;
+  --popover-foreground: #15171a;
+  --primary: #ef5b3f;
+  --primary-foreground: #ffffff;
+  --secondary: #f6c84c;
+  --secondary-foreground: #15171a;
+  --muted: #e8e0d0;
+  --muted-foreground: #596168;
+  --accent: #1f9f9a;
+  --accent-foreground: #071012;
+  --destructive: #15171a;
+  --destructive-foreground: #ffffff;
+  --border: #15171a;
+  --input: #15171a;
+  --ring: #ef5b3f;
+  --chart-1: #ef5b3f;
+  --chart-2: #f6c84c;
+  --chart-3: #38bdf8;
+  --chart-4: #29d391;
+  --chart-5: #9f7aea;
+  --sidebar: #ebe4d7;
+  --sidebar-foreground: #15171a;
+  --sidebar-primary: #ef5b3f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1f9f9a;
+  --sidebar-accent-foreground: #071012;
+  --sidebar-border: #15171a;
+  --sidebar-ring: #ef5b3f;
+  --radius: 6px;
+  --shadow: 3px 3px 0px 0px hsl(210 10% 8% / 1.00);
+}
+
+/* ── Dark theme (.dark) — select via themeClass: 'dark' ── */
+.dark {
+  --background: #111418;
+  --foreground: #f7f3e8;
+  --card: #1c2228;
+  --card-foreground: #f7f3e8;
+  --popover: #1c2228;
+  --popover-foreground: #f7f3e8;
+  --primary: #ff765c;
+  --primary-foreground: #111418;
+  --secondary: #f6c84c;
+  --secondary-foreground: #111418;
+  --muted: #29313a;
+  --muted-foreground: #b9c3c8;
+  --accent: #43d2c8;
+  --accent-foreground: #071012;
+  --destructive: #f7f3e8;
+  --destructive-foreground: #111418;
+  --border: #f6c84c;
+  --input: #f6c84c;
+  --ring: #ff765c;
+  --chart-1: #ff765c;
+  --chart-2: #f6c84c;
+  --chart-3: #38bdf8;
+  --chart-4: #29d391;
+  --chart-5: #b985ff;
+  --sidebar: #151a1f;
+  --sidebar-foreground: #f7f3e8;
+  --sidebar-primary: #ff765c;
+  --sidebar-primary-foreground: #111418;
+  --sidebar-accent: #43d2c8;
+  --sidebar-accent-foreground: #071012;
+  --sidebar-border: #f6c84c;
+  --sidebar-ring: #ff765c;
+  --radius: 6px;
+  --shadow: 3px 3px 0px 0px hsl(0 0% 0% / 1.00);
+}
+
+/* ── Shared screen scaffolding ── */
+screen {
+  background: var(--background);
+  gap: 8px;
+  padding: 10px;
+}
+
+/* Scrollable main column (UA gives body display:flex column flex:1). */
+.scrollBody {
+  overflow: scroll;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  background: var(--background);
+}
+
+/* Shared content-screen header: Back link + title. */
+.screenHeader {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.backLink {
+  font-size: 16px;
+}
+.screenTitle {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 20px;
+  font-weight: bold;
+}
+
+/* Shared section caption (used across showcase screens). Non-bold: the UA
+   stylesheet makes h3 bold, but the runtime bumps textSize for bold text
+   (roughly doubling per-char advance), which would wrap multi-word captions
+   like "width / height / min / max" to 3 lines and overlap the next element.
+   Normal weight keeps them on one line. */
+.demoLabel {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: normal;
+}
+.demoCap {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* ── Home ── */
+#homeHeader {
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 280px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+#homeTitle {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+}
+#homeSubtitle {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  text-align: center;
+}
+#homeNav {
+  align-items: stretch;
+  gap: 6px;
+  width: 280px;
+}
+#homeNav button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 32px;
+  color: var(--accent);
+  font-size: 18px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 0 10px;
+  border-radius: var(--radius);
+  box-shadow: 0 3px 0 #0b0d10;
+  transform: translate(0, 0);
+  transition: background 100ms;
+}
+#homeNav button:pressed {
+  background: var(--muted);
+  color: var(--primary);
+  transform: translate(0, 3px);
+  box-shadow: 0 0 0 #0b0d10;
+}
+#homeFooter {
+  padding: 2px 0;
+}
+#homeHint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+#homeNativeText {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ── Typography screen ── */
+#typeHeadings, #typeStyle, #typeSpacing, #typeWrap, #typeFont {
+  align-items: flex-start;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.demoH1 { color: var(--primary); font-family: "ColibriDemo"; font-size: 30px; }
+/* Rich-text (inline flow) screen: paragraphs carry mixed inline runs; the
+   inline <a> runs get the accent color so links are visible mid-sentence. */
+#richMixed, #richBreak, #richNested {
+  align-items: flex-start;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+#richtext a { color: var(--accent); text-decoration: underline; }
+#richtext p { color: var(--foreground); font-size: 16px; }
+/* H2–H6 are non-bold so each lands in its own text-size bucket: the runtime
+   bumps textSize for bold text AND only has 4 buckets, so keeping every
+   heading bold would collapse several into one rendered size. */
+.demoH2 { color: var(--accent); font-family: "ColibriDemo"; font-size: 24px; font-weight: normal; }
+.demoH3 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: normal; }
+.demoH4 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 14px; }
+.demoH5 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; }
+.demoH6 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; font-style: italic; }
+.tBold { color: var(--foreground); font-weight: bold; font-size: 16px; }
+.tItalic { color: var(--foreground); font-family: "ColibriDemo"; font-size: 16px; }
+.tUnderline { color: var(--accent); font-size: 16px; }
+.tUpper { color: var(--secondary-foreground); background: var(--secondary); font-size: 16px; }
+.tCenter { color: var(--foreground); font-size: 16px; width: 260px; }
+.tShadow { color: var(--foreground); font-size: 16px; }
+/* text-overflow demo: identical overflowing text in a 120px box. Ellipsis
+   appends '...', clip cuts hard. Both need white-space:nowrap + overflow:hidden. */
+.tEllipsis { color: var(--foreground); background: var(--chart-4); font-size: 16px; }
+.tClip { color: var(--foreground); background: var(--chart-1); font-size: 16px; }
+.tLeading { color: var(--foreground); font-size: 14px; }
+.tTracking { color: var(--foreground); font-size: 14px; }
+.tNowrap { color: var(--destructive); font-size: 14px; }
+.tPreLine { color: var(--chart-3); font-size: 14px; }
+.tCustom { color: var(--foreground); }
+.tSmooth { color: var(--foreground); }
+.tBitmap { color: var(--muted-foreground); }
+#typeArticle {
+  align-items: center;
+  width: 280px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+#typeAside {
+  align-items: center;
+  width: 280px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+.tAside { color: var(--muted-foreground); font-size: 13px; text-align: center; }
+
+/* ── Box & Sizing screen ── */
+#boxSize, #boxPadMargin, #boxBorder, #boxShadowSec, #boxAspect {
+  align-items: center;
+  gap: 6px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+#boxFixed { width: 160px; height: 30px; background: var(--chart-1); }
+/* Label spans inside the box-demo divs. text-align doesn't inherit from the
+   parent div in this model, so the span must center its own text. */
+.boxLabel { text-align: center; }
+#boxMin { background: var(--chart-3); }
+#boxPadded { width: 160px; background: var(--secondary); border: 1px solid var(--border); padding: 12px 20px; color: var(--secondary-foreground); font-size: 14px; text-align: center; }
+#boxMargin { width: 160px; min-height: 24px; background: var(--chart-4); margin: 16px; color: var(--foreground); font-size: 14px; text-align: center; }
+#boxBordered { width: 160px; min-height: 24px; background: var(--card); border: 2px solid var(--foreground); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
+#boxRadius { width: 160px; min-height: 24px; background: var(--accent); border-radius: 10px; color: var(--accent-foreground); font-size: 14px; text-align: center; padding: 4px; }
+/* Per-side border: documented best-effort — runtime draws uniform borders. */
+#boxPerSide { width: 160px; min-height: 24px; background: var(--muted); border-left: 4px solid var(--primary); border-top: 2px solid var(--chart-3); color: var(--foreground); font-size: 13px; text-align: center; padding: 4px; }
+#boxShadowed { width: 160px; background: var(--primary); box-shadow: 4px 4px 0 var(--foreground); color: var(--primary-foreground); font-size: 14px; text-align: center; padding: 4px; }
+#boxOutlined { width: 160px; background: var(--card); outline: 2px solid var(--chart-5); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
+#boxAspectWide { width: 200px; aspect-ratio: 16 / 9; background: var(--secondary); border: 1px solid var(--border); justify-content: center; align-items: center; }
+#boxAspectSquare { height: 60px; aspect-ratio: 1 / 1; background: var(--chart-4); border: 1px solid var(--border); justify-content: center; align-items: center; }
+.aspectLabel { color: var(--foreground); font-size: 14px; text-align: center; }
+
+/* ── Position & Layers screen ── */
+#layerDemo, #visibilityDemo, #opacityDemo {
+  align-items: center;
+  gap: 6px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+#layerStage { position: relative; width: 220px; height: 70px; background: var(--muted); border: 1px solid var(--border); }
+#layerBack { position: absolute; left: 16px; top: 12px; width: 120px; height: 40px; background: var(--secondary); border: 1px solid var(--border); z-index: 1; justify-content: center; align-items: center; }
+#layerFront { position: absolute; left: 70px; top: 26px; width: 120px; height: 40px; background: var(--chart-3); border: 1px solid var(--foreground); z-index: 2; justify-content: center; align-items: center; }
+#layerCorner { position: absolute; right: 4px; bottom: 4px; width: 70px; height: 22px; background: var(--chart-5); border: 1px solid var(--foreground); z-index: 3; justify-content: center; align-items: center; }
+.layerTag { color: var(--foreground); font-size: 13px; text-align: center; }
+#visStack { gap: 2px; width: 220px; background: var(--border); padding: 1px; }
+#visBefore, #visAfter1, #visBefore2, #visAfter2, #visBefore3, #visAfter3,
+#visHiddenAttr, #visDisplayNone, #visCollapsed { width: 220px; height: 24px; justify-content: center; align-items: center; }
+#visBefore, #visAfter1, #visBefore2, #visAfter2, #visBefore3, #visAfter3 { background: var(--chart-4); }
+#visHiddenAttr { background: var(--destructive); }
+#visDisplayNone { background: var(--destructive); display: none; }
+#visCollapsed { background: var(--destructive); }
+.visCaption { color: #333333; font-size: 12px; text-align: center; width: 220px; margin-top: 4px; }
+.visText { color: var(--foreground); font-size: 13px; text-align: center; }
+#opacityRow { flex-direction: row; gap: 10px; align-items: center; }
+.opaqChip { width: 50px; height: 36px; background: var(--primary); color: var(--primary-foreground); font-size: 13px; text-align: center; justify-content: center; align-items: center; }
+
+/* ── Flexbox screen ── */
+#flexJustify, #flexAlign, #flexGrow, #flexOrder {
+  align-items: flex-start;
+  gap: 6px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.flexRow { display: flex; flex-direction: row; width: 260px; background: var(--muted); padding: 4px; border: 1px solid var(--border); }
+.flexStart { justify-content: flex-start; gap: 4px; }
+.flexCenter { justify-content: center; column-gap: 12px; }
+.flexBetween { justify-content: space-between; row-gap: 4px; }
+.alignRow { align-items: center; gap: 10px; height: 50px; }
+.growRow { align-items: center; gap: 4px; }
+.wrapRow { flex-wrap: wrap; gap: 4px; }
+.shrinkRow { align-content: center; gap: 2px; }
+.shrink1 { flex-shrink: 1; }
+.shrink0 { flex-shrink: 0; }
+.chip { width: 28px; height: 24px; background: var(--chart-3); justify-content: center; align-items: center; }
+.chipTall { width: 28px; height: 40px; background: var(--chart-4); justify-content: center; align-items: center; }
+/* Label inside a flex chip. Properties don't inherit in this model, so the
+   span carries its own color/font-size; justify-content/align-items on the
+   .chip/.chipTall parent centers it. */
+.chipLabel { color: var(--foreground); font-size: 13px; }
+.grow1 { flex-grow: 1; }
+.grow2 { flex-grow: 2; }
+.grow0 { flex-grow: 0; flex-basis: 40px; }
+.ord1 { order: 1; }
+.ord2 { order: 2; }
+.ord3 { order: 3; }
+
+/* ── Transforms screen — keyframes + transform/animation rules ── */
+@keyframes pulse {
+  0%   { background: var(--chart-4); }
+  50%  { background: var(--secondary); }
+  100% { background: var(--chart-4); }
+}
+@keyframes slideXY {
+  0%, 100% { transform: translate(0px, 0px); background: var(--chart-1); }
+  50% { transform: translate(52px, 4px); background: var(--chart-4); }
+}
+@keyframes growMove {
+  0%, 100% { transform: translate(0%, 0px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(250%, 2px) scale(2.8, 1.6); background: var(--chart-5); }
+}
+@keyframes originScale {
+  0%, 100% { transform: translate(4px, 2px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(4px, 2px) scale(2); background: var(--chart-4); }
+}
+@keyframes originScaleCenter {
+  0%, 100% { transform: translate(40px, 2px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(40px, 2px) scale(2); background: var(--chart-4); }
+}
+@keyframes quarterTurn {
+  0%, 24% { transform: translate(38px, 3px) rotate(0deg); background: var(--chart-5); }
+  25%, 49% { transform: translate(38px, 3px) rotate(90deg); background: var(--chart-1); }
+  50%, 74% { transform: translate(38px, 3px) rotate(180deg); background: var(--chart-4); }
+  75%, 100% { transform: translate(38px, 3px) rotate(270deg); background: var(--secondary); }
+}
+
+#transformDemo, #transitionDemo {
+  align-items: center;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.track { width: 88px; height: 28px; background: var(--muted); border: 1px solid var(--border); }
+#dotTranslate { width: 18px; height: 18px; background: var(--chart-1); animation: slideXY 1800ms infinite; animation-timing-function: ease-in-out; }
+#dotScale { width: 10px; height: 10px; background: var(--chart-1); transform-origin: left top; animation: growMove 1800ms infinite; animation-timing-function: ease-in-out; }
+#dotOrigin { width: 8px; height: 8px; background: var(--chart-1); transform-origin: center; animation: originScaleCenter 1600ms infinite; animation-timing-function: ease-in-out; }
+#dotRotate { width: 12px; height: 20px; background: var(--chart-5); transform-origin: center; animation: quarterTurn 2000ms infinite; }
+/* Same effect as `animation: pulse 1200ms infinite` but via longhands,
+   exercising animation-name/-duration/-iteration-count/-delay separately. */
+#dotPulse {
+  width: 16px;
+  height: 16px;
+  background: var(--chart-4);
+  animation-name: pulse;
+  animation-duration: 1200ms;
+  animation-iteration-count: infinite;
+  animation-delay: 0ms;
+}
+#transitionBtn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 0 #0b0d10;
+  padding: 6px 12px;
+  transition: background 120ms;
+  transform: translate(0, 0);
+}
+#transitionBtn:pressed {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  transform: translate(0, 2px);
+  box-shadow: 0 0 0 #0b0d10;
+}
+
+/* ── Forms screen ── */
+#forms .scrollBody {
+  gap: 9px;
+}
+.formPanel {
+  align-items: stretch;
+  gap: 7px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.formPanel .demoLabel {
+  color: var(--secondary);
+  font-size: 13px;
+}
+.formRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 250px;
+}
+.formStack {
+  align-items: flex-start;
+  gap: 5px;
+}
+.formStatus {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.formPill {
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 13px;
+}
+#formHero {
+  background: var(--muted);
+}
+#formHeroTitle {
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: bold;
+}
+#formHeroCopy {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+#formBtn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 3px 0 #0b0d10;
+  padding: 5px 14px;
+  transition: background 100ms;
+  transform: translate(0, 0);
+}
+#formBtn:pressed {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  transform: translate(0, 3px);
+  box-shadow: 0 0 0 #0b0d10;
+}
+#formBtnCount {
+  color: var(--foreground);
+  font-size: 13px;
+  width: 136px;
+  padding: 3px 5px;
+  text-align: center;
+  white-space: nowrap;
+}
+#formCheck1 { color: var(--foreground); font-size: 16px; }
+#featureLamp, #modeAccent {
+  width: 18px;
+  height: 18px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+#formSelect1 {
+  color: var(--accent);
+  background: var(--muted);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  font-size: 16px;
+  padding: 4px 8px;
+  text-decoration: underline;
+  box-shadow: 0 2px 4px #000000;
+}
+#radioChoices {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+#formRadio1, #formRadio2 { color: var(--foreground); font-size: 16px; }
+#formProg {
+  color: var(--chart-4);
+  width: 190px;
+}
+#formRange label, #formInput label {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  align-self: flex-start;
+}
+#formRange1 {
+  color: var(--chart-1);
+  width: 205px;
+}
+#formName, #formAge {
+  color: var(--foreground);
+  background: #161c24;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  width: 205px;
+  padding: 5px;
+  box-shadow: 0 2px 4px #000000;
+}
+#formDisabledBtn {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 12px;
+}
+#formDisabledBtn:disabled { opacity: 0.5; }
+
+/* ── Images & Canvas screen ── */
+#imgFit, #imgTransform, #canvasDemo {
+  align-items: center;
+  gap: 6px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.imgRow { flex-direction: row; align-items: center; gap: 10px; width: 200px; }
+.imgLabel { width: 60px; color: var(--muted-foreground); font-size: 13px; }
+#imgContain, #imgCover, #imgFill { background: var(--card); border: 1px solid var(--border); }
+#imgLogo { background: var(--card); border: 1px solid var(--border); }
+#demoCanvas { background: #0a0a1a; border: 1px solid var(--border); }
+
+/* ── Lists screen ── */
+#demoList {
+  color: #ffffff;
+  width: 280px;
+  background: #333333;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  margin: 8px 0;
+}
+
+/* ── Keyboard screen + custom keyboard template ── */
+#keyboard .scrollBody { align-items: stretch; }
+#keyboard label { color: var(--muted-foreground); font-size: 14px; }
+#kbInput { color: #ffffff; background: #333333; border: 1px solid var(--border); width: 240px; }
+.ui-key { background: var(--card); color: var(--foreground); border: 1px solid var(--border); }
+.ui-key-ok { background: var(--chart-4); color: var(--foreground); }
+.ui-key-del { background: var(--destructive); color: var(--destructive-foreground); }
+.ui-key-page { background: var(--accent); color: var(--accent-foreground); }
+.ui-keyboard { background: var(--muted); }
+
+/* ── Cross-screen nav links (UA underlines <a>) ── */
+a {
+  color: var(--accent);
+}
+
+/* Inline style block from the original .ui.html */
+#typeView {
+  align-items: center;
+  width: 280px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
 </style>
 
+<!-- ── Home ─────────────────────────────────────────────────────────────── -->
 <screen id="home">
   <body>
-    <header>rgb888 + SDL</header>
-    <div class="banner"></div>
-    <a id="btn" class="btn" href="#" on:click="incrementTaps">Tap me</a>
-    <div id="countLabel" class="count">taps: {taps}</div>
+    <header id="homeHeader">
+      <h1 id="homeTitle">cuttlefish UI</h1>
+      <p id="homeSubtitle">capability showcase</p>
+    </header>
+    <main class="scrollBody">
+      <nav id="homeNav">
+        <button href="#typography">Typography &gt;</button>
+        <button href="#richtext">Rich Text &gt;</button>
+        <button href="#box">Box &amp; Sizing &gt;</button>
+        <button href="#layout">Position &amp; Layers &gt;</button>
+        <button href="#flex">Flexbox &gt;</button>
+        <button href="#transforms">Transforms &gt;</button>
+        <button href="#forms">Forms &gt;</button>
+        <button href="#media">Images &amp; Canvas &gt;</button>
+        <button href="#lists">Lists &gt;</button>
+        <button href="#keyboard">Keyboard &gt;</button>
+      </nav>
+    </main>
+    <footer id="homeFooter">
+      <p id="homeHint">tap a link to navigate</p>
+      <text id="homeNativeText">&lt;text&gt; native element</text>
+    </footer>
   </body>
 </screen>
+
+<!-- ── Typography ───────────────────────────────────────────────────────── -->
+<screen id="typography">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Typography</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="typeHeadings">
+        <h1 class="demoH1">H1 heading</h1>
+        <h2 class="demoH2">H2 heading</h2>
+        <h3 class="demoH3">H3 heading</h3>
+        <h4 class="demoH4">H4 heading</h4>
+        <h5 class="demoH5">H5 heading</h5>
+        <h6 class="demoH6">H6 heading</h6>
+      </section>
+      <section id="typeStyle">
+        <p class="tBold">bold weight</p>
+        <p class="tItalic" style="font-style: italic">italic style</p>
+        <p class="tUnderline" style="text-decoration: underline">underline</p>
+        <p class="tUpper" style="text-transform: uppercase">lowercase source</p>
+        <p class="tCenter" style="text-align: center">centered text</p>
+        <p class="tShadow" style="text-shadow: 1px 1px 1px rgba(255,255,255,0.6)">drop shadow</p>
+        <p class="tShorthand" style="font: bold 18px 'ColibriDemo'; background-color: #3399ff; color: #000000">font shorthand</p>
+        <p class="tEllipsis" style="text-overflow: ellipsis; white-space: nowrap; width: 120px; overflow: hidden">ellipsis shows trailing dots here</p>
+        <p class="tClip" style="text-overflow: clip; white-space: nowrap; width: 120px; overflow: hidden">clip cuts the overflowed text</p>
+      </section>
+      <section id="typeSpacing">
+        <p class="tLeading" style="line-height: 22px; width: 200px">Tall leading wraps a longer sentence across two lines.</p>
+        <p class="tTracking" style="letter-spacing: 3px">wide tracking</p>
+      </section>
+      <section id="typeWrap">
+        <p class="tNowrap" style="white-space: nowrap; width: 120px; overflow: hidden">nowrap clips the overflow</p>
+        <p class="tPreLine" style="white-space: pre-line; width: 160px">hard break via &lt;br/&gt;<br/>then wraps naturally</p>
+      </section>
+      <section id="typeFont">
+        <p class="tCustom" style="font-family: 'ColibriDemo'; font-size: 22px; font-weight: bold">custom font</p>
+        <p class="tSmooth" style="font-smoothing: antialiased; font-size: 20px">antialiased</p>
+        <p class="tBitmap" style="font-smoothing: none; font-size: 20px">bitmap</p>
+      </section>
+      <article id="typeArticle">
+        <span class="tAside">&lt;article&gt; block alias</span>
+      </article>
+      <aside id="typeAside">
+        <span class="tAside">&lt;aside&gt; block alias</span>
+      </aside>
+      <view id="typeView">
+        <span class="tAside">&lt;view&gt; native container</span>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Rich Text (inline flow) ──────────────────────────────────────────── -->
+<screen id="richtext">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Rich Text</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="richMixed">
+        <!-- Mixed inline content flows on shared wrapped lines with per-run
+             style: bold, italic, underline, color, and a tappable link. -->
+        <p style="padding:8px; width:200px; font-smoothing: antialiased">This is a <b>rich text</b> paragraph with <i>italic</i>, <u>underline</u>, and a <a href="#home">link home</a>. It wraps across lines with <span style="color:#ff6666">colored</span> runs and a <span style="font-size:22px">bigger</span> word on the same line.</p>
+      </section>
+      <section id="richBreak">
+        <p style="padding:8px; width:200px; font-smoothing: antialiased">Line one.<br/>Line two after a hard break.<br/><br/>After a blank line.</p>
+      </section>
+      <section id="richNested">
+        <p style="padding:8px; width:200px; font-smoothing: antialiased">Nested <b>bold and <i>both</i></b> styles in one run sequence.</p>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Box & Sizing ─────────────────────────────────────────────────────── -->
+<screen id="box">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Box &amp; Sizing</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="boxSize">
+        <h3 class="demoLabel">width / height</h3>
+        <div id="boxFixed"></div>
+        <div id="boxMin" style="min-width: 120px; min-height: 24px"></div>
+        <div id="boxMax" style="width: 140px; height: 50px; max-width: 90px; max-height: 30px; background: #cc33cc"></div>
+        <div id="boxSizing" style="box-sizing: content-box; width: 100px; height: 24px; border: 4px solid #ff6666; background: #ffff33"><span class="boxLabel" style="white-space: nowrap">box-size</span></div>
+      </section>
+      <section id="boxPadMargin">
+        <h3 class="demoLabel">padding / margin</h3>
+        <div id="boxPadded"><span class="boxLabel">pad 12/20</span></div>
+        <div id="boxMargin"><span class="boxLabel">margin 16</span></div>
+      </section>
+      <section id="boxBorder">
+        <h3 class="demoLabel">border + radius</h3>
+        <div id="boxBordered"><span class="boxLabel">shorthand border</span></div>
+        <div id="boxRadius"><span class="boxLabel">radius 10</span></div>
+        <div id="boxPerSide"><span class="boxLabel">per-side (best-effort)</span></div>
+        <div id="boxBorderLong" style="min-height: 24px; padding: 4px; border-width: 3px; border-color: #cc33cc; border-style: solid; background: #333333"><span class="boxLabel">border longhands</span></div>
+      </section>
+      <section id="boxShadowSec">
+        <h3 class="demoLabel">box-shadow / outline</h3>
+        <div id="boxShadowed"><span class="boxLabel">offset shadow</span></div>
+        <div id="boxOutlined"><span class="boxLabel">outline</span></div>
+      </section>
+      <section id="boxAspect">
+        <h3 class="demoLabel">aspect-ratio</h3>
+        <div id="boxAspectWide"><span class="aspectLabel">16:9</span></div>
+        <div id="boxAspectSquare"><span class="aspectLabel">1:1</span></div>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Position & Layers ────────────────────────────────────────────────── -->
+<screen id="layout">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Position &amp; Layers</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="layerDemo">
+        <h3 class="demoLabel">z-index layers</h3>
+        <div id="layerStage">
+          <div id="layerBack"><span class="layerTag">back z1</span></div>
+          <div id="layerFront"><span class="layerTag">front z2</span></div>
+          <div id="layerCorner"><span class="layerTag">right</span></div>
+        </div>
+      </section>
+      <section id="visibilityDemo">
+        <h3 class="demoLabel">display:none / hidden / collapse</h3>
+        <div id="visStack">
+          <span class="visCaption">hidden attr - no space</span>
+          <div id="visBefore"><span class="visText">visible</span></div>
+          <div id="visHiddenAttr" hidden><span class="visText">hidden</span></div>
+          <div id="visAfter1"><span class="visText">visible</span></div>
+          <span class="visCaption">display:none - no space</span>
+          <div id="visBefore2"><span class="visText">visible</span></div>
+          <div id="visDisplayNone"><span class="visText">display:none</span></div>
+          <div id="visAfter2"><span class="visText">visible</span></div>
+          <span class="visCaption">visibility:collapse - reserves space</span>
+          <div id="visBefore3"><span class="visText">visible</span></div>
+          <div id="visCollapsed" style="visibility: collapse"><span class="visText">collapse</span></div>
+          <div id="visAfter3"><span class="visText">visible</span></div>
+        </div>
+      </section>
+      <section id="opacityDemo">
+        <h3 class="demoLabel">opacity</h3>
+        <div id="opacityRow">
+          <div id="opaqFull" class="opaqChip"><span>1.0</span></div>
+          <div id="opaqHalf" class="opaqChip" style="opacity: 0.5"><span>0.5</span></div>
+          <div id="opaqFaint" class="opaqChip" style="opacity: 0.25"><span>0.25</span></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Flexbox ──────────────────────────────────────────────────────────── -->
+<screen id="flex">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Flexbox</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="flexJustify">
+        <h3 class="demoLabel">justify-content</h3>
+        <div class="flexRow flexStart"><div class="chip"><span class="chipLabel">A</span></div><div class="chip"><span class="chipLabel">B</span></div></div>
+        <div class="flexRow flexCenter"><div class="chip"><span class="chipLabel">A</span></div><div class="chip"><span class="chipLabel">B</span></div></div>
+        <div class="flexRow flexBetween"><div class="chip"><span class="chipLabel">A</span></div><div class="chip"><span class="chipLabel">B</span></div></div>
+      </section>
+      <section id="flexAlign">
+        <h3 class="demoLabel">align-items / gap</h3>
+        <div class="flexRow alignRow"><div class="chipTall"><span class="chipLabel">A</span></div><div class="chipTall"><span class="chipLabel">B</span></div><div class="chipTall"><span class="chipLabel">C</span></div></div>
+      </section>
+      <section id="flexGrow">
+        <h3 class="demoLabel">grow / basis</h3>
+        <div class="flexRow growRow">
+          <div class="chip grow1"><span class="chipLabel">1</span></div>
+          <div class="chip grow2"><span class="chipLabel">2</span></div>
+          <div class="chip grow0"><span class="chipLabel">0</span></div>
+        </div>
+      </section>
+      <section id="flexOrder">
+        <h3 class="demoLabel">order + flex-wrap</h3>
+        <div class="flexRow wrapRow">
+          <div class="chip ord3"><span class="chipLabel">3-&gt;1</span></div>
+          <div class="chip ord1"><span class="chipLabel">1-&gt;2</span></div>
+          <div class="chip ord2"><span class="chipLabel">2-&gt;3</span></div>
+        </div>
+        <h3 class="demoLabel">shrink / align</h3>
+        <div class="flexRow shrinkRow">
+          <div class="chip shrink1"><span class="chipLabel">S</span></div>
+          <div class="chip shrink0"><span class="chipLabel">0</span></div>
+          <div class="chip shrink0"><span class="chipLabel">0</span></div>
+          <div class="chip shrink0"><span class="chipLabel">0</span></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Transforms & Animation ───────────────────────────────────────────── -->
+<screen id="transforms">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Transforms</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="transformDemo">
+        <h3 class="demoLabel">translate / scale / rotate</h3>
+        <span class="demoCap">translate</span>
+        <div class="track"><div id="dotTranslate"></div></div>
+        <span class="demoCap">scale (origin left top)</span>
+        <div class="track"><div id="dotScale"></div></div>
+        <span class="demoCap">origin center</span>
+        <div class="track"><div id="dotOrigin"></div></div>
+        <span class="demoCap">rotate (origin center)</span>
+        <div class="track"><div id="dotRotate"></div></div>
+        <span class="demoCap">animation longhands</span>
+        <div class="track"><div id="dotPulse"></div></div>
+      </section>
+      <section id="transitionDemo">
+        <h3 class="demoLabel">transition (press the button)</h3>
+        <button id="transitionBtn">tap to transition</button>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Forms ────────────────────────────────────────────────────────────── -->
+<screen id="forms">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Forms</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="formHero" class="formPanel">
+        <h3 id="formHeroTitle">Reactive controls</h3>
+        <span id="formHeroCopy">Each input drives live text, color, or meter state.</span>
+      </section>
+      <section id="formButton" class="formPanel">
+        <h3 class="demoLabel">button event</h3>
+        <div class="formRow">
+          <button id="formBtn" on:click={incrementTaps}>tap me</button>
+          <span id="formBtnCount" class="formPill">taps: {count}</span>
+        </div>
+      </section>
+      <section id="formCheck" class="formPanel">
+        <h3 class="demoLabel">checkbox value</h3>
+        <div class="formRow">
+          <check id="formCheck1">Enable feature</check>
+          <div id="featureLamp"></div>
+        </div>
+        <span id="featureStatus" class="formStatus">feature: disabled</span>
+      </section>
+      <section id="formSelect" class="formPanel">
+        <h3 class="demoLabel">select value</h3>
+        <div class="formRow">
+          <select id="formSelect1">
+            <option value="a">Alpha</option>
+            <option value="b">Beta</option>
+            <option value="c">Gamma</option>
+          </select>
+          <div id="modeAccent"></div>
+        </div>
+        <span id="modeStatus" class="formStatus">mode: alpha</span>
+      </section>
+      <section id="formRadio" class="formPanel">
+        <h3 class="demoLabel">radio group</h3>
+        <div id="radioChoices">
+          <radio id="formRadio1" name="grp" value="x" checked>Calm</radio>
+          <radio id="formRadio2" name="grp" value="y">Fast</radio>
+        </div>
+        <span id="radioStatus" class="formStatus">speed: calm</span>
+      </section>
+      <section id="formRange" class="formPanel">
+        <h3 class="demoLabel">range binding</h3>
+        <div class="formStack">
+          <label for="formRange1">Volume</label>
+          <range id="formRange1" min="0" max="10" value="3"></range>
+          <span id="volumeStatus" class="formStatus">volume: 3</span>
+          <progress id="formProg" value="30"></progress>
+          <span id="formProgressCaption" class="formStatus">meter: 30%</span>
+        </div>
+      </section>
+      <section id="formInput" class="formPanel">
+        <h3 class="demoLabel">input (text + number)</h3>
+        <div class="formStack">
+          <label for="formName">Name</label>
+          <input id="formName" type="text" placeholder="enter name" maxlength="20" on:change={captureName}></input>
+          <span id="nameStatus" class="formStatus">name commits: {nameCommits}</span>
+          <label for="formAge">Age</label>
+          <input id="formAge" type="number" placeholder="0" maxlength="3" on:change={captureAge}></input>
+          <span id="ageStatus" class="formStatus">age commits: {ageCommits}</span>
+        </div>
+      </section>
+      <section id="formDisabled" class="formPanel">
+        <h3 class="demoLabel">:disabled</h3>
+        <div class="formRow">
+          <button id="formDisabledBtn" disabled>cannot tap</button>
+          <span class="formStatus">ignored by input</span>
+        </div>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Images & Canvas ──────────────────────────────────────────────────── -->
+<screen id="media">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Images &amp; Canvas</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="imgFit">
+        <h3 class="demoLabel">img object-fit</h3>
+        <div class="imgRow"><span class="imgLabel">contain</span><img id="imgContain" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: contain"></img></div>
+        <div class="imgRow"><span class="imgLabel">cover</span><img id="imgCover" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: cover"></img></div>
+        <div class="imgRow"><span class="imgLabel">fill</span><img id="imgFill" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: fill"></img></div>
+      </section>
+      <section id="imgTransform">
+        <h3 class="demoLabel">img transform (rotate)</h3>
+        <img id="imgLogo" src="test-logo.img" width="32" height="32" style="transform: rotate(45deg); transform-origin: center"></img>
+      </section>
+      <section id="canvasDemo">
+        <h3 class="demoLabel">canvas (ui.drawCanvas)</h3>
+        <canvas id="demoCanvas" width="200" height="120"></canvas>
+        <span class="demoCap">rects | circles | lines | pixels | text</span>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Lists ────────────────────────────────────────────────────────────── -->
+<screen id="lists">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Lists</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">virtualized list (drag to scroll)</h3>
+      <list id="demoList" item-height="22"></list>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Keyboard ─────────────────────────────────────────────────────────── -->
+<screen id="keyboard">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Keyboard</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">tap the field to open the keyboard</h3>
+      <label for="kbInput">Message</label>
+      <input id="kbInput" type="text" placeholder="type here" maxlength="32"></input>
+    </main>
+  </body>
+</screen>
+
+<!-- Custom keyboard template (sibling of <screen>). -->
+<keyboard id="kbAlpha" variant="alpha" class="ui-keyboard">
+  <row>
+    <key>q</key><key>w</key><key>e</key><key>r</key><key>t</key><key>y</key><key>u</key><key>i</key><key>o</key><key>p</key>
+  </row>
+  <row>
+    <key>a</key><key>s</key><key>d</key><key>f</key><key>g</key><key>h</key><key>j</key><key>k</key><key>l</key>
+  </row>
+  <row>
+    <key special="1">⇧</key><key>z</key><key>x</key><key>c</key><key>v</key><key>b</key><key>n</key><key>m</key><key special="2">⌫</key>
+  </row>
+  <row>
+    <key special="4">123</key><key> </key><key special="3">OK</key>
+  </row>
+</keyboard>
