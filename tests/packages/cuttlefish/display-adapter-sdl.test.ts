@@ -33,3 +33,21 @@ describe("SDL display adapter", () => {
     expect(a.functions).toMatch(/display_present\b/);
   });
 });
+
+import { generateTouchAdapter } from "../../../packages/cuttlefish/src/api/shared/display-profile";
+
+describe("SDL touch library (mouse shim)", () => {
+  const t = generateTouchAdapter({
+    library: "sdl",
+    calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 240 },
+  } as any);
+  it("declares an SDL include", () => {
+    expect(t.includes.some((i) => i.includes("SDL"))).toBe(true);
+  });
+  it("touch_isTouched reads the SDL mouse left button", () => {
+    expect(t.functions).toMatch(/SDL_GetMouseState[\s\S]*SDL_BUTTON_LMASK/);
+  });
+  it("touch_readRaw returns screen-space coords + constant z", () => {
+    expect(t.functions).toMatch(/\*z = 200/);
+  });
+});

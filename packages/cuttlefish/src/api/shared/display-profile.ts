@@ -14,7 +14,7 @@ import type { DisplayCapabilities } from "./display-capabilities.js";
 // The transpiler handles calibration (raw ADC → screen pixels) and rotation.
 // ---------------------------------------------------------------------------
 
-export type TouchLibrary = "XPT2046_Touchscreen" | "Adafruit_TouchScreen" | "Adafruit_STMPE610";
+export type TouchLibrary = "XPT2046_Touchscreen" | "Adafruit_TouchScreen" | "Adafruit_STMPE610" | "sdl";
 
 export interface TouchProfile {
   /**
@@ -311,9 +311,30 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
     };
   }
 
+  if (touch.library === "sdl") {
+    return {
+      includes: ["#include <SDL2/SDL.h>"],
+      declaration: `// SDL touch: no controller object — the mouse is the source`,
+      functions: [
+        `static inline void touch_init() {}`,
+        `static inline bool touch_isTouched() {`,
+        `  int __mx, __my;`,
+        `  return (SDL_GetMouseState(&__mx, &__my) & SDL_BUTTON_LMASK) != 0;`,
+        `}`,
+        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
+        `  int __mx, __my;`,
+        `  SDL_GetMouseState(&__mx, &__my);`,
+        `  if (x) *x = (int16_t)__mx;`,
+        `  if (y) *y = (int16_t)__my;`,
+        `  if (z) *z = 200;   // constant > default minPressure (10)`,
+        `}`,
+      ].join("\n"),
+    };
+  }
+
   throw new Error(
     `Unknown touch library "${touch.library}". ` +
     `Use { adapter: './path' } for custom touch adapters, or one of: ` +
-    `XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610.`,
+    `XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610, sdl.`,
   );
 }
